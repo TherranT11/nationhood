@@ -12675,6 +12675,364 @@ async function rejectOwnNomination(supabase, billId, nomineePartyId) {
 
 // Tick lock and tick mutation are intentionally Edge Function only.
 
+// ────────── engagement ──────────
+
+// ============================================================================
+// ENGAGEMENT SCORE — Legislative Activity & Voter Accountability
+// ============================================================================
+//
+// Tracks how actively each faction participates in governance.
+// Three components:
+//   1. Legislative Initiative (35%) — are you proposing bills?
+//   2. Constructive Participation (40%) — are you engaging beyond just blocking?
+//   3. Issue Positioning (25%) — are you taking stances on salient issues?
+//
+// The composite score applies as a multiplier on Platform Appeal.
+// ============================================================================
+
+const ENGAGEMENT_CFG = {
+    // Rolling window in ticks for bill/vote tracking
+    ROLLING_WINDOW: 20,
+
+    // Component weights
+    WEIGHT_INITIATIVE: 0.35,
+    WEIGHT_CONSTRUCTIVE: 0.40,
+    WEIGHT_POSITIONING: 0.25,
+
+    // Initiative thresholds: [bills_to_floor, raw_score]
+    INITIATIVE_TIERS: [
+        [0, 10],
+        [1, 40],
+        [2, 60],
+        [3, 75],
+        [4, 90],
+    ],
+
+    // Seat-scaling for initiative expectations
+    SEAT_SCALE_THRESHOLDS: [
+        { maxSeats: 9,  scale: 0.5 },
+        { maxSeats: 25, scale: 1.0 },
+        { maxSeats: 40, scale: 1.5 },
+        { maxSeats: Infinity, scale: 2.0 },
+    ],
+
+    // Constructive participation tiers: [rate, raw_score]
+    CONSTRUCTIVE_TIERS: [
+        [0.00, 15],
+        [0.10, 30],
+        [0.20, 45],
+        [0.35, 60],
+        [0.50, 75],
+        [0.70, 90],
+    ],
+
+    // Principled opposition floor: if initiative >= this, constructive gets a floor
+    PRINCIPLED_OPPOSITION_INITIATIVE_THRESHOLD: 60,
+    PRINCIPLED_OPPOSITION_CONSTRUCTIVE_FLOOR: 45,
+
+    // Default when no votes occurred in window
+    CONSTRUCTIVE_DEFAULT: 50,
+
+    // Issue positioning points
+    POSITIONING_STRONG_THRESHOLD: 60,
+    POSITIONING_MODERATE_THRESHOLD: 30,
+    POSITIONING_STRONG_POINTS: 18,
+    POSITIONING_MODERATE_POINTS: 12,
+    POSITIONING_WEAK_POINTS: 6,
+    POSITIONING_FLOOR: 10,
+    POSITIONING_TOP_ISSUES: 5,
+
+    // Role adjustments
+    ROLE_COALITION_INITIATIVE_SCALE: 0.5,
+    ROLE_OPPOSITION_INITIATIVE_SCALE: 0.5,
+    ROLE_SMALL_INITIATIVE_SCALE: 0.3,
+    ROLE_OPPOSITION_CONSTRUCTIVE_FLOOR: 25,
+    ROLE_COALITION_CONSTRUCTIVE_FLOOR: 40,
+    ROLE_SMALL_CONSTRUCTIVE_FLOOR: 30,
+
+    // Platform Appeal multiplier tiers: [minScore, multiplier]
+    APPEAL_MULTIPLIER_TIERS: [
+        [60, 1.00],   // engaged — no penalty
+        [40, 0.85],   // coasting — mild drag
+        [20, 0.65],   // disengaged — significant
+        [0,  0.50],   // pure obstruction — severe
+    ],
+
+    // Score bounds
+    SCORE_MIN: 10,
+    SCORE_MAX: 95,
+
+    // Drift speed per tick
+    DRIFT_SPEED: 2.0,
+
+    // Grace period for new factions (ticks to hold at 50)
+    GRACE_PERIOD_TICKS: 5,
+};
+
+/**
+ * Compute the engagement score for all factions in a nation.
+ *
+ * @param {object} supabase
+ * @param {object} nation
+ * @param {Array} factions - array of { id, seats }
+ * @param {Set} coalitionPartyIds
+ * @param {string|null} leadPartyId
+ * @param {Array} issueStates - array of issue_state rows
+ * @param {number} currentTick
+ * @returns {Object} map of factionId -> { engagementScore, initiative, constructive, positioning, multiplier }
+ */
+async function computeEngagementScores(supabase, nation, factions, coalitionPartyIds, leadPartyId, issueStates, currentTick) {
+    const cfg = ENGAGEMENT_CFG;
+    const nationId = nation.id;
+    const factionIds = factions.map(f => f.id);
+    const windowStart = currentTick - cfg.ROLLING_WINDOW;
+
+    // ── 1. Load bills that reached floor in the rolling window ──
+    const { data: floorBills } = await supabase
+        .from('bills')
+        .select('id, proposed_by, bill_support(faction_id, stance)')
+        .eq('nation_id', nationId)
+        .in('status', ['floor', 'passed', 'failed'])
+        .gte('floor_tick', windowStart)
+        .lte('floor_tick', currentTick);
+
+    const bills = floorBills || [];
+
+    // Count bills proposed per faction that reached the floor
+    const billsToFloor = {};
+    for (const fId of factionIds) billsToFloor[fId] = 0;
+    for (const bill of bills) {
+        if (bill.proposed_by && billsToFloor[bill.proposed_by] !== undefined) {
+            billsToFloor[bill.proposed_by]++;
+        }
+    }
+
+    // Count votes per faction across all floor bills
+    const yesVotes = {};
+    const noVotes = {};
+    const abstainVotes = {};
+    const totalVotesPossible = {};
+    for (const fId of factionIds) {
+        yesVotes[fId] = 0;
+        noVotes[fId] = 0;
+        abstainVotes[fId] = 0;
+        totalVotesPossible[fId] = 0;
+    }
+
+    for (const bill of bills) {
+        // Every faction with seats could have voted on this bill
+        for (const fId of factionIds) {
+            totalVotesPossible[fId]++;
+        }
+        for (const support of (bill.bill_support || [])) {
+            const fId = support.faction_id;
+            if (!fId || yesVotes[fId] === undefined) continue;
+            const stance = (support.stance || '').toLowerCase();
+            if (stance === 'yes' || stance === 'accept' || stance === 'support') {
+                yesVotes[fId]++;
+            } else if (stance === 'no' || stance === 'reject' || stance === 'oppose') {
+                noVotes[fId]++;
+            } else if (stance === 'abstain') {
+                abstainVotes[fId]++;
+            }
+        }
+    }
+
+    // ── 2. Load faction stances for issue positioning ──
+    const { data: allStances } = await supabase
+        .from('faction_issue_stance')
+        .select('faction_id, issue_id, strength')
+        .eq('nation_id', nationId)
+        .in('faction_id', factionIds);
+
+    const stancesByFaction = {};
+    for (const fId of factionIds) stancesByFaction[fId] = [];
+    for (const s of (allStances || [])) {
+        if (stancesByFaction[s.faction_id]) {
+            stancesByFaction[s.faction_id].push(s);
+        }
+    }
+
+    // Top N issues by salience
+    const sortedIssues = [...(issueStates || [])]
+        .sort((a, b) => Number(b.salience ?? 0) - Number(a.salience ?? 0))
+        .slice(0, cfg.POSITIONING_TOP_ISSUES);
+    const topIssueIds = new Set(sortedIssues.map(i => i.issue_id));
+
+    // ── 3. Load existing engagement records ──
+    const { data: existingEngagement } = await supabase
+        .from('faction_engagement')
+        .select('faction_id, engagement_score, first_seated_tick')
+        .eq('nation_id', nationId)
+        .in('faction_id', factionIds);
+
+    const engagementMap = {};
+    for (const e of (existingEngagement || [])) engagementMap[e.faction_id] = e;
+
+    // Build seat map
+    const seatMap = {};
+    for (const f of factions) seatMap[f.id] = f.seats || 0;
+
+    // ── 4. Compute scores for each faction ──
+    const results = {};
+    const upserts = [];
+
+    for (const fId of factionIds) {
+        const seats = seatMap[fId] || 0;
+        const isCoalition = coalitionPartyIds.has(fId);
+        const isLead = fId === leadPartyId;
+        const existing = engagementMap[fId];
+
+        // Grace period check
+        const firstSeatedTick = existing?.first_seated_tick ?? currentTick;
+        if (currentTick - firstSeatedTick < cfg.GRACE_PERIOD_TICKS) {
+            results[fId] = {
+                engagementScore: 50,
+                initiative: 50,
+                constructive: 50,
+                positioning: 50,
+                multiplier: 1.0,
+            };
+            upserts.push({
+                faction_id: fId,
+                nation_id: nationId,
+                engagement_score: 50,
+                initiative_score: 50,
+                constructive_score: 50,
+                positioning_score: 50,
+                bills_to_floor_count: billsToFloor[fId],
+                yes_vote_count: yesVotes[fId],
+                no_vote_count: noVotes[fId],
+                abstain_vote_count: abstainVotes[fId],
+                total_votes_possible: totalVotesPossible[fId],
+                updated_at_tick: currentTick,
+                first_seated_tick: firstSeatedTick,
+            });
+            continue;
+        }
+
+        // ── Component 1: Legislative Initiative ──
+        const seatScale = cfg.SEAT_SCALE_THRESHOLDS.find(t => seats <= t.maxSeats)?.scale ?? 1.0;
+        let roleInitScale = 1.0;
+        if (isCoalition && !isLead) roleInitScale = cfg.ROLE_COALITION_INITIATIVE_SCALE;
+        else if (!isCoalition && seats < 10) roleInitScale = cfg.ROLE_SMALL_INITIATIVE_SCALE;
+        else if (!isCoalition) roleInitScale = cfg.ROLE_OPPOSITION_INITIATIVE_SCALE;
+
+        const effectiveScale = seatScale * roleInitScale;
+        const scaledBills = effectiveScale > 0 ? billsToFloor[fId] / effectiveScale : billsToFloor[fId];
+
+        let initiativeScore = cfg.INITIATIVE_TIERS[0][1]; // default: 10
+        for (const [threshold, score] of cfg.INITIATIVE_TIERS) {
+            if (scaledBills >= threshold) initiativeScore = score;
+        }
+
+        // ── Component 2: Constructive Participation ──
+        let constructiveScore;
+        const totalVotes = totalVotesPossible[fId];
+        if (totalVotes === 0) {
+            constructiveScore = cfg.CONSTRUCTIVE_DEFAULT;
+        } else {
+            const votesFor = yesVotes[fId] + abstainVotes[fId] * 0.5;
+            const constructiveRate = votesFor / totalVotes;
+
+            constructiveScore = cfg.CONSTRUCTIVE_TIERS[0][1]; // default: 15
+            for (const [rate, score] of cfg.CONSTRUCTIVE_TIERS) {
+                if (constructiveRate >= rate) constructiveScore = score;
+            }
+
+            // Principled opposition escape valve
+            if (constructiveScore < cfg.PRINCIPLED_OPPOSITION_CONSTRUCTIVE_FLOOR &&
+                initiativeScore >= cfg.PRINCIPLED_OPPOSITION_INITIATIVE_THRESHOLD) {
+                constructiveScore = Math.max(constructiveScore, cfg.PRINCIPLED_OPPOSITION_CONSTRUCTIVE_FLOOR);
+            }
+
+            // Role-based constructive floor
+            let roleFloor = 0;
+            if (isCoalition) roleFloor = cfg.ROLE_COALITION_CONSTRUCTIVE_FLOOR;
+            else if (!isCoalition && seats < 10) roleFloor = cfg.ROLE_SMALL_CONSTRUCTIVE_FLOOR;
+            else if (!isCoalition) roleFloor = cfg.ROLE_OPPOSITION_CONSTRUCTIVE_FLOOR;
+
+            constructiveScore = Math.max(constructiveScore, roleFloor);
+        }
+
+        // ── Component 3: Issue Positioning ──
+        const factionStances = stancesByFaction[fId] || [];
+        let positioningScore = cfg.POSITIONING_FLOOR;
+        for (const issueId of topIssueIds) {
+            const stance = factionStances.find(s => s.issue_id === issueId);
+            if (!stance) continue;
+            const strength = Number(stance.strength ?? 0);
+            if (strength >= cfg.POSITIONING_STRONG_THRESHOLD) {
+                positioningScore += cfg.POSITIONING_STRONG_POINTS;
+            } else if (strength >= cfg.POSITIONING_MODERATE_THRESHOLD) {
+                positioningScore += cfg.POSITIONING_MODERATE_POINTS;
+            } else {
+                positioningScore += cfg.POSITIONING_WEAK_POINTS;
+            }
+        }
+        positioningScore = Math.min(90, positioningScore);
+
+        // ── Composite ──
+        let targetScore = Math.round(
+            initiativeScore * cfg.WEIGHT_INITIATIVE +
+            constructiveScore * cfg.WEIGHT_CONSTRUCTIVE +
+            positioningScore * cfg.WEIGHT_POSITIONING
+        );
+        targetScore = Math.max(cfg.SCORE_MIN, Math.min(cfg.SCORE_MAX, targetScore));
+
+        // Apply drift from previous score
+        const prevScore = Number(existing?.engagement_score ?? 50);
+        const delta = targetScore - prevScore;
+        const clampedDelta = Math.max(-cfg.DRIFT_SPEED, Math.min(cfg.DRIFT_SPEED, delta));
+        const engagementScore = Math.round(Math.max(cfg.SCORE_MIN, Math.min(cfg.SCORE_MAX, prevScore + clampedDelta)));
+
+        // Compute appeal multiplier
+        let multiplier = cfg.APPEAL_MULTIPLIER_TIERS[cfg.APPEAL_MULTIPLIER_TIERS.length - 1][1];
+        for (const [minScore, mult] of cfg.APPEAL_MULTIPLIER_TIERS) {
+            if (engagementScore >= minScore) {
+                multiplier = mult;
+                break;
+            }
+        }
+
+        results[fId] = {
+            engagementScore,
+            initiative: initiativeScore,
+            constructive: constructiveScore,
+            positioning: positioningScore,
+            multiplier,
+        };
+
+        upserts.push({
+            faction_id: fId,
+            nation_id: nationId,
+            engagement_score: engagementScore,
+            initiative_score: initiativeScore,
+            constructive_score: constructiveScore,
+            positioning_score: positioningScore,
+            bills_to_floor_count: billsToFloor[fId],
+            yes_vote_count: yesVotes[fId],
+            no_vote_count: noVotes[fId],
+            abstain_vote_count: abstainVotes[fId],
+            total_votes_possible: totalVotesPossible[fId],
+            updated_at_tick: currentTick,
+            first_seated_tick: firstSeatedTick,
+        });
+    }
+
+    // ── 5. Batch upsert engagement records ──
+    if (upserts.length > 0) {
+        const { error } = await supabase
+            .from('faction_engagement')
+            .upsert(upserts, { onConflict: 'faction_id,nation_id' });
+        if (error) {
+            console.error('[Engagement] Failed to upsert engagement scores:', error.message);
+        }
+    }
+
+    return results;
+}
+
 // ────────── electorate ──────────
 
 /**
@@ -13494,12 +13852,22 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
         profile = data;
     }
 
-    // Fetch faction ideologies
+    // Fetch ideologies for ALL active factions in the nation (not just the ones being seeded)
+    // so that spatial alignment is calculated with proper competition from existing parties.
+    // Without this, a single new party gets uncompeted alignment (70-90+) and inflated vote share.
     const factionIds = factions.map(f => f.id);
+    const { data: allNationFactions } = await supabase
+        .from('factions')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party')
+        .is('abandoned_at', null);
+    const allFactionIds = (allNationFactions || []).map(f => f.id);
+
     const { data: ideologies } = await supabase
         .from('faction_ideology')
         .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-        .in('faction_id', factionIds);
+        .in('faction_id', allFactionIds);
     const ideoMap = {};
     for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
 
@@ -13515,7 +13883,7 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
 
     const govApproval = Number(nation.gov_approval ?? 50);
 
-    // Compute spatial alignments at genesis (all parties compete from the start)
+    // Compute spatial alignments with ALL parties competing (not just the new ones)
     const defaultSalience = {};
     for (const axisKey of AXIS_KEYS) defaultSalience[axisKey] = 0.2;
     const genesisAlignments = profile
@@ -13550,6 +13918,8 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
 
     // Compute initial raw_appeal and vote shares so elections running before
     // the first tickElectorate don't see NULL contested_vote_share (= 0 votes).
+    // We must include ALL existing standings in the softmax so the new party
+    // doesn't get 100% contested_vote_share from being computed in isolation.
     const stability = clamp(Number(nation.stability ?? 50) || 50, 0, 100);
     const polarization = clamp(Number(nation.polarization ?? 50) || 50, 0, 100);
     const chaosIndex = clamp(((polarization / 100) + (1 - stability / 100)) / 2, 0, 1);
@@ -13572,11 +13942,32 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
             credibilityScore * credWeight
         );
     }
-    computeContestedVoteShares(rows);
-    computeRealizedVoteShares(rows, profile, nation);
 
-    // Add computed vote share fields to each row for DB write
+    // Fetch existing standings so softmax includes ALL parties (not just the new ones)
+    const existingFactionIds = allFactionIds.filter(id => !factionIds.includes(id));
+    let allRows = [...rows];
+    if (existingFactionIds.length > 0) {
+        const { data: existingStandings } = await supabase
+            .from('faction_electoral_standing')
+            .select('faction_id, nation_id, raw_appeal, contested_vote_share, realized_vote_share, turnout_rate')
+            .eq('nation_id', nation.id)
+            .in('faction_id', existingFactionIds);
+        if (existingStandings && existingStandings.length > 0) {
+            allRows = [...rows, ...existingStandings];
+        }
+    }
+
+    computeContestedVoteShares(allRows);
+    computeRealizedVoteShares(allRows, profile, nation);
+
+    // Copy computed values back to the new rows only (existing standings aren't written)
     for (const r of rows) {
+        const computed = allRows.find(a => a.faction_id === r.faction_id);
+        if (computed) {
+            r.contested_vote_share = computed.contested_vote_share;
+            r.realized_vote_share = computed.realized_vote_share;
+            r.turnout_rate = computed.turnout_rate;
+        }
         r.base_vote_share = r.contested_vote_share;
         r.turnout_rate = r.turnout_rate || 0.65;
     }
@@ -13854,6 +14245,18 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     // ── 14. Compute spatial alignments (all factions compete per-axis) ──
     const spatialAlignments = computeSpatialAlignments(ideoMap, activeProfile, axisSalienceWeights);
 
+    // ── 14b. Compute engagement scores (legislative activity tracking) ──
+    let engagementResults = {};
+    try {
+        engagementResults = await computeEngagementScores(
+            supabase, nation, factions, coalitionPartyIds, leadPartyId,
+            updatedIssueStates, currentTick
+        );
+    } catch (engErr) {
+        console.error(`[Electorate] Engagement score computation failed for ${nation.name}:`, engErr.message);
+        // Continue with empty results — all factions get multiplier 1.0 (no penalty)
+    }
+
     // ── 15. Calculate pillars for each faction ──
     const updates = [];
 
@@ -13902,10 +14305,15 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         const appealResult = computePlatformAppeal(
             factionStances, issueStateMap, ideo, newAlignment
         );
+        // Apply engagement multiplier to platform appeal
+        const engagementData = engagementResults[factionId];
+        const engagementMult = engagementData?.multiplier ?? 1.0;
+        const adjustedAppeal = round2(appealResult.appeal * engagementMult);
+
         const oldAppeal = Number(standing.platform_appeal ?? CFG.DEFAULT_PLATFORM_APPEAL);
         const newAppeal = opts.snap
-            ? round2(clamp(appealResult.appeal, CFG.APPEAL_MIN, CFG.APPEAL_MAX))
-            : round2(clamp(oldAppeal + clamp(appealResult.appeal - oldAppeal, -CFG.APPEAL_DRIFT_SPEED, CFG.APPEAL_DRIFT_SPEED), CFG.APPEAL_MIN, CFG.APPEAL_MAX));
+            ? round2(clamp(adjustedAppeal, CFG.APPEAL_MIN, CFG.APPEAL_MAX))
+            : round2(clamp(oldAppeal + clamp(adjustedAppeal - oldAppeal, -CFG.APPEAL_DRIFT_SPEED, CFG.APPEAL_DRIFT_SPEED), CFG.APPEAL_MIN, CFG.APPEAL_MAX));
 
         // ─── PILLAR 3: Party Approval (0-100) ───
         const oldApproval = Number(standing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);

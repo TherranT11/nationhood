@@ -387,8 +387,39 @@ export async function issueActingMinister(supabase, nationId, factionId, ministr
         })
         .eq('id', ministry.id);
 
-    // Gov approval penalty
-    await adjustGovernmentApprovalEvent(supabase, nationId, -4, 'executive_order:acting_minister');
+    // Gov approval: check if a confirmation vote was held for this ministry
+    // during the current administration
+    const { data: currentAdmin } = await supabase
+        .from('administrations')
+        .select('started_at_tick')
+        .eq('nation_id', nationId)
+        .is('ended_at_tick', null)
+        .order('started_at_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    const adminStartTick = currentAdmin?.started_at_tick ?? 0;
+
+    const { data: priorVote } = await supabase
+        .from('bills')
+        .select('id, status')
+        .eq('nation_id', nationId)
+        .eq('bill_type', 'minister_confirmation')
+        .eq('ministry_key', ministryKey)
+        .gte('proposed_tick', adminStartTick)
+        .in('status', ['passed', 'failed'])
+        .order('proposed_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (priorVote && priorVote.status === 'failed') {
+        // Confirmation vote was held and failed — appointing acting is justified
+        await adjustGovernmentApprovalEvent(supabase, nationId, 1, 'executive_order:acting_minister_after_failed_vote');
+    } else if (!priorVote) {
+        // No confirmation vote held — bypassing parliament
+        await adjustGovernmentApprovalEvent(supabase, nationId, -1, 'executive_order:acting_minister_no_vote');
+    }
+    // If priorVote.status === 'passed', the seat should already be filled — no penalty
 
     // Update overreach
     const overreach = await getOverreachCount(supabase, nationId, currentTick);

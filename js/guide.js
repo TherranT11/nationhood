@@ -429,7 +429,7 @@ const guideContent = {
 <p>Each ministry produces ongoing stat effects based on minister performance and funding level. Ministers can be dismissed by the PM at any time for 1 AP. Dismissing a coalition partner's minister without warning may trigger a coalition collapse.</p>
 
 <h3>Acting Ministers</h3>
-<p>If a ministry is vacant, the PM can appoint an <strong>Acting Minister</strong> by directive. Acting ministers provide 50% of a confirmed minister's stat bonus and cost &minus;3 Government Approval per tick they remain unconfirmed. Maximum 3 acting ministers at any time.</p>
+<p>If a ministry is vacant, the PM can appoint an <strong>Acting Minister</strong> by directive. Acting ministers provide 50% of a confirmed minister's stat bonus. If a confirmation vote for that ministry failed during this administration, appointing an acting minister grants <strong>+1 Government Approval</strong>. If no vote was held, it costs <strong>&minus;1 Government Approval</strong>. Maximum 3 acting ministers at any time.</p>
 
 <h3>Passing Legislation</h3>
 <ol>
@@ -485,7 +485,7 @@ const guideContent = {
 <p><strong>Failed nominations:</strong> The ministry re-opens. The party whose nominee was rejected is barred from that same seat for the remainder of the game. The President may have to appoint ministers from opposition parties.</p>
 
 <h3>Acting Ministers (Presidential)</h3>
-<p>The President can appoint an Acting Minister by Executive Order if confirmation fails. Acting ministers work at <strong>50% effectiveness</strong> and cost &minus;5 Government Approval on appointment plus &minus;3 per tick. Maximum 3 at any time.</p>
+<p>The President can appoint an Acting Minister by Executive Order. Acting ministers work at <strong>50% effectiveness</strong>. If the senate confirmation vote for that ministry failed, appointing an acting minister grants <strong>+1 Government Approval</strong>. If no confirmation vote was held, it costs <strong>&minus;1 Government Approval</strong>. Maximum 3 at any time.</p>
 
 <h3>Signing and Vetoing Bills</h3>
 <p>All bills passed by the legislature go to the President's desk. The President has <strong>6 ticks</strong> to act:</p>
