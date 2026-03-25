@@ -135,7 +135,7 @@ body {
 .wl-hero {
     padding: 80px 24px 60px;
     text-align: center;
-    max-width: 720px;
+    max-width: 1100px;
     margin: 0 auto;
 }
 
@@ -237,12 +237,12 @@ body {
 .wl-divider {
     height: 1px;
     background: var(--border-0);
-    max-width: 720px;
+    max-width: 1100px;
     margin: 0 auto;
 }
 
 .wl-section {
-    max-width: 720px;
+    max-width: 1100px;
     margin: 0 auto;
     padding: 48px 24px;
 }
@@ -346,13 +346,78 @@ body {
 }
 
 /* ═══════════════════════════════════════
+   Showcase (hero image below fold)
+   ═══════════════════════════════════════ */
+.wl-showcase {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px 48px;
+}
+
+.wl-showcase-hero {
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--border-0);
+    background: var(--bg-2);
+}
+
+.wl-showcase-img {
+    width: 100%;
+    display: block;
+}
+
+/* ═══════════════════════════════════════
+   Section Screenshots (inline pairs)
+   ═══════════════════════════════════════ */
+.wl-section-screenshots {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 24px;
+    padding-left: 18px;
+}
+
+.wl-screenshot {
+    width: 100%;
+    display: block;
+    border-radius: 4px;
+    border: 1px solid var(--border-0);
+    background: var(--bg-2);
+}
+
+/* ═══════════════════════════════════════
+   Gallery (See It In Action)
+   ═══════════════════════════════════════ */
+.wl-section--wide {
+    max-width: 1100px;
+}
+
+.wl-gallery {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.wl-gallery-large {
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--border-0);
+    background: var(--bg-2);
+}
+
+.wl-gallery-img {
+    width: 100%;
+    display: block;
+}
+
+/* ═══════════════════════════════════════
    Footer
    ═══════════════════════════════════════ */
 .wl-footer {
     text-align: center;
     padding: 32px 24px;
     border-top: 1px solid var(--border-0);
-    max-width: 720px;
+    max-width: 1100px;
     margin: 0 auto;
 }
 
@@ -410,5 +475,13 @@ body {
     .wl-nav-link {
         padding: 6px 12px;
         font-size: 10px;
+    }
+
+    .wl-section-screenshots {
+        grid-template-columns: 1fr;
+    }
+
+    .wl-gallery {
+        grid-template-columns: 1fr;
     }
 }
