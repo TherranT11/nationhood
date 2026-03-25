@@ -2290,47 +2290,27 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
                 <tbody>${rows}</tbody>
             </table>`;
 
-        // Render endorsement summary if available
-        const endorsements = r?.snapped_endorsements || [];
-        const resolved = endorsements.filter(e => e.status === 'RESOLVED');
-        const round1 = r?.round_1_candidates || [];
-        if (resolved.length > 0) {
-            // Build a lookup: faction_id -> candidate name from round 1
-            const factionToCandidate = {};
-            for (const c of round1) {
-                factionToCandidate[c.faction_id] = c;
-            }
-            // Build a lookup: candidate_id -> candidate name from runoff
-            const runoffById = {};
-            for (const c of cands) {
-                runoffById[c.candidate_id] = c;
-            }
-
-            let endorseRows = resolved.map(e => {
-                const endorsingCand = factionToCandidate[e.endorsing_faction_id];
-                const endorsedCand = runoffById[e.endorsed_candidate_id];
-                if (!endorsingCand || !endorsedCand) return '';
-                const endorsingColor = colorMap[e.endorsing_faction_id] || '#888';
-                const endorsedColor = colorMap[endorsedCand.faction_id] || '#888';
-                const transferVotes = e.transfer_votes || 0;
-                const baseVotes = endorsingCand.votes || 0;
-                const ratePct = baseVotes > 0 ? Math.round((transferVotes / baseVotes) * 100) : 0;
+        // Render vote transfer breakdown showing where eliminated parties' votes went
+        const allTransfers = sorted.flatMap(c => (c.transfer_detail || []).map(t => ({ ...t, to_candidate: c.candidate_name, to_faction_id: c.faction_id })));
+        if (allTransfers.length > 0) {
+            let transferRows = allTransfers.map(t => {
+                const fromColor = colorMap[t.faction_id] || '#888';
+                const toColor = colorMap[t.to_faction_id] || '#888';
+                const ratePct = t.round1_votes > 0 ? Math.round((t.transferred / t.round1_votes) * 100) : 0;
                 return `<tr>
-                    <td><span class="pol-el-color-dot" style="background:${endorsingColor}"></span>${escapeHtml(endorsingCand.party_name || '')}</td>
-                    <td><span class="pol-el-color-dot" style="background:${endorsedColor}"></span>${escapeHtml(endorsedCand.candidate_name || '')}</td>
-                    <td>${transferVotes.toLocaleString()} / ${baseVotes.toLocaleString()}</td>
+                    <td><span class="pol-el-color-dot" style="background:${fromColor}"></span>${escapeHtml(t.party_name || '')}</td>
+                    <td><span class="pol-el-color-dot" style="background:${toColor}"></span>${escapeHtml(t.to_candidate || '')}</td>
+                    <td>${(t.transferred || 0).toLocaleString()}</td>
                     <td>${ratePct}%</td>
                 </tr>`;
-            }).filter(Boolean).join('');
+            }).join('');
 
-            if (endorseRows) {
-                candidateTable += `
-                    <div style="margin-top:14px;font-family:var(--dfont-mono);font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--dtxt-muted);margin-bottom:6px">Endorsements &amp; Vote Transfers</div>
-                    <table class="pol-el-table">
-                        <thead><tr><th>Eliminated Party</th><th>Endorsed</th><th>Transferred</th><th>Rate</th></tr></thead>
-                        <tbody>${endorseRows}</tbody>
-                    </table>`;
-            }
+            candidateTable += `
+                <div style="margin-top:14px;font-family:var(--dfont-mono);font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--dtxt-muted);margin-bottom:6px">Vote Transfers</div>
+                <table class="pol-el-table">
+                    <thead><tr><th>Eliminated Party</th><th>Votes Went To</th><th>Transferred</th><th>Rate</th></tr></thead>
+                    <tbody>${transferRows}</tbody>
+                </table>`;
         }
 
         return candidateTable;
