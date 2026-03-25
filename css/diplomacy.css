@@ -2849,10 +2849,10 @@ body.light-mode .action-badge {
 }
 .diplo-view-btn {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.04em;
-  padding: 4px 12px;
+  padding: 6px 16px;
   background: transparent;
   color: var(--text-dim);
   border: 1px solid var(--border-subtle);
@@ -3156,7 +3156,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-sidebar-label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -3189,7 +3189,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-sidebar-logo {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--ipo-purple);
   flex-shrink: 0;
@@ -3208,7 +3208,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-sidebar-name {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: #a89880;
   white-space: nowrap;
@@ -3221,7 +3221,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-sidebar-meta {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: #4a4840;
 }
 
@@ -3240,7 +3240,7 @@ body.light-mode .diplo-view-btn.is-active {
 }
 .ipo-sidebar-invite-from {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: #6b6a5e;
   display: block;
   margin-bottom: 6px;
@@ -3253,7 +3253,7 @@ body.light-mode .diplo-view-btn.is-active {
 /* ── Create Organisation Button (sidebar bottom) ── */
 .ipo-btn--create {
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 10px;
   text-transform: uppercase;
   font-weight: 700;
   background: #5aafa5;
@@ -3271,7 +3271,7 @@ body.light-mode .diplo-view-btn.is-active {
 /* ── Shared IPO Buttons ── */
 .ipo-btn {
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 10px;
   text-transform: uppercase;
   font-weight: 700;
   padding: 4px 8px;
@@ -3335,7 +3335,7 @@ body.light-mode .diplo-view-btn.is-active {
 }
 .ipo-btn--create-large {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   text-transform: uppercase;
   font-weight: 700;
   background: #5aafa5;
@@ -3402,7 +3402,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-header-name {
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   color: #e2d9b4;
   white-space: nowrap;
@@ -3414,7 +3414,7 @@ body.light-mode .diplo-view-btn.is-active {
   display: flex;
   gap: 12px;
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: #4a4840;
 }
 .ipo-header-meta span {
@@ -3431,7 +3431,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-header-fund {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
   background: rgba(200,166,78,0.1);
   border: 1px solid rgba(200,166,78,0.25);
@@ -3443,7 +3443,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-header-president {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
   background: var(--ipo-purple-hover);
   border: 1px solid var(--ipo-purple-border);
@@ -3455,8 +3455,8 @@ body.light-mode .diplo-view-btn.is-active {
 
 /* ── Chat Area ── */
 .ipo-chat-area {
-  max-height: 45%;
-  min-height: 120px;
+  max-height: 55%;
+  min-height: 180px;
   display: flex;
   flex-direction: column;
   background: #141410;
@@ -3481,7 +3481,7 @@ body.light-mode .diplo-view-btn.is-active {
 }
 .ipo-chat-msg-party {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
   min-width: 80px;
   flex-shrink: 0;
@@ -3490,7 +3490,7 @@ body.light-mode .diplo-view-btn.is-active {
 }
 .ipo-chat-msg-text {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 13px;
   color: #a89880;
   flex: 1;
   word-break: break-word;
@@ -3498,7 +3498,7 @@ body.light-mode .diplo-view-btn.is-active {
 }
 .ipo-chat-msg-time {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: #3a3830;
   flex-shrink: 0;
   padding-top: 2px;
@@ -3507,7 +3507,7 @@ body.light-mode .diplo-view-btn.is-active {
 /* System event lines */
 .ipo-chat-system {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: #3a3830;
   text-align: center;
   padding: 4px 0;
@@ -3528,8 +3528,8 @@ body.light-mode .diplo-view-btn.is-active {
   border: 1px solid rgba(255,255,255,0.07);
   color: #e2d9b4;
   font-family: var(--font-sans);
-  font-size: 11px;
-  padding: 5px 10px;
+  font-size: 13px;
+  padding: 7px 12px;
   outline: none;
   transition: border-color 0.15s;
 }
@@ -3542,7 +3542,7 @@ body.light-mode .diplo-view-btn.is-active {
 }
 .ipo-btn--send {
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 10px;
   text-transform: uppercase;
   font-weight: 700;
   background: var(--ipo-purple);
@@ -3595,7 +3595,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-panel-title {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -3605,7 +3605,7 @@ body.light-mode .diplo-view-btn.is-active {
 .ipo-panel-body {
   flex: 1;
   overflow-y: auto;
-  padding: 10px 14px;
+  padding: 12px 16px;
 }
 
 /* ── Footer ── */
@@ -3631,7 +3631,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-footer-badge--you {
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 9px;
   background: rgba(91,155,213,0.1);
   border: 1px solid rgba(91,155,213,0.25);
   color: #5b9bd5;
@@ -3641,7 +3641,7 @@ body.light-mode .diplo-view-btn.is-active {
 }
 .ipo-footer-badge--other {
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 9px;
   background: rgba(255,255,255,0.03);
   border: 1px solid rgba(255,255,255,0.07);
   color: #4a4840;
@@ -3695,7 +3695,7 @@ body.light-mode .ipo-empty-desc { color: #888; }
 }
 .ipo-charter-article-label {
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -3704,7 +3704,7 @@ body.light-mode .ipo-empty-desc { color: #888; }
 }
 .ipo-charter-text {
   font-family: var(--font-sans);
-  font-size: 10px;
+  font-size: 12px;
   color: #6b6a5e;
   line-height: 1.5;
 }
@@ -3717,20 +3717,20 @@ body.light-mode .ipo-empty-desc { color: #888; }
 }
 .ipo-charter-row-label {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: #6b6a5e;
   flex-shrink: 0;
 }
 .ipo-charter-row-value {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   color: #a89880;
   text-align: right;
 }
 .ipo-charter-tag {
   display: inline-block;
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -3773,7 +3773,7 @@ body.light-mode .ipo-empty-desc { color: #888; }
 
 .ipo-modal-title {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--ipo-purple);
   text-transform: uppercase;
@@ -3803,11 +3803,11 @@ body.light-mode .ipo-empty-desc { color: #888; }
 }
 .wizard-step {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  padding: 4px 10px;
+  padding: 6px 14px;
   color: #4a4840;
   border: 1px solid rgba(255,255,255,0.05);
   border-radius: 2px;
@@ -3901,9 +3901,9 @@ img.ipo-logo-img.ipo-header-logo {
 /* ── Charter info bar ── */
 .ipo-charter-info {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   color: #a89880;
-  padding: 6px 10px;
+  padding: 8px 12px;
   background: rgba(139,126,200,0.06);
   border: 1px solid rgba(139,126,200,0.15);
   border-radius: 3px;
@@ -3929,14 +3929,14 @@ img.ipo-logo-img.ipo-header-logo {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 12px;
+  padding: 8px 14px;
   background: rgba(139,126,200,0.04);
   border-bottom: 1px solid rgba(255,255,255,0.04);
 }
 
 .ipo-article-label {
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -3955,7 +3955,7 @@ img.ipo-logo-img.ipo-header-logo {
 .ipo-article-remove:hover { opacity: 0.7; }
 
 .ipo-article-card-body {
-  padding: 10px 12px;
+  padding: 12px 14px;
 }
 
 /* ── Add article row ── */
@@ -3968,11 +3968,11 @@ img.ipo-logo-img.ipo-header-logo {
 /* ── Toggle button ── */
 .ipo-toggle-btn {
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: 2px;
   cursor: pointer;
   border: 1px solid rgba(255,255,255,0.1);
@@ -3999,20 +3999,20 @@ img.ipo-logo-img.ipo-header-logo {
   align-items: center;
   gap: 6px;
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
 }
 .ipo-ideology-axis-name {
   width: 160px;
   flex-shrink: 0;
   color: #6b6a5e;
-  font-size: 8px;
+  font-size: 10px;
 }
 .ipo-ideology-check {
   display: flex;
   align-items: center;
   gap: 3px;
   color: #a89880;
-  font-size: 8px;
+  font-size: 10px;
   cursor: pointer;
 }
 .ipo-ideology-check.ipo-disabled {
@@ -4020,8 +4020,8 @@ img.ipo-logo-img.ipo-header-logo {
   cursor: not-allowed;
 }
 .ipo-ideology-check input[type="checkbox"] {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   accent-color: var(--ipo-purple);
 }
 
@@ -4051,7 +4051,7 @@ img.ipo-logo-img.ipo-header-logo {
 }
 .ipo-confirm-article-label {
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -4061,7 +4061,7 @@ img.ipo-logo-img.ipo-header-logo {
 }
 .ipo-confirm-article-detail {
   font-family: var(--font-sans);
-  font-size: 9.5px;
+  font-size: 11px;
   color: #a89880;
 }
 .ipo-confirm-cost {
@@ -4074,7 +4074,7 @@ img.ipo-logo-img.ipo-header-logo {
   display: flex;
   justify-content: space-between;
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   color: #a89880;
   padding: 2px 0;
 }
@@ -4092,7 +4092,7 @@ img.ipo-logo-img.ipo-header-logo {
 .ipo-panel-action-btn {
   margin-left: auto;
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -4109,7 +4109,7 @@ img.ipo-logo-img.ipo-header-logo {
 /* Empty state */
 .ipo-votes-empty {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: #6b6a5e;
   text-align: center;
   padding: 24px 12px;
@@ -4137,7 +4137,7 @@ img.ipo-logo-img.ipo-header-logo {
 
 .ipo-vote-type-badge {
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -4150,7 +4150,7 @@ img.ipo-logo-img.ipo-header-logo {
 
 .ipo-vote-badge {
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -4164,7 +4164,7 @@ img.ipo-logo-img.ipo-header-logo {
 
 .ipo-vote-card-title {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 4px;
@@ -4175,7 +4175,7 @@ img.ipo-logo-img.ipo-header-logo {
 
 .ipo-vote-meta-summary {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: #6b6a5e;
   margin-bottom: 6px;
   line-height: 1.4;
@@ -4202,7 +4202,7 @@ img.ipo-logo-img.ipo-header-logo {
   gap: 8px;
   margin-top: 3px;
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 9px;
 }
 .ipo-vote-tally-label--yes     { color: #5cb85c; }
 .ipo-vote-tally-label--no      { color: #d9534f; }
@@ -4218,7 +4218,7 @@ img.ipo-logo-img.ipo-header-logo {
 }
 .ipo-vote-voter {
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 9px;
   padding: 1px 5px;
   border-radius: 2px;
   background: rgba(255,255,255,0.03);
@@ -4231,7 +4231,7 @@ img.ipo-logo-img.ipo-header-logo {
 /* My ballot status */
 .ipo-vote-my-ballot {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: #6b6a5e;
   margin-top: 6px;
 }
@@ -4246,9 +4246,9 @@ img.ipo-logo-img.ipo-header-logo {
 
 .ipo-vote-btn {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 600;
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: 2px;
   cursor: pointer;
   border: 1px solid;
@@ -4309,14 +4309,14 @@ img.ipo-logo-img.ipo-header-logo {
 
 .ipo-vote-type-card-label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .ipo-vote-type-card-desc {
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 10px;
   color: #6b6a5e;
 }
 
@@ -4324,7 +4324,7 @@ img.ipo-logo-img.ipo-header-logo {
 .ipo-vote-form-label {
   display: block;
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -4338,8 +4338,8 @@ img.ipo-logo-img.ipo-header-logo {
 .ipo-vote-form-textarea {
   width: 100%;
   font-family: var(--font-mono);
-  font-size: 9px;
-  padding: 6px 10px;
+  font-size: 11px;
+  padding: 7px 12px;
   background: var(--bg-1);
   color: var(--text-primary);
   border: 1px solid var(--border-hair);
@@ -4353,7 +4353,7 @@ img.ipo-logo-img.ipo-header-logo {
 
 .ipo-vote-form-note {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: #6b6a5e;
   font-style: italic;
   padding: 8px 0;
@@ -4363,7 +4363,7 @@ img.ipo-logo-img.ipo-header-logo {
 
 .ipo-actions-empty {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: #6b6a5e;
   text-align: center;
   padding: 24px 12px;
@@ -4398,14 +4398,14 @@ img.ipo-logo-img.ipo-header-logo {
 
 .ipo-action-label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .ipo-action-desc {
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 10px;
   color: #6b6a5e;
   line-height: 1.3;
 }
@@ -4419,18 +4419,18 @@ img.ipo-logo-img.ipo-header-logo {
 
 .ipo-action-cost {
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 10px;
   font-weight: 600;
   color: #c8a64e;
 }
 
 .ipo-action-exec-btn {
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: 2px;
   cursor: pointer;
   color: var(--ipo-purple);
@@ -4483,7 +4483,7 @@ img.ipo-logo-img.ipo-header-logo {
 .ipo-action-multi-icon { font-size: 12px; flex-shrink: 0; }
 .ipo-action-multi-name {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-primary);
   flex: 1;
@@ -4494,12 +4494,12 @@ img.ipo-logo-img.ipo-header-logo {
 }
 .ipo-action-multi-outcome {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 600;
 }
 .ipo-action-multi-change {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--text-primary);
   min-width: 30px;
@@ -4516,7 +4516,7 @@ img.ipo-logo-img.ipo-header-logo {
 
 .ipo-event-log-header {
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -4526,7 +4526,7 @@ img.ipo-logo-img.ipo-header-logo {
 
 .ipo-event-log-empty {
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 10px;
   color: #3a3830;
   font-style: italic;
   padding: 4px 0;
@@ -4538,7 +4538,7 @@ img.ipo-logo-img.ipo-header-logo {
   gap: 6px;
   padding: 3px 0;
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 10px;
   color: #6b6a5e;
   line-height: 1.3;
 }
@@ -4553,7 +4553,7 @@ img.ipo-logo-img.ipo-header-logo {
 
 .ipo-event-log-tick {
   flex-shrink: 0;
-  font-size: 7px;
+  font-size: 9px;
   color: #3a3830;
 }
 

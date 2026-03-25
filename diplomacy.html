@@ -13974,12 +13974,12 @@ async function renderIPOMainPanel(memberCounts) {
                 <div class="ipo-header-meta">
                     <span>Est. Tick ${org.founded_at_tick}</span>
                     <span>${count} member${count !== 1 ? 's' : ''}</span>
-                    ${hqName ? `<span>HQ: ${escapeHtml(hqName)}</span>` : '<span>HQ: Vacant</span>'}
                     <span>${leadershipLabel}</span>
                     <span>${termYears}-Year Term</span>
                 </div>
             </div>
             <div class="ipo-header-right">
+                <span class="ipo-header-fund">${hqName ? 'HQ: ' + escapeHtml(hqName) : 'HQ: VACANT'}</span>
                 <span class="ipo-header-fund">${escapeHtml('SOLIDARITY FUND')} · ${org.solidarity_fund_balance} AP</span>
                 ${isPresident ? '<span class="ipo-header-president">PRESIDENT</span>' : ''}
             </div>
@@ -14237,25 +14237,28 @@ async function openIPOInviteModal() {
     if (!membership || membership.role === 'observer') return;
 
     // Fetch all factions not already members or with pending invites
-    const { data: existingMembers } = await _supabase
+    const { data: existingMembers, error: memErr } = await _supabase
         .from('ipo_members')
         .select('faction_id')
         .eq('org_id', ipoSelectedOrgId)
         .eq('is_active', true);
+    if (memErr) console.error('[IPO Invite] Members query error:', memErr.message);
     const memberIds = new Set((existingMembers || []).map(m => m.faction_id));
 
-    const { data: pendingInvites } = await _supabase
+    const { data: pendingInvites, error: invErr } = await _supabase
         .from('ipo_invitations')
         .select('target_faction_id')
         .eq('org_id', ipoSelectedOrgId)
         .in('status', ['pending', 'vote_pending']);
+    if (invErr) console.error('[IPO Invite] Invitations query error:', invErr.message);
     const pendingIds = new Set((pendingInvites || []).map(i => i.target_faction_id));
 
-    const { data: allFactions } = await _supabase
+    const { data: allFactions, error: facErr } = await _supabase
         .from('factions')
-        .select('id, faction_name, nation_id, nations:nation_id ( name )')
+        .select('id, faction_name, nation_id')
         .eq('is_active', true)
         .order('faction_name');
+    if (facErr) console.error('[IPO Invite] Factions query error:', facErr.message);
 
     const available = (allFactions || []).filter(f => !memberIds.has(f.id) && !pendingIds.has(f.id));
 
@@ -14264,8 +14267,16 @@ async function openIPOInviteModal() {
         return;
     }
 
+    // Fetch nation names for display
+    const nationIds = [...new Set(available.map(f => f.nation_id).filter(Boolean))];
+    const nationMap = {};
+    if (nationIds.length > 0) {
+        const { data: nations } = await _supabase.from('nations').select('id, name').in('id', nationIds);
+        (nations || []).forEach(n => { nationMap[n.id] = n.name; });
+    }
+
     const options = available.map(f =>
-        `<option value="${f.id}">${escapeHtml(f.faction_name)}${f.nations?.name ? ' · ' + escapeHtml(f.nations.name) : ''}</option>`
+        `<option value="${f.id}">${escapeHtml(f.faction_name)}${nationMap[f.nation_id] ? ' · ' + escapeHtml(nationMap[f.nation_id]) : ''}</option>`
     ).join('');
 
     const inner = document.getElementById('ipo-create-modal-inner');
@@ -15702,9 +15713,9 @@ async function resolveIPOVote(voteId) {
             return;
         }
 
-        // If no rows updated, another user already resolved it
+        // If no rows updated, either already resolved or missing UPDATE RLS policy
         if (!data || data.length === 0) {
-            alert('This vote has already been resolved.');
+            alert('Could not resolve vote. It may have already been resolved, or you may lack permission. Please refresh the page and try again.');
             await loadIPOVotes(ipoSelectedOrgId);
             return;
         }
@@ -15933,8 +15944,8 @@ async function applyVoteEffects(vote, org) {
 // ==================== IPO ACTIONS PANEL (Phase 8) ====================
 
 const IPO_ACTION_COSTS = {
-    hold_rally:      2,
-    rally_all:       4,
+    hold_rally:      4,
+    rally_all:       7,
     back_channel:    3,
     joint_statement: 1,
     fund_draw:       0   // no AP — draws from solidarity fund
@@ -15976,14 +15987,14 @@ function renderIPOActionsPanel() {
 
     const actions = [];
 
-    // Hold Rally — any member
+    // Hold Rally — any member, targets another member
     actions.push({
         key: 'hold_rally',
         label: 'Hold Rally',
-        desc: 'Rally support for your party in your nation.',
+        desc: 'Spend AP to rally support for another member party.',
         cost: IPO_ACTION_COSTS.hold_rally,
         icon: '📢',
-        available: true
+        available: ipoVoteMembers.filter(m => m.faction_id !== currentFaction.id).length > 0
     });
 
     // Rally All Members — president only
@@ -16137,11 +16148,51 @@ async function executeIPOAction(actionKey) {
 async function executeHoldRally() {
     if (_ipoActionLock) return;
     const cost = IPO_ACTION_COSTS.hold_rally;
-    if (!confirm(`Hold a rally for your party? This costs ${cost} AP. A dice roll determines the outcome.`)) return;
-    _ipoActionLock = true;
 
+    // Build list of other members to target
+    const otherMembers = ipoVoteMembers.filter(m => m.faction_id !== currentFaction.id);
+    if (otherMembers.length === 0) {
+        alert('No other members in this organisation to rally for.');
+        return;
+    }
+
+    // Show member picker via modal
+    const options = otherMembers.map(m =>
+        `<option value="${m.faction_id}">${escapeHtml(m.factions?.faction_name || 'Unknown')}</option>`
+    ).join('');
+
+    const inner = document.getElementById('ipo-create-modal-inner');
+    document.getElementById('ipo-create-modal').classList.add('active');
+    inner.innerHTML = `
+        <div class="ipo-modal-header">
+            <span class="ipo-modal-title">Hold Rally</span>
+            <button class="modal-close" onclick="closeIPOActionModal()">&times;</button>
+        </div>
+        <div class="ipo-modal-body">
+            <p class="ipo-action-desc" style="margin-bottom:12px;">
+                Spend ${cost} AP to rally support for another member party. A dice roll determines the outcome.
+            </p>
+            <label class="ipo-vote-form-label">Rally for which party?</label>
+            <select id="ipo-rally-target" class="ipo-vote-form-select">${options}</select>
+            <div class="wizard-nav" style="margin-top:16px;">
+                <button class="wizard-back-btn" onclick="closeIPOActionModal()">Cancel</button>
+                <button class="ipo-btn ipo-btn--create-large" onclick="confirmHoldRally()">Hold Rally — ${cost} AP</button>
+            </div>
+        </div>`;
+}
+
+async function confirmHoldRally() {
+    if (_ipoActionLock) return;
+    const cost = IPO_ACTION_COSTS.hold_rally;
+    const targetId = document.getElementById('ipo-rally-target')?.value;
+    if (!targetId) { alert('Select a party to rally for.'); return; }
+
+    const targetMember = ipoVoteMembers.find(m => m.faction_id === targetId);
+    const targetName = targetMember?.factions?.faction_name || 'Unknown';
+
+    _ipoActionLock = true;
     try {
-        // Deduct AP
+        // Deduct AP from the executing faction
         const apResult = await deductAP(_supabase, currentFaction.id, cost);
         if (!apResult.success) {
             if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
@@ -16154,15 +16205,23 @@ async function executeHoldRally() {
         const outcome = rollRallyOutcome();
         const approvalChange = randomInt(outcome.min, outcome.max);
 
-        // Apply approval change to the rallying faction
-        const newApproval = Math.max(0, Math.min(100, Math.round((currentFaction.approval_rating || 40) + approvalChange)));
+        // Fetch target faction's current approval
+        const { data: targetFaction } = await _supabase.from('factions')
+            .select('approval_rating')
+            .eq('id', targetId)
+            .single();
+        const currentApproval = targetFaction?.approval_rating || 40;
+
+        // Apply approval change to the TARGET faction
+        const newApproval = Math.max(0, Math.min(100, Math.round(currentApproval + approvalChange)));
         await _supabase.from('factions')
             .update({ approval_rating: newApproval })
-            .eq('id', currentFaction.id);
-        currentFaction.approval_rating = newApproval;
+            .eq('id', targetId);
 
         // Log the action
         const actionData = {
+            target_faction_id: targetId,
+            target_faction_name: targetName,
             outcome_id: outcome.id,
             outcome_name: outcome.name,
             approval_change: approvalChange
@@ -16182,11 +16241,12 @@ async function executeHoldRally() {
             org_id: ipoSelectedOrgId,
             faction_id: null,
             is_system: true,
-            message_text: `${currentFaction.faction_name} held a rally: ${outcome.name} (${approvalChange >= 0 ? '+' : ''}${approvalChange} approval).`,
+            message_text: `${currentFaction.faction_name} rallied support for ${targetName}: ${outcome.name} (${approvalChange >= 0 ? '+' : ''}${approvalChange} approval).`,
             tick_posted: shardTick
         });
 
-        showIPOActionResult('Hold Rally', outcome, approvalChange);
+        closeIPOActionModal();
+        showIPOActionResult('Hold Rally for ' + targetName, outcome, approvalChange);
     } catch (e) {
         console.error('[IPO Action] Hold rally error:', e);
         alert('Failed to execute rally.');
@@ -17424,6 +17484,7 @@ window.executeBackChannel = executeBackChannel;
 window.executeDirectStatement = executeDirectStatement;
 window.executeDirectFundDraw = executeDirectFundDraw;
 window.closeIPOActionModal = closeIPOActionModal;
+window.confirmHoldRally = confirmHoldRally;
 // IPO invite & expulsion exports
 window.submitIPOInvite = submitIPOInvite;
 window.openIPOExpelModal = openIPOExpelModal;
