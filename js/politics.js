@@ -2259,7 +2259,81 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
         const cands = r?.runoff_candidates;
         if (!cands) return '<div class="pol-el-empty">No runoff results.</div>';
         const date = tickToDate(el.election_tick);
-        return renderPresidentialCandidates(cands, date, r.turnout_pct, r.total_votes_cast);
+
+        // Build candidate table with transfer breakdown
+        const sorted = [...cands].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+        const maxVotePct = Math.max(...sorted.map(c => c.vote_percentage || 0), 1);
+        let rows = sorted.map(c => {
+            const color = colorMap[c.faction_id] || '#888';
+            const pct = (c.vote_percentage || 0).toFixed(1);
+            const barW = Math.round(((c.vote_percentage || 0) / maxVotePct) * 100);
+            const winBadge = c.winner ? ' <span class="pol-el-winner-badge">WINNER</span>' : '';
+            // Show transfer breakdown if available
+            let transferNote = '';
+            if (c.base_votes != null && c.transfer_votes) {
+                transferNote = `<div style="font-size:10px;color:var(--dtxt-muted);margin-top:2px">${(c.base_votes || 0).toLocaleString()} direct + ${(c.transfer_votes || 0).toLocaleString()} transferred</div>`;
+            }
+            return `<tr>
+                <td><span class="pol-el-color-dot" style="background:${color}"></span>${escapeHtml(c.candidate_name)}${winBadge}</td>
+                <td>${escapeHtml(c.party_name)}</td>
+                <td>${(c.votes || 0).toLocaleString()}${transferNote}</td>
+                <td class="pol-el-bar-cell"><div class="pol-el-bar"><div class="pol-el-bar-fill" style="width:${barW}%;background:${color}"></div></div></td>
+                <td>${pct}%</td>
+            </tr>`;
+        }).join('');
+
+        let candidateTable = `
+            <div class="pol-el-date">${date}</div>
+            <div class="pol-el-summary">Turnout: ${(r.turnout_pct || 0).toFixed(1)}% &middot; ${(r.total_votes_cast || 0).toLocaleString()} votes</div>
+            <table class="pol-el-table">
+                <thead><tr><th>Candidate</th><th>Party</th><th>Votes</th><th></th><th>%</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+
+        // Render endorsement summary if available
+        const endorsements = r?.snapped_endorsements || [];
+        const resolved = endorsements.filter(e => e.status === 'RESOLVED');
+        const round1 = r?.round_1_candidates || [];
+        if (resolved.length > 0) {
+            // Build a lookup: faction_id -> candidate name from round 1
+            const factionToCandidate = {};
+            for (const c of round1) {
+                factionToCandidate[c.faction_id] = c;
+            }
+            // Build a lookup: candidate_id -> candidate name from runoff
+            const runoffById = {};
+            for (const c of cands) {
+                runoffById[c.candidate_id] = c;
+            }
+
+            let endorseRows = resolved.map(e => {
+                const endorsingCand = factionToCandidate[e.endorsing_faction_id];
+                const endorsedCand = runoffById[e.endorsed_candidate_id];
+                if (!endorsingCand || !endorsedCand) return '';
+                const endorsingColor = colorMap[e.endorsing_faction_id] || '#888';
+                const endorsedColor = colorMap[endorsedCand.faction_id] || '#888';
+                const transferVotes = e.transfer_votes || 0;
+                const baseVotes = endorsingCand.votes || 0;
+                const ratePct = baseVotes > 0 ? Math.round((transferVotes / baseVotes) * 100) : 0;
+                return `<tr>
+                    <td><span class="pol-el-color-dot" style="background:${endorsingColor}"></span>${escapeHtml(endorsingCand.party_name || '')}</td>
+                    <td><span class="pol-el-color-dot" style="background:${endorsedColor}"></span>${escapeHtml(endorsedCand.candidate_name || '')}</td>
+                    <td>${transferVotes.toLocaleString()} / ${baseVotes.toLocaleString()}</td>
+                    <td>${ratePct}%</td>
+                </tr>`;
+            }).filter(Boolean).join('');
+
+            if (endorseRows) {
+                candidateTable += `
+                    <div style="margin-top:14px;font-family:var(--dfont-mono);font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--dtxt-muted);margin-bottom:6px">Endorsements &amp; Vote Transfers</div>
+                    <table class="pol-el-table">
+                        <thead><tr><th>Eliminated Party</th><th>Endorsed</th><th>Transferred</th><th>Rate</th></tr></thead>
+                        <tbody>${endorseRows}</tbody>
+                    </table>`;
+            }
+        }
+
+        return candidateTable;
     }
 
     // Determine if presidential election had a runoff
