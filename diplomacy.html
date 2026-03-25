@@ -14241,10 +14241,36 @@ async function acceptIPOInvite(inviteId) {
         const admission = org?.charter?.membership?.admission || 'vote';
 
         if (admission === 'vote' && invite.invited_role === 'member') {
-            // Mark invite as vote_pending — the vote creation will happen in Phase 7
+            // Mark invite as vote_pending and auto-create a membership vote
             await _supabase.from('ipo_invitations')
                 .update({ status: 'vote_pending', responded_at_tick: shardTick })
                 .eq('id', inviteId);
+
+            // Create the membership vote automatically
+            await _supabase.from('ipo_votes').insert({
+                org_id: invite.org_id,
+                title: `Admit ${currentFaction.faction_name}`,
+                vote_type: 'membership',
+                meta: {
+                    invite_id: inviteId,
+                    target_faction_id: currentFaction.id,
+                    target_faction_name: currentFaction.faction_name
+                },
+                status: 'open',
+                opened_at_tick: shardTick,
+                closes_at_tick: shardTick + IPO_VOTE_DURATION,
+                proposed_by: currentFaction.id
+            });
+
+            // System chat message
+            await _supabase.from('ipo_chat').insert({
+                org_id: invite.org_id,
+                faction_id: null,
+                is_system: true,
+                message_text: `${currentFaction.faction_name} has applied for membership. A vote has been opened.`,
+                tick_posted: shardTick
+            });
+
             alert('Your application has been submitted. The organisation will vote on your membership.');
         } else {
             // Direct admission (president decides, or observer role)
@@ -14871,8 +14897,10 @@ function renderIPOVoteModalTypeSelect() {
     available.push('charter_amendment');
     // change_headquarters — always available
     available.push('change_headquarters');
-    // symposium — always available
-    available.push('symposium');
+    // symposium — only if not on cooldown and no pending symposium
+    if ((org.symposium_cooldown_remaining || 0) <= 0 && !org.pending_symposium) {
+        available.push('symposium');
+    }
 
     const typeCards = available.map(t => `
         <button class="ipo-vote-type-card" onclick="selectIPOVoteType('${t}')">
@@ -15281,7 +15309,7 @@ async function resolveIPOVote(voteId) {
 function getVetoHolder(org, vetoRight) {
     switch (vetoRight) {
         case 'president': return org.president_id;
-        case 'founding': return org.founded_by;
+        case 'founding': return org.founding_party_id;
         case 'hq': {
             // The member party whose nation matches the HQ nation
             if (!org.headquarters_nation_id) return null;
@@ -15377,8 +15405,86 @@ async function applyVoteEffects(vote, org) {
             }
             break;
         }
-        // charter_amendment and joint_statement effects are deferred to Phase 7b/8
-        // symposium effects deferred to Phase 7b
+        case 'joint_statement': {
+            // Post the statement as a system chat message
+            if (meta.statement_text) {
+                const visibility = meta.visibility === 'private' ? ' (private)' : '';
+                await _supabase.from('ipo_chat').insert({
+                    org_id: ipoSelectedOrgId,
+                    faction_id: null,
+                    is_system: true,
+                    message_text: `JOINT STATEMENT${visibility}: "${meta.statement_text}"`,
+                    tick_posted: shardTick
+                });
+
+                // Log the action
+                await _supabase.from('ipo_action_log').insert({
+                    org_id: ipoSelectedOrgId,
+                    faction_id: currentFaction.id,
+                    action_type: 'joint_statement',
+                    details: { statement_text: meta.statement_text, visibility: meta.visibility || 'public' },
+                    tick: shardTick
+                });
+            }
+            break;
+        }
+        case 'charter_amendment': {
+            // Log the amendment proposal — actual charter changes require president to apply via Amend Charter
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: `Charter amendment approved: ${meta.article_type || 'charter'} — "${(meta.description || '').substring(0, 200)}". The president should apply the changes via Amend Charter.`,
+                tick_posted: shardTick
+            });
+
+            await _supabase.from('ipo_action_log').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: currentFaction.id,
+                action_type: 'charter_amendment',
+                details: { article_type: meta.article_type, description: meta.description },
+                tick: shardTick
+            });
+            break;
+        }
+        case 'symposium': {
+            // Set pending_symposium on the org — fires after a cooldown
+            const SYMPOSIUM_DELAY = 4; // ticks until effect fires
+            const SYMPOSIUM_COOLDOWN = 20; // ticks before next symposium allowed
+            const SYMPOSIUM_SHIFT = 3; // ideology shift amount
+
+            const pendingSymposium = {
+                targetNation: meta.target_nation_id,
+                axis: meta.axis || 'economic',
+                direction: meta.direction || 'left',
+                ideologyShift: SYMPOSIUM_SHIFT,
+                firesOnTick: shardTick + SYMPOSIUM_DELAY
+            };
+
+            await _supabase.from('international_orgs')
+                .update({
+                    pending_symposium: pendingSymposium,
+                    symposium_cooldown_remaining: SYMPOSIUM_COOLDOWN
+                })
+                .eq('id', ipoSelectedOrgId);
+
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: `Symposium approved! Targeting ${meta.target_nation_name || 'a nation'} (${meta.axis} ${meta.direction}). Effect fires in ${SYMPOSIUM_DELAY} ticks.`,
+                tick_posted: shardTick
+            });
+
+            await _supabase.from('ipo_action_log').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: currentFaction.id,
+                action_type: 'symposium',
+                details: pendingSymposium,
+                tick: shardTick
+            });
+            break;
+        }
     }
 }
 
