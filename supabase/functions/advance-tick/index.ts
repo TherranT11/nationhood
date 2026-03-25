@@ -26936,34 +26936,39 @@ async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
 
     switch (vote.vote_type) {
         case 'membership': {
+            if (!meta.target_faction_id) break;
+
+            // If invite-based, mark the invitation as accepted
             if (meta.invite_id) {
                 await supabase.from('ipo_invitations')
                     .update({ status: 'accepted', responded_at_tick: tick })
                     .eq('id', meta.invite_id);
-
-                // Assign chat color
-                const { data: existingMembers } = await supabase
-                    .from('ipo_members')
-                    .select('chat_color')
-                    .eq('org_id', org.id)
-                    .eq('is_active', true);
-                const usedColors = (existingMembers || []).map(m => m.chat_color).filter(Boolean);
-                const chatColor = IPO_CHAT_COLORS.find(c => !usedColors.includes(c)) || IPO_CHAT_COLORS[0];
-
-                await supabase.from('ipo_members').insert({
-                    org_id: org.id,
-                    faction_id: meta.target_faction_id,
-                    role: 'member',
-                    joined_at_tick: tick,
-                    chat_color: chatColor
-                });
-
-                await supabase.from('ipo_chat').insert({
-                    org_id: org.id, faction_id: null, is_system: true,
-                    message_text: `${meta.target_faction_name || 'A new member'} has been admitted to the organisation.`,
-                    tick_posted: tick
-                });
             }
+
+            // Assign chat color
+            const { data: existingMembers } = await supabase
+                .from('ipo_members')
+                .select('chat_color')
+                .eq('org_id', org.id)
+                .eq('is_active', true);
+            const usedColors = (existingMembers || []).map(m => m.chat_color).filter(Boolean);
+            const chatColor = IPO_CHAT_COLORS.find(c => !usedColors.includes(c)) || IPO_CHAT_COLORS[0];
+
+            const admitRole = meta.requested_role || 'member';
+            await supabase.from('ipo_members').insert({
+                org_id: org.id,
+                faction_id: meta.target_faction_id,
+                role: admitRole,
+                joined_at_tick: tick,
+                chat_color: chatColor
+            });
+
+            const roleLabel = admitRole === 'observer' ? 'an observer' : 'a member';
+            await supabase.from('ipo_chat').insert({
+                org_id: org.id, faction_id: null, is_system: true,
+                message_text: `${meta.target_faction_name || 'A new party'} has been admitted as ${roleLabel}.`,
+                tick_posted: tick
+            });
             break;
         }
         case 'expulsion': {
