@@ -14255,7 +14255,7 @@ async function openIPOInviteModal() {
 
     const { data: allFactions, error: facErr } = await _supabase
         .from('factions')
-        .select('id, faction_name, nation_id, nations:nation_id ( name )')
+        .select('id, faction_name, nation_id')
         .eq('is_active', true)
         .order('faction_name');
     if (facErr) console.error('[IPO Invite] Factions query error:', facErr.message);
@@ -14267,8 +14267,16 @@ async function openIPOInviteModal() {
         return;
     }
 
+    // Fetch nation names for display
+    const nationIds = [...new Set(available.map(f => f.nation_id).filter(Boolean))];
+    const nationMap = {};
+    if (nationIds.length > 0) {
+        const { data: nations } = await _supabase.from('nations').select('id, name').in('id', nationIds);
+        (nations || []).forEach(n => { nationMap[n.id] = n.name; });
+    }
+
     const options = available.map(f =>
-        `<option value="${f.id}">${escapeHtml(f.faction_name)}${f.nations?.name ? ' · ' + escapeHtml(f.nations.name) : ''}</option>`
+        `<option value="${f.id}">${escapeHtml(f.faction_name)}${nationMap[f.nation_id] ? ' · ' + escapeHtml(nationMap[f.nation_id]) : ''}</option>`
     ).join('');
 
     const inner = document.getElementById('ipo-create-modal-inner');
