@@ -17336,15 +17336,18 @@ async function submitIPOCreation() {
             return;
         }
 
-        // Add founding member
+        // Add founding member (critical — org is broken without this)
         const chatColor = IPO_CHAT_COLORS[0];
-        await _supabase.from('ipo_members').insert({
+        const { error: memberErr } = await _supabase.from('ipo_members').insert({
             org_id: newOrg.id,
             faction_id: currentFaction.id,
             role: 'member',
             joined_at_tick: shardTick,
             chat_color: chatColor
         });
+        if (memberErr) {
+            console.error('[IPO] Failed to add founding member:', memberErr.message);
+        }
 
         // System chat message
         await _supabase.from('ipo_chat').insert({

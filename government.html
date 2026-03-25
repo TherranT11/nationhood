@@ -517,11 +517,15 @@ function formatDiscretionaryBalance(rawBalance) {
 async function deductDiscretionaryFund(ministryKey, localMData, currentBalance, cost) {
     if (cost <= 0) return;
     const newBalance = Math.max(0, currentBalance - cost);
-    await _supabase.from('ministries')
+    const { error } = await _supabase.from('ministries')
         .update({ discretionary_balance: newBalance })
         .eq('nation_id', currentNation.id)
         .eq('ministry_key', ministryKey)
         .eq('is_active', true);
+    if (error) {
+        console.error('[Ministry] Discretionary fund deduction failed:', error.message);
+        throw new Error('Fund deduction failed: ' + error.message);
+    }
     if (localMData) localMData.discretionary_balance = newBalance;
 }
 
