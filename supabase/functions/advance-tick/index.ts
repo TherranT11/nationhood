@@ -26828,6 +26828,12 @@ async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
                     description: meta.purpose || 'Fund draw (vote passed)',
                     tick: tick
                 });
+
+                await supabase.from('ipo_chat').insert({
+                    org_id: org.id, faction_id: null, is_system: true,
+                    message_text: `Fund draw approved: ${meta.amount_requested} AP withdrawn. ${meta.purpose ? 'Purpose: ' + meta.purpose : ''}`,
+                    tick_posted: tick
+                });
             }
             break;
         }
@@ -26841,10 +26847,17 @@ async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
         }
         case 'joint_statement': {
             if (meta.statement_text) {
+                const visibility = meta.visibility === 'private' ? ' (private)' : '';
                 await supabase.from('ipo_chat').insert({
                     org_id: org.id, faction_id: null, is_system: true,
-                    message_text: `JOINT STATEMENT: "${meta.statement_text}"`,
+                    message_text: `JOINT STATEMENT${visibility}: "${meta.statement_text}"`,
                     tick_posted: tick
+                });
+                await supabase.from('ipo_action_log').insert({
+                    org_id: org.id, faction_id: vote.proposed_by,
+                    action_type: 'joint_statement',
+                    action_data: { statement_text: meta.statement_text, visibility: meta.visibility || 'public' },
+                    ap_cost: 0, performed_at_tick: tick
                 });
             }
             break;
@@ -26855,6 +26868,12 @@ async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
                 message_text: `Charter amendment approved: ${meta.article_type || 'charter'} — "${(meta.description || '').substring(0, 200)}". The president should apply changes via Amend Charter.`,
                 tick_posted: tick
             });
+            await supabase.from('ipo_action_log').insert({
+                org_id: org.id, faction_id: vote.proposed_by,
+                action_type: 'charter_amendment',
+                action_data: { article_type: meta.article_type, description: meta.description },
+                ap_cost: 0, performed_at_tick: tick
+            });
             break;
         }
         case 'symposium': {
@@ -26862,15 +26881,17 @@ async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
             const SYMPOSIUM_COOLDOWN = 20;
             const SYMPOSIUM_SHIFT = 3;
 
+            const pendingSymposium = {
+                targetNation: meta.target_nation_id,
+                axis: meta.axis || 'economic',
+                direction: meta.direction || 'left',
+                ideologyShift: SYMPOSIUM_SHIFT,
+                firesOnTick: tick + SYMPOSIUM_DELAY
+            };
+
             await supabase.from('international_orgs')
                 .update({
-                    pending_symposium: {
-                        targetNation: meta.target_nation_id,
-                        axis: meta.axis || 'economic',
-                        direction: meta.direction || 'left',
-                        ideologyShift: SYMPOSIUM_SHIFT,
-                        firesOnTick: tick + SYMPOSIUM_DELAY
-                    },
+                    pending_symposium: pendingSymposium,
                     symposium_cooldown_remaining: SYMPOSIUM_COOLDOWN
                 })
                 .eq('id', org.id);
@@ -26879,6 +26900,12 @@ async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
                 org_id: org.id, faction_id: null, is_system: true,
                 message_text: `Symposium approved! Targeting ${meta.target_nation_name || 'a nation'} (${meta.axis} ${meta.direction}). Effect fires in ${SYMPOSIUM_DELAY} ticks.`,
                 tick_posted: tick
+            });
+            await supabase.from('ipo_action_log').insert({
+                org_id: org.id, faction_id: vote.proposed_by,
+                action_type: 'symposium',
+                action_data: pendingSymposium,
+                ap_cost: 0, performed_at_tick: tick
             });
             break;
         }

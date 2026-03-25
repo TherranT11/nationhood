@@ -172,6 +172,7 @@ let ipoMemberships = [];        // active ipo_members rows for current faction (
 let ipoSelectedOrgId = null;    // currently selected org in sidebar
 let ipoLoaded = false;          // prevents redundant re-fetches
 let ipoRealtimeChannel = null;  // realtime subscription for chat
+let ipoVotesChannel = null;     // realtime subscription for votes + ballots + members
 
 // Chat colour palette (assigned in join order)
 const IPO_CHAT_COLORS = ['#5cb85c','#c8a64e','#5aafa5','#d9534f','#8b7ec8','#5b9bd5'];
@@ -434,9 +435,9 @@ function switchDiploView(view) {
     ipoView.classList.add('ipo-view--hidden');
 
     // Clean up IPO realtime when leaving orgs view
-    if (view !== 'orgs' && ipoRealtimeChannel) {
-        _supabase.removeChannel(ipoRealtimeChannel);
-        ipoRealtimeChannel = null;
+    if (view !== 'orgs') {
+        if (ipoRealtimeChannel) { _supabase.removeChannel(ipoRealtimeChannel); ipoRealtimeChannel = null; }
+        if (ipoVotesChannel) { _supabase.removeChannel(ipoVotesChannel); ipoVotesChannel = null; }
     }
 
     if (view === 'nations') {
@@ -15019,6 +15020,32 @@ async function loadIPOVotes(orgId) {
     }
 
     renderIPOVotesPanel();
+
+    // Subscribe to realtime changes on votes, ballots, and members
+    if (ipoVotesChannel) {
+        _supabase.removeChannel(ipoVotesChannel);
+        ipoVotesChannel = null;
+    }
+    ipoVotesChannel = _supabase
+        .channel('ipo_org_' + orgId)
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'ipo_votes',
+            filter: 'org_id=eq.' + orgId
+        }, () => { loadIPOVotes(orgId).then(() => renderIPOActionsPanel()); })
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'ipo_ballots'
+        }, () => { loadIPOVotes(orgId); })
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'ipo_members',
+            filter: 'org_id=eq.' + orgId
+        }, () => { loadIPOVotes(orgId).then(() => renderIPOActionsPanel()); })
+        .subscribe();
 }
 
 /**
@@ -15561,6 +15588,7 @@ async function resolveIPOVote(voteId) {
 
     const vote = ipoVotes.find(v => v.id === voteId);
     if (!vote || vote.status !== 'open') return;
+    if (!confirm(`Resolve vote "${vote.title}"? This will tally ballots and determine the outcome.`)) return;
 
     const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
     const org = membership?.org;
@@ -15737,14 +15765,22 @@ async function applyVoteEffects(vote, org) {
                     .update({ solidarity_fund_balance: newBalance })
                     .eq('id', ipoSelectedOrgId);
 
-                // Log the transaction
+                // Log the transaction (use vote proposer as faction_id, matching server behavior)
                 await _supabase.from('ipo_fund_transactions').insert({
                     org_id: ipoSelectedOrgId,
-                    faction_id: currentFaction.id,
+                    faction_id: vote.proposed_by,
                     transaction_type: 'draw',
                     amount: -meta.amount_requested,
                     description: meta.purpose || 'Fund draw',
                     tick: shardTick
+                });
+
+                await _supabase.from('ipo_chat').insert({
+                    org_id: ipoSelectedOrgId,
+                    faction_id: null,
+                    is_system: true,
+                    message_text: `Fund draw approved: ${meta.amount_requested} AP withdrawn. ${meta.purpose ? 'Purpose: ' + meta.purpose : ''}`,
+                    tick_posted: shardTick
                 });
             }
             break;
@@ -16057,13 +16093,22 @@ async function executeHoldRally() {
         // Deduct AP
         const apResult = await deductAP(_supabase, currentFaction.id, cost);
         if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
             alert(`Insufficient AP. You need ${cost} AP. ${apResult.currentAp !== undefined ? 'You have ' + apResult.currentAp + ' AP.' : ''}`);
             return;
         }
+        currentFaction.action_points = apResult.newAp;
 
         // Roll outcome
         const outcome = rollRallyOutcome();
         const approvalChange = randomInt(outcome.min, outcome.max);
+
+        // Apply approval change to the rallying faction
+        const newApproval = Math.max(0, Math.min(100, Math.round((currentFaction.approval_rating || 40) + approvalChange)));
+        await _supabase.from('factions')
+            .update({ approval_rating: newApproval })
+            .eq('id', currentFaction.id);
+        currentFaction.approval_rating = newApproval;
 
         // Log the action
         const actionData = {
@@ -16111,9 +16156,11 @@ async function executeRallyAll() {
     try {
         const apResult = await deductAP(_supabase, currentFaction.id, cost);
         if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
             alert(`Insufficient AP. You need ${cost} AP.`);
             return;
         }
+        currentFaction.action_points = apResult.newAp;
 
         // Roll for each member
         const results = ipoVoteMembers.map(m => {
@@ -16127,6 +16174,19 @@ async function executeRallyAll() {
                 approval_change: change
             };
         });
+
+        // Apply approval changes to each member faction
+        for (const r of results) {
+            const { data: f } = await _supabase.from('factions')
+                .select('approval_rating').eq('id', r.faction_id).single();
+            if (f) {
+                const newApproval = Math.max(0, Math.min(100, Math.round((f.approval_rating || 40) + r.approval_change)));
+                await _supabase.from('factions')
+                    .update({ approval_rating: newApproval })
+                    .eq('id', r.faction_id);
+                if (r.faction_id === currentFaction.id) currentFaction.approval_rating = newApproval;
+            }
+        }
 
         await _supabase.from('ipo_action_log').insert({
             org_id: ipoSelectedOrgId,
@@ -16238,9 +16298,11 @@ async function executeBackChannel() {
     try {
         const apResult = await deductAP(_supabase, currentFaction.id, cost);
         if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
             alert(`Insufficient AP. You need ${cost} AP (${IPO_ACTION_COSTS.back_channel} overhead + ${amount} transfer).`);
             return;
         }
+        currentFaction.action_points = apResult.newAp;
 
         // Exposure roll
         const exposed = Math.random() < IPO_BACK_CHANNEL_EXPOSURE_CHANCE;
@@ -16332,9 +16394,11 @@ async function executeDirectStatement() {
     try {
         const apResult = await deductAP(_supabase, currentFaction.id, cost);
         if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
             alert(`Insufficient AP. You need ${cost} AP.`);
             return;
         }
+        currentFaction.action_points = apResult.newAp;
 
         await _supabase.from('ipo_action_log').insert({
             org_id: ipoSelectedOrgId,
@@ -17177,6 +17241,7 @@ window.submitIPOAmend = submitIPOAmend;
 // IPO voting exports
 window.openIPOVoteModal = openIPOVoteModal;
 window.closeIPOVoteModal = closeIPOVoteModal;
+window.renderIPOVoteModalTypeSelect = renderIPOVoteModalTypeSelect;
 window.selectIPOVoteType = selectIPOVoteType;
 window.submitIPOVote = submitIPOVote;
 window.castIPOBallot = castIPOBallot;

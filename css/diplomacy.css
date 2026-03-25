@@ -4126,6 +4126,9 @@ body.light-mode .ipo-empty-desc { color: #888; }
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ipo-vote-meta-summary {
