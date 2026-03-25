@@ -3250,6 +3250,64 @@ body.light-mode .diplo-view-btn.is-active {
   gap: 4px;
 }
 
+/* ── View button for invite preview ── */
+.ipo-btn--view {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  background: rgba(100,140,200,0.12);
+  color: #7baadc;
+  border: 1px solid rgba(100,140,200,0.3);
+}
+.ipo-btn--view:hover { background: rgba(100,140,200,0.22); }
+
+/* ── Org preview panel (from invite [View]) ── */
+.ipo-preview { padding: 20px; }
+.ipo-preview-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.ipo-preview-header-info { flex: 1; }
+.ipo-preview-desc {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #a8a690;
+  line-height: 1.5;
+  margin-bottom: 16px;
+  padding: 10px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.ipo-preview-section-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--amber, #c8a64e);
+  margin-bottom: 8px;
+}
+.ipo-preview-members {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.ipo-preview-member {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.02);
+}
+.ipo-preview-member-name { color: #d4d0c0; }
+.ipo-preview-member-nation { color: #6b6a5e; font-size: 11px; flex: 1; }
+.ipo-preview-member-role { color: var(--amber, #c8a64e); font-size: 10px; margin-left: auto; }
+
 /* ── Create Organisation Button (sidebar bottom) ── */
 .ipo-btn--create {
   font-family: var(--font-mono);
