@@ -353,14 +353,3 @@ export async function computeEngagementScores(supabase, nation, factions, coalit
 
     return results;
 }
-
-/**
- * Get the platform appeal multiplier from an engagement score.
- */
-export function getEngagementMultiplier(engagementScore) {
-    const cfg = ENGAGEMENT_CFG;
-    for (const [minScore, mult] of cfg.APPEAL_MULTIPLIER_TIERS) {
-        if (engagementScore >= minScore) return mult;
-    }
-    return cfg.APPEAL_MULTIPLIER_TIERS[cfg.APPEAL_MULTIPLIER_TIERS.length - 1][1];
-}

@@ -1217,10 +1217,16 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     const spatialAlignments = computeSpatialAlignments(ideoMap, activeProfile, axisSalienceWeights);
 
     // ── 14b. Compute engagement scores (legislative activity tracking) ──
-    const engagementResults = await computeEngagementScores(
-        supabase, nation, factions, coalitionPartyIds, leadPartyId,
-        updatedIssueStates, currentTick
-    );
+    let engagementResults = {};
+    try {
+        engagementResults = await computeEngagementScores(
+            supabase, nation, factions, coalitionPartyIds, leadPartyId,
+            updatedIssueStates, currentTick
+        );
+    } catch (engErr) {
+        console.error(`[Electorate] Engagement score computation failed for ${nation.name}:`, engErr.message);
+        // Continue with empty results — all factions get multiplier 1.0 (no penalty)
+    }
 
     // ── 15. Calculate pillars for each faction ──
     const updates = [];
