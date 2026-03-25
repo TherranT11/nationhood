@@ -3315,23 +3315,23 @@ body.light-mode .diplo-view-btn.is-active {
   text-align: center;
 }
 .ipo-empty-icon {
-  font-size: 32px;
+  font-size: 42px;
   color: var(--ipo-purple);
   opacity: 0.4;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 .ipo-empty-title {
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 20px;
   font-weight: 600;
   color: #e2d9b4;
 }
 .ipo-empty-desc {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 14px;
   color: #6b6a5e;
   line-height: 1.5;
-  max-width: 380px;
+  max-width: 420px;
 }
 .ipo-btn--create-large {
   font-family: var(--font-mono);
@@ -3670,6 +3670,11 @@ body.light-mode .diplo-view-btn.is-active {
   background: rgba(217,83,79,0.08);
   border-color: rgba(217,83,79,0.2);
   color: #d9534f;
+}
+.ipo-btn--expel {
+  background: rgba(217,83,79,0.06);
+  border-color: rgba(217,83,79,0.18);
+  color: #d97a35;
 }
 
 /* ── Light mode ── */
@@ -4039,6 +4044,477 @@ body.light-mode .ipo-empty-desc { color: #888; }
   font-weight: 700;
 }
 
+/* ══ IPO VOTING SYSTEM (Phase 7a) ══ */
+
+/* Panel header action button */
+.ipo-panel-action-btn {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #c8a64e;
+  background: rgba(200,166,78,0.08);
+  border: 1px solid rgba(200,166,78,0.2);
+  border-radius: 2px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ipo-panel-action-btn:hover { background: rgba(200,166,78,0.18); }
+
+/* Empty state */
+.ipo-votes-empty {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: #6b6a5e;
+  text-align: center;
+  padding: 24px 12px;
+}
+.ipo-votes-empty strong { color: #c8a64e; }
+
+/* Vote card */
+.ipo-vote-card {
+  background: rgba(255,255,255,0.015);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 3px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.ipo-vote-card--open { border-left: 2px solid #c8a64e; }
+.ipo-vote-card--passed { border-left: 2px solid #5cb85c; }
+.ipo-vote-card--failed { border-left: 2px solid #d9534f; }
+
+.ipo-vote-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.ipo-vote-type-badge {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #c8a64e;
+  background: rgba(200,166,78,0.08);
+  border: 1px solid rgba(200,166,78,0.15);
+  border-radius: 2px;
+  padding: 1px 5px;
+}
+
+.ipo-vote-badge {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 2px;
+  margin-left: auto;
+}
+.ipo-vote-badge--open    { color: #c8a64e; background: rgba(200,166,78,0.1); }
+.ipo-vote-badge--passed  { color: #5cb85c; background: rgba(92,184,92,0.1); }
+.ipo-vote-badge--failed  { color: #d9534f; background: rgba(217,83,79,0.1); }
+
+.ipo-vote-card-title {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ipo-vote-meta-summary {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: #6b6a5e;
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+.ipo-vote-meta-summary strong { color: var(--text-primary); font-weight: 600; }
+
+/* Tally bar */
+.ipo-vote-tally { margin: 6px 0; }
+
+.ipo-vote-tally-bar {
+  display: flex;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.04);
+}
+
+.ipo-vote-tally-seg--yes     { background: #5cb85c; }
+.ipo-vote-tally-seg--no      { background: #d9534f; }
+.ipo-vote-tally-seg--abstain { background: #6b6a5e; }
+
+.ipo-vote-tally-labels {
+  display: flex;
+  gap: 8px;
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-size: 7px;
+}
+.ipo-vote-tally-label--yes     { color: #5cb85c; }
+.ipo-vote-tally-label--no      { color: #d9534f; }
+.ipo-vote-tally-label--abstain { color: #6b6a5e; }
+.ipo-vote-tally-label--total   { color: #6b6a5e; margin-left: auto; }
+
+/* Voter breakdown (public ballot) */
+.ipo-vote-voters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 4px 0;
+}
+.ipo-vote-voter {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.ipo-vote-voter--yes     { color: #5cb85c; border-color: rgba(92,184,92,0.2); }
+.ipo-vote-voter--no      { color: #d9534f; border-color: rgba(217,83,79,0.2); }
+.ipo-vote-voter--abstain { color: #6b6a5e; }
+
+/* My ballot status */
+.ipo-vote-my-ballot {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: #6b6a5e;
+  margin-top: 6px;
+}
+.ipo-vote-my-ballot strong { color: var(--text-primary); }
+
+/* Ballot buttons */
+.ipo-vote-ballot-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.ipo-vote-btn {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ipo-vote-btn--yes {
+  color: #5cb85c;
+  background: rgba(92,184,92,0.06);
+  border-color: rgba(92,184,92,0.25);
+}
+.ipo-vote-btn--yes:hover { background: rgba(92,184,92,0.18); }
+
+.ipo-vote-btn--no {
+  color: #d9534f;
+  background: rgba(217,83,79,0.06);
+  border-color: rgba(217,83,79,0.25);
+}
+.ipo-vote-btn--no:hover { background: rgba(217,83,79,0.18); }
+
+.ipo-vote-btn--abstain {
+  color: #6b6a5e;
+  background: rgba(107,106,94,0.06);
+  border-color: rgba(107,106,94,0.25);
+}
+.ipo-vote-btn--abstain:hover { background: rgba(107,106,94,0.18); }
+
+.ipo-vote-btn--resolve {
+  color: #c8a64e;
+  background: rgba(200,166,78,0.08);
+  border-color: rgba(200,166,78,0.25);
+  margin-top: 6px;
+}
+.ipo-vote-btn--resolve:hover { background: rgba(200,166,78,0.2); }
+
+/* Vote type selection grid */
+.ipo-vote-type-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ipo-vote-type-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 3px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ipo-vote-type-card:hover {
+  background: rgba(200,166,78,0.06);
+  border-color: rgba(200,166,78,0.25);
+}
+
+.ipo-vote-type-card-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ipo-vote-type-card-desc {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  color: #6b6a5e;
+}
+
+/* Vote form elements */
+.ipo-vote-form-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b6a5e;
+  margin-top: 12px;
+  margin-bottom: 4px;
+}
+
+.ipo-vote-form-select,
+.ipo-vote-form-input,
+.ipo-vote-form-textarea {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 6px 10px;
+  background: var(--bg-1);
+  color: var(--text-primary);
+  border: 1px solid var(--border-hair);
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+.ipo-vote-form-textarea { resize: vertical; min-height: 60px; }
+.ipo-vote-form-select:focus,
+.ipo-vote-form-input:focus,
+.ipo-vote-form-textarea:focus { outline: none; border-color: rgba(200,166,78,0.4); }
+
+.ipo-vote-form-note {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: #6b6a5e;
+  font-style: italic;
+  padding: 8px 0;
+}
+
+/* ══ IPO ACTIONS PANEL (Phase 8) ══ */
+
+.ipo-actions-empty {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: #6b6a5e;
+  text-align: center;
+  padding: 24px 12px;
+}
+
+.ipo-action-card {
+  background: rgba(255,255,255,0.015);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 3px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  transition: border-color 0.15s;
+}
+.ipo-action-card:hover { border-color: rgba(139,126,200,0.25); }
+.ipo-action-card--disabled { opacity: 0.45; pointer-events: none; }
+
+.ipo-action-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ipo-action-icon { font-size: 14px; flex-shrink: 0; line-height: 1; }
+
+.ipo-action-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ipo-action-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ipo-action-desc {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  color: #6b6a5e;
+  line-height: 1.3;
+}
+
+.ipo-action-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ipo-action-cost {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 600;
+  color: #c8a64e;
+}
+
+.ipo-action-exec-btn {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--ipo-purple);
+  background: rgba(139,126,200,0.06);
+  border: 1px solid rgba(139,126,200,0.2);
+  transition: background 0.15s;
+}
+.ipo-action-exec-btn:hover:not(:disabled) { background: rgba(139,126,200,0.18); }
+.ipo-action-exec-btn:disabled { color: #6b6a5e; border-color: rgba(107,106,94,0.2); cursor: not-allowed; }
+
+/* Action result modal */
+.ipo-action-result-icon {
+  font-size: 42px;
+  margin-bottom: 8px;
+}
+.ipo-action-result-name {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.ipo-action-result-effect {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.ipo-action-result-desc {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+}
+
+/* Multi-result (rally all) */
+.ipo-action-multi-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ipo-action-multi-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 3px;
+}
+.ipo-action-multi-icon { font-size: 12px; flex-shrink: 0; }
+.ipo-action-multi-name {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ipo-action-multi-outcome {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+}
+.ipo-action-multi-change {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-primary);
+  min-width: 30px;
+  text-align: right;
+}
+
+/* ══ IPO EVENT LOG (Phase 10) ══ */
+
+.ipo-event-log {
+  margin-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+  padding-top: 8px;
+}
+
+.ipo-event-log-header {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b6a5e;
+  margin-bottom: 6px;
+}
+
+.ipo-event-log-empty {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  color: #3a3830;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.ipo-event-log-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 3px 0;
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  color: #6b6a5e;
+  line-height: 1.3;
+}
+
+.ipo-event-log-icon { flex-shrink: 0; font-size: 10px; line-height: 1; }
+
+.ipo-event-log-text {
+  flex: 1;
+  min-width: 0;
+}
+.ipo-event-log-text strong { color: var(--text-primary); font-weight: 600; }
+
+.ipo-event-log-tick {
+  flex-shrink: 0;
+  font-size: 7px;
+  color: #3a3830;
+}
+
 /* ── Light mode overrides ── */
 body.light-mode .ipo-modal-content { background: #fff; border-color: rgba(0,0,0,0.1); }
 body.light-mode .ipo-article-card { background: #fafaf8; border-color: rgba(0,0,0,0.06); }
@@ -4051,6 +4527,21 @@ body.light-mode .ipo-chat-input-row { background: #fafaf8; }
 body.light-mode .ipo-chat-input { background: #fff; border-color: rgba(0,0,0,0.1); color: #333; }
 body.light-mode .ipo-panel-header { background: #fafaf8; }
 body.light-mode .ipo-footer { background: #fafaf8; }
+body.light-mode .ipo-vote-card { background: rgba(0,0,0,0.015); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-vote-card-title { color: #333; }
+body.light-mode .ipo-vote-type-card { background: rgba(0,0,0,0.015); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-vote-type-card-label { color: #333; }
+body.light-mode .ipo-vote-tally-bar { background: rgba(0,0,0,0.06); }
+body.light-mode .ipo-vote-voter { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-vote-form-select,
+body.light-mode .ipo-vote-form-input,
+body.light-mode .ipo-vote-form-textarea { background: #fff; border-color: rgba(0,0,0,0.12); color: #333; }
+body.light-mode .ipo-action-card { background: rgba(0,0,0,0.015); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-action-label { color: #333; }
+body.light-mode .ipo-action-multi-row { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-action-multi-name { color: #333; }
+body.light-mode .ipo-event-log { border-top-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-event-log-text strong { color: #333; }
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
@@ -4066,5 +4557,17 @@ body.light-mode .ipo-footer { background: #fafaf8; }
   .ipo-panel + .ipo-panel { border-left: none; border-top: 1px solid rgba(255,255,255,0.04); }
   .ipo-footer { height: auto; min-height: 36px; padding: 6px 12px; flex-wrap: wrap; }
   .ipo-footer-members { gap: 3px; }
-  .ipo-footer-actions { width: 100%; justify-content: flex-end; margin-top: 4px; }
+  .ipo-footer-actions { width: 100%; justify-content: flex-end; margin-top: 4px; flex-wrap: wrap; }
+  .ipo-vote-card { padding: 8px 10px; }
+  .ipo-action-card { padding: 6px 8px; }
+  .ipo-vote-ballot-row { flex-wrap: wrap; }
+  .ipo-vote-type-grid { gap: 4px; }
+  .ipo-vote-type-card { padding: 8px 10px; }
+  .ipo-action-result-icon { font-size: 32px; }
+  .ipo-action-result-name { font-size: 13px; }
+  .ipo-action-result-effect { font-size: 18px; }
+  .ipo-modal-content { max-width: 95vw; max-height: 90vh; }
+  .ipo-empty-state { padding: 30px 20px; }
+  .ipo-empty-title { font-size: 16px; }
+  .ipo-empty-desc { font-size: 12px; }
 }

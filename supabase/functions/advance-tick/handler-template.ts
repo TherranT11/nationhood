@@ -849,6 +849,162 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
     };
 }
 
+// ==================== IPO VOTE EFFECT HELPER ====================
+
+/**
+ * Apply side-effects when an IPO vote passes (called from tick processor).
+ */
+async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
+    const meta = vote.meta || {};
+    const IPO_CHAT_COLORS = ['#5cb85c','#c8a64e','#5aafa5','#d9534f','#8b7ec8','#5b9bd5'];
+
+    switch (vote.vote_type) {
+        case 'membership': {
+            if (meta.invite_id) {
+                await supabase.from('ipo_invitations')
+                    .update({ status: 'accepted', responded_at_tick: tick })
+                    .eq('id', meta.invite_id);
+
+                // Assign chat color
+                const { data: existingMembers } = await supabase
+                    .from('ipo_members')
+                    .select('chat_color')
+                    .eq('org_id', org.id)
+                    .eq('is_active', true);
+                const usedColors = (existingMembers || []).map(m => m.chat_color).filter(Boolean);
+                const chatColor = IPO_CHAT_COLORS.find(c => !usedColors.includes(c)) || IPO_CHAT_COLORS[0];
+
+                await supabase.from('ipo_members').insert({
+                    org_id: org.id,
+                    faction_id: meta.target_faction_id,
+                    role: 'member',
+                    joined_at_tick: tick,
+                    chat_color: chatColor
+                });
+
+                await supabase.from('ipo_chat').insert({
+                    org_id: org.id, faction_id: null, is_system: true,
+                    message_text: `${meta.target_faction_name || 'A new member'} has been admitted to the organisation.`,
+                    tick_posted: tick
+                });
+            }
+            break;
+        }
+        case 'expulsion': {
+            if (meta.target_faction_id) {
+                await supabase.from('ipo_members')
+                    .update({ is_active: false, left_at_tick: tick })
+                    .eq('org_id', org.id)
+                    .eq('faction_id', meta.target_faction_id)
+                    .eq('is_active', true);
+
+                await supabase.from('ipo_chat').insert({
+                    org_id: org.id, faction_id: null, is_system: true,
+                    message_text: `${meta.target_faction_name || 'A member'} has been expelled from the organisation.`,
+                    tick_posted: tick
+                });
+            }
+            break;
+        }
+        case 'fund_draw': {
+            if (meta.amount_requested && meta.amount_requested > 0) {
+                const newBalance = Math.max(0, (org.solidarity_fund_balance || 0) - meta.amount_requested);
+                await supabase.from('international_orgs')
+                    .update({ solidarity_fund_balance: newBalance })
+                    .eq('id', org.id);
+
+                await supabase.from('ipo_fund_transactions').insert({
+                    org_id: org.id,
+                    faction_id: vote.proposed_by,
+                    transaction_type: 'draw',
+                    amount: -meta.amount_requested,
+                    description: meta.purpose || 'Fund draw (vote passed)',
+                    tick: tick
+                });
+
+                await supabase.from('ipo_chat').insert({
+                    org_id: org.id, faction_id: null, is_system: true,
+                    message_text: `Fund draw approved: ${meta.amount_requested} AP withdrawn. ${meta.purpose ? 'Purpose: ' + meta.purpose : ''}`,
+                    tick_posted: tick
+                });
+            }
+            break;
+        }
+        case 'change_headquarters': {
+            if (meta.proposed_nation_id) {
+                await supabase.from('international_orgs')
+                    .update({ headquarters_nation_id: meta.proposed_nation_id })
+                    .eq('id', org.id);
+            }
+            break;
+        }
+        case 'joint_statement': {
+            if (meta.statement_text) {
+                const visibility = meta.visibility === 'private' ? ' (private)' : '';
+                await supabase.from('ipo_chat').insert({
+                    org_id: org.id, faction_id: null, is_system: true,
+                    message_text: `JOINT STATEMENT${visibility}: "${meta.statement_text}"`,
+                    tick_posted: tick
+                });
+                await supabase.from('ipo_action_log').insert({
+                    org_id: org.id, faction_id: vote.proposed_by,
+                    action_type: 'joint_statement',
+                    action_data: { statement_text: meta.statement_text, visibility: meta.visibility || 'public' },
+                    ap_cost: 0, performed_at_tick: tick
+                });
+            }
+            break;
+        }
+        case 'charter_amendment': {
+            await supabase.from('ipo_chat').insert({
+                org_id: org.id, faction_id: null, is_system: true,
+                message_text: `Charter amendment approved: ${meta.article_type || 'charter'} — "${(meta.description || '').substring(0, 200)}". The president should apply changes via Amend Charter.`,
+                tick_posted: tick
+            });
+            await supabase.from('ipo_action_log').insert({
+                org_id: org.id, faction_id: vote.proposed_by,
+                action_type: 'charter_amendment',
+                action_data: { article_type: meta.article_type, description: meta.description },
+                ap_cost: 0, performed_at_tick: tick
+            });
+            break;
+        }
+        case 'symposium': {
+            const SYMPOSIUM_DELAY = 4;
+            const SYMPOSIUM_COOLDOWN = 20;
+            const SYMPOSIUM_SHIFT = 3;
+
+            const pendingSymposium = {
+                targetNation: meta.target_nation_id,
+                axis: meta.axis || 'economic',
+                direction: meta.direction || 'left',
+                ideologyShift: SYMPOSIUM_SHIFT,
+                firesOnTick: tick + SYMPOSIUM_DELAY
+            };
+
+            await supabase.from('international_orgs')
+                .update({
+                    pending_symposium: pendingSymposium,
+                    symposium_cooldown_remaining: SYMPOSIUM_COOLDOWN
+                })
+                .eq('id', org.id);
+
+            await supabase.from('ipo_chat').insert({
+                org_id: org.id, faction_id: null, is_system: true,
+                message_text: `Symposium approved! Targeting ${meta.target_nation_name || 'a nation'} (${meta.axis} ${meta.direction}). Effect fires in ${SYMPOSIUM_DELAY} ticks.`,
+                tick_posted: tick
+            });
+            await supabase.from('ipo_action_log').insert({
+                org_id: org.id, faction_id: vote.proposed_by,
+                action_type: 'symposium',
+                action_data: pendingSymposium,
+                ap_cost: 0, performed_at_tick: tick
+            });
+            break;
+        }
+    }
+}
+
 // ==================== ADVANCE TICK ====================
 
 async function advanceTick(supabase, { force = false, reprocess = false } = {}) {
@@ -2029,6 +2185,332 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] History snapshot FAILED for ${nation.id} (${nation.name}):`, snapErr);
         }
       }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4b. INTERNATIONAL PARTY ORGANISATIONS — cross-nation processing
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const { data: activeOrgs } = await supabase
+            .from('international_orgs')
+            .select('*')
+            .eq('is_active', true);
+
+        const ipoOrgs = activeOrgs || [];
+        if (ipoOrgs.length > 0) {
+            console.log(`[advanceTick] IPO: Processing ${ipoOrgs.length} active organisation(s)...`);
+        }
+
+        for (const org of ipoOrgs) {
+            try {
+                const charter = org.charter || {};
+                const leadership = charter.leadership || {};
+                const resources = charter.resources || {};
+
+                // Fetch active members (full members only, not observers)
+                const { data: members } = await supabase
+                    .from('ipo_members')
+                    .select('faction_id, role, factions:faction_id ( id, faction_name, nation_id, action_points, seats )')
+                    .eq('org_id', org.id)
+                    .eq('is_active', true);
+                const fullMembers = (members || []).filter(m => m.role === 'member');
+
+                // ── 1. VOTE AUTO-RESOLUTION ──
+                // Resolve open votes that have reached their closes_at_tick
+                const { data: expiredVotes } = await supabase
+                    .from('ipo_votes')
+                    .select('*')
+                    .eq('org_id', org.id)
+                    .eq('status', 'open')
+                    .lte('closes_at_tick', newTick);
+
+                for (const vote of (expiredVotes || [])) {
+                    try {
+                        // Fetch ballots for this vote
+                        const { data: ballots } = await supabase
+                            .from('ipo_ballots')
+                            .select('*')
+                            .eq('vote_id', vote.id);
+
+                        const yes = (ballots || []).filter(b => b.ballot === 'yes').length;
+                        const no = (ballots || []).filter(b => b.ballot === 'no').length;
+                        const abstain = (ballots || []).filter(b => b.ballot === 'abstain').length;
+                        const totalEligible = fullMembers.length;
+                        const votePass = leadership.votePass || 'majority';
+
+                        let passed = false;
+                        if (totalEligible === 0) {
+                            passed = false; // No members = cannot pass
+                        } else if (votePass === 'unanimous') {
+                            passed = yes === totalEligible && no === 0;
+                        } else {
+                            passed = yes > no && (yes / totalEligible) > 0.5;
+                        }
+
+                        // Veto check
+                        const governance = charter.governance || {};
+                        if (passed && governance.vetoRight) {
+                            let vetoHolderId = null;
+                            if (governance.vetoRight === 'president') vetoHolderId = org.president_id;
+                            else if (governance.vetoRight === 'founding') vetoHolderId = org.founding_party_id;
+                            else if (governance.vetoRight === 'hq' && org.headquarters_nation_id) {
+                                const hqMember = fullMembers.find(m => m.factions?.nation_id === org.headquarters_nation_id);
+                                vetoHolderId = hqMember?.faction_id || null;
+                            }
+                            if (vetoHolderId) {
+                                const vetoBallot = (ballots || []).find(b => b.faction_id === vetoHolderId);
+                                if (vetoBallot && vetoBallot.ballot === 'no') passed = false;
+                            }
+                        }
+
+                        // Expulsion clause override
+                        if (vote.vote_type === 'expulsion' && totalEligible > 0 && charter.membership?.expulsionClause === 'unanimous') {
+                            passed = yes === totalEligible && no === 0;
+                        }
+
+                        const result = { yes, no, abstain, passed };
+                        const newStatus = passed ? 'passed' : 'failed';
+
+                        await supabase.from('ipo_votes')
+                            .update({ status: newStatus, result, resolved_at_tick: newTick })
+                            .eq('id', vote.id);
+
+                        // Apply effects for passed votes
+                        if (passed) {
+                            await applyIPOVoteEffect(supabase, org, vote, fullMembers, newTick);
+                        }
+
+                        // Reject membership invite if vote failed
+                        if (!passed && vote.vote_type === 'membership' && vote.meta?.invite_id) {
+                            await supabase.from('ipo_invitations')
+                                .update({ status: 'declined', responded_at_tick: newTick })
+                                .eq('id', vote.meta.invite_id);
+                        }
+
+                        const outcomeText = passed ? 'PASSED' : 'FAILED';
+                        await supabase.from('ipo_chat').insert({
+                            org_id: org.id, faction_id: null, is_system: true,
+                            message_text: `Vote "${vote.title}" auto-resolved: ${outcomeText} (${yes}Y / ${no}N / ${abstain}A).`,
+                            tick_posted: newTick
+                        });
+
+                        console.log(`[advanceTick] IPO vote "${vote.title}" auto-resolved: ${outcomeText}`);
+                    } catch (voteErr) {
+                        console.error(`[advanceTick] IPO vote resolution failed for vote ${vote.id}:`, voteErr);
+                    }
+                }
+
+                // ── 2. LEADERSHIP SUCCESSION ──
+                // Check if president's term has expired
+                const termTicks = (leadership.termYears || 2) * 12; // 12 ticks per year
+                const termEnd = (org.president_term_start_tick || 0) + termTicks;
+
+                if (newTick >= termEnd && fullMembers.length > 0) {
+                    let newPresidentId = null;
+                    const successionType = leadership.type || 'rotation';
+
+                    if (successionType === 'rotation') {
+                        // Rotate to next member (by join order / faction_id sort)
+                        const sortedMembers = [...fullMembers].sort((a, b) => a.faction_id.localeCompare(b.faction_id));
+                        const currentIdx = sortedMembers.findIndex(m => m.faction_id === org.president_id);
+                        const nextIdx = (currentIdx + 1) % sortedMembers.length;
+                        newPresidentId = sortedMembers[nextIdx].faction_id;
+                    } else if (successionType === 'most_seats') {
+                        // Member with the most parliamentary seats
+                        let maxSeats = -1;
+                        for (const m of fullMembers) {
+                            const seats = m.factions?.seats || 0;
+                            if (seats > maxSeats) {
+                                maxSeats = seats;
+                                newPresidentId = m.faction_id;
+                            }
+                        }
+                    } else if (successionType === 'random') {
+                        const idx = Math.floor(Math.random() * fullMembers.length);
+                        newPresidentId = fullMembers[idx].faction_id;
+                    }
+
+                    if (newPresidentId && newPresidentId !== org.president_id) {
+                        await supabase.from('international_orgs')
+                            .update({ president_id: newPresidentId, president_term_start_tick: newTick })
+                            .eq('id', org.id);
+
+                        const newPres = fullMembers.find(m => m.faction_id === newPresidentId);
+                        const presName = newPres?.factions?.faction_name || 'Unknown';
+                        await supabase.from('ipo_chat').insert({
+                            org_id: org.id, faction_id: null, is_system: true,
+                            message_text: `Leadership succession: ${presName} is now president (${successionType}).`,
+                            tick_posted: newTick
+                        });
+                        console.log(`[advanceTick] IPO ${org.name}: leadership succession → ${presName} (${successionType})`);
+                    } else if (newPresidentId === org.president_id) {
+                        // Same president re-elected / re-selected — reset term
+                        await supabase.from('international_orgs')
+                            .update({ president_term_start_tick: newTick })
+                            .eq('id', org.id);
+                    }
+                }
+
+                // ── 3. SOLIDARITY FUND QUARTERLY COLLECTION ──
+                // Every 3 ticks (quarterly), collect contributions from members
+                if (resources.solidarityFund?.enabled && newTick % 3 === 0) {
+                    const contribution = resources.solidarityFund.contributionPerQuarter || 1;
+                    let totalCollected = 0;
+
+                    for (const m of fullMembers) {
+                        // Deduct AP from faction
+                        const { data: deducted } = await supabase.rpc('deduct_ap', {
+                            p_faction_id: m.faction_id,
+                            p_cost: contribution
+                        });
+
+                        if (deducted !== null && deducted >= 0) {
+                            totalCollected += contribution;
+                            await supabase.from('ipo_fund_transactions').insert({
+                                org_id: org.id,
+                                faction_id: m.faction_id,
+                                transaction_type: 'contribution',
+                                amount: contribution,
+                                description: 'Quarterly solidarity fund contribution',
+                                tick: newTick
+                            });
+                        }
+                        // If deduction fails (insufficient AP), skip silently
+                    }
+
+                    if (totalCollected > 0) {
+                        await supabase.from('international_orgs')
+                            .update({ solidarity_fund_balance: (org.solidarity_fund_balance || 0) + totalCollected })
+                            .eq('id', org.id);
+
+                        await supabase.from('ipo_chat').insert({
+                            org_id: org.id, faction_id: null, is_system: true,
+                            message_text: `Quarterly fund collection: ${totalCollected} AP collected from ${fullMembers.length} member(s).`,
+                            tick_posted: newTick
+                        });
+                    }
+                }
+
+                // ── 4. HQ AP COST ──
+                // If HQ is set, deduct 1 AP per tick from solidarity fund as upkeep
+                if (org.headquarters_nation_id && resources.solidarityFund?.enabled) {
+                    const hqCost = 1;
+                    const currentBalance = org.solidarity_fund_balance || 0;
+                    if (currentBalance >= hqCost) {
+                        await supabase.from('international_orgs')
+                            .update({ solidarity_fund_balance: currentBalance - hqCost })
+                            .eq('id', org.id);
+
+                        await supabase.from('ipo_fund_transactions').insert({
+                            org_id: org.id,
+                            faction_id: null,
+                            transaction_type: 'hq_cost',
+                            amount: -hqCost,
+                            description: 'Headquarters upkeep',
+                            tick: newTick
+                        });
+                    }
+                }
+
+                // ── 5. SYMPOSIUM RESOLUTION + COOLDOWN ──
+                // Decrement cooldown
+                if ((org.symposium_cooldown_remaining || 0) > 0) {
+                    await supabase.from('international_orgs')
+                        .update({ symposium_cooldown_remaining: org.symposium_cooldown_remaining - 1 })
+                        .eq('id', org.id);
+                }
+
+                // Check pending symposium
+                if (org.pending_symposium && org.pending_symposium.firesOnTick <= newTick) {
+                    const symp = org.pending_symposium;
+                    try {
+                        // Apply ideology shift to target nation
+                        const { data: targetNation } = await supabase
+                            .from('nations')
+                            .select('id, name, ideology')
+                            .eq('id', symp.targetNation)
+                            .single();
+
+                        if (targetNation) {
+                            const ideology = targetNation.ideology || {};
+                            const axis = symp.axis || 'economic';
+                            const direction = symp.direction || 'left';
+                            const shift = symp.ideologyShift || 3;
+
+                            // Map axis to ideology field
+                            const axisMap = {
+                                economic: 'economic',
+                                social: 'social',
+                                foreign: 'foreign_policy'
+                            };
+                            const field = axisMap[axis] || axis;
+                            const current = Number(ideology[field] ?? 50);
+                            const delta = direction === 'left' ? -shift : shift;
+                            ideology[field] = Math.max(0, Math.min(100, current + delta));
+
+                            await supabase.from('nations')
+                                .update({ ideology })
+                                .eq('id', targetNation.id);
+
+                            // Clear pending
+                            await supabase.from('international_orgs')
+                                .update({ pending_symposium: null })
+                                .eq('id', org.id);
+
+                            await supabase.from('ipo_chat').insert({
+                                org_id: org.id, faction_id: null, is_system: true,
+                                message_text: `Symposium effect applied: ${targetNation.name} ${axis} shifted ${direction} by ${shift}.`,
+                                tick_posted: newTick
+                            });
+
+                            console.log(`[advanceTick] IPO ${org.name}: symposium fired — ${targetNation.name} ${axis} ${direction} ${shift}`);
+                        } else {
+                            // Target nation not found — clear pending
+                            await supabase.from('international_orgs')
+                                .update({ pending_symposium: null })
+                                .eq('id', org.id);
+                        }
+                    } catch (sympErr) {
+                        console.error(`[advanceTick] IPO symposium failed for ${org.name}:`, sympErr);
+                    }
+                }
+
+                // ── 6. MEMBERSHIP INVITE EXPIRY ──
+                // Expire vote_pending invitations where the vote has already failed/been resolved
+                const { data: pendingInvites } = await supabase
+                    .from('ipo_invitations')
+                    .select('id, invited_faction_id')
+                    .eq('org_id', org.id)
+                    .eq('status', 'vote_pending');
+
+                for (const inv of (pendingInvites || [])) {
+                    // Check if there's a completed (non-open) membership vote for this invite
+                    const { data: relatedVotes } = await supabase
+                        .from('ipo_votes')
+                        .select('id, status')
+                        .eq('org_id', org.id)
+                        .eq('vote_type', 'membership')
+                        .neq('status', 'open')
+                        .contains('meta', { invite_id: inv.id });
+
+                    if (relatedVotes && relatedVotes.length > 0) {
+                        const vote = relatedVotes[0];
+                        if (vote.status === 'failed') {
+                            await supabase.from('ipo_invitations')
+                                .update({ status: 'declined', responded_at_tick: newTick })
+                                .eq('id', inv.id);
+                        }
+                        // 'passed' case already handled by applyIPOVoteEffect
+                    }
+                }
+
+            } catch (orgErr) {
+                console.error(`[advanceTick] IPO processing failed for org ${org.id} (${org.name}):`, orgErr);
+            }
+        }
+
+    } catch (ipoErr) {
+        console.error('[advanceTick] IPO processing failed (non-fatal):', ipoErr);
     }
 
     // 5. Commit shard tick/date AFTER all nation processing completes.

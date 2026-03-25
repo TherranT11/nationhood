@@ -172,9 +172,17 @@ let ipoMemberships = [];        // active ipo_members rows for current faction (
 let ipoSelectedOrgId = null;    // currently selected org in sidebar
 let ipoLoaded = false;          // prevents redundant re-fetches
 let ipoRealtimeChannel = null;  // realtime subscription for chat
+let ipoVotesChannel = null;     // realtime subscription for votes + ballots + members
 
 // Chat colour palette (assigned in join order)
 const IPO_CHAT_COLORS = ['#5cb85c','#c8a64e','#5aafa5','#d9534f','#8b7ec8','#5b9bd5'];
+// Assign next unused chat colour for a new org member
+async function assignIPOChatColor(orgId) {
+    const { data: existing } = await _supabase
+        .from('ipo_members').select('chat_color').eq('org_id', orgId).eq('is_active', true);
+    const used = (existing || []).map(m => m.chat_color).filter(Boolean);
+    return IPO_CHAT_COLORS.find(c => !used.includes(c)) || IPO_CHAT_COLORS[0];
+}
 // Logo symbol options
 const IPO_LOGO_SYMBOLS = ['◈','⬡','▲','◆','⬢','⊕'];
 
@@ -427,9 +435,9 @@ function switchDiploView(view) {
     ipoView.classList.add('ipo-view--hidden');
 
     // Clean up IPO realtime when leaving orgs view
-    if (view !== 'orgs' && ipoRealtimeChannel) {
-        _supabase.removeChannel(ipoRealtimeChannel);
-        ipoRealtimeChannel = null;
+    if (view !== 'orgs') {
+        if (ipoRealtimeChannel) { _supabase.removeChannel(ipoRealtimeChannel); ipoRealtimeChannel = null; }
+        if (ipoVotesChannel) { _supabase.removeChannel(ipoVotesChannel); ipoVotesChannel = null; }
     }
 
     if (view === 'nations') {
@@ -13892,10 +13900,10 @@ async function renderIPOView() {
 
     ipoLoaded = true;
 
-    // Load chat and votes after DOM is set (only if an org is selected)
+    // Load chat, votes, and actions after DOM is set (only if an org is selected)
     if (ipoSelectedOrgId && ipoMemberships.length > 0) {
         loadIPOChat(ipoSelectedOrgId);
-        loadIPOVotes(ipoSelectedOrgId);
+        loadIPOVotes(ipoSelectedOrgId).then(() => renderIPOActionsPanel());
     }
 }
 
@@ -14012,8 +14020,8 @@ async function renderIPOMainPanel(memberCounts) {
                     <span class="ipo-panel-dot ipo-panel-dot--purple"></span>
                     <span class="ipo-panel-title">Actions</span>
                 </div>
-                <div class="ipo-panel-body">
-                    <span class="ipo-main-placeholder-text">Actions — Phase 8</span>
+                <div class="ipo-panel-body" id="ipo-actions-body">
+                    <span class="ipo-main-placeholder-text">Loading actions...</span>
                 </div>
             </div>
         </div>`;
@@ -14028,13 +14036,20 @@ async function renderIPOMainPanel(memberCounts) {
         return `<span class="ipo-footer-badge ${cls}">${escapeHtml(pName)}${roleTag}${isYou ? ' (YOU)' : ''}${pNation ? ' · ' + escapeHtml(pNation) : ''}</span>`;
     }).join('');
 
+    // Footer buttons — role-gated
+    const expulsionEnabled = !!charter.membership?.expulsionClause;
+    const canExpel = expulsionEnabled && (
+        charter.membership.expulsionClause === 'president' ? isPresident : !isObserver
+    );
+
     const footerHtml = `
         <div class="ipo-footer">
             <div class="ipo-footer-members">${memberBadges}</div>
             <div class="ipo-footer-actions">
-                <button class="ipo-btn ipo-btn--invite" onclick="openIPOInviteModal()">Invite Member</button>
-                <button class="ipo-btn ipo-btn--amend" onclick="openIPOAmendModal()">Amend Charter</button>
-                <button class="ipo-btn ipo-btn--leave" onclick="leaveIPOOrg()">Leave Org</button>
+                ${!isObserver ? '<button class="ipo-btn ipo-btn--invite" onclick="openIPOInviteModal()">Invite</button>' : ''}
+                ${isPresident ? '<button class="ipo-btn ipo-btn--amend" onclick="openIPOAmendModal()">Amend Charter</button>' : ''}
+                ${canExpel ? '<button class="ipo-btn ipo-btn--expel" onclick="openIPOExpelModal()">Expel</button>' : ''}
+                <button class="ipo-btn ipo-btn--leave" onclick="leaveIPOOrg()">Leave</button>
             </div>
         </div>`;
 
@@ -14202,12 +14217,282 @@ async function sendIPOChat() {
     }
 }
 
-// Placeholder handlers for later phases
-function openIPOInviteModal() { alert('Invite flow — Phase 10'); }
+// ==================== IPO INVITE & EXPULSION (Phase 10) ====================
+
+/**
+ * Open the invite modal — allows inviting a faction as member or observer.
+ */
+async function openIPOInviteModal() {
+    if (!currentFaction || !ipoSelectedOrgId) return;
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    if (!membership || membership.role === 'observer') return;
+
+    // Fetch all factions not already members or with pending invites
+    const { data: existingMembers } = await _supabase
+        .from('ipo_members')
+        .select('faction_id')
+        .eq('org_id', ipoSelectedOrgId)
+        .eq('is_active', true);
+    const memberIds = new Set((existingMembers || []).map(m => m.faction_id));
+
+    const { data: pendingInvites } = await _supabase
+        .from('ipo_invitations')
+        .select('target_faction_id')
+        .eq('org_id', ipoSelectedOrgId)
+        .in('status', ['pending', 'vote_pending']);
+    const pendingIds = new Set((pendingInvites || []).map(i => i.target_faction_id));
+
+    const { data: allFactions } = await _supabase
+        .from('factions')
+        .select('id, faction_name, nation_id, nations:nation_id ( name )')
+        .eq('is_active', true)
+        .order('faction_name');
+
+    const available = (allFactions || []).filter(f => !memberIds.has(f.id) && !pendingIds.has(f.id));
+
+    if (available.length === 0) {
+        alert('No eligible factions to invite — all active factions are already members or have pending invites.');
+        return;
+    }
+
+    const options = available.map(f =>
+        `<option value="${f.id}">${escapeHtml(f.faction_name)}${f.nations?.name ? ' · ' + escapeHtml(f.nations.name) : ''}</option>`
+    ).join('');
+
+    const inner = document.getElementById('ipo-create-modal-inner');
+    document.getElementById('ipo-create-modal').classList.add('active');
+    inner.innerHTML = `
+        <div class="ipo-modal-header">
+            <span class="ipo-modal-title">Invite to Organisation</span>
+            <button class="modal-close" onclick="closeIPOActionModal()">&times;</button>
+        </div>
+        <div class="ipo-modal-body">
+            <label class="ipo-vote-form-label">Party to Invite</label>
+            <select id="ipo-invite-target" class="ipo-vote-form-select">${options}</select>
+            <label class="ipo-vote-form-label">Role</label>
+            <select id="ipo-invite-role" class="ipo-vote-form-select">
+                <option value="member">Member — full voting and action rights</option>
+                <option value="observer">Observer — read-only access, no voting</option>
+            </select>
+            <div class="ipo-vote-form-note">The invited party will see this invitation and can accept or decline.</div>
+            <div class="wizard-nav" style="margin-top:16px;">
+                <button class="wizard-back-btn" onclick="closeIPOActionModal()">Cancel</button>
+                <button class="ipo-btn ipo-btn--create-large" onclick="submitIPOInvite()">Send Invitation</button>
+            </div>
+        </div>`;
+}
+
+/**
+ * Submit an invitation to the selected faction.
+ */
+async function submitIPOInvite() {
+    if (_ipoActionLock) return;
+    const targetId = document.getElementById('ipo-invite-target')?.value;
+    const role = document.getElementById('ipo-invite-role')?.value || 'member';
+    if (!targetId) { alert('Select a party to invite.'); return; }
+
+    _ipoActionLock = true;
+    try {
+        const { error } = await _supabase.from('ipo_invitations').insert({
+            org_id: ipoSelectedOrgId,
+            invited_by: currentFaction.id,
+            target_faction_id: targetId,
+            invited_role: role,
+            status: 'pending',
+            invited_at_tick: shardTick
+        });
+
+        if (error) {
+            if (error.code === '23505') {
+                alert('This party already has a pending invitation.');
+            } else {
+                alert('Failed to send invitation: ' + error.message);
+            }
+            return;
+        }
+
+        // Get target name for chat
+        const { data: targetFaction } = await _supabase
+            .from('factions')
+            .select('faction_name')
+            .eq('id', targetId)
+            .single();
+        const targetName = targetFaction?.faction_name || 'A party';
+
+        await _supabase.from('ipo_chat').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: null,
+            is_system: true,
+            message_text: `${currentFaction.faction_name} invited ${targetName} as ${role}.`,
+            tick_posted: shardTick
+        });
+
+        closeIPOActionModal();
+        alert(`Invitation sent to ${targetName}.`);
+    } catch (e) {
+        console.error('[IPO] Invite error:', e);
+        alert('Failed to send invitation.');
+    } finally {
+        _ipoActionLock = false;
+    }
+}
+
+/**
+ * Expel a member — president direct if charter allows, otherwise opens a vote.
+ */
+async function openIPOExpelModal() {
+    if (!currentFaction || !ipoSelectedOrgId) return;
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    if (!membership) return;
+
+    const org = membership.org;
+    const charter = org?.charter || {};
+    const expClause = charter.membership?.expulsionClause;
+    const isPresident = org.president_id === currentFaction.id;
+
+    if (!expClause) {
+        alert('Expulsion is disabled in this organisation\'s charter.');
+        return;
+    }
+
+    // If president-only expulsion, only president can do it
+    if (expClause === 'president' && !isPresident) {
+        alert('Only the president can expel members under this charter.');
+        return;
+    }
+
+    // Fetch members (exclude self)
+    const otherMembers = ipoVoteMembers.filter(m => m.faction_id !== currentFaction.id);
+    if (otherMembers.length === 0) {
+        alert('No other members to expel.');
+        return;
+    }
+
+    const memberOpts = otherMembers.map(m =>
+        `<option value="${m.faction_id}">${escapeHtml(m.factions?.faction_name || 'Unknown')}</option>`
+    ).join('');
+
+    const modeLabel = expClause === 'president'
+        ? 'As president, you can expel a member immediately.'
+        : `Expulsion requires a ${expClause} vote. This will create a vote proposal.`;
+
+    const inner = document.getElementById('ipo-create-modal-inner');
+    document.getElementById('ipo-create-modal').classList.add('active');
+    inner.innerHTML = `
+        <div class="ipo-modal-header">
+            <span class="ipo-modal-title">Expel Member</span>
+            <button class="modal-close" onclick="closeIPOActionModal()">&times;</button>
+        </div>
+        <div class="ipo-modal-body">
+            <div class="ipo-vote-form-note">${modeLabel}</div>
+            <label class="ipo-vote-form-label">Member to Expel</label>
+            <select id="ipo-expel-target" class="ipo-vote-form-select">${memberOpts}</select>
+            <div class="wizard-nav" style="margin-top:16px;">
+                <button class="wizard-back-btn" onclick="closeIPOActionModal()">Cancel</button>
+                <button class="ipo-btn ipo-btn--create-large" style="background:rgba(217,83,79,0.15);border-color:rgba(217,83,79,0.3);color:#d9534f;" onclick="submitIPOExpel()">
+                    ${expClause === 'president' ? 'Expel Now' : 'Propose Expulsion Vote'}
+                </button>
+            </div>
+        </div>`;
+}
+
+async function submitIPOExpel() {
+    if (_ipoActionLock) return;
+    const targetId = document.getElementById('ipo-expel-target')?.value;
+    if (!targetId) { alert('Select a member.'); return; }
+
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    const org = membership?.org;
+    const expClause = org?.charter?.membership?.expulsionClause;
+
+    const targetMember = ipoVoteMembers.find(m => m.faction_id === targetId);
+    const targetName = targetMember?.factions?.faction_name || 'Unknown';
+
+    _ipoActionLock = true;
+    if (expClause === 'president') {
+        // Direct expulsion by president
+        if (!confirm(`Expel ${targetName} from the organisation? This is immediate and cannot be undone.`)) return;
+
+        try {
+            await _supabase.from('ipo_members')
+                .update({ is_active: false, left_at_tick: shardTick })
+                .eq('org_id', ipoSelectedOrgId)
+                .eq('faction_id', targetId)
+                .eq('is_active', true);
+
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: `${targetName} has been expelled by the president.`,
+                tick_posted: shardTick
+            });
+
+            await _supabase.from('ipo_action_log').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: currentFaction.id,
+                target_faction_id: targetId,
+                action_type: 'hold_rally', // reuse closest type — expulsion is logged via chat
+                action_data: { type: 'expulsion', target_name: targetName, by_president: true },
+                ap_cost: 0,
+                performed_at_tick: shardTick
+            });
+
+            closeIPOActionModal();
+            renderIPOView();
+        } catch (e) {
+            console.error('[IPO] Expulsion error:', e);
+            alert('Failed to expel member.');
+        } finally {
+            _ipoActionLock = false;
+        }
+    } else {
+        // Create expulsion vote
+        try {
+            await _supabase.from('ipo_votes').insert({
+                org_id: ipoSelectedOrgId,
+                title: `Expel ${targetName}`,
+                vote_type: 'expulsion',
+                meta: { target_faction_id: targetId, target_faction_name: targetName },
+                status: 'open',
+                opened_at_tick: shardTick,
+                closes_at_tick: shardTick + IPO_VOTE_DURATION,
+                proposed_by: currentFaction.id
+            });
+
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: `${currentFaction.faction_name} proposed to expel ${targetName}. A vote has been opened.`,
+                tick_posted: shardTick
+            });
+
+            closeIPOActionModal();
+            await loadIPOVotes(ipoSelectedOrgId);
+        } catch (e) {
+            console.error('[IPO] Expulsion vote error:', e);
+            alert('Failed to propose expulsion vote.');
+        } finally {
+            _ipoActionLock = false;
+        }
+    }
+}
+
 // openIPOAmendModal() defined below in IPO AMEND CHARTER section
 async function leaveIPOOrg() {
     if (!currentFaction || !ipoSelectedOrgId) return;
-    if (!confirm('Are you sure you want to leave this organisation? Your solidarity fund contributions will not be returned.')) return;
+
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    const org = membership?.org;
+    const isPresident = org?.president_id === currentFaction.id;
+
+    let confirmMsg = 'Are you sure you want to leave this organisation? Your solidarity fund contributions will not be returned.';
+    if (isPresident) {
+        confirmMsg += '\n\nYou are the PRESIDENT. Leadership will pass to the next eligible member.';
+    }
+    if (!confirm(confirmMsg)) return;
+
     try {
         await _supabase.from('ipo_members')
             .update({ is_active: false, left_at_tick: shardTick })
@@ -14224,17 +14509,68 @@ async function leaveIPOOrg() {
             tick_posted: shardTick
         });
 
-        // Check if org is now empty — dissolve
+        // Check remaining members
         const { data: remaining } = await _supabase
             .from('ipo_members')
-            .select('id')
+            .select('faction_id, role')
             .eq('org_id', ipoSelectedOrgId)
             .eq('is_active', true);
 
+        const remainingMembers = (remaining || []).filter(m => m.role === 'member');
+
         if (!remaining || remaining.length === 0) {
+            // No one left — dissolve org
             await _supabase.from('international_orgs')
                 .update({ is_active: false, dissolved_at_tick: shardTick })
                 .eq('id', ipoSelectedOrgId);
+
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: 'Organisation dissolved — no members remaining.',
+                tick_posted: shardTick
+            });
+        } else if (isPresident && remainingMembers.length > 0) {
+            // President leaving — hand off to next member
+            const newPresId = remainingMembers[0].faction_id;
+            await _supabase.from('international_orgs')
+                .update({ president_id: newPresId, president_term_start_tick: shardTick })
+                .eq('id', ipoSelectedOrgId);
+
+            const { data: newPres } = await _supabase
+                .from('factions').select('faction_name').eq('id', newPresId).single();
+
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: `${newPres?.faction_name || 'A member'} is now president (previous president departed).`,
+                tick_posted: shardTick
+            });
+        }
+
+        // Clear HQ if the departing member was the HQ nation's party
+        if (org?.headquarters_nation_id) {
+            const { data: hqMembers } = await _supabase
+                .from('ipo_members')
+                .select('faction_id, factions:faction_id ( nation_id )')
+                .eq('org_id', ipoSelectedOrgId)
+                .eq('is_active', true);
+            const hasHqMember = (hqMembers || []).some(m => m.factions?.nation_id === org.headquarters_nation_id);
+            if (!hasHqMember) {
+                await _supabase.from('international_orgs')
+                    .update({ headquarters_nation_id: null })
+                    .eq('id', ipoSelectedOrgId);
+
+                await _supabase.from('ipo_chat').insert({
+                    org_id: ipoSelectedOrgId,
+                    faction_id: null,
+                    is_system: true,
+                    message_text: 'Headquarters vacated — no member party remains in the HQ nation.',
+                    tick_posted: shardTick
+                });
+            }
         }
 
         ipoSelectedOrgId = null;
@@ -14281,21 +14617,40 @@ async function acceptIPOInvite(inviteId) {
         const admission = org?.charter?.membership?.admission || 'vote';
 
         if (admission === 'vote' && invite.invited_role === 'member') {
-            // Mark invite as vote_pending — the vote creation will happen in Phase 7
+            // Mark invite as vote_pending and auto-create a membership vote
             await _supabase.from('ipo_invitations')
                 .update({ status: 'vote_pending', responded_at_tick: shardTick })
                 .eq('id', inviteId);
+
+            // Create the membership vote automatically
+            await _supabase.from('ipo_votes').insert({
+                org_id: invite.org_id,
+                title: `Admit ${currentFaction.faction_name}`,
+                vote_type: 'membership',
+                meta: {
+                    invite_id: inviteId,
+                    target_faction_id: currentFaction.id,
+                    target_faction_name: currentFaction.faction_name
+                },
+                status: 'open',
+                opened_at_tick: shardTick,
+                closes_at_tick: shardTick + IPO_VOTE_DURATION,
+                proposed_by: currentFaction.id
+            });
+
+            // System chat message
+            await _supabase.from('ipo_chat').insert({
+                org_id: invite.org_id,
+                faction_id: null,
+                is_system: true,
+                message_text: `${currentFaction.faction_name} has applied for membership. A vote has been opened.`,
+                tick_posted: shardTick
+            });
+
             alert('Your application has been submitted. The organisation will vote on your membership.');
         } else {
             // Direct admission (president decides, or observer role)
-            // Assign chat color
-            const { data: existingMembers } = await _supabase
-                .from('ipo_members')
-                .select('chat_color')
-                .eq('org_id', invite.org_id)
-                .eq('is_active', true);
-            const usedColors = (existingMembers || []).map(m => m.chat_color).filter(Boolean);
-            const chatColor = IPO_CHAT_COLORS.find(c => !usedColors.includes(c)) || IPO_CHAT_COLORS[0];
+            const chatColor = await assignIPOChatColor(invite.org_id);
 
             await _supabase.from('ipo_members').insert({
                 org_id: invite.org_id,
@@ -14626,6 +14981,1650 @@ async function submitIPOAmend() {
         console.error('[IPO] Amend error:', e);
         alert('Failed to save charter changes.');
     }
+}
+
+// ==================== IPO VOTING SYSTEM (Phase 7a) ====================
+
+let ipoVotes = [];           // cached votes for current org
+let ipoVoteBallots = {};     // { vote_id: [ballot, ...] }
+let ipoVoteMembers = [];     // cached members for ballot context
+let _ipoActionLock = false;  // debounce lock for all IPO actions that write to DB
+const IPO_VOTE_DURATION = 8; // ticks until vote closes
+
+const IPO_VOTE_TYPE_LABELS = {
+    membership:          'Membership',
+    expulsion:           'Expulsion',
+    joint_statement:     'Joint Statement',
+    fund_draw:           'Fund Draw',
+    charter_amendment:   'Charter Amendment',
+    change_headquarters: 'Change Headquarters',
+    symposium:           'Symposium'
+};
+
+const IPO_VOTE_TYPE_DESCRIPTIONS = {
+    membership:          'Vote to admit a new member party.',
+    expulsion:           'Vote to expel a current member.',
+    joint_statement:     'Vote to issue a public statement on behalf of the organisation.',
+    fund_draw:           'Vote to withdraw AP from the solidarity fund.',
+    charter_amendment:   'Vote to amend the organisation charter.',
+    change_headquarters: 'Vote to relocate the organisation headquarters.',
+    symposium:           'Vote to hold a symposium influencing a nation\'s ideology.'
+};
+
+/**
+ * Load all votes (open + recent closed) for the selected org.
+ */
+async function loadIPOVotes(orgId) {
+    const container = document.getElementById('ipo-votes-body');
+    if (!container || !orgId) return;
+
+    try {
+        // Fetch votes (open first, then recent resolved, limit 20)
+        const { data: votes, error } = await _supabase
+            .from('ipo_votes')
+            .select('*')
+            .eq('org_id', orgId)
+            .order('status', { ascending: true })       // 'open' before 'failed'/'passed'
+            .order('opened_at_tick', { ascending: false })
+            .limit(20);
+
+        if (error) { console.error('[IPO Votes] Fetch error:', error.message); return; }
+        ipoVotes = votes || [];
+
+        // Fetch all ballots for these votes
+        if (ipoVotes.length > 0) {
+            const voteIds = ipoVotes.map(v => v.id);
+            const { data: ballots } = await _supabase
+                .from('ipo_ballots')
+                .select('*')
+                .in('vote_id', voteIds);
+            ipoVoteBallots = {};
+            (ballots || []).forEach(b => {
+                if (!ipoVoteBallots[b.vote_id]) ipoVoteBallots[b.vote_id] = [];
+                ipoVoteBallots[b.vote_id].push(b);
+            });
+        } else {
+            ipoVoteBallots = {};
+        }
+
+        // Fetch active members for voter count
+        const { data: members } = await _supabase
+            .from('ipo_members')
+            .select('faction_id, role, factions:faction_id ( faction_name, nation_id )')
+            .eq('org_id', orgId)
+            .eq('is_active', true);
+        ipoVoteMembers = (members || []).filter(m => m.role === 'member');
+
+    } catch (e) {
+        console.error('[IPO Votes] Load exception:', e);
+    }
+
+    renderIPOVotesPanel();
+
+    // Subscribe to realtime changes on votes, ballots, and members
+    if (ipoVotesChannel) {
+        _supabase.removeChannel(ipoVotesChannel);
+        ipoVotesChannel = null;
+    }
+    ipoVotesChannel = _supabase
+        .channel('ipo_org_' + orgId)
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'ipo_votes',
+            filter: 'org_id=eq.' + orgId
+        }, () => { loadIPOVotes(orgId).then(() => renderIPOActionsPanel()); })
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'ipo_ballots'
+        }, () => { loadIPOVotes(orgId); })
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'ipo_members',
+            filter: 'org_id=eq.' + orgId
+        }, () => { loadIPOVotes(orgId).then(() => renderIPOActionsPanel()); })
+        .subscribe();
+}
+
+/**
+ * Render the votes panel content.
+ */
+function renderIPOVotesPanel() {
+    const container = document.getElementById('ipo-votes-body');
+    if (!container) return;
+
+    if (ipoVotes.length === 0) {
+        container.innerHTML = '<div class="ipo-votes-empty">No votes yet. Use <strong>+ Propose</strong> to start one.</div>';
+        return;
+    }
+
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    const org = membership?.org;
+    const charter = org?.charter || {};
+    const governance = charter.governance || {};
+    const leadership = charter.leadership || {};
+    const isSecret = governance.voteTransparency === 'secret';
+    const isObserver = membership?.role === 'observer';
+
+    // Sort: open first, then by tick desc
+    const sorted = [...ipoVotes].sort((a, b) => {
+        if (a.status === 'open' && b.status !== 'open') return -1;
+        if (a.status !== 'open' && b.status === 'open') return 1;
+        return b.opened_at_tick - a.opened_at_tick;
+    });
+
+    container.innerHTML = sorted.map(vote => {
+        const ballots = ipoVoteBallots[vote.id] || [];
+        const myBallot = ballots.find(b => b.faction_id === currentFaction.id);
+        const isOpen = vote.status === 'open';
+        const isPassed = vote.status === 'passed';
+        const typeLabel = IPO_VOTE_TYPE_LABELS[vote.vote_type] || vote.vote_type;
+
+        // Tally
+        const yes = ballots.filter(b => b.ballot === 'yes').length;
+        const no = ballots.filter(b => b.ballot === 'no').length;
+        const abstain = ballots.filter(b => b.ballot === 'abstain').length;
+        const totalEligible = ipoVoteMembers.length;
+        const totalCast = yes + no + abstain;
+
+        // Status badge
+        let statusBadge;
+        if (isOpen) {
+            const ticksLeft = vote.closes_at_tick - shardTick;
+            statusBadge = `<span class="ipo-vote-badge ipo-vote-badge--open">OPEN · ${ticksLeft > 0 ? ticksLeft + ' ticks left' : 'closing...'}</span>`;
+        } else if (isPassed) {
+            statusBadge = '<span class="ipo-vote-badge ipo-vote-badge--passed">PASSED</span>';
+        } else {
+            statusBadge = '<span class="ipo-vote-badge ipo-vote-badge--failed">FAILED</span>';
+        }
+
+        // Tally bar
+        const yPct = totalCast > 0 ? (yes / totalCast * 100) : 0;
+        const nPct = totalCast > 0 ? (no / totalCast * 100) : 0;
+        const aPct = totalCast > 0 ? (abstain / totalCast * 100) : 0;
+        const tallyBar = `
+            <div class="ipo-vote-tally">
+                <div class="ipo-vote-tally-bar">
+                    <div class="ipo-vote-tally-seg ipo-vote-tally-seg--yes" style="width:${yPct}%"></div>
+                    <div class="ipo-vote-tally-seg ipo-vote-tally-seg--no" style="width:${nPct}%"></div>
+                    <div class="ipo-vote-tally-seg ipo-vote-tally-seg--abstain" style="width:${aPct}%"></div>
+                </div>
+                <div class="ipo-vote-tally-labels">
+                    <span class="ipo-vote-tally-label--yes">${yes} Yes</span>
+                    <span class="ipo-vote-tally-label--no">${no} No</span>
+                    <span class="ipo-vote-tally-label--abstain">${abstain} Abstain</span>
+                    <span class="ipo-vote-tally-label--total">${totalCast}/${totalEligible}</span>
+                </div>
+            </div>`;
+
+        // Meta summary
+        const metaSummary = renderVoteMetaSummary(vote);
+
+        // Ballot buttons (only if open, member, and hasn't voted)
+        let ballotHtml = '';
+        if (isOpen && !isObserver) {
+            if (myBallot) {
+                ballotHtml = `<div class="ipo-vote-my-ballot">Your vote: <strong>${myBallot.ballot.toUpperCase()}</strong></div>`;
+            } else {
+                ballotHtml = `
+                    <div class="ipo-vote-ballot-row">
+                        <button class="ipo-vote-btn ipo-vote-btn--yes" onclick="castIPOBallot('${vote.id}','yes')">Yes</button>
+                        <button class="ipo-vote-btn ipo-vote-btn--no" onclick="castIPOBallot('${vote.id}','no')">No</button>
+                        <button class="ipo-vote-btn ipo-vote-btn--abstain" onclick="castIPOBallot('${vote.id}','abstain')">Abstain</button>
+                    </div>`;
+            }
+        }
+
+        // Voter breakdown (public ballot only, for resolved or if voted)
+        let voterBreakdown = '';
+        if (!isSecret && ballots.length > 0 && (!isOpen || myBallot)) {
+            voterBreakdown = '<div class="ipo-vote-voters">' + ballots.map(b => {
+                const member = ipoVoteMembers.find(m => m.faction_id === b.faction_id);
+                const name = member?.factions?.faction_name || 'Unknown';
+                return `<span class="ipo-vote-voter ipo-vote-voter--${b.ballot}">${escapeHtml(name)}: ${b.ballot}</span>`;
+            }).join('') + '</div>';
+        }
+
+        // Resolve button — show if open and all members voted OR closes_at_tick reached
+        let resolveBtn = '';
+        if (isOpen && !isObserver && (totalCast >= totalEligible || shardTick >= vote.closes_at_tick)) {
+            resolveBtn = `<button class="ipo-vote-btn ipo-vote-btn--resolve" onclick="resolveIPOVote('${vote.id}')">Resolve Vote</button>`;
+        }
+
+        return `
+            <div class="ipo-vote-card ${isOpen ? 'ipo-vote-card--open' : ''} ${isPassed ? 'ipo-vote-card--passed' : ''} ${vote.status === 'failed' ? 'ipo-vote-card--failed' : ''}">
+                <div class="ipo-vote-card-header">
+                    <span class="ipo-vote-type-badge">${typeLabel}</span>
+                    ${statusBadge}
+                </div>
+                <div class="ipo-vote-card-title">${escapeHtml(vote.title)}</div>
+                ${metaSummary}
+                ${tallyBar}
+                ${voterBreakdown}
+                ${ballotHtml}
+                ${resolveBtn}
+            </div>`;
+    }).join('');
+}
+
+/**
+ * Render a short summary line based on vote meta.
+ */
+function renderVoteMetaSummary(vote) {
+    const meta = vote.meta || {};
+    let text = '';
+    switch (vote.vote_type) {
+        case 'membership': {
+            const name = meta.target_faction_name || 'a party';
+            text = `Admit <strong>${escapeHtml(name)}</strong> as a member.`;
+            break;
+        }
+        case 'expulsion': {
+            const name = meta.target_faction_name || 'a member';
+            text = `Expel <strong>${escapeHtml(name)}</strong> from the organisation.`;
+            break;
+        }
+        case 'joint_statement':
+            text = meta.statement_text ? `"${escapeHtml(meta.statement_text.substring(0, 120))}${meta.statement_text.length > 120 ? '...' : ''}"` : '';
+            break;
+        case 'fund_draw':
+            text = `Withdraw <strong>${meta.amount_requested || 0} AP</strong> from the solidarity fund.`;
+            break;
+        case 'charter_amendment':
+            text = `Amend <strong>${meta.article_type || 'charter'}</strong>: ${escapeHtml((meta.description || '').substring(0, 100))}`;
+            break;
+        case 'change_headquarters':
+            text = `Relocate HQ to <strong>${escapeHtml(meta.proposed_nation_name || 'a new nation')}</strong>.`;
+            break;
+        case 'symposium':
+            text = `Hold symposium in <strong>${escapeHtml(meta.target_nation_name || 'a nation')}</strong> (${meta.axis || 'ideology'} ${meta.direction || ''}).`;
+            break;
+    }
+    return text ? `<div class="ipo-vote-meta-summary">${text}</div>` : '';
+}
+
+// ── Vote Creation Modal ──
+
+let ipoVoteModalType = null;
+
+function openIPOVoteModal() {
+    if (!currentFaction || !ipoSelectedOrgId) return;
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    if (!membership || membership.role === 'observer') return;
+
+    ipoVoteModalType = null;
+    const modal = document.getElementById('ipo-create-modal');
+    modal.classList.add('active');
+    renderIPOVoteModalTypeSelect();
+}
+
+function closeIPOVoteModal() {
+    document.getElementById('ipo-create-modal').classList.remove('active');
+    ipoVoteModalType = null;
+}
+
+function renderIPOVoteModalTypeSelect() {
+    const inner = document.getElementById('ipo-create-modal-inner');
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    const org = membership?.org;
+    const charter = org?.charter || {};
+
+    // Determine which vote types are available
+    const available = [];
+    // membership — only if admission is 'vote'
+    if ((charter.membership?.admission || 'vote') === 'vote') {
+        available.push('membership');
+    }
+    // expulsion — only if expulsion clause allows voting
+    if (charter.membership?.expulsionClause === 'majority' || charter.membership?.expulsionClause === 'unanimous') {
+        available.push('expulsion');
+    }
+    // joint_statement — only if clause is 'vote'
+    if ((charter.resources?.jointStatementClause || 'vote') === 'vote') {
+        available.push('joint_statement');
+    }
+    // fund_draw — only if solidarity fund is enabled
+    if (charter.resources?.solidarityFund?.enabled) {
+        available.push('fund_draw');
+    }
+    // charter_amendment — always available
+    available.push('charter_amendment');
+    // change_headquarters — always available
+    available.push('change_headquarters');
+    // symposium — only if not on cooldown and no pending symposium
+    if ((org.symposium_cooldown_remaining || 0) <= 0 && !org.pending_symposium) {
+        available.push('symposium');
+    }
+
+    const typeCards = available.map(t => `
+        <button class="ipo-vote-type-card" onclick="selectIPOVoteType('${t}')">
+            <span class="ipo-vote-type-card-label">${IPO_VOTE_TYPE_LABELS[t]}</span>
+            <span class="ipo-vote-type-card-desc">${IPO_VOTE_TYPE_DESCRIPTIONS[t]}</span>
+        </button>
+    `).join('');
+
+    inner.innerHTML = `
+        <div class="ipo-modal-header">
+            <span class="ipo-modal-title">Propose a Vote</span>
+            <button class="modal-close" onclick="closeIPOVoteModal()">&times;</button>
+        </div>
+        <div class="ipo-modal-body">
+            <div class="ipo-vote-type-grid">${typeCards}</div>
+        </div>`;
+}
+
+async function selectIPOVoteType(type) {
+    ipoVoteModalType = type;
+    await renderIPOVoteModalForm();
+}
+
+async function renderIPOVoteModalForm() {
+    const inner = document.getElementById('ipo-create-modal-inner');
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    const org = membership?.org;
+    const typeLabel = IPO_VOTE_TYPE_LABELS[ipoVoteModalType];
+
+    let formFields = '';
+
+    switch (ipoVoteModalType) {
+        case 'membership': {
+            // Fetch pending vote_pending invitations
+            const { data: invites } = await _supabase
+                .from('ipo_invitations')
+                .select('id, invited_faction_id, status, factions:invited_faction_id ( faction_name )')
+                .eq('org_id', ipoSelectedOrgId)
+                .eq('status', 'vote_pending');
+            const inviteOptions = (invites || []).map(inv =>
+                `<option value="${inv.id}" data-name="${escapeHtml(inv.factions?.faction_name || 'Unknown')}" data-fid="${inv.invited_faction_id}">${escapeHtml(inv.factions?.faction_name || 'Unknown')}</option>`
+            ).join('');
+            if (!inviteOptions) {
+                formFields = '<div class="ipo-vote-form-note">No pending membership applications.</div>';
+            } else {
+                formFields = `
+                    <label class="ipo-vote-form-label">Applicant</label>
+                    <select id="ipo-vote-meta-invite" class="ipo-vote-form-select">${inviteOptions}</select>`;
+            }
+            break;
+        }
+        case 'expulsion': {
+            const memberOptions = ipoVoteMembers
+                .filter(m => m.faction_id !== currentFaction.id)
+                .map(m => `<option value="${m.faction_id}">${escapeHtml(m.factions?.faction_name || 'Unknown')}</option>`)
+                .join('');
+            formFields = `
+                <label class="ipo-vote-form-label">Member to Expel</label>
+                <select id="ipo-vote-meta-target" class="ipo-vote-form-select">${memberOptions}</select>`;
+            break;
+        }
+        case 'joint_statement':
+            formFields = `
+                <label class="ipo-vote-form-label">Statement Text</label>
+                <textarea id="ipo-vote-meta-statement" class="ipo-vote-form-textarea" rows="4" maxlength="500" placeholder="Draft the statement text..."></textarea>
+                <label class="ipo-vote-form-label">Visibility</label>
+                <select id="ipo-vote-meta-visibility" class="ipo-vote-form-select">
+                    <option value="public">Public — visible to all nations</option>
+                    <option value="private">Private — organisation only</option>
+                </select>`;
+            break;
+        case 'fund_draw': {
+            const balance = org?.solidarity_fund_balance || 0;
+            formFields = `
+                <label class="ipo-vote-form-label">Amount (AP) · Fund Balance: ${balance} AP</label>
+                <input type="number" id="ipo-vote-meta-amount" class="ipo-vote-form-input" min="1" max="${balance}" value="1" />
+                <label class="ipo-vote-form-label">Purpose</label>
+                <input type="text" id="ipo-vote-meta-purpose" class="ipo-vote-form-input" maxlength="200" placeholder="Describe the purpose..." />`;
+            break;
+        }
+        case 'charter_amendment':
+            formFields = `
+                <label class="ipo-vote-form-label">Article to Amend</label>
+                <select id="ipo-vote-meta-article" class="ipo-vote-form-select">
+                    <option value="mission">Article I — Mission</option>
+                    <option value="leadership">Article II — Leadership</option>
+                    <option value="membership">Article III — Membership</option>
+                    <option value="governance">Article IV — Governance</option>
+                    <option value="resources">Article V — Resources</option>
+                </select>
+                <label class="ipo-vote-form-label">Description of Changes</label>
+                <textarea id="ipo-vote-meta-desc" class="ipo-vote-form-textarea" rows="3" maxlength="500" placeholder="Describe the proposed changes..."></textarea>`;
+            break;
+        case 'change_headquarters': {
+            const { data: nations } = await _supabase.from('nations').select('id, name').order('name');
+            const nationOpts = (nations || []).map(n => `<option value="${n.id}">${escapeHtml(n.name)}</option>`).join('');
+            formFields = `
+                <label class="ipo-vote-form-label">New Headquarters Nation</label>
+                <select id="ipo-vote-meta-nation" class="ipo-vote-form-select">${nationOpts}</select>`;
+            break;
+        }
+        case 'symposium': {
+            const { data: nations } = await _supabase.from('nations').select('id, name').order('name');
+            const nationOpts = (nations || []).map(n => `<option value="${n.id}">${escapeHtml(n.name)}</option>`).join('');
+            formFields = `
+                <label class="ipo-vote-form-label">Target Nation</label>
+                <select id="ipo-vote-meta-nation" class="ipo-vote-form-select">${nationOpts}</select>
+                <label class="ipo-vote-form-label">Ideology Axis</label>
+                <select id="ipo-vote-meta-axis" class="ipo-vote-form-select">
+                    <option value="economic">Economic</option>
+                    <option value="social">Social</option>
+                    <option value="foreign">Foreign Policy</option>
+                </select>
+                <label class="ipo-vote-form-label">Direction</label>
+                <select id="ipo-vote-meta-direction" class="ipo-vote-form-select">
+                    <option value="left">Left / Progressive / Dovish</option>
+                    <option value="right">Right / Conservative / Hawkish</option>
+                </select>`;
+            break;
+        }
+    }
+
+    // Title field (auto-generated but editable)
+    const defaultTitle = `${typeLabel} Vote`;
+
+    inner.innerHTML = `
+        <div class="ipo-modal-header">
+            <span class="ipo-modal-title">Propose: ${typeLabel}</span>
+            <button class="modal-close" onclick="closeIPOVoteModal()">&times;</button>
+        </div>
+        <div class="ipo-modal-body">
+            <label class="ipo-vote-form-label">Vote Title</label>
+            <input type="text" id="ipo-vote-title" class="ipo-vote-form-input" value="${defaultTitle}" maxlength="120" />
+            ${formFields}
+            <div class="wizard-nav" style="margin-top:16px;">
+                <button class="wizard-back-btn" onclick="renderIPOVoteModalTypeSelect()">Back</button>
+                <button class="ipo-btn ipo-btn--create-large" onclick="submitIPOVote()">Propose Vote</button>
+            </div>
+        </div>`;
+}
+
+/**
+ * Submit a new vote proposal.
+ */
+async function submitIPOVote() {
+    if (_ipoActionLock) return;
+    if (!currentFaction || !ipoSelectedOrgId || !ipoVoteModalType) return;
+
+    const title = document.getElementById('ipo-vote-title')?.value?.trim();
+    if (!title) { alert('Please enter a vote title.'); return; }
+
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    const org = membership?.org;
+
+    // Build meta based on vote type
+    const meta = {};
+    switch (ipoVoteModalType) {
+        case 'membership': {
+            const sel = document.getElementById('ipo-vote-meta-invite');
+            if (!sel || !sel.value) { alert('No applicant selected.'); return; }
+            meta.invite_id = sel.value;
+            meta.target_faction_id = sel.selectedOptions[0]?.dataset.fid || null;
+            meta.target_faction_name = sel.selectedOptions[0]?.dataset.name || 'Unknown';
+            break;
+        }
+        case 'expulsion': {
+            const sel = document.getElementById('ipo-vote-meta-target');
+            if (!sel || !sel.value) { alert('No member selected.'); return; }
+            meta.target_faction_id = sel.value;
+            const member = ipoVoteMembers.find(m => m.faction_id === sel.value);
+            meta.target_faction_name = member?.factions?.faction_name || 'Unknown';
+            break;
+        }
+        case 'joint_statement': {
+            const stmt = document.getElementById('ipo-vote-meta-statement')?.value?.trim();
+            if (!stmt) { alert('Please write the statement text.'); return; }
+            meta.statement_text = stmt;
+            meta.visibility = document.getElementById('ipo-vote-meta-visibility')?.value || 'public';
+            break;
+        }
+        case 'fund_draw': {
+            const amount = parseInt(document.getElementById('ipo-vote-meta-amount')?.value);
+            if (!amount || amount < 1) { alert('Enter a valid amount.'); return; }
+            const balance = org?.solidarity_fund_balance || 0;
+            if (amount > balance) { alert('Amount exceeds fund balance.'); return; }
+            meta.amount_requested = amount;
+            meta.purpose = document.getElementById('ipo-vote-meta-purpose')?.value?.trim() || '';
+            break;
+        }
+        case 'charter_amendment': {
+            meta.article_type = document.getElementById('ipo-vote-meta-article')?.value || 'mission';
+            meta.description = document.getElementById('ipo-vote-meta-desc')?.value?.trim() || '';
+            if (!meta.description) { alert('Please describe the proposed changes.'); return; }
+            break;
+        }
+        case 'change_headquarters': {
+            const sel = document.getElementById('ipo-vote-meta-nation');
+            if (!sel || !sel.value) { alert('Select a nation.'); return; }
+            meta.proposed_nation_id = sel.value;
+            meta.proposed_nation_name = sel.selectedOptions[0]?.textContent || '';
+            break;
+        }
+        case 'symposium': {
+            const sel = document.getElementById('ipo-vote-meta-nation');
+            if (!sel || !sel.value) { alert('Select a target nation.'); return; }
+            meta.target_nation_id = sel.value;
+            meta.target_nation_name = sel.selectedOptions[0]?.textContent || '';
+            meta.axis = document.getElementById('ipo-vote-meta-axis')?.value || 'economic';
+            meta.direction = document.getElementById('ipo-vote-meta-direction')?.value || 'left';
+            break;
+        }
+    }
+
+    _ipoActionLock = true;
+    try {
+        const { error } = await _supabase.from('ipo_votes').insert({
+            org_id: ipoSelectedOrgId,
+            title: title,
+            vote_type: ipoVoteModalType,
+            meta: meta,
+            status: 'open',
+            opened_at_tick: shardTick,
+            closes_at_tick: shardTick + IPO_VOTE_DURATION,
+            proposed_by: currentFaction.id
+        });
+
+        if (error) {
+            console.error('[IPO Vote] Insert error:', error);
+            alert('Failed to propose vote: ' + error.message);
+            return;
+        }
+
+        // System chat message
+        await _supabase.from('ipo_chat').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: null,
+            is_system: true,
+            message_text: `${currentFaction.faction_name} proposed a vote: ${title}`,
+            tick_posted: shardTick
+        });
+
+        closeIPOVoteModal();
+        await loadIPOVotes(ipoSelectedOrgId);
+    } catch (e) {
+        console.error('[IPO Vote] Submit exception:', e);
+        alert('Failed to propose vote.');
+    } finally {
+        _ipoActionLock = false;
+    }
+}
+
+// ── Ballot Casting ──
+
+/**
+ * Cast a ballot on an open vote.
+ */
+async function castIPOBallot(voteId, ballotValue) {
+    if (_ipoActionLock) return;
+    if (!currentFaction || !ipoSelectedOrgId) return;
+
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    if (!membership || membership.role === 'observer') return;
+
+    const org = membership.org;
+    const charter = org?.charter || {};
+    const isSecret = charter.governance?.voteTransparency === 'secret';
+
+    _ipoActionLock = true;
+    try {
+        const insertData = {
+            vote_id: voteId,
+            ballot: ballotValue,
+            cast_at_tick: shardTick
+        };
+
+        if (isSecret) {
+            // Secret ballot: no faction_id linkage
+            insertData.faction_id = null;
+        } else {
+            // Public ballot: linked to faction
+            insertData.faction_id = currentFaction.id;
+        }
+
+        // For secret ballots, check if we already voted by counting
+        if (isSecret) {
+            // We track secret votes client-side by inserting a separate non-linked row
+            // Check the total ballot count vs expected to prevent double-voting
+            const existing = ipoVoteBallots[voteId] || [];
+            // Simple client-side check: rely on server for true enforcement
+            // For secret ballots, we store a tracking record in localStorage
+            const secretKey = `ipo_secret_${voteId}_${currentFaction.id}`;
+            if (localStorage.getItem(secretKey)) {
+                alert('You have already cast your ballot on this vote.');
+                return;
+            }
+            localStorage.setItem(secretKey, ballotValue);
+        }
+
+        const { error } = await _supabase.from('ipo_ballots').insert(insertData);
+
+        if (error) {
+            console.error('[IPO Ballot] Insert error:', error);
+            if (error.code === '23505') {
+                alert('You have already voted on this measure.');
+            } else {
+                alert('Failed to cast ballot: ' + error.message);
+            }
+            return;
+        }
+
+        // Reload votes to reflect the new ballot
+        await loadIPOVotes(ipoSelectedOrgId);
+    } catch (e) {
+        console.error('[IPO Ballot] Cast exception:', e);
+        alert('Failed to cast ballot.');
+    } finally {
+        _ipoActionLock = false;
+    }
+}
+
+// ── Vote Resolution ──
+
+/**
+ * Resolve an open vote: tally ballots, check threshold + veto, update result.
+ */
+async function resolveIPOVote(voteId) {
+    if (_ipoActionLock) return;
+    if (!currentFaction || !ipoSelectedOrgId) return;
+
+    const vote = ipoVotes.find(v => v.id === voteId);
+    if (!vote || vote.status !== 'open') return;
+    if (!confirm(`Resolve vote "${vote.title}"? This will tally ballots and determine the outcome.`)) return;
+
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    const org = membership?.org;
+    const charter = org?.charter || {};
+    const leadership = charter.leadership || {};
+    const governance = charter.governance || {};
+    const votePass = leadership.votePass || 'majority';
+
+    // Tally ballots
+    const ballots = ipoVoteBallots[voteId] || [];
+    const yes = ballots.filter(b => b.ballot === 'yes').length;
+    const no = ballots.filter(b => b.ballot === 'no').length;
+    const abstain = ballots.filter(b => b.ballot === 'abstain').length;
+    const totalEligible = ipoVoteMembers.length;
+
+    // Determine if passed — guard against 0 eligible members
+    let passed = false;
+    if (totalEligible === 0) {
+        passed = false; // No members = cannot pass
+    } else if (votePass === 'unanimous') {
+        passed = yes === totalEligible && no === 0;
+    } else {
+        // majority: yes > no AND yes > 50% of eligible
+        passed = yes > no && (yes / totalEligible) > 0.5;
+    }
+
+    // Veto check
+    if (passed && governance.vetoRight) {
+        const vetoHolderId = getVetoHolder(org, governance.vetoRight);
+        if (vetoHolderId) {
+            const vetoBallot = ballots.find(b => b.faction_id === vetoHolderId);
+            if (vetoBallot && vetoBallot.ballot === 'no') {
+                passed = false;
+            }
+        }
+    }
+
+    // For expulsion votes, check the expulsion clause threshold too
+    if (vote.vote_type === 'expulsion' && totalEligible > 0) {
+        const expClause = charter.membership?.expulsionClause;
+        if (expClause === 'unanimous') {
+            passed = yes === totalEligible && no === 0;
+        }
+    }
+
+    const result = { yes, no, abstain, passed };
+    const newStatus = passed ? 'passed' : 'failed';
+
+    _ipoActionLock = true;
+    try {
+        // Use .eq('status', 'open') to prevent double-resolution race
+        const { error, data } = await _supabase
+            .from('ipo_votes')
+            .update({ status: newStatus, result: result, resolved_at_tick: shardTick })
+            .eq('id', voteId)
+            .eq('status', 'open')
+            .select();
+
+        if (error) {
+            console.error('[IPO Vote] Resolve error:', error);
+            alert('Failed to resolve vote: ' + error.message);
+            return;
+        }
+
+        // If no rows updated, another user already resolved it
+        if (!data || data.length === 0) {
+            alert('This vote has already been resolved.');
+            await loadIPOVotes(ipoSelectedOrgId);
+            return;
+        }
+
+        // Apply effects if passed (wrapped in try/catch to avoid partial state)
+        if (passed) {
+            try {
+                await applyVoteEffects(vote, org);
+            } catch (effectErr) {
+                console.error('[IPO Vote] Effect application error:', effectErr);
+                // Vote status is already updated; log but don't revert
+            }
+        }
+
+        // System chat message
+        const outcomeText = passed ? 'PASSED' : 'FAILED';
+        await _supabase.from('ipo_chat').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: null,
+            is_system: true,
+            message_text: `Vote "${vote.title}" has ${outcomeText} (${yes}Y / ${no}N / ${abstain}A).`,
+            tick_posted: shardTick
+        });
+
+        await loadIPOVotes(ipoSelectedOrgId);
+    } catch (e) {
+        console.error('[IPO Vote] Resolve exception:', e);
+        alert('Failed to resolve vote.');
+    } finally {
+        _ipoActionLock = false;
+    }
+}
+
+/**
+ * Get the faction ID of whoever holds veto power.
+ */
+function getVetoHolder(org, vetoRight) {
+    switch (vetoRight) {
+        case 'president': return org.president_id;
+        case 'founding': return org.founding_party_id;
+        case 'hq': {
+            // The member party whose nation matches the HQ nation
+            if (!org.headquarters_nation_id) return null;
+            const hqMember = ipoVoteMembers.find(m => m.factions?.nation_id === org.headquarters_nation_id);
+            return hqMember?.faction_id || null;
+        }
+        default: return null;
+    }
+}
+
+/**
+ * Apply side-effects when a vote passes.
+ */
+async function applyVoteEffects(vote, org) {
+    const meta = vote.meta || {};
+
+    switch (vote.vote_type) {
+        case 'membership': {
+            // Admit the applicant — update invitation, create member record
+            if (meta.invite_id) {
+                await _supabase.from('ipo_invitations')
+                    .update({ status: 'accepted', responded_at_tick: shardTick })
+                    .eq('id', meta.invite_id);
+
+                const chatColor = await assignIPOChatColor(ipoSelectedOrgId);
+
+                await _supabase.from('ipo_members').insert({
+                    org_id: ipoSelectedOrgId,
+                    faction_id: meta.target_faction_id,
+                    role: 'member',
+                    joined_at_tick: shardTick,
+                    chat_color: chatColor
+                });
+
+                await _supabase.from('ipo_chat').insert({
+                    org_id: ipoSelectedOrgId,
+                    faction_id: null,
+                    is_system: true,
+                    message_text: `${meta.target_faction_name || 'A new member'} has been admitted to the organisation.`,
+                    tick_posted: shardTick
+                });
+            }
+            break;
+        }
+        case 'expulsion': {
+            if (meta.target_faction_id) {
+                await _supabase.from('ipo_members')
+                    .update({ is_active: false, left_at_tick: shardTick })
+                    .eq('org_id', ipoSelectedOrgId)
+                    .eq('faction_id', meta.target_faction_id)
+                    .eq('is_active', true);
+
+                await _supabase.from('ipo_chat').insert({
+                    org_id: ipoSelectedOrgId,
+                    faction_id: null,
+                    is_system: true,
+                    message_text: `${meta.target_faction_name || 'A member'} has been expelled from the organisation.`,
+                    tick_posted: shardTick
+                });
+            }
+            break;
+        }
+        case 'fund_draw': {
+            if (meta.amount_requested && meta.amount_requested > 0) {
+                const newBalance = Math.max(0, (org.solidarity_fund_balance || 0) - meta.amount_requested);
+                await _supabase.from('international_orgs')
+                    .update({ solidarity_fund_balance: newBalance })
+                    .eq('id', ipoSelectedOrgId);
+
+                // Log the transaction (use vote proposer as faction_id, matching server behavior)
+                await _supabase.from('ipo_fund_transactions').insert({
+                    org_id: ipoSelectedOrgId,
+                    faction_id: vote.proposed_by,
+                    transaction_type: 'draw',
+                    amount: -meta.amount_requested,
+                    description: meta.purpose || 'Fund draw',
+                    tick: shardTick
+                });
+
+                await _supabase.from('ipo_chat').insert({
+                    org_id: ipoSelectedOrgId,
+                    faction_id: null,
+                    is_system: true,
+                    message_text: `Fund draw approved: ${meta.amount_requested} AP withdrawn. ${meta.purpose ? 'Purpose: ' + meta.purpose : ''}`,
+                    tick_posted: shardTick
+                });
+            }
+            break;
+        }
+        case 'change_headquarters': {
+            if (meta.proposed_nation_id) {
+                await _supabase.from('international_orgs')
+                    .update({ headquarters_nation_id: meta.proposed_nation_id })
+                    .eq('id', ipoSelectedOrgId);
+            }
+            break;
+        }
+        case 'joint_statement': {
+            // Post the statement as a system chat message
+            if (meta.statement_text) {
+                const visibility = meta.visibility === 'private' ? ' (private)' : '';
+                await _supabase.from('ipo_chat').insert({
+                    org_id: ipoSelectedOrgId,
+                    faction_id: null,
+                    is_system: true,
+                    message_text: `JOINT STATEMENT${visibility}: "${meta.statement_text}"`,
+                    tick_posted: shardTick
+                });
+
+                // Log the action
+                await _supabase.from('ipo_action_log').insert({
+                    org_id: ipoSelectedOrgId,
+                    faction_id: currentFaction.id,
+                    action_type: 'joint_statement',
+                    action_data: { statement_text: meta.statement_text, visibility: meta.visibility || 'public' },
+                    ap_cost: 0,
+                    performed_at_tick: shardTick
+                });
+            }
+            break;
+        }
+        case 'charter_amendment': {
+            // Log the amendment proposal — actual charter changes require president to apply via Amend Charter
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: `Charter amendment approved: ${meta.article_type || 'charter'} — "${(meta.description || '').substring(0, 200)}". The president should apply the changes via Amend Charter.`,
+                tick_posted: shardTick
+            });
+
+            await _supabase.from('ipo_action_log').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: currentFaction.id,
+                action_type: 'charter_amendment',
+                action_data: { article_type: meta.article_type, description: meta.description },
+                ap_cost: 0,
+                performed_at_tick: shardTick
+            });
+            break;
+        }
+        case 'symposium': {
+            // Set pending_symposium on the org — fires after a cooldown
+            const SYMPOSIUM_DELAY = 4; // ticks until effect fires
+            const SYMPOSIUM_COOLDOWN = 20; // ticks before next symposium allowed
+            const SYMPOSIUM_SHIFT = 3; // ideology shift amount
+
+            const pendingSymposium = {
+                targetNation: meta.target_nation_id,
+                axis: meta.axis || 'economic',
+                direction: meta.direction || 'left',
+                ideologyShift: SYMPOSIUM_SHIFT,
+                firesOnTick: shardTick + SYMPOSIUM_DELAY
+            };
+
+            await _supabase.from('international_orgs')
+                .update({
+                    pending_symposium: pendingSymposium,
+                    symposium_cooldown_remaining: SYMPOSIUM_COOLDOWN
+                })
+                .eq('id', ipoSelectedOrgId);
+
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: `Symposium approved! Targeting ${meta.target_nation_name || 'a nation'} (${meta.axis} ${meta.direction}). Effect fires in ${SYMPOSIUM_DELAY} ticks.`,
+                tick_posted: shardTick
+            });
+
+            await _supabase.from('ipo_action_log').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: currentFaction.id,
+                action_type: 'symposium',
+                action_data: pendingSymposium,
+                ap_cost: 0,
+                performed_at_tick: shardTick
+            });
+            break;
+        }
+    }
+}
+
+// ==================== IPO ACTIONS PANEL (Phase 8) ====================
+
+const IPO_ACTION_COSTS = {
+    hold_rally:      2,
+    rally_all:       4,
+    back_channel:    3,
+    joint_statement: 1,
+    fund_draw:       0   // no AP — draws from solidarity fund
+};
+
+const IPO_RALLY_OUTCOMES = [
+    { id: 'rousing',  name: 'Rousing Success',  effect: '+6 to +8 approval',  min: 6,  max: 8,  weight: 15, color: '#5cb85c', icon: '★' },
+    { id: 'solid',    name: 'Solid Turnout',     effect: '+3 to +5 approval',  min: 3,  max: 5,  weight: 35, color: '#5aafa5', icon: '●' },
+    { id: 'low',      name: 'Low Turnout',       effect: '+1 to +2 approval',  min: 1,  max: 2,  weight: 25, color: '#c8a64e', icon: '○' },
+    { id: 'gaffe',    name: 'Gaffe',             effect: '-3 to -2 approval',  min: -3, max: -2, weight: 12, color: '#d97a35', icon: '✕' },
+    { id: 'divisive', name: 'Divisive Speech',   effect: '+5 own / -2 others', min: 5,  max: 7,  weight: 8,  color: '#8b7ec8', icon: '◆' },
+    { id: 'counter',  name: 'Counter-Protest',   effect: '-1 all',             min: -1, max: -1, weight: 5,  color: '#d9534f', icon: '⚡' }
+];
+
+const IPO_BACK_CHANNEL_EXPOSURE_CHANCE = 0.25; // 25% chance of being exposed
+
+/**
+ * Render the actions panel with available action buttons.
+ */
+function renderIPOActionsPanel() {
+    const container = document.getElementById('ipo-actions-body');
+    if (!container) return;
+
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    if (!membership) {
+        container.innerHTML = '<span class="ipo-main-placeholder-text">Select an organisation.</span>';
+        return;
+    }
+
+    const org = membership.org;
+    const charter = org?.charter || {};
+    const isPresident = org.president_id === currentFaction.id;
+    const isObserver = membership.role === 'observer';
+
+    if (isObserver) {
+        container.innerHTML = '<div class="ipo-actions-empty">Observers cannot perform actions.</div>';
+        return;
+    }
+
+    const actions = [];
+
+    // Hold Rally — any member
+    actions.push({
+        key: 'hold_rally',
+        label: 'Hold Rally',
+        desc: 'Rally support for your party in your nation.',
+        cost: IPO_ACTION_COSTS.hold_rally,
+        icon: '📢',
+        available: true
+    });
+
+    // Rally All Members — president only
+    actions.push({
+        key: 'rally_all',
+        label: 'Rally All Members',
+        desc: 'Coordinate rallies across all member nations.',
+        cost: IPO_ACTION_COSTS.rally_all,
+        icon: '📣',
+        available: isPresident
+    });
+
+    // Back Channel Resources — any member, fund must be enabled
+    const fundEnabled = charter.resources?.solidarityFund?.enabled;
+    actions.push({
+        key: 'back_channel',
+        label: 'Back-Channel Resources',
+        desc: `Secretly transfer AP to another member. ${Math.round(IPO_BACK_CHANNEL_EXPOSURE_CHANCE * 100)}% exposure risk.`,
+        cost: IPO_ACTION_COSTS.back_channel,
+        icon: '🤝',
+        available: !!fundEnabled
+    });
+
+    // Joint Statement — president or if charter allows vote (vote handled in Votes panel)
+    const stmtClause = charter.resources?.jointStatementClause || 'vote';
+    actions.push({
+        key: 'joint_statement',
+        label: 'Issue Joint Statement',
+        desc: stmtClause === 'president' ? 'Issue a statement on behalf of the org (president only).' : 'Issue a statement (requires a vote — use Votes panel).',
+        cost: IPO_ACTION_COSTS.joint_statement,
+        icon: '📜',
+        available: stmtClause === 'president' && isPresident
+    });
+
+    // Solidarity Fund Draw — president direct or vote
+    const drawAvailable = isPresident && fundEnabled && (org.solidarity_fund_balance || 0) > 0;
+    actions.push({
+        key: 'fund_draw',
+        label: 'Draw from Fund',
+        desc: drawAvailable ? `Withdraw AP from fund (${org.solidarity_fund_balance} AP available).` : 'Requires vote — use Votes panel.',
+        cost: 0,
+        icon: '💰',
+        available: drawAvailable
+    });
+
+    const actionCardsHtml = actions.map(a => `
+        <div class="ipo-action-card ${a.available ? '' : 'ipo-action-card--disabled'}">
+            <div class="ipo-action-card-top">
+                <span class="ipo-action-icon">${a.icon}</span>
+                <div class="ipo-action-info">
+                    <span class="ipo-action-label">${a.label}</span>
+                    <span class="ipo-action-desc">${a.desc}</span>
+                </div>
+            </div>
+            <div class="ipo-action-card-bottom">
+                ${a.cost > 0 ? `<span class="ipo-action-cost">${a.cost} AP</span>` : '<span class="ipo-action-cost">Free</span>'}
+                <button class="ipo-action-exec-btn" ${a.available ? `onclick="executeIPOAction('${a.key}')"` : 'disabled'}>
+                    ${a.available ? 'Execute' : 'Unavailable'}
+                </button>
+            </div>
+        </div>
+    `).join('');
+
+    // Event log — recent actions
+    container.innerHTML = actionCardsHtml + '<div id="ipo-event-log" class="ipo-event-log"></div>';
+    loadIPOEventLog(ipoSelectedOrgId);
+}
+
+const IPO_ACTION_TYPE_ICONS = {
+    hold_rally: '📢', rally_all: '📣', back_channel: '🤝',
+    joint_statement: '📜', fund_draw: '💰'
+};
+
+async function loadIPOEventLog(orgId) {
+    const container = document.getElementById('ipo-event-log');
+    if (!container || !orgId) return;
+
+    try {
+        const { data: logs } = await _supabase
+            .from('ipo_action_log')
+            .select('action_type, faction_id, target_faction_id, action_data, ap_cost, performed_at_tick, factions:faction_id ( faction_name )')
+            .eq('org_id', orgId)
+            .order('performed_at_tick', { ascending: false })
+            .limit(8);
+
+        if (!logs || logs.length === 0) {
+            container.innerHTML = '<div class="ipo-event-log-empty">No recent activity.</div>';
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="ipo-event-log-header">Recent Activity</div>
+            ${logs.map(log => {
+                const icon = IPO_ACTION_TYPE_ICONS[log.action_type] || '●';
+                const who = log.factions?.faction_name || 'Unknown';
+                const data = log.action_data || {};
+                let desc = '';
+
+                switch (log.action_type) {
+                    case 'hold_rally':
+                        desc = data.type === 'expulsion'
+                            ? `expelled ${data.target_name || 'a member'}`
+                            : `held a rally: ${data.outcome_name || '?'} (${data.approval_change >= 0 ? '+' : ''}${data.approval_change || 0})`;
+                        break;
+                    case 'rally_all':
+                        desc = `rallied all members (${(data.results || []).length} parties)`;
+                        break;
+                    case 'back_channel':
+                        desc = data.exposed
+                            ? `EXPOSED: transferred ${data.amount || '?'} AP to ${data.target_name || '?'}`
+                            : `transferred resources`;
+                        break;
+                    case 'joint_statement':
+                        desc = 'issued a joint statement';
+                        break;
+                    case 'fund_draw':
+                        desc = `withdrew ${data.amount || '?'} AP from fund`;
+                        break;
+                    default:
+                        desc = log.action_type;
+                }
+
+                return `<div class="ipo-event-log-row">
+                    <span class="ipo-event-log-icon">${icon}</span>
+                    <span class="ipo-event-log-text"><strong>${escapeHtml(who)}</strong> ${desc}</span>
+                    <span class="ipo-event-log-tick">T${log.performed_at_tick}</span>
+                </div>`;
+            }).join('')}`;
+    } catch (e) {
+        console.error('[IPO] Event log error:', e);
+    }
+}
+
+/**
+ * Execute an IPO action — routes to the appropriate handler.
+ */
+async function executeIPOAction(actionKey) {
+    if (!currentFaction || !ipoSelectedOrgId) return;
+
+    switch (actionKey) {
+        case 'hold_rally':      await executeHoldRally(); break;
+        case 'rally_all':       await executeRallyAll(); break;
+        case 'back_channel':    openBackChannelModal(); break;
+        case 'joint_statement': openDirectStatementModal(); break;
+        case 'fund_draw':       openDirectFundDrawModal(); break;
+    }
+}
+
+// ── Hold Rally ──
+
+async function executeHoldRally() {
+    if (_ipoActionLock) return;
+    const cost = IPO_ACTION_COSTS.hold_rally;
+    if (!confirm(`Hold a rally for your party? This costs ${cost} AP. A dice roll determines the outcome.`)) return;
+    _ipoActionLock = true;
+
+    try {
+        // Deduct AP
+        const apResult = await deductAP(_supabase, currentFaction.id, cost);
+        if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+            alert(`Insufficient AP. You need ${cost} AP. ${apResult.currentAp !== undefined ? 'You have ' + apResult.currentAp + ' AP.' : ''}`);
+            return;
+        }
+        currentFaction.action_points = apResult.newAp;
+
+        // Roll outcome
+        const outcome = rollRallyOutcome();
+        const approvalChange = randomInt(outcome.min, outcome.max);
+
+        // Apply approval change to the rallying faction
+        const newApproval = Math.max(0, Math.min(100, Math.round((currentFaction.approval_rating || 40) + approvalChange)));
+        await _supabase.from('factions')
+            .update({ approval_rating: newApproval })
+            .eq('id', currentFaction.id);
+        currentFaction.approval_rating = newApproval;
+
+        // Log the action
+        const actionData = {
+            outcome_id: outcome.id,
+            outcome_name: outcome.name,
+            approval_change: approvalChange
+        };
+
+        await _supabase.from('ipo_action_log').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: currentFaction.id,
+            action_type: 'hold_rally',
+            action_data: actionData,
+            ap_cost: cost,
+            performed_at_tick: shardTick
+        });
+
+        // System chat message
+        await _supabase.from('ipo_chat').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: null,
+            is_system: true,
+            message_text: `${currentFaction.faction_name} held a rally: ${outcome.name} (${approvalChange >= 0 ? '+' : ''}${approvalChange} approval).`,
+            tick_posted: shardTick
+        });
+
+        showIPOActionResult('Hold Rally', outcome, approvalChange);
+    } catch (e) {
+        console.error('[IPO Action] Hold rally error:', e);
+        alert('Failed to execute rally.');
+    } finally {
+        _ipoActionLock = false;
+    }
+}
+
+// ── Rally All Members ──
+
+async function executeRallyAll() {
+    if (_ipoActionLock) return;
+    const cost = IPO_ACTION_COSTS.rally_all;
+    const memberCount = ipoVoteMembers.length;
+    if (!confirm(`Rally all ${memberCount} member parties? This costs ${cost} AP. Each member gets an independent dice roll.`)) return;
+    _ipoActionLock = true;
+
+    try {
+        const apResult = await deductAP(_supabase, currentFaction.id, cost);
+        if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+            alert(`Insufficient AP. You need ${cost} AP.`);
+            return;
+        }
+        currentFaction.action_points = apResult.newAp;
+
+        // Roll for each member
+        const results = ipoVoteMembers.map(m => {
+            const outcome = rollRallyOutcome();
+            const change = randomInt(outcome.min, outcome.max);
+            return {
+                faction_id: m.faction_id,
+                faction_name: m.factions?.faction_name || 'Unknown',
+                outcome_id: outcome.id,
+                outcome_name: outcome.name,
+                approval_change: change
+            };
+        });
+
+        // Apply approval changes to each member faction
+        for (const r of results) {
+            const { data: f } = await _supabase.from('factions')
+                .select('approval_rating').eq('id', r.faction_id).single();
+            if (f) {
+                const newApproval = Math.max(0, Math.min(100, Math.round((f.approval_rating || 40) + r.approval_change)));
+                await _supabase.from('factions')
+                    .update({ approval_rating: newApproval })
+                    .eq('id', r.faction_id);
+                if (r.faction_id === currentFaction.id) currentFaction.approval_rating = newApproval;
+            }
+        }
+
+        await _supabase.from('ipo_action_log').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: currentFaction.id,
+            action_type: 'rally_all',
+            action_data: { results },
+            ap_cost: cost,
+            performed_at_tick: shardTick
+        });
+
+        // Build summary
+        const summaryLines = results.map(r =>
+            `${r.faction_name}: ${r.outcome_name} (${r.approval_change >= 0 ? '+' : ''}${r.approval_change})`
+        ).join(', ');
+
+        await _supabase.from('ipo_chat').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: null,
+            is_system: true,
+            message_text: `${currentFaction.faction_name} rallied all members! ${summaryLines}`,
+            tick_posted: shardTick
+        });
+
+        // Show combined result
+        showIPOActionResultMulti('Rally All Members', results);
+    } catch (e) {
+        console.error('[IPO Action] Rally all error:', e);
+        alert('Failed to execute coordinated rally.');
+    } finally {
+        _ipoActionLock = false;
+    }
+}
+
+// ── Back-Channel Resources ──
+
+let backChannelTargetId = null;
+let backChannelAmount = 1;
+
+function openBackChannelModal() {
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    const org = membership?.org;
+    const charter = org?.charter || {};
+    const cap = charter.resources?.resourceSharingCap;
+
+    backChannelTargetId = null;
+    backChannelAmount = 1;
+
+    const otherMembers = ipoVoteMembers.filter(m => m.faction_id !== currentFaction.id);
+    if (otherMembers.length === 0) { alert('No other members to transfer to.'); return; }
+
+    const memberOpts = otherMembers.map(m =>
+        `<option value="${m.faction_id}">${escapeHtml(m.factions?.faction_name || 'Unknown')}</option>`
+    ).join('');
+
+    const capNote = cap ? `<div class="ipo-vote-form-note">Resource sharing cap: ${cap} transfers per term.</div>` : '';
+
+    const inner = document.getElementById('ipo-create-modal-inner');
+    document.getElementById('ipo-create-modal').classList.add('active');
+    inner.innerHTML = `
+        <div class="ipo-modal-header">
+            <span class="ipo-modal-title">Back-Channel Resources</span>
+            <button class="modal-close" onclick="closeIPOActionModal()">&times;</button>
+        </div>
+        <div class="ipo-modal-body">
+            <div class="ipo-vote-form-note">Secretly transfer AP to another member. ${Math.round(IPO_BACK_CHANNEL_EXPOSURE_CHANCE * 100)}% chance of public exposure.</div>
+            ${capNote}
+            <label class="ipo-vote-form-label">Recipient</label>
+            <select id="ipo-bc-target" class="ipo-vote-form-select" onchange="backChannelTargetId=this.value">${memberOpts}</select>
+            <label class="ipo-vote-form-label">Amount (AP) — costs ${IPO_ACTION_COSTS.back_channel} AP overhead</label>
+            <input type="number" id="ipo-bc-amount" class="ipo-vote-form-input" min="1" max="20" value="1" onchange="backChannelAmount=Number(this.value)" />
+            <div class="wizard-nav" style="margin-top:16px;">
+                <button class="wizard-back-btn" onclick="closeIPOActionModal()">Cancel</button>
+                <button class="ipo-btn ipo-btn--create-large" onclick="executeBackChannel()">Transfer</button>
+            </div>
+        </div>`;
+
+    backChannelTargetId = otherMembers[0].faction_id;
+}
+
+async function executeBackChannel() {
+    if (_ipoActionLock) return;
+    if (!backChannelTargetId) { alert('Select a recipient.'); return; }
+    const amount = Number(document.getElementById('ipo-bc-amount')?.value) || backChannelAmount;
+    if (amount < 1) { alert('Enter a valid amount.'); return; }
+
+    const cost = IPO_ACTION_COSTS.back_channel + amount; // overhead + transfer amount
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    const org = membership?.org;
+    const charter = org?.charter || {};
+
+    // Check resource sharing cap
+    const cap = charter.resources?.resourceSharingCap;
+    if (cap) {
+        const { data: recent } = await _supabase
+            .from('ipo_action_log')
+            .select('id')
+            .eq('org_id', ipoSelectedOrgId)
+            .eq('faction_id', currentFaction.id)
+            .eq('action_type', 'back_channel')
+            .gte('performed_at_tick', shardTick - (charter.leadership?.termYears || 2) * 12);
+        if (recent && recent.length >= cap) {
+            alert(`You have reached the resource sharing cap (${cap} per term).`);
+            return;
+        }
+    }
+
+    _ipoActionLock = true;
+
+    try {
+        const apResult = await deductAP(_supabase, currentFaction.id, cost);
+        if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+            alert(`Insufficient AP. You need ${cost} AP (${IPO_ACTION_COSTS.back_channel} overhead + ${amount} transfer).`);
+            return;
+        }
+        currentFaction.action_points = apResult.newAp;
+
+        // Exposure roll
+        const exposed = Math.random() < IPO_BACK_CHANNEL_EXPOSURE_CHANCE;
+
+        // Credit recipient (add AP via direct update — simplified)
+        const { data: recipient } = await _supabase
+            .from('factions')
+            .select('action_points')
+            .eq('id', backChannelTargetId)
+            .single();
+        if (recipient) {
+            await _supabase.from('factions')
+                .update({ action_points: (recipient.action_points || 0) + amount })
+                .eq('id', backChannelTargetId);
+        }
+
+        const targetMember = ipoVoteMembers.find(m => m.faction_id === backChannelTargetId);
+        const targetName = targetMember?.factions?.faction_name || 'Unknown';
+
+        await _supabase.from('ipo_action_log').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: currentFaction.id,
+            target_faction_id: backChannelTargetId,
+            action_type: 'back_channel',
+            action_data: { amount, exposed, target_name: targetName },
+            ap_cost: cost,
+            performed_at_tick: shardTick
+        });
+
+        if (exposed) {
+            // Public exposure — everyone sees it
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: `EXPOSED: ${currentFaction.faction_name} secretly transferred ${amount} AP to ${targetName}!`,
+                tick_posted: shardTick
+            });
+        } else {
+            // Private — only system log, no public chat
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: `Resources were transferred within the organisation.`,
+                tick_posted: shardTick
+            });
+        }
+
+        closeIPOActionModal();
+        alert(`Transferred ${amount} AP to ${targetName}.${exposed ? ' WARNING: The transfer was EXPOSED publicly!' : ' Transfer completed secretly.'}`);
+    } catch (e) {
+        console.error('[IPO Action] Back-channel error:', e);
+        alert('Failed to transfer resources.');
+    } finally {
+        _ipoActionLock = false;
+    }
+}
+
+// ── Direct Joint Statement (president only, no vote) ──
+
+function openDirectStatementModal() {
+    const inner = document.getElementById('ipo-create-modal-inner');
+    document.getElementById('ipo-create-modal').classList.add('active');
+    inner.innerHTML = `
+        <div class="ipo-modal-header">
+            <span class="ipo-modal-title">Issue Joint Statement</span>
+            <button class="modal-close" onclick="closeIPOActionModal()">&times;</button>
+        </div>
+        <div class="ipo-modal-body">
+            <div class="ipo-vote-form-note">As president, issue a statement on behalf of the organisation. Costs ${IPO_ACTION_COSTS.joint_statement} AP.</div>
+            <label class="ipo-vote-form-label">Statement Text</label>
+            <textarea id="ipo-direct-stmt" class="ipo-vote-form-textarea" rows="4" maxlength="500" placeholder="Draft the statement..."></textarea>
+            <div class="wizard-nav" style="margin-top:16px;">
+                <button class="wizard-back-btn" onclick="closeIPOActionModal()">Cancel</button>
+                <button class="ipo-btn ipo-btn--create-large" onclick="executeDirectStatement()">Publish</button>
+            </div>
+        </div>`;
+}
+
+async function executeDirectStatement() {
+    if (_ipoActionLock) return;
+    const text = document.getElementById('ipo-direct-stmt')?.value?.trim();
+    if (!text) { alert('Please write the statement.'); return; }
+
+    const cost = IPO_ACTION_COSTS.joint_statement;
+    _ipoActionLock = true;
+
+    try {
+        const apResult = await deductAP(_supabase, currentFaction.id, cost);
+        if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+            alert(`Insufficient AP. You need ${cost} AP.`);
+            return;
+        }
+        currentFaction.action_points = apResult.newAp;
+
+        await _supabase.from('ipo_action_log').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: currentFaction.id,
+            action_type: 'joint_statement',
+            action_data: { statement_text: text, by_president: true },
+            ap_cost: cost,
+            performed_at_tick: shardTick
+        });
+
+        await _supabase.from('ipo_chat').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: null,
+            is_system: true,
+            message_text: `JOINT STATEMENT (by president): "${text}"`,
+            tick_posted: shardTick
+        });
+
+        closeIPOActionModal();
+        alert('Statement published.');
+    } catch (e) {
+        console.error('[IPO Action] Statement error:', e);
+        alert('Failed to publish statement.');
+    } finally {
+        _ipoActionLock = false;
+    }
+}
+
+// ── Direct Fund Draw (president only) ──
+
+function openDirectFundDrawModal() {
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    const balance = membership?.org?.solidarity_fund_balance || 0;
+
+    const inner = document.getElementById('ipo-create-modal-inner');
+    document.getElementById('ipo-create-modal').classList.add('active');
+    inner.innerHTML = `
+        <div class="ipo-modal-header">
+            <span class="ipo-modal-title">Draw from Solidarity Fund</span>
+            <button class="modal-close" onclick="closeIPOActionModal()">&times;</button>
+        </div>
+        <div class="ipo-modal-body">
+            <div class="ipo-vote-form-note">As president, withdraw AP from the fund. Balance: ${balance} AP.</div>
+            <label class="ipo-vote-form-label">Amount (AP)</label>
+            <input type="number" id="ipo-direct-draw-amount" class="ipo-vote-form-input" min="1" max="${balance}" value="1" />
+            <label class="ipo-vote-form-label">Purpose</label>
+            <input type="text" id="ipo-direct-draw-purpose" class="ipo-vote-form-input" maxlength="200" placeholder="Describe the purpose..." />
+            <div class="wizard-nav" style="margin-top:16px;">
+                <button class="wizard-back-btn" onclick="closeIPOActionModal()">Cancel</button>
+                <button class="ipo-btn ipo-btn--create-large" onclick="executeDirectFundDraw()">Withdraw</button>
+            </div>
+        </div>`;
+}
+
+async function executeDirectFundDraw() {
+    if (_ipoActionLock) return;
+    const amount = parseInt(document.getElementById('ipo-direct-draw-amount')?.value);
+    const purpose = document.getElementById('ipo-direct-draw-purpose')?.value?.trim() || '';
+    if (!amount || amount < 1) { alert('Enter a valid amount.'); return; }
+
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    const balance = membership?.org?.solidarity_fund_balance || 0;
+    if (amount > balance) { alert('Amount exceeds fund balance.'); return; }
+
+    _ipoActionLock = true;
+
+    try {
+        const newBalance = balance - amount;
+        await _supabase.from('international_orgs')
+            .update({ solidarity_fund_balance: newBalance })
+            .eq('id', ipoSelectedOrgId);
+
+        // Credit the president's faction
+        const { data: faction } = await _supabase
+            .from('factions')
+            .select('action_points')
+            .eq('id', currentFaction.id)
+            .single();
+        if (faction) {
+            await _supabase.from('factions')
+                .update({ action_points: (faction.action_points || 0) + amount })
+                .eq('id', currentFaction.id);
+        }
+
+        await _supabase.from('ipo_fund_transactions').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: currentFaction.id,
+            transaction_type: 'draw',
+            amount: -amount,
+            description: purpose || 'Presidential fund draw',
+            tick: shardTick
+        });
+
+        await _supabase.from('ipo_action_log').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: currentFaction.id,
+            action_type: 'fund_draw',
+            action_data: { amount, purpose },
+            ap_cost: 0,
+            performed_at_tick: shardTick
+        });
+
+        await _supabase.from('ipo_chat').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: null,
+            is_system: true,
+            message_text: `President ${currentFaction.faction_name} withdrew ${amount} AP from the solidarity fund. ${purpose ? 'Purpose: ' + purpose : ''}`,
+            tick_posted: shardTick
+        });
+
+        closeIPOActionModal();
+        renderIPOActionsPanel();
+        alert(`Withdrew ${amount} AP from the solidarity fund.`);
+    } catch (e) {
+        console.error('[IPO Action] Fund draw error:', e);
+        alert('Failed to withdraw from fund.');
+    } finally {
+        _ipoActionLock = false;
+    }
+}
+
+// ── Utility: Rally Dice Roll ──
+
+function rollRallyOutcome() {
+    const totalWeight = IPO_RALLY_OUTCOMES.reduce((sum, o) => sum + o.weight, 0);
+    let roll = Math.random() * totalWeight;
+    for (const outcome of IPO_RALLY_OUTCOMES) {
+        roll -= outcome.weight;
+        if (roll <= 0) return outcome;
+    }
+    return IPO_RALLY_OUTCOMES[1]; // fallback: solid
+}
+
+function randomInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+// ── Action Result Display ──
+
+function showIPOActionResult(title, outcome, change) {
+    const inner = document.getElementById('ipo-create-modal-inner');
+    document.getElementById('ipo-create-modal').classList.add('active');
+    inner.innerHTML = `
+        <div class="ipo-modal-header">
+            <span class="ipo-modal-title">${title} — Result</span>
+            <button class="modal-close" onclick="closeIPOActionModal()">&times;</button>
+        </div>
+        <div class="ipo-modal-body" style="text-align:center; padding:30px;">
+            <div class="ipo-action-result-icon" style="color:${outcome.color}">${outcome.icon}</div>
+            <div class="ipo-action-result-name" style="color:${outcome.color}">${outcome.name}</div>
+            <div class="ipo-action-result-effect">${change >= 0 ? '+' : ''}${change} Approval</div>
+            <div class="ipo-action-result-desc">${outcome.effect}</div>
+            <button class="ipo-btn ipo-btn--create-large" style="margin-top:20px;" onclick="closeIPOActionModal()">OK</button>
+        </div>`;
+}
+
+function showIPOActionResultMulti(title, results) {
+    const inner = document.getElementById('ipo-create-modal-inner');
+    document.getElementById('ipo-create-modal').classList.add('active');
+
+    const rows = results.map(r => {
+        const outcome = IPO_RALLY_OUTCOMES.find(o => o.id === r.outcome_id) || IPO_RALLY_OUTCOMES[1];
+        return `
+            <div class="ipo-action-multi-row">
+                <span class="ipo-action-multi-icon" style="color:${outcome.color}">${outcome.icon}</span>
+                <span class="ipo-action-multi-name">${escapeHtml(r.faction_name)}</span>
+                <span class="ipo-action-multi-outcome" style="color:${outcome.color}">${r.outcome_name}</span>
+                <span class="ipo-action-multi-change">${r.approval_change >= 0 ? '+' : ''}${r.approval_change}</span>
+            </div>`;
+    }).join('');
+
+    inner.innerHTML = `
+        <div class="ipo-modal-header">
+            <span class="ipo-modal-title">${title} — Results</span>
+            <button class="modal-close" onclick="closeIPOActionModal()">&times;</button>
+        </div>
+        <div class="ipo-modal-body">
+            <div class="ipo-action-multi-results">${rows}</div>
+            <button class="ipo-btn ipo-btn--create-large" style="margin-top:16px;" onclick="closeIPOActionModal()">OK</button>
+        </div>`;
+}
+
+function closeIPOActionModal() {
+    document.getElementById('ipo-create-modal').classList.remove('active');
+    backChannelTargetId = null;
+    backChannelAmount = 1;
 }
 
 // ==================== IPO CREATION FLOW ====================
@@ -15279,6 +17278,24 @@ window.submitIPOCreation = submitIPOCreation;
 window.closeIPOAmendModal = closeIPOAmendModal;
 window.ipoAmendAddArticle = ipoAmendAddArticle;
 window.submitIPOAmend = submitIPOAmend;
+// IPO voting exports
+window.openIPOVoteModal = openIPOVoteModal;
+window.closeIPOVoteModal = closeIPOVoteModal;
+window.renderIPOVoteModalTypeSelect = renderIPOVoteModalTypeSelect;
+window.selectIPOVoteType = selectIPOVoteType;
+window.submitIPOVote = submitIPOVote;
+window.castIPOBallot = castIPOBallot;
+window.resolveIPOVote = resolveIPOVote;
+// IPO actions exports
+window.executeIPOAction = executeIPOAction;
+window.executeBackChannel = executeBackChannel;
+window.executeDirectStatement = executeDirectStatement;
+window.executeDirectFundDraw = executeDirectFundDraw;
+window.closeIPOActionModal = closeIPOActionModal;
+// IPO invite & expulsion exports
+window.submitIPOInvite = submitIPOInvite;
+window.openIPOExpelModal = openIPOExpelModal;
+window.submitIPOExpel = submitIPOExpel;
 </script>
 
 </body>
