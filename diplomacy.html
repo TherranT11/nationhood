@@ -13989,13 +13989,20 @@ async function renderIPOMainPanel(memberCounts) {
         return `<span class="ipo-footer-badge ${cls}">${escapeHtml(pName)}${roleTag}${isYou ? ' (YOU)' : ''}${pNation ? ' · ' + escapeHtml(pNation) : ''}</span>`;
     }).join('');
 
+    // Footer buttons — role-gated
+    const expulsionEnabled = !!charter.membership?.expulsionClause;
+    const canExpel = expulsionEnabled && (
+        charter.membership.expulsionClause === 'president' ? isPresident : !isObserver
+    );
+
     const footerHtml = `
         <div class="ipo-footer">
             <div class="ipo-footer-members">${memberBadges}</div>
             <div class="ipo-footer-actions">
-                <button class="ipo-btn ipo-btn--invite" onclick="openIPOInviteModal()">Invite Member</button>
-                <button class="ipo-btn ipo-btn--amend" onclick="openIPOAmendModal()">Amend Charter</button>
-                <button class="ipo-btn ipo-btn--leave" onclick="leaveIPOOrg()">Leave Org</button>
+                ${!isObserver ? '<button class="ipo-btn ipo-btn--invite" onclick="openIPOInviteModal()">Invite</button>' : ''}
+                ${isPresident ? '<button class="ipo-btn ipo-btn--amend" onclick="openIPOAmendModal()">Amend Charter</button>' : ''}
+                ${canExpel ? '<button class="ipo-btn ipo-btn--expel" onclick="openIPOExpelModal()">Expel</button>' : ''}
+                <button class="ipo-btn ipo-btn--leave" onclick="leaveIPOOrg()">Leave</button>
             </div>
         </div>`;
 
@@ -14163,12 +14170,272 @@ async function sendIPOChat() {
     }
 }
 
-// Placeholder handlers for later phases
-function openIPOInviteModal() { alert('Invite flow — Phase 10'); }
+// ==================== IPO INVITE & EXPULSION (Phase 10) ====================
+
+/**
+ * Open the invite modal — allows inviting a faction as member or observer.
+ */
+async function openIPOInviteModal() {
+    if (!currentFaction || !ipoSelectedOrgId) return;
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    if (!membership || membership.role === 'observer') return;
+
+    // Fetch all factions not already members or with pending invites
+    const { data: existingMembers } = await _supabase
+        .from('ipo_members')
+        .select('faction_id')
+        .eq('org_id', ipoSelectedOrgId)
+        .eq('is_active', true);
+    const memberIds = new Set((existingMembers || []).map(m => m.faction_id));
+
+    const { data: pendingInvites } = await _supabase
+        .from('ipo_invitations')
+        .select('target_faction_id')
+        .eq('org_id', ipoSelectedOrgId)
+        .in('status', ['pending', 'vote_pending']);
+    const pendingIds = new Set((pendingInvites || []).map(i => i.target_faction_id));
+
+    const { data: allFactions } = await _supabase
+        .from('factions')
+        .select('id, faction_name, nation_id, nations:nation_id ( name )')
+        .eq('is_active', true)
+        .order('faction_name');
+
+    const available = (allFactions || []).filter(f => !memberIds.has(f.id) && !pendingIds.has(f.id));
+
+    if (available.length === 0) {
+        alert('No eligible factions to invite — all active factions are already members or have pending invites.');
+        return;
+    }
+
+    const options = available.map(f =>
+        `<option value="${f.id}">${escapeHtml(f.faction_name)}${f.nations?.name ? ' · ' + escapeHtml(f.nations.name) : ''}</option>`
+    ).join('');
+
+    const inner = document.getElementById('ipo-create-modal-inner');
+    document.getElementById('ipo-create-modal').classList.add('active');
+    inner.innerHTML = `
+        <div class="ipo-modal-header">
+            <span class="ipo-modal-title">Invite to Organisation</span>
+            <button class="modal-close" onclick="closeIPOActionModal()">&times;</button>
+        </div>
+        <div class="ipo-modal-body">
+            <label class="ipo-vote-form-label">Party to Invite</label>
+            <select id="ipo-invite-target" class="ipo-vote-form-select">${options}</select>
+            <label class="ipo-vote-form-label">Role</label>
+            <select id="ipo-invite-role" class="ipo-vote-form-select">
+                <option value="member">Member — full voting and action rights</option>
+                <option value="observer">Observer — read-only access, no voting</option>
+            </select>
+            <div class="ipo-vote-form-note">The invited party will see this invitation and can accept or decline.</div>
+            <div class="wizard-nav" style="margin-top:16px;">
+                <button class="wizard-back-btn" onclick="closeIPOActionModal()">Cancel</button>
+                <button class="ipo-btn ipo-btn--create-large" onclick="submitIPOInvite()">Send Invitation</button>
+            </div>
+        </div>`;
+}
+
+/**
+ * Submit an invitation to the selected faction.
+ */
+async function submitIPOInvite() {
+    const targetId = document.getElementById('ipo-invite-target')?.value;
+    const role = document.getElementById('ipo-invite-role')?.value || 'member';
+    if (!targetId) { alert('Select a party to invite.'); return; }
+
+    try {
+        const { error } = await _supabase.from('ipo_invitations').insert({
+            org_id: ipoSelectedOrgId,
+            invited_by: currentFaction.id,
+            target_faction_id: targetId,
+            invited_role: role,
+            status: 'pending',
+            invited_at_tick: shardTick
+        });
+
+        if (error) {
+            if (error.code === '23505') {
+                alert('This party already has a pending invitation.');
+            } else {
+                alert('Failed to send invitation: ' + error.message);
+            }
+            return;
+        }
+
+        // Get target name for chat
+        const { data: targetFaction } = await _supabase
+            .from('factions')
+            .select('faction_name')
+            .eq('id', targetId)
+            .single();
+        const targetName = targetFaction?.faction_name || 'A party';
+
+        await _supabase.from('ipo_chat').insert({
+            org_id: ipoSelectedOrgId,
+            faction_id: null,
+            is_system: true,
+            message_text: `${currentFaction.faction_name} invited ${targetName} as ${role}.`,
+            tick_posted: shardTick
+        });
+
+        closeIPOActionModal();
+        alert(`Invitation sent to ${targetName}.`);
+    } catch (e) {
+        console.error('[IPO] Invite error:', e);
+        alert('Failed to send invitation.');
+    }
+}
+
+/**
+ * Expel a member — president direct if charter allows, otherwise opens a vote.
+ */
+async function openIPOExpelModal() {
+    if (!currentFaction || !ipoSelectedOrgId) return;
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    if (!membership) return;
+
+    const org = membership.org;
+    const charter = org?.charter || {};
+    const expClause = charter.membership?.expulsionClause;
+    const isPresident = org.president_id === currentFaction.id;
+
+    if (!expClause) {
+        alert('Expulsion is disabled in this organisation\'s charter.');
+        return;
+    }
+
+    // If president-only expulsion, only president can do it
+    if (expClause === 'president' && !isPresident) {
+        alert('Only the president can expel members under this charter.');
+        return;
+    }
+
+    // Fetch members (exclude self)
+    const otherMembers = ipoVoteMembers.filter(m => m.faction_id !== currentFaction.id);
+    if (otherMembers.length === 0) {
+        alert('No other members to expel.');
+        return;
+    }
+
+    const memberOpts = otherMembers.map(m =>
+        `<option value="${m.faction_id}">${escapeHtml(m.factions?.faction_name || 'Unknown')}</option>`
+    ).join('');
+
+    const modeLabel = expClause === 'president'
+        ? 'As president, you can expel a member immediately.'
+        : `Expulsion requires a ${expClause} vote. This will create a vote proposal.`;
+
+    const inner = document.getElementById('ipo-create-modal-inner');
+    document.getElementById('ipo-create-modal').classList.add('active');
+    inner.innerHTML = `
+        <div class="ipo-modal-header">
+            <span class="ipo-modal-title">Expel Member</span>
+            <button class="modal-close" onclick="closeIPOActionModal()">&times;</button>
+        </div>
+        <div class="ipo-modal-body">
+            <div class="ipo-vote-form-note">${modeLabel}</div>
+            <label class="ipo-vote-form-label">Member to Expel</label>
+            <select id="ipo-expel-target" class="ipo-vote-form-select">${memberOpts}</select>
+            <div class="wizard-nav" style="margin-top:16px;">
+                <button class="wizard-back-btn" onclick="closeIPOActionModal()">Cancel</button>
+                <button class="ipo-btn ipo-btn--create-large" style="background:rgba(217,83,79,0.15);border-color:rgba(217,83,79,0.3);color:#d9534f;" onclick="submitIPOExpel()">
+                    ${expClause === 'president' ? 'Expel Now' : 'Propose Expulsion Vote'}
+                </button>
+            </div>
+        </div>`;
+}
+
+async function submitIPOExpel() {
+    const targetId = document.getElementById('ipo-expel-target')?.value;
+    if (!targetId) { alert('Select a member.'); return; }
+
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    const org = membership?.org;
+    const expClause = org?.charter?.membership?.expulsionClause;
+
+    const targetMember = ipoVoteMembers.find(m => m.faction_id === targetId);
+    const targetName = targetMember?.factions?.faction_name || 'Unknown';
+
+    if (expClause === 'president') {
+        // Direct expulsion by president
+        if (!confirm(`Expel ${targetName} from the organisation? This is immediate and cannot be undone.`)) return;
+
+        try {
+            await _supabase.from('ipo_members')
+                .update({ is_active: false, left_at_tick: shardTick })
+                .eq('org_id', ipoSelectedOrgId)
+                .eq('faction_id', targetId)
+                .eq('is_active', true);
+
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: `${targetName} has been expelled by the president.`,
+                tick_posted: shardTick
+            });
+
+            await _supabase.from('ipo_action_log').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: currentFaction.id,
+                target_faction_id: targetId,
+                action_type: 'hold_rally', // reuse closest type — expulsion is logged via chat
+                action_data: { type: 'expulsion', target_name: targetName, by_president: true },
+                ap_cost: 0,
+                performed_at_tick: shardTick
+            });
+
+            closeIPOActionModal();
+            renderIPOView();
+        } catch (e) {
+            console.error('[IPO] Expulsion error:', e);
+            alert('Failed to expel member.');
+        }
+    } else {
+        // Create expulsion vote
+        try {
+            await _supabase.from('ipo_votes').insert({
+                org_id: ipoSelectedOrgId,
+                title: `Expel ${targetName}`,
+                vote_type: 'expulsion',
+                meta: { target_faction_id: targetId, target_faction_name: targetName },
+                status: 'open',
+                opened_at_tick: shardTick,
+                closes_at_tick: shardTick + IPO_VOTE_DURATION,
+                proposed_by: currentFaction.id
+            });
+
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: `${currentFaction.faction_name} proposed to expel ${targetName}. A vote has been opened.`,
+                tick_posted: shardTick
+            });
+
+            closeIPOActionModal();
+            await loadIPOVotes(ipoSelectedOrgId);
+        } catch (e) {
+            console.error('[IPO] Expulsion vote error:', e);
+            alert('Failed to propose expulsion vote.');
+        }
+    }
+}
+
 // openIPOAmendModal() defined below in IPO AMEND CHARTER section
 async function leaveIPOOrg() {
     if (!currentFaction || !ipoSelectedOrgId) return;
-    if (!confirm('Are you sure you want to leave this organisation? Your solidarity fund contributions will not be returned.')) return;
+
+    const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    const org = membership?.org;
+    const isPresident = org?.president_id === currentFaction.id;
+
+    let confirmMsg = 'Are you sure you want to leave this organisation? Your solidarity fund contributions will not be returned.';
+    if (isPresident) {
+        confirmMsg += '\n\nYou are the PRESIDENT. Leadership will pass to the next eligible member.';
+    }
+    if (!confirm(confirmMsg)) return;
+
     try {
         await _supabase.from('ipo_members')
             .update({ is_active: false, left_at_tick: shardTick })
@@ -14185,17 +14452,68 @@ async function leaveIPOOrg() {
             tick_posted: shardTick
         });
 
-        // Check if org is now empty — dissolve
+        // Check remaining members
         const { data: remaining } = await _supabase
             .from('ipo_members')
-            .select('id')
+            .select('faction_id, role')
             .eq('org_id', ipoSelectedOrgId)
             .eq('is_active', true);
 
+        const remainingMembers = (remaining || []).filter(m => m.role === 'member');
+
         if (!remaining || remaining.length === 0) {
+            // No one left — dissolve org
             await _supabase.from('international_orgs')
                 .update({ is_active: false, dissolved_at_tick: shardTick })
                 .eq('id', ipoSelectedOrgId);
+
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: 'Organisation dissolved — no members remaining.',
+                tick_posted: shardTick
+            });
+        } else if (isPresident && remainingMembers.length > 0) {
+            // President leaving — hand off to next member
+            const newPresId = remainingMembers[0].faction_id;
+            await _supabase.from('international_orgs')
+                .update({ president_id: newPresId, president_term_start_tick: shardTick })
+                .eq('id', ipoSelectedOrgId);
+
+            const { data: newPres } = await _supabase
+                .from('factions').select('faction_name').eq('id', newPresId).single();
+
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: `${newPres?.faction_name || 'A member'} is now president (previous president departed).`,
+                tick_posted: shardTick
+            });
+        }
+
+        // Clear HQ if the departing member was the HQ nation's party
+        if (org?.headquarters_nation_id) {
+            const { data: hqMembers } = await _supabase
+                .from('ipo_members')
+                .select('faction_id, factions:faction_id ( nation_id )')
+                .eq('org_id', ipoSelectedOrgId)
+                .eq('is_active', true);
+            const hasHqMember = (hqMembers || []).some(m => m.factions?.nation_id === org.headquarters_nation_id);
+            if (!hasHqMember) {
+                await _supabase.from('international_orgs')
+                    .update({ headquarters_nation_id: null })
+                    .eq('id', ipoSelectedOrgId);
+
+                await _supabase.from('ipo_chat').insert({
+                    org_id: ipoSelectedOrgId,
+                    faction_id: null,
+                    is_system: true,
+                    message_text: 'Headquarters vacated — no member party remains in the HQ nation.',
+                    tick_posted: shardTick
+                });
+            }
         }
 
         ipoSelectedOrgId = null;
@@ -15588,7 +15906,7 @@ function renderIPOActionsPanel() {
         available: drawAvailable
     });
 
-    container.innerHTML = actions.map(a => `
+    const actionCardsHtml = actions.map(a => `
         <div class="ipo-action-card ${a.available ? '' : 'ipo-action-card--disabled'}">
             <div class="ipo-action-card-top">
                 <span class="ipo-action-icon">${a.icon}</span>
@@ -15605,6 +15923,75 @@ function renderIPOActionsPanel() {
             </div>
         </div>
     `).join('');
+
+    // Event log — recent actions
+    container.innerHTML = actionCardsHtml + '<div id="ipo-event-log" class="ipo-event-log"></div>';
+    loadIPOEventLog(ipoSelectedOrgId);
+}
+
+const IPO_ACTION_TYPE_ICONS = {
+    hold_rally: '📢', rally_all: '📣', back_channel: '🤝',
+    joint_statement: '📜', fund_draw: '💰'
+};
+
+async function loadIPOEventLog(orgId) {
+    const container = document.getElementById('ipo-event-log');
+    if (!container || !orgId) return;
+
+    try {
+        const { data: logs } = await _supabase
+            .from('ipo_action_log')
+            .select('action_type, faction_id, target_faction_id, action_data, ap_cost, performed_at_tick, factions:faction_id ( faction_name )')
+            .eq('org_id', orgId)
+            .order('performed_at_tick', { ascending: false })
+            .limit(8);
+
+        if (!logs || logs.length === 0) {
+            container.innerHTML = '<div class="ipo-event-log-empty">No recent activity.</div>';
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="ipo-event-log-header">Recent Activity</div>
+            ${logs.map(log => {
+                const icon = IPO_ACTION_TYPE_ICONS[log.action_type] || '●';
+                const who = log.factions?.faction_name || 'Unknown';
+                const data = log.action_data || {};
+                let desc = '';
+
+                switch (log.action_type) {
+                    case 'hold_rally':
+                        desc = data.type === 'expulsion'
+                            ? `expelled ${data.target_name || 'a member'}`
+                            : `held a rally: ${data.outcome_name || '?'} (${data.approval_change >= 0 ? '+' : ''}${data.approval_change || 0})`;
+                        break;
+                    case 'rally_all':
+                        desc = `rallied all members (${(data.results || []).length} parties)`;
+                        break;
+                    case 'back_channel':
+                        desc = data.exposed
+                            ? `EXPOSED: transferred ${data.amount || '?'} AP to ${data.target_name || '?'}`
+                            : `transferred resources`;
+                        break;
+                    case 'joint_statement':
+                        desc = 'issued a joint statement';
+                        break;
+                    case 'fund_draw':
+                        desc = `withdrew ${data.amount || '?'} AP from fund`;
+                        break;
+                    default:
+                        desc = log.action_type;
+                }
+
+                return `<div class="ipo-event-log-row">
+                    <span class="ipo-event-log-icon">${icon}</span>
+                    <span class="ipo-event-log-text"><strong>${escapeHtml(who)}</strong> ${desc}</span>
+                    <span class="ipo-event-log-tick">T${log.performed_at_tick}</span>
+                </div>`;
+            }).join('')}`;
+    } catch (e) {
+        console.error('[IPO] Event log error:', e);
+    }
 }
 
 /**
@@ -16739,6 +17126,10 @@ window.executeBackChannel = executeBackChannel;
 window.executeDirectStatement = executeDirectStatement;
 window.executeDirectFundDraw = executeDirectFundDraw;
 window.closeIPOActionModal = closeIPOActionModal;
+// IPO invite & expulsion exports
+window.submitIPOInvite = submitIPOInvite;
+window.openIPOExpelModal = openIPOExpelModal;
+window.submitIPOExpel = submitIPOExpel;
 </script>
 
 </body>
