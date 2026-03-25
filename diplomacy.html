@@ -186,6 +186,14 @@ async function assignIPOChatColor(orgId) {
 // Logo symbol options
 const IPO_LOGO_SYMBOLS = ['◈','⬡','▲','◆','⬢','⊕'];
 
+function renderIPOLogo(org, cssClass, extraClass) {
+    const cls = cssClass + (extraClass ? ' ' + extraClass : '');
+    if (org.logo_image_url) {
+        return `<img src="${escapeHtml(org.logo_image_url)}" alt="" class="${cls} ipo-logo-img" />`;
+    }
+    return `<span class="${cls}">${escapeHtml(org.logo_symbol)} ${escapeHtml(org.logo_text)}</span>`;
+}
+
 // Legacy INITIATIVE_TYPES kept for backward compat with existing proposals.
 // New proposals use INITIATIVE_ARTICLE_TYPES from diplomacy-constants.js.
 const INITIATIVE_TYPES = {
@@ -13761,7 +13769,7 @@ async function renderIPOView() {
             .select(`
                 id, role, joined_at_tick, chat_color,
                 org:international_orgs (
-                    id, name, logo_symbol, logo_text, description,
+                    id, name, logo_symbol, logo_text, logo_image_url, description,
                     founded_at_tick, founding_party_id,
                     president_id, president_term_start_tick,
                     headquarters_nation_id, solidarity_fund_balance,
@@ -13833,7 +13841,7 @@ async function renderIPOView() {
         return `
             <div class="ipo-sidebar-item ${isActive ? 'is-active' : ''}"
                  onclick="selectIPOOrg('${org.id}')">
-                <span class="ipo-sidebar-logo ${isActive ? 'is-active' : ''}">${escapeHtml(org.logo_symbol)} ${escapeHtml(org.logo_text)}</span>
+                ${renderIPOLogo(org, 'ipo-sidebar-logo', isActive ? 'is-active' : '')}
                 <div class="ipo-sidebar-info">
                     <span class="ipo-sidebar-name ${isActive ? 'is-active' : ''}">${escapeHtml(org.name)}</span>
                     <span class="ipo-sidebar-meta">${count} member${count !== 1 ? 's' : ''} · ${roleLabel}</span>
@@ -13848,7 +13856,7 @@ async function renderIPOView() {
         return `
             <div class="ipo-sidebar-invite">
                 <div class="ipo-sidebar-invite-header">
-                    <span class="ipo-sidebar-logo">${escapeHtml(org.logo_symbol)} ${escapeHtml(org.logo_text)}</span>
+                    ${renderIPOLogo(org, 'ipo-sidebar-logo', '')}
                     <span class="ipo-sidebar-name">${escapeHtml(org.name)}</span>
                 </div>
                 <span class="ipo-sidebar-invite-from">Invited by ${escapeHtml(inviterName)} · ${inv.invited_role}</span>
@@ -13959,7 +13967,7 @@ async function renderIPOMainPanel(memberCounts) {
     // ── Header ──
     const headerHtml = `
         <div class="ipo-header">
-            <span class="ipo-header-logo">${escapeHtml(org.logo_symbol)} ${escapeHtml(org.logo_text)}</span>
+            ${renderIPOLogo(org, 'ipo-header-logo', '')}
             <div class="ipo-header-identity">
                 <span class="ipo-header-name">${escapeHtml(org.name)}</span>
                 <div class="ipo-header-meta">
@@ -16635,6 +16643,8 @@ let ipoCreateName = '';
 let ipoCreateDesc = '';
 let ipoCreateLogoSymbol = '◈';
 let ipoCreateLogoText = '';
+let ipoCreateLogoFile = null;       // File object for custom logo upload
+let ipoCreateLogoPreviewUrl = null; // data-URL preview of the uploaded file
 let ipoCreateArticles = []; // [{ type: 'mission', config: {...} }, ...]
 
 // Article type definitions
@@ -16660,6 +16670,8 @@ function openIPOCreationModal() {
     ipoCreateDesc = '';
     ipoCreateLogoSymbol = '◈';
     ipoCreateLogoText = '';
+    ipoCreateLogoFile = null;
+    ipoCreateLogoPreviewUrl = null;
     ipoCreateArticles = [{ type: 'mission', config: { text: '' } }];
     const modal = document.getElementById('ipo-create-modal');
     modal.classList.add('active');
@@ -16723,9 +16735,23 @@ function renderIPOCreateStep1() {
                 oninput="ipoCreateLogoText=this.value.toUpperCase();ipoUpdateStep1Next()"
                 id="ipo-create-logo-text" placeholder="e.g. PSI"
                 style="width:80px;text-transform:uppercase;" />
-            <div style="margin-top:6px;font-family:var(--font-mono);font-size:10px;color:var(--ipo-purple);">
+            <div id="ipo-create-logo-preview" style="margin-top:6px;font-family:var(--font-mono);font-size:10px;color:var(--ipo-purple);">
                 Preview: ${ipoCreateLogoSymbol} ${escapeHtml(ipoCreateLogoText) || '...'}
             </div>
+        </div>
+        <div class="trade-field">
+            <label>Custom Logo Image <span style="color:var(--text-tertiary);font-weight:400">(optional · max 2 MB)</span></label>
+            <div class="ipo-logo-upload-zone" id="ipo-logo-upload-zone" onclick="document.getElementById('ipo-logo-file-input').click()">
+                ${ipoCreateLogoPreviewUrl
+                    ? `<img src="${ipoCreateLogoPreviewUrl}" class="ipo-logo-upload-preview" alt="preview" />
+                       <div style="font-size:9px;color:var(--text-tertiary);margin-top:4px;">Click to replace</div>`
+                    : `<div style="font-size:18px;color:var(--text-tertiary);">⬆</div>
+                       <div style="font-size:10px;color:var(--text-tertiary);">Click to upload</div>
+                       <div style="font-size:8px;color:var(--text-quaternary);margin-top:2px;">PNG · JPG · WebP</div>`}
+            </div>
+            <input type="file" accept="image/png,image/jpeg,image/webp" id="ipo-logo-file-input" style="display:none" onchange="ipoHandleLogoUpload(this)" />
+            ${ipoCreateLogoFile ? `<button class="ipo-logo-remove-btn" onclick="ipoRemoveLogoUpload()" style="margin-top:4px;font-size:9px;color:#d9534f;background:none;border:1px solid #d9534f33;padding:2px 8px;border-radius:3px;cursor:pointer;">Remove Image</button>` : ''}
+            <div id="ipo-logo-upload-error" style="display:none;color:#d9534f;font-size:9px;margin-top:4px;"></div>
         </div>
         <div class="wizard-nav">
             <button class="wizard-back-btn" onclick="closeIPOCreationModal()">Cancel</button>
@@ -16739,13 +16765,74 @@ function ipoUpdateStep1Next() {
     const btn = document.getElementById('ipo-step1-next');
     if (btn) btn.disabled = !ipoCreateName.trim() || !ipoCreateLogoText.trim();
     // Update preview
-    const preview = document.querySelector('.ipo-modal-body .trade-field:last-of-type div[style]');
+    const preview = document.getElementById('ipo-create-logo-preview');
     if (preview) preview.innerHTML = `Preview: ${ipoCreateLogoSymbol} ${escapeHtml(ipoCreateLogoText) || '...'}`;
 }
 
 function ipoSelectSymbol(s) {
     ipoCreateLogoSymbol = s;
-    renderIPOCreateStep();
+    // Update symbol buttons in-place instead of re-rendering the whole step
+    document.querySelectorAll('.ipo-symbol-btn').forEach(btn => {
+        btn.classList.toggle('selected', btn.textContent.trim() === s);
+    });
+    // Update preview text
+    const previewEl = document.getElementById('ipo-create-logo-preview');
+    if (previewEl) previewEl.innerHTML = `Preview: ${ipoCreateLogoSymbol} ${escapeHtml(ipoCreateLogoText) || '...'}`;
+}
+
+function ipoHandleLogoUpload(input) {
+    const file = input.files[0];
+    const errEl = document.getElementById('ipo-logo-upload-error');
+    if (!file) return;
+    if (!['image/png','image/jpeg','image/webp'].includes(file.type)) {
+        if (errEl) { errEl.textContent = 'Only PNG, JPG, or WebP images allowed.'; errEl.style.display = ''; }
+        input.value = '';
+        return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+        if (errEl) { errEl.textContent = 'Image must be under 2 MB.'; errEl.style.display = ''; }
+        input.value = '';
+        return;
+    }
+    if (errEl) errEl.style.display = 'none';
+    ipoCreateLogoFile = file;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        ipoCreateLogoPreviewUrl = e.target.result;
+        const zone = document.getElementById('ipo-logo-upload-zone');
+        if (zone) {
+            zone.innerHTML = `<img src="${ipoCreateLogoPreviewUrl}" class="ipo-logo-upload-preview" alt="preview" />
+                <div style="font-size:9px;color:var(--text-tertiary);margin-top:4px;">Click to replace</div>`;
+        }
+        // Show remove button by re-rendering just after the zone
+        const existing = zone?.parentElement?.querySelector('.ipo-logo-remove-btn');
+        if (!existing && zone?.parentElement) {
+            const btn = document.createElement('button');
+            btn.className = 'ipo-logo-remove-btn';
+            btn.style.cssText = 'margin-top:4px;font-size:9px;color:#d9534f;background:none;border:1px solid #d9534f33;padding:2px 8px;border-radius:3px;cursor:pointer;';
+            btn.textContent = 'Remove Image';
+            btn.onclick = function() { ipoRemoveLogoUpload(); };
+            zone.parentElement.insertBefore(btn, zone.nextSibling);
+        }
+    };
+    reader.readAsDataURL(file);
+}
+
+function ipoRemoveLogoUpload() {
+    ipoCreateLogoFile = null;
+    ipoCreateLogoPreviewUrl = null;
+    const zone = document.getElementById('ipo-logo-upload-zone');
+    if (zone) {
+        zone.innerHTML = `<div style="font-size:18px;color:var(--text-tertiary);">⬆</div>
+            <div style="font-size:10px;color:var(--text-tertiary);">Click to upload</div>
+            <div style="font-size:8px;color:var(--text-quaternary);margin-top:2px;">PNG · JPG · WebP</div>`;
+    }
+    const rmBtn = document.querySelector('.ipo-logo-remove-btn');
+    if (rmBtn) rmBtn.remove();
+    const fileInput = document.getElementById('ipo-logo-file-input');
+    if (fileInput) fileInput.value = '';
+    const errEl = document.getElementById('ipo-logo-upload-error');
+    if (errEl) errEl.style.display = 'none';
 }
 
 // ── Step 2: Charter Articles ──
@@ -17070,7 +17157,9 @@ function renderIPOCreateStep3() {
     return `
         <div class="ipo-confirm-preview">
             <div class="ipo-confirm-identity">
-                <span class="ipo-header-logo">${escapeHtml(ipoCreateLogoSymbol)} ${escapeHtml(ipoCreateLogoText)}</span>
+                ${ipoCreateLogoPreviewUrl
+                    ? `<img src="${ipoCreateLogoPreviewUrl}" class="ipo-header-logo ipo-logo-img" alt="" />`
+                    : `<span class="ipo-header-logo">${escapeHtml(ipoCreateLogoSymbol)} ${escapeHtml(ipoCreateLogoText)}</span>`}
                 <div>
                     <div style="font-family:var(--font-sans);font-size:13px;font-weight:700;color:#e2d9b4;">${escapeHtml(ipoCreateName)}</div>
                     ${ipoCreateDesc ? `<div style="font-family:var(--font-sans);font-size:10px;color:#6b6a5e;margin-top:2px;">${escapeHtml(ipoCreateDesc)}</div>` : ''}
@@ -17192,6 +17281,23 @@ async function submitIPOCreation() {
     if (!charter.resources) charter.resources = { solidarityFund: { enabled: false, contributionPerQuarter: 1 }, resourceSharingCap: null, jointStatementClause: 'vote', headquarters: null };
 
     try {
+        // Upload custom logo image if provided
+        let logoImageUrl = null;
+        if (ipoCreateLogoFile) {
+            const ext = ipoCreateLogoFile.name.split('.').pop() || 'png';
+            const filePath = `ipo-logos/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+            const { error: uploadErr } = await _supabase.storage
+                .from('public-assets')
+                .upload(filePath, ipoCreateLogoFile, { contentType: ipoCreateLogoFile.type, upsert: true });
+            if (uploadErr) {
+                console.error('[IPO] Logo upload failed:', uploadErr.message);
+                alert('Logo upload failed: ' + uploadErr.message);
+                return;
+            }
+            const { data: urlData } = _supabase.storage.from('public-assets').getPublicUrl(filePath);
+            logoImageUrl = urlData?.publicUrl || null;
+        }
+
         // Create org
         const { data: newOrg, error: orgErr } = await _supabase
             .from('international_orgs')
@@ -17200,6 +17306,7 @@ async function submitIPOCreation() {
                 description: ipoCreateDesc.trim() || null,
                 logo_symbol: ipoCreateLogoSymbol,
                 logo_text: ipoCreateLogoText.trim().toUpperCase(),
+                logo_image_url: logoImageUrl,
                 founded_at_tick: shardTick,
                 founding_party_id: currentFaction.id,
                 president_id: currentFaction.id,

@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS international_orgs (
     description                 TEXT,
     logo_symbol                 TEXT NOT NULL,             -- one of: ◈ ⬡ ▲ ◆ ⬢ ⊕
     logo_text                   TEXT NOT NULL,             -- max 4 characters, e.g. "PSI"
+    logo_image_url              TEXT,                      -- optional custom uploaded logo image
 
     -- Founding
     founded_at_tick             INT NOT NULL,
