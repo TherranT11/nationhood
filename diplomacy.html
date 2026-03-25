@@ -16219,7 +16219,7 @@ function renderIPOActionsPanel() {
         desc: stmtClause === 'president' ? 'Issue a statement on behalf of the org (president only).' : 'Issue a statement (requires a vote — use Votes panel).',
         cost: IPO_ACTION_COSTS.joint_statement,
         icon: '📜',
-        available: stmtClause === 'president' && isPresident
+        available: stmtClause === 'president' && isPresident && currentAp >= IPO_ACTION_COSTS.joint_statement
     });
 
     // Solidarity Fund Draw — president direct or vote
@@ -16439,6 +16439,7 @@ async function confirmHoldRally() {
         });
 
         closeIPOActionModal();
+        renderIPOActionsPanel();
         showIPOActionResult('Hold Rally for ' + targetName, outcome, approvalChange);
     } catch (e) {
         console.error('[IPO Action] Hold rally error:', e);
@@ -16515,6 +16516,7 @@ async function executeRallyAll() {
         });
 
         // Show combined result
+        renderIPOActionsPanel();
         showIPOActionResultMulti('Rally All Members', results);
     } catch (e) {
         console.error('[IPO Action] Rally all error:', e);
@@ -16657,6 +16659,7 @@ async function executeBackChannel() {
         }
 
         closeIPOActionModal();
+        renderIPOActionsPanel();
         alert(`Transferred ${amount} AP to ${targetName}.${exposed ? ' WARNING: The transfer was EXPOSED publicly!' : ' Transfer completed secretly.'}`);
     } catch (e) {
         console.error('[IPO Action] Back-channel error:', e);
@@ -16722,6 +16725,7 @@ async function executeDirectStatement() {
         });
 
         closeIPOActionModal();
+        renderIPOActionsPanel();
         alert('Statement published.');
     } catch (e) {
         console.error('[IPO Action] Statement error:', e);
