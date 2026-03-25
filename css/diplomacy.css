@@ -3856,6 +3856,48 @@ body.light-mode .ipo-empty-desc { color: #888; }
   background: var(--ipo-purple-hover);
 }
 
+/* ── Logo image (custom upload) ── */
+img.ipo-logo-img.ipo-sidebar-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid var(--ipo-purple-border);
+  flex-shrink: 0;
+}
+img.ipo-logo-img.ipo-header-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid var(--ipo-purple-border);
+  flex-shrink: 0;
+}
+.ipo-logo-upload-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 160px;
+  height: 80px;
+  border: 1px dashed rgba(139,126,200,0.3);
+  border-radius: 4px;
+  background: #141410;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ipo-logo-upload-zone:hover {
+  border-color: var(--ipo-purple);
+  background: var(--ipo-purple-faint);
+}
+.ipo-logo-upload-preview {
+  max-width: 56px;
+  max-height: 56px;
+  object-fit: contain;
+  border-radius: 3px;
+}
+
 /* ── Charter info bar ── */
 .ipo-charter-info {
   font-family: var(--font-mono);
