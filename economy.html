@@ -3417,16 +3417,9 @@ function formatBudgetCurrency(val) {
 
 function formatTradeVolume(val, sectorKey) {
     if (val == null) return '0';
-    val = Number(val);
-    var sign = val < 0 ? '-' : '';
-    var abs = Math.abs(val);
-    var suffix = (sectorKey === 'fuel_energy') ? ' barrels per day' : '';
-    if (sectorKey === 'fuel_energy') {
-        if (abs >= 1e9)  return sign + (abs / 1e9).toFixed(2) + ' billion' + suffix;
-        if (abs >= 1e6)  return sign + (abs / 1e6).toFixed(2) + ' million' + suffix;
-        return sign + Math.round(abs).toLocaleString() + suffix;
-    }
-    // Non-fuel sectors: use currency-style formatting
+    var vol = formatSectorVolume(Number(val), sectorKey);
+    if (vol) return vol;
+    // Sectors without display units (technology, services_finance): currency
     return formatBudgetCurrency(val);
 }
 

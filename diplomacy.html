@@ -16715,13 +16715,13 @@ function renderIPOCreateStep1() {
         <div class="trade-field">
             <label>Organisation Name</label>
             <input type="text" maxlength="40" value="${escapeHtml(ipoCreateName)}"
-                oninput="ipoCreateName=this.value;ipoUpdateStep1Next()"
+                oninput="ipoSetCreateName(this.value)"
                 id="ipo-create-name" placeholder="e.g. Progressive Socialist International" />
         </div>
         <div class="trade-field">
             <label>Description</label>
             <textarea maxlength="200" rows="2"
-                oninput="ipoCreateDesc=this.value"
+                oninput="ipoSetCreateDesc(this.value)"
                 style="width:100%;padding:4px 8px;font-size:0.78rem;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-family:var(--font-sans);border-radius:3px;resize:vertical;"
                 placeholder="Brief description of the organisation's purpose...">${escapeHtml(ipoCreateDesc)}</textarea>
         </div>
@@ -16732,7 +16732,7 @@ function renderIPOCreateStep1() {
         <div class="trade-field">
             <label>Logo Text (max 4 characters)</label>
             <input type="text" maxlength="4" value="${escapeHtml(ipoCreateLogoText)}"
-                oninput="ipoCreateLogoText=this.value.toUpperCase();ipoUpdateStep1Next()"
+                oninput="ipoSetCreateLogoText(this.value)"
                 id="ipo-create-logo-text" placeholder="e.g. PSI"
                 style="width:80px;text-transform:uppercase;" />
             <div id="ipo-create-logo-preview" style="margin-top:6px;font-family:var(--font-mono);font-size:10px;color:var(--ipo-purple);">
@@ -16757,7 +16757,7 @@ function renderIPOCreateStep1() {
             <button class="wizard-back-btn" onclick="closeIPOCreationModal()">Cancel</button>
             <button class="wizard-next-btn" id="ipo-step1-next"
                 ${(!ipoCreateName.trim() || !ipoCreateLogoText.trim()) ? 'disabled' : ''}
-                onclick="ipoCreateStep=2;renderIPOCreateStep()">Next</button>
+                onclick="ipoSetCreateStep(2)">Next</button>
         </div>`;
 }
 
@@ -16864,10 +16864,10 @@ function renderIPOCreateStep2() {
         <div class="ipo-article-list">${articleCards}</div>
         ${addDropdown}
         <div class="wizard-nav">
-            <button class="wizard-back-btn" onclick="ipoCreateStep=1;renderIPOCreateStep()">Back</button>
+            <button class="wizard-back-btn" onclick="ipoSetCreateStep(1)">Back</button>
             <button class="wizard-next-btn" id="ipo-step2-next"
                 ${!ipoValidateCharter() ? 'disabled' : ''}
-                onclick="ipoCreateStep=3;renderIPOCreateStep()">Next</button>
+                onclick="ipoSetCreateStep(3)">Next</button>
         </div>`;
 }
 
@@ -17179,7 +17179,7 @@ function renderIPOCreateStep3() {
             </div>
         </div>
         <div class="wizard-nav">
-            <button class="wizard-back-btn" onclick="ipoCreateStep=2;renderIPOCreateStep()">Back</button>
+            <button class="wizard-back-btn" onclick="ipoSetCreateStep(2)">Back</button>
             <button class="ipo-btn ipo-btn--create-large" onclick="submitIPOCreation()">
                 Create Organisation — ${apCost} AP
             </button>
@@ -17382,6 +17382,14 @@ window.ipoToggleIdeology = ipoToggleIdeology;
 window.ipoUpdateStep1Next = ipoUpdateStep1Next;
 window.ipoActiveArticles = ipoActiveArticles;
 window.submitIPOCreation = submitIPOCreation;
+window.renderIPOCreateStep = renderIPOCreateStep;
+window.ipoHandleLogoUpload = ipoHandleLogoUpload;
+window.ipoRemoveLogoUpload = ipoRemoveLogoUpload;
+// Setter functions for module-scoped variables used in inline handlers
+window.ipoSetCreateName = function(v) { ipoCreateName = v; ipoUpdateStep1Next(); };
+window.ipoSetCreateDesc = function(v) { ipoCreateDesc = v; };
+window.ipoSetCreateLogoText = function(v) { ipoCreateLogoText = v.toUpperCase(); ipoUpdateStep1Next(); };
+window.ipoSetCreateStep = function(s) { ipoCreateStep = s; renderIPOCreateStep(); };
 window.closeIPOAmendModal = closeIPOAmendModal;
 window.ipoAmendAddArticle = ipoAmendAddArticle;
 window.submitIPOAmend = submitIPOAmend;
