@@ -13823,7 +13823,7 @@ async function renderIPOView() {
             .from('ipo_invitations')
             .select(`
                 id, invited_role, invited_at_tick, status,
-                org:international_orgs ( id, name, logo_symbol, logo_text ),
+                org:international_orgs ( id, name, logo_symbol, logo_text, logo_image_url ),
                 inviter:invited_by ( id, faction_name )
             `)
             .eq('target_faction_id', currentFaction.id)
@@ -14440,7 +14440,7 @@ async function submitIPOExpel() {
                 org_id: ipoSelectedOrgId,
                 faction_id: currentFaction.id,
                 target_faction_id: targetId,
-                action_type: 'hold_rally', // reuse closest type — expulsion is logged via chat
+                action_type: 'expulsion',
                 action_data: { type: 'expulsion', target_name: targetName, by_president: true },
                 ap_cost: 0,
                 performed_at_tick: shardTick
