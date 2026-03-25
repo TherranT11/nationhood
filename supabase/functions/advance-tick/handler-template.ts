@@ -2212,10 +2212,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         const votePass = leadership.votePass || 'majority';
 
                         let passed = false;
-                        if (votePass === 'unanimous') {
+                        if (totalEligible === 0) {
+                            passed = false; // No members = cannot pass
+                        } else if (votePass === 'unanimous') {
                             passed = yes === totalEligible && no === 0;
                         } else {
-                            passed = yes > no && (totalEligible > 0 ? (yes / totalEligible) > 0.5 : false);
+                            passed = yes > no && (yes / totalEligible) > 0.5;
                         }
 
                         // Veto check
@@ -2235,7 +2237,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         }
 
                         // Expulsion clause override
-                        if (vote.vote_type === 'expulsion' && charter.membership?.expulsionClause === 'unanimous') {
+                        if (vote.vote_type === 'expulsion' && totalEligible > 0 && charter.membership?.expulsionClause === 'unanimous') {
                             passed = yes === totalEligible && no === 0;
                         }
 
