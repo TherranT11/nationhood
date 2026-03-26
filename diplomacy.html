@@ -16548,6 +16548,39 @@ const IPO_RALLY_OUTCOMES = [
 const IPO_BACK_CHANNEL_EXPOSURE_CHANCE = 0.25; // 25% chance of being exposed
 
 /**
+ * Apply an IPO rally approval change through the proper electorate system.
+ * Updates faction_electoral_standing.party_approval and logs to party_approval_log.
+ */
+async function ipoNudgeApproval(factionId, nationId, delta, source) {
+    if (!delta || delta === 0) return;
+    const { data: standing } = await _supabase
+        .from('faction_electoral_standing')
+        .select('id, party_approval')
+        .eq('faction_id', factionId)
+        .eq('nation_id', nationId)
+        .maybeSingle();
+    if (!standing) return;
+
+    const old = Number(standing.party_approval ?? 40);
+    const newApproval = Math.round(Math.min(100, Math.max(0, old + delta)) * 100) / 100;
+
+    await _supabase.from('faction_electoral_standing')
+        .update({ party_approval: newApproval })
+        .eq('id', standing.id);
+
+    // Audit log (non-fatal)
+    try {
+        await _supabase.from('party_approval_log').insert({
+            faction_id: factionId,
+            nation_id: nationId,
+            amount: delta,
+            source: source || 'ipo:rally',
+            tick: shardTick || 0
+        });
+    } catch (e) { /* non-blocking */ }
+}
+
+/**
  * Render the actions panel with available action buttons.
  */
 function renderIPOActionsPanel() {
@@ -16795,18 +16828,11 @@ async function confirmHoldRally() {
         const outcome = rollRallyOutcome();
         const approvalChange = randomInt(outcome.min, outcome.max);
 
-        // Fetch target faction's current approval
-        const { data: targetFaction } = await _supabase.from('factions')
-            .select('approval_rating')
-            .eq('id', targetId)
-            .single();
-        const currentApproval = targetFaction?.approval_rating || 40;
-
-        // Apply approval change to the TARGET faction
-        const newApproval = Math.max(0, Math.min(100, Math.round(currentApproval + approvalChange)));
-        await _supabase.from('factions')
-            .update({ approval_rating: newApproval })
-            .eq('id', targetId);
+        // Apply approval change to the TARGET faction via electorate system
+        const targetNationId = targetMember?.factions?.nation_id;
+        if (targetNationId) {
+            await ipoNudgeApproval(targetId, targetNationId, approvalChange, 'ipo:hold_rally');
+        }
 
         // Log the action
         const actionData = {
@@ -16870,6 +16896,7 @@ async function executeRallyAll() {
             const change = randomInt(outcome.min, outcome.max);
             return {
                 faction_id: m.faction_id,
+                nation_id: m.factions?.nation_id,
                 faction_name: m.factions?.faction_name || 'Unknown',
                 outcome_id: outcome.id,
                 outcome_name: outcome.name,
@@ -16877,16 +16904,10 @@ async function executeRallyAll() {
             };
         });
 
-        // Apply approval changes to each member faction
+        // Apply approval changes via electorate system
         for (const r of results) {
-            const { data: f } = await _supabase.from('factions')
-                .select('approval_rating').eq('id', r.faction_id).single();
-            if (f) {
-                const newApproval = Math.max(0, Math.min(100, Math.round((f.approval_rating || 40) + r.approval_change)));
-                await _supabase.from('factions')
-                    .update({ approval_rating: newApproval })
-                    .eq('id', r.faction_id);
-                if (r.faction_id === currentFaction.id) currentFaction.approval_rating = newApproval;
+            if (r.nation_id) {
+                await ipoNudgeApproval(r.faction_id, r.nation_id, r.approval_change, 'ipo:rally_all');
             }
         }
 

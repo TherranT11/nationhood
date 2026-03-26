@@ -3170,33 +3170,33 @@ body.light-mode .pol-blocs-box {
 /* ════════════════════════ PAGE-LEVEL SUB-TABS ════════════════════════ */
 .pol-page-tabs {
     display: flex;
-    gap: 2px;
-    padding: 0 24px;
-    border-bottom: 1px solid var(--dborder-hair);
+    gap: 0;
+    padding: 10px 24px;
     background: var(--dbg-1);
 }
 .pol-page-tab {
     font-family: var(--dfont-mono);
-    font-size: 10px;
+    font-size: 13px;
     font-weight: 500;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    letter-spacing: 0.04em;
     color: var(--dtxt-dim);
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    padding: 10px 14px;
+    background: transparent;
+    border: 1px solid var(--dborder-1);
+    padding: 6px 16px;
     cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
+    transition: all 0.15s;
 }
+.pol-page-tab:not(:last-child) { border-right: none; }
 .pol-page-tab:hover {
     color: var(--dtxt-muted);
+    background: var(--dbg-3);
 }
 .pol-page-tab.active {
     color: var(--dteal);
-    border-bottom-color: var(--dteal);
-    background: var(--dbg-3);
+    background: var(--dteal-faint);
+    border-color: var(--dteal-border);
 }
+.pol-page-tab.active + .pol-page-tab { border-left-color: var(--dteal-border); }
 .pol-page-content { display: none; }
 .pol-page-content.active { display: block; }
 
@@ -3909,11 +3909,11 @@ body.light-mode .pol-blocs-box {
 
 @media (max-width: 860px) {
     .pol-page-tabs {
-        padding: 8px 8px 0;
+        padding: 8px 8px;
     }
     .pol-page-tab {
-        padding: 6px 12px;
-        font-size: 10px;
+        padding: 5px 10px;
+        font-size: 11px;
     }
     .pol-grid-wrapper {
         grid-template-columns: 1fr;
