@@ -1303,7 +1303,7 @@ async function renderAgreementsTab() {
                     const articlesHtml = (ta.articles || []).map((art, i) =>
                         '<div class="agreement-card-term">' +
                             '<span class="proposal-article-num">Art. ' + toRoman(i + 1) + '</span> ' +
-                            '<span class="proposal-article-label">' + escapeHtml(renderTradeArticleSummary(art)) + '</span>' +
+                            '<span class="proposal-article-label">' + escapeHtml(renderTradeArticleSummary(art, currentNation.id)) + '</span>' +
                         '</div>'
                     ).join('');
 
@@ -1441,7 +1441,7 @@ async function renderAgreementsTab() {
                     const articlesHtml = (neg.draft_articles || []).map((art, i) =>
                         '<div class="agreement-card-term">' +
                             '<span class="proposal-article-num">Art. ' + toRoman(i + 1) + '</span> ' +
-                            '<span class="proposal-article-label">' + escapeHtml(renderTradeArticleSummary(art)) + '</span>' +
+                            '<span class="proposal-article-label">' + escapeHtml(renderTradeArticleSummary(art, currentNation.id)) + '</span>' +
                         '</div>'
                     ).join('');
 
@@ -4795,7 +4795,7 @@ async function renderWizardStep3TradeProposal() {
         html += '<div style="margin-top:12px;">';
         for (let i = 0; i < tradeArticles.length; i++) {
             const art = tradeArticles[i];
-            const summary = renderTradeArticleSummary(art);
+            const summary = renderTradeArticleSummary(art, currentNation.id);
             const artTypeInfo = TRADE_ARTICLE_TYPES[art.type];
             const artLabel = artTypeInfo?.label || art.type;
             const artDesc = artTypeInfo?.description || '';
@@ -5754,7 +5754,7 @@ async function viewActiveAgreement(agreementId) {
                         <div class="trade-article-card-header">
                             <span class="trade-article-card-type">Art. ${toRoman(i + 1)} &mdash; ${escapeHtml(artType.label)}${isStruck ? ' — STRUCK' : ''}</span>
                         </div>
-                        ${!isStruck ? '<div class="trade-article-card-summary">' + renderTradeArticleSummary(art) + '</div>' : ''}
+                        ${!isStruck ? '<div class="trade-article-card-summary">' + renderTradeArticleSummary(art, currentNation.id) + '</div>' : ''}
                     </div>
                 `;
             } else if (isV2) {
@@ -5916,7 +5916,7 @@ async function viewActiveTradeAgreement(agreementId) {
                     <div class="trade-article-card-header">
                         <span class="trade-article-card-type">Art. ${toRoman(i + 1)} &mdash; ${escapeHtml(artType?.label || art.type)}</span>
                     </div>
-                    <div class="trade-article-card-summary">${renderTradeArticleSummary(art)}</div>
+                    <div class="trade-article-card-summary">${renderTradeArticleSummary(art, currentNation.id)}</div>
                 </div>
             `;
         }
@@ -6203,7 +6203,7 @@ async function openTradeNegotiation(negotiationId) {
                         <span class="trade-article-card-type">Art. ${toRoman(i + 1)} &mdash; ${escapeHtml(artType?.label || art.type)}</span>
                         <button class="initiative-article-remove" onclick="removeTradeNegArticle('${neg.id}', ${i})">X</button>
                     </div>
-                    <div class="trade-article-card-summary">${renderTradeArticleSummary(art)}</div>
+                    <div class="trade-article-card-summary">${renderTradeArticleSummary(art, currentNation.id)}</div>
                 </div>
             `;
         }
@@ -6361,11 +6361,16 @@ function renderTradeEffectSummary(articles) {
     return '<div class="article-effects">' + tags.map(t => '<span class="effect-tag ' + t.cls + '">' + escapeHtml(t.label) + '</span>').join('') + '</div>';
 }
 
-function renderTradeArticleSummary(article) {
+// Render a human-readable summary of a trade article.
+// viewerNationId: if provided, perspective-dependent fields (we_sell/we_buy,
+// your_exports/their_exports) are flipped when the viewer is NOT the article author.
+function renderTradeArticleSummary(article, viewerNationId) {
     if (!article || !article.type) return 'Unknown article';
 
     // Defensive: support both { type, data: {...} } and flat { type, sector, ... } formats
     const d = (article.data && Object.keys(article.data).length > 0) ? article.data : article;
+    // Flip perspective if we know the author and the viewer is a different nation
+    const flipPerspective = viewerNationId && d.author_nation_id && d.author_nation_id !== viewerNationId;
 
     switch (article.type) {
         case 'duration': {
@@ -6378,12 +6383,16 @@ function renderTradeArticleSummary(article) {
         }
         case 'tariff_reduction': {
             const sector = TRADEABLE_SECTOR_MAP[d.sector];
-            const dirLabel = d.direction === 'mutual' ? 'Mutual' : d.direction === 'your_exports' ? 'Your exports' : 'Their exports';
+            let trDir = d.direction;
+            if (flipPerspective && trDir !== 'mutual') trDir = trDir === 'your_exports' ? 'their_exports' : 'your_exports';
+            const dirLabel = trDir === 'mutual' ? 'Mutual' : trDir === 'your_exports' ? 'Your exports' : 'Their exports';
             return (sector?.label || d.sector || 'Unknown') + ': ' + dirLabel + ' tariff reduction of ' + (d.reduction_pct || 0) + '%';
         }
         case 'supply_commitment': {
             const sector = TRADEABLE_SECTOR_MAP[d.sector];
-            const dirLabel = d.direction === 'we_buy' ? 'We buy from them' : 'We sell to them';
+            let scDir = d.direction;
+            if (flipPerspective) scDir = scDir === 'we_buy' ? 'we_sell' : 'we_buy';
+            const dirLabel = scDir === 'we_buy' ? 'We buy from them' : 'We sell to them';
             return (sector?.label || d.sector || 'Unknown') + ': ' + dirLabel + ', min ' + (d.commitment_pct || 0) + '% commitment';
         }
         case 'price_terms': {
@@ -8365,7 +8374,7 @@ function renderCounterAddedList(proposalId) {
 
     let html = '<div style="font-size:10px;color:var(--green);margin:8px 0 4px;">Your additions:</div>';
     counterTradeArticles.forEach((art, i) => {
-        const artLabel = renderTradeArticleSummary(art);
+        const artLabel = renderTradeArticleSummary(art, currentNation.id);
         const artTypeName = TRADE_ARTICLE_TYPES[art.type]?.label || art.type;
         html += `
             <div class="article-card article-card--added" style="display:flex;align-items:flex-start;justify-content:space-between;">
@@ -10419,7 +10428,7 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
             } else {
                 // V1 legacy rendering
                 const artLabel = isTradeAgreement
-                    ? renderTradeArticleSummary(art)
+                    ? renderTradeArticleSummary(art, currentNation.id)
                     : escapeHtml(art.text || art.label || art.type || 'Unknown');
                 const artTypeName = isTradeAgreement ? (TRADE_ARTICLE_TYPES[art.type]?.label || art.type) : '';
                 const cardClass = isStruck ? 'article-card article-card--struck' : 'article-card';
@@ -10438,7 +10447,7 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
         html += '<div style="font-size:10px;color:var(--green);margin:8px 0 4px;">Counter-party additions:</div>';
         for (let i = 0; i < addedArticles.length; i++) {
             const art = addedArticles[i];
-            const artLabel = isTradeAgreement ? renderTradeArticleSummary(art) : escapeHtml(art.text || art.label || 'Unknown');
+            const artLabel = isTradeAgreement ? renderTradeArticleSummary(art, currentNation.id) : escapeHtml(art.text || art.label || 'Unknown');
             const artTypeName = isTradeAgreement ? (TRADE_ARTICLE_TYPES[art.type]?.label || art.type) : '';
             html += `
                 <div class="article-card article-card--added">
@@ -10495,7 +10504,7 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
         for (let i = 0; i < articles.length; i++) {
             if (struckIndices.has(i)) continue; // already struck, skip
             const art = articles[i];
-            const artLabel = renderTradeArticleSummary(art);
+            const artLabel = renderTradeArticleSummary(art, currentNation.id);
             const artTypeName = TRADE_ARTICLE_TYPES[art.type]?.label || art.type;
             html += '<div style="display:flex;align-items:flex-start;gap:6px;margin:4px 0;">' +
                 '<input type="checkbox" class="strike-checkbox" data-proposal-id="' + p.id + '" data-article-index="' + i + '" style="margin-top:2px;" />' +
@@ -10745,7 +10754,7 @@ function renderTradeAgreementDraftPanel(body, statusEl) {
     } else {
         for (let i = 0; i < tradeArticles.length; i++) {
             const art = tradeArticles[i];
-            const summary = renderTradeArticleSummary(art);
+            const summary = renderTradeArticleSummary(art, currentNation.id);
             const artTypeInfo = TRADE_ARTICLE_TYPES[art.type];
             const artLabel = artTypeInfo?.label || art.type;
             const artDesc = artTypeInfo?.description || '';
