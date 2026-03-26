@@ -565,7 +565,7 @@ export async function issuePriceControls(supabase, nationId, factionId, stat) {
     if (insertErr) return { success: false, error: insertErr.message };
 
     // Party approval boost for populist action
-    await nudgeApproval(supabase, factionId, nationId, 2);
+    await nudgeApproval(supabase, factionId, nationId, 2, { source: 'executive_order:price_controls' });
 
     // Gov approval penalty
     await adjustGovernmentApprovalEvent(supabase, nationId, -3, 'executive_order:price_controls');
@@ -637,7 +637,7 @@ export async function issueNationalEmergency(supabase, nationId, factionId) {
     const { data: factions } = await supabase
         .from('factions').select('id').eq('nation_id', nationId).neq('id', factionId);
     for (const f of (factions || [])) {
-        await nudgeApproval(supabase, f.id, nationId, 2);
+        await nudgeApproval(supabase, f.id, nationId, 2, { source: 'executive_order:national_emergency' });
     }
 
     // Update overreach
@@ -746,12 +746,12 @@ export async function issueCensure(supabase, nationId, factionId, targetFactionI
     if (insertErr) return { success: false, error: insertErr.message };
 
     // Censure: -2 approval & -0.05 credibility to target
-    await nudgeApproval(supabase, targetFactionId, nationId, -2);
+    await nudgeApproval(supabase, targetFactionId, nationId, -2, { source: 'executive_order:censure' });
     await adjustCredibility(supabase, targetFactionId, nationId, -0.05);
 
     // Martyr effect: target regains some approval (bigger if repeated censure)
     const martyrApproval = Math.round(martyrMomentum * 0.3 * 100) / 100;
-    await nudgeApproval(supabase, targetFactionId, nationId, martyrApproval);
+    await nudgeApproval(supabase, targetFactionId, nationId, martyrApproval, { source: 'executive_order:censure_martyr' });
 
     // -3 gov approval
     await adjustGovernmentApprovalEvent(supabase, nationId, -3, 'executive_order:censure');

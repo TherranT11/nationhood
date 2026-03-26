@@ -5984,16 +5984,17 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const partyAbbr = playerFaction.abbreviation || '??';
     const partyName = playerFaction.faction_name || 'Unknown Party';
 
-    // Fetch standing, gov approval log, and government formation in parallel
-    const [standingRes, govLogRes, govFormRes] = await Promise.all([
+    // Fetch standing, party approval log, and government formation in parallel
+    const [standingRes, partyLogRes, govFormRes] = await Promise.all([
         _supabase.from('faction_electoral_standing')
             .select('faction_id, party_approval, polled_party_approval, last_polled_tick')
             .eq('nation_id', nation.id)
             .eq('faction_id', playerFaction.id)
             .maybeSingle(),
-        _supabase.from('gov_approval_log')
+        _supabase.from('party_approval_log')
             .select('amount, source, tick')
             .eq('nation_id', nation.id)
+            .eq('faction_id', playerFaction.id)
             .order('tick', { ascending: false })
             .limit(20),
         _supabase.from('government_formations')
@@ -6018,31 +6019,47 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const leadPartyId = govFormRes.data?.lead_party_id || null;
     const isGoverning = coalitionIds.includes(playerFaction.id) || leadPartyId === playerFaction.id;
 
-    // Build modifiers list from gov_approval_log
-    const govLog = govLogRes.data || [];
+    // Build modifiers list from party_approval_log (per-party events)
+    const partyLog = partyLogRes.data || [];
 
-    // Human-readable labels for gov_approval_log sources
+    // Human-readable labels for party_approval_log sources
     const _approvalSourceLabels = {
-        'bill_passage': 'Bill Passed',
-        'no_confidence:success': 'No Confidence Vote',
-        'crisis:economic_collapse': 'Economic Collapse',
-        'minister:nominee_self_rejected': 'Minister Rejected Nomination',
-        'executive_order:acting_minister_after_failed_vote': 'Acting Minister (Failed Vote)',
-        'executive_order:acting_minister_no_vote': 'Acting Minister (No Vote)',
-        'executive_order:tax_adjustment': 'Tax Adjustment',
+        'bill:passed': 'Bill Passed',
+        'bill:failed': 'Bill Failed',
+        'bill:promise_fulfilled': 'Promise Fulfilled',
+        'bill:promise_broken': 'Promise Broken',
+        'bill:veto': 'Bill Vetoed',
+        'rally': 'Rally',
+        'rally:approval_hit': 'Rally',
+        'outreach': 'Outreach',
+        'outreach:approval': 'Outreach',
+        'attack': 'Attack Ad',
+        'attack:received': 'Attacked',
+        'promise:kept': 'Promise Kept',
+        'promise:broken': 'Promise Broken',
+        'promise:expired': 'Promise Expired',
+        'protest:organiser': 'Protest Organised',
         'executive_order:price_controls': 'Price Controls',
         'executive_order:national_emergency': 'National Emergency',
-        'executive_order:censure': 'Censure',
-        'executive_order:emergency_bill_advance': 'Emergency Bill Advance',
+        'executive_order:censure': 'Censured',
+        'executive_order:censure_martyr': 'Censure Backlash',
+        'election:no_confidence_called': 'Called No Confidence',
+        'election:no_confidence_failed': 'No Confidence Failed',
+        'election:presidential_won': 'Won Presidential Election',
+        'election:presidential_lost': 'Lost Presidential Election',
+        'election:formation_timeout': 'Formation Timeout',
+        'impeachment:failed': 'Impeachment Failed',
+        'impeachment:survived': 'Survived Impeachment',
+        'crisis:sovereign_default': 'Sovereign Default',
     };
     function _formatSource(source) {
         if (_approvalSourceLabels[source]) return _approvalSourceLabels[source];
-        if (source.startsWith('crisis:resolved:')) return 'Crisis Resolved';
-        if (source.startsWith('crisis:')) return 'Crisis';
-        if (source.startsWith('protest:fizzle:')) return 'Protests Fizzled';
-        if (source.startsWith('protest:tier')) return 'Protests';
+        if (source.startsWith('crisis:cascade:')) return 'Crisis Fallout';
+        if (source.startsWith('crisis:resolved:')) return 'Crisis Resolved: ' + source.slice('crisis:resolved:'.length).replace(/_/g, ' ');
+        if (source.startsWith('crisis:')) return 'Crisis: ' + source.slice('crisis:'.length).replace(/_/g, ' ');
         if (source.startsWith('protest:')) return 'Protests';
-        if (source.startsWith('tax:')) return 'Tax Change';
+        if (source.startsWith('bill:')) return 'Legislation';
+        if (source.startsWith('election:')) return 'Election';
         if (source.startsWith('executive_order:')) return 'Executive Order';
         return source.replace(/_/g, ' ').replace(/:/g, ' — ');
     }
@@ -6055,12 +6072,12 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         return '#d9534f';
     }
 
-    // Build modifier rows HTML
+    // Build modifier rows HTML from party-specific approval log
     let modifiersHtml = '';
-    if (govLog.length === 0) {
+    if (partyLog.length === 0) {
         modifiersHtml = '<div style="font-size:10px;color:var(--dtext-3);font-style:italic;padding:6px 0">No recorded modifiers yet.</div>';
     } else {
-        for (const entry of govLog) {
+        for (const entry of partyLog) {
             const amt = Number(entry.amount);
             const sign = amt >= 0 ? '+' : '';
             const color = amt >= 0 ? '#5cb85c' : '#d9534f';
@@ -6129,7 +6146,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
 
             <!-- Modifiers header -->
             <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dtext-0);margin-bottom:6px">Modifiers</div>
-            <div style="font-size:9px;color:var(--dtext-3);margin-bottom:8px;font-style:italic">${isGoverning ? 'Events affecting government approval (your party drifts toward this)' : 'Events affecting national government approval'}</div>
+            <div style="font-size:9px;color:var(--dtext-3);margin-bottom:8px;font-style:italic">Recent events that changed your party's approval</div>
 
             <!-- Modifier list (scrollable) -->
             <div style="flex:1;overflow-y:auto;min-height:0">

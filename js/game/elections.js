@@ -790,11 +790,11 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
             await dissolveCoalition(supabase, nationId);
 
             // Calling party gets approval boost
-            await nudgeApproval(supabase, callingPartyId, nationId, 2);
+            await nudgeApproval(supabase, callingPartyId, nationId, 2, { source: 'election:no_confidence_called' });
 
             // All coalition parties take approval & credibility hit
             for (const partyId of coalitionPartyIds) {
-                await nudgeApproval(supabase, partyId, nationId, -3);
+                await nudgeApproval(supabase, partyId, nationId, -3, { source: 'election:no_confidence_called' });
                 await adjustCredibility(supabase, partyId, nationId, -0.05);
             }
             await adjustGovernmentApprovalEvent(supabase, nationId, -5, 'no_confidence:success');
@@ -829,12 +829,12 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
 
     } else {
         // FAILED: calling party takes approval & credibility hit
-        await nudgeApproval(supabase, callingPartyId, nationId, -3);
+        await nudgeApproval(supabase, callingPartyId, nationId, -3, { source: 'election:no_confidence_failed' });
         await adjustCredibility(supabase, callingPartyId, nationId, -0.05);
 
         // PM's party gets approval & credibility boost
         if (pmFactionId) {
-            await nudgeApproval(supabase, pmFactionId, nationId, 2);
+            await nudgeApproval(supabase, pmFactionId, nationId, 2, { source: 'election:no_confidence_failed' });
             await adjustCredibility(supabase, pmFactionId, nationId, 0.03);
         }
 
@@ -937,7 +937,7 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
         const penalty = partyId === pmFactionId
             ? GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST
             : GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST;
-        await nudgeApproval(supabase, partyId, nationId, -round2(penalty * 0.5));
+        await nudgeApproval(supabase, partyId, nationId, -round2(penalty * 0.5), { source: 'election:early_election' });
     }
 
     // Bust coalition cache after caretaker transition
@@ -1098,9 +1098,9 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
         .order('seats', { ascending: false });
 
     if (allParties && allParties.length > 0) {
-        await nudgeApproval(supabase, allParties[0].id, nation.id, -2);
+        await nudgeApproval(supabase, allParties[0].id, nation.id, -2, { source: 'election:formation_timeout' });
         if (allParties.length > 1) {
-            await nudgeApproval(supabase, allParties[1].id, nation.id, -2);
+            await nudgeApproval(supabase, allParties[1].id, nation.id, -2, { source: 'election:formation_timeout' });
         }
     }
 
@@ -1176,7 +1176,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
             // Penalize non-responsive invitees
             for (const pid of invitedPartyIds) {
                 if (!respondedPartyIds.has(pid)) {
-                    await nudgeApproval(supabase, pid, nation.id, -3);
+                    await nudgeApproval(supabase, pid, nation.id, -3, { source: 'election:formation_timeout' });
                     const partyName = allParties?.find(p => p.id === pid)?.faction_name || pid;
                     console.log(`  Non-responsive penalty: ${partyName} -3 approval`);
                 }
@@ -2376,11 +2376,11 @@ export async function processPresidentialElectionResult(supabase, nation, comple
 
         // Election effects: incumbent win boosts approval, challenger win penalizes loser
         if (isIncumbentWin && incumbentFactionId) {
-            await nudgeApproval(supabase, incumbentFactionId, nation.id, 3);
+            await nudgeApproval(supabase, incumbentFactionId, nation.id, 3, { source: 'election:presidential' });
             console.log(`Incumbent re-elected: +3 approval to ${winner.party_name}`);
         } else if (isChallengerWin && incumbentFactionId) {
-            await nudgeApproval(supabase, incumbentFactionId, nation.id, -4);
-            await nudgeApproval(supabase, winner.faction_id, nation.id, 3);
+            await nudgeApproval(supabase, incumbentFactionId, nation.id, -4, { source: 'election:presidential' });
+            await nudgeApproval(supabase, winner.faction_id, nation.id, 3, { source: 'election:presidential' });
             console.log(`Challenger wins: -4 approval to outgoing party, +3 to ${winner.party_name}`);
         }
     } catch (effectsErr) { console.warn('Could not apply winner/loser effects:', effectsErr); }
