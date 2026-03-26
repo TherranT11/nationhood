@@ -365,6 +365,11 @@ async function renderPartyTab(f, nation, data) {
         <div class="pol-columns">
         ${renderGovCard(nation, coalition, allParties, currentTick, prevApproval, president, administration)}
         <div class="pol-party-card">
+        <div class="pol-box-header">
+            <div class="pol-box-dot pol-box-dot--green"></div>
+            <span class="pol-box-label">Your Party</span>
+        </div>
+        <div class="pol-box-body">
         <div class="pol-header">
             <div class="pol-logo">${logoSvg}</div>
             <div class="pol-header-info">
@@ -409,6 +414,7 @@ async function renderPartyTab(f, nation, data) {
         </div>
         ${renderCaucusSection(caucusFactions, mySeats)}
         </div>
+        </div>
         ${renderParliamentBox(allParties, coalition, nation, f.id)}
         ${renderForecastBox(allParties, totalSeats, currentTick, nextElection, null, f.id)}
         </div>
@@ -416,8 +422,8 @@ async function renderPartyTab(f, nation, data) {
         <div class="pol-row-2">
         ${renderNationalMoodBox(nation, activeCrises, currentTick, issueStateMapInit)}
         <div class="pol-ideology-box" id="stance-summary-container">
-            <div class="pol-ideo-header"><span class="pol-mod-title">Stances</span></div>
-            <div id="stance-summary-strip"></div>
+            <div class="pol-ideo-header"><div class="pol-box-dot pol-box-dot--orange"></div><span class="pol-mod-title">Stances</span></div>
+            <div class="pol-box-body"><div id="stance-summary-strip"></div></div>
         </div>
         ${renderEditIdentityBox(f, currentTick)}
         </div>
@@ -1140,10 +1146,11 @@ function renderParliamentBox(allParties, coalition, nation, playerFactionId) {
     return `
         <div class="pol-parliament-box">
             <div class="pol-parl-header">
+                <div class="pol-box-dot pol-box-dot--amber"></div>
                 <span class="pol-parl-title">Parliament</span>
-                <span class="pol-parl-seats-count">${totalSeats} seats</span>
+                <div class="pol-box-header-right"><span class="pol-parl-seats-count">${totalSeats} seats</span></div>
             </div>
-
+            <div class="pol-box-body">
             <div class="pol-seat-bar-wrap">
                 <div class="pol-seat-bar">${segmentsHtml}</div>
                 ${majorityLineHtml}
@@ -1164,6 +1171,7 @@ function renderParliamentBox(allParties, coalition, nation, playerFactionId) {
             <div class="pol-margin-row ${marginCls}">
                 <span class="pol-margin-dot"></span>
                 <span>${marginText}</span>
+            </div>
             </div>
         </div>`;
 }
@@ -1198,12 +1206,15 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
         return `
             <div class="pol-forecast-box">
                 <div class="pol-fc-header">
+                    <div class="pol-box-dot pol-box-dot--blue"></div>
                     <span class="pol-mod-title">Election Forecast</span>
                 </div>
+                <div class="pol-box-body">
                 ${earlyElectionDate ? `<div style="text-align:center;padding:6px 0 2px;font-size:13px;letter-spacing:0.5px;color:var(--dtxt-secondary)">Next Election: <span style="color:var(--dtxt-primary);font-weight:600">${earlyElectionDate}</span></div>` : ''}
                 <div class="pol-fc-empty">
                     <div class="pol-fc-empty-title">Insufficient polling data</div>
                     <div class="pol-fc-empty-detail">${detail}</div>
+                </div>
                 </div>
             </div>`;
     }
@@ -1311,9 +1322,11 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
     return `
         <div class="pol-forecast-box">
             <div class="pol-fc-header">
+                <div class="pol-box-dot pol-box-dot--blue"></div>
                 <span class="pol-mod-title">Election Forecast</span>
-                <span class="pol-fc-phase" style="color:${phaseColor};background:${phaseColor}15">${phase}</span>
+                <div class="pol-box-header-right"><span class="pol-fc-phase" style="color:${phaseColor};background:${phaseColor}15">${phase}</span></div>
             </div>
+            <div class="pol-box-body">
             ${nextElectionDate ? `<div style="text-align:center;padding:6px 0 2px;font-size:13px;letter-spacing:0.5px;color:var(--dtxt-secondary)">Next Election: <span style="color:var(--dtxt-primary);font-weight:600">${nextElectionDate}</span></div>` : ''}
             <div class="pol-fc-countdown">
                 <div>
@@ -1337,6 +1350,7 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
                 <span class="pol-fc-maj-text">Majority: ${majority} seats</span>
             </div>
             ${statusHtml}
+            </div>
         </div>`;
 }
 
@@ -1391,11 +1405,14 @@ function renderNationalMoodBox(nation, activeCrises, currentTick, issueStateMap)
     return `
         <div class="pol-mood-box">
             <div class="pol-mood-header">
+                <div class="pol-box-dot pol-box-dot--red"></div>
                 <span class="pol-mood-title">Electorate Issues</span>
             </div>
+            <div class="pol-box-body">
             <div class="pol-mood-subtitle">Shows which issues matter most to the electorate.</div>
             ${crisesHtml}
             ${issuesHtml}
+            </div>
         </div>`;
 }
 
@@ -1573,10 +1590,15 @@ function renderGovCard(nation, coalition, allParties, currentTick, prevApproval,
     const footerDetail = `${govSeats}/${totalSeats} seats (${majority} needed)`;
 
     return `<div class="pol-admin-box">
+        <div class="pol-box-header">
+            <div class="pol-box-dot pol-box-dot--teal"></div>
+            <span class="pol-box-label">Government</span>
+        </div>
+        <div class="pol-box-body">
         <div style="font-family:var(--dfont-ui);font-size:16px;font-weight:700;color:var(--dtext-0);margin-bottom:8px">${escapeHtml(adminName)}</div>
         <div style="display:flex;gap:6px;margin-bottom:16px">
-            <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;padding:3px 8px;border-radius:3px;border:1px solid var(--dborder-1);color:var(--dtext-0);background:var(--dbg-4)">${escapeHtml(govTypeLabel)}</span>
-            ${coalitionBadge ? `<span style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;padding:3px 8px;border-radius:3px;border:1px solid var(--dborder-1);color:var(--dtext-0);background:var(--dbg-4)">${escapeHtml(coalitionBadge)}</span>` : ''}
+            <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;padding:3px 8px;border-radius:2px;border:1px solid var(--dborder-1);color:var(--dtext-0);background:var(--dbg-4)">${escapeHtml(govTypeLabel)}</span>
+            ${coalitionBadge ? `<span style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;padding:3px 8px;border-radius:2px;border:1px solid var(--dborder-1);color:var(--dtext-0);background:var(--dbg-4)">${escapeHtml(coalitionBadge)}</span>` : ''}
         </div>
 
         ${leader1Html}
@@ -1596,6 +1618,7 @@ function renderGovCard(nation, coalition, allParties, currentTick, prevApproval,
         <div style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--dtext-2);margin-bottom:8px">Party Events</div>
         <div id="gov-card-party-events" class="pe-feed" style="max-height:200px;overflow-y:auto;font-size:11px">
             <div style="color:var(--dtext-3);font-family:var(--dfont-ui);font-size:11px">Loading events...</div>
+        </div>
         </div>
     </div>`;
 }
@@ -1697,15 +1720,15 @@ function renderEditIdentityBox(f, currentTick) {
 
         <!-- Header -->
         <div class="pol-id-header">
-            <div>
-                <div class="pol-id-title">Edit Party Identity</div>
-                <div class="pol-id-subtitle">Cosmetic changes are free and instant</div>
-            </div>
-            <div class="pol-id-preview" id="pol-id-preview" style="border:2px solid ${color};background:${color}18">
-                ${previewSvg}
+            <div class="pol-box-dot pol-box-dot--amber"></div>
+            <span class="pol-id-title">Party Identity</span>
+            <div class="pol-box-header-right">
+                <div class="pol-id-preview" id="pol-id-preview" style="border:2px solid ${color};background:${color}18">
+                    ${previewSvg}
+                </div>
             </div>
         </div>
-        <div class="pol-id-divider"></div>
+        <div class="pol-box-body">
 
         <!-- Party Name -->
         <div style="margin-bottom:14px">
@@ -1789,6 +1812,7 @@ function renderEditIdentityBox(f, currentTick) {
         <div class="pol-id-footer">
             <div class="pol-id-footer-hint">Preview updates live ↗</div>
             <button class="pol-id-save-btn" id="pol-id-save-btn">Save Changes</button>
+        </div>
         </div>
     </div>`;
 }
@@ -2388,10 +2412,12 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
         data-faction-id="${faction?.id || ''}"
         data-nation-id="${nation?.id || ''}"
         data-current-tick="${currentTick || 0}">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-            <div class="pol-section-label" style="margin-bottom:0">ELECTION RESULTS</div>
-            ${endorseButtonHtml}
+        <div class="pol-box-header">
+            <div class="pol-box-dot pol-box-dot--teal"></div>
+            <span class="pol-box-label">Election Results</span>
+            <div class="pol-box-header-right">${endorseButtonHtml}</div>
         </div>
+        <div class="pol-box-body" style="padding:0">
         ${endorsePanelHtml}
         <div class="pol-el-tabs">
             <button class="pol-el-tab active" data-tab="parl">Parliamentary</button>
@@ -2399,6 +2425,7 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
         </div>
         <div class="pol-el-content active" data-content="parl">${renderParliamentaryContent(lastParliamentary)}</div>
         ${presContents}
+        </div>
     </div>`;
 }
 
@@ -2661,8 +2688,13 @@ function renderUpcomingElectionsBox(scheduledElections, currentTick) {
     }
 
     return `<div class="pol-upcoming-box">
-        <div class="pol-section-label" style="margin-bottom:12px">UPCOMING ELECTIONS</div>
+        <div class="pol-box-header">
+            <div class="pol-box-dot pol-box-dot--blue"></div>
+            <span class="pol-box-label">Upcoming Elections</span>
+        </div>
+        <div class="pol-box-body">
         ${bodyHtml}
+        </div>
     </div>`;
 }
 
@@ -6251,7 +6283,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
 
     // Build the Party Approval + Credibility + Alignment containers
     container.innerHTML = `
-    <div style="display:flex;flex-wrap:wrap;gap:16px;padding:10px 0">
+    <div style="display:flex;flex-wrap:wrap;gap:12px;padding:10px 0">
         <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
             <!-- Header -->
             <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${partyColor};margin-bottom:4px;font-weight:700">PARTY APPROVAL</div>
