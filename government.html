@@ -1376,8 +1376,8 @@ async function renderGovernmentPage() {
                     const countKey = log.ministry_key + ':' + log.action_key;
                     ministryActionUseCounts[countKey] = (ministryActionUseCounts[countKey] || 0) + 1;
                     if (!log.processed) {
-                        // For pharmaceutical regulation, store the direction as the value
-                        if (log.ministry_key === 'healthcare' && log.action_key === 'pharmaceuticalRegulation' && log.action_data?.direction) {
+                        // For direction-based actions, store the direction as the value
+                        if (log.action_data?.direction) {
                             activeMinistryActions[log.ministry_key + '-' + log.action_key] = log.action_data.direction;
                         } else {
                             activeMinistryActions[log.ministry_key + '-' + log.action_key] = true;
