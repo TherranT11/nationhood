@@ -1,17 +1,7 @@
--- RPC: fire_system_event
--- Inserts a system event into event_log with a trigger_key and placeholders.
--- Called from the tick processor, ministry actions, elections, bills, etc.
--- SECURITY DEFINER so client-side callers can write to event_log.
+-- Add Labor Ministry trigger keys to the fire_system_event RPC.
+-- Follows the same pattern as 20260324_healthcare_event_templates.sql.
 
--- Ensure trigger_key column exists (may already be present)
-ALTER TABLE event_log
-ADD COLUMN IF NOT EXISTS trigger_key TEXT DEFAULT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_event_log_trigger_key
-ON event_log (trigger_key)
-WHERE trigger_key IS NOT NULL;
-
--- Drop first in case the return type changed from a previous version
+DROP FUNCTION IF EXISTS fire_system_event(text, uuid, integer, jsonb);
 DROP FUNCTION IF EXISTS fire_system_event(uuid, text, integer, jsonb);
 
 CREATE OR REPLACE FUNCTION fire_system_event(
