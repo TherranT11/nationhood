@@ -5,7 +5,8 @@
 -- directional articles.
 --
 -- This also patches ALL trade agreements where articles lack author_nation_id,
--- using the linked diplomatic_proposal to determine the proposer.
+-- tracing through negotiation_id → trade_negotiations.initiating_proposal_id →
+-- diplomatic_proposals.proposing_nation_id to determine the original proposer.
 
 -- Step 1: Fix the NTEA specifically (Melizea → Palvera)
 UPDATE trade_agreements
@@ -28,8 +29,8 @@ WHERE agreement_name ILIKE '%NTEA%'
    OR agreement_name ILIKE '%National Trade Expansion%';
 
 -- Step 2: Generic fix for any other trade agreements missing author_nation_id.
--- Uses the diplomatic_proposal_id to look up the proposer nation.
--- Only updates directional article types (supply_commitment, tariff_reduction, subsidized_sector).
+-- Joins: trade_agreements.negotiation_id → trade_negotiations.initiating_proposal_id
+--      → diplomatic_proposals.proposing_nation_id
 UPDATE trade_agreements ta
 SET articles = (
     SELECT jsonb_agg(
@@ -46,8 +47,9 @@ SET articles = (
     )
     FROM jsonb_array_elements(ta.articles) AS art
 )
-FROM diplomatic_proposals dp
-WHERE ta.diplomatic_proposal_id = dp.id
+FROM trade_negotiations tn
+JOIN diplomatic_proposals dp ON dp.id = tn.initiating_proposal_id
+WHERE ta.negotiation_id = tn.id
   AND EXISTS (
     SELECT 1 FROM jsonb_array_elements(ta.articles) AS a
     WHERE (a->>'type' IN ('supply_commitment', 'tariff_reduction', 'subsidized_sector'))

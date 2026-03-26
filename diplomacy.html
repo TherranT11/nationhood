@@ -7893,7 +7893,8 @@ async function activateTradeAgreement(proposal, currentTick) {
         expires_at_tick: expiresAt,
         auto_renew: dt.auto_renew || false,
         withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
-        diplomatic_proposal_id: proposal.id
+        // Note: proposal.id is the diplomatic_proposals row; negotiation_id
+        // is set separately if this came through the negotiation flow.
     });
 
     if (error) {
