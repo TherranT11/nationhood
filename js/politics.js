@@ -6165,6 +6165,8 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         'impeachment:survived': 'Survived Impeachment',
         'crisis:sovereign_default': 'Sovereign Default',
         'article:published': 'News Article',
+        'ipo:hold_rally': 'IO Rally',
+        'ipo:rally_all': 'IO Rally (All Members)',
     };
     function _formatSource(source) {
         if (_approvalSourceLabels[source]) return _approvalSourceLabels[source];
