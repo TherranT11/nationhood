@@ -2539,7 +2539,8 @@ async function fmApprove(proposalId) {
     // Fire CIVIC news event
     await fireProposalEvent(pd, currentTick, 'approved',
         'Foreign Minister approved "' + (pd.name || 'Agreement') + '" between ' +
-        pd.proposer_nation_name + ' and ' + pd.target_nation_name + '. The agreement is now active.');
+        pd.proposer_nation_name + ' and ' + pd.target_nation_name + '. The agreement is now active.',
+        [proposal.proposing_nation_id, proposal.target_nation_id]);
 
     alert('"' + (pd.name || 'Agreement') + '" approved and is now active!');
     location.reload();
@@ -2621,7 +2622,8 @@ async function fmEscalate(proposalId) {
     // Fire CIVIC news event
     await fireProposalEvent(pd, currentTick, 'escalated',
         'The diplomatic agreement "' + (pd.name || 'Agreement') + '" has been escalated to Parliament for ratification. ' +
-        'A ratification bill has been introduced in committee.');
+        'A ratification bill has been introduced in committee.',
+        [proposal.proposing_nation_id, proposal.target_nation_id]);
 
     alert('"' + (pd.name || 'Agreement') + '" escalated to Parliament. Ratification bill submitted.');
     await renderNegotiationsBox();
@@ -2680,7 +2682,8 @@ async function fmReject(proposalId) {
     // Fire CIVIC news event
     await fireProposalEvent(pd, currentTick, 'rejected',
         'The Foreign Minister has ' + action + 'ed the diplomatic agreement "' + (pd.name || 'Agreement') +
-        '" between ' + pd.proposer_nation_name + ' and ' + pd.target_nation_name + '.');
+        '" between ' + pd.proposer_nation_name + ' and ' + pd.target_nation_name + '.',
+        [proposal.proposing_nation_id, proposal.target_nation_id]);
 
     alert('"' + (pd.name || 'Agreement') + '" ' + action + 'ed.');
     await renderNegotiationsBox();
@@ -2860,7 +2863,8 @@ async function forwardMajorToParliament(proposalId) {
     await fireProposalEvent(pd, currentTick, 'ratification_started',
         'The Major Diplomatic Initiative "' + (pd.name || 'Initiative') + '" between ' +
         pd.proposer_nation_name + ' and ' + pd.target_nation_name +
-        ' has been forwarded to both parliaments for ratification.');
+        ' has been forwarded to both parliaments for ratification.',
+        [proposal.proposing_nation_id, proposal.target_nation_id]);
 
     alert('"' + (pd.name || 'Initiative') + '" forwarded to both parliaments.\nBilateral ratification vote begins (' + MAJOR_INITIATIVE_CONFIG.RATIFICATION_VOTING_TICKS + ' ticks).');
     await renderNegotiationsBox();
@@ -2986,7 +2990,8 @@ async function counterMajorInitiative(proposalId) {
 
     await fireProposalEvent(pd, currentTick, 'counter_proposal',
         'The Foreign Minister of ' + currentNation.name + ' has sent a counter-proposal for "' +
-        (pd.name || 'Initiative') + '", striking ' + struckArticleIds.length + ' article(s).');
+        (pd.name || 'Initiative') + '", striking ' + struckArticleIds.length + ' article(s).',
+        [proposal.proposing_nation_id, proposal.target_nation_id]);
 
     alert('Counter-proposal sent. ' + struckArticleIds.length + ' article(s) struck.');
     await renderNegotiationsBox();
@@ -3185,7 +3190,7 @@ async function addEmbassyCost(nationId, amount) {
     }
 }
 
-async function fireProposalEvent(pd, currentTick, stage, description) {
+async function fireProposalEvent(pd, currentTick, stage, description, involvedNationIds) {
     try {
         // Map stage to trigger_key
         const triggerMap = {
@@ -3196,10 +3201,16 @@ async function fireProposalEvent(pd, currentTick, stage, description) {
         };
         const triggerKey = triggerMap[stage] || 'diplomatic_initiative_proposed';
 
-        const { data: allNations } = await _supabase.from('nations').select('id');
-        if (allNations && allNations.length > 0) {
-            const eventRows = allNations.map(n => ({
-                nation_id: n.id,
+        // Only send to the involved nations (not every nation in the game)
+        let targetNationIds = involvedNationIds;
+        if (!targetNationIds || targetNationIds.length === 0) {
+            // Fallback: use current nation only
+            targetNationIds = currentNation?.id ? [currentNation.id] : [];
+        }
+
+        if (targetNationIds.length > 0) {
+            const eventRows = targetNationIds.map(nId => ({
+                nation_id: nId,
                 event_name: (pd.name || 'Diplomatic Agreement') + ' — ' + stage.charAt(0).toUpperCase() + stage.slice(1),
                 trigger_key: triggerKey,
                 category: 'Diplomatic',
@@ -8034,7 +8045,8 @@ async function acceptProposal(proposalId) {
         await fireProposalEvent(pd, currentTick, 'ambassador_accepted',
             'Ambassadors have agreed on "' + (pd.name || 'Agreement') + '" between ' +
             pd.proposer_nation_name + ' and ' + pd.target_nation_name +
-            '. The MAJOR agreement now awaits Foreign Minister review.');
+            '. The MAJOR agreement now awaits Foreign Minister review.',
+            [proposal.proposing_nation_id, proposal.target_nation_id]);
 
         alert('"' + (pd.name || 'Initiative') + '" accepted by ambassadors.\n\nAs a MAJOR agreement, it has been forwarded to the Foreign Minister for review.');
         location.reload();
@@ -8056,12 +8068,13 @@ async function acceptProposal(proposalId) {
         // Apply effects (for diplomatic initiatives with relation/money effects)
         await applyProposalEffects(proposal, currentTick);
 
-        // Fire event for ALL nations
+        // Fire event for involved nations
         const articleNames = activeArticles.map(a => a.label || a.text || '').join(', ');
         await fireProposalEvent(pd, currentTick, 'activated',
             pd.proposer_nation_name + ' and ' + pd.target_nation_name +
             ' have signed "' + (pd.name || 'Diplomatic Initiative') + '". ' +
-            'The ' + articleCount + '-article agreement (' + articleNames + ') is effective for ' + (pd.duration_years || '?') + ' year(s).');
+            'The ' + articleCount + '-article agreement (' + articleNames + ') is effective for ' + (pd.duration_years || '?') + ' year(s).',
+            [proposal.proposing_nation_id, proposal.target_nation_id]);
 
         alert('"' + (pd.name || 'Initiative') + '" has been accepted and is now active!');
         location.reload();
