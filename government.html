@@ -56,7 +56,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest, seizeAutocraticPower } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest, seizeAutocraticPower, nudgeApproval } from './js/game-common.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
 (function () {
@@ -1218,7 +1218,7 @@ async function renderGovernmentPage() {
             fetchActiveCoalition(_supabase, currentNation.id),
             fetchMinistries(),
             _supabase.from('factions')
-                .select('id, faction_name, abbreviation, seats, approval_rating, loyalty, action_points, party_color, party_logo, custom_logo_url, leader_ideology, leader_positive_traits, leader_negative_traits')
+                .select('id, faction_name, abbreviation, seats, loyalty, action_points, party_color, party_logo, custom_logo_url, leader_ideology, leader_positive_traits, leader_negative_traits')
                 .eq('nation_id', currentNation.id).eq('faction_type', 'party')
         ]);
 
@@ -3122,7 +3122,7 @@ async function formGovernmentFallback(ministryBaselines) {
 
         const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
         const { data: allFactions } = await _supabase.from('factions')
-            .select('id, faction_name, seats, approval_rating')
+            .select('id, faction_name, seats')
             .eq('nation_id', currentNation.id).eq('faction_type', 'party');
         const { data: newFormation } = await _supabase.from('government_formations')
             .select('party_ids, ministry_assignments, proposed_by')
@@ -3137,10 +3137,14 @@ async function formGovernmentFallback(ministryBaselines) {
             const endReason = (recentElection && (shard?.current_tick - recentElection.election_tick) <= 8)
                 ? 'election_loss' : 'new_coalition';
 
-            const coalitionFactions = (allFactions || []).filter(f =>
-                (newFormation.party_ids || []).includes(f.id));
-            const govApproval = coalitionFactions.length > 0
-                ? Math.round(coalitionFactions.reduce((sum, f) => sum + (f.approval_rating ?? 40), 0) / coalitionFactions.length)
+            const coalitionIds = (newFormation.party_ids || []);
+            const { data: standings } = await _supabase.from('faction_electoral_standing')
+                .select('faction_id, party_approval')
+                .eq('nation_id', currentNation.id)
+                .in('faction_id', coalitionIds);
+            const coalitionApprovals = (standings || []).map(s => Number(s.party_approval ?? 40));
+            const govApproval = coalitionApprovals.length > 0
+                ? Math.round(coalitionApprovals.reduce((sum, a) => sum + a, 0) / coalitionApprovals.length)
                 : null;
 
             try {
@@ -6185,12 +6189,7 @@ async function confirmAssign() {
         }
 
         // +3% approval to the receiving party
-        const receivingParty = allParties.find(p => p.id === selectedCandidate.partyId);
-        if (receivingParty) {
-            const newApproval = Math.min(100, (receivingParty.approval_rating || 40) + 3);
-            await _supabase.from('factions').update({ approval_rating: newApproval })
-                .eq('id', selectedCandidate.partyId);
-        }
+        await nudgeApproval(_supabase, selectedCandidate.partyId, currentNation.id, 3, { source: 'minister:appointed' });
 
         await _supabase.from('ministry_requests').delete()
             .eq('nation_id', currentNation.id).eq('ministry_key', assignMinistryKey);
@@ -6552,21 +6551,17 @@ async function purgeMinister(ministryKey) {
             }
         }
 
-        const rulerApproval = currentFaction.approval_rating ?? 40;
-        const newRulerApproval = Math.min(100, rulerApproval + approvalBoost);
-        await _supabase.from('factions').update({
-            approval_rating: newRulerApproval
-        }).eq('id', currentFaction.id);
-        currentFaction.approval_rating = newRulerApproval;
+        if (approvalBoost > 0) {
+            await nudgeApproval(_supabase, currentFaction.id, currentNation.id, approvalBoost, { source: 'minister:purge_boost' });
+        }
 
         if (ministry.party_id && ministry.party_id !== rulingFactionId) {
             const target = allParties.find(p => p.id === ministry.party_id);
             const currentLoyalty = target?.loyalty ?? 50;
-            const currentApproval = target?.approval_rating ?? 50;
             await _supabase.from('factions').update({
-                loyalty: Math.max(0, currentLoyalty - loyaltyLoss),
-                approval_rating: Math.max(0, currentApproval - approvalLossPurged)
+                loyalty: Math.max(0, currentLoyalty - loyaltyLoss)
             }).eq('id', ministry.party_id);
+            await nudgeApproval(_supabase, ministry.party_id, currentNation.id, -approvalLossPurged, { source: 'minister:purged' });
         }
 
         const { data: nation } = await _supabase.from('nations').select('stability, corruption').eq('id', currentNation.id).single();

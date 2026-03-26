@@ -194,38 +194,38 @@ async function main() {
     console.log('\n[4/5] Inserting factions...');
     const factionDefs = {
         'Valdoria': [
-            { faction_name: 'Progressive Alliance', seats: 42, approval_rating: 58, action_points: 5, color: '#5b9bd5' },
-            { faction_name: 'National Unity Party', seats: 35, approval_rating: 52, action_points: 5, color: '#F44336' },
-            { faction_name: 'Green Future Coalition', seats: 25, approval_rating: 48, action_points: 5, color: '#5cb85c' },
-            { faction_name: 'Conservative Bloc', seats: 18, approval_rating: 42, action_points: 5, color: '#FF9800' }
+            { faction_name: 'Progressive Alliance', seats: 42, initial_approval: 58, action_points: 5, color: '#5b9bd5' },
+            { faction_name: 'National Unity Party', seats: 35, initial_approval: 52, action_points: 5, color: '#F44336' },
+            { faction_name: 'Green Future Coalition', seats: 25, initial_approval: 48, action_points: 5, color: '#5cb85c' },
+            { faction_name: 'Conservative Bloc', seats: 18, initial_approval: 42, action_points: 5, color: '#FF9800' }
         ],
         'Sangreza': [
-            { faction_name: 'Democratic Front', seats: 45, approval_rating: 52, action_points: 5, color: '#1565C0' },
-            { faction_name: 'Peoples Republic Movement', seats: 38, approval_rating: 48, action_points: 5, color: '#C62828' },
-            { faction_name: 'Liberty Party', seats: 22, approval_rating: 45, action_points: 5, color: '#F9A825' },
-            { faction_name: 'Workers Coalition', seats: 15, approval_rating: 40, action_points: 5, color: '#6A1B9A' }
+            { faction_name: 'Democratic Front', seats: 45, initial_approval: 52, action_points: 5, color: '#1565C0' },
+            { faction_name: 'Peoples Republic Movement', seats: 38, initial_approval: 48, action_points: 5, color: '#C62828' },
+            { faction_name: 'Liberty Party', seats: 22, initial_approval: 45, action_points: 5, color: '#F9A825' },
+            { faction_name: 'Workers Coalition', seats: 15, initial_approval: 40, action_points: 5, color: '#6A1B9A' }
         ],
         'Melizea': [
-            { faction_name: 'Ruling Junta', seats: 72, approval_rating: 38, action_points: 5, color: '#424242' },
-            { faction_name: 'Reform Movement', seats: 28, approval_rating: 55, action_points: 5, color: '#0097A7' },
-            { faction_name: 'Traditionalist Guard', seats: 20, approval_rating: 35, action_points: 5, color: '#5D4037' }
+            { faction_name: 'Ruling Junta', seats: 72, initial_approval: 38, action_points: 5, color: '#424242' },
+            { faction_name: 'Reform Movement', seats: 28, initial_approval: 55, action_points: 5, color: '#0097A7' },
+            { faction_name: 'Traditionalist Guard', seats: 20, initial_approval: 35, action_points: 5, color: '#5D4037' }
         ],
         'Palvera': [
-            { faction_name: 'Centro Democratico', seats: 40, approval_rating: 50, action_points: 5, color: '#1976D2' },
-            { faction_name: 'Partido Popular', seats: 35, approval_rating: 48, action_points: 5, color: '#D32F2F' },
-            { faction_name: 'Union Verde', seats: 25, approval_rating: 45, action_points: 5, color: '#388E3C' },
-            { faction_name: 'Frente Obrero', seats: 20, approval_rating: 42, action_points: 5, color: '#7B1FA2' }
+            { faction_name: 'Centro Democratico', seats: 40, initial_approval: 50, action_points: 5, color: '#1976D2' },
+            { faction_name: 'Partido Popular', seats: 35, initial_approval: 48, action_points: 5, color: '#D32F2F' },
+            { faction_name: 'Union Verde', seats: 25, initial_approval: 45, action_points: 5, color: '#388E3C' },
+            { faction_name: 'Frente Obrero', seats: 20, initial_approval: 42, action_points: 5, color: '#7B1FA2' }
         ],
         'Avelia': [
-            { faction_name: 'New Dawn Party', seats: 65, approval_rating: 65, action_points: 5, color: '#00BCD4' },  // 54% — triggers caucus system (2 factions)
-            { faction_name: 'Heritage Alliance', seats: 30, approval_rating: 55, action_points: 5, color: '#795548' },
-            { faction_name: 'Social Democrats', seats: 25, approval_rating: 58, action_points: 5, color: '#E91E63' }
+            { faction_name: 'New Dawn Party', seats: 65, initial_approval: 65, action_points: 5, color: '#00BCD4' },  // 54% — triggers caucus system (2 factions)
+            { faction_name: 'Heritage Alliance', seats: 30, initial_approval: 55, action_points: 5, color: '#795548' },
+            { faction_name: 'Social Democrats', seats: 25, initial_approval: 58, action_points: 5, color: '#E91E63' }
         ],
         'Montequilla': [
-            { faction_name: 'Solidarity Front', seats: 35, approval_rating: 28, action_points: 5, color: '#FF5722' },
-            { faction_name: 'Order & Progress', seats: 32, approval_rating: 25, action_points: 5, color: '#37474F' },
-            { faction_name: 'Peoples Voice', seats: 30, approval_rating: 30, action_points: 5, color: '#8BC34A' },
-            { faction_name: 'Independence Movement', seats: 23, approval_rating: 22, action_points: 5, color: '#FFC107' }
+            { faction_name: 'Solidarity Front', seats: 35, initial_approval: 28, action_points: 5, color: '#FF5722' },
+            { faction_name: 'Order & Progress', seats: 32, initial_approval: 25, action_points: 5, color: '#37474F' },
+            { faction_name: 'Peoples Voice', seats: 30, initial_approval: 30, action_points: 5, color: '#8BC34A' },
+            { faction_name: 'Independence Movement', seats: 23, initial_approval: 22, action_points: 5, color: '#FFC107' }
         ]
     };
 
@@ -249,7 +249,6 @@ async function main() {
                 faction_name: f.faction_name,
                 faction_type: 'party',
                 seats: f.seats,
-                approval_rating: f.approval_rating,
                 action_points: f.action_points,
                 color: f.color
             }).select('id').single();

@@ -1342,10 +1342,14 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     async function loadAllPlayers(filter) {
         try {
             document.getElementById('players-list').innerHTML = '<div class="no-players">Loading...</div>';
-            const [{ data: factions }, { data: shard }] = await Promise.all([
-                _supabase.from('factions').select('id, faction_name, abbreviation, faction_type, nation_id, nation, seats, approval_rating, action_points, last_seen_tick').order('faction_name'),
-                _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single()
+            const [{ data: factions }, { data: shard }, { data: allStandings }] = await Promise.all([
+                _supabase.from('factions').select('id, faction_name, abbreviation, faction_type, nation_id, nation, seats, action_points, last_seen_tick').order('faction_name'),
+                _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+                _supabase.from('faction_electoral_standing').select('faction_id, party_approval')
             ]);
+            const approvalMap = Object.fromEntries((allStandings || []).map(s => [s.faction_id, s.party_approval]));
+            // Attach party_approval to each faction for display
+            (factions || []).forEach(f => { f.party_approval = approvalMap[f.id] ?? null; });
             allPlayersCache = factions || [];
             shardCurrentTick = shard?.current_tick || 0;
             renderPlayers(filter);
@@ -1378,7 +1382,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 ? `<span style="background:#1a2a1a; color:#5cb85c; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">${escHtml(player.nation || 'Unknown')}</span>`
                 : `<span style="background:#2a1a1a; color:#d9534f; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NO NATION</span>`;
             const inactivityBadge = getInactivityBadge(player);
-            const statsHTML = hasNation ? `<div style="display:flex; gap:12px; margin-top:6px; font-size:0.75rem; color:#888;"><span>Seats: <strong style="color:#ffcc00;">${player.seats||0}</strong></span><span>Approval: <strong style="color:#ffcc00;">${player.approval_rating||0}%</strong></span><span>AP: <strong style="color:#ffcc00;">${player.action_points||0}</strong></span>${player.last_seen_tick != null ? '<span>Last seen: <strong style="color:#ffcc00;">tick ' + player.last_seen_tick + '</strong></span>' : ''}</div>` : `<div style="margin-top:6px; font-size:0.75rem; color:#d9534f; font-style:italic;">Not assigned to any nation</div>`;
+            const statsHTML = hasNation ? `<div style="display:flex; gap:12px; margin-top:6px; font-size:0.75rem; color:#888;"><span>Seats: <strong style="color:#ffcc00;">${player.seats||0}</strong></span><span>Approval: <strong style="color:#ffcc00;">${Math.round(player.party_approval||0)}%</strong></span><span>AP: <strong style="color:#ffcc00;">${player.action_points||0}</strong></span>${player.last_seen_tick != null ? '<span>Last seen: <strong style="color:#ffcc00;">tick ' + player.last_seen_tick + '</strong></span>' : ''}</div>` : `<div style="margin-top:6px; font-size:0.75rem; color:#d9534f; font-style:italic;">Not assigned to any nation</div>`;
             return `<div class="player-item" style="border-left-color:${borderColor}; margin-bottom:10px;"><div class="player-info" style="flex:1;"><div style="display:flex; align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap;"><span class="player-party">${escHtml(player.faction_name||'Unnamed')} ${player.abbreviation ? '['+escHtml(player.abbreviation)+']' : ''}</span>${nationBadge}${inactivityBadge}</div><div class="player-id">ID: ${player.id}</div>${statsHTML}</div><div style="display:flex; gap:6px; flex-direction:column;">${hasNation ? `<button class="btn-remove" style="font-size:0.75rem; padding:6px 12px;" onclick="removePlayer('${player.id}', '${player.nation_id}', '${(player.faction_name||'').replace(/'/g,"\\'")}')">KICK</button>` : ''}<button class="btn-remove" style="background:#aa0000; font-size:0.75rem; padding:6px 12px;" onclick="deleteParty('${player.id}', '${(player.faction_name||'').replace(/'/g,"\\'")}')">DELETE</button></div></div>`;
         }).join('');
     }

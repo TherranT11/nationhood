@@ -2855,7 +2855,7 @@ body.light-mode .action-badge {
   padding: 6px 16px;
   background: transparent;
   color: var(--text-dim);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid rgba(200,196,184,0.08);
   cursor: pointer;
   transition: all 0.15s;
 }
