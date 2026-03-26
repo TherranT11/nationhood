@@ -25147,7 +25147,23 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
             .eq('nation_id', nationId)
             .eq('steward_faction_id', factionId);
 
-        // 2d. V5 Autocracy: clean up faction_pillar_state, offers, votes for departing faction
+        // 2d. V5 Autocracy: transfer departing faction's pillar to wildcard, then clean up
+        const { data: departingPillar } = await supabase
+            .from('faction_pillar_state')
+            .select('pillar')
+            .eq('faction_id', factionId)
+            .eq('nation_id', nationId)
+            .maybeSingle();
+
+        if (departingPillar?.pillar) {
+            // Move departing faction's pillar into the wildcard slot with backing reset to 20
+            await supabase.from('autocracy_tracker').update({
+                wildcard_pillar: departingPillar.pillar,
+                wildcard_backing: 20,
+                wildcard_neglect_ticks: 0,
+            }).eq('nation_id', nationId);
+        }
+
         await Promise.allSettled([
             supabase.from('faction_pillar_state').delete().eq('faction_id', factionId).eq('nation_id', nationId),
             supabase.from('silent_coup_offers').delete().eq('to_faction_id', factionId).eq('nation_id', nationId),
