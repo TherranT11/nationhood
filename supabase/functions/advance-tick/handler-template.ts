@@ -869,28 +869,57 @@ async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
                     .eq('id', meta.invite_id);
             }
 
-            // Assign chat color
+            const admitRole = meta.requested_role || 'member';
+
+            // Check if target is an autocratic strongman — admit all factions of that autocracy
+            let factionsToAdmit = [{ id: meta.target_faction_id, name: meta.target_faction_name }];
+            try {
+                const { data: pillarState } = await supabase
+                    .from('faction_pillar_state')
+                    .select('faction_id, is_strongman, nation_id')
+                    .eq('faction_id', meta.target_faction_id)
+                    .eq('is_strongman', true)
+                    .maybeSingle();
+                if (pillarState) {
+                    const { data: allPillarFactions } = await supabase
+                        .from('faction_pillar_state')
+                        .select('faction_id, factions:faction_id ( faction_name )')
+                        .eq('nation_id', pillarState.nation_id);
+                    if (allPillarFactions && allPillarFactions.length > 0) {
+                        factionsToAdmit = allPillarFactions.map(pf => ({
+                            id: pf.faction_id,
+                            name: pf.factions?.faction_name || 'Unknown'
+                        }));
+                    }
+                }
+            } catch (e) { console.error('[IPO] Autocracy admission check failed:', e.message); }
+
+            // Assign chat colors and insert members
             const { data: existingMembers } = await supabase
                 .from('ipo_members')
                 .select('chat_color')
                 .eq('org_id', org.id)
                 .eq('is_active', true);
-            const usedColors = (existingMembers || []).map(m => m.chat_color).filter(Boolean);
-            const chatColor = IPO_CHAT_COLORS.find(c => !usedColors.includes(c)) || IPO_CHAT_COLORS[0];
+            const usedColors = new Set((existingMembers || []).map(m => m.chat_color).filter(Boolean));
 
-            const admitRole = meta.requested_role || 'member';
-            await supabase.from('ipo_members').insert({
-                org_id: org.id,
-                faction_id: meta.target_faction_id,
-                role: admitRole,
-                joined_at_tick: tick,
-                chat_color: chatColor
-            });
+            for (const f of factionsToAdmit) {
+                const chatColor = IPO_CHAT_COLORS.find(c => !usedColors.has(c)) || IPO_CHAT_COLORS[0];
+                usedColors.add(chatColor);
+                await supabase.from('ipo_members').insert({
+                    org_id: org.id,
+                    faction_id: f.id,
+                    role: admitRole,
+                    joined_at_tick: tick,
+                    chat_color: chatColor
+                });
+            }
 
-            const roleLabel = admitRole === 'observer' ? 'an observer' : 'a member';
+            const admitMsg = factionsToAdmit.length > 1
+                ? `${meta.target_faction_name || 'An autocratic regime'} and its ${factionsToAdmit.length - 1} faction(s) have been admitted.`
+                : `${meta.target_faction_name || 'A new party'} has been admitted as ${admitRole === 'observer' ? 'an observer' : 'a member'}.`;
             await supabase.from('ipo_chat').insert({
                 org_id: org.id, faction_id: null, is_system: true,
-                message_text: `${meta.target_faction_name || 'A new party'} has been admitted as ${roleLabel}.`,
+                message_text: admitMsg,
                 tick_posted: tick
             });
             break;
@@ -2362,7 +2391,25 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     const contribution = resources.solidarityFund.contributionPerQuarter || 1;
                     let totalCollected = 0;
 
+                    // Identify autocratic non-strongman factions (they don't contribute — only strongman pays for the whole regime)
+                    const memberFactionIds = fullMembers.map(m => m.faction_id);
+                    let autocraticNonStrongmanIds = new Set();
+                    if (memberFactionIds.length > 0) {
+                        try {
+                            const { data: pillarStates } = await supabase
+                                .from('faction_pillar_state')
+                                .select('faction_id, is_strongman')
+                                .in('faction_id', memberFactionIds);
+                            for (const ps of (pillarStates || [])) {
+                                if (!ps.is_strongman) autocraticNonStrongmanIds.add(ps.faction_id);
+                            }
+                        } catch (e) { /* non-fatal */ }
+                    }
+
                     for (const m of fullMembers) {
+                        // Skip non-strongman autocratic factions (strongman pays for the whole regime)
+                        if (autocraticNonStrongmanIds.has(m.faction_id)) continue;
+
                         // Deduct AP from faction
                         const { data: deducted } = await supabase.rpc('deduct_ap', {
                             p_faction_id: m.faction_id,
