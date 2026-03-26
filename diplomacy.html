@@ -15174,26 +15174,53 @@ async function acceptIPOInvite(inviteId) {
             alert('Your application has been submitted. The organisation will vote on your membership.');
         } else {
             // Direct admission (president decides, or observer role)
-            const chatColor = await assignIPOChatColor(invite.org_id);
+            // Check if this is a strongman — if so, admit all pillar factions
+            let factionsToAdmit = [{ id: currentFaction.id, name: currentFaction.faction_name }];
+            try {
+                const { data: pillarState } = await _supabase
+                    .from('faction_pillar_state')
+                    .select('faction_id, is_strongman')
+                    .eq('faction_id', currentFaction.id)
+                    .eq('is_strongman', true)
+                    .maybeSingle();
+                if (pillarState) {
+                    const { data: allPillarFactions } = await _supabase
+                        .from('faction_pillar_state')
+                        .select('faction_id, factions:faction_id ( faction_name )')
+                        .eq('nation_id', currentNation.id);
+                    if (allPillarFactions && allPillarFactions.length > 0) {
+                        factionsToAdmit = allPillarFactions.map(pf => ({
+                            id: pf.faction_id,
+                            name: pf.factions?.faction_name || 'Unknown'
+                        }));
+                    }
+                }
+            } catch (e) { console.error('[IPO] Autocracy direct admission check failed:', e.message); }
 
-            await _supabase.from('ipo_members').insert({
-                org_id: invite.org_id,
-                faction_id: currentFaction.id,
-                role: invite.invited_role,
-                joined_at_tick: shardTick,
-                chat_color: chatColor
-            });
+            for (const f of factionsToAdmit) {
+                const chatColor = await assignIPOChatColor(invite.org_id);
+                await _supabase.from('ipo_members').insert({
+                    org_id: invite.org_id,
+                    faction_id: f.id,
+                    role: invite.invited_role,
+                    joined_at_tick: shardTick,
+                    chat_color: chatColor
+                });
+            }
 
             await _supabase.from('ipo_invitations')
                 .update({ status: 'accepted', responded_at_tick: shardTick })
                 .eq('id', inviteId);
 
             // System chat message
+            const admitMsg = factionsToAdmit.length > 1
+                ? `${currentFaction.faction_name} and its ${factionsToAdmit.length - 1} faction(s) have joined the organisation.`
+                : `${currentFaction.faction_name} has joined the organisation.`;
             await _supabase.from('ipo_chat').insert({
                 org_id: invite.org_id,
                 faction_id: null,
                 is_system: true,
-                message_text: `${currentFaction.faction_name} has joined the organisation.`,
+                message_text: admitMsg,
                 tick_posted: shardTick
             });
         }
