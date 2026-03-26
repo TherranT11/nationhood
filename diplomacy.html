@@ -14832,16 +14832,17 @@ async function openIPOExpelModal() {
         return;
     }
 
-    // Fetch members (exclude self)
-    const otherMembers = ipoVoteMembers.filter(m => m.faction_id !== currentFaction.id);
+    // Fetch members (exclude self) — include observers so they can be expelled too
+    const otherMembers = ipoAllMembers.filter(m => m.faction_id !== currentFaction.id);
     if (otherMembers.length === 0) {
         alert('No other members to expel.');
         return;
     }
 
-    const memberOpts = otherMembers.map(m =>
-        `<option value="${m.faction_id}">${escapeHtml(m.factions?.faction_name || 'Unknown')}</option>`
-    ).join('');
+    const memberOpts = otherMembers.map(m => {
+        const roleTag = m.role === 'observer' ? ' (Observer)' : '';
+        return `<option value="${m.faction_id}">${escapeHtml(m.factions?.faction_name || 'Unknown')}${roleTag}</option>`;
+    }).join('');
 
     const modeLabel = expClause === 'president'
         ? 'As president, you can expel a member immediately.'
@@ -15482,7 +15483,8 @@ async function submitIPOAmend() {
 
 let ipoVotes = [];           // cached votes for current org
 let ipoVoteBallots = {};     // { vote_id: [ballot, ...] }
-let ipoVoteMembers = [];     // cached members for ballot context
+let ipoVoteMembers = [];     // cached full members (voters) for ballot context
+let ipoAllMembers = [];      // cached all members including observers (for expulsion targets)
 let _ipoActionLock = false;  // debounce lock for all IPO actions that write to DB
 const IPO_VOTE_DURATION = 8; // ticks until vote closes
 const IPO_MAX_OPEN_VOTES = 5; // max concurrent open votes per org
@@ -15559,7 +15561,8 @@ async function loadIPOVotes(orgId) {
             .select('faction_id, role, factions:faction_id ( faction_name, nation_id )')
             .eq('org_id', orgId)
             .eq('is_active', true);
-        ipoVoteMembers = (members || []).filter(m => m.role === 'member');
+        ipoAllMembers = members || [];
+        ipoVoteMembers = ipoAllMembers.filter(m => m.role === 'member');
 
     } catch (e) {
         console.error('[IPO Votes] Load exception:', e);
@@ -15862,9 +15865,12 @@ async function renderIPOVoteModalForm() {
             break;
         }
         case 'expulsion': {
-            const memberOptions = ipoVoteMembers
+            const memberOptions = ipoAllMembers
                 .filter(m => m.faction_id !== currentFaction.id)
-                .map(m => `<option value="${m.faction_id}">${escapeHtml(m.factions?.faction_name || 'Unknown')}</option>`)
+                .map(m => {
+                    const roleTag = m.role === 'observer' ? ' (Observer)' : '';
+                    return `<option value="${m.faction_id}">${escapeHtml(m.factions?.faction_name || 'Unknown')}${roleTag}</option>`;
+                })
                 .join('');
             formFields = `
                 <label class="ipo-vote-form-label">Member to Expel</label>
