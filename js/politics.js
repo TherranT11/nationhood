@@ -4,7 +4,7 @@ import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate } from './utils.js';
 
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeEndorsementPreference, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, executeIdeologicalPivot, PIVOT_CONFIG } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeEndorsementPreference, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, suspendIdeologyAction, continueIdeologyAction, cancelIdeologyAction, executeIdeologicalPivot, PIVOT_CONFIG } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { statDirectionSign } from './game/stats.js';
@@ -2979,9 +2979,9 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
         .gte('tick_performed', tick - 10)
         .order('tick_performed', { ascending: false });
     const { data: activeShiftActions } = await _supabase.from('ideology_shift_actions')
-        .select('id, action_type, target_axis, target_direction, drift_rate, created_tick, status')
+        .select('id, action_type, target_axis, target_direction, drift_rate, created_tick, status, band_shift_total')
         .eq('faction_id', f.id)
-        .eq('status', 'active');
+        .in('status', ['active', 'paused']);
 
     _caCooldowns = {};
     _caUsedThisTick = {};
@@ -3090,7 +3090,12 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             ? `<span class="ca-used-badge">USED</span>`
             : onCooldown
             ? `<span class="ca-cd-badge">${cdRemaining} tick${cdRemaining !== 1 ? 's' : ''} CD</span>`
-            : isActive ? `<span class="ca-active-badge">ACTIVE</span>` : '';
+            : isActive ? (() => {
+                const match = _caActiveActions.find(a => a.action_type === act.id.replace('fund_', ''));
+                return match?.status === 'paused'
+                    ? `<span class="ca-active-badge" style="background:#f97316">PAUSED</span>`
+                    : `<span class="ca-active-badge">ACTIVE</span>`;
+            })() : '';
         listHtml += `<div class="ca-item${isSel ? ' selected' : ''}${!ok ? ' disabled' : ''}${onCooldown ? ' ca-item--cooldown' : ''}${usedThisTick ? ' ca-item--used' : ''}" data-action-id="${act.id}" style="border-left-color:${borderColor};${bgStyle}${borderStyle}${!ok ? 'opacity:0.35;' : ''}">
             <div class="ca-item-head">
                 <div style="display:flex;align-items:center;gap:6px">
@@ -3130,7 +3135,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
         panelHtml += `</div>`;
     }
 
-    // Build Active Actions table
+    // Build Active Actions table (includes paused actions)
     let activeActionsHtml = '';
     if (_caActiveActions.length > 0) {
         const durationMap = { think_tank: IDEO_SHIFT_CONFIG.THINK_TANK.DURATION, media_campaign: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.DURATION + (IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.VISIBILITY_TICKS || 0), grassroots_movement: IDEO_SHIFT_CONFIG.GRASSROOTS.DURATION };
@@ -3139,6 +3144,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
         for (const ax of IDEOLOGY_AXES) {
             axisMap[ax.key] = ax;
         }
+        const canManage = (type) => type === 'think_tank' || type === 'grassroots_movement';
         let rows = _caActiveActions.map(a => {
             const totalDuration = durationMap[a.action_type] || 50;
             const ticksActive = tick - a.created_tick;
@@ -3148,16 +3154,38 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             const dirLabel = a.target_direction === 'left' ? axDef?.leftLabel : a.target_direction === 'right' ? axDef?.rightLabel : a.target_direction === 'expand' ? `Expand ${axisName}` : a.target_direction === 'narrow' ? `Narrow ${axisName}` : a.target_direction || '?';
             const effectLabel = a.drift_rate ? `+${a.drift_rate}/tick ${dirLabel}` : dirLabel;
             const activatedDate = tickToDate(a.created_tick);
+            const isPaused = a.status === 'paused';
+            const statusLabel = isPaused ? '<span style="color:#f97316;font-weight:600">PAUSED</span>' : `${ticksLeft}`;
+
+            // Management buttons for think_tank and grassroots_movement
+            let btnsHtml = '';
+            if (canManage(a.action_type)) {
+                if (isPaused) {
+                    btnsHtml = `<td style="text-align:right;white-space:nowrap">
+                        <button class="ca-manage-btn" data-action="continue" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#5cb85c;color:#fff;border:none;border-radius:3px">Continue — 1 AP</button>
+                        <button class="ca-manage-btn" data-action="cancel" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#d9534f;color:#fff;border:none;border-radius:3px">Cancel — 2 AP</button>
+                    </td>`;
+                } else {
+                    btnsHtml = `<td style="text-align:right;white-space:nowrap">
+                        <button class="ca-manage-btn" data-action="suspend" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#c8a44e;color:#fff;border:none;border-radius:3px">Suspend — 1 AP</button>
+                        <button class="ca-manage-btn" data-action="cancel" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#d9534f;color:#fff;border:none;border-radius:3px">Cancel — 2 AP</button>
+                    </td>`;
+                }
+            } else {
+                btnsHtml = '<td></td>';
+            }
+
             return `<tr>
                 <td style="font-weight:600">${nameMap[a.action_type] || a.action_type}</td>
                 <td>${activatedDate}</td>
                 <td>${effectLabel}</td>
-                <td style="text-align:right">${ticksLeft}</td>
+                <td style="text-align:right">${statusLabel}</td>
+                ${btnsHtml}
             </tr>`;
         }).join('');
         activeActionsHtml = `<div class="ca-active-actions" style="margin-top:16px;">
             <div class="pe-header"><span class="pol-mod-title">Active Actions</span></div>
-            <table class="pol-el-table" style="margin-top:4px"><thead><tr><th>Action</th><th>Activated</th><th>Effect</th><th style="text-align:right">Ticks Left</th></tr></thead><tbody>${rows}</tbody></table>
+            <table class="pol-el-table" style="margin-top:4px"><thead><tr><th>Action</th><th>Activated</th><th>Effect</th><th style="text-align:right">Ticks Left</th><th></th></tr></thead><tbody>${rows}</tbody></table>
         </div>`;
     }
 
@@ -3178,6 +3206,42 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
 
     // Load party events feed
     _loadPartyEventsFeed(n.id, f.id);
+
+    // Wire up Suspend/Continue/Cancel buttons for ideology shift actions
+    container.querySelectorAll('.ca-manage-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (btn.dataset.executing) return;
+            btn.dataset.executing = 'true';
+            btn.style.opacity = '0.4';
+            const actionId = btn.dataset.id;
+            const op = btn.dataset.action;
+            try {
+                let result;
+                if (op === 'suspend') {
+                    result = await suspendIdeologyAction(_supabase, f.id, actionId, tick);
+                } else if (op === 'continue') {
+                    result = await continueIdeologyAction(_supabase, f.id, actionId, tick);
+                } else if (op === 'cancel') {
+                    result = await cancelIdeologyAction(_supabase, f.id, n.id, actionId, tick);
+                }
+                if (result?.success) {
+                    if (result.newAp != null) f.action_points = result.newAp;
+                    const freshAp = await refreshAP(f.id);
+                    if (freshAp !== undefined) f.action_points = freshAp;
+                    _showToast(result.message || 'Done.');
+                    await renderDemocracyActions(n, f, _currentShard, _currentAllParties);
+                } else {
+                    _showToast(result?.message || 'Action failed.');
+                }
+            } catch (err) {
+                _showToast('Error: ' + err.message);
+            } finally {
+                btn.dataset.executing = '';
+                btn.style.opacity = '1';
+            }
+        });
+    });
 
     // Wire up action selection
     container.querySelectorAll('.ca-item').forEach(el => {
@@ -3235,35 +3299,35 @@ async function _renderActionsPromisesPanel(faction, nation, tick) {
         .select('*')
         .eq('party_id', faction.id)
         .eq('nation_id', nation.id)
-        .eq('status', 'active');
+        .in('status', ['active', 'pending_election']);
 
     if (promisesErr) {
         container.innerHTML = `<div style="color:var(--dred);font-family:var(--dfont-mono);font-size:11px;padding:8px">Failed to load promises.</div>`;
         return;
     }
 
-    const activePromises = promises || [];
+    const allPromises = promises || [];
 
     let rowsHtml = '';
-    if (activePromises.length === 0) {
+    if (allPromises.length === 0) {
         rowsHtml = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px 0">No active promises.</div>';
     } else {
-        for (const p of activePromises) {
-            // Field sources (written by executeMakePromise in political-actions.js):
-            //   p.tick_deadline  — absolute tick the promise expires
-            //   p.demand_type    — 'stat_target' | 'crisis_resolution'
-            //   p.demand_text    — full human-readable label ("Reduce Inflation to 30", "Resolve X Crisis")
-            //   p.conditions.direction — 'above' (↑) | 'below' (↓) for stat_target promises
-            const ticksLeft = Math.max(0, (p.tick_deadline || 0) - tick);
-            const isUrgent = ticksLeft <= 3;
-            const isCritical = ticksLeft <= 1;
-            const tickColor = isCritical ? 'var(--dred)' : isUrgent ? 'var(--damber)' : 'var(--dgreen)';
+        for (const p of allPromises) {
+            const isPending = p.status === 'pending_election';
             const isCrisis = p.demand_type === 'crisis_resolution';
-            // demand_text is the authoritative display label for all promise types.
-            // It is written by executeMakePromise as a complete sentence: "Reduce Inflation to 30"
-            // or "Resolve [Crisis Name]". No reconstruction from conditions needed.
             const label = p.demand_text || (isCrisis ? 'Resolve crisis' : 'Improve stat');
             const direction = isCrisis ? '✓' : (p.conditions?.direction === 'above' ? '↑' : '↓');
+
+            let statusHtml;
+            if (isPending) {
+                statusHtml = `<span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:#94a3b8">⏳ Awaiting election</span>`;
+            } else {
+                const ticksLeft = Math.max(0, (p.tick_deadline || 0) - tick);
+                const isUrgent = ticksLeft <= 3;
+                const isCritical = ticksLeft <= 1;
+                const tickColor = isCritical ? 'var(--dred)' : isUrgent ? 'var(--damber)' : 'var(--dgreen)';
+                statusHtml = `<span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:${tickColor}">${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} left</span>`;
+            }
 
             rowsHtml += `
             <div style="padding:6px 0;border-bottom:1px solid var(--dborder-1)">
@@ -3272,7 +3336,7 @@ async function _renderActionsPromisesPanel(faction, nation, tick) {
                         <span style="font-family:var(--dfont-mono);font-size:12px;color:var(--dtext-0)">${direction}</span>
                         <span style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0);margin-left:4px">${escapeHtml(label)}</span>
                     </div>
-                    <span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:${tickColor}">${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} left</span>
+                    ${statusHtml}
                 </div>
             </div>`;
         }
@@ -3281,8 +3345,8 @@ async function _renderActionsPromisesPanel(faction, nation, tick) {
     container.innerHTML = `
     <div style="border:1px solid var(--dborder-1);border-radius:6px;padding:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <span style="font-family:var(--dfont-ui);font-size:13px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:0.5px">Active Promises</span>
-            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-2)">${activePromises.length} / ${MAKE_PROMISE_CONFIG.MAX_ACTIVE_PROMISES}</span>
+            <span style="font-family:var(--dfont-ui);font-size:13px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:0.5px">Promises</span>
+            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-2)">${allPromises.length} / ${MAKE_PROMISE_CONFIG.MAX_ACTIVE_PROMISES}</span>
         </div>
         ${rowsHtml}
     </div>`;
@@ -3613,14 +3677,15 @@ function renderPromiseConfig(nation) {
                             <span class="ca-stat-val" style="color:${dirColor}">${target}</span>
                         </div>
                     </div>
-                    ${isSel ? `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:4px">Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE} approval</span></div>
+                    ${isSel ? `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:4px">Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks (starts after next election) · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE} approval</span></div>
                     <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:3px;display:flex;gap:12px;flex-wrap:wrap">
-                        <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY} credibility</span>
+                        <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${Math.round(MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY * 100)} credibility</span>
                     </div>
                     <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;display:flex;gap:12px;flex-wrap:wrap">
-                        <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY} credibility</span>
+                        <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${Math.round(MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY * 100)} credibility</span>
                     </div>
-                    <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;color:var(--dtext-3)">While unfulfilled & governing: <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick</span></div>` : ''}
+                    <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;color:var(--dtext-3)">Countdown deferred until in government · <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick while unfulfilled</span></div>
+                    <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;color:var(--dtext-3)">If in opposition after election: <span style="color:#94a3b8">promise extinguishes — no penalty</span></div>` : ''}
                 </div>`;
             }
             html += `</div>`;
@@ -3630,15 +3695,16 @@ function renderPromiseConfig(nation) {
     if (_caPromiseType === 'crisis') {
         html += `<div id="ca-crisis-list"><div class="ca-info-box">Loading crises...</div></div>`;
         html += `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:8px;padding:0 2px">
-            Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE} approval</span>
+            Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks (starts after next election) · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE} approval</span>
         </div>
         <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:3px;padding:0 2px">
-            <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY} credibility</span>
+            <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${Math.round(MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY * 100)} credibility</span>
         </div>
         <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px">
-            <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY} credibility</span>
+            <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${Math.round(MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY * 100)} credibility</span>
         </div>
-        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px;color:var(--dtext-3)">While unfulfilled & governing: <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick</span></div>`;
+        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px;color:var(--dtext-3)">Countdown deferred until in government · <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick while unfulfilled</span></div>
+        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px;color:var(--dtext-3)">If in opposition after election: <span style="color:#94a3b8">promise extinguishes — no penalty</span></div>`;
     }
 
     return html;
@@ -4066,9 +4132,10 @@ function renderActionResult(result) {
     if (result.promiseType) {
         html += `<div style="border-top:1px solid var(--dborder-1);margin-top:8px;padding-top:8px">
             <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-bottom:4px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">Consequences</div>
-            <div style="font-family:var(--dfont-mono);font-size:10px;color:#4ade80">Kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY} credibility</div>
-            <div style="font-family:var(--dfont-mono);font-size:10px;color:#ef4444;margin-top:2px">Broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY} credibility</div>
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:#4ade80">Kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${Math.round(MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY * 100)} credibility</div>
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:#ef4444;margin-top:2px">Broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${Math.round(MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY * 100)} credibility</div>
             <div style="font-family:var(--dfont-mono);font-size:10px;color:#f97316;margin-top:2px">While unfulfilled: −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick</div>
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:#94a3b8;margin-top:2px">Countdown starts after next election · Opposition = extinguished</div>
         </div>`;
     }
 
@@ -6035,10 +6102,10 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             .order('tick', { ascending: false })
             .limit(20),
         _supabase.from('ideology_shift_actions')
-            .select('action_type, target_axis, target_direction, created_tick')
+            .select('action_type, target_axis, target_direction, created_tick, status')
             .eq('faction_id', playerFaction.id)
             .eq('nation_id', nation.id)
-            .eq('status', 'active'),
+            .in('status', ['active', 'paused']),
         _supabase.from('government_formations')
             .select('lead_party_id, party_ids')
             .eq('nation_id', nation.id)
@@ -6079,9 +6146,11 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         'outreach:approval': 'Outreach',
         'attack': 'Attack Ad',
         'attack:received': 'Attacked',
+        'promise:made': 'Promise Made',
         'promise:kept': 'Promise Kept',
         'promise:broken': 'Promise Broken',
         'promise:expired': 'Promise Expired',
+        'promise:unfulfilled_penalty': 'Unfulfilled Promise',
         'protest:organiser': 'Protest Organised',
         'executive_order:price_controls': 'Price Controls',
         'executive_order:national_emergency': 'National Emergency',
@@ -6269,7 +6338,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
                 <div style="padding:6px 0;border-bottom:1px solid var(--dborder-0)">
                     <div style="display:flex;justify-content:space-between;align-items:center">
                         <div style="font-size:10px;font-weight:600;color:var(--dtext-1);font-family:var(--dfont-ui)">${escapeHtml(name)}</div>
-                        <span style="font-size:9px;color:var(--dtext-3);font-family:var(--dfont-mono)">${ticksLeft} ticks left</span>
+                        <span style="font-size:9px;color:${c.status === 'paused' ? '#f97316' : 'var(--dtext-3)'};font-family:var(--dfont-mono)">${c.status === 'paused' ? 'PAUSED' : ticksLeft + ' ticks left'}</span>
                     </div>
                     <div style="font-size:9px;color:var(--dtext-3);margin-top:2px">${escapeHtml(axisLabel)} — ${escapeHtml(dirLabel)}</div>
                     <div style="height:3px;border-radius:2px;background:var(--dbg-3);margin-top:4px;overflow:hidden">

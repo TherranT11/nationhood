@@ -1163,8 +1163,8 @@ export const MAKE_PROMISE_CONFIG = {
     AP_COST: 2,
     STAT_DELTA: 10,                    // Promise to change stat by ±10
     STAT_DELTA_GOVERNING: 20,          // Governing factions must promise ±20 (harder target)
-    DEADLINE_DICE: 12,                 // 1D12 + base
-    DEADLINE_BASE: 12,                 // base ticks added to roll (range: 13-24)
+    DEADLINE_DICE: 24,                 // 1D24 + base
+    DEADLINE_BASE: 6,                  // base ticks added to roll (range: 7-30)
     MAX_ACTIVE_PROMISES: 5,            // limit active promises per faction
 
     // ── Electorate engine effects (party_approval + credibility_modifier) ──
@@ -1173,12 +1173,12 @@ export const MAKE_PROMISE_CONFIG = {
     PENALTY_PER_TICK_MAX: 1.5,
 
     // Promise kept rewards
-    KEPT_APPROVAL: 4,                  // +party_approval when promise fulfilled
-    KEPT_CREDIBILITY: 0.05,            // +credibility_modifier when promise fulfilled
+    KEPT_APPROVAL: 2,                  // +party_approval when promise fulfilled
+    KEPT_CREDIBILITY: 0.07,            // +credibility_modifier when promise fulfilled
 
     // Promise broken penalties
-    BROKEN_APPROVAL: -6,               // -party_approval when promise broken
-    BROKEN_CREDIBILITY: -0.15,         // -credibility_modifier when promise broken
+    BROKEN_APPROVAL: -2,               // -party_approval when promise broken
+    BROKEN_CREDIBILITY: -0.10,         // -credibility_modifier when promise broken
     BROKEN_CREDIBILITY_SUSPEND: 12,    // suspend credibility recovery for N ticks after breaking
     BROKEN_NERVOUS_CREDIBILITY: -0.03, // -credibility per other active promise when one breaks
 };
@@ -1204,12 +1204,12 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
     if (effectivePromiseCost > 0 && (faction.action_points || 0) < effectivePromiseCost)
         return { success: false, error: `Not enough AP. Need ${effectivePromiseCost}.` };
 
-    // ── 2. Check active promise limit ──
+    // ── 2. Check active promise limit (includes pending_election promises) ──
     const { data: activePromises } = await supabase
         .from('fundraiser_promises')
         .select('id, demand_type, conditions')
         .eq('party_id', factionId)
-        .eq('status', 'active');
+        .in('status', ['active', 'pending_election']);
 
     if ((activePromises || []).length >= cfg.MAX_ACTIVE_PROMISES)
         return { success: false, error: `Maximum ${cfg.MAX_ACTIVE_PROMISES} active promises reached.` };
@@ -1231,10 +1231,9 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
     // voter_blocs table removed; default to empty array
     const allBlocs = [];
 
-    // ── 4. Roll deadline: 1D12 + 12 ──
+    // ── 4. Roll deadline: 1D24 + 6 (countdown deferred until next election + in government) ──
     const deadlineRoll = Math.floor(Math.random() * cfg.DEADLINE_DICE) + 1;
     const deadlineTicks = deadlineRoll + cfg.DEADLINE_BASE;
-    const tickDeadline = currentTick + deadlineTicks;
 
     // ── 5. Build promise based on type ──
     let demandText, demandType, conditions, affectedBlocIds, affectedBlocNames;
@@ -1372,10 +1371,10 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
             small_amount: 0,
             tick_created: currentTick,
             deadline_ticks: deadlineTicks,
-            tick_deadline: tickDeadline,
+            tick_deadline: null,
             conditions,
             progress: { source: 'make_promise', promise_type: promiseType },
-            status: 'active',
+            status: 'pending_election',
         })
         .select()
         .single();
@@ -1702,13 +1701,15 @@ export function evaluatePromiseStatus(promise, nationStats, currentTick, ministr
  */
 export async function processPromiseTick(supabase, nation, currentTick) {
     const cfg = MAKE_PROMISE_CONFIG;
-    const { data: activePromises } = await supabase
+
+    // Fetch both active and pending_election promises
+    const { data: allPromises } = await supabase
         .from('fundraiser_promises')
         .select('*')
         .eq('nation_id', nation.id)
-        .eq('status', 'active');
+        .in('status', ['active', 'pending_election']);
 
-    if (!activePromises || activePromises.length === 0) return [];
+    if (!allPromises || allPromises.length === 0) return [];
 
     const results = [];
 
@@ -1723,8 +1724,8 @@ export async function processPromiseTick(supabase, nation, currentTick) {
     const coalitionPartyIds = coalition?.party_ids || [];
 
     // Load campaign actions for rally/press_conference counting
-    const partyIds = [...new Set(activePromises.map(p => p.party_id))];
-    const minTick = Math.min(...activePromises.map(p => p.tick_created));
+    const partyIds = [...new Set(allPromises.map(p => p.party_id))];
+    const minTick = Math.min(...allPromises.map(p => p.tick_created));
     const { data: campaignActions } = await supabase
         .from('campaign_actions')
         .select('party_id, action_type, tick_performed, result')
@@ -1747,20 +1748,56 @@ export async function processPromiseTick(supabase, nation, currentTick) {
         ...coalitionPartyIds,
     ].filter(Boolean));
 
-    for (const promise of activePromises) {
+    // Check if any election completed since promise creation (for pending_election activation)
+    const { data: completedElections } = await supabase
+        .from('elections')
+        .select('id, election_tick')
+        .eq('nation_id', nation.id)
+        .eq('status', 'completed')
+        .order('election_tick', { ascending: false })
+        .limit(1);
+    const lastElectionTick = completedElections?.[0]?.election_tick || 0;
+
+    for (const promise of allPromises) {
         const isGoverning = governingFactionIds.has(promise.party_id);
 
-        // If not governing and deadline passed: expire silently, no downside
-        if (!isGoverning && currentTick >= promise.tick_deadline) {
-            await supabase.from('fundraiser_promises')
-                .update({ status: 'expired', tick_resolved: currentTick, updated_at: new Date().toISOString() })
-                .eq('id', promise.id);
-            results.push({ promise, resolution: 'expired' });
+        // ── Handle pending_election promises: waiting for next election ──
+        if (promise.status === 'pending_election') {
+            // Has an election completed since this promise was created?
+            if (lastElectionTick > promise.tick_created) {
+                if (isGoverning) {
+                    // Faction won — activate countdown
+                    const tickDeadline = currentTick + promise.deadline_ticks;
+                    await supabase.from('fundraiser_promises')
+                        .update({ status: 'active', tick_deadline: tickDeadline, updated_at: new Date().toISOString() })
+                        .eq('id', promise.id);
+                    console.log(`[Promise] Activated pending promise ${promise.id} — countdown starts, deadline tick ${tickDeadline}`);
+                    results.push({ promise, resolution: 'activated' });
+                } else {
+                    // Faction in opposition — extinguish silently
+                    await supabase.from('fundraiser_promises')
+                        .update({ status: 'expired', tick_resolved: currentTick, updated_at: new Date().toISOString() })
+                        .eq('id', promise.id);
+                    console.log(`[Promise] Extinguished pending promise ${promise.id} — faction not in government after election`);
+                    results.push({ promise, resolution: 'expired' });
+                }
+            }
+            // No election yet — promise stays dormant
             continue;
         }
 
-        // If not governing: promise is dormant — skip evaluation entirely
-        if (!isGoverning) continue;
+        // ── Handle active promises (countdown running) ──
+
+        // If no longer governing: expire silently (faction lost power mid-countdown)
+        if (!isGoverning) {
+            if (currentTick >= promise.tick_deadline) {
+                await supabase.from('fundraiser_promises')
+                    .update({ status: 'expired', tick_resolved: currentTick, updated_at: new Date().toISOString() })
+                    .eq('id', promise.id);
+                results.push({ promise, resolution: 'expired' });
+            }
+            continue;
+        }
 
         // For crisis_resolution promises, check if the crisis is still active
         if (promise.demand_type === 'crisis_resolution' && promise.conditions?.crisis_id) {

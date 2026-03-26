@@ -297,7 +297,7 @@ export const TRADE_ARTICLE_TYPES = {
         key: 'supply_commitment',
         label: 'Supply Commitment',
         description: 'Guaranteed purchase commitment for a raw resource.',
-        repeatable: false,
+        repeatable: true,
         applies_to: ['resource_supply'],
         schema: {
             sector: 'string',                   // must be raw_resource sector
@@ -311,7 +311,7 @@ export const TRADE_ARTICLE_TYPES = {
         key: 'price_terms',
         label: 'Price Terms',
         description: 'How the resource price is determined.',
-        repeatable: false,
+        repeatable: true,
         applies_to: ['resource_supply'],
         schema: {
             price_type: 'market|fixed|discounted|premium',
