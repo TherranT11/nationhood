@@ -6362,15 +6362,18 @@ function renderTradeEffectSummary(articles) {
 }
 
 // Render a human-readable summary of a trade article.
-// viewerNationId: if provided, perspective-dependent fields (we_sell/we_buy,
-// your_exports/their_exports) are flipped when the viewer is NOT the article author.
-function renderTradeArticleSummary(article, viewerNationId) {
+// viewerNationId: the nation viewing the article.
+// authorNationId (optional): fallback author if article.data.author_nation_id is missing
+//   (e.g. pass the proposal's proposing_nation_id for older articles).
+// Flips we_sell↔we_buy and your_exports↔their_exports when viewer ≠ author.
+function renderTradeArticleSummary(article, viewerNationId, authorNationId) {
     if (!article || !article.type) return 'Unknown article';
 
     // Defensive: support both { type, data: {...} } and flat { type, sector, ... } formats
     const d = (article.data && Object.keys(article.data).length > 0) ? article.data : article;
     // Flip perspective if we know the author and the viewer is a different nation
-    const flipPerspective = viewerNationId && d.author_nation_id && d.author_nation_id !== viewerNationId;
+    const author = d.author_nation_id || authorNationId;
+    const flipPerspective = viewerNationId && author && author !== viewerNationId;
 
     switch (article.type) {
         case 'duration': {
@@ -10429,7 +10432,7 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
             } else {
                 // V1 legacy rendering
                 const artLabel = isTradeAgreement
-                    ? renderTradeArticleSummary(art, currentNation.id)
+                    ? renderTradeArticleSummary(art, currentNation.id, p.proposing_nation_id)
                     : escapeHtml(art.text || art.label || art.type || 'Unknown');
                 const artTypeName = isTradeAgreement ? (TRADE_ARTICLE_TYPES[art.type]?.label || art.type) : '';
                 const cardClass = isStruck ? 'article-card article-card--struck' : 'article-card';
@@ -10448,7 +10451,7 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
         html += '<div style="font-size:10px;color:var(--green);margin:8px 0 4px;">Counter-party additions:</div>';
         for (let i = 0; i < addedArticles.length; i++) {
             const art = addedArticles[i];
-            const artLabel = isTradeAgreement ? renderTradeArticleSummary(art, currentNation.id) : escapeHtml(art.text || art.label || 'Unknown');
+            const artLabel = isTradeAgreement ? renderTradeArticleSummary(art, currentNation.id, p.target_nation_id) : escapeHtml(art.text || art.label || 'Unknown');
             const artTypeName = isTradeAgreement ? (TRADE_ARTICLE_TYPES[art.type]?.label || art.type) : '';
             html += `
                 <div class="article-card article-card--added">
@@ -10505,7 +10508,7 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
         for (let i = 0; i < articles.length; i++) {
             if (struckIndices.has(i)) continue; // already struck, skip
             const art = articles[i];
-            const artLabel = renderTradeArticleSummary(art, currentNation.id);
+            const artLabel = renderTradeArticleSummary(art, currentNation.id, p.proposing_nation_id);
             const artTypeName = TRADE_ARTICLE_TYPES[art.type]?.label || art.type;
             html += '<div style="display:flex;align-items:flex-start;gap:6px;margin:4px 0;">' +
                 '<input type="checkbox" class="strike-checkbox" data-proposal-id="' + p.id + '" data-article-index="' + i + '" style="margin-top:2px;" />' +
