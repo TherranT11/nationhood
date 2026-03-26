@@ -16575,8 +16575,12 @@ function renderIPOActionsPanel() {
         </div>
     `).join('');
 
-    // Event log — recent actions
-    container.innerHTML = actionCardsHtml + '<div id="ipo-event-log" class="ipo-event-log"></div>';
+    // Split layout: scrollable action cards on top, scrollable event log on bottom
+    container.innerHTML = `
+        <div class="ipo-actions-split">
+            <div class="ipo-actions-cards">${actionCardsHtml}</div>
+            <div id="ipo-event-log" class="ipo-event-log"></div>
+        </div>`;
     loadIPOEventLog(ipoSelectedOrgId);
 }
 
