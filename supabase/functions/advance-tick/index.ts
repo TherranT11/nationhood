@@ -27459,7 +27459,7 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
  */
 async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
     const meta = vote.meta || {};
-    const IPO_CHAT_COLORS = ['#5cb85c','#c8a64e','#5aafa5','#d9534f','#8b7ec8','#5b9bd5'];
+    const IPO_CHAT_COLORS = ['#5cb85c','#c8a64e','#5aafa5','#d9534f','#8b7ec8','#5b9bd5','#e07b53','#7bc67e','#c7697a','#59c4d4','#b8a038','#9a8ec2'];
 
     switch (vote.vote_type) {
         case 'membership': {
@@ -27540,28 +27540,58 @@ async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
                     message_text: `${meta.target_faction_name || 'A member'} has been expelled from the organisation.`,
                     tick_posted: tick
                 });
+
+                // If the expelled member was the president, auto-succeed to next member
+                if (org.president_id === meta.target_faction_id) {
+                    const remaining = fullMembers.filter(m => m.faction_id !== meta.target_faction_id);
+                    if (remaining.length > 0) {
+                        const newPresId = remaining[0].faction_id;
+                        await supabase.from('international_orgs')
+                            .update({ president_id: newPresId, president_term_start_tick: tick })
+                            .eq('id', org.id);
+                        const { data: newPres } = await supabase
+                            .from('factions').select('faction_name').eq('id', newPresId).single();
+                        await supabase.from('ipo_chat').insert({
+                            org_id: org.id, faction_id: null, is_system: true,
+                            message_text: `${newPres?.faction_name || 'A member'} is now president (previous president expelled).`,
+                            tick_posted: tick
+                        });
+                    }
+                }
             }
             break;
         }
         case 'fund_draw': {
             if (meta.amount_requested && meta.amount_requested > 0) {
-                const newBalance = Math.max(0, (org.solidarity_fund_balance || 0) - meta.amount_requested);
+                const currentBalance = org.solidarity_fund_balance || 0;
+                const actualDraw = Math.min(meta.amount_requested, currentBalance);
+                if (actualDraw <= 0) break;
+
+                const newBalance = currentBalance - actualDraw;
                 await supabase.from('international_orgs')
                     .update({ solidarity_fund_balance: newBalance })
                     .eq('id', org.id);
+
+                // Credit the drawn AP to the proposing faction
+                if (vote.proposed_by) {
+                    await supabase.rpc('accumulate_ap', {
+                        p_faction_id: vote.proposed_by,
+                        p_amount: actualDraw
+                    });
+                }
 
                 await supabase.from('ipo_fund_transactions').insert({
                     org_id: org.id,
                     faction_id: vote.proposed_by,
                     transaction_type: 'draw',
-                    amount: -meta.amount_requested,
+                    amount: -actualDraw,
                     description: meta.purpose || 'Fund draw (vote passed)',
                     tick: tick
                 });
 
                 await supabase.from('ipo_chat').insert({
                     org_id: org.id, faction_id: null, is_system: true,
-                    message_text: `Fund draw approved: ${meta.amount_requested} AP withdrawn. ${meta.purpose ? 'Purpose: ' + meta.purpose : ''}`,
+                    message_text: `Fund draw approved: ${actualDraw} AP withdrawn and credited to ${meta.proposer_name || 'the proposer'}. ${meta.purpose ? 'Purpose: ' + meta.purpose : ''}`,
                     tick_posted: tick
                 });
             }
@@ -29058,6 +29088,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 if (resources.solidarityFund?.enabled && newTick % 3 === 0) {
                     const contribution = resources.solidarityFund.contributionPerQuarter || 1;
                     let totalCollected = 0;
+                    let contributorsCount = 0;
 
                     // Identify autocratic non-strongman factions (they don't contribute — only strongman pays for the whole regime)
                     const memberFactionIds = fullMembers.map(m => m.faction_id);
@@ -29086,6 +29117,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
                         if (deducted !== null && deducted >= 0) {
                             totalCollected += contribution;
+                            contributorsCount++;
                             await supabase.from('ipo_fund_transactions').insert({
                                 org_id: org.id,
                                 faction_id: m.faction_id,
@@ -29105,7 +29137,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
                         await supabase.from('ipo_chat').insert({
                             org_id: org.id, faction_id: null, is_system: true,
-                            message_text: `Quarterly fund collection: ${totalCollected} AP collected from ${fullMembers.length} member(s).`,
+                            message_text: `Quarterly fund collection: ${totalCollected} AP collected from ${contributorsCount}/${fullMembers.length} member(s).`,
                             tick_posted: newTick
                         });
                     }
@@ -29199,28 +29231,39 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 // Expire vote_pending invitations where the vote has already failed/been resolved
                 const { data: pendingInvites } = await supabase
                     .from('ipo_invitations')
-                    .select('id, invited_faction_id')
+                    .select('id, invited_faction_id, status, invited_at_tick')
                     .eq('org_id', org.id)
-                    .eq('status', 'vote_pending');
+                    .in('status', ['vote_pending', 'pending']);
 
                 for (const inv of (pendingInvites || [])) {
-                    // Check if there's a completed (non-open) membership vote for this invite
-                    const { data: relatedVotes } = await supabase
-                        .from('ipo_votes')
-                        .select('id, status')
-                        .eq('org_id', org.id)
-                        .eq('vote_type', 'membership')
-                        .neq('status', 'open')
-                        .contains('meta', { invite_id: inv.id });
+                    // Expire stale invitations older than 8 ticks (matching vote duration)
+                    if (inv.invited_at_tick && (inv.invited_at_tick + 8) <= newTick) {
+                        await supabase.from('ipo_invitations')
+                            .update({ status: 'expired', responded_at_tick: newTick })
+                            .eq('id', inv.id)
+                            .in('status', ['pending', 'vote_pending']);
+                        continue;
+                    }
 
-                    if (relatedVotes && relatedVotes.length > 0) {
-                        const vote = relatedVotes[0];
-                        if (vote.status === 'failed') {
-                            await supabase.from('ipo_invitations')
-                                .update({ status: 'declined', responded_at_tick: newTick })
-                                .eq('id', inv.id);
+                    // For vote_pending: check if the related membership vote has already resolved
+                    if (inv.status === 'vote_pending') {
+                        const { data: relatedVotes } = await supabase
+                            .from('ipo_votes')
+                            .select('id, status')
+                            .eq('org_id', org.id)
+                            .eq('vote_type', 'membership')
+                            .neq('status', 'open')
+                            .contains('meta', { invite_id: inv.id });
+
+                        if (relatedVotes && relatedVotes.length > 0) {
+                            const vote = relatedVotes[0];
+                            if (vote.status === 'failed') {
+                                await supabase.from('ipo_invitations')
+                                    .update({ status: 'declined', responded_at_tick: newTick })
+                                    .eq('id', inv.id);
+                            }
+                            // 'passed' case already handled by applyIPOVoteEffect
                         }
-                        // 'passed' case already handled by applyIPOVoteEffect
                     }
                 }
 
