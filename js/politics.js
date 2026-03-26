@@ -6126,14 +6126,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     // ── Credibility data ──
     const credLog = credLogRes.data || [];
     const credModifier = Number(playerStanding.credibility_modifier ?? 1.0);
-    const credScore = Math.round((credModifier - 0.5) * 100); // 0-100 scale
-
-    function _credColor(val) {
-        if (val >= 60) return '#5cb85c';
-        if (val >= 40) return '#c8a44e';
-        if (val >= 25) return '#d98030';
-        return '#d9534f';
-    }
+    const credScore = Math.max(0, Math.min(100, Math.round((credModifier - 0.5) * 100))); // 0-100 scale
 
     // Credibility source labels
     const _credSourceLabels = {
@@ -6149,6 +6142,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         'no_confidence:failed': 'No Confidence Failed',
         'no_confidence:failed:vindicated': 'Vindicated (No Confidence)',
         'executive_order:censure': 'Censured',
+        'impeachment:convicted': 'Convicted & Removed',
         'sovereign_default': 'Sovereign Default',
         'resign_pm': 'PM Resignation',
     };
@@ -6251,14 +6245,14 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
 
             <!-- Score value -->
             <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
-                <span style="font-size:28px;font-weight:800;font-family:var(--dfont-mono);color:${_credColor(credScore)}">${credScore}</span>
+                <span style="font-size:28px;font-weight:800;font-family:var(--dfont-mono);color:${_approvalColor(credScore)}">${credScore}</span>
                 <span style="font-size:11px;color:var(--dtext-3)">/ 100</span>
                 <span style="font-size:10px;color:var(--dtext-3);font-family:var(--dfont-mono)">(${credModifier.toFixed(2)}x)</span>
             </div>
 
             <!-- Credibility bar -->
             <div style="height:6px;border-radius:3px;background:var(--dbg-3);margin-bottom:8px;overflow:hidden">
-                <div style="width:${Math.min(100, credScore)}%;height:100%;background:${_credColor(credScore)};border-radius:3px;transition:width 0.5s"></div>
+                <div style="width:${Math.min(100, credScore)}%;height:100%;background:${_approvalColor(credScore)};border-radius:3px;transition:width 0.5s"></div>
             </div>
 
             <!-- Election weight info -->
