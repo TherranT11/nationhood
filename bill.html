@@ -337,7 +337,17 @@ async function loadBillData() {
                         const { data: otherBill } = await _supabase.from('bills').select('status').eq('id', otherBillId).single();
                         otherBillStatus = otherBill?.status || null;
                     }
-                    ratificationData = { kind: 'trade', neg, nationA, nationB, otherBillStatus, isNationA };
+                    // Determine article author (drafter) — direction fields are from their perspective
+                    let authorNationId = null;
+                    if (neg.participants && neg.participants.length > 0) {
+                        authorNationId = neg.participants[0].nation_id;
+                    }
+                    if (!authorNationId && neg.initiating_proposal_id) {
+                        const { data: prop } = await _supabase.from('diplomatic_proposals')
+                            .select('proposing_nation_id').eq('id', neg.initiating_proposal_id).single();
+                        authorNationId = prop?.proposing_nation_id || null;
+                    }
+                    ratificationData = { kind: 'trade', neg, nationA, nationB, otherBillStatus, isNationA, authorNationId };
                 }
             }
         }
@@ -1273,9 +1283,13 @@ function renderTradeArticleDescription(art, rd) {
     const sectorLabel = (key) => (TRADEABLE_SECTOR_MAP[key] || {}).label || key || 'Unknown Sector';
     const nationAName = rd.nationA?.name || 'Nation A';
     const nationBName = rd.nationB?.name || 'Nation B';
-    const weAreA = rd.isNationA;
-    const ourName = weAreA ? nationAName : nationBName;
-    const theirName = weAreA ? nationBName : nationAName;
+
+    // Direction fields (we_buy/we_sell, your_exports/their_exports) are stored from
+    // the drafter's perspective. Resolve to absolute nation names using the drafter identity.
+    const author = d.author_nation_id || rd.authorNationId;
+    const drafterIsA = author ? (author === rd.nationA?.id) : rd.isNationA;
+    const drafterName = drafterIsA ? nationAName : nationBName;
+    const counterpartyName = drafterIsA ? nationBName : nationAName;
 
     switch (art.type) {
         case 'duration': {
@@ -1292,14 +1306,16 @@ function renderTradeArticleDescription(art, rd) {
             return '<strong>' + escapeHtml(sectorLabel(d.sector)) + '</strong> is exempt from tariff elimination under this agreement.' +
                 (d.reason ? ' Reason: ' + escapeHtml(d.reason) : '');
         case 'tariff_reduction': {
+            // your_exports = drafter's exports, their_exports = counterparty's exports
             const dir = d.direction === 'mutual' ? 'Both nations' :
-                d.direction === 'your_exports' ? ourName : theirName;
+                d.direction === 'your_exports' ? drafterName : counterpartyName;
             return dir + ' shall reduce tariffs on <strong>' + escapeHtml(sectorLabel(d.sector)) + '</strong> by <strong>' + (d.reduction_pct || 0) + '%</strong>.' +
                 (d.reduction_pct >= 100 ? ' (Full elimination)' : '');
         }
         case 'supply_commitment': {
-            const buyer = d.direction === 'we_buy' ? ourName : theirName;
-            const seller = d.direction === 'we_buy' ? theirName : ourName;
+            // we_buy = drafter buys, we_sell = drafter sells
+            const buyer = d.direction === 'we_buy' ? drafterName : counterpartyName;
+            const seller = d.direction === 'we_buy' ? counterpartyName : drafterName;
             return buyer + ' commits to purchasing <strong>' + (d.commitment_pct || 0) + '%</strong> of its <strong>' + escapeHtml(sectorLabel(d.sector)) + '</strong> imports from ' + seller + '.';
         }
         case 'price_terms': {
