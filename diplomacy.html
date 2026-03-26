@@ -1303,7 +1303,7 @@ async function renderAgreementsTab() {
                     const articlesHtml = (ta.articles || []).map((art, i) =>
                         '<div class="agreement-card-term">' +
                             '<span class="proposal-article-num">Art. ' + toRoman(i + 1) + '</span> ' +
-                            '<span class="proposal-article-label">' + escapeHtml(renderTradeArticleSummary(art)) + '</span>' +
+                            '<span class="proposal-article-label">' + escapeHtml(renderTradeArticleSummary(art, currentNation.id)) + '</span>' +
                         '</div>'
                     ).join('');
 
@@ -1441,7 +1441,7 @@ async function renderAgreementsTab() {
                     const articlesHtml = (neg.draft_articles || []).map((art, i) =>
                         '<div class="agreement-card-term">' +
                             '<span class="proposal-article-num">Art. ' + toRoman(i + 1) + '</span> ' +
-                            '<span class="proposal-article-label">' + escapeHtml(renderTradeArticleSummary(art)) + '</span>' +
+                            '<span class="proposal-article-label">' + escapeHtml(renderTradeArticleSummary(art, currentNation.id)) + '</span>' +
                         '</div>'
                     ).join('');
 
@@ -4795,7 +4795,7 @@ async function renderWizardStep3TradeProposal() {
         html += '<div style="margin-top:12px;">';
         for (let i = 0; i < tradeArticles.length; i++) {
             const art = tradeArticles[i];
-            const summary = renderTradeArticleSummary(art);
+            const summary = renderTradeArticleSummary(art, currentNation.id);
             const artTypeInfo = TRADE_ARTICLE_TYPES[art.type];
             const artLabel = artTypeInfo?.label || art.type;
             const artDesc = artTypeInfo?.description || '';
@@ -5754,7 +5754,7 @@ async function viewActiveAgreement(agreementId) {
                         <div class="trade-article-card-header">
                             <span class="trade-article-card-type">Art. ${toRoman(i + 1)} &mdash; ${escapeHtml(artType.label)}${isStruck ? ' — STRUCK' : ''}</span>
                         </div>
-                        ${!isStruck ? '<div class="trade-article-card-summary">' + renderTradeArticleSummary(art) + '</div>' : ''}
+                        ${!isStruck ? '<div class="trade-article-card-summary">' + renderTradeArticleSummary(art, currentNation.id) + '</div>' : ''}
                     </div>
                 `;
             } else if (isV2) {
@@ -5916,7 +5916,7 @@ async function viewActiveTradeAgreement(agreementId) {
                     <div class="trade-article-card-header">
                         <span class="trade-article-card-type">Art. ${toRoman(i + 1)} &mdash; ${escapeHtml(artType?.label || art.type)}</span>
                     </div>
-                    <div class="trade-article-card-summary">${renderTradeArticleSummary(art)}</div>
+                    <div class="trade-article-card-summary">${renderTradeArticleSummary(art, currentNation.id)}</div>
                 </div>
             `;
         }
@@ -6203,7 +6203,7 @@ async function openTradeNegotiation(negotiationId) {
                         <span class="trade-article-card-type">Art. ${toRoman(i + 1)} &mdash; ${escapeHtml(artType?.label || art.type)}</span>
                         <button class="initiative-article-remove" onclick="removeTradeNegArticle('${neg.id}', ${i})">X</button>
                     </div>
-                    <div class="trade-article-card-summary">${renderTradeArticleSummary(art)}</div>
+                    <div class="trade-article-card-summary">${renderTradeArticleSummary(art, currentNation.id)}</div>
                 </div>
             `;
         }
@@ -6361,11 +6361,19 @@ function renderTradeEffectSummary(articles) {
     return '<div class="article-effects">' + tags.map(t => '<span class="effect-tag ' + t.cls + '">' + escapeHtml(t.label) + '</span>').join('') + '</div>';
 }
 
-function renderTradeArticleSummary(article) {
+// Render a human-readable summary of a trade article.
+// viewerNationId: the nation viewing the article.
+// authorNationId (optional): fallback author if article.data.author_nation_id is missing
+//   (e.g. pass the proposal's proposing_nation_id for older articles).
+// Flips we_sell↔we_buy and your_exports↔their_exports when viewer ≠ author.
+function renderTradeArticleSummary(article, viewerNationId, authorNationId) {
     if (!article || !article.type) return 'Unknown article';
 
     // Defensive: support both { type, data: {...} } and flat { type, sector, ... } formats
     const d = (article.data && Object.keys(article.data).length > 0) ? article.data : article;
+    // Flip perspective if we know the author and the viewer is a different nation
+    const author = d.author_nation_id || authorNationId;
+    const flipPerspective = viewerNationId && author && author !== viewerNationId;
 
     switch (article.type) {
         case 'duration': {
@@ -6378,12 +6386,16 @@ function renderTradeArticleSummary(article) {
         }
         case 'tariff_reduction': {
             const sector = TRADEABLE_SECTOR_MAP[d.sector];
-            const dirLabel = d.direction === 'mutual' ? 'Mutual' : d.direction === 'your_exports' ? 'Your exports' : 'Their exports';
+            let trDir = d.direction;
+            if (flipPerspective && trDir !== 'mutual') trDir = trDir === 'your_exports' ? 'their_exports' : 'your_exports';
+            const dirLabel = trDir === 'mutual' ? 'Mutual' : trDir === 'your_exports' ? 'Your exports' : 'Their exports';
             return (sector?.label || d.sector || 'Unknown') + ': ' + dirLabel + ' tariff reduction of ' + (d.reduction_pct || 0) + '%';
         }
         case 'supply_commitment': {
             const sector = TRADEABLE_SECTOR_MAP[d.sector];
-            const dirLabel = d.direction === 'we_buy' ? 'We buy from them' : 'We sell to them';
+            let scDir = d.direction;
+            if (flipPerspective) scDir = scDir === 'we_buy' ? 'we_sell' : 'we_buy';
+            const dirLabel = scDir === 'we_buy' ? 'We buy from them' : 'We sell to them';
             return (sector?.label || d.sector || 'Unknown') + ': ' + dirLabel + ', min ' + (d.commitment_pct || 0) + '% commitment';
         }
         case 'price_terms': {
@@ -7884,7 +7896,8 @@ async function activateTradeAgreement(proposal, currentTick) {
         expires_at_tick: expiresAt,
         auto_renew: dt.auto_renew || false,
         withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
-        diplomatic_proposal_id: proposal.id
+        // Note: proposal.id is the diplomatic_proposals row; negotiation_id
+        // is set separately if this came through the negotiation flow.
     });
 
     if (error) {
@@ -8365,7 +8378,7 @@ function renderCounterAddedList(proposalId) {
 
     let html = '<div style="font-size:10px;color:var(--green);margin:8px 0 4px;">Your additions:</div>';
     counterTradeArticles.forEach((art, i) => {
-        const artLabel = renderTradeArticleSummary(art);
+        const artLabel = renderTradeArticleSummary(art, currentNation.id);
         const artTypeName = TRADE_ARTICLE_TYPES[art.type]?.label || art.type;
         html += `
             <div class="article-card article-card--added" style="display:flex;align-items:flex-start;justify-content:space-between;">
@@ -10419,7 +10432,7 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
             } else {
                 // V1 legacy rendering
                 const artLabel = isTradeAgreement
-                    ? renderTradeArticleSummary(art)
+                    ? renderTradeArticleSummary(art, currentNation.id, p.proposing_nation_id)
                     : escapeHtml(art.text || art.label || art.type || 'Unknown');
                 const artTypeName = isTradeAgreement ? (TRADE_ARTICLE_TYPES[art.type]?.label || art.type) : '';
                 const cardClass = isStruck ? 'article-card article-card--struck' : 'article-card';
@@ -10438,7 +10451,7 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
         html += '<div style="font-size:10px;color:var(--green);margin:8px 0 4px;">Counter-party additions:</div>';
         for (let i = 0; i < addedArticles.length; i++) {
             const art = addedArticles[i];
-            const artLabel = isTradeAgreement ? renderTradeArticleSummary(art) : escapeHtml(art.text || art.label || 'Unknown');
+            const artLabel = isTradeAgreement ? renderTradeArticleSummary(art, currentNation.id, p.target_nation_id) : escapeHtml(art.text || art.label || 'Unknown');
             const artTypeName = isTradeAgreement ? (TRADE_ARTICLE_TYPES[art.type]?.label || art.type) : '';
             html += `
                 <div class="article-card article-card--added">
@@ -10495,7 +10508,7 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
         for (let i = 0; i < articles.length; i++) {
             if (struckIndices.has(i)) continue; // already struck, skip
             const art = articles[i];
-            const artLabel = renderTradeArticleSummary(art);
+            const artLabel = renderTradeArticleSummary(art, currentNation.id, p.proposing_nation_id);
             const artTypeName = TRADE_ARTICLE_TYPES[art.type]?.label || art.type;
             html += '<div style="display:flex;align-items:flex-start;gap:6px;margin:4px 0;">' +
                 '<input type="checkbox" class="strike-checkbox" data-proposal-id="' + p.id + '" data-article-index="' + i + '" style="margin-top:2px;" />' +
@@ -10745,7 +10758,7 @@ function renderTradeAgreementDraftPanel(body, statusEl) {
     } else {
         for (let i = 0; i < tradeArticles.length; i++) {
             const art = tradeArticles[i];
-            const summary = renderTradeArticleSummary(art);
+            const summary = renderTradeArticleSummary(art, currentNation.id);
             const artTypeInfo = TRADE_ARTICLE_TYPES[art.type];
             const artLabel = artTypeInfo?.label || art.type;
             const artDesc = artTypeInfo?.description || '';
@@ -13823,10 +13836,12 @@ async function buildOrgPreviewData(orgId) {
         const f = m.factions;
         if (!f) return '';
         const nation = nationMap[f.nation_id] || '';
-        const role = m.faction_id === org.president_id ? 'President' : m.role === 'observer' ? 'Observer' : 'Member';
+        const isMemberPres = m.faction_id === org.president_id;
+        const role = isMemberPres ? '\u2605 President' : m.role === 'observer' ? 'Observer' : 'Member';
+        const roleClass = isMemberPres ? 'ipo-preview-member-role ipo-preview-member-role--president' : 'ipo-preview-member-role';
         return '<div class="ipo-preview-member"><span class="ipo-preview-member-name">' + escapeHtml(f.faction_name) + '</span>'
             + (nation ? '<span class="ipo-preview-member-nation"> · ' + escapeHtml(nation) + '</span>' : '')
-            + '<span class="ipo-preview-member-role">' + role + '</span></div>';
+            + '<span class="' + roleClass + '">' + role + '</span></div>';
     }).join('');
 
     const headerHtml = `
@@ -14332,7 +14347,8 @@ async function renderIPOMainPanel(memberCounts) {
             <div class="ipo-header-right">
                 <span class="ipo-header-fund">${hqName ? 'HQ: ' + escapeHtml(hqName) : 'HQ: VACANT'}</span>
                 <span class="ipo-header-fund">${escapeHtml('SOLIDARITY FUND')} · ${org.solidarity_fund_balance} AP</span>
-                ${isPresident ? '<span class="ipo-header-president">PRESIDENT</span>' : ''}
+                <span class="ipo-header-fund">President: ${escapeHtml(presidentName)}</span>
+                ${isPresident ? '<span class="ipo-header-president">YOU ARE PRESIDENT</span>' : ''}
             </div>
         </div>`;
 
@@ -14391,9 +14407,11 @@ async function renderIPOMainPanel(memberCounts) {
         const pName = m.factions?.faction_name || 'Unknown';
         const pNation = m.factions?.nation_id ? (nationMap[m.factions.nation_id] || '') : '';
         const isYou = m.faction_id === currentFaction.id;
+        const isMemberPresident = m.faction_id === org.president_id;
         const roleTag = m.role === 'observer' ? ' (OBS)' : '';
-        const cls = isYou ? 'ipo-footer-badge--you' : 'ipo-footer-badge--other';
-        return `<span class="ipo-footer-badge ${cls}">${escapeHtml(pName)}${roleTag}${isYou ? ' (YOU)' : ''}${pNation ? ' · ' + escapeHtml(pNation) : ''}</span>`;
+        const presTag = isMemberPresident ? ' \u2605' : '';
+        const cls = isYou ? 'ipo-footer-badge--you' : isMemberPresident ? 'ipo-footer-badge--president' : 'ipo-footer-badge--other';
+        return `<span class="ipo-footer-badge ${cls}">${presTag ? '<span class="ipo-president-star">' + presTag + '</span>' : ''}${escapeHtml(pName)}${roleTag}${isYou ? ' (YOU)' : ''}${pNation ? ' · ' + escapeHtml(pNation) : ''}</span>`;
     }).join('');
 
     // Footer buttons — role-gated

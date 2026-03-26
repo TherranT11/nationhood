@@ -3308,6 +3308,7 @@ body.light-mode .diplo-view-btn.is-active {
 .ipo-preview-member-name { color: #d4d0c0; }
 .ipo-preview-member-nation { color: #6b6a5e; font-size: 11px; flex: 1; }
 .ipo-preview-member-role { color: var(--amber, #c8a64e); font-size: 10px; margin-left: auto; }
+.ipo-preview-member-role--president { color: #facc15; font-weight: 600; }
 
 /* ── Create Organisation Button (sidebar bottom) ── */
 .ipo-btn--create {
@@ -3733,6 +3734,20 @@ body.light-mode .diplo-view-btn.is-active {
   padding: 2px 6px;
   border-radius: 2px;
   white-space: nowrap;
+}
+.ipo-footer-badge--president {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  background: rgba(250,204,21,0.08);
+  border: 1px solid rgba(250,204,21,0.25);
+  color: #facc15;
+  padding: 2px 6px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.ipo-president-star {
+  color: #facc15;
+  margin-right: 2px;
 }
 
 .ipo-footer-actions {
