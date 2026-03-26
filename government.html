@@ -5919,7 +5919,7 @@ function renderCabinet(ministries, coalition) {
 
     const cards = keys.map(key => {
         const m = ministryMap[key];
-        const title = m?.ministry_name || MINISTRY_NAMES[key] || key;
+        const title = MINISTRY_NAMES[key] || m?.ministry_name || key;
         const isFilled = m && m.minister_first_name;
         const requests = isAutocracy ? ministryRequests.filter(r => r.ministry_key === key) : [];
         const myRequest = requests.find(r => r.faction_id === currentFaction?.id);
@@ -8110,7 +8110,7 @@ async function resignPMAction() {
     if (!canFire) { alert('Only the head of government can dismiss ministers.'); return; }
 
     const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
-    const ministryName = ministry.ministry_name || MINISTRY_NAMES[ministryKey] || ministryKey;
+    const ministryName = MINISTRY_NAMES[ministryKey] || ministry.ministry_name || ministryKey;
     if (!confirm('Dismiss ' + ministerName + ' from ' + ministryName + '?\n\nCosts 1 AP. A replacement will need to be appointed.\nThe new minister starts at 50% approval.\nNote: The underlying national stats will not change.')) return;
     _govActionLock = true;
 
