@@ -27844,6 +27844,45 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] State visit expiration check failed (non-fatal):', svExpErr);
     }
 
+    // 3.75 Expire stale diplomatic proposals stuck in fm_review or ratification for 6+ ticks
+    try {
+        const STALE_PROPOSAL_TICKS = 6;
+        const { data: staleProposals } = await supabase
+            .from('diplomatic_proposals')
+            .select('id, status, proposed_at_tick, proposal_data')
+            .in('status', ['proposed', 'revised', 'fm_review', 'ratification'])
+            .neq('proposal_type', 'state_visit');
+
+        if (staleProposals && staleProposals.length > 0) {
+            const toExpire = [];
+            for (const p of staleProposals) {
+                const pipeline = p.proposal_data?.pipeline || {};
+                // Use the most recent status-change timestamp we can find
+                const lastActivity = Math.max(
+                    pipeline.escalated_at || 0,
+                    pipeline.fm_approved_at || 0,
+                    pipeline.ambassador_accepted_at || 0,
+                    p.proposed_at_tick || 0
+                );
+                if (lastActivity > 0 && (newTick - lastActivity) >= STALE_PROPOSAL_TICKS) {
+                    toExpire.push(p.id);
+                }
+            }
+            if (toExpire.length > 0) {
+                const { error: expErr } = await supabase
+                    .from('diplomatic_proposals')
+                    .update({ status: 'expired' })
+                    .in('id', toExpire);
+                if (!expErr) {
+                    console.log(`[advanceTick] Expired ${toExpire.length} stale diplomatic proposal(s) (stuck >=${STALE_PROPOSAL_TICKS} ticks)`);
+                    summary.expiredStaleProposals = toExpire.length;
+                }
+            }
+        }
+    } catch (staleErr) {
+        console.error('[advanceTick] Stale proposal expiration failed (non-fatal):', staleErr);
+    }
+
     // 3.8 Diplomatic relations decay — all relation scores drift toward 0 (neutral)
     try {
         const RELATION_DECAY_BASE = 0.1;
