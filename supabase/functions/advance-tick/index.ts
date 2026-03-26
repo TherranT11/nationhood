@@ -23487,9 +23487,12 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
         // Baseline decay always applies — approval erodes unless stats improve.
         // During crises, decay is multiplied: 1 crisis = 2×, 2 crises = 3×, etc.
         newApproval += cfg.BASELINE_DECAY * crisisMultiplier;
-        // Apply delta-based movement on top of baseline decay
-        if (Math.abs(avgDelta) >= 0.5) {
-            newApproval += avgDelta * cfg.DELTA_SENSITIVITY;
+        // Apply delta-based movement on top of baseline decay.
+        // Baselines are permanent (appointment snapshot), so cap the cumulative delta
+        // to prevent runaway approval. ±5 cap means max ±3/tick from stat performance.
+        const clampedDelta = Math.max(-5, Math.min(5, avgDelta));
+        if (Math.abs(clampedDelta) >= 0.5) {
+            newApproval += clampedDelta * cfg.DELTA_SENSITIVITY;
         }
 
         // Foreign Minister penalty: -0.25/tick per nation without an outgoing ambassador
@@ -23514,15 +23517,10 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
         // minister_approval is an integer column — round to whole number
         newApproval = Math.round(Math.max(0, Math.min(100, newApproval)));
 
-        // Update baselines to current values so next tick only sees incremental change
-        const updatedBaselines = {};
-        for (const statKey of ownedStats) {
-            if (statDirectionSign(statKey) === 0) continue;
-            updatedBaselines[statKey] = Number(nation[statKey] ?? 50);
-        }
-
+        // Keep stat_baselines as the original appointment snapshot (never overwrite).
+        // The UI uses baselines to show cumulative change since appointment.
         const { error: updateErr } = await supabase.from('ministries')
-            .update({ minister_approval: newApproval, stat_baselines: updatedBaselines })
+            .update({ minister_approval: newApproval })
             .eq('id', ministry.id);
 
         if (updateErr) {

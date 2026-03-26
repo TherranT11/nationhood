@@ -3267,8 +3267,10 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
     let trendCls = 'flat';
     if (deltaCount > 0) {
         const avgDelta = deltaSum / deltaCount;
-        // Match server logic: baseline decay always applies, delta only when |avgDelta| >= 0.5
-        const deltaEffect = Math.abs(avgDelta) >= 0.5 ? avgDelta * DELTA_SENSITIVITY : 0;
+        // Match server logic: baseline decay always applies, delta only when |clampedDelta| >= 0.5
+        // Baselines are permanent (appointment snapshot), so cap cumulative delta to ±5
+        const clampedDelta = Math.max(-5, Math.min(5, avgDelta));
+        const deltaEffect = Math.abs(clampedDelta) >= 0.5 ? clampedDelta * DELTA_SENSITIVITY : 0;
         const totalEffect = BASELINE_DECAY + deltaEffect + ambassadorPenalty;
         const absTotal = Math.abs(totalEffect);
         const effectLabel = absTotal >= 0.01
