@@ -3665,7 +3665,7 @@ const STATS_LOWER_IS_BETTER = [
 
 // ==================== STAT DECAY CONFIGURATION ====================
 
-const DECAY_SPEED = { CRAWL: 0.25, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
+const DECAY_SPEED = { CRAWL: 0.15, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
 
 /**
  * Stats that decay each tick. Two types:
