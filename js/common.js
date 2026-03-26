@@ -503,8 +503,9 @@ async function updateDiplomacyBadge(faction, nation, roles) {
         for (const msg of (msgs || [])) {
             const readBy = msg.read_by_factions || [];
             if (readBy.includes(faction.id)) continue;
-            // FM and MoT see all messages; ambassadors only from their posted nation
-            if (roles.isFM || roles.isMoT || roles.ambassadorTargetIds.includes(msg.from_nation_id)) {
+            // FM sees all messages; ambassadors only from their posted nation
+            // MoT does NOT see diplomatic messages (those are FM/ambassador domain)
+            if (roles.isFM || roles.ambassadorTargetIds.includes(msg.from_nation_id)) {
                 count++;
             }
         }
@@ -543,21 +544,22 @@ async function updateDiplomacyAwaitingBadge(faction, nation, roles) {
             .eq('target_nation_id', nation.id);
 
         let count = 0;
+        // Diplomatic proposals: FM and ambassadors only (MoT does not handle proposals)
         for (const p of (proposals || [])) {
             if (p.status === 'proposed') {
-                if (roles.isFM || roles.isMoT || roles.ambassadorTargetIds.includes(p.proposing_nation_id)) {
+                if (roles.isFM || roles.ambassadorTargetIds.includes(p.proposing_nation_id)) {
                     count++;
                 }
             } else if (p.status === 'revised') {
                 const pd = p.proposal_data || {};
                 const revisedByUs = pd.revised_by_nation_id === nation.id;
-                if (!revisedByUs && (roles.isFM || roles.isMoT || roles.ambassadorTargetIds.includes(p.proposing_nation_id))) {
+                if (!revisedByUs && (roles.isFM || roles.ambassadorTargetIds.includes(p.proposing_nation_id))) {
                     count++;
                 }
             }
         }
 
-        // Also count trade negotiations targeting us that are still open
+        // Trade negotiations: FM, MoT, and relevant ambassadors
         const { data: tradeNegs } = await _supabase
             .from('trade_negotiations')
             .select('initiated_by_nation, nation_a_id, nation_b_id, status')
@@ -583,6 +585,35 @@ async function updateDiplomacyAwaitingBadge(faction, nation, roles) {
     }
 }
 
+
+// ===== IPO INVITE BADGE (pending org invitations) =====
+
+async function updateIPOInviteBadge(faction, roles) {
+    const dipBadge = document.getElementById('diplomacy-awaiting-badge');
+    if (!faction) return;
+    try {
+        const { data: invites, error } = await _supabase
+            .from('ipo_invitations')
+            .select('id')
+            .eq('target_faction_id', faction.id)
+            .eq('status', 'pending');
+        if (error) return;
+        const count = (invites || []).length;
+        // Store count globally so diplomacy.html can read it for the sub-tab badge
+        window._ipoPendingInviteCount = count;
+        // Only add IPO invites to the amber badge if the player holds a diplomatic
+        // position (FM, MoT, or ambassador). Non-diplomatic players should not see
+        // a misleading notification on the Diplomacy nav link.
+        if (count > 0 && dipBadge && roles &&
+            (roles.isFM || roles.isMoT || roles.ambassadorTargetIds.length > 0)) {
+            const existing = parseInt(dipBadge.textContent) || 0;
+            dipBadge.textContent = existing + count;
+            dipBadge.style.display = '';
+        }
+    } catch (e) {
+        console.error('Error updating IPO invite badge:', e);
+    }
+}
 
 // ===== TICK COUNTDOWN =====
 
@@ -939,6 +970,7 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
         updateDiplomacyBadge(state.faction, state.nation, diploRoles);
     }
     updateDiplomacyAwaitingBadge(state.faction, state.nation, diploRoles);
+    updateIPOInviteBadge(state.faction, diploRoles);
     if (onReady) {
         await onReady(state);
     }

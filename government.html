@@ -56,7 +56,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest, seizeAutocraticPower } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest, seizeAutocraticPower, nudgeApproval } from './js/game-common.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
 (function () {
@@ -335,6 +335,91 @@ const MINISTRY_ACTIONS = {
             }
         ]
     },
+    labor: {
+        actions: [
+            {
+                id: 'expandInfrastructure',
+                name: 'Expand Infrastructure',
+                desc: 'Fund construction and expansion of training facilities, employment centres, and labor institutions nationally.',
+                comingSoon: true
+            },
+            {
+                id: 'laborPolicy',
+                name: 'Labor Policy',
+                desc: 'Set the government\'s regulatory stance on labor relations — either strengthening worker protections or reducing employer constraints.',
+                apCosts: [2, 3, 5, 7],
+                delay: 2, duration: 8,
+                decayTicks: 4,
+                useResetInterval: 15,
+                directions: {
+                    strengthen: {
+                        label: 'STRENGTHEN UNIONS',
+                        triggerKey: 'ministry_labor_strengthen_unions',
+                        oneTimeCostPerMillion: 8_000_000,
+                        tags: [
+                            { label: 'UNION STRENGTH ↑', cls: 'positive' },
+                            { label: 'MIN WAGE ↑', cls: 'positive' },
+                            { label: 'INEQUALITY ↓', cls: 'positive' },
+                            { label: 'UNEMPLOYMENT ↑', cls: 'negative' },
+                            { label: 'GDP ↓', cls: 'negative' }
+                        ],
+                        baseEffects: [
+                            { stat_key: 'union_strength',      direction: 'up',   rate: 0.1, scalable: true },
+                            { stat_key: 'minimum_wage',        direction: 'up',   rate: 0.1, scalable: true },
+                            { stat_key: 'income_inequality',   direction: 'down', rate: 0.1, scalable: true },
+                            { stat_key: 'unemployment',        direction: 'up',   rate: 0.1, scalable: false },
+                            { stat_key: 'gdp_growth',          direction: 'down', rate: 0.1, scalable: false }
+                        ]
+                    },
+                    deregulate: {
+                        label: 'DEREGULATE LABOR',
+                        triggerKey: 'ministry_labor_deregulate',
+                        oneTimeCostPerMillion: 0,
+                        tags: [
+                            { label: 'UNEMPLOYMENT ↓', cls: 'positive' },
+                            { label: 'GDP ↑', cls: 'positive' },
+                            { label: 'FOREIGN INV ↑', cls: 'positive' },
+                            { label: 'UNION STRENGTH ↓', cls: 'negative' },
+                            { label: 'INEQUALITY ↑', cls: 'negative' },
+                            { label: 'STD LIVING ↓', cls: 'negative' }
+                        ],
+                        baseEffects: [
+                            { stat_key: 'unemployment',        direction: 'down', rate: 0.1, scalable: true },
+                            { stat_key: 'gdp_growth',          direction: 'up',   rate: 0.1, scalable: true },
+                            { stat_key: 'foreign_investment',  direction: 'up',   rate: 0.1, scalable: true },
+                            { stat_key: 'union_strength',      direction: 'down', rate: 0.1, scalable: false },
+                            { stat_key: 'income_inequality',   direction: 'up',   rate: 0.1, scalable: false },
+                            { stat_key: 'standard_of_living',  direction: 'down', rate: 0.1, scalable: false }
+                        ]
+                    }
+                }
+            },
+            {
+                id: 'workforceDevelopment',
+                triggerKey: 'ministry_workforce_development',
+                name: 'Workforce Development Programme',
+                desc: 'Fund national retraining and skills development programmes for unemployed and underemployed workers.',
+                apCosts: [2, 3, 5, 7],
+                oneTimeCostPerMillion: 6_000_000,
+                delay: 2, duration: 8,
+                decayTicks: 4,
+                useResetInterval: 15,
+                tags: [
+                    { label: 'UNEMPLOYMENT ↓', cls: 'positive' },
+                    { label: 'LABOR FORCE ↑', cls: 'positive' },
+                    { label: 'SOC MOBILITY ↑', cls: 'positive' },
+                    { label: 'LITERACY ↑', cls: 'positive' }
+                ],
+                baseEffects: [
+                    { stat_key: 'unemployment',              direction: 'down', rate: 0.1, scalable: true },
+                    { stat_key: 'labor_force_participation', direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'social_mobility',           direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'literacy',                  direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'minister_approval', direction: 'up', rate: 1, scalable: false, target: 'minister', delayOverride: 0, durationOverride: 1 }
+                ]
+            }
+        ]
+    },
     education: {
         actions: [
             {
@@ -517,20 +602,75 @@ function formatDiscretionaryBalance(rawBalance) {
 async function deductDiscretionaryFund(ministryKey, localMData, currentBalance, cost) {
     if (cost <= 0) return;
     const newBalance = Math.max(0, currentBalance - cost);
-    await _supabase.from('ministries')
+    const { error } = await _supabase.from('ministries')
         .update({ discretionary_balance: newBalance })
         .eq('nation_id', currentNation.id)
         .eq('ministry_key', ministryKey)
         .eq('is_active', true);
+    if (error) {
+        console.error('[Ministry] Discretionary fund deduction failed:', error.message);
+        throw new Error('Fund deduction failed: ' + error.message);
+    }
     if (localMData) localMData.discretionary_balance = newBalance;
 }
 
-// ==================== HEALTHCARE MINISTRY — HELPERS ====================
+// ==================== SHARED MINISTRY COST HELPER ====================
 
-// One-time cost calculation for healthcare actions
-function calculateHealthActionCost(actionOrDirection, population) {
+// One-time cost calculation for any ministry action or direction
+function calculateOneTimeCost(actionOrDirection, population) {
     const costPerMillion = actionOrDirection.oneTimeCostPerMillion || 0;
     return Math.round((population / 1_000_000) * costPerMillion);
+}
+// Backwards-compatible aliases
+const calculateHealthActionCost = calculateOneTimeCost;
+const calculateLaborActionCost = calculateOneTimeCost;
+
+// Handle labor policy conflict: cancel any active labor policy before activating new direction
+async function handleLaborPolicyConflict(newDirection) {
+    const actionId = 'labor-laborPolicy';
+    const activeData = activeMinistryActions[actionId];
+    if (!activeData) return;
+
+    const activeDir = typeof activeData === 'string' ? activeData : 'unknown';
+
+    // Cancel all unprocessed labor policy actions in DB (best-effort)
+    try {
+        const { data: conflictLogs } = await _supabase
+            .from('ministry_action_log')
+            .select('id')
+            .eq('nation_id', currentNation.id)
+            .eq('ministry_key', 'labor')
+            .eq('action_key', 'laborPolicy')
+            .eq('processed', false);
+
+        if (conflictLogs?.length) {
+            for (const log of conflictLogs) {
+                await _supabase.from('ministry_action_log')
+                    .update({ processed: true })
+                    .eq('id', log.id);
+            }
+        }
+    } catch (_) { /* best-effort */ }
+
+    // Clear local active state so the RPC duplicate check passes
+    delete activeMinistryActions[actionId];
+
+    // Fire direction changed event (best-effort)
+    try {
+        const { ministerName, partyName } = await fetchMinisterInfo('labor');
+        await _supabase.rpc('fire_system_event', {
+            p_trigger_key: 'ministry_labor_direction_changed',
+            p_nation_id: currentNation.id,
+            p_tick: currentTick,
+            p_placeholders: {
+                minister_name: ministerName,
+                party: partyName,
+                nation: currentNation.name || 'Unknown',
+                old_direction: activeDir,
+                new_direction: newDirection
+            }
+        });
+    } catch (_) { /* best-effort */ }
 }
 
 function formatUpfrontCost(cost) {
@@ -542,6 +682,9 @@ function formatUpfrontCost(cost) {
 
 // Track selected pharmaceutical direction: null, 'increase', or 'decrease'
 let _pharmaSelectedDirection = null;
+
+// Track selected labor policy direction: null, 'strengthen', or 'deregulate'
+let _laborSelectedDirection = null;
 
 // Handle pharmaceutical conflict: cancel any active pharmaceutical action before activating new direction
 async function handlePharmaceuticalConflict(newDirection) {
@@ -1075,7 +1218,7 @@ async function renderGovernmentPage() {
             fetchActiveCoalition(_supabase, currentNation.id),
             fetchMinistries(),
             _supabase.from('factions')
-                .select('id, faction_name, abbreviation, seats, approval_rating, loyalty, action_points, party_color, party_logo, custom_logo_url, leader_ideology')
+                .select('id, faction_name, abbreviation, seats, loyalty, action_points, party_color, party_logo, custom_logo_url, leader_ideology, leader_positive_traits, leader_negative_traits')
                 .eq('nation_id', currentNation.id).eq('faction_type', 'party')
         ]);
 
@@ -1233,8 +1376,8 @@ async function renderGovernmentPage() {
                     const countKey = log.ministry_key + ':' + log.action_key;
                     ministryActionUseCounts[countKey] = (ministryActionUseCounts[countKey] || 0) + 1;
                     if (!log.processed) {
-                        // For pharmaceutical regulation, store the direction as the value
-                        if (log.ministry_key === 'healthcare' && log.action_key === 'pharmaceuticalRegulation' && log.action_data?.direction) {
+                        // For direction-based actions, store the direction as the value
+                        if (log.action_data?.direction) {
                             activeMinistryActions[log.ministry_key + '-' + log.action_key] = log.action_data.direction;
                         } else {
                             activeMinistryActions[log.ministry_key + '-' + log.action_key] = true;
@@ -2979,7 +3122,7 @@ async function formGovernmentFallback(ministryBaselines) {
 
         const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
         const { data: allFactions } = await _supabase.from('factions')
-            .select('id, faction_name, seats, approval_rating')
+            .select('id, faction_name, seats')
             .eq('nation_id', currentNation.id).eq('faction_type', 'party');
         const { data: newFormation } = await _supabase.from('government_formations')
             .select('party_ids, ministry_assignments, proposed_by')
@@ -2994,10 +3137,14 @@ async function formGovernmentFallback(ministryBaselines) {
             const endReason = (recentElection && (shard?.current_tick - recentElection.election_tick) <= 8)
                 ? 'election_loss' : 'new_coalition';
 
-            const coalitionFactions = (allFactions || []).filter(f =>
-                (newFormation.party_ids || []).includes(f.id));
-            const govApproval = coalitionFactions.length > 0
-                ? Math.round(coalitionFactions.reduce((sum, f) => sum + (f.approval_rating ?? 40), 0) / coalitionFactions.length)
+            const coalitionIds = (newFormation.party_ids || []);
+            const { data: standings } = await _supabase.from('faction_electoral_standing')
+                .select('faction_id, party_approval')
+                .eq('nation_id', currentNation.id)
+                .in('faction_id', coalitionIds);
+            const coalitionApprovals = (standings || []).map(s => Number(s.party_approval ?? 40));
+            const govApproval = coalitionApprovals.length > 0
+                ? Math.round(coalitionApprovals.reduce((sum, a) => sum + a, 0) / coalitionApprovals.length)
                 : null;
 
             try {
@@ -3124,8 +3271,10 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
     let trendCls = 'flat';
     if (deltaCount > 0) {
         const avgDelta = deltaSum / deltaCount;
-        // Match server logic: baseline decay always applies, delta only when |avgDelta| >= 0.5
-        const deltaEffect = Math.abs(avgDelta) >= 0.5 ? avgDelta * DELTA_SENSITIVITY : 0;
+        // Match server logic: baseline decay always applies, delta only when |clampedDelta| >= 0.5
+        // Baselines are permanent (appointment snapshot), so cap cumulative delta to ±5
+        const clampedDelta = Math.max(-5, Math.min(5, avgDelta));
+        const deltaEffect = Math.abs(clampedDelta) >= 0.5 ? clampedDelta * DELTA_SENSITIVITY : 0;
         const totalEffect = BASELINE_DECAY + deltaEffect + ambassadorPenalty;
         const absTotal = Math.abs(totalEffect);
         const effectLabel = absTotal >= 0.01
@@ -3285,6 +3434,8 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
     if (ministryKey === 'defense') return buildDefenseActionRows(isMyMinistry);
     // Healthcare ministry has a custom action layout (pharmaceutical direction selector)
     if (ministryKey === 'healthcare') return buildHealthcareActionRows(isMyMinistry);
+    // Labor ministry has a custom action layout (labor policy direction selector)
+    if (ministryKey === 'labor') return buildLaborActionRows(isMyMinistry);
     // Education ministry has a custom action layout
     if (ministryKey === 'education') return buildEducationActionRows(isMyMinistry);
 
@@ -4081,6 +4232,500 @@ async function confirmHealthcareAction(actionId) {
         row.classList.remove('active');
         if (btns) {
             btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();healthcareActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+        }
+        alert('Action failed: ' + (e.message || 'Unknown error'));
+    } finally {
+        _ministryActionConfirming = false;
+    }
+}
+
+// ==================== LABOR MINISTRY — CUSTOM ACTION ROWS ====================
+
+function buildLaborActionRows(isMyMinistry) {
+    const config = MINISTRY_ACTIONS.labor;
+    if (!config?.actions) return '';
+    const pop = currentNation?.population || 20000000;
+    const ap = currentFaction?.action_points || 0;
+    const canUse = isMyMinistry === true;
+    const comingSoonBtn = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div>`;
+
+    // Discretionary balance
+    const ministry = ministryData.find(m => m.ministry_key === 'labor');
+    const { balance: discretionaryBalance, fmt: balFmt, cls: balCls } = formatDiscretionaryBalance(ministry?.discretionary_balance);
+
+    let html = `<div class="ministry-card__actions-label" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Ministry Actions</span>
+        <span style="font-size:8px;font-weight:600;${balCls};letter-spacing:0.03em;">Discretionary Funds: ${balFmt}</span>
+    </div>`;
+
+    // Action 1 — Expand Infrastructure (Coming Soon)
+    html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Expand Infrastructure</span>
+            <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
+        </div>
+        <div class="ministry-action__desc">Fund construction and expansion of training facilities, employment centres, and labor institutions nationally.</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags"></div>
+            <div>${comingSoonBtn}</div>
+        </div>
+    </div>`;
+
+    // Action 2 — Labor Policy (with direction selector)
+    const laborAction = config.actions.find(a => a.id === 'laborPolicy');
+    const laborActionId = 'labor-laborPolicy';
+    const laborActiveRaw = activeMinistryActions[laborActionId];
+    const laborActive = !!laborActiveRaw;
+    const laborActiveDir = typeof laborActiveRaw === 'string' ? laborActiveRaw : null;
+    const laborCountKey = 'labor:laborPolicy';
+    const laborUseCount = ministryActionUseCounts[laborCountKey] || 0;
+    const laborApCost = laborAction.apCosts[Math.min(laborUseCount, 3)];
+
+    // Show direction-specific tags if a direction is selected or active
+    const displayDir = laborActiveDir || _laborSelectedDirection;
+    const dirConfig = displayDir ? laborAction.directions[displayDir] : null;
+    const laborTags = dirConfig ? dirConfig.tags : [
+        { label: 'SELECT DIRECTION', cls: 'neutral' }
+    ];
+    const laborTagsHtml = laborTags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
+
+    // Budget tag based on direction
+    let laborBudgetTag = '';
+    if (dirConfig) {
+        const laborCost = calculateLaborActionCost(dirConfig, pop);
+        laborBudgetTag = laborCost > 0
+            ? `<span class="tag tag--budget">${formatUpfrontCost(laborCost)} UPFRONT</span>`
+            : `<span class="tag tag--neutral">NO FUND DRAW</span>`;
+    }
+
+    let laborBtnHtml = '';
+    let laborStateClass = '';
+    if (laborActive) {
+        laborStateClass = ' active';
+        const dirLabel = laborActiveDir === 'strengthen' ? 'STRENGTHEN UNIONS' : laborActiveDir === 'deregulate' ? 'DEREGULATE LABOR' : 'ACTIVE';
+        laborBtnHtml = `<div class="ministry-action__active-indicator" style="color:#5cb85c;">● ACTIVE — ${dirLabel}</div>`;
+    } else if (!canUse) {
+        laborStateClass = ' disabled';
+    } else if (ap < laborApCost) {
+        laborStateClass = ' disabled';
+        laborBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${laborApCost} AP">▶ ${laborApCost} AP</div>`;
+    } else {
+        laborBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openLaborPolicySelector()">▶ ${laborApCost} AP</div>`;
+    }
+
+    html += `<div class="ministry-action${laborStateClass}" id="${laborActionId}">
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Labor Policy</span>
+            <span class="ministry-action__ap-cost">${laborApCost} AP${laborUseCount > 0 ? ' (use ' + (laborUseCount + 1) + ')' : ''}</span>
+        </div>
+        <div class="ministry-action__desc">${escapeHtml(laborAction.desc)}</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags">${laborTagsHtml}${laborBudgetTag}</div>
+            <div id="${laborActionId}-btns">${laborBtnHtml}</div>
+        </div>
+        <div id="labor-direction-selector"></div>
+    </div>`;
+
+    // Action 3 — Workforce Development Programme (standard flow with one-time cost)
+    const wfAction = config.actions.find(a => a.id === 'workforceDevelopment');
+    const wfActionId = 'labor-workforceDevelopment';
+    const wfActive = activeMinistryActions[wfActionId] || false;
+    const wfCountKey = 'labor:workforceDevelopment';
+    const wfUseCount = ministryActionUseCounts[wfCountKey] || 0;
+    const wfApCost = wfAction.apCosts[Math.min(wfUseCount, 3)];
+    const wfOneTimeCost = calculateLaborActionCost(wfAction, pop);
+    const wfCostLabel = formatUpfrontCost(wfOneTimeCost);
+    const wfTagsHtml = wfAction.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
+    const wfBudgetTag = `<span class="tag tag--budget">${wfCostLabel} UPFRONT</span>`;
+    const wfCanAfford = discretionaryBalance >= wfOneTimeCost;
+
+    let wfBtnHtml = '';
+    let wfStateClass = '';
+    let wfExtraHtml = '';
+    if (wfActive) {
+        wfStateClass = ' active';
+        wfBtnHtml = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+    } else if (!canUse) {
+        wfStateClass = ' disabled';
+    } else if (!wfCanAfford) {
+        wfStateClass = ' disabled';
+        wfBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Insufficient discretionary funds">🔒</div>`;
+        wfExtraHtml = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--red);margin-top:2px;">Insufficient discretionary funds.</div>`;
+    } else if (ap < wfApCost) {
+        wfStateClass = ' disabled';
+        wfBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${wfApCost} AP">▶ ${wfApCost} AP</div>`;
+    } else {
+        wfBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();laborActionSelect('${wfActionId}')">▶ ${wfApCost} AP</div>`;
+    }
+
+    html += `<div class="ministry-action${wfStateClass}" id="${wfActionId}" ${!wfActive && canUse && wfCanAfford && ap >= wfApCost ? `onclick="laborActionSelect('${wfActionId}')"` : ''}>
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Workforce Development Programme</span>
+            <span class="ministry-action__ap-cost">${wfApCost} AP${wfUseCount > 0 ? ' (use ' + (wfUseCount + 1) + ')' : ''}</span>
+        </div>
+        <div class="ministry-action__desc">${escapeHtml(wfAction.desc)}${wfExtraHtml}</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags">${wfTagsHtml}${wfBudgetTag}</div>
+            <div id="${wfActionId}-btns">${wfBtnHtml}</div>
+        </div>
+    </div>`;
+
+    return html;
+}
+
+// Open the labor policy direction selector inline
+function openLaborPolicySelector() {
+    if (!isMyMinistryByKey('labor')) return;
+    _laborSelectedDirection = null;
+    const container = document.getElementById('labor-direction-selector');
+    if (!container) return;
+    renderLaborSelectorUI(container);
+}
+
+function renderLaborSelectorUI(container) {
+    const config = MINISTRY_ACTIONS.labor.actions.find(a => a.id === 'laborPolicy');
+    const pop = currentNation?.population || 20000000;
+    const laborCountKey = 'labor:laborPolicy';
+    const laborUseCount = ministryActionUseCounts[laborCountKey] || 0;
+    const laborApCost = config.apCosts[Math.min(laborUseCount, 3)];
+    const ministry = ministryData.find(m => m.ministry_key === 'labor');
+    const discretionaryBalance = Number(ministry?.discretionary_balance || 0);
+
+    const strCost = calculateLaborActionCost(config.directions.strengthen, pop);
+    const deregCost = calculateLaborActionCost(config.directions.deregulate, pop);
+    const selDir = _laborSelectedDirection;
+
+    const strSelected = selDir === 'strengthen';
+    const deregSelected = selDir === 'deregulate';
+    const strStyle = strSelected
+        ? 'background:rgba(91,155,213,0.12);border:1px solid rgba(91,155,213,0.3);color:#5b9bd5;'
+        : 'background:transparent;border:1px solid rgba(255,255,255,0.07);color:#4a4840;';
+    const deregStyle = deregSelected
+        ? 'background:rgba(91,155,213,0.12);border:1px solid rgba(91,155,213,0.3);color:#5b9bd5;'
+        : 'background:transparent;border:1px solid rgba(255,255,255,0.07);color:#4a4840;';
+
+    // Confirm button
+    let confirmHtml = '';
+    if (selDir) {
+        const cost = selDir === 'strengthen' ? strCost : deregCost;
+        const canAfford = cost <= 0 || discretionaryBalance >= cost;
+        const costLabel = cost > 0 ? formatUpfrontCost(cost) : 'No Fund Draw';
+        if (!canAfford) {
+            confirmHtml = `<div class="ministry-action__btn-confirm" style="opacity:0.4;cursor:not-allowed;margin-top:6px;">Confirm — ${laborApCost} AP · Insufficient funds</div>`;
+        } else {
+            confirmHtml = `<div class="ministry-action__btn-confirm" onclick="event.stopPropagation();confirmLaborPolicyAction('${selDir}')" style="margin-top:6px;">Confirm — ${laborApCost} AP · ${costLabel}</div>`;
+        }
+    }
+
+    container.innerHTML = `<div style="background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);padding:8px 12px;margin-top:6px;">
+        <div style="font-family:var(--font-mono);font-size:8px;text-transform:uppercase;color:#6b6a5e;margin-bottom:6px;">Select direction:</div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="${strStyle}padding:6px 10px;cursor:pointer;font-family:var(--font-mono);font-size:8px;text-transform:uppercase;font-weight:700;letter-spacing:0.04em;" onclick="event.stopPropagation();selectLaborDirection('strengthen')">STRENGTHEN UNIONS</div>
+            <div style="${deregStyle}padding:6px 10px;cursor:pointer;font-family:var(--font-mono);font-size:8px;text-transform:uppercase;font-weight:700;letter-spacing:0.04em;" onclick="event.stopPropagation();selectLaborDirection('deregulate')">DEREGULATE LABOR</div>
+        </div>
+        <div style="display:flex;gap:4px;margin-top:6px;align-items:center;">
+            ${confirmHtml}
+            <div class="ministry-action__btn-cancel" onclick="event.stopPropagation();closeLaborPolicySelector()" style="margin-top:${selDir ? '6px' : '0'};">✕</div>
+        </div>
+    </div>`;
+
+    // Update the tags display based on selected direction
+    if (selDir) {
+        const dirConfig = config.directions[selDir];
+        const tagsContainer = document.querySelector('#labor-laborPolicy .ministry-action__tags');
+        if (tagsContainer && dirConfig) {
+            const cost = selDir === 'strengthen' ? strCost : deregCost;
+            const budgetTag = cost > 0
+                ? `<span class="tag tag--budget">${formatUpfrontCost(cost)} UPFRONT</span>`
+                : `<span class="tag tag--neutral">NO FUND DRAW</span>`;
+            tagsContainer.innerHTML = dirConfig.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('') + budgetTag;
+        }
+    }
+}
+
+function selectLaborDirection(direction) {
+    _laborSelectedDirection = direction;
+    const container = document.getElementById('labor-direction-selector');
+    if (container) renderLaborSelectorUI(container);
+}
+
+function closeLaborPolicySelector() {
+    _laborSelectedDirection = null;
+    const container = document.getElementById('labor-direction-selector');
+    if (container) container.innerHTML = '';
+    // Reset tags to default
+    const tagsContainer = document.querySelector('#labor-laborPolicy .ministry-action__tags');
+    if (tagsContainer) {
+        tagsContainer.innerHTML = '<span class="tag tag--neutral">SELECT DIRECTION</span>';
+    }
+}
+
+async function confirmLaborPolicyAction(direction) {
+    if (_ministryActionConfirming) return;
+    _ministryActionConfirming = true;
+
+    const actionId = 'labor-laborPolicy';
+    const row = document.getElementById(actionId);
+    if (!row || !currentFaction || !currentNation) { _ministryActionConfirming = false; return; }
+    if (!isMyMinistryByKey('labor')) { _ministryActionConfirming = false; return; }
+
+    const config = MINISTRY_ACTIONS.labor.actions.find(a => a.id === 'laborPolicy');
+    const dirConfig = config.directions[direction];
+    if (!dirConfig) { _ministryActionConfirming = false; return; }
+
+    const countKey = 'labor:laborPolicy';
+    const useCount = ministryActionUseCounts[countKey] || 0;
+    const apCost = config.apCosts[Math.min(useCount, 3)];
+    const pop = currentNation.population || 20000000;
+    const oneTimeCost = calculateLaborActionCost(dirConfig, pop);
+
+    // Check discretionary funds
+    const mData = ministryData.find(m => m.ministry_key === 'labor');
+    const balance = Number(mData?.discretionary_balance || 0);
+    if (oneTimeCost > 0 && balance < oneTimeCost) {
+        _ministryActionConfirming = false;
+        alert('Insufficient discretionary funds.');
+        return;
+    }
+
+    // Check if opposing direction is active — confirm cancellation
+    const existingActive = activeMinistryActions[actionId];
+    if (existingActive) {
+        const existingDir = typeof existingActive === 'string' ? existingActive : null;
+        if (existingDir === direction) {
+            _ministryActionConfirming = false;
+            alert('This direction is already active.');
+            return;
+        }
+        const opposingLabel = existingDir === 'strengthen' ? 'Strengthen Unions'
+            : existingDir === 'deregulate' ? 'Deregulate Labor' : 'current labor policy';
+        if (!confirm(`This will immediately cancel your active ${opposingLabel} with no fund refund. Continue?`)) {
+            _ministryActionConfirming = false;
+            return;
+        }
+        await handleLaborPolicyConflict(direction);
+    }
+
+    // Build stat effects from the direction's baseEffects
+    const scale = getUseCountScale(useCount);
+    const statEffects = dirConfig.baseEffects.map(eff => ({
+        stat_key: eff.stat_key,
+        direction: eff.direction,
+        rate: Math.round((eff.scalable ? eff.rate * scale : eff.rate) * 100) / 100,
+        delay_ticks: eff.delayOverride !== undefined ? eff.delayOverride : config.delay,
+        duration_ticks: eff.durationOverride !== undefined ? eff.durationOverride : config.duration,
+        target: eff.target || 'nation'
+    }));
+
+    // Optimistic UI
+    row.classList.remove('selected');
+    row.classList.add('active');
+    const btns = document.getElementById(actionId + '-btns');
+    const dirLabel = direction === 'strengthen' ? 'STRENGTHEN UNIONS' : 'DEREGULATE LABOR';
+    if (btns) btns.innerHTML = `<div class="ministry-action__active-indicator" style="color:#5cb85c;">● ACTIVE — ${dirLabel}</div>`;
+    const selectorEl = document.getElementById('labor-direction-selector');
+    if (selectorEl) selectorEl.innerHTML = '';
+
+    const actionData = {
+        use_count: useCount,
+        scale: scale,
+        direction: direction,
+        one_time_cost: oneTimeCost,
+        budget_per_tick: 0
+    };
+
+    try {
+        const { data: actionLogId, error } = await _supabase.rpc('execute_ministry_action', {
+            p_nation_id: currentNation.id,
+            p_faction_id: currentFaction.id,
+            p_ministry_key: 'labor',
+            p_action_key: 'laborPolicy',
+            p_ap_cost: apCost,
+            p_applied_at_tick: currentTick,
+            p_stat_effects: statEffects,
+            p_action_data: actionData
+        });
+
+        if (error) throw error;
+
+        // === RPC succeeded — action is committed. Everything below is best-effort. ===
+
+        // Deduct one-time cost from discretionary fund (best-effort — action already committed)
+        try { await deductDiscretionaryFund('labor', mData, balance, oneTimeCost); }
+        catch (_) { /* fund deduction failed — will be stale until page reload */ }
+
+        // Update local state
+        const prevAP = currentFaction.action_points || 0;
+        currentFaction.action_points = Math.max(0, prevAP - apCost);
+        ministryActionUseCounts[countKey] = useCount + 1;
+        activeMinistryActions[actionId] = direction; // store direction as value
+        _laborSelectedDirection = null;
+        sessionStorage.removeItem('nationhood_state');
+
+        // Fire event (non-blocking)
+        try {
+            const { ministerName, partyName } = await fetchMinisterInfo('labor');
+            await _supabase.rpc('fire_system_event', {
+                p_trigger_key: dirConfig.triggerKey,
+                p_nation_id: currentNation.id,
+                p_tick: currentTick,
+                p_placeholders: {
+                    minister_name: ministerName,
+                    party: partyName,
+                    nation: currentNation.name || 'Unknown',
+                    direction: direction,
+                    cost: formatUpfrontCost(oneTimeCost)
+                }
+            });
+        } catch (_) { /* best-effort */ }
+
+    } catch (e) {
+        // Revert optimistic UI — only reached if RPC itself failed
+        row.classList.remove('active');
+        if (btns) btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openLaborPolicySelector()">▶ ${apCost} AP</div>`;
+        alert('Action failed: ' + (e.message || 'Unknown error'));
+    } finally {
+        _ministryActionConfirming = false;
+    }
+}
+
+// Labor action select (for Workforce Development — standard flow with one-time cost)
+function laborActionSelect(actionId) {
+    const row = document.getElementById(actionId);
+    if (!row || row.classList.contains('active') || row.classList.contains('disabled')) return;
+    if (!isMyMinistryByKey('labor')) return;
+
+    // Deselect previous
+    if (selectedMinistryAction && selectedMinistryAction !== actionId) {
+        ministryActionDeselect(selectedMinistryAction);
+    }
+    if (row.classList.contains('selected')) return;
+
+    row.classList.add('selected');
+    selectedMinistryAction = actionId;
+
+    const config = MINISTRY_ACTIONS.labor.actions.find(a => a.id === 'workforceDevelopment');
+    const countKey = 'labor:workforceDevelopment';
+    const useCount = ministryActionUseCounts[countKey] || 0;
+    const apCost = config.apCosts[Math.min(useCount, 3)];
+    const pop = currentNation?.population || 20000000;
+    const oneTimeCost = calculateLaborActionCost(config, pop);
+    const costLabel = formatUpfrontCost(oneTimeCost);
+
+    const btns = document.getElementById(actionId + '-btns');
+    if (btns) {
+        btns.innerHTML = `<div style="display:flex;gap:4px;">
+            <div class="ministry-action__btn-confirm" onclick="event.stopPropagation();confirmLaborWorkforceAction('${actionId}')">Confirm — ${apCost} AP · ${costLabel}</div>
+            <div class="ministry-action__btn-cancel" onclick="event.stopPropagation();laborActionDeselect('${actionId}')">✕</div>
+        </div>`;
+    }
+}
+
+function laborActionDeselect(actionId) {
+    const row = document.getElementById(actionId);
+    if (!row) return;
+    row.classList.remove('selected');
+    if (selectedMinistryAction === actionId) selectedMinistryAction = null;
+
+    const config = MINISTRY_ACTIONS.labor.actions.find(a => a.id === 'workforceDevelopment');
+    const countKey = 'labor:workforceDevelopment';
+    const useCount = ministryActionUseCounts[countKey] || 0;
+    const apCost = config.apCosts[Math.min(useCount, 3)];
+
+    const btns = document.getElementById(actionId + '-btns');
+    if (btns) {
+        btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();laborActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+    }
+}
+
+async function confirmLaborWorkforceAction(actionId) {
+    if (_ministryActionConfirming) return;
+    _ministryActionConfirming = true;
+
+    const row = document.getElementById(actionId);
+    if (!row || !currentFaction || !currentNation) { _ministryActionConfirming = false; return; }
+    if (!isMyMinistryByKey('labor')) { _ministryActionConfirming = false; return; }
+
+    const config = MINISTRY_ACTIONS.labor.actions.find(a => a.id === 'workforceDevelopment');
+    const countKey = 'labor:workforceDevelopment';
+    const useCount = ministryActionUseCounts[countKey] || 0;
+    const apCost = config.apCosts[Math.min(useCount, 3)];
+    const pop = currentNation.population || 20000000;
+    const oneTimeCost = calculateLaborActionCost(config, pop);
+    const statEffects = buildStatEffects(config, useCount);
+
+    // Check discretionary funds
+    const mData = ministryData.find(m => m.ministry_key === 'labor');
+    const balance = Number(mData?.discretionary_balance || 0);
+    if (oneTimeCost > 0 && balance < oneTimeCost) {
+        _ministryActionConfirming = false;
+        alert('Insufficient discretionary funds.');
+        laborActionDeselect(actionId);
+        return;
+    }
+
+    // Optimistic UI
+    row.classList.remove('selected');
+    row.classList.add('active');
+    selectedMinistryAction = null;
+    const btns = document.getElementById(actionId + '-btns');
+    if (btns) btns.innerHTML = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+
+    const actionData = {
+        use_count: useCount,
+        scale: getUseCountScale(useCount),
+        one_time_cost: oneTimeCost,
+        budget_per_tick: 0
+    };
+
+    try {
+        const { data: actionLogId, error } = await _supabase.rpc('execute_ministry_action', {
+            p_nation_id: currentNation.id,
+            p_faction_id: currentFaction.id,
+            p_ministry_key: 'labor',
+            p_action_key: 'workforceDevelopment',
+            p_ap_cost: apCost,
+            p_applied_at_tick: currentTick,
+            p_stat_effects: statEffects,
+            p_action_data: actionData
+        });
+
+        if (error) throw error;
+
+        // === RPC succeeded — action is committed. Everything below is best-effort. ===
+
+        // Deduct one-time cost from discretionary fund (best-effort — action already committed)
+        try { await deductDiscretionaryFund('labor', mData, balance, oneTimeCost); }
+        catch (_) { /* fund deduction failed — will be stale until page reload */ }
+
+        // Update local state
+        const prevAP = currentFaction.action_points || 0;
+        currentFaction.action_points = Math.max(0, prevAP - apCost);
+        ministryActionUseCounts[countKey] = useCount + 1;
+        activeMinistryActions[actionId] = true;
+        sessionStorage.removeItem('nationhood_state');
+
+        // Fire event (non-blocking)
+        try {
+            const { ministerName, partyName } = await fetchMinisterInfo('labor');
+            await _supabase.rpc('fire_system_event', {
+                p_trigger_key: config.triggerKey,
+                p_nation_id: currentNation.id,
+                p_tick: currentTick,
+                p_placeholders: {
+                    minister_name: ministerName,
+                    party: partyName,
+                    nation: currentNation.name || 'Unknown',
+                    cost: formatUpfrontCost(oneTimeCost)
+                }
+            });
+        } catch (_) { /* best-effort */ }
+
+    } catch (e) {
+        // Revert optimistic UI
+        row.classList.remove('active');
+        if (btns) {
+            btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();laborActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
         }
         alert('Action failed: ' + (e.message || 'Unknown error'));
     } finally {
@@ -5280,7 +5925,7 @@ function renderCabinet(ministries, coalition) {
 
     const cards = keys.map(key => {
         const m = ministryMap[key];
-        const title = m?.ministry_name || MINISTRY_NAMES[key] || key;
+        const title = MINISTRY_NAMES[key] || m?.ministry_name || key;
         const isFilled = m && m.minister_first_name;
         const requests = isAutocracy ? ministryRequests.filter(r => r.ministry_key === key) : [];
         const myRequest = requests.find(r => r.faction_id === currentFaction?.id);
@@ -5544,12 +6189,7 @@ async function confirmAssign() {
         }
 
         // +3% approval to the receiving party
-        const receivingParty = allParties.find(p => p.id === selectedCandidate.partyId);
-        if (receivingParty) {
-            const newApproval = Math.min(100, (receivingParty.approval_rating || 40) + 3);
-            await _supabase.from('factions').update({ approval_rating: newApproval })
-                .eq('id', selectedCandidate.partyId);
-        }
+        await nudgeApproval(_supabase, selectedCandidate.partyId, currentNation.id, 3, { source: 'minister:appointed' });
 
         await _supabase.from('ministry_requests').delete()
             .eq('nation_id', currentNation.id).eq('ministry_key', assignMinistryKey);
@@ -5911,21 +6551,17 @@ async function purgeMinister(ministryKey) {
             }
         }
 
-        const rulerApproval = currentFaction.approval_rating ?? 40;
-        const newRulerApproval = Math.min(100, rulerApproval + approvalBoost);
-        await _supabase.from('factions').update({
-            approval_rating: newRulerApproval
-        }).eq('id', currentFaction.id);
-        currentFaction.approval_rating = newRulerApproval;
+        if (approvalBoost > 0) {
+            await nudgeApproval(_supabase, currentFaction.id, currentNation.id, approvalBoost, { source: 'minister:purge_boost' });
+        }
 
         if (ministry.party_id && ministry.party_id !== rulingFactionId) {
             const target = allParties.find(p => p.id === ministry.party_id);
             const currentLoyalty = target?.loyalty ?? 50;
-            const currentApproval = target?.approval_rating ?? 50;
             await _supabase.from('factions').update({
-                loyalty: Math.max(0, currentLoyalty - loyaltyLoss),
-                approval_rating: Math.max(0, currentApproval - approvalLossPurged)
+                loyalty: Math.max(0, currentLoyalty - loyaltyLoss)
             }).eq('id', ministry.party_id);
+            await nudgeApproval(_supabase, ministry.party_id, currentNation.id, -approvalLossPurged, { source: 'minister:purged' });
         }
 
         const { data: nation } = await _supabase.from('nations').select('stability, corruption').eq('id', currentNation.id).single();
@@ -6224,7 +6860,45 @@ function renderImpeachmentButton() {
     // President's own party cannot file impeachment
     if (isPresidentParty) return '';
 
+    const effectiveAPCost = getImpeachmentAPCost();
     const mySeats = allPartySeats[currentFaction.id] || currentFaction.seats || 0;
+
+    // Build charge requirement status indicators
+    const overreachCount = currentNation.overreach_count ?? 0;
+    const abuseThreshold = GAME_CONFIG.IMPEACHMENT_ABUSE_OVERREACH_THRESHOLD;
+    const abuseMet = overreachCount >= abuseThreshold;
+
+    const corruptionStat = currentNation.corruption ?? 0;
+    const corruptionMet = corruptionStat >= GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD;
+
+    const govApproval = currentNation.gov_approval ?? 40;
+    const incompMet = govApproval <= GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD;
+
+    const crimCorruption = currentNation.corruption ?? 0;
+    const judicialIndep = currentNation.judicial_independence ?? 50;
+    const crimMet = crimCorruption >= GAME_CONFIG.IMPEACHMENT_CRIMINAL_CORRUPTION_THRESHOLD && judicialIndep <= GAME_CONFIG.IMPEACHMENT_CRIMINAL_JUDICIAL_THRESHOLD;
+
+    // Veto abuse requires async — show count on page load via data attribute
+    // We show a placeholder; the exact count is computed in fileImpeachment
+    const anyChargePossible = abuseMet || corruptionMet || incompMet || crimMet;
+
+    const chargeRow = (label, met, detail) => `
+        <div style="display:flex;align-items:baseline;gap:6px;margin:3px 0;">
+            <span style="color:${met ? 'var(--green)' : 'var(--text-secondary)'};font-size:0.65rem;width:10px;">${met ? '●' : '○'}</span>
+            <span style="color:${met ? 'var(--text-primary)' : 'var(--text-secondary)'};font-size:0.7rem;"><strong>${label}</strong></span>
+            <span style="color:var(--text-secondary);font-size:0.65rem;margin-left:auto;text-align:right;">${detail}</span>
+        </div>`;
+
+    const chargeRequirements = `
+        <div style="margin-top:10px;padding:10px 12px;background:var(--bg-card);border:1px solid var(--border-hair);border-radius:3px;text-align:left;">
+            <div style="font-family:var(--font-mono);font-size:9px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">Charge Requirements</div>
+            ${chargeRow('Abuse of Power', abuseMet, `Overreach ≥ ${abuseThreshold} (${overreachCount}/${abuseThreshold})`)}
+            ${chargeRow('Corruption', corruptionMet, `Corruption ≥ ${GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD} (${Math.round(corruptionStat)})`)}
+            ${chargeRow('Gross Incompetence', incompMet, `Approval ≤ ${GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD} for ${GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_TICKS} ticks (${Math.round(govApproval)})`)}
+            ${chargeRow('Constitutional Violation', false, `≥ ${GAME_CONFIG.IMPEACHMENT_VETO_ABUSE_COUNT} vetoed bills with ⅔ support`)}
+            ${chargeRow('Criminal Conduct', crimMet, `Corruption ≥ ${GAME_CONFIG.IMPEACHMENT_CRIMINAL_CORRUPTION_THRESHOLD} (${Math.round(crimCorruption)}) + Judicial Indep ≤ ${GAME_CONFIG.IMPEACHMENT_CRIMINAL_JUDICIAL_THRESHOLD} (${Math.round(judicialIndep)})`)}
+        </div>`;
+
     if (mySeats < 1) {
         return `
             <div id="impeachment" style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
@@ -6232,15 +6906,23 @@ function renderImpeachmentButton() {
                     ⚖ Impeach President
                 </button>
                 <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">Need at least 1 seat in the legislature.</div>
+                ${chargeRequirements}
             </div>`;
     }
 
+    // Disable button if no charges are possible (veto abuse is async so we can't check here — fileImpeachment will recheck)
+    const noCharges = !anyChargePossible;
+    const disabledAttr = noCharges ? 'disabled' : '';
+    const disabledNote = noCharges ? '<div style="font-size:0.7rem;color:var(--amber);margin-top:6px;">No charges currently meet their requirements. Constitutional Violation requires checking veto records.</div>' : '';
+
     return `
         <div id="impeachment" style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
-            <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="fileImpeachment()" id="impeach-btn">
-                ⚖ Impeach President <span class="ap-cost">${GAME_CONFIG.IMPEACHMENT_AP_COST} AP</span>
+            <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="fileImpeachment()" id="impeach-btn" ${disabledAttr}>
+                ⚖ Impeach President <span class="ap-cost">${effectiveAPCost} AP</span>
             </button>
             <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">File articles of impeachment against the President</div>
+            ${disabledNote}
+            ${chargeRequirements}
         </div>`;
 }
 
@@ -6798,6 +7480,122 @@ async function handleEndEmergency() {
 }
 window.handleEndEmergency = handleEndEmergency;
 
+async function buildImpeachmentCharges() {
+    const charges = [];
+
+    // 1. Abuse of Power — requires presidential overreach >= threshold
+    const overreachCount = currentNation.overreach_count ?? 0;
+    const abuseAvail = overreachCount >= GAME_CONFIG.IMPEACHMENT_ABUSE_OVERREACH_THRESHOLD;
+    charges.push({
+        type: 'abuse_of_power',
+        label: 'Abuse of Power',
+        available: abuseAvail,
+        reason: abuseAvail ? '' : `Requires presidential overreach ≥ ${GAME_CONFIG.IMPEACHMENT_ABUSE_OVERREACH_THRESHOLD} (currently ${overreachCount})`
+    });
+
+    // 2. Corruption — requires corruption stat >= threshold
+    const corruptionStat = currentNation.corruption ?? 0;
+    const corruptionAvail = corruptionStat >= GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD;
+    charges.push({
+        type: 'corruption',
+        label: 'Corruption',
+        available: corruptionAvail,
+        reason: corruptionAvail ? '' : `Requires corruption ≥ ${GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD} (currently ${Math.round(corruptionStat)})`
+    });
+
+    // 3. Incompetence — requires gov_approval <= threshold for consecutive ticks
+    const govApproval = currentNation.gov_approval ?? 40;
+    const requiredTicks = GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_TICKS;
+    let incompAvail = false;
+    let consecutiveCount = 0;
+    if (govApproval <= GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD) {
+        const { data: history } = await _supabase
+            .from('nations_history')
+            .select('tick, gov_approval')
+            .eq('nation_id', currentNation.id)
+            .order('tick', { ascending: false })
+            .limit(requiredTicks);
+        consecutiveCount = (history || []).filter(h => h.gov_approval <= GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD).length;
+        incompAvail = history && history.length >= requiredTicks && consecutiveCount >= requiredTicks;
+    }
+    charges.push({
+        type: 'incompetence',
+        label: 'Gross Incompetence',
+        available: incompAvail,
+        reason: incompAvail ? '' : `Requires gov approval ≤ ${GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD} for ${requiredTicks} consecutive ticks (${consecutiveCount}/${requiredTicks} met, currently ${Math.round(govApproval)})`
+    });
+
+    // 4. Constitutional Violation — requires president to have vetoed N+ popular bills (>66% support)
+    let vetoAbuseCount = 0;
+    if (presidentData) {
+        const { data: vetoedBills } = await _supabase
+            .from('bills')
+            .select('id, bill_support(stance, seat_count)')
+            .eq('nation_id', currentNation.id)
+            .eq('president_action', 'vetoed')
+            .gte('president_action_tick', presidentData.elected_tick || 0);
+        const supermajoritySeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * (2 / 3));
+        for (const bill of (vetoedBills || [])) {
+            let votesFor = 0;
+            for (const s of (bill.bill_support || [])) {
+                const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+                if (stance === 'yes') votesFor += (s.seat_count || 0);
+            }
+            if (votesFor >= supermajoritySeats) vetoAbuseCount++;
+        }
+    }
+    const constViolAvail = vetoAbuseCount >= GAME_CONFIG.IMPEACHMENT_VETO_ABUSE_COUNT;
+    charges.push({
+        type: 'constitutional_violation',
+        label: 'Constitutional Violation',
+        available: constViolAvail,
+        reason: constViolAvail ? '' : `Requires ≥ ${GAME_CONFIG.IMPEACHMENT_VETO_ABUSE_COUNT} vetoed bills with ⅔ support (currently ${vetoAbuseCount})`
+    });
+
+    // 5. Criminal Conduct — requires corruption >= threshold AND judicial_independence <= threshold
+    const crimCorruption = currentNation.corruption ?? 0;
+    const judicialIndep = currentNation.judicial_independence ?? 50;
+    const crimCorruptionMet = crimCorruption >= GAME_CONFIG.IMPEACHMENT_CRIMINAL_CORRUPTION_THRESHOLD;
+    const crimJudicialMet = judicialIndep <= GAME_CONFIG.IMPEACHMENT_CRIMINAL_JUDICIAL_THRESHOLD;
+    const crimAvail = crimCorruptionMet && crimJudicialMet;
+    const crimReasons = [];
+    if (!crimCorruptionMet) crimReasons.push(`corruption ≥ ${GAME_CONFIG.IMPEACHMENT_CRIMINAL_CORRUPTION_THRESHOLD} (currently ${Math.round(crimCorruption)})`);
+    if (!crimJudicialMet) crimReasons.push(`judicial independence ≤ ${GAME_CONFIG.IMPEACHMENT_CRIMINAL_JUDICIAL_THRESHOLD} (currently ${Math.round(judicialIndep)})`);
+    charges.push({
+        type: 'criminal_conduct',
+        label: 'Criminal Conduct',
+        available: crimAvail,
+        reason: crimAvail ? '' : `Requires ${crimReasons.join(' and ')}`
+    });
+
+    return charges;
+}
+
+function getImpeachmentAPCost() {
+    // Base cost
+    let cost = GAME_CONFIG.IMPEACHMENT_AP_COST;
+
+    // Check president's party leader traits for constitutional_scholar (+3 AP to opponents)
+    if (presidentFactionId) {
+        const presParty = allParties.find(p => p.id === presidentFactionId);
+        if (presParty) {
+            const posTraits = presParty.leader_positive_traits || [];
+            if (posTraits.includes('constitutional_scholar')) cost += 3;
+        }
+    }
+
+    // Check president's party leader traits for paper_thin_mandate (-2 AP for opponents)
+    if (presidentFactionId) {
+        const presParty = allParties.find(p => p.id === presidentFactionId);
+        if (presParty) {
+            const negTraits = presParty.leader_negative_traits || [];
+            if (negTraits.includes('paper_thin_mandate')) cost -= 2;
+        }
+    }
+
+    return Math.max(1, cost);
+}
+
 async function fileImpeachment() {
     if (_govActionLock || !currentFaction || !currentNation || !presidentData) return;
 
@@ -6836,37 +7634,17 @@ async function fileImpeachment() {
     }
 
     // Build charge options with precondition checks
-    const charges = [];
+    const charges = await buildImpeachmentCharges();
 
-    // 1. Abuse of Power — always available
-    charges.push({ type: 'abuse_of_power', label: 'Abuse of Power', available: true, reason: '' });
+    // Check if any charges are available at all
+    const anyAvailable = charges.some(c => c.available);
+    if (!anyAvailable) {
+        alert('No impeachment charges are currently available. All charges require specific preconditions to be met.');
+        return;
+    }
 
-    // 2. Corruption — requires corruption stat >= threshold
-    const corruptionStat = currentNation.corruption ?? 0;
-    const corruptionAvail = corruptionStat >= GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD;
-    charges.push({
-        type: 'corruption',
-        label: 'Corruption',
-        available: corruptionAvail,
-        reason: corruptionAvail ? '' : `Requires corruption ≥ ${GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD} (currently ${corruptionStat})`
-    });
-
-    // 3. Incompetence — requires gov_approval <= threshold for consecutive ticks
-    // Simplified: check current approval as proxy
-    const govApproval = currentNation.gov_approval ?? 40;
-    const incompAvail = govApproval <= GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD;
-    charges.push({
-        type: 'incompetence',
-        label: 'Gross Incompetence',
-        available: incompAvail,
-        reason: incompAvail ? '' : `Requires gov approval ≤ ${GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD} (currently ${Math.round(govApproval)})`
-    });
-
-    // 4. Constitutional Violation — always available
-    charges.push({ type: 'constitutional_violation', label: 'Constitutional Violation', available: true, reason: '' });
-
-    // 5. Criminal Conduct — always available
-    charges.push({ type: 'criminal_conduct', label: 'Criminal Conduct', available: true, reason: '' });
+    // Calculate effective AP cost (with leader trait modifiers)
+    const effectiveAPCost = getImpeachmentAPCost();
 
     // Build charge selection HTML
     const chargeCheckboxes = charges.map((c, i) => {
@@ -6879,8 +7657,7 @@ async function fileImpeachment() {
         </label>`;
     }).join('');
 
-    // Show charge selection modal via a custom confirm-like approach
-    // Create a modal overlay
+    // Show charge selection modal
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:10000;display:flex;align-items:center;justify-content:center;';
     overlay.innerHTML = `
@@ -6892,7 +7669,7 @@ async function fileImpeachment() {
             <div style="font-size:0.8rem;color:var(--text-primary);margin-bottom:12px;">Select at least one charge:</div>
             <div id="impeach-charges-list">${chargeCheckboxes}</div>
             <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-hair);font-size:0.75rem;color:var(--text-secondary);line-height:1.5;">
-                <div>Cost: <strong style="color:var(--amber);">${GAME_CONFIG.IMPEACHMENT_AP_COST} AP</strong></div>
+                <div>Cost: <strong style="color:var(--amber);">${effectiveAPCost} AP</strong>${effectiveAPCost !== GAME_CONFIG.IMPEACHMENT_AP_COST ? ` <span style="font-size:0.65rem;">(base ${GAME_CONFIG.IMPEACHMENT_AP_COST}, modified by leader traits)</span>` : ''}</div>
                 <div>Committee debate: ${GAME_CONFIG.IMPEACHMENT_COMMITTEE_TICKS} ticks → Floor vote: ${GAME_CONFIG.IMPEACHMENT_MOTION_VOTING_TICKS} ticks</div>
                 <div>Requires <strong style="color:var(--green);">simple majority</strong> (50%+1 of all seats) to impeach</div>
                 <div style="margin-top:6px;">If impeached → Trial: ${GAME_CONFIG.IMPEACHMENT_TRIAL_TICKS}-tick conviction vote (⅔ supermajority)</div>
@@ -6931,6 +7708,16 @@ async function fileImpeachment() {
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const tick = shard?.current_tick || 0;
+
+        // Deduct AP BEFORE creating records (prevents orphaned rows on insufficient AP)
+        const apResult = await deductAP(_supabase, currentFaction.id, effectiveAPCost);
+        if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+            alert('Not enough AP. Need ' + effectiveAPCost + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
+            _govActionLock = false;
+            return;
+        }
+        currentFaction.action_points = apResult.newAp;
 
         // Create the impeachment proceeding record
         const { data: proceeding, error: procError } = await _supabase.from('impeachment_proceedings').insert({
@@ -6972,21 +7759,13 @@ async function fileImpeachment() {
             .eq('nation_id', currentNation.id)
             .neq('phase', 'resolved');
         if (procCount > 1) {
-            // Another proceeding was created concurrently — delete ours
+            // Another proceeding was created concurrently — delete ours and refund AP
             await _supabase.from('bills').delete().eq('id', bill.id);
             await _supabase.from('impeachment_proceedings').delete().eq('id', proceeding.id);
+            await _supabase.rpc('accumulate_ap', { p_faction_id: currentFaction.id, p_amount: effectiveAPCost });
             alert('Another impeachment proceeding was just filed. Please refresh.');
             return;
         }
-
-        // Deduct AP after bill creation succeeds
-        const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.IMPEACHMENT_AP_COST);
-        if (!apResult.success) {
-            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
-            alert('Not enough AP. Need ' + GAME_CONFIG.IMPEACHMENT_AP_COST + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
-            return;
-        }
-        currentFaction.action_points = apResult.newAp;
 
         // Auto-cast the filer's own vote as YES
         const seatData = await loadSeats(_supabase, currentNation.id, false, allParties, currentFaction.id);
@@ -7328,7 +8107,7 @@ async function resignPMAction() {
     if (!canFire) { alert('Only the head of government can dismiss ministers.'); return; }
 
     const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
-    const ministryName = ministry.ministry_name || MINISTRY_NAMES[ministryKey] || ministryKey;
+    const ministryName = MINISTRY_NAMES[ministryKey] || ministry.ministry_name || ministryKey;
     if (!confirm('Dismiss ' + ministerName + ' from ' + ministryName + '?\n\nCosts 1 AP. A replacement will need to be appointed.\nThe new minister starts at 50% approval.\nNote: The underlying national stats will not change.')) return;
     _govActionLock = true;
 
@@ -7961,6 +8740,21 @@ window.confirmDoctrineRenounce = confirmDoctrineRenounce;
 window.cancelDoctrineAction = cancelDoctrineAction;
 // Protest crisis card exports
 window.protestCrisisAction = protestCrisisAction;
+// Healthcare ministry exports
+window.healthcareActionSelect = healthcareActionSelect;
+window.confirmHealthcareAction = confirmHealthcareAction;
+window.openPharmaceuticalSelector = openPharmaceuticalSelector;
+window.selectPharmaDirection = selectPharmaDirection;
+window.closePharmaceuticalSelector = closePharmaceuticalSelector;
+window.confirmPharmaceuticalAction = confirmPharmaceuticalAction;
+// Labor ministry exports
+window.openLaborPolicySelector = openLaborPolicySelector;
+window.selectLaborDirection = selectLaborDirection;
+window.closeLaborPolicySelector = closeLaborPolicySelector;
+window.confirmLaborPolicyAction = confirmLaborPolicyAction;
+window.laborActionSelect = laborActionSelect;
+window.laborActionDeselect = laborActionDeselect;
+window.confirmLaborWorkforceAction = confirmLaborWorkforceAction;
 })();
 </script>
 </body>

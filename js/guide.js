@@ -429,7 +429,7 @@ const guideContent = {
 <p>Each ministry produces ongoing stat effects based on minister performance and funding level. Ministers can be dismissed by the PM at any time for 1 AP. Dismissing a coalition partner's minister without warning may trigger a coalition collapse.</p>
 
 <h3>Acting Ministers</h3>
-<p>If a ministry is vacant, the PM can appoint an <strong>Acting Minister</strong> by directive. Acting ministers provide 50% of a confirmed minister's stat bonus and cost &minus;3 Government Approval per tick they remain unconfirmed. Maximum 3 acting ministers at any time.</p>
+<p>If a ministry is vacant, the PM can appoint an <strong>Acting Minister</strong> by directive. Acting ministers provide 50% of a confirmed minister's stat bonus. If a confirmation vote for that ministry failed during this administration, appointing an acting minister grants <strong>+1 Government Approval</strong>. If no vote was held, it costs <strong>&minus;1 Government Approval</strong>. Maximum 3 acting ministers at any time.</p>
 
 <h3>Passing Legislation</h3>
 <ol>
@@ -485,7 +485,7 @@ const guideContent = {
 <p><strong>Failed nominations:</strong> The ministry re-opens. The party whose nominee was rejected is barred from that same seat for the remainder of the game. The President may have to appoint ministers from opposition parties.</p>
 
 <h3>Acting Ministers (Presidential)</h3>
-<p>The President can appoint an Acting Minister by Executive Order if confirmation fails. Acting ministers work at <strong>50% effectiveness</strong> and cost &minus;5 Government Approval on appointment plus &minus;3 per tick. Maximum 3 at any time.</p>
+<p>The President can appoint an Acting Minister by Executive Order. Acting ministers work at <strong>50% effectiveness</strong>. If the senate confirmation vote for that ministry failed, appointing an acting minister grants <strong>+1 Government Approval</strong>. If no confirmation vote was held, it costs <strong>&minus;1 Government Approval</strong>. Maximum 3 at any time.</p>
 
 <h3>Signing and Vetoing Bills</h3>
 <p>All bills passed by the legislature go to the President's desk. The President has <strong>6 ticks</strong> to act:</p>
@@ -544,12 +544,16 @@ const guideContent = {
 </ul>
 
 <h3>Impeachment</h3>
-<p>Two-stage process: first a majority vote to begin proceedings, then a 2/3 supermajority to convict. Triggered by:</p>
-<ul>
-<li>A corruption crisis reaching a critical threshold</li>
-<li>Overreach Bar maxed out</li>
-<li>Any party with sufficient seats calling for proceedings</li>
-</ul>
+<p>Two-stage process: first a majority vote to begin proceedings, then a 2/3 supermajority to convict. At least one charge must be filed, and each charge has specific preconditions:</p>
+<table>
+<tr><th>Charge</th><th>Requirement</th></tr>
+<tr><td><strong>Abuse of Power</strong></td><td>Presidential overreach &ge; 4</td></tr>
+<tr><td><strong>Corruption</strong></td><td>Nation corruption stat &ge; 40</td></tr>
+<tr><td><strong>Gross Incompetence</strong></td><td>Gov approval &le; 25 for 6 consecutive ticks</td></tr>
+<tr><td><strong>Constitutional Violation</strong></td><td>&ge; 2 vetoed bills that had &frac23; legislative support</td></tr>
+<tr><td><strong>Criminal Conduct</strong></td><td>Corruption &ge; 30 AND judicial independence &le; 35</td></tr>
+</table>
+<p class="guide-tip">If no charges meet their requirements, impeachment cannot be filed. The president's leader traits can modify the AP cost.</p>
 <table>
 <tr><th>Result</th><th>Effect</th></tr>
 <tr><td><strong>Survives</strong></td><td>Legitimacy +6 (persecution narrative)</td></tr>
@@ -1059,12 +1063,12 @@ const guideContent = {
 <p>A motion to dissolve the current government. Requires a <strong>simple majority</strong> (more YES than NO votes). If passed, the coalition is dissolved, the PM is removed, and all ministries are vacated. If it fails, the filer loses 5 approval and the PM gains 3, with a 6-tick cooldown before another motion can be filed.</p>
 
 <h3>Impeachment</h3>
-<p>Impeachment is a two-stage process in presidential systems:</p>
+<p>Impeachment is a two-stage process in presidential systems. Filing requires at least one valid charge (Abuse of Power, Corruption, Gross Incompetence, Constitutional Violation, or Criminal Conduct), each with specific stat-based preconditions.</p>
 <ol>
 <li><strong>Impeachment Motion</strong> &mdash; requires an <strong>absolute majority</strong> (61 of 120 seats) to pass. If successful, the president is impeached and proceeds to a conviction trial.</li>
 <li><strong>Impeachment Conviction</strong> &mdash; requires a <strong>two-thirds supermajority</strong> to convict and remove the president from office.</li>
 </ol>
-<p>If the motion fails, the filer loses 5 approval and the president gains 3.</p>
+<p>If the motion fails, the filer loses 2 approval and the president gains 2. A 10-tick cooldown applies. After acquittal, the cooldown is 20 ticks. The president&rsquo;s <strong>Constitutional Scholar</strong> trait increases the filing cost by +3 AP; the <strong>Paper Thin Mandate</strong> flaw reduces it by 2 AP.</p>
 
 <h3>Default Resolution</h3>
 <p>An extreme fiscal measure available when your nation&rsquo;s debt-to-GDP ratio exceeds <strong>150%</strong>. Filing costs <strong>6 AP</strong> and requires a two-thirds supermajority. There are two types:</p>

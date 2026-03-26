@@ -75,6 +75,11 @@ BEGIN
             WHEN 'ministry_pharmaceutical_decreased'       THEN 'Pharmaceutical Regulation Decreased'
             WHEN 'ministry_pharmaceutical_direction_changed' THEN 'Pharmaceutical Policy Reversed'
             WHEN 'ministry_pharmaceutical_expired'         THEN 'Pharmaceutical Regulation Expired'
+            -- Labor Ministry
+            WHEN 'ministry_labor_strengthen_unions'    THEN 'Labor Unions Strengthened'
+            WHEN 'ministry_labor_deregulate'           THEN 'Labor Market Deregulated'
+            WHEN 'ministry_labor_direction_changed'    THEN 'Labor Policy Reversed'
+            WHEN 'ministry_workforce_development'      THEN 'Workforce Development Programme Activated'
             WHEN 'bill_passed'              THEN 'Bill Passed'
             WHEN 'bill_failed'              THEN 'Bill Failed'
             WHEN 'quorum_failed'            THEN 'Quorum Failed'
@@ -127,6 +132,11 @@ BEGIN
                 'ministry_pharmaceutical_decreased',
                 'ministry_pharmaceutical_direction_changed',
                 'ministry_pharmaceutical_expired') THEN 'HEALTH'
+            -- Labor Ministry
+            WHEN p_trigger_key IN ('ministry_labor_strengthen_unions',
+                'ministry_labor_deregulate',
+                'ministry_labor_direction_changed',
+                'ministry_workforce_development') THEN 'LABOR'
             WHEN p_trigger_key IN ('trade_agreement_proposed', 'trade_agreement_accepted',
                 'trade_agreement_rejected', 'trade_agreement_expired', 'trade_negotiation_proposed',
                 'sanctions_imposed', 'aid_terminated', 'aid_suspended', 'aid_resumed') THEN 'Trade'

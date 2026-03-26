@@ -2293,9 +2293,9 @@ function renderSectorDetail(nation, sectorKey) {
         var supplyVal = Number(flow.export_capacity) || 0;
         var demandVal = Number(flow.import_demand) || 0;
         h += '<div class="sector-vol-row">';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">SUPPLY</span><span class="sector-vol-value" style="color:#6aa3d9">' + (formatSectorVolume(supplyVal, sectorKey) || formatBudgetCurrency(supplyVal)) + '</span></div>';
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">SUPPLY</span><span class="sector-vol-value" style="color:#6aa3d9">' + formatTradeVolume(supplyVal, sectorKey) + '</span></div>';
         if (!sector.export_only) {
-            h += '<div class="sector-vol-item"><span class="sector-vol-label">DEMAND</span><span class="sector-vol-value" style="color:#c9a54e">' + (formatSectorVolume(demandVal, sectorKey) || formatBudgetCurrency(demandVal)) + '</span></div>';
+            h += '<div class="sector-vol-item"><span class="sector-vol-label">DEMAND</span><span class="sector-vol-value" style="color:#c9a54e">' + formatTradeVolume(demandVal, sectorKey) + '</span></div>';
         }
         h += '</div>';
 
@@ -2309,25 +2309,22 @@ function renderSectorDetail(nation, sectorKey) {
             var supplyTitle = rscExportCommittedPct.toFixed(0) + '% committed via RSC: ' + rscExportPartners.join(', ');
             var demandTitle = rscImportCommittedPct.toFixed(0) + '% committed via RSC: ' + rscImportPartners.join(', ');
             h += '<div class="sector-vol-row">';
-            h += '<div class="sector-vol-item" title="' + escapeHtml(supplyTitle) + '"><span class="sector-vol-label">AVAILABLE</span><span class="sector-vol-value" style="color:' + availSupplyColor + '">' + (formatSectorVolume(availableSupply, sectorKey) || formatBudgetCurrency(availableSupply)) + (rscExportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscExportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
+            h += '<div class="sector-vol-item" title="' + escapeHtml(supplyTitle) + '"><span class="sector-vol-label">AVAILABLE</span><span class="sector-vol-value" style="color:' + availSupplyColor + '">' + formatTradeVolume(availableSupply, sectorKey) + (rscExportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscExportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
             if (!sector.export_only) {
-                h += '<div class="sector-vol-item" title="' + escapeHtml(demandTitle) + '"><span class="sector-vol-label">UNMET DEMAND</span><span class="sector-vol-value" style="color:' + availDemandColor + '">' + (formatSectorVolume(availableDemand, sectorKey) || formatBudgetCurrency(availableDemand)) + (rscImportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscImportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
+                h += '<div class="sector-vol-item" title="' + escapeHtml(demandTitle) + '"><span class="sector-vol-label">UNMET DEMAND</span><span class="sector-vol-value" style="color:' + availDemandColor + '">' + formatTradeVolume(availableDemand, sectorKey) + (rscImportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscImportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
             }
             h += '</div>';
         }
 
         // Actual trade volumes row
         h += '<div class="sector-vol-row">';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">EXPORTS</span><span class="sector-vol-value" style="color:#5cb85c">' + (formatSectorVolume(expVol, sectorKey) || formatBudgetCurrency(expVol)) + '</span></div>';
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">EXPORTS</span><span class="sector-vol-value" style="color:#5cb85c">' + formatTradeVolume(expVol, sectorKey) + '</span></div>';
         if (!sector.export_only) {
-            h += '<div class="sector-vol-item"><span class="sector-vol-label">IMPORTS</span><span class="sector-vol-value" style="color:#d9534f">' + (formatSectorVolume(impVol, sectorKey) || formatBudgetCurrency(impVol)) + '</span></div>';
+            h += '<div class="sector-vol-item"><span class="sector-vol-label">IMPORTS</span><span class="sector-vol-value" style="color:#d9534f">' + formatTradeVolume(impVol, sectorKey) + '</span></div>';
         }
         var netColor = net > 0 ? '#5cb85c' : net < 0 ? '#d9534f' : '#888';
-        var netUnit = formatSectorVolume(Math.abs(net), sectorKey);
-        var netDisplay = netUnit
-            ? (net > 0 ? '+' : net < 0 ? '-' : '') + netUnit
-            : (net > 0 ? '+' : '') + formatBudgetCurrency(net);
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">NET</span><span class="sector-vol-value" style="color:' + netColor + '">' + netDisplay + '</span></div>';
+        var netSign = net > 0 ? '+' : '';
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">NET</span><span class="sector-vol-value" style="color:' + netColor + '">' + netSign + formatTradeVolume(net, sectorKey) + '</span></div>';
         h += '</div>';
 
         // Price modifier
@@ -3416,6 +3413,14 @@ function formatBudgetCurrency(val) {
     if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(1) + ' Million';
     if (abs >= 1e3)  return sign + '$' + (abs / 1e3).toFixed(1) + 'K';
     return sign + '$' + Math.round(abs).toLocaleString();
+}
+
+function formatTradeVolume(val, sectorKey) {
+    if (val == null) return '0';
+    var vol = formatSectorVolume(Number(val), sectorKey);
+    if (vol) return vol;
+    // Sectors without display units (technology, services_finance): currency
+    return formatBudgetCurrency(val);
 }
 
 function budgetTrendHtml(current, previous, prevYear) {

@@ -4,7 +4,7 @@ import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate } from './utils.js';
 
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeEndorsementPreference, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, executeIdeologicalPivot, PIVOT_CONFIG } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeEndorsementPreference, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, suspendIdeologyAction, continueIdeologyAction, cancelIdeologyAction, executeIdeologicalPivot, PIVOT_CONFIG } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { statDirectionSign } from './game/stats.js';
@@ -365,6 +365,11 @@ async function renderPartyTab(f, nation, data) {
         <div class="pol-columns">
         ${renderGovCard(nation, coalition, allParties, currentTick, prevApproval, president, administration)}
         <div class="pol-party-card">
+        <div class="pol-box-header">
+            <div class="pol-box-dot pol-box-dot--green"></div>
+            <span class="pol-box-label">Your Party</span>
+        </div>
+        <div class="pol-box-body">
         <div class="pol-header">
             <div class="pol-logo">${logoSvg}</div>
             <div class="pol-header-info">
@@ -409,6 +414,7 @@ async function renderPartyTab(f, nation, data) {
         </div>
         ${renderCaucusSection(caucusFactions, mySeats)}
         </div>
+        </div>
         ${renderParliamentBox(allParties, coalition, nation, f.id)}
         ${renderForecastBox(allParties, totalSeats, currentTick, nextElection, null, f.id)}
         </div>
@@ -416,8 +422,8 @@ async function renderPartyTab(f, nation, data) {
         <div class="pol-row-2">
         ${renderNationalMoodBox(nation, activeCrises, currentTick, issueStateMapInit)}
         <div class="pol-ideology-box" id="stance-summary-container">
-            <div class="pol-ideo-header"><span class="pol-mod-title">Stances</span></div>
-            <div id="stance-summary-strip"></div>
+            <div class="pol-ideo-header"><div class="pol-box-dot pol-box-dot--orange"></div><span class="pol-mod-title">Stances</span></div>
+            <div class="pol-box-body"><div id="stance-summary-strip"></div></div>
         </div>
         ${renderEditIdentityBox(f, currentTick)}
         </div>
@@ -1140,10 +1146,11 @@ function renderParliamentBox(allParties, coalition, nation, playerFactionId) {
     return `
         <div class="pol-parliament-box">
             <div class="pol-parl-header">
+                <div class="pol-box-dot pol-box-dot--amber"></div>
                 <span class="pol-parl-title">Parliament</span>
-                <span class="pol-parl-seats-count">${totalSeats} seats</span>
+                <div class="pol-box-header-right"><span class="pol-parl-seats-count">${totalSeats} seats</span></div>
             </div>
-
+            <div class="pol-box-body">
             <div class="pol-seat-bar-wrap">
                 <div class="pol-seat-bar">${segmentsHtml}</div>
                 ${majorityLineHtml}
@@ -1164,6 +1171,7 @@ function renderParliamentBox(allParties, coalition, nation, playerFactionId) {
             <div class="pol-margin-row ${marginCls}">
                 <span class="pol-margin-dot"></span>
                 <span>${marginText}</span>
+            </div>
             </div>
         </div>`;
 }
@@ -1198,12 +1206,15 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
         return `
             <div class="pol-forecast-box">
                 <div class="pol-fc-header">
+                    <div class="pol-box-dot pol-box-dot--blue"></div>
                     <span class="pol-mod-title">Election Forecast</span>
                 </div>
+                <div class="pol-box-body">
                 ${earlyElectionDate ? `<div style="text-align:center;padding:6px 0 2px;font-size:13px;letter-spacing:0.5px;color:var(--dtxt-secondary)">Next Election: <span style="color:var(--dtxt-primary);font-weight:600">${earlyElectionDate}</span></div>` : ''}
                 <div class="pol-fc-empty">
                     <div class="pol-fc-empty-title">Insufficient polling data</div>
                     <div class="pol-fc-empty-detail">${detail}</div>
+                </div>
                 </div>
             </div>`;
     }
@@ -1252,7 +1263,7 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
         const momColor = p.momentum > 0 ? 'var(--dgreen)' : p.momentum < 0 ? 'var(--dred)' : 'var(--dtxt-muted)';
         const momArrow = p.momentum > 0 ? '▲' : p.momentum < 0 ? '▼' : '—';
         const momText = p.momentum !== 0 ? `${momArrow}${Math.abs(p.momentum)}` : momArrow;
-        const majLinePct = (majority / totalSeats) * 100;
+        const majLinePct = totalSeats > 0 ? (majority / totalSeats) * 100 : 50;
 
         return `<div class="pol-fc-party">
             <div class="pol-fc-party-header">
@@ -1311,9 +1322,11 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
     return `
         <div class="pol-forecast-box">
             <div class="pol-fc-header">
+                <div class="pol-box-dot pol-box-dot--blue"></div>
                 <span class="pol-mod-title">Election Forecast</span>
-                <span class="pol-fc-phase" style="color:${phaseColor};background:${phaseColor}15">${phase}</span>
+                <div class="pol-box-header-right"><span class="pol-fc-phase" style="color:${phaseColor};background:${phaseColor}15">${phase}</span></div>
             </div>
+            <div class="pol-box-body">
             ${nextElectionDate ? `<div style="text-align:center;padding:6px 0 2px;font-size:13px;letter-spacing:0.5px;color:var(--dtxt-secondary)">Next Election: <span style="color:var(--dtxt-primary);font-weight:600">${nextElectionDate}</span></div>` : ''}
             <div class="pol-fc-countdown">
                 <div>
@@ -1337,6 +1350,7 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
                 <span class="pol-fc-maj-text">Majority: ${majority} seats</span>
             </div>
             ${statusHtml}
+            </div>
         </div>`;
 }
 
@@ -1391,11 +1405,14 @@ function renderNationalMoodBox(nation, activeCrises, currentTick, issueStateMap)
     return `
         <div class="pol-mood-box">
             <div class="pol-mood-header">
+                <div class="pol-box-dot pol-box-dot--red"></div>
                 <span class="pol-mood-title">Electorate Issues</span>
             </div>
+            <div class="pol-box-body">
             <div class="pol-mood-subtitle">Shows which issues matter most to the electorate.</div>
             ${crisesHtml}
             ${issuesHtml}
+            </div>
         </div>`;
 }
 
@@ -1573,10 +1590,15 @@ function renderGovCard(nation, coalition, allParties, currentTick, prevApproval,
     const footerDetail = `${govSeats}/${totalSeats} seats (${majority} needed)`;
 
     return `<div class="pol-admin-box">
+        <div class="pol-box-header">
+            <div class="pol-box-dot pol-box-dot--teal"></div>
+            <span class="pol-box-label">Government</span>
+        </div>
+        <div class="pol-box-body">
         <div style="font-family:var(--dfont-ui);font-size:16px;font-weight:700;color:var(--dtext-0);margin-bottom:8px">${escapeHtml(adminName)}</div>
         <div style="display:flex;gap:6px;margin-bottom:16px">
-            <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;padding:3px 8px;border-radius:3px;border:1px solid var(--dborder-1);color:var(--dtext-0);background:var(--dbg-4)">${escapeHtml(govTypeLabel)}</span>
-            ${coalitionBadge ? `<span style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;padding:3px 8px;border-radius:3px;border:1px solid var(--dborder-1);color:var(--dtext-0);background:var(--dbg-4)">${escapeHtml(coalitionBadge)}</span>` : ''}
+            <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;padding:3px 8px;border-radius:2px;border:1px solid var(--dborder-1);color:var(--dtext-0);background:var(--dbg-4)">${escapeHtml(govTypeLabel)}</span>
+            ${coalitionBadge ? `<span style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;padding:3px 8px;border-radius:2px;border:1px solid var(--dborder-1);color:var(--dtext-0);background:var(--dbg-4)">${escapeHtml(coalitionBadge)}</span>` : ''}
         </div>
 
         ${leader1Html}
@@ -1596,6 +1618,7 @@ function renderGovCard(nation, coalition, allParties, currentTick, prevApproval,
         <div style="font-family:var(--dfont-mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--dtext-2);margin-bottom:8px">Party Events</div>
         <div id="gov-card-party-events" class="pe-feed" style="max-height:200px;overflow-y:auto;font-size:11px">
             <div style="color:var(--dtext-3);font-family:var(--dfont-ui);font-size:11px">Loading events...</div>
+        </div>
         </div>
     </div>`;
 }
@@ -1697,15 +1720,15 @@ function renderEditIdentityBox(f, currentTick) {
 
         <!-- Header -->
         <div class="pol-id-header">
-            <div>
-                <div class="pol-id-title">Edit Party Identity</div>
-                <div class="pol-id-subtitle">Cosmetic changes are free and instant</div>
-            </div>
-            <div class="pol-id-preview" id="pol-id-preview" style="border:2px solid ${color};background:${color}18">
-                ${previewSvg}
+            <div class="pol-box-dot pol-box-dot--amber"></div>
+            <span class="pol-id-title">Party Identity</span>
+            <div class="pol-box-header-right">
+                <div class="pol-id-preview" id="pol-id-preview" style="border:2px solid ${color};background:${color}18">
+                    ${previewSvg}
+                </div>
             </div>
         </div>
-        <div class="pol-id-divider"></div>
+        <div class="pol-box-body">
 
         <!-- Party Name -->
         <div style="margin-bottom:14px">
@@ -1790,6 +1813,7 @@ function renderEditIdentityBox(f, currentTick) {
             <div class="pol-id-footer-hint">Preview updates live ↗</div>
             <button class="pol-id-save-btn" id="pol-id-save-btn">Save Changes</button>
         </div>
+        </div>
     </div>`;
 }
 
@@ -1817,10 +1841,8 @@ function initEditIdentityBox(f) {
     const abbrCancel   = document.getElementById('pol-id-abbr-cancel');
     const abbrError    = document.getElementById('pol-id-abbr-error');
     const abbrDisplay  = document.getElementById('pol-id-current-abbr');
-    const abbrApAvail  = document.getElementById('pol-id-abbr-ap-available');
     const nameDisplay  = document.getElementById('pol-id-current-name');
     const apDisplay    = document.getElementById('pol-id-ap-display');
-    const apAvailable  = document.getElementById('pol-id-ap-available');
     const iconSection  = document.getElementById('pol-id-icon-section');
     const uploadSection = document.getElementById('pol-id-upload-section');
     const uploadZone   = document.getElementById('pol-id-upload-zone');
@@ -2259,7 +2281,61 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
         const cands = r?.runoff_candidates;
         if (!cands) return '<div class="pol-el-empty">No runoff results.</div>';
         const date = tickToDate(el.election_tick);
-        return renderPresidentialCandidates(cands, date, r.turnout_pct, r.total_votes_cast);
+
+        // Build candidate table with transfer breakdown
+        const sorted = [...cands].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+        const maxVotePct = Math.max(...sorted.map(c => c.vote_percentage || 0), 1);
+        let rows = sorted.map(c => {
+            const color = colorMap[c.faction_id] || '#888';
+            const pct = (c.vote_percentage || 0).toFixed(1);
+            const barW = Math.round(((c.vote_percentage || 0) / maxVotePct) * 100);
+            const winBadge = c.winner ? ' <span class="pol-el-winner-badge">WINNER</span>' : '';
+            // Show transfer breakdown if available
+            let transferNote = '';
+            if (c.base_votes != null && c.transfer_votes) {
+                transferNote = `<div style="font-size:10px;color:var(--dtxt-muted);margin-top:2px">${(c.base_votes || 0).toLocaleString()} direct + ${(c.transfer_votes || 0).toLocaleString()} transferred</div>`;
+            }
+            return `<tr>
+                <td><span class="pol-el-color-dot" style="background:${color}"></span>${escapeHtml(c.candidate_name)}${winBadge}</td>
+                <td>${escapeHtml(c.party_name)}</td>
+                <td>${(c.votes || 0).toLocaleString()}${transferNote}</td>
+                <td class="pol-el-bar-cell"><div class="pol-el-bar"><div class="pol-el-bar-fill" style="width:${barW}%;background:${color}"></div></div></td>
+                <td>${pct}%</td>
+            </tr>`;
+        }).join('');
+
+        let candidateTable = `
+            <div class="pol-el-date">${date}</div>
+            <div class="pol-el-summary">Turnout: ${(r.turnout_pct || 0).toFixed(1)}% &middot; ${(r.total_votes_cast || 0).toLocaleString()} votes</div>
+            <table class="pol-el-table">
+                <thead><tr><th>Candidate</th><th>Party</th><th>Votes</th><th></th><th>%</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+
+        // Render vote transfer breakdown showing where eliminated parties' votes went
+        const allTransfers = sorted.flatMap(c => (c.transfer_detail || []).map(t => ({ ...t, to_candidate: c.candidate_name, to_faction_id: c.faction_id })));
+        if (allTransfers.length > 0) {
+            let transferRows = allTransfers.map(t => {
+                const fromColor = colorMap[t.faction_id] || '#888';
+                const toColor = colorMap[t.to_faction_id] || '#888';
+                const ratePct = t.round1_votes > 0 ? Math.round((t.transferred / t.round1_votes) * 100) : 0;
+                return `<tr>
+                    <td><span class="pol-el-color-dot" style="background:${fromColor}"></span>${escapeHtml(t.party_name || '')}</td>
+                    <td><span class="pol-el-color-dot" style="background:${toColor}"></span>${escapeHtml(t.to_candidate || '')}</td>
+                    <td>${(t.transferred || 0).toLocaleString()}</td>
+                    <td>${ratePct}%</td>
+                </tr>`;
+            }).join('');
+
+            candidateTable += `
+                <div style="margin-top:14px;font-family:var(--dfont-mono);font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--dtxt-muted);margin-bottom:6px">Vote Transfers</div>
+                <table class="pol-el-table">
+                    <thead><tr><th>Eliminated Party</th><th>Votes Went To</th><th>Transferred</th><th>Rate</th></tr></thead>
+                    <tbody>${transferRows}</tbody>
+                </table>`;
+        }
+
+        return candidateTable;
     }
 
     // Determine if presidential election had a runoff
@@ -2334,10 +2410,12 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
         data-faction-id="${faction?.id || ''}"
         data-nation-id="${nation?.id || ''}"
         data-current-tick="${currentTick || 0}">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-            <div class="pol-section-label" style="margin-bottom:0">ELECTION RESULTS</div>
-            ${endorseButtonHtml}
+        <div class="pol-box-header">
+            <div class="pol-box-dot pol-box-dot--teal"></div>
+            <span class="pol-box-label">Election Results</span>
+            <div class="pol-box-header-right">${endorseButtonHtml}</div>
         </div>
+        <div class="pol-box-body" style="padding:0">
         ${endorsePanelHtml}
         <div class="pol-el-tabs">
             <button class="pol-el-tab active" data-tab="parl">Parliamentary</button>
@@ -2345,6 +2423,7 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
         </div>
         <div class="pol-el-content active" data-content="parl">${renderParliamentaryContent(lastParliamentary)}</div>
         ${presContents}
+        </div>
     </div>`;
 }
 
@@ -2607,8 +2686,13 @@ function renderUpcomingElectionsBox(scheduledElections, currentTick) {
     }
 
     return `<div class="pol-upcoming-box">
-        <div class="pol-section-label" style="margin-bottom:12px">UPCOMING ELECTIONS</div>
+        <div class="pol-box-header">
+            <div class="pol-box-dot pol-box-dot--blue"></div>
+            <span class="pol-box-label">Upcoming Elections</span>
+        </div>
+        <div class="pol-box-body">
         ${bodyHtml}
+        </div>
     </div>`;
 }
 
@@ -2895,9 +2979,9 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
         .gte('tick_performed', tick - 10)
         .order('tick_performed', { ascending: false });
     const { data: activeShiftActions } = await _supabase.from('ideology_shift_actions')
-        .select('id, action_type, target_axis, target_direction, drift_rate, created_tick, status')
+        .select('id, action_type, target_axis, target_direction, drift_rate, created_tick, status, band_shift_total')
         .eq('faction_id', f.id)
-        .eq('status', 'active');
+        .in('status', ['active', 'paused']);
 
     _caCooldowns = {};
     _caUsedThisTick = {};
@@ -3006,7 +3090,12 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             ? `<span class="ca-used-badge">USED</span>`
             : onCooldown
             ? `<span class="ca-cd-badge">${cdRemaining} tick${cdRemaining !== 1 ? 's' : ''} CD</span>`
-            : isActive ? `<span class="ca-active-badge">ACTIVE</span>` : '';
+            : isActive ? (() => {
+                const match = _caActiveActions.find(a => a.action_type === act.id.replace('fund_', ''));
+                return match?.status === 'paused'
+                    ? `<span class="ca-active-badge" style="background:#f97316">PAUSED</span>`
+                    : `<span class="ca-active-badge">ACTIVE</span>`;
+            })() : '';
         listHtml += `<div class="ca-item${isSel ? ' selected' : ''}${!ok ? ' disabled' : ''}${onCooldown ? ' ca-item--cooldown' : ''}${usedThisTick ? ' ca-item--used' : ''}" data-action-id="${act.id}" style="border-left-color:${borderColor};${bgStyle}${borderStyle}${!ok ? 'opacity:0.35;' : ''}">
             <div class="ca-item-head">
                 <div style="display:flex;align-items:center;gap:6px">
@@ -3046,7 +3135,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
         panelHtml += `</div>`;
     }
 
-    // Build Active Actions table
+    // Build Active Actions table (includes paused actions)
     let activeActionsHtml = '';
     if (_caActiveActions.length > 0) {
         const durationMap = { think_tank: IDEO_SHIFT_CONFIG.THINK_TANK.DURATION, media_campaign: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.DURATION + (IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.VISIBILITY_TICKS || 0), grassroots_movement: IDEO_SHIFT_CONFIG.GRASSROOTS.DURATION };
@@ -3055,24 +3144,48 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
         for (const ax of IDEOLOGY_AXES) {
             axisMap[ax.key] = ax;
         }
+        const canManage = (type) => type === 'think_tank' || type === 'grassroots_movement';
         let rows = _caActiveActions.map(a => {
             const totalDuration = durationMap[a.action_type] || 50;
             const ticksActive = tick - a.created_tick;
             const ticksLeft = Math.max(0, totalDuration - ticksActive);
             const axDef = axisMap[a.target_axis];
-            const dirLabel = a.target_direction === 'left' ? axDef?.leftLabel : a.target_direction === 'right' ? axDef?.rightLabel : a.target_direction === 'expand' ? 'Expand' : a.target_direction === 'narrow' ? 'Narrow' : a.target_direction || '?';
+            const axisName = axDef ? `${axDef.leftLabel}–${axDef.rightLabel}` : '';
+            const dirLabel = a.target_direction === 'left' ? axDef?.leftLabel : a.target_direction === 'right' ? axDef?.rightLabel : a.target_direction === 'expand' ? `Expand ${axisName}` : a.target_direction === 'narrow' ? `Narrow ${axisName}` : a.target_direction || '?';
             const effectLabel = a.drift_rate ? `+${a.drift_rate}/tick ${dirLabel}` : dirLabel;
             const activatedDate = tickToDate(a.created_tick);
+            const isPaused = a.status === 'paused';
+            const statusLabel = isPaused ? '<span style="color:#f97316;font-weight:600">PAUSED</span>' : `${ticksLeft}`;
+
+            // Management buttons for think_tank and grassroots_movement
+            let btnsHtml = '';
+            if (canManage(a.action_type)) {
+                if (isPaused) {
+                    btnsHtml = `<td style="text-align:right;white-space:nowrap">
+                        <button class="ca-manage-btn" data-action="continue" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#5cb85c;color:#fff;border:none;border-radius:3px">Continue — 1 AP</button>
+                        <button class="ca-manage-btn" data-action="cancel" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#d9534f;color:#fff;border:none;border-radius:3px">Cancel — 2 AP</button>
+                    </td>`;
+                } else {
+                    btnsHtml = `<td style="text-align:right;white-space:nowrap">
+                        <button class="ca-manage-btn" data-action="suspend" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#c8a44e;color:#fff;border:none;border-radius:3px">Suspend — 1 AP</button>
+                        <button class="ca-manage-btn" data-action="cancel" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#d9534f;color:#fff;border:none;border-radius:3px">Cancel — 2 AP</button>
+                    </td>`;
+                }
+            } else {
+                btnsHtml = '<td></td>';
+            }
+
             return `<tr>
                 <td style="font-weight:600">${nameMap[a.action_type] || a.action_type}</td>
                 <td>${activatedDate}</td>
                 <td>${effectLabel}</td>
-                <td style="text-align:right">${ticksLeft}</td>
+                <td style="text-align:right">${statusLabel}</td>
+                ${btnsHtml}
             </tr>`;
         }).join('');
         activeActionsHtml = `<div class="ca-active-actions" style="margin-top:16px;">
             <div class="pe-header"><span class="pol-mod-title">Active Actions</span></div>
-            <table class="pol-el-table" style="margin-top:4px"><thead><tr><th>Action</th><th>Activated</th><th>Effect</th><th style="text-align:right">Ticks Left</th></tr></thead><tbody>${rows}</tbody></table>
+            <table class="pol-el-table" style="margin-top:4px"><thead><tr><th>Action</th><th>Activated</th><th>Effect</th><th style="text-align:right">Ticks Left</th><th></th></tr></thead><tbody>${rows}</tbody></table>
         </div>`;
     }
 
@@ -3093,6 +3206,42 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
 
     // Load party events feed
     _loadPartyEventsFeed(n.id, f.id);
+
+    // Wire up Suspend/Continue/Cancel buttons for ideology shift actions
+    container.querySelectorAll('.ca-manage-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (btn.dataset.executing) return;
+            btn.dataset.executing = 'true';
+            btn.style.opacity = '0.4';
+            const actionId = btn.dataset.id;
+            const op = btn.dataset.action;
+            try {
+                let result;
+                if (op === 'suspend') {
+                    result = await suspendIdeologyAction(_supabase, f.id, actionId, tick);
+                } else if (op === 'continue') {
+                    result = await continueIdeologyAction(_supabase, f.id, actionId, tick);
+                } else if (op === 'cancel') {
+                    result = await cancelIdeologyAction(_supabase, f.id, n.id, actionId, tick);
+                }
+                if (result?.success) {
+                    if (result.newAp != null) f.action_points = result.newAp;
+                    const freshAp = await refreshAP(f.id);
+                    if (freshAp !== undefined) f.action_points = freshAp;
+                    _showToast(result.message || 'Done.');
+                    await renderDemocracyActions(n, f, _currentShard, _currentAllParties);
+                } else {
+                    _showToast(result?.message || 'Action failed.');
+                }
+            } catch (err) {
+                _showToast('Error: ' + err.message);
+            } finally {
+                btn.dataset.executing = '';
+                btn.style.opacity = '1';
+            }
+        });
+    });
 
     // Wire up action selection
     container.querySelectorAll('.ca-item').forEach(el => {
@@ -3150,35 +3299,35 @@ async function _renderActionsPromisesPanel(faction, nation, tick) {
         .select('*')
         .eq('party_id', faction.id)
         .eq('nation_id', nation.id)
-        .eq('status', 'active');
+        .in('status', ['active', 'pending_election']);
 
     if (promisesErr) {
         container.innerHTML = `<div style="color:var(--dred);font-family:var(--dfont-mono);font-size:11px;padding:8px">Failed to load promises.</div>`;
         return;
     }
 
-    const activePromises = promises || [];
+    const allPromises = promises || [];
 
     let rowsHtml = '';
-    if (activePromises.length === 0) {
+    if (allPromises.length === 0) {
         rowsHtml = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px 0">No active promises.</div>';
     } else {
-        for (const p of activePromises) {
-            // Field sources (written by executeMakePromise in political-actions.js):
-            //   p.tick_deadline  — absolute tick the promise expires
-            //   p.demand_type    — 'stat_target' | 'crisis_resolution'
-            //   p.demand_text    — full human-readable label ("Reduce Inflation to 30", "Resolve X Crisis")
-            //   p.conditions.direction — 'above' (↑) | 'below' (↓) for stat_target promises
-            const ticksLeft = Math.max(0, (p.tick_deadline || 0) - tick);
-            const isUrgent = ticksLeft <= 3;
-            const isCritical = ticksLeft <= 1;
-            const tickColor = isCritical ? 'var(--dred)' : isUrgent ? 'var(--damber)' : 'var(--dgreen)';
+        for (const p of allPromises) {
+            const isPending = p.status === 'pending_election';
             const isCrisis = p.demand_type === 'crisis_resolution';
-            // demand_text is the authoritative display label for all promise types.
-            // It is written by executeMakePromise as a complete sentence: "Reduce Inflation to 30"
-            // or "Resolve [Crisis Name]". No reconstruction from conditions needed.
             const label = p.demand_text || (isCrisis ? 'Resolve crisis' : 'Improve stat');
             const direction = isCrisis ? '✓' : (p.conditions?.direction === 'above' ? '↑' : '↓');
+
+            let statusHtml;
+            if (isPending) {
+                statusHtml = `<span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:#94a3b8">⏳ Awaiting election</span>`;
+            } else {
+                const ticksLeft = Math.max(0, (p.tick_deadline || 0) - tick);
+                const isUrgent = ticksLeft <= 3;
+                const isCritical = ticksLeft <= 1;
+                const tickColor = isCritical ? 'var(--dred)' : isUrgent ? 'var(--damber)' : 'var(--dgreen)';
+                statusHtml = `<span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:${tickColor}">${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} left</span>`;
+            }
 
             rowsHtml += `
             <div style="padding:6px 0;border-bottom:1px solid var(--dborder-1)">
@@ -3187,7 +3336,7 @@ async function _renderActionsPromisesPanel(faction, nation, tick) {
                         <span style="font-family:var(--dfont-mono);font-size:12px;color:var(--dtext-0)">${direction}</span>
                         <span style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0);margin-left:4px">${escapeHtml(label)}</span>
                     </div>
-                    <span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:${tickColor}">${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} left</span>
+                    ${statusHtml}
                 </div>
             </div>`;
         }
@@ -3196,8 +3345,8 @@ async function _renderActionsPromisesPanel(faction, nation, tick) {
     container.innerHTML = `
     <div style="border:1px solid var(--dborder-1);border-radius:6px;padding:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <span style="font-family:var(--dfont-ui);font-size:13px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:0.5px">Active Promises</span>
-            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-2)">${activePromises.length} / ${MAKE_PROMISE_CONFIG.MAX_ACTIVE_PROMISES}</span>
+            <span style="font-family:var(--dfont-ui);font-size:13px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:0.5px">Promises</span>
+            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-2)">${allPromises.length} / ${MAKE_PROMISE_CONFIG.MAX_ACTIVE_PROMISES}</span>
         </div>
         ${rowsHtml}
     </div>`;
@@ -3528,14 +3677,15 @@ function renderPromiseConfig(nation) {
                             <span class="ca-stat-val" style="color:${dirColor}">${target}</span>
                         </div>
                     </div>
-                    ${isSel ? `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:4px">Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE} approval</span></div>
+                    ${isSel ? `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:4px">Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks (starts after next election) · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE} approval</span></div>
                     <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:3px;display:flex;gap:12px;flex-wrap:wrap">
-                        <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY} credibility</span>
+                        <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${Math.round(MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY * 100)} credibility</span>
                     </div>
                     <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;display:flex;gap:12px;flex-wrap:wrap">
-                        <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY} credibility</span>
+                        <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${Math.round(MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY * 100)} credibility</span>
                     </div>
-                    <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;color:var(--dtext-3)">While unfulfilled & governing: <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick</span></div>` : ''}
+                    <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;color:var(--dtext-3)">Countdown deferred until in government · <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick while unfulfilled</span></div>
+                    <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;color:var(--dtext-3)">If in opposition after election: <span style="color:#94a3b8">promise extinguishes — no penalty</span></div>` : ''}
                 </div>`;
             }
             html += `</div>`;
@@ -3545,15 +3695,16 @@ function renderPromiseConfig(nation) {
     if (_caPromiseType === 'crisis') {
         html += `<div id="ca-crisis-list"><div class="ca-info-box">Loading crises...</div></div>`;
         html += `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:8px;padding:0 2px">
-            Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE} approval</span>
+            Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks (starts after next election) · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE} approval</span>
         </div>
         <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:3px;padding:0 2px">
-            <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY} credibility</span>
+            <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${Math.round(MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY * 100)} credibility</span>
         </div>
         <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px">
-            <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY} credibility</span>
+            <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${Math.round(MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY * 100)} credibility</span>
         </div>
-        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px;color:var(--dtext-3)">While unfulfilled & governing: <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick</span></div>`;
+        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px;color:var(--dtext-3)">Countdown deferred until in government · <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick while unfulfilled</span></div>
+        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px;color:var(--dtext-3)">If in opposition after election: <span style="color:#94a3b8">promise extinguishes — no penalty</span></div>`;
     }
 
     return html;
@@ -3981,9 +4132,10 @@ function renderActionResult(result) {
     if (result.promiseType) {
         html += `<div style="border-top:1px solid var(--dborder-1);margin-top:8px;padding-top:8px">
             <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-bottom:4px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">Consequences</div>
-            <div style="font-family:var(--dfont-mono);font-size:10px;color:#4ade80">Kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY} credibility</div>
-            <div style="font-family:var(--dfont-mono);font-size:10px;color:#ef4444;margin-top:2px">Broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY} credibility</div>
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:#4ade80">Kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${Math.round(MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY * 100)} credibility</div>
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:#ef4444;margin-top:2px">Broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${Math.round(MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY * 100)} credibility</div>
             <div style="font-family:var(--dfont-mono);font-size:10px;color:#f97316;margin-top:2px">While unfulfilled: −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick</div>
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:#94a3b8;margin-top:2px">Countdown starts after next election · Opposition = extinguished</div>
         </div>`;
     }
 
@@ -5928,51 +6080,441 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
 
     const partyColor = playerFaction.party_color || '#9b7ec8';
     const partyAbbr = playerFaction.abbreviation || '??';
+    const partyName = playerFaction.faction_name || 'Unknown Party';
 
-    // Fetch faction_electoral_standing for ALL parties + issue_state for Issue Landscape
-    const partyIds = (allParties || []).map(p => p.id);
-    const [standingsRes, issueStatesRes] = await Promise.all([
+    // Fetch standing, party approval log, credibility log, active campaigns, and government formation in parallel
+    const [standingRes, partyLogRes, credLogRes, activeCampaignsRes, govFormRes] = await Promise.all([
         _supabase.from('faction_electoral_standing')
-            .select('faction_id, ideological_alignment, platform_appeal, party_approval, visibility, credibility_modifier, contested_vote_share, realized_vote_share, turnout_rate, alignment_contribution, appeal_contribution, approval_contribution, vote_left_on_table, raw_appeal')
+            .select('faction_id, party_approval, polled_party_approval, last_polled_tick, credibility_modifier, ideological_alignment')
             .eq('nation_id', nation.id)
-            .in('faction_id', partyIds),
-        _supabase.from('issue_state')
-            .select('issue_id, salience, salience_target, owned_by, pioneer_faction_id')
-            .eq('nation_id', nation.id),
+            .eq('faction_id', playerFaction.id)
+            .maybeSingle(),
+        _supabase.from('party_approval_log')
+            .select('amount, source, tick')
+            .eq('nation_id', nation.id)
+            .eq('faction_id', playerFaction.id)
+            .order('tick', { ascending: false })
+            .limit(20),
+        _supabase.from('credibility_log')
+            .select('amount, source, tick')
+            .eq('nation_id', nation.id)
+            .eq('faction_id', playerFaction.id)
+            .order('tick', { ascending: false })
+            .limit(20),
+        _supabase.from('ideology_shift_actions')
+            .select('action_type, target_axis, target_direction, created_tick, status')
+            .eq('faction_id', playerFaction.id)
+            .eq('nation_id', nation.id)
+            .in('status', ['active', 'paused']),
+        _supabase.from('government_formations')
+            .select('lead_party_id, party_ids')
+            .eq('nation_id', nation.id)
+            .in('status', ['formed', 'caretaker'])
+            .order('formed_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
     ]);
 
-    if (standingsRes.error) console.error('[Politics] Failed to load standings:', standingsRes.error.message);
-    if (issueStatesRes.error) console.error('[Politics] Failed to load issue states:', issueStatesRes.error.message);
-    const standings = standingsRes.data || [];
-    const issueStates = issueStatesRes.data || [];
-
-    // Build standings lookup
-    const standingMap = {};
-    for (const s of standings) standingMap[s.faction_id] = s;
-
-    const playerStanding = standingMap[playerFaction.id];
-
-    // Build party lookup
-    const partyMap = {};
-    for (const p of (allParties || [])) partyMap[p.id] = p;
-
-    // If no standings data, show fallback
+    const playerStanding = standingRes.data;
     if (!playerStanding) {
         container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:20px;text-align:center;">Electorate standing not yet computed. Advance a tick to generate data.</div>';
         return;
     }
 
-    // Player values
-    const alignment = Number(playerStanding.ideological_alignment ?? 50);
-    const appeal = Number(playerStanding.platform_appeal ?? 50);
-    const approval = Number(playerStanding.party_approval ?? 50);
-    const visibility = Number(playerStanding.visibility ?? 30);
-    const credibility = Number(playerStanding.credibility_modifier ?? 1.0);
+    const approval = Number(playerStanding.party_approval ?? 25);
+    const polledApproval = playerStanding.polled_party_approval != null ? Number(playerStanding.polled_party_approval) : null;
+    const lastPolledTick = playerStanding.last_polled_tick || null;
+
+    // Determine if player is in government
+    const coalitionIds = govFormRes.data?.party_ids || [];
+    const leadPartyId = govFormRes.data?.lead_party_id || null;
+    const isGoverning = coalitionIds.includes(playerFaction.id) || leadPartyId === playerFaction.id;
+
+    // Build modifiers list from party_approval_log (per-party events)
+    const partyLog = partyLogRes.data || [];
+
+    // Human-readable labels for party_approval_log sources
+    const _approvalSourceLabels = {
+        'bill:passed': 'Bill Passed',
+        'bill:failed': 'Bill Failed',
+        'bill:promise_fulfilled': 'Promise Fulfilled',
+        'bill:promise_broken': 'Promise Broken',
+        'bill:veto': 'Bill Vetoed',
+        'rally': 'Rally',
+        'rally:approval_hit': 'Rally',
+        'outreach': 'Outreach',
+        'outreach:approval': 'Outreach',
+        'attack': 'Attack Ad',
+        'attack:received': 'Attacked',
+        'promise:made': 'Promise Made',
+        'promise:kept': 'Promise Kept',
+        'promise:broken': 'Promise Broken',
+        'promise:expired': 'Promise Expired',
+        'promise:unfulfilled_penalty': 'Unfulfilled Promise',
+        'protest:organiser': 'Protest Organised',
+        'executive_order:price_controls': 'Price Controls',
+        'executive_order:national_emergency': 'National Emergency',
+        'executive_order:censure': 'Censured',
+        'executive_order:censure_martyr': 'Censure Backlash',
+        'election:no_confidence_called': 'Called No Confidence',
+        'election:no_confidence_failed': 'No Confidence Failed',
+        'election:presidential_won': 'Won Presidential Election',
+        'election:presidential_lost': 'Lost Presidential Election',
+        'election:formation_timeout': 'Formation Timeout',
+        'impeachment:failed': 'Impeachment Failed',
+        'impeachment:survived': 'Survived Impeachment',
+        'crisis:sovereign_default': 'Sovereign Default',
+        'article:published': 'News Article',
+        'ipo:hold_rally': 'IO Rally',
+        'ipo:rally_all': 'IO Rally (All Members)',
+    };
+    function _formatSource(source) {
+        if (_approvalSourceLabels[source]) return _approvalSourceLabels[source];
+        if (source.startsWith('crisis:cascade:')) return 'Crisis Fallout';
+        if (source.startsWith('crisis:resolved:')) return 'Crisis Resolved: ' + source.slice('crisis:resolved:'.length).replace(/_/g, ' ');
+        if (source.startsWith('crisis:')) return 'Crisis: ' + source.slice('crisis:'.length).replace(/_/g, ' ');
+        if (source.startsWith('protest:')) return 'Protests';
+        if (source.startsWith('bill:')) return 'Legislation';
+        if (source.startsWith('election:')) return 'Election';
+        if (source.startsWith('executive_order:')) return 'Executive Order';
+        return source.replace(/_/g, ' ').replace(/:/g, ' — ');
+    }
+
+    // Approval color based on value
+    function _approvalColor(val) {
+        if (val >= 60) return '#5cb85c';
+        if (val >= 40) return '#c8a44e';
+        if (val >= 25) return '#d98030';
+        return '#d9534f';
+    }
+
+    // Build modifier rows HTML from party-specific approval log
+    let modifiersHtml = '';
+    if (partyLog.length === 0) {
+        modifiersHtml = '<div style="font-size:10px;color:var(--dtext-3);font-style:italic;padding:6px 0">No recorded modifiers yet.</div>';
+    } else {
+        for (const entry of partyLog) {
+            const amt = Number(entry.amount);
+            const sign = amt >= 0 ? '+' : '';
+            const color = amt >= 0 ? '#5cb85c' : '#d9534f';
+            const label = _formatSource(entry.source);
+            const date = tickToDate(entry.tick);
+            modifiersHtml += `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--dborder-0)">
+                    <div style="flex:1;min-width:0">
+                        <div style="font-size:10px;color:var(--dtext-1);font-family:var(--dfont-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(label)}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:8px">
+                        <span style="font-size:10px;color:var(--dtext-3);font-family:var(--dfont-ui)">${escapeHtml(date)}</span>
+                        <span style="font-size:11px;font-weight:700;font-family:var(--dfont-mono);color:${color};min-width:32px;text-align:right">${sign}${amt}</span>
+                    </div>
+                </div>`;
+        }
+    }
+
+    // Last poll info
+    const lastPollText = lastPolledTick && lastPolledTick > 0
+        ? tickToDate(lastPolledTick)
+        : 'Never';
+    const polledDelta = (polledApproval != null && lastPolledTick > 0)
+        ? (approval - polledApproval)
+        : null;
+    const polledDeltaHtml = polledDelta != null
+        ? ` <span style="font-size:10px;font-weight:600;color:${polledDelta >= 0 ? '#5cb85c' : '#d9534f'}">(${polledDelta >= 0 ? '+' : ''}${polledDelta.toFixed(1)} since poll)</span>`
+        : '';
+
+    // Governing status label
+    const statusLabel = isGoverning
+        ? (playerFaction.id === leadPartyId ? 'GOVERNING — LEAD' : 'GOVERNING — COALITION')
+        : 'OPPOSITION';
+    const statusColor = isGoverning ? '#5cb85c' : '#d98030';
+
+    // ── Credibility data ──
+    const credLog = credLogRes.data || [];
+    const credModifier = Number(playerStanding.credibility_modifier ?? 1.0);
+    const credScore = Math.max(0, Math.min(100, Math.round((credModifier - 0.5) * 100))); // 0-100 scale
+
+    // Credibility source labels
+    const _credSourceLabels = {
+        'attack:received': 'Attacked',
+        'attack:self': 'Attack Backfire',
+        'impeachment:passed': 'Impeached',
+        'impeachment:motion_failed': 'Impeachment Failed',
+        'impeachment:motion_failed:vindicated': 'Vindicated',
+        'impeachment:survived': 'Survived Impeachment',
+        'impeachment:survived:accuser': 'Failed Accusation',
+        'bill:term_limit': 'Term Limit Bill',
+        'no_confidence:passed': 'No Confidence Passed',
+        'no_confidence:failed': 'No Confidence Failed',
+        'no_confidence:failed:vindicated': 'Vindicated (No Confidence)',
+        'executive_order:censure': 'Censured',
+        'impeachment:convicted': 'Convicted & Removed',
+        'sovereign_default': 'Sovereign Default',
+        'resign_pm': 'PM Resignation',
+    };
+    function _formatCredSource(source) {
+        if (_credSourceLabels[source]) return _credSourceLabels[source];
+        // Promise sources: promise:kept:Lower Unemployment, promise:broken:Unemployment, promise:nervous:Unemployment
+        if (source.startsWith('promise:kept:')) return `Promise Kept (${source.slice('promise:kept:'.length)})`;
+        if (source.startsWith('promise:broken:')) return `Promise Broken (${source.slice('promise:broken:'.length)})`;
+        if (source.startsWith('promise:nervous:')) return `Promise Nervous (${source.slice('promise:nervous:'.length)})`;
+        if (source.startsWith('promise:')) return 'Promise';
+        if (source.startsWith('attack:')) return 'Attack';
+        return source.replace(/_/g, ' ').replace(/:/g, ' — ');
+    }
+
+    // Build credibility modifier rows
+    let credModifiersHtml = '';
+    if (credLog.length === 0) {
+        credModifiersHtml = '<div style="font-size:10px;color:var(--dtext-3);font-style:italic;padding:6px 0">No recorded changes yet.</div>';
+    } else {
+        for (const entry of credLog) {
+            const amt = Number(entry.amount);
+            const sign = amt >= 0 ? '+' : '';
+            const color = amt >= 0 ? '#5cb85c' : '#d9534f';
+            const label = _formatCredSource(entry.source);
+            const date = tickToDate(entry.tick);
+            credModifiersHtml += `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--dborder-0)">
+                    <div style="flex:1;min-width:0">
+                        <div style="font-size:10px;color:var(--dtext-1);font-family:var(--dfont-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(label)}</div>
+                        <div style="font-size:9px;color:var(--dtext-3);font-family:var(--dfont-ui)">${escapeHtml(date)}</div>
+                    </div>
+                    <div style="flex-shrink:0;margin-left:8px">
+                        <span style="font-size:11px;font-weight:700;font-family:var(--dfont-mono);color:${color};min-width:40px;text-align:right;display:inline-block">${sign}${amt.toFixed(2)}</span>
+                    </div>
+                </div>`;
+        }
+    }
+
+    // Credibility tier label
+    function _credTier(score) {
+        if (score >= 80) return { label: 'Excellent', color: '#5cb85c' };
+        if (score >= 60) return { label: 'Good', color: '#6baf6b' };
+        if (score >= 40) return { label: 'Average', color: '#c8a44e' };
+        if (score >= 20) return { label: 'Poor', color: '#d98030' };
+        return { label: 'Disgraced', color: '#d9534f' };
+    }
+    const tier = _credTier(credScore);
+
+    // ── Alignment data ──
+    const alignScore = Math.max(0, Math.min(100, Math.round(Number(playerStanding.ideological_alignment ?? 50))));
+    const activeCampaigns = activeCampaignsRes.data || [];
+
+    function _alignTier(score) {
+        if (score >= 75) return { label: 'Strong Alignment', color: '#5cb85c' };
+        if (score >= 55) return { label: 'Moderate Alignment', color: '#6baf6b' };
+        if (score >= 40) return { label: 'Weak Alignment', color: '#c8a44e' };
+        if (score >= 25) return { label: 'Misaligned', color: '#d98030' };
+        return { label: 'Severely Misaligned', color: '#d9534f' };
+    }
+    const alignTier = _alignTier(alignScore);
+
+    // Build active campaigns list
+    const _campaignNames = { think_tank: 'Think Tank', media_campaign: 'Media Campaign', grassroots_movement: 'Grassroots Movement' };
+    const _campaignDurations = {
+        think_tank: IDEO_SHIFT_CONFIG.THINK_TANK.DURATION,
+        media_campaign: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.DURATION + (IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.VISIBILITY_TICKS || 0),
+        grassroots_movement: IDEO_SHIFT_CONFIG.GRASSROOTS.DURATION,
+    };
+    const axisMap = {};
+    for (const ax of IDEOLOGY_AXES) axisMap[ax.key] = ax;
+
+    let campaignsHtml = '';
+    if (activeCampaigns.length === 0) {
+        campaignsHtml = '<div style="font-size:10px;color:var(--dtext-3);font-style:italic;padding:6px 0">No active ideology campaigns.</div>';
+    } else {
+        for (const c of activeCampaigns) {
+            const name = _campaignNames[c.action_type] || c.action_type;
+            const totalDur = _campaignDurations[c.action_type] || 50;
+            const ticksActive = currentTick - (c.created_tick != null ? c.created_tick : currentTick);
+            const ticksLeft = Math.max(0, totalDur - ticksActive);
+            const pct = Math.max(0, Math.min(100, Math.round((ticksActive / totalDur) * 100)));
+            const axDef = axisMap[c.target_axis];
+            const dirLabel = c.target_direction === 'left' ? (axDef?.leftLabel || 'Left')
+                : c.target_direction === 'right' ? (axDef?.rightLabel || 'Right')
+                : c.target_direction === 'expand' ? 'Polarize'
+                : c.target_direction === 'narrow' ? 'Unify' : c.target_direction || '?';
+            const axisLabel = axDef ? `${axDef.leftLabel}–${axDef.rightLabel}` : c.target_axis || '';
+            campaignsHtml += `
+                <div style="padding:6px 0;border-bottom:1px solid var(--dborder-0)">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <div style="font-size:10px;font-weight:600;color:var(--dtext-1);font-family:var(--dfont-ui)">${escapeHtml(name)}</div>
+                        <span style="font-size:9px;color:${c.status === 'paused' ? '#f97316' : 'var(--dtext-3)'};font-family:var(--dfont-mono)">${c.status === 'paused' ? 'PAUSED' : ticksLeft + ' ticks left'}</span>
+                    </div>
+                    <div style="font-size:9px;color:var(--dtext-3);margin-top:2px">${escapeHtml(axisLabel)} — ${escapeHtml(dirLabel)}</div>
+                    <div style="height:3px;border-radius:2px;background:var(--dbg-3);margin-top:4px;overflow:hidden">
+                        <div style="width:${pct}%;height:100%;background:${partyColor};border-radius:2px;transition:width 0.5s"></div>
+                    </div>
+                </div>`;
+        }
+    }
+
+    // Build the Party Approval + Credibility + Alignment containers
+    container.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:12px;padding:10px 0">
+        <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
+            <!-- Header -->
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${partyColor};margin-bottom:4px;font-weight:700">PARTY APPROVAL</div>
+
+            <!-- Party name + status -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <span style="font-size:14px;font-weight:700;color:var(--dtext-0)">${escapeHtml(partyName)}</span>
+                <span style="font-size:9px;font-weight:600;color:${statusColor};text-transform:uppercase;letter-spacing:0.5px">${statusLabel}</span>
+            </div>
+
+            <!-- Approval value -->
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+                <span style="font-size:28px;font-weight:800;font-family:var(--dfont-mono);color:${_approvalColor(approval)}">${approval.toFixed(1)}</span>
+                <span style="font-size:11px;color:var(--dtext-3)">/ 100</span>
+            </div>
+
+            <!-- Approval bar -->
+            <div style="height:6px;border-radius:3px;background:var(--dbg-3);margin-bottom:8px;overflow:hidden">
+                <div style="width:${Math.min(100, approval)}%;height:100%;background:${_approvalColor(approval)};border-radius:3px;transition:width 0.5s"></div>
+            </div>
+
+            <!-- Last poll -->
+            <div style="font-size:10px;color:var(--dtext-3);margin-bottom:14px;font-family:var(--dfont-ui)">
+                Last Poll Taken — <span style="color:var(--dtext-1)">${escapeHtml(lastPollText)}</span>${polledDeltaHtml}
+            </div>
+
+            <hr style="border:none;border-top:1px solid var(--dborder-0);margin:0 0 10px 0">
+
+            <!-- Modifiers header -->
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dtext-0);margin-bottom:6px">Modifiers</div>
+            <div style="font-size:9px;color:var(--dtext-3);margin-bottom:8px;font-style:italic">Recent events that changed your party's approval</div>
+
+            <!-- Modifier list (scrollable) -->
+            <div style="flex:1;overflow-y:auto;min-height:0">
+                ${modifiersHtml}
+            </div>
+        </div>
+
+        <!-- Credibility Container -->
+        <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
+            <!-- Header -->
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${partyColor};margin-bottom:4px;font-weight:700">CREDIBILITY</div>
+
+            <!-- Party name + tier -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <span style="font-size:14px;font-weight:700;color:var(--dtext-0)">${escapeHtml(partyName)}</span>
+                <span style="font-size:9px;font-weight:600;color:${tier.color};text-transform:uppercase;letter-spacing:0.5px">${tier.label}</span>
+            </div>
+
+            <!-- Score value -->
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+                <span style="font-size:28px;font-weight:800;font-family:var(--dfont-mono);color:${_approvalColor(credScore)}">${credScore}</span>
+                <span style="font-size:11px;color:var(--dtext-3)">/ 100</span>
+                <span style="font-size:10px;color:var(--dtext-3);font-family:var(--dfont-mono)">(${credModifier.toFixed(2)}x)</span>
+            </div>
+
+            <!-- Credibility bar -->
+            <div style="height:6px;border-radius:3px;background:var(--dbg-3);margin-bottom:8px;overflow:hidden">
+                <div style="width:${Math.min(100, credScore)}%;height:100%;background:${_approvalColor(credScore)};border-radius:3px;transition:width 0.5s"></div>
+            </div>
+
+            <!-- Election weight info -->
+            <div style="font-size:10px;color:var(--dtext-3);margin-bottom:14px;font-family:var(--dfont-ui)">
+                Election Weight — <span style="color:var(--dtext-1)">20% (5-35% dynamic)</span>
+            </div>
+
+            <hr style="border:none;border-top:1px solid var(--dborder-0);margin:0 0 10px 0">
+
+            <!-- Changes header -->
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dtext-0);margin-bottom:6px">Recent Changes</div>
+            <div style="font-size:9px;color:var(--dtext-3);margin-bottom:8px;font-style:italic">Events that affected your party's credibility</div>
+
+            <!-- Changes list (scrollable) -->
+            <div style="flex:1;overflow-y:auto;min-height:0">
+                ${credModifiersHtml}
+            </div>
+
+            <!-- Chaos/weight indicator -->
+            <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--dborder-0)">
+                ${(() => {
+                    const pol = Number(nation.polarization ?? 50);
+                    const stab = Number(nation.stability ?? 50);
+                    const chaos = ((pol / 100) + (1 - stab / 100)) / 2;
+                    const weight = Math.round((0.35 - chaos * 0.30) * 100);
+                    const barColor = weight >= 25 ? '#5cb85c' : weight >= 15 ? '#c8a44e' : '#d9534f';
+                    const desc = weight >= 25 ? 'High stability, low polarization — credibility matters more'
+                        : weight >= 15 ? 'Moderate chaos — credibility has average impact'
+                        : 'High polarization, low stability — credibility matters less';
+                    return `
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                            <span style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--dtext-3)">Current Weight</span>
+                            <span style="font-size:11px;font-weight:700;font-family:var(--dfont-mono);color:${barColor}">${weight}%</span>
+                        </div>
+                        <div style="height:4px;border-radius:2px;background:var(--dbg-3);margin-bottom:4px;overflow:hidden">
+                            <div style="width:${Math.round(((weight - 5) / 30) * 100)}%;height:100%;background:${barColor};border-radius:2px;transition:width 0.5s"></div>
+                        </div>
+                        <div style="font-size:8px;color:var(--dtext-3);font-style:italic">${desc}</div>`;
+                })()}
+            </div>
+        </div>
+
+        <!-- Alignment Container -->
+        <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
+            <!-- Header -->
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${partyColor};margin-bottom:4px;font-weight:700">IDEOLOGICAL ALIGNMENT</div>
+
+            <!-- Party name + tier -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <span style="font-size:14px;font-weight:700;color:var(--dtext-0)">${escapeHtml(partyName)}</span>
+                <span style="font-size:9px;font-weight:600;color:${alignTier.color};text-transform:uppercase;letter-spacing:0.5px">${alignTier.label}</span>
+            </div>
+
+            <!-- Score value -->
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+                <span style="font-size:28px;font-weight:800;font-family:var(--dfont-mono);color:${_approvalColor(alignScore)}">${alignScore}</span>
+                <span style="font-size:11px;color:var(--dtext-3)">/ 100</span>
+            </div>
+
+            <!-- Alignment bar -->
+            <div style="height:6px;border-radius:3px;background:var(--dbg-3);margin-bottom:8px;overflow:hidden">
+                <div style="width:${Math.min(100, alignScore)}%;height:100%;background:${_approvalColor(alignScore)};border-radius:3px;transition:width 0.5s"></div>
+            </div>
+
+            <!-- Election weight info -->
+            <div style="font-size:10px;color:var(--dtext-3);margin-bottom:6px;font-family:var(--dfont-ui)">
+                Election Weight — <span style="color:var(--dtext-1)">25% (largest factor)</span>
+            </div>
+
+            <!-- Hint -->
+            <div style="font-size:9px;color:var(--dtext-3);margin-bottom:14px;font-style:italic">
+                How closely your party's ideology matches the electorate. Use Think Tanks, Grassroots Movements, or Media Campaigns to shift alignment.
+            </div>
+
+            <hr style="border:none;border-top:1px solid var(--dborder-0);margin:0 0 10px 0">
+
+            <!-- Active campaigns header -->
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dtext-0);margin-bottom:6px">Active Campaigns</div>
+
+            <!-- Campaigns list (scrollable) -->
+            <div style="flex:1;overflow-y:auto;min-height:0">
+                ${campaignsHtml}
+            </div>
+
+            <!-- Electorate link -->
+            <div style="text-align:center;padding-top:8px;border-top:1px solid var(--dborder-0);margin-top:8px">
+                <span style="font-size:9px;color:var(--dtext-3);font-style:italic">See full <span style="color:var(--dtext-1);font-weight:600">Electorate</span> for more info on alignment.</span>
+            </div>
+        </div>
+    </div>`;
+
+    return; // Additional containers will be added below in future updates
     const voteShare = Number(playerStanding.realized_vote_share ?? 0);
     const contestedShare = Number(playerStanding.contested_vote_share ?? 0);
     const turnout = Number(playerStanding.turnout_rate ?? 0.65);
     const voteLeft = Number(playerStanding.vote_left_on_table ?? 0);
     const rawAppeal = Number(playerStanding.raw_appeal ?? 0);
+
+    // Engagement values
+    const engScore = Number(playerEngagement?.engagement_score ?? 50);
+    const engInit = Number(playerEngagement?.initiative_score ?? 50);
+    const engConst = Number(playerEngagement?.constructive_score ?? 50);
+    const engPos = Number(playerEngagement?.positioning_score ?? 50);
 
     const vsNum = (voteShare * 100).toFixed(1);
     const seatsText = `${mySeats} / ${totalSeats} seats`;
@@ -6005,6 +6547,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         const sVis = Number(s.visibility ?? 30);
         const sCred = Number(s.credibility_modifier ?? 1.0);
         const sTurnout = (Number(s.turnout_rate ?? 0.65) * 100).toFixed(0);
+        const sEng = Number(engagementMap[s.faction_id]?.engagement_score ?? 50);
         const sVoteLeft = (Number(s.vote_left_on_table ?? 0) * 100).toFixed(1);
 
         // Pillar color helper
@@ -6032,6 +6575,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
                 <div class="vc-vs-lbl"><div class="vc-vs-lbl-dot" style="background:${VC_MOM_COLOR}"></div>Approval <span style="color:${pc(sApproval)}">${sApproval.toFixed(0)}</span></div>
                 <div class="vc-vs-lbl">Vis ${sVis.toFixed(0)}</div>
                 <div class="vc-vs-lbl">Cred ${(sCred * 100).toFixed(0)}%</div>
+                <div class="vc-vs-lbl">Eng <span style="color:${sEng >= 60 ? 'var(--dgreen)' : sEng >= 40 ? 'var(--damber)' : 'var(--dred)'}">${sEng.toFixed(0)}</span></div>
                 <div class="vc-vs-lbl">Turnout ${sTurnout}%</div>
                 ${Number(sVoteLeft) > 0.01 ? `<div class="vc-vs-lbl" style="color:var(--dred);">Left ${sVoteLeft}%</div>` : ''}
             </div>
@@ -6166,6 +6710,40 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             <div>
                 <div class="vc-pc-label">Vote Left on Table</div>
                 <div class="vc-pc-num" style="color:${voteLeft > 0.005 ? 'var(--dred)' : 'var(--dgreen)'}; font-size:18px;">${(voteLeft * 100).toFixed(2)}%</div>
+            </div>
+        </div>
+        <!-- Engagement Score -->
+        <div class="vc-pillar-section">
+            <div class="vc-sec-label" style="margin-bottom:8px;">Engagement Score</div>
+            <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px;">
+                <div class="vc-pc-num" style="color:${engScore >= 60 ? 'var(--dgreen)' : engScore >= 40 ? 'var(--damber)' : 'var(--dred)'}; font-size:24px;">${engScore.toFixed(0)}</div>
+                <div class="vc-pc-bar" style="flex:1;"><div class="vc-pc-fill" style="width:${engScore}%;background:${engScore >= 60 ? 'var(--dgreen)' : engScore >= 40 ? 'var(--damber)' : 'var(--dred)'};"></div></div>
+                <div style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtxt-dim);white-space:nowrap;">
+                    ${engScore >= 60 ? 'No penalty' : engScore >= 40 ? 'Appeal ×0.85' : engScore >= 20 ? 'Appeal ×0.65' : 'Appeal ×0.50'}
+                </div>
+            </div>
+            <div style="display:flex;gap:20px;flex-wrap:wrap;">
+                <div>
+                    <div class="vc-pc-label">Initiative</div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <div class="vc-pc-num" style="font-size:14px;color:${engInit >= 60 ? 'var(--dgreen)' : engInit >= 40 ? 'var(--damber)' : 'var(--dred)'}">${engInit.toFixed(0)}</div>
+                        <div class="vc-pc-bar" style="width:80px;"><div class="vc-pc-fill" style="width:${engInit}%;background:${engInit >= 60 ? 'var(--dgreen)' : engInit >= 40 ? 'var(--damber)' : 'var(--dred)'};"></div></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="vc-pc-label">Constructive</div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <div class="vc-pc-num" style="font-size:14px;color:${engConst >= 60 ? 'var(--dgreen)' : engConst >= 40 ? 'var(--damber)' : 'var(--dred)'}">${engConst.toFixed(0)}</div>
+                        <div class="vc-pc-bar" style="width:80px;"><div class="vc-pc-fill" style="width:${engConst}%;background:${engConst >= 60 ? 'var(--dgreen)' : engConst >= 40 ? 'var(--damber)' : 'var(--dred)'};"></div></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="vc-pc-label">Positioning</div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <div class="vc-pc-num" style="font-size:14px;color:${engPos >= 60 ? 'var(--dgreen)' : engPos >= 40 ? 'var(--damber)' : 'var(--dred)'}">${engPos.toFixed(0)}</div>
+                        <div class="vc-pc-bar" style="width:80px;"><div class="vc-pc-fill" style="width:${engPos}%;background:${engPos >= 60 ? 'var(--dgreen)' : engPos >= 40 ? 'var(--damber)' : 'var(--dred)'};"></div></div>
+                    </div>
+                </div>
             </div>
         </div>
         ${issueLandscapeHtml}

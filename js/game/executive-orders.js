@@ -387,8 +387,39 @@ export async function issueActingMinister(supabase, nationId, factionId, ministr
         })
         .eq('id', ministry.id);
 
-    // Gov approval penalty
-    await adjustGovernmentApprovalEvent(supabase, nationId, -4, 'executive_order:acting_minister');
+    // Gov approval: check if a confirmation vote was held for this ministry
+    // during the current administration
+    const { data: currentAdmin } = await supabase
+        .from('administrations')
+        .select('started_at_tick')
+        .eq('nation_id', nationId)
+        .is('ended_at_tick', null)
+        .order('started_at_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    const adminStartTick = currentAdmin?.started_at_tick ?? 0;
+
+    const { data: priorVote } = await supabase
+        .from('bills')
+        .select('id, status')
+        .eq('nation_id', nationId)
+        .eq('bill_type', 'minister_confirmation')
+        .eq('ministry_key', ministryKey)
+        .gte('proposed_tick', adminStartTick)
+        .in('status', ['passed', 'failed'])
+        .order('proposed_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (priorVote && priorVote.status === 'failed') {
+        // Confirmation vote was held and failed — appointing acting is justified
+        await adjustGovernmentApprovalEvent(supabase, nationId, 1, 'executive_order:acting_minister_after_failed_vote');
+    } else if (!priorVote) {
+        // No confirmation vote held — bypassing parliament
+        await adjustGovernmentApprovalEvent(supabase, nationId, -1, 'executive_order:acting_minister_no_vote');
+    }
+    // If priorVote.status === 'passed', the seat should already be filled — no penalty
 
     // Update overreach
     const overreach = await getOverreachCount(supabase, nationId, currentTick);
@@ -534,7 +565,7 @@ export async function issuePriceControls(supabase, nationId, factionId, stat) {
     if (insertErr) return { success: false, error: insertErr.message };
 
     // Party approval boost for populist action
-    await nudgeApproval(supabase, factionId, nationId, 2);
+    await nudgeApproval(supabase, factionId, nationId, 2, { source: 'executive_order:price_controls' });
 
     // Gov approval penalty
     await adjustGovernmentApprovalEvent(supabase, nationId, -3, 'executive_order:price_controls');
@@ -606,7 +637,7 @@ export async function issueNationalEmergency(supabase, nationId, factionId) {
     const { data: factions } = await supabase
         .from('factions').select('id').eq('nation_id', nationId).neq('id', factionId);
     for (const f of (factions || [])) {
-        await nudgeApproval(supabase, f.id, nationId, 2);
+        await nudgeApproval(supabase, f.id, nationId, 2, { source: 'executive_order:national_emergency' });
     }
 
     // Update overreach
@@ -715,12 +746,12 @@ export async function issueCensure(supabase, nationId, factionId, targetFactionI
     if (insertErr) return { success: false, error: insertErr.message };
 
     // Censure: -2 approval & -0.05 credibility to target
-    await nudgeApproval(supabase, targetFactionId, nationId, -2);
-    await adjustCredibility(supabase, targetFactionId, nationId, -0.05);
+    await nudgeApproval(supabase, targetFactionId, nationId, -2, { source: 'executive_order:censure' });
+    await adjustCredibility(supabase, targetFactionId, nationId, -0.05, 0, currentTick, { source: 'executive_order:censure' });
 
     // Martyr effect: target regains some approval (bigger if repeated censure)
     const martyrApproval = Math.round(martyrMomentum * 0.3 * 100) / 100;
-    await nudgeApproval(supabase, targetFactionId, nationId, martyrApproval);
+    await nudgeApproval(supabase, targetFactionId, nationId, martyrApproval, { source: 'executive_order:censure_martyr' });
 
     // -3 gov approval
     await adjustGovernmentApprovalEvent(supabase, nationId, -3, 'executive_order:censure');

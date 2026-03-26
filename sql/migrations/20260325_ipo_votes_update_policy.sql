@@ -1,4 +1,5 @@
 -- Allow active org members to update votes (for client-side resolution)
+-- Allow org members to update ipo_votes (for resolving votes)
 CREATE POLICY "ipo_votes_update" ON ipo_votes
     FOR UPDATE TO authenticated
     USING (

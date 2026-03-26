@@ -22,11 +22,11 @@
     max-width: 1580px;
   }
 
-  /* ── Dashboard Cards — 8px radius, panel bg ── */
+  /* ── Dashboard Cards — sharp corners, panel bg ── */
   .dash-card {
     background: var(--bg-panel);
     border: 1px solid var(--border-main);
-    border-radius: 8px;
+    border-radius: 0;
     overflow: hidden;
     min-width: 0;
   }
@@ -40,6 +40,9 @@
   #crises-card {
     grid-column: 4;
     grid-row: 2;
+  }
+  #events-card {
+    grid-column: span 2;
   }
 
   /* Card Header — v5: mono, 0.72rem, 600, centered, uppercase */
@@ -55,36 +58,6 @@
     text-align: center;
     border-bottom: 1px solid var(--border-light);
   }
-
-  /* ── Tabbed card header ── */
-  .dash-card-tabs {
-    display: flex;
-    gap: 0;
-    background: var(--bg-card);
-    border-bottom: 1px solid var(--border-light);
-  }
-  .dash-card-tab {
-    flex: 1;
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    padding: 10px 18px;
-    cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
-  }
-  .dash-card-tab:hover { color: var(--text-secondary); }
-  .dash-card-tab.active {
-    color: var(--text-bright);
-    border-bottom-color: var(--text-bright);
-  }
-  .dash-tab-pane { display: none; }
-  .dash-tab-pane.active { display: block; }
 
   /* ── Events tab bar ── */
   .events-tab-bar {
@@ -208,7 +181,7 @@
     height: 56px;
     background: var(--bg-card);
     border: 1px solid var(--border-main);
-    border-radius: 6px;
+    border-radius: 2px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -305,7 +278,7 @@
   .gov-initials {
     width: 32px;
     height: 32px;
-    border-radius: 6px;
+    border-radius: 2px;
     background: var(--bg-card);
     border: 1px solid var(--border-main);
     display: flex;
@@ -438,14 +411,6 @@
   .election-item.midterm      { border-left-color: var(--amber); }
   .election-item.presidential { border-left-color: var(--red); }
   .election-item.parliamentary { border-left-color: var(--blue); }
-  /* Urgent elections — within 5 ticks */
-  .election-item.urgent {
-    border-left-color: var(--amber);
-    background: var(--amber-faint);
-    border: 1px solid var(--amber-border);
-    border-left: 3px solid var(--amber);
-    animation: deadline-pulse 2s ease-in-out infinite;
-  }
   .election-item-type {
     font-size: 0.78rem;
     font-weight: 700;
@@ -460,16 +425,6 @@
     color: var(--text-dim);
     margin-top: 2px;
   }
-  .elections-suspended {
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: var(--red);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    padding: 20px 0;
-  }
-
   /* ── Active Crises Card — v5: left border, red triad ── */
   .crises-scroll {
     overflow-y: auto;
@@ -481,7 +436,7 @@
     padding: 8px 10px;
     margin-bottom: 12px;
     background: var(--red-faint);
-    border-radius: 0 6px 6px 0;
+    border-radius: 0 2px 2px 0;
     border: 1px solid var(--border-main);
     border-left: 3px solid var(--red);
   }
@@ -567,7 +522,8 @@
       max-height: 480px;
     }
     #events-card.dash-card-tall {
-      max-height: 400px;
+      max-height: 450px;
+      height: 450px;
     }
     #world-map-card {
       grid-column: span 1 !important;
@@ -864,6 +820,11 @@ initPage('home', async (state) => {
     // Coalition type badge
     const coalitionBadge = governing.length > 1 ? 'Coalition' : governing.length === 1 ? 'Single Party' : '';
 
+    // ── Ruling party (autocracy) — computed once, used in leader + card body ──
+    const rulingParty = nation.ruling_faction_id ? parties.find(p => p.id === nation.ruling_faction_id) : null;
+    const rpColor = rulingParty?.party_color || '#c8a64e';
+    const rpAbbr = rulingParty?.abbreviation || (rulingParty?.faction_name || '??').substring(0, 3).toUpperCase();
+
     // ── Leader 1 (President or PM) ──
     let leader1Html = '';
     if (isPres && president) {
@@ -907,9 +868,6 @@ initPage('home', async (state) => {
       const hosName = (nation.head_of_state_first_name && nation.head_of_state_last_name)
         ? nation.head_of_state_first_name + ' ' + nation.head_of_state_last_name : 'Unknown';
       const initials = ((nation.head_of_state_first_name || '?')[0] + (nation.head_of_state_last_name || '?')[0]).toUpperCase();
-      const rulingParty = nation.ruling_faction_id ? parties.find(p => p.id === nation.ruling_faction_id) : null;
-      const rpColor = rulingParty?.party_color || '#c8a64e';
-      const rpAbbr = rulingParty?.abbreviation || (rulingParty?.faction_name || '??').substring(0, 3).toUpperCase();
       leader1Html = `
         <div class="gov-leader-row">
           <div class="gov-initials">${esc(initials)}</div>
@@ -976,14 +934,12 @@ initPage('home', async (state) => {
     // ── Footer ──
     const govLabel = isAuto ? 'Authoritarian Regime' : isMajority ? 'Majority Government' : 'Minority Government';
     const footerDetail = isAuto
-      ? (nation.ruling_faction_id ? (parties.find(p => p.id === nation.ruling_faction_id)?.faction_name || 'Ruling Party') : 'Single-Party State')
+      ? (rulingParty?.faction_name || 'Single-Party State')
       : `${govSeats}/${totalSeats} seats (${majority} needed)`;
 
     // ── Build card ──
     if (isAuto) {
       // Autocracy: show leader, ruling party, approval — no coalition section
-      const rulingParty = nation.ruling_faction_id ? parties.find(p => p.id === nation.ruling_faction_id) : null;
-      const rpColor = rulingParty?.party_color || '#c8a64e';
       const rpName = rulingParty?.faction_name || 'Ruling Party';
 
       document.getElementById('gov-card-body').innerHTML = `
@@ -1195,9 +1151,9 @@ const EVENT_CATEGORY_STYLES = {
   bill:             { icon: '\uD83D\uDCDC', color: '#3498db', bg: 'rgba(52,152,219,0.10)', label: 'BILL' },
   new_party:        { icon: '\uD83C\uDFF3', color: '#9b59b6', bg: 'rgba(155,89,182,0.10)', label: 'NEW PARTY' },
   protest:          { icon: '\u270A', color: '#e67e22', bg: 'rgba(230,126,34,0.10)', label: 'PROTEST' },
-  MILITARY:         { icon: '\u2694', color: '#d48a3c', bg: 'rgba(212,138,60,0.12)', label: 'MILITARY' },
-  ECONOMY:          { icon: '\uD83D\uDCB0', color: '#5cb85c', bg: 'rgba(92,184,92,0.12)', label: 'ECONOMY' },
-  HEALTH:           { icon: '\u2695', color: '#5cb85c', bg: 'rgba(92,184,92,0.12)', label: 'HEALTH' },
+  MILITARY:         { icon: '\u2694', color: '#b07a4a', bg: 'rgba(176,122,74,0.12)', label: 'MILITARY' },
+  ECONOMY:          { icon: '\uD83D\uDCB0', color: '#7a9a5b', bg: 'rgba(122,154,91,0.12)', label: 'ECONOMY' },
+  HEALTH:           { icon: '\u2695', color: '#7a9a5b', bg: 'rgba(122,154,91,0.12)', label: 'HEALTH' },
   EDUCATION:        { icon: '\uD83D\uDCDA', color: '#3498db', bg: 'rgba(52,152,219,0.12)', label: 'EDUCATION' },
 };
 const EVENT_CATEGORY_DEFAULT = { icon: '\u2022', color: '#888', bg: 'rgba(136,136,136,0.08)', label: '' };
@@ -1261,6 +1217,73 @@ function partyHtml(name, color) {
   return `<span style="color:${safeColor};font-weight:600">${safeName}</span>`;
 }
 
+// ── Shared converters: raw DB rows → event-like objects ──
+
+function billToEvent(b, nationId, extra) {
+  const factionMatchesNation = b.factions?.nation_id === (b.nation_id || nationId);
+  const displayName = b.proposer_name || (factionMatchesNation ? b.factions?.faction_name : null) || 'A former party';
+  const displayColor = b.proposer_color || (factionMatchesNation ? b.factions?.party_color : null);
+  return {
+    fired_at_tick: b.proposed_tick,
+    event_name: b.bill_name,
+    _desc_html: `${partyHtml(displayName, displayColor)} proposed "${esc(b.bill_name)}"`,
+    category: 'bill',
+    _synthetic: true,
+    ...extra
+  };
+}
+
+function factionToEvent(f, extra) {
+  const leaderName = (f.leader_first_name && f.leader_last_name)
+    ? `${f.leader_first_name} ${f.leader_last_name}` : null;
+  const idRow = Array.isArray(f.faction_ideology) ? f.faction_ideology[0] : f.faction_ideology;
+  const ideology = ideologySummary(idRow);
+  const leaderPart = leaderName ? ` led by <strong>${esc(leaderName)}</strong>` : '';
+  const ideologyPart = ideology ? ` — <em>${esc(ideology)}</em>` : '';
+  return {
+    fired_at_tick: 0,
+    event_name: f.faction_name,
+    _desc_html: `${partyHtml(f.faction_name, f.party_color)} founded${leaderPart}${ideologyPart}`,
+    category: 'new_party',
+    _synthetic: true,
+    _created_at: f.created_at,
+    ...extra
+  };
+}
+
+function protestToEvent(p, extra) {
+  const tierLabel = PROTEST_TIER_LABELS[p.tier] || `Tier ${p.tier}`;
+  const demandPart = p.demand_label ? ` demanding "${esc(p.demand_label)}"` : '';
+  const isCrisis = p.status === 'crisis_active';
+  const tierColor = (p.tier >= 6) ? 'var(--red, #e74c3c)' : (p.tier >= 4) ? 'var(--orange, #f39c12)' : '';
+  const tierHtml = tierColor
+    ? `<span style="color:${tierColor};font-weight:600">${esc(tierLabel)}</span>`
+    : `<strong>${esc(tierLabel)}</strong>`;
+  return {
+    fired_at_tick: p.tick_resolved || p.tick_called,
+    event_name: tierLabel,
+    _desc_html: `${partyHtml(p.factions?.faction_name, p.factions?.party_color)} organised a protest${demandPart} — ${tierHtml}${isCrisis ? ' <span style="color:var(--red, #e74c3c);font-weight:700;">(CRISIS)</span>' : ''}`,
+    category: 'protest',
+    _synthetic: true,
+    ...extra
+  };
+}
+
+function mergeAndSortEvents(events, billEvents, factionEvents, protestEvents, limit) {
+  return [
+    ...events.map(ev => ({ ...ev, _synthetic: false })),
+    ...billEvents,
+    ...factionEvents,
+    ...protestEvents
+  ].sort((a, b) => {
+    const tickDiff = (b.fired_at_tick || 0) - (a.fired_at_tick || 0);
+    if (tickDiff !== 0) return tickDiff;
+    const aTime = a._created_at || a.created_at || '';
+    const bTime = b._created_at || b.created_at || '';
+    return bTime > aTime ? 1 : bTime < aTime ? -1 : 0;
+  }).slice(0, limit);
+}
+
 async function loadDashEvents(nationId, currentTick, parties) {
   const container = document.getElementById('dash-events-list');
   if (!container) return;
@@ -1299,14 +1322,14 @@ async function loadDashEvents(nationId, currentTick, parties) {
         .limit(50),
       // Recent bill proposals
       _supabase.from('bills')
-        .select('id, bill_name, proposed_tick, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id)')
+        .select('bill_name, proposed_tick, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id)')
         .eq('nation_id', nationId)
         .not('bill_type', 'in', '("no_confidence","confirmation","minister_confirmation","veto_override","impeachment_conviction")')
         .order('proposed_tick', { ascending: false })
         .limit(30),
       // New parties (factions created recently)
       _supabase.from('factions')
-        .select('id, faction_name, party_color, leader_first_name, leader_last_name, created_at, faction_ideology(liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism)')
+        .select('faction_name, party_color, leader_first_name, leader_last_name, created_at, faction_ideology(liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism)')
         .eq('nation_id', nationId)
         .order('created_at', { ascending: false })
         .limit(20),
@@ -1325,71 +1348,10 @@ async function loadDashEvents(nationId, currentTick, parties) {
     const factions = factionResult.data || [];
     const protests = protestResult.data || [];
 
-    // Convert bills to event-like objects
-    const billEvents = bills.map(b => {
-      // Prefer stored snapshot name; fall back to live join only if faction still belongs to this nation
-      const factionMatchesNation = b.factions?.nation_id === nationId;
-      const displayName = b.proposer_name || (factionMatchesNation ? b.factions?.faction_name : null) || 'A former party';
-      const displayColor = b.proposer_color || (factionMatchesNation ? b.factions?.party_color : null);
-      return {
-        fired_at_tick: b.proposed_tick,
-        event_name: b.bill_name,
-        _desc_html: `${partyHtml(displayName, displayColor)} proposed "${esc(b.bill_name)}"`,
-        category: 'bill',
-        _synthetic: true
-      };
-    });
-
-    // Convert factions to event-like objects with ideology summary
-    const factionEvents = factions.map(f => {
-      const leaderName = (f.leader_first_name && f.leader_last_name)
-        ? `${f.leader_first_name} ${f.leader_last_name}` : null;
-      const idRow = Array.isArray(f.faction_ideology) ? f.faction_ideology[0] : f.faction_ideology;
-      const ideology = ideologySummary(idRow);
-      const leaderPart = leaderName ? ` led by <strong>${esc(leaderName)}</strong>` : '';
-      const ideologyPart = ideology ? ` — <em>${esc(ideology)}</em>` : '';
-      return {
-        fired_at_tick: 0,
-        event_name: f.faction_name,
-        _desc_html: `${partyHtml(f.faction_name, f.party_color)} founded${leaderPart}${ideologyPart}`,
-        category: 'new_party',
-        _synthetic: true,
-        _created_at: f.created_at
-      };
-    });
-
-    // Convert protests to event-like objects
-    const protestEvents = protests.map(p => {
-      const tierLabel = PROTEST_TIER_LABELS[p.tier] || `Tier ${p.tier}`;
-      const demandPart = p.demand_label ? ` demanding "${esc(p.demand_label)}"` : '';
-      const isCrisis = p.status === 'crisis_active';
-      const tierColor = (p.tier >= 6) ? 'var(--red, #e74c3c)' : (p.tier >= 4) ? 'var(--orange, #f39c12)' : '';
-      const tierHtml = tierColor
-        ? `<span style="color:${tierColor};font-weight:600">${esc(tierLabel)}</span>`
-        : `<strong>${esc(tierLabel)}</strong>`;
-      return {
-        fired_at_tick: p.tick_resolved || p.tick_called,
-        event_name: tierLabel,
-        _desc_html: `${partyHtml(p.factions?.faction_name, p.factions?.party_color)} organised a protest${demandPart} — ${tierHtml}${isCrisis ? ' <span style="color:var(--red, #e74c3c);font-weight:700;">(CRISIS)</span>' : ''}`,
-        category: 'protest',
-        _synthetic: true
-      };
-    });
-
-    // Merge all events, sort by tick (desc), then by created_at for ties
-    const merged = [
-      ...events.map(ev => ({ ...ev, _synthetic: false })),
-      ...billEvents,
-      ...factionEvents,
-      ...protestEvents
-    ].sort((a, b) => {
-      const tickDiff = (b.fired_at_tick || 0) - (a.fired_at_tick || 0);
-      if (tickDiff !== 0) return tickDiff;
-      // For same tick, sort by created_at if available
-      const aTime = a._created_at || a.created_at || '';
-      const bTime = b._created_at || b.created_at || '';
-      return bTime > aTime ? 1 : bTime < aTime ? -1 : 0;
-    }).slice(0, 60);
+    const billEvents = bills.map(b => billToEvent(b, nationId));
+    const factionEvents = factions.map(f => factionToEvent(f));
+    const protestEvents = protests.map(p => protestToEvent(p));
+    const merged = mergeAndSortEvents(events, billEvents, factionEvents, protestEvents, 60);
 
     if (merged.length === 0) {
       container.innerHTML = '<div style="color:var(--text-secondary);padding:24px;font-size:0.75rem;text-align:center;font-style:italic;">No events recorded yet.</div>';
@@ -1461,14 +1423,14 @@ async function loadWorldEvents(excludeNationId, currentTick) {
         .limit(80),
       // World bill proposals (other nations)
       _supabase.from('bills')
-        .select('id, bill_name, proposed_tick, nation_id, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id), nations!inner(name, nation_profiles(flag_url))')
+        .select('bill_name, proposed_tick, nation_id, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id), nations!inner(name, nation_profiles(flag_url))')
         .neq('nation_id', excludeNationId)
         .not('bill_type', 'in', '("no_confidence","confirmation","minister_confirmation","veto_override","impeachment_conviction")')
         .order('proposed_tick', { ascending: false })
         .limit(30),
       // World new parties (other nations)
       _supabase.from('factions')
-        .select('id, faction_name, party_color, leader_first_name, leader_last_name, nation_id, created_at, faction_ideology(liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism), nations!inner(name, nation_profiles(flag_url))')
+        .select('faction_name, party_color, leader_first_name, leader_last_name, nation_id, created_at, faction_ideology(liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism), nations!inner(name, nation_profiles(flag_url))')
         .neq('nation_id', excludeNationId)
         .order('created_at', { ascending: false })
         .limit(20),
@@ -1487,73 +1449,10 @@ async function loadWorldEvents(excludeNationId, currentTick) {
     const factions = factionResult.data || [];
     const protests = protestResult.data || [];
 
-    // Convert bills to event-like objects
-    const billEvents = bills.map(b => {
-      // Prefer stored snapshot name; fall back to live join only if faction still belongs to this nation
-      const factionMatchesNation = b.factions?.nation_id === b.nation_id;
-      const displayName = b.proposer_name || (factionMatchesNation ? b.factions?.faction_name : null) || 'A former party';
-      const displayColor = b.proposer_color || (factionMatchesNation ? b.factions?.party_color : null);
-      return {
-        fired_at_tick: b.proposed_tick,
-        event_name: b.bill_name,
-        _desc_html: `${partyHtml(displayName, displayColor)} proposed "${esc(b.bill_name)}"`,
-        category: 'bill',
-        _synthetic: true,
-        nations: b.nations
-      };
-    });
-
-    // Convert factions to event-like objects
-    const factionEvents = factions.map(f => {
-      const leaderName = (f.leader_first_name && f.leader_last_name)
-        ? `${f.leader_first_name} ${f.leader_last_name}` : null;
-      const idRow = Array.isArray(f.faction_ideology) ? f.faction_ideology[0] : f.faction_ideology;
-      const ideology = ideologySummary(idRow);
-      const leaderPart = leaderName ? ` led by <strong>${esc(leaderName)}</strong>` : '';
-      const ideologyPart = ideology ? ` — <em>${esc(ideology)}</em>` : '';
-      return {
-        fired_at_tick: 0,
-        event_name: f.faction_name,
-        _desc_html: `${partyHtml(f.faction_name, f.party_color)} founded${leaderPart}${ideologyPart}`,
-        category: 'new_party',
-        _synthetic: true,
-        _created_at: f.created_at,
-        nations: f.nations
-      };
-    });
-
-    // Convert protests to event-like objects
-    const protestEvents = protests.map(p => {
-      const tierLabel = PROTEST_TIER_LABELS[p.tier] || `Tier ${p.tier}`;
-      const demandPart = p.demand_label ? ` demanding "${esc(p.demand_label)}"` : '';
-      const isCrisis = p.status === 'crisis_active';
-      const tierColor = (p.tier >= 6) ? 'var(--red, #e74c3c)' : (p.tier >= 4) ? 'var(--orange, #f39c12)' : '';
-      const tierHtml = tierColor
-        ? `<span style="color:${tierColor};font-weight:600">${esc(tierLabel)}</span>`
-        : `<strong>${esc(tierLabel)}</strong>`;
-      return {
-        fired_at_tick: p.tick_resolved || p.tick_called,
-        event_name: tierLabel,
-        _desc_html: `${partyHtml(p.factions?.faction_name, p.factions?.party_color)} organised a protest${demandPart} — ${tierHtml}${isCrisis ? ' <span style="color:var(--red, #e74c3c);font-weight:700;">(CRISIS)</span>' : ''}`,
-        category: 'protest',
-        _synthetic: true,
-        nations: p.nations
-      };
-    });
-
-    // Merge and sort
-    const merged = [
-      ...events.map(ev => ({ ...ev, _synthetic: false })),
-      ...billEvents,
-      ...factionEvents,
-      ...protestEvents
-    ].sort((a, b) => {
-      const tickDiff = (b.fired_at_tick || 0) - (a.fired_at_tick || 0);
-      if (tickDiff !== 0) return tickDiff;
-      const aTime = a._created_at || a.created_at || '';
-      const bTime = b._created_at || b.created_at || '';
-      return bTime > aTime ? 1 : bTime < aTime ? -1 : 0;
-    }).slice(0, 80);
+    const billEvents = bills.map(b => billToEvent(b, null, { nations: b.nations }));
+    const factionEvents = factions.map(f => factionToEvent(f, { nations: f.nations }));
+    const protestEvents = protests.map(p => protestToEvent(p, { nations: p.nations }));
+    const merged = mergeAndSortEvents(events, billEvents, factionEvents, protestEvents, 80);
 
     if (merged.length === 0) {
       container.innerHTML = '<div style="color:var(--text-secondary);padding:24px;font-size:0.75rem;text-align:center;font-style:italic;">No world events recorded yet.</div>';
@@ -1562,13 +1461,13 @@ async function loadWorldEvents(excludeNationId, currentTick) {
 
     // Generate a consistent color for each nation name
     const NATION_COLORS = [
-      { color: '#5b9bd5', bg: 'rgba(91,155,213,0.10)', border: 'rgba(91,155,213,0.3)' },
-      { color: '#5cb85c', bg: 'rgba(92,184,92,0.10)', border: 'rgba(92,184,92,0.3)' },
-      { color: '#d48a3c', bg: 'rgba(212,138,60,0.10)', border: 'rgba(212,138,60,0.3)' },
+      { color: '#6b8cae', bg: 'rgba(107,140,174,0.10)', border: 'rgba(107,140,174,0.3)' },
+      { color: '#7a9a5b', bg: 'rgba(122,154,91,0.10)', border: 'rgba(122,154,91,0.3)' },
+      { color: '#b07a4a', bg: 'rgba(176,122,74,0.10)', border: 'rgba(176,122,74,0.3)' },
       { color: '#8b7ec8', bg: 'rgba(139,126,200,0.10)', border: 'rgba(139,126,200,0.3)' },
-      { color: '#5aafa5', bg: 'rgba(90,175,165,0.10)', border: 'rgba(90,175,165,0.3)' },
-      { color: '#d9534f', bg: 'rgba(217,83,79,0.10)', border: 'rgba(217,83,79,0.3)' },
-      { color: '#c8a64e', bg: 'rgba(200,166,78,0.10)', border: 'rgba(200,166,78,0.3)' },
+      { color: '#5b9a8b', bg: 'rgba(91,154,139,0.10)', border: 'rgba(91,154,139,0.3)' },
+      { color: '#a65d5d', bg: 'rgba(166,93,93,0.10)', border: 'rgba(166,93,93,0.3)' },
+      { color: '#b09a5b', bg: 'rgba(176,154,91,0.10)', border: 'rgba(176,154,91,0.3)' },
       { color: '#e07baf', bg: 'rgba(224,123,175,0.10)', border: 'rgba(224,123,175,0.3)' },
     ];
     function nationColor(name) {

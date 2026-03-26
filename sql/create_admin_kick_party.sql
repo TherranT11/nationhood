@@ -188,7 +188,6 @@ BEGIN
         nation_id = NULL,
         abandoned_at = now(),
         action_points = 0,
-        approval_rating = NULL,
         last_seen_tick = NULL,
         founded_tick = NULL
     WHERE id = p_faction_id;

@@ -1538,7 +1538,7 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
         }
         // Party approval
         if (effects.organiserApproval < 0) {
-            await nudgeApproval(supabase, factionId, nationId, effects.organiserApproval);
+            await nudgeApproval(supabase, factionId, nationId, effects.organiserApproval, { source: 'protest:organiser' });
             appliedEffects.push({ stat: 'organiser_approval', delta: effects.organiserApproval });
         }
         // Nation-wide enthusiasm

@@ -765,8 +765,7 @@ async function proceed() {
         leader_last_name: leader.last,
         leader_age: leader.age,
         founded_tick: currentTick,
-        action_points: 5,
-        approval_rating: null
+        action_points: 5
       });
 
     if (upsertError) throw upsertError;

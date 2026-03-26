@@ -357,6 +357,16 @@ body {
 }
 .stat-rank.first { color: #f0c040; }
 
+.stat-decay {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    margin-top: 6px;
+    letter-spacing: 0.03em;
+}
+.stat-decay--down { color: #ff5555; }
+.stat-decay--up { color: #4caf50; }
+.stat-decay--neutral { color: #555; }
+
 .stat-desc {
     font-size: 0.72rem;
     color: #555;

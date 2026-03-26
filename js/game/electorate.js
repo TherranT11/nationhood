@@ -22,6 +22,7 @@ import { statDirectionSign, ISSUE_CATEGORY_STATS } from './stats.js';
 import { isAutocracy } from './government-types.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { deductAP } from './config.js';
+import { computeEngagementScores } from './engagement.js';
 
 // ============================================================================
 // ISSUE DEFINITIONS
@@ -822,12 +823,22 @@ export async function seedFactionElectoralStanding(supabase, nation, factions, p
         profile = data;
     }
 
-    // Fetch faction ideologies
+    // Fetch ideologies for ALL active factions in the nation (not just the ones being seeded)
+    // so that spatial alignment is calculated with proper competition from existing parties.
+    // Without this, a single new party gets uncompeted alignment (70-90+) and inflated vote share.
     const factionIds = factions.map(f => f.id);
+    const { data: allNationFactions } = await supabase
+        .from('factions')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party')
+        .is('abandoned_at', null);
+    const allFactionIds = (allNationFactions || []).map(f => f.id);
+
     const { data: ideologies } = await supabase
         .from('faction_ideology')
         .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-        .in('faction_id', factionIds);
+        .in('faction_id', allFactionIds);
     const ideoMap = {};
     for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
 
@@ -843,7 +854,7 @@ export async function seedFactionElectoralStanding(supabase, nation, factions, p
 
     const govApproval = Number(nation.gov_approval ?? 50);
 
-    // Compute spatial alignments at genesis (all parties compete from the start)
+    // Compute spatial alignments with ALL parties competing (not just the new ones)
     const defaultSalience = {};
     for (const axisKey of AXIS_KEYS) defaultSalience[axisKey] = 0.2;
     const genesisAlignments = profile
@@ -878,6 +889,8 @@ export async function seedFactionElectoralStanding(supabase, nation, factions, p
 
     // Compute initial raw_appeal and vote shares so elections running before
     // the first tickElectorate don't see NULL contested_vote_share (= 0 votes).
+    // We must include ALL existing standings in the softmax so the new party
+    // doesn't get 100% contested_vote_share from being computed in isolation.
     const stability = clamp(Number(nation.stability ?? 50) || 50, 0, 100);
     const polarization = clamp(Number(nation.polarization ?? 50) || 50, 0, 100);
     const chaosIndex = clamp(((polarization / 100) + (1 - stability / 100)) / 2, 0, 1);
@@ -900,11 +913,32 @@ export async function seedFactionElectoralStanding(supabase, nation, factions, p
             credibilityScore * credWeight
         );
     }
-    computeContestedVoteShares(rows);
-    computeRealizedVoteShares(rows, profile, nation);
 
-    // Add computed vote share fields to each row for DB write
+    // Fetch existing standings so softmax includes ALL parties (not just the new ones)
+    const existingFactionIds = allFactionIds.filter(id => !factionIds.includes(id));
+    let allRows = [...rows];
+    if (existingFactionIds.length > 0) {
+        const { data: existingStandings } = await supabase
+            .from('faction_electoral_standing')
+            .select('faction_id, nation_id, raw_appeal, contested_vote_share, realized_vote_share, turnout_rate')
+            .eq('nation_id', nation.id)
+            .in('faction_id', existingFactionIds);
+        if (existingStandings && existingStandings.length > 0) {
+            allRows = [...rows, ...existingStandings];
+        }
+    }
+
+    computeContestedVoteShares(allRows);
+    computeRealizedVoteShares(allRows, profile, nation);
+
+    // Copy computed values back to the new rows only (existing standings aren't written)
     for (const r of rows) {
+        const computed = allRows.find(a => a.faction_id === r.faction_id);
+        if (computed) {
+            r.contested_vote_share = computed.contested_vote_share;
+            r.realized_vote_share = computed.realized_vote_share;
+            r.turnout_rate = computed.turnout_rate;
+        }
         r.base_vote_share = r.contested_vote_share;
         r.turnout_rate = r.turnout_rate || 0.65;
     }
@@ -1182,6 +1216,18 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     // ── 14. Compute spatial alignments (all factions compete per-axis) ──
     const spatialAlignments = computeSpatialAlignments(ideoMap, activeProfile, axisSalienceWeights);
 
+    // ── 14b. Compute engagement scores (legislative activity tracking) ──
+    let engagementResults = {};
+    try {
+        engagementResults = await computeEngagementScores(
+            supabase, nation, factions, coalitionPartyIds, leadPartyId,
+            updatedIssueStates, currentTick
+        );
+    } catch (engErr) {
+        console.error(`[Electorate] Engagement score computation failed for ${nation.name}:`, engErr.message);
+        // Continue with empty results — all factions get multiplier 1.0 (no penalty)
+    }
+
     // ── 15. Calculate pillars for each faction ──
     const updates = [];
 
@@ -1230,10 +1276,15 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         const appealResult = computePlatformAppeal(
             factionStances, issueStateMap, ideo, newAlignment
         );
+        // Apply engagement multiplier to platform appeal
+        const engagementData = engagementResults[factionId];
+        const engagementMult = engagementData?.multiplier ?? 1.0;
+        const adjustedAppeal = round2(appealResult.appeal * engagementMult);
+
         const oldAppeal = Number(standing.platform_appeal ?? CFG.DEFAULT_PLATFORM_APPEAL);
         const newAppeal = opts.snap
-            ? round2(clamp(appealResult.appeal, CFG.APPEAL_MIN, CFG.APPEAL_MAX))
-            : round2(clamp(oldAppeal + clamp(appealResult.appeal - oldAppeal, -CFG.APPEAL_DRIFT_SPEED, CFG.APPEAL_DRIFT_SPEED), CFG.APPEAL_MIN, CFG.APPEAL_MAX));
+            ? round2(clamp(adjustedAppeal, CFG.APPEAL_MIN, CFG.APPEAL_MAX))
+            : round2(clamp(oldAppeal + clamp(adjustedAppeal - oldAppeal, -CFG.APPEAL_DRIFT_SPEED, CFG.APPEAL_DRIFT_SPEED), CFG.APPEAL_MIN, CFG.APPEAL_MAX));
 
         // ─── PILLAR 3: Party Approval (0-100) ───
         const oldApproval = Number(standing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);
@@ -2073,10 +2124,12 @@ export async function boostVisibility(supabase, factionId, nationId, boost) {
  * @param {number} delta - Signed approval change (positive = boost, negative = damage)
  * @param {object} [opts] - Options
  * @param {boolean} [opts.campaign=false] - If true, apply diminishing returns and increment action counter (for player campaign actions only)
+ * @param {string} [opts.source='unknown'] - Audit tag for the party_approval_log (e.g., 'rally', 'crisis:Recession')
  */
 export async function nudgeApproval(supabase, factionId, nationId, delta, opts) {
     if (!delta || delta === 0) return;
     const campaign = opts?.campaign ?? false;
+    const source = opts?.source ?? 'unknown';
 
     const { data: standing } = await supabase
         .from('faction_electoral_standing')
@@ -2100,6 +2153,19 @@ export async function nudgeApproval(supabase, factionId, nationId, delta, opts) 
         .update(updateFields)
         .eq('id', standing.id);
     if (appErr) console.error('[Electorate] approval update failed:', appErr.message);
+
+    // Audit log (non-fatal)
+    try {
+        const { data: shard } = await supabase
+            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        await supabase.from('party_approval_log').insert({
+            faction_id: factionId,
+            nation_id: nationId,
+            amount: effectiveDelta,
+            source,
+            tick: shard?.current_tick || 0
+        });
+    } catch (e) { /* non-blocking */ }
 }
 
 /**
@@ -2138,7 +2204,7 @@ export async function nudgeEnthusiasm(supabase, nationId, delta) {
  * @param {number} [suspendRecoveryTicks=0] - If > 0, suspend credibility recovery for this many ticks
  * @param {number} [currentTick=0] - Current tick (needed for suspend calculation)
  */
-export async function adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0) {
+export async function adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0, opts = {}) {
     if (!delta && !suspendRecoveryTicks) return;
 
     const { data: standing } = await supabase
@@ -2163,6 +2229,20 @@ export async function adjustCredibility(supabase, factionId, nationId, delta, su
         .update(updateObj)
         .eq('id', standing.id);
     if (credErr) console.error('[Electorate] credibility update failed:', credErr.message);
+
+    // Audit log (non-fatal)
+    if (delta && opts.source) {
+        const tick = currentTick || opts.tick || 0;
+        supabase.from('credibility_log').insert({
+            faction_id: factionId,
+            nation_id: nationId,
+            amount: delta,
+            source: opts.source,
+            tick,
+        }).then(({ error: logErr }) => {
+            if (logErr) console.warn('[Electorate] credibility_log insert failed:', logErr.message);
+        });
+    }
 }
 
 // ============================================================================
@@ -2411,7 +2491,7 @@ export async function onRally(supabase, factionId, nationId, outcomeId, currentT
         counter: -5,
     }[outcomeId] ?? 0;
     if (approvalHit !== 0) {
-        await nudgeApproval(supabase, factionId, nationId, approvalHit);
+        await nudgeApproval(supabase, factionId, nationId, approvalHit, { source: 'rally:approval_hit' });
     }
 
     await logActivity(supabase, factionId, nationId, 'rally',
@@ -2442,7 +2522,7 @@ export async function onOutreach(supabase, factionId, nationId, alignmentScore, 
 
     // Approval nudge: small positive based on alignment
     const approvalNudge = round2(Math.max(0.5, diminishedEffect * 0.3));
-    await nudgeApproval(supabase, factionId, nationId, approvalNudge);
+    await nudgeApproval(supabase, factionId, nationId, approvalNudge, { source: 'outreach:approval' });
 
     await logActivity(supabase, factionId, nationId, 'outreach',
         'Outreach', `Outreach — effect: ${diminishedEffect}, alignment: ${alignmentScore}`,
@@ -2487,10 +2567,10 @@ export async function onAttack(supabase, factionId, targetFactionId, nationId, o
     const suspendTicks = strength === 'strong' ? 5 : strength === 'moderate' ? 3 : 1;
 
     if (targetCredDelta !== 0) {
-        await adjustCredibility(supabase, targetFactionId, nationId, targetCredDelta, suspendTicks, currentTick);
+        await adjustCredibility(supabase, targetFactionId, nationId, targetCredDelta, suspendTicks, currentTick, { source: 'attack:received' });
     }
     if (selfCredDelta !== 0) {
-        await adjustCredibility(supabase, factionId, nationId, selfCredDelta, suspendTicks, currentTick);
+        await adjustCredibility(supabase, factionId, nationId, selfCredDelta, suspendTicks, currentTick, { source: 'attack:self' });
     }
 
     // Attacker always gains some visibility (political theater)
@@ -2694,11 +2774,11 @@ export async function executeFundThinkTank(supabase, factionId, nationId, target
         return { success: false, message: `Think tank cooldown: wait ${cfg.COOLDOWN_WINDOW} ticks` };
     }
 
-    // ── Max active check ──
+    // ── Max active check (includes paused/suspended) ──
     const { data: active } = await supabase.from('ideology_shift_actions')
-        .select('id').eq('faction_id', factionId).eq('action_type', 'think_tank').eq('status', 'active');
+        .select('id').eq('faction_id', factionId).eq('action_type', 'think_tank').in('status', ['active', 'paused', 'suspended']);
     if ((active || []).length >= cfg.MAX_ACTIVE) {
-        return { success: false, message: 'You already have an active think tank. Wait for it to complete or suspend it.' };
+        return { success: false, message: 'You already have a think tank running (or paused). Cancel it first to start a new one.' };
     }
 
     // ── Deduct AP ──
@@ -2748,6 +2828,102 @@ export async function executeFundThinkTank(supabase, factionId, nationId, target
             { label: 'Ongoing', value: `${cfg.TICK_AP_COST} AP/tick` },
         ],
         newAp: apResult.newAp,
+    };
+}
+
+/**
+ * Suspend (pause) an active Think Tank or Grassroots Movement. Costs 1 AP.
+ * Sets status to 'paused' (distinct from 'suspended' which auto-resumes on AP availability).
+ */
+export async function suspendIdeologyAction(supabase, factionId, actionId, currentTick) {
+    const { data: action } = await supabase.from('ideology_shift_actions')
+        .select('id, faction_id, status, action_type')
+        .eq('id', actionId).eq('faction_id', factionId).single();
+    if (!action) return { success: false, message: 'Action not found.' };
+    if (action.status !== 'active') return { success: false, message: 'Action is not active.' };
+    if (action.action_type !== 'think_tank' && action.action_type !== 'grassroots_movement')
+        return { success: false, message: 'Only Think Tanks and Grassroots Movements can be suspended.' };
+
+    const apResult = await deductAP(supabase, factionId, 1);
+    if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP' };
+
+    await supabase.from('ideology_shift_actions')
+        .update({ status: 'paused', last_active_tick: currentTick })
+        .eq('id', actionId);
+
+    return { success: true, message: 'Action paused. No per-tick AP cost while paused.', newAp: apResult.newAp };
+}
+
+/**
+ * Continue (resume) a paused Think Tank or Grassroots Movement. Costs 1 AP.
+ */
+export async function continueIdeologyAction(supabase, factionId, actionId, currentTick) {
+    const { data: action } = await supabase.from('ideology_shift_actions')
+        .select('id, faction_id, status, action_type')
+        .eq('id', actionId).eq('faction_id', factionId).single();
+    if (!action) return { success: false, message: 'Action not found.' };
+    if (action.status !== 'paused') return { success: false, message: 'Action is not paused.' };
+
+    const apResult = await deductAP(supabase, factionId, 1);
+    if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP' };
+
+    await supabase.from('ideology_shift_actions')
+        .update({ status: 'active', last_active_tick: currentTick })
+        .eq('id', actionId);
+
+    return { success: true, message: 'Action resumed.', newAp: apResult.newAp };
+}
+
+/**
+ * Cancel a Think Tank or Grassroots Movement. Costs 2 AP.
+ * Reverts 75% of cumulative ideological drift applied so far.
+ */
+export async function cancelIdeologyAction(supabase, factionId, nationId, actionId, currentTick) {
+    const { data: action } = await supabase.from('ideology_shift_actions')
+        .select('id, faction_id, nation_id, status, action_type, target_axis, target_direction, band_shift_total')
+        .eq('id', actionId).eq('faction_id', factionId).single();
+    if (!action) return { success: false, message: 'Action not found.' };
+    if (action.status !== 'active' && action.status !== 'paused')
+        return { success: false, message: 'Action cannot be cancelled (already completed or disbanded).' };
+    if (action.action_type !== 'think_tank' && action.action_type !== 'grassroots_movement')
+        return { success: false, message: 'Only Think Tanks and Grassroots Movements can be cancelled.' };
+
+    const apResult = await deductAP(supabase, factionId, 2);
+    if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP (need 2)' };
+
+    // Revert 75% of cumulative drift
+    const totalDrift = Number(action.band_shift_total || 0);
+    const revertAmount = totalDrift * 0.75;
+    let revertApplied = 0;
+
+    if (Math.abs(revertAmount) > 0.001) {
+        const col = 'ideo_mean_' + action.target_axis;
+        const { data: profile } = await supabase.from('electorate_profile')
+            .select('id, ' + col)
+            .eq('nation_id', nationId).single();
+        if (profile) {
+            const old = Number(profile[col] ?? 50);
+            const newVal = Math.round(Math.min(95, Math.max(5, old - revertAmount)) * 100) / 100;
+            revertApplied = old - newVal;
+            await supabase.from('electorate_profile')
+                .update({ [col]: newVal, last_updated_tick: currentTick })
+                .eq('id', profile.id);
+        }
+    }
+
+    // Mark as cancelled
+    await supabase.from('ideology_shift_actions')
+        .update({ status: 'disbanded', last_active_tick: currentTick })
+        .eq('id', actionId);
+
+    const axDef = IDEOLOGY_AXES.find(a => a.key === action.target_axis);
+    const axisLabel = axDef ? `${axDef.leftLabel}–${axDef.rightLabel}` : action.target_axis;
+
+    return {
+        success: true,
+        message: `Action cancelled. 75% of drift reverted (${Math.abs(revertApplied).toFixed(2)} on ${axisLabel}).`,
+        newAp: apResult.newAp,
+        revertApplied,
     };
 }
 
@@ -2850,9 +3026,9 @@ export async function executeGrassrootsMovement(supabase, factionId, nationId, t
     }
 
     const { data: active } = await supabase.from('ideology_shift_actions')
-        .select('id').eq('faction_id', factionId).eq('action_type', 'grassroots_movement').eq('status', 'active');
+        .select('id').eq('faction_id', factionId).eq('action_type', 'grassroots_movement').in('status', ['active', 'paused', 'suspended']);
     if ((active || []).length >= cfg.MAX_ACTIVE) {
-        return { success: false, message: 'You already have an active grassroots movement.' };
+        return { success: false, message: 'You already have a grassroots movement running (or paused). Cancel it first to start a new one.' };
     }
 
     const apResult = await deductAP(supabase, factionId, cfg.AP_COST);
@@ -2971,10 +3147,15 @@ export async function tickIdeologyShiftActions(supabase, nationId, profile, curr
             const roll = [0.1, 0.2, 0.3][Math.floor(Math.random() * 3)];
             const drift = direction * roll;
             const newVal = round2(clamp(old + drift, 5, 95));
+            const actualDrift = newVal - old;
             if (newVal !== old) {
                 profileUpdates[col] = newVal;
                 profile[col] = newVal;
             }
+            // Track cumulative drift for cancel revert
+            const prevTotal = Number(act.band_shift_total || 0);
+            toUpdate.push({ id: act.id, last_active_tick: currentTick, band_shift_total: round2(prevTotal + actualDrift) });
+            continue; // skip default toUpdate push below
         } else if (act.action_type === 'media_campaign') {
             const mcCfg = IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN;
             if (ticksActive < mcCfg.DURATION) {
@@ -3006,6 +3187,7 @@ export async function tickIdeologyShiftActions(supabase, nationId, profile, curr
             const roll = [0.1, 0.2][Math.floor(Math.random() * 2)];
             const drift = direction * roll;
             const newVal = round2(clamp(old + drift, 5, 95));
+            const grActualDrift = newVal - old;
             if (newVal !== old) {
                 profileUpdates[col] = newVal;
                 profile[col] = newVal;
@@ -3014,6 +3196,10 @@ export async function tickIdeologyShiftActions(supabase, nationId, profile, curr
             if (ticksActive > 0 && ticksActive % grCfg.VISIBILITY_INTERVAL === 0) {
                 await boostVisibility(supabase, act.faction_id, nationId, 1);
             }
+            // Track cumulative drift for cancel revert
+            const grPrevTotal = Number(act.band_shift_total || 0);
+            toUpdate.push({ id: act.id, last_active_tick: currentTick, band_shift_total: round2(grPrevTotal + grActualDrift) });
+            continue; // skip default toUpdate push below
         }
 
         toUpdate.push({ id: act.id, last_active_tick: currentTick });

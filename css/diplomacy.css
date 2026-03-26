@@ -2849,13 +2849,13 @@ body.light-mode .action-badge {
 }
 .diplo-view-btn {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.04em;
-  padding: 4px 12px;
+  padding: 6px 16px;
   background: transparent;
   color: var(--text-dim);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid rgba(200,196,184,0.08);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -3134,6 +3134,7 @@ body.light-mode .diplo-view-btn.is-active {
   display: flex;
   flex-direction: column;
   border-radius: 4px 0 0 4px;
+  overflow-y: auto;
 }
 
 .ipo-sidebar-header {
@@ -3156,7 +3157,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-sidebar-label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -3189,7 +3190,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-sidebar-logo {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--ipo-purple);
   flex-shrink: 0;
@@ -3208,7 +3209,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-sidebar-name {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: #a89880;
   white-space: nowrap;
@@ -3221,7 +3222,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-sidebar-meta {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: #4a4840;
 }
 
@@ -3240,7 +3241,7 @@ body.light-mode .diplo-view-btn.is-active {
 }
 .ipo-sidebar-invite-from {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: #6b6a5e;
   display: block;
   margin-bottom: 6px;
@@ -3250,10 +3251,69 @@ body.light-mode .diplo-view-btn.is-active {
   gap: 4px;
 }
 
+/* ── View button for invite preview ── */
+.ipo-btn--view {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  background: rgba(100,140,200,0.12);
+  color: #7baadc;
+  border: 1px solid rgba(100,140,200,0.3);
+}
+.ipo-btn--view:hover { background: rgba(100,140,200,0.22); }
+
+/* ── Org preview panel (from invite [View]) ── */
+.ipo-preview { padding: 20px; }
+.ipo-preview-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.ipo-preview-header-info { flex: 1; }
+.ipo-preview-desc {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #a8a690;
+  line-height: 1.5;
+  margin-bottom: 16px;
+  padding: 10px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.ipo-preview-section-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--amber, #c8a64e);
+  margin-bottom: 8px;
+}
+.ipo-preview-members {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.ipo-preview-member {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.02);
+}
+.ipo-preview-member-name { color: #d4d0c0; }
+.ipo-preview-member-nation { color: #6b6a5e; font-size: 11px; flex: 1; }
+.ipo-preview-member-role { color: var(--amber, #c8a64e); font-size: 10px; margin-left: auto; }
+.ipo-preview-member-role--president { color: #facc15; font-weight: 600; }
+
 /* ── Create Organisation Button (sidebar bottom) ── */
 .ipo-btn--create {
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 10px;
   text-transform: uppercase;
   font-weight: 700;
   background: #5aafa5;
@@ -3271,7 +3331,7 @@ body.light-mode .diplo-view-btn.is-active {
 /* ── Shared IPO Buttons ── */
 .ipo-btn {
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 10px;
   text-transform: uppercase;
   font-weight: 700;
   padding: 4px 8px;
@@ -3315,27 +3375,27 @@ body.light-mode .diplo-view-btn.is-active {
   text-align: center;
 }
 .ipo-empty-icon {
-  font-size: 32px;
+  font-size: 42px;
   color: var(--ipo-purple);
   opacity: 0.4;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 .ipo-empty-title {
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 20px;
   font-weight: 600;
   color: #e2d9b4;
 }
 .ipo-empty-desc {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 14px;
   color: #6b6a5e;
   line-height: 1.5;
-  max-width: 380px;
+  max-width: 420px;
 }
 .ipo-btn--create-large {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   text-transform: uppercase;
   font-weight: 700;
   background: #5aafa5;
@@ -3402,7 +3462,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-header-name {
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   color: #e2d9b4;
   white-space: nowrap;
@@ -3414,7 +3474,7 @@ body.light-mode .diplo-view-btn.is-active {
   display: flex;
   gap: 12px;
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: #4a4840;
 }
 .ipo-header-meta span {
@@ -3431,7 +3491,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-header-fund {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
   background: rgba(200,166,78,0.1);
   border: 1px solid rgba(200,166,78,0.25);
@@ -3443,7 +3503,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-header-president {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
   background: var(--ipo-purple-hover);
   border: 1px solid var(--ipo-purple-border);
@@ -3455,8 +3515,8 @@ body.light-mode .diplo-view-btn.is-active {
 
 /* ── Chat Area ── */
 .ipo-chat-area {
-  max-height: 45%;
-  min-height: 120px;
+  max-height: 55%;
+  min-height: 180px;
   display: flex;
   flex-direction: column;
   background: #141410;
@@ -3481,7 +3541,7 @@ body.light-mode .diplo-view-btn.is-active {
 }
 .ipo-chat-msg-party {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
   min-width: 80px;
   flex-shrink: 0;
@@ -3490,7 +3550,7 @@ body.light-mode .diplo-view-btn.is-active {
 }
 .ipo-chat-msg-text {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 13px;
   color: #a89880;
   flex: 1;
   word-break: break-word;
@@ -3498,7 +3558,7 @@ body.light-mode .diplo-view-btn.is-active {
 }
 .ipo-chat-msg-time {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: #3a3830;
   flex-shrink: 0;
   padding-top: 2px;
@@ -3507,8 +3567,8 @@ body.light-mode .diplo-view-btn.is-active {
 /* System event lines */
 .ipo-chat-system {
   font-family: var(--font-mono);
-  font-size: 8px;
-  color: #3a3830;
+  font-size: 10px;
+  color: var(--text-primary);
   text-align: center;
   padding: 4px 0;
   letter-spacing: 0.05em;
@@ -3528,8 +3588,8 @@ body.light-mode .diplo-view-btn.is-active {
   border: 1px solid rgba(255,255,255,0.07);
   color: #e2d9b4;
   font-family: var(--font-sans);
-  font-size: 11px;
-  padding: 5px 10px;
+  font-size: 13px;
+  padding: 7px 12px;
   outline: none;
   transition: border-color 0.15s;
 }
@@ -3542,7 +3602,7 @@ body.light-mode .diplo-view-btn.is-active {
 }
 .ipo-btn--send {
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 10px;
   text-transform: uppercase;
   font-weight: 700;
   background: var(--ipo-purple);
@@ -3560,6 +3620,7 @@ body.light-mode .diplo-view-btn.is-active {
   flex: 1;
   display: flex;
   min-height: 0;
+  max-height: 520px;
   border-bottom: 1px solid rgba(255,255,255,0.04);
 }
 
@@ -3595,7 +3656,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-panel-title {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -3605,8 +3666,33 @@ body.light-mode .diplo-view-btn.is-active {
 .ipo-panel-body {
   flex: 1;
   overflow-y: auto;
-  padding: 10px 14px;
+  padding: 12px 16px;
 }
+.ipo-panel-body::-webkit-scrollbar { width: 4px; }
+.ipo-panel-body::-webkit-scrollbar-track { background: transparent; }
+.ipo-panel-body::-webkit-scrollbar-thumb { background: var(--text-faint); border-radius: 2px; }
+
+/* Actions panel: override body padding when split layout is used */
+.ipo-panel-body:has(.ipo-actions-split) {
+  padding: 0;
+}
+
+/* Actions panel split layout: cards top, event log bottom */
+.ipo-actions-split {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.ipo-actions-cards {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 12px 16px;
+}
+.ipo-actions-cards::-webkit-scrollbar { width: 4px; }
+.ipo-actions-cards::-webkit-scrollbar-track { background: transparent; }
+.ipo-actions-cards::-webkit-scrollbar-thumb { background: var(--text-faint); border-radius: 2px; }
 
 /* ── Footer ── */
 .ipo-footer {
@@ -3631,7 +3717,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 .ipo-footer-badge--you {
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 9px;
   background: rgba(91,155,213,0.1);
   border: 1px solid rgba(91,155,213,0.25);
   color: #5b9bd5;
@@ -3641,13 +3727,27 @@ body.light-mode .diplo-view-btn.is-active {
 }
 .ipo-footer-badge--other {
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 9px;
   background: rgba(255,255,255,0.03);
   border: 1px solid rgba(255,255,255,0.07);
   color: #4a4840;
   padding: 2px 6px;
   border-radius: 2px;
   white-space: nowrap;
+}
+.ipo-footer-badge--president {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  background: rgba(250,204,21,0.08);
+  border: 1px solid rgba(250,204,21,0.25);
+  color: #facc15;
+  padding: 2px 6px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.ipo-president-star {
+  color: #facc15;
+  margin-right: 2px;
 }
 
 .ipo-footer-actions {
@@ -3671,6 +3771,11 @@ body.light-mode .diplo-view-btn.is-active {
   border-color: rgba(217,83,79,0.2);
   color: #d9534f;
 }
+.ipo-btn--expel {
+  background: rgba(217,83,79,0.06);
+  border-color: rgba(217,83,79,0.18);
+  color: #d97a35;
+}
 
 /* ── Light mode ── */
 body.light-mode .ipo-sidebar { background: #f8f8f6; border-right-color: rgba(0,0,0,0.06); }
@@ -3690,7 +3795,7 @@ body.light-mode .ipo-empty-desc { color: #888; }
 }
 .ipo-charter-article-label {
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -3699,7 +3804,7 @@ body.light-mode .ipo-empty-desc { color: #888; }
 }
 .ipo-charter-text {
   font-family: var(--font-sans);
-  font-size: 10px;
+  font-size: 12px;
   color: #6b6a5e;
   line-height: 1.5;
 }
@@ -3712,20 +3817,20 @@ body.light-mode .ipo-empty-desc { color: #888; }
 }
 .ipo-charter-row-label {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: #6b6a5e;
   flex-shrink: 0;
 }
 .ipo-charter-row-value {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   color: #a89880;
   text-align: right;
 }
 .ipo-charter-tag {
   display: inline-block;
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -4090,7 +4195,7 @@ body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color:
 
 .ipo-modal-title {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--ipo-purple);
   text-transform: uppercase;
@@ -4120,11 +4225,11 @@ body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color:
 }
 .wizard-step {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  padding: 4px 10px;
+  padding: 6px 14px;
   color: #4a4840;
   border: 1px solid rgba(255,255,255,0.05);
   border-radius: 2px;
@@ -4173,12 +4278,54 @@ body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color:
   background: var(--ipo-purple-hover);
 }
 
+/* ── Logo image (custom upload) ── */
+img.ipo-logo-img.ipo-sidebar-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid var(--ipo-purple-border);
+  flex-shrink: 0;
+}
+img.ipo-logo-img.ipo-header-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid var(--ipo-purple-border);
+  flex-shrink: 0;
+}
+.ipo-logo-upload-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 160px;
+  height: 80px;
+  border: 1px dashed rgba(139,126,200,0.3);
+  border-radius: 4px;
+  background: #141410;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ipo-logo-upload-zone:hover {
+  border-color: var(--ipo-purple);
+  background: var(--ipo-purple-faint);
+}
+.ipo-logo-upload-preview {
+  max-width: 56px;
+  max-height: 56px;
+  object-fit: contain;
+  border-radius: 3px;
+}
+
 /* ── Charter info bar ── */
 .ipo-charter-info {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   color: #a89880;
-  padding: 6px 10px;
+  padding: 8px 12px;
   background: rgba(139,126,200,0.06);
   border: 1px solid rgba(139,126,200,0.15);
   border-radius: 3px;
@@ -4204,14 +4351,14 @@ body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color:
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 12px;
+  padding: 8px 14px;
   background: rgba(139,126,200,0.04);
   border-bottom: 1px solid rgba(255,255,255,0.04);
 }
 
 .ipo-article-label {
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -4230,7 +4377,7 @@ body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color:
 .ipo-article-remove:hover { opacity: 0.7; }
 
 .ipo-article-card-body {
-  padding: 10px 12px;
+  padding: 12px 14px;
 }
 
 /* ── Add article row ── */
@@ -4243,11 +4390,11 @@ body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color:
 /* ── Toggle button ── */
 .ipo-toggle-btn {
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: 2px;
   cursor: pointer;
   border: 1px solid rgba(255,255,255,0.1);
@@ -4274,20 +4421,20 @@ body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color:
   align-items: center;
   gap: 6px;
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
 }
 .ipo-ideology-axis-name {
   width: 160px;
   flex-shrink: 0;
   color: #6b6a5e;
-  font-size: 8px;
+  font-size: 10px;
 }
 .ipo-ideology-check {
   display: flex;
   align-items: center;
   gap: 3px;
   color: #a89880;
-  font-size: 8px;
+  font-size: 10px;
   cursor: pointer;
 }
 .ipo-ideology-check.ipo-disabled {
@@ -4295,8 +4442,8 @@ body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color:
   cursor: not-allowed;
 }
 .ipo-ideology-check input[type="checkbox"] {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   accent-color: var(--ipo-purple);
 }
 
@@ -4326,7 +4473,7 @@ body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color:
 }
 .ipo-confirm-article-label {
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -4336,7 +4483,7 @@ body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color:
 }
 .ipo-confirm-article-detail {
   font-family: var(--font-sans);
-  font-size: 9.5px;
+  font-size: 11px;
   color: #a89880;
 }
 .ipo-confirm-cost {
@@ -4349,7 +4496,7 @@ body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color:
   display: flex;
   justify-content: space-between;
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   color: #a89880;
   padding: 2px 0;
 }
@@ -4359,6 +4506,521 @@ body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color:
   padding-top: 4px;
   color: #c8a64e;
   font-weight: 700;
+}
+
+/* ══ IPO VOTING SYSTEM (Phase 7a) ══ */
+
+/* Panel header action button */
+.ipo-panel-action-btn {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #c8a64e;
+  background: rgba(200,166,78,0.08);
+  border: 1px solid rgba(200,166,78,0.2);
+  border-radius: 2px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ipo-panel-action-btn:hover { background: rgba(200,166,78,0.18); }
+
+/* Empty state */
+.ipo-votes-empty {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+  text-align: center;
+  padding: 24px 12px;
+}
+.ipo-votes-empty strong { color: #c8a64e; }
+
+/* Vote card */
+.ipo-vote-card {
+  background: rgba(255,255,255,0.015);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 3px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.ipo-vote-card--open { border-left: 2px solid #c8a64e; }
+.ipo-vote-card--passed { border-left: 2px solid #5cb85c; }
+.ipo-vote-card--failed { border-left: 2px solid #d9534f; }
+
+.ipo-vote-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.ipo-vote-type-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #c8a64e;
+  background: rgba(200,166,78,0.08);
+  border: 1px solid rgba(200,166,78,0.15);
+  border-radius: 2px;
+  padding: 1px 5px;
+}
+
+.ipo-vote-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 2px;
+  margin-left: auto;
+}
+.ipo-vote-badge--open    { color: #c8a64e; background: rgba(200,166,78,0.1); }
+.ipo-vote-badge--passed  { color: #5cb85c; background: rgba(92,184,92,0.1); }
+.ipo-vote-badge--failed  { color: #d9534f; background: rgba(217,83,79,0.1); }
+
+.ipo-vote-card-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ipo-vote-meta-summary {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+.ipo-vote-meta-summary strong { color: var(--text-primary); font-weight: 600; }
+
+/* Tally bar */
+.ipo-vote-tally { margin: 6px 0; }
+
+.ipo-vote-tally-bar {
+  display: flex;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.04);
+}
+
+.ipo-vote-tally-seg--yes     { background: #5cb85c; }
+.ipo-vote-tally-seg--no      { background: #d9534f; }
+.ipo-vote-tally-seg--abstain { background: #6b6a5e; }
+
+.ipo-vote-tally-labels {
+  display: flex;
+  gap: 8px;
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+.ipo-vote-tally-label--yes     { color: #5cb85c; }
+.ipo-vote-tally-label--no      { color: #d9534f; }
+.ipo-vote-tally-label--abstain { color: #6b6a5e; }
+.ipo-vote-tally-label--total   { color: #6b6a5e; margin-left: auto; }
+
+/* Voter breakdown (public ballot) */
+.ipo-vote-voters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 4px 0;
+}
+.ipo-vote-voter {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.ipo-vote-voter--yes     { color: #5cb85c; border-color: rgba(92,184,92,0.2); }
+.ipo-vote-voter--no      { color: #d9534f; border-color: rgba(217,83,79,0.2); }
+.ipo-vote-voter--abstain { color: #6b6a5e; }
+
+/* My ballot status */
+.ipo-vote-my-ballot {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+  margin-top: 6px;
+}
+.ipo-vote-my-ballot strong { color: var(--text-primary); }
+
+/* Ballot buttons */
+.ipo-vote-ballot-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.ipo-vote-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ipo-vote-btn--yes {
+  color: #5cb85c;
+  background: rgba(92,184,92,0.06);
+  border-color: rgba(92,184,92,0.25);
+}
+.ipo-vote-btn--yes:hover { background: rgba(92,184,92,0.18); }
+
+.ipo-vote-btn--no {
+  color: #d9534f;
+  background: rgba(217,83,79,0.06);
+  border-color: rgba(217,83,79,0.25);
+}
+.ipo-vote-btn--no:hover { background: rgba(217,83,79,0.18); }
+
+.ipo-vote-btn--abstain {
+  color: #6b6a5e;
+  background: rgba(107,106,94,0.06);
+  border-color: rgba(107,106,94,0.25);
+}
+.ipo-vote-btn--abstain:hover { background: rgba(107,106,94,0.18); }
+
+.ipo-vote-btn--resolve {
+  color: #c8a64e;
+  background: rgba(200,166,78,0.08);
+  border-color: rgba(200,166,78,0.25);
+  margin-top: 6px;
+}
+.ipo-vote-btn--resolve:hover { background: rgba(200,166,78,0.2); }
+
+/* Vote type selection grid */
+.ipo-vote-type-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ipo-vote-type-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 3px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ipo-vote-type-card:hover {
+  background: rgba(200,166,78,0.06);
+  border-color: rgba(200,166,78,0.25);
+}
+
+.ipo-vote-type-card-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ipo-vote-type-card-desc {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+}
+
+/* Vote form elements */
+.ipo-vote-form-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b6a5e;
+  margin-top: 12px;
+  margin-bottom: 4px;
+}
+
+.ipo-vote-form-select,
+.ipo-vote-form-input,
+.ipo-vote-form-textarea {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 7px 12px;
+  background: var(--bg-1);
+  color: var(--text-primary);
+  border: 1px solid var(--border-hair);
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+.ipo-vote-form-textarea { resize: vertical; min-height: 60px; }
+.ipo-vote-form-select:focus,
+.ipo-vote-form-input:focus,
+.ipo-vote-form-textarea:focus { outline: none; border-color: rgba(200,166,78,0.4); }
+
+.ipo-invite-item {
+  padding: 8px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-left: 3px solid transparent;
+  transition: background 0.12s, border-color 0.12s;
+}
+.ipo-invite-item:last-child { border-bottom: none; }
+.ipo-invite-item:not(.disabled):hover { background: rgba(255,255,255,0.06); }
+.ipo-invite-item.selected { background: rgba(200,166,78,0.18); border-left-color: rgba(200,166,78,0.8); }
+.ipo-invite-item.disabled { opacity: 0.55; cursor: default; }
+body.light-mode .ipo-invite-item { border-bottom-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-invite-item:not(.disabled):hover { background: rgba(0,0,0,0.04); }
+body.light-mode .ipo-invite-item.selected { background: rgba(200,166,78,0.12); border-left-color: rgba(180,140,50,0.6); }
+
+.ipo-invite-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ipo-invite-badge--accepted { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+.ipo-invite-badge--invited { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); }
+.ipo-invite-badge--rejected { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+
+.ipo-ideo-filter-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  opacity: 0.6;
+}
+.ipo-ideo-filter-btn:hover { opacity: 0.85; }
+.ipo-ideo-filter-btn.active { opacity: 1; filter: brightness(1.3); box-shadow: 0 0 0 1px currentColor; }
+
+.ipo-vote-form-note {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+  font-style: italic;
+  padding: 8px 0;
+}
+
+/* ══ IPO ACTIONS PANEL (Phase 8) ══ */
+
+.ipo-actions-empty {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+  text-align: center;
+  padding: 24px 12px;
+}
+
+.ipo-action-card {
+  background: rgba(255,255,255,0.015);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 3px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  transition: border-color 0.15s;
+}
+.ipo-action-card:hover { border-color: rgba(139,126,200,0.25); }
+.ipo-action-card--disabled { opacity: 0.45; pointer-events: none; }
+
+.ipo-action-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ipo-action-icon { font-size: 14px; flex-shrink: 0; line-height: 1; }
+
+.ipo-action-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ipo-action-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ipo-action-desc {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+  line-height: 1.3;
+}
+
+.ipo-action-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ipo-action-cost {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: #c8a64e;
+}
+
+.ipo-action-exec-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 12px;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--ipo-purple);
+  background: rgba(139,126,200,0.06);
+  border: 1px solid rgba(139,126,200,0.2);
+  transition: background 0.15s;
+}
+.ipo-action-exec-btn:hover:not(:disabled) { background: rgba(139,126,200,0.18); }
+.ipo-action-exec-btn:disabled { color: #6b6a5e; border-color: rgba(107,106,94,0.2); cursor: not-allowed; }
+
+/* Action result modal */
+.ipo-action-result-icon {
+  font-size: 42px;
+  margin-bottom: 8px;
+}
+.ipo-action-result-name {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.ipo-action-result-effect {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.ipo-action-result-desc {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+}
+
+/* Multi-result (rally all) */
+.ipo-action-multi-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ipo-action-multi-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 3px;
+}
+.ipo-action-multi-icon { font-size: 12px; flex-shrink: 0; }
+.ipo-action-multi-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ipo-action-multi-outcome {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+}
+.ipo-action-multi-change {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  min-width: 30px;
+  text-align: right;
+}
+
+/* ══ IPO EVENT LOG (Phase 10) ══ */
+
+.ipo-event-log {
+  flex-shrink: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  border-top: 1px solid rgba(255,255,255,0.04);
+  padding: 8px 16px 12px;
+}
+.ipo-event-log::-webkit-scrollbar { width: 4px; }
+.ipo-event-log::-webkit-scrollbar-track { background: transparent; }
+.ipo-event-log::-webkit-scrollbar-thumb { background: var(--text-faint); border-radius: 2px; }
+
+.ipo-event-log-header {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b6a5e;
+  margin-bottom: 6px;
+}
+
+.ipo-event-log-empty {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #3a3830;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.ipo-event-log-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 3px 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+  line-height: 1.3;
+}
+
+.ipo-event-log-icon { flex-shrink: 0; font-size: 10px; line-height: 1; }
+
+.ipo-event-log-text {
+  flex: 1;
+  min-width: 0;
+}
+.ipo-event-log-text strong { color: var(--text-primary); font-weight: 600; }
+
+.ipo-event-log-tick {
+  flex-shrink: 0;
+  font-size: 9px;
+  color: #3a3830;
 }
 
 /* ── Light mode overrides ── */
@@ -4373,6 +5035,21 @@ body.light-mode .ipo-chat-input-row { background: #fafaf8; }
 body.light-mode .ipo-chat-input { background: #fff; border-color: rgba(0,0,0,0.1); color: #333; }
 body.light-mode .ipo-panel-header { background: #fafaf8; }
 body.light-mode .ipo-footer { background: #fafaf8; }
+body.light-mode .ipo-vote-card { background: rgba(0,0,0,0.015); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-vote-card-title { color: #333; }
+body.light-mode .ipo-vote-type-card { background: rgba(0,0,0,0.015); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-vote-type-card-label { color: #333; }
+body.light-mode .ipo-vote-tally-bar { background: rgba(0,0,0,0.06); }
+body.light-mode .ipo-vote-voter { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-vote-form-select,
+body.light-mode .ipo-vote-form-input,
+body.light-mode .ipo-vote-form-textarea { background: #fff; border-color: rgba(0,0,0,0.12); color: #333; }
+body.light-mode .ipo-action-card { background: rgba(0,0,0,0.015); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-action-label { color: #333; }
+body.light-mode .ipo-action-multi-row { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-action-multi-name { color: #333; }
+body.light-mode .ipo-event-log { border-top-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-event-log-text strong { color: #333; }
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
@@ -4384,9 +5061,22 @@ body.light-mode .ipo-footer { background: #fafaf8; }
   .ipo-header { height: auto; min-height: 42px; padding: 8px 12px; flex-wrap: wrap; }
   .ipo-header-meta { flex-wrap: wrap; gap: 6px; }
   .ipo-header-right { margin-left: 0; margin-top: 4px; width: 100%; }
-  .ipo-bottom-panels { flex-direction: column; }
+  .ipo-bottom-panels { flex-direction: column; max-height: none; }
   .ipo-panel + .ipo-panel { border-left: none; border-top: 1px solid rgba(255,255,255,0.04); }
+  .ipo-panel-body { max-height: 350px; }
   .ipo-footer { height: auto; min-height: 36px; padding: 6px 12px; flex-wrap: wrap; }
   .ipo-footer-members { gap: 3px; }
-  .ipo-footer-actions { width: 100%; justify-content: flex-end; margin-top: 4px; }
+  .ipo-footer-actions { width: 100%; justify-content: flex-end; margin-top: 4px; flex-wrap: wrap; }
+  .ipo-vote-card { padding: 8px 10px; }
+  .ipo-action-card { padding: 6px 8px; }
+  .ipo-vote-ballot-row { flex-wrap: wrap; }
+  .ipo-vote-type-grid { gap: 4px; }
+  .ipo-vote-type-card { padding: 8px 10px; }
+  .ipo-action-result-icon { font-size: 32px; }
+  .ipo-action-result-name { font-size: 13px; }
+  .ipo-action-result-effect { font-size: 18px; }
+  .ipo-modal-content { max-width: 95vw; max-height: 90vh; }
+  .ipo-empty-state { padding: 30px 20px; }
+  .ipo-empty-title { font-size: 16px; }
+  .ipo-empty-desc { font-size: 12px; }
 }

@@ -150,7 +150,7 @@ export async function applyEnactmentApproval(supabase, nationId, approvalDeltas)
     for (const [factionId, delta] of Object.entries(approvalDeltas)) {
         if (delta === 0) continue;
         const scaled = round2(delta * 0.3);
-        await nudgeApproval(supabase, factionId, nationId, scaled);
+        await nudgeApproval(supabase, factionId, nationId, scaled, { source: 'bill:passed' });
     }
 }
 
@@ -211,7 +211,7 @@ export async function applyNoVotePenalty(supabase, bill, nationId) {
     for (const faction of nonVoters) {
         // Lose 1-2 party_approval for not voting
         const approvalLoss = -(1 + Math.random());
-        await nudgeApproval(supabase, faction.id, nationId, round2(approvalLoss));
+        await nudgeApproval(supabase, faction.id, nationId, round2(approvalLoss), { source: 'bill:failed' });
 
         penalized.push({
             factionId: faction.id,
@@ -254,9 +254,8 @@ export function calculateIdeologyPenalty(stage, opposedCount, polarization) {
 // ==================== BLOC APPROVAL HELPERS ====================
 
 /**
- * Recalculate derived overall approval_rating for a faction from
- * faction_bloc_approval preference_scores weighted by voter_blocs population_weight.
- * Updates the factions.approval_rating cache column.
+ * Legacy bloc-weighted approval recalculation (no longer used).
+ * Approval is now tracked in faction_electoral_standing.party_approval.
  */
 export async function recalcDerivedApproval(supabase, factionId, blocRows) {
     // Legacy bloc-weighted approval removed — electorate engine handles vote share now
@@ -1697,8 +1696,8 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presidentRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proceedingData.president_id).single();
                     if (presidentRow) {
-                        await nudgeApproval(supabase, presidentRow.faction_id, bill.nation_id, -5);
-                        await adjustCredibility(supabase, presidentRow.faction_id, bill.nation_id, -0.15, 12);
+                        await nudgeApproval(supabase, presidentRow.faction_id, bill.nation_id, -5, { source: 'impeachment:passed' });
+                        await adjustCredibility(supabase, presidentRow.faction_id, bill.nation_id, -0.15, 12, currentTick, { source: 'impeachment:passed' });
                     }
                 }
 
@@ -1748,8 +1747,8 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 }).eq('id', bill.nation_id);
 
                 // Filer takes approval & credibility hit (partisan overreach)
-                await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -2);
-                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.05);
+                await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -2, { source: 'impeachment:failed' });
+                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.05, 0, currentTick, { source: 'impeachment:motion_failed' });
 
                 // President gets +3 approval (vindication)
                 const { data: proc } = await supabase.from('impeachment_proceedings')
@@ -1758,8 +1757,8 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proc.president_id).single();
                     if (presRow) {
-                        await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 2);
-                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.03);
+                        await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 2, { source: 'impeachment:failed' });
+                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.03, 0, currentTick, { source: 'impeachment:motion_failed:vindicated' });
                     }
                 }
 
@@ -1817,8 +1816,8 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proc.president_id).single();
                     if (presRow) {
-                        await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 3);
-                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.05);
+                        await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 3, { source: 'impeachment:survived' });
+                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.05, 0, currentTick, { source: 'impeachment:survived' });
                     }
                 }
 
@@ -1834,12 +1833,12 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 const yesVoters = (bill.bill_support || []).filter(s => s.stance === 'yes' || s.stance === 'accept');
                 for (const v of yesVoters) {
                     if (v.faction_id !== bill.proposed_by) {
-                        await nudgeApproval(supabase, v.faction_id, bill.nation_id, -1);
-                        await adjustCredibility(supabase, v.faction_id, bill.nation_id, -0.03);
+                        await nudgeApproval(supabase, v.faction_id, bill.nation_id, -1, { source: 'impeachment:survived' });
+                        await adjustCredibility(supabase, v.faction_id, bill.nation_id, -0.03, 0, currentTick, { source: 'impeachment:survived:accuser' });
                     }
                 }
-                await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -1);
-                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.03);
+                await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -1, { source: 'impeachment:survived' });
+                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.03, 0, currentTick, { source: 'impeachment:survived:accuser' });
 
                 try {
                     await supabase.from('event_log').insert({
@@ -2906,8 +2905,8 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             if (allFactions) {
                 for (const faction of allFactions) {
                     // Base loves it (+3 approval) but anti-democratic (-0.1 credibility)
-                    await nudgeApproval(supabase, faction.id, bill.nation_id, 3);
-                    await adjustCredibility(supabase, faction.id, bill.nation_id, -0.1);
+                    await nudgeApproval(supabase, faction.id, bill.nation_id, 3, { source: 'bill:term_limit' });
+                    await adjustCredibility(supabase, faction.id, bill.nation_id, -0.1, 0, currentTick, { source: 'bill:term_limit' });
                 }
             }
 
@@ -2992,12 +2991,52 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             // Constitutional monarchy: stability +5, legitimacy -5
             const newStability = Math.min(100, (nation?.stability || 50) + 5);
             const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 5);
-            const { error: statErr } = await supabase.from('nations').update({
-                stability: newStability,
-                legitimacy: newLegitimacy
-            }).eq('id', bill.nation_id);
+            const statUpdate = { stability: newStability, legitimacy: newLegitimacy };
+
+            // If the nation is an autocracy, transition to parliamentary democracy
+            const wasAutocracy = nation?.government_type?.toLowerCase().includes('autocra');
+            if (wasAutocracy) {
+                statUpdate.government_type = 'Democracy';
+                statUpdate.ruling_faction_id = null;
+                statUpdate.designated_successor_faction_id = null;
+                statUpdate.revolution_started_tick = null;
+                statUpdate.revolution_duration = null;
+                statUpdate.authoritarianism_seize_available_tick = null;
+
+                // Clean up autocracy-specific state
+                await Promise.allSettled([
+                    supabase.from('faction_pillar_state').delete().eq('nation_id', bill.nation_id),
+                    supabase.from('autocracy_tracker').delete().eq('nation_id', bill.nation_id),
+                    supabase.from('putsch_state').delete().eq('nation_id', bill.nation_id),
+                    supabase.from('vulnerability_window').delete().eq('nation_id', bill.nation_id),
+                    supabase.from('pyrrhic_window').delete().eq('nation_id', bill.nation_id),
+                    supabase.from('silent_coup_offers').delete().eq('nation_id', bill.nation_id),
+                    supabase.from('silent_coup_votes').delete().eq('nation_id', bill.nation_id),
+                ]);
+
+                // Freeze all active bills
+                await supabase.from('bills')
+                    .update({ status: 'frozen' })
+                    .eq('nation_id', bill.nation_id)
+                    .in('status', ['committee', 'floor']);
+
+                // Schedule parliamentary election 48 ticks from now
+                await supabase.from('elections').delete()
+                    .eq('nation_id', bill.nation_id).eq('status', 'scheduled');
+                const { error: electionErr } = await supabase.from('elections').insert({
+                    nation_id: bill.nation_id,
+                    election_tick: currentTick + 48,
+                    status: 'scheduled',
+                    election_type: 'parliamentary'
+                });
+                if (electionErr) console.error('[enactFoundationalBill] Failed to schedule post-monarchy election:', electionErr.message);
+
+                console.log(`[enactFoundationalBill] Autocracy → Parliamentary Democracy (constitutional monarchy), election at tick ${currentTick + 48}`);
+            }
+
+            const { error: statErr } = await supabase.from('nations').update(statUpdate).eq('id', bill.nation_id);
             if (statErr) console.error(`[enactFoundationalBill] Hereditary stat update failed:`, statErr.message);
-            else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, legitimacy -5`);
+            else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, legitimacy -5${wasAutocracy ? ', gov type → Democracy' : ''}`);
         } else if (newMethod === 'direct_vote') {
             // Direct vote: legitimacy +3, political_engagement +3, polarization +2
             const newLegitimacy = Math.min(100, (nation?.legitimacy || 50) + 3);

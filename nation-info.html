@@ -107,7 +107,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
-import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
+import { formatInflationRate, getInflationLabel, inflationColorClass, STAT_DECAY_CONFIG, STATS_LOWER_IS_BETTER } from './js/game/stats.js';
 import { fetchPreviousNationTick, assertRawEconomicValue } from './js/common.js';
 
 // Resolve nation name from query parameter: nation-info.html?name=sangreza
@@ -219,10 +219,30 @@ function statCard(label, key, val, desc, format, inverted, displayVal) {
         ? '<div class="stat-bar"><div class="stat-bar-fill ' + cc + '" style="width:' + barWidth + '%"></div></div>'
         : '';
 
+    // Decay indicator — show direction + speed for stats with natural decay
+    var decayHtml = '';
+    var decayConf = STAT_DECAY_CONFIG[key];
+    if (decayConf && val != null) {
+        var numVal = Number(val);
+        if (!isNaN(numVal)) {
+            var atTarget = Math.abs(numVal - decayConf.target) < 0.05;
+            if (atTarget) {
+                decayHtml = '<div class="stat-decay stat-decay--neutral">Decay: at target</div>';
+            } else {
+                var movingDown = numVal > decayConf.target;
+                var sign = movingDown ? '\u2212' : '+';
+                // For inverted stats (lower is better), moving toward a HIGH target is bad
+                var isInverted = STATS_LOWER_IS_BETTER.indexOf(key) !== -1;
+                var isGood = isInverted ? movingDown : !movingDown;
+                decayHtml = '<div class="stat-decay ' + (isGood ? 'stat-decay--up' : 'stat-decay--down') + '">Decay: ' + sign + decayConf.speed + '/tick</div>';
+            }
+        }
+    }
+
     return '<div class="stat-card">' +
         '<div class="stat-name">' + label + '</div>' +
         '<div class="stat-value-row"><span class="stat-val ' + cc + '">' + shown + '</span>' + trend + '</div>' +
-        barHtml + rankHtml +
+        barHtml + rankHtml + decayHtml +
         '<div class="stat-desc">' + desc + '</div>' +
     '</div>';
 }

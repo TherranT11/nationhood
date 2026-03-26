@@ -12,12 +12,12 @@ import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { closeAdministration, createAdministration, dissolveCoalition } from './elections.js';
 import { getTraitAPModifier, applyRallyTraitModifiers, getTraitApprovalMultiplier, getEffectiveBlocDisposition } from './party-leadership.js';
-import { onRally, onOutreach, onAttack, nudgeEnthusiasm, ELECTORATE_CONFIG as E_CFG } from './electorate.js';
+import { onRally, onOutreach, onAttack, nudgeEnthusiasm, nudgeApproval, ELECTORATE_CONFIG as E_CFG } from './electorate.js';
 
-const _MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+const _PA_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
 function _tickToDate(tick) {
-    return `${_MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
+    return `${_PA_MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
 }
 
 // ==================== STAT DECAY PROCESSING ====================
@@ -1082,8 +1082,8 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
     if (targetDelta !== 0) {
         const approvalDelta = _round2(targetDelta * 0.3);
         const credDelta = _round3(targetDelta * 0.01);
-        await _nudgeApproval(supabase, targetFactionId, nationId, approvalDelta);
-        await _adjustCredibility(supabase, targetFactionId, nationId, credDelta);
+        await _nudgeApproval(supabase, targetFactionId, nationId, approvalDelta, 'attack');
+        await _adjustCredibility(supabase, targetFactionId, nationId, credDelta, 0, currentTick, { source: 'attack:received' });
         effects.push({ label: targetFaction.faction_name, value: targetDelta });
     }
 
@@ -1091,7 +1091,7 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
     if (selfDelta !== 0) {
         const selfLabel = selfDelta > 0 ? 'Your party (credibility gain)' : 'Your party (credibility loss)';
         const selfCredDelta = _round3(selfDelta * 0.01);
-        await _adjustCredibility(supabase, factionId, nationId, selfCredDelta);
+        await _adjustCredibility(supabase, factionId, nationId, selfCredDelta, 0, currentTick, { source: 'attack:self' });
         effects.push({ label: selfLabel, value: selfDelta });
     }
 
@@ -1163,8 +1163,8 @@ export const MAKE_PROMISE_CONFIG = {
     AP_COST: 2,
     STAT_DELTA: 10,                    // Promise to change stat by ±10
     STAT_DELTA_GOVERNING: 20,          // Governing factions must promise ±20 (harder target)
-    DEADLINE_DICE: 12,                 // 1D12 + base
-    DEADLINE_BASE: 12,                 // base ticks added to roll (range: 13-24)
+    DEADLINE_DICE: 24,                 // 1D24 + base
+    DEADLINE_BASE: 6,                  // base ticks added to roll (range: 7-30)
     MAX_ACTIVE_PROMISES: 5,            // limit active promises per faction
 
     // ── Electorate engine effects (party_approval + credibility_modifier) ──
@@ -1173,12 +1173,12 @@ export const MAKE_PROMISE_CONFIG = {
     PENALTY_PER_TICK_MAX: 1.5,
 
     // Promise kept rewards
-    KEPT_APPROVAL: 4,                  // +party_approval when promise fulfilled
-    KEPT_CREDIBILITY: 0.05,            // +credibility_modifier when promise fulfilled
+    KEPT_APPROVAL: 2,                  // +party_approval when promise fulfilled
+    KEPT_CREDIBILITY: 0.07,            // +credibility_modifier when promise fulfilled
 
     // Promise broken penalties
-    BROKEN_APPROVAL: -6,               // -party_approval when promise broken
-    BROKEN_CREDIBILITY: -0.15,         // -credibility_modifier when promise broken
+    BROKEN_APPROVAL: -2,               // -party_approval when promise broken
+    BROKEN_CREDIBILITY: -0.10,         // -credibility_modifier when promise broken
     BROKEN_CREDIBILITY_SUSPEND: 12,    // suspend credibility recovery for N ticks after breaking
     BROKEN_NERVOUS_CREDIBILITY: -0.03, // -credibility per other active promise when one breaks
 };
@@ -1204,12 +1204,12 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
     if (effectivePromiseCost > 0 && (faction.action_points || 0) < effectivePromiseCost)
         return { success: false, error: `Not enough AP. Need ${effectivePromiseCost}.` };
 
-    // ── 2. Check active promise limit ──
+    // ── 2. Check active promise limit (includes pending_election promises) ──
     const { data: activePromises } = await supabase
         .from('fundraiser_promises')
         .select('id, demand_type, conditions')
         .eq('party_id', factionId)
-        .eq('status', 'active');
+        .in('status', ['active', 'pending_election']);
 
     if ((activePromises || []).length >= cfg.MAX_ACTIVE_PROMISES)
         return { success: false, error: `Maximum ${cfg.MAX_ACTIVE_PROMISES} active promises reached.` };
@@ -1231,10 +1231,9 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
     // voter_blocs table removed; default to empty array
     const allBlocs = [];
 
-    // ── 4. Roll deadline: 1D12 + 12 ──
+    // ── 4. Roll deadline: 1D24 + 6 (countdown deferred until next election + in government) ──
     const deadlineRoll = Math.floor(Math.random() * cfg.DEADLINE_DICE) + 1;
     const deadlineTicks = deadlineRoll + cfg.DEADLINE_BASE;
-    const tickDeadline = currentTick + deadlineTicks;
 
     // ── 5. Build promise based on type ──
     let demandText, demandType, conditions, affectedBlocIds, affectedBlocNames;
@@ -1345,7 +1344,7 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
 
     // ── 6. Apply immediate party_approval bump via electorate engine ──
     const approvalBump = cfg.APPROVAL_ON_PROMISE;
-    await _nudgeApproval(supabase, factionId, nationId, approvalBump);
+    await _nudgeApproval(supabase, factionId, nationId, approvalBump, 'promise:made');
     console.log(`[Promise] +${approvalBump} party_approval for ${factionId} on making ${promiseType} promise`);
     const blocEffects = [];
 
@@ -1372,10 +1371,10 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
             small_amount: 0,
             tick_created: currentTick,
             deadline_ticks: deadlineTicks,
-            tick_deadline: tickDeadline,
+            tick_deadline: null,
             conditions,
             progress: { source: 'make_promise', promise_type: promiseType },
-            status: 'active',
+            status: 'pending_election',
         })
         .select()
         .single();
@@ -1702,13 +1701,15 @@ export function evaluatePromiseStatus(promise, nationStats, currentTick, ministr
  */
 export async function processPromiseTick(supabase, nation, currentTick) {
     const cfg = MAKE_PROMISE_CONFIG;
-    const { data: activePromises } = await supabase
+
+    // Fetch both active and pending_election promises
+    const { data: allPromises } = await supabase
         .from('fundraiser_promises')
         .select('*')
         .eq('nation_id', nation.id)
-        .eq('status', 'active');
+        .in('status', ['active', 'pending_election']);
 
-    if (!activePromises || activePromises.length === 0) return [];
+    if (!allPromises || allPromises.length === 0) return [];
 
     const results = [];
 
@@ -1723,8 +1724,8 @@ export async function processPromiseTick(supabase, nation, currentTick) {
     const coalitionPartyIds = coalition?.party_ids || [];
 
     // Load campaign actions for rally/press_conference counting
-    const partyIds = [...new Set(activePromises.map(p => p.party_id))];
-    const minTick = Math.min(...activePromises.map(p => p.tick_created));
+    const partyIds = [...new Set(allPromises.map(p => p.party_id))];
+    const minTick = Math.min(...allPromises.map(p => p.tick_created));
     const { data: campaignActions } = await supabase
         .from('campaign_actions')
         .select('party_id, action_type, tick_performed, result')
@@ -1747,20 +1748,56 @@ export async function processPromiseTick(supabase, nation, currentTick) {
         ...coalitionPartyIds,
     ].filter(Boolean));
 
-    for (const promise of activePromises) {
+    // Check if any election completed since promise creation (for pending_election activation)
+    const { data: completedElections } = await supabase
+        .from('elections')
+        .select('id, election_tick')
+        .eq('nation_id', nation.id)
+        .eq('status', 'completed')
+        .order('election_tick', { ascending: false })
+        .limit(1);
+    const lastElectionTick = completedElections?.[0]?.election_tick || 0;
+
+    for (const promise of allPromises) {
         const isGoverning = governingFactionIds.has(promise.party_id);
 
-        // If not governing and deadline passed: expire silently, no downside
-        if (!isGoverning && currentTick >= promise.tick_deadline) {
-            await supabase.from('fundraiser_promises')
-                .update({ status: 'expired', tick_resolved: currentTick, updated_at: new Date().toISOString() })
-                .eq('id', promise.id);
-            results.push({ promise, resolution: 'expired' });
+        // ── Handle pending_election promises: waiting for next election ──
+        if (promise.status === 'pending_election') {
+            // Has an election completed since this promise was created?
+            if (lastElectionTick > promise.tick_created) {
+                if (isGoverning) {
+                    // Faction won — activate countdown
+                    const tickDeadline = currentTick + promise.deadline_ticks;
+                    await supabase.from('fundraiser_promises')
+                        .update({ status: 'active', tick_deadline: tickDeadline, updated_at: new Date().toISOString() })
+                        .eq('id', promise.id);
+                    console.log(`[Promise] Activated pending promise ${promise.id} — countdown starts, deadline tick ${tickDeadline}`);
+                    results.push({ promise, resolution: 'activated' });
+                } else {
+                    // Faction in opposition — extinguish silently
+                    await supabase.from('fundraiser_promises')
+                        .update({ status: 'expired', tick_resolved: currentTick, updated_at: new Date().toISOString() })
+                        .eq('id', promise.id);
+                    console.log(`[Promise] Extinguished pending promise ${promise.id} — faction not in government after election`);
+                    results.push({ promise, resolution: 'expired' });
+                }
+            }
+            // No election yet — promise stays dormant
             continue;
         }
 
-        // If not governing: promise is dormant — skip evaluation entirely
-        if (!isGoverning) continue;
+        // ── Handle active promises (countdown running) ──
+
+        // If no longer governing: expire silently (faction lost power mid-countdown)
+        if (!isGoverning) {
+            if (currentTick >= promise.tick_deadline) {
+                await supabase.from('fundraiser_promises')
+                    .update({ status: 'expired', tick_resolved: currentTick, updated_at: new Date().toISOString() })
+                    .eq('id', promise.id);
+                results.push({ promise, resolution: 'expired' });
+            }
+            continue;
+        }
 
         // For crisis_resolution promises, check if the crisis is still active
         if (promise.demand_type === 'crisis_resolution' && promise.conditions?.crisis_id) {
@@ -1794,7 +1831,7 @@ export async function processPromiseTick(supabase, nation, currentTick) {
         if (isGoverning) {
             const penaltyAmount = -(Math.random() * (cfg.PENALTY_PER_TICK_MAX - cfg.PENALTY_PER_TICK_MIN) + cfg.PENALTY_PER_TICK_MIN);
             const rounded = Math.round(penaltyAmount * 100) / 100;
-            await _nudgeApproval(supabase, promise.party_id, promise.nation_id, rounded);
+            await _nudgeApproval(supabase, promise.party_id, promise.nation_id, rounded, 'promise:unfulfilled_penalty');
             results.push({ promise, resolution: 'tick_penalty', penaltyAmount: rounded });
         }
     }
@@ -1810,27 +1847,15 @@ function _round3(v) { return Math.round(v * 1000) / 1000; }
  * Nudge a faction's party_approval in faction_electoral_standing.
  * Local helper for promise resolution (mirrors nudgeApproval in advance-tick).
  */
-async function _nudgeApproval(supabase, factionId, nationId, delta) {
-    if (!delta || delta === 0) return;
-    const { data: standing } = await supabase
-        .from('faction_electoral_standing')
-        .select('id, party_approval')
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId)
-        .maybeSingle();
-    if (!standing) return;
-    const old = Number(standing.party_approval ?? 25);
-    const newVal = Math.round(Math.min(90, Math.max(10, old + delta)) * 100) / 100;
-    await supabase.from('faction_electoral_standing')
-        .update({ party_approval: newVal })
-        .eq('id', standing.id);
+async function _nudgeApproval(supabase, factionId, nationId, delta, source) {
+    await nudgeApproval(supabase, factionId, nationId, delta, { source: source || 'unknown' });
 }
 
 /**
  * Adjust a faction's credibility_modifier in faction_electoral_standing.
  * Local helper for promise resolution (mirrors adjustCredibility in advance-tick).
  */
-async function _adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0) {
+async function _adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0, opts = {}) {
     if (!delta && !suspendRecoveryTicks) return;
     const { data: standing } = await supabase
         .from('faction_electoral_standing')
@@ -1850,6 +1875,20 @@ async function _adjustCredibility(supabase, factionId, nationId, delta, suspendR
     await supabase.from('faction_electoral_standing')
         .update(updateObj)
         .eq('id', standing.id);
+
+    // Audit log (non-fatal)
+    if (delta && opts.source) {
+        const tick = currentTick || opts.tick || 0;
+        supabase.from('credibility_log').insert({
+            faction_id: factionId,
+            nation_id: nationId,
+            amount: delta,
+            source: opts.source,
+            tick,
+        }).then(({ error: logErr }) => {
+            if (logErr) console.warn('[PoliticalActions] credibility_log insert failed:', logErr.message);
+        });
+    }
 }
 
 /**
@@ -1860,8 +1899,9 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
 
     if (resolution === 'fulfilled') {
         // ── REWARDS via electorate engine (party_approval + credibility) ──
-        await _nudgeApproval(supabase, promise.party_id, promise.nation_id, cfg.KEPT_APPROVAL);
-        await _adjustCredibility(supabase, promise.party_id, promise.nation_id, cfg.KEPT_CREDIBILITY);
+        const keptSource = `promise:kept:${promise.demand_text || 'Unknown'}`;
+        await _nudgeApproval(supabase, promise.party_id, promise.nation_id, cfg.KEPT_APPROVAL, 'promise:kept');
+        await _adjustCredibility(supabase, promise.party_id, promise.nation_id, cfg.KEPT_CREDIBILITY, 0, currentTick, { source: keptSource });
         console.log(`[Promise] Fulfilled: +${cfg.KEPT_APPROVAL} approval, +${cfg.KEPT_CREDIBILITY} credibility for ${promise.party_id}`);
 
         // Mark promise as fulfilled
@@ -1871,8 +1911,9 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
 
     } else if (resolution === 'broken') {
         // ── PENALTIES via electorate engine (party_approval + credibility) ──
-        await _nudgeApproval(supabase, promise.party_id, promise.nation_id, cfg.BROKEN_APPROVAL);
-        await _adjustCredibility(supabase, promise.party_id, promise.nation_id, cfg.BROKEN_CREDIBILITY, cfg.BROKEN_CREDIBILITY_SUSPEND, currentTick);
+        const brokenSource = `promise:broken:${promise.demand_text || 'Unknown'}`;
+        await _nudgeApproval(supabase, promise.party_id, promise.nation_id, cfg.BROKEN_APPROVAL, 'promise:broken');
+        await _adjustCredibility(supabase, promise.party_id, promise.nation_id, cfg.BROKEN_CREDIBILITY, cfg.BROKEN_CREDIBILITY_SUSPEND, currentTick, { source: brokenSource });
         console.log(`[Promise] Broken: ${cfg.BROKEN_APPROVAL} approval, ${cfg.BROKEN_CREDIBILITY} credibility for ${promise.party_id}`);
 
         // Nervous effect: other active promises compound credibility damage
@@ -1885,7 +1926,7 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
 
         if (otherPromises && otherPromises.length > 0) {
             const nervousDelta = cfg.BROKEN_NERVOUS_CREDIBILITY * otherPromises.length;
-            await _adjustCredibility(supabase, promise.party_id, promise.nation_id, nervousDelta);
+            await _adjustCredibility(supabase, promise.party_id, promise.nation_id, nervousDelta, 0, currentTick, { source: `promise:nervous:${promise.demand_text || 'Unknown'}` });
             console.log(`[Promise] Nervous effect: ${nervousDelta} credibility (${otherPromises.length} other active promises)`);
         }
 
@@ -2321,12 +2362,13 @@ export async function processMinistryActions(supabase, nation, currentTick) {
                     } else if (target === 'faction') {
                         const fKey = action.faction_id;
                         if (factionUpdates[fKey] === undefined) {
-                            const { data: faction } = await supabase
-                                .from('factions')
-                                .select('approval_rating')
-                                .eq('id', action.faction_id)
-                                .single();
-                            factionUpdates[fKey] = (faction?.approval_rating ?? 50);
+                            const { data: standing } = await supabase
+                                .from('faction_electoral_standing')
+                                .select('party_approval')
+                                .eq('faction_id', action.faction_id)
+                                .eq('nation_id', nation.id)
+                                .maybeSingle();
+                            factionUpdates[fKey] = (standing?.party_approval ?? 50);
                             factionBaseline[fKey] = factionUpdates[fKey];
                         }
                         currentVal = factionUpdates[fKey];
@@ -2412,12 +2454,13 @@ export async function processMinistryActions(supabase, nation, currentTick) {
         const multiplier = ministryKey === 'prime_minister' ? 2 : 1;
         // Load faction approval into factionUpdates if not already tracked
         if (factionUpdates[factionId] === undefined) {
-            const { data: faction } = await supabase
-                .from('factions')
-                .select('approval_rating')
-                .eq('id', factionId)
-                .single();
-            factionUpdates[factionId] = (faction?.approval_rating ?? 50);
+            const { data: standing } = await supabase
+                .from('faction_electoral_standing')
+                .select('party_approval')
+                .eq('faction_id', factionId)
+                .eq('nation_id', nation.id)
+                .maybeSingle();
+            factionUpdates[factionId] = (standing?.party_approval ?? 50);
             factionBaseline[factionId] = factionUpdates[factionId];
         }
         factionUpdates[factionId] = Math.max(0, factionUpdates[factionId] - (loss * multiplier));
@@ -2427,7 +2470,7 @@ export async function processMinistryActions(supabase, nation, currentTick) {
     for (const fKey of Object.keys(factionUpdates)) {
         const delta = Math.round((factionUpdates[fKey] - (factionBaseline[fKey] ?? 50)) * 10) / 10;
         if (delta !== 0) {
-            await _nudgeApproval(supabase, fKey, nation.id, _round2(delta * 0.3));
+            await _nudgeApproval(supabase, fKey, nation.id, _round2(delta * 0.3), 'rally');
         }
     }
 
@@ -2521,9 +2564,12 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
         // Baseline decay always applies — approval erodes unless stats improve.
         // During crises, decay is multiplied: 1 crisis = 2×, 2 crises = 3×, etc.
         newApproval += cfg.BASELINE_DECAY * crisisMultiplier;
-        // Apply delta-based movement on top of baseline decay
-        if (Math.abs(avgDelta) >= 0.5) {
-            newApproval += avgDelta * cfg.DELTA_SENSITIVITY;
+        // Apply delta-based movement on top of baseline decay.
+        // Baselines are permanent (appointment snapshot), so cap the cumulative delta
+        // to prevent runaway approval. ±5 cap means max ±3/tick from stat performance.
+        const clampedDelta = Math.max(-5, Math.min(5, avgDelta));
+        if (Math.abs(clampedDelta) >= 0.5) {
+            newApproval += clampedDelta * cfg.DELTA_SENSITIVITY;
         }
 
         // Foreign Minister penalty: -0.25/tick per nation without an outgoing ambassador
@@ -2548,15 +2594,10 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
         // minister_approval is an integer column — round to whole number
         newApproval = Math.round(Math.max(0, Math.min(100, newApproval)));
 
-        // Update baselines to current values so next tick only sees incremental change
-        const updatedBaselines = {};
-        for (const statKey of ownedStats) {
-            if (statDirectionSign(statKey) === 0) continue;
-            updatedBaselines[statKey] = Number(nation[statKey] ?? 50);
-        }
-
+        // Keep stat_baselines as the original appointment snapshot (never overwrite).
+        // The UI uses baselines to show cumulative change since appointment.
         const { error: updateErr } = await supabase.from('ministries')
-            .update({ minister_approval: newApproval, stat_baselines: updatedBaselines })
+            .update({ minister_approval: newApproval })
             .eq('id', ministry.id);
 
         if (updateErr) {
@@ -3154,7 +3195,7 @@ export async function processCrises(supabase, nation, currentTick) {
                     const partyIds = coalition?.party_ids || [];
                     for (const partyId of partyIds) {
                         const scaledDelta = _round2(effectiveGovChange * 0.3);
-                        await _nudgeApproval(supabase, partyId, nation.id, scaledDelta);
+                        await _nudgeApproval(supabase, partyId, nation.id, scaledDelta, 'crisis:' + template.name);
                         appliedEffects.push({
                             stat: 'party_approval', change: scaledDelta,
                             target: effect.target, faction_id: partyId
@@ -3192,7 +3233,7 @@ export async function processCrises(supabase, nation, currentTick) {
                     // Cascade PM approval loss to party_approval (scaled)
                     if (changePT < 0 && pmMinistry.party_id) {
                         const cascadeDelta = _round2(-(Math.abs(changePT) * 0.5));
-                        await _nudgeApproval(supabase, pmMinistry.party_id, nation.id, cascadeDelta);
+                        await _nudgeApproval(supabase, pmMinistry.party_id, nation.id, cascadeDelta, 'crisis:cascade:pm');
 
                         appliedEffects.push({
                             stat: 'party_approval', change: cascadeDelta,
@@ -3232,7 +3273,7 @@ export async function processCrises(supabase, nation, currentTick) {
                         const loss = Math.abs(changePT);
                         const multiplier = effect.minister_key === 'prime_minister' ? 0.5 : 0.25;
                         const cascadeDelta = _round2(-(loss * multiplier));
-                        await _nudgeApproval(supabase, ministry.party_id, nation.id, cascadeDelta);
+                        await _nudgeApproval(supabase, ministry.party_id, nation.id, cascadeDelta, 'crisis:cascade:ministry');
 
                         appliedEffects.push({
                             stat: 'party_approval', change: cascadeDelta,
@@ -4049,7 +4090,7 @@ export async function processPMTraitEffects(supabase, nation, currentTick) {
     }
 
     if (effects.party_approval_per_tick) {
-        await _nudgeApproval(supabase, factionId, nation.id, _round2(effects.party_approval_per_tick * 0.3));
+        await _nudgeApproval(supabase, factionId, nation.id, _round2(effects.party_approval_per_tick * 0.3), 'trait:pm_approval_per_tick');
     }
 
     if (effects.nation_stat_per_tick) {
@@ -4078,21 +4119,22 @@ export async function processPMTraitEffects(supabase, nation, currentTick) {
     }
 
     if (effects.approval_below_50_bonus || effects.approval_above_60_penalty) {
-        const { data: faction } = await supabase
-            .from('factions')
-            .select('approval_rating')
-            .eq('id', factionId)
-            .single();
+        const { data: standing } = await supabase
+            .from('faction_electoral_standing')
+            .select('party_approval')
+            .eq('faction_id', factionId)
+            .eq('nation_id', nation.id)
+            .maybeSingle();
 
-        if (faction) {
+        if (standing) {
             let delta = 0;
-            if (faction.approval_rating < 40 && effects.approval_below_50_bonus) {
+            if (standing.party_approval < 40 && effects.approval_below_50_bonus) {
                 delta = effects.approval_below_50_bonus;
-            } else if (faction.approval_rating > 50 && effects.approval_above_60_penalty) {
+            } else if (standing.party_approval > 50 && effects.approval_above_60_penalty) {
                 delta = effects.approval_above_60_penalty;
             }
             if (delta !== 0) {
-                await _nudgeApproval(supabase, factionId, nation.id, _round2(delta * 0.3));
+                await _nudgeApproval(supabase, factionId, nation.id, _round2(delta * 0.3), 'trait:pm_approval_conditional');
             }
         }
     }
@@ -4106,7 +4148,7 @@ export async function processPMTraitEffects(supabase, nation, currentTick) {
             .neq('id', factionId);
 
         for (const opp of (oppParties || [])) {
-            await _nudgeApproval(supabase, opp.id, nation.id, _round2(effects.opposition_approval_per_tick * 0.3));
+            await _nudgeApproval(supabase, opp.id, nation.id, _round2(effects.opposition_approval_per_tick * 0.3), 'trait:opposition_approval_per_tick');
         }
     }
 
@@ -4120,7 +4162,7 @@ export async function processPMTraitEffects(supabase, nation, currentTick) {
             .eq('passed_tick', currentTick - 1);
 
         if (!count || count === 0) {
-            await _nudgeApproval(supabase, factionId, nation.id, _round2(effects.no_bill_penalty_per_tick * 0.3));
+            await _nudgeApproval(supabase, factionId, nation.id, _round2(effects.no_bill_penalty_per_tick * 0.3), 'trait:no_bill_penalty');
         }
     }
 }
@@ -4150,8 +4192,8 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
         .eq('id', hog.id);
 
     // 2. Approval, credibility & stability penalties
-    await _nudgeApproval(supabase, factionId, nationId, -3);
-    await _adjustCredibility(supabase, factionId, nationId, -0.05);
+    await _nudgeApproval(supabase, factionId, nationId, -3, 'resign_pm');
+    await _adjustCredibility(supabase, factionId, nationId, -0.05, 0, currentTick, { source: 'resign_pm' });
 
     const { data: nation } = await supabase
         .from('nations')
@@ -4278,7 +4320,23 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
             .eq('nation_id', nationId)
             .eq('steward_faction_id', factionId);
 
-        // 2d. V5 Autocracy: clean up faction_pillar_state, offers, votes for departing faction
+        // 2d. V5 Autocracy: transfer departing faction's pillar to wildcard, then clean up
+        const { data: departingPillar } = await supabase
+            .from('faction_pillar_state')
+            .select('pillar')
+            .eq('faction_id', factionId)
+            .eq('nation_id', nationId)
+            .maybeSingle();
+
+        if (departingPillar?.pillar) {
+            // Move departing faction's pillar into the wildcard slot with backing reset to 20
+            await supabase.from('autocracy_tracker').update({
+                wildcard_pillar: departingPillar.pillar,
+                wildcard_backing: 20,
+                wildcard_neglect_ticks: 0,
+            }).eq('nation_id', nationId);
+        }
+
         await Promise.allSettled([
             supabase.from('faction_pillar_state').delete().eq('faction_id', factionId).eq('nation_id', nationId),
             supabase.from('silent_coup_offers').delete().eq('to_faction_id', factionId).eq('nation_id', nationId),
@@ -4401,7 +4459,6 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
             abandoned_at: new Date().toISOString(),
             disband_cooldown_until_tick: currentTick + 24,
             action_points: 0,
-            approval_rating: null,
             last_seen_tick: null,
             founded_tick: null
         })

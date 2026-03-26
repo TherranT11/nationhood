@@ -121,7 +121,7 @@ initPage('elections', async (state) => {
 async function renderDemocracyPage() {
     const { data: parties } = await _supabase
         .from('factions')
-        .select('id, faction_name, seats, approval_rating, abbreviation, ideology_value_1, ideology_value_2, party_color, party_logo, custom_logo_url')
+        .select('id, faction_name, seats, abbreviation, ideology_value_1, ideology_value_2, party_color, party_logo, custom_logo_url')
         .eq('nation_id', currentNation.id)
         .eq('faction_type', 'party')
         .order('seats', { ascending: false });
@@ -657,10 +657,15 @@ async function renderPresidentialResults(election) {
 // ===================================================================
 
 async function renderAutocracyPage() {
-    const { data: allFactions } = await _supabase
-        .from('factions').select('id, faction_name, seats, approval_rating')
-        .eq('nation_id', currentNation.id).eq('faction_type', 'party')
-        .order('seats', { ascending: false });
+    const [{ data: rawFactions }, { data: standings }] = await Promise.all([
+        _supabase.from('factions').select('id, faction_name, seats')
+            .eq('nation_id', currentNation.id).eq('faction_type', 'party')
+            .order('seats', { ascending: false }),
+        _supabase.from('faction_electoral_standing').select('faction_id, party_approval')
+            .eq('nation_id', currentNation.id)
+    ]);
+    const standingsMap = Object.fromEntries((standings || []).map(s => [s.faction_id, s.party_approval]));
+    const allFactions = (rawFactions || []).map(f => ({ ...f, party_approval: standingsMap[f.id] ?? 0 }));
 
     const { data: activeShakeup } = await _supabase
         .from('shakeups').select('*').eq('nation_id', currentNation.id).eq('status', 'voting').limit(1).maybeSingle();
@@ -685,7 +690,7 @@ async function renderAutocracyPage() {
                     <div style="font-size: 0.7rem; color: #888;">seats</div>
                 </div>
                 <div style="text-align: right; min-width: 60px;">
-                    <div style="font-size: 0.9rem; color: #5cb85c;">${f.approval_rating || 0}%</div>
+                    <div style="font-size: 0.9rem; color: #5cb85c;">${Math.round(f.party_approval || 0)}%</div>
                     <div style="font-size: 0.7rem; color: #888;">approval</div>
                 </div>
             </div>`;
