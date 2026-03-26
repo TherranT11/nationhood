@@ -173,6 +173,15 @@ let ipoSelectedOrgId = null;    // currently selected org in sidebar
 let ipoLoaded = false;          // prevents redundant re-fetches
 let ipoRealtimeChannel = null;  // realtime subscription for chat
 
+// ── IPO Voting state ──
+let ipoVotesCache = [];          // open + recent closed votes for current org
+let ipoBallotCache = {};         // { voteId: [ballot rows] }
+let ipoVoteMemberMap = {};       // { factionId: { name, seats, nationId } } for vote rendering
+let ipoExpandedVoteId = null;    // currently expanded vote card
+let ipoProposeVoteType = null;   // selected vote type in propose modal
+let ipoProposeVoteMeta = {};     // type-specific metadata for vote proposal
+let ipoProposeAmendArticles = null; // charter articles for charter_amendment proposal
+
 // Chat colour palette (assigned in join order)
 const IPO_CHAT_COLORS = ['#5cb85c','#c8a64e','#5aafa5','#d9534f','#8b7ec8','#5b9bd5'];
 // Logo symbol options
@@ -13892,9 +13901,10 @@ async function renderIPOView() {
 
     ipoLoaded = true;
 
-    // Load chat after DOM is set (only if an org is selected)
+    // Load chat and votes after DOM is set (only if an org is selected)
     if (ipoSelectedOrgId && ipoMemberships.length > 0) {
         loadIPOChat(ipoSelectedOrgId);
+        loadIPOVotes(ipoSelectedOrgId);
     }
 }
 
@@ -13928,7 +13938,7 @@ async function renderIPOMainPanel(memberCounts) {
             : Promise.resolve({ data: null }),
         _supabase.from('factions').select('faction_name').eq('id', org.president_id).single(),
         _supabase.from('ipo_members')
-            .select('id, faction_id, role, factions:faction_id ( id, faction_name, nation_id )')
+            .select('id, faction_id, role, factions:faction_id ( id, faction_name, nation_id, seats )')
             .eq('org_id', org.id)
             .eq('is_active', true),
         _supabase.from('nations').select('id, name').order('name')
@@ -13939,6 +13949,17 @@ async function renderIPOMainPanel(memberCounts) {
     const allMembers = membersResult.data || [];
     const allNations = allNationsResult.data || [];
     const nationMap = Object.fromEntries(allNations.map(n => [n.id, n.name]));
+
+    // Build member map for voting system
+    ipoVoteMemberMap = {};
+    allMembers.forEach(m => {
+        ipoVoteMemberMap[m.faction_id] = {
+            name: m.factions?.faction_name || 'Unknown',
+            seats: m.factions?.seats || 0,
+            nationId: m.factions?.nation_id || null,
+            role: m.role
+        };
+    });
 
     // Leadership type display
     const leadershipLabels = { rotation: 'Rotation', most_seats: 'Most Seats', random: 'Random' };
@@ -13987,6 +14008,7 @@ async function renderIPOMainPanel(memberCounts) {
 
     // ── Bottom panels: Charter / Votes / Actions ──
     const charterBodyHtml = renderIPOCharterPanel(charter, org);
+    // Votes panel loaded async after render via loadIPOVotes()
     const bottomHtml = `
         <div class="ipo-bottom-panels">
             <div class="ipo-panel ipo-panel--charter" id="ipo-panel-charter">
@@ -14001,8 +14023,8 @@ async function renderIPOMainPanel(memberCounts) {
                     <span class="ipo-panel-dot ipo-panel-dot--amber"></span>
                     <span class="ipo-panel-title">Votes</span>
                 </div>
-                <div class="ipo-panel-body">
-                    <span class="ipo-main-placeholder-text">Votes — Phase 7</span>
+                <div class="ipo-panel-body" id="ipo-votes-body">
+                    <span class="ipo-main-placeholder-text">Loading votes...</span>
                 </div>
             </div>
             <div class="ipo-panel ipo-panel--actions" id="ipo-panel-actions">
