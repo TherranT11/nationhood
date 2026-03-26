@@ -13836,10 +13836,12 @@ async function buildOrgPreviewData(orgId) {
         const f = m.factions;
         if (!f) return '';
         const nation = nationMap[f.nation_id] || '';
-        const role = m.faction_id === org.president_id ? 'President' : m.role === 'observer' ? 'Observer' : 'Member';
+        const isMemberPres = m.faction_id === org.president_id;
+        const role = isMemberPres ? '\u2605 President' : m.role === 'observer' ? 'Observer' : 'Member';
+        const roleClass = isMemberPres ? 'ipo-preview-member-role ipo-preview-member-role--president' : 'ipo-preview-member-role';
         return '<div class="ipo-preview-member"><span class="ipo-preview-member-name">' + escapeHtml(f.faction_name) + '</span>'
             + (nation ? '<span class="ipo-preview-member-nation"> · ' + escapeHtml(nation) + '</span>' : '')
-            + '<span class="ipo-preview-member-role">' + role + '</span></div>';
+            + '<span class="' + roleClass + '">' + role + '</span></div>';
     }).join('');
 
     const headerHtml = `
@@ -14345,7 +14347,8 @@ async function renderIPOMainPanel(memberCounts) {
             <div class="ipo-header-right">
                 <span class="ipo-header-fund">${hqName ? 'HQ: ' + escapeHtml(hqName) : 'HQ: VACANT'}</span>
                 <span class="ipo-header-fund">${escapeHtml('SOLIDARITY FUND')} · ${org.solidarity_fund_balance} AP</span>
-                ${isPresident ? '<span class="ipo-header-president">PRESIDENT</span>' : ''}
+                <span class="ipo-header-fund">President: ${escapeHtml(presidentName)}</span>
+                ${isPresident ? '<span class="ipo-header-president">YOU ARE PRESIDENT</span>' : ''}
             </div>
         </div>`;
 
@@ -14404,9 +14407,11 @@ async function renderIPOMainPanel(memberCounts) {
         const pName = m.factions?.faction_name || 'Unknown';
         const pNation = m.factions?.nation_id ? (nationMap[m.factions.nation_id] || '') : '';
         const isYou = m.faction_id === currentFaction.id;
+        const isMemberPresident = m.faction_id === org.president_id;
         const roleTag = m.role === 'observer' ? ' (OBS)' : '';
-        const cls = isYou ? 'ipo-footer-badge--you' : 'ipo-footer-badge--other';
-        return `<span class="ipo-footer-badge ${cls}">${escapeHtml(pName)}${roleTag}${isYou ? ' (YOU)' : ''}${pNation ? ' · ' + escapeHtml(pNation) : ''}</span>`;
+        const presTag = isMemberPresident ? ' \u2605' : '';
+        const cls = isYou ? 'ipo-footer-badge--you' : isMemberPresident ? 'ipo-footer-badge--president' : 'ipo-footer-badge--other';
+        return `<span class="ipo-footer-badge ${cls}">${presTag ? '<span class="ipo-president-star">' + presTag + '</span>' : ''}${escapeHtml(pName)}${roleTag}${isYou ? ' (YOU)' : ''}${pNation ? ' · ' + escapeHtml(pNation) : ''}</span>`;
     }).join('');
 
     // Footer buttons — role-gated
