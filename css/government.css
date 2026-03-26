@@ -1,51 +1,51 @@
 /* Nationhood — Government Page — v5 Design System */
 
 :root {
-    /* Backgrounds — neutral grays */
+    /* Backgrounds — warm olive tones (diplomacy palette) */
     --bg-body:   #141412;
-    --bg-panel:  #1a1a1a;
-    --bg-card:   #252525;
-    --bg-input:  #252525;
-    --bg-hover:  #2a2a2a;
-    --bg-danger-subtle:  rgba(217,83,79,0.08);
-    --bg-success-subtle: rgba(92,184,92,0.08);
+    --bg-panel:  #1a1a17;
+    --bg-card:   #1e1e1a;
+    --bg-input:  #242420;
+    --bg-hover:  #282823;
+    --bg-danger-subtle:  rgba(166,93,93,0.06);
+    --bg-success-subtle: rgba(122,154,91,0.06);
 
-    /* Text */
-    --text-bright:    #f0efe6;
-    --text-primary:   #e0e0e0;
-    --text-secondary: #888888;
-    --text-muted:     #666666;
-    --text-dim:       #555555;
-    --text-faint:     #444444;
+    /* Text — warm, muted tones */
+    --text-bright:    #e8e4d9;
+    --text-primary:   #c8c4b8;
+    --text-secondary: #8a8778;
+    --text-muted:     #8a8778;
+    --text-dim:       #5c5a50;
+    --text-faint:     #3d3b34;
 
-    /* Borders */
-    --border-main:   rgba(255,255,255,0.06);
-    --border-light:  rgba(255,255,255,0.04);
-    --border-mid:    rgba(255,255,255,0.08);
-    --border-strong: rgba(255,255,255,0.12);
+    /* Borders — warm grays */
+    --border-main:   rgba(200,196,184,0.06);
+    --border-light:  rgba(200,196,184,0.04);
+    --border-mid:    rgba(200,196,184,0.08);
+    --border-strong: rgba(200,196,184,0.12);
     /* Legacy aliases */
-    --border-0:    rgba(255,255,255,0.06);
-    --border-hair: rgba(255,255,255,0.04);
+    --border-0:    rgba(200,196,184,0.06);
+    --border-hair: rgba(200,196,184,0.04);
 
-    /* Status colors */
-    --green:  #5cb85c;
-    --green-faint:  rgba(92,184,92,0.08);
-    --green-border: rgba(92,184,92,0.2);
-    --red:    #d9534f;
-    --red-faint:    rgba(217,83,79,0.08);
-    --red-border:   rgba(217,83,79,0.2);
-    --blue:   #5b9bd5;
-    --blue-faint:   rgba(91,155,213,0.08);
-    --blue-border:  rgba(91,155,213,0.2);
-    --orange: #d48a3c;
-    --orange-faint:  rgba(212,138,60,0.08);
-    --orange-border: rgba(212,138,60,0.2);
-    --amber:  #c8a64e;
-    --amber-faint:  rgba(200,166,78,0.08);
-    --amber-border: rgba(200,166,78,0.2);
-    --teal:   #5aafa5;
-    --teal-faint:   rgba(90,175,165,0.08);
-    --teal-border:  rgba(90,175,165,0.2);
+    /* Status colors — muted, desaturated */
+    --green:  #7a9a5b;
+    --green-faint:  rgba(122,154,91,0.06);
+    --green-border: rgba(122,154,91,0.2);
+    --red:    #a65d5d;
+    --red-faint:    rgba(166,93,93,0.06);
+    --red-border:   rgba(166,93,93,0.2);
+    --blue:   #6b8cae;
+    --blue-faint:   rgba(107,140,174,0.08);
+    --blue-border:  rgba(107,140,174,0.2);
+    --orange: #b07a4a;
+    --orange-faint:  rgba(176,122,74,0.08);
+    --orange-border: rgba(176,122,74,0.2);
+    --amber:  #b09a5b;
+    --amber-faint:  rgba(176,154,91,0.08);
+    --amber-border: rgba(176,154,91,0.2);
+    --teal:   #5b9a8b;
+    --teal-faint:   rgba(91,154,139,0.08);
+    --teal-border:  rgba(91,154,139,0.2);
     --purple: #8b7ec8;
     --purple-faint:  rgba(139,126,200,0.08);
     --purple-border: rgba(139,126,200,0.2);
@@ -66,8 +66,8 @@
     --cat-blocs: var(--orange);
 
     /* Accent */
-    --accent: #c8a64e;
-    --accent-hover: #d4b45c;
+    --accent: #b09a5b;
+    --accent-hover: #c4ad6a;
 
     /* Fonts */
     --font-mono:  'JetBrains Mono', monospace;
@@ -238,7 +238,7 @@ body {
             max-width: 100%;
             background: var(--bg-panel);
             border: 1px solid var(--border-main);
-            border-radius: 8px;
+            border-radius: 0;
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -440,7 +440,7 @@ body {
             background: var(--bg-card);
             border: 1px solid var(--border-main);
             border-left: 3px solid var(--amber);
-            border-radius: 4px;
+            border-radius: 2px;
             margin: 4px 14px;
             padding: 10px 14px 9px;
             display: flex;
@@ -1108,7 +1108,7 @@ body {
             justify-content: space-between;
             align-items: center;
             padding: 5px 8px;
-            border-radius: 4px;
+            border-radius: 2px;
             font-size: 0.8rem;
             margin-bottom: 3px;
         }
@@ -1697,7 +1697,7 @@ body {
 .protest-crisis-card {
     border: 1px solid rgba(217,83,79,0.25);
     border-left: 4px solid #d9534f;
-    border-radius: 6px;
+    border-radius: 2px;
     padding: 16px;
     margin-bottom: 12px;
     background: rgba(217,83,79,0.04);
@@ -1749,7 +1749,7 @@ body {
     align-items: center;
     padding: 8px 14px;
     border: 1px solid var(--dborder-1);
-    border-radius: 4px;
+    border-radius: 2px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
     font-weight: 600;
@@ -1800,7 +1800,7 @@ body {
     max-height: 90vh;
     background: #141412;
     border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 8px;
+    border-radius: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1849,7 +1849,7 @@ body {
     gap: 5px;
     padding: 6px 14px;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 2px;
     transition: background 0.15s;
     white-space: nowrap;
 }
@@ -1893,7 +1893,7 @@ body {
 /* ── Doctrine card base ── */
 .doctrine-card {
     border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 4px;
+    border-radius: 2px;
     padding: 12px 14px;
     transition: border-color 0.15s, background 0.15s;
 }

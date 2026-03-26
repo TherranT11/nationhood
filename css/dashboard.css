@@ -8,61 +8,61 @@
 
 /* ===== THEME VARIABLES — DARK (default) ===== */
 :root {
-    /* Backgrounds */
+    /* Backgrounds — warm olive tones (diplomacy palette) */
     --bg-body:   #141412;
-    --bg-panel:  #1a1a1a;
-    --bg-card:   #252525;
-    --bg-input:  #252525;
-    --bg-hover:  #2a2a2a;
+    --bg-panel:  #1a1a17;
+    --bg-card:   #1e1e1a;
+    --bg-input:  #242420;
+    --bg-hover:  #282823;
 
-    /* Text */
-    --text-bright:     #f0efe6;
-    --text-primary:    #e0e0e0;
-    --text-secondary:  #888888;
-    --text-muted:      #666666;
-    --text-dim:        #555555;
-    --text-faint:      #444444;
+    /* Text — warm, muted tones */
+    --text-bright:     #e8e4d9;
+    --text-primary:    #c8c4b8;
+    --text-secondary:  #8a8778;
+    --text-muted:      #8a8778;
+    --text-dim:        #5c5a50;
+    --text-faint:      #3d3b34;
 
-    /* Borders */
-    --border-main:    rgba(255,255,255,0.06);
-    --border-light:   rgba(255,255,255,0.04);
-    --border-mid:     rgba(255,255,255,0.08);
-    --border-strong:  rgba(255,255,255,0.12);
+    /* Borders — warm grays */
+    --border-main:    rgba(200,196,184,0.06);
+    --border-light:   rgba(200,196,184,0.04);
+    --border-mid:     rgba(200,196,184,0.08);
+    --border-strong:  rgba(200,196,184,0.12);
 
     /* Accent — amber/gold */
-    --accent:       #c8a64e;
-    --accent-hover: #d4b45c;
+    --accent:       #b09a5b;
+    --accent-hover: #c4ad6a;
 
-    /* Semantic colors — full values */
-    --green:   #5cb85c;
-    --red:     #d9534f;
-    --blue:    #5b9bd5;
-    --amber:   #c8a64e;
+    /* Semantic colors — muted, desaturated values */
+    --green:   #7a9a5b;
+    --red:     #a65d5d;
+    --blue:    #6b8cae;
+    --amber:   #b09a5b;
     --purple:  #8b7ec8;
-    --teal:    #5aafa5;
-    --orange:  #d48a3c;
+    --teal:    #5b9a8b;
+    --orange:  #b07a4a;
 
-    /* Semantic colors — faint backgrounds (8% opacity) */
-    --green-faint:   rgba(92,184,92,0.08);
-    --red-faint:     rgba(217,83,79,0.08);
-    --blue-faint:    rgba(91,155,213,0.08);
-    --amber-faint:   rgba(200,166,78,0.08);
+    /* Semantic colors — faint backgrounds (6-8% opacity) */
+    --green-faint:   rgba(122,154,91,0.06);
+    --red-faint:     rgba(166,93,93,0.06);
+    --blue-faint:    rgba(107,140,174,0.08);
+    --amber-faint:   rgba(176,154,91,0.08);
     --purple-faint:  rgba(139,126,200,0.08);
-    --teal-faint:    rgba(90,175,165,0.08);
-    --orange-faint:  rgba(212,138,60,0.08);
+    --teal-faint:    rgba(91,154,139,0.08);
+    --orange-faint:  rgba(176,122,74,0.08);
 
     /* Semantic colors — borders (20% opacity) */
-    --green-border:   rgba(92,184,92,0.2);
-    --red-border:     rgba(217,83,79,0.2);
-    --blue-border:    rgba(91,155,213,0.2);
-    --amber-border:   rgba(200,166,78,0.2);
+    --green-border:   rgba(122,154,91,0.2);
+    --red-border:     rgba(166,93,93,0.2);
+    --blue-border:    rgba(107,140,174,0.2);
+    --amber-border:   rgba(176,154,91,0.2);
     --purple-border:  rgba(139,126,200,0.2);
-    --teal-border:    rgba(90,175,165,0.2);
-    --orange-border:  rgba(212,138,60,0.2);
+    --teal-border:    rgba(91,154,139,0.2);
+    --orange-border:  rgba(176,122,74,0.2);
 
     /* Subtle backgrounds for status */
-    --bg-danger-subtle:  rgba(217,83,79,0.08);
-    --bg-success-subtle: rgba(92,184,92,0.08);
+    --bg-danger-subtle:  rgba(166,93,93,0.06);
+    --bg-success-subtle: rgba(122,154,91,0.06);
 
     /* Font families */
     --font-mono:  'JetBrains Mono', monospace;

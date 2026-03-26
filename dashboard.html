@@ -22,11 +22,11 @@
     max-width: 1580px;
   }
 
-  /* ── Dashboard Cards — 8px radius, panel bg ── */
+  /* ── Dashboard Cards — sharp corners, panel bg ── */
   .dash-card {
     background: var(--bg-panel);
     border: 1px solid var(--border-main);
-    border-radius: 8px;
+    border-radius: 0;
     overflow: hidden;
     min-width: 0;
   }
@@ -208,7 +208,7 @@
     height: 56px;
     background: var(--bg-card);
     border: 1px solid var(--border-main);
-    border-radius: 6px;
+    border-radius: 2px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -305,7 +305,7 @@
   .gov-initials {
     width: 32px;
     height: 32px;
-    border-radius: 6px;
+    border-radius: 2px;
     background: var(--bg-card);
     border: 1px solid var(--border-main);
     display: flex;
@@ -481,7 +481,7 @@
     padding: 8px 10px;
     margin-bottom: 12px;
     background: var(--red-faint);
-    border-radius: 0 6px 6px 0;
+    border-radius: 0 2px 2px 0;
     border: 1px solid var(--border-main);
     border-left: 3px solid var(--red);
   }
@@ -1195,9 +1195,9 @@ const EVENT_CATEGORY_STYLES = {
   bill:             { icon: '\uD83D\uDCDC', color: '#3498db', bg: 'rgba(52,152,219,0.10)', label: 'BILL' },
   new_party:        { icon: '\uD83C\uDFF3', color: '#9b59b6', bg: 'rgba(155,89,182,0.10)', label: 'NEW PARTY' },
   protest:          { icon: '\u270A', color: '#e67e22', bg: 'rgba(230,126,34,0.10)', label: 'PROTEST' },
-  MILITARY:         { icon: '\u2694', color: '#d48a3c', bg: 'rgba(212,138,60,0.12)', label: 'MILITARY' },
-  ECONOMY:          { icon: '\uD83D\uDCB0', color: '#5cb85c', bg: 'rgba(92,184,92,0.12)', label: 'ECONOMY' },
-  HEALTH:           { icon: '\u2695', color: '#5cb85c', bg: 'rgba(92,184,92,0.12)', label: 'HEALTH' },
+  MILITARY:         { icon: '\u2694', color: '#b07a4a', bg: 'rgba(176,122,74,0.12)', label: 'MILITARY' },
+  ECONOMY:          { icon: '\uD83D\uDCB0', color: '#7a9a5b', bg: 'rgba(122,154,91,0.12)', label: 'ECONOMY' },
+  HEALTH:           { icon: '\u2695', color: '#7a9a5b', bg: 'rgba(122,154,91,0.12)', label: 'HEALTH' },
   EDUCATION:        { icon: '\uD83D\uDCDA', color: '#3498db', bg: 'rgba(52,152,219,0.12)', label: 'EDUCATION' },
 };
 const EVENT_CATEGORY_DEFAULT = { icon: '\u2022', color: '#888', bg: 'rgba(136,136,136,0.08)', label: '' };
@@ -1562,13 +1562,13 @@ async function loadWorldEvents(excludeNationId, currentTick) {
 
     // Generate a consistent color for each nation name
     const NATION_COLORS = [
-      { color: '#5b9bd5', bg: 'rgba(91,155,213,0.10)', border: 'rgba(91,155,213,0.3)' },
-      { color: '#5cb85c', bg: 'rgba(92,184,92,0.10)', border: 'rgba(92,184,92,0.3)' },
-      { color: '#d48a3c', bg: 'rgba(212,138,60,0.10)', border: 'rgba(212,138,60,0.3)' },
+      { color: '#6b8cae', bg: 'rgba(107,140,174,0.10)', border: 'rgba(107,140,174,0.3)' },
+      { color: '#7a9a5b', bg: 'rgba(122,154,91,0.10)', border: 'rgba(122,154,91,0.3)' },
+      { color: '#b07a4a', bg: 'rgba(176,122,74,0.10)', border: 'rgba(176,122,74,0.3)' },
       { color: '#8b7ec8', bg: 'rgba(139,126,200,0.10)', border: 'rgba(139,126,200,0.3)' },
-      { color: '#5aafa5', bg: 'rgba(90,175,165,0.10)', border: 'rgba(90,175,165,0.3)' },
-      { color: '#d9534f', bg: 'rgba(217,83,79,0.10)', border: 'rgba(217,83,79,0.3)' },
-      { color: '#c8a64e', bg: 'rgba(200,166,78,0.10)', border: 'rgba(200,166,78,0.3)' },
+      { color: '#5b9a8b', bg: 'rgba(91,154,139,0.10)', border: 'rgba(91,154,139,0.3)' },
+      { color: '#a65d5d', bg: 'rgba(166,93,93,0.10)', border: 'rgba(166,93,93,0.3)' },
+      { color: '#b09a5b', bg: 'rgba(176,154,91,0.10)', border: 'rgba(176,154,91,0.3)' },
       { color: '#e07baf', bg: 'rgba(224,123,175,0.10)', border: 'rgba(224,123,175,0.3)' },
     ];
     function nationColor(name) {
