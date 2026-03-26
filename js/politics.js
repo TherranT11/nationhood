@@ -6000,7 +6000,9 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         _supabase.from('government_formations')
             .select('lead_party_id, party_ids')
             .eq('nation_id', nation.id)
-            .eq('status', 'active')
+            .in('status', ['formed', 'caretaker'])
+            .order('formed_at', { ascending: false })
+            .limit(1)
             .maybeSingle(),
     ]);
 
