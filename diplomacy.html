@@ -13940,6 +13940,12 @@ async function requestToJoinOrg(orgId) {
         // Determine requested role from charter (default: member)
         const requestedRole = org.charter?.membership?.joinRequestRole || 'member';
 
+        // Check open vote limit
+        if (!await _checkOpenVoteLimit(orgId)) {
+            alert(`This organisation already has ${IPO_MAX_OPEN_VOTES} open votes. Please try again later.`);
+            return;
+        }
+
         if (admission === 'vote') {
             // Create a membership vote for existing members to decide
             const { error: voteErr } = await _supabase.from('ipo_votes').insert({
@@ -14876,6 +14882,11 @@ async function submitIPOExpel() {
     } else {
         // Create expulsion vote
         try {
+            if (!await _checkOpenVoteLimit(ipoSelectedOrgId)) {
+                alert(`This organisation already has ${IPO_MAX_OPEN_VOTES} open votes. Wait for some to close before proposing new ones.`);
+                _ipoActionLock = false;
+                return;
+            }
             await _supabase.from('ipo_votes').insert({
                 org_id: ipoSelectedOrgId,
                 title: `Expel ${targetName}`,
@@ -15044,6 +15055,12 @@ async function acceptIPOInvite(inviteId) {
         const admission = org?.charter?.membership?.admission || 'vote';
 
         if (admission === 'vote' && invite.invited_role === 'member') {
+            // Check open vote limit
+            if (!await _checkOpenVoteLimit(invite.org_id)) {
+                alert(`This organisation already has ${IPO_MAX_OPEN_VOTES} open votes. Please try again later.`);
+                _ipoActionLock = false;
+                return;
+            }
             // Mark invite as vote_pending and auto-create a membership vote
             await _supabase.from('ipo_invitations')
                 .update({ status: 'vote_pending', responded_at_tick: shardTick })
@@ -15417,6 +15434,17 @@ let ipoVoteBallots = {};     // { vote_id: [ballot, ...] }
 let ipoVoteMembers = [];     // cached members for ballot context
 let _ipoActionLock = false;  // debounce lock for all IPO actions that write to DB
 const IPO_VOTE_DURATION = 8; // ticks until vote closes
+const IPO_MAX_OPEN_VOTES = 5; // max concurrent open votes per org
+
+async function _checkOpenVoteLimit(orgId) {
+    const { count, error } = await _supabase
+        .from('ipo_votes')
+        .select('id', { count: 'exact', head: true })
+        .eq('org_id', orgId)
+        .eq('status', 'open');
+    if (error) return true; // allow on error
+    return (count || 0) < IPO_MAX_OPEN_VOTES;
+}
 
 const IPO_VOTE_TYPE_LABELS = {
     membership:          'Membership',
@@ -15940,6 +15968,10 @@ async function submitIPOVote() {
 
     _ipoActionLock = true;
     try {
+        if (!await _checkOpenVoteLimit(ipoSelectedOrgId)) {
+            alert(`This organisation already has ${IPO_MAX_OPEN_VOTES} open votes. Wait for some to close before proposing new ones.`);
+            return;
+        }
         const { error } = await _supabase.from('ipo_votes').insert({
             org_id: ipoSelectedOrgId,
             title: title,
