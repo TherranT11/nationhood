@@ -6005,7 +6005,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             .order('tick', { ascending: false })
             .limit(20),
         _supabase.from('ideology_shift_actions')
-            .select('action_type, target_axis, target_direction, drift_rate, created_tick, status')
+            .select('action_type, target_axis, target_direction, created_tick')
             .eq('faction_id', playerFaction.id)
             .eq('nation_id', nation.id)
             .eq('status', 'active'),
@@ -6226,9 +6226,9 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         for (const c of activeCampaigns) {
             const name = _campaignNames[c.action_type] || c.action_type;
             const totalDur = _campaignDurations[c.action_type] || 50;
-            const ticksActive = currentTick - (c.created_tick || currentTick);
+            const ticksActive = currentTick - (c.created_tick != null ? c.created_tick : currentTick);
             const ticksLeft = Math.max(0, totalDur - ticksActive);
-            const pct = Math.min(100, Math.round((ticksActive / totalDur) * 100));
+            const pct = Math.max(0, Math.min(100, Math.round((ticksActive / totalDur) * 100)));
             const axDef = axisMap[c.target_axis];
             const dirLabel = c.target_direction === 'left' ? (axDef?.leftLabel || 'Left')
                 : c.target_direction === 'right' ? (axDef?.rightLabel || 'Right')
