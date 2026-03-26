@@ -586,7 +586,7 @@ async function updateDiplomacyAwaitingBadge(faction, nation, roles) {
 
 // ===== IPO INVITE BADGE (pending org invitations) =====
 
-async function updateIPOInviteBadge(faction) {
+async function updateIPOInviteBadge(faction, roles) {
     const dipBadge = document.getElementById('diplomacy-awaiting-badge');
     if (!faction) return;
     try {
@@ -599,8 +599,11 @@ async function updateIPOInviteBadge(faction) {
         const count = (invites || []).length;
         // Store count globally so diplomacy.html can read it for the sub-tab badge
         window._ipoPendingInviteCount = count;
-        if (count > 0 && dipBadge) {
-            // Add to existing awaiting badge count or show if hidden
+        // Only add IPO invites to the amber badge if the player holds a diplomatic
+        // position (FM, MoT, or ambassador). Non-diplomatic players should not see
+        // a misleading notification on the Diplomacy nav link.
+        if (count > 0 && dipBadge && roles &&
+            (roles.isFM || roles.isMoT || roles.ambassadorTargetIds.length > 0)) {
             const existing = parseInt(dipBadge.textContent) || 0;
             dipBadge.textContent = existing + count;
             dipBadge.style.display = '';
@@ -965,7 +968,7 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
         updateDiplomacyBadge(state.faction, state.nation, diploRoles);
     }
     updateDiplomacyAwaitingBadge(state.faction, state.nation, diploRoles);
-    updateIPOInviteBadge(state.faction);
+    updateIPOInviteBadge(state.faction, diploRoles);
     if (onReady) {
         await onReady(state);
     }
