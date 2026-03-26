@@ -1902,7 +1902,8 @@ function renderInboxCard(p) {
     if (p.status === 'proposed' && isIncoming) {
         statusBadge = '<span class="proposal-status-badge badge-action">Awaiting Your Response</span>';
     } else if (p.status === 'proposed' && !isIncoming) {
-        statusBadge = '<span class="proposal-status-badge badge-waiting">Awaiting Response</span>';
+        const targetName = escapeHtml(pd.target_nation_name || 'their');
+        statusBadge = '<span class="proposal-status-badge badge-waiting">Sent — Pending ' + targetName + '\'s Foreign Minister</span>';
     } else if (isRevised && !revisedByUs) {
         statusBadge = '<span class="proposal-status-badge badge-action">Revised — Your Turn</span>';
     } else if (isRevised && revisedByUs) {
@@ -2089,7 +2090,7 @@ function renderStateVisitInboxCard(p, pd) {
 
     const statusBadge = needsOurAction
         ? '<span class="proposal-status-badge badge-action">Awaiting Your Response</span>'
-        : '<span class="proposal-status-badge badge-waiting">Awaiting Response</span>';
+        : '<span class="proposal-status-badge badge-waiting">Sent — Pending ' + escapeHtml(pd.target_nation_name || 'their') + '\'s Foreign Minister</span>';
 
     const typeBadge = '<span class="classification-badge" style="background:#5c3a1a;color:#FFD700;">STATE VISIT</span>';
 
@@ -2236,7 +2237,7 @@ function renderTradeNegInboxCard(p, pd) {
                 <div class="inbox-card-name">&#128220; ${escapeHtml(pd.name || 'Trade Negotiations')}</div>
                 <div class="inbox-card-badges">
                     <span class="classification-badge" style="background:#1a3a5c;color:#90caf9;">TRADE</span>
-                    <span class="proposal-status-badge ${needsOurAction ? 'badge-action' : 'badge-waiting'}">${needsOurAction ? 'Awaiting Your Response' : 'Awaiting Response'}</span>
+                    <span class="proposal-status-badge ${needsOurAction ? 'badge-action' : 'badge-waiting'}">${needsOurAction ? 'Awaiting Your Response' : 'Sent — Pending ' + target + '\'s Foreign Minister'}</span>
                 </div>
             </div>
             <div class="inbox-card-meta">
@@ -7459,7 +7460,8 @@ function renderPendingProposals(proposals, targetNation) {
                 '</div>';
         } else if (p.status === 'proposed' && !isIncoming) {
             // We sent it — waiting
-            statusBadge = '<span class="proposal-status-badge badge-waiting">Awaiting Response</span>';
+            const pendingName = escapeHtml(pd.target_nation_name || 'their');
+            statusBadge = '<span class="proposal-status-badge badge-waiting">Sent — Pending ' + pendingName + '\'s Foreign Minister</span>';
             const articleRows = articles.map((art, i) =>
                 '<div class="proposal-article-row"><div class="proposal-article-content">' +
                     '<span class="proposal-article-num">Article ' + toRoman(i + 1) + '.</span> ' +
