@@ -1083,7 +1083,7 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
         const approvalDelta = _round2(targetDelta * 0.3);
         const credDelta = _round3(targetDelta * 0.01);
         await _nudgeApproval(supabase, targetFactionId, nationId, approvalDelta, 'attack');
-        await _adjustCredibility(supabase, targetFactionId, nationId, credDelta);
+        await _adjustCredibility(supabase, targetFactionId, nationId, credDelta, 0, currentTick, { source: 'attack:received' });
         effects.push({ label: targetFaction.faction_name, value: targetDelta });
     }
 
@@ -1091,7 +1091,7 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
     if (selfDelta !== 0) {
         const selfLabel = selfDelta > 0 ? 'Your party (credibility gain)' : 'Your party (credibility loss)';
         const selfCredDelta = _round3(selfDelta * 0.01);
-        await _adjustCredibility(supabase, factionId, nationId, selfCredDelta);
+        await _adjustCredibility(supabase, factionId, nationId, selfCredDelta, 0, currentTick, { source: 'attack:self' });
         effects.push({ label: selfLabel, value: selfDelta });
     }
 
@@ -1818,7 +1818,7 @@ async function _nudgeApproval(supabase, factionId, nationId, delta, source) {
  * Adjust a faction's credibility_modifier in faction_electoral_standing.
  * Local helper for promise resolution (mirrors adjustCredibility in advance-tick).
  */
-async function _adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0) {
+async function _adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0, opts = {}) {
     if (!delta && !suspendRecoveryTicks) return;
     const { data: standing } = await supabase
         .from('faction_electoral_standing')
@@ -1838,6 +1838,20 @@ async function _adjustCredibility(supabase, factionId, nationId, delta, suspendR
     await supabase.from('faction_electoral_standing')
         .update(updateObj)
         .eq('id', standing.id);
+
+    // Audit log (non-fatal)
+    if (delta && opts.source) {
+        const tick = currentTick || opts.tick || 0;
+        supabase.from('credibility_log').insert({
+            faction_id: factionId,
+            nation_id: nationId,
+            amount: delta,
+            source: opts.source,
+            tick,
+        }).then(({ error: logErr }) => {
+            if (logErr) console.warn('[PoliticalActions] credibility_log insert failed:', logErr.message);
+        });
+    }
 }
 
 /**
@@ -1848,8 +1862,9 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
 
     if (resolution === 'fulfilled') {
         // ── REWARDS via electorate engine (party_approval + credibility) ──
+        const keptSource = `promise:kept:${promise.demand_text || 'Unknown'}`;
         await _nudgeApproval(supabase, promise.party_id, promise.nation_id, cfg.KEPT_APPROVAL, 'promise:kept');
-        await _adjustCredibility(supabase, promise.party_id, promise.nation_id, cfg.KEPT_CREDIBILITY);
+        await _adjustCredibility(supabase, promise.party_id, promise.nation_id, cfg.KEPT_CREDIBILITY, 0, currentTick, { source: keptSource });
         console.log(`[Promise] Fulfilled: +${cfg.KEPT_APPROVAL} approval, +${cfg.KEPT_CREDIBILITY} credibility for ${promise.party_id}`);
 
         // Mark promise as fulfilled
@@ -1859,8 +1874,9 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
 
     } else if (resolution === 'broken') {
         // ── PENALTIES via electorate engine (party_approval + credibility) ──
+        const brokenSource = `promise:broken:${promise.demand_text || 'Unknown'}`;
         await _nudgeApproval(supabase, promise.party_id, promise.nation_id, cfg.BROKEN_APPROVAL, 'promise:broken');
-        await _adjustCredibility(supabase, promise.party_id, promise.nation_id, cfg.BROKEN_CREDIBILITY, cfg.BROKEN_CREDIBILITY_SUSPEND, currentTick);
+        await _adjustCredibility(supabase, promise.party_id, promise.nation_id, cfg.BROKEN_CREDIBILITY, cfg.BROKEN_CREDIBILITY_SUSPEND, currentTick, { source: brokenSource });
         console.log(`[Promise] Broken: ${cfg.BROKEN_APPROVAL} approval, ${cfg.BROKEN_CREDIBILITY} credibility for ${promise.party_id}`);
 
         // Nervous effect: other active promises compound credibility damage
@@ -1873,7 +1889,7 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
 
         if (otherPromises && otherPromises.length > 0) {
             const nervousDelta = cfg.BROKEN_NERVOUS_CREDIBILITY * otherPromises.length;
-            await _adjustCredibility(supabase, promise.party_id, promise.nation_id, nervousDelta);
+            await _adjustCredibility(supabase, promise.party_id, promise.nation_id, nervousDelta, 0, currentTick, { source: `promise:nervous:${promise.demand_text || 'Unknown'}` });
             console.log(`[Promise] Nervous effect: ${nervousDelta} credibility (${otherPromises.length} other active promises)`);
         }
 
@@ -4139,7 +4155,7 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
 
     // 2. Approval, credibility & stability penalties
     await _nudgeApproval(supabase, factionId, nationId, -3, 'resign_pm');
-    await _adjustCredibility(supabase, factionId, nationId, -0.05);
+    await _adjustCredibility(supabase, factionId, nationId, -0.05, 0, currentTick, { source: 'resign_pm' });
 
     const { data: nation } = await supabase
         .from('nations')
@@ -4266,7 +4282,23 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
             .eq('nation_id', nationId)
             .eq('steward_faction_id', factionId);
 
-        // 2d. V5 Autocracy: clean up faction_pillar_state, offers, votes for departing faction
+        // 2d. V5 Autocracy: transfer departing faction's pillar to wildcard, then clean up
+        const { data: departingPillar } = await supabase
+            .from('faction_pillar_state')
+            .select('pillar')
+            .eq('faction_id', factionId)
+            .eq('nation_id', nationId)
+            .maybeSingle();
+
+        if (departingPillar?.pillar) {
+            // Move departing faction's pillar into the wildcard slot with backing reset to 20
+            await supabase.from('autocracy_tracker').update({
+                wildcard_pillar: departingPillar.pillar,
+                wildcard_backing: 20,
+                wildcard_neglect_ticks: 0,
+            }).eq('nation_id', nationId);
+        }
+
         await Promise.allSettled([
             supabase.from('faction_pillar_state').delete().eq('faction_id', factionId).eq('nation_id', nationId),
             supabase.from('silent_coup_offers').delete().eq('to_faction_id', factionId).eq('nation_id', nationId),

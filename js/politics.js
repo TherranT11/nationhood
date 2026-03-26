@@ -5985,10 +5985,10 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const partyAbbr = playerFaction.abbreviation || '??';
     const partyName = playerFaction.faction_name || 'Unknown Party';
 
-    // Fetch standing, party approval log, and government formation in parallel
-    const [standingRes, partyLogRes, govFormRes] = await Promise.all([
+    // Fetch standing, party approval log, credibility log, active campaigns, and government formation in parallel
+    const [standingRes, partyLogRes, credLogRes, activeCampaignsRes, govFormRes] = await Promise.all([
         _supabase.from('faction_electoral_standing')
-            .select('faction_id, party_approval, polled_party_approval, last_polled_tick')
+            .select('faction_id, party_approval, polled_party_approval, last_polled_tick, credibility_modifier, ideological_alignment')
             .eq('nation_id', nation.id)
             .eq('faction_id', playerFaction.id)
             .maybeSingle(),
@@ -5998,6 +5998,17 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             .eq('faction_id', playerFaction.id)
             .order('tick', { ascending: false })
             .limit(20),
+        _supabase.from('credibility_log')
+            .select('amount, source, tick')
+            .eq('nation_id', nation.id)
+            .eq('faction_id', playerFaction.id)
+            .order('tick', { ascending: false })
+            .limit(20),
+        _supabase.from('ideology_shift_actions')
+            .select('action_type, target_axis, target_direction, created_tick')
+            .eq('faction_id', playerFaction.id)
+            .eq('nation_id', nation.id)
+            .eq('status', 'active'),
         _supabase.from('government_formations')
             .select('lead_party_id, party_ids')
             .eq('nation_id', nation.id)
@@ -6054,6 +6065,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         'impeachment:failed': 'Impeachment Failed',
         'impeachment:survived': 'Survived Impeachment',
         'crisis:sovereign_default': 'Sovereign Default',
+        'article:published': 'News Article',
     };
     function _formatSource(source) {
         if (_approvalSourceLabels[source]) return _approvalSourceLabels[source];
@@ -6116,7 +6128,128 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         : 'OPPOSITION';
     const statusColor = isGoverning ? '#5cb85c' : '#d98030';
 
-    // Build the Party Approval container
+    // ── Credibility data ──
+    const credLog = credLogRes.data || [];
+    const credModifier = Number(playerStanding.credibility_modifier ?? 1.0);
+    const credScore = Math.max(0, Math.min(100, Math.round((credModifier - 0.5) * 100))); // 0-100 scale
+
+    // Credibility source labels
+    const _credSourceLabels = {
+        'attack:received': 'Attacked',
+        'attack:self': 'Attack Backfire',
+        'impeachment:passed': 'Impeached',
+        'impeachment:motion_failed': 'Impeachment Failed',
+        'impeachment:motion_failed:vindicated': 'Vindicated',
+        'impeachment:survived': 'Survived Impeachment',
+        'impeachment:survived:accuser': 'Failed Accusation',
+        'bill:term_limit': 'Term Limit Bill',
+        'no_confidence:passed': 'No Confidence Passed',
+        'no_confidence:failed': 'No Confidence Failed',
+        'no_confidence:failed:vindicated': 'Vindicated (No Confidence)',
+        'executive_order:censure': 'Censured',
+        'impeachment:convicted': 'Convicted & Removed',
+        'sovereign_default': 'Sovereign Default',
+        'resign_pm': 'PM Resignation',
+    };
+    function _formatCredSource(source) {
+        if (_credSourceLabels[source]) return _credSourceLabels[source];
+        // Promise sources: promise:kept:Lower Unemployment, promise:broken:Unemployment, promise:nervous:Unemployment
+        if (source.startsWith('promise:kept:')) return `Promise Kept (${source.slice('promise:kept:'.length)})`;
+        if (source.startsWith('promise:broken:')) return `Promise Broken (${source.slice('promise:broken:'.length)})`;
+        if (source.startsWith('promise:nervous:')) return `Promise Nervous (${source.slice('promise:nervous:'.length)})`;
+        if (source.startsWith('promise:')) return 'Promise';
+        if (source.startsWith('attack:')) return 'Attack';
+        return source.replace(/_/g, ' ').replace(/:/g, ' — ');
+    }
+
+    // Build credibility modifier rows
+    let credModifiersHtml = '';
+    if (credLog.length === 0) {
+        credModifiersHtml = '<div style="font-size:10px;color:var(--dtext-3);font-style:italic;padding:6px 0">No recorded changes yet.</div>';
+    } else {
+        for (const entry of credLog) {
+            const amt = Number(entry.amount);
+            const sign = amt >= 0 ? '+' : '';
+            const color = amt >= 0 ? '#5cb85c' : '#d9534f';
+            const label = _formatCredSource(entry.source);
+            const date = tickToDate(entry.tick);
+            credModifiersHtml += `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--dborder-0)">
+                    <div style="flex:1;min-width:0">
+                        <div style="font-size:10px;color:var(--dtext-1);font-family:var(--dfont-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(label)}</div>
+                        <div style="font-size:9px;color:var(--dtext-3);font-family:var(--dfont-ui)">${escapeHtml(date)}</div>
+                    </div>
+                    <div style="flex-shrink:0;margin-left:8px">
+                        <span style="font-size:11px;font-weight:700;font-family:var(--dfont-mono);color:${color};min-width:40px;text-align:right;display:inline-block">${sign}${amt.toFixed(2)}</span>
+                    </div>
+                </div>`;
+        }
+    }
+
+    // Credibility tier label
+    function _credTier(score) {
+        if (score >= 80) return { label: 'Excellent', color: '#5cb85c' };
+        if (score >= 60) return { label: 'Good', color: '#6baf6b' };
+        if (score >= 40) return { label: 'Average', color: '#c8a44e' };
+        if (score >= 20) return { label: 'Poor', color: '#d98030' };
+        return { label: 'Disgraced', color: '#d9534f' };
+    }
+    const tier = _credTier(credScore);
+
+    // ── Alignment data ──
+    const alignScore = Math.max(0, Math.min(100, Math.round(Number(playerStanding.ideological_alignment ?? 50))));
+    const activeCampaigns = activeCampaignsRes.data || [];
+
+    function _alignTier(score) {
+        if (score >= 75) return { label: 'Strong Alignment', color: '#5cb85c' };
+        if (score >= 55) return { label: 'Moderate Alignment', color: '#6baf6b' };
+        if (score >= 40) return { label: 'Weak Alignment', color: '#c8a44e' };
+        if (score >= 25) return { label: 'Misaligned', color: '#d98030' };
+        return { label: 'Severely Misaligned', color: '#d9534f' };
+    }
+    const alignTier = _alignTier(alignScore);
+
+    // Build active campaigns list
+    const _campaignNames = { think_tank: 'Think Tank', media_campaign: 'Media Campaign', grassroots_movement: 'Grassroots Movement' };
+    const _campaignDurations = {
+        think_tank: IDEO_SHIFT_CONFIG.THINK_TANK.DURATION,
+        media_campaign: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.DURATION + (IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.VISIBILITY_TICKS || 0),
+        grassroots_movement: IDEO_SHIFT_CONFIG.GRASSROOTS.DURATION,
+    };
+    const axisMap = {};
+    for (const ax of IDEOLOGY_AXES) axisMap[ax.key] = ax;
+
+    let campaignsHtml = '';
+    if (activeCampaigns.length === 0) {
+        campaignsHtml = '<div style="font-size:10px;color:var(--dtext-3);font-style:italic;padding:6px 0">No active ideology campaigns.</div>';
+    } else {
+        for (const c of activeCampaigns) {
+            const name = _campaignNames[c.action_type] || c.action_type;
+            const totalDur = _campaignDurations[c.action_type] || 50;
+            const ticksActive = currentTick - (c.created_tick != null ? c.created_tick : currentTick);
+            const ticksLeft = Math.max(0, totalDur - ticksActive);
+            const pct = Math.max(0, Math.min(100, Math.round((ticksActive / totalDur) * 100)));
+            const axDef = axisMap[c.target_axis];
+            const dirLabel = c.target_direction === 'left' ? (axDef?.leftLabel || 'Left')
+                : c.target_direction === 'right' ? (axDef?.rightLabel || 'Right')
+                : c.target_direction === 'expand' ? 'Polarize'
+                : c.target_direction === 'narrow' ? 'Unify' : c.target_direction || '?';
+            const axisLabel = axDef ? `${axDef.leftLabel}–${axDef.rightLabel}` : c.target_axis || '';
+            campaignsHtml += `
+                <div style="padding:6px 0;border-bottom:1px solid var(--dborder-0)">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <div style="font-size:10px;font-weight:600;color:var(--dtext-1);font-family:var(--dfont-ui)">${escapeHtml(name)}</div>
+                        <span style="font-size:9px;color:var(--dtext-3);font-family:var(--dfont-mono)">${ticksLeft} ticks left</span>
+                    </div>
+                    <div style="font-size:9px;color:var(--dtext-3);margin-top:2px">${escapeHtml(axisLabel)} — ${escapeHtml(dirLabel)}</div>
+                    <div style="height:3px;border-radius:2px;background:var(--dbg-3);margin-top:4px;overflow:hidden">
+                        <div style="width:${pct}%;height:100%;background:${partyColor};border-radius:2px;transition:width 0.5s"></div>
+                    </div>
+                </div>`;
+        }
+    }
+
+    // Build the Party Approval + Credibility + Alignment containers
     container.innerHTML = `
     <div style="display:flex;flex-wrap:wrap;gap:16px;padding:10px 0">
         <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
@@ -6154,6 +6287,89 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             <!-- Modifier list (scrollable) -->
             <div style="flex:1;overflow-y:auto;min-height:0">
                 ${modifiersHtml}
+            </div>
+        </div>
+
+        <!-- Credibility Container -->
+        <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
+            <!-- Header -->
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${partyColor};margin-bottom:4px;font-weight:700">CREDIBILITY</div>
+
+            <!-- Party name + tier -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <span style="font-size:14px;font-weight:700;color:var(--dtext-0)">${escapeHtml(partyName)}</span>
+                <span style="font-size:9px;font-weight:600;color:${tier.color};text-transform:uppercase;letter-spacing:0.5px">${tier.label}</span>
+            </div>
+
+            <!-- Score value -->
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+                <span style="font-size:28px;font-weight:800;font-family:var(--dfont-mono);color:${_approvalColor(credScore)}">${credScore}</span>
+                <span style="font-size:11px;color:var(--dtext-3)">/ 100</span>
+                <span style="font-size:10px;color:var(--dtext-3);font-family:var(--dfont-mono)">(${credModifier.toFixed(2)}x)</span>
+            </div>
+
+            <!-- Credibility bar -->
+            <div style="height:6px;border-radius:3px;background:var(--dbg-3);margin-bottom:8px;overflow:hidden">
+                <div style="width:${Math.min(100, credScore)}%;height:100%;background:${_approvalColor(credScore)};border-radius:3px;transition:width 0.5s"></div>
+            </div>
+
+            <!-- Election weight info -->
+            <div style="font-size:10px;color:var(--dtext-3);margin-bottom:14px;font-family:var(--dfont-ui)">
+                Election Weight — <span style="color:var(--dtext-1)">20% (5-35% dynamic)</span>
+            </div>
+
+            <hr style="border:none;border-top:1px solid var(--dborder-0);margin:0 0 10px 0">
+
+            <!-- Changes header -->
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dtext-0);margin-bottom:6px">Recent Changes</div>
+            <div style="font-size:9px;color:var(--dtext-3);margin-bottom:8px;font-style:italic">Events that affected your party's credibility</div>
+
+            <!-- Changes list (scrollable) -->
+            <div style="flex:1;overflow-y:auto;min-height:0">
+                ${credModifiersHtml}
+            </div>
+        </div>
+
+        <!-- Alignment Container -->
+        <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
+            <!-- Header -->
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${partyColor};margin-bottom:4px;font-weight:700">IDEOLOGICAL ALIGNMENT</div>
+
+            <!-- Party name + tier -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <span style="font-size:14px;font-weight:700;color:var(--dtext-0)">${escapeHtml(partyName)}</span>
+                <span style="font-size:9px;font-weight:600;color:${alignTier.color};text-transform:uppercase;letter-spacing:0.5px">${alignTier.label}</span>
+            </div>
+
+            <!-- Score value -->
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+                <span style="font-size:28px;font-weight:800;font-family:var(--dfont-mono);color:${_approvalColor(alignScore)}">${alignScore}</span>
+                <span style="font-size:11px;color:var(--dtext-3)">/ 100</span>
+            </div>
+
+            <!-- Alignment bar -->
+            <div style="height:6px;border-radius:3px;background:var(--dbg-3);margin-bottom:8px;overflow:hidden">
+                <div style="width:${Math.min(100, alignScore)}%;height:100%;background:${_approvalColor(alignScore)};border-radius:3px;transition:width 0.5s"></div>
+            </div>
+
+            <!-- Election weight info -->
+            <div style="font-size:10px;color:var(--dtext-3);margin-bottom:6px;font-family:var(--dfont-ui)">
+                Election Weight — <span style="color:var(--dtext-1)">25% (largest factor)</span>
+            </div>
+
+            <!-- Hint -->
+            <div style="font-size:9px;color:var(--dtext-3);margin-bottom:14px;font-style:italic">
+                How closely your party's ideology matches the electorate. Use Think Tanks, Grassroots Movements, or Media Campaigns to shift alignment.
+            </div>
+
+            <hr style="border:none;border-top:1px solid var(--dborder-0);margin:0 0 10px 0">
+
+            <!-- Active campaigns header -->
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dtext-0);margin-bottom:6px">Active Campaigns</div>
+
+            <!-- Campaigns list (scrollable) -->
+            <div style="flex:1;overflow-y:auto;min-height:0">
+                ${campaignsHtml}
             </div>
         </div>
     </div>`;

@@ -1,6 +1,7 @@
 // js/news.js — The Cruceran newspaper page
 
 import { tickToDate } from './utils.js';
+import { nudgeApproval } from './game/electorate.js';
 
 // Module-level references set during init
 let _supabase = null;
@@ -384,19 +385,7 @@ async function _applyArticleVisibilityReward(factionId, nationId) {
 
 /** Award +1 party approval to a democratic faction for writing a long article */
 async function _applyArticleApprovalReward(factionId, nationId) {
-    const { data: standing } = await _supabase
-        .from('faction_electoral_standing')
-        .select('id, party_approval')
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId)
-        .maybeSingle();
-    if (!standing) return;
-    const current = Number(standing.party_approval ?? 0);
-    const newVal = Math.min(90, current + 1);
-    await _supabase
-        .from('faction_electoral_standing')
-        .update({ party_approval: newVal })
-        .eq('id', standing.id);
+    await nudgeApproval(_supabase, factionId, nationId, 1, { source: 'article:published' });
 }
 
 /** Award +1 enthusiasm to the nation's electorate for a published article */

@@ -747,7 +747,7 @@ export async function issueCensure(supabase, nationId, factionId, targetFactionI
 
     // Censure: -2 approval & -0.05 credibility to target
     await nudgeApproval(supabase, targetFactionId, nationId, -2, { source: 'executive_order:censure' });
-    await adjustCredibility(supabase, targetFactionId, nationId, -0.05);
+    await adjustCredibility(supabase, targetFactionId, nationId, -0.05, 0, currentTick, { source: 'executive_order:censure' });
 
     // Martyr effect: target regains some approval (bigger if repeated censure)
     const martyrApproval = Math.round(martyrMomentum * 0.3 * 100) / 100;

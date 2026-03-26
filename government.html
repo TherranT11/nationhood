@@ -1079,7 +1079,7 @@ async function renderGovernmentPage() {
             fetchActiveCoalition(_supabase, currentNation.id),
             fetchMinistries(),
             _supabase.from('factions')
-                .select('id, faction_name, abbreviation, seats, approval_rating, loyalty, action_points, party_color, party_logo, custom_logo_url, leader_ideology')
+                .select('id, faction_name, abbreviation, seats, approval_rating, loyalty, action_points, party_color, party_logo, custom_logo_url, leader_ideology, leader_positive_traits, leader_negative_traits')
                 .eq('nation_id', currentNation.id).eq('faction_type', 'party')
         ]);
 
@@ -6228,7 +6228,45 @@ function renderImpeachmentButton() {
     // President's own party cannot file impeachment
     if (isPresidentParty) return '';
 
+    const effectiveAPCost = getImpeachmentAPCost();
     const mySeats = allPartySeats[currentFaction.id] || currentFaction.seats || 0;
+
+    // Build charge requirement status indicators
+    const overreachCount = currentNation.overreach_count ?? 0;
+    const abuseThreshold = GAME_CONFIG.IMPEACHMENT_ABUSE_OVERREACH_THRESHOLD;
+    const abuseMet = overreachCount >= abuseThreshold;
+
+    const corruptionStat = currentNation.corruption ?? 0;
+    const corruptionMet = corruptionStat >= GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD;
+
+    const govApproval = currentNation.gov_approval ?? 40;
+    const incompMet = govApproval <= GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD;
+
+    const crimCorruption = currentNation.corruption ?? 0;
+    const judicialIndep = currentNation.judicial_independence ?? 50;
+    const crimMet = crimCorruption >= GAME_CONFIG.IMPEACHMENT_CRIMINAL_CORRUPTION_THRESHOLD && judicialIndep <= GAME_CONFIG.IMPEACHMENT_CRIMINAL_JUDICIAL_THRESHOLD;
+
+    // Veto abuse requires async — show count on page load via data attribute
+    // We show a placeholder; the exact count is computed in fileImpeachment
+    const anyChargePossible = abuseMet || corruptionMet || incompMet || crimMet;
+
+    const chargeRow = (label, met, detail) => `
+        <div style="display:flex;align-items:baseline;gap:6px;margin:3px 0;">
+            <span style="color:${met ? 'var(--green)' : 'var(--text-secondary)'};font-size:0.65rem;width:10px;">${met ? '●' : '○'}</span>
+            <span style="color:${met ? 'var(--text-primary)' : 'var(--text-secondary)'};font-size:0.7rem;"><strong>${label}</strong></span>
+            <span style="color:var(--text-secondary);font-size:0.65rem;margin-left:auto;text-align:right;">${detail}</span>
+        </div>`;
+
+    const chargeRequirements = `
+        <div style="margin-top:10px;padding:10px 12px;background:var(--bg-card);border:1px solid var(--border-hair);border-radius:3px;text-align:left;">
+            <div style="font-family:var(--font-mono);font-size:9px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">Charge Requirements</div>
+            ${chargeRow('Abuse of Power', abuseMet, `Overreach ≥ ${abuseThreshold} (${overreachCount}/${abuseThreshold})`)}
+            ${chargeRow('Corruption', corruptionMet, `Corruption ≥ ${GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD} (${Math.round(corruptionStat)})`)}
+            ${chargeRow('Gross Incompetence', incompMet, `Approval ≤ ${GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD} for ${GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_TICKS} ticks (${Math.round(govApproval)})`)}
+            ${chargeRow('Constitutional Violation', false, `≥ ${GAME_CONFIG.IMPEACHMENT_VETO_ABUSE_COUNT} vetoed bills with ⅔ support`)}
+            ${chargeRow('Criminal Conduct', crimMet, `Corruption ≥ ${GAME_CONFIG.IMPEACHMENT_CRIMINAL_CORRUPTION_THRESHOLD} (${Math.round(crimCorruption)}) + Judicial Indep ≤ ${GAME_CONFIG.IMPEACHMENT_CRIMINAL_JUDICIAL_THRESHOLD} (${Math.round(judicialIndep)})`)}
+        </div>`;
+
     if (mySeats < 1) {
         return `
             <div id="impeachment" style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
@@ -6236,15 +6274,23 @@ function renderImpeachmentButton() {
                     ⚖ Impeach President
                 </button>
                 <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">Need at least 1 seat in the legislature.</div>
+                ${chargeRequirements}
             </div>`;
     }
 
+    // Disable button if no charges are possible (veto abuse is async so we can't check here — fileImpeachment will recheck)
+    const noCharges = !anyChargePossible;
+    const disabledAttr = noCharges ? 'disabled' : '';
+    const disabledNote = noCharges ? '<div style="font-size:0.7rem;color:var(--amber);margin-top:6px;">No charges currently meet their requirements. Constitutional Violation requires checking veto records.</div>' : '';
+
     return `
         <div id="impeachment" style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
-            <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="fileImpeachment()" id="impeach-btn">
-                ⚖ Impeach President <span class="ap-cost">${GAME_CONFIG.IMPEACHMENT_AP_COST} AP</span>
+            <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="fileImpeachment()" id="impeach-btn" ${disabledAttr}>
+                ⚖ Impeach President <span class="ap-cost">${effectiveAPCost} AP</span>
             </button>
             <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">File articles of impeachment against the President</div>
+            ${disabledNote}
+            ${chargeRequirements}
         </div>`;
 }
 
@@ -6802,6 +6848,122 @@ async function handleEndEmergency() {
 }
 window.handleEndEmergency = handleEndEmergency;
 
+async function buildImpeachmentCharges() {
+    const charges = [];
+
+    // 1. Abuse of Power — requires presidential overreach >= threshold
+    const overreachCount = currentNation.overreach_count ?? 0;
+    const abuseAvail = overreachCount >= GAME_CONFIG.IMPEACHMENT_ABUSE_OVERREACH_THRESHOLD;
+    charges.push({
+        type: 'abuse_of_power',
+        label: 'Abuse of Power',
+        available: abuseAvail,
+        reason: abuseAvail ? '' : `Requires presidential overreach ≥ ${GAME_CONFIG.IMPEACHMENT_ABUSE_OVERREACH_THRESHOLD} (currently ${overreachCount})`
+    });
+
+    // 2. Corruption — requires corruption stat >= threshold
+    const corruptionStat = currentNation.corruption ?? 0;
+    const corruptionAvail = corruptionStat >= GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD;
+    charges.push({
+        type: 'corruption',
+        label: 'Corruption',
+        available: corruptionAvail,
+        reason: corruptionAvail ? '' : `Requires corruption ≥ ${GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD} (currently ${Math.round(corruptionStat)})`
+    });
+
+    // 3. Incompetence — requires gov_approval <= threshold for consecutive ticks
+    const govApproval = currentNation.gov_approval ?? 40;
+    const requiredTicks = GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_TICKS;
+    let incompAvail = false;
+    let consecutiveCount = 0;
+    if (govApproval <= GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD) {
+        const { data: history } = await _supabase
+            .from('nations_history')
+            .select('tick, gov_approval')
+            .eq('nation_id', currentNation.id)
+            .order('tick', { ascending: false })
+            .limit(requiredTicks);
+        consecutiveCount = (history || []).filter(h => h.gov_approval <= GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD).length;
+        incompAvail = history && history.length >= requiredTicks && consecutiveCount >= requiredTicks;
+    }
+    charges.push({
+        type: 'incompetence',
+        label: 'Gross Incompetence',
+        available: incompAvail,
+        reason: incompAvail ? '' : `Requires gov approval ≤ ${GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD} for ${requiredTicks} consecutive ticks (${consecutiveCount}/${requiredTicks} met, currently ${Math.round(govApproval)})`
+    });
+
+    // 4. Constitutional Violation — requires president to have vetoed N+ popular bills (>66% support)
+    let vetoAbuseCount = 0;
+    if (presidentData) {
+        const { data: vetoedBills } = await _supabase
+            .from('bills')
+            .select('id, bill_support(stance, seat_count)')
+            .eq('nation_id', currentNation.id)
+            .eq('president_action', 'vetoed')
+            .gte('president_action_tick', presidentData.elected_tick || 0);
+        const supermajoritySeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * (2 / 3));
+        for (const bill of (vetoedBills || [])) {
+            let votesFor = 0;
+            for (const s of (bill.bill_support || [])) {
+                const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+                if (stance === 'yes') votesFor += (s.seat_count || 0);
+            }
+            if (votesFor >= supermajoritySeats) vetoAbuseCount++;
+        }
+    }
+    const constViolAvail = vetoAbuseCount >= GAME_CONFIG.IMPEACHMENT_VETO_ABUSE_COUNT;
+    charges.push({
+        type: 'constitutional_violation',
+        label: 'Constitutional Violation',
+        available: constViolAvail,
+        reason: constViolAvail ? '' : `Requires ≥ ${GAME_CONFIG.IMPEACHMENT_VETO_ABUSE_COUNT} vetoed bills with ⅔ support (currently ${vetoAbuseCount})`
+    });
+
+    // 5. Criminal Conduct — requires corruption >= threshold AND judicial_independence <= threshold
+    const crimCorruption = currentNation.corruption ?? 0;
+    const judicialIndep = currentNation.judicial_independence ?? 50;
+    const crimCorruptionMet = crimCorruption >= GAME_CONFIG.IMPEACHMENT_CRIMINAL_CORRUPTION_THRESHOLD;
+    const crimJudicialMet = judicialIndep <= GAME_CONFIG.IMPEACHMENT_CRIMINAL_JUDICIAL_THRESHOLD;
+    const crimAvail = crimCorruptionMet && crimJudicialMet;
+    const crimReasons = [];
+    if (!crimCorruptionMet) crimReasons.push(`corruption ≥ ${GAME_CONFIG.IMPEACHMENT_CRIMINAL_CORRUPTION_THRESHOLD} (currently ${Math.round(crimCorruption)})`);
+    if (!crimJudicialMet) crimReasons.push(`judicial independence ≤ ${GAME_CONFIG.IMPEACHMENT_CRIMINAL_JUDICIAL_THRESHOLD} (currently ${Math.round(judicialIndep)})`);
+    charges.push({
+        type: 'criminal_conduct',
+        label: 'Criminal Conduct',
+        available: crimAvail,
+        reason: crimAvail ? '' : `Requires ${crimReasons.join(' and ')}`
+    });
+
+    return charges;
+}
+
+function getImpeachmentAPCost() {
+    // Base cost
+    let cost = GAME_CONFIG.IMPEACHMENT_AP_COST;
+
+    // Check president's party leader traits for constitutional_scholar (+3 AP to opponents)
+    if (presidentFactionId) {
+        const presParty = allParties.find(p => p.id === presidentFactionId);
+        if (presParty) {
+            const posTraits = presParty.leader_positive_traits || [];
+            if (posTraits.includes('constitutional_scholar')) cost += 3;
+        }
+    }
+
+    // Check president's party leader traits for paper_thin_mandate (-2 AP for opponents)
+    if (presidentFactionId) {
+        const presParty = allParties.find(p => p.id === presidentFactionId);
+        if (presParty) {
+            const negTraits = presParty.leader_negative_traits || [];
+            if (negTraits.includes('paper_thin_mandate')) cost -= 2;
+        }
+    }
+
+    return Math.max(1, cost);
+}
+
 async function fileImpeachment() {
     if (_govActionLock || !currentFaction || !currentNation || !presidentData) return;
 
@@ -6840,37 +7002,17 @@ async function fileImpeachment() {
     }
 
     // Build charge options with precondition checks
-    const charges = [];
+    const charges = await buildImpeachmentCharges();
 
-    // 1. Abuse of Power — always available
-    charges.push({ type: 'abuse_of_power', label: 'Abuse of Power', available: true, reason: '' });
+    // Check if any charges are available at all
+    const anyAvailable = charges.some(c => c.available);
+    if (!anyAvailable) {
+        alert('No impeachment charges are currently available. All charges require specific preconditions to be met.');
+        return;
+    }
 
-    // 2. Corruption — requires corruption stat >= threshold
-    const corruptionStat = currentNation.corruption ?? 0;
-    const corruptionAvail = corruptionStat >= GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD;
-    charges.push({
-        type: 'corruption',
-        label: 'Corruption',
-        available: corruptionAvail,
-        reason: corruptionAvail ? '' : `Requires corruption ≥ ${GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD} (currently ${corruptionStat})`
-    });
-
-    // 3. Incompetence — requires gov_approval <= threshold for consecutive ticks
-    // Simplified: check current approval as proxy
-    const govApproval = currentNation.gov_approval ?? 40;
-    const incompAvail = govApproval <= GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD;
-    charges.push({
-        type: 'incompetence',
-        label: 'Gross Incompetence',
-        available: incompAvail,
-        reason: incompAvail ? '' : `Requires gov approval ≤ ${GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD} (currently ${Math.round(govApproval)})`
-    });
-
-    // 4. Constitutional Violation — always available
-    charges.push({ type: 'constitutional_violation', label: 'Constitutional Violation', available: true, reason: '' });
-
-    // 5. Criminal Conduct — always available
-    charges.push({ type: 'criminal_conduct', label: 'Criminal Conduct', available: true, reason: '' });
+    // Calculate effective AP cost (with leader trait modifiers)
+    const effectiveAPCost = getImpeachmentAPCost();
 
     // Build charge selection HTML
     const chargeCheckboxes = charges.map((c, i) => {
@@ -6883,8 +7025,7 @@ async function fileImpeachment() {
         </label>`;
     }).join('');
 
-    // Show charge selection modal via a custom confirm-like approach
-    // Create a modal overlay
+    // Show charge selection modal
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:10000;display:flex;align-items:center;justify-content:center;';
     overlay.innerHTML = `
@@ -6896,7 +7037,7 @@ async function fileImpeachment() {
             <div style="font-size:0.8rem;color:var(--text-primary);margin-bottom:12px;">Select at least one charge:</div>
             <div id="impeach-charges-list">${chargeCheckboxes}</div>
             <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-hair);font-size:0.75rem;color:var(--text-secondary);line-height:1.5;">
-                <div>Cost: <strong style="color:var(--amber);">${GAME_CONFIG.IMPEACHMENT_AP_COST} AP</strong></div>
+                <div>Cost: <strong style="color:var(--amber);">${effectiveAPCost} AP</strong>${effectiveAPCost !== GAME_CONFIG.IMPEACHMENT_AP_COST ? ` <span style="font-size:0.65rem;">(base ${GAME_CONFIG.IMPEACHMENT_AP_COST}, modified by leader traits)</span>` : ''}</div>
                 <div>Committee debate: ${GAME_CONFIG.IMPEACHMENT_COMMITTEE_TICKS} ticks → Floor vote: ${GAME_CONFIG.IMPEACHMENT_MOTION_VOTING_TICKS} ticks</div>
                 <div>Requires <strong style="color:var(--green);">simple majority</strong> (50%+1 of all seats) to impeach</div>
                 <div style="margin-top:6px;">If impeached → Trial: ${GAME_CONFIG.IMPEACHMENT_TRIAL_TICKS}-tick conviction vote (⅔ supermajority)</div>
@@ -6935,6 +7076,16 @@ async function fileImpeachment() {
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const tick = shard?.current_tick || 0;
+
+        // Deduct AP BEFORE creating records (prevents orphaned rows on insufficient AP)
+        const apResult = await deductAP(_supabase, currentFaction.id, effectiveAPCost);
+        if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+            alert('Not enough AP. Need ' + effectiveAPCost + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
+            _govActionLock = false;
+            return;
+        }
+        currentFaction.action_points = apResult.newAp;
 
         // Create the impeachment proceeding record
         const { data: proceeding, error: procError } = await _supabase.from('impeachment_proceedings').insert({
@@ -6976,21 +7127,13 @@ async function fileImpeachment() {
             .eq('nation_id', currentNation.id)
             .neq('phase', 'resolved');
         if (procCount > 1) {
-            // Another proceeding was created concurrently — delete ours
+            // Another proceeding was created concurrently — delete ours and refund AP
             await _supabase.from('bills').delete().eq('id', bill.id);
             await _supabase.from('impeachment_proceedings').delete().eq('id', proceeding.id);
+            await _supabase.rpc('accumulate_ap', { p_faction_id: currentFaction.id, p_amount: effectiveAPCost });
             alert('Another impeachment proceeding was just filed. Please refresh.');
             return;
         }
-
-        // Deduct AP after bill creation succeeds
-        const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.IMPEACHMENT_AP_COST);
-        if (!apResult.success) {
-            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
-            alert('Not enough AP. Need ' + GAME_CONFIG.IMPEACHMENT_AP_COST + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
-            return;
-        }
-        currentFaction.action_points = apResult.newAp;
 
         // Auto-cast the filer's own vote as YES
         const seatData = await loadSeats(_supabase, currentNation.id, false, allParties, currentFaction.id);

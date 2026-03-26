@@ -46,6 +46,9 @@ export const GAME_CONFIG = {
     IMPEACHMENT_INCOMPETENCE_THRESHOLD: 25,   // gov_approval <= this for incompetence charge
     IMPEACHMENT_INCOMPETENCE_TICKS: 6,        // consecutive ticks below threshold
     IMPEACHMENT_VETO_ABUSE_COUNT: 2,          // vetoed bills with >66% support
+    IMPEACHMENT_ABUSE_OVERREACH_THRESHOLD: 4, // overreach_count >= this for abuse of power
+    IMPEACHMENT_CRIMINAL_CORRUPTION_THRESHOLD: 30,  // corruption >= this AND judicial_independence <= threshold
+    IMPEACHMENT_CRIMINAL_JUDICIAL_THRESHOLD: 35,    // judicial_independence <= this AND corruption >= threshold
 
     // (Autocracy v2 action constants removed — Phase 0)
     NEW_FACTION_MIN_SEATS: 8,
