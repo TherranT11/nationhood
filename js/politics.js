@@ -3235,35 +3235,35 @@ async function _renderActionsPromisesPanel(faction, nation, tick) {
         .select('*')
         .eq('party_id', faction.id)
         .eq('nation_id', nation.id)
-        .eq('status', 'active');
+        .in('status', ['active', 'pending_election']);
 
     if (promisesErr) {
         container.innerHTML = `<div style="color:var(--dred);font-family:var(--dfont-mono);font-size:11px;padding:8px">Failed to load promises.</div>`;
         return;
     }
 
-    const activePromises = promises || [];
+    const allPromises = promises || [];
 
     let rowsHtml = '';
-    if (activePromises.length === 0) {
+    if (allPromises.length === 0) {
         rowsHtml = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px 0">No active promises.</div>';
     } else {
-        for (const p of activePromises) {
-            // Field sources (written by executeMakePromise in political-actions.js):
-            //   p.tick_deadline  — absolute tick the promise expires
-            //   p.demand_type    — 'stat_target' | 'crisis_resolution'
-            //   p.demand_text    — full human-readable label ("Reduce Inflation to 30", "Resolve X Crisis")
-            //   p.conditions.direction — 'above' (↑) | 'below' (↓) for stat_target promises
-            const ticksLeft = Math.max(0, (p.tick_deadline || 0) - tick);
-            const isUrgent = ticksLeft <= 3;
-            const isCritical = ticksLeft <= 1;
-            const tickColor = isCritical ? 'var(--dred)' : isUrgent ? 'var(--damber)' : 'var(--dgreen)';
+        for (const p of allPromises) {
+            const isPending = p.status === 'pending_election';
             const isCrisis = p.demand_type === 'crisis_resolution';
-            // demand_text is the authoritative display label for all promise types.
-            // It is written by executeMakePromise as a complete sentence: "Reduce Inflation to 30"
-            // or "Resolve [Crisis Name]". No reconstruction from conditions needed.
             const label = p.demand_text || (isCrisis ? 'Resolve crisis' : 'Improve stat');
             const direction = isCrisis ? '✓' : (p.conditions?.direction === 'above' ? '↑' : '↓');
+
+            let statusHtml;
+            if (isPending) {
+                statusHtml = `<span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:#94a3b8">⏳ Awaiting election</span>`;
+            } else {
+                const ticksLeft = Math.max(0, (p.tick_deadline || 0) - tick);
+                const isUrgent = ticksLeft <= 3;
+                const isCritical = ticksLeft <= 1;
+                const tickColor = isCritical ? 'var(--dred)' : isUrgent ? 'var(--damber)' : 'var(--dgreen)';
+                statusHtml = `<span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:${tickColor}">${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} left</span>`;
+            }
 
             rowsHtml += `
             <div style="padding:6px 0;border-bottom:1px solid var(--dborder-1)">
@@ -3272,7 +3272,7 @@ async function _renderActionsPromisesPanel(faction, nation, tick) {
                         <span style="font-family:var(--dfont-mono);font-size:12px;color:var(--dtext-0)">${direction}</span>
                         <span style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0);margin-left:4px">${escapeHtml(label)}</span>
                     </div>
-                    <span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:${tickColor}">${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} left</span>
+                    ${statusHtml}
                 </div>
             </div>`;
         }
@@ -3281,8 +3281,8 @@ async function _renderActionsPromisesPanel(faction, nation, tick) {
     container.innerHTML = `
     <div style="border:1px solid var(--dborder-1);border-radius:6px;padding:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <span style="font-family:var(--dfont-ui);font-size:13px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:0.5px">Active Promises</span>
-            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-2)">${activePromises.length} / ${MAKE_PROMISE_CONFIG.MAX_ACTIVE_PROMISES}</span>
+            <span style="font-family:var(--dfont-ui);font-size:13px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:0.5px">Promises</span>
+            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-2)">${allPromises.length} / ${MAKE_PROMISE_CONFIG.MAX_ACTIVE_PROMISES}</span>
         </div>
         ${rowsHtml}
     </div>`;
@@ -3613,14 +3613,15 @@ function renderPromiseConfig(nation) {
                             <span class="ca-stat-val" style="color:${dirColor}">${target}</span>
                         </div>
                     </div>
-                    ${isSel ? `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:4px">Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE} approval</span></div>
+                    ${isSel ? `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:4px">Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks (starts after next election) · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE} approval</span></div>
                     <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:3px;display:flex;gap:12px;flex-wrap:wrap">
-                        <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY} credibility</span>
+                        <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${Math.round(MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY * 100)} credibility</span>
                     </div>
                     <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;display:flex;gap:12px;flex-wrap:wrap">
-                        <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY} credibility</span>
+                        <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${Math.round(MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY * 100)} credibility</span>
                     </div>
-                    <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;color:var(--dtext-3)">While unfulfilled & governing: <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick</span></div>` : ''}
+                    <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;color:var(--dtext-3)">Countdown deferred until in government · <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick while unfulfilled</span></div>
+                    <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;color:var(--dtext-3)">If in opposition after election: <span style="color:#94a3b8">promise extinguishes — no penalty</span></div>` : ''}
                 </div>`;
             }
             html += `</div>`;
@@ -3630,15 +3631,16 @@ function renderPromiseConfig(nation) {
     if (_caPromiseType === 'crisis') {
         html += `<div id="ca-crisis-list"><div class="ca-info-box">Loading crises...</div></div>`;
         html += `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:8px;padding:0 2px">
-            Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE} approval</span>
+            Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks (starts after next election) · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE} approval</span>
         </div>
         <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:3px;padding:0 2px">
-            <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY} credibility</span>
+            <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${Math.round(MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY * 100)} credibility</span>
         </div>
         <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px">
-            <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY} credibility</span>
+            <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${Math.round(MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY * 100)} credibility</span>
         </div>
-        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px;color:var(--dtext-3)">While unfulfilled & governing: <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick</span></div>`;
+        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px;color:var(--dtext-3)">Countdown deferred until in government · <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick while unfulfilled</span></div>
+        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px;color:var(--dtext-3)">If in opposition after election: <span style="color:#94a3b8">promise extinguishes — no penalty</span></div>`;
     }
 
     return html;
@@ -4066,9 +4068,10 @@ function renderActionResult(result) {
     if (result.promiseType) {
         html += `<div style="border-top:1px solid var(--dborder-1);margin-top:8px;padding-top:8px">
             <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-bottom:4px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">Consequences</div>
-            <div style="font-family:var(--dfont-mono);font-size:10px;color:#4ade80">Kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY} credibility</div>
-            <div style="font-family:var(--dfont-mono);font-size:10px;color:#ef4444;margin-top:2px">Broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY} credibility</div>
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:#4ade80">Kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${Math.round(MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY * 100)} credibility</div>
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:#ef4444;margin-top:2px">Broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${Math.round(MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY * 100)} credibility</div>
             <div style="font-family:var(--dfont-mono);font-size:10px;color:#f97316;margin-top:2px">While unfulfilled: −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick</div>
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:#94a3b8;margin-top:2px">Countdown starts after next election · Opposition = extinguished</div>
         </div>`;
     }
 
