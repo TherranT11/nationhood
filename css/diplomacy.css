@@ -3567,7 +3567,7 @@ body.light-mode .diplo-view-btn.is-active {
 .ipo-chat-system {
   font-family: var(--font-mono);
   font-size: 10px;
-  color: #3a3830;
+  color: var(--text-primary);
   text-align: center;
   padding: 4px 0;
   letter-spacing: 0.05em;

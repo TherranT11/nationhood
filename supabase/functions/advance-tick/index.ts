@@ -27887,6 +27887,32 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Stat decay failed for ${nation.name} (non-fatal):`, decayErr);
         }
 
+        // Emergency Powers Act — ongoing stat drain while active
+        try {
+            if (nation.emergency_powers_act) {
+                const epaUpdates = {};
+                const epaDrains = [];
+                const drain = (stat, amount) => {
+                    const cur = Number(nation[stat] ?? 50);
+                    const next = Math.round(Math.max(0, cur - amount) * 10) / 10;
+                    if (next !== Math.round(cur * 10) / 10) {
+                        epaUpdates[stat] = next;
+                        epaDrains.push({ stat, from: Math.round(cur * 10) / 10, to: next, delta: -amount });
+                    }
+                };
+                drain('stability', 1);
+                drain('freedom_index', 0.5);
+                drain('judicial_independence', 0.5);
+                if (Object.keys(epaUpdates).length > 0) {
+                    await supabase.from('nations').update(epaUpdates).eq('id', nation.id);
+                    Object.assign(nation, epaUpdates);
+                    console.log(`[advanceTick] Emergency Powers Act drain for ${nation.name}:`, epaDrains);
+                }
+            }
+        } catch (epaErr) {
+            console.error(`[advanceTick] Emergency Powers Act drain failed for ${nation.name} (non-fatal):`, epaErr);
+        }
+
         // Stat connections (threshold-triggered ripple effects)
         try {
             if (!_statConnections) {
