@@ -614,21 +614,16 @@ async function deductDiscretionaryFund(ministryKey, localMData, currentBalance, 
     if (localMData) localMData.discretionary_balance = newBalance;
 }
 
-// ==================== HEALTHCARE MINISTRY — HELPERS ====================
+// ==================== SHARED MINISTRY COST HELPER ====================
 
-// One-time cost calculation for healthcare actions
-function calculateHealthActionCost(actionOrDirection, population) {
+// One-time cost calculation for any ministry action or direction
+function calculateOneTimeCost(actionOrDirection, population) {
     const costPerMillion = actionOrDirection.oneTimeCostPerMillion || 0;
     return Math.round((population / 1_000_000) * costPerMillion);
 }
-
-// ==================== LABOR MINISTRY — HELPERS ====================
-
-// One-time cost calculation for labor actions (same formula as healthcare)
-function calculateLaborActionCost(actionOrDirection, population) {
-    const costPerMillion = actionOrDirection.oneTimeCostPerMillion || 0;
-    return Math.round((population / 1_000_000) * costPerMillion);
-}
+// Backwards-compatible aliases
+const calculateHealthActionCost = calculateOneTimeCost;
+const calculateLaborActionCost = calculateOneTimeCost;
 
 // Handle labor policy conflict: cancel any active labor policy before activating new direction
 async function handleLaborPolicyConflict(newDirection) {
@@ -4301,7 +4296,7 @@ function buildLaborActionRows(isMyMinistry) {
     let laborStateClass = '';
     if (laborActive) {
         laborStateClass = ' active';
-        const dirLabel = laborActiveDir === 'strengthen' ? 'STRENGTHEN UNIONS' : laborActiveDir === 'deregulate' ? 'DEREGULATE' : 'ACTIVE';
+        const dirLabel = laborActiveDir === 'strengthen' ? 'STRENGTHEN UNIONS' : laborActiveDir === 'deregulate' ? 'DEREGULATE LABOR' : 'ACTIVE';
         laborBtnHtml = `<div class="ministry-action__active-indicator" style="color:#5cb85c;">● ACTIVE — ${dirLabel}</div>`;
     } else if (!canUse) {
         laborStateClass = ' disabled';
@@ -4511,8 +4506,8 @@ async function confirmLaborPolicyAction(direction) {
         stat_key: eff.stat_key,
         direction: eff.direction,
         rate: Math.round((eff.scalable ? eff.rate * scale : eff.rate) * 100) / 100,
-        delay_ticks: config.delay,
-        duration_ticks: config.duration,
+        delay_ticks: eff.delayOverride !== undefined ? eff.delayOverride : config.delay,
+        duration_ticks: eff.durationOverride !== undefined ? eff.durationOverride : config.duration,
         target: eff.target || 'nation'
     }));
 
@@ -4520,7 +4515,7 @@ async function confirmLaborPolicyAction(direction) {
     row.classList.remove('selected');
     row.classList.add('active');
     const btns = document.getElementById(actionId + '-btns');
-    const dirLabel = direction === 'strengthen' ? 'STRENGTHEN UNIONS' : 'DEREGULATE';
+    const dirLabel = direction === 'strengthen' ? 'STRENGTHEN UNIONS' : 'DEREGULATE LABOR';
     if (btns) btns.innerHTML = `<div class="ministry-action__active-indicator" style="color:#5cb85c;">● ACTIVE — ${dirLabel}</div>`;
     const selectorEl = document.getElementById('labor-direction-selector');
     if (selectorEl) selectorEl.innerHTML = '';
