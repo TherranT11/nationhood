@@ -6037,12 +6037,12 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     };
     function _formatSource(source) {
         if (_approvalSourceLabels[source]) return _approvalSourceLabels[source];
-        if (source.startsWith('crisis:resolved:')) return 'Crisis Resolved';
-        if (source.startsWith('crisis:')) return 'Crisis';
+        if (source.startsWith('crisis:resolved:')) return 'Crisis Resolved: ' + source.slice('crisis:resolved:'.length).replace(/_/g, ' ');
+        if (source.startsWith('crisis:')) return 'Crisis: ' + source.slice('crisis:'.length).replace(/_/g, ' ');
         if (source.startsWith('protest:fizzle:')) return 'Protests Fizzled';
-        if (source.startsWith('protest:tier')) return 'Protests';
+        if (source.startsWith('protest:tier')) return 'Protests (Tier ' + source.slice('protest:tier'.length) + ')';
         if (source.startsWith('protest:')) return 'Protests';
-        if (source.startsWith('tax:')) return 'Tax Change';
+        if (source.startsWith('tax:')) return 'Tax Change: ' + source.slice('tax:'.length).replace(/_/g, ' ');
         if (source.startsWith('executive_order:')) return 'Executive Order';
         return source.replace(/_/g, ' ').replace(/:/g, ' — ');
     }
@@ -6055,9 +6055,11 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         return '#d9534f';
     }
 
-    // Build modifier rows HTML
+    // Build modifier rows HTML — only governing parties are affected by gov_approval_log
     let modifiersHtml = '';
-    if (govLog.length === 0) {
+    if (!isGoverning) {
+        modifiersHtml = '<div style="font-size:10px;color:var(--dtext-3);font-style:italic;padding:6px 0">Your party is in opposition. Approval is driven by party activity and visibility, not government events.</div>';
+    } else if (govLog.length === 0) {
         modifiersHtml = '<div style="font-size:10px;color:var(--dtext-3);font-style:italic;padding:6px 0">No recorded modifiers yet.</div>';
     } else {
         for (const entry of govLog) {
@@ -6129,7 +6131,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
 
             <!-- Modifiers header -->
             <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dtext-0);margin-bottom:6px">Modifiers</div>
-            <div style="font-size:9px;color:var(--dtext-3);margin-bottom:8px;font-style:italic">${isGoverning ? 'Events affecting government approval (your party drifts toward this)' : 'Events affecting national government approval'}</div>
+            <div style="font-size:9px;color:var(--dtext-3);margin-bottom:8px;font-style:italic">${isGoverning ? 'Events affecting government approval — your party drifts toward this value' : ''}</div>
 
             <!-- Modifier list (scrollable) -->
             <div style="flex:1;overflow-y:auto;min-height:0">
