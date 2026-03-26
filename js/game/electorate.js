@@ -2124,10 +2124,12 @@ export async function boostVisibility(supabase, factionId, nationId, boost) {
  * @param {number} delta - Signed approval change (positive = boost, negative = damage)
  * @param {object} [opts] - Options
  * @param {boolean} [opts.campaign=false] - If true, apply diminishing returns and increment action counter (for player campaign actions only)
+ * @param {string} [opts.source='unknown'] - Audit tag for the party_approval_log (e.g., 'rally', 'crisis:Recession')
  */
 export async function nudgeApproval(supabase, factionId, nationId, delta, opts) {
     if (!delta || delta === 0) return;
     const campaign = opts?.campaign ?? false;
+    const source = opts?.source ?? 'unknown';
 
     const { data: standing } = await supabase
         .from('faction_electoral_standing')
@@ -2151,6 +2153,19 @@ export async function nudgeApproval(supabase, factionId, nationId, delta, opts) 
         .update(updateFields)
         .eq('id', standing.id);
     if (appErr) console.error('[Electorate] approval update failed:', appErr.message);
+
+    // Audit log (non-fatal)
+    try {
+        const { data: shard } = await supabase
+            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        await supabase.from('party_approval_log').insert({
+            faction_id: factionId,
+            nation_id: nationId,
+            amount: effectiveDelta,
+            source,
+            tick: shard?.current_tick || 0
+        });
+    } catch (e) { /* non-blocking */ }
 }
 
 /**
@@ -2462,7 +2477,7 @@ export async function onRally(supabase, factionId, nationId, outcomeId, currentT
         counter: -5,
     }[outcomeId] ?? 0;
     if (approvalHit !== 0) {
-        await nudgeApproval(supabase, factionId, nationId, approvalHit);
+        await nudgeApproval(supabase, factionId, nationId, approvalHit, { source: 'rally:approval_hit' });
     }
 
     await logActivity(supabase, factionId, nationId, 'rally',
@@ -2493,7 +2508,7 @@ export async function onOutreach(supabase, factionId, nationId, alignmentScore, 
 
     // Approval nudge: small positive based on alignment
     const approvalNudge = round2(Math.max(0.5, diminishedEffect * 0.3));
-    await nudgeApproval(supabase, factionId, nationId, approvalNudge);
+    await nudgeApproval(supabase, factionId, nationId, approvalNudge, { source: 'outreach:approval' });
 
     await logActivity(supabase, factionId, nationId, 'outreach',
         'Outreach', `Outreach — effect: ${diminishedEffect}, alignment: ${alignmentScore}`,

@@ -150,7 +150,7 @@ export async function applyEnactmentApproval(supabase, nationId, approvalDeltas)
     for (const [factionId, delta] of Object.entries(approvalDeltas)) {
         if (delta === 0) continue;
         const scaled = round2(delta * 0.3);
-        await nudgeApproval(supabase, factionId, nationId, scaled);
+        await nudgeApproval(supabase, factionId, nationId, scaled, { source: 'bill:passed' });
     }
 }
 
@@ -211,7 +211,7 @@ export async function applyNoVotePenalty(supabase, bill, nationId) {
     for (const faction of nonVoters) {
         // Lose 1-2 party_approval for not voting
         const approvalLoss = -(1 + Math.random());
-        await nudgeApproval(supabase, faction.id, nationId, round2(approvalLoss));
+        await nudgeApproval(supabase, faction.id, nationId, round2(approvalLoss), { source: 'bill:failed' });
 
         penalized.push({
             factionId: faction.id,
@@ -1697,7 +1697,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presidentRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proceedingData.president_id).single();
                     if (presidentRow) {
-                        await nudgeApproval(supabase, presidentRow.faction_id, bill.nation_id, -5);
+                        await nudgeApproval(supabase, presidentRow.faction_id, bill.nation_id, -5, { source: 'impeachment:passed' });
                         await adjustCredibility(supabase, presidentRow.faction_id, bill.nation_id, -0.15, 12);
                     }
                 }
@@ -1748,7 +1748,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 }).eq('id', bill.nation_id);
 
                 // Filer takes approval & credibility hit (partisan overreach)
-                await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -2);
+                await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -2, { source: 'impeachment:failed' });
                 await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.05);
 
                 // President gets +3 approval (vindication)
@@ -1758,7 +1758,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proc.president_id).single();
                     if (presRow) {
-                        await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 2);
+                        await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 2, { source: 'impeachment:failed' });
                         await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.03);
                     }
                 }
@@ -1817,7 +1817,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proc.president_id).single();
                     if (presRow) {
-                        await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 3);
+                        await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 3, { source: 'impeachment:survived' });
                         await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.05);
                     }
                 }
@@ -1834,11 +1834,11 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 const yesVoters = (bill.bill_support || []).filter(s => s.stance === 'yes' || s.stance === 'accept');
                 for (const v of yesVoters) {
                     if (v.faction_id !== bill.proposed_by) {
-                        await nudgeApproval(supabase, v.faction_id, bill.nation_id, -1);
+                        await nudgeApproval(supabase, v.faction_id, bill.nation_id, -1, { source: 'impeachment:survived' });
                         await adjustCredibility(supabase, v.faction_id, bill.nation_id, -0.03);
                     }
                 }
-                await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -1);
+                await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -1, { source: 'impeachment:survived' });
                 await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.03);
 
                 try {
@@ -2906,7 +2906,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             if (allFactions) {
                 for (const faction of allFactions) {
                     // Base loves it (+3 approval) but anti-democratic (-0.1 credibility)
-                    await nudgeApproval(supabase, faction.id, bill.nation_id, 3);
+                    await nudgeApproval(supabase, faction.id, bill.nation_id, 3, { source: 'bill:term_limit' });
                     await adjustCredibility(supabase, faction.id, bill.nation_id, -0.1);
                 }
             }
