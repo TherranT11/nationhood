@@ -241,7 +241,6 @@ body {
             border-radius: 0;
             display: flex;
             flex-direction: column;
-            overflow: hidden;
             box-sizing: border-box;
             position: relative;
         }
@@ -436,7 +435,7 @@ body {
 
         /* Action row */
         .ministry-action {
-            flex: 1;
+            flex: 0 0 auto;
             background: var(--bg-card);
             border: 1px solid var(--border-main);
             border-left: 3px solid var(--amber);
@@ -447,7 +446,6 @@ body {
             flex-direction: column;
             justify-content: space-between;
             box-sizing: border-box;
-            min-height: 0;
             cursor: pointer;
             transition: background 0.15s, border-color 0.15s;
         }
