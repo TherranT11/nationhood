@@ -6054,6 +6054,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         'impeachment:failed': 'Impeachment Failed',
         'impeachment:survived': 'Survived Impeachment',
         'crisis:sovereign_default': 'Sovereign Default',
+        'article:published': 'News Article',
     };
     function _formatSource(source) {
         if (_approvalSourceLabels[source]) return _approvalSourceLabels[source];
