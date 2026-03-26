@@ -15875,11 +15875,11 @@ async function executeFundThinkTank(supabase, factionId, nationId, targetAxis, t
         return { success: false, message: `Think tank cooldown: wait ${cfg.COOLDOWN_WINDOW} ticks` };
     }
 
-    // ── Max active check ──
+    // ── Max active check (includes paused/suspended) ──
     const { data: active } = await supabase.from('ideology_shift_actions')
-        .select('id').eq('faction_id', factionId).eq('action_type', 'think_tank').eq('status', 'active');
+        .select('id').eq('faction_id', factionId).eq('action_type', 'think_tank').in('status', ['active', 'paused', 'suspended']);
     if ((active || []).length >= cfg.MAX_ACTIVE) {
-        return { success: false, message: 'You already have an active think tank. Wait for it to complete or suspend it.' };
+        return { success: false, message: 'You already have a think tank running (or paused). Cancel it first to start a new one.' };
     }
 
     // ── Deduct AP ──
@@ -16031,9 +16031,9 @@ async function executeGrassrootsMovement(supabase, factionId, nationId, targetAx
     }
 
     const { data: active } = await supabase.from('ideology_shift_actions')
-        .select('id').eq('faction_id', factionId).eq('action_type', 'grassroots_movement').eq('status', 'active');
+        .select('id').eq('faction_id', factionId).eq('action_type', 'grassroots_movement').in('status', ['active', 'paused', 'suspended']);
     if ((active || []).length >= cfg.MAX_ACTIVE) {
-        return { success: false, message: 'You already have an active grassroots movement.' };
+        return { success: false, message: 'You already have a grassroots movement running (or paused). Cancel it first to start a new one.' };
     }
 
     const apResult = await deductAP(supabase, factionId, cfg.AP_COST);
@@ -16152,10 +16152,15 @@ async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick
             const roll = [0.1, 0.2, 0.3][Math.floor(Math.random() * 3)];
             const drift = direction * roll;
             const newVal = round2(clamp(old + drift, 5, 95));
+            const actualDrift = newVal - old;
             if (newVal !== old) {
                 profileUpdates[col] = newVal;
                 profile[col] = newVal;
             }
+            // Track cumulative drift for cancel revert
+            const prevTotal = Number(act.band_shift_total || 0);
+            toUpdate.push({ id: act.id, last_active_tick: currentTick, band_shift_total: round2(prevTotal + actualDrift) });
+            continue; // skip default toUpdate push below
         } else if (act.action_type === 'media_campaign') {
             const mcCfg = IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN;
             if (ticksActive < mcCfg.DURATION) {
@@ -16187,6 +16192,7 @@ async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick
             const roll = [0.1, 0.2][Math.floor(Math.random() * 2)];
             const drift = direction * roll;
             const newVal = round2(clamp(old + drift, 5, 95));
+            const grActualDrift = newVal - old;
             if (newVal !== old) {
                 profileUpdates[col] = newVal;
                 profile[col] = newVal;
@@ -16195,6 +16201,10 @@ async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick
             if (ticksActive > 0 && ticksActive % grCfg.VISIBILITY_INTERVAL === 0) {
                 await boostVisibility(supabase, act.faction_id, nationId, 1);
             }
+            // Track cumulative drift for cancel revert
+            const grPrevTotal = Number(act.band_shift_total || 0);
+            toUpdate.push({ id: act.id, last_active_tick: currentTick, band_shift_total: round2(grPrevTotal + grActualDrift) });
+            continue; // skip default toUpdate push below
         }
 
         toUpdate.push({ id: act.id, last_active_tick: currentTick });

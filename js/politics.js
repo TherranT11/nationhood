@@ -4,7 +4,7 @@ import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate } from './utils.js';
 
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeEndorsementPreference, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, executeIdeologicalPivot, PIVOT_CONFIG } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeEndorsementPreference, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, suspendIdeologyAction, continueIdeologyAction, cancelIdeologyAction, executeIdeologicalPivot, PIVOT_CONFIG } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { statDirectionSign } from './game/stats.js';
@@ -2979,9 +2979,9 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
         .gte('tick_performed', tick - 10)
         .order('tick_performed', { ascending: false });
     const { data: activeShiftActions } = await _supabase.from('ideology_shift_actions')
-        .select('id, action_type, target_axis, target_direction, drift_rate, created_tick, status')
+        .select('id, action_type, target_axis, target_direction, drift_rate, created_tick, status, band_shift_total')
         .eq('faction_id', f.id)
-        .eq('status', 'active');
+        .in('status', ['active', 'paused']);
 
     _caCooldowns = {};
     _caUsedThisTick = {};
@@ -3090,7 +3090,12 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             ? `<span class="ca-used-badge">USED</span>`
             : onCooldown
             ? `<span class="ca-cd-badge">${cdRemaining} tick${cdRemaining !== 1 ? 's' : ''} CD</span>`
-            : isActive ? `<span class="ca-active-badge">ACTIVE</span>` : '';
+            : isActive ? (() => {
+                const match = _caActiveActions.find(a => a.action_type === act.id.replace('fund_', ''));
+                return match?.status === 'paused'
+                    ? `<span class="ca-active-badge" style="background:#f97316">PAUSED</span>`
+                    : `<span class="ca-active-badge">ACTIVE</span>`;
+            })() : '';
         listHtml += `<div class="ca-item${isSel ? ' selected' : ''}${!ok ? ' disabled' : ''}${onCooldown ? ' ca-item--cooldown' : ''}${usedThisTick ? ' ca-item--used' : ''}" data-action-id="${act.id}" style="border-left-color:${borderColor};${bgStyle}${borderStyle}${!ok ? 'opacity:0.35;' : ''}">
             <div class="ca-item-head">
                 <div style="display:flex;align-items:center;gap:6px">
@@ -3130,7 +3135,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
         panelHtml += `</div>`;
     }
 
-    // Build Active Actions table
+    // Build Active Actions table (includes paused actions)
     let activeActionsHtml = '';
     if (_caActiveActions.length > 0) {
         const durationMap = { think_tank: IDEO_SHIFT_CONFIG.THINK_TANK.DURATION, media_campaign: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.DURATION + (IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.VISIBILITY_TICKS || 0), grassroots_movement: IDEO_SHIFT_CONFIG.GRASSROOTS.DURATION };
@@ -3139,6 +3144,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
         for (const ax of IDEOLOGY_AXES) {
             axisMap[ax.key] = ax;
         }
+        const canManage = (type) => type === 'think_tank' || type === 'grassroots_movement';
         let rows = _caActiveActions.map(a => {
             const totalDuration = durationMap[a.action_type] || 50;
             const ticksActive = tick - a.created_tick;
@@ -3148,16 +3154,38 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             const dirLabel = a.target_direction === 'left' ? axDef?.leftLabel : a.target_direction === 'right' ? axDef?.rightLabel : a.target_direction === 'expand' ? `Expand ${axisName}` : a.target_direction === 'narrow' ? `Narrow ${axisName}` : a.target_direction || '?';
             const effectLabel = a.drift_rate ? `+${a.drift_rate}/tick ${dirLabel}` : dirLabel;
             const activatedDate = tickToDate(a.created_tick);
+            const isPaused = a.status === 'paused';
+            const statusLabel = isPaused ? '<span style="color:#f97316;font-weight:600">PAUSED</span>' : `${ticksLeft}`;
+
+            // Management buttons for think_tank and grassroots_movement
+            let btnsHtml = '';
+            if (canManage(a.action_type)) {
+                if (isPaused) {
+                    btnsHtml = `<td style="text-align:right;white-space:nowrap">
+                        <button class="ca-manage-btn" data-action="continue" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#5cb85c;color:#fff;border:none;border-radius:3px">Continue — 1 AP</button>
+                        <button class="ca-manage-btn" data-action="cancel" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#d9534f;color:#fff;border:none;border-radius:3px">Cancel — 2 AP</button>
+                    </td>`;
+                } else {
+                    btnsHtml = `<td style="text-align:right;white-space:nowrap">
+                        <button class="ca-manage-btn" data-action="suspend" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#c8a44e;color:#fff;border:none;border-radius:3px">Suspend — 1 AP</button>
+                        <button class="ca-manage-btn" data-action="cancel" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#d9534f;color:#fff;border:none;border-radius:3px">Cancel — 2 AP</button>
+                    </td>`;
+                }
+            } else {
+                btnsHtml = '<td></td>';
+            }
+
             return `<tr>
                 <td style="font-weight:600">${nameMap[a.action_type] || a.action_type}</td>
                 <td>${activatedDate}</td>
                 <td>${effectLabel}</td>
-                <td style="text-align:right">${ticksLeft}</td>
+                <td style="text-align:right">${statusLabel}</td>
+                ${btnsHtml}
             </tr>`;
         }).join('');
         activeActionsHtml = `<div class="ca-active-actions" style="margin-top:16px;">
             <div class="pe-header"><span class="pol-mod-title">Active Actions</span></div>
-            <table class="pol-el-table" style="margin-top:4px"><thead><tr><th>Action</th><th>Activated</th><th>Effect</th><th style="text-align:right">Ticks Left</th></tr></thead><tbody>${rows}</tbody></table>
+            <table class="pol-el-table" style="margin-top:4px"><thead><tr><th>Action</th><th>Activated</th><th>Effect</th><th style="text-align:right">Ticks Left</th><th></th></tr></thead><tbody>${rows}</tbody></table>
         </div>`;
     }
 
@@ -3178,6 +3206,42 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
 
     // Load party events feed
     _loadPartyEventsFeed(n.id, f.id);
+
+    // Wire up Suspend/Continue/Cancel buttons for ideology shift actions
+    container.querySelectorAll('.ca-manage-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (btn.dataset.executing) return;
+            btn.dataset.executing = 'true';
+            btn.style.opacity = '0.4';
+            const actionId = btn.dataset.id;
+            const op = btn.dataset.action;
+            try {
+                let result;
+                if (op === 'suspend') {
+                    result = await suspendIdeologyAction(_supabase, f.id, actionId, tick);
+                } else if (op === 'continue') {
+                    result = await continueIdeologyAction(_supabase, f.id, actionId, tick);
+                } else if (op === 'cancel') {
+                    result = await cancelIdeologyAction(_supabase, f.id, n.id, actionId, tick);
+                }
+                if (result?.success) {
+                    if (result.newAp != null) f.action_points = result.newAp;
+                    const freshAp = await refreshAP(f.id);
+                    if (freshAp !== undefined) f.action_points = freshAp;
+                    _showToast(result.message || 'Done.');
+                    await renderDemocracyActions(n, f, _currentShard, _currentAllParties);
+                } else {
+                    _showToast(result?.message || 'Action failed.');
+                }
+            } catch (err) {
+                _showToast('Error: ' + err.message);
+            } finally {
+                btn.dataset.executing = '';
+                btn.style.opacity = '1';
+            }
+        });
+    });
 
     // Wire up action selection
     container.querySelectorAll('.ca-item').forEach(el => {
@@ -6038,10 +6102,10 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             .order('tick', { ascending: false })
             .limit(20),
         _supabase.from('ideology_shift_actions')
-            .select('action_type, target_axis, target_direction, created_tick')
+            .select('action_type, target_axis, target_direction, created_tick, status')
             .eq('faction_id', playerFaction.id)
             .eq('nation_id', nation.id)
-            .eq('status', 'active'),
+            .in('status', ['active', 'paused']),
         _supabase.from('government_formations')
             .select('lead_party_id, party_ids')
             .eq('nation_id', nation.id)
@@ -6274,7 +6338,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
                 <div style="padding:6px 0;border-bottom:1px solid var(--dborder-0)">
                     <div style="display:flex;justify-content:space-between;align-items:center">
                         <div style="font-size:10px;font-weight:600;color:var(--dtext-1);font-family:var(--dfont-ui)">${escapeHtml(name)}</div>
-                        <span style="font-size:9px;color:var(--dtext-3);font-family:var(--dfont-mono)">${ticksLeft} ticks left</span>
+                        <span style="font-size:9px;color:${c.status === 'paused' ? '#f97316' : 'var(--dtext-3)'};font-family:var(--dfont-mono)">${c.status === 'paused' ? 'PAUSED' : ticksLeft + ' ticks left'}</span>
                     </div>
                     <div style="font-size:9px;color:var(--dtext-3);margin-top:2px">${escapeHtml(axisLabel)} — ${escapeHtml(dirLabel)}</div>
                     <div style="height:3px;border-radius:2px;background:var(--dbg-3);margin-top:4px;overflow:hidden">
