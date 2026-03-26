@@ -1698,7 +1698,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         .select('faction_id').eq('id', proceedingData.president_id).single();
                     if (presidentRow) {
                         await nudgeApproval(supabase, presidentRow.faction_id, bill.nation_id, -5, { source: 'impeachment:passed' });
-                        await adjustCredibility(supabase, presidentRow.faction_id, bill.nation_id, -0.15, 12);
+                        await adjustCredibility(supabase, presidentRow.faction_id, bill.nation_id, -0.15, 12, currentTick, { source: 'impeachment:passed' });
                     }
                 }
 
@@ -1749,7 +1749,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
 
                 // Filer takes approval & credibility hit (partisan overreach)
                 await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -2, { source: 'impeachment:failed' });
-                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.05);
+                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.05, 0, currentTick, { source: 'impeachment:motion_failed' });
 
                 // President gets +3 approval (vindication)
                 const { data: proc } = await supabase.from('impeachment_proceedings')
@@ -1759,7 +1759,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         .select('faction_id').eq('id', proc.president_id).single();
                     if (presRow) {
                         await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 2, { source: 'impeachment:failed' });
-                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.03);
+                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.03, 0, currentTick, { source: 'impeachment:motion_failed:vindicated' });
                     }
                 }
 
@@ -1818,7 +1818,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         .select('faction_id').eq('id', proc.president_id).single();
                     if (presRow) {
                         await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 3, { source: 'impeachment:survived' });
-                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.05);
+                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.05, 0, currentTick, { source: 'impeachment:survived' });
                     }
                 }
 
@@ -1835,11 +1835,11 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 for (const v of yesVoters) {
                     if (v.faction_id !== bill.proposed_by) {
                         await nudgeApproval(supabase, v.faction_id, bill.nation_id, -1, { source: 'impeachment:survived' });
-                        await adjustCredibility(supabase, v.faction_id, bill.nation_id, -0.03);
+                        await adjustCredibility(supabase, v.faction_id, bill.nation_id, -0.03, 0, currentTick, { source: 'impeachment:survived:accuser' });
                     }
                 }
                 await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -1, { source: 'impeachment:survived' });
-                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.03);
+                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.03, 0, currentTick, { source: 'impeachment:survived:accuser' });
 
                 try {
                     await supabase.from('event_log').insert({
@@ -2907,7 +2907,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
                 for (const faction of allFactions) {
                     // Base loves it (+3 approval) but anti-democratic (-0.1 credibility)
                     await nudgeApproval(supabase, faction.id, bill.nation_id, 3, { source: 'bill:term_limit' });
-                    await adjustCredibility(supabase, faction.id, bill.nation_id, -0.1);
+                    await adjustCredibility(supabase, faction.id, bill.nation_id, -0.1, 0, currentTick, { source: 'bill:term_limit' });
                 }
             }
 

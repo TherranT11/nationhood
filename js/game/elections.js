@@ -795,7 +795,7 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
             // All coalition parties take approval & credibility hit
             for (const partyId of coalitionPartyIds) {
                 await nudgeApproval(supabase, partyId, nationId, -3, { source: 'election:no_confidence_called' });
-                await adjustCredibility(supabase, partyId, nationId, -0.05);
+                await adjustCredibility(supabase, partyId, nationId, -0.05, 0, currentTick, { source: 'no_confidence:passed' });
             }
             await adjustGovernmentApprovalEvent(supabase, nationId, -5, 'no_confidence:success');
 
@@ -830,12 +830,12 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
     } else {
         // FAILED: calling party takes approval & credibility hit
         await nudgeApproval(supabase, callingPartyId, nationId, -3, { source: 'election:no_confidence_failed' });
-        await adjustCredibility(supabase, callingPartyId, nationId, -0.05);
+        await adjustCredibility(supabase, callingPartyId, nationId, -0.05, 0, currentTick, { source: 'no_confidence:failed' });
 
         // PM's party gets approval & credibility boost
         if (pmFactionId) {
             await nudgeApproval(supabase, pmFactionId, nationId, 2, { source: 'election:no_confidence_failed' });
-            await adjustCredibility(supabase, pmFactionId, nationId, 0.03);
+            await adjustCredibility(supabase, pmFactionId, nationId, 0.03, 0, currentTick, { source: 'no_confidence:failed:vindicated' });
         }
 
         // Record cooldown: store the tick when the no-confidence failed

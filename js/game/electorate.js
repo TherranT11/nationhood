@@ -2204,7 +2204,7 @@ export async function nudgeEnthusiasm(supabase, nationId, delta) {
  * @param {number} [suspendRecoveryTicks=0] - If > 0, suspend credibility recovery for this many ticks
  * @param {number} [currentTick=0] - Current tick (needed for suspend calculation)
  */
-export async function adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0) {
+export async function adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0, opts = {}) {
     if (!delta && !suspendRecoveryTicks) return;
 
     const { data: standing } = await supabase
@@ -2229,6 +2229,20 @@ export async function adjustCredibility(supabase, factionId, nationId, delta, su
         .update(updateObj)
         .eq('id', standing.id);
     if (credErr) console.error('[Electorate] credibility update failed:', credErr.message);
+
+    // Audit log (non-fatal)
+    if (delta && opts.source) {
+        const tick = currentTick || opts.tick || 0;
+        supabase.from('credibility_log').insert({
+            faction_id: factionId,
+            nation_id: nationId,
+            amount: delta,
+            source: opts.source,
+            tick,
+        }).then(({ error: logErr }) => {
+            if (logErr) console.warn('[Electorate] credibility_log insert failed:', logErr.message);
+        });
+    }
 }
 
 // ============================================================================
@@ -2553,10 +2567,10 @@ export async function onAttack(supabase, factionId, targetFactionId, nationId, o
     const suspendTicks = strength === 'strong' ? 5 : strength === 'moderate' ? 3 : 1;
 
     if (targetCredDelta !== 0) {
-        await adjustCredibility(supabase, targetFactionId, nationId, targetCredDelta, suspendTicks, currentTick);
+        await adjustCredibility(supabase, targetFactionId, nationId, targetCredDelta, suspendTicks, currentTick, { source: 'attack:received' });
     }
     if (selfCredDelta !== 0) {
-        await adjustCredibility(supabase, factionId, nationId, selfCredDelta, suspendTicks, currentTick);
+        await adjustCredibility(supabase, factionId, nationId, selfCredDelta, suspendTicks, currentTick, { source: 'attack:self' });
     }
 
     // Attacker always gains some visibility (political theater)

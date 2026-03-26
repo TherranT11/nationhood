@@ -4815,7 +4815,7 @@ async function activateEconomicCollapse(supabase, nation, currentTick) {
         const coalition = await fetchActiveCoalition(supabase, nation.id);
         for (const partyId of (coalition?.party_ids || [])) {
             await nudgeApproval(supabase, partyId, nation.id, -6, { source: 'crisis:sovereign_default' });
-            await adjustCredibility(supabase, partyId, nation.id, -0.15, 12);
+            await adjustCredibility(supabase, partyId, nation.id, -0.15, 12, currentTick, { source: 'sovereign_default' });
         }
 
         // 4. Reset gdp_growth to neutral (stop the bleeding) — critical to prevent re-trigger loop
@@ -7516,7 +7516,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         .select('faction_id').eq('id', proceedingData.president_id).single();
                     if (presidentRow) {
                         await nudgeApproval(supabase, presidentRow.faction_id, bill.nation_id, -5, { source: 'impeachment:passed' });
-                        await adjustCredibility(supabase, presidentRow.faction_id, bill.nation_id, -0.15, 12);
+                        await adjustCredibility(supabase, presidentRow.faction_id, bill.nation_id, -0.15, 12, currentTick, { source: 'impeachment:passed' });
                     }
                 }
 
@@ -7567,7 +7567,7 @@ async function resolveExpiredVotes(supabase, nationId) {
 
                 // Filer takes approval & credibility hit (partisan overreach)
                 await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -2, { source: 'impeachment:failed' });
-                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.05);
+                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.05, 0, currentTick, { source: 'impeachment:motion_failed' });
 
                 // President gets +3 approval (vindication)
                 const { data: proc } = await supabase.from('impeachment_proceedings')
@@ -7577,7 +7577,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         .select('faction_id').eq('id', proc.president_id).single();
                     if (presRow) {
                         await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 2, { source: 'impeachment:failed' });
-                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.03);
+                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.03, 0, currentTick, { source: 'impeachment:motion_failed:vindicated' });
                     }
                 }
 
@@ -7636,7 +7636,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         .select('faction_id').eq('id', proc.president_id).single();
                     if (presRow) {
                         await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 3, { source: 'impeachment:survived' });
-                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.05);
+                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.05, 0, currentTick, { source: 'impeachment:survived' });
                     }
                 }
 
@@ -7653,11 +7653,11 @@ async function resolveExpiredVotes(supabase, nationId) {
                 for (const v of yesVoters) {
                     if (v.faction_id !== bill.proposed_by) {
                         await nudgeApproval(supabase, v.faction_id, bill.nation_id, -1, { source: 'impeachment:survived' });
-                        await adjustCredibility(supabase, v.faction_id, bill.nation_id, -0.03);
+                        await adjustCredibility(supabase, v.faction_id, bill.nation_id, -0.03, 0, currentTick, { source: 'impeachment:survived:accuser' });
                     }
                 }
                 await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -1, { source: 'impeachment:survived' });
-                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.03);
+                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.03, 0, currentTick, { source: 'impeachment:survived:accuser' });
 
                 try {
                     await supabase.from('event_log').insert({
@@ -8725,7 +8725,7 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
                 for (const faction of allFactions) {
                     // Base loves it (+3 approval) but anti-democratic (-0.1 credibility)
                     await nudgeApproval(supabase, faction.id, bill.nation_id, 3, { source: 'bill:term_limit' });
-                    await adjustCredibility(supabase, faction.id, bill.nation_id, -0.1);
+                    await adjustCredibility(supabase, faction.id, bill.nation_id, -0.1, 0, currentTick, { source: 'bill:term_limit' });
                 }
             }
 
@@ -10105,7 +10105,7 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
             // All coalition parties take approval & credibility hit
             for (const partyId of coalitionPartyIds) {
                 await nudgeApproval(supabase, partyId, nationId, -3, { source: 'election:no_confidence_called' });
-                await adjustCredibility(supabase, partyId, nationId, -0.05);
+                await adjustCredibility(supabase, partyId, nationId, -0.05, 0, currentTick, { source: 'no_confidence:passed' });
             }
             await adjustGovernmentApprovalEvent(supabase, nationId, -5, 'no_confidence:success');
 
@@ -10140,12 +10140,12 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
     } else {
         // FAILED: calling party takes approval & credibility hit
         await nudgeApproval(supabase, callingPartyId, nationId, -3, { source: 'election:no_confidence_failed' });
-        await adjustCredibility(supabase, callingPartyId, nationId, -0.05);
+        await adjustCredibility(supabase, callingPartyId, nationId, -0.05, 0, currentTick, { source: 'no_confidence:failed' });
 
         // PM's party gets approval & credibility boost
         if (pmFactionId) {
             await nudgeApproval(supabase, pmFactionId, nationId, 2, { source: 'election:no_confidence_failed' });
-            await adjustCredibility(supabase, pmFactionId, nationId, 0.03);
+            await adjustCredibility(supabase, pmFactionId, nationId, 0.03, 0, currentTick, { source: 'no_confidence:failed:vindicated' });
         }
 
         // Record cooldown: store the tick when the no-confidence failed
@@ -15236,7 +15236,7 @@ async function nudgeEnthusiasm(supabase, nationId, delta) {
  * @param {number} [suspendRecoveryTicks=0] - If > 0, suspend credibility recovery for this many ticks
  * @param {number} [currentTick=0] - Current tick (needed for suspend calculation)
  */
-async function adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0) {
+async function adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0, opts: any = {}) {
     if (!delta && !suspendRecoveryTicks) return;
 
     const { data: standing } = await supabase
@@ -15261,6 +15261,20 @@ async function adjustCredibility(supabase, factionId, nationId, delta, suspendRe
         .update(updateObj)
         .eq('id', standing.id);
     if (credErr) console.error('[Electorate] credibility update failed:', credErr.message);
+
+    // Audit log (non-fatal)
+    if (delta && opts.source) {
+        const tick = currentTick || opts.tick || 0;
+        supabase.from('credibility_log').insert({
+            faction_id: factionId,
+            nation_id: nationId,
+            amount: delta,
+            source: opts.source,
+            tick,
+        }).then(({ error: logErr }) => {
+            if (logErr) console.warn('[Electorate] credibility_log insert failed:', logErr.message);
+        });
+    }
 }
 
 // ============================================================================
@@ -15585,10 +15599,10 @@ async function onAttack(supabase, factionId, targetFactionId, nationId, outcomeI
     const suspendTicks = strength === 'strong' ? 5 : strength === 'moderate' ? 3 : 1;
 
     if (targetCredDelta !== 0) {
-        await adjustCredibility(supabase, targetFactionId, nationId, targetCredDelta, suspendTicks, currentTick);
+        await adjustCredibility(supabase, targetFactionId, nationId, targetCredDelta, suspendTicks, currentTick, { source: 'attack:received' });
     }
     if (selfCredDelta !== 0) {
-        await adjustCredibility(supabase, factionId, nationId, selfCredDelta, suspendTicks, currentTick);
+        await adjustCredibility(supabase, factionId, nationId, selfCredDelta, suspendTicks, currentTick, { source: 'attack:self' });
     }
 
     // Attacker always gains some visibility (political theater)
@@ -21964,7 +21978,7 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
         const approvalDelta = _round2(targetDelta * 0.3);
         const credDelta = _round3(targetDelta * 0.01);
         await _nudgeApproval(supabase, targetFactionId, nationId, approvalDelta, 'attack');
-        await _adjustCredibility(supabase, targetFactionId, nationId, credDelta);
+        await _adjustCredibility(supabase, targetFactionId, nationId, credDelta, 0, 0, { source: 'attack:received' });
         effects.push({ label: targetFaction.faction_name, value: targetDelta });
     }
 
@@ -21972,7 +21986,7 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
     if (selfDelta !== 0) {
         const selfLabel = selfDelta > 0 ? 'Your party (credibility gain)' : 'Your party (credibility loss)';
         const selfCredDelta = _round3(selfDelta * 0.01);
-        await _adjustCredibility(supabase, factionId, nationId, selfCredDelta);
+        await _adjustCredibility(supabase, factionId, nationId, selfCredDelta, 0, 0, { source: 'attack:self' });
         effects.push({ label: selfLabel, value: selfDelta });
     }
 
@@ -22699,7 +22713,7 @@ async function _nudgeApproval(supabase, factionId, nationId, delta, source) {
  * Adjust a faction's credibility_modifier in faction_electoral_standing.
  * Local helper for promise resolution (mirrors adjustCredibility in advance-tick).
  */
-async function _adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0) {
+async function _adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0, opts: any = {}) {
     if (!delta && !suspendRecoveryTicks) return;
     const { data: standing } = await supabase
         .from('faction_electoral_standing')
@@ -22719,6 +22733,20 @@ async function _adjustCredibility(supabase, factionId, nationId, delta, suspendR
     await supabase.from('faction_electoral_standing')
         .update(updateObj)
         .eq('id', standing.id);
+
+    // Audit log (non-fatal)
+    if (delta && opts.source) {
+        const tick = currentTick || opts.tick || 0;
+        supabase.from('credibility_log').insert({
+            faction_id: factionId,
+            nation_id: nationId,
+            amount: delta,
+            source: opts.source,
+            tick,
+        }).then(({ error: logErr }) => {
+            if (logErr) console.warn('[PoliticalActions] credibility_log insert failed:', logErr.message);
+        });
+    }
 }
 
 /**
@@ -22730,7 +22758,7 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
     if (resolution === 'fulfilled') {
         // ── REWARDS via electorate engine (party_approval + credibility) ──
         await _nudgeApproval(supabase, promise.party_id, promise.nation_id, cfg.KEPT_APPROVAL, 'promise:kept');
-        await _adjustCredibility(supabase, promise.party_id, promise.nation_id, cfg.KEPT_CREDIBILITY);
+        await _adjustCredibility(supabase, promise.party_id, promise.nation_id, cfg.KEPT_CREDIBILITY, 0, currentTick, { source: `promise:kept:${promise.demand_text || 'Unknown'}` });
         console.log(`[Promise] Fulfilled: +${cfg.KEPT_APPROVAL} approval, +${cfg.KEPT_CREDIBILITY} credibility for ${promise.party_id}`);
 
         // Mark promise as fulfilled
@@ -22741,7 +22769,7 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
     } else if (resolution === 'broken') {
         // ── PENALTIES via electorate engine (party_approval + credibility) ──
         await _nudgeApproval(supabase, promise.party_id, promise.nation_id, cfg.BROKEN_APPROVAL, 'promise:broken');
-        await _adjustCredibility(supabase, promise.party_id, promise.nation_id, cfg.BROKEN_CREDIBILITY, cfg.BROKEN_CREDIBILITY_SUSPEND, currentTick);
+        await _adjustCredibility(supabase, promise.party_id, promise.nation_id, cfg.BROKEN_CREDIBILITY, cfg.BROKEN_CREDIBILITY_SUSPEND, currentTick, { source: `promise:broken:${promise.demand_text || 'Unknown'}` });
         console.log(`[Promise] Broken: ${cfg.BROKEN_APPROVAL} approval, ${cfg.BROKEN_CREDIBILITY} credibility for ${promise.party_id}`);
 
         // Nervous effect: other active promises compound credibility damage
@@ -22754,7 +22782,7 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
 
         if (otherPromises && otherPromises.length > 0) {
             const nervousDelta = cfg.BROKEN_NERVOUS_CREDIBILITY * otherPromises.length;
-            await _adjustCredibility(supabase, promise.party_id, promise.nation_id, nervousDelta);
+            await _adjustCredibility(supabase, promise.party_id, promise.nation_id, nervousDelta, 0, currentTick, { source: `promise:nervous:${promise.demand_text || 'Unknown'}` });
             console.log(`[Promise] Nervous effect: ${nervousDelta} credibility (${otherPromises.length} other active promises)`);
         }
 
@@ -25020,7 +25048,7 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
 
     // 2. Approval, credibility & stability penalties
     await _nudgeApproval(supabase, factionId, nationId, -3, 'resign_pm');
-    await _adjustCredibility(supabase, factionId, nationId, -0.05);
+    await _adjustCredibility(supabase, factionId, nationId, -0.05, 0, 0, { source: 'resign_pm' });
 
     const { data: nation } = await supabase
         .from('nations')
@@ -28061,7 +28089,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
                     // President's party takes massive approval & credibility hit
                     await nudgeApproval(supabase, president.faction_id, nation.id, -5);
-                    await adjustCredibility(supabase, president.faction_id, nation.id, -0.2, 24, currentTick);
+                    await adjustCredibility(supabase, president.faction_id, nation.id, -0.2, 24, currentTick, { source: 'impeachment:convicted' });
 
                     // Stability -3, international_reputation -3
                     const newStab = Math.max(0, Math.round(Number(nation.stability || 50) - 3));

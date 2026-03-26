@@ -637,7 +637,7 @@ async function activateEconomicCollapse(supabase, nation, currentTick) {
         const coalition = await fetchActiveCoalition(supabase, nation.id);
         for (const partyId of (coalition?.party_ids || [])) {
             await nudgeApproval(supabase, partyId, nation.id, -6, { source: 'crisis:sovereign_default' });
-            await adjustCredibility(supabase, partyId, nation.id, -0.15, 12);
+            await adjustCredibility(supabase, partyId, nation.id, -0.15, 12, currentTick, { source: 'sovereign_default' });
         }
 
         // 4. Reset gdp_growth to neutral (stop the bleeding) — critical to prevent re-trigger loop

@@ -5985,14 +5985,20 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const partyAbbr = playerFaction.abbreviation || '??';
     const partyName = playerFaction.faction_name || 'Unknown Party';
 
-    // Fetch standing, party approval log, and government formation in parallel
-    const [standingRes, partyLogRes, govFormRes] = await Promise.all([
+    // Fetch standing, party approval log, credibility log, and government formation in parallel
+    const [standingRes, partyLogRes, credLogRes, govFormRes] = await Promise.all([
         _supabase.from('faction_electoral_standing')
-            .select('faction_id, party_approval, polled_party_approval, last_polled_tick')
+            .select('faction_id, party_approval, polled_party_approval, last_polled_tick, credibility_modifier')
             .eq('nation_id', nation.id)
             .eq('faction_id', playerFaction.id)
             .maybeSingle(),
         _supabase.from('party_approval_log')
+            .select('amount, source, tick')
+            .eq('nation_id', nation.id)
+            .eq('faction_id', playerFaction.id)
+            .order('tick', { ascending: false })
+            .limit(20),
+        _supabase.from('credibility_log')
             .select('amount, source, tick')
             .eq('nation_id', nation.id)
             .eq('faction_id', playerFaction.id)
@@ -6117,7 +6123,81 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         : 'OPPOSITION';
     const statusColor = isGoverning ? '#5cb85c' : '#d98030';
 
-    // Build the Party Approval container
+    // ── Credibility data ──
+    const credLog = credLogRes.data || [];
+    const credModifier = Number(playerStanding.credibility_modifier ?? 1.0);
+    const credScore = Math.round((credModifier - 0.5) * 100); // 0-100 scale
+
+    function _credColor(val) {
+        if (val >= 60) return '#5cb85c';
+        if (val >= 40) return '#c8a44e';
+        if (val >= 25) return '#d98030';
+        return '#d9534f';
+    }
+
+    // Credibility source labels
+    const _credSourceLabels = {
+        'attack:received': 'Attacked',
+        'attack:self': 'Attack Backfire',
+        'impeachment:passed': 'Impeached',
+        'impeachment:motion_failed': 'Impeachment Failed',
+        'impeachment:motion_failed:vindicated': 'Vindicated',
+        'impeachment:survived': 'Survived Impeachment',
+        'impeachment:survived:accuser': 'Failed Accusation',
+        'bill:term_limit': 'Term Limit Bill',
+        'no_confidence:passed': 'No Confidence Passed',
+        'no_confidence:failed': 'No Confidence Failed',
+        'no_confidence:failed:vindicated': 'Vindicated (No Confidence)',
+        'executive_order:censure': 'Censured',
+        'sovereign_default': 'Sovereign Default',
+        'resign_pm': 'PM Resignation',
+    };
+    function _formatCredSource(source) {
+        if (_credSourceLabels[source]) return _credSourceLabels[source];
+        // Promise sources: promise:kept:Lower Unemployment, promise:broken:Unemployment, promise:nervous:Unemployment
+        if (source.startsWith('promise:kept:')) return `Promise Kept (${source.slice('promise:kept:'.length)})`;
+        if (source.startsWith('promise:broken:')) return `Promise Broken (${source.slice('promise:broken:'.length)})`;
+        if (source.startsWith('promise:nervous:')) return `Promise Nervous (${source.slice('promise:nervous:'.length)})`;
+        if (source.startsWith('promise:')) return 'Promise';
+        if (source.startsWith('attack:')) return 'Attack';
+        return source.replace(/_/g, ' ').replace(/:/g, ' — ');
+    }
+
+    // Build credibility modifier rows
+    let credModifiersHtml = '';
+    if (credLog.length === 0) {
+        credModifiersHtml = '<div style="font-size:10px;color:var(--dtext-3);font-style:italic;padding:6px 0">No recorded changes yet.</div>';
+    } else {
+        for (const entry of credLog) {
+            const amt = Number(entry.amount);
+            const sign = amt >= 0 ? '+' : '';
+            const color = amt >= 0 ? '#5cb85c' : '#d9534f';
+            const label = _formatCredSource(entry.source);
+            const date = tickToDate(entry.tick);
+            credModifiersHtml += `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--dborder-0)">
+                    <div style="flex:1;min-width:0">
+                        <div style="font-size:10px;color:var(--dtext-1);font-family:var(--dfont-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(label)}</div>
+                        <div style="font-size:9px;color:var(--dtext-3);font-family:var(--dfont-ui)">${escapeHtml(date)}</div>
+                    </div>
+                    <div style="flex-shrink:0;margin-left:8px">
+                        <span style="font-size:11px;font-weight:700;font-family:var(--dfont-mono);color:${color};min-width:40px;text-align:right;display:inline-block">${sign}${amt.toFixed(2)}</span>
+                    </div>
+                </div>`;
+        }
+    }
+
+    // Credibility tier label
+    function _credTier(score) {
+        if (score >= 80) return { label: 'Excellent', color: '#5cb85c' };
+        if (score >= 60) return { label: 'Good', color: '#6baf6b' };
+        if (score >= 40) return { label: 'Average', color: '#c8a44e' };
+        if (score >= 20) return { label: 'Poor', color: '#d98030' };
+        return { label: 'Disgraced', color: '#d9534f' };
+    }
+    const tier = _credTier(credScore);
+
+    // Build the Party Approval + Credibility containers
     container.innerHTML = `
     <div style="display:flex;flex-wrap:wrap;gap:16px;padding:10px 0">
         <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
@@ -6155,6 +6235,46 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             <!-- Modifier list (scrollable) -->
             <div style="flex:1;overflow-y:auto;min-height:0">
                 ${modifiersHtml}
+            </div>
+        </div>
+
+        <!-- Credibility Container -->
+        <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
+            <!-- Header -->
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${partyColor};margin-bottom:4px;font-weight:700">CREDIBILITY</div>
+
+            <!-- Party name + tier -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <span style="font-size:14px;font-weight:700;color:var(--dtext-0)">${escapeHtml(partyName)}</span>
+                <span style="font-size:9px;font-weight:600;color:${tier.color};text-transform:uppercase;letter-spacing:0.5px">${tier.label}</span>
+            </div>
+
+            <!-- Score value -->
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+                <span style="font-size:28px;font-weight:800;font-family:var(--dfont-mono);color:${_credColor(credScore)}">${credScore}</span>
+                <span style="font-size:11px;color:var(--dtext-3)">/ 100</span>
+                <span style="font-size:10px;color:var(--dtext-3);font-family:var(--dfont-mono)">(${credModifier.toFixed(2)}x)</span>
+            </div>
+
+            <!-- Credibility bar -->
+            <div style="height:6px;border-radius:3px;background:var(--dbg-3);margin-bottom:8px;overflow:hidden">
+                <div style="width:${Math.min(100, credScore)}%;height:100%;background:${_credColor(credScore)};border-radius:3px;transition:width 0.5s"></div>
+            </div>
+
+            <!-- Election weight info -->
+            <div style="font-size:10px;color:var(--dtext-3);margin-bottom:14px;font-family:var(--dfont-ui)">
+                Election Weight — <span style="color:var(--dtext-1)">20% (5-35% dynamic)</span>
+            </div>
+
+            <hr style="border:none;border-top:1px solid var(--dborder-0);margin:0 0 10px 0">
+
+            <!-- Changes header -->
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dtext-0);margin-bottom:6px">Recent Changes</div>
+            <div style="font-size:9px;color:var(--dtext-3);margin-bottom:8px;font-style:italic">Events that affected your party's credibility</div>
+
+            <!-- Changes list (scrollable) -->
+            <div style="flex:1;overflow-y:auto;min-height:0">
+                ${credModifiersHtml}
             </div>
         </div>
     </div>`;
