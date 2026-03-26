@@ -503,8 +503,9 @@ async function updateDiplomacyBadge(faction, nation, roles) {
         for (const msg of (msgs || [])) {
             const readBy = msg.read_by_factions || [];
             if (readBy.includes(faction.id)) continue;
-            // FM and MoT see all messages; ambassadors only from their posted nation
-            if (roles.isFM || roles.isMoT || roles.ambassadorTargetIds.includes(msg.from_nation_id)) {
+            // FM sees all messages; ambassadors only from their posted nation
+            // MoT does NOT see diplomatic messages (those are FM/ambassador domain)
+            if (roles.isFM || roles.ambassadorTargetIds.includes(msg.from_nation_id)) {
                 count++;
             }
         }
@@ -543,21 +544,22 @@ async function updateDiplomacyAwaitingBadge(faction, nation, roles) {
             .eq('target_nation_id', nation.id);
 
         let count = 0;
+        // Diplomatic proposals: FM and ambassadors only (MoT does not handle proposals)
         for (const p of (proposals || [])) {
             if (p.status === 'proposed') {
-                if (roles.isFM || roles.isMoT || roles.ambassadorTargetIds.includes(p.proposing_nation_id)) {
+                if (roles.isFM || roles.ambassadorTargetIds.includes(p.proposing_nation_id)) {
                     count++;
                 }
             } else if (p.status === 'revised') {
                 const pd = p.proposal_data || {};
                 const revisedByUs = pd.revised_by_nation_id === nation.id;
-                if (!revisedByUs && (roles.isFM || roles.isMoT || roles.ambassadorTargetIds.includes(p.proposing_nation_id))) {
+                if (!revisedByUs && (roles.isFM || roles.ambassadorTargetIds.includes(p.proposing_nation_id))) {
                     count++;
                 }
             }
         }
 
-        // Also count trade negotiations targeting us that are still open
+        // Trade negotiations: FM, MoT, and relevant ambassadors
         const { data: tradeNegs } = await _supabase
             .from('trade_negotiations')
             .select('initiated_by_nation, nation_a_id, nation_b_id, status')
