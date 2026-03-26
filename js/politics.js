@@ -5985,10 +5985,10 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const partyAbbr = playerFaction.abbreviation || '??';
     const partyName = playerFaction.faction_name || 'Unknown Party';
 
-    // Fetch standing, party approval log, credibility log, and government formation in parallel
-    const [standingRes, partyLogRes, credLogRes, govFormRes] = await Promise.all([
+    // Fetch standing, party approval log, credibility log, active campaigns, and government formation in parallel
+    const [standingRes, partyLogRes, credLogRes, activeCampaignsRes, govFormRes] = await Promise.all([
         _supabase.from('faction_electoral_standing')
-            .select('faction_id, party_approval, polled_party_approval, last_polled_tick, credibility_modifier')
+            .select('faction_id, party_approval, polled_party_approval, last_polled_tick, credibility_modifier, ideological_alignment')
             .eq('nation_id', nation.id)
             .eq('faction_id', playerFaction.id)
             .maybeSingle(),
@@ -6004,6 +6004,11 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             .eq('faction_id', playerFaction.id)
             .order('tick', { ascending: false })
             .limit(20),
+        _supabase.from('ideology_shift_actions')
+            .select('action_type, target_axis, target_direction, drift_rate, created_tick, status')
+            .eq('faction_id', playerFaction.id)
+            .eq('nation_id', nation.id)
+            .eq('status', 'active'),
         _supabase.from('government_formations')
             .select('lead_party_id, party_ids')
             .eq('nation_id', nation.id)
@@ -6191,7 +6196,60 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     }
     const tier = _credTier(credScore);
 
-    // Build the Party Approval + Credibility containers
+    // ── Alignment data ──
+    const alignScore = Math.max(0, Math.min(100, Math.round(Number(playerStanding.ideological_alignment ?? 50))));
+    const activeCampaigns = activeCampaignsRes.data || [];
+
+    function _alignTier(score) {
+        if (score >= 75) return { label: 'Strong Alignment', color: '#5cb85c' };
+        if (score >= 55) return { label: 'Moderate Alignment', color: '#6baf6b' };
+        if (score >= 40) return { label: 'Weak Alignment', color: '#c8a44e' };
+        if (score >= 25) return { label: 'Misaligned', color: '#d98030' };
+        return { label: 'Severely Misaligned', color: '#d9534f' };
+    }
+    const alignTier = _alignTier(alignScore);
+
+    // Build active campaigns list
+    const _campaignNames = { think_tank: 'Think Tank', media_campaign: 'Media Campaign', grassroots_movement: 'Grassroots Movement' };
+    const _campaignDurations = {
+        think_tank: IDEO_SHIFT_CONFIG.THINK_TANK.DURATION,
+        media_campaign: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.DURATION + (IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.VISIBILITY_TICKS || 0),
+        grassroots_movement: IDEO_SHIFT_CONFIG.GRASSROOTS.DURATION,
+    };
+    const axisMap = {};
+    for (const ax of IDEOLOGY_AXES) axisMap[ax.key] = ax;
+
+    let campaignsHtml = '';
+    if (activeCampaigns.length === 0) {
+        campaignsHtml = '<div style="font-size:10px;color:var(--dtext-3);font-style:italic;padding:6px 0">No active ideology campaigns.</div>';
+    } else {
+        for (const c of activeCampaigns) {
+            const name = _campaignNames[c.action_type] || c.action_type;
+            const totalDur = _campaignDurations[c.action_type] || 50;
+            const ticksActive = currentTick - (c.created_tick || currentTick);
+            const ticksLeft = Math.max(0, totalDur - ticksActive);
+            const pct = Math.min(100, Math.round((ticksActive / totalDur) * 100));
+            const axDef = axisMap[c.target_axis];
+            const dirLabel = c.target_direction === 'left' ? (axDef?.leftLabel || 'Left')
+                : c.target_direction === 'right' ? (axDef?.rightLabel || 'Right')
+                : c.target_direction === 'expand' ? 'Polarize'
+                : c.target_direction === 'narrow' ? 'Unify' : c.target_direction || '?';
+            const axisLabel = axDef ? `${axDef.leftLabel}–${axDef.rightLabel}` : c.target_axis || '';
+            campaignsHtml += `
+                <div style="padding:6px 0;border-bottom:1px solid var(--dborder-0)">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <div style="font-size:10px;font-weight:600;color:var(--dtext-1);font-family:var(--dfont-ui)">${escapeHtml(name)}</div>
+                        <span style="font-size:9px;color:var(--dtext-3);font-family:var(--dfont-mono)">${ticksLeft} ticks left</span>
+                    </div>
+                    <div style="font-size:9px;color:var(--dtext-3);margin-top:2px">${escapeHtml(axisLabel)} — ${escapeHtml(dirLabel)}</div>
+                    <div style="height:3px;border-radius:2px;background:var(--dbg-3);margin-top:4px;overflow:hidden">
+                        <div style="width:${pct}%;height:100%;background:${partyColor};border-radius:2px;transition:width 0.5s"></div>
+                    </div>
+                </div>`;
+        }
+    }
+
+    // Build the Party Approval + Credibility + Alignment containers
     container.innerHTML = `
     <div style="display:flex;flex-wrap:wrap;gap:16px;padding:10px 0">
         <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
@@ -6269,6 +6327,49 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             <!-- Changes list (scrollable) -->
             <div style="flex:1;overflow-y:auto;min-height:0">
                 ${credModifiersHtml}
+            </div>
+        </div>
+
+        <!-- Alignment Container -->
+        <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
+            <!-- Header -->
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${partyColor};margin-bottom:4px;font-weight:700">IDEOLOGICAL ALIGNMENT</div>
+
+            <!-- Party name + tier -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <span style="font-size:14px;font-weight:700;color:var(--dtext-0)">${escapeHtml(partyName)}</span>
+                <span style="font-size:9px;font-weight:600;color:${alignTier.color};text-transform:uppercase;letter-spacing:0.5px">${alignTier.label}</span>
+            </div>
+
+            <!-- Score value -->
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+                <span style="font-size:28px;font-weight:800;font-family:var(--dfont-mono);color:${_approvalColor(alignScore)}">${alignScore}</span>
+                <span style="font-size:11px;color:var(--dtext-3)">/ 100</span>
+            </div>
+
+            <!-- Alignment bar -->
+            <div style="height:6px;border-radius:3px;background:var(--dbg-3);margin-bottom:8px;overflow:hidden">
+                <div style="width:${Math.min(100, alignScore)}%;height:100%;background:${_approvalColor(alignScore)};border-radius:3px;transition:width 0.5s"></div>
+            </div>
+
+            <!-- Election weight info -->
+            <div style="font-size:10px;color:var(--dtext-3);margin-bottom:6px;font-family:var(--dfont-ui)">
+                Election Weight — <span style="color:var(--dtext-1)">25% (largest factor)</span>
+            </div>
+
+            <!-- Hint -->
+            <div style="font-size:9px;color:var(--dtext-3);margin-bottom:14px;font-style:italic">
+                How closely your party's ideology matches the electorate. Use Think Tanks, Grassroots Movements, or Media Campaigns to shift alignment.
+            </div>
+
+            <hr style="border:none;border-top:1px solid var(--dborder-0);margin:0 0 10px 0">
+
+            <!-- Active campaigns header -->
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dtext-0);margin-bottom:6px">Active Campaigns</div>
+
+            <!-- Campaigns list (scrollable) -->
+            <div style="flex:1;overflow-y:auto;min-height:0">
+                ${campaignsHtml}
             </div>
         </div>
     </div>`;
