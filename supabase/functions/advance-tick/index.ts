@@ -22752,6 +22752,17 @@ async function processPromiseTick(supabase, nation, currentTick) {
 
         // ── Handle active promises (countdown running) ──
 
+        // If no longer governing: expire silently (faction lost power mid-countdown)
+        if (!isGoverning) {
+            if (currentTick >= promise.tick_deadline) {
+                await supabase.from('fundraiser_promises')
+                    .update({ status: 'expired', tick_resolved: currentTick, updated_at: new Date().toISOString() })
+                    .eq('id', promise.id);
+                results.push({ promise, resolution: 'expired' });
+            }
+            continue;
+        }
+
         // For crisis_resolution promises, check if the crisis is still active
         if (promise.demand_type === 'crisis_resolution' && promise.conditions?.crisis_id) {
             if (!activeCrisisIds.has(promise.conditions.crisis_id)) {
