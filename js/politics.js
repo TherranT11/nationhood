@@ -1263,7 +1263,7 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
         const momColor = p.momentum > 0 ? 'var(--dgreen)' : p.momentum < 0 ? 'var(--dred)' : 'var(--dtxt-muted)';
         const momArrow = p.momentum > 0 ? '▲' : p.momentum < 0 ? '▼' : '—';
         const momText = p.momentum !== 0 ? `${momArrow}${Math.abs(p.momentum)}` : momArrow;
-        const majLinePct = (majority / totalSeats) * 100;
+        const majLinePct = totalSeats > 0 ? (majority / totalSeats) * 100 : 50;
 
         return `<div class="pol-fc-party">
             <div class="pol-fc-party-header">
@@ -1841,10 +1841,8 @@ function initEditIdentityBox(f) {
     const abbrCancel   = document.getElementById('pol-id-abbr-cancel');
     const abbrError    = document.getElementById('pol-id-abbr-error');
     const abbrDisplay  = document.getElementById('pol-id-current-abbr');
-    const abbrApAvail  = document.getElementById('pol-id-abbr-ap-available');
     const nameDisplay  = document.getElementById('pol-id-current-name');
     const apDisplay    = document.getElementById('pol-id-ap-display');
-    const apAvailable  = document.getElementById('pol-id-ap-available');
     const iconSection  = document.getElementById('pol-id-icon-section');
     const uploadSection = document.getElementById('pol-id-upload-section');
     const uploadZone   = document.getElementById('pol-id-upload-zone');

@@ -438,12 +438,6 @@
     flex-direction: column;
     overflow: hidden;
 }
-.pol-mod-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 16px;
-}
 .pol-mod-title {
     font-family: var(--dfont-mono);
     font-size: 9px;
@@ -1969,11 +1963,6 @@
     text-transform: uppercase;
     margin-bottom: 2px;
 }
-.pol-id-subtitle {
-    font-family: var(--dfont-ui);
-    font-size: 10px;
-    color: var(--dtext-3);
-}
 .pol-id-preview {
     width: 28px;
     height: 28px;
@@ -2788,6 +2777,12 @@ body.light-mode {
     --dblue: #1565c0;
     --dblue-faint: rgba(21,101,192,0.06);
     --dblue-border: rgba(21,101,192,0.18);
+    --dorange: #c46200;
+    --dorange-faint: rgba(196,98,0,0.08);
+    --dorange-border: rgba(196,98,0,0.2);
+    --dteal: #1a7a6a;
+    --dteal-faint: rgba(26,122,106,0.08);
+    --dteal-border: rgba(26,122,106,0.2);
 }
 /* Inline style color overrides for light mode */
 body.light-mode .pol-admin-box,
@@ -4185,26 +4180,6 @@ body.light-mode .pol-blocs-box {
     font-size: 10px;
     font-weight: 700;
 }
-.protest-endorse-btn {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    font-weight: 600;
-    padding: 6px 14px;
-    border-radius: 3px;
-    background: rgba(166,93,93,0.15);
-    border: 1px solid rgba(166,93,93,0.25);
-    color: #d9534f;
-    cursor: pointer;
-    transition: all 0.1s;
-}
-.protest-endorse-btn:hover {
-    background: rgba(166,93,93,0.25);
-}
-.protest-endorse-btn.disabled {
-    opacity: 0.35;
-    cursor: default;
-}
-
 /* ── Crisis Card (government page) ── */
 .protest-crisis-card {
     border: 1px solid rgba(166,93,93,0.25);
