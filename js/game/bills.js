@@ -3006,6 +3006,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
                 // Clean up autocracy-specific state
                 await Promise.allSettled([
+                    supabase.from('faction_pillar_state').delete().eq('nation_id', bill.nation_id),
                     supabase.from('autocracy_tracker').delete().eq('nation_id', bill.nation_id),
                     supabase.from('putsch_state').delete().eq('nation_id', bill.nation_id),
                     supabase.from('vulnerability_window').delete().eq('nation_id', bill.nation_id),
@@ -3023,12 +3024,13 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
                 // Schedule parliamentary election 48 ticks from now
                 await supabase.from('elections').delete()
                     .eq('nation_id', bill.nation_id).eq('status', 'scheduled');
-                await supabase.from('elections').insert({
+                const { error: electionErr } = await supabase.from('elections').insert({
                     nation_id: bill.nation_id,
                     election_tick: currentTick + 48,
                     status: 'scheduled',
                     election_type: 'parliamentary'
                 });
+                if (electionErr) console.error('[enactFoundationalBill] Failed to schedule post-monarchy election:', electionErr.message);
 
                 console.log(`[enactFoundationalBill] Autocracy → Parliamentary Democracy (constitutional monarchy), election at tick ${currentTick + 48}`);
             }

@@ -8838,6 +8838,7 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
                 // Clean up autocracy-specific state
                 await Promise.allSettled([
+                    supabase.from('faction_pillar_state').delete().eq('nation_id', bill.nation_id),
                     supabase.from('autocracy_tracker').delete().eq('nation_id', bill.nation_id),
                     supabase.from('putsch_state').delete().eq('nation_id', bill.nation_id),
                     supabase.from('vulnerability_window').delete().eq('nation_id', bill.nation_id),
