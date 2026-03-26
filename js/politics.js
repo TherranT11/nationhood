@@ -3114,7 +3114,8 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             const ticksActive = tick - a.created_tick;
             const ticksLeft = Math.max(0, totalDuration - ticksActive);
             const axDef = axisMap[a.target_axis];
-            const dirLabel = a.target_direction === 'left' ? axDef?.leftLabel : a.target_direction === 'right' ? axDef?.rightLabel : a.target_direction === 'expand' ? 'Expand' : a.target_direction === 'narrow' ? 'Narrow' : a.target_direction || '?';
+            const axisName = axDef ? `${axDef.leftLabel}–${axDef.rightLabel}` : '';
+            const dirLabel = a.target_direction === 'left' ? axDef?.leftLabel : a.target_direction === 'right' ? axDef?.rightLabel : a.target_direction === 'expand' ? `Expand ${axisName}` : a.target_direction === 'narrow' ? `Narrow ${axisName}` : a.target_direction || '?';
             const effectLabel = a.drift_rate ? `+${a.drift_rate}/tick ${dirLabel}` : dirLabel;
             const activatedDate = tickToDate(a.created_tick);
             return `<tr>
