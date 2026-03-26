@@ -175,7 +175,7 @@ let ipoRealtimeChannel = null;  // realtime subscription for chat
 let ipoVotesChannel = null;     // realtime subscription for votes + ballots + members
 
 // Chat colour palette (assigned in join order)
-const IPO_CHAT_COLORS = ['#5cb85c','#c8a64e','#5aafa5','#d9534f','#8b7ec8','#5b9bd5'];
+const IPO_CHAT_COLORS = ['#5cb85c','#c8a64e','#5aafa5','#d9534f','#8b7ec8','#5b9bd5','#e07b53','#7bc67e','#c7697a','#59c4d4','#b8a038','#9a8ec2'];
 // Assign next unused chat colour for a new org member
 async function assignIPOChatColor(orgId) {
     const { data: existing } = await _supabase
@@ -14396,7 +14396,7 @@ async function renderIPOMainPanel(memberCounts) {
             <div class="ipo-footer-members">${memberBadges}</div>
             <div class="ipo-footer-actions">
                 ${!isObserver ? '<button class="ipo-btn ipo-btn--invite" onclick="openIPOInviteModal()">Invite</button>' : ''}
-                ${isPresident ? '<button class="ipo-btn ipo-btn--amend" onclick="openIPOAmendModal()">Amend Charter</button>' : ''}
+                ${!isObserver ? '<button class="ipo-btn ipo-btn--amend" onclick="openIPOAmendModal()">Amend Charter</button>' : ''}
                 ${canExpel ? '<button class="ipo-btn ipo-btn--expel" onclick="openIPOExpelModal()">Expel</button>' : ''}
                 <button class="ipo-btn ipo-btn--leave" onclick="leaveIPOOrg()">Leave</button>
             </div>
@@ -15000,6 +15000,18 @@ async function leaveIPOOrg() {
                 .update({ is_active: false, dissolved_at_tick: shardTick })
                 .eq('id', ipoSelectedOrgId);
 
+            // Cancel all pending/vote_pending invitations
+            await _supabase.from('ipo_invitations')
+                .update({ status: 'expired', responded_at_tick: shardTick })
+                .eq('org_id', ipoSelectedOrgId)
+                .in('status', ['pending', 'vote_pending']);
+
+            // Close all open votes as failed
+            await _supabase.from('ipo_votes')
+                .update({ status: 'failed', resolved_at_tick: shardTick, result: { yes: 0, no: 0, abstain: 0, passed: false, reason: 'Organisation dissolved' } })
+                .eq('org_id', ipoSelectedOrgId)
+                .eq('status', 'open');
+
             await _supabase.from('ipo_chat').insert({
                 org_id: ipoSelectedOrgId,
                 faction_id: null,
@@ -15303,9 +15315,10 @@ function openIPOAmendModal() {
     const charter = org.charter || {};
     const isPresident = org.president_id === currentFaction.id;
 
-    // Only president can directly amend; others must propose a vote (Phase 7)
-    if (!isPresident) {
-        alert('Only the president can amend the charter directly. You can propose a charter amendment vote instead.');
+    // Any full member can amend the charter (enables democratic amendments via passed votes)
+    const membership2 = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+    if (membership2?.role === 'observer') {
+        alert('Observers cannot amend the charter.');
         return;
     }
 
@@ -15578,6 +15591,12 @@ async function loadIPOVotes(orgId) {
             table: 'ipo_members',
             filter: 'org_id=eq.' + orgId
         }, () => { loadIPOVotes(orgId).then(() => renderIPOActionsPanel()); })
+        .on('postgres_changes', {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'international_orgs',
+            filter: 'id=eq.' + orgId
+        }, () => { renderIPOView(); })
         .subscribe();
 }
 
@@ -15977,6 +15996,7 @@ async function submitIPOVote() {
             const balance = org?.solidarity_fund_balance || 0;
             if (amount > balance) { alert('Amount exceeds fund balance.'); return; }
             meta.amount_requested = amount;
+            meta.proposer_name = currentFaction.faction_name;
             meta.purpose = document.getElementById('ipo-vote-meta-purpose')?.value?.trim() || '';
             break;
         }
@@ -16070,28 +16090,9 @@ async function castIPOBallot(voteId, ballotValue) {
             cast_at_tick: shardTick
         };
 
-        if (isSecret) {
-            // Secret ballot: no faction_id linkage
-            insertData.faction_id = null;
-        } else {
-            // Public ballot: linked to faction
-            insertData.faction_id = currentFaction.id;
-        }
-
-        // For secret ballots, check if we already voted by counting
-        if (isSecret) {
-            // We track secret votes client-side by inserting a separate non-linked row
-            // Check the total ballot count vs expected to prevent double-voting
-            const existing = ipoVoteBallots[voteId] || [];
-            // Simple client-side check: rely on server for true enforcement
-            // For secret ballots, we store a tracking record in localStorage
-            const secretKey = `ipo_secret_${voteId}_${currentFaction.id}`;
-            if (localStorage.getItem(secretKey)) {
-                alert('You have already cast your ballot on this vote.');
-                return;
-            }
-            localStorage.setItem(secretKey, ballotValue);
-        }
+        // Always store faction_id for DB uniqueness enforcement.
+        // For secret ballots, the UI hides voter identity (breakdown not shown).
+        insertData.faction_id = currentFaction.id;
 
         const { error } = await _supabase.from('ipo_ballots').insert(insertData);
 
@@ -16333,24 +16334,55 @@ async function applyVoteEffects(vote, org) {
                     message_text: `${meta.target_faction_name || 'A member'} has been expelled from the organisation.`,
                     tick_posted: shardTick
                 });
+
+                // If the expelled member was the president, auto-succeed to next member
+                if (org.president_id === meta.target_faction_id) {
+                    const remaining = ipoVoteMembers.filter(m => m.faction_id !== meta.target_faction_id);
+                    if (remaining.length > 0) {
+                        const newPresId = remaining[0].faction_id;
+                        await _supabase.from('international_orgs')
+                            .update({ president_id: newPresId, president_term_start_tick: shardTick })
+                            .eq('id', ipoSelectedOrgId);
+                        const newPresName = remaining[0].factions?.faction_name || 'A member';
+                        await _supabase.from('ipo_chat').insert({
+                            org_id: ipoSelectedOrgId,
+                            faction_id: null,
+                            is_system: true,
+                            message_text: `${newPresName} is now president (previous president expelled).`,
+                            tick_posted: shardTick
+                        });
+                    }
+                }
             }
             break;
         }
         case 'fund_draw': {
-            // KNOWN ISSUE: same read-modify-write race as executeDirectFundDraw.
-            // Needs server-side atomic decrement RPC for full safety.
             if (meta.amount_requested && meta.amount_requested > 0) {
-                const newBalance = Math.max(0, (org.solidarity_fund_balance || 0) - meta.amount_requested);
+                const currentBalance = org.solidarity_fund_balance || 0;
+                const actualDraw = Math.min(meta.amount_requested, currentBalance);
+                if (actualDraw <= 0) break;
+
+                const newBalance = currentBalance - actualDraw;
                 await _supabase.from('international_orgs')
                     .update({ solidarity_fund_balance: newBalance })
                     .eq('id', ipoSelectedOrgId);
 
-                // Log the transaction (use vote proposer as faction_id, matching server behavior)
+                // Credit the drawn AP to the proposing faction
+                if (vote.proposed_by) {
+                    const { data: proposerFaction } = await _supabase
+                        .from('factions').select('action_points').eq('id', vote.proposed_by).single();
+                    if (proposerFaction) {
+                        await _supabase.from('factions')
+                            .update({ action_points: (proposerFaction.action_points || 0) + actualDraw })
+                            .eq('id', vote.proposed_by);
+                    }
+                }
+
                 await _supabase.from('ipo_fund_transactions').insert({
                     org_id: ipoSelectedOrgId,
                     faction_id: vote.proposed_by,
                     transaction_type: 'draw',
-                    amount: -meta.amount_requested,
+                    amount: -actualDraw,
                     description: meta.purpose || 'Fund draw',
                     tick: shardTick
                 });
@@ -16359,7 +16391,7 @@ async function applyVoteEffects(vote, org) {
                     org_id: ipoSelectedOrgId,
                     faction_id: null,
                     is_system: true,
-                    message_text: `Fund draw approved: ${meta.amount_requested} AP withdrawn. ${meta.purpose ? 'Purpose: ' + meta.purpose : ''}`,
+                    message_text: `Fund draw approved: ${actualDraw} AP withdrawn and credited. ${meta.purpose ? 'Purpose: ' + meta.purpose : ''}`,
                     tick_posted: shardTick
                 });
             }
