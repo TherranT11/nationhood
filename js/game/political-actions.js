@@ -1193,6 +1193,12 @@ export const MAKE_PROMISE_CONFIG = {
 export async function executeMakePromise(supabase, factionId, nationId, currentTick, promiseType, params) {
     const cfg = MAKE_PROMISE_CONFIG;
 
+    // Validate currentTick is a finite number (NaN serializes to null in JSON, violating NOT NULL)
+    if (currentTick == null || !Number.isFinite(currentTick)) {
+        console.error('[MakePromise] Invalid currentTick:', currentTick);
+        return { success: false, error: 'Cannot make a promise right now — tick data unavailable. Please refresh.' };
+    }
+
     // ── 1. Validate faction (with leader trait modifiers) ──
     const { data: faction } = await supabase
         .from('factions').select('party_funds, action_points, abbreviation, faction_name, leader_positive_traits, leader_negative_traits, last_action_tick')
