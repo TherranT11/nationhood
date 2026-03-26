@@ -6088,10 +6088,10 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const partyAbbr = playerFaction.abbreviation || '??';
     const partyName = playerFaction.faction_name || 'Unknown Party';
 
-    // Fetch standing, party approval log, credibility log, active campaigns, and government formation in parallel
-    const [standingRes, partyLogRes, credLogRes, activeCampaignsRes, govFormRes] = await Promise.all([
+    // Fetch standing (full fields), logs, campaigns, government formation, all standings, and stances in parallel
+    const [standingRes, partyLogRes, credLogRes, activeCampaignsRes, govFormRes, allStandingsRes, stancesRes] = await Promise.all([
         _supabase.from('faction_electoral_standing')
-            .select('faction_id, party_approval, polled_party_approval, last_polled_tick, credibility_modifier, ideological_alignment')
+            .select('faction_id, party_approval, polled_party_approval, last_polled_tick, credibility_modifier, ideological_alignment, visibility, platform_appeal, raw_appeal, realized_vote_share, contested_vote_share, turnout_rate, alignment_contribution, appeal_contribution, approval_contribution')
             .eq('nation_id', nation.id)
             .eq('faction_id', playerFaction.id)
             .maybeSingle(),
@@ -6119,6 +6119,14 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             .order('formed_at', { ascending: false })
             .limit(1)
             .maybeSingle(),
+        // All party standings for comparison table
+        _supabase.from('faction_electoral_standing')
+            .select('faction_id, party_approval, credibility_modifier, ideological_alignment, visibility, platform_appeal, raw_appeal, realized_vote_share, contested_vote_share, turnout_rate')
+            .eq('nation_id', nation.id),
+        // Player's stances for issue landscape
+        _supabase.from('faction_issue_stance')
+            .select('issue_id, stance_label, intensity')
+            .eq('faction_id', playerFaction.id),
     ]);
 
     const playerStanding = standingRes.data;
@@ -6127,17 +6135,51 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         return;
     }
 
+    // ── Extract all five factor scores ──
     const approval = Number(playerStanding.party_approval ?? 25);
     const polledApproval = playerStanding.polled_party_approval != null ? Number(playerStanding.polled_party_approval) : null;
     const lastPolledTick = playerStanding.last_polled_tick || null;
+    const visibility = Math.round(Number(playerStanding.visibility ?? 0));
+    const platformAppeal = Math.round(Number(playerStanding.platform_appeal ?? 0));
+    const alignScore = Math.max(0, Math.min(100, Math.round(Number(playerStanding.ideological_alignment ?? 50))));
+    const credModifier = Number(playerStanding.credibility_modifier ?? 1.0);
+    const credScore = Math.max(0, Math.min(100, Math.round((credModifier - 0.5) * 100)));
+    const rawAppeal = Number(playerStanding.raw_appeal ?? 0);
+    const contestedShare = Number(playerStanding.contested_vote_share ?? 0);
+    const realizedShare = Number(playerStanding.realized_vote_share ?? 0);
+    const turnout = Number(playerStanding.turnout_rate ?? 0.65);
 
     // Determine if player is in government
     const coalitionIds = govFormRes.data?.party_ids || [];
     const leadPartyId = govFormRes.data?.lead_party_id || null;
     const isGoverning = coalitionIds.includes(playerFaction.id) || leadPartyId === playerFaction.id || playerFaction.id === nation.ruling_faction_id;
 
+    // ── Compute dynamic weights (same formula as electorate engine) ──
+    const pol = Math.max(0, Math.min(100, Number(nation.polarization ?? 50)));
+    const stab = Math.max(0, Math.min(100, Number(nation.stability ?? 50)));
+    const chaosIndex = ((pol / 100) + (1 - stab / 100)) / 2;
+    const credWeight = 0.35 - chaosIndex * (0.35 - 0.05);
+    const otherBaseSum = 0.25 + 0.20 + 0.20 + 0.15;
+    const otherScale = (1 - credWeight) / otherBaseSum;
+    const weights = {
+        alignment: 0.25 * otherScale,
+        appeal: 0.20 * otherScale,
+        approval: 0.20 * otherScale,
+        visibility: 0.15 * otherScale,
+        credibility: credWeight
+    };
+
     // Build modifiers list from party_approval_log (per-party events)
     const partyLog = partyLogRes.data || [];
+    const credLog = credLogRes.data || [];
+    const activeCampaigns = activeCampaignsRes.data || [];
+    const allStandings = allStandingsRes.data || [];
+    const playerStances = stancesRes.data || [];
+    const stanceMap = Object.fromEntries(playerStances.map(s => [s.issue_id, s]));
+
+    // ══════════════════════════════════════════════════════════════
+    //  HELPER FUNCTIONS
+    // ══════════════════════════════════════════════════════════════
 
     // Human-readable labels for party_approval_log sources
     const _approvalSourceLabels = {
@@ -6356,410 +6398,332 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         }
     }
 
-    // Build the Party Approval + Credibility + Alignment containers
-    container.innerHTML = `
-    <div style="display:flex;flex-wrap:wrap;gap:12px;padding:10px 0">
-        <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
-            <!-- Header -->
-            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${partyColor};margin-bottom:4px;font-weight:700">PARTY APPROVAL</div>
+    // ══════════════════════════════════════════════════════════════
+    //  SECTION A — FIVE FACTOR DASHBOARD
+    // ══════════════════════════════════════════════════════════════
 
-            <!-- Party name + status -->
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                <span style="font-size:14px;font-weight:700;color:var(--dtext-0)">${escapeHtml(partyName)}</span>
-                <span style="font-size:9px;font-weight:600;color:${statusColor};text-transform:uppercase;letter-spacing:0.5px">${statusLabel}</span>
+    // Governing status label
+    const statusLabel = isGoverning
+        ? (playerFaction.id === leadPartyId ? 'GOVERNING — LEAD' : 'GOVERNING — COALITION')
+        : 'OPPOSITION';
+    const statusColor = isGoverning ? '#5cb85c' : '#d98030';
+
+    // Factor card builder
+    function _factorCard(label, score, weight, barColor, tierLabel, tierColor, detailHtml, hintHtml) {
+        const wPct = Math.round(weight * 100);
+        return `
+        <div class="vt-factor-card">
+            <div class="vt-factor-header">
+                <span class="vt-factor-label">${label}</span>
+                <span class="vt-factor-weight" style="color:${barColor}">${wPct}%</span>
             </div>
-
-            <!-- Approval value -->
-            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
-                <span style="font-size:28px;font-weight:800;font-family:var(--dfont-mono);color:${_approvalColor(approval)}">${approval.toFixed(1)}</span>
-                <span style="font-size:11px;color:var(--dtext-3)">/ 100</span>
+            <div class="vt-factor-score-row">
+                <span class="vt-factor-score" style="color:${barColor}">${typeof score === 'number' ? Math.round(score) : score}</span>
+                <span class="vt-factor-max">/ 100</span>
+                <span class="vt-factor-tier" style="color:${tierColor}">${escapeHtml(tierLabel)}</span>
             </div>
+            <div class="vt-factor-bar"><div class="vt-factor-bar-fill" style="width:${Math.min(100, Math.max(0, score))}%;background:${barColor}"></div></div>
+            <div class="vt-factor-detail">${detailHtml}</div>
+            ${hintHtml ? `<div class="vt-factor-hint">${hintHtml}</div>` : ''}
+        </div>`;
+    }
 
-            <!-- Approval bar -->
-            <div style="height:6px;border-radius:3px;background:var(--dbg-3);margin-bottom:8px;overflow:hidden">
-                <div style="width:${Math.min(100, approval)}%;height:100%;background:${_approvalColor(approval)};border-radius:3px;transition:width 0.5s"></div>
-            </div>
+    // Tier helpers
+    function _scoreTier(val) {
+        if (val >= 75) return { label: 'Excellent', color: '#5cb85c' };
+        if (val >= 55) return { label: 'Good', color: '#6baf6b' };
+        if (val >= 40) return { label: 'Average', color: '#c8a44e' };
+        if (val >= 25) return { label: 'Poor', color: '#d98030' };
+        return { label: 'Critical', color: '#d9534f' };
+    }
+    function _scoreColor(val) {
+        if (val >= 60) return '#5cb85c';
+        if (val >= 40) return '#c8a44e';
+        if (val >= 25) return '#d98030';
+        return '#d9534f';
+    }
 
-            <!-- Last poll -->
-            <div style="font-size:10px;color:var(--dtext-3);margin-bottom:14px;font-family:var(--dfont-ui)">
-                Last Poll Taken — <span style="color:var(--dtext-1)">${escapeHtml(lastPollText)}</span>${polledDeltaHtml}
-            </div>
+    // Compute contributions for waterfall
+    const alignContrib = (alignScore * weights.alignment);
+    const appealContrib = (platformAppeal * weights.appeal);
+    const approvalContrib = (approval * weights.approval);
+    const visContrib = (visibility * weights.visibility);
+    const credContrib = (credScore * weights.credibility);
 
-            <hr style="border:none;border-top:1px solid var(--dborder-0);margin:0 0 10px 0">
+    // ── Card 1: Ideological Alignment ──
+    const alignTier = _scoreTier(alignScore);
+    const alignDetail = `<span class="vt-detail-line">Passive — shifts with electorate ideology</span>`;
+    const alignHint = activeCampaigns.length > 0
+        ? `${activeCampaigns.length} active campaign${activeCampaigns.length > 1 ? 's' : ''} shifting alignment`
+        : 'Use Think Tanks, Grassroots, or Media Campaigns to shift';
+    const alignCard = _factorCard('Ideological Alignment', alignScore, weights.alignment,
+        '#7ec8c0', alignTier.label, alignTier.color, alignDetail, alignHint);
 
-            <!-- Modifiers header -->
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dtext-0);margin-bottom:6px">Modifiers</div>
-            <div style="font-size:9px;color:var(--dtext-3);margin-bottom:8px;font-style:italic">Recent events that changed your party's approval</div>
+    // ── Card 2: Platform Appeal ──
+    const appealTier = _scoreTier(platformAppeal);
+    const stanceCount = playerStances.length;
+    const appealDetail = `<span class="vt-detail-line">${stanceCount} stance${stanceCount !== 1 ? 's' : ''} taken</span>`;
+    const appealHint = 'Take stances on high-salience issues to increase';
+    const appealCard = _factorCard('Platform Appeal', platformAppeal, weights.appeal,
+        '#c8a44e', appealTier.label, appealTier.color, appealDetail, appealHint);
 
-            <!-- Modifier list (scrollable) -->
-            <div style="flex:1;overflow-y:auto;min-height:0">
-                ${modifiersHtml}
-            </div>
+    // ── Card 3: Party Approval ──
+    const approvalTier = _scoreTier(approval);
+    const govLabel = isGoverning ? 'Governing' : 'Opposition';
+    const govApproval = Number(nation.government_approval ?? 50);
+    const approvalDetail = `<span class="vt-detail-line">${govLabel}${isGoverning ? ' · Gov approval ' + Math.round(govApproval) + '%' : ''}</span>`;
+    const approvalHint = isGoverning ? 'Improve governance to raise approval' : 'Campaign and fulfill promises';
+    const approvalCard = _factorCard('Party Approval', approval, weights.approval,
+        '#7ec87e', approvalTier.label, approvalTier.color, approvalDetail, approvalHint);
+
+    // ── Card 4: Visibility ──
+    const visTier = _scoreTier(visibility);
+    const visDecayPct = ((1 - 0.985) * 100).toFixed(1);
+    const visFloor = isGoverning ? 25 : 10;
+    const visDetail = `<span class="vt-detail-line">Decaying ${visDecayPct}%/tick · Floor: ${visFloor}</span>`;
+    const visHint = 'Hold rallies, outreach, or take stances to boost';
+    const visCard = _factorCard('Visibility', visibility, weights.visibility,
+        '#5b9bd5', visTier.label, visTier.color, visDetail, visHint);
+
+    // ── Card 5: Credibility ──
+    const credTier = _scoreTier(credScore);
+    const credWeightPct = Math.round(credWeight * 100);
+    const credDetail = `<span class="vt-detail-line">${credModifier.toFixed(2)}x multiplier · Weight: ${credWeightPct}% (dynamic)</span>`;
+    const credHint = credScore >= 80 ? 'Fully healthy — maintain by avoiding scandals' : 'Recovers +1%/tick toward 100';
+    const credCard = _factorCard('Credibility', credScore, weights.credibility,
+        '#9b7ec8', credTier.label, credTier.color, credDetail, credHint);
+
+    // ══════════════════════════════════════════════════════════════
+    //  SECTION B — VOTE SHARE WATERFALL
+    // ══════════════════════════════════════════════════════════════
+
+    const waterfallRows = [
+        { label: 'Alignment', score: alignScore, weight: weights.alignment, contrib: alignContrib, color: '#7ec8c0' },
+        { label: 'Appeal', score: platformAppeal, weight: weights.appeal, contrib: appealContrib, color: '#c8a44e' },
+        { label: 'Approval', score: approval, weight: weights.approval, contrib: approvalContrib, color: '#7ec87e' },
+        { label: 'Visibility', score: visibility, weight: weights.visibility, contrib: visContrib, color: '#5b9bd5' },
+        { label: 'Credibility', score: credScore, weight: weights.credibility, contrib: credContrib, color: '#9b7ec8' },
+    ];
+    const rawTotal = waterfallRows.reduce((s, r) => s + r.contrib, 0);
+
+    let waterfallHtml = waterfallRows.map(r => `
+        <div class="vt-wf-row">
+            <span class="vt-wf-label">${r.label}</span>
+            <span class="vt-wf-calc">${Math.round(r.score)} × ${(r.weight * 100).toFixed(0)}%</span>
+            <span class="vt-wf-eq">=</span>
+            <span class="vt-wf-val" style="color:${r.color}">${r.contrib.toFixed(1)}</span>
+        </div>`).join('');
+
+    waterfallHtml += `
+        <div class="vt-wf-divider"></div>
+        <div class="vt-wf-row vt-wf-row--total">
+            <span class="vt-wf-label">Raw Appeal</span>
+            <span class="vt-wf-calc"></span>
+            <span class="vt-wf-eq"></span>
+            <span class="vt-wf-val" style="color:var(--dtext-0)">${rawTotal.toFixed(1)}</span>
         </div>
-
-        <!-- Credibility Container -->
-        <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
-            <!-- Header -->
-            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${partyColor};margin-bottom:4px;font-weight:700">CREDIBILITY</div>
-
-            <!-- Party name + tier -->
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                <span style="font-size:14px;font-weight:700;color:var(--dtext-0)">${escapeHtml(partyName)}</span>
-                <span style="font-size:9px;font-weight:600;color:${tier.color};text-transform:uppercase;letter-spacing:0.5px">${tier.label}</span>
-            </div>
-
-            <!-- Score value -->
-            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
-                <span style="font-size:28px;font-weight:800;font-family:var(--dfont-mono);color:${_approvalColor(credScore)}">${credScore}</span>
-                <span style="font-size:11px;color:var(--dtext-3)">/ 100</span>
-                <span style="font-size:10px;color:var(--dtext-3);font-family:var(--dfont-mono)">(${credModifier.toFixed(2)}x)</span>
-            </div>
-
-            <!-- Credibility bar -->
-            <div style="height:6px;border-radius:3px;background:var(--dbg-3);margin-bottom:8px;overflow:hidden">
-                <div style="width:${Math.min(100, credScore)}%;height:100%;background:${_approvalColor(credScore)};border-radius:3px;transition:width 0.5s"></div>
-            </div>
-
-            <!-- Election weight info -->
-            <div style="font-size:10px;color:var(--dtext-3);margin-bottom:14px;font-family:var(--dfont-ui)">
-                Election Weight — <span style="color:var(--dtext-1)">20% (5-35% dynamic)</span>
-            </div>
-
-            <hr style="border:none;border-top:1px solid var(--dborder-0);margin:0 0 10px 0">
-
-            <!-- Changes header -->
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dtext-0);margin-bottom:6px">Recent Changes</div>
-            <div style="font-size:9px;color:var(--dtext-3);margin-bottom:8px;font-style:italic">Events that affected your party's credibility</div>
-
-            <!-- Changes list (scrollable) -->
-            <div style="flex:1;overflow-y:auto;min-height:0">
-                ${credModifiersHtml}
-            </div>
-
-            <!-- Chaos/weight indicator -->
-            <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--dborder-0)">
-                ${(() => {
-                    const pol = Number(nation.polarization ?? 50);
-                    const stab = Number(nation.stability ?? 50);
-                    const chaos = ((pol / 100) + (1 - stab / 100)) / 2;
-                    const weight = Math.round((0.35 - chaos * 0.30) * 100);
-                    const barColor = weight >= 25 ? '#5cb85c' : weight >= 15 ? '#c8a44e' : '#d9534f';
-                    const desc = weight >= 25 ? 'High stability, low polarization — credibility matters more'
-                        : weight >= 15 ? 'Moderate chaos — credibility has average impact'
-                        : 'High polarization, low stability — credibility matters less';
-                    return `
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-                            <span style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--dtext-3)">Current Weight</span>
-                            <span style="font-size:11px;font-weight:700;font-family:var(--dfont-mono);color:${barColor}">${weight}%</span>
-                        </div>
-                        <div style="height:4px;border-radius:2px;background:var(--dbg-3);margin-bottom:4px;overflow:hidden">
-                            <div style="width:${Math.round(((weight - 5) / 30) * 100)}%;height:100%;background:${barColor};border-radius:2px;transition:width 0.5s"></div>
-                        </div>
-                        <div style="font-size:8px;color:var(--dtext-3);font-style:italic">${desc}</div>`;
-                })()}
-            </div>
+        <div class="vt-wf-row">
+            <span class="vt-wf-label">Contested Share</span>
+            <span class="vt-wf-calc">softmax</span>
+            <span class="vt-wf-eq">→</span>
+            <span class="vt-wf-val" style="color:var(--dtext-1)">${(contestedShare * 100).toFixed(1)}%</span>
         </div>
+        <div class="vt-wf-row">
+            <span class="vt-wf-label">Turnout</span>
+            <span class="vt-wf-calc">×${(turnout * 100).toFixed(0)}%</span>
+            <span class="vt-wf-eq">→</span>
+            <span class="vt-wf-val" style="color:${_scoreColor(realizedShare * 100)}">${(realizedShare * 100).toFixed(1)}%</span>
+        </div>`;
 
-        <!-- Alignment Container -->
-        <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
-            <!-- Header -->
-            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${partyColor};margin-bottom:4px;font-weight:700">IDEOLOGICAL ALIGNMENT</div>
+    const voteLeftPct = Math.max(0, (contestedShare - realizedShare) * 100);
 
-            <!-- Party name + tier -->
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                <span style="font-size:14px;font-weight:700;color:var(--dtext-0)">${escapeHtml(partyName)}</span>
-                <span style="font-size:9px;font-weight:600;color:${alignTier.color};text-transform:uppercase;letter-spacing:0.5px">${alignTier.label}</span>
-            </div>
+    // ══════════════════════════════════════════════════════════════
+    //  SECTION C — ISSUE LANDSCAPE (with Your Stance column)
+    // ══════════════════════════════════════════════════════════════
 
-            <!-- Score value -->
-            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
-                <span style="font-size:28px;font-weight:800;font-family:var(--dfont-mono);color:${_approvalColor(alignScore)}">${alignScore}</span>
-                <span style="font-size:11px;color:var(--dtext-3)">/ 100</span>
-            </div>
+    // Build issue rows from ISSUE_CATEGORY_STATS keys
+    let issueRowsHtml = '';
+    const issueCatKeys = typeof ISSUE_CATEGORY_STATS !== 'undefined' ? Object.keys(ISSUE_CATEGORY_STATS) : [];
 
-            <!-- Alignment bar -->
-            <div style="height:6px;border-radius:3px;background:var(--dbg-3);margin-bottom:8px;overflow:hidden">
-                <div style="width:${Math.min(100, alignScore)}%;height:100%;background:${_approvalColor(alignScore)};border-radius:3px;transition:width 0.5s"></div>
-            </div>
+    if (issueCatKeys.length > 0) {
+        for (const catKey of issueCatKeys) {
+            const stance = stanceMap[catKey];
+            const hasStance = !!stance;
+            const stanceLabel = hasStance ? escapeHtml(stance.stance_label || 'Taken') : '<span style="color:var(--dtext-3)">No stance</span>';
+            const intensity = hasStance ? Math.round((stance.intensity || 0) * 100) + '%' : '—';
+            const rowCls = !hasStance ? 'vt-issue-row--missing' : '';
+            issueRowsHtml += `
+                <tr class="vt-issue-row ${rowCls}">
+                    <td class="vt-issue-name">${escapeHtml(catKey)}</td>
+                    <td class="vt-issue-stance">${stanceLabel}</td>
+                    <td class="vt-issue-str">${intensity}</td>
+                </tr>`;
+        }
+    } else {
+        issueRowsHtml = '<tr><td colspan="3" style="text-align:center;color:var(--dtext-3);padding:12px">Issue data not available</td></tr>';
+    }
 
-            <!-- Election weight info -->
-            <div style="font-size:10px;color:var(--dtext-3);margin-bottom:6px;font-family:var(--dfont-ui)">
-                Election Weight — <span style="color:var(--dtext-1)">25% (largest factor)</span>
-            </div>
+    // ══════════════════════════════════════════════════════════════
+    //  SECTION D — ALL-PARTY COMPARISON TABLE (sortable)
+    // ══════════════════════════════════════════════════════════════
 
-            <!-- Hint -->
-            <div style="font-size:9px;color:var(--dtext-3);margin-bottom:14px;font-style:italic">
-                How closely your party's ideology matches the electorate. Use Think Tanks, Grassroots Movements, or Media Campaigns to shift alignment.
-            </div>
-
-            <hr style="border:none;border-top:1px solid var(--dborder-0);margin:0 0 10px 0">
-
-            <!-- Active campaigns header -->
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dtext-0);margin-bottom:6px">Active Campaigns</div>
-
-            <!-- Campaigns list (scrollable) -->
-            <div style="flex:1;overflow-y:auto;min-height:0">
-                ${campaignsHtml}
-            </div>
-
-            <!-- Electorate link -->
-            <div style="text-align:center;padding-top:8px;border-top:1px solid var(--dborder-0);margin-top:8px">
-                <span style="font-size:9px;color:var(--dtext-3);font-style:italic">See full <span style="color:var(--dtext-1);font-weight:600">Electorate</span> for more info on alignment.</span>
-            </div>
-        </div>
-    </div>`;
-
-    return; // Additional containers will be added below in future updates
-    const voteShare = Number(playerStanding.realized_vote_share ?? 0);
-    const contestedShare = Number(playerStanding.contested_vote_share ?? 0);
-    const turnout = Number(playerStanding.turnout_rate ?? 0.65);
-    const voteLeft = Number(playerStanding.vote_left_on_table ?? 0);
-    const rawAppeal = Number(playerStanding.raw_appeal ?? 0);
-
-    // Engagement values
-    const engScore = Number(playerEngagement?.engagement_score ?? 50);
-    const engInit = Number(playerEngagement?.initiative_score ?? 50);
-    const engConst = Number(playerEngagement?.constructive_score ?? 50);
-    const engPos = Number(playerEngagement?.positioning_score ?? 50);
-
-    const vsNum = (voteShare * 100).toFixed(1);
-    const seatsText = `${mySeats} / ${totalSeats} seats`;
-
-    // Rank
-    const sortedByVote = [...standings].sort((a, b) => (Number(b.realized_vote_share) || 0) - (Number(a.realized_vote_share) || 0));
-    const rank = sortedByVote.findIndex(s => s.faction_id === playerFaction.id) + 1;
-    const ordinal = rank === 1 ? '1st' : rank === 2 ? '2nd' : rank === 3 ? '3rd' : rank + 'th';
-
-    // Pillar contribution percentages
-    const alignContrib = Number(playerStanding.alignment_contribution ?? 0);
-    const appealContrib = Number(playerStanding.appeal_contribution ?? 0);
-    const approvalContrib = Number(playerStanding.approval_contribution ?? 0);
-
-    // Build all-party comparison rows (sorted by realized_vote_share desc)
-    const sortedParties = [...standings]
+    const partyMap = Object.fromEntries(allParties.map(p => [p.id, p]));
+    let compRowsHtml = '';
+    const sortedStandings = [...allStandings]
         .sort((a, b) => (Number(b.realized_vote_share) || 0) - (Number(a.realized_vote_share) || 0));
 
-    let partyRowsHtml = '';
-    for (const s of sortedParties) {
+    for (const s of sortedStandings) {
         const p = partyMap[s.faction_id];
         if (!p) continue;
-        const isPlayer = s.faction_id === playerFaction.id;
-        const pColor = p.party_color || '#888';
-        const pAbbr = p.abbreviation || '??';
-        const sAlign = Number(s.ideological_alignment ?? 50);
-        const sAppeal = Number(s.platform_appeal ?? 50);
-        const sApproval = Number(s.party_approval ?? 50);
-        const sVote = (Number(s.realized_vote_share ?? 0) * 100).toFixed(1);
-        const sVis = Number(s.visibility ?? 30);
-        const sCred = Number(s.credibility_modifier ?? 1.0);
-        const sTurnout = (Number(s.turnout_rate ?? 0.65) * 100).toFixed(0);
-        const sEng = Number(engagementMap[s.faction_id]?.engagement_score ?? 50);
-        const sVoteLeft = (Number(s.vote_left_on_table ?? 0) * 100).toFixed(1);
-
-        // Pillar color helper
-        function pc(v) { return v >= 65 ? 'var(--dgreen)' : v >= 45 ? 'var(--damber)' : 'var(--dred)'; }
-
-        partyRowsHtml += `
-        <div class="vc-voter-seg" style="border-left-color:${pColor};${isPlayer ? 'background:rgba(255,255,255,0.02);' : ''}">
-            <div class="vc-vs-top">
-                <div>
-                    <div class="vc-vs-name">${escapeHtml(p.faction_name || pAbbr)}${isPlayer ? ' <span style="font-size:8px;color:var(--dteal);">(YOU)</span>' : ''}</div>
-                </div>
-                <div style="text-align:right;">
-                    <div class="vc-vs-share" style="color:${pColor};">${sVote}%</div>
-                    <div style="font-family:var(--dfont-mono);font-size:7px;color:var(--dtxt-dim);">vote share</div>
-                </div>
-            </div>
-            <div class="vc-vs-bar">
-                <div class="vc-vs-bar-seg" style="width:${Math.round(sAlign)}%;background:${VC_IDEO_COLOR};"></div>
-                <div class="vc-vs-bar-seg" style="width:${Math.round(sAppeal)}%;background:${VC_PERF_COLOR};"></div>
-                <div class="vc-vs-bar-seg" style="flex:1;background:${VC_MOM_COLOR};"></div>
-            </div>
-            <div class="vc-vs-labels">
-                <div class="vc-vs-lbl"><div class="vc-vs-lbl-dot" style="background:${VC_IDEO_COLOR}"></div>Alignment <span style="color:${pc(sAlign)}">${sAlign.toFixed(0)}</span></div>
-                <div class="vc-vs-lbl"><div class="vc-vs-lbl-dot" style="background:${VC_PERF_COLOR}"></div>Appeal <span style="color:${pc(sAppeal)}">${sAppeal.toFixed(0)}</span></div>
-                <div class="vc-vs-lbl"><div class="vc-vs-lbl-dot" style="background:${VC_MOM_COLOR}"></div>Approval <span style="color:${pc(sApproval)}">${sApproval.toFixed(0)}</span></div>
-                <div class="vc-vs-lbl">Vis ${sVis.toFixed(0)}</div>
-                <div class="vc-vs-lbl">Cred ${(sCred * 100).toFixed(0)}%</div>
-                <div class="vc-vs-lbl">Eng <span style="color:${sEng >= 60 ? 'var(--dgreen)' : sEng >= 40 ? 'var(--damber)' : 'var(--dred)'}">${sEng.toFixed(0)}</span></div>
-                <div class="vc-vs-lbl">Turnout ${sTurnout}%</div>
-                ${Number(sVoteLeft) > 0.01 ? `<div class="vc-vs-lbl" style="color:var(--dred);">Left ${sVoteLeft}%</div>` : ''}
-            </div>
-        </div>`;
+        const isYou = s.faction_id === playerFaction.id;
+        const pColor = p.party_color || '#666';
+        const pName = p.abbreviation || p.faction_name || '?';
+        const vs = ((Number(s.realized_vote_share) || 0) * 100).toFixed(1);
+        const al = Math.round(Number(s.ideological_alignment ?? 0));
+        const ap = Math.round(Number(s.platform_appeal ?? 0));
+        const apr = Math.round(Number(s.party_approval ?? 0));
+        const vi = Math.round(Number(s.visibility ?? 0));
+        const cr = Math.max(0, Math.min(100, Math.round((Number(s.credibility_modifier ?? 1) - 0.5) * 100)));
+        const to = ((Number(s.turnout_rate ?? 0.65)) * 100).toFixed(0);
+        const rowCls = isYou ? 'vt-comp-row--you' : '';
+        compRowsHtml += `
+            <tr class="vt-comp-row ${rowCls}">
+                <td class="vt-comp-party"><span class="vt-comp-dot" style="background:${pColor}"></span>${escapeHtml(pName)}${isYou ? ' <span class="vt-comp-you">(YOU)</span>' : ''}</td>
+                <td class="vt-comp-val vt-comp-val--vote">${vs}%</td>
+                <td class="vt-comp-val" style="color:${_scoreColor(al)}">${al}</td>
+                <td class="vt-comp-val" style="color:${_scoreColor(ap)}">${ap}</td>
+                <td class="vt-comp-val" style="color:${_scoreColor(apr)}">${apr}</td>
+                <td class="vt-comp-val" style="color:${_scoreColor(vi)}">${vi}</td>
+                <td class="vt-comp-val" style="color:${_scoreColor(cr)}">${cr}</td>
+                <td class="vt-comp-val">${to}%</td>
+            </tr>`;
     }
 
-    // Issue Landscape section
-    let issueLandscapeHtml = '';
-    if (issueStates.length > 0) {
-        const sortedIssues = [...issueStates].sort((a, b) => Number(b.salience) - Number(a.salience));
-        let issueRowsHtml = '';
-        for (const is of sortedIssues) {
-            const def = ISSUE_DEFS[is.issue_id];
-            if (!def) continue;
-            const salience = Number(is.salience ?? 30);
-            const target = Number(is.salience_target ?? 30);
-            const salienceColor = salience >= 60 ? 'var(--dred)' : salience >= 40 ? 'var(--damber)' : 'var(--dtext-3)';
-            const ownerParty = is.owned_by ? partyMap[is.owned_by] : null;
-            const pioneerParty = is.pioneer_faction_id ? partyMap[is.pioneer_faction_id] : null;
-            const trending = target > salience + 5 ? 'rising' : target < salience - 5 ? 'falling' : 'stable';
-            const trendIcon = trending === 'rising' ? '<span style="color:var(--dred);">&#9650;</span>' : trending === 'falling' ? '<span style="color:var(--dgreen);">&#9660;</span>' : '<span style="color:var(--dtext-3);">&#8212;</span>';
+    // ══════════════════════════════════════════════════════════════
+    //  SECTION E — APPROVAL & CREDIBILITY LOGS (expandable)
+    // ══════════════════════════════════════════════════════════════
 
-            issueRowsHtml += `
-            <div class="vc-issue-row">
-                <div class="vc-issue-name">${escapeHtml(def.label)}</div>
-                <div class="vc-issue-bar-track">
-                    <div class="vc-issue-bar-fill" style="width:${salience}%;background:${salienceColor}"></div>
-                </div>
-                <div class="vc-issue-salience" style="color:${salienceColor}">${salience.toFixed(0)}</div>
-                <div class="vc-issue-trend">${trendIcon}</div>
-                <div class="vc-issue-owner">${ownerParty ? `<span style="color:${ownerParty.party_color || '#888'}">${escapeHtml(ownerParty.abbreviation || '??')}</span>` : '<span style="color:var(--dtext-3);">—</span>'}</div>
+    let modifiersHtml = '';
+    for (const entry of partyLog.slice(0, 15)) {
+        const amt = Number(entry.amount);
+        const sign = amt >= 0 ? '+' : '';
+        const color = amt >= 0 ? '#5cb85c' : '#d9534f';
+        const label = _formatSource(entry.source);
+        const date = tickToDate(entry.tick);
+        modifiersHtml += `
+            <div class="vt-log-row">
+                <span class="vt-log-label">${escapeHtml(label)}</span>
+                <span class="vt-log-date">${escapeHtml(date)}</span>
+                <span class="vt-log-amt" style="color:${color}">${sign}${amt}</span>
             </div>`;
-        }
-
-        issueLandscapeHtml = `
-        <div class="vc-pillar-section">
-            <div class="vc-sec-label" style="margin-bottom:8px;">Issue Landscape — Salience &amp; Ownership</div>
-            <div class="vc-issue-header">
-                <span class="vc-issue-col-label" style="flex:1;">Issue</span>
-                <span class="vc-issue-col-label" style="flex:2;">Salience</span>
-                <span class="vc-issue-col-label" style="width:36px;text-align:right;"></span>
-                <span class="vc-issue-col-label" style="width:28px;text-align:center;">Trend</span>
-                <span class="vc-issue-col-label" style="width:40px;text-align:center;">Owner</span>
-            </div>
-            ${issueRowsHtml}
-        </div>`;
     }
+    if (partyLog.length === 0) modifiersHtml = '<div class="vt-log-empty">No recorded modifiers yet.</div>';
+
+    let credModifiersHtml = '';
+    for (const entry of credLog.slice(0, 15)) {
+        const amt = Number(entry.amount);
+        const sign = amt >= 0 ? '+' : '';
+        const color = amt >= 0 ? '#5cb85c' : '#d9534f';
+        const label = _formatCredSource(entry.source);
+        credModifiersHtml += `
+            <div class="vt-log-row">
+                <span class="vt-log-label">${escapeHtml(label)}</span>
+                <span class="vt-log-date">${escapeHtml(tickToDate(entry.tick))}</span>
+                <span class="vt-log-amt" style="color:${color}">${sign}${amt.toFixed(2)}</span>
+            </div>`;
+    }
+    if (credLog.length === 0) credModifiersHtml = '<div class="vt-log-empty">No recorded changes yet.</div>';
+
+    // ══════════════════════════════════════════════════════════════
+    //  RENDER
+    // ══════════════════════════════════════════════════════════════
 
     container.innerHTML = `
-    <div class="vc-page-hdr">
-        <span class="vc-ph-title">Electorate Standing</span>
-        <span style="color:var(--dtxt-dim);font-family:var(--dfont-mono);">—</span>
-        <span class="vc-ph-nation">${escapeHtml(nation.name)}</span>
-    </div>
-    <div class="vc-card">
-        <div class="vc-card-hdr">
-            <div class="vc-ch-left">
-                <div class="vc-ch-dot" style="background:${partyColor}"></div>
-                <span class="vc-ch-title">Your Standing — Three Pillars</span>
-            </div>
-            <div class="vc-ch-right">
-                <span class="vc-ch-badge" style="color:${partyColor};background:${hexToRgba(partyColor, 0.09)};border-color:${hexToRgba(partyColor, 0.22)}">${escapeHtml(partyAbbr)}</span>
+    <div class="vt-root">
+        <!-- Party header -->
+        <div class="vt-header">
+            <span class="vt-header-name">${escapeHtml(partyName)}</span>
+            <span class="vt-header-status" style="color:${statusColor}">${statusLabel}</span>
+            <span class="vt-header-vote" style="color:${_scoreColor(realizedShare * 100)}">${(realizedShare * 100).toFixed(1)}% vote share</span>
+            <span class="vt-header-seats">${mySeats} / ${totalSeats} seats</span>
+        </div>
+
+        <!-- Five Factor Dashboard -->
+        <div class="vt-factors">
+            ${alignCard}${appealCard}${approvalCard}${visCard}${credCard}
+        </div>
+
+        <!-- Vote Share Waterfall -->
+        <div class="vt-section">
+            <div class="vt-sec-header">VOTE SHARE BREAKDOWN</div>
+            <div class="vt-waterfall">
+                ${waterfallHtml}
+                ${voteLeftPct > 0.5 ? `<div class="vt-wf-note">Vote left on table: ${voteLeftPct.toFixed(1)}% (low turnout)</div>` : ''}
             </div>
         </div>
-        <!-- Headline numbers -->
-        <div class="vc-headline-row">
-            <div class="vc-headline-cell">
-                <div class="vc-hc-label">Vote Share</div>
-                <div class="vc-hc-num" style="color:${partyColor}">${vsNum}%</div>
-                <div class="vc-hc-sub">${ordinal} place. ${seatsText}.</div>
+
+        <!-- Two-column: Issue Landscape + Logs -->
+        <div class="vt-two-col">
+            <!-- Issue Landscape -->
+            <div class="vt-section vt-section--issues">
+                <div class="vt-sec-header">ISSUE LANDSCAPE</div>
+                <table class="vt-issue-table">
+                    <thead><tr>
+                        <th>Issue Category</th><th>Your Stance</th><th>Strength</th>
+                    </tr></thead>
+                    <tbody>${issueRowsHtml}</tbody>
+                </table>
             </div>
-            <div class="vc-headline-cell">
-                <div class="vc-hc-label">Raw Appeal</div>
-                <div class="vc-hc-num" style="color:${rawAppeal >= 40 ? 'var(--dgreen)' : rawAppeal >= 25 ? 'var(--damber)' : 'var(--dred)'}">${rawAppeal.toFixed(1)}</div>
-                <div class="vc-hc-sub">Weighted pillar sum × credibility.</div>
-            </div>
-            <div class="vc-headline-cell">
-                <div class="vc-hc-label">Turnout Rate</div>
-                <div class="vc-hc-num" style="color:${turnout >= 0.7 ? 'var(--dgreen)' : turnout >= 0.55 ? 'var(--damber)' : 'var(--dred)'}">${(turnout * 100).toFixed(0)}%</div>
-                <div class="vc-hc-sub">Voter turnout for your supporters. Boost visibility to increase.</div>
-            </div>
-        </div>
-        <!-- Three-pillar breakdown -->
-        <div class="vc-pillar-section">
-            <div class="vc-sec-label" style="margin-bottom:12px;">Three-pillar breakdown</div>
-            <div class="vc-pillar-grid">
-                <div class="vc-pillar-card" style="border-top-color:${VC_IDEO_COLOR};">
-                    <div class="vc-pc-label">Ideological Alignment</div>
-                    <div style="display:flex;align-items:baseline;gap:4px;">
-                        <div class="vc-pc-num" style="color:${VC_IDEO_COLOR};">${alignment.toFixed(0)}</div>
-                        <div class="vc-pc-unit">/ 100</div>
-                    </div>
-                    <div class="vc-pc-bar"><div class="vc-pc-fill" style="width:${alignment}%;background:${VC_IDEO_COLOR};"></div></div>
-                    <div class="vc-pc-breakdown">
-                        Weight: <strong>40%</strong>. Contribution: <strong>${alignContrib.toFixed(2)}</strong>.
-                    </div>
-                </div>
-                <div class="vc-pillar-card" style="border-top-color:${VC_PERF_COLOR};">
-                    <div class="vc-pc-label">Platform Appeal</div>
-                    <div style="display:flex;align-items:baseline;gap:4px;">
-                        <div class="vc-pc-num" style="color:${VC_PERF_COLOR};">${appeal.toFixed(0)}</div>
-                        <div class="vc-pc-unit">/ 100</div>
-                    </div>
-                    <div class="vc-pc-bar"><div class="vc-pc-fill" style="width:${appeal}%;background:${VC_PERF_COLOR};"></div></div>
-                    <div class="vc-pc-breakdown">
-                        Weight: <strong>25%</strong>. Contribution: <strong>${appealContrib.toFixed(2)}</strong>. Take stances to increase.
-                    </div>
-                </div>
-                <div class="vc-pillar-card" style="border-top-color:${VC_MOM_COLOR};">
-                    <div class="vc-pc-label">Party Approval</div>
-                    <div style="display:flex;align-items:baseline;gap:4px;">
-                        <div class="vc-pc-num" style="color:${VC_MOM_COLOR};">${approval.toFixed(0)}</div>
-                        <div class="vc-pc-unit">/ 100</div>
-                    </div>
-                    <div class="vc-pc-bar"><div class="vc-pc-fill" style="width:${approval}%;background:${VC_MOM_COLOR};"></div></div>
-                    <div class="vc-pc-breakdown">
-                        Weight: <strong>35%</strong>. Contribution: <strong>${approvalContrib.toFixed(2)}</strong>. Governance drives this.
-                    </div>
-                </div>
+
+            <!-- Approval & Credibility Logs -->
+            <div class="vt-section vt-section--logs">
+                <div class="vt-sec-header">APPROVAL LOG</div>
+                <div class="vt-log-scroll">${modifiersHtml}</div>
+                <div class="vt-sec-header" style="margin-top:12px">CREDIBILITY LOG</div>
+                <div class="vt-log-scroll">${credModifiersHtml}</div>
             </div>
         </div>
-        <!-- Visibility / Credibility / Vote Left strip -->
-        <div class="vc-pillar-section" style="display:flex;gap:24px;flex-wrap:wrap;">
-            <div>
-                <div class="vc-pc-label">Visibility</div>
-                <div class="vc-pc-num" style="color:${visibility >= 50 ? 'var(--dgreen)' : visibility >= 30 ? 'var(--damber)' : 'var(--dred)'}; font-size:18px;">${visibility.toFixed(0)}</div>
+
+        <!-- All-Party Comparison -->
+        <div class="vt-section">
+            <div class="vt-sec-header">ALL-PARTY COMPARISON</div>
+            <div class="vt-comp-scroll">
+                <table class="vt-comp-table" id="vt-comp-table">
+                    <thead><tr>
+                        <th>Party</th><th>Vote %</th><th>Align</th><th>Appeal</th><th>Approval</th><th>Vis</th><th>Cred</th><th>Turnout</th>
+                    </tr></thead>
+                    <tbody>${compRowsHtml}</tbody>
+                </table>
             </div>
-            <div>
-                <div class="vc-pc-label">Credibility</div>
-                <div class="vc-pc-num" style="color:${credibility >= 0.9 ? 'var(--dgreen)' : credibility >= 0.7 ? 'var(--damber)' : 'var(--dred)'}; font-size:18px;">${(credibility * 100).toFixed(0)}%</div>
-            </div>
-            <div>
-                <div class="vc-pc-label">Vote Left on Table</div>
-                <div class="vc-pc-num" style="color:${voteLeft > 0.005 ? 'var(--dred)' : 'var(--dgreen)'}; font-size:18px;">${(voteLeft * 100).toFixed(2)}%</div>
-            </div>
-        </div>
-        <!-- Engagement Score -->
-        <div class="vc-pillar-section">
-            <div class="vc-sec-label" style="margin-bottom:8px;">Engagement Score</div>
-            <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px;">
-                <div class="vc-pc-num" style="color:${engScore >= 60 ? 'var(--dgreen)' : engScore >= 40 ? 'var(--damber)' : 'var(--dred)'}; font-size:24px;">${engScore.toFixed(0)}</div>
-                <div class="vc-pc-bar" style="flex:1;"><div class="vc-pc-fill" style="width:${engScore}%;background:${engScore >= 60 ? 'var(--dgreen)' : engScore >= 40 ? 'var(--damber)' : 'var(--dred)'};"></div></div>
-                <div style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtxt-dim);white-space:nowrap;">
-                    ${engScore >= 60 ? 'No penalty' : engScore >= 40 ? 'Appeal ×0.85' : engScore >= 20 ? 'Appeal ×0.65' : 'Appeal ×0.50'}
-                </div>
-            </div>
-            <div style="display:flex;gap:20px;flex-wrap:wrap;">
-                <div>
-                    <div class="vc-pc-label">Initiative</div>
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        <div class="vc-pc-num" style="font-size:14px;color:${engInit >= 60 ? 'var(--dgreen)' : engInit >= 40 ? 'var(--damber)' : 'var(--dred)'}">${engInit.toFixed(0)}</div>
-                        <div class="vc-pc-bar" style="width:80px;"><div class="vc-pc-fill" style="width:${engInit}%;background:${engInit >= 60 ? 'var(--dgreen)' : engInit >= 40 ? 'var(--damber)' : 'var(--dred)'};"></div></div>
-                    </div>
-                </div>
-                <div>
-                    <div class="vc-pc-label">Constructive</div>
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        <div class="vc-pc-num" style="font-size:14px;color:${engConst >= 60 ? 'var(--dgreen)' : engConst >= 40 ? 'var(--damber)' : 'var(--dred)'}">${engConst.toFixed(0)}</div>
-                        <div class="vc-pc-bar" style="width:80px;"><div class="vc-pc-fill" style="width:${engConst}%;background:${engConst >= 60 ? 'var(--dgreen)' : engConst >= 40 ? 'var(--damber)' : 'var(--dred)'};"></div></div>
-                    </div>
-                </div>
-                <div>
-                    <div class="vc-pc-label">Positioning</div>
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        <div class="vc-pc-num" style="font-size:14px;color:${engPos >= 60 ? 'var(--dgreen)' : engPos >= 40 ? 'var(--damber)' : 'var(--dred)'}">${engPos.toFixed(0)}</div>
-                        <div class="vc-pc-bar" style="width:80px;"><div class="vc-pc-fill" style="width:${engPos}%;background:${engPos >= 60 ? 'var(--dgreen)' : engPos >= 40 ? 'var(--damber)' : 'var(--dred)'};"></div></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        ${issueLandscapeHtml}
-        <!-- All-party comparison -->
-        <div class="vc-pillar-section">
-            <div class="vc-sec-label" style="margin-bottom:12px;">All-party comparison</div>
-            ${partyRowsHtml}
         </div>
     </div>`;
+
+    // Wire sortable comparison table headers
+    setTimeout(() => {
+        const table = document.getElementById('vt-comp-table');
+        if (!table) return;
+        table.querySelectorAll('thead th').forEach((th, colIdx) => {
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', () => {
+                const tbody = table.querySelector('tbody');
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                const isNumeric = colIdx > 0;
+                rows.sort((a, b) => {
+                    const aVal = a.children[colIdx]?.textContent?.replace('%', '').trim() || '';
+                    const bVal = b.children[colIdx]?.textContent?.replace('%', '').trim() || '';
+                    if (isNumeric) return (parseFloat(bVal) || 0) - (parseFloat(aVal) || 0);
+                    return aVal.localeCompare(bVal);
+                });
+                rows.forEach(r => tbody.appendChild(r));
+            });
+        });
+    }, 0);
 }
+
+// ── DEAD CODE REMOVED — old 3-card layout and unreachable legacy code cleaned up ──
+
+/* PLACEHOLDER: renderVotersTab used to end here with unreachable dead code. */
+// This line intentionally left to mark the boundary.
 
 /* ═══════════════════════════════════════════════════════════════════
    OTHER PARTIES TAB — Rival party intelligence cards
