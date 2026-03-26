@@ -13888,8 +13888,21 @@ async function previewExistingOrg(orgId) {
             .limit(1)
             .maybeSingle();
 
+        // Check if this is a non-strongman autocratic faction (can't join IPOs)
+        let isNonStrongmanAutocrat = false;
+        try {
+            const { data: myPillar } = await _supabase
+                .from('faction_pillar_state')
+                .select('faction_id, is_strongman')
+                .eq('faction_id', currentFaction.id)
+                .maybeSingle();
+            if (myPillar && !myPillar.is_strongman) isNonStrongmanAutocrat = true;
+        } catch (e) { /* non-fatal */ }
+
         let joinButton = '';
-        if (pendingVote) {
+        if (isNonStrongmanAutocrat) {
+            joinButton = '<div style="font-size:10px;color:var(--dtext-3);font-style:italic;">Only the strongman faction can represent your regime in international organisations.</div>';
+        } else if (pendingVote) {
             joinButton = '<button class="ipo-btn" disabled style="opacity:0.5;">Request Pending...</button>';
         } else {
             joinButton = `<button class="ipo-btn ipo-btn--create-large" onclick="requestToJoinOrg('${orgId}')">Request to Join</button>`;
@@ -13916,6 +13929,17 @@ async function requestToJoinOrg(orgId) {
     _ipoActionLock = true;
 
     try {
+        // Block non-strongman autocratic factions from joining
+        const { data: myPillar } = await _supabase
+            .from('faction_pillar_state')
+            .select('faction_id, is_strongman')
+            .eq('faction_id', currentFaction.id)
+            .maybeSingle();
+        if (myPillar && !myPillar.is_strongman) {
+            alert('Only the strongman faction can represent your regime in international organisations.');
+            return;
+        }
+
         const { data: org } = await _supabase
             .from('international_orgs')
             .select('id, name, charter, president_id')
@@ -14584,8 +14608,20 @@ async function openIPOInviteModal() {
         .order('faction_name');
     if (facErr) console.error('[IPO Invite] Factions query error:', facErr.message);
 
-    // Fetch nation names for display
-    const allFactionsList = allFactions || [];
+    // Filter out non-strongman autocratic factions (only strongman can represent an autocracy)
+    const allFactionsList0 = allFactions || [];
+    let autocraticStrongmanIds = new Set();
+    let autocraticNonStrongmanIds = new Set();
+    try {
+        const { data: pillarStates } = await _supabase
+            .from('faction_pillar_state')
+            .select('faction_id, is_strongman');
+        for (const ps of (pillarStates || [])) {
+            if (ps.is_strongman) autocraticStrongmanIds.add(ps.faction_id);
+            else autocraticNonStrongmanIds.add(ps.faction_id);
+        }
+    } catch (e) { /* non-fatal */ }
+    const allFactionsList = allFactionsList0.filter(f => !autocraticNonStrongmanIds.has(f.id));
     const nationIds = [...new Set(allFactionsList.map(f => f.nation_id).filter(Boolean))];
     const nationMap = {};
     if (nationIds.length > 0) {
@@ -16226,20 +16262,56 @@ async function applyVoteEffects(vote, org) {
             const admitRole = meta.requested_role || 'member';
             const chatColor = await assignIPOChatColor(ipoSelectedOrgId);
 
-            await _supabase.from('ipo_members').insert({
-                org_id: ipoSelectedOrgId,
-                faction_id: meta.target_faction_id,
-                role: admitRole,
-                joined_at_tick: shardTick,
-                chat_color: chatColor
-            });
+            // Check if target is an autocratic strongman — if so, admit all factions of that autocracy
+            let factionsToAdmit = [{ id: meta.target_faction_id, name: meta.target_faction_name }];
+            try {
+                const { data: pillarState } = await _supabase
+                    .from('faction_pillar_state')
+                    .select('faction_id, is_strongman')
+                    .eq('faction_id', meta.target_faction_id)
+                    .eq('is_strongman', true)
+                    .maybeSingle();
+                if (pillarState) {
+                    // This is a strongman — find the nation and all its autocratic factions
+                    const { data: strongmanFaction } = await _supabase
+                        .from('factions')
+                        .select('nation_id')
+                        .eq('id', meta.target_faction_id)
+                        .single();
+                    if (strongmanFaction) {
+                        const { data: allPillarFactions } = await _supabase
+                            .from('faction_pillar_state')
+                            .select('faction_id, factions:faction_id ( faction_name )')
+                            .eq('nation_id', strongmanFaction.nation_id);
+                        if (allPillarFactions && allPillarFactions.length > 0) {
+                            factionsToAdmit = allPillarFactions.map(pf => ({
+                                id: pf.faction_id,
+                                name: pf.factions?.faction_name || 'Unknown'
+                            }));
+                        }
+                    }
+                }
+            } catch (e) { console.error('[IPO] Autocracy admission check failed:', e.message); }
 
-            const roleLabel = admitRole === 'observer' ? 'an observer' : 'a member';
+            for (const f of factionsToAdmit) {
+                const color = await assignIPOChatColor(ipoSelectedOrgId);
+                await _supabase.from('ipo_members').insert({
+                    org_id: ipoSelectedOrgId,
+                    faction_id: f.id,
+                    role: admitRole,
+                    joined_at_tick: shardTick,
+                    chat_color: color
+                });
+            }
+
+            const admitMsg = factionsToAdmit.length > 1
+                ? `${meta.target_faction_name || 'An autocratic regime'} and its ${factionsToAdmit.length - 1} faction(s) have been admitted.`
+                : `${meta.target_faction_name || 'A new party'} has been admitted as ${admitRole === 'observer' ? 'an observer' : 'a member'}.`;
             await _supabase.from('ipo_chat').insert({
                 org_id: ipoSelectedOrgId,
                 faction_id: null,
                 is_system: true,
-                message_text: `${meta.target_faction_name || 'A new party'} has been admitted as ${roleLabel}.`,
+                message_text: admitMsg,
                 tick_posted: shardTick
             });
             break;
