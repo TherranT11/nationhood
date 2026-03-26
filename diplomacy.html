@@ -14281,10 +14281,6 @@ async function renderIPOView() {
 
     ipoLoaded = true;
 
-    // Load chat and votes after DOM is set (only if an org is selected)
-    if (ipoSelectedOrgId && ipoMemberships.length > 0) {
-        loadIPOChat(ipoSelectedOrgId);
-        loadIPOVotes(ipoSelectedOrgId);
     // Update International Orgs sub-tab badge with pending invite count
     updateIPOInviteTabBadge(pendingInvites.length);
 
