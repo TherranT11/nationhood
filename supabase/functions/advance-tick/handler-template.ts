@@ -1098,7 +1098,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
       try {
         const { data: factions } = await supabase
             .from('factions')
-            .select('id, approval_rating, faction_type')
+            .select('id, faction_type')
             .eq('nation_id', nation.id)
             .eq('faction_type', 'party');
 

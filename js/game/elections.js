@@ -2556,9 +2556,12 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
     //    new president can undo them via their own executive actions.
 
     // Get faction info for administration record
-    const { data: faction } = await supabase.from('factions').select('faction_name, seats, approval_rating').eq('id', factionId).single();
-    const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-    const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
+    const [{ data: faction }, { data: shardData }, { data: fullNation }, { data: fStanding }] = await Promise.all([
+        supabase.from('factions').select('faction_name, seats').eq('id', factionId).single(),
+        supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single(),
+        supabase.from('nations').select('*').eq('id', nationId).single(),
+        supabase.from('faction_electoral_standing').select('party_approval').eq('faction_id', factionId).eq('nation_id', nationId).maybeSingle()
+    ]);
 
     // For presidential systems, fetch latest parliamentary election seats (more reliable than faction.seats)
     let presidentPartySeats = faction?.seats || 0;
@@ -2594,7 +2597,7 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
             ended_at_tick: currentTick,
             ended_at_date: dateStr,
             end_reason: endReason,
-            approval_at_end: faction?.approval_rating ?? null,
+            approval_at_end: fStanding?.party_approval ?? null,
             stats_at_end: fullNation ? snapshotNationStats(fullNation) : {},
             updated_at: new Date().toISOString()
         })

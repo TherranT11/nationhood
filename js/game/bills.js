@@ -254,9 +254,8 @@ export function calculateIdeologyPenalty(stage, opposedCount, polarization) {
 // ==================== BLOC APPROVAL HELPERS ====================
 
 /**
- * Recalculate derived overall approval_rating for a faction from
- * faction_bloc_approval preference_scores weighted by voter_blocs population_weight.
- * Updates the factions.approval_rating cache column.
+ * Legacy bloc-weighted approval recalculation (no longer used).
+ * Approval is now tracked in faction_electoral_standing.party_approval.
  */
 export async function recalcDerivedApproval(supabase, factionId, blocRows) {
     // Legacy bloc-weighted approval removed — electorate engine handles vote share now

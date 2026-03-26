@@ -2362,12 +2362,13 @@ export async function processMinistryActions(supabase, nation, currentTick) {
                     } else if (target === 'faction') {
                         const fKey = action.faction_id;
                         if (factionUpdates[fKey] === undefined) {
-                            const { data: faction } = await supabase
-                                .from('factions')
-                                .select('approval_rating')
-                                .eq('id', action.faction_id)
-                                .single();
-                            factionUpdates[fKey] = (faction?.approval_rating ?? 50);
+                            const { data: standing } = await supabase
+                                .from('faction_electoral_standing')
+                                .select('party_approval')
+                                .eq('faction_id', action.faction_id)
+                                .eq('nation_id', nation.id)
+                                .maybeSingle();
+                            factionUpdates[fKey] = (standing?.party_approval ?? 50);
                             factionBaseline[fKey] = factionUpdates[fKey];
                         }
                         currentVal = factionUpdates[fKey];
@@ -2453,12 +2454,13 @@ export async function processMinistryActions(supabase, nation, currentTick) {
         const multiplier = ministryKey === 'prime_minister' ? 2 : 1;
         // Load faction approval into factionUpdates if not already tracked
         if (factionUpdates[factionId] === undefined) {
-            const { data: faction } = await supabase
-                .from('factions')
-                .select('approval_rating')
-                .eq('id', factionId)
-                .single();
-            factionUpdates[factionId] = (faction?.approval_rating ?? 50);
+            const { data: standing } = await supabase
+                .from('faction_electoral_standing')
+                .select('party_approval')
+                .eq('faction_id', factionId)
+                .eq('nation_id', nation.id)
+                .maybeSingle();
+            factionUpdates[factionId] = (standing?.party_approval ?? 50);
             factionBaseline[factionId] = factionUpdates[factionId];
         }
         factionUpdates[factionId] = Math.max(0, factionUpdates[factionId] - (loss * multiplier));
@@ -4117,17 +4119,18 @@ export async function processPMTraitEffects(supabase, nation, currentTick) {
     }
 
     if (effects.approval_below_50_bonus || effects.approval_above_60_penalty) {
-        const { data: faction } = await supabase
-            .from('factions')
-            .select('approval_rating')
-            .eq('id', factionId)
-            .single();
+        const { data: standing } = await supabase
+            .from('faction_electoral_standing')
+            .select('party_approval')
+            .eq('faction_id', factionId)
+            .eq('nation_id', nation.id)
+            .maybeSingle();
 
-        if (faction) {
+        if (standing) {
             let delta = 0;
-            if (faction.approval_rating < 40 && effects.approval_below_50_bonus) {
+            if (standing.party_approval < 40 && effects.approval_below_50_bonus) {
                 delta = effects.approval_below_50_bonus;
-            } else if (faction.approval_rating > 50 && effects.approval_above_60_penalty) {
+            } else if (standing.party_approval > 50 && effects.approval_above_60_penalty) {
                 delta = effects.approval_above_60_penalty;
             }
             if (delta !== 0) {
@@ -4456,7 +4459,6 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
             abandoned_at: new Date().toISOString(),
             disband_cooldown_until_tick: currentTick + 24,
             action_points: 0,
-            approval_rating: null,
             last_seen_tick: null,
             founded_tick: null
         })
