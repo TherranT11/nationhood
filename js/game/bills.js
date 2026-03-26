@@ -2992,12 +2992,50 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             // Constitutional monarchy: stability +5, legitimacy -5
             const newStability = Math.min(100, (nation?.stability || 50) + 5);
             const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 5);
-            const { error: statErr } = await supabase.from('nations').update({
-                stability: newStability,
-                legitimacy: newLegitimacy
-            }).eq('id', bill.nation_id);
+            const statUpdate = { stability: newStability, legitimacy: newLegitimacy };
+
+            // If the nation is an autocracy, transition to parliamentary democracy
+            const wasAutocracy = nation?.government_type?.toLowerCase().includes('autocra');
+            if (wasAutocracy) {
+                statUpdate.government_type = 'Democracy';
+                statUpdate.ruling_faction_id = null;
+                statUpdate.designated_successor_faction_id = null;
+                statUpdate.revolution_started_tick = null;
+                statUpdate.revolution_duration = null;
+                statUpdate.authoritarianism_seize_available_tick = null;
+
+                // Clean up autocracy-specific state
+                await Promise.allSettled([
+                    supabase.from('autocracy_tracker').delete().eq('nation_id', bill.nation_id),
+                    supabase.from('putsch_state').delete().eq('nation_id', bill.nation_id),
+                    supabase.from('vulnerability_window').delete().eq('nation_id', bill.nation_id),
+                    supabase.from('pyrrhic_window').delete().eq('nation_id', bill.nation_id),
+                    supabase.from('silent_coup_offers').delete().eq('nation_id', bill.nation_id),
+                    supabase.from('silent_coup_votes').delete().eq('nation_id', bill.nation_id),
+                ]);
+
+                // Freeze all active bills
+                await supabase.from('bills')
+                    .update({ status: 'frozen' })
+                    .eq('nation_id', bill.nation_id)
+                    .in('status', ['committee', 'floor']);
+
+                // Schedule parliamentary election 48 ticks from now
+                await supabase.from('elections').delete()
+                    .eq('nation_id', bill.nation_id).eq('status', 'scheduled');
+                await supabase.from('elections').insert({
+                    nation_id: bill.nation_id,
+                    election_tick: currentTick + 48,
+                    status: 'scheduled',
+                    election_type: 'parliamentary'
+                });
+
+                console.log(`[enactFoundationalBill] Autocracy → Parliamentary Democracy (constitutional monarchy), election at tick ${currentTick + 48}`);
+            }
+
+            const { error: statErr } = await supabase.from('nations').update(statUpdate).eq('id', bill.nation_id);
             if (statErr) console.error(`[enactFoundationalBill] Hereditary stat update failed:`, statErr.message);
-            else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, legitimacy -5`);
+            else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, legitimacy -5${wasAutocracy ? ', gov type → Democracy' : ''}`);
         } else if (newMethod === 'direct_vote') {
             // Direct vote: legitimacy +3, political_engagement +3, polarization +2
             const newLegitimacy = Math.min(100, (nation?.legitimacy || 50) + 3);

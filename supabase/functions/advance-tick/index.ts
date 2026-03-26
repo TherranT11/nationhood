@@ -8810,12 +8810,80 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             // Constitutional monarchy: stability +5, legitimacy -5
             const newStability = Math.min(100, (nation?.stability || 50) + 5);
             const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 5);
-            const { error: statErr } = await supabase.from('nations').update({
-                stability: newStability,
-                legitimacy: newLegitimacy
-            }).eq('id', bill.nation_id);
+            const statUpdate: any = { stability: newStability, legitimacy: newLegitimacy };
+
+            // If the nation is an autocracy, transition to parliamentary democracy
+            const wasAutocracy = isAutocracy(nation);
+            if (wasAutocracy) {
+                statUpdate.government_type = CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY;
+                statUpdate.ruling_faction_id = null;
+                statUpdate.designated_successor_faction_id = null;
+                statUpdate.revolution_started_tick = null;
+                statUpdate.revolution_duration = null;
+                statUpdate.authoritarianism_seize_available_tick = null;
+                console.log(`[enactFoundationalBill] Autocracy → Parliamentary Democracy (constitutional monarchy) for ${nation?.name}`);
+
+                // Close current administration
+                try {
+                    const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                    await closeAdministration(supabase, bill.nation_id, nation, 'constitutional_monarchy', currentTick, shardData?.current_date || '', null);
+                } catch (err) {
+                    console.warn('[enactFoundationalBill] Could not close administration during monarchy transition:', err);
+                }
+
+                // Dissolve coalition
+                try { await dissolveCoalition(supabase, bill.nation_id); } catch (err) {
+                    console.warn('[enactFoundationalBill] Could not dissolve coalition during monarchy transition:', err);
+                }
+
+                // Clean up autocracy-specific state
+                await Promise.allSettled([
+                    supabase.from('autocracy_tracker').delete().eq('nation_id', bill.nation_id),
+                    supabase.from('putsch_state').delete().eq('nation_id', bill.nation_id),
+                    supabase.from('vulnerability_window').delete().eq('nation_id', bill.nation_id),
+                    supabase.from('pyrrhic_window').delete().eq('nation_id', bill.nation_id),
+                    supabase.from('silent_coup_offers').delete().eq('nation_id', bill.nation_id),
+                    supabase.from('silent_coup_votes').delete().eq('nation_id', bill.nation_id),
+                ]);
+
+                // Freeze all active bills — government is transitioning
+                await supabase.from('bills')
+                    .update({ status: 'frozen' })
+                    .eq('nation_id', bill.nation_id)
+                    .in('status', ['committee', 'floor']);
+
+                // Schedule parliamentary election 48 ticks from now
+                await supabase.from('elections').delete()
+                    .eq('nation_id', bill.nation_id).eq('status', 'scheduled');
+                const { error: electionErr } = await supabase.from('elections').insert({
+                    nation_id: bill.nation_id,
+                    election_tick: currentTick + 48,
+                    status: 'scheduled',
+                    election_type: 'parliamentary'
+                });
+                if (electionErr) console.error('[enactFoundationalBill] Failed to schedule post-monarchy election:', electionErr.message);
+                else console.log(`[enactFoundationalBill] Parliamentary election scheduled at tick ${currentTick + 48}`);
+
+                // Log the transition
+                await supabase.from('event_log').insert({
+                    nation_id: bill.nation_id,
+                    event_name: 'GOVERNMENT_TYPE_CHANGED',
+                    trigger_key: 'constitutional_monarchy_transition',
+                    description_used: `The ${nation?.name || 'nation'} has established a constitutional monarchy under the ${bill.proposed_dynasty_name || 'Royal'} dynasty. The strongman has been demoted to Prime Minister. Parliamentary elections have been called in 48 ticks.`,
+                    category: 'POLITICAL',
+                    effects_applied: [
+                        { stat: 'government_type', change: `Autocracy → Democracy`, target: 'nation' },
+                        { stat: 'stability', change: +5, target: 'nation' },
+                        { stat: 'legitimacy', change: -5, target: 'nation' },
+                        { stat: 'election', change: `Scheduled at tick ${currentTick + 48}`, target: 'nation' },
+                    ],
+                    fired_at_tick: currentTick
+                });
+            }
+
+            const { error: statErr } = await supabase.from('nations').update(statUpdate).eq('id', bill.nation_id);
             if (statErr) console.error(`[enactFoundationalBill] Hereditary stat update failed:`, statErr.message);
-            else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, legitimacy -5`);
+            else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, legitimacy -5${wasAutocracy ? ', gov type → Democracy' : ''}`);
         } else if (newMethod === 'direct_vote') {
             // Direct vote: legitimacy +3, political_engagement +3, polarization +2
             const newLegitimacy = Math.min(100, (nation?.legitimacy || 50) + 3);
