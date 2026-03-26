@@ -2449,7 +2449,7 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
 
     const { data: ministries, error: fetchErr } = await supabase
         .from('ministries')
-        .select('id, ministry_key, minister_approval, minister_first_name, party_id, stat_baselines')
+        .select('id, ministry_key, minister_approval, minister_first_name, party_id, stat_baselines, stat_tick_snapshot')
         .eq('nation_id', nation.id)
         .eq('is_active', true);
 
@@ -2476,26 +2476,28 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
         if (!ownedStats || ownedStats.length === 0) continue;
 
         // Auto-set baselines for ministers that don't have them yet (migration path)
-        let baselines = ministry.stat_baselines;
-        if (!baselines || Object.keys(baselines).length === 0) {
-            baselines = buildMinistryBaselines(ministry.ministry_key, nation);
+        if (!ministry.stat_baselines || Object.keys(ministry.stat_baselines).length === 0) {
+            const freshBaselines = buildMinistryBaselines(ministry.ministry_key, nation);
             const { error: blErr } = await supabase.from('ministries')
-                .update({ stat_baselines: baselines })
+                .update({ stat_baselines: freshBaselines })
                 .eq('id', ministry.id);
             if (blErr) console.error(`[updateMinisterApprovals] Baseline init failed for ${ministry.ministry_key}:`, blErr.message);
         }
 
-        // Calculate average delta: how much each stat moved in the "good" direction
+        // Use stat_tick_snapshot for tick-to-tick delta (NOT stat_baselines, which is the appointment snapshot)
+        const tickSnapshot = ministry.stat_tick_snapshot || ministry.stat_baselines || {};
+
+        // Calculate average delta: how much each stat moved since last tick
         let deltaSum = 0;
         let deltaCount = 0;
         for (const statKey of ownedStats) {
             const sign = statDirectionSign(statKey);
             if (sign === 0) continue; // skip neutral stats (taxes, etc.)
             const current = Number(nation[statKey] ?? 50);
-            const baseline = Number(baselines[statKey] ?? current);
-            // sign=1 (higher-is-better): improvement = current - baseline (positive = good)
-            // sign=-1 (lower-is-better): improvement = baseline - current (positive = good)
-            const delta = (current - baseline) * sign;
+            const prev = Number(tickSnapshot[statKey] ?? current);
+            // sign=1 (higher-is-better): improvement = current - prev (positive = good)
+            // sign=-1 (lower-is-better): improvement = prev - current (positive = good)
+            const delta = (current - prev) * sign;
             deltaSum += delta;
             deltaCount++;
         }
@@ -2536,15 +2538,16 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
         // minister_approval is an integer column — round to whole number
         newApproval = Math.round(Math.max(0, Math.min(100, newApproval)));
 
-        // Update baselines to current values so next tick only sees incremental change
-        const updatedBaselines = {};
+        // Save current stat values as the tick snapshot for next tick's delta calculation.
+        // stat_baselines is preserved as the original appointment-time snapshot (shown in UI).
+        const tickSnapshotUpdate = {};
         for (const statKey of ownedStats) {
             if (statDirectionSign(statKey) === 0) continue;
-            updatedBaselines[statKey] = Number(nation[statKey] ?? 50);
+            tickSnapshotUpdate[statKey] = Number(nation[statKey] ?? 50);
         }
 
         const { error: updateErr } = await supabase.from('ministries')
-            .update({ minister_approval: newApproval, stat_baselines: updatedBaselines })
+            .update({ minister_approval: newApproval, stat_tick_snapshot: tickSnapshotUpdate })
             .eq('id', ministry.id);
 
         if (updateErr) {
