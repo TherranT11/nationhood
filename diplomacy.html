@@ -4721,7 +4721,8 @@ async function renderWizardStep3TradeProposal() {
 
     const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
     const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isMoT && !diplomaticRoles.isFM;
-    const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
+    const baseApCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
+    const apCost = baseApCost + getArticleEscalationCost(tradeArticles.length);
 
     // If no agreement type selected yet, show type selection
     if (!wizardTradeAgreementType) {
@@ -4810,6 +4811,9 @@ async function renderWizardStep3TradeProposal() {
                 </div>`;
         }
         html += '</div>';
+        if (tradeArticles.length > 3) {
+            html += `<div class="trade-info-box warning" style="margin-top:8px;font-size:0.72rem;">Extra articles: +${getArticleEscalationCost(tradeArticles.length)} AP added (each article beyond 3 costs +2 AP)</div>`;
+        }
     }
 
     // Add article dropdown
@@ -4832,10 +4836,11 @@ async function renderWizardStep3TradeProposal() {
         html += `<div class="trade-info-box warning" style="margin-top:12px;">Required articles missing: ${escapeHtml(missingLabels)}</div>`;
     }
 
+    const escalation = getArticleEscalationCost(tradeArticles.length);
     html += `
             <div style="font-size:0.75rem;color:var(--text-muted);margin-top:14px;line-height:1.5;">
                 <strong>What happens next:</strong><br/>
-                1. You send the complete proposal with articles (${apCost} AP)<br/>
+                1. You send the complete proposal with articles (${apCost} AP${escalation > 0 ? ' — includes +' + escalation + ' AP for extra articles' : ''})<br/>
                 2. ${escapeHtml(targetName)} reviews the articles<br/>
                 3. They can accept, reject, or counter (strike/add articles)<br/>
                 4. If countered, you review their changes and accept or reject
@@ -5471,7 +5476,8 @@ async function submitTradeProposal() {
 
     const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
     const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isMoT && !diplomaticRoles.isFM;
-    const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
+    const baseApCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
+    const apCost = baseApCost + getArticleEscalationCost(tradeArticles.length);
 
     _diploActionLock = true;
     try {
@@ -6440,6 +6446,11 @@ function getTradeTypeExplainer(agreementType) {
         default:
             return '';
     }
+}
+
+function getArticleEscalationCost(articleCount) {
+    // Articles beyond 3 cost +2 AP each (4th = +2, 5th = +4, etc.)
+    return Math.max(0, articleCount - 3) * 2;
 }
 
 function getAvailableArticleTypes(agreementType, existingArticles) {
