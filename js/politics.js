@@ -6328,6 +6328,29 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             <div style="flex:1;overflow-y:auto;min-height:0">
                 ${credModifiersHtml}
             </div>
+
+            <!-- Chaos/weight indicator -->
+            <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--dborder-0)">
+                ${(() => {
+                    const pol = Number(nation.polarization ?? 50);
+                    const stab = Number(nation.stability ?? 50);
+                    const chaos = ((pol / 100) + (1 - stab / 100)) / 2;
+                    const weight = Math.round((0.35 - chaos * 0.30) * 100);
+                    const barColor = weight >= 25 ? '#5cb85c' : weight >= 15 ? '#c8a44e' : '#d9534f';
+                    const desc = weight >= 25 ? 'High stability, low polarization — credibility matters more'
+                        : weight >= 15 ? 'Moderate chaos — credibility has average impact'
+                        : 'High polarization, low stability — credibility matters less';
+                    return `
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                            <span style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--dtext-3)">Current Weight</span>
+                            <span style="font-size:11px;font-weight:700;font-family:var(--dfont-mono);color:${barColor}">${weight}%</span>
+                        </div>
+                        <div style="height:4px;border-radius:2px;background:var(--dbg-3);margin-bottom:4px;overflow:hidden">
+                            <div style="width:${Math.round(((weight - 5) / 30) * 100)}%;height:100%;background:${barColor};border-radius:2px;transition:width 0.5s"></div>
+                        </div>
+                        <div style="font-size:8px;color:var(--dtext-3);font-style:italic">${desc}</div>`;
+                })()}
+            </div>
         </div>
 
         <!-- Alignment Container -->
@@ -6370,6 +6393,11 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             <!-- Campaigns list (scrollable) -->
             <div style="flex:1;overflow-y:auto;min-height:0">
                 ${campaignsHtml}
+            </div>
+
+            <!-- Electorate link -->
+            <div style="text-align:center;padding-top:8px;border-top:1px solid var(--dborder-0);margin-top:8px">
+                <span style="font-size:9px;color:var(--dtext-3);font-style:italic">See full <span style="color:var(--dtext-1);font-weight:600">Electorate</span> for more info on alignment.</span>
             </div>
         </div>
     </div>`;
