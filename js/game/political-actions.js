@@ -3863,7 +3863,7 @@ export function weightedRandomPick(weightedItems) {
  */
 export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, currentTick) {
     const coalition = await fetchActiveCoalition(supabase, nationId);
-    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'caretaker')) {
+    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'active' && coalition.status !== 'caretaker')) {
         throw new Error('Cannot appoint a Prime Minister until a coalition has been formed.');
     }
 
@@ -4302,7 +4302,7 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
             .from('government_formations')
             .select('id, lead_party_id, party_ids')
             .eq('nation_id', nationId)
-            .in('status', ['formed', 'caretaker']);
+            .in('status', ['formed', 'active', 'caretaker']);
 
         const myFormation = (formations || []).find(f =>
             (f.party_ids || []).includes(factionId)

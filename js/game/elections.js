@@ -691,7 +691,7 @@ export async function dissolveCoalition(supabase, nationId, excludeFormationId) 
         .from('government_formations')
         .update({ status: 'dissolved' })
         .eq('nation_id', nationId)
-        .in('status', ['formed', 'caretaker']);
+        .in('status', ['formed', 'active', 'caretaker']);
     if (excludeFormationId) dissolveQuery = dissolveQuery.neq('id', excludeFormationId);
     const { error: formErr } = await dissolveQuery;
     if (formErr) console.warn('dissolveCoalition: formations update failed:', formErr);
@@ -883,7 +883,7 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
         .from('government_formations')
         .select('id, status')
         .eq('nation_id', nationId)
-        .in('status', ['formed', 'caretaker'])
+        .in('status', ['formed', 'active', 'caretaker'])
         .order('formed_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -1621,7 +1621,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
             .from('government_formations')
             .select('id, status')
             .eq('nation_id', nation.id)
-            .in('status', ['formed', 'caretaker'])
+            .in('status', ['formed', 'active', 'caretaker'])
             .maybeSingle();
         if (govFormation) {
             existingGov = govFormation;
@@ -1650,7 +1650,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
                 .from('government_formations')
                 .update({ status: 'dissolved' })
                 .eq('nation_id', nation.id)
-                .in('status', ['formed', 'caretaker']);
+                .in('status', ['formed', 'active', 'caretaker']);
 
             await supabase
                 .from('active_coalitions')
@@ -1720,7 +1720,7 @@ export async function processElections(supabase, nation, currentTick) {
         // Safety check: skip snap elections if a government has already been formed
         if (electionType === 'parliamentary') {
             const existingGov = await fetchActiveCoalition(supabase, nation.id);
-            if (existingGov && (existingGov.status === 'formed' || existingGov.status === 'caretaker')) {
+            if (existingGov && (existingGov.status === 'formed' || existingGov.status === 'active' || existingGov.status === 'caretaker')) {
                 console.log(`Skipping parliamentary election for ${nation.name} — government already formed (status: ${existingGov.status})`);
                 await supabase.from('elections')
                     .update({ status: 'cancelled' })
@@ -1897,7 +1897,7 @@ export async function processElections(supabase, nation, currentTick) {
                 .from('government_formations')
                 .select('id, status')
                 .eq('nation_id', nation.id)
-                .in('status', ['formed', 'caretaker'])
+                .in('status', ['formed', 'active', 'caretaker'])
                 .maybeSingle();
             if (govFormation) {
                 existingGov = govFormation;
@@ -1944,7 +1944,7 @@ export async function processElections(supabase, nation, currentTick) {
                     .from('government_formations')
                     .update({ status: 'dissolved' })
                     .eq('nation_id', nation.id)
-                    .in('status', ['formed', 'caretaker']);
+                    .in('status', ['formed', 'active', 'caretaker']);
 
                 await supabase
                     .from('active_coalitions')

@@ -4976,7 +4976,7 @@ async function fetchActiveCoalition(supabase, nationId) {
         .from('government_formations')
         .select('*')
         .eq('nation_id', nationId)
-        .in('status', ['formed', 'caretaker'])
+        .in('status', ['formed', 'active', 'caretaker'])
         .order('formed_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -6939,7 +6939,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                             const { data: activeGovFormation } = await supabase.from('government_formations')
                                 .select('id, ministry_assignments')
                                 .eq('nation_id', bill.nation_id)
-                                .in('status', ['formed', 'caretaker'])
+                                .in('status', ['formed', 'active', 'caretaker'])
                                 .order('formed_at', { ascending: false })
                                 .limit(1)
                                 .maybeSingle();
@@ -9998,7 +9998,7 @@ async function dissolveCoalition(supabase, nationId, excludeFormationId) {
         .from('government_formations')
         .update({ status: 'dissolved' })
         .eq('nation_id', nationId)
-        .in('status', ['formed', 'caretaker']);
+        .in('status', ['formed', 'active', 'caretaker']);
     if (excludeFormationId) dissolveQuery = dissolveQuery.neq('id', excludeFormationId);
     const { error: formErr } = await dissolveQuery;
     if (formErr) console.warn('dissolveCoalition: formations update failed:', formErr);
@@ -10190,7 +10190,7 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
         .from('government_formations')
         .select('id, status')
         .eq('nation_id', nationId)
-        .in('status', ['formed', 'caretaker'])
+        .in('status', ['formed', 'active', 'caretaker'])
         .order('formed_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -10928,7 +10928,7 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
             .from('government_formations')
             .select('id, status')
             .eq('nation_id', nation.id)
-            .in('status', ['formed', 'caretaker'])
+            .in('status', ['formed', 'active', 'caretaker'])
             .maybeSingle();
         if (govFormation) {
             existingGov = govFormation;
@@ -10957,7 +10957,7 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
                 .from('government_formations')
                 .update({ status: 'dissolved' })
                 .eq('nation_id', nation.id)
-                .in('status', ['formed', 'caretaker']);
+                .in('status', ['formed', 'active', 'caretaker']);
 
             await supabase
                 .from('active_coalitions')
@@ -11027,7 +11027,7 @@ async function processElections(supabase, nation, currentTick) {
         // Safety check: skip snap elections if a government has already been formed
         if (electionType === 'parliamentary') {
             const existingGov = await fetchActiveCoalition(supabase, nation.id);
-            if (existingGov && (existingGov.status === 'formed' || existingGov.status === 'caretaker')) {
+            if (existingGov && (existingGov.status === 'formed' || existingGov.status === 'active' || existingGov.status === 'caretaker')) {
                 console.log(`Skipping parliamentary election for ${nation.name} — government already formed (status: ${existingGov.status})`);
                 await supabase.from('elections')
                     .update({ status: 'cancelled' })
@@ -11204,7 +11204,7 @@ async function processElections(supabase, nation, currentTick) {
                 .from('government_formations')
                 .select('id, status')
                 .eq('nation_id', nation.id)
-                .in('status', ['formed', 'caretaker'])
+                .in('status', ['formed', 'active', 'caretaker'])
                 .maybeSingle();
             if (govFormation) {
                 existingGov = govFormation;
@@ -11251,7 +11251,7 @@ async function processElections(supabase, nation, currentTick) {
                     .from('government_formations')
                     .update({ status: 'dissolved' })
                     .eq('nation_id', nation.id)
-                    .in('status', ['formed', 'caretaker']);
+                    .in('status', ['formed', 'active', 'caretaker']);
 
                 await supabase
                     .from('active_coalitions')
@@ -12597,7 +12597,7 @@ async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
     if (!isParliamentaryDemocracy(nation)) return;
 
     const coalition = await fetchActiveCoalition(supabase, nation.id);
-    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'caretaker')) return;
+    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'active' && coalition.status !== 'caretaker')) return;
 
     const { data: existingHOG } = await supabase
         .from('head_of_government')
@@ -24741,7 +24741,7 @@ function weightedRandomPick(weightedItems) {
  */
 async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, currentTick) {
     const coalition = await fetchActiveCoalition(supabase, nationId);
-    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'caretaker')) {
+    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'active' && coalition.status !== 'caretaker')) {
         throw new Error('Cannot appoint a Prime Minister until a coalition has been formed.');
     }
 
@@ -25180,7 +25180,7 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
             .from('government_formations')
             .select('id, lead_party_id, party_ids')
             .eq('nation_id', nationId)
-            .in('status', ['formed', 'caretaker']);
+            .in('status', ['formed', 'active', 'caretaker']);
 
         const myFormation = (formations || []).find(f =>
             (f.party_ids || []).includes(factionId)
