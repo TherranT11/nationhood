@@ -3848,6 +3848,328 @@ body.light-mode .ipo-empty-desc { color: #888; }
 }
 
 /* ══════════════════════════════════════════════════════════════
+   IPO VOTES PANEL (Phase 7)
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Propose Vote button ── */
+.ipo-votes-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.ipo-btn--propose {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  text-transform: uppercase;
+  font-weight: 700;
+  background: rgba(200,166,78,0.12);
+  border: 1px solid rgba(200,166,78,0.3);
+  color: #c8a64e;
+  padding: 3px 8px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.ipo-btn--propose:hover { opacity: 0.85; }
+.ipo-btn--propose:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── Vote cards ── */
+.ipo-vote-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ipo-vote-card {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 3px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.ipo-vote-card:hover {
+  background: rgba(255,255,255,0.04);
+}
+.ipo-vote-card.is-expanded {
+  background: rgba(200,166,78,0.04);
+  border-color: rgba(200,166,78,0.15);
+}
+
+.ipo-vote-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ipo-vote-type-badge {
+  font-family: var(--font-mono);
+  font-size: 6.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.ipo-vote-type-badge--membership    { background: rgba(92,184,92,0.1);  border: 1px solid rgba(92,184,92,0.25);  color: #5cb85c; }
+.ipo-vote-type-badge--expulsion     { background: rgba(217,83,79,0.1);  border: 1px solid rgba(217,83,79,0.25);  color: #d9534f; }
+.ipo-vote-type-badge--charter       { background: rgba(90,175,165,0.1); border: 1px solid rgba(90,175,165,0.25); color: #5aafa5; }
+.ipo-vote-type-badge--statement     { background: rgba(139,126,200,0.1); border: 1px solid rgba(139,126,200,0.25); color: var(--ipo-purple); }
+.ipo-vote-type-badge--fund          { background: rgba(200,166,78,0.1); border: 1px solid rgba(200,166,78,0.25); color: #c8a64e; }
+.ipo-vote-type-badge--hq            { background: rgba(91,155,213,0.1); border: 1px solid rgba(91,155,213,0.25); color: #5b9bd5; }
+.ipo-vote-type-badge--symposium     { background: rgba(200,130,78,0.1); border: 1px solid rgba(200,130,78,0.25); color: #c8824e; }
+
+.ipo-vote-title {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  color: #a89880;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ipo-vote-meta {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  color: #4a4840;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.ipo-vote-result-tag {
+  font-family: var(--font-mono);
+  font-size: 6.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.ipo-vote-result-tag--passed {
+  background: rgba(92,184,92,0.12);
+  border: 1px solid rgba(92,184,92,0.25);
+  color: #5cb85c;
+}
+.ipo-vote-result-tag--failed {
+  background: rgba(217,83,79,0.1);
+  border: 1px solid rgba(217,83,79,0.2);
+  color: #d9534f;
+}
+.ipo-vote-result-tag--vetoed {
+  background: rgba(200,166,78,0.1);
+  border: 1px solid rgba(200,166,78,0.2);
+  color: #c8a64e;
+}
+
+/* ── Vote detail (expanded) ── */
+.ipo-vote-detail {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+
+.ipo-vote-description {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: #6b6a5e;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+/* Tally bar */
+.ipo-vote-tally {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.ipo-vote-tally-item {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+}
+.ipo-vote-tally-item--yes     { color: #5cb85c; }
+.ipo-vote-tally-item--no      { color: #d9534f; }
+.ipo-vote-tally-item--abstain { color: #6b6a5e; }
+
+/* Progress bar */
+.ipo-vote-bar {
+  height: 4px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 2px;
+  overflow: hidden;
+  display: flex;
+  margin-bottom: 8px;
+}
+.ipo-vote-bar-yes     { background: #5cb85c; height: 100%; }
+.ipo-vote-bar-no      { background: #d9534f; height: 100%; }
+.ipo-vote-bar-abstain { background: #3a3830; height: 100%; }
+
+/* Ballot buttons */
+.ipo-vote-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.ipo-ballot-btn {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid;
+  transition: opacity 0.15s;
+}
+.ipo-ballot-btn:hover { opacity: 0.85; }
+.ipo-ballot-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.ipo-ballot-btn--yes {
+  background: rgba(92,184,92,0.12);
+  border-color: rgba(92,184,92,0.3);
+  color: #5cb85c;
+}
+.ipo-ballot-btn--yes.is-cast {
+  background: rgba(92,184,92,0.25);
+  border-color: #5cb85c;
+}
+.ipo-ballot-btn--no {
+  background: rgba(217,83,79,0.1);
+  border-color: rgba(217,83,79,0.25);
+  color: #d9534f;
+}
+.ipo-ballot-btn--no.is-cast {
+  background: rgba(217,83,79,0.2);
+  border-color: #d9534f;
+}
+.ipo-ballot-btn--abstain {
+  background: rgba(255,255,255,0.03);
+  border-color: rgba(255,255,255,0.1);
+  color: #6b6a5e;
+}
+.ipo-ballot-btn--abstain.is-cast {
+  background: rgba(255,255,255,0.08);
+  border-color: #6b6a5e;
+}
+
+.ipo-vote-actions-spacer {
+  flex: 1;
+}
+
+.ipo-btn--veto {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+  background: rgba(200,166,78,0.12);
+  border: 1px solid rgba(200,166,78,0.3);
+  color: #c8a64e;
+  transition: opacity 0.15s;
+}
+.ipo-btn--veto:hover { opacity: 0.85; }
+
+/* Public ballot voter list */
+.ipo-vote-ballots {
+  margin-top: 6px;
+}
+.ipo-vote-ballot-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+.ipo-vote-ballot-name {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: #6b6a5e;
+  min-width: 80px;
+}
+.ipo-vote-ballot-choice {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.ipo-vote-ballot-choice--yes     { color: #5cb85c; }
+.ipo-vote-ballot-choice--no      { color: #d9534f; }
+.ipo-vote-ballot-choice--abstain { color: #4a4840; }
+
+/* Section labels within votes panel */
+.ipo-votes-section-label {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #3a3830;
+  margin: 10px 0 6px;
+}
+.ipo-votes-section-label:first-child { margin-top: 0; }
+
+.ipo-votes-empty {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: #3a3830;
+  text-align: center;
+  padding: 16px 0;
+}
+
+/* ── Propose Vote Modal ── */
+.ipo-propose-field {
+  margin-bottom: 10px;
+}
+.ipo-propose-field label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #6b6a5e;
+  display: block;
+  margin-bottom: 4px;
+}
+.ipo-propose-field select,
+.ipo-propose-field input,
+.ipo-propose-field textarea {
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-family: var(--font-sans);
+  background: #141410;
+  border: 1px solid rgba(255,255,255,0.07);
+  color: #e2d9b4;
+  border-radius: 2px;
+  outline: none;
+}
+.ipo-propose-field textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+.ipo-propose-field select:focus,
+.ipo-propose-field input:focus,
+.ipo-propose-field textarea:focus {
+  border-color: rgba(200,166,78,0.3);
+}
+
+/* Light mode overrides for votes */
+body.light-mode .ipo-vote-card { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-vote-card:hover { background: rgba(0,0,0,0.04); }
+body.light-mode .ipo-vote-card.is-expanded { background: rgba(200,166,78,0.04); border-color: rgba(200,166,78,0.15); }
+body.light-mode .ipo-vote-title { color: #555; }
+body.light-mode .ipo-vote-description { color: #888; }
+body.light-mode .ipo-propose-field select,
+body.light-mode .ipo-propose-field input,
+body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color: rgba(0,0,0,0.1); color: #333; }
+
+/* ══════════════════════════════════════════════════════════════
    IPO CREATION MODAL
    ══════════════════════════════════════════════════════════════ */
 
