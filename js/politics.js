@@ -6134,7 +6134,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     // Determine if player is in government
     const coalitionIds = govFormRes.data?.party_ids || [];
     const leadPartyId = govFormRes.data?.lead_party_id || null;
-    const isGoverning = coalitionIds.includes(playerFaction.id) || leadPartyId === playerFaction.id;
+    const isGoverning = coalitionIds.includes(playerFaction.id) || leadPartyId === playerFaction.id || playerFaction.id === nation.ruling_faction_id;
 
     // Build modifiers list from party_approval_log (per-party events)
     const partyLog = partyLogRes.data || [];
