@@ -625,12 +625,11 @@ async function init() {
     }
   }
 
-  // Load already-confirmed pillars in this nation
+  // Load already-claimed pillars in this nation (any faction with a pillar row = taken)
   const { data: existingPillars } = await _supabase
     .from('faction_pillar_state')
-    .select('pillar, pillar_confirmed')
-    .eq('nation_id', nationData.id)
-    .eq('pillar_confirmed', true);
+    .select('pillar')
+    .eq('nation_id', nationData.id);
   if (existingPillars) {
     for (const fps of existingPillars) {
       takenPillars.add(fps.pillar);
