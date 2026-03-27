@@ -8886,18 +8886,114 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, legitimacy -5${wasAutocracy ? ', gov type → Democracy' : ''}`);
         } else if (newMethod === 'direct_vote') {
             // Direct vote: legitimacy +3, political_engagement +3, polarization +2
-            const newLegitimacy = Math.min(100, (nation?.legitimacy || 50) + 3);
-            const newEngagement = Math.min(100, (nation?.political_engagement || 50) + 3);
-            const newPolarization = Math.min(100, (nation?.polarization || 0) + 2);
-            const { error: statErr } = await supabase.from('nations').update({
-                legitimacy: newLegitimacy,
-                political_engagement: newEngagement,
-                polarization: newPolarization
-            }).eq('id', bill.nation_id);
+            // AND transition Parliamentary → Presidential
+            const wasParliamentary = !nation?.government_type?.toLowerCase().includes('president');
+            const statUpdate: Record<string, any> = {
+                legitimacy: Math.min(100, (nation?.legitimacy || 50) + 3),
+                political_engagement: Math.min(100, (nation?.political_engagement || 50) + 3),
+                polarization: Math.min(100, (nation?.polarization || 0) + 2)
+            };
+
+            if (wasParliamentary) {
+                statUpdate.government_type = 'Presidential';
+                console.log(`[enactFoundationalBill] Parliamentary → Presidential transition for nation ${bill.nation_id}`);
+
+                // Close the current coalition/government formation
+                await supabase.from('government_formations')
+                    .update({ status: 'dissolved', dissolved_at_tick: currentTick })
+                    .eq('nation_id', bill.nation_id)
+                    .in('status', ['formed', 'caretaker']);
+
+                // Deactivate parliamentary head of government (PM)
+                await supabase.from('head_of_government')
+                    .update({ active: false })
+                    .eq('nation_id', bill.nation_id)
+                    .eq('active', true);
+
+                // Clear parliamentary-only elections
+                await supabase.from('elections').delete()
+                    .eq('nation_id', bill.nation_id)
+                    .eq('status', 'scheduled')
+                    .eq('election_type', 'parliamentary');
+
+                // Schedule presidential election 3 ticks out
+                const { error: presElErr } = await supabase.from('elections').insert({
+                    nation_id: bill.nation_id,
+                    election_tick: currentTick + 3,
+                    status: 'scheduled',
+                    election_type: 'presidential'
+                });
+                if (presElErr) console.error('[enactFoundationalBill] Failed to schedule presidential election:', presElErr.message);
+                else console.log(`[enactFoundationalBill] Presidential election scheduled at tick ${currentTick + 3}`);
+
+                // Schedule first parliamentary midterm
+                const parlTermTicks = Number(nation?.parliamentary_term_ticks) || 24;
+                await supabase.from('elections').insert({
+                    nation_id: bill.nation_id,
+                    election_tick: currentTick + parlTermTicks,
+                    status: 'scheduled',
+                    election_type: 'parliamentary'
+                });
+
+                statUpdate.gov_approval = 50;
+                statUpdate.gov_approval_events = 0;
+            }
+
+            const { error: statErr } = await supabase.from('nations').update(statUpdate).eq('id', bill.nation_id);
             if (statErr) console.error(`[enactFoundationalBill] Direct vote stat update failed:`, statErr.message);
-            else console.log(`[enactFoundationalBill] Direct HoS vote established: legitimacy +3, political_engagement +3, polarization +2`);
+            else console.log(`[enactFoundationalBill] Direct HoS vote established: legitimacy +3, political_engagement +3, polarization +2${wasParliamentary ? ', gov type → Presidential' : ''}`);
+        } else if (newMethod === 'appointed') {
+            // Appointed by Parliament: transition Presidential → Parliamentary if applicable
+            const wasPresidential = nation?.government_type?.toLowerCase().includes('president');
+
+            if (wasPresidential) {
+                console.log(`[enactFoundationalBill] Presidential → Parliamentary transition for nation ${bill.nation_id}`);
+
+                // Deactivate the president
+                await supabase.from('presidents')
+                    .update({ is_active: false })
+                    .eq('nation_id', bill.nation_id)
+                    .eq('is_active', true);
+
+                // Change government type
+                const { error: govErr } = await supabase.from('nations').update({
+                    government_type: 'Democracy',
+                    gov_approval: 50,
+                    gov_approval_events: 0
+                }).eq('id', bill.nation_id);
+                if (govErr) console.error(`[enactFoundationalBill] Gov type update failed:`, govErr.message);
+
+                // Clear all scheduled elections, schedule parliamentary
+                await supabase.from('elections').delete()
+                    .eq('nation_id', bill.nation_id)
+                    .eq('status', 'scheduled');
+
+                const { error: parlElErr } = await supabase.from('elections').insert({
+                    nation_id: bill.nation_id,
+                    election_tick: currentTick + 3,
+                    status: 'scheduled',
+                    election_type: 'parliamentary'
+                });
+                if (parlElErr) console.error('[enactFoundationalBill] Failed to schedule parliamentary election:', parlElErr.message);
+                else console.log(`[enactFoundationalBill] Parliamentary election scheduled at tick ${currentTick + 3}`);
+
+                // Clean up presidential candidates
+                await supabase.from('pm_candidates').delete()
+                    .eq('nation_id', bill.nation_id)
+                    .eq('candidate_type', 'presidential');
+
+                // Close administration
+                const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                const dateStr = shardData?.current_date || '';
+                await supabase.from('administrations')
+                    .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'constitutional_transition' })
+                    .eq('nation_id', bill.nation_id)
+                    .is('ended_at_tick', null);
+
+                console.log(`[enactFoundationalBill] Presidential → Parliamentary Democracy, election at tick ${currentTick + 3}`);
+            }
+            // No stat changes for appointed (it's the default low-friction option)
         }
-        // Appointed: no stat changes (it's the default low-friction option)
 
         const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Constitutional Monarchy' };
         console.log(`[enactFoundationalBill] Nation ${bill.nation_id} HoS election method set to "${methodLabels[newMethod]}".`);

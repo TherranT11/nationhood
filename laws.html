@@ -1661,11 +1661,9 @@ function renderFoundationalOptions() {
                 <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">The new term length takes effect after the next scheduled election — the current legislature's term is not changed.</div>
             </div>
         </div>
-        <div class="policy-option${selectedFoundationalType === 'hos_election' ? ' selected' : ''}" style="${selectedFoundationalType === 'hos_election' ? 'border-color:var(--purple);' : ''}${isPresidential ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('hos_election')" data-foundational-type="hos_election">
+        <div class="policy-option${selectedFoundationalType === 'hos_election' ? ' selected' : ''}" style="${selectedFoundationalType === 'hos_election' ? 'border-color:var(--purple);' : ''}" onclick="selectFoundationalType('hos_election')" data-foundational-type="hos_election">
             <div class="policy-option-name">🗳 Election of Head of State <span class="article-ideology" style="background:var(--purple);color:#fff;">FOUNDATIONAL</span></div>
-            <div class="policy-option-desc">${isPresidential
-                ? 'Not available in Presidential systems — the Head of State is directly elected.'
-                : `Change how the Head of State is selected. Requires 2/3 supermajority (${required} seats) to pass. 360 tick cooldown.`}</div>
+            <div class="policy-option-desc">Change how the Head of State is selected. Requires 2/3 supermajority (${required} seats) to pass. 360 tick cooldown.</div>
             <div id="foundational-hos-election-config" style="margin-top:12px;${selectedFoundationalType === 'hos_election' ? '' : 'display:none;'}">
                 <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-bottom:6px;">Current method: <strong>${currentNation.hos_election_method === 'hereditary' ? 'Hereditary (Constitutional Monarchy)' : currentNation.hos_election_method === 'direct_vote' ? 'Direct Popular Vote' : 'Appointed by Parliament'}</strong></label>
                 <select id="foundational-hos-election-select" onchange="onHosElectionMethodChange()" style="background:var(--bg-card);border:1px solid var(--purple);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:280px;">
