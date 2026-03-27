@@ -680,12 +680,8 @@ export async function endNationalEmergency(supabase, nationId, factionId) {
         .update({ is_active: false })
         .eq('id', emergency.id);
 
-    // +8 civil_unrest shock
-    const { data: nation } = await supabase
-        .from('nations').select('civil_unrest').eq('id', nationId).single();
-    const currentUnrest = Number(nation?.civil_unrest ?? 20);
+    // Set cooldown (no civil unrest penalty for ending voluntarily)
     await supabase.from('nations').update({
-        civil_unrest: Math.min(100, currentUnrest + 8),
         emergency_cooldown_until: currentTick + EO_CONFIG.EMERGENCY_COOLDOWN
     }).eq('id', nationId);
 
