@@ -4734,3 +4734,183 @@ body.light-mode .pol-blocs-box {
     .vc-segments { grid-template-columns: 1fr; }
     .vc-seg-col:first-child { border-right: none; border-bottom: 1px solid var(--dborder-hair); }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   VOTERS TAB — Five Factor Dashboard Redesign
+   ══════════════════════════════════════════════════════════════════ */
+
+.vt-root { padding: 10px 0; }
+
+/* ── Header ── */
+.vt-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 0 12px; margin-bottom: 12px;
+    border-bottom: 1px solid var(--dborder-hair);
+}
+.vt-header-name { font-size: 14px; font-weight: 700; color: var(--dtext-0); }
+.vt-header-status { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.vt-header-vote { font-size: 14px; font-weight: 800; font-family: var(--dfont-mono); margin-left: auto; }
+.vt-header-seats { font-size: 10px; color: var(--dtext-3); font-family: var(--dfont-mono); }
+
+/* ── Five Factor Cards ── */
+.vt-factors {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.vt-factor-card {
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-hair);
+    padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 4px;
+}
+.vt-factor-header {
+    display: flex; justify-content: space-between; align-items: center;
+}
+.vt-factor-label {
+    font-family: var(--dfont-mono); font-size: 8px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.8px; color: var(--dtext-3);
+}
+.vt-factor-weight {
+    font-family: var(--dfont-mono); font-size: 8px; font-weight: 700;
+    letter-spacing: 0.3px;
+}
+.vt-factor-score-row {
+    display: flex; align-items: baseline; gap: 4px;
+}
+.vt-factor-score {
+    font-size: 24px; font-weight: 800; font-family: var(--dfont-mono);
+}
+.vt-factor-max {
+    font-size: 10px; color: var(--dtext-3);
+}
+.vt-factor-tier {
+    font-size: 8px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.4px; margin-left: auto;
+}
+.vt-factor-bar {
+    height: 4px; border-radius: 2px; background: var(--dbg-3);
+    overflow: hidden; margin: 2px 0;
+}
+.vt-factor-bar-fill {
+    height: 100%; border-radius: 2px; transition: width 0.5s;
+}
+.vt-factor-detail {
+    margin-top: 2px;
+}
+.vt-detail-line {
+    font-size: 9px; color: var(--dtext-3); font-family: var(--dfont-ui);
+}
+.vt-factor-hint {
+    font-size: 8px; color: var(--dtext-3); font-style: italic;
+    margin-top: 2px; opacity: 0.7;
+}
+
+/* ── Section containers ── */
+.vt-section {
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-hair);
+    padding: 10px 14px;
+    margin-bottom: 12px;
+}
+.vt-sec-header {
+    font-family: var(--dfont-mono); font-size: 9px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px;
+    color: var(--dtext-3); margin-bottom: 8px;
+}
+
+/* ── Waterfall ── */
+.vt-waterfall { max-width: 500px; }
+.vt-wf-row {
+    display: grid; grid-template-columns: 100px 100px 16px 60px;
+    align-items: center; padding: 3px 0;
+}
+.vt-wf-row--total { border-top: 1px solid var(--dborder-hair); padding-top: 6px; margin-top: 3px; }
+.vt-wf-label { font-size: 10px; color: var(--dtext-1); font-family: var(--dfont-ui); }
+.vt-wf-calc { font-size: 9px; color: var(--dtext-3); font-family: var(--dfont-mono); text-align: right; }
+.vt-wf-eq { font-size: 9px; color: var(--dtext-3); text-align: center; }
+.vt-wf-val { font-size: 11px; font-weight: 700; font-family: var(--dfont-mono); text-align: right; }
+.vt-wf-divider { height: 1px; background: var(--dborder-hair); margin: 6px 0; }
+.vt-wf-note { font-size: 9px; color: var(--dtext-3); font-style: italic; margin-top: 6px; }
+
+/* ── Two-column layout ── */
+.vt-two-col {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 12px; margin-bottom: 12px;
+}
+.vt-section--issues { overflow: hidden; }
+.vt-section--logs { overflow: hidden; }
+
+/* ── Issue Landscape Table ── */
+.vt-issue-table {
+    width: 100%; border-collapse: collapse;
+    font-family: var(--dfont-ui); font-size: 10px;
+}
+.vt-issue-table thead th {
+    font-family: var(--dfont-mono); font-size: 8px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--dtext-3); text-align: left; padding: 4px 6px;
+    border-bottom: 1px solid var(--dborder-hair);
+}
+.vt-issue-row td { padding: 4px 6px; border-bottom: 1px solid var(--dborder-0); }
+.vt-issue-name { color: var(--dtext-1); font-weight: 600; }
+.vt-issue-sal { color: var(--dtext-3); font-family: var(--dfont-mono); font-size: 9px; text-align: center; }
+.vt-issue-stance { color: var(--dtext-1); }
+.vt-issue-str { color: var(--dtext-3); font-family: var(--dfont-mono); font-size: 9px; text-align: center; }
+.vt-issue-row--missing { background: rgba(217,131,48,0.04); }
+.vt-issue-row--missing .vt-issue-name { color: var(--dtext-3); }
+
+/* ── Approval / Credibility Logs ── */
+.vt-log-scroll { max-height: 180px; overflow-y: auto; }
+.vt-log-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 3px 0; border-bottom: 1px solid var(--dborder-0);
+}
+.vt-log-label { flex: 1; min-width: 0; font-size: 10px; color: var(--dtext-1); font-family: var(--dfont-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vt-log-date { font-size: 9px; color: var(--dtext-3); font-family: var(--dfont-ui); flex-shrink: 0; }
+.vt-log-amt { font-size: 10px; font-weight: 700; font-family: var(--dfont-mono); min-width: 36px; text-align: right; flex-shrink: 0; }
+.vt-log-empty { font-size: 10px; color: var(--dtext-3); font-style: italic; padding: 8px 0; }
+
+/* ── All-Party Comparison Table ── */
+.vt-comp-scroll { overflow-x: auto; }
+.vt-comp-table {
+    width: 100%; border-collapse: collapse;
+    font-family: var(--dfont-ui); font-size: 10px;
+}
+.vt-comp-table thead th {
+    font-family: var(--dfont-mono); font-size: 8px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.3px;
+    color: var(--dtext-3); text-align: right; padding: 5px 8px;
+    border-bottom: 1px solid var(--dborder-hair); cursor: pointer;
+    user-select: none;
+}
+.vt-comp-table thead th:first-child { text-align: left; }
+.vt-comp-table thead th:hover { color: var(--dtext-1); }
+.vt-comp-row td { padding: 5px 8px; border-bottom: 1px solid var(--dborder-0); }
+.vt-comp-row--you { background: rgba(155,126,200,0.06); }
+.vt-comp-party {
+    display: flex; align-items: center; gap: 6px;
+    font-weight: 600; color: var(--dtext-1); white-space: nowrap;
+}
+.vt-comp-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.vt-comp-you { font-size: 8px; color: var(--dtext-3); font-weight: 400; }
+.vt-comp-val { text-align: right; font-family: var(--dfont-mono); font-size: 10px; font-weight: 600; }
+.vt-comp-val--vote { font-weight: 800; color: var(--dtext-0); }
+
+/* ── Light mode overrides ── */
+body.light-mode .vt-factor-card { background: #fafaf8; border-color: rgba(0,0,0,0.08); }
+body.light-mode .vt-section { background: #fafaf8; border-color: rgba(0,0,0,0.08); }
+body.light-mode .vt-comp-row--you { background: rgba(155,126,200,0.08); }
+body.light-mode .vt-issue-row--missing { background: rgba(217,131,48,0.06); }
+
+/* ── Responsive ── */
+@media (max-width: 1200px) {
+    .vt-factors { grid-template-columns: repeat(3, 1fr); }
+    .vt-two-col { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+    .vt-factors { grid-template-columns: repeat(2, 1fr); }
+    .vt-header { flex-wrap: wrap; }
+    .vt-wf-row { grid-template-columns: 80px 80px 16px 50px; }
+}
