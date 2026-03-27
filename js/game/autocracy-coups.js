@@ -259,10 +259,44 @@ async function transferPower(supabase, nationId, newStrongmanFactionId, newStron
         }).eq('id', newStrongman.id);
     }
 
-    // Update nation's ruling faction
-    await supabase.from('nations').update({
-        ruling_faction_id: newStrongmanFactionId,
-    }).eq('id', nationId);
+    // Update nation's ruling faction + head of state to new strongman's leader
+    const nationUpdate = { ruling_faction_id: newStrongmanFactionId };
+    if (newStrongman?.leader_name) {
+        const parts = newStrongman.leader_name.split(' ');
+        nationUpdate.head_of_state_first_name = parts[0] || 'Unknown';
+        nationUpdate.head_of_state_last_name = parts.slice(1).join(' ') || 'Leader';
+    }
+    if (newStrongman?.leader_age) {
+        nationUpdate.head_of_state_age = newStrongman.leader_age;
+    }
+    await supabase.from('nations').update(nationUpdate).eq('id', nationId);
+
+    // Close old administration, create new one
+    try {
+        const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+        const dateStr = shardData?.current_date || '';
+        await supabase.from('administrations')
+            .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'coup' })
+            .eq('nation_id', nationId).is('ended_at_tick', null);
+
+        const { data: newFaction } = await supabase.from('factions')
+            .select('faction_name').eq('id', newStrongmanFactionId).single();
+        const leaderName = newStrongman?.leader_name || 'Unknown';
+        await supabase.from('administrations').insert({
+            nation_id: nationId,
+            admin_name: `${leaderName.split(' ').pop() || 'Military'} Regime`,
+            head_of_state: leaderName,
+            government_type: 'Autocracy',
+            started_at_tick: currentTick,
+            started_at_date: dateStr,
+            approval_at_start: 50,
+        });
+
+        // Reset government approval for new regime
+        await supabase.from('nations').update({ gov_approval: 50, gov_approval_events: 0 }).eq('id', nationId);
+    } catch (e) {
+        console.error('[transferPower] Admin transition failed (non-fatal):', e);
+    }
 
     // Log the power transfer
     await supabase.from('campaign_actions').insert({
