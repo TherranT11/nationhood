@@ -73,7 +73,8 @@ BEGIN
         started_at_date,
         stats_at_start,
         approval_at_start,
-        head_of_state_title
+        head_of_state_title,
+        hos_election_method
     ) VALUES (
         (p_new_administration->>'nation_id')::UUID,
         p_new_administration->>'admin_name',
@@ -92,7 +93,8 @@ BEGIN
             THEN (p_new_administration->>'approval_at_start')::INT
             ELSE NULL
         END,
-        p_new_administration->>'head_of_state_title'
+        p_new_administration->>'head_of_state_title',
+        p_new_administration->>'hos_election_method'
     )
     RETURNING id INTO v_inserted_id;
 

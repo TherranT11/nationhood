@@ -474,7 +474,12 @@ window._appointLeader = async function() {
 
         // Deduct AP if cost > 0
         if (candidate.apCost > 0) {
-            await deductAP(_supabase, currentFaction.id, candidate.apCost);
+            const apResult = await deductAP(_supabase, currentFaction.id, candidate.apCost);
+            if (!apResult.success) {
+                alert('Not enough AP. Need ' + candidate.apCost + ' AP.');
+                return;
+            }
+            currentFaction.action_points = apResult.newAp;
         }
 
         // Update faction with new leader data

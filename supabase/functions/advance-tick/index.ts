@@ -9850,7 +9850,9 @@ async function createAdministration(supabase, nationId, nation, coalition, allPa
                 started_at_tick: currentTick,
                 started_at_date: currentDate,
                 stats_at_start: statsAtStart,
-                approval_at_start: 50
+                approval_at_start: 50,
+                head_of_state_title: nation?.head_of_state_title || null,
+                hos_election_method: nation?.hos_election_method || null
             });
         if (insertErr) throw insertErr;
 
@@ -10123,7 +10125,9 @@ async function rolloverAdministration(supabase, nationId, nation, endReason, coa
         started_at_tick: currentTick,
         started_at_date: currentDate,
         stats_at_start: statsAtStart,
-        approval_at_start: 50
+        approval_at_start: 50,
+        head_of_state_title: nation?.head_of_state_title || null,
+        hos_election_method: nation?.hos_election_method || null
     };
 
     const { error: rpcErr } = await supabase.rpc('rollover_administration', {
@@ -12144,7 +12148,8 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         started_at_date: dateStr,
         stats_at_start: fullNation ? snapshotNationStats(fullNation) : {},
         approval_at_start: 50,
-        head_of_state_title: fullNation?.head_of_state_title || null
+        head_of_state_title: fullNation?.head_of_state_title || null,
+        hos_election_method: fullNation?.hos_election_method || null
     });
     if (adminErr) {
         console.error(`[inauguratePresident] Failed to create new administration for ${nationId}:`, adminErr.message);
@@ -28700,6 +28705,341 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Seat rebalancing failed for ${nation.name} (non-fatal):`, seatErr);
         }
 
+        // ── Protest Resolution: resolve any protests with status='resolving' ──
+        try {
+            const { data: resolvingProtests } = await supabase
+                .from('protest_log')
+                .select('id, faction_id, nation_id, grievance_type, grievance_data, demand_label')
+                .eq('nation_id', nation.id)
+                .eq('status', 'resolving');
+
+            for (const protest of (resolvingProtests || [])) {
+                try {
+                    // 1. Fetch protest history for fatigue + escalation
+                    const { data: protestHistory } = await supabase
+                        .from('protest_log').select('tick_called, tier, turnout_score')
+                        .eq('nation_id', nation.id).eq('status', 'resolved')
+                        .gte('tick_called', newTick - 8).order('tick_called', { ascending: false });
+
+                    // 2. Fetch ministry actions for crackdown detection
+                    const { data: ministryActions } = await supabase
+                        .from('ministry_action_log').select('action_key, applied_at_tick')
+                        .eq('nation_id', nation.id).gte('applied_at_tick', newTick - 4);
+
+                    // 3. Fetch endorsements
+                    const { data: endorsements } = await supabase
+                        .from('protest_endorsements').select('id')
+                        .eq('protest_id', protest.id);
+                    const endorsementCount = (endorsements || []).length;
+
+                    // 4. Calculate condition score
+                    const ns = nation;
+                    let condScore = 50;
+                    condScore += ((ns.civil_unrest || 0) / 100) * 30;
+                    condScore += ((100 - (ns.happiness || 50)) / 100) * 25;
+                    condScore += ((ns.polarization || 0) / 100) * 20;
+                    condScore -= ((ns.political_violence || 0) / 100) * 15;
+                    // Fatigue
+                    const recentProtests = (protestHistory || []).filter(p => p.tick_called >= newTick - 6);
+                    condScore -= recentProtests.length * 10;
+                    // Crackdown bonus
+                    const hasCrackdown = (ministryActions || []).some(a =>
+                        ['enforce_public_order', 'crackdown', 'suppress_dissent'].includes(a.action_key) && a.applied_at_tick >= newTick - 4);
+                    if (hasCrackdown) condScore += 12;
+                    // Grievance bonus
+                    const grievance = protest.grievance_data || {};
+                    const gBonus = Math.min(15, ((100 - (grievance.approval || 50)) / 100) * 15);
+                    condScore += gBonus;
+                    condScore = Math.max(0, Math.min(100, condScore));
+
+                    // 5. Joint protest bonus
+                    const jointBonus = Math.min(30, endorsementCount * 15);
+                    const adjustedCond = Math.min(100, condScore + jointBonus);
+
+                    // 6. Roll turnout
+                    const distFromCenter = Math.abs(adjustedCond - 50);
+                    const variance = Math.max(8, 25 - (distFromCenter * 0.34));
+                    const swing = (Math.random() * 2 - 1) * variance;
+                    const turnoutScore = Math.max(0, Math.min(100, adjustedCond + swing));
+
+                    // 7. Determine tier
+                    let tier = turnoutScore < 20 ? 1 : turnoutScore < 35 ? 2 : turnoutScore < 50 ? 3
+                        : turnoutScore < 65 ? 4 : turnoutScore < 78 ? 5 : turnoutScore < 92 ? 6 : 7;
+
+                    // Escalation check
+                    if (tier >= 5 && turnoutScore >= 70) {
+                        const recentHigh = (protestHistory || []).filter(p =>
+                            p.tier >= 5 && p.turnout_score >= 65 && p.tick_called >= newTick - 8);
+                        if (recentHigh.length >= 1) tier = 7;
+                    }
+
+                    // Cap at Tier 6 unless 2+ active crises
+                    if (tier >= 7) {
+                        const { data: activeCrises } = await supabase.from('active_crises').select('id').eq('nation_id', nation.id);
+                        if ((activeCrises || []).length < 2) tier = 6;
+                    }
+
+                    // 8. Apply tier effects
+                    const TIER_LABELS: Record<number, string> = {
+                        1: 'Embarrassing Backfire', 2: "Protests Don't Materialise", 3: 'Modest Turnout',
+                        4: 'Respectable Protest', 5: 'Strong Demonstration', 6: 'Nationwide Protests', 7: 'The Big One'
+                    };
+                    const appliedEffects: any[] = [];
+
+                    if (tier <= 2) {
+                        // Backfire: organiser penalties + gov boost
+                        const visPenalty = tier === 1 ? -10 : -4;
+                        const aprPenalty = tier === 1 ? -7 : -3;
+                        const enthPenalty = tier === 1 ? -12 : -5;
+                        const { data: standing } = await supabase.from('faction_electoral_standing')
+                            .select('id, visibility').eq('faction_id', protest.faction_id).eq('nation_id', nation.id).maybeSingle();
+                        if (standing) {
+                            await supabase.from('faction_electoral_standing').update({
+                                visibility: Math.max(0, (Number(standing.visibility) || 0) + visPenalty)
+                            }).eq('id', standing.id);
+                        }
+                        appliedEffects.push({ stat: 'organiser_visibility', delta: visPenalty });
+                        appliedEffects.push({ stat: 'organiser_approval', delta: aprPenalty });
+                        appliedEffects.push({ stat: 'enthusiasm', delta: enthPenalty });
+
+                        if ((ns.gov_approval || 0) >= 45) {
+                            const boost = Math.ceil(Math.random() * 3);
+                            await supabase.rpc('adjust_gov_approval_event', { p_nation_id: nation.id, p_delta: boost, p_source: `protest:fizzle:tier${tier}` }).catch(() => {});
+                            appliedEffects.push({ stat: 'gov_approval_events', delta: boost });
+                        }
+                    } else if (tier === 3) {
+                        await supabase.rpc('adjust_gov_approval_event', { p_nation_id: nation.id, p_delta: -1, p_source: `protest:tier3` }).catch(() => {});
+                        appliedEffects.push({ stat: 'gov_approval_events', delta: -1 });
+                    } else if (tier === 4) {
+                        await supabase.rpc('adjust_gov_approval_event', { p_nation_id: nation.id, p_delta: -3, p_source: `protest:tier4` }).catch(() => {});
+                        appliedEffects.push({ stat: 'gov_approval_events', delta: -3 });
+                    } else if (tier === 5) {
+                        await supabase.rpc('adjust_gov_approval_event', { p_nation_id: nation.id, p_delta: -6, p_source: `protest:tier5` }).catch(() => {});
+                        const newUnrest = Math.min(100, (ns.civil_unrest || 0) + 2);
+                        await supabase.from('nations').update({ civil_unrest: newUnrest }).eq('id', nation.id);
+                        appliedEffects.push({ stat: 'gov_approval_events', delta: -6 }, { stat: 'civil_unrest', delta: 2 });
+                    }
+
+                    // 9. Tier 6/7: create crisis
+                    if (tier >= 6) {
+                        const crisisId = tier === 6 ? '00000000-0000-0000-0000-000000000020' : '00000000-0000-0000-0000-000000000021';
+                        let duration = tier === 6 ? 6 : 7; // Tier 7 lasts 7 ticks
+
+                        // Leader trait modifiers
+                        try {
+                            if (nation.ruling_faction_id) {
+                                const { data: rulerF } = await supabase.from('factions').select('leader_positive_traits, leader_negative_traits').eq('id', nation.ruling_faction_id).maybeSingle();
+                                if (rulerF) {
+                                    if ((rulerF.leader_positive_traits || []).includes('crisis_manager')) duration = Math.max(2, duration - 2);
+                                    if ((rulerF.leader_negative_traits || []).includes('panic_under_pressure')) duration += 2;
+                                }
+                            }
+                        } catch (_) {}
+
+                        await supabase.from('active_crises').insert({ crisis_id: crisisId, nation_id: nation.id, started_at_tick: newTick, effects_applied_log: [] });
+
+                        await supabase.from('protest_log').update({
+                            status: 'crisis_active', crisis_started_tick: newTick, crisis_duration: duration
+                        }).eq('id', protest.id);
+
+                        // Lock opposition parties
+                        const coalitionForLock = await fetchActiveCoalition(supabase, nation.id);
+                        const coalLockSet = new Set(coalitionForLock?.party_ids || []);
+                        const { data: allF } = await supabase.from('factions').select('id').eq('nation_id', nation.id).neq('id', protest.faction_id);
+                        const oppo = (allF || []).filter(f => !coalLockSet.has(f.id) && f.id !== nation.ruling_faction_id);
+                        if (oppo.length > 0) {
+                            await supabase.from('factions').update({ protest_locked_by: protest.id }).in('id', oppo.map(f => f.id));
+                        }
+
+                        // Tier 7: generate demand
+                        if (tier === 7) {
+                            const { data: ministers } = await supabase.from('ministries')
+                                .select('ministry_key, minister_first_name, minister_last_name, party_id, minister_approval')
+                                .eq('nation_id', nation.id).eq('is_active', true);
+                            const ministerName = (m: any) => [m.minister_first_name, m.minister_last_name].filter(Boolean).join(' ') || m.ministry_key;
+                            const sorted = (ministers || []).filter(m => m.party_id != null).sort((a: any, b: any) => (a.minister_approval || 50) - (b.minister_approval || 50));
+                            let demand;
+                            if (sorted.length > 0) {
+                                demand = { type: 'minister', target: sorted[0].ministry_key, targetName: ministerName(sorted[0]), label: `${ministerName(sorted[0])} must resign.`, baseline_tick: newTick };
+                            } else {
+                                demand = { type: 'stat', stat: 'happiness', magnitude: 6, direction: 'raise', label: 'Raise Happiness by 6', baseline: ns.happiness || 50, baseline_tick: newTick };
+                            }
+                            await supabase.from('protest_log').update({ tier7_demand: demand }).eq('id', protest.id);
+                        }
+
+                        appliedEffects.push({ stat: 'crisis_created', tier });
+                    }
+
+                    // 10. Update protest_log (non-crisis tiers already resolved)
+                    if (tier < 6) {
+                        await supabase.from('protest_log').update({
+                            status: 'resolved', tick_resolved: newTick, tier, turnout_score: turnoutScore,
+                            condition_score: condScore, effects_applied: appliedEffects,
+                            roll_breakdown: { condScore, jointBonus, adjustedCond, turnoutScore, tier }
+                        }).eq('id', protest.id);
+
+                        // Set cooldown on calling party
+                        await supabase.from('factions').update({
+                            protest_cooldown_until_tick: newTick + 12, protest_use_count: (nation as any)._protest_use_count || 1
+                        }).eq('id', protest.faction_id);
+
+                        // Clear lockouts from other parties
+                        await supabase.from('factions').update({ protest_locked_by: null })
+                            .eq('nation_id', nation.id).eq('protest_locked_by', protest.id);
+                    } else {
+                        // Crisis tiers: update tier/turnout on the crisis_active row
+                        await supabase.from('protest_log').update({
+                            tier, turnout_score: turnoutScore, condition_score: condScore,
+                            effects_applied: appliedEffects,
+                            roll_breakdown: { condScore, jointBonus, adjustedCond, turnoutScore, tier }
+                        }).eq('id', protest.id);
+                    }
+
+                    // 11. Fire event
+                    try {
+                        await supabase.from('event_log').insert({
+                            nation_id: nation.id, event_name: TIER_LABELS[tier] || `Tier ${tier} Protest`,
+                            trigger_key: `protest_tier${tier}`, category: 'protest',
+                            description_chosen: `${TIER_LABELS[tier]}: A protest organised by ${(await supabase.from('factions').select('faction_name').eq('id', protest.faction_id).single()).data?.faction_name || 'a party'} has ${tier <= 2 ? 'fizzled' : 'drawn significant attention'}.`,
+                            fired_at_tick: newTick
+                        });
+                    } catch (_) {}
+
+                    console.log(`[Protest] Resolved protest ${protest.id} in ${nation.name}: tier=${tier}, turnout=${turnoutScore.toFixed(1)}, condition=${condScore.toFixed(1)}`);
+                } catch (protestErr) {
+                    console.error(`[Protest] Failed to resolve protest ${protest.id} in ${nation.name}:`, protestErr);
+                }
+            }
+
+            // ── Tier 7 Demand Check: check if demand met, apply penalty if expired ──
+            const { data: tier7Protests } = await supabase
+                .from('protest_log')
+                .select('id, faction_id, tier7_demand, crisis_started_tick, crisis_duration')
+                .eq('nation_id', nation.id)
+                .eq('status', 'crisis_active')
+                .eq('tier', 7);
+
+            for (const p7 of (tier7Protests || [])) {
+                if (!p7.tier7_demand || !p7.crisis_started_tick) continue;
+                const elapsed = newTick - p7.crisis_started_tick;
+                const demand = p7.tier7_demand;
+
+                // Check if demand met
+                let demandMet = false;
+                if (demand.type === 'stat') {
+                    const current = Number((nation as any)[demand.stat] ?? 0);
+                    const baseline = Number(demand.baseline ?? current);
+                    demandMet = demand.direction === 'reduce'
+                        ? current <= baseline - (demand.magnitude || 0)
+                        : current >= baseline + (demand.magnitude || 0);
+                } else if (demand.type === 'minister') {
+                    const { data: min } = await supabase.from('ministries')
+                        .select('party_id').eq('nation_id', nation.id).eq('ministry_key', demand.target).eq('is_active', true).maybeSingle();
+                    demandMet = min?.party_id == null; // vacant = demand met
+                }
+
+                if (demandMet) {
+                    // End crisis early — reward governing parties
+                    await supabase.from('active_crises').delete()
+                        .eq('nation_id', nation.id).eq('crisis_id', '00000000-0000-0000-0000-000000000021');
+                    await supabase.from('protest_log').update({
+                        status: 'resolved', tick_resolved: newTick
+                    }).eq('id', p7.id);
+                    await supabase.from('factions').update({ protest_locked_by: null })
+                        .eq('nation_id', nation.id).eq('protest_locked_by', p7.id);
+                    await supabase.from('factions').update({
+                        protest_cooldown_until_tick: newTick + 12
+                    }).eq('id', p7.faction_id);
+
+                    // +7 government approval
+                    try {
+                        await supabase.rpc('adjust_gov_approval_event', {
+                            p_nation_id: nation.id, p_delta: 7, p_source: 'protest:tier7_demand_met'
+                        });
+                    } catch (_) {}
+
+                    // +5 party approval to all governing parties
+                    try {
+                        const govCoalition = await fetchActiveCoalition(supabase, nation.id);
+                        const govPartyIds = new Set(govCoalition?.party_ids || []);
+                        if (nation.ruling_faction_id) govPartyIds.add(nation.ruling_faction_id);
+                        for (const gpId of govPartyIds) {
+                            const { data: gpStanding } = await supabase.from('faction_electoral_standing')
+                                .select('id, party_approval').eq('faction_id', gpId).eq('nation_id', nation.id).maybeSingle();
+                            if (gpStanding) {
+                                const newApr = Math.min(100, (Number(gpStanding.party_approval) || 25) + 5);
+                                await supabase.from('faction_electoral_standing').update({ party_approval: newApr }).eq('id', gpStanding.id);
+                                await supabase.from('party_approval_log').insert({
+                                    faction_id: gpId, nation_id: nation.id,
+                                    amount: 5, source: 'protest:tier7_demand_met', tick: newTick
+                                });
+                            }
+                        }
+                    } catch (_) {}
+
+                    // Fire event
+                    try {
+                        await supabase.from('event_log').insert({
+                            nation_id: nation.id, event_name: 'The Big One — Demand Met',
+                            trigger_key: 'protest_tier7_met', category: 'protest',
+                            description_chosen: `The government met the Tier 7 protest demand "${demand.label}". Government approval rises and governing parties are rewarded.`,
+                            fired_at_tick: newTick
+                        });
+                    } catch (_) {}
+
+                    console.log(`[Protest] Tier 7 demand MET in ${nation.name}: ${demand.label} → +7 gov approval, +5 party approval to governing parties`);
+                } else if (elapsed >= (p7.crisis_duration || 7)) {
+                    // Demand expired unmet — penalty to ruling party
+                    const rulingFactionId = nation.ruling_faction_id;
+                    if (rulingFactionId) {
+                        // -5 party approval to the PM/President's party
+                        try {
+                            const { data: standing } = await supabase.from('faction_electoral_standing')
+                                .select('id, party_approval').eq('faction_id', rulingFactionId).eq('nation_id', nation.id).maybeSingle();
+                            if (standing) {
+                                const newApproval = Math.max(0, (Number(standing.party_approval) || 25) - 5);
+                                await supabase.from('faction_electoral_standing').update({ party_approval: newApproval }).eq('id', standing.id);
+                                await supabase.from('party_approval_log').insert({
+                                    faction_id: rulingFactionId, nation_id: nation.id,
+                                    amount: -5, source: 'protest:tier7_demand_unmet', tick: newTick
+                                });
+                            }
+                        } catch (_) {}
+                        // -5 government approval
+                        try {
+                            await supabase.rpc('adjust_gov_approval_event', {
+                                p_nation_id: nation.id, p_delta: -5, p_source: 'protest:tier7_demand_unmet'
+                            });
+                        } catch (_) {}
+                        console.log(`[Protest] Tier 7 demand UNMET in ${nation.name}: -5 party approval, -5 gov approval to ruling party ${rulingFactionId}`);
+                    }
+
+                    // End the crisis
+                    await supabase.from('active_crises').delete()
+                        .eq('nation_id', nation.id).eq('crisis_id', '00000000-0000-0000-0000-000000000021');
+                    await supabase.from('protest_log').update({
+                        status: 'resolved', tick_resolved: newTick
+                    }).eq('id', p7.id);
+                    await supabase.from('factions').update({ protest_locked_by: null })
+                        .eq('nation_id', nation.id).eq('protest_locked_by', p7.id);
+                    await supabase.from('factions').update({
+                        protest_cooldown_until_tick: newTick + 12
+                    }).eq('id', p7.faction_id);
+
+                    try {
+                        await supabase.from('event_log').insert({
+                            nation_id: nation.id, event_name: 'The Big One — Demand Unmet',
+                            trigger_key: 'protest_tier7_unmet', category: 'protest',
+                            description_chosen: `The Tier 7 protest demand "${demand.label}" was not met. The ruling party suffers -5 party approval and -5 government approval.`,
+                            fired_at_tick: newTick
+                        });
+                    } catch (_) {}
+                }
+            }
+        } catch (protestErr) {
+            console.error(`[advanceTick] Protest resolution failed for ${nation.name} (non-fatal):`, protestErr);
+        }
+
         // Crises (persistent negative events that apply effects every tick)
         // Runs BEFORE approval calculations so crisis stat/event effects propagate in the same tick.
         try {
@@ -29475,6 +29815,119 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
     // 5. Commit shard tick/date AFTER all nation processing completes.
     // This is the last step — if the function timed out earlier, the tick
+    // ══════════════════════════════════════════════════════════════
+    // ── Volbal Ligue Nationale (shard-level, runs once per tick) ──
+    // ══════════════════════════════════════════════════════════════
+    try {
+        const { data: vlnRow } = await supabase
+            .from('vln_state')
+            .select('*')
+            .eq('shard_name', 'Alpha Shard')
+            .maybeSingle();
+
+        if (vlnRow) {
+            const VLN_TEAMS = [
+                { id: 'san_estrella_fc',   name: 'San Estrella FC',   strength: 72 },
+                { id: 'palvera_united',    name: 'Palvera United',    strength: 69 },
+                { id: 'avelia_cf',         name: 'Avelia CF',         strength: 65 },
+                { id: 'fc_montequilla',    name: 'FC Montequilla',    strength: 62 },
+                { id: 'melizea_rovers',    name: 'Melizea Rovers',    strength: 60 },
+                { id: 'real_sangreza',     name: 'Real Sangreza',     strength: 58 },
+                { id: 'crucera_athletic',  name: 'Crucera Athletic',  strength: 55 },
+                { id: 'ossvera_city',      name: 'Ossvera City',      strength: 52 },
+                { id: 'valdoria_sc',       name: 'Valdoria SC',       strength: 48 },
+                { id: 'norte_bravo_fc',    name: 'Norte Bravo FC',    strength: 44 },
+            ];
+            const MATCHES_PER_TICK = 5;
+            const ACTIVE_MONTHS = [2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+            const month = newTick % 12;
+            const year = 2000 + Math.floor(newTick / 12);
+            const active = ACTIVE_MONTHS.includes(month);
+
+            let updatedState: any;
+
+            // Season reset: March of a new year
+            if (month === 2 && vlnRow.season !== year) {
+                // Generate fixtures (round-robin, home & away, shuffled)
+                const fixtures: any[] = [];
+                for (let i = 0; i < VLN_TEAMS.length; i++) {
+                    for (let j = 0; j < VLN_TEAMS.length; j++) {
+                        if (i !== j) fixtures.push({ home: VLN_TEAMS[i].id, away: VLN_TEAMS[j].id, played: false });
+                    }
+                }
+                for (let i = fixtures.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [fixtures[i], fixtures[j]] = [fixtures[j], fixtures[i]];
+                }
+                const standings: any = {};
+                for (const t of VLN_TEAMS) standings[t.id] = { id: t.id, name: t.name, played: 0, w: 0, d: 0, l: 0, form: [] };
+                updatedState = { active: true, season: year, matchweek: 0, fixtures, standings, last_results: [], match_of_week: null };
+            } else if (!active) {
+                updatedState = { active: false, last_results: [], match_of_week: null };
+            } else {
+                // Active season — resolve up to 5 matches
+                const fixtures = vlnRow.fixtures || [];
+                const standings = vlnRow.standings || {};
+                const unplayed = fixtures.filter((f: any) => !f.played);
+
+                if (unplayed.length === 0) {
+                    updatedState = { active: true, last_results: [], match_of_week: null };
+                } else {
+                    const SCORELINES: any = {
+                        home: [{h:1,a:0},{h:2,a:0},{h:2,a:1},{h:3,a:1},{h:3,a:2},{h:4,a:1},{h:1,a:0},{h:2,a:1}],
+                        away: [{h:0,a:1},{h:0,a:2},{h:1,a:2},{h:1,a:3},{h:2,a:3},{h:0,a:1}],
+                        draw: [{h:0,a:0},{h:1,a:1},{h:2,a:2},{h:1,a:1}],
+                    };
+                    const batch = unplayed.slice(0, MATCHES_PER_TICK);
+                    const results = batch.map((f: any) => {
+                        const home = VLN_TEAMS.find(t => t.id === f.home)!;
+                        const away = VLN_TEAMS.find(t => t.id === f.away)!;
+                        let hRoll = Math.ceil(Math.random() * 6);
+                        let aRoll = Math.ceil(Math.random() * 6);
+                        if (home.strength > away.strength) hRoll += 2;
+                        if (away.strength > home.strength) aRoll += 2;
+                        const outcome = hRoll > aRoll ? 'home' : aRoll > hRoll ? 'away' : 'draw';
+                        const score = SCORELINES[outcome][Math.floor(Math.random() * SCORELINES[outcome].length)];
+                        return { home: f.home, away: f.away, homeName: home.name, awayName: away.name, outcome, homeScore: score.h, awayScore: score.a };
+                    });
+                    // Mark played
+                    for (const r of results) {
+                        const fix = fixtures.find((f: any) => f.home === r.home && f.away === r.away && !f.played);
+                        if (fix) fix.played = true;
+                    }
+                    // Update standings
+                    for (const r of results) {
+                        const h = standings[r.home]; const a = standings[r.away];
+                        if (!h || !a) continue;
+                        h.played++; a.played++;
+                        if (r.outcome === 'home') { h.w++; a.l++; }
+                        else if (r.outcome === 'away') { a.w++; h.l++; }
+                        else { h.d++; a.d++; }
+                        h.form = [...(h.form || []).slice(-4), r.outcome === 'home' ? 'W' : r.outcome === 'draw' ? 'D' : 'L'];
+                        a.form = [...(a.form || []).slice(-4), r.outcome === 'away' ? 'W' : r.outcome === 'draw' ? 'D' : 'L'];
+                    }
+                    // Match of the week
+                    const scored = results.map(r => ({ ...r, _ent: r.homeScore + r.awayScore + (r.homeScore === r.awayScore ? 1 : 0) }));
+                    scored.sort((a: any, b: any) => b._ent - a._ent);
+                    const { _ent, ...motw } = scored[0];
+                    updatedState = { active: true, season: year, matchweek: (vlnRow.matchweek || 0) + 1, fixtures, standings, last_results: results, match_of_week: motw };
+                }
+            }
+
+            if (updatedState) {
+                const { error: vlnErr } = await supabase.from('vln_state').update({
+                    ...updatedState,
+                    updated_at: new Date().toISOString()
+                }).eq('shard_name', 'Alpha Shard');
+                if (vlnErr) console.error('[VLN] Update failed:', vlnErr.message);
+                else console.log(`[VLN] Tick ${newTick}: active=${updatedState.active ?? vlnRow.active}, mw=${updatedState.matchweek ?? vlnRow.matchweek}`);
+            }
+        }
+    } catch (vlnErr) {
+        console.error('[VLN] Processing error (non-blocking):', vlnErr);
+    }
+
     // number stays unchanged and the cron will re-process on the next run.
     // Commit shard update — skip entirely in reprocess mode
     if (reprocess) {
