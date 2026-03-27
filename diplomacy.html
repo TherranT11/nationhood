@@ -3393,26 +3393,6 @@ async function highlightNationCard(nationName) {
 
 // ==================== MAP SETUP ====================
 
-function setupDiplomacyMap() {
-    document.querySelectorAll('.land').forEach(path => {
-        path.addEventListener('click', async (e) => {
-            e.stopPropagation();
-
-            // Toggle map selection highlight
-            document.querySelectorAll('.land').forEach(l => l.classList.remove('selected-nation'));
-            e.target.classList.add('selected-nation');
-
-            const name = e.target.getAttribute('data-nation-name');
-
-            // Switch to Relations tab and highlight/expand matching card
-            showDiploTab('relations');
-            await highlightNationCard(name);
-        });
-    });
-}
-
-// ==================== (renderDiplomacySidebar replaced by renderNationCardBody in Phase 1) ====================
-
 // ==================== RELATION TIER (score-driven) ====================
 
 function getRelationTier(score, hasCeasefire) {
@@ -4702,8 +4682,8 @@ async function renderDiploDraftSection() {
 }
 
 // ==================== STEP 3B: PROPOSE TRADE NEGOTIATIONS ====================
-var wizardTradeAgreementType = null;  // selected trade agreement type key
-var counterTradeArticles = [];  // articles added during counter-proposal
+let wizardTradeAgreementType = null;  // selected trade agreement type key
+let counterTradeArticles = [];  // articles added during counter-proposal
 
 async function renderWizardStep3TradeProposal() {
     const panel = document.getElementById('wizard-panel-3');
@@ -5151,7 +5131,7 @@ async function renderWizardStep3AidProposal() {
     panel.innerHTML = html;
 }
 
-var wizardAidDirection = null;
+let wizardAidDirection = null;
 
 function selectAidDirection(direction) {
     wizardAidDirection = direction;
@@ -6528,7 +6508,8 @@ async function joinTradeNegotiation(negotiationId, role, apCost) {
     const participants = neg.participants || [];
     participants.push({ faction_id: currentFaction.id, role, joined_at_tick: shardTick, nation_id: currentNation.id });
 
-    await _supabase.from('trade_negotiations').update({ participants }).eq('id', negotiationId);
+    const { error: joinErr } = await _supabase.from('trade_negotiations').update({ participants }).eq('id', negotiationId);
+    if (joinErr) { alert('Failed to join negotiation: ' + joinErr.message); return; }
     await openTradeNegotiation(negotiationId);
 }
 
@@ -6549,15 +6530,17 @@ async function extendNegotiation(negotiationId) {
     if (otherRequested) {
         // Both sides agreed — extend
         const newExpiry = neg.expires_at_tick + DIPLOMACY_CONFIG.NEGOTIATION_EXTENSION_TICKS;
-        await _supabase.from('trade_negotiations').update({
+        const { error: extErr } = await _supabase.from('trade_negotiations').update({
             expires_at_tick: newExpiry,
             extension_requested_a: false,
             extension_requested_b: false,
             extensions_used: (neg.extensions_used || 0) + 1
         }).eq('id', negotiationId);
+        if (extErr) { alert('Extension failed: ' + extErr.message); return; }
         alert('Negotiations extended by ' + DIPLOMACY_CONFIG.NEGOTIATION_EXTENSION_TICKS + ' ticks!');
     } else {
-        await _supabase.from('trade_negotiations').update({ [updateCol]: true }).eq('id', negotiationId);
+        const { error: reqErr } = await _supabase.from('trade_negotiations').update({ [updateCol]: true }).eq('id', negotiationId);
+        if (reqErr) { alert('Extension request failed: ' + reqErr.message); return; }
         alert('Extension requested. Waiting for the other party to agree.');
     }
 
@@ -6692,7 +6675,8 @@ async function approveTradeNegotiation(negotiationId) {
         }))).then(() => {});
     }
 
-    await _supabase.from('trade_negotiations').update(updateData).eq('id', negotiationId);
+    const { error: approveErr } = await _supabase.from('trade_negotiations').update(updateData).eq('id', negotiationId);
+    if (approveErr) { alert('Failed to approve: ' + approveErr.message); return; }
 
     alert(otherApproved
         ? 'Both sides have approved! Ratification bills have been submitted to both parliaments.'
@@ -11838,7 +11822,7 @@ function renderMinorInitiativeDraftPanel(body, statusEl) {
         html += '<div class="empty-state" style="padding:20px 0;"><div class="empty-state-text">No articles added yet.<br>Use the selector below to add articles.</div></div>';
     } else {
         wizardArticles.forEach((art, i) => {
-            html += renderInitiativeArticleCard(art, i, true);
+            html += renderInitiativeArticleCard(art, i, true, 'removeMinorInitiativeArticle');
         });
     }
     html += '</div>';
@@ -11964,7 +11948,7 @@ window.toggleArticleConfigArray = toggleArticleConfigArray;
  * @param {number} index - index in wizardArticles
  * @param {boolean} editable - whether config controls are shown
  */
-function renderInitiativeArticleCard(art, index, editable) {
+function renderInitiativeArticleCard(art, index, editable, removeFn = 'removeMajorInitiativeArticle') {
     const typeInfo = INITIATIVE_ARTICLE_TYPES[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES[art.type];
     if (!typeInfo) return '';
 
@@ -11980,7 +11964,7 @@ function renderInitiativeArticleCard(art, index, editable) {
     }
     html += '</span></div>';
     if (editable) {
-        html += '<button class="initiative-article-remove" onclick="removeMajorInitiativeArticle(' + index + ')">REMOVE</button>';
+        html += '<button class="initiative-article-remove" onclick="' + removeFn + '(' + index + ')">REMOVE</button>';
     }
     html += '</div>';
 
@@ -12892,12 +12876,12 @@ async function renderAppointAmbassadorPanel(body, statusEl) {
         const embStatus = appointTargetRelation
             ? (isNationA ? appointTargetRelation.embassy_status_a : appointTargetRelation.embassy_status_b) || 'None'
             : 'None';
-        const agreementCount = appointTargetRelation?.active_treaties?.length || 0;
+        const agreementCount = 0; // active_treaties not in SELECT — removed nonexistent field read
 
         // Status bar
         html += '<div class="appoint-status-bar">';
         html += '<div class="appoint-status-item"><span class="appoint-status-label">Status</span> <span class="appoint-status-value" style="color:var(--green);border-color:var(--green-border);">Vacant</span></div>';
-        html += '<div class="appoint-status-item"><span class="appoint-status-label">Relations</span> <span class="appoint-status-value ' + relTier.cssClass + '">' + relTier.label.toUpperCase() + '</span> <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">+' + relScore + '</span></div>';
+        html += '<div class="appoint-status-item"><span class="appoint-status-label">Relations</span> <span class="appoint-status-value ' + relTier.cssClass + '">' + relTier.label.toUpperCase() + '</span> <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">' + (relScore >= 0 ? '+' : '') + relScore + '</span></div>';
         html += '<div class="appoint-status-item"><span class="appoint-status-label">Embassy</span> <span class="appoint-status-value" style="font-weight:600;">' + embStatus.charAt(0).toUpperCase() + embStatus.slice(1) + '</span></div>';
         html += '<div class="appoint-status-item"><span class="appoint-status-label">Agreements</span> <span class="appoint-status-value" style="color:var(--teal);font-weight:700;">' + agreementCount + '</span></div>';
         html += '</div>';
@@ -13616,85 +13600,6 @@ function cancelDraft() {
 }
 window.cancelDraft = cancelDraft;
 
-async function submitDraft() {
-    if (!activeDraftAction || !activeDraftTarget) {
-        alert('Please select an action and target nation.');
-        return;
-    }
-    if (!wizardName.trim()) {
-        alert('Please enter a name for the initiative.');
-        return;
-    }
-    if (wizardArticles.length === 0) {
-        alert('Please add at least one article.');
-        return;
-    }
-
-    // Check AP — server is the source of truth; deductAP below will validate
-    const apCost = activeDraftAction.apCost;
-
-    // Use existing wizard state variables for compatibility with submitInitiative
-    wizardTargetNation = activeDraftTarget;
-    wizardCategory = 'diplomatic';
-
-    // Determine classification
-    const hasMajor = wizardArticles.some(art => {
-        const typeInfo = INITIATIVE_TYPES[art.type];
-        return typeInfo && typeInfo.classification === 'MAJOR';
-    });
-    const classification = hasMajor ? 'MAJOR' : 'MINOR';
-
-    try {
-        // Deduct AP
-        const apResult = await deductAP(_supabase, currentFaction.id, apCost);
-        if (!apResult.success) {
-            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
-            alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (apResult.currentAp ?? '?'));
-            return;
-        }
-
-        // Build proposal
-        const proposalData = {
-            name: wizardName.trim(),
-            classification: classification,
-            articles: wizardArticles,
-            proposer_nation_name: currentNation.name,
-            target_nation_name: activeDraftTarget.name,
-            duration_years: wizardDuration || 1,
-            proposer_faction_id: currentFaction.id
-        };
-
-        const { error } = await _supabase.from('diplomatic_proposals').insert({
-            proposing_nation_id: currentNation.id,
-            target_nation_id: activeDraftTarget.id,
-            proposed_by_faction_id: currentFaction.id,
-            proposal_type: 'diplomatic_initiative',
-            proposal_tier: hasMajor ? 2 : 1,
-            status: 'proposed',
-            proposed_at_tick: shardTick,
-            proposal_data: proposalData
-        });
-
-        if (error) {
-            console.error('Submit error:', error);
-            alert('Error submitting initiative: ' + error.message);
-            return;
-        }
-
-        // Update AP display
-        currentFaction.action_points = apResult.newAp;
-        const apEl = document.getElementById('diplo-ap');
-        if (apEl) apEl.textContent = currentFaction.action_points + ' AP';
-
-        alert('Initiative submitted!');
-        cancelDraft();
-        await renderNegotiationsBox();
-    } catch (err) {
-        console.error('Submit draft error:', err);
-        alert('Error: ' + err.message);
-    }
-}
-window.submitDraft = submitDraft;
 
 // ══════════════════════════════════════════════════════
 // REFRESH ALL BOXES
@@ -13737,7 +13642,6 @@ window.wizardSelectCategory = wizardSelectCategory;
 window.wizardSelectDiploType = wizardSelectDiploType;
 window.wizardBackToStep1 = wizardBackToStep1;
 window.wizardBackToStep2 = wizardBackToStep2;
-window.wizardGoToStep2 = wizardGoToStep2;
 window.wizardGoToStep3 = wizardGoToStep3;
 window.wizardAddArticle = wizardAddArticle;
 window.wizardRemoveArticle = wizardRemoveArticle;
@@ -14967,7 +14871,7 @@ async function submitIPOExpel() {
     const org = membership?.org;
     const expClause = org?.charter?.membership?.expulsionClause;
 
-    const targetMember = ipoVoteMembers.find(m => m.faction_id === targetId);
+    const targetMember = ipoAllMembers.find(m => m.faction_id === targetId);
     const targetName = targetMember?.factions?.faction_name || 'Unknown';
 
     _ipoActionLock = true;
@@ -16899,7 +16803,7 @@ async function confirmHoldRally() {
     const targetId = document.getElementById('ipo-rally-target')?.value;
     if (!targetId) { alert('Select a party to rally for.'); return; }
 
-    const targetMember = ipoVoteMembers.find(m => m.faction_id === targetId);
+    const targetMember = ipoAllMembers.find(m => m.faction_id === targetId);
     const targetName = targetMember?.factions?.faction_name || 'Unknown';
 
     _ipoActionLock = true;
