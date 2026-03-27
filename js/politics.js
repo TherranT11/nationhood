@@ -6091,7 +6091,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     // Fetch standing (full fields), logs, campaigns, government formation, all standings, and stances in parallel
     const [standingRes, partyLogRes, credLogRes, activeCampaignsRes, govFormRes, allStandingsRes, stancesRes] = await Promise.all([
         _supabase.from('faction_electoral_standing')
-            .select('faction_id, party_approval, credibility_modifier, ideological_alignment, visibility, platform_appeal, realized_vote_share, contested_vote_share, turnout_rate')
+            .select('faction_id, party_approval, credibility_modifier, ideological_alignment, visibility, platform_appeal, realized_vote_share, contested_vote_share, turnout_rate, last_polled_tick, polled_party_approval, polled_alignment, polled_platform_appeal, polled_visibility, polled_credibility, polled_vote_share')
             .eq('nation_id', nation.id)
             .eq('faction_id', playerFaction.id)
             .maybeSingle(),
@@ -6119,9 +6119,9 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             .order('formed_at', { ascending: false })
             .limit(1)
             .maybeSingle(),
-        // All party standings for comparison table
+        // All party standings for comparison table (polled columns for poll-based display)
         _supabase.from('faction_electoral_standing')
-            .select('faction_id, party_approval, credibility_modifier, ideological_alignment, visibility, platform_appeal, raw_appeal, realized_vote_share, contested_vote_share, turnout_rate')
+            .select('faction_id, party_approval, credibility_modifier, ideological_alignment, visibility, platform_appeal, raw_appeal, realized_vote_share, contested_vote_share, turnout_rate, last_polled_tick, polled_party_approval, polled_alignment, polled_platform_appeal, polled_visibility, polled_credibility, polled_vote_share')
             .eq('nation_id', nation.id),
         // Player's stances for issue landscape
         _supabase.from('faction_issue_stance')
@@ -6424,39 +6424,51 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     }
 
     // ══════════════════════════════════════════════════════════════
-    //  SECTION D — ALL-PARTY COMPARISON TABLE (sortable)
+    //  SECTION D — ALL-PARTY COMPARISON TABLE (polled data + ±3% margin)
     // ══════════════════════════════════════════════════════════════
 
     const partyMap = Object.fromEntries(allParties.map(p => [p.id, p]));
-    let compRowsHtml = '';
-    const sortedStandings = [...allStandings]
-        .sort((a, b) => (Number(b.realized_vote_share) || 0) - (Number(a.realized_vote_share) || 0));
+    const lastPolledTick = playerStanding.last_polled_tick || null;
+    const hasPolled = lastPolledTick && lastPolledTick > 0;
+    const pollDateStr = hasPolled ? tickToDate(lastPolledTick) : 'Never';
+    const POLL_MARGIN = 3; // ±3% margin of error
 
-    for (const s of sortedStandings) {
-        const p = partyMap[s.faction_id];
-        if (!p) continue;
-        const isYou = s.faction_id === playerFaction.id;
-        const pColor = p.party_color || '#666';
-        const pName = p.abbreviation || p.faction_name || '?';
-        const vs = ((Number(s.realized_vote_share) || 0) * 100).toFixed(1);
-        const al = Math.round(Number(s.ideological_alignment ?? 0));
-        const ap = Math.round(Number(s.platform_appeal ?? 0));
-        const apr = Math.round(Number(s.party_approval ?? 0));
-        const vi = Math.round(Number(s.visibility ?? 0));
-        const cr = Math.max(0, Math.min(100, Math.round((Number(s.credibility_modifier ?? 1) - 0.5) * 100)));
-        const to = ((Number(s.turnout_rate ?? 0.65)) * 100).toFixed(0);
-        const rowCls = isYou ? 'vt-comp-row--you' : '';
-        compRowsHtml += `
-            <tr class="vt-comp-row ${rowCls}">
-                <td class="vt-comp-party"><span class="vt-comp-dot" style="background:${pColor}"></span>${escapeHtml(pName)}${isYou ? ' <span class="vt-comp-you">(YOU)</span>' : ''}</td>
-                <td class="vt-comp-val vt-comp-val--vote">${vs}%</td>
-                <td class="vt-comp-val" style="color:${_scoreColor(al)}">${al}</td>
-                <td class="vt-comp-val" style="color:${_scoreColor(ap)}">${ap}</td>
-                <td class="vt-comp-val" style="color:${_scoreColor(apr)}">${apr}</td>
-                <td class="vt-comp-val" style="color:${_scoreColor(vi)}">${vi}</td>
-                <td class="vt-comp-val" style="color:${_scoreColor(cr)}">${cr}</td>
-                <td class="vt-comp-val">${to}%</td>
-            </tr>`;
+    // Use polled values if available, otherwise show "No poll data"
+    let compRowsHtml = '';
+    if (hasPolled) {
+        const sortedStandings = [...allStandings]
+            .sort((a, b) => (Number(b.polled_vote_share) || Number(b.realized_vote_share) || 0) - (Number(a.polled_vote_share) || Number(a.realized_vote_share) || 0));
+
+        for (const s of sortedStandings) {
+            const p = partyMap[s.faction_id];
+            if (!p) continue;
+            const isYou = s.faction_id === playerFaction.id;
+            const pColor = p.party_color || '#666';
+            const pName = p.abbreviation || p.faction_name || '?';
+            // Use polled values (from last poll snapshot)
+            const vs = ((Number(s.polled_vote_share ?? s.realized_vote_share) || 0) * 100).toFixed(1);
+            const al = Math.round(Number(s.polled_alignment ?? s.ideological_alignment ?? 0));
+            const ap = Math.round(Number(s.polled_platform_appeal ?? s.platform_appeal ?? 0));
+            const apr = Math.round(Number(s.polled_party_approval ?? s.party_approval ?? 0));
+            const vi = Math.round(Number(s.polled_visibility ?? s.visibility ?? 0));
+            const polledCred = Number(s.polled_credibility ?? s.credibility_modifier ?? 1);
+            const cr = Math.max(0, Math.min(100, Math.round((polledCred - 0.5) * 100)));
+            const to = ((Number(s.turnout_rate ?? 0.65)) * 100).toFixed(0);
+            const rowCls = isYou ? 'vt-comp-row--you' : '';
+            compRowsHtml += `
+                <tr class="vt-comp-row ${rowCls}">
+                    <td class="vt-comp-party"><span class="vt-comp-dot" style="background:${pColor}"></span>${escapeHtml(pName)}${isYou ? ' <span class="vt-comp-you">(YOU)</span>' : ''}</td>
+                    <td class="vt-comp-val vt-comp-val--vote">${vs}%</td>
+                    <td class="vt-comp-val" style="color:${_scoreColor(al)}">${al}</td>
+                    <td class="vt-comp-val" style="color:${_scoreColor(ap)}">${ap}</td>
+                    <td class="vt-comp-val" style="color:${_scoreColor(apr)}">${apr}</td>
+                    <td class="vt-comp-val" style="color:${_scoreColor(vi)}">${vi}</td>
+                    <td class="vt-comp-val" style="color:${_scoreColor(cr)}">${cr}</td>
+                    <td class="vt-comp-val">${to}%</td>
+                </tr>`;
+        }
+    } else {
+        compRowsHtml = '<tr><td colspan="8" class="vt-comp-empty">No poll data — run a poll to see party standings</td></tr>';
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -6544,9 +6556,15 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             </div>
         </div>
 
-        <!-- All-Party Comparison -->
+        <!-- All-Party Comparison (polled) -->
         <div class="vt-section">
-            <div class="vt-sec-header">ALL-PARTY COMPARISON</div>
+            <div class="vt-comp-header-row">
+                <div class="vt-sec-header" style="margin-bottom:0">CURRENT ELECTORAL STANDING</div>
+                <div class="vt-poll-meta">
+                    <span class="vt-poll-date">Last Poll Run — <strong>${escapeHtml(pollDateStr)}</strong></span>
+                    <span class="vt-poll-margin">±${POLL_MARGIN}%</span>
+                </div>
+            </div>
             <div class="vt-comp-scroll">
                 <table class="vt-comp-table" id="vt-comp-table">
                     <thead><tr>

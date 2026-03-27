@@ -4897,6 +4897,29 @@ body.light-mode .pol-blocs-box {
 .vt-comp-you { font-size: 8px; color: var(--dtext-3); font-weight: 400; }
 .vt-comp-val { text-align: right; font-family: var(--dfont-mono); font-size: 10px; font-weight: 600; }
 .vt-comp-val--vote { font-weight: 800; color: var(--dtext-0); }
+.vt-comp-empty {
+    text-align: center; color: var(--dtext-3); padding: 20px;
+    font-family: var(--dfont-mono); font-size: 10px; font-style: italic;
+}
+
+/* ── Poll header row ── */
+.vt-comp-header-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+}
+.vt-poll-meta {
+    display: flex; align-items: center; gap: 10px;
+}
+.vt-poll-date {
+    font-family: var(--dfont-mono); font-size: 9px; color: var(--dtext-3);
+}
+.vt-poll-date strong { color: var(--dtext-1); }
+.vt-poll-margin {
+    font-family: var(--dfont-mono); font-size: 8px; font-weight: 700;
+    color: #d98030; background: rgba(217,128,48,0.1);
+    border: 1px solid rgba(217,128,48,0.2); border-radius: 2px;
+    padding: 1px 6px; letter-spacing: 0.3px;
+}
 
 /* ── Light mode overrides ── */
 body.light-mode .vt-factor-card { background: #fafaf8; border-color: rgba(0,0,0,0.08); }
