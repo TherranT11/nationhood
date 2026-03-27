@@ -213,6 +213,12 @@ export async function dispatchAutocracyAction(supabase, params) {
     // ── Compute AP cost ─────────────────────────────────────────────────
     const apCost = getEscalatingCost(factionState, actionDef);
 
+    // ── Pre-deduction validation (runs BEFORE AP is spent) ──────────────
+    if (actionDef.validate) {
+        const vErr = await actionDef.validate(supabase, { nation, factionState, extra, currentTick });
+        if (vErr) return { success: false, error: vErr };
+    }
+
     // ── Deduct AP ───────────────────────────────────────────────────────
     const apResult = await deductAP(supabase, factionId, apCost);
     if (!apResult.success) {
