@@ -29019,10 +29019,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 let demandMet = false;
                 if (demand.type === 'stat') {
                     const current = Number((nation as any)[demand.stat] ?? 0);
-                    const baseline = Number(demand.baseline ?? current);
-                    demandMet = demand.direction === 'reduce'
-                        ? current <= baseline - (demand.magnitude || 0)
-                        : current >= baseline + (demand.magnitude || 0);
+                    if (demand.baseline != null) {
+                        // Baseline stored: check if stat moved enough from baseline
+                        const baseline = Number(demand.baseline);
+                        demandMet = demand.direction === 'reduce'
+                            ? current <= baseline - (demand.magnitude || 0)
+                            : current >= baseline + (demand.magnitude || 0);
+                    } else {
+                        // No baseline (legacy demand): treat as expired unmet
+                        // Future demands always store baseline
+                        demandMet = false;
+                    }
                 } else if (demand.type === 'minister') {
                     const { data: min } = await supabase.from('ministries')
                         .select('party_id').eq('nation_id', nation.id).eq('ministry_key', demand.target).eq('is_active', true).maybeSingle();
