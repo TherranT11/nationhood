@@ -29067,10 +29067,25 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         if (recentHigh.length >= 1) tier = 7;
                     }
 
-                    // Cap at Tier 6 unless 2+ active crises
-                    if (tier >= 7) {
+                    // Gate Tier 6/7 based on nation conditions
+                    if (tier >= 6) {
                         const { data: activeCrises } = await supabase.from('active_crises').select('id').eq('nation_id', nation.id);
-                        if ((activeCrises || []).length < 2) tier = 6;
+                        const crisisCount = (activeCrises || []).length;
+                        const stability = Number(ns.stability ?? 50);
+                        const polarization = Number(ns.polarization ?? 0);
+
+                        // Tier 7: requires 2+ crises AND (stability < 30 OR polarization > 80)
+                        if (tier >= 7) {
+                            if (crisisCount < 2 || (stability >= 30 && polarization <= 80)) {
+                                tier = 6; // Downgrade to Tier 6
+                            }
+                        }
+                        // Tier 6: requires 1+ crisis AND (stability < 50 OR polarization > 80)
+                        if (tier >= 6) {
+                            if (crisisCount < 1 || (stability >= 50 && polarization <= 80)) {
+                                tier = 5; // Downgrade to Tier 5
+                            }
+                        }
                     }
 
                     // 8. Apply tier effects

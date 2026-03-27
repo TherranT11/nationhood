@@ -1482,14 +1482,27 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
     let tier = getTurnoutTier(turnoutScore);
     tier = checkEscalationPath(tier, turnoutScore, historyForEscalation, currentTick);
 
-    // Cap at Tier 6 unless there are already 2+ active crises
-    if (tier >= 7) {
+    // Gate Tier 6/7 based on nation conditions
+    if (tier >= 6) {
         const { data: activeCrises } = await supabase
             .from('active_crises')
             .select('id')
             .eq('nation_id', nationId);
-        if ((activeCrises || []).length < 2) {
-            tier = 6;
+        const crisisCount = (activeCrises || []).length;
+        const stability = Number(nationStats.stability ?? 50);
+        const polarization = Number(nationStats.polarization ?? 0);
+
+        // Tier 7: requires 2+ crises AND (stability < 30 OR polarization > 80)
+        if (tier >= 7) {
+            if (crisisCount < 2 || (stability >= 30 && polarization <= 80)) {
+                tier = 6;
+            }
+        }
+        // Tier 6: requires 1+ crisis AND (stability < 50 OR polarization > 80)
+        if (tier >= 6) {
+            if (crisisCount < 1 || (stability >= 50 && polarization <= 80)) {
+                tier = 5;
+            }
         }
     }
 
