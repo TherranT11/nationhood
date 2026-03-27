@@ -1576,6 +1576,7 @@ async function renderGovernmentPage() {
                 </div>
 
                 <div class="section-header" id="cabinet-section">Cabinet</div>
+                ${renderVacantMinistryAlert(ministries, coalition)}
                 ${renderCabinet(ministries, coalition)}
 
                 <div class="section-header">Current Parliamentary Makeup</div>
@@ -5999,6 +6000,31 @@ async function protestCrisisAction(actionType) {
     }
 }
 
+// --- Vacant ministry alert (PM/President only) ---
+function renderVacantMinistryAlert(ministries, coalition) {
+    if (isAutocracy) return '';
+    // Determine if current player is PM or President
+    const isPlayerPMorPresident = isPresidential
+        ? isPresidentParty
+        : !!(coalition && currentFaction && (coalition.ministry_assignments?.prime_minister === currentFaction.id || coalition.lead_party_id === currentFaction.id));
+    if (!isPlayerPMorPresident) return '';
+
+    // Count vacant ministries (have a row but no party_id assigned)
+    const vacantList = (ministries || []).filter(m =>
+        m.ministry_key !== 'prime_minister' && !m.party_id
+    );
+    if (vacantList.length === 0) return '';
+
+    const names = vacantList.map(m => MINISTRY_NAMES[m.ministry_key] || m.ministry_key).join(', ');
+    return `<div style="background:rgba(212,160,23,0.08);border:1px solid rgba(212,160,23,0.3);border-radius:4px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:14px;color:#d4a017;">⚠</span>
+        <div>
+            <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#d4a017;text-transform:uppercase;letter-spacing:0.08em;">MINISTRY VACANT. FILL IMMEDIATELY.</div>
+            <div style="font-family:var(--font-sans);font-size:11px;color:var(--text-secondary);margin-top:2px;">${escapeHtml(names)}</div>
+        </div>
+    </div>`;
+}
+
 // --- Main render ---
 
 function renderCabinet(ministries, coalition) {
@@ -8300,6 +8326,19 @@ async function resignPMAction() {
         }
 
         await _supabase.from('ministries').update(updateData).eq('id', ministry.id);
+
+        // Fire nation event (not world — internal cabinet matter)
+        try {
+            const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            const tick = shard?.current_tick || 0;
+            await _supabase.from('event_log').insert({
+                nation_id: currentNation.id,
+                event_name: 'Minister Resigned',
+                category: 'government',
+                description_chosen: ministerName + ' has resigned from ' + (MINISTRY_NAMES[ministryKey] || ministryKey) + '. The position is now vacant.',
+                fired_at_tick: tick
+            });
+        } catch (_) { /* non-blocking */ }
 
         alert(ministerName + ' has resigned from ' + (ministry.ministry_name || ministryKey) + '.');
         await renderGovernmentPage();
