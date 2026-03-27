@@ -682,30 +682,36 @@ let cachedIdeoByFaction = {};
 const ALPHA_CODE_NATIONS = new Set();
 
 async function init() {
-  const { data: { user } } = await _supabase.auth.getUser();
-  if (!user) { window.location.href = 'login.html'; return; }
-  currentUser = user;
+  try {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) { window.location.href = 'login.html'; return; }
+    currentUser = user;
 
-  // Check if user already has a party
-  const { data: faction } = await _supabase
-    .from('factions').select('id, nation_id').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
-  if (faction && faction.nation_id) {
-    window.location.href = 'dashboard.html';
-    return;
+    // Check if user already has a party
+    const { data: faction } = await _supabase
+      .from('factions').select('id, nation_id').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
+    if (faction && faction.nation_id) {
+      window.location.href = 'dashboard.html';
+      return;
+    }
+
+    // Load which nations have alpha codes (restricted access)
+    const { data: alphaCodes } = await _supabase
+      .from('alpha_tester_codes').select('nation_id').is('used_by', null);
+    if (alphaCodes) {
+      for (const ac of alphaCodes) ALPHA_CODE_NATIONS.add(ac.nation_id);
+    }
+
+    await loadNations();
+
+    document.getElementById('loading').style.display = 'none';
+    const content = document.getElementById('page-content');
+    content.style.display = 'flex';
+  } catch (err) {
+    document.getElementById('loading').textContent = 'FAILED TO LOAD — PLEASE REFRESH';
+    const errEl = document.getElementById('error-message');
+    if (errEl) { errEl.textContent = err.message || 'Unknown error'; errEl.style.display = 'block'; }
   }
-
-  // Load which nations have alpha codes (restricted access)
-  const { data: alphaCodes } = await _supabase
-    .from('alpha_tester_codes').select('nation_id').is('used_by', null);
-  if (alphaCodes) {
-    for (const ac of alphaCodes) ALPHA_CODE_NATIONS.add(ac.nation_id);
-  }
-
-  await loadNations();
-
-  document.getElementById('loading').style.display = 'none';
-  const content = document.getElementById('page-content');
-  content.style.display = 'flex';
 }
 
 function switchContinent(continent) {
@@ -940,12 +946,16 @@ function selectNation(nationId) {
 function closeModal() {
   document.getElementById('modal-overlay').classList.remove('active');
   selectedNationId = null;
+  confirmInFlight = false;
 }
 
+let confirmInFlight = false;
 async function confirmNation() {
+  if (confirmInFlight) return;
   if (!selectedNationId) return;
   const nation = allNations.find(n => n.id === selectedNationId);
   if (!nation) return;
+  confirmInFlight = true;
 
   const needsCode = ALPHA_CODE_NATIONS.has(selectedNationId);
 
@@ -959,6 +969,7 @@ async function confirmNation() {
       codeError.textContent = 'Please enter your alpha tester code.';
       codeError.style.display = 'block';
       codeInput.focus();
+      confirmInFlight = false;
       return;
     }
 
@@ -980,22 +991,25 @@ async function confirmNation() {
       codeError.style.display = 'block';
       confirmBtn.disabled = false;
       confirmBtn.textContent = 'CONTINUE';
+      confirmInFlight = false;
       codeInput.focus();
       return;
     }
 
-    // Claim the code
-    const { error: claimErr } = await _supabase
+    // Claim the code (optimistic lock: only update if still unused)
+    const { data: claimedRows, error: claimErr } = await _supabase
       .from('alpha_tester_codes')
       .update({ used_by: currentUser.id, used_at: new Date().toISOString() })
       .eq('id', codeRow.id)
-      .is('used_by', null);
+      .is('used_by', null)
+      .select('id');
 
-    if (claimErr) {
-      codeError.textContent = 'Failed to claim code. Please try again.';
+    if (claimErr || !claimedRows || claimedRows.length === 0) {
+      codeError.textContent = 'Code was already claimed. Please try a different code.';
       codeError.style.display = 'block';
       confirmBtn.disabled = false;
       confirmBtn.textContent = 'CONTINUE';
+      confirmInFlight = false;
       return;
     }
 

@@ -44,6 +44,7 @@ BEGIN
     ) THEN
         CREATE POLICY "Allow update for authenticated"
             ON alpha_tester_codes FOR UPDATE
-            USING (auth.role() = 'authenticated');
+            USING (auth.role() = 'authenticated' AND used_by IS NULL)
+            WITH CHECK (used_by = auth.uid());
     END IF;
 END $$;
