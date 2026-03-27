@@ -177,7 +177,7 @@ let ipoVotesChannel = null;     // realtime subscription for votes + ballots + m
 // ── IPO Voting state ──
 let ipoVotesCache = [];          // open + recent closed votes for current org
 let ipoBallotCache = {};         // { voteId: [ballot rows] }
-let ipoVoteMemberMap = {};       // { factionId: { name, seats, nationId } } for vote rendering
+// ipoVoteMemberMap removed — was populated but never consumed
 let ipoExpandedVoteId = null;    // currently expanded vote card
 let ipoProposeVoteType = null;   // selected vote type in propose modal
 let ipoProposeVoteMeta = {};     // type-specific metadata for vote proposal
@@ -4590,7 +4590,7 @@ async function renderWizardStep3Diplomatic() {
         html += `
             <div class="type-card ${isUsed ? 'disabled' : ''}" data-type-key="${key}" onclick="wizardSelectDiploType('${key}')">
                 <div class="type-card-title">${escapeHtml(info.label)} ${classBadge}</div>
-                <div class="type-card-desc">${escapeHtml(info.description)}</div>
+                <div class="type-card-desc">${escapeHtml(info.description || '')}</div>
                 <div class="type-card-effects">
                     ${relStr ? '<span class="effect-tag effect-rel">' + relStr + '</span>' : ''}
                     ${moneyStr ? '<span class="effect-tag effect-money">' + moneyStr + '</span>' : ''}
@@ -5999,7 +5999,7 @@ async function openTradeNegotiation(negotiationId) {
     const partnerName = partnerNation?.name || 'Unknown';
 
     const ticksLeft = neg.expires_at_tick - shardTick;
-    const statusClass = ticksLeft <= 2 ? 'expiring' : ticksLeft <= 0 ? 'expired' : 'active';
+    const statusClass = ticksLeft <= 0 ? 'expired' : ticksLeft <= 2 ? 'expiring' : 'active'; // Fixed: expired check must come first
     const participants = neg.participants || [];
     const draftArticles = neg.draft_articles || [];
 
@@ -9337,7 +9337,7 @@ async function declineStateVisit(proposalId) {
     // Fire event for all nations
     try {
         const pd = proposal.proposal_data || {};
-        const { data: shard } = await _supabase.from('game_shards').select('current_tick').eq('id', currentNation.shard_id).single();
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(); // Fixed: was 'game_shards'
         const tick = shard?.current_tick || 0;
         const { data: allNations } = await _supabase.from('nations').select('id');
         if (allNations && allNations.length > 0) {
@@ -12633,10 +12633,11 @@ async function executeRecallAmbassador() {
         currentFaction.action_points = apResult.newAp;
 
         // 5. Update ambassador: recalled
-        await _supabase
+        const { error: recallErr } = await _supabase
             .from('ambassadors')
             .update({ status: 'recalled', is_active: false, recalled_at_tick: currentTick })
             .eq('id', amb.id);
+        if (recallErr) { alert('Failed to recall ambassador: ' + recallErr.message); return; }
 
         // 6. Update embassy status + relation score
         const natA = currentNation.id < targetNationId ? currentNation.id : targetNationId;
@@ -14381,16 +14382,7 @@ async function renderIPOMainPanel(memberCounts) {
     const allNations = allNationsResult.data || [];
     const nationMap = Object.fromEntries(allNations.map(n => [n.id, n.name]));
 
-    // Build member map for voting system
-    ipoVoteMemberMap = {};
-    allMembers.forEach(m => {
-        ipoVoteMemberMap[m.faction_id] = {
-            name: m.factions?.faction_name || 'Unknown',
-            seats: m.factions?.seats || 0,
-            nationId: m.factions?.nation_id || null,
-            role: m.role
-        };
-    });
+
 
     // Leadership type display
     const leadershipLabels = { rotation: 'Rotation', most_seats: 'Most Seats', random: 'Random' };
@@ -15069,11 +15061,12 @@ async function leaveIPOOrg() {
     if (!confirm(confirmMsg)) return;
 
     try {
-        await _supabase.from('ipo_members')
+        const { error: leaveErr } = await _supabase.from('ipo_members')
             .update({ is_active: false, left_at_tick: shardTick })
             .eq('org_id', ipoSelectedOrgId)
             .eq('faction_id', currentFaction.id)
             .eq('is_active', true);
+        if (leaveErr) { alert('Failed to leave organisation: ' + leaveErr.message); return; }
 
         // System message
         await _supabase.from('ipo_chat').insert({
@@ -15974,11 +15967,11 @@ async function renderIPOVoteModalForm() {
             // Fetch pending vote_pending invitations
             const { data: invites } = await _supabase
                 .from('ipo_invitations')
-                .select('id, invited_faction_id, status, factions:invited_faction_id ( faction_name )')
+                .select('id, target_faction_id, status, factions:target_faction_id ( faction_name )') // Fixed: was invited_faction_id
                 .eq('org_id', ipoSelectedOrgId)
                 .eq('status', 'vote_pending');
             const inviteOptions = (invites || []).map(inv =>
-                `<option value="${inv.id}" data-name="${escapeHtml(inv.factions?.faction_name || 'Unknown')}" data-fid="${inv.invited_faction_id}">${escapeHtml(inv.factions?.faction_name || 'Unknown')}</option>`
+                `<option value="${inv.id}" data-name="${escapeHtml(inv.factions?.faction_name || 'Unknown')}" data-fid="${inv.target_faction_id}">${escapeHtml(inv.factions?.faction_name || 'Unknown')}</option>`
             ).join('');
             if (!inviteOptions) {
                 formFields = '<div class="ipo-vote-form-note">No pending membership applications.</div>';
