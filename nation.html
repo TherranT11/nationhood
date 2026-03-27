@@ -34,144 +34,12 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, refreshGameState, qCache, qCacheSet, qCacheBust, formatNumber, scaleRawToDollars, assertRawEconomicValue } from './js/common.js';
 import './js/guide.js';
 import { formatCurrencyShort, escapeHtml } from './js/utils.js';
-import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
+import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel, inflationColorClass, inflationRate } from './js/game/stats.js';
 /**
  * Nation Page - Comprehensive Stats Display
  * With Rankings and Trend Arrows
  */
-
-// ===== SPARKLINE HISTORY DIAGNOSTIC =====
-// Run in browser console: debugSparklines()
-// Uses _nationId stashed during page init to avoid auth re-query
-var _nationId = null;
-window.debugSparklines = async function() {
-    if (!_nationId) { console.error('Nation ID not set — page may not have loaded yet'); return; }
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const tick = shard?.current_tick || 0;
-    console.log('%c=== SPARKLINE HISTORY AUDIT ===', 'font-weight:bold;font-size:14px;color:#0af');
-    console.log('Nation ID:', _nationId, '| Current tick:', tick);
-    const { data: rows, error } = await _supabase.from('nations_history')
-        .select('tick').eq('nation_id', _nationId).order('tick', { ascending: false }).limit(10);
-    if (error) { console.error('Query error:', error.message); return; }
-    if (!rows || rows.length === 0) {
-        console.error('%cNO history rows found for this nation! Snapshots are not being written.', 'color:#f44;font-weight:bold');
-    } else {
-        console.log('Latest history ticks:', rows.map(r => r.tick));
-        console.log('History rows found:', rows.length, '| Most recent tick:', rows[0].tick, '| Gap from current:', tick - rows[0].tick);
-    }
-};
-
-// ===== STAT DELTA DIAGNOSTIC =====
-// Run in browser console: debugStatDelta('education_accessibility')
-window.debugStatDelta = async function(statKey) {
-    const sk = statKey || 'education_accessibility';
-    console.log(`%c=== STAT DELTA AUDIT: ${sk} ===`, 'font-weight:bold;font-size:14px;color:#0af');
-
-    // 1. Get nation + shard
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const tick = shard?.current_tick || 0;
-    const { data: { user } } = await _supabase.auth.getUser();
-    const { data: faction } = await _supabase.from('factions').select('nation_id').eq('user_id', user.id).single();
-    const nationId = faction?.nation_id;
-    if (!nationId) { console.error('No nation found'); return; }
-
-    const { data: nation } = await _supabase.from('nations').select('*').eq('id', nationId).single();
-    console.log(`Nation: ${nation.name} | Tick: ${tick} | Current ${sk}: ${nation[sk]}`);
-
-    // 2. Previous tick value from history
-    const { data: hist } = await _supabase.from('nations_history')
-        .select(sk + ', tick').eq('nation_id', nationId)
-        .lte('tick', tick).order('tick', { ascending: false }).limit(3);
-    if (hist?.length) {
-        console.log('%cHistory:', 'font-weight:bold');
-        hist.forEach(h => console.log(`  tick ${h.tick}: ${h[sk]}`));
-        const prev = hist.find(h => h.tick < tick);
-        if (prev) console.log(`  Delta (tick ${prev.tick} → now): ${(Number(nation[sk]) - Number(prev[sk])).toFixed(1)}`);
-    }
-
-    // 3. Active laws affecting this stat
-    const { data: laws } = await _supabase.from('active_laws')
-        .select('id, bill_id, is_reversal, passed_tick, effects_applied_through_tick, reversal_effects, policies(policy_name, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)')
-        .eq('nation_id', nationId);
-    const hitLaws = (laws || []).filter(l => {
-        const p = l.policies;
-        if (!p) return false;
-        if (p.target_stat === sk) return true;
-        if (p.stat_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)) return true;
-        if (l.is_reversal && l.reversal_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)) return true;
-        return false;
-    });
-    console.log(`%cActive laws affecting ${sk}: ${hitLaws.length}`, 'font-weight:bold');
-    hitLaws.forEach(l => {
-        const p = l.policies;
-        const effs = l.is_reversal ? l.reversal_effects : p.stat_effects;
-        const relevant = (effs || []).filter(e => normalizeNationStatKey(e.stat_key) === sk);
-        relevant.forEach(e => {
-            const ticksSince = tick - (l.passed_tick || 0);
-            const delay = Number(e.delay_ticks) || 0;
-            const dur = Number(e.duration_ticks) || 12;
-            const active = ticksSince > delay && ticksSince <= delay + dur;
-            console.log(`  [${active ? 'ACTIVE' : 'dormant'}] "${p.policy_name}" | dir=${e.direction} rate=${e.rate}/tick | delay=${delay} dur=${dur} | ticksSince=${ticksSince} | passedTick=${l.passed_tick} lastApplied=${l.effects_applied_through_tick}`);
-        });
-        if (relevant.length === 0 && p.target_stat === sk) {
-            console.log(`  [legacy] "${p.policy_name}" | dir=${p.stat_direction} rate=${p.stat_change_per_tick}/tick dur=${p.duration_months}`);
-        }
-    });
-
-    // 4. Stat connections
-    const { data: conns } = await _supabase.from('stat_connections')
-        .select('*').eq('enabled', true).eq('target_stat', sk);
-    console.log(`%cStat connections targeting ${sk}: ${(conns||[]).length}`, 'font-weight:bold');
-    (conns || []).forEach(c => {
-        const sourceVal = Number(nation[c.source_stat] ?? 50);
-        const triggered = c.source_dir === 'above' ? sourceVal > c.threshold : sourceVal < c.threshold;
-        console.log(`  [${triggered ? 'TRIGGERED' : 'inactive'}] ${c.source_stat} ${c.source_dir} ${c.threshold} (current: ${sourceVal}) → ${c.target_dir} ${c.magnitude} | dampening=${c.dampening}`);
-        if (triggered && c.dampening) {
-            const targetVal = Number(nation[sk] ?? 50);
-            const eff = c.target_dir === 'up' ? c.magnitude * (1 - targetVal/100) : c.magnitude * (targetVal/100);
-            console.log(`    effective magnitude after dampening: ${eff.toFixed(3)}`);
-        }
-    });
-
-    // 5. Active crises
-    const { data: crises } = await _supabase.from('active_crises')
-        .select('crisis_id, started_tick, crisis_templates(name, crisis_effects(stat_key, change_per_tick, target))')
-        .eq('nation_id', nationId);
-    const hitCrises = (crises || []).filter(c =>
-        c.crisis_templates?.crisis_effects?.some(e => e.target === 'nation' && normalizeNationStatKey(e.stat_key) === sk)
-    );
-    console.log(`%cActive crises affecting ${sk}: ${hitCrises.length}`, 'font-weight:bold');
-    hitCrises.forEach(c => {
-        const effs = c.crisis_templates.crisis_effects.filter(e => e.target === 'nation' && normalizeNationStatKey(e.stat_key) === sk);
-        effs.forEach(e => console.log(`  "${c.crisis_templates.name}" | change_per_tick=${e.change_per_tick} | started tick ${c.started_tick}`));
-    });
-
-    // 6. Unprocessed ministry actions
-    const { data: mActions } = await _supabase.from('ministry_action_log')
-        .select('action_key, stat_effects, effects_applied_through_tick, applied_at_tick')
-        .eq('nation_id', nationId).eq('processed', false);
-    const hitMA = (mActions || []).filter(a =>
-        a.stat_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)
-    );
-    console.log(`%cMinistry actions affecting ${sk}: ${hitMA.length}`, 'font-weight:bold');
-    hitMA.forEach(a => {
-        const effs = a.stat_effects.filter(e => normalizeNationStatKey(e.stat_key) === sk);
-        effs.forEach(e => console.log(`  "${a.action_key}" | dir=${e.direction} rate=${e.rate} | applied tick ${a.applied_at_tick} lastApplied=${a.effects_applied_through_tick}`));
-    });
-
-    // 7. Decay config
-    const dc = STAT_DECAY_CONFIG[sk];
-    if (dc) {
-        console.log(`%cDecay config: type=${dc.type} target=${dc.target} speed=${dc.speed}/tick`, 'font-weight:bold');
-        const delta = Number(nation[sk]) > dc.target ? -dc.speed : dc.speed;
-        console.log(`  Natural decay this tick: ${delta > 0 ? '+' : ''}${delta}`);
-    } else {
-        console.log(`%cNo decay config for ${sk}`, 'font-weight:bold');
-    }
-
-    console.log(`%c=== END AUDIT ===`, 'font-weight:bold;font-size:14px;color:#0af');
-};
 
 // All nations data for rankings
 let allNations = [];
@@ -179,7 +47,6 @@ let totalNations = 0;
 let previousTickData = null;
 var statEffectsByKey = {};
 let sparklineHistory = {}; // statKey → array of last 10 values
-let activeCrises = [];
 
 // Collapsed state for sections (persisted in sessionStorage)
 var sectionState = JSON.parse(sessionStorage.getItem('nationSectionState') || '{}');
@@ -367,8 +234,6 @@ function toggleSection(catId) {
 // Initialize page
 initPage('nation', async (state) => {
     const { nation, faction } = state;
-    _nationId = nation?.id || null;
-
     if (!nation) {
         document.getElementById('content-area').innerHTML = '<div class="loading-container"><div style="font-size:24px">No Nation</div><div>Your party is not assigned to a nation yet.</div></div>';
         return;
@@ -376,48 +241,46 @@ initPage('nation', async (state) => {
 
     // Fix placeholder government_type values from DB
     if (!nation.government_type || nation.government_type.toLowerCase().includes('your_gov_here')) {
-        if (nation.name === 'San Estrella') nation.government_type = CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC;
+        nation.government_type = CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY;
     }
 
     await Promise.all([
         loadAllNations(),
         loadPreviousTickData(nation.id),
         loadStatEffectSources(nation.id, nation),
-        loadSparklineHistory(nation.id),
-        loadActiveCrises(nation.id)
+        loadSparklineHistory(nation.id)
     ]);
     await renderNationPage(nation);
 
-    // Auto-refresh when a tick advances
+    // Auto-refresh when a tick advances (debounced to prevent concurrent renders)
+    let _isRefreshing = false;
     window.addEventListener('tick-advanced', async () => {
+        if (_isRefreshing) return;
+        _isRefreshing = true;
         try {
-            // Bust stale caches for this nation
             qCacheBust('prev_tick_');
             qCacheBust('sparkline_');
             qCacheBust('stat_effects_');
             qCacheBust('all_nations');
-            qCacheBust('crises_');
             previousTickData = null;
             sparklineHistory = {};
             statEffectsByKey = {};
-            activeCrises = [];
 
-            // Re-fetch fresh nation data
             const freshState = await refreshGameState();
             const freshNation = freshState?.nation;
             if (!freshNation) return;
 
-            _nationId = freshNation.id;
             await Promise.all([
                 loadAllNations(),
                 loadPreviousTickData(freshNation.id),
                 loadStatEffectSources(freshNation.id, freshNation),
-                loadSparklineHistory(freshNation.id),
-                loadActiveCrises(freshNation.id)
+                loadSparklineHistory(freshNation.id)
             ]);
             await renderNationPage(freshNation);
         } catch (e) {
             console.error('[nation.html] Error refreshing after tick:', e);
+        } finally {
+            _isRefreshing = false;
         }
     });
 });
@@ -433,9 +296,9 @@ async function loadPreviousTickData(nationId) {
     const cacheKey = 'prev_tick_' + nationId;
     const cached = qCache(cacheKey);
     if (cached) { previousTickData = cached; return; }
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    if (!shard) { console.warn('[loadPreviousTickData] Shard not found — stat deltas unavailable'); return; }
-    const previousTick = shard.current_tick - 1;
+    const currentTick = await getShardTick();
+    if (!currentTick) return;
+    const previousTick = currentTick - 1;
     if (previousTick < 0) { console.warn('[loadPreviousTickData] current_tick is', shard.current_tick, '— no previous tick yet'); return; }
 
     // Use .limit(1) instead of .maybeSingle() — maybeSingle sends an Accept header
@@ -477,9 +340,9 @@ async function loadSparklineHistory(nationId) {
     var cacheKey = 'sparkline_' + nationId;
     var cached = qCache(cacheKey);
     if (cached) { sparklineHistory = cached; return; }
-    var { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    if (!shard) return;
-    var fromTick = Math.max(0, shard.current_tick - 10);
+    var currentTick = await getShardTick();
+    if (!currentTick) return;
+    var fromTick = Math.max(0, currentTick - 10);
     var { data: rows, error: histErr } = await _supabase.from('nations_history')
         .select('*').eq('nation_id', nationId)
         .gte('tick', fromTick).order('tick', { ascending: true });
@@ -506,20 +369,6 @@ async function loadSparklineHistory(nationId) {
     }
     sparklineHistory = map;
     qCacheSet(cacheKey, map, 2 * 60 * 1000);
-}
-
-async function loadActiveCrises(nationId) {
-    var cacheKey = 'crises_' + nationId;
-    var cached = qCache(cacheKey);
-    if (cached) { activeCrises = cached; return; }
-    var res = await _supabase
-        .from('active_crises')
-        .select('crisis_id, crisis_templates(name, description, crisis_end_triggers(stat_key), crisis_effects(stat_key, change_per_tick, target))')
-        .eq('nation_id', nationId);
-    if (!res.error && res.data) {
-        activeCrises = res.data;
-        qCacheSet(cacheKey, res.data, 2 * 60 * 1000);
-    }
 }
 
 // ===== Affected-By: Data Fetching =====
@@ -1163,7 +1012,7 @@ function buildRankingPipsHTML(rank, total) {
 }
 
 function renderFeaturedGDP(nation) {
-    var gdpRaw = nation.gdp;
+    var gdpRaw = nation.gdp ?? 0;
     var gdpGrowthRaw = Number(nation.gdp_growth ?? 50);
     var monthlyPct = ((gdpGrowthRaw - 50) / 50) * 1;
     var yearlyPct = (Math.pow(1 + monthlyPct / 100, 12) - 1) * 100;
@@ -1259,7 +1108,7 @@ function renderFeaturedGDP(nation) {
 }
 
 function renderFeaturedInflation(nation) {
-    var inflRaw = Number(nation.inflation ?? 0);
+    var inflRaw = Number(nation.inflation ?? 50);
     var rate = inflationRate(inflRaw);
     var rateStr = formatInflationRate(inflRaw);
     var label = getInflationLabel(inflRaw);
@@ -1424,7 +1273,7 @@ function renderFeaturedGDPGrowth(nation) {
 }
 
 function renderFeaturedDebt(nation) {
-    var debtRaw = nation.debt;
+    var debtRaw = nation.debt ?? 0;
     var debtDisplay = formatCurrencyShort(scaleRawToDollars(debtRaw));
     // Split "$81.0 Billion" into value + unit
     var parts = debtDisplay.match(/^(\$[\d,.]+)\s*(.*)$/);
