@@ -1240,6 +1240,7 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
     // ── 4. Roll deadline: 1D24 + 6 (countdown deferred until next election + in government) ──
     const deadlineRoll = Math.floor(Math.random() * cfg.DEADLINE_DICE) + 1;
     const deadlineTicks = deadlineRoll + cfg.DEADLINE_BASE;
+    const tickDeadline = currentTick + deadlineTicks; // Placeholder — real deadline set when promise activates after election
 
     // ── 5. Build promise based on type ──
     let demandText, demandType, conditions, affectedBlocIds, affectedBlocNames;
