@@ -14132,8 +14132,8 @@ async function renderIPOView() {
 
     // Count members per org (for sidebar meta)
     const memberCounts = {};
-    if (ipoMemberships.length > 0) {
-        const orgIds = ipoMemberships.map(m => m.org.id);
+    const orgIds = ipoMemberships.map(m => m.org.id);
+    if (orgIds.length > 0) {
         const { data: counts } = await _supabase
             .from('ipo_members')
             .select('org_id')
