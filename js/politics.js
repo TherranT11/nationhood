@@ -4,10 +4,11 @@ import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate } from './utils.js';
 
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, switchPartyEndorsement, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, suspendIdeologyAction, continueIdeologyAction, cancelIdeologyAction, executeIdeologicalPivot, PIVOT_CONFIG } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, RALLY_CONFIG, executeRally, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, switchPartyEndorsement, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, suspendIdeologyAction, continueIdeologyAction, cancelIdeologyAction, executeIdeologicalPivot, PIVOT_CONFIG } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { statDirectionSign } from './game/stats.js';
+import { calculateIdeologyZones } from './game/electorate.js';
 import { getElectabilityTier } from './game/party-leadership.js';
 import { AUTOCRACY_ACTIONS, dispatchAutocracyAction, getEscalatingCost, checkCooldown } from './game/autocracy-actions.js';
 
@@ -2659,7 +2660,7 @@ let _caPromiseType = null; // 'stat' | 'crisis'
 let _caStatKey = null;     // selected stat key for promise
 let _caCrisisId = null;   // selected crisis id for promise
 let _caResult = null;     // last action result for display
-let _caAttackEvidence = null; // cached attack evidence
+
 let _caAttackVectors = null;  // cached built vectors
 
 // Protest action state
@@ -2729,7 +2730,7 @@ let _caStanceIssueStates = null; // cached issue states for stance config
 function caReset() {
     _caRival = null; _caVector = null;
     _caPromiseType = null; _caStatKey = null; _caCrisisId = null;
-    _caAttackEvidence = null; _caAttackVectors = null;
+    _caAttackVectors = null;
     _protestTab = 'minister'; _protestTarget = null;
     _protestCachedMinisters = null; _protestCachedCrises = null; _protestCachedStats = null;
     _protestLoading = false;
@@ -4214,13 +4215,13 @@ function wireCampaignConfig(container, f, n, ap, otherParties, factionIdeo, tick
             if (_caRival === rivalId) return;
             _caRival = rivalId;
             _caVector = null;
-            _caAttackEvidence = null;
+
             _caAttackVectors = null;
             rerender();
 
             // Load evidence asynchronously
             const evidence = await gatherAttackEvidence(_supabase, rivalId, n.id, tick);
-            _caAttackEvidence = evidence;
+
             _caAttackVectors = buildAttackVectors(evidence);
             rerender();
         });
@@ -5119,52 +5120,6 @@ const ES_PARTIAL_THRESHOLD = 25;
  * @param {number} variance - Electorate variance (5-45)
  * @returns {{ zones: Array<{id:string, left:number, width:number, label:string}>, zoneForPos: function }}
  */
-function calculateIdeologyZones(mean, variance) {
-    // Polarization proxy: higher variance = more polarized
-    const polarization = Math.min(100, Math.max(0, (variance - 5) / 35 * 100));
-
-    // Centrist zone: centered at 50, width shrinks with polarization
-    const centristHalf = Math.max(5, 15 - polarization * 0.10);
-    const centristLeft = 50 - centristHalf;
-    const centristRight = 50 + centristHalf;
-
-    // Moderate/radical split: on each side, radical takes more space with higher polarization
-    // and on the side the mean leans toward
-    const meanBias = (mean - 50) / 50; // -1 (full left) to +1 (full right)
-    const radicalFraction = 0.15 + polarization * 0.004; // 0.15–0.55 of non-centrist space
-
-    // Left side: 0 to centristLeft
-    const leftSpace = centristLeft;
-    const leftRadicalBias = Math.max(0, -meanBias); // bigger when mean leans left
-    const leftRadicalFrac = Math.min(0.85, radicalFraction + leftRadicalBias * 0.3);
-    const leftRadicalWidth = leftSpace * leftRadicalFrac;
-    const leftModerateWidth = leftSpace - leftRadicalWidth;
-
-    // Right side: centristRight to 100
-    const rightSpace = 100 - centristRight;
-    const rightRadicalBias = Math.max(0, meanBias);
-    const rightRadicalFrac = Math.min(0.85, radicalFraction + rightRadicalBias * 0.3);
-    const rightRadicalWidth = rightSpace * rightRadicalFrac;
-    const rightModerateWidth = rightSpace - rightRadicalWidth;
-
-    const zones = [
-        { id: 'radical-left',    left: 0,                                       width: leftRadicalWidth,  label: 'Radical' },
-        { id: 'moderate-left',   left: leftRadicalWidth,                         width: leftModerateWidth, label: 'Moderate' },
-        { id: 'centrist',        left: centristLeft,                              width: centristRight - centristLeft, label: 'Centrist' },
-        { id: 'moderate-right',  left: centristRight,                             width: rightModerateWidth, label: 'Moderate' },
-        { id: 'radical-right',   left: centristRight + rightModerateWidth,        width: rightRadicalWidth, label: 'Radical' },
-    ];
-
-    function zoneForPos(pos) {
-        if (pos < leftRadicalWidth) return 'radical-left';
-        if (pos < centristLeft) return 'moderate-left';
-        if (pos < centristRight) return 'centrist';
-        if (pos < centristRight + rightModerateWidth) return 'moderate-right';
-        return 'radical-right';
-    }
-
-    return { zones, zoneForPos };
-}
 
 async function renderElectorateSpreadTab(playerFaction, nation, allParties, allPartyIdeologies, currentTick) {
     const container = document.getElementById('electorate-spread-container');
@@ -5675,12 +5630,17 @@ async function _renderStancePortfolio(container, faction, nation) {
     // Wire button handlers
     container.querySelectorAll('[data-stance-action="reinforce"]').forEach(btn => {
         btn.addEventListener('click', async () => {
+            if ((faction.action_points || 0) < STANCE_CONFIG.AP_COST) {
+                _showToast(`Need ${STANCE_CONFIG.AP_COST} AP to reinforce stance.`);
+                return;
+            }
             const issueId = btn.dataset.stanceIssue;
             const axis = btn.dataset.stanceAxis;
             const side = btn.dataset.stanceSide;
             const intensity = btn.dataset.stanceIntensity;
             btn.disabled = true;
             btn.textContent = 'Reinforcing...';
+            try {
             const result = await executeTakeStance(_supabase, faction.id, nation.id, issueId, axis, side, intensity, currentTick);
             if (result.success) {
                 // Update client AP from server
@@ -5702,6 +5662,7 @@ async function _renderStancePortfolio(container, faction, nation) {
                 btn.disabled = false;
                 btn.textContent = 'Reinforce';
             }
+            } catch (e) { _showToast('Reinforce failed: ' + e.message); btn.disabled = false; btn.textContent = 'Reinforce'; }
         });
     });
 
@@ -6548,10 +6509,6 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
    ═══════════════════════════════════════════════════════════════════ */
 
 // Fixed issue order for stance display
-const OP_ISSUE_ORDER = [
-    'Corruption', 'Unemployment', 'Cost of Living', 'Infrastructure',
-    'Healthcare', 'Immigration', 'Education', 'Climate / Energy'
-];
 
 // Ideology axes in the spec's display order
 const OP_AXES = [
@@ -6775,28 +6732,9 @@ function renderPartyCard(party, nation) {
         insightBody = `${strongPositions} strong positions. Moderate ideological clarity.`;
     }
 
-    // Stances — currently no stance system, all show "No stance"
-    let stancesHtml = '';
-    for (const issue of OP_ISSUE_ORDER) {
-        stancesHtml += `
-        <div class="op-stance-row">
-            <div class="op-stance-issue">${escapeHtml(issue)}</div>
-            <span class="op-no-stance">No stance</span>
-            <div class="op-bar-wrap"></div>
-            <div class="op-stance-score" style="color:var(--dtxt-dim)">—</div>
-        </div>`;
-    }
-
-    // Stance insight — placeholder since no stances exist yet
-    const stanceInsight = party.status.startsWith('governing')
-        ? `<div class="op-insight" style="border-left-color:var(--dteal)">
-            <div class="op-insight-label" style="color:var(--dteal)">No Active Stances</div>
-            <div class="op-insight-body">${escapeHtml(party.abbreviation)} has not taken any public issue stances yet. Watch for campaign actions.</div>
-           </div>`
-        : `<div class="op-insight" style="border-left-color:var(--dteal)">
-            <div class="op-insight-label" style="color:var(--dteal)">No Active Stances</div>
-            <div class="op-insight-body">${escapeHtml(party.abbreviation)} has not declared any positions. Issue stance system not yet active.</div>
-           </div>`;
+    // Stances — rival stance display not yet implemented
+    const stancesHtml = '<div style="color:var(--dtxt-dim);font-size:10px;font-style:italic;padding:8px 0;">Rival stance tracking coming soon.</div>';
+    const stanceInsight = '';
 
     // Credibility color
     const credColor = party.credibility > 50 ? 'var(--dgreen)' : party.credibility >= 25 ? 'var(--damber)' : 'var(--dred)';
