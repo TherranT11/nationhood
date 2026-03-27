@@ -485,9 +485,121 @@ body {
   display: none;
 }
 
+/* Continent tabs */
+.continent-tabs {
+  width: 100%;
+  max-width: 900px;
+  padding: 0 16px;
+  display: flex;
+  gap: 2px;
+  margin-bottom: 16px;
+}
+.continent-tab {
+  flex: 1;
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  border-bottom: none;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  text-align: center;
+}
+.continent-tab:hover {
+  background: var(--bg-3);
+}
+.continent-tab.active {
+  background: var(--bg-3);
+  border-color: var(--border-2);
+  border-bottom: 2px solid var(--amber);
+}
+.continent-tab__name {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.continent-tab.active .continent-tab__name {
+  color: var(--text-bright);
+}
+.continent-tab__desc {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  color: var(--text-dim);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+.continent-tab.active .continent-tab__desc {
+  color: var(--text-muted);
+}
+
+/* Alpha code input in modal */
+.alpha-code-section {
+  margin-top: 10px;
+  display: none;
+}
+.alpha-code-section.visible {
+  display: block;
+}
+.alpha-code-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--amber);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.alpha-code-input {
+  width: 100%;
+  background: var(--bg-0);
+  border: 1px solid var(--amber-border);
+  color: var(--text-bright);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  outline: none;
+}
+.alpha-code-input:focus {
+  border-color: var(--amber);
+}
+.alpha-code-input::placeholder {
+  color: var(--text-dim);
+  text-transform: none;
+  font-weight: 400;
+}
+.alpha-code-error {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--red);
+  margin-top: 4px;
+  display: none;
+}
+.alpha-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  font-weight: 700;
+  padding: 2px 5px;
+  background: var(--amber-faint);
+  color: var(--amber);
+  border: 1px solid var(--amber-border);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
 @media (max-width: 480px) {
   .nations-grid {
     grid-template-columns: 1fr;
+  }
+  .continent-tabs {
+    flex-direction: column;
   }
 }
 </style>
@@ -505,6 +617,17 @@ body {
 
   <div class="error-msg"><div class="error-msg__inner" id="error-message"></div></div>
 
+  <div class="continent-tabs" id="continent-tabs">
+    <div class="continent-tab active" data-continent="Crucera" onclick="switchContinent('Crucera')">
+      <div class="continent-tab__name">Crucera</div>
+      <div class="continent-tab__desc">A vast and diverse continent in the Southern Hemisphere, rich in natural resources such as oil and gas and raw materials.</div>
+    </div>
+    <div class="continent-tab" data-continent="Meridian" onclick="switchContinent('Meridian')">
+      <div class="continent-tab__name">Meridian</div>
+      <div class="continent-tab__desc">The old world, home to diverse nations, cultures, and ancient traditions. Its kingdoms and republics shaped the modern political order.</div>
+    </div>
+  </div>
+
   <div class="nations-grid" id="nations-grid"></div>
 </div>
 
@@ -520,6 +643,11 @@ body {
       <div class="modal__nation-name" id="modal-nation-name"></div>
       <div id="modal-gov-badge" class="modal__gov-badge"></div>
       <div class="modal__text" id="modal-flow-hint" style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono);"></div>
+      <div class="alpha-code-section" id="alpha-code-section">
+        <div class="alpha-code-label">Alpha Tester Code Required</div>
+        <input type="text" class="alpha-code-input" id="alpha-code-input" placeholder="Enter your access code..." maxlength="30" autocomplete="off">
+        <div class="alpha-code-error" id="alpha-code-error">Invalid or already used code.</div>
+      </div>
       <div class="modal__actions">
         <button class="modal__btn modal__btn--cancel" onclick="closeModal()">CANCEL</button>
         <button class="modal__btn modal__btn--confirm" id="modal-confirm-btn" onclick="confirmNation()">CONTINUE</button>
@@ -545,6 +673,13 @@ const IDEOLOGY_COLORS = {
 let currentUser = null;
 let allNations = [];
 let selectedNationId = null;
+let activeContinent = 'Crucera';
+let cachedPartiesByNation = {};
+let cachedCrisesByNation = {};
+let cachedIdeoByFaction = {};
+
+// Nations that require an alpha tester code to join
+const ALPHA_CODE_NATIONS = new Set();
 
 async function init() {
   const { data: { user } } = await _supabase.auth.getUser();
@@ -559,6 +694,13 @@ async function init() {
     return;
   }
 
+  // Load which nations have alpha codes (restricted access)
+  const { data: alphaCodes } = await _supabase
+    .from('alpha_tester_codes').select('nation_id').is('used_by', null);
+  if (alphaCodes) {
+    for (const ac of alphaCodes) ALPHA_CODE_NATIONS.add(ac.nation_id);
+  }
+
   await loadNations();
 
   document.getElementById('loading').style.display = 'none';
@@ -566,9 +708,17 @@ async function init() {
   content.style.display = 'flex';
 }
 
+function switchContinent(continent) {
+  activeContinent = continent;
+  document.querySelectorAll('.continent-tab').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.continent === continent);
+  });
+  renderNations(allNations, cachedPartiesByNation, cachedCrisesByNation, cachedIdeoByFaction);
+}
+
 async function loadNations() {
   const [nationsRes, partiesRes, crisesRes, ideologiesRes] = await Promise.all([
-    _supabase.from('nations').select('*'),
+    _supabase.from('nations').select('*, nation_profiles(flag_url)'),
     _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, seats, nation_id, party_color, ideology_value_1, ideology_value_2').eq('faction_type', 'party'),
     _supabase.from('active_crises').select('nation_id, crisis_id, crisis_templates(name)'),
     _supabase.from('faction_ideology').select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
@@ -579,24 +729,24 @@ async function loadNations() {
   const crises = crisesRes.data || [];
   const ideologies = ideologiesRes.data || [];
 
-  const partiesByNation = {};
-  const crisesByNation = {};
-  const ideoByFaction = {};
+  cachedPartiesByNation = {};
+  cachedCrisesByNation = {};
+  cachedIdeoByFaction = {};
 
   for (const p of parties) {
-    if (!partiesByNation[p.nation_id]) partiesByNation[p.nation_id] = [];
-    partiesByNation[p.nation_id].push(p);
+    if (!cachedPartiesByNation[p.nation_id]) cachedPartiesByNation[p.nation_id] = [];
+    cachedPartiesByNation[p.nation_id].push(p);
   }
   for (const c of crises) {
-    if (!crisesByNation[c.nation_id]) crisesByNation[c.nation_id] = [];
-    crisesByNation[c.nation_id].push(c);
+    if (!cachedCrisesByNation[c.nation_id]) cachedCrisesByNation[c.nation_id] = [];
+    cachedCrisesByNation[c.nation_id].push(c);
   }
   for (const i of ideologies) {
-    ideoByFaction[i.faction_id] = i;
+    cachedIdeoByFaction[i.faction_id] = i;
   }
 
   allNations = nations;
-  renderNations(nations, partiesByNation, crisesByNation, ideoByFaction);
+  renderNations(nations, cachedPartiesByNation, cachedCrisesByNation, cachedIdeoByFaction);
 }
 
 function getGovTypeClass(govType) {
@@ -640,17 +790,26 @@ function colorizeIdeology(text) {
 
 function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) {
   const grid = document.getElementById('nations-grid');
+  const filtered = nations.filter(n => (n.continent || 'Crucera') === activeContinent);
 
-  grid.innerHTML = nations.map(nation => {
+  if (filtered.length === 0) {
+    grid.innerHTML = '<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);text-align:center;padding:40px 0;grid-column:1/-1;">No nations in this continent yet.</div>';
+    return;
+  }
+
+  grid.innerHTML = filtered.map(nation => {
     const nParties = partiesByNation[nation.id] || [];
     const nCrises = crisesByNation[nation.id] || [];
     const totalSeats = nation.total_seats || 100;
     const maxParties = nation.max_parties || 8;
     const eligiblePartyCount = countEligibleParties(nParties, nation.id);
     const isFull = eligiblePartyCount >= maxParties;
-    const flagUrl = nation.flag_url || '';
+    const np = nation.nation_profiles;
+    const profileFlagUrl = Array.isArray(np) ? np[0]?.flag_url : np?.flag_url;
+    const flagUrl = profileFlagUrl || nation.flag_url || `assets/flags/${nation.name}.png`;
     const govClass = getGovTypeClass(nation.government_type);
     const govLabel = getGovTypeLabel(nation.government_type);
+    const needsAlphaCode = ALPHA_CODE_NATIONS.has(nation.id);
 
     const sortedParties = [...nParties].sort((a, b) => (b.seats || 0) - (a.seats || 0));
     const usedSeats = nParties.reduce((sum, p) => sum + (p.seats || 0), 0);
@@ -695,8 +854,8 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
     return `
       <div class="nation-card ${isFull ? 'disabled' : ''}" data-nation-id="${nation.id}" onclick="${isFull ? '' : 'selectNation(\'' + nation.id + '\')'}">
         <div class="nation-card__header">
-          ${flagUrl ? `<img class="nation-card__flag" src="${flagUrl}" alt="${escapeHtml(nation.name)}">` : ''}
-          <span class="nation-card__name">${escapeHtml(nation.name)}</span>
+          ${flagUrl ? `<img class="nation-card__flag" src="${flagUrl}" alt="${escapeHtml(nation.name)}" onerror="this.style.display='none'">` : ''}
+          <span class="nation-card__name">${escapeHtml(nation.name)}${needsAlphaCode ? '<span class="alpha-badge">Alpha</span>' : ''}</span>
           <span class="nation-card__gov-type ${govClass}">${govLabel}</span>
         </div>
         <div class="nation-card__body">
@@ -765,7 +924,17 @@ function selectNation(nationId) {
     hint.textContent = 'You will choose your ideology, then name and customize your party.';
   }
 
+  // Show/hide alpha code input
+  const alphaSection = document.getElementById('alpha-code-section');
+  const alphaInput = document.getElementById('alpha-code-input');
+  const alphaError = document.getElementById('alpha-code-error');
+  const needsCode = ALPHA_CODE_NATIONS.has(nationId);
+  alphaSection.classList.toggle('visible', needsCode);
+  alphaInput.value = '';
+  alphaError.style.display = 'none';
+
   document.getElementById('modal-overlay').classList.add('active');
+  if (needsCode) alphaInput.focus();
 }
 
 function closeModal() {
@@ -773,10 +942,66 @@ function closeModal() {
   selectedNationId = null;
 }
 
-function confirmNation() {
+async function confirmNation() {
   if (!selectedNationId) return;
   const nation = allNations.find(n => n.id === selectedNationId);
   if (!nation) return;
+
+  const needsCode = ALPHA_CODE_NATIONS.has(selectedNationId);
+
+  // Validate alpha tester code if required
+  if (needsCode) {
+    const codeInput = document.getElementById('alpha-code-input');
+    const codeError = document.getElementById('alpha-code-error');
+    const code = codeInput.value.trim().toUpperCase();
+
+    if (!code) {
+      codeError.textContent = 'Please enter your alpha tester code.';
+      codeError.style.display = 'block';
+      codeInput.focus();
+      return;
+    }
+
+    // Disable button during validation
+    const confirmBtn = document.getElementById('modal-confirm-btn');
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'VALIDATING...';
+
+    // Check code validity: must match nation, be unused
+    const { data: codeRow, error: codeErr } = await _supabase
+      .from('alpha_tester_codes')
+      .select('id, used_by')
+      .eq('code', code)
+      .eq('nation_id', selectedNationId)
+      .maybeSingle();
+
+    if (codeErr || !codeRow || codeRow.used_by) {
+      codeError.textContent = codeRow?.used_by ? 'This code has already been used.' : 'Invalid or already used code.';
+      codeError.style.display = 'block';
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'CONTINUE';
+      codeInput.focus();
+      return;
+    }
+
+    // Claim the code
+    const { error: claimErr } = await _supabase
+      .from('alpha_tester_codes')
+      .update({ used_by: currentUser.id, used_at: new Date().toISOString() })
+      .eq('id', codeRow.id)
+      .is('used_by', null);
+
+    if (claimErr) {
+      codeError.textContent = 'Failed to claim code. Please try again.';
+      codeError.style.display = 'block';
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'CONTINUE';
+      return;
+    }
+
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = 'CONTINUE';
+  }
 
   // Store selected nation in sessionStorage for the next pages
   sessionStorage.setItem('nationhood_pending_nation', JSON.stringify({
@@ -798,6 +1023,7 @@ init();
 window.selectNation = selectNation;
 window.closeModal = closeModal;
 window.confirmNation = confirmNation;
+window.switchContinent = switchContinent;
 </script>
 </body>
 </html>
