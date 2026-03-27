@@ -785,8 +785,6 @@ async function createFaction() {
   btn.disabled = true;
   btn.textContent = 'CREATING...';
 
-  sessionStorage.removeItem('nationhood_state');
-
   try {
     const { data: shardData } = await _supabase
       .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -870,8 +868,8 @@ async function createFaction() {
     // Bloc approval seeding removed — electorate engine handles vote share now
 
     // Create faction_pillar_state with confirmed pillar
+    // Use same leader age as factions table — leader_birth_tick is source of truth for aging
     const deathAge = 75 + Math.floor(Math.random() * 11);
-    const leaderAge = 55 + Math.floor(Math.random() * 15);
     const isRuling = !!(nationData.ruling_faction_id && nationData.ruling_faction_id === currentUser.id);
 
     await _supabase.from('faction_pillar_state').upsert({
@@ -881,8 +879,8 @@ async function createFaction() {
       is_strongman: isRuling,
       backing: 20.00,
       leader_name: `${leader.first} ${leader.last}`,
-      leader_age: leaderAge,
-      leader_birth_tick: currentTick - (leaderAge * 12),
+      leader_age: leader.age,
+      leader_birth_tick: currentTick - (leader.age * 12),
       death_age: deathAge,
       pillar_confirmed: true,
     }, { onConflict: 'faction_id' });
@@ -899,7 +897,7 @@ async function createFaction() {
     errEl.style.display = 'block';
     btn.disabled = false;
     btn.textContent = 'CREATE FACTION';
-    btn.classList.add('ready');
+    btn.classList.remove('ready');
   }
 }
 

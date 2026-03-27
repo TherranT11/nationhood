@@ -18131,6 +18131,12 @@ async function dispatchAutocracyAction(supabase, params) {
     // ── Compute AP cost ─────────────────────────────────────────────────
     const apCost = getEscalatingCost(factionState, actionDef);
 
+    // ── Pre-deduction validation (runs BEFORE AP is spent) ──────────────
+    if (actionDef.validate) {
+        const vErr = await actionDef.validate(supabase, { nation, factionState, extra, currentTick });
+        if (vErr) return { success: false, error: vErr };
+    }
+
     // ── Deduct AP ───────────────────────────────────────────────────────
     const apResult = await deductAP(supabase, factionId, apCost);
     if (!apResult.success) {
@@ -19401,22 +19407,28 @@ registerAutocracyAction('arrest_leader', {
     escalationSteps: null,
     cooldownField: null,
     cooldownTicks: null,
-    hasDualMode: false,  // Strongman action — no dual mode, specific tracker effects
+    hasDualMode: false,
     halfPowerForRegime: false,
     isStrongmanExclusive: true,
     mutualExclusions: [],
+    async validate(supabase, ctx) {
+        const { nation, extra } = ctx;
+        if (!extra?.targetFactionId) return 'Must specify targetFactionId';
+        const { data: t } = await supabase.from('faction_pillar_state').select('is_strongman, arrested_leader')
+            .eq('faction_id', extra.targetFactionId).eq('nation_id', nation.id).single();
+        if (!t) return 'Target not found';
+        if (t.is_strongman) return 'Cannot arrest yourself';
+        if (t.arrested_leader) return 'Target already arrested';
+        return null;
+    },
     async execute(supabase, ctx) {
         const { nation, factionState, extra, currentTick } = ctx;
         const targetFactionId = extra?.targetFactionId;
-        if (!targetFactionId) return { error: 'Must specify targetFactionId' };
 
-        // Load target
+        // Load target (already validated)
         const { data: targetFps } = await supabase.from('faction_pillar_state')
             .select('*')
             .eq('faction_id', targetFactionId).eq('nation_id', nation.id).single();
-        if (!targetFps) return { error: 'Target not found' };
-        if (targetFps.is_strongman) return { error: 'Cannot arrest yourself' };
-        if (targetFps.arrested_leader) return { error: 'Target already arrested' };
 
         // Roll 1d20 + modifiers
         let rollVal = roll(1, 20);
@@ -19493,7 +19505,7 @@ registerAutocracyAction('arrest_leader', {
 
 registerAutocracyAction('execute_leader', {
     pillar: 'any',
-    baseCost: 0,  // no AP cost
+    baseCost: 0,
     escalatingCostField: null,
     escalationSteps: null,
     cooldownField: null,
@@ -19502,17 +19514,23 @@ registerAutocracyAction('execute_leader', {
     halfPowerForRegime: false,
     isStrongmanExclusive: true,
     mutualExclusions: [],
+    async validate(supabase, ctx) {
+        const { nation, extra } = ctx;
+        if (!extra?.targetFactionId) return 'Must specify targetFactionId';
+        const { data: t } = await supabase.from('faction_pillar_state').select('arrested_leader')
+            .eq('faction_id', extra.targetFactionId).eq('nation_id', nation.id).single();
+        if (!t) return 'Target not found';
+        if (!t.arrested_leader) return 'Target leader is not arrested';
+        return null;
+    },
     async execute(supabase, ctx) {
         const { nation, factionState, extra, currentTick } = ctx;
         const targetFactionId = extra?.targetFactionId;
-        if (!targetFactionId) return { error: 'Must specify targetFactionId' };
 
-        // Verify target is arrested
+        // Load target (already validated)
         const { data: targetFps } = await supabase.from('faction_pillar_state')
             .select('*')
             .eq('faction_id', targetFactionId).eq('nation_id', nation.id).single();
-        if (!targetFps) return { error: 'Target not found' };
-        if (!targetFps.arrested_leader) return { error: 'Target leader is not arrested' };
 
         // Roll 1d10 for tracker effect
         const d10 = roll(1, 10);
@@ -19611,16 +19629,23 @@ registerAutocracyAction('release_leader', {
     halfPowerForRegime: false,
     isStrongmanExclusive: true,
     mutualExclusions: [],
+    async validate(supabase, ctx) {
+        const { nation, extra } = ctx;
+        if (!extra?.targetFactionId) return 'Must specify targetFactionId';
+        const { data: t } = await supabase.from('faction_pillar_state').select('arrested_leader')
+            .eq('faction_id', extra.targetFactionId).eq('nation_id', nation.id).single();
+        if (!t) return 'Target not found';
+        if (!t.arrested_leader) return 'Target leader is not arrested';
+        return null;
+    },
     async execute(supabase, ctx) {
         const { nation, extra, currentTick } = ctx;
         const targetFactionId = extra?.targetFactionId;
-        if (!targetFactionId) return { error: 'Must specify targetFactionId' };
 
+        // Load target (already validated)
         const { data: targetFps } = await supabase.from('faction_pillar_state')
             .select('*')
             .eq('faction_id', targetFactionId).eq('nation_id', nation.id).single();
-        if (!targetFps) return { error: 'Target not found' };
-        if (!targetFps.arrested_leader) return { error: 'Target leader is not arrested' };
 
         // Release: un-arrest
         await supabase.from('faction_pillar_state').update({
@@ -21137,9 +21162,13 @@ async function processAutocracyLeaderAging(supabase, nation, currentTick) {
     const results = [];
 
     for (const fps of allFps) {
-        if (!fps.leader_age || fps.is_strongman) continue; // Strongman ages via HOS system
+        if (fps.is_strongman) continue; // Strongman ages via HOS system
+        if (fps.leader_birth_tick == null) continue; // No leader to age
 
-        const newAge = fps.leader_age + 1;
+        // Derive age from leader_birth_tick (source of truth)
+        const newAge = Math.floor((currentTick - fps.leader_birth_tick) / 12);
+        if (newAge === fps.leader_age) continue; // No change this tick
+
         const { error: ageErr } = await supabase.from('faction_pillar_state').update({
             leader_age: newAge,
             updated_at: new Date().toISOString(),

@@ -135,9 +135,13 @@ export async function resolveStandardCoup(supabase, opts) {
         // 3-tick pyrrhic window for other factions
         await transferPower(supabase, nationId, factionId, factionPillar, pCtx, currentTick);
 
+        const stabLoss = roll(1, 6);
+        const cuLoss = roll(1, 6);
         await supabase.from('nations').update({
             legitimacy: 15,
             polarization: clampStat(Number(nation.polarization || 0) + 20),
+            stability: clampStat(Number(nation.stability || 50) - stabLoss),
+            civil_unrest: clampStat(Number(nation.civil_unrest || 0) + cuLoss),
         }).eq('id', nationId);
 
         await supabase.from('autocracy_tracker').update({
@@ -152,13 +156,6 @@ export async function resolveStandardCoup(supabase, opts) {
             new_strongman_id: factionId,
         });
 
-        const stabLoss = roll(1, 6);
-        const cuLoss = roll(1, 6);
-        await supabase.from('nations').update({
-            stability: clampStat(Number(nation.stability || 50) - stabLoss),
-            civil_unrest: clampStat(Number(nation.civil_unrest || 0) + cuLoss),
-        }).eq('id', nationId);
-
         effects.stability_loss = stabLoss;
         effects.civil_unrest_gain = cuLoss;
         effects.pyrrhic_window = { start: currentTick, end: currentTick + 3 };
@@ -168,18 +165,17 @@ export async function resolveStandardCoup(supabase, opts) {
         // -1d6 Stability, +1d6 Civil Unrest
         await transferPower(supabase, nationId, factionId, factionPillar, pCtx, currentTick);
 
-        await supabase.from('nations').update({ legitimacy: 35 }).eq('id', nationId);
+        const stabLoss = roll(1, 6);
+        const cuLoss = roll(1, 6);
+        await supabase.from('nations').update({
+            legitimacy: 35,
+            stability: clampStat(Number(nation.stability || 50) - stabLoss),
+            civil_unrest: clampStat(Number(nation.civil_unrest || 0) + cuLoss),
+        }).eq('id', nationId);
 
         await supabase.from('autocracy_tracker').update({
             tracker_value: 30, public_tracker_value: 30, last_updated_tick: currentTick,
         }).eq('nation_id', nationId);
-
-        const stabLoss = roll(1, 6);
-        const cuLoss = roll(1, 6);
-        await supabase.from('nations').update({
-            stability: clampStat(Number(nation.stability || 50) - stabLoss),
-            civil_unrest: clampStat(Number(nation.civil_unrest || 0) + cuLoss),
-        }).eq('id', nationId);
 
         effects.stability_loss = stabLoss;
         effects.civil_unrest_gain = cuLoss;
@@ -190,18 +186,17 @@ export async function resolveStandardCoup(supabase, opts) {
         // -1d6 Stability, +1d6 Civil Unrest
         await transferPower(supabase, nationId, factionId, factionPillar, pCtx, currentTick);
 
-        await supabase.from('nations').update({ legitimacy: 50 }).eq('id', nationId);
+        const stabLoss = roll(1, 6);
+        const cuLoss = roll(1, 6);
+        await supabase.from('nations').update({
+            legitimacy: 50,
+            stability: clampStat(Number(nation.stability || 50) - stabLoss),
+            civil_unrest: clampStat(Number(nation.civil_unrest || 0) + cuLoss),
+        }).eq('id', nationId);
 
         await supabase.from('autocracy_tracker').update({
             tracker_value: 30, public_tracker_value: 30, last_updated_tick: currentTick,
         }).eq('nation_id', nationId);
-
-        const stabLoss = roll(1, 6);
-        const cuLoss = roll(1, 6);
-        await supabase.from('nations').update({
-            stability: clampStat(Number(nation.stability || 50) - stabLoss),
-            civil_unrest: clampStat(Number(nation.civil_unrest || 0) + cuLoss),
-        }).eq('id', nationId);
 
         effects.stability_loss = stabLoss;
         effects.civil_unrest_gain = cuLoss;
@@ -260,13 +255,17 @@ async function transferPower(supabase, nationId, newStrongmanFactionId, newStron
     }
 
     // Update nation's ruling faction + head of state to new strongman's leader
+    if (!newStrongman) {
+        console.error(`[transferPower] New strongman faction ${newStrongmanFactionId} not found in pillar state — aborting nation update`);
+        return;
+    }
     const nationUpdate = { ruling_faction_id: newStrongmanFactionId };
-    if (newStrongman?.leader_name) {
+    if (newStrongman.leader_name) {
         const parts = newStrongman.leader_name.split(' ');
         nationUpdate.head_of_state_first_name = parts[0] || 'Unknown';
         nationUpdate.head_of_state_last_name = parts.slice(1).join(' ') || 'Leader';
     }
-    if (newStrongman?.leader_age) {
+    if (newStrongman.leader_age) {
         nationUpdate.head_of_state_age = newStrongman.leader_age;
     }
     await supabase.from('nations').update(nationUpdate).eq('id', nationId);
@@ -279,9 +278,7 @@ async function transferPower(supabase, nationId, newStrongmanFactionId, newStron
             .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'coup' })
             .eq('nation_id', nationId).is('ended_at_tick', null);
 
-        const { data: newFaction } = await supabase.from('factions')
-            .select('faction_name').eq('id', newStrongmanFactionId).single();
-        const leaderName = newStrongman?.leader_name || 'Unknown';
+        const leaderName = newStrongman.leader_name || 'Unknown';
         await supabase.from('administrations').insert({
             nation_id: nationId,
             admin_name: `${leaderName.split(' ').pop() || 'Military'} Regime`,
@@ -604,158 +601,8 @@ registerAutocracyAction('putsch_do_nothing', {
     },
 });
 
-// ═════════════════════════════════════════════════════════════════════════════
-// TICK PROCESSORS
-// ═════════════════════════════════════════════════════════════════════════════
-
 /**
- * Check if Strongman's foundation backing has hit 0.
- * If so, open a 3-tick vulnerability window.
- * If an active window expired and no coup occurred, reset backing to 5.
+ * NOTE: Tick processors (processVulnerabilityWindows, processPyrrhicWindows,
+ * processPutschResolution) are implemented server-side in advance-tick/index.ts.
+ * Client-side copies were removed as they were dead code never called from any page.
  */
-export async function processVulnerabilityWindows(supabase, nation, currentTick) {
-    const { data: fpsRows } = await supabase.from('faction_pillar_state')
-        .select('*').eq('nation_id', nation.id);
-    if (!fpsRows) return null;
-
-    const strongman = fpsRows.find(r => r.is_strongman);
-    if (!strongman) return null;
-
-    // Check for expired windows — resolve them
-    const { data: activeWindows } = await supabase.from('vulnerability_window')
-        .select('*').eq('nation_id', nation.id).eq('resolved', false);
-
-    const results = [];
-
-    if (activeWindows) {
-        for (const win of activeWindows) {
-            if (currentTick > win.end_tick) {
-                // Window expired — Strongman survived, reset backing to 5
-                await supabase.from('vulnerability_window').update({
-                    resolved: true,
-                }).eq('id', win.id);
-
-                const pCtx = await loadPillarContext(supabase, nation.id);
-                if (pCtx) {
-                    const smPs = pCtx.pillarStates.find(p => p.pillar === strongman.pillar);
-                    if (smPs && smPs.backing < 5) {
-                        applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, strongman.pillar, 5 - smPs.backing, false);
-                        await persistBackingChanges(supabase, nation.id, pCtx.pillarStates, pCtx.wildcardState);
-                    }
-                }
-
-                results.push({ type: 'vulnerability_survived', window_id: win.id });
-            }
-        }
-    }
-
-    // Check if Strongman backing is 0 and no active window exists
-    const hasActiveWindow = activeWindows && activeWindows.some(w => !w.resolved && currentTick <= w.end_tick);
-    if (Number(strongman.backing) <= 0 && !hasActiveWindow) {
-        // Open new vulnerability window
-        await supabase.from('vulnerability_window').insert({
-            nation_id: nation.id,
-            start_tick: currentTick,
-            end_tick: currentTick + 3,
-        });
-
-        await supabase.from('event_log').insert({
-            nation_id: nation.id,
-            event_name: 'Regime Vulnerability',
-            description_chosen: 'The Strongman\'s power base has collapsed. The regime is vulnerable to a coup.',
-            category: 'POLITICAL',
-            fired_at_tick: currentTick,
-        });
-
-        results.push({ type: 'vulnerability_opened', start: currentTick, end: currentTick + 3 });
-    }
-
-    return results.length > 0 ? results : null;
-}
-
-/**
- * Resolve expired pyrrhic windows.
- * If 3 ticks pass with no successful challenger, the new regime stabilizes.
- */
-export async function processPyrrhicWindows(supabase, nation, currentTick) {
-    const { data: activeWindows } = await supabase.from('pyrrhic_window')
-        .select('*').eq('nation_id', nation.id).eq('resolved', false);
-
-    if (!activeWindows || activeWindows.length === 0) return null;
-
-    const results = [];
-    for (const win of activeWindows) {
-        if (currentTick > win.end_tick) {
-            await supabase.from('pyrrhic_window').update({
-                resolved: true,
-            }).eq('id', win.id);
-
-            results.push({ type: 'pyrrhic_window_closed', new_strongman_id: win.new_strongman_id });
-        }
-    }
-
-    return results.length > 0 ? results : null;
-}
-
-/**
- * Resolve putsch events after the response window.
- * Called each tick. If a putsch was declared last tick and is unresolved, resolve it.
- *
- * Flow:
- * - If Strongman responded with emergency_decree → tracker already modified, resolve via formula
- * - If Strongman responded with appeal_security and SS hasn't responded → SS defaults to 'yourself'
- * - If Strongman responded with appeal_security and SS responded → apply SS choice, resolve via formula
- * - If Strongman did nothing or didn't respond → resolve via formula unmodified
- */
-export async function processPutschResolution(supabase, nation, currentTick) {
-    const { data: putsch } = await supabase.from('putsch_state')
-        .select('*').eq('nation_id', nation.id).eq('resolved', false)
-        .maybeSingle();
-    if (!putsch) return null;
-
-    // Only resolve if response window has passed (declared_tick + 1 < currentTick)
-    // i.e., at least 1 full tick after declaration for response
-    if (currentTick <= putsch.declared_tick + 1) return null;
-
-    // If appeal_security with no SS response yet, SS defaults to 'yourself' (did nothing)
-    if (putsch.strongman_response === 'appeal_security' && !putsch.security_response) {
-        await supabase.from('putsch_state').update({
-            security_response: 'yourself',
-        }).eq('id', putsch.id);
-    }
-
-    // If Strongman never responded, treat as do_nothing
-    if (!putsch.strongman_response) {
-        await supabase.from('putsch_state').update({
-            strongman_response: 'do_nothing',
-        }).eq('id', putsch.id);
-    }
-
-    // Load military faction info for coup resolution
-    const { data: milFps } = await supabase.from('faction_pillar_state')
-        .select('*').eq('faction_id', putsch.military_faction_id)
-        .eq('nation_id', nation.id).single();
-    if (!milFps) {
-        // Military faction gone — cancel putsch
-        await supabase.from('putsch_state').update({ resolved: true, outcome: 'cancelled' }).eq('id', putsch.id);
-        return { type: 'putsch_cancelled' };
-    }
-
-    // Resolve via standard coup formula
-    const result = await resolveStandardCoup(supabase, {
-        nationId: nation.id,
-        factionId: putsch.military_faction_id,
-        factionPillar: milFps.pillar,
-        currentTick,
-        rollBonus: 0,
-        coupType: 'putsch',
-    });
-
-    // Mark putsch as resolved
-    await supabase.from('putsch_state').update({
-        resolved: true,
-        outcome: result.outcome || 'resolved',
-    }).eq('id', putsch.id);
-
-    return { type: 'putsch_resolved', ...result };
-}
