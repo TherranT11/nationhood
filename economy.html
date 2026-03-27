@@ -2878,6 +2878,9 @@ function renderTariffsTab(nation) {
     // --- Active Trade Agreements ---
     h += renderTariffAgreementsSection(nation);
 
+    // --- FTA Effects Warning ---
+    h += renderFTAEffectsSection(nation);
+
     // --- Tariff Matrix ---
     h += renderTariffMatrix(nation);
 
@@ -3152,6 +3155,60 @@ function getSectorLabel(sectorKey) {
         if (TRADE_SECTORS[i].key === sectorKey) return TRADE_SECTORS[i].label;
     }
     return sectorKey || 'All Sectors';
+}
+
+function renderFTAEffectsSection(nation) {
+    if (!tradeAgreements || tradeAgreements.length === 0) return '';
+
+    var ftaCount = 0, ptaCount = 0;
+    var mfgPressure = 0;
+    var sectorCompetition = false;
+
+    for (var i = 0; i < tradeAgreements.length; i++) {
+        var ag = tradeAgreements[i];
+        if (ag.agreement_type === 'fta') {
+            ftaCount++;
+            // Manufacturing pressure: -0.1/tick per FTA (unless manufactured_goods exempted)
+            var exempted = false;
+            (ag.articles || []).forEach(function(a) { if (a.type === 'sector_exemption' && a.data && a.data.sector === 'manufactured_goods') exempted = true; });
+            if (!exempted) mfgPressure += 0.1;
+        } else if (ag.agreement_type === 'pta') {
+            ptaCount++;
+            // Check for manufactured_goods tariff reduction
+            (ag.articles || []).forEach(function(a) { if (a.type === 'tariff_reduction' && a.data && a.data.sector === 'manufactured_goods') mfgPressure += 0.05; });
+        }
+    }
+
+    if (ftaCount === 0 && ptaCount === 0) return '';
+
+    var h = '<div class="econ-section">';
+    h += '<div class="econ-section-header">FREE TRADE EFFECTS</div>';
+    h += '<div class="econ-section-subtitle">Ongoing economic effects of your active trade agreements. Free trade creates growth but pressures domestic industry.</div>';
+
+    h += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">';
+
+    // Upsides
+    h += '<div style="flex:1;min-width:200px;background:rgba(92,184,92,0.06);border:1px solid rgba(92,184,92,0.2);border-radius:3px;padding:10px;">';
+    h += '<div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:700;color:var(--green);text-transform:uppercase;margin-bottom:6px;">Benefits</div>';
+    h += '<div style="font-size:0.78rem;color:var(--text-primary);line-height:1.6;">';
+    h += '↑ Trade volume with partners<br>';
+    h += '↑ GDP growth from increased trade<br>';
+    h += '↑ Diplomatic relations boost (+25 affinity per FTA)<br>';
+    if (ftaCount > 0) h += '↑ Zero tariffs on all sectors with ' + ftaCount + ' FTA partner' + (ftaCount > 1 ? 's' : '') + '<br>';
+    h += '</div></div>';
+
+    // Downsides
+    h += '<div style="flex:1;min-width:200px;background:rgba(217,83,79,0.06);border:1px solid rgba(217,83,79,0.2);border-radius:3px;padding:10px;">';
+    h += '<div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:700;color:var(--red);text-transform:uppercase;margin-bottom:6px;">Costs</div>';
+    h += '<div style="font-size:0.78rem;color:var(--text-primary);line-height:1.6;">';
+    h += '↓ Tariff revenue from reduced rates<br>';
+    if (mfgPressure > 0) h += '↓ Manufacturing output <span style="font-family:var(--font-mono);color:var(--red);">-' + mfgPressure.toFixed(2) + '/tick</span> (import competition)<br>';
+    if (ftaCount > 0) h += '↑ Polarization <span style="font-family:var(--font-mono);color:var(--red);">+3 per FTA signed</span> (politically controversial)<br>';
+    h += '⚠ Withdrawal causes economic shock (GDP, investment, stability hit)<br>';
+    h += '</div></div>';
+
+    h += '</div></div>';
+    return h;
 }
 
 function renderTariffMatrix(nation) {

@@ -1726,6 +1726,8 @@ async function withdrawTradeAgreement(agreementId) {
         'Notice period: ' + noticeTicks + ' ticks\n';
     if (relPenalty > 0) confirmMsg += 'Relations penalty: -' + relPenalty + '\n';
     if (financialPenalty > 0) confirmMsg += 'Financial penalty: $' + financialPenalty + 'M\n';
+    if (ta.agreement_type === 'fta') confirmMsg += 'Economic shock: GDP growth -0.3, Foreign investment -3, Stability -2, Polarization +2\n';
+    else if (ta.agreement_type === 'pta') confirmMsg += 'Economic shock: GDP growth -0.15, Foreign investment -1, Stability -1\n';
     confirmMsg += '\nThis action cannot be undone.';
 
     if (!confirm(confirmMsg)) return;
@@ -1766,8 +1768,31 @@ async function withdrawTradeAgreement(agreementId) {
         }
     }
 
+    // Mechanic 2: FTA/PTA withdrawal economic shock — immediate stat penalties
+    const withdrawalEffects = ta.agreement_type === 'fta'
+        ? { gdp_growth: -0.3, foreign_investment: -3, stability: -2, polarization: 2 }
+        : ta.agreement_type === 'pta'
+        ? { gdp_growth: -0.15, foreign_investment: -1, stability: -1 }
+        : null;
+    if (withdrawalEffects) {
+        try {
+            // Apply to BOTH nations (withdrawal disrupts both economies)
+            for (const nId of [currentNation.id, otherNationId]) {
+                const { data: wn } = await _supabase.from('nations').select('gdp_growth, foreign_investment, stability, polarization').eq('id', nId).single();
+                if (wn) {
+                    const wUpdates = {};
+                    for (const [stat, delta] of Object.entries(withdrawalEffects)) {
+                        wUpdates[stat] = Math.max(0, Math.min(100, Math.round(((wn[stat] || 50) + delta) * 10) / 10));
+                    }
+                    await _supabase.from('nations').update(wUpdates).eq('id', nId);
+                }
+            }
+        } catch (_) {}
+    }
+
+    const shockMsg = withdrawalEffects ? ' Economic disruption: GDP growth dip, reduced foreign investment.' : '';
     alert('Withdrawal notice filed. Agreement will terminate in ' + noticeTicks + ' ticks.' +
-        (financialPenalty > 0 ? ' $' + financialPenalty + 'M deducted from treasury.' : ''));
+        (financialPenalty > 0 ? ' $' + financialPenalty + 'M deducted from treasury.' : '') + shockMsg);
     await renderAgreementsTab();
 
     } finally {
@@ -7995,6 +8020,21 @@ async function activateTradeAgreement(proposal, currentTick) {
         alert('Error activating trade agreement: ' + error.message);
         return false;
     }
+
+    // Mechanic 3: FTAs increase polarization in both nations (politically controversial)
+    if (pd.agreement_type === 'fta') {
+        try {
+            for (const nId of [nationAId, nationBId]) {
+                const { data: n } = await _supabase.from('nations').select('polarization').eq('id', nId).single();
+                if (n) {
+                    await _supabase.from('nations').update({
+                        polarization: Math.min(100, Math.round(((n.polarization || 0) + 3) * 10) / 10)
+                    }).eq('id', nId);
+                }
+            }
+        } catch (_) {}
+    }
+
     return true;
 }
 
