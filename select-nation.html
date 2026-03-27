@@ -605,9 +605,12 @@ function getGovTypeClass(govType) {
   return 'gov-democracy';
 }
 
-function getGovTypeLabel(govType) {
+function getGovTypeLabel(govTypeOrNation) {
+  const govType = typeof govTypeOrNation === 'string' ? govTypeOrNation : govTypeOrNation?.government_type;
+  const hosMethod = typeof govTypeOrNation === 'object' ? govTypeOrNation?.hos_election_method : null;
   if (govType === 'Autocracy') return 'AUTOCRACY';
   if (govType === 'Presidential') return 'PRESIDENTIAL';
+  if (hosMethod === 'hereditary') return 'CONSTITUTIONAL MONARCHY';
   return 'PARLIAMENTARY';
 }
 
@@ -650,7 +653,7 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
     const isFull = eligiblePartyCount >= maxParties;
     const flagUrl = nation.flag_url || '';
     const govClass = getGovTypeClass(nation.government_type);
-    const govLabel = getGovTypeLabel(nation.government_type);
+    const govLabel = getGovTypeLabel(nation);
 
     const sortedParties = [...nParties].sort((a, b) => (b.seats || 0) - (a.seats || 0));
     const usedSeats = nParties.reduce((sum, p) => sum + (p.seats || 0), 0);
@@ -754,7 +757,7 @@ function selectNation(nationId) {
 
   const govBadge = document.getElementById('modal-gov-badge');
   const govClass = getGovTypeClass(nation.government_type);
-  const govLabel = getGovTypeLabel(nation.government_type);
+  const govLabel = getGovTypeLabel(nation);
   govBadge.className = 'modal__gov-badge ' + govClass;
   govBadge.textContent = govLabel;
 

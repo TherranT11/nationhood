@@ -368,7 +368,7 @@ async function loadPage() {
         // Update page title and header with nation data
         document.title = nation.name + ' | Nationhood Alpha';
         document.getElementById('nation-title').textContent = nation.name;
-        document.getElementById('gov-type').textContent = nation.government_type || '';
+        document.getElementById('gov-type').textContent = nation.hos_election_method === 'hereditary' ? 'Constitutional Monarchy' : (nation.government_type || '');
 
         // Parallel: profile, previous tick, factions, parties, relations, user faction check
         var [profileRes, shardRes, factionsRes, partiesRes, relationsRes, ambFromRes, ambToRes, electionRes, userFactionRes] = await Promise.all([
