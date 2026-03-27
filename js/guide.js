@@ -135,27 +135,59 @@ const guideContent = {
 </ul>
 <p class="guide-tip">Trade agreements significantly boost trade volume. An FTA gives +25 affinity.</p>
 
-<h3>Free Trade Agreement Effects</h3>
-<p>FTAs and PTAs create real tradeoffs &mdash; they boost trade but have ongoing economic costs:</p>
+<h3>Trade Actions</h3>
+<p>Three ways to manage trade relationships, each with different costs and benefits:</p>
+
+<h4>Unilateral Tariff Reduction</h4>
+<p>A one-sided tariff cut on a specific nation. No negotiation needed. 3 AP cost.</p>
 <table>
-<tr><th>Effect</th><th>FTA</th><th>PTA</th></tr>
-<tr><td><strong>Trade Affinity</strong></td><td>+25</td><td>+15</td></tr>
-<tr><td><strong>Tariff Reduction</strong></td><td>100% all sectors</td><td>Per-article, per-sector</td></tr>
-<tr><td><strong>Manufacturing Pressure</strong></td><td>&minus;0.1/tick manufacturing_output</td><td>&minus;0.05/tick (if manufactured_goods reduced)</td></tr>
-<tr><td><strong>Sector Competition</strong></td><td>&minus;0.05/tick service &amp; manufacturing (if partner GDP &gt;2&times; yours)</td><td>&mdash;</td></tr>
-<tr><td><strong>Polarization on Signing</strong></td><td>+3 both nations</td><td>&mdash;</td></tr>
+<tr><th>Stat</th><th>Effect per tick</th></tr>
+<tr><td>Cost of Living</td><td style="color:#5cb85c">&minus;0.1</td></tr>
+<tr><td>Inflation</td><td style="color:#5cb85c">&minus;0.05</td></tr>
+<tr><td>Happiness</td><td style="color:#5cb85c">+0.05</td></tr>
+<tr><td>Foreign Investment</td><td style="color:#5cb85c">+0.05</td></tr>
+<tr><td>Manufacturing Output</td><td style="color:#d9534f">&minus;0.05</td></tr>
+<tr><td>Union Strength</td><td style="color:#d9534f">&minus;0.05</td></tr>
+</table>
+
+<h4>Preferential Tariff Agreement (PTA)</h4>
+<p>Bilateral sector-specific tariff reductions. Requires negotiation. +15 trade affinity.</p>
+<table>
+<tr><th>Stat</th><th>Effect per tick</th></tr>
+<tr><td>GDP Growth</td><td style="color:#5cb85c">+0.05</td></tr>
+<tr><td>Cost of Living</td><td style="color:#5cb85c">&minus;0.05</td></tr>
+<tr><td>Inflation</td><td style="color:#5cb85c">&minus;0.05</td></tr>
+<tr><td>Foreign Investment</td><td style="color:#5cb85c">+0.1</td></tr>
+<tr><td>Happiness</td><td style="color:#5cb85c">+0.05</td></tr>
+<tr><td>Manufacturing Output</td><td style="color:#d9534f">&minus;0.05 (if manufactured goods reduced)</td></tr>
+<tr><td>Union Strength</td><td style="color:#d9534f">&minus;0.05 (if manufactured goods reduced)</td></tr>
+</table>
+
+<h4>Free Trade Agreement (FTA)</h4>
+<p>Comprehensive bilateral agreement. Strongest effects. +25 trade affinity. +3 polarization on signing.</p>
+<table>
+<tr><th>Stat</th><th>Effect per tick</th></tr>
+<tr><td>GDP Growth</td><td style="color:#5cb85c">+0.15</td></tr>
+<tr><td>Cost of Living</td><td style="color:#5cb85c">&minus;0.2</td></tr>
+<tr><td>Inflation</td><td style="color:#5cb85c">&minus;0.1</td></tr>
+<tr><td>Foreign Investment</td><td style="color:#5cb85c">+0.15</td></tr>
+<tr><td>Happiness</td><td style="color:#5cb85c">+0.1</td></tr>
+<tr><td>Credit</td><td style="color:#5cb85c">+0.05</td></tr>
+<tr><td>Manufacturing Output</td><td style="color:#d9534f">&minus;0.15</td></tr>
+<tr><td>Union Strength</td><td style="color:#d9534f">&minus;0.15</td></tr>
+<tr><td>Sector Competition</td><td style="color:#d9534f">&minus;0.05 service &amp; manufacturing (if partner GDP &gt;2&times; yours)</td></tr>
 </table>
 
 <h4>Withdrawal Penalties</h4>
-<p>Withdrawing from a trade agreement causes an immediate economic shock to <strong>both</strong> nations:</p>
+<p>Withdrawing from an FTA or PTA causes an immediate economic shock to <strong>both</strong> nations:</p>
 <table>
-<tr><th>Stat</th><th>FTA Withdrawal</th><th>PTA Withdrawal</th></tr>
+<tr><th>Stat</th><th>FTA</th><th>PTA</th></tr>
 <tr><td>GDP Growth</td><td>&minus;0.3</td><td>&minus;0.15</td></tr>
 <tr><td>Foreign Investment</td><td>&minus;3</td><td>&minus;1</td></tr>
 <tr><td>Stability</td><td>&minus;2</td><td>&minus;1</td></tr>
 <tr><td>Polarization</td><td>+2</td><td>&mdash;</td></tr>
 </table>
-<p class="guide-tip">FTAs are powerful but hard to leave. Think carefully before signing &mdash; your manufacturing sector will feel the pressure, and withdrawal hurts both economies.</p>
+<p class="guide-tip">FTAs are powerful but costly. Unilateral reductions are a quick diplomatic gesture. PTAs offer a middle ground with targeted sector access.</p>
 </div></details>
 
 <details><summary>Sectors Sub-Tab</summary><div>

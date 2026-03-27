@@ -2792,6 +2792,9 @@ function renderTariffsTab(nation) {
     // --- Tariff Impact Simulator ---
     h += renderTariffSimulator(nation);
 
+    // --- Unilateral Tariff Reduction Action ---
+    h += renderUnilateralTariffAction(nation);
+
     // --- Active Trade Agreements ---
     h += renderTariffAgreementsSection(nation);
 
@@ -2941,6 +2944,111 @@ function renderTariffProjections(currentRate, simRate, currentDampener, totalCur
     return h;
 }
 
+function renderUnilateralTariffAction(nation) {
+    // Only show if player has a faction and is in government (or is Trade Minister)
+    if (!currentFaction || !activeCoalition) return '';
+    var coalitionIds = activeCoalition.party_ids || [];
+    var isInGov = coalitionIds.includes(currentFaction.id) || currentFaction.id === nation.ruling_faction_id;
+    if (!isInGov) return '';
+
+    var nationOptions = '';
+    if (allNations) {
+        for (var i = 0; i < allNations.length; i++) {
+            var n = allNations[i];
+            if (n.id === nation.id) continue;
+            // Check if already has an active unilateral reduction with this nation
+            var alreadyActive = (tradeAgreements || []).some(function(ta) {
+                return ta.agreement_type === 'unilateral_tariff_reduction' && ta.status === 'active' &&
+                    (ta.nation_a_id === nation.id && ta.nation_b_id === n.id);
+            });
+            if (alreadyActive) continue;
+            nationOptions += '<option value="' + n.id + '">' + escapeHtml(n.name) + '</option>';
+        }
+    }
+
+    if (!nationOptions) return '';
+
+    var apCost = 3;
+    var h = '<div class="econ-section">';
+    h += '<div class="econ-section-header">UNILATERAL TARIFF REDUCTION</div>';
+    h += '<div class="econ-section-subtitle">Cut import duties on a specific nation\'s goods without negotiation. A diplomatic gesture that reduces cost of living but pressures domestic manufacturing.</div>';
+    h += '<div style="display:flex;gap:12px;align-items:flex-end;margin-top:10px;flex-wrap:wrap;">';
+    h += '<div style="flex:1;min-width:180px;">';
+    h += '<label style="font-family:var(--font-mono);font-size:0.65rem;color:var(--text-secondary);text-transform:uppercase;display:block;margin-bottom:4px;">Target Nation</label>';
+    h += '<select id="utr-target-nation" style="width:100%;padding:6px 8px;background:var(--bg-card);border:1px solid var(--border-mid);color:var(--text-primary);border-radius:2px;font-size:0.85rem;">';
+    h += '<option value="">-- Select nation --</option>' + nationOptions;
+    h += '</select></div>';
+    h += '<div style="flex:1;min-width:140px;">';
+    h += '<label style="font-family:var(--font-mono);font-size:0.65rem;color:var(--text-secondary);text-transform:uppercase;display:block;margin-bottom:4px;">Reduction %</label>';
+    h += '<select id="utr-reduction-pct" style="width:100%;padding:6px 8px;background:var(--bg-card);border:1px solid var(--border-mid);color:var(--text-primary);border-radius:2px;font-size:0.85rem;">';
+    h += '<option value="25">25%</option><option value="50" selected>50%</option><option value="75">75%</option><option value="100">100% (Full)</option>';
+    h += '</select></div>';
+    h += '<button onclick="executeUnilateralTariffReduction()" style="padding:8px 20px;background:var(--blue);border:none;color:#fff;font-family:var(--font-mono);font-size:0.75rem;font-weight:700;border-radius:2px;cursor:pointer;white-space:nowrap;">';
+    h += 'Execute — ' + apCost + ' AP</button>';
+    h += '</div>';
+    h += '<div style="margin-top:8px;font-size:0.72rem;color:var(--text-secondary);">';
+    h += '<span style="color:var(--green);">↑ cost_of_living, inflation, happiness, foreign_investment</span> &nbsp;·&nbsp; ';
+    h += '<span style="color:var(--red);">↓ manufacturing_output, tariff_revenue, union_strength</span>';
+    h += '</div></div>';
+    return h;
+}
+
+var _utrLock = false;
+window.executeUnilateralTariffReduction = async function() {
+    if (_utrLock) return;
+    var targetId = document.getElementById('utr-target-nation')?.value;
+    var reductionPct = Number(document.getElementById('utr-reduction-pct')?.value || 50);
+    if (!targetId) { alert('Select a target nation.'); return; }
+    if (!currentFaction || !currentNation) return;
+
+    var apCost = 3;
+    var targetName = '';
+    if (allNations) {
+        var tn = allNations.find(function(n) { return n.id === targetId; });
+        targetName = tn ? tn.name : 'Unknown';
+    }
+
+    if (!confirm('Reduce tariffs on ' + targetName + ' by ' + reductionPct + '%?\n\nCost: ' + apCost + ' AP\n\nEffects:\n+ Cheaper imports (cost_of_living, inflation down)\n+ Diplomatic gesture (foreign_investment, happiness up)\n- Domestic industry pressure (manufacturing_output, union_strength down)\n- Lost tariff revenue')) return;
+
+    _utrLock = true;
+    try {
+        var apResult = await deductAP(_supabase, currentFaction.id, apCost);
+        if (!apResult.success) { alert(apResult.error || 'Not enough AP.'); return; }
+
+        var { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        var tick = shard?.current_tick || 0;
+
+        var { error } = await _supabase.from('trade_agreements').insert({
+            nation_a_id: currentNation.id,  // issuer is always nation_a for unilateral
+            nation_b_id: targetId,
+            agreement_type: 'unilateral_tariff_reduction',
+            agreement_name: currentNation.name + ' Tariff Reduction on ' + targetName,
+            articles: [{ type: 'tariff_reduction', data: { reduction_pct: reductionPct, direction: 'their_exports', sector: 'all' } }],
+            status: 'active',
+            enacted_at_tick: tick,
+            duration_type: 'permanent',
+            withdrawal_notice_ticks: 0
+        });
+
+        if (error) { alert('Failed: ' + error.message); return; }
+
+        // Fire event
+        try {
+            await _supabase.from('event_log').insert({
+                nation_id: currentNation.id,
+                event_name: 'Unilateral Tariff Reduction',
+                category: 'Trade',
+                description_chosen: currentNation.name + ' has unilaterally reduced tariffs on ' + targetName + ' by ' + reductionPct + '%.',
+                fired_at_tick: tick
+            });
+        } catch (_) {}
+
+        alert('Tariffs reduced on ' + targetName + ' by ' + reductionPct + '%. Effects apply next tick.');
+        location.reload();
+    } catch (err) { alert('Error: ' + err.message); }
+    finally { _utrLock = false; }
+};
+
 function renderTariffAgreementsSection(nation) {
     if (!tradeAgreements || tradeAgreements.length === 0) {
         var h = '<div class="econ-section">';
@@ -3077,50 +3185,40 @@ function getSectorLabel(sectorKey) {
 function renderFTAEffectsSection(nation) {
     if (!tradeAgreements || tradeAgreements.length === 0) return '';
 
-    var ftaCount = 0, ptaCount = 0;
-    var mfgPressure = 0;
-
+    var ftaCount = 0, ptaCount = 0, utrCount = 0;
     for (var i = 0; i < tradeAgreements.length; i++) {
         var ag = tradeAgreements[i];
-        if (ag.agreement_type === 'fta') {
-            ftaCount++;
-            // Manufacturing pressure: -0.1/tick per FTA (unless manufactured_goods exempted)
-            var exempted = false;
-            (ag.articles || []).forEach(function(a) { if (a.type === 'sector_exemption' && a.data && a.data.sector === 'manufactured_goods') exempted = true; });
-            if (!exempted) mfgPressure += 0.1;
-        } else if (ag.agreement_type === 'pta') {
-            ptaCount++;
-            // Check for manufactured_goods tariff reduction
-            (ag.articles || []).forEach(function(a) { if (a.type === 'tariff_reduction' && a.data && a.data.sector === 'manufactured_goods') mfgPressure += 0.05; });
-        }
+        if (ag.agreement_type === 'fta') ftaCount++;
+        else if (ag.agreement_type === 'pta') ptaCount++;
+        else if (ag.agreement_type === 'unilateral_tariff_reduction') utrCount++;
     }
 
-    if (ftaCount === 0 && ptaCount === 0) return '';
+    if (ftaCount === 0 && ptaCount === 0 && utrCount === 0) return '';
 
     var h = '<div class="econ-section">';
-    h += '<div class="econ-section-header">FREE TRADE EFFECTS</div>';
-    h += '<div class="econ-section-subtitle">Ongoing economic effects of your active trade agreements. Free trade creates growth but pressures domestic industry.</div>';
-
+    h += '<div class="econ-section-header">TRADE AGREEMENT EFFECTS</div>';
+    h += '<div class="econ-section-subtitle">Ongoing per-tick effects of your active trade agreements.</div>';
     h += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">';
 
     // Upsides
     h += '<div style="flex:1;min-width:200px;background:rgba(92,184,92,0.06);border:1px solid rgba(92,184,92,0.2);border-radius:3px;padding:10px;">';
-    h += '<div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:700;color:var(--green);text-transform:uppercase;margin-bottom:6px;">Benefits</div>';
+    h += '<div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:700;color:var(--green);text-transform:uppercase;margin-bottom:6px;">Benefits per tick</div>';
     h += '<div style="font-size:0.78rem;color:var(--text-primary);line-height:1.6;">';
-    h += '↑ Trade volume with partners<br>';
-    h += '↑ GDP growth from increased trade<br>';
-    h += '↑ Diplomatic relations boost (+25 affinity per FTA)<br>';
-    if (ftaCount > 0) h += '↑ Zero tariffs on all sectors with ' + ftaCount + ' FTA partner' + (ftaCount > 1 ? 's' : '') + '<br>';
+    if (ftaCount > 0) h += '↓ Cost of living <span style="color:var(--green);">-' + (0.2 * ftaCount).toFixed(1) + '</span> · ↑ GDP growth <span style="color:var(--green);">+' + (0.15 * ftaCount).toFixed(2) + '</span><br>';
+    if (ptaCount > 0) h += '↓ Cost of living <span style="color:var(--green);">-' + (0.05 * ptaCount).toFixed(2) + '</span> · ↑ GDP growth <span style="color:var(--green);">+' + (0.05 * ptaCount).toFixed(2) + '</span> (PTA)<br>';
+    if (utrCount > 0) h += '↓ Cost of living <span style="color:var(--green);">-' + (0.1 * utrCount).toFixed(1) + '</span> · ↑ Happiness <span style="color:var(--green);">+' + (0.05 * utrCount).toFixed(2) + '</span> (UTR)<br>';
+    h += '↑ Foreign investment, inflation reduction, trade affinity<br>';
     h += '</div></div>';
 
     // Downsides
     h += '<div style="flex:1;min-width:200px;background:rgba(217,83,79,0.06);border:1px solid rgba(217,83,79,0.2);border-radius:3px;padding:10px;">';
-    h += '<div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:700;color:var(--red);text-transform:uppercase;margin-bottom:6px;">Costs</div>';
+    h += '<div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:700;color:var(--red);text-transform:uppercase;margin-bottom:6px;">Costs per tick</div>';
     h += '<div style="font-size:0.78rem;color:var(--text-primary);line-height:1.6;">';
+    if (ftaCount > 0) h += '↓ Manufacturing <span style="color:var(--red);">-' + (0.15 * ftaCount).toFixed(2) + '</span> · ↓ Union strength <span style="color:var(--red);">-' + (0.15 * ftaCount).toFixed(2) + '</span><br>';
+    if (ptaCount > 0) h += '↓ Manufacturing <span style="color:var(--red);">-' + (0.05 * ptaCount).toFixed(2) + '</span> · ↓ Union strength <span style="color:var(--red);">-' + (0.05 * ptaCount).toFixed(2) + '</span> (PTA)<br>';
+    if (utrCount > 0) h += '↓ Manufacturing <span style="color:var(--red);">-' + (0.05 * utrCount).toFixed(2) + '</span> (UTR)<br>';
     h += '↓ Tariff revenue from reduced rates<br>';
-    if (mfgPressure > 0) h += '↓ Manufacturing output <span style="font-family:var(--font-mono);color:var(--red);">-' + mfgPressure.toFixed(2) + '/tick</span> (import competition)<br>';
-    if (ftaCount > 0) h += '↑ Polarization <span style="font-family:var(--font-mono);color:var(--red);">+3 per FTA signed</span> (politically controversial)<br>';
-    h += '⚠ Withdrawal causes economic shock (GDP, investment, stability hit)<br>';
+    if (ftaCount > 0) h += '⚠ Withdrawal causes economic shock<br>';
     h += '</div></div>';
 
     h += '</div></div>';

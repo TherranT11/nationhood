@@ -931,90 +931,120 @@ function calculateTariffRevenue(totalImports, tariffRate, collectionRate) {
 // Both effects create real tradeoffs for signing FTAs.
 
 async function processFTAEffects(supabase: any, nationList: any[], currentTick: number) {
-    // Load active FTAs and PTAs
+    // Load all active trade agreements (FTA, PTA, unilateral_tariff_reduction)
     const { data: activeAgreements, error: ftaQueryErr } = await supabase
         .from('trade_agreements')
         .select('nation_a_id, nation_b_id, agreement_type, articles')
         .eq('status', 'active')
-        .in('agreement_type', ['fta', 'pta']);
+        .in('agreement_type', ['fta', 'pta', 'unilateral_tariff_reduction']);
 
-    if (ftaQueryErr) { console.error('[FTA Effects] Query error:', ftaQueryErr.message); return; }
+    if (ftaQueryErr) { console.error('[Trade Effects] Query error:', ftaQueryErr.message); return; }
     if (!activeAgreements || activeAgreements.length === 0) return;
 
     const nationMap: Record<string, any> = {};
     for (const n of nationList) nationMap[n.id] = n;
 
-    // Track stat adjustments per nation
-    const adjustments: Record<string, Record<string, number>> = {};
-    function addAdj(nationId: string, stat: string, delta: number) {
-        if (!adjustments[nationId]) adjustments[nationId] = {};
-        adjustments[nationId][stat] = (adjustments[nationId][stat] || 0) + delta;
+    // Per-nation stat adjustments accumulated across all agreements
+    const adj: Record<string, Record<string, number>> = {};
+    function add(nId: string, stat: string, delta: number) {
+        if (!adj[nId]) adj[nId] = {};
+        adj[nId][stat] = (adj[nId][stat] || 0) + delta;
     }
 
     for (const ta of activeAgreements) {
-        const nationA = nationMap[ta.nation_a_id];
-        const nationB = nationMap[ta.nation_b_id];
-        if (!nationA || !nationB) continue;
+        const nA = nationMap[ta.nation_a_id];
+        const nB = nationMap[ta.nation_b_id];
+        const type = ta.agreement_type;
 
-        const isFTA = ta.agreement_type === 'fta';
-
-        // ── Mechanic 1: Manufacturing pressure ──
-        // FTAs with 0 tariffs let manufactured goods flood in.
-        // Each FTA partner suppresses manufacturing_output by 0.1/tick per partner.
-        // PTAs with tariff_reduction on manufactured_goods also apply (at half rate).
-        if (isFTA) {
-            // Check if manufactured_goods is exempted
+        // ══════════════════════════════════════════════════════════
+        //  FREE TRADE AGREEMENT — strongest effects, both nations
+        // ══════════════════════════════════════════════════════════
+        if (type === 'fta' && nA && nB) {
+            const bothIds = [ta.nation_a_id, ta.nation_b_id];
             const exemptSectors = new Set((ta.articles || []).filter((a: any) => a.type === 'sector_exemption').map((a: any) => a.data?.sector));
-            if (!exemptSectors.has('manufactured_goods')) {
-                addAdj(ta.nation_a_id, 'manufacturing_output', -0.1);
-                addAdj(ta.nation_b_id, 'manufacturing_output', -0.1);
+
+            for (const nId of bothIds) {
+                // Positive: GDP growth, cost of living reduction, inflation reduction,
+                // foreign investment, happiness, credit
+                add(nId, 'gdp_growth', 0.15);
+                add(nId, 'cost_of_living', -0.2);
+                add(nId, 'inflation', -0.1);
+                add(nId, 'foreign_investment', 0.15);
+                add(nId, 'happiness', 0.1);
+                add(nId, 'credit', 0.05);
+
+                // Negative: manufacturing, union strength
+                if (!exemptSectors.has('manufactured_goods')) {
+                    add(nId, 'manufacturing_output', -0.15);
+                }
+                add(nId, 'union_strength', -0.15);
             }
-        } else {
-            // PTA: check for tariff_reduction on manufactured_goods
-            const hasMfgReduction = (ta.articles || []).some((a: any) =>
-                a.type === 'tariff_reduction' && a.data?.sector === 'manufactured_goods');
-            if (hasMfgReduction) {
-                addAdj(ta.nation_a_id, 'manufacturing_output', -0.05);
-                addAdj(ta.nation_b_id, 'manufacturing_output', -0.05);
+
+            // Sector competition: larger economy suppresses smaller
+            const gdpA = Number(nA.gdp || 0);
+            const gdpB = Number(nB.gdp || 0);
+            if (gdpA > 0 && gdpB > 0) {
+                if (gdpA / gdpB > 2) {
+                    add(ta.nation_b_id, 'service_output', -0.05);
+                    add(ta.nation_b_id, 'manufacturing_output', -0.05);
+                } else if (gdpB / gdpA > 2) {
+                    add(ta.nation_a_id, 'service_output', -0.05);
+                    add(ta.nation_a_id, 'manufacturing_output', -0.05);
+                }
             }
         }
 
-        // ── Mechanic 4: Sector competition ──
-        // If your partner's GDP is significantly larger (>2x), their economy
-        // suppresses your service_output and manufacturing_output by 0.05/tick.
-        // This models the "small nation vs powerhouse" dynamic.
-        if (isFTA) {
-            const gdpA = Number(nationA.gdp || 0);
-            const gdpB = Number(nationB.gdp || 0);
-            if (gdpA > 0 && gdpB > 0) {
-                const ratio = gdpA / gdpB;
-                if (ratio > 2) {
-                    // A is much bigger — suppresses B
-                    addAdj(ta.nation_b_id, 'service_output', -0.05);
-                    addAdj(ta.nation_b_id, 'manufacturing_output', -0.05);
-                } else if (ratio < 0.5) {
-                    // B is much bigger — suppresses A
-                    addAdj(ta.nation_a_id, 'service_output', -0.05);
-                    addAdj(ta.nation_a_id, 'manufacturing_output', -0.05);
+        // ══════════════════════════════════════════════════════════
+        //  PREFERENTIAL TARIFF AGREEMENT — moderate effects, both nations
+        // ══════════════════════════════════════════════════════════
+        if (type === 'pta' && nA && nB) {
+            const bothIds = [ta.nation_a_id, ta.nation_b_id];
+            const hasMfgReduction = (ta.articles || []).some((a: any) =>
+                a.type === 'tariff_reduction' && a.data?.sector === 'manufactured_goods');
+
+            for (const nId of bothIds) {
+                add(nId, 'gdp_growth', 0.05);
+                add(nId, 'cost_of_living', -0.05);
+                add(nId, 'inflation', -0.05);
+                add(nId, 'foreign_investment', 0.1);
+                add(nId, 'happiness', 0.05);
+
+                if (hasMfgReduction) {
+                    add(nId, 'manufacturing_output', -0.05);
+                    add(nId, 'union_strength', -0.05);
                 }
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════
+        //  UNILATERAL TARIFF REDUCTION — one-sided, affects issuer only
+        // ══════════════════════════════════════════════════════════
+        if (type === 'unilateral_tariff_reduction' && (nA || nB)) {
+            // nation_a_id = issuer (the one who cut tariffs)
+            const issuerId = ta.nation_a_id;
+            if (nationMap[issuerId]) {
+                add(issuerId, 'cost_of_living', -0.1);
+                add(issuerId, 'inflation', -0.05);
+                add(issuerId, 'happiness', 0.05);
+                add(issuerId, 'foreign_investment', 0.05);
+                add(issuerId, 'manufacturing_output', -0.05);
+                add(issuerId, 'union_strength', -0.05);
             }
         }
     }
 
-    // Apply adjustments
-    for (const [nationId, stats] of Object.entries(adjustments)) {
+    // Apply all accumulated adjustments
+    for (const [nationId, stats] of Object.entries(adj)) {
         const updates: Record<string, number> = {};
         const nation = nationMap[nationId];
         if (!nation) continue;
-
         for (const [stat, delta] of Object.entries(stats)) {
             const current = Number((nation as any)[stat] ?? 50);
             updates[stat] = Math.max(0, Math.min(100, Math.round((current + delta) * 10) / 10));
         }
-
         if (Object.keys(updates).length > 0) {
             const { error } = await supabase.from('nations').update(updates).eq('id', nationId);
-            if (error) console.error(`[FTA Effects] Failed to apply adjustments for ${nationId}:`, error.message);
+            if (error) console.error(`[Trade Effects] Failed for ${nationId}:`, error.message);
         }
     }
 }
@@ -2014,6 +2044,18 @@ const TRADE_AGREEMENT_TYPES = {
         required_articles: ['tariff_surcharge', 'duration'],
         optional_articles: ['text_article'],
         icon: 'shield',
+        category: 'unilateral'
+    },
+    unilateral_tariff_reduction: {
+        key: 'unilateral_tariff_reduction',
+        label: 'Unilateral Tariff Reduction',
+        shortLabel: 'UTR',
+        description: 'One-sided tariff cut on imports from a specific nation. A diplomatic gesture that reduces cost of living but pressures domestic manufacturing.',
+        bilateral: false,
+        unilateral_action: true,
+        required_articles: [],
+        optional_articles: [],
+        icon: 'chart',
         category: 'unilateral'
     }
 };
