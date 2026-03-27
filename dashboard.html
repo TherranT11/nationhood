@@ -829,7 +829,7 @@ initPage('home', async (state) => {
     }
 
     // Gov type badge
-    const govTypeLabel = isAuto ? 'Autocracy' : isPres ? 'Presidential' : 'Parliamentary';
+    const govTypeLabel = isAuto ? 'Autocracy' : isPres ? 'Presidential' : nation.hos_election_method === 'hereditary' ? 'Constitutional Monarchy' : 'Parliamentary';
 
     // Coalition info
     const coalitionIds = new Set(coalition?.party_ids || []);
