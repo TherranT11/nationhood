@@ -924,6 +924,141 @@ function calculateTariffRevenue(totalImports, tariffRate, collectionRate) {
  * @param {number} currentTick  – current game tick
  * @returns {Object} { processed, totalVolume }
  */
+// ==================== FTA MECHANICAL EFFECTS ====================
+// Applies per-tick costs of free trade agreements:
+// 1. Manufacturing pressure: imports in manufactured_goods sector suppress manufacturing_output
+// 2. Sector competition: partner with stronger economy suppresses your weaker sectors
+// Both effects create real tradeoffs for signing FTAs.
+
+async function processFTAEffects(supabase: any, nationList: any[], currentTick: number) {
+    // Load active FTAs and PTAs
+    const { data: activeAgreements } = await supabase
+        .from('trade_agreements')
+        .select('nation_a_id, nation_b_id, agreement_type, articles')
+        .eq('status', 'active')
+        .in('agreement_type', ['fta', 'pta']);
+
+    if (!activeAgreements || activeAgreements.length === 0) return;
+
+    const nationMap: Record<string, any> = {};
+    for (const n of nationList) nationMap[n.id] = n;
+
+    // Track stat adjustments per nation
+    const adjustments: Record<string, Record<string, number>> = {};
+    function addAdj(nationId: string, stat: string, delta: number) {
+        if (!adjustments[nationId]) adjustments[nationId] = {};
+        adjustments[nationId][stat] = (adjustments[nationId][stat] || 0) + delta;
+    }
+
+    for (const ta of activeAgreements) {
+        const nationA = nationMap[ta.nation_a_id];
+        const nationB = nationMap[ta.nation_b_id];
+        if (!nationA || !nationB) continue;
+
+        const isFTA = ta.agreement_type === 'fta';
+
+        // ── Mechanic 1: Manufacturing pressure ──
+        // FTAs with 0 tariffs let manufactured goods flood in.
+        // Each FTA partner suppresses manufacturing_output by 0.1/tick per partner.
+        // PTAs with tariff_reduction on manufactured_goods also apply (at half rate).
+        if (isFTA) {
+            // Check if manufactured_goods is exempted
+            const exemptSectors = new Set((ta.articles || []).filter((a: any) => a.type === 'sector_exemption').map((a: any) => a.data?.sector));
+            if (!exemptSectors.has('manufactured_goods')) {
+                addAdj(ta.nation_a_id, 'manufacturing_output', -0.1);
+                addAdj(ta.nation_b_id, 'manufacturing_output', -0.1);
+            }
+        } else {
+            // PTA: check for tariff_reduction on manufactured_goods
+            const hasMfgReduction = (ta.articles || []).some((a: any) =>
+                a.type === 'tariff_reduction' && a.data?.sector === 'manufactured_goods');
+            if (hasMfgReduction) {
+                addAdj(ta.nation_a_id, 'manufacturing_output', -0.05);
+                addAdj(ta.nation_b_id, 'manufacturing_output', -0.05);
+            }
+        }
+
+        // ── Mechanic 4: Sector competition ──
+        // If your partner's GDP is significantly larger (>2x), their economy
+        // suppresses your service_output and manufacturing_output by 0.05/tick.
+        // This models the "small nation vs powerhouse" dynamic.
+        if (isFTA) {
+            const gdpA = Number(nationA.gdp || 0);
+            const gdpB = Number(nationB.gdp || 0);
+            if (gdpA > 0 && gdpB > 0) {
+                const ratio = gdpA / gdpB;
+                if (ratio > 2) {
+                    // A is much bigger — suppresses B
+                    addAdj(ta.nation_b_id, 'service_output', -0.05);
+                    addAdj(ta.nation_b_id, 'manufacturing_output', -0.05);
+                } else if (ratio < 0.5) {
+                    // B is much bigger — suppresses A
+                    addAdj(ta.nation_a_id, 'service_output', -0.05);
+                    addAdj(ta.nation_a_id, 'manufacturing_output', -0.05);
+                }
+            }
+        }
+    }
+
+    // Apply adjustments
+    for (const [nationId, stats] of Object.entries(adjustments)) {
+        const updates: Record<string, number> = {};
+        const nation = nationMap[nationId];
+        if (!nation) continue;
+
+        for (const [stat, delta] of Object.entries(stats)) {
+            const current = Number((nation as any)[stat] ?? 50);
+            updates[stat] = Math.max(0, Math.min(100, Math.round((current + delta) * 10) / 10));
+        }
+
+        if (Object.keys(updates).length > 0) {
+            const { error } = await supabase.from('nations').update(updates).eq('id', nationId);
+            if (error) console.error(`[FTA Effects] Failed to apply adjustments for ${nationId}:`, error.message);
+        }
+    }
+}
+
+// ==================== FTA WITHDRAWAL SHOCK ====================
+// Applied when a trade agreement is withdrawn. Creates a multi-tick
+// economic disruption recorded as a stat effect.
+
+const FTA_WITHDRAWAL_EFFECTS = {
+    fta: { gdp_growth: -0.3, foreign_investment: -3, stability: -2, polarization: 2 },
+    pta: { gdp_growth: -0.15, foreign_investment: -1, stability: -1 },
+};
+
+async function applyFTAWithdrawalShock(supabase: any, nationId: string, agreementType: string, currentTick: number) {
+    const effects = (FTA_WITHDRAWAL_EFFECTS as any)[agreementType];
+    if (!effects) return;
+
+    const { data: nation } = await supabase.from('nations').select('*').eq('id', nationId).single();
+    if (!nation) return;
+
+    const updates: Record<string, number> = {};
+    for (const [stat, delta] of Object.entries(effects)) {
+        const current = Number((nation as any)[stat] ?? 50);
+        updates[stat] = Math.max(0, Math.min(100, Math.round((current + (delta as number)) * 10) / 10));
+    }
+
+    if (Object.keys(updates).length > 0) {
+        await supabase.from('nations').update(updates).eq('id', nationId);
+    }
+
+    // Fire event
+    try {
+        await supabase.from('event_log').insert({
+            nation_id: nationId,
+            event_name: 'Trade Agreement Withdrawal Shock',
+            trigger_key: 'trade_withdrawal_shock',
+            category: 'ECONOMY',
+            description_chosen: `The withdrawal of a ${agreementType.toUpperCase()} has caused economic disruption: GDP growth dip, reduced foreign investment, and decreased stability.`,
+            fired_at_tick: currentTick
+        });
+    } catch (_) {}
+
+    console.log(`[FTA Withdrawal] Applied shock to ${nationId}: ${JSON.stringify(effects)}`);
+}
+
 async function processTradeFlows(supabase, nationList, currentTick) {
     if (!nationList || nationList.length < 2) {
         console.log('[processTradeFlows] Need at least 2 nations for trade, skipping');
@@ -7186,6 +7321,18 @@ async function resolveExpiredVotes(supabase, nationId) {
                                 withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
                                 diplomatic_proposal_id: proposal.id
                             });
+
+                            // Mechanic 3: FTAs increase polarization (+3 in both nations)
+                            if (pd.agreement_type === 'fta') {
+                                for (const nId of [taNationA, taNationB]) {
+                                    const { data: pn } = await supabase.from('nations').select('polarization').eq('id', nId).single();
+                                    if (pn) {
+                                        await supabase.from('nations').update({
+                                            polarization: Math.min(100, Math.round(((pn.polarization || 0) + 3) * 10) / 10)
+                                        }).eq('id', nId);
+                                    }
+                                }
+                            }
                         }
 
                         await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
@@ -7304,6 +7451,18 @@ async function resolveExpiredVotes(supabase, nationId) {
                             enacted_at_tick: currentTick,
                             expires_at_tick: isPermanent ? null : (durationTicks ? currentTick + durationTicks : null)
                         }).select('id').single();
+
+                        // Mechanic 3: FTAs increase polarization (+3 in both nations)
+                        if (neg.agreement_type === 'fta') {
+                            for (const nId of [nA, nB]) {
+                                const { data: pn } = await supabase.from('nations').select('polarization').eq('id', nId).single();
+                                if (pn) {
+                                    await supabase.from('nations').update({
+                                        polarization: Math.min(100, Math.round(((pn.polarization || 0) + 3) * 10) / 10)
+                                    }).eq('id', nId);
+                                }
+                            }
+                        }
 
                         // For economic aid agreements, create the aid_agreement_state row
                         if (neg.agreement_type === 'economic_aid' && newAgreement) {
@@ -28110,6 +28269,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (tradeErr) {
         console.error('[advanceTick] Trade processing failed (non-fatal):', tradeErr);
+    }
+
+    // 3.55 FTA/PTA mechanical effects — import pressure, sector competition
+    try {
+        await processFTAEffects(supabase, nationList, newTick);
+    } catch (ftaErr) {
+        console.error('[advanceTick] FTA effects processing failed (non-fatal):', ftaErr);
     }
 
     // 3.6 Expire trade agreements (including economic aid) that have passed their expires_at_tick
