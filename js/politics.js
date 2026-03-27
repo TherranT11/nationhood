@@ -3049,63 +3049,74 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
         </div>`;
     }
 
-    // Render actions grouped by category
-    let lastCategory = null;
+    // Render actions grouped by category in a 2-column grid per group
+    // Group actions by category
+    const categoryGroups = [];
+    let currentGroup = null;
     for (const act of allActions) {
-        // Category header
-        if (act.category && act.category !== lastCategory) {
-            const catDef = CA_ACTION_CATEGORIES.find(c => c.key === act.category);
-            if (catDef) {
-                listHtml += `<div style="font-family:var(--dfont-mono);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:${catDef.color};padding:8px 6px 2px;${lastCategory ? 'border-top:1px solid var(--dborder-0);margin-top:4px;' : ''}">${catDef.label}</div>`;
+        if (act.category && (!currentGroup || act.category !== currentGroup.key)) {
+            currentGroup = { key: act.category, actions: [] };
+            categoryGroups.push(currentGroup);
+        }
+        if (currentGroup) currentGroup.actions.push(act);
+    }
+
+    for (let gi = 0; gi < categoryGroups.length; gi++) {
+        const group = categoryGroups[gi];
+        const catDef = CA_ACTION_CATEGORIES.find(c => c.key === group.key);
+        if (catDef) {
+            listHtml += `<div style="font-family:var(--dfont-mono);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:${catDef.color};padding:8px 6px 2px;${gi > 0 ? 'border-top:1px solid var(--dborder-0);margin-top:4px;' : ''}">${catDef.label}</div>`;
+        }
+        listHtml += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:0 2px;">`;
+
+        for (const act of group.actions) {
+            const isSel = _caSelected === act.id;
+            const isProtest = act.id === 'protest';
+
+            // Protest row has special state-driven rendering — spans full width
+            if (isProtest) {
+                listHtml += `<div style="grid-column:1/-1">${renderProtestActionRow(act, isSel, ap, f, tick)}</div>`;
+                continue;
             }
-            lastCategory = act.category;
-        }
 
-        const isSel = _caSelected === act.id;
-        const isProtest = act.id === 'protest';
-
-        // Protest row has special state-driven rendering
-        if (isProtest) {
-            listHtml += renderProtestActionRow(act, isSel, ap, f, tick);
-            continue;
-        }
-
-        const displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'outreach' ? (3 + (_caOutreachEscalation || 0)) : act.ap;
-        // Map CA_ACTIONS id → campaign_actions action_type
-        const dbActionType = act.id === 'promise' ? 'make_promise' : act.id;
-        const cdRemaining = _caCooldowns[dbActionType] || 0;
-        const onCooldown = cdRemaining > 0;
-        const usedThisTick = !!_caUsedThisTick[dbActionType];
-        const isActive = _caActiveActions.some(a => a.action_type === act.id.replace('fund_', ''));
-        const ok = ap >= displayCost && !onCooldown && !usedThisTick;
-        const borderColor = isSel ? act.color : ok ? act.color + '55' : 'var(--dtext-3)';
-        const bgStyle = isSel ? `background:${act.color}08;` : '';
-        const borderStyle = isSel ? `border-color:${act.color}33;` : '';
-        const nameColor = isSel ? act.color : 'var(--dtext-0)';
-        const affectsColor = act.affects === 'Visibility' ? '#f97316' : act.affects === 'Enthusiasm' ? '#f97316' : act.affects === 'Approval' ? '#4ade80' : act.affects === 'Appeal' ? '#38bdf8' : act.affects === 'Ideology' ? '#a78bfa' : '#6b7280';
-        const usedLabel = usedThisTick ? `${act.name} already used this turn` : '';
-        const statusBadge = usedThisTick
-            ? `<span class="ca-used-badge">USED</span>`
-            : onCooldown
-            ? `<span class="ca-cd-badge">${cdRemaining} tick${cdRemaining !== 1 ? 's' : ''} CD</span>`
-            : isActive ? (() => {
-                const match = _caActiveActions.find(a => a.action_type === act.id.replace('fund_', ''));
-                return match?.status === 'paused'
-                    ? `<span class="ca-active-badge" style="background:#f97316">PAUSED</span>`
-                    : `<span class="ca-active-badge">ACTIVE</span>`;
-            })() : '';
-        listHtml += `<div class="ca-item${isSel ? ' selected' : ''}${!ok ? ' disabled' : ''}${onCooldown ? ' ca-item--cooldown' : ''}${usedThisTick ? ' ca-item--used' : ''}" data-action-id="${act.id}" style="border-left-color:${borderColor};${bgStyle}${borderStyle}${!ok ? 'opacity:0.35;' : ''}">
-            <div class="ca-item-head">
-                <div style="display:flex;align-items:center;gap:6px">
-                    <span class="ca-item-icon" style="color:${act.color}">${act.icon}</span>
-                    <span class="ca-item-name" style="color:${nameColor}">${escapeHtml(act.name)}</span>
-                    ${statusBadge}
+            const displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'outreach' ? (3 + (_caOutreachEscalation || 0)) : act.ap;
+            const dbActionType = act.id === 'promise' ? 'make_promise' : act.id;
+            const cdRemaining = _caCooldowns[dbActionType] || 0;
+            const onCooldown = cdRemaining > 0;
+            const usedThisTick = !!_caUsedThisTick[dbActionType];
+            const isActive = _caActiveActions.some(a => a.action_type === act.id.replace('fund_', ''));
+            const ok = ap >= displayCost && !onCooldown && !usedThisTick;
+            const borderColor = isSel ? act.color : ok ? act.color + '55' : 'var(--dtext-3)';
+            const bgStyle = isSel ? `background:${act.color}08;` : '';
+            const borderStyle = isSel ? `border-color:${act.color}33;` : '';
+            const nameColor = isSel ? act.color : 'var(--dtext-0)';
+            const affectsColor = act.affects === 'Visibility' ? '#f97316' : act.affects === 'Enthusiasm' ? '#f97316' : act.affects === 'Approval' ? '#4ade80' : act.affects === 'Appeal' ? '#38bdf8' : act.affects === 'Ideology' ? '#a78bfa' : '#6b7280';
+            const usedLabel = usedThisTick ? `${act.name} already used this turn` : '';
+            const statusBadge = usedThisTick
+                ? `<span class="ca-used-badge">USED</span>`
+                : onCooldown
+                ? `<span class="ca-cd-badge">${cdRemaining} tick${cdRemaining !== 1 ? 's' : ''} CD</span>`
+                : isActive ? (() => {
+                    const match = _caActiveActions.find(a => a.action_type === act.id.replace('fund_', ''));
+                    return match?.status === 'paused'
+                        ? `<span class="ca-active-badge" style="background:#f97316">PAUSED</span>`
+                        : `<span class="ca-active-badge">ACTIVE</span>`;
+                })() : '';
+            listHtml += `<div class="ca-item${isSel ? ' selected' : ''}${!ok ? ' disabled' : ''}${onCooldown ? ' ca-item--cooldown' : ''}${usedThisTick ? ' ca-item--used' : ''}" data-action-id="${act.id}" style="border-left-color:${borderColor};${bgStyle}${borderStyle}${!ok ? 'opacity:0.35;' : ''}">
+                <div class="ca-item-head">
+                    <div style="display:flex;align-items:center;gap:6px">
+                        <span class="ca-item-icon" style="color:${act.color}">${act.icon}</span>
+                        <span class="ca-item-name" style="color:${nameColor}">${escapeHtml(act.name)}</span>
+                        ${statusBadge}
+                    </div>
+                    <span class="ca-item-ap">${usedThisTick ? 'USED' : onCooldown ? `${cdRemaining} TICK CD` : `${displayCost} AP`}</span>
                 </div>
-                <span class="ca-item-ap">${usedThisTick ? 'USED' : onCooldown ? `${cdRemaining} TICK CD` : `${displayCost} AP`}</span>
-            </div>
-            <div class="ca-item-desc">${escapeHtml(act.desc)}</div>
-            ${usedThisTick ? `<div class="ca-item-used-msg">${escapeHtml(usedLabel)}</div>` : `<div class="ca-item-affects" style="color:${affectsColor}">This action affects ${act.affects}</div>`}
-        </div>`;
+                <div class="ca-item-desc">${escapeHtml(act.desc)}</div>
+                ${usedThisTick ? `<div class="ca-item-used-msg">${escapeHtml(usedLabel)}</div>` : `<div class="ca-item-affects" style="color:${affectsColor}">This action affects ${act.affects}</div>`}
+            </div>`;
+        }
+
+        listHtml += `</div>`; // close grid
     }
 
     // Config panel (right)
