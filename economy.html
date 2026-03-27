@@ -31,7 +31,6 @@ import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultipli
 
 // ==================== STATE ====================
 var previousTickData = null;
-var previousYearData = null;
 var currentTick = 0;
 var expenditureData = null;
 var expenditureDetails = null;
@@ -40,7 +39,6 @@ var tradeData = null;
 var aidData = null;  // { received: number, given: number, agreements: [...] }
 var currentNation = null;
 var allNations = null;
-var gameYear = 0;
 var activeTab = 'overview';
 var activeSector = 'fuel_energy';
 var tradeAgreements = null;
@@ -58,7 +56,6 @@ var NATION_COLORS = {
 // ==================== TAXATION TAB STATE ====================
 var currentFaction = null;
 var taxConnections = [];
-var taxVoterBlocs = [];
 var taxAdminFunding = { allocated: 0, needed: 0, fundingPct: 0 };
 var taxRateChanges = {};  // { income_tax: 22, ... } — only keys that changed
 var originalRates = {};   // { income_tax: 18, corporate_tax: 24, sales_tax: 10 }
@@ -84,14 +81,12 @@ initPage('economy', async function(state) {
     currentFaction = state.faction;
     await loadPreviousTickData(nation.id);
     var results = await Promise.allSettled([
-        loadPreviousYearData(nation.id),
         loadExpenditureData(nation.id, nation),
         loadTradeData(nation.id),
         loadAllNationsData(),
         loadTradeAgreements(nation.id),
         loadAidData(nation.id),
         loadTaxConnections(),
-        loadTaxVoterBlocs(nation.id),
         loadTaxAdminFunding(nation),
         loadTaxPendingBills(nation.id),
         loadTaxHistory(nation.id),
@@ -115,7 +110,6 @@ async function loadPreviousTickData(nationId) {
 
     currentTick = res.data.current_tick;
     if (res.data.current_date) {
-        gameYear = parseInt(res.data.current_date.split(', ')[1]) || 0;
     }
     var previousTick = currentTick - 1;
     if (previousTick < 0) return;
@@ -140,41 +134,6 @@ async function loadPreviousTickData(nationId) {
 }
 
 // ==================== PREVIOUS YEAR DATA ====================
-async function loadPreviousYearData(nationId) {
-    var cacheKey = 'prev_year_econ_' + nationId + '_t' + currentTick;
-    var cached = qCache(cacheKey);
-    if (cached) { previousYearData = cached.data; currentTick = cached.tick; return; }
-
-    if (!currentTick) {
-        var res = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        if (!res.data) return;
-        currentTick = res.data.current_tick;
-    }
-
-    var previousYearTick = currentTick - GAME_CONFIG.TICKS_PER_YEAR;
-    if (previousYearTick < 0) return;
-
-    var histRes = await _supabase.from('nations_history')
-        .select('*').eq('nation_id', nationId).eq('tick', previousYearTick).limit(1);
-
-    if (histRes.data && histRes.data.length > 0) {
-        previousYearData = histRes.data[0];
-        qCacheSet(cacheKey, { data: previousYearData, tick: currentTick }, 5 * 60 * 1000);
-        return;
-    }
-
-    var fbRes = await _supabase.from('nations_history')
-        .select('*').eq('nation_id', nationId).lte('tick', previousYearTick)
-        .gte('tick', previousYearTick - 2)
-        .order('tick', { ascending: false }).limit(1);
-
-    if (fbRes.data && fbRes.data.length > 0) {
-        previousYearData = fbRes.data[0];
-        qCacheSet(cacheKey, { data: previousYearData, tick: currentTick }, 5 * 60 * 1000);
-    }
-}
-
-// ==================== EXPENDITURE DATA ====================
 async function loadExpenditureData(nationId, nation) {
     var cacheKey = 'expenditure_data_' + nationId + '_t' + currentTick; // Tick-aware cache key
     var cached = qCache(cacheKey);
@@ -562,11 +521,6 @@ function wireTabEvents(nation) {
         document.querySelectorAll('.ministry-tab').forEach(function(tab) {
             tab.addEventListener('click', function() {
                 selectMinistryCategory(tab.getAttribute('data-category'));
-            });
-        });
-        document.querySelectorAll('.budget-line-clickable').forEach(function(line) {
-            line.addEventListener('click', function() {
-                selectMinistryCategory(line.getAttribute('data-category'));
             });
         });
     }
@@ -1220,9 +1174,6 @@ async function loadTaxConnections() {
     qCacheSet(cacheKey, taxConnections, 5 * 60 * 1000);
 }
 
-async function loadTaxVoterBlocs(nationId) {
-    taxVoterBlocs = [];
-}
 
 async function loadTaxAdminFunding(nation) {
     var cacheKey = 'tax_admin_funding_' + nation.id + '_t' + currentTick;
@@ -1304,27 +1255,6 @@ function getTaxEffects(taxKey) {
     return taxConnections.filter(function(c) { return c.source_stat === taxKey; });
 }
 
-function getTaxHits(taxKey) {
-    var effects = getTaxEffects(taxKey);
-    if (effects.length === 0) return [];
-    var targetStats = new Set(effects.map(function(e) { return e.target_stat; }));
-    var matchedCategories = new Set();
-    for (var cat in ISSUE_CATEGORY_STATS) {
-        var stats = ISSUE_CATEGORY_STATS[cat];
-        for (var i = 0; i < stats.length; i++) {
-            if (targetStats.has(stats[i])) { matchedCategories.add(cat); break; }
-        }
-    }
-    var hitBlocs = [];
-    for (var j = 0; j < taxVoterBlocs.length; j++) {
-        var bloc = taxVoterBlocs[j];
-        var issues = Array.isArray(bloc.priority_issues) ? bloc.priority_issues : [];
-        for (var k = 0; k < issues.length; k++) {
-            if (matchedCategories.has(issues[k])) { hitBlocs.push(bloc.bloc_name); break; }
-        }
-    }
-    return hitBlocs;
-}
 
 function getSliderColorClass(rate, maxRate) {
     var pct = rate / maxRate;
@@ -1468,7 +1398,6 @@ function renderTaxCard(config, nation, budget) {
     var isChanged = currentRate !== origRate;
     var revenue = budget[config.revenueKey] || 0;
     var effects = getTaxEffects(config.key);
-    var hits = getTaxHits(config.key);
 
     // Revenue projection
     var gdp = Number(nation.gdp || 0);
@@ -1591,16 +1520,6 @@ function renderTaxCard(config, nation, budget) {
         h += '<div class="tax-effects-empty">No stat effects configured</div>';
     }
 
-    if (hits.length > 0) {
-        h += '<div class="tax-hits-row">';
-        h += '<span class="tax-hits-label">Hits:</span>';
-        h += '<div class="tax-hits-tags">';
-        for (var j = 0; j < hits.length; j++) {
-            h += '<span class="tax-hit-tag">' + escapeHtml(hits[j]) + '</span>';
-        }
-        h += '</div>';
-        h += '</div>';
-    }
 
     h += '</div>'; // .tax-bottom
 
@@ -3432,10 +3351,13 @@ function tradeTrendHtml(current, previous, inverted) {
     if (Math.abs(pctChange) < 0.1) {
         return '<span class="budget-trend trend-neutral">&mdash; 0.0%</span>';
     }
+    // For inverted stats (lower is better), swap the trend color: increase is bad, decrease is good
+    var upClass = inverted ? 'trend-down' : 'trend-up';
+    var downClass = inverted ? 'trend-up' : 'trend-down';
     if (pctChange > 0) {
-        return '<span class="budget-trend trend-up">&#9650; +' + pctChange.toFixed(1) + '%</span>';
+        return '<span class="budget-trend ' + upClass + '">&#9650; +' + pctChange.toFixed(1) + '%</span>';
     }
-    return '<span class="budget-trend trend-down">&#9660; ' + Math.abs(pctChange).toFixed(1) + '%</span>';
+    return '<span class="budget-trend ' + downClass + '">&#9660; ' + Math.abs(pctChange).toFixed(1) + '%</span>';
 }
 
 // ==================== BUDGET HELPERS ====================
