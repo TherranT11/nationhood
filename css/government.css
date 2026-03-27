@@ -605,6 +605,18 @@ body {
             color: var(--green);
             white-space: nowrap;
         }
+        .ministry-action__btn-cancel {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            color: var(--red);
+            cursor: pointer;
+            padding: 2px 6px;
+            border: 1px solid var(--red);
+            border-radius: 2px;
+            opacity: 0.6;
+            transition: opacity 0.15s;
+        }
+        .ministry-action__btn-cancel:hover { opacity: 1; }
 
         /* Collapsible stat breakdown panel */
         .ministry-stats-toggle {

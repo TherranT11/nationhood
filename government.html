@@ -614,6 +614,41 @@ async function deductDiscretionaryFund(ministryKey, localMData, currentBalance, 
     if (localMData) localMData.discretionary_balance = newBalance;
 }
 
+// ==================== CANCEL ACTIVE MINISTRY ACTION ====================
+async function cancelMinistryAction(actionId, actionName) {
+    if (!confirm('Cancel ' + actionName + '? Remaining effects will stop. No AP refund.')) return;
+
+    const [ministryKey, actId] = actionId.split('-');
+
+    try {
+        // Mark all unprocessed logs for this action as processed
+        const { data: logs } = await _supabase
+            .from('ministry_action_log')
+            .select('id')
+            .eq('nation_id', currentNation.id)
+            .eq('ministry_key', ministryKey)
+            .eq('action_key', actId)
+            .eq('processed', false);
+
+        if (logs?.length) {
+            for (const log of logs) {
+                await _supabase.from('ministry_action_log')
+                    .update({ processed: true })
+                    .eq('id', log.id);
+            }
+        }
+
+        // Clear local active state
+        delete activeMinistryActions[actionId];
+
+        // Refresh the ministry card UI
+        await renderMinistryCard(ministryKey);
+    } catch (e) {
+        alert('Failed to cancel: ' + (e.message || 'Unknown error'));
+    }
+}
+window.cancelMinistryAction = cancelMinistryAction;
+
 // ==================== SHARED MINISTRY COST HELPER ====================
 
 // One-time cost calculation for any ministry action or direction
@@ -3504,9 +3539,16 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
         let btnHtml = '';
         if (isActive) {
             stateClass = ' active';
-            btnHtml = action.isResolution
-                ? '<div class="ministry-action__active-indicator">● NEGOTIATING</div>'
-                : '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+            if (action.isResolution) {
+                btnHtml = '<div class="ministry-action__active-indicator">● NEGOTIATING</div>';
+            } else if (action.cancellable !== false) {
+                btnHtml = '<div style="display:flex;align-items:center;gap:6px;">'
+                    + '<div class="ministry-action__active-indicator">● ACTIVE</div>'
+                    + `<div class="ministry-action__btn-cancel" onclick="event.stopPropagation();cancelMinistryAction('${actionId}','${escapeHtml(action.name)}')" title="Cancel this action early">✕</div>`
+                    + '</div>';
+            } else {
+                btnHtml = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+            }
         } else if (!canUse) {
             stateClass = ' disabled';
             btnHtml = '';
@@ -3538,7 +3580,7 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
             </div>
             <div class="ministry-action__desc">${escapeHtml(action.desc)}${extraInfoHtml}</div>
             <div class="ministry-action__bottom">
-                <div class="ministry-action__tags">${tagsHtml}${budgetTagHtml}</div>
+                <div class="ministry-action__tags">${tagsHtml}${budgetTagHtml}${isActive && (action.id === 'austerityMeasures' || action.id === 'stimulusPackage') ? '<span class="tag tag--negative">−1 AP/TICK</span>' : ''}</div>
                 <div id="${actionId}-btns">${btnHtml}</div>
             </div>
         </div>`;

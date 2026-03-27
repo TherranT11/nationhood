@@ -23843,6 +23843,24 @@ async function processMinistryActions(supabase, nation, currentTick) {
         }
     }
 
+    // Austerity/Stimulus AP drain: -1 AP per tick for the MoF faction while active
+    const AP_DRAIN_ACTIONS = new Set(['austerityMeasures', 'stimulusPackage']);
+    const drainedFactions = new Set();
+    for (const action of actions) {
+        if (AP_DRAIN_ACTIONS.has(action.action_key) && action.ministry_key === 'finance' && !action.processed) {
+            const fid = action.faction_id;
+            if (fid && !drainedFactions.has(fid)) {
+                drainedFactions.add(fid);
+                const apResult = await deductAP(supabase, fid, 1);
+                if (apResult.success) {
+                    console.log(`[processMinistryActions] AP drain: -1 AP from faction ${fid} for active ${action.action_key}`);
+                } else {
+                    console.warn(`[processMinistryActions] AP drain failed for faction ${fid}: ${apResult.error}`);
+                }
+            }
+        }
+    }
+
     // Bulk update minister approval
     for (const mKey of Object.keys(ministerUpdates)) {
         const [ministryKey, factionId] = mKey.split(':');
