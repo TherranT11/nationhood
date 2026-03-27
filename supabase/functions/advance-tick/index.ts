@@ -12154,8 +12154,9 @@ async function registerPartyLeaderAsCandidate(supabase, nationId, factionId, cur
  */
 async function nominateMinister(supabase, nationId, presidentFactionId, ministryKey, nominee) {
     // Validate: must be Presidential system
-    const { data: nation } = await supabase.from('nations').select('name, government_type').eq('id', nationId).single();
+    const { data: nation } = await supabase.from('nations').select('name, government_type, total_seats').eq('id', nationId).single();
     if (!isPresidentialRepublic(nation)) throw new Error('Minister nominations only apply to Presidential systems');
+    const nationTotalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
 
     // Validate: caller must be president's party
     const { data: president } = await supabase.from('presidents')
@@ -12226,7 +12227,8 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
     }[ministryKey] || ministryDisplayName;
 
     const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministerTitle}`;
-    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${GAME_CONFIG.MAJORITY_SEATS} of ${GAME_CONFIG.TOTAL_SEATS} seats) is required for confirmation.`;
+    const majoritySeats = Math.ceil(nationTotalSeats * 0.5) + 1;
+    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${majoritySeats} of ${nationTotalSeats} seats) is required for confirmation.`;
 
     const { data: bill, error: billErr } = await supabase.from('bills').insert({
         nation_id: nationId,
@@ -12318,6 +12320,9 @@ async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
         .select('faction_id').eq('nation_id', bill.nation_id).eq('is_active', true).limit(1).maybeSingle();
     if (!president || president.faction_id !== presidentFactionId) throw new Error('Only the President\'s party can veto bills');
 
+    const { data: vetoNation } = await supabase.from('nations').select('total_seats').eq('id', bill.nation_id).single();
+    const vetoTotalSeats = vetoNation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+
     const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
 
@@ -12329,7 +12334,7 @@ async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
     }).eq('id', bill.id);
 
     // Auto-create veto override bill (goes straight to floor)
-    const overrideSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
+    const overrideSeats = Math.ceil(vetoTotalSeats * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
     const { data: overrideBill } = await supabase.from('bills').insert({
         nation_id: bill.nation_id,
         proposed_by: bill.proposed_by,
@@ -12340,7 +12345,7 @@ async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
         voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS,
         original_bill_id: bill.id,
         is_veto_override: true,
-        preamble: `The President has vetoed "${bill.bill_name}". The legislature may override this veto with a two-thirds supermajority (${overrideSeats} of ${GAME_CONFIG.TOTAL_SEATS} seats).`
+        preamble: `The President has vetoed "${bill.bill_name}". The legislature may override this veto with a two-thirds supermajority (${overrideSeats} of ${vetoTotalSeats} seats).`
     }).select().single();
 
     const floorVotes = tallyFloorVotes(bill);
@@ -12571,14 +12576,15 @@ async function processPresidentialTermEnd(supabase, nation, currentTick) {
         .maybeSingle();
 
     if (!scheduledElection) {
-        // No election scheduled — schedule one for next tick
+        // Schedule with enough lead time for candidate registration
+        const leadTicks = GAME_CONFIG.PRESIDENTIAL_CANDIDATE_LEAD_TICKS + 1;
         await supabase.from('elections').insert({
             nation_id: nation.id,
-            election_tick: currentTick + 1,
+            election_tick: currentTick + leadTicks,
             election_type: 'presidential',
             status: 'scheduled'
         });
-        console.log(`Emergency presidential election scheduled for ${nation.name} at tick ${currentTick + 1} (term expired)`);
+        console.log(`Emergency presidential election scheduled for ${nation.name} at tick ${currentTick + leadTicks} (term expired, ${leadTicks} tick lead time for candidates)`);
     }
 }
 

@@ -86,6 +86,23 @@ export async function registerPartyLeaderAsCandidate(supabase, nationId, faction
     return data;
 }
 
+/** Compute the dominant ideology axis and direction for a faction. */
+async function computeDominantIdeologyAxis(supabase, factionId) {
+    let factionIdeology = await loadFactionIdeology(supabase, factionId);
+    if (factionIdeology?._error) factionIdeology = null;
+    let ideologyAxis = 'tradition_progress';
+    let ideologyDirection = 1;
+    if (factionIdeology) {
+        const axes = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
+        let maxAbs = 0;
+        for (const axis of axes) {
+            const val = Math.abs(factionIdeology[axis] || 0);
+            if (val > maxAbs) { maxAbs = val; ideologyAxis = axis; ideologyDirection = (factionIdeology[axis] || 0) >= 0 ? 1 : -1; }
+        }
+    }
+    return { ideologyAxis, ideologyDirection };
+}
+
 
 // ==================== PRESIDENTIAL MINISTER NOMINATION ====================
 
@@ -102,8 +119,9 @@ export async function registerPartyLeaderAsCandidate(supabase, nationId, faction
  */
 export async function nominateMinister(supabase, nationId, presidentFactionId, ministryKey, nominee) {
     // Validate: must be Presidential system
-    const { data: nation } = await supabase.from('nations').select('name, government_type').eq('id', nationId).single();
+    const { data: nation } = await supabase.from('nations').select('name, government_type, total_seats').eq('id', nationId).single();
     if (!isPresidentialRepublic(nation)) throw new Error('Minister nominations only apply to Presidential systems');
+    const nationTotalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
 
     // Validate: caller must be president's party
     const { data: president } = await supabase.from('presidents')
@@ -174,7 +192,8 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
     }[ministryKey] || ministryDisplayName;
 
     const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministerTitle}`;
-    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${GAME_CONFIG.MAJORITY_SEATS} of ${GAME_CONFIG.TOTAL_SEATS} seats) is required for confirmation.`;
+    const majoritySeats = Math.ceil(nationTotalSeats * 0.5) + 1;
+    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${majoritySeats} of ${nationTotalSeats} seats) is required for confirmation.`;
 
     const { data: bill, error: billErr } = await supabase.from('bills').insert({
         nation_id: nationId,
@@ -266,6 +285,10 @@ export async function vetoPresidentialBill(supabase, billId, presidentFactionId)
         .select('faction_id').eq('nation_id', bill.nation_id).eq('is_active', true).limit(1).maybeSingle();
     if (!president || president.faction_id !== presidentFactionId) throw new Error('Only the President\'s party can veto bills');
 
+    // Fetch nation's actual seat count for override threshold
+    const { data: nationData } = await supabase.from('nations').select('total_seats').eq('id', bill.nation_id).single();
+    const nationTotalSeats = nationData?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+
     const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
 
@@ -277,7 +300,7 @@ export async function vetoPresidentialBill(supabase, billId, presidentFactionId)
     }).eq('id', bill.id);
 
     // Auto-create veto override bill (goes straight to floor)
-    const overrideSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
+    const overrideSeats = Math.ceil(nationTotalSeats * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
     const { data: overrideBill } = await supabase.from('bills').insert({
         nation_id: bill.nation_id,
         proposed_by: bill.proposed_by,
@@ -288,7 +311,7 @@ export async function vetoPresidentialBill(supabase, billId, presidentFactionId)
         voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS,
         original_bill_id: bill.id,
         is_veto_override: true,
-        preamble: `The President has vetoed "${bill.bill_name}". The legislature may override this veto with a two-thirds supermajority (${overrideSeats} of ${GAME_CONFIG.TOTAL_SEATS} seats).`
+        preamble: `The President has vetoed "${bill.bill_name}". The legislature may override this veto with a two-thirds supermajority (${overrideSeats} of ${nationTotalSeats} seats).`
     }).select().single();
 
     const floorVotes = tallyFloorVotes(bill);
@@ -412,23 +435,7 @@ export async function triggerPresidentialCandidateSelection(supabase, nation, cu
 
             if (isIncumbentParty && !isTermLimited) {
                 // === INCUMBENT LOCK-IN: use incumbent president's data ===
-                let factionIdeology = await loadFactionIdeology(supabase, incumbentPresident.faction_id);
-                if (factionIdeology?._error) factionIdeology = null;
-
-                let ideologyAxis = 'tradition_progress';
-                let ideologyDirection = 1;
-                if (factionIdeology) {
-                    const axes = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
-                    let maxAbs = 0;
-                    for (const axis of axes) {
-                        const val = Math.abs(factionIdeology[axis] || 0);
-                        if (val > maxAbs) {
-                            maxAbs = val;
-                            ideologyAxis = axis;
-                            ideologyDirection = (factionIdeology[axis] || 0) >= 0 ? 1 : -1;
-                        }
-                    }
-                }
+                const { ideologyAxis, ideologyDirection } = await computeDominantIdeologyAxis(supabase, incumbentPresident.faction_id);
 
                 await supabase.from('pm_candidates').delete()
                     .eq('nation_id', nation.id)
@@ -519,14 +526,15 @@ export async function processPresidentialTermEnd(supabase, nation, currentTick) 
         .maybeSingle();
 
     if (!scheduledElection) {
-        // No election scheduled — schedule one for next tick
+        // No election scheduled — schedule with enough lead time for candidate registration
+        const leadTicks = GAME_CONFIG.PRESIDENTIAL_CANDIDATE_LEAD_TICKS + 1; // +1 so trigger fires before election
         await supabase.from('elections').insert({
             nation_id: nation.id,
-            election_tick: currentTick + 1,
+            election_tick: currentTick + leadTicks,
             election_type: 'presidential',
             status: 'scheduled'
         });
-        console.log(`Emergency presidential election scheduled for ${nation.name} at tick ${currentTick + 1} (term expired)`);
+        console.log(`Emergency presidential election scheduled for ${nation.name} at tick ${currentTick + leadTicks} (term expired, ${leadTicks} tick lead time for candidates)`);
     }
 }
 
@@ -576,18 +584,7 @@ export async function autoSelectPresidentialCandidates(supabase, nation, current
             if (isIncumbentParty && !isTermLimited) {
                 // Incumbent lock-in: use incumbent president's data, not party leader
                 console.log(`Auto-registering INCUMBENT ${incumbentPresident.first_name} ${incumbentPresident.last_name} as candidate for ${party.faction_name} in ${nation.name}`);
-                let factionIdeology = await loadFactionIdeology(supabase, incumbentPresident.faction_id);
-                if (factionIdeology?._error) factionIdeology = null;
-                let ideologyAxis = 'tradition_progress';
-                let ideologyDirection = 1;
-                if (factionIdeology) {
-                    const axes = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
-                    let maxAbs = 0;
-                    for (const axis of axes) {
-                        const val = Math.abs(factionIdeology[axis] || 0);
-                        if (val > maxAbs) { maxAbs = val; ideologyAxis = axis; ideologyDirection = (factionIdeology[axis] || 0) >= 0 ? 1 : -1; }
-                    }
-                }
+                const { ideologyAxis, ideologyDirection } = await computeDominantIdeologyAxis(supabase, incumbentPresident.faction_id);
                 const { error: delErr } = await supabase.from('pm_candidates').delete()
                     .eq('nation_id', nation.id).eq('faction_id', party.id).eq('candidate_type', 'presidential');
                 if (delErr) console.warn(`[autoSelect] delete error for incumbent party ${party.faction_name}:`, delErr.message);

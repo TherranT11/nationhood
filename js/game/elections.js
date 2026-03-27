@@ -2425,14 +2425,8 @@ export async function processPresidentialElectionResult(supabase, nation, comple
  * Used by processPresidentialElectionResult (auto-inauguration).
  */
 export async function inauguratePresident(supabase, candidate, nationId, factionId, currentTick, outgoingPresident = null, endReason = 'election_loss') {
-    // Deactivate any previous president
-    const { error: deactErr } = await supabase.from('presidents')
-        .update({ is_active: false })
-        .eq('nation_id', nationId)
-        .eq('is_active', true);
-    if (deactErr) {
-        console.error(`[inauguratePresident] Failed to deactivate previous presidents for ${nationId}:`, deactErr.message);
-    }
+    // NOTE: Previous president deactivation is handled by the caller
+    // (processPresidentialElectionResult at line ~2218). Not duplicated here.
 
     // Fetch nation data early for per-nation term length
     const { data: nationForTerm, error: nationTermErr } = await supabase.from('nations').select('presidential_term_ticks, presidential_term_limit').eq('id', nationId).single();
