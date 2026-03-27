@@ -2294,11 +2294,24 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 error = retry.error;
             }
             if (error) throw error;
+            // Update local cache so re-render shows new values immediately
+            const localRow = ministryConfigData.find(r => r.id === instId);
+            if (localRow) {
+                localRow.base_cost_per_capita = updates.base_cost_per_capita;
+                localRow.cost_share = updates.cost_share;
+                localRow.primary_stat = updates.primary_stat;
+                localRow.secondary_stat = updates.secondary_stat;
+                if (updates.scaling_type) localRow.scaling_type = updates.scaling_type;
+            }
+            // Re-render to update cost formulas and ministry totals
+            renderMinistryConfig();
+            // Show success feedback with institution name
+            const instName = localRow ? localRow.institution_name : instId;
             const status = document.getElementById('ministry-config-status');
-            status.textContent = 'Saved ' + instId;
+            status.textContent = '✓ Saved — ' + instName + ' (applies next tick)';
             status.className = 'status success';
             status.classList.remove('hidden');
-            setTimeout(() => status.classList.add('hidden'), 2000);
+            setTimeout(() => status.classList.add('hidden'), 3000);
         } catch (err) {
             alert('Error saving: ' + err.message);
         }
