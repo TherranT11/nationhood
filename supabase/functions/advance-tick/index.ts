@@ -6650,7 +6650,7 @@ async function resolveExpiredVotes(supabase, nationId) {
         .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
-        .lte('voting_ends_tick', currentTick);
+        .or(`voting_ends_tick.lte.${currentTick},voting_ends_tick.is.null`); // Also catch bills with NULL voting_ends_tick (safety net)
 
     console.log(`[resolveExpiredVotes] nation=${nationId} currentTick=${currentTick} query returned ${expiredBills?.length ?? 0} bills (error=${error?.message || 'none'})`);
     if (expiredBills && expiredBills.length > 0) {
