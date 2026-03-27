@@ -229,14 +229,6 @@ html { overflow-y: scroll !important; height: auto !important; }
         .policy-option.opposed.selected { border-color: var(--amber); border-style: solid; }
         .policy-option-name { font-weight: 700; color: var(--text-bright); font-family: var(--font-ui); }
         .policy-option-desc { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; }
-        .policy-option-effects { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 6px; }
-        .policy-effect-tag { font-family: var(--font-mono); font-size: 0.65rem; font-weight: 600; padding: 1px 6px; border-radius: 2px; white-space: nowrap; }
-        .policy-effect-tag--up { color: #5cb85c; background: rgba(92,184,92,0.1); border: 1px solid rgba(92,184,92,0.25); }
-        .policy-effect-tag--down { color: #d9534f; background: rgba(217,83,79,0.1); border: 1px solid rgba(217,83,79,0.25); }
-        .policy-cost-row { display: flex; gap: 12px; margin-top: 6px; font-family: var(--font-mono); font-size: 0.68rem; color: var(--text-muted); }
-        .policy-cost-item { display: flex; align-items: center; gap: 3px; }
-        .policy-cost-label { font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
-        .policy-cost-value { font-weight: 700; color: var(--amber); }
         .modal-footer { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-main); }
         .btn-cancel { padding: 12px 24px; background: var(--bg-card); border: 1px solid var(--border-mid); border-radius: 2px; color: var(--text-secondary); cursor: pointer; font-family: var(--font-mono); }
         .btn-submit { padding: 12px 24px; background: var(--blue); border: none; border-radius: 2px; color: white; font-weight: 700; cursor: pointer; font-family: var(--font-mono); }

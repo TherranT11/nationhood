@@ -484,14 +484,16 @@ const WN_IDEOLOGY_COLORS = {
     'Individualism':'#eab308','Collectivism':'#ec4899'
 };
 
-function wnGetGovClass(govType) {
-    if (govType === 'Autocracy') return 'wn-card__gov--autocracy';
-    if (govType === 'Presidential') return 'wn-card__gov--presidential';
+function wnGetGovClass(nation) {
+    if (nation.government_type === 'Autocracy') return 'wn-card__gov--autocracy';
+    if (nation.government_type === 'Presidential') return 'wn-card__gov--presidential';
+    if (nation.hos_election_method === 'hereditary') return 'wn-card__gov--monarchy';
     return 'wn-card__gov--parliamentary';
 }
-function wnGetGovLabel(govType) {
-    if (govType === 'Autocracy') return 'AUTOCRACY';
-    if (govType === 'Presidential') return 'PRESIDENTIAL';
+function wnGetGovLabel(nation) {
+    if (nation.government_type === 'Autocracy') return 'AUTOCRACY';
+    if (nation.government_type === 'Presidential') return 'PRESIDENTIAL';
+    if (nation.hos_election_method === 'hereditary') return 'CONSTITUTIONAL MONARCHY';
     return 'PARLIAMENTARY';
 }
 
@@ -608,13 +610,35 @@ async function renderWorldNations() {
             else if (hasOurAmb || hasTheirAmb) { embassyClass = 'wn-embassy-tag--closed'; embassyLabel = 'Embassy Closed'; }
 
             // Gov badge
-            const govClass = wnGetGovClass(nation.government_type);
-            const govLabel = wnGetGovLabel(nation.government_type);
+            const govClass = wnGetGovClass(nation);
+            const govLabel = wnGetGovLabel(nation);
             const flagUrl = nation.flag_url || '';
+            const isMonarchy = nation.hos_election_method === 'hereditary';
+            const isPres = nation.government_type === 'Presidential';
+            const isAuto = nation.government_type === 'Autocracy';
 
             // Head of state
             const hosName = ((nation.head_of_state_first_name || '') + ' ' + (nation.head_of_state_last_name || '')).trim();
-            const hosTitle = nation.head_of_state_title || (nation.government_type === 'Autocracy' ? 'Ruler' : nation.government_type === 'Presidential' ? 'President' : 'PM');
+            const hosTitle = nation.head_of_state_title || (isAuto ? 'Ruler' : isPres ? 'President' : isMonarchy ? 'Monarch' : 'PM');
+
+            // Find ruling party for leader badge
+            const rulingParty = nation.ruling_faction_id ? nFactions.find(p => p.id === nation.ruling_faction_id) : null;
+            const rpColor = rulingParty?.party_color || '#666';
+            const rpAbbr = rulingParty?.abbreviation || '';
+            const rpBadge = rpAbbr ? ' <span style="display:inline-block;background:' + rpColor + ';color:#fff;padding:1px 6px;border-radius:2px;font-size:0.6rem;font-weight:700;margin-left:6px;">' + escapeHtml(rpAbbr) + '</span>' : '';
+
+            // For parliamentary/monarchy: find PM from lead coalition party
+            let pmName = '';
+            let pmPartyBadge = '';
+            if (!isPres && !isAuto) {
+                // PM is typically the lead party's leader — we don't have HOG data here, use ruling faction
+                const pmParty = rulingParty || (nFactions.length > 0 ? nFactions[0] : null);
+                if (pmParty) {
+                    const pmC = pmParty.party_color || '#666';
+                    const pmA = pmParty.abbreviation || '';
+                    pmPartyBadge = pmA ? ' <span style="display:inline-block;background:' + pmC + ';color:#fff;padding:1px 6px;border-radius:2px;font-size:0.6rem;font-weight:700;margin-left:6px;">' + escapeHtml(pmA) + '</span>' : '';
+                }
+            }
 
             // Stats
             const pop = nation.population ? formatNumber(nation.population) : '—';
@@ -667,7 +691,10 @@ async function renderWorldNations() {
                 '</div>' +
                 // Body
                 '<div class="wn-card__body">' +
-                    (hosName ? '<div class="wn-stat-row"><span class="wn-stat-row__label">' + escapeHtml(hosTitle) + '</span><span class="wn-stat-row__value">' + escapeHtml(hosName) + '</span></div>' : '') +
+                    // Leader row(s): name + party badge inline
+                    (hosName ? '<div class="wn-stat-row"><span class="wn-stat-row__label">' + escapeHtml(hosTitle) + '</span><span class="wn-stat-row__value">' + escapeHtml(hosName) + rpBadge + '</span></div>' : '') +
+                    // Constitutional monarchy: also show PM row
+                    (isMonarchy ? '<div class="wn-stat-row"><span class="wn-stat-row__label">PM</span><span class="wn-stat-row__value">' + escapeHtml((rulingParty?.faction_name || '—')) + pmPartyBadge + '</span></div>' : '') +
                     '<div class="wn-stat-row"><span class="wn-stat-row__label">Population</span><span class="wn-stat-row__value">' + pop + '</span></div>' +
                     '<div class="wn-stat-row"><span class="wn-stat-row__label">GDP</span><span class="wn-stat-row__value">' + gdp + '</span></div>' +
                     '<div class="wn-stat-row"><span class="wn-stat-row__label">Unemployment</span><span class="wn-stat-row__value">' + unemp + '</span></div>' +

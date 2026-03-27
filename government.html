@@ -1461,7 +1461,7 @@ async function renderGovernmentPage() {
 
                 <div class="section-header">Government Structure</div>
                 <div class="info-block">
-                    <div class="info-row"><span class="info-label">Government Type</span><span class="info-value">${currentNation.government_type || 'Parliamentary Democracy'}</span></div>
+                    <div class="info-row"><span class="info-label">Government Type</span><span class="info-value">${currentNation.hos_election_method === 'hereditary' ? 'Constitutional Monarchy' : currentNation.government_type || 'Parliamentary Democracy'}</span></div>
                     <div class="info-row"><span class="info-label">Legislative Branch</span><span class="info-value">Unicameral (${GAME_CONFIG.TOTAL_SEATS} Seats)</span></div>
                     <div class="info-row"><span class="info-label">Majority Threshold</span><span class="info-value">${GAME_CONFIG.MAJORITY_SEATS} Seats</span></div>
                 </div>

@@ -2921,6 +2921,7 @@ body.light-mode .action-badge {
 .wn-card__gov--parliamentary { background: var(--green-faint); color: var(--green); border: 1px solid var(--green-border); }
 .wn-card__gov--presidential  { background: var(--blue-faint);  color: var(--blue);  border: 1px solid var(--blue-border);  }
 .wn-card__gov--autocracy     { background: var(--red-faint);   color: var(--red);   border: 1px solid var(--red-border);   }
+.wn-card__gov--monarchy      { background: rgba(200,166,78,0.1); color: #c8a64e; border: 1px solid rgba(200,166,78,0.3); }
 
 /* Card body — stats */
 .wn-card__body {
