@@ -28823,7 +28823,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     // 9. Tier 6/7: create crisis
                     if (tier >= 6) {
                         const crisisId = tier === 6 ? '00000000-0000-0000-0000-000000000020' : '00000000-0000-0000-0000-000000000021';
-                        let duration = tier === 6 ? 6 : 6;
+                        let duration = tier === 6 ? 6 : 7; // Tier 7 lasts 7 ticks
 
                         // Leader trait modifiers
                         try {
@@ -28951,24 +28951,30 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         protest_cooldown_until_tick: newTick + 12
                     }).eq('id', p7.faction_id);
                     console.log(`[Protest] Tier 7 demand MET in ${nation.name}: ${demand.label}`);
-                } else if (elapsed >= (p7.crisis_duration || 6)) {
-                    // Demand expired unmet — major penalty to ruling party
+                } else if (elapsed >= (p7.crisis_duration || 7)) {
+                    // Demand expired unmet — penalty to ruling party
                     const rulingFactionId = nation.ruling_faction_id;
                     if (rulingFactionId) {
-                        // -15 party approval to the PM/President's party
+                        // -5 party approval to the PM/President's party
                         try {
                             const { data: standing } = await supabase.from('faction_electoral_standing')
                                 .select('id, party_approval').eq('faction_id', rulingFactionId).eq('nation_id', nation.id).maybeSingle();
                             if (standing) {
-                                const newApproval = Math.max(0, (Number(standing.party_approval) || 25) - 15);
+                                const newApproval = Math.max(0, (Number(standing.party_approval) || 25) - 5);
                                 await supabase.from('faction_electoral_standing').update({ party_approval: newApproval }).eq('id', standing.id);
                                 await supabase.from('party_approval_log').insert({
                                     faction_id: rulingFactionId, nation_id: nation.id,
-                                    amount: -15, source: 'protest:tier7_demand_unmet', tick: newTick
+                                    amount: -5, source: 'protest:tier7_demand_unmet', tick: newTick
                                 });
                             }
                         } catch (_) {}
-                        console.log(`[Protest] Tier 7 demand UNMET in ${nation.name}: -15 approval to ruling party ${rulingFactionId}`);
+                        // -5 government approval
+                        try {
+                            await supabase.rpc('adjust_gov_approval_event', {
+                                p_nation_id: nation.id, p_delta: -5, p_source: 'protest:tier7_demand_unmet'
+                            });
+                        } catch (_) {}
+                        console.log(`[Protest] Tier 7 demand UNMET in ${nation.name}: -5 party approval, -5 gov approval to ruling party ${rulingFactionId}`);
                     }
 
                     // End the crisis
@@ -28987,7 +28993,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         await supabase.from('event_log').insert({
                             nation_id: nation.id, event_name: 'The Big One — Demand Unmet',
                             trigger_key: 'protest_tier7_unmet', category: 'protest',
-                            description_chosen: `The Tier 7 protest demand "${demand.label}" was not met. The ruling party suffers a major approval collapse.`,
+                            description_chosen: `The Tier 7 protest demand "${demand.label}" was not met. The ruling party suffers -5 party approval and -5 government approval.`,
                             fired_at_tick: newTick
                         });
                     } catch (_) {}
