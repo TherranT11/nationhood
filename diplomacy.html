@@ -14193,6 +14193,36 @@ async function renderIPOView() {
         }
     } catch (e) { /* non-fatal */ }
 
+    // ── Fetch pending vote counts per org (open votes where player hasn't voted) ──
+    const pendingVoteCounts = {};
+    let totalPendingVotes = 0;
+    if (orgIds.length > 0) {
+        try {
+            const { data: openVotes } = await _supabase
+                .from('ipo_votes')
+                .select('id, org_id')
+                .in('org_id', orgIds)
+                .eq('status', 'open');
+            if (openVotes && openVotes.length > 0) {
+                const voteIds = openVotes.map(v => v.id);
+                const { data: myBallots } = await _supabase
+                    .from('ipo_ballots')
+                    .select('vote_id')
+                    .in('vote_id', voteIds)
+                    .eq('faction_id', currentFaction.id);
+                const votedSet = new Set((myBallots || []).map(b => b.vote_id));
+                // Only count votes where player is a member (not observer)
+                const memberOrgIds = new Set(ipoMemberships.filter(m => m.role === 'member').map(m => m.org.id));
+                for (const v of openVotes) {
+                    if (!votedSet.has(v.id) && memberOrgIds.has(v.org_id)) {
+                        pendingVoteCounts[v.org_id] = (pendingVoteCounts[v.org_id] || 0) + 1;
+                        totalPendingVotes++;
+                    }
+                }
+            }
+        } catch (e) { /* non-fatal */ }
+    }
+
     // ── Build sidebar ──
     const sidebarItems = ipoMemberships.map(m => {
         const org = m.org;
@@ -14200,14 +14230,19 @@ async function renderIPOView() {
         const count = memberCounts[org.id] || 1;
         const roleLabel = org.president_id === currentFaction.id ? 'President'
             : m.role === 'observer' ? 'Observer' : 'Member';
+        const pvCount = pendingVoteCounts[org.id] || 0;
+        const pvBadge = pvCount > 0
+            ? `<span class="badge badge--amber" style="margin-left:auto;flex-shrink:0;font-size:9px;min-width:16px;text-align:center;padding:1px 5px;">${pvCount}</span>`
+            : '';
         return `
             <div class="ipo-sidebar-item ${isActive ? 'is-active' : ''}"
                  onclick="selectIPOOrg('${org.id}')">
                 ${renderIPOLogo(org, 'ipo-sidebar-logo', isActive ? 'is-active' : '')}
-                <div class="ipo-sidebar-info">
+                <div class="ipo-sidebar-info" style="flex:1;min-width:0;">
                     <span class="ipo-sidebar-name ${isActive ? 'is-active' : ''}">${escapeHtml(org.name)}</span>
                     <span class="ipo-sidebar-meta">${count} member${count !== 1 ? 's' : ''} · ${roleLabel}</span>
                 </div>
+                ${pvBadge}
             </div>`;
     }).join('');
 
@@ -14294,8 +14329,8 @@ async function renderIPOView() {
 
     ipoLoaded = true;
 
-    // Update International Orgs sub-tab badge with pending invite count
-    updateIPOInviteTabBadge(pendingInvites.length);
+    // Update International Orgs sub-tab badge with pending invite count + pending vote count
+    updateIPOInviteTabBadge(pendingInvites.length + totalPendingVotes);
 
     // Load chat, votes, and actions after DOM is set (only if an org is selected)
     if (ipoSelectedOrgId && ipoMemberships.length > 0) {
