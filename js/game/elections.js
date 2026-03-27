@@ -2548,7 +2548,7 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
 
     // 2. Reset executive overreach counter — new president starts with clean record
     const { error: overreachErr } = await supabase.from('nations')
-        .update({ overreach_count: 0 })
+        .update({ overreach_count: 0, overreach_reset_tick: currentTick })
         .eq('id', nationId);
     if (overreachErr) {
         console.error(`[inauguratePresident] Failed to reset overreach_count:`, overreachErr.message);

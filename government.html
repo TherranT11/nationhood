@@ -7034,7 +7034,7 @@ async function openEOModal() {
         },
         {
             type: 'price_controls', name: 'Price Controls',
-            desc: `Freeze fuel prices or food security for ${EO_CONFIG.PRICE_CONTROLS_DURATION} ticks.`,
+            desc: `Freeze fuel prices for ${EO_CONFIG.PRICE_CONTROLS_DURATION} ticks.`,
             info: eoAvailability.price_controls
         },
         {
@@ -7201,7 +7201,7 @@ function renderEmergencyConfirm(panel) {
             <br>• -4 approval per tick after first tick
             <br>• Opposition gains +6 momentum
             <br>• After ${EO_CONFIG.EMERGENCY_UNREST_THRESHOLD} ticks: civil unrest rises +1/tick
-            <br>• Ending costs +8 civil unrest + ${EO_CONFIG.EMERGENCY_COOLDOWN}-tick cooldown
+            <br>• Ending starts a ${EO_CONFIG.EMERGENCY_COOLDOWN}-tick cooldown
             <br>• Lasts until manually ended, president removed, or impeached
         </div>
         <div class="eo-confirm-desc">
@@ -7466,7 +7466,7 @@ window.openEOModal = openEOModal;
 window.selectEOType = selectEOType;
 
 async function handleEndEmergency() {
-    if (!confirm('End the national emergency? This will cause +8 civil unrest and start an 8-tick cooldown.')) return;
+    if (!confirm('End the national emergency? This will start an 8-tick cooldown before you can declare another.')) return;
     try {
         const result = await endNationalEmergency(_supabase, currentNation.id, currentFaction.id);
         if (!result.success) {

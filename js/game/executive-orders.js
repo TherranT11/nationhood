@@ -227,7 +227,7 @@ export function getOverreachStatus(overreachCount) {
             label: 'AUTHORITARIAN DRIFT',
             color: 'var(--red)',
             className: 'drift',
-            fillPct: Math.min(100, (overreachCount / 5) * 100)
+            fillPct: Math.min(100, (overreachCount / EO_CONFIG.OVERREACH_WINDOW) * 100)
         };
     }
     if (overreachCount >= 2) {
@@ -235,14 +235,14 @@ export function getOverreachStatus(overreachCount) {
             label: 'GOVERNING BY DECREE',
             color: 'var(--amber)',
             className: 'decree',
-            fillPct: (overreachCount / 5) * 100
+            fillPct: (overreachCount / EO_CONFIG.OVERREACH_WINDOW) * 100
         };
     }
     return {
         label: 'NORMAL',
         color: 'var(--green)',
         className: 'normal',
-        fillPct: (overreachCount / 5) * 100
+        fillPct: (overreachCount / EO_CONFIG.OVERREACH_WINDOW) * 100
     };
 }
 

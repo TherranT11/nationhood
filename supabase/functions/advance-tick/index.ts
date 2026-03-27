@@ -9811,12 +9811,12 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
             // Query executive orders issued during this administration
             const { data: eoRows } = await supabase
                 .from('executive_orders')
-                .select('id, order_type, issued_at_tick')
+                .select('id, order_type, issued_tick')
                 .eq('nation_id', nationId)
-                .gte('issued_at_tick', currentAdmin.started_at_tick)
-                .lte('issued_at_tick', currentTick);
+                .gte('issued_tick', currentAdmin.started_at_tick)
+                .lte('issued_tick', currentTick);
             const executiveOrders = (eoRows || []).map(eo => ({
-                id: eo.id, order_type: eo.order_type, tick: eo.issued_at_tick, date: _gameDate(eo.issued_at_tick)
+                id: eo.id, order_type: eo.order_type, tick: eo.issued_tick, date: _gameDate(eo.issued_tick)
             }));
 
             // Detect snap elections and minority governments from event_log
@@ -10085,9 +10085,9 @@ async function refreshCurrentAdministrationEvents(supabase, nationId, currentTic
                 .eq('nation_id', nationId).in('bill_type', ['impeachment_motion', 'impeachment_conviction'])
                 .gte('passed_tick', start).lte('passed_tick', currentTick),
             // Executive orders
-            supabase.from('executive_orders').select('id, order_type, issued_at_tick')
+            supabase.from('executive_orders').select('id, order_type, issued_tick')
                 .eq('nation_id', nationId)
-                .gte('issued_at_tick', start).lte('issued_at_tick', currentTick),
+                .gte('issued_tick', start).lte('issued_tick', currentTick),
             // Elections survived
             supabase.from('elections').select('id, election_tick')
                 .eq('nation_id', nationId).eq('status', 'completed')
@@ -10141,7 +10141,7 @@ async function refreshCurrentAdministrationEvents(supabase, nationId, currentTic
         }));
         const executiveOrders = (eoRows || []).map(eo => ({
             id: eo.id, order_type: eo.order_type,
-            tick: eo.issued_at_tick, date: _gameDate(eo.issued_at_tick)
+            tick: eo.issued_tick, date: _gameDate(eo.issued_tick)
         }));
         const tradeAgreements = (tradeAgreementsDuring || []).map(ta => ({
             agreement_id: ta.id, agreement_type: ta.agreement_type, agreement_name: ta.agreement_name,
@@ -12166,7 +12166,7 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
 
     // 2. Reset executive overreach counter — new president starts with clean record
     const { error: overreachErr } = await supabase.from('nations')
-        .update({ overreach_count: 0 })
+        .update({ overreach_count: 0, overreach_reset_tick: currentTick })
         .eq('id', nationId);
     if (overreachErr) {
         console.error(`[inauguratePresident] Failed to reset overreach_count:`, overreachErr.message);
@@ -12636,6 +12636,80 @@ async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
  * Auto-sign bills that have been on the president's desk past the deadline.
  * Called during advanceTick().
  */
+// ==================== EXECUTIVE ORDERS TICK PROCESSING ====================
+// Expires price controls, applies national emergency ongoing effects.
+
+async function processExecutiveOrders(supabase: any, nation: any, currentTick: number) {
+    // 1. Expire price controls where expires_tick <= currentTick
+    const { data: expiredPC, error: pcErr } = await supabase
+        .from('executive_orders')
+        .update({ is_active: false })
+        .eq('nation_id', nation.id)
+        .eq('order_type', 'price_controls')
+        .eq('is_active', true)
+        .lte('expires_tick', currentTick)
+        .select('id');
+    if (pcErr) console.error(`[EO] Price controls expiry error for ${nation.name}:`, pcErr.message);
+    else if (expiredPC && expiredPC.length > 0) {
+        console.log(`[EO] Expired ${expiredPC.length} price control(s) in ${nation.name}`);
+    }
+
+    // 2. National emergency ongoing effects
+    const { data: emergency } = await supabase
+        .from('executive_orders')
+        .select('id, issued_tick')
+        .eq('nation_id', nation.id)
+        .eq('order_type', 'national_emergency')
+        .eq('is_active', true)
+        .maybeSingle();
+
+    if (emergency) {
+        const ticksActive = currentTick - (emergency.issued_tick || currentTick);
+        const updates: Record<string, number> = {};
+
+        // Stability -1/tick
+        updates.stability = Math.max(0, Math.round(((nation.stability ?? 50) - 1) * 10) / 10);
+
+        // Freedom index -0.5/tick
+        updates.freedom_index = Math.max(0, Math.round(((nation.freedom_index ?? 50) - 0.5) * 10) / 10);
+
+        // Judicial independence -0.5/tick
+        updates.judicial_independence = Math.max(0, Math.round(((nation.judicial_independence ?? 50) - 0.5) * 10) / 10);
+
+        // Civil unrest +1/tick after 18 ticks
+        if (ticksActive >= 18) {
+            updates.civil_unrest = Math.min(100, Math.round(((nation.civil_unrest ?? 0) + 1) * 10) / 10);
+        }
+
+        const { error: statErr } = await supabase.from('nations').update(updates).eq('id', nation.id);
+        if (statErr) console.error(`[EO] Emergency stat update error for ${nation.name}:`, statErr.message);
+
+        // -4 government approval per tick after first tick
+        if (ticksActive > 1) {
+            try {
+                await supabase.rpc('adjust_gov_approval_event', {
+                    p_nation_id: nation.id, p_delta: -4, p_source: 'executive_order:national_emergency'
+                });
+            } catch (_) {}
+        }
+
+        // +1 AP to the ruling faction (presidential faction) per tick
+        if (nation.ruling_faction_id) {
+            const { data: rf } = await supabase.from('factions')
+                .select('id, action_points').eq('id', nation.ruling_faction_id).single();
+            if (rf) {
+                await supabase.from('factions').update({
+                    action_points: (rf.action_points || 0) + 1
+                }).eq('id', rf.id);
+            }
+        }
+
+        if (ticksActive % 6 === 0) { // Log periodically, not every tick
+            console.log(`[EO] Emergency active in ${nation.name}: ${ticksActive} ticks, stability=${updates.stability}, freedom=${updates.freedom_index}`);
+        }
+    }
+}
+
 async function processPresidentDesk(supabase, nation, currentTick) {
     console.log(`[processPresidentDesk] nation=${nation.name} gov=${nation.government_type} isPres=${isPresidentialRepublic(nation)} tick=${currentTick}`);
     if (!isPresidentialRepublic(nation)) return [];
@@ -29265,6 +29339,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (protestErr) {
             console.error(`[advanceTick] Protest resolution failed for ${nation.name} (non-fatal):`, protestErr);
+        }
+
+        // ── Executive Orders: expire price controls, apply emergency effects ──
+        try {
+            await processExecutiveOrders(supabase, nation, newTick);
+        } catch (eoErr) {
+            console.error(`[advanceTick] Executive orders processing failed for ${nation.name} (non-fatal):`, eoErr);
         }
 
         // Crises (persistent negative events that apply effects every tick)
