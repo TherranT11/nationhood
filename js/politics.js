@@ -4,10 +4,11 @@ import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate } from './utils.js';
 
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, switchPartyEndorsement, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, suspendIdeologyAction, continueIdeologyAction, cancelIdeologyAction, executeIdeologicalPivot, PIVOT_CONFIG } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, RALLY_CONFIG, executeRally, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, switchPartyEndorsement, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, suspendIdeologyAction, continueIdeologyAction, cancelIdeologyAction, executeIdeologicalPivot, PIVOT_CONFIG } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { statDirectionSign } from './game/stats.js';
+import { calculateIdeologyZones } from './game/electorate.js';
 import { getElectabilityTier } from './game/party-leadership.js';
 import { AUTOCRACY_ACTIONS, dispatchAutocracyAction, getEscalatingCost, checkCooldown } from './game/autocracy-actions.js';
 
@@ -161,7 +162,7 @@ initPage('politics', async (state) => {
         .select('gov_approval')
         .eq('nation_id', nation.id)
         .eq('tick', currentTick - 1)
-        .single();
+        .maybeSingle();
     const prevApproval = prevSnap?.gov_approval ?? null;
 
     // Fetch active president (presidential systems)
@@ -1420,46 +1421,6 @@ function renderNationalMoodBox(nation, activeCrises, currentTick, issueStateMap)
         </div>`;
 }
 
-function computeCategoryContribution(nation, statKeys) {
-    let total = 0, count = 0;
-    for (const key of statKeys) {
-        const val = Number(nation[key] ?? 50);
-        const dir = statDirectionSign(key);
-        if (dir === 0) continue;
-        const goodness = dir === 1 ? val : (100 - val);
-        total += Math.max(0, Math.min(100, goodness));
-        count++;
-    }
-    if (count === 0) return { avgGoodness: 50, score: 0 };
-    const avgGoodness = total / count;
-    const score = Math.round(((avgGoodness - 50) / 5) * 10) / 10;
-    return { avgGoodness, score };
-}
-
-function formatStatValue(key, val) {
-    if (key === 'gdp') {
-        if (val >= 1e9) return '$' + Math.round(val / 1e9) + 'B';
-        if (val >= 1e6) return '$' + Math.round(val / 1e6) + 'M';
-        return '$' + Math.round(val);
-    }
-    return Math.round(val * 10) / 10;
-}
-
-function getRepresentativeStat(nation, statKeys) {
-    // Return the stat with the worst individual value
-    let worst = null, worstBadness = -1;
-    for (const key of statKeys) {
-        const val = Number(nation[key] ?? 50);
-        const dir = statDirectionSign(key);
-        if (dir === 0) continue;
-        const badness = dir === 1 ? (100 - val) : val;
-        if (badness > worstBadness) {
-            worstBadness = badness;
-            worst = { key, val: formatStatValue(key, val) };
-        }
-    }
-    return worst;
-}
 
 
 function renderGovCard(nation, coalition, allParties, currentTick, prevApproval, president, administration) {
@@ -2182,7 +2143,8 @@ function initEditIdentityBox(f) {
                 custom_logo_url: useCustomImage ? customLogoUrl : null,
                 party_description: descArea ? descArea.value.slice(0, MAX_DESC) : ''
             };
-            await _supabase.from('factions').update(updateData).eq('id', f.id);
+            const { error: saveErr } = await _supabase.from('factions').update(updateData).eq('id', f.id);
+            if (saveErr) { _showToast('Save failed: ' + saveErr.message); return; }
             saveBtn.textContent = '✓ Saved';
             saveBtn.classList.add('saved');
             saveBtn.disabled = false;
@@ -2679,37 +2641,6 @@ function initBlocAlignment() {
     });
 }
 
-function renderUpcomingElectionsBox(scheduledElections, currentTick) {
-    const elections = scheduledElections || [];
-    let bodyHtml;
-    if (elections.length === 0) {
-        bodyHtml = '<div class="pol-el-empty">No elections currently scheduled.</div>';
-    } else {
-        bodyHtml = elections.map(e => {
-            const date = tickToDate(e.election_tick);
-            const ticksAway = e.election_tick - currentTick;
-            const typeClass = e.election_type === 'presidential' ? 'pres' : 'parl';
-            const typeLabel = e.election_type === 'presidential' ? 'General Election' : 'Parliamentary';
-            return `<div class="pol-upcoming-row">
-                <span class="pol-upcoming-type ${typeClass}">${typeLabel}</span>
-                <div class="pol-upcoming-info">
-                    <span class="pol-upcoming-date">${date}</span>
-                    <span class="pol-upcoming-countdown">in ${ticksAway} tick${ticksAway !== 1 ? 's' : ''}</span>
-                </div>
-            </div>`;
-        }).join('');
-    }
-
-    return `<div class="pol-upcoming-box">
-        <div class="pol-box-header">
-            <div class="pol-box-dot pol-box-dot--blue"></div>
-            <span class="pol-box-label">Upcoming Elections</span>
-        </div>
-        <div class="pol-box-body">
-        ${bodyHtml}
-        </div>
-    </div>`;
-}
 
 
 function escapeHtml(str) {
@@ -2729,7 +2660,7 @@ let _caPromiseType = null; // 'stat' | 'crisis'
 let _caStatKey = null;     // selected stat key for promise
 let _caCrisisId = null;   // selected crisis id for promise
 let _caResult = null;     // last action result for display
-let _caAttackEvidence = null; // cached attack evidence
+
 let _caAttackVectors = null;  // cached built vectors
 
 // Protest action state
@@ -2750,34 +2681,51 @@ let _currentNation = null, _currentFaction = null, _currentShard = null, _curren
 let _caIsGoverning = false;
 let _caTopIssueStats = null; // Stats from top 7 issues by salience (for Make Promise filtering)
 
+// Campaign actions organized by category
+const CA_ACTION_CATEGORIES = [
+    { key: 'approval', label: 'APPROVAL', color: '#4ade80' },
+    { key: 'alignment', label: 'ALIGNMENT', color: '#a78bfa' },
+    { key: 'appeal', label: 'APPEAL', color: '#38bdf8' },
+    { key: 'visibility', label: 'VISIBILITY', color: '#f97316' },
+    { key: 'tools', label: 'TOOLS', color: '#6b7280' },
+];
+
 const CA_ACTIONS = [
-    { id: 'rally', name: 'Hold a Rally', ap: RALLY_CONFIG.AP_COST, color: '#f97316', icon: '★',
-      affects: 'Visibility',
-      desc: 'Rally your supporters in a public show of strength. Outcomes range from rousing success to embarrassing gaffe — results are random and generate headlines your rivals can see.' },
+    // APPROVAL
     { id: 'attack', name: 'Campaign Attack', ap: ATTACK_CONFIG.AP_COST, color: '#ef4444', icon: '✦',
-      affects: 'Approval',
+      category: 'approval', affects: 'Approval',
       desc: 'Target a rival party\'s record or leadership. More effective when backed by evidence. Risky — a poorly aimed attack can damage your own credibility.' },
     { id: 'promise', name: 'Make a Promise', ap: MAKE_PROMISE_CONFIG.AP_COST, color: '#a78bfa', icon: '◆',
-      affects: 'Approval',
-      desc: 'Publicly commit to improving a national stat or resolving a crisis. Gives an immediate approval boost with affected voter blocs, but you\'ll face mounting penalties each tick if you fail to deliver.' },
-    { id: 'take_stance', name: 'Take a Stance', ap: STANCE_CONFIG.AP_COST, color: '#38bdf8', icon: '⚑',
-      affects: 'Appeal',
-      desc: 'Declare your party\'s official position on a national issue. Builds platform appeal with aligned voters. Stances lose strength each tick — reinforce them before they fade, or let them expire.' },
-    { id: 'poll_now', name: 'Poll Now', ap: POLL_CONFIG.AP_COST, color: '#22d3ee', icon: '📊',
-      affects: 'Informational',
-      desc: 'Commission a snapshot of your current electoral standing. See your vote share, pillar scores, and limiting factors frozen at this moment — useful for tracking the impact of your actions.' },
+      category: 'approval', affects: 'Approval',
+      desc: 'Publicly commit to improving a national stat or resolving a crisis. Gives an immediate approval boost, but you\'ll face penalties if you fail to deliver after entering government.' },
+    // ALIGNMENT
     { id: 'fund_think_tank', name: 'Fund Think Tank', ap: IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST, color: '#14b8a6', icon: '🏛',
-      affects: 'Ideology',
-      desc: 'Fund an ideological think tank to gradually shift the electorate\'s beliefs on a chosen axis. Expensive long-term investment: 8 AP upfront + 1 AP/tick for 50 ticks, but reshapes the political landscape.' },
-    { id: 'media_campaign', name: 'Media Campaign', ap: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.AP_COST, color: '#8b5cf6', icon: '📡',
-      affects: 'Ideology',
-      desc: 'Launch a media blitz to polarize or consolidate public opinion on a chosen axis. Shifts how spread out voters are ideologically, then boosts your party\'s visibility.' },
+      category: 'alignment', affects: 'Ideology',
+      desc: 'Fund an ideological think tank to gradually shift the electorate\'s beliefs on a chosen axis. Expensive long-term investment: 8 AP upfront + 1 AP/tick for 50 ticks.' },
     { id: 'grassroots_movement', name: 'Grassroots Movement', ap: IDEO_SHIFT_CONFIG.GRASSROOTS.AP_COST, color: '#10b981', icon: '🌱',
-      affects: 'Ideology',
-      desc: 'Build a slow-burning grassroots campaign to shift public ideology over time. Cheap to start but runs for 100 ticks. Gradually drifts opinion and builds party visibility.' },
+      category: 'alignment', affects: 'Ideology',
+      desc: 'Build a slow-burning grassroots campaign to shift public ideology over time. Cheap to start but runs for 100 ticks. Gradually drifts opinion and builds visibility.' },
     { id: 'pivot', name: 'Ideological Pivot', ap: 1, color: '#f59e0b', icon: '⟳',
-      affects: 'Alignment',
-      desc: 'Shift your party\'s position on a chosen ideological axis. Costs escalate with each pivot (+1 AP per use, resets after 20 ticks). Reversing your current lean costs extra AP and credibility. Holding steady for 20+ ticks earns a conviction bonus.' },
+      category: 'alignment', affects: 'Alignment',
+      desc: 'Shift your party\'s position on a chosen ideological axis. Costs escalate with each pivot (+1 AP per use, resets after 20 ticks). Reversing your current lean costs extra AP and credibility.' },
+    // APPEAL
+    { id: 'take_stance', name: 'Take a Stance', ap: STANCE_CONFIG.AP_COST, color: '#38bdf8', icon: '⚑',
+      category: 'appeal', affects: 'Appeal',
+      desc: 'Declare your party\'s official position on a national issue. Builds platform appeal with aligned voters. Stances lose strength each tick — reinforce them before they fade.' },
+    { id: 'outreach', name: 'Community Outreach', ap: 3, color: '#60a5fa', icon: '🤝',
+      category: 'appeal', affects: 'Appeal',
+      desc: 'Engage directly with communities. +3 platform appeal. Cost starts at 3 AP and increases by 1 each time you use it. Decays back down by 1 each tick you don\'t use it.' },
+    // VISIBILITY
+    { id: 'rally', name: 'Hold a Rally', ap: RALLY_CONFIG.AP_COST, color: '#f97316', icon: '★',
+      category: 'visibility', affects: 'Visibility',
+      desc: 'Rally your supporters in a public show of strength. Outcomes range from rousing success to embarrassing gaffe — results are random and generate headlines.' },
+    { id: 'press_conference', name: 'Press Conference', ap: 2, color: '#fbbf24', icon: '🎤',
+      category: 'visibility', affects: 'Visibility',
+      desc: 'Hold a press conference to make a public statement. Guaranteed small visibility boost (1d3 + 1). Safe and reliable compared to the high-variance rally.' },
+    // TOOLS
+    { id: 'poll_now', name: 'Poll Now', ap: 1, color: '#22d3ee', icon: '📊',
+      category: 'tools', affects: 'Informational',
+      desc: 'Commission a poll to update the Current Electoral Standing. 1 AP = ±5% margin, 3 AP = ±3% margin.' },
 ];
 
 // State for new electorate actions
@@ -2787,6 +2735,9 @@ let _caActiveActions = [];  // Active ideology_shift_actions rows
 let _caTargetAxis = null;
 let _caTargetDirection = null;
 let _caPivotIdeo = null; // cached faction ideology for pivot cost calculation
+let _caPollTier = 1; // poll investment: 1 AP (±5%) or 3 AP (±3%)
+let _caOutreachEscalation = 0; // outreach cost escalation: +1 per use, -1 per tick of non-use
+window._selectPollTier = function(tier) { _caPollTier = tier; const rerender = document.getElementById('ca-config-panel'); if (rerender) { rerender.innerHTML = renderPollNowConfig(); } };
 let _caTargetDemographic = null;
 let _caTargetBand = null;
 // State for Take Stance action
@@ -2799,7 +2750,7 @@ let _caStanceIssueStates = null; // cached issue states for stance config
 function caReset() {
     _caRival = null; _caVector = null;
     _caPromiseType = null; _caStatKey = null; _caCrisisId = null;
-    _caAttackEvidence = null; _caAttackVectors = null;
+    _caAttackVectors = null;
     _protestTab = 'minister'; _protestTarget = null;
     _protestCachedMinisters = null; _protestCachedCrises = null; _protestCachedStats = null;
     _protestLoading = false;
@@ -2820,10 +2771,12 @@ function caIsReady() {
     if (_caSelected === 'protest') return !!_protestTarget;
     if (_caSelected === 'take_stance') return !!_caStanceIssue && !!_caStanceAxis && !!_caStanceSide && !!_caStanceIntensity;
     if (_caSelected === 'poll_now') return true;
+    if (_caSelected === 'press_conference') return true;
+    if (_caSelected === 'outreach') return true;
     if (_caSelected === 'fund_think_tank') return !!_caTargetAxis && !!_caTargetDirection;
     if (_caSelected === 'media_campaign') return !!_caTargetAxis && !!_caTargetDirection;
     if (_caSelected === 'grassroots_movement') return !!_caTargetAxis && !!_caTargetDirection;
-    if (_caSelected === 'pivot') return !!_caTargetAxis && !!_caTargetDirection;
+    if (_caSelected === 'pivot') return !!_caTargetAxis && !!_caTargetDirection && !_caCooldowns['pivot'];
     return false;
 }
 
@@ -2850,6 +2803,8 @@ function caGetCost() {
         }
         return cost;
     }
+    if (_caSelected === 'poll_now') return _caPollTier; // 1 or 3 AP based on tier
+    if (_caSelected === 'outreach') return 3 + (_caOutreachEscalation || 0); // Base 3 + escalation
     const act = CA_ACTIONS.find(a => a.id === _caSelected);
     if (!act) return 0;
     // Campaign Attack cost scales with current polarization
@@ -3031,19 +2986,30 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
     }
     _caActiveActions = activeShiftActions || [];
 
+    // Compute outreach escalation: +1 per use, decays -1 per tick of non-use
+    // Count outreach actions, then subtract ticks since last outreach
+    const outreachActions = (recentActions || []).filter(a => a.action_type === 'outreach');
+    if (outreachActions.length > 0) {
+        const lastOutreachTick = Math.max(...outreachActions.map(a => a.tick_performed));
+        const ticksSinceLastOutreach = tick - lastOutreachTick;
+        _caOutreachEscalation = Math.max(0, outreachActions.length - ticksSinceLastOutreach);
+    } else {
+        _caOutreachEscalation = 0;
+    }
+
     renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost);
 }
 
 function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost) {
     const allActions = [...CA_ACTIONS];
 
-    // Add protest action for opposition only
+    // Add protest action for opposition only (under visibility category)
     if (!_caIsGoverning) {
         allActions.push({
             id: 'protest', name: 'Organise a Protest', ap: protestApCost || 2,
             color: '#d9534f', icon: '!',
-            affects: 'Approval',
-            desc: 'Mobilize citizens against the government. Turnout is probabilistic — a strong showing forces a crisis, but a fizzle hands the ruling party a free headline. Choose your moment carefully.',
+            category: 'visibility', affects: 'Visibility',
+            desc: 'Mobilize citizens against the government. Turnout is probabilistic — a strong showing forces a crisis, but a fizzle hands the ruling party a free headline.',
         });
     }
 
@@ -3083,7 +3049,18 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
         </div>`;
     }
 
+    // Render actions grouped by category
+    let lastCategory = null;
     for (const act of allActions) {
+        // Category header
+        if (act.category && act.category !== lastCategory) {
+            const catDef = CA_ACTION_CATEGORIES.find(c => c.key === act.category);
+            if (catDef) {
+                listHtml += `<div style="font-family:var(--dfont-mono);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:${catDef.color};padding:8px 6px 2px;${lastCategory ? 'border-top:1px solid var(--dborder-0);margin-top:4px;' : ''}">${catDef.label}</div>`;
+            }
+            lastCategory = act.category;
+        }
+
         const isSel = _caSelected === act.id;
         const isProtest = act.id === 'protest';
 
@@ -3093,7 +3070,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             continue;
         }
 
-        const displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.ap;
+        const displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'outreach' ? (3 + (_caOutreachEscalation || 0)) : act.ap;
         // Map CA_ACTIONS id → campaign_actions action_type
         const dbActionType = act.id === 'promise' ? 'make_promise' : act.id;
         const cdRemaining = _caCooldowns[dbActionType] || 0;
@@ -3250,7 +3227,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
                     if (result.newAp != null) f.action_points = result.newAp;
                     const freshAp = await refreshAP(f.id);
                     if (freshAp !== undefined) f.action_points = freshAp;
-                    _showToast(result.message || 'Done.');
+                    _showToast(result.message || 'Done.', false);
                     await renderDemocracyActions(n, f, _currentShard, _currentAllParties);
                 } else {
                     _showToast(result?.message || 'Action failed.');
@@ -3386,6 +3363,8 @@ function renderActionConfig(sel, otherParties, factionIdeo, nation, ap, tick) {
     if (sel.id === 'media_campaign') return renderMediaCampaignConfig();
     if (sel.id === 'grassroots_movement') return renderGrassrootsConfig();
     if (sel.id === 'pivot') return renderPivotConfig(nation);
+    if (sel.id === 'press_conference') return `<div class="ca-info-box">Hold a press conference to make a public statement. Result depends on your position and approval.<br><br><strong>Base roll:</strong> -2 to +2 Visibility<br><strong>Opposition bonus:</strong> +1<br><strong>Government bonus:</strong> +2 (if gov approval ≥ 40)</div>`;
+    if (sel.id === 'outreach') return `<div class="ca-info-box">Engage directly with communities through town halls, door-knocking, and local events.<br><br><strong>Effect:</strong> +3 Platform Appeal</div>`;
     return '';
 }
 
@@ -3472,7 +3451,18 @@ function renderTakeStanceConfig(nation) {
 // ── POLL NOW CONFIG ──
 
 function renderPollNowConfig() {
-    return `<div class="ca-info-box">Take a snapshot of your current electorate standing. Your polled pillars, vote share, and limiters will be frozen so you can compare before/after future actions.</div>
+    return `<div class="ca-info-box">Commission a poll to update the Current Electoral Standing table. Higher investment produces more accurate results.</div>
+    <div style="margin-top:8px;">
+        <label style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-3);text-transform:uppercase;display:block;margin-bottom:4px;">Investment Level</label>
+        <div style="display:flex;gap:6px;">
+            <button class="ca-poll-tier-btn${_caPollTier === 1 ? ' selected' : ''}" onclick="window._selectPollTier(1)" style="flex:1;padding:6px;background:${_caPollTier === 1 ? 'var(--dbg-hover)' : 'var(--dbg-3)'};border:1px solid ${_caPollTier === 1 ? 'var(--dtext-1)' : 'var(--dborder-0)'};border-radius:2px;color:var(--dtext-0);font-family:var(--dfont-mono);font-size:10px;cursor:pointer;text-align:center;">
+                <strong>1 AP</strong><br><span style="color:var(--damber)">±5%</span>
+            </button>
+            <button class="ca-poll-tier-btn${_caPollTier === 3 ? ' selected' : ''}" onclick="window._selectPollTier(3)" style="flex:1;padding:6px;background:${_caPollTier === 3 ? 'var(--dbg-hover)' : 'var(--dbg-3)'};border:1px solid ${_caPollTier === 3 ? 'var(--dtext-1)' : 'var(--dborder-0)'};border-radius:2px;color:var(--dtext-0);font-family:var(--dfont-mono);font-size:10px;cursor:pointer;text-align:center;">
+                <strong>3 AP</strong><br><span style="color:var(--dgreen)">±3%</span>
+            </button>
+        </div>
+    </div>
     <div class="ca-info-box" style="margin-top:8px;color:var(--dtext-3);font-size:0.8em">Cooldown: ${POLL_CONFIG.COOLDOWN_WINDOW} ticks between polls.</div>`;
 }
 
@@ -4284,13 +4274,13 @@ function wireCampaignConfig(container, f, n, ap, otherParties, factionIdeo, tick
             if (_caRival === rivalId) return;
             _caRival = rivalId;
             _caVector = null;
-            _caAttackEvidence = null;
+
             _caAttackVectors = null;
             rerender();
 
             // Load evidence asynchronously
             const evidence = await gatherAttackEvidence(_supabase, rivalId, n.id, tick);
-            _caAttackEvidence = evidence;
+
             _caAttackVectors = buildAttackVectors(evidence);
             rerender();
         });
@@ -4594,13 +4584,64 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
         } else if (sel.id === 'take_stance') {
             result = await executeTakeStance(_supabase, f.id, n.id, _caStanceIssue, _caStanceAxis, _caStanceSide, _caStanceIntensity, tick);
         } else if (sel.id === 'poll_now') {
-            result = await executePollNow(_supabase, f.id, n.id, tick);
+            // Pass poll tier: 1 AP = ±5% margin, 3 AP = ±3% margin
+            result = await executePollNow(_supabase, f.id, n.id, tick, _caPollTier);
         } else if (sel.id === 'fund_think_tank') {
             result = await executeFundThinkTank(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
         } else if (sel.id === 'media_campaign') {
             result = await executeMediaCampaign(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
         } else if (sel.id === 'grassroots_movement') {
             result = await executeGrassrootsMovement(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
+        } else if (sel.id === 'press_conference') {
+            // Press Conference: base -2 to +2 visibility, +1 if opposition, +2 if gov with approval >= 40
+            const apResult = await _supabase.rpc('accumulate_ap', { p_faction_id: f.id, p_gain: -2, p_max_ap: 99 });
+            if (apResult.error) { result = { success: false, error: apResult.error.message }; }
+            else {
+                const { boostVisibility } = await import('./game/electorate.js');
+                let baseRoll = Math.floor(Math.random() * 5) - 2; // -2 to +2
+                if (!_caIsGoverning) baseRoll += 1; // opposition bonus
+                else if ((n.gov_approval || 0) >= 40) baseRoll += 2; // government with decent approval
+                // Positive = boost visibility, negative = reduce visibility
+                if (baseRoll > 0) {
+                    await boostVisibility(_supabase, f.id, n.id, baseRoll);
+                } else if (baseRoll < 0) {
+                    const { data: visStanding } = await _supabase.from('faction_electoral_standing')
+                        .select('id, visibility').eq('faction_id', f.id).eq('nation_id', n.id).maybeSingle();
+                    if (visStanding) {
+                        await _supabase.from('faction_electoral_standing').update({
+                            visibility: Math.max(0, (Number(visStanding.visibility) || 0) + baseRoll)
+                        }).eq('id', visStanding.id);
+                    }
+                }
+                await _supabase.from('campaign_actions').insert({
+                    party_id: f.id, nation_id: n.id, action_type: 'press_conference',
+                    ap_cost: 2, tick_performed: tick, result: { visBoost: baseRoll }
+                });
+                const sign = baseRoll >= 0 ? '+' : '';
+                result = { success: true, newAp: apResult.data, headline: 'Press Conference',
+                    effects: [{ label: 'Visibility', value: `${sign}${baseRoll}` }],
+                    outcomeName: `Press conference — ${sign}${baseRoll} visibility` };
+            }
+        } else if (sel.id === 'outreach') {
+            // Community Outreach: +3 platform appeal, escalating cost (base 3 + escalation)
+            const outreachCost = 3 + (_caOutreachEscalation || 0);
+            const apResult = await _supabase.rpc('accumulate_ap', { p_faction_id: f.id, p_gain: -outreachCost, p_max_ap: 99 });
+            if (apResult.error) { result = { success: false, error: apResult.error.message }; }
+            else {
+                const { data: standing } = await _supabase.from('faction_electoral_standing')
+                    .select('id, platform_appeal').eq('faction_id', f.id).eq('nation_id', n.id).maybeSingle();
+                if (standing) {
+                    const newAppeal = Math.min(100, (Number(standing.platform_appeal) || 0) + 3);
+                    await _supabase.from('faction_electoral_standing').update({ platform_appeal: newAppeal }).eq('id', standing.id);
+                }
+                await _supabase.from('campaign_actions').insert({
+                    party_id: f.id, nation_id: n.id, action_type: 'outreach',
+                    ap_cost: outreachCost, tick_performed: tick, result: { appealBoost: 3 }
+                });
+                result = { success: true, newAp: apResult.data, headline: 'Community Outreach',
+                    effects: [{ label: 'Appeal', value: '+3' }],
+                    outcomeName: 'Community outreach — +3 platform appeal' };
+            }
         } else if (sel.id === 'pivot') {
             result = await executeIdeologicalPivot(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
             if (result.success) {
@@ -4654,9 +4695,6 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
 // STRONGMAN ACTION PANELS
 // ═══════════════════════════════════════════════════════════════════
 
-function renderSuccessorPanel() { return ''; }
-function renderPurgePanel() { return ''; }
-function renderRedistributePanel() { return ''; }
 // (Successor, Purge, Redistribute panels removed — Phase 0)
 
 
@@ -5192,52 +5230,6 @@ const ES_PARTIAL_THRESHOLD = 25;
  * @param {number} variance - Electorate variance (5-45)
  * @returns {{ zones: Array<{id:string, left:number, width:number, label:string}>, zoneForPos: function }}
  */
-function calculateIdeologyZones(mean, variance) {
-    // Polarization proxy: higher variance = more polarized
-    const polarization = Math.min(100, Math.max(0, (variance - 5) / 35 * 100));
-
-    // Centrist zone: centered at 50, width shrinks with polarization
-    const centristHalf = Math.max(5, 15 - polarization * 0.10);
-    const centristLeft = 50 - centristHalf;
-    const centristRight = 50 + centristHalf;
-
-    // Moderate/radical split: on each side, radical takes more space with higher polarization
-    // and on the side the mean leans toward
-    const meanBias = (mean - 50) / 50; // -1 (full left) to +1 (full right)
-    const radicalFraction = 0.15 + polarization * 0.004; // 0.15–0.55 of non-centrist space
-
-    // Left side: 0 to centristLeft
-    const leftSpace = centristLeft;
-    const leftRadicalBias = Math.max(0, -meanBias); // bigger when mean leans left
-    const leftRadicalFrac = Math.min(0.85, radicalFraction + leftRadicalBias * 0.3);
-    const leftRadicalWidth = leftSpace * leftRadicalFrac;
-    const leftModerateWidth = leftSpace - leftRadicalWidth;
-
-    // Right side: centristRight to 100
-    const rightSpace = 100 - centristRight;
-    const rightRadicalBias = Math.max(0, meanBias);
-    const rightRadicalFrac = Math.min(0.85, radicalFraction + rightRadicalBias * 0.3);
-    const rightRadicalWidth = rightSpace * rightRadicalFrac;
-    const rightModerateWidth = rightSpace - rightRadicalWidth;
-
-    const zones = [
-        { id: 'radical-left',    left: 0,                                       width: leftRadicalWidth,  label: 'Radical' },
-        { id: 'moderate-left',   left: leftRadicalWidth,                         width: leftModerateWidth, label: 'Moderate' },
-        { id: 'centrist',        left: centristLeft,                              width: centristRight - centristLeft, label: 'Centrist' },
-        { id: 'moderate-right',  left: centristRight,                             width: rightModerateWidth, label: 'Moderate' },
-        { id: 'radical-right',   left: centristRight + rightModerateWidth,        width: rightRadicalWidth, label: 'Radical' },
-    ];
-
-    function zoneForPos(pos) {
-        if (pos < leftRadicalWidth) return 'radical-left';
-        if (pos < centristLeft) return 'moderate-left';
-        if (pos < centristRight) return 'centrist';
-        if (pos < centristRight + rightModerateWidth) return 'moderate-right';
-        return 'radical-right';
-    }
-
-    return { zones, zoneForPos };
-}
 
 async function renderElectorateSpreadTab(playerFaction, nation, allParties, allPartyIdeologies, currentTick) {
     const container = document.getElementById('electorate-spread-container');
@@ -5748,12 +5740,17 @@ async function _renderStancePortfolio(container, faction, nation) {
     // Wire button handlers
     container.querySelectorAll('[data-stance-action="reinforce"]').forEach(btn => {
         btn.addEventListener('click', async () => {
+            if ((faction.action_points || 0) < STANCE_CONFIG.AP_COST) {
+                _showToast(`Need ${STANCE_CONFIG.AP_COST} AP to reinforce stance.`);
+                return;
+            }
             const issueId = btn.dataset.stanceIssue;
             const axis = btn.dataset.stanceAxis;
             const side = btn.dataset.stanceSide;
             const intensity = btn.dataset.stanceIntensity;
             btn.disabled = true;
             btn.textContent = 'Reinforcing...';
+            try {
             const result = await executeTakeStance(_supabase, faction.id, nation.id, issueId, axis, side, intensity, currentTick);
             if (result.success) {
                 // Update client AP from server
@@ -5775,6 +5772,7 @@ async function _renderStancePortfolio(container, faction, nation) {
                 btn.disabled = false;
                 btn.textContent = 'Reinforce';
             }
+            } catch (e) { _showToast('Reinforce failed: ' + e.message); btn.disabled = false; btn.textContent = 'Reinforce'; }
         });
     });
 
@@ -6091,9 +6089,6 @@ async function _renderStanceSummaryStrip(factionId, nationId) {
    ═══════════════════════════════════════════════════════════════════ */
 
 // Three-pillar colors
-const VC_IDEO_COLOR = '#7ec8c0';
-const VC_PERF_COLOR = '#c8a44e';
-const VC_MOM_COLOR  = '#7ec87e';
 
 async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeologies, currentTick, voteSharePct, totalSeats, mySeats) {
     const container = document.getElementById('voters-container');
@@ -6342,7 +6337,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     // ── Card 3: Party Approval ──
     const approvalTier = _scoreTier(approval);
     const govLabel = isGoverning ? 'Governing' : 'Opposition';
-    const govApproval = Number(nation.government_approval ?? 50);
+    const govApproval = Number(nation.gov_approval ?? 50);
     const approvalDetail = `<span class="vt-detail-line">${govLabel}${isGoverning ? ' · Gov approval ' + Math.round(govApproval) + '%' : ''}</span>`;
     const approvalHint = isGoverning ? 'Improve governance to raise approval' : 'Campaign and fulfill promises';
     const approvalCard = _factorCard('Party Approval', approval, weights.approval,
@@ -6445,8 +6440,11 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const partyMap = Object.fromEntries(allParties.map(p => [p.id, p]));
     const lastPolledTick = playerStanding.last_polled_tick || null;
     const hasPolled = lastPolledTick && lastPolledTick > 0;
+    const isStale = hasPolled && lastPolledTick < currentTick; // Polled data is from a previous tick
     const pollDateStr = hasPolled ? tickToDate(lastPolledTick) : 'Never';
-    const POLL_MARGIN = 3; // ±3% margin of error
+    // Determine margin from the most recent poll's campaign_actions result
+    // Default to 5% (cheapest poll); will be overridden if we find the last poll's tier
+    let POLL_MARGIN = 5;
 
     // Use polled values if available, otherwise show "No poll data"
     let compRowsHtml = '';
@@ -6572,11 +6570,13 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         </div>
 
         <!-- All-Party Comparison (polled) -->
-        <div class="vt-section">
+        <div class="vt-section" ${isStale ? 'style="opacity:0.5;"' : ''}>
             <div class="vt-comp-header-row">
                 <div class="vt-sec-header" style="margin-bottom:0">CURRENT ELECTORAL STANDING</div>
                 <div class="vt-poll-meta">
-                    <span class="vt-poll-date">Last Poll Run — <strong>${escapeHtml(pollDateStr)}</strong></span>
+                    ${isStale
+                        ? '<span style="font-family:var(--dfont-mono);font-size:9px;color:var(--damber);font-style:italic;">Run a poll to get latest results.</span>'
+                        : `<span class="vt-poll-date">Last Poll Run — <strong>${escapeHtml(pollDateStr)}</strong></span>`}
                     <span class="vt-poll-margin">±${POLL_MARGIN}%</span>
                 </div>
             </div>
@@ -6624,10 +6624,6 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
    ═══════════════════════════════════════════════════════════════════ */
 
 // Fixed issue order for stance display
-const OP_ISSUE_ORDER = [
-    'Corruption', 'Unemployment', 'Cost of Living', 'Infrastructure',
-    'Healthcare', 'Immigration', 'Education', 'Climate / Energy'
-];
 
 // Ideology axes in the spec's display order
 const OP_AXES = [
@@ -6851,28 +6847,9 @@ function renderPartyCard(party, nation) {
         insightBody = `${strongPositions} strong positions. Moderate ideological clarity.`;
     }
 
-    // Stances — currently no stance system, all show "No stance"
-    let stancesHtml = '';
-    for (const issue of OP_ISSUE_ORDER) {
-        stancesHtml += `
-        <div class="op-stance-row">
-            <div class="op-stance-issue">${escapeHtml(issue)}</div>
-            <span class="op-no-stance">No stance</span>
-            <div class="op-bar-wrap"></div>
-            <div class="op-stance-score" style="color:var(--dtxt-dim)">—</div>
-        </div>`;
-    }
-
-    // Stance insight — placeholder since no stances exist yet
-    const stanceInsight = party.status.startsWith('governing')
-        ? `<div class="op-insight" style="border-left-color:var(--dteal)">
-            <div class="op-insight-label" style="color:var(--dteal)">No Active Stances</div>
-            <div class="op-insight-body">${escapeHtml(party.abbreviation)} has not taken any public issue stances yet. Watch for campaign actions.</div>
-           </div>`
-        : `<div class="op-insight" style="border-left-color:var(--dteal)">
-            <div class="op-insight-label" style="color:var(--dteal)">No Active Stances</div>
-            <div class="op-insight-body">${escapeHtml(party.abbreviation)} has not declared any positions. Issue stance system not yet active.</div>
-           </div>`;
+    // Stances — rival stance display not yet implemented
+    const stancesHtml = '<div style="color:var(--dtxt-dim);font-size:10px;font-style:italic;padding:8px 0;">Rival stance tracking coming soon.</div>';
+    const stanceInsight = '';
 
     // Credibility color
     const credColor = party.credibility > 50 ? 'var(--dgreen)' : party.credibility >= 25 ? 'var(--damber)' : 'var(--dred)';
