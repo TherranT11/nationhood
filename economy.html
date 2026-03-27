@@ -106,7 +106,7 @@ initPage('economy', async function(state) {
 
 // ==================== PREVIOUS TICK DATA ====================
 async function loadPreviousTickData(nationId) {
-    var cacheKey = 'prev_tick_econ_' + nationId;
+    var cacheKey = 'prev_tick_econ_' + nationId + '_t' + currentTick;
     var cached = qCache(cacheKey);
     if (cached) { previousTickData = cached; return; }
 
@@ -141,7 +141,7 @@ async function loadPreviousTickData(nationId) {
 
 // ==================== PREVIOUS YEAR DATA ====================
 async function loadPreviousYearData(nationId) {
-    var cacheKey = 'prev_year_econ_' + nationId;
+    var cacheKey = 'prev_year_econ_' + nationId + '_t' + currentTick;
     var cached = qCache(cacheKey);
     if (cached) { previousYearData = cached.data; currentTick = cached.tick; return; }
 
@@ -286,7 +286,7 @@ function scaleCost(baseCost, scalingStat, nation) {
 
 // ==================== TRADE DATA ====================
 async function loadTradeData(nationId) {
-    var cacheKey = 'trade_data_' + nationId;
+    var cacheKey = 'trade_data_' + nationId + '_t' + currentTick;
     var cached = qCache(cacheKey);
     if (cached) { tradeData = cached; return; }
 
@@ -434,7 +434,7 @@ async function loadTradeData(nationId) {
 
 // ==================== ALL NATIONS DATA (NEW) ====================
 async function loadAllNationsData() {
-    var cacheKey = 'all_nations_econ';
+    var cacheKey = 'all_nations_econ_t' + currentTick;
     var cached = qCache(cacheKey);
     if (cached) { allNations = cached; return; }
 
@@ -898,8 +898,6 @@ function renderOverviewTab(nation) {
 
     // Trade Diagnostics — show inputs that drive trade
     if (tradeData && tradeData.summary) {
-        var _totalExp = Number(tradeData.summary.total_exports) || 0;
-        var _totalImp = Number(tradeData.summary.total_imports) || 0;
 
         h += '<div class="trade-diagnostics">';
         h += '<div class="trade-diag-header" onclick="this.parentElement.classList.toggle(\'expanded\')">TRADE INPUTS <span class="trade-diag-toggle">&#9662;</span></div>';
@@ -1227,7 +1225,7 @@ async function loadTaxVoterBlocs(nationId) {
 }
 
 async function loadTaxAdminFunding(nation) {
-    var cacheKey = 'tax_admin_funding_' + nation.id;
+    var cacheKey = 'tax_admin_funding_' + nation.id + '_t' + currentTick;
     var cached = qCache(cacheKey);
     if (cached) { taxAdminFunding = cached; return; }
 
@@ -1276,7 +1274,7 @@ async function loadTaxPendingBills(nationId) {
 }
 
 async function loadTaxHistory(nationId) {
-    var cacheKey = 'tax_history_' + nationId;
+    var cacheKey = 'tax_history_' + nationId + '_t' + currentTick;
     var cached = qCache(cacheKey);
     if (cached) { taxHistory = cached; return; }
     var { data } = await _supabase.from('nations_history')
@@ -1779,7 +1777,7 @@ function renderBudgetTab(nation) {
 
     // --- Net balance box ---
     var netColor = isDeficit ? '#d9534f' : '#5cb85c';
-    var netIcon = isDeficit ? '&#9650;' : '&#9660;';
+    var netIcon = isDeficit ? '&#9660;' : '&#9650;'; // Down arrow for deficit, up for surplus
     var netLabel = isDeficit ? 'DEFICIT' : 'SURPLUS';
     h += '<div class="bv2-net-box" style="border-color:' + netColor + ';">';
     h += '<div class="bv2-net-header">';
@@ -3051,7 +3049,7 @@ function renderTariffAgreementsSection(nation) {
         var partnerId = ag.nation_a_id === nation.id ? ag.nation_b_id : ag.nation_a_id;
         var partnerName = nameMap[partnerId] || 'Unknown';
         var typeInfo = TRADE_AGREEMENT_TYPES[ag.agreement_type] || {};
-        var typeBadge = typeInfo.shortLabel || ag.agreement_type.toUpperCase();
+        var typeBadge = typeInfo.shortLabel || (ag.agreement_type || '').toUpperCase();
 
         // Duration info
         var durationText = 'Permanent';
@@ -3259,7 +3257,7 @@ function renderTariffMatrix(nation) {
 
         if (ag) {
             var typeInfo = TRADE_AGREEMENT_TYPES[ag.agreement_type] || {};
-            agLabel = typeInfo.shortLabel || ag.agreement_type.toUpperCase();
+            agLabel = typeInfo.shortLabel || (ag.agreement_type || '').toUpperCase();
 
             if (ag.agreement_type === 'fta') {
                 // FTA: tariffs eliminated (check exemptions)
@@ -3423,24 +3421,6 @@ var TRADE_IMPORT_HINTS = {
     arms:               'Driven by: Defense Budget minus Domestic Arms Capacity'
 };
 
-function tradeLineItem(label, value, prevValue, inverted, sectorKey) {
-    var h = '<div class="budget-line-item">';
-    h += '<div class="budget-line-top">';
-    h += '<span class="budget-line-label">' + escapeHtml(label) + '</span>';
-    h += '<span class="budget-line-value">' + formatBudgetCurrency(value) + '</span>';
-    h += '</div>';
-    if (sectorKey) {
-        var hint = inverted ? TRADE_IMPORT_HINTS[sectorKey] : TRADE_EXPORT_HINTS[sectorKey];
-        if (hint) {
-            h += '<div class="trade-stat-hint">' + escapeHtml(hint) + '</div>';
-        }
-    }
-    if (prevValue !== null && prevValue !== undefined) {
-        h += '<div class="budget-line-trend">' + tradeTrendHtml(value, prevValue, inverted) + '</div>';
-    }
-    h += '</div>';
-    return h;
-}
 
 function tradeTrendHtml(current, previous, inverted) {
     if (previous === null || previous === undefined) return '';
@@ -3505,18 +3485,6 @@ function budgetTotalLine(value) {
     return h;
 }
 
-function budgetLineItemClickable(label, value, prevValue, prevYear) {
-    var h = '<div class="budget-line-item budget-line-clickable" data-category="' + escapeHtml(label) + '">';
-    h += '<div class="budget-line-top">';
-    h += '<span class="budget-line-label">' + escapeHtml(label) + '</span>';
-    h += '<span class="budget-line-value">' + formatBudgetCurrency(value) + '</span>';
-    h += '</div>';
-    if (prevValue !== null && value > 0) {
-        h += '<div class="budget-line-trend">' + budgetTrendHtml(value, prevValue, prevYear) + '</div>';
-    }
-    h += '</div>';
-    return h;
-}
 
 function budgetLineItem(label, value, prevValue, prevYear, annotation) {
     var h = '<div class="budget-line-item">';
@@ -3563,14 +3531,6 @@ function formatDelta(d) {
 }
 
 // ==================== RATING ====================
-function getRating(value, inverted) {
-    var effective = inverted ? (100 - value) : value;
-    if (effective >= 80) return { label: 'Excellent', cls: 'excellent' };
-    if (effective >= 60) return { label: 'Good', cls: 'good' };
-    if (effective >= 40) return { label: 'Moderate', cls: 'moderate' };
-    if (effective >= 20) return { label: 'Poor', cls: 'poor' };
-    return { label: 'Critical', cls: 'critical' };
-}
 
 </script>
 </body>
