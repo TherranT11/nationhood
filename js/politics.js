@@ -4,7 +4,7 @@ import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate } from './utils.js';
 
-import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, executeEndorsementPreference, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, suspendIdeologyAction, continueIdeologyAction, cancelIdeologyAction, executeIdeologicalPivot, PIVOT_CONFIG } from './game-common.js';
+import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, deductAP, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, switchPartyEndorsement, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, AXIS_KEYS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, suspendIdeologyAction, continueIdeologyAction, cancelIdeologyAction, executeIdeologicalPivot, PIVOT_CONFIG } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { statDirectionSign } from './game/stats.js';
@@ -221,8 +221,12 @@ initPage('politics', async (state) => {
         .eq('party_id', f.id)
         .eq('is_active', true);
 
-    // Endorsement preference (faction_endorsements table removed — default to null)
-    const currentEndorsement = null;
+    // Load current endorsement from party_endorsement_preferences
+    const { data: currentEndorsement } = await _supabase
+        .from('party_endorsement_preferences')
+        .select('endorsed_party_id')
+        .eq('endorsing_party_id', f.id)
+        .maybeSingle();
 
     renderPartyTab(f, nation, {
         shard,
@@ -2377,7 +2381,7 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
     let endorseButtonHtml = '';
     let endorsePanelHtml = '';
     if (!endorseState.hidden) {
-        const currentEndorsedId = currentEndorsement?.endorsed_faction_id || null;
+        const currentEndorsedId = currentEndorsement?.endorsed_party_id || null;
         const otherParties = (allParties || []).filter(p => p.id !== faction?.id && (p.seats || 0) > 0);
         const endorseCandidatesHtml = otherParties.map(p => {
             const color = p.party_color || '#888';
@@ -2461,12 +2465,11 @@ function initElectionResultsBox() {
             });
         }
 
-        // Candidate selection
+        // Candidate selection — calls switchPartyEndorsement RPC
         endorsePanel.querySelectorAll('.pol-endorse-candidate').forEach(el => {
             el.addEventListener('click', async () => {
                 const targetFactionId = el.getAttribute('data-faction-id');
                 const factionId = box.getAttribute('data-faction-id');
-                const nationId = box.getAttribute('data-nation-id');
                 const currentTick = Number(box.getAttribute('data-current-tick') || 0);
                 const partyName = el.querySelector('.pol-endorse-candidate-name')?.textContent || 'this party';
 
@@ -2475,18 +2478,27 @@ function initElectionResultsBox() {
                 el.style.opacity = '0.5';
                 el.style.pointerEvents = 'none';
                 try {
-                    const result = await executeEndorsementPreference(_supabase, factionId, nationId, targetFactionId, currentTick);
+                    const result = await switchPartyEndorsement(_supabase, factionId, targetFactionId, currentTick);
                     if (!result.success) {
                         alert(result.error || 'Endorsement failed.');
                         return;
                     }
                     // Mark selected candidate
-                    endorsePanel.querySelectorAll('.pol-endorse-candidate').forEach(c => c.classList.remove('selected'));
+                    endorsePanel.querySelectorAll('.pol-endorse-candidate').forEach(c => {
+                        c.classList.remove('selected');
+                        c.querySelector('[style*="color:var(--dgreen)"]')?.remove();
+                    });
                     el.classList.add('selected');
-                    const msg = result.alreadySelected ? `Already endorsing ${partyName}.` :
-                        result.apCharged ? `Endorsed ${partyName}! (1 AP spent)` : `Endorsed ${partyName}!`;
-                    alert(msg);
+                    const badge = document.createElement('span');
+                    badge.style.cssText = 'font-family:var(--dfont-mono);font-size:8px;color:var(--dgreen)';
+                    badge.textContent = 'ENDORSED';
+                    el.appendChild(badge);
+
+                    const apMsg = result.newAp != null ? ` (${result.newAp} AP remaining)` : '';
+                    alert(`Endorsed ${partyName}!${apMsg}`);
                     endorsePanel.style.display = 'none';
+                    // Refresh AP display
+                    if (result.newAp != null) await refreshAP(factionId);
                 } catch (err) {
                     alert('Endorsement failed: ' + (err.message || 'Unknown error'));
                 } finally {

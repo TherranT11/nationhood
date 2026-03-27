@@ -11478,8 +11478,22 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
                 ideologyByFaction[row.faction_id] = row;
             }
 
+            // Load endorsement preferences to factor into redistribution
+            const { data: endorsementRows } = await supabase
+                .from('party_endorsement_preferences')
+                .select('endorsing_party_id, endorsed_party_id')
+                .eq('nation_id', nation.id);
+            const endorsementMap: Record<string, string> = {};
+            for (const ep of (endorsementRows || [])) {
+                endorsementMap[ep.endorsing_party_id] = ep.endorsed_party_id;
+            }
+            const runoffFactionToCandidateId: Record<string, string> = {};
+            for (const rc of runoffCandidateList) {
+                runoffFactionToCandidateId[rc.faction_id] = rc.candidate_id;
+            }
+
             // Compute transfers for each eliminated candidate
-            const runoffTransfers = {};
+            const runoffTransfers: Record<string, { transfer_votes: number; from: any[] }> = {};
             for (const rc of runoffResults) {
                 runoffTransfers[rc.candidate_id] = { transfer_votes: 0, from: [] };
             }
@@ -11490,12 +11504,16 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
                 if (elimVotes === 0) continue;
                 const elimIdeology = ideologyByFaction[elim.faction_id] || {};
 
+                // Check if this eliminated party endorsed a runoff candidate
+                const endorsedPartyId = endorsementMap[elim.faction_id];
+                const endorsedCandidateId = endorsedPartyId ? runoffFactionToCandidateId[endorsedPartyId] : null;
+
                 // Compute ideological distance to each runoff candidate
                 const distances = runoffCandidateList.map(rc => {
                     const rcIdeology = ideologyByFaction[rc.faction_id] || {};
                     let distSq = 0;
                     for (const axis of AXES) {
-                        const diff = (elimIdeology[axis] || 0) - (rcIdeology[axis] || 0);
+                        const diff = ((elimIdeology as any)[axis] || 0) - ((rcIdeology as any)[axis] || 0);
                         distSq += diff * diff;
                     }
                     return { candidate_id: rc.candidate_id, dist: Math.sqrt(distSq) };
@@ -11503,7 +11521,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
 
                 // Convert distances to affinities (inverse distance = more affinity)
                 const totalDist = distances.reduce((s, d) => s + d.dist, 0);
-                let affinities;
+                let affinities: { candidate_id: string; dist: number; affinity: number }[];
                 if (totalDist === 0) {
                     affinities = distances.map(d => ({ ...d, affinity: 1 / distances.length }));
                 } else {
@@ -11512,9 +11530,21 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
                     for (const a of affinities) a.affinity = a.affinity / affinitySum;
                 }
 
-                // Abstention rate: 15% base, increases with ideological distance to nearest candidate
+                // Endorsement bonus: boost endorsed candidate's affinity by 50%
+                if (endorsedCandidateId) {
+                    for (const a of affinities) {
+                        if (a.candidate_id === endorsedCandidateId) {
+                            a.affinity *= 1.5;
+                        }
+                    }
+                    const boostedSum = affinities.reduce((s, a) => s + a.affinity, 0);
+                    for (const a of affinities) a.affinity = a.affinity / boostedSum;
+                }
+
+                // Abstention rate: endorsement halves abstention
                 const minDist = Math.min(...distances.map(d => d.dist));
-                const abstainRate = Math.min(0.50, 0.15 + (minDist / 1000));
+                const baseAbstainRate = Math.min(0.50, 0.15 + (minDist / 1000));
+                const abstainRate = endorsedCandidateId ? baseAbstainRate * 0.5 : baseAbstainRate;
                 const abstainVotes = Math.round(elimVotes * abstainRate);
                 const transferableVotes = elimVotes - abstainVotes;
                 totalAbstained += abstainVotes;
@@ -11529,6 +11559,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
                             faction_id: elim.faction_id,
                             round1_votes: elimVotes,
                             transferred,
+                            endorsed: endorsedCandidateId === a.candidate_id,
                             abstained: a === affinities[0] ? abstainVotes : 0  // count abstain once
                         });
                     }
