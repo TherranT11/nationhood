@@ -28532,6 +28532,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     // 4. Process each nation
     for (const nation of nationList) {
       try {
+        // Skip stat processing for nations with 0 active parties (no players = frozen state)
+        const { count: activePartyCount } = await supabase
+            .from('factions')
+            .select('id', { count: 'exact', head: true })
+            .eq('nation_id', nation.id)
+            .eq('faction_type', 'party');
+        if (!activePartyCount || activePartyCount === 0) {
+            console.log(`[advanceTick] Skipping stat processing for ${nation.name} — no active parties`);
+            continue;
+        }
+
         // Set correct seat count for this nation (affects supermajority thresholds, etc.)
         initGameConfigForNation(nation);
 
