@@ -2993,7 +2993,9 @@ function renderUnilateralTariffAction(nation) {
     return h;
 }
 
+var _utrLock = false;
 window.executeUnilateralTariffReduction = async function() {
+    if (_utrLock) return;
     var targetId = document.getElementById('utr-target-nation')?.value;
     var reductionPct = Number(document.getElementById('utr-reduction-pct')?.value || 50);
     if (!targetId) { alert('Select a target nation.'); return; }
@@ -3008,15 +3010,13 @@ window.executeUnilateralTariffReduction = async function() {
 
     if (!confirm('Reduce tariffs on ' + targetName + ' by ' + reductionPct + '%?\n\nCost: ' + apCost + ' AP\n\nEffects:\n+ Cheaper imports (cost_of_living, inflation down)\n+ Diplomatic gesture (foreign_investment, happiness up)\n- Domestic industry pressure (manufacturing_output, union_strength down)\n- Lost tariff revenue')) return;
 
+    _utrLock = true;
     try {
         var apResult = await deductAP(_supabase, currentFaction.id, apCost);
         if (!apResult.success) { alert(apResult.error || 'Not enough AP.'); return; }
 
         var { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         var tick = shard?.current_tick || 0;
-
-        var nA = currentNation.id < targetId ? currentNation.id : targetId;
-        var nB = currentNation.id < targetId ? targetId : currentNation.id;
 
         var { error } = await _supabase.from('trade_agreements').insert({
             nation_a_id: currentNation.id,  // issuer is always nation_a for unilateral
@@ -3046,6 +3046,7 @@ window.executeUnilateralTariffReduction = async function() {
         alert('Tariffs reduced on ' + targetName + ' by ' + reductionPct + '%. Effects apply next tick.');
         location.reload();
     } catch (err) { alert('Error: ' + err.message); }
+    finally { _utrLock = false; }
 };
 
 function renderTariffAgreementsSection(nation) {
