@@ -245,7 +245,9 @@ function _getCompatiblePolicies(sector) {
     const excludeIds = (currentBill?.bill_articles || []).map(a => a.policy_id);
     // Also exclude policies that were struck (removed via accepted strike deals)
     const struckIds = currentBill?.struck_policy_ids || [];
-    const allExcluded = [...excludeIds, ...struckIds];
+    // Also exclude policies already enacted as active laws (can't propose what's already law)
+    const activeLawPolicyIds = nationActiveLaws.map(l => l.policy_id).filter(Boolean);
+    const allExcluded = [...excludeIds, ...struckIds, ...activeLawPolicyIds];
     return getCompatiblePolicies(sector, allPolicies, currentFaction, isAutocracy, allExcluded);
 }
 
@@ -2397,7 +2399,23 @@ function onAmendmentSectorChange() {
             const colorClass = getIdeologyChipClass(i, factionIdeology);
             return `<span class="article-ideology ${colorClass}">${i}</span>`;
         }).join(' ');
-        return `<div class="policy-option${opposedClass}" data-policy-id="${p.id}" onclick="selectAmendmentPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name} ${ideoHTML}${opposedBadge}</div><div class="policy-option-desc">${p.description || ''}</div></div>`;
+        const amEffects = (p.stat_effects || []).filter(e => e.stat_key && e.rate);
+        const amEffectsHTML = amEffects.length > 0 ? '<div class="policy-option-effects">' + amEffects.map(e => {
+            const isUp = (e.direction === 'up');
+            const arrow = isUp ? '▲' : '▼';
+            const cls = isUp ? 'policy-effect-tag--up' : 'policy-effect-tag--down';
+            const label = (e.stat_key || '').replace(/_/g, ' ');
+            return `<span class="policy-effect-tag ${cls}">${label} ${arrow} ${e.rate}/tick</span>`;
+        }).join('') + '</div>' : '';
+        const amUpfront = Number(p.upfront_cost || 0);
+        const amOngoing = Number(p.ongoing_base_cost || 0);
+        const amUpScale = p.upfront_scaling_stat ? ' × ' + p.upfront_scaling_stat.replace(/_/g, ' ') : '';
+        const amOnScale = p.ongoing_scaling_stat ? ' × ' + p.ongoing_scaling_stat.replace(/_/g, ' ') : '';
+        const amCostHTML = (amUpfront > 0 || amOngoing > 0) ? '<div class="policy-cost-row">' +
+            (amUpfront > 0 ? `<span class="policy-cost-item"><span class="policy-cost-label">Upfront:</span> <span class="policy-cost-value">$${amUpfront}M${amUpScale}</span></span>` : '') +
+            (amOngoing > 0 ? `<span class="policy-cost-item"><span class="policy-cost-label">Ongoing:</span> <span class="policy-cost-value">$${amOngoing}M${amOnScale}/mo</span></span>` : '') +
+            '</div>' : '';
+        return `<div class="policy-option${opposedClass}" data-policy-id="${p.id}" onclick="selectAmendmentPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name} ${ideoHTML}${opposedBadge}</div><div class="policy-option-desc">${p.description || ''}</div>${amEffectsHTML}${amCostHTML}</div>`;
     }).join('');
     document.getElementById('amendment-policy-group').style.display = 'block';
 }
@@ -2753,7 +2771,25 @@ function onSponsorAddSectorChange() {
                 const opposedClass = p.isOpposed ? ' opposed' : '';
                 const opposedBadge = p.isOpposed ? ' <span style="display:inline-block;background:var(--red);color:#fff;padding:2px 7px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Opposed</span>' : '';
                 const pTypeBadge = p.policy_type === 'structural' ? '<span class="policy-type-badge structural">Structural</span>' : p.policy_type === 'lever' ? '<span class="policy-type-badge lever">Lever</span>' : '';
-                return `<div class="policy-option${opposedClass}" data-sponsor-policy-id="${p.id}" onclick="selectSponsorPolicy('${p.id}')">${pTypeBadge}<div class="policy-option-name">${p.policy_name} ${ideoHTML}${opposedBadge}</div><div class="policy-option-desc">${p.description || ''}</div></div>`;
+                // Stat effects
+                const effects = (p.stat_effects || []).filter(e => e.stat_key && e.rate);
+                const effectsHTML = effects.length > 0 ? '<div class="policy-option-effects">' + effects.map(e => {
+                    const isUp = (e.direction === 'up');
+                    const arrow = isUp ? '▲' : '▼';
+                    const cls = isUp ? 'policy-effect-tag--up' : 'policy-effect-tag--down';
+                    const label = (e.stat_key || '').replace(/_/g, ' ');
+                    return `<span class="policy-effect-tag ${cls}">${label} ${arrow} ${e.rate}/tick</span>`;
+                }).join('') + '</div>' : '';
+                // Costs
+                const upfront = Number(p.upfront_cost || 0);
+                const ongoing = Number(p.ongoing_base_cost || 0);
+                const upScaling = p.upfront_scaling_stat ? ' × ' + (p.upfront_scaling_stat || '').replace(/_/g, ' ') : '';
+                const onScaling = p.ongoing_scaling_stat ? ' × ' + (p.ongoing_scaling_stat || '').replace(/_/g, ' ') : '';
+                const costHTML = (upfront > 0 || ongoing > 0) ? '<div class="policy-cost-row">' +
+                    (upfront > 0 ? `<span class="policy-cost-item"><span class="policy-cost-label">Upfront:</span> <span class="policy-cost-value">$${upfront}M${upScaling}</span></span>` : '') +
+                    (ongoing > 0 ? `<span class="policy-cost-item"><span class="policy-cost-label">Ongoing:</span> <span class="policy-cost-value">$${ongoing}M${onScaling}/mo</span></span>` : '') +
+                    '</div>' : '';
+                return `<div class="policy-option${opposedClass}" data-sponsor-policy-id="${p.id}" onclick="selectSponsorPolicy('${p.id}')">${pTypeBadge}<div class="policy-option-name">${p.policy_name} ${ideoHTML}${opposedBadge}</div><div class="policy-option-desc">${p.description || ''}</div>${effectsHTML}${costHTML}</div>`;
             }).join('');
     }
 

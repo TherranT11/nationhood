@@ -447,15 +447,8 @@ function bindModalEvents() {
         });
     }
 
-    // Close on overlay click
-    if (overlay) {
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) {
-                overlay.classList.remove('active');
-                resetModalToCreateMode();
-            }
-        });
-    }
+    // Clicking outside the modal no longer closes it — use the X button only
+    // (prevents accidental loss of article drafts)
 
     // Remove image button (visible in edit mode when article has existing image)
     const removeImgBtn = document.getElementById('nws-remove-image-btn');

@@ -6650,7 +6650,7 @@ async function resolveExpiredVotes(supabase, nationId) {
         .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
-        .lte('voting_ends_tick', currentTick);
+        .or(`voting_ends_tick.lte.${currentTick},voting_ends_tick.is.null`); // Also catch bills with NULL voting_ends_tick (safety net)
 
     console.log(`[resolveExpiredVotes] nation=${nationId} currentTick=${currentTick} query returned ${expiredBills?.length ?? 0} bills (error=${error?.message || 'none'})`);
     if (expiredBills && expiredBills.length > 0) {
@@ -6660,6 +6660,15 @@ async function resolveExpiredVotes(supabase, nationId) {
     }
 
     if (error || !expiredBills || expiredBills.length === 0) return [];
+
+    // Safety net: patch any bill with NULL voting_ends_tick so it never gets stuck again
+    for (const bill of expiredBills) {
+        if (bill.voting_ends_tick == null) {
+            bill.voting_ends_tick = currentTick; // Treat as expired now
+            await supabase.from('bills').update({ voting_ends_tick: bill.proposed_tick + 6 }).eq('id', bill.id);
+            console.warn(`[resolveExpiredVotes] Patched NULL voting_ends_tick on bill ${bill.id} "${bill.bill_name}"`);
+        }
+    }
 
     const results = [];
 
