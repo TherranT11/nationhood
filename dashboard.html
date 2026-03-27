@@ -432,7 +432,6 @@
     flex: 1;
   }
   .crisis-item {
-    border-left: 3px solid var(--red);
     padding: 8px 10px;
     margin-bottom: 12px;
     background: var(--red-faint);
@@ -750,7 +749,8 @@ initPage('home', async (state) => {
       { data: administration },
       coalitionResult,
       presidentResult,
-      prevApprovalResult
+      prevAdminResult,
+      hogResult
     ] = await Promise.all([
       _supabase.from('administrations')
         .select('admin_name, government_type, coalition_parties, total_seats, started_at_tick')
@@ -769,16 +769,30 @@ initPage('home', async (state) => {
             .limit(1)
             .maybeSingle()
         : Promise.resolve({ data: null }),
-      _supabase.from('nations_history')
-        .select('gov_approval')
+      // Previous administration's end approval (for delta display)
+      _supabase.from('administrations')
+        .select('approval_at_start, approval_at_end')
         .eq('nation_id', nation.id)
-        .order('tick', { ascending: false })
+        .not('ended_at_tick', 'is', null)
+        .order('ended_at_tick', { ascending: false })
         .limit(1)
-        .maybeSingle()
+        .maybeSingle(),
+      // Head of government (PM for parliamentary systems)
+      (!isPres && !isAuto)
+        ? _supabase.from('head_of_government')
+            .select('first_name, last_name, age, faction_id')
+            .eq('nation_id', nation.id)
+            .eq('active', true)
+            .order('appointed_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null })
     ]);
 
     const coalition = coalitionResult;
     const president = presidentResult?.data ?? presidentResult;
+    const hog = hogResult?.data ?? hogResult;
+    const prevAdmin = prevAdminResult?.data ?? null;
     const govCard = document.getElementById('gov-card');
 
     // Empty state: no active coalition (democracies only — autocracies handle separately)
@@ -790,12 +804,16 @@ initPage('home', async (state) => {
       `;
     } else {
 
-    // Previous approval for delta (already fetched in parallel)
-    const prevApproval = prevApprovalResult?.data?.gov_approval ?? null;
-
     // ── Compute values ──
     const approval = Math.round(Number(nation.gov_approval ?? 40));
     const approvalColor = approval >= 50 ? 'var(--green)' : approval >= 35 ? 'var(--orange)' : 'var(--red)';
+
+    // Approval delta: current admin started at 50%, show previous admin's end approval for context
+    let approvalDeltaHtml = '';
+    if (prevAdmin?.approval_at_end != null) {
+      const prevEnd = Math.round(Number(prevAdmin.approval_at_end));
+      approvalDeltaHtml = `<div style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-muted);margin-top:4px">Previous admin ended at <span style="font-weight:700;color:${prevEnd >= 50 ? 'var(--green)' : prevEnd >= 35 ? 'var(--orange)' : 'var(--red)'}">${prevEnd}%</span> &middot; Started at <span style="font-weight:600;color:var(--text-secondary)">50%</span></div>`;
+    }
     // Strip any trailing ", YYYY" from stored admin_name to avoid duplication
     const rawAdminName = administration?.admin_name || 'Government';
     const adminName = rawAdminName.replace(/,\s*\d{4}$/, '');
@@ -850,18 +868,23 @@ initPage('home', async (state) => {
           </div>
         </div>`;
     } else if (!isPres && !isAuto && coalition) {
-      // Parliamentary: PM from lead party
-      const leadParty = parties.find(p => p.id === coalition.lead_party_id);
+      // Parliamentary: PM from head_of_government table (fallback to lead party name)
+      const leadParty = parties.find(p => p.id === (hog?.faction_id || coalition.lead_party_id));
       const pmColor = leadParty?.party_color || '#888';
-      const pmName = leadParty?.faction_name || 'Unknown';
-      const pmAbbr = leadParty?.abbreviation || pmName.substring(0, 3).toUpperCase();
-      const initials = pmName.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
+      const pmAbbr = leadParty?.abbreviation || (leadParty?.faction_name || '??').substring(0, 3).toUpperCase();
+      const pmFullName = (hog?.first_name && hog?.last_name)
+        ? hog.first_name + ' ' + hog.last_name
+        : leadParty?.faction_name || 'Unknown';
+      const pmAge = hog?.age;
+      const initials = (hog?.first_name && hog?.last_name)
+        ? (hog.first_name[0] + hog.last_name[0]).toUpperCase()
+        : (leadParty?.faction_name || '??').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
       leader1Html = `
         <div class="gov-leader-row">
           <div class="gov-initials">${esc(initials)}</div>
           <div>
-            <div class="gov-leader-name">${esc(pmName)}</div>
-            <div class="gov-leader-meta">Prime Minister</div>
+            <div class="gov-leader-name">${esc(pmFullName)}</div>
+            <div class="gov-leader-meta">Prime Minister${pmAge ? ' &middot; Age ' + pmAge : ''}</div>
             <div class="gov-leader-party">
               <div class="gov-party-dot" style="background:${pmColor}"></div>
               <span class="gov-party-label" style="color:${pmColor}">${esc(pmAbbr)}</span>
@@ -877,7 +900,7 @@ initPage('home', async (state) => {
           <div class="gov-initials">${esc(initials)}</div>
           <div>
             <div class="gov-leader-name">${esc(hosName)}</div>
-            <div class="gov-leader-meta">Generalísimo${nation.head_of_state_age ? ' &middot; Age ' + nation.head_of_state_age : ''}</div>
+            <div class="gov-leader-meta">${esc(nation.head_of_state_title || 'Strongman')}${nation.head_of_state_age ? ' &middot; Age ' + nation.head_of_state_age : ''}</div>
             <div class="gov-leader-party">
               <div class="gov-party-dot" style="background:${rpColor}"></div>
               <span class="gov-party-label" style="color:${rpColor}">${esc(rpAbbr)}</span>
@@ -897,7 +920,7 @@ initPage('home', async (state) => {
           <div class="gov-initials">${esc(initials)}</div>
           <div>
             <div class="gov-leader-name">${esc(hosFirst + ' ' + hosLast)}</div>
-            <div class="gov-leader-meta">Vice President</div>
+            <div class="gov-leader-meta">${esc(nation.head_of_state_title || 'Head of State')}</div>
           </div>
         </div>`;
     } else if (!isPres && !isAuto && hosFirst && hosLast) {
@@ -967,6 +990,7 @@ initPage('home', async (state) => {
 
         <div class="gov-section-title">Approval</div>
         <div class="gov-approval-big" style="color:${approvalColor}">${approval}%</div>
+        ${approvalDeltaHtml}
       `;
     } else {
       document.getElementById('gov-card-body').innerHTML = `
@@ -990,6 +1014,7 @@ initPage('home', async (state) => {
 
         <div class="gov-section-title">Approval</div>
         <div class="gov-approval-big" style="color:${approvalColor}">${approval}%</div>
+        ${approvalDeltaHtml}
       `;
     }
 
@@ -1062,9 +1087,12 @@ initPage('home', async (state) => {
       // Build the list of next 5 elections
       let elections = [];
 
+      // Per-nation term lengths (from foundational laws, fallback to defaults)
+      const parlTermTicks = Number(nation.parliamentary_term_ticks) || 24;
+      const presTermTicks = Number(nation.presidential_term_ticks) || 48;
+
       if (isPres) {
         // For presidential: need alternating Midterm / Presidential pattern
-        // Midterm = parliamentary election in a presidential system
         const parlElections = (scheduled || []).filter(e => e.election_type === 'parliamentary');
         const presElections = (scheduled || []).filter(e => e.election_type === 'presidential');
 
@@ -1076,20 +1104,20 @@ initPage('home', async (state) => {
 
         elections = merged.slice(0, 5);
 
-        // If not enough scheduled, project future ones
+        // If not enough scheduled, project future ones using nation's actual term lengths
         if (elections.length < 5) {
           const lastParl = parlElections.length ? parlElections[parlElections.length - 1].election_tick : null;
           const lastPres = presElections.length ? presElections[presElections.length - 1].election_tick : null;
-          let nextParl = lastParl ? lastParl + 24 : currentTick + 24;
-          let nextPres = lastPres ? lastPres + 48 : currentTick + 48;
+          let nextParl = lastParl ? lastParl + parlTermTicks : currentTick + parlTermTicks;
+          let nextPres = lastPres ? lastPres + presTermTicks : currentTick + presTermTicks;
 
           while (elections.length < 5) {
             if (nextParl <= nextPres) {
               elections.push({ tick: nextParl, type: 'Midterms', css: 'midterm' });
-              nextParl += 24;
+              nextParl += parlTermTicks;
             } else {
               elections.push({ tick: nextPres, type: 'General Election', css: 'presidential' });
-              nextPres += 48;
+              nextPres += presTermTicks;
             }
           }
           elections.sort((a, b) => a.tick - b.tick);
@@ -1103,15 +1131,15 @@ initPage('home', async (state) => {
 
         elections = parlScheduled.slice(0, 5);
 
-        // Project if not enough
+        // Project if not enough, using nation's actual parliamentary term length
         if (elections.length < 5) {
           const lastTick = parlScheduled.length
             ? parlScheduled[parlScheduled.length - 1].tick
             : currentTick;
-          let next = lastTick + 24;
+          let next = lastTick + parlTermTicks;
           while (elections.length < 5) {
             elections.push({ tick: next, type: 'Parliamentary', css: 'parliamentary' });
-            next += 24;
+            next += parlTermTicks;
           }
         }
       }
