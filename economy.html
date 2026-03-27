@@ -176,7 +176,7 @@ async function loadPreviousYearData(nationId) {
 
 // ==================== EXPENDITURE DATA ====================
 async function loadExpenditureData(nationId, nation) {
-    var cacheKey = 'expenditure_data_' + nationId;
+    var cacheKey = 'expenditure_data_' + nationId + '_t' + currentTick; // Tick-aware cache key
     var cached = qCache(cacheKey);
     if (cached) { expenditureData = cached.totals; expenditureDetails = cached.details; ministryFundingPcts = cached.fundingPcts || {}; return; }
 
