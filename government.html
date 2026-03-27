@@ -8458,7 +8458,8 @@ function renderAdminCard(admin, isCurrent) {
     } else {
         hogLabel = escapeHtml(admin.head_of_state_title || 'Head of State');
         hogName = admin.head_of_state || 'Unknown';
-        hogParty = admin.hos_election_method === 'hereditary'
+        const hosMethod = admin.hos_election_method || (isCurrent ? currentNation.hos_election_method : null);
+        hogParty = hosMethod === 'hereditary'
             ? (currentNation.dynasty_name ? currentNation.dynasty_name + ' dynasty' : '')
             : '';
         govLeaderLabel = 'Prime Minister';
@@ -8479,7 +8480,7 @@ function renderAdminCard(admin, isCurrent) {
         </div>
         <div class="pad-info-box">
             <div class="pad-info-label">${isAutoc ? 'Faction Seats' : (isPres ? 'Party Seats' : 'Coalition')}</div>
-            <div class="pad-info-value">${seatCount} / ${GAME_CONFIG.TOTAL_SEATS} seats</div>
+            <div class="pad-info-value">${seatCount} / ${currentNation.total_seats || GAME_CONFIG.TOTAL_SEATS} seats</div>
             <div class="pad-info-sub">${durationText}${admin.end_reason ? ' &middot; Ended: ' + (END_REASON_LABELS[admin.end_reason] || admin.end_reason) : ''}</div>
         </div>
     </div>`;

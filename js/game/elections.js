@@ -368,7 +368,9 @@ export async function createAdministration(supabase, nationId, nation, coalition
                 started_at_tick: currentTick,
                 started_at_date: currentDate,
                 stats_at_start: statsAtStart,
-                approval_at_start: 50
+                approval_at_start: 50,
+                head_of_state_title: nation?.head_of_state_title || null,
+                hos_election_method: nation?.hos_election_method || null
             });
         if (insertErr) throw insertErr;
 
@@ -2659,7 +2661,8 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         started_at_date: dateStr,
         stats_at_start: fullNation ? snapshotNationStats(fullNation) : {},
         approval_at_start: 50,
-        head_of_state_title: fullNation?.head_of_state_title || null
+        head_of_state_title: fullNation?.head_of_state_title || null,
+        hos_election_method: fullNation?.hos_election_method || null
     });
     if (adminErr) {
         console.error(`[inauguratePresident] Failed to create new administration for ${nationId}:`, adminErr.message);
