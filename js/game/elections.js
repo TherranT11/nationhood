@@ -198,12 +198,12 @@ export async function closeAdministration(supabase, nationId, nation, endReason,
             // Query executive orders issued during this administration
             const { data: eoRows } = await supabase
                 .from('executive_orders')
-                .select('id, order_type, issued_at_tick')
+                .select('id, order_type, issued_tick')
                 .eq('nation_id', nationId)
-                .gte('issued_at_tick', currentAdmin.started_at_tick)
-                .lte('issued_at_tick', currentTick);
+                .gte('issued_tick', currentAdmin.started_at_tick)
+                .lte('issued_tick', currentTick);
             const executiveOrders = (eoRows || []).map(eo => ({
-                id: eo.id, order_type: eo.order_type, tick: eo.issued_at_tick, date: _gameDate(eo.issued_at_tick)
+                id: eo.id, order_type: eo.order_type, tick: eo.issued_tick, date: _gameDate(eo.issued_tick)
             }));
 
             // Detect snap elections and minority governments from event_log
@@ -472,9 +472,9 @@ export async function refreshCurrentAdministrationEvents(supabase, nationId, cur
                 .eq('nation_id', nationId).in('bill_type', ['impeachment_motion', 'impeachment_conviction'])
                 .gte('passed_tick', start).lte('passed_tick', currentTick),
             // Executive orders
-            supabase.from('executive_orders').select('id, order_type, issued_at_tick')
+            supabase.from('executive_orders').select('id, order_type, issued_tick')
                 .eq('nation_id', nationId)
-                .gte('issued_at_tick', start).lte('issued_at_tick', currentTick),
+                .gte('issued_tick', start).lte('issued_tick', currentTick),
             // Elections survived
             supabase.from('elections').select('id, election_tick')
                 .eq('nation_id', nationId).eq('status', 'completed')
@@ -528,7 +528,7 @@ export async function refreshCurrentAdministrationEvents(supabase, nationId, cur
         }));
         const executiveOrders = (eoRows || []).map(eo => ({
             id: eo.id, order_type: eo.order_type,
-            tick: eo.issued_at_tick, date: _gameDate(eo.issued_at_tick)
+            tick: eo.issued_tick, date: _gameDate(eo.issued_tick)
         }));
         const tradeAgreements = (tradeAgreementsDuring || []).map(ta => ({
             agreement_id: ta.id, agreement_type: ta.agreement_type, agreement_name: ta.agreement_name,
