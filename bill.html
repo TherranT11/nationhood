@@ -245,7 +245,9 @@ function _getCompatiblePolicies(sector) {
     const excludeIds = (currentBill?.bill_articles || []).map(a => a.policy_id);
     // Also exclude policies that were struck (removed via accepted strike deals)
     const struckIds = currentBill?.struck_policy_ids || [];
-    const allExcluded = [...excludeIds, ...struckIds];
+    // Also exclude policies already enacted as active laws (can't propose what's already law)
+    const activeLawPolicyIds = nationActiveLaws.map(l => l.policy_id).filter(Boolean);
+    const allExcluded = [...excludeIds, ...struckIds, ...activeLawPolicyIds];
     return getCompatiblePolicies(sector, allPolicies, currentFaction, isAutocracy, allExcluded);
 }
 
