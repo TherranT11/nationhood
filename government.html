@@ -1060,8 +1060,7 @@ async function renderAutocracyGovPanels() {
     if (arrestedFps.length > 0) {
         let arrestedHtml = '';
         for (const afps of arrestedFps) {
-            const { data: party } = await _supabase.from('factions').select('faction_name').eq('id', afps.faction_id).single();
-            const pName = party?.faction_name || 'Unknown';
+            const pName = allParties.find(p => p.id === afps.faction_id)?.faction_name || 'Unknown';
             arrestedHtml += `
             <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-hair)">
                 <div>

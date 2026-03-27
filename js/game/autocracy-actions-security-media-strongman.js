@@ -380,22 +380,28 @@ registerAutocracyAction('arrest_leader', {
     escalationSteps: null,
     cooldownField: null,
     cooldownTicks: null,
-    hasDualMode: false,  // Strongman action — no dual mode, specific tracker effects
+    hasDualMode: false,
     halfPowerForRegime: false,
     isStrongmanExclusive: true,
     mutualExclusions: [],
+    async validate(supabase, ctx) {
+        const { nation, extra } = ctx;
+        if (!extra?.targetFactionId) return 'Must specify targetFactionId';
+        const { data: t } = await supabase.from('faction_pillar_state').select('is_strongman, arrested_leader')
+            .eq('faction_id', extra.targetFactionId).eq('nation_id', nation.id).single();
+        if (!t) return 'Target not found';
+        if (t.is_strongman) return 'Cannot arrest yourself';
+        if (t.arrested_leader) return 'Target already arrested';
+        return null;
+    },
     async execute(supabase, ctx) {
         const { nation, factionState, extra, currentTick } = ctx;
         const targetFactionId = extra?.targetFactionId;
-        if (!targetFactionId) return { error: 'Must specify targetFactionId' };
 
-        // Load target
+        // Load target (already validated)
         const { data: targetFps } = await supabase.from('faction_pillar_state')
             .select('*')
             .eq('faction_id', targetFactionId).eq('nation_id', nation.id).single();
-        if (!targetFps) return { error: 'Target not found' };
-        if (targetFps.is_strongman) return { error: 'Cannot arrest yourself' };
-        if (targetFps.arrested_leader) return { error: 'Target already arrested' };
 
         // Roll 1d20 + modifiers
         let rollVal = roll(1, 20);
@@ -472,7 +478,7 @@ registerAutocracyAction('arrest_leader', {
 
 registerAutocracyAction('execute_leader', {
     pillar: 'any',
-    baseCost: 0,  // no AP cost
+    baseCost: 0,
     escalatingCostField: null,
     escalationSteps: null,
     cooldownField: null,
@@ -481,17 +487,23 @@ registerAutocracyAction('execute_leader', {
     halfPowerForRegime: false,
     isStrongmanExclusive: true,
     mutualExclusions: [],
+    async validate(supabase, ctx) {
+        const { nation, extra } = ctx;
+        if (!extra?.targetFactionId) return 'Must specify targetFactionId';
+        const { data: t } = await supabase.from('faction_pillar_state').select('arrested_leader')
+            .eq('faction_id', extra.targetFactionId).eq('nation_id', nation.id).single();
+        if (!t) return 'Target not found';
+        if (!t.arrested_leader) return 'Target leader is not arrested';
+        return null;
+    },
     async execute(supabase, ctx) {
         const { nation, factionState, extra, currentTick } = ctx;
         const targetFactionId = extra?.targetFactionId;
-        if (!targetFactionId) return { error: 'Must specify targetFactionId' };
 
-        // Verify target is arrested
+        // Load target (already validated)
         const { data: targetFps } = await supabase.from('faction_pillar_state')
             .select('*')
             .eq('faction_id', targetFactionId).eq('nation_id', nation.id).single();
-        if (!targetFps) return { error: 'Target not found' };
-        if (!targetFps.arrested_leader) return { error: 'Target leader is not arrested' };
 
         // Roll 1d10 for tracker effect
         const d10 = roll(1, 10);
@@ -590,16 +602,23 @@ registerAutocracyAction('release_leader', {
     halfPowerForRegime: false,
     isStrongmanExclusive: true,
     mutualExclusions: [],
+    async validate(supabase, ctx) {
+        const { nation, extra } = ctx;
+        if (!extra?.targetFactionId) return 'Must specify targetFactionId';
+        const { data: t } = await supabase.from('faction_pillar_state').select('arrested_leader')
+            .eq('faction_id', extra.targetFactionId).eq('nation_id', nation.id).single();
+        if (!t) return 'Target not found';
+        if (!t.arrested_leader) return 'Target leader is not arrested';
+        return null;
+    },
     async execute(supabase, ctx) {
         const { nation, extra, currentTick } = ctx;
         const targetFactionId = extra?.targetFactionId;
-        if (!targetFactionId) return { error: 'Must specify targetFactionId' };
 
+        // Load target (already validated)
         const { data: targetFps } = await supabase.from('faction_pillar_state')
             .select('*')
             .eq('faction_id', targetFactionId).eq('nation_id', nation.id).single();
-        if (!targetFps) return { error: 'Target not found' };
-        if (!targetFps.arrested_leader) return { error: 'Target leader is not arrested' };
 
         // Release: un-arrest
         await supabase.from('faction_pillar_state').update({

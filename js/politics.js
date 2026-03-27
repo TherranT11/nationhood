@@ -4890,9 +4890,9 @@ async function renderAutocracyActionsTab(nation, faction, shard, pillarStates, a
             media: { label: 'Media', icon: '◈', color: '#d48a3c', desc: 'Broadcasts, smear campaigns, blackouts' },
             security: { label: 'Security', icon: '◉', color: '#d9534f', desc: 'Surveillance, blackmail, disappearances' },
         };
-        // Find which pillars are already confirmed by others
+        // Find which pillars are already claimed by other factions
         const confirmedPillars = new Set((pillarStates || [])
-            .filter(fps => fps.pillar_confirmed && fps.faction_id !== f.id)
+            .filter(fps => fps.pillar && fps.faction_id !== f.id)
             .map(fps => fps.pillar));
 
         let pillarPickerHtml = `
@@ -5196,7 +5196,7 @@ function renderAutoActionDetail(actionKey, ap, tick, myFps, isStrongman, pillarS
                     // Refresh the tab
                     try {
                         const { data: refreshedFps } = await _supabase.from('faction_pillar_state').select('*').eq('nation_id', _autoNation.id);
-                        const { data: refreshedTracker } = await _supabase.from('autocracy_tracker').select('*').eq('nation_id', _autoNation.id).single();
+                        const { data: refreshedTracker } = await _supabase.from('autocracy_tracker').select('*').eq('nation_id', _autoNation.id).maybeSingle();
                         await renderAutocracyActionsTab(_autoNation, _autoFaction, _autoShard, refreshedFps || [], refreshedTracker, _autoAllParties);
                     } catch (refreshErr) {
                         console.warn('[AutoActions] Refresh after action failed:', refreshErr);
