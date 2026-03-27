@@ -11617,22 +11617,27 @@ async function submitUTRDraft() {
 
         if (error) { alert('Failed: ' + error.message); _utrDraftLock = false; return; }
 
-        // Fire diplomatic event
+        // Fire nation events (issuer + target) and world event (all other nations)
         try {
-            await _supabase.from('diplomatic_events').insert({
-                shard_name: 'Alpha Shard',
-                nation_id: targetId,
-                event_name: 'Tariff Reduction Received',
-                category: 'Trade',
-                description_chosen: currentNation.name + ' has unilaterally reduced tariffs on ' + activeDraftTarget.name + '\'s exports by ' + reductionPct + '%.',
-                fired_at_tick: currentTick
+            var desc = currentNation.name + ' has unilaterally reduced tariffs on ' + activeDraftTarget.name + '\'s exports by ' + reductionPct + '%.';
+            var eventRows = [
+                // Issuer nation event
+                { nation_id: currentNation.id, event_name: 'Tariff Reduction Enacted', category: 'trade', description_chosen: desc, fired_at_tick: currentTick },
+                // Target nation event
+                { nation_id: targetId, event_name: 'Tariff Reduction Received', category: 'trade', description_chosen: desc, fired_at_tick: currentTick }
+            ];
+            // World event — notify all other nations
+            cachedOtherNations.forEach(function(n) {
+                if (n.id !== targetId) {
+                    eventRows.push({ nation_id: n.id, event_name: 'Tariff Reduction — World', category: 'trade', description_chosen: desc, fired_at_tick: currentTick });
+                }
             });
+            await _supabase.from('event_log').insert(eventRows);
         } catch (e) { /* non-blocking */ }
 
         alert('Tariff reduction enacted!');
         cancelDraft();
     } catch (e) {
-        console.error('UTR draft error:', e);
         alert('An error occurred.');
     } finally {
         _utrDraftLock = false;
