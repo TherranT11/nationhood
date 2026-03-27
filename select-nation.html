@@ -497,6 +497,7 @@ body {
 <div id="loading" class="loading-msg">LOADING NATIONS...</div>
 
 <div id="page-content" style="display:none; width:100%; flex-direction:column; align-items:center;">
+  <button id="logout-btn" onclick="logoutUser()" style="position:fixed;top:16px;right:20px;z-index:100;background:rgba(217,83,79,0.12);border:1px solid rgba(217,83,79,0.3);color:#d9534f;font-family:var(--font-mono);font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;padding:6px 16px;border-radius:2px;cursor:pointer;">Logout</button>
   <div class="page-header">
     <h1>Nationhood</h1>
     <div class="title">Choose Your Nation</div>
@@ -801,6 +802,13 @@ init();
 window.selectNation = selectNation;
 window.closeModal = closeModal;
 window.confirmNation = confirmNation;
+
+async function logoutUser() {
+    await _supabase.auth.signOut();
+    sessionStorage.clear();
+    window.location.href = 'login.html';
+}
+window.logoutUser = logoutUser;
 </script>
 </body>
 </html>
