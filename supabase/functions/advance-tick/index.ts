@@ -11646,7 +11646,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
                         }
                     }
                     const boostedSum = affinities.reduce((s, a) => s + a.affinity, 0);
-                    for (const a of affinities) a.affinity = a.affinity / boostedSum;
+                    if (boostedSum > 0) for (const a of affinities) a.affinity = a.affinity / boostedSum;
                 }
 
                 // Abstention rate: endorsement halves abstention
@@ -29937,6 +29937,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     // Match of the week
                     const scored = results.map(r => ({ ...r, _ent: r.homeScore + r.awayScore + (r.homeScore === r.awayScore ? 1 : 0) }));
                     scored.sort((a: any, b: any) => b._ent - a._ent);
+                    if (scored.length === 0) continue;
                     const { _ent, ...motw } = scored[0];
                     updatedState = { active: true, season: year, matchweek: (vlnRow.matchweek || 0) + 1, fixtures, standings, last_results: results, match_of_week: motw };
                 }
