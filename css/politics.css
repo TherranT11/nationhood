@@ -2918,7 +2918,7 @@ body.light-mode .pol-blocs-box {
 
 /* ════════════════════════ CAMPAIGN ACTION PANELS ════════════════════════ */
 .ca-wrap { display: flex; gap: 12px; align-items: flex-start; }
-.ca-list { width: 520px; flex-shrink: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.ca-list { width: 520px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0; }
 .ca-item {
     border: 1px solid var(--dborder-1); border-left: 3px solid transparent;
     border-radius: 4px; padding: 10px 12px; cursor: pointer; transition: all 0.12s;
