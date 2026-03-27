@@ -8886,18 +8886,114 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, legitimacy -5${wasAutocracy ? ', gov type → Democracy' : ''}`);
         } else if (newMethod === 'direct_vote') {
             // Direct vote: legitimacy +3, political_engagement +3, polarization +2
-            const newLegitimacy = Math.min(100, (nation?.legitimacy || 50) + 3);
-            const newEngagement = Math.min(100, (nation?.political_engagement || 50) + 3);
-            const newPolarization = Math.min(100, (nation?.polarization || 0) + 2);
-            const { error: statErr } = await supabase.from('nations').update({
-                legitimacy: newLegitimacy,
-                political_engagement: newEngagement,
-                polarization: newPolarization
-            }).eq('id', bill.nation_id);
+            // AND transition Parliamentary → Presidential
+            const wasParliamentary = !nation?.government_type?.toLowerCase().includes('president');
+            const statUpdate: Record<string, any> = {
+                legitimacy: Math.min(100, (nation?.legitimacy || 50) + 3),
+                political_engagement: Math.min(100, (nation?.political_engagement || 50) + 3),
+                polarization: Math.min(100, (nation?.polarization || 0) + 2)
+            };
+
+            if (wasParliamentary) {
+                statUpdate.government_type = 'Presidential';
+                console.log(`[enactFoundationalBill] Parliamentary → Presidential transition for nation ${bill.nation_id}`);
+
+                // Close the current coalition/government formation
+                await supabase.from('government_formations')
+                    .update({ status: 'dissolved', dissolved_at_tick: currentTick })
+                    .eq('nation_id', bill.nation_id)
+                    .in('status', ['formed', 'caretaker']);
+
+                // Deactivate parliamentary head of government (PM)
+                await supabase.from('head_of_government')
+                    .update({ active: false })
+                    .eq('nation_id', bill.nation_id)
+                    .eq('active', true);
+
+                // Clear parliamentary-only elections
+                await supabase.from('elections').delete()
+                    .eq('nation_id', bill.nation_id)
+                    .eq('status', 'scheduled')
+                    .eq('election_type', 'parliamentary');
+
+                // Schedule presidential election 3 ticks out
+                const { error: presElErr } = await supabase.from('elections').insert({
+                    nation_id: bill.nation_id,
+                    election_tick: currentTick + 3,
+                    status: 'scheduled',
+                    election_type: 'presidential'
+                });
+                if (presElErr) console.error('[enactFoundationalBill] Failed to schedule presidential election:', presElErr.message);
+                else console.log(`[enactFoundationalBill] Presidential election scheduled at tick ${currentTick + 3}`);
+
+                // Schedule first parliamentary midterm
+                const parlTermTicks = Number(nation?.parliamentary_term_ticks) || 24;
+                await supabase.from('elections').insert({
+                    nation_id: bill.nation_id,
+                    election_tick: currentTick + parlTermTicks,
+                    status: 'scheduled',
+                    election_type: 'parliamentary'
+                });
+
+                statUpdate.gov_approval = 50;
+                statUpdate.gov_approval_events = 0;
+            }
+
+            const { error: statErr } = await supabase.from('nations').update(statUpdate).eq('id', bill.nation_id);
             if (statErr) console.error(`[enactFoundationalBill] Direct vote stat update failed:`, statErr.message);
-            else console.log(`[enactFoundationalBill] Direct HoS vote established: legitimacy +3, political_engagement +3, polarization +2`);
+            else console.log(`[enactFoundationalBill] Direct HoS vote established: legitimacy +3, political_engagement +3, polarization +2${wasParliamentary ? ', gov type → Presidential' : ''}`);
+        } else if (newMethod === 'appointed') {
+            // Appointed by Parliament: transition Presidential → Parliamentary if applicable
+            const wasPresidential = nation?.government_type?.toLowerCase().includes('president');
+
+            if (wasPresidential) {
+                console.log(`[enactFoundationalBill] Presidential → Parliamentary transition for nation ${bill.nation_id}`);
+
+                // Deactivate the president
+                await supabase.from('presidents')
+                    .update({ is_active: false })
+                    .eq('nation_id', bill.nation_id)
+                    .eq('is_active', true);
+
+                // Change government type
+                const { error: govErr } = await supabase.from('nations').update({
+                    government_type: 'Democracy',
+                    gov_approval: 50,
+                    gov_approval_events: 0
+                }).eq('id', bill.nation_id);
+                if (govErr) console.error(`[enactFoundationalBill] Gov type update failed:`, govErr.message);
+
+                // Clear all scheduled elections, schedule parliamentary
+                await supabase.from('elections').delete()
+                    .eq('nation_id', bill.nation_id)
+                    .eq('status', 'scheduled');
+
+                const { error: parlElErr } = await supabase.from('elections').insert({
+                    nation_id: bill.nation_id,
+                    election_tick: currentTick + 3,
+                    status: 'scheduled',
+                    election_type: 'parliamentary'
+                });
+                if (parlElErr) console.error('[enactFoundationalBill] Failed to schedule parliamentary election:', parlElErr.message);
+                else console.log(`[enactFoundationalBill] Parliamentary election scheduled at tick ${currentTick + 3}`);
+
+                // Clean up presidential candidates
+                await supabase.from('pm_candidates').delete()
+                    .eq('nation_id', bill.nation_id)
+                    .eq('candidate_type', 'presidential');
+
+                // Close administration
+                const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                const dateStr = shardData?.current_date || '';
+                await supabase.from('administrations')
+                    .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'constitutional_transition' })
+                    .eq('nation_id', bill.nation_id)
+                    .is('ended_at_tick', null);
+
+                console.log(`[enactFoundationalBill] Presidential → Parliamentary Democracy, election at tick ${currentTick + 3}`);
+            }
+            // No stat changes for appointed (it's the default low-friction option)
         }
-        // Appointed: no stat changes (it's the default low-friction option)
 
         const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Constitutional Monarchy' };
         console.log(`[enactFoundationalBill] Nation ${bill.nation_id} HoS election method set to "${methodLabels[newMethod]}".`);
@@ -11478,8 +11574,22 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
                 ideologyByFaction[row.faction_id] = row;
             }
 
+            // Load endorsement preferences to factor into redistribution
+            const { data: endorsementRows } = await supabase
+                .from('party_endorsement_preferences')
+                .select('endorsing_party_id, endorsed_party_id')
+                .eq('nation_id', nation.id);
+            const endorsementMap: Record<string, string> = {};
+            for (const ep of (endorsementRows || [])) {
+                endorsementMap[ep.endorsing_party_id] = ep.endorsed_party_id;
+            }
+            const runoffFactionToCandidateId: Record<string, string> = {};
+            for (const rc of runoffCandidateList) {
+                runoffFactionToCandidateId[rc.faction_id] = rc.candidate_id;
+            }
+
             // Compute transfers for each eliminated candidate
-            const runoffTransfers = {};
+            const runoffTransfers: Record<string, { transfer_votes: number; from: any[] }> = {};
             for (const rc of runoffResults) {
                 runoffTransfers[rc.candidate_id] = { transfer_votes: 0, from: [] };
             }
@@ -11490,12 +11600,16 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
                 if (elimVotes === 0) continue;
                 const elimIdeology = ideologyByFaction[elim.faction_id] || {};
 
+                // Check if this eliminated party endorsed a runoff candidate
+                const endorsedPartyId = endorsementMap[elim.faction_id];
+                const endorsedCandidateId = endorsedPartyId ? runoffFactionToCandidateId[endorsedPartyId] : null;
+
                 // Compute ideological distance to each runoff candidate
                 const distances = runoffCandidateList.map(rc => {
                     const rcIdeology = ideologyByFaction[rc.faction_id] || {};
                     let distSq = 0;
                     for (const axis of AXES) {
-                        const diff = (elimIdeology[axis] || 0) - (rcIdeology[axis] || 0);
+                        const diff = ((elimIdeology as any)[axis] || 0) - ((rcIdeology as any)[axis] || 0);
                         distSq += diff * diff;
                     }
                     return { candidate_id: rc.candidate_id, dist: Math.sqrt(distSq) };
@@ -11503,7 +11617,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
 
                 // Convert distances to affinities (inverse distance = more affinity)
                 const totalDist = distances.reduce((s, d) => s + d.dist, 0);
-                let affinities;
+                let affinities: { candidate_id: string; dist: number; affinity: number }[];
                 if (totalDist === 0) {
                     affinities = distances.map(d => ({ ...d, affinity: 1 / distances.length }));
                 } else {
@@ -11512,9 +11626,21 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
                     for (const a of affinities) a.affinity = a.affinity / affinitySum;
                 }
 
-                // Abstention rate: 15% base, increases with ideological distance to nearest candidate
+                // Endorsement bonus: boost endorsed candidate's affinity by 50%
+                if (endorsedCandidateId) {
+                    for (const a of affinities) {
+                        if (a.candidate_id === endorsedCandidateId) {
+                            a.affinity *= 1.5;
+                        }
+                    }
+                    const boostedSum = affinities.reduce((s, a) => s + a.affinity, 0);
+                    for (const a of affinities) a.affinity = a.affinity / boostedSum;
+                }
+
+                // Abstention rate: endorsement halves abstention
                 const minDist = Math.min(...distances.map(d => d.dist));
-                const abstainRate = Math.min(0.50, 0.15 + (minDist / 1000));
+                const baseAbstainRate = Math.min(0.50, 0.15 + (minDist / 1000));
+                const abstainRate = endorsedCandidateId ? baseAbstainRate * 0.5 : baseAbstainRate;
                 const abstainVotes = Math.round(elimVotes * abstainRate);
                 const transferableVotes = elimVotes - abstainVotes;
                 totalAbstained += abstainVotes;
@@ -11529,6 +11655,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
                             faction_id: elim.faction_id,
                             round1_votes: elimVotes,
                             transferred,
+                            endorsed: endorsedCandidateId === a.candidate_id,
                             abstained: a === affinities[0] ? abstainVotes : 0  // count abstain once
                         });
                     }
@@ -11564,12 +11691,19 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
 
             // Update the election record with combined round data
             // Replace presidential_candidates with runoff results so the UI shows the final outcome
+            // Compute runoff turnout from eligible voters
+            const eligible = completedElection.results.total_votes_cast + (completedElection.results.total_abstentions || 0);
+            const runoffTurnoutPct = eligible > 0 ? Math.round((runoffTotalVotes / eligible) * 10000) / 100 : 0;
+
             const combinedResults = {
                 ...completedElection.results,
                 presidential_candidates: runoffResults,
                 round_1_candidates: candidateResults,
+                round_1_total_votes_cast: completedElection.results.total_votes_cast,
+                round_1_turnout_pct: completedElection.results.turnout_pct,
                 runoff_candidates: runoffResults,
                 total_votes_cast: runoffTotalVotes,
+                turnout_pct: runoffTurnoutPct,
                 was_runoff: true,
                 runoff_transfers: runoffTransfers,
                 runoff_abstentions: totalAbstained
@@ -12154,8 +12288,9 @@ async function registerPartyLeaderAsCandidate(supabase, nationId, factionId, cur
  */
 async function nominateMinister(supabase, nationId, presidentFactionId, ministryKey, nominee) {
     // Validate: must be Presidential system
-    const { data: nation } = await supabase.from('nations').select('name, government_type').eq('id', nationId).single();
+    const { data: nation } = await supabase.from('nations').select('name, government_type, total_seats').eq('id', nationId).single();
     if (!isPresidentialRepublic(nation)) throw new Error('Minister nominations only apply to Presidential systems');
+    const nationTotalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
 
     // Validate: caller must be president's party
     const { data: president } = await supabase.from('presidents')
@@ -12226,7 +12361,8 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
     }[ministryKey] || ministryDisplayName;
 
     const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministerTitle}`;
-    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${GAME_CONFIG.MAJORITY_SEATS} of ${GAME_CONFIG.TOTAL_SEATS} seats) is required for confirmation.`;
+    const majoritySeats = Math.ceil(nationTotalSeats * 0.5) + 1;
+    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${majoritySeats} of ${nationTotalSeats} seats) is required for confirmation.`;
 
     const { data: bill, error: billErr } = await supabase.from('bills').insert({
         nation_id: nationId,
@@ -12318,6 +12454,9 @@ async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
         .select('faction_id').eq('nation_id', bill.nation_id).eq('is_active', true).limit(1).maybeSingle();
     if (!president || president.faction_id !== presidentFactionId) throw new Error('Only the President\'s party can veto bills');
 
+    const { data: vetoNation } = await supabase.from('nations').select('total_seats').eq('id', bill.nation_id).single();
+    const vetoTotalSeats = vetoNation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+
     const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
 
@@ -12329,7 +12468,7 @@ async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
     }).eq('id', bill.id);
 
     // Auto-create veto override bill (goes straight to floor)
-    const overrideSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
+    const overrideSeats = Math.ceil(vetoTotalSeats * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
     const { data: overrideBill } = await supabase.from('bills').insert({
         nation_id: bill.nation_id,
         proposed_by: bill.proposed_by,
@@ -12340,7 +12479,7 @@ async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
         voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS,
         original_bill_id: bill.id,
         is_veto_override: true,
-        preamble: `The President has vetoed "${bill.bill_name}". The legislature may override this veto with a two-thirds supermajority (${overrideSeats} of ${GAME_CONFIG.TOTAL_SEATS} seats).`
+        preamble: `The President has vetoed "${bill.bill_name}". The legislature may override this veto with a two-thirds supermajority (${overrideSeats} of ${vetoTotalSeats} seats).`
     }).select().single();
 
     const floorVotes = tallyFloorVotes(bill);
@@ -12571,14 +12710,15 @@ async function processPresidentialTermEnd(supabase, nation, currentTick) {
         .maybeSingle();
 
     if (!scheduledElection) {
-        // No election scheduled — schedule one for next tick
+        // Schedule with enough lead time for candidate registration
+        const leadTicks = GAME_CONFIG.PRESIDENTIAL_CANDIDATE_LEAD_TICKS + 1;
         await supabase.from('elections').insert({
             nation_id: nation.id,
-            election_tick: currentTick + 1,
+            election_tick: currentTick + leadTicks,
             election_type: 'presidential',
             status: 'scheduled'
         });
-        console.log(`Emergency presidential election scheduled for ${nation.name} at tick ${currentTick + 1} (term expired)`);
+        console.log(`Emergency presidential election scheduled for ${nation.name} at tick ${currentTick + leadTicks} (term expired, ${leadTicks} tick lead time for candidates)`);
     }
 }
 

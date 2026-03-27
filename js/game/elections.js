@@ -2100,6 +2100,21 @@ export async function processPresidentialElectionResult(supabase, nation, comple
                 ideologyByFaction[row.faction_id] = row;
             }
 
+            // Load endorsement preferences to factor into redistribution
+            const { data: endorsementRows } = await supabase
+                .from('party_endorsement_preferences')
+                .select('endorsing_party_id, endorsed_party_id')
+                .eq('nation_id', nation.id);
+            const endorsementMap = {};
+            for (const ep of (endorsementRows || [])) {
+                endorsementMap[ep.endorsing_party_id] = ep.endorsed_party_id;
+            }
+            // Map runoff candidate faction_ids for endorsement matching
+            const runoffFactionToCandidateId = {};
+            for (const rc of runoffCandidateList) {
+                runoffFactionToCandidateId[rc.faction_id] = rc.candidate_id;
+            }
+
             // Compute transfers for each eliminated candidate
             const runoffTransfers = {};
             for (const rc of runoffResults) {
@@ -2111,6 +2126,10 @@ export async function processPresidentialElectionResult(supabase, nation, comple
                 const elimVotes = elim.votes || 0;
                 if (elimVotes === 0) continue;
                 const elimIdeology = ideologyByFaction[elim.faction_id] || {};
+
+                // Check if this eliminated party endorsed a runoff candidate
+                const endorsedPartyId = endorsementMap[elim.faction_id];
+                const endorsedCandidateId = endorsedPartyId ? runoffFactionToCandidateId[endorsedPartyId] : null;
 
                 // Compute ideological distance to each runoff candidate
                 const distances = runoffCandidateList.map(rc => {
@@ -2134,9 +2153,23 @@ export async function processPresidentialElectionResult(supabase, nation, comple
                     for (const a of affinities) a.affinity = a.affinity / affinitySum;
                 }
 
+                // Endorsement bonus: if eliminated party endorsed a runoff candidate,
+                // boost that candidate's affinity by 50% and renormalize
+                if (endorsedCandidateId) {
+                    for (const a of affinities) {
+                        if (a.candidate_id === endorsedCandidateId) {
+                            a.affinity *= 1.5;
+                        }
+                    }
+                    const boostedSum = affinities.reduce((s, a) => s + a.affinity, 0);
+                    for (const a of affinities) a.affinity = a.affinity / boostedSum;
+                }
+
                 // Abstention rate: 15% base, increases with ideological distance to nearest candidate
+                // Endorsement halves abstention (endorsed voters are more motivated)
                 const minDist = Math.min(...distances.map(d => d.dist));
-                const abstainRate = Math.min(0.50, 0.15 + (minDist / 1000));
+                const baseAbstainRate = Math.min(0.50, 0.15 + (minDist / 1000));
+                const abstainRate = endorsedCandidateId ? baseAbstainRate * 0.5 : baseAbstainRate;
                 const abstainVotes = Math.round(elimVotes * abstainRate);
                 const transferableVotes = elimVotes - abstainVotes;
                 totalAbstained += abstainVotes;
@@ -2151,6 +2184,7 @@ export async function processPresidentialElectionResult(supabase, nation, comple
                             faction_id: elim.faction_id,
                             round1_votes: elimVotes,
                             transferred,
+                            endorsed: endorsedCandidateId === a.candidate_id,
                             abstained: a === affinities[0] ? abstainVotes : 0  // count abstain once
                         });
                     }
@@ -2186,12 +2220,19 @@ export async function processPresidentialElectionResult(supabase, nation, comple
 
             // Update the election record with combined round data
             // Replace presidential_candidates with runoff results so the UI shows the final outcome
+            // Compute runoff turnout from eligible voters
+            const eligible = completedElection.results.total_votes_cast + (completedElection.results.total_abstentions || 0);
+            const runoffTurnoutPct = eligible > 0 ? Math.round((runoffTotalVotes / eligible) * 10000) / 100 : 0;
+
             const combinedResults = {
                 ...completedElection.results,
                 presidential_candidates: runoffResults,
                 round_1_candidates: candidateResults,
+                round_1_total_votes_cast: completedElection.results.total_votes_cast,
+                round_1_turnout_pct: completedElection.results.turnout_pct,
                 runoff_candidates: runoffResults,
                 total_votes_cast: runoffTotalVotes,
+                turnout_pct: runoffTurnoutPct,
                 was_runoff: true,
                 runoff_transfers: runoffTransfers,
                 runoff_abstentions: totalAbstained
@@ -2425,14 +2466,8 @@ export async function processPresidentialElectionResult(supabase, nation, comple
  * Used by processPresidentialElectionResult (auto-inauguration).
  */
 export async function inauguratePresident(supabase, candidate, nationId, factionId, currentTick, outgoingPresident = null, endReason = 'election_loss') {
-    // Deactivate any previous president
-    const { error: deactErr } = await supabase.from('presidents')
-        .update({ is_active: false })
-        .eq('nation_id', nationId)
-        .eq('is_active', true);
-    if (deactErr) {
-        console.error(`[inauguratePresident] Failed to deactivate previous presidents for ${nationId}:`, deactErr.message);
-    }
+    // NOTE: Previous president deactivation is handled by the caller
+    // (processPresidentialElectionResult at line ~2218). Not duplicated here.
 
     // Fetch nation data early for per-nation term length
     const { data: nationForTerm, error: nationTermErr } = await supabase.from('nations').select('presidential_term_ticks, presidential_term_limit').eq('id', nationId).single();
