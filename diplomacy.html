@@ -10012,6 +10012,7 @@ async function renderActionsBox() {
     [
         { key: 'retaliatory_tariff_draft', label: 'Retaliatory Tariff', ap: 2, type: 'mot' },
         { key: 'export_subsidy_draft', label: 'Export Subsidy', ap: 2, type: 'mot' },
+        { key: 'utr_draft', label: 'Tariff Reduction', ap: 3, type: 'mot' },
         { key: 'impose_embargo_draft', label: 'Impose Embargo', ap: 5, type: 'mot' }
     ].forEach(a => { html += actionHtml(a, hasMoT, 'mot'); });
 
@@ -10753,6 +10754,13 @@ async function renderDraftBox() {
         return;
     }
 
+    // Special branch for Unilateral Tariff Reduction
+    if (activeDraftAction.key === 'utr_draft') {
+        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
+        await renderUTRDraftPanel(body, statusEl);
+        return;
+    }
+
     // Special branch for Impose Embargo (unilateral)
     if (activeDraftAction.key === 'impose_embargo_draft') {
         body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
@@ -11481,6 +11489,156 @@ async function submitESDraft() {
     cancelDraft();
 }
 window.submitESDraft = submitESDraft;
+
+// ── Unilateral Tariff Reduction (UTR) ──
+
+async function renderUTRDraftPanel(body, statusEl) {
+    if (statusEl) { statusEl.textContent = 'Drafting'; statusEl.className = 'badge badge--amber'; }
+
+    const apCost = 3;
+
+    let html = '<div class="draft-panel"><div class="draft-header">';
+    html += '<div class="draft-field"><div class="draft-field-label">Action</div><div class="draft-field-input">Unilateral Tariff Reduction <span style="float:right;font-size:10px;color:var(--text-dim);">' + apCost + ' AP</span></div></div>';
+    html += '<div style="display:flex;gap:6px;justify-content:flex-end;margin-top:-2px;margin-bottom:4px;">';
+    html += '<span class="badge badge--green" style="font-size:7px;">Unilateral</span>';
+    html += '<span class="badge badge--green" style="font-size:7px;">Immediate</span>';
+    html += '</div>';
+
+    // Target selector
+    let targetFieldHtml = '<select id="utr-draft-target" style="width:100%;background:var(--bg-3);border:1px solid var(--border-subtle);color:var(--text-primary);font-family:var(--font-sans);font-size:12px;padding:4px 8px;" onchange="updateUTRDraftTarget(this.value)">';
+    targetFieldHtml += '<option value="">Select target nation...</option>';
+    cachedOtherNations.forEach(n => {
+        const sel = activeDraftTarget && activeDraftTarget.id === n.id ? ' selected' : '';
+        targetFieldHtml += '<option value="' + n.id + '"' + sel + '>' + escapeHtml(n.name) + '</option>';
+    });
+    targetFieldHtml += '</select>';
+    html += '<div class="draft-field"><div class="draft-field-label">Target Nation</div>' + targetFieldHtml + '</div>';
+    html += '</div>';  // close draft-header
+
+    if (!activeDraftTarget) {
+        html += '<div class="empty-state" style="padding:20px 0;"><div class="empty-state-text">Select a nation to reduce tariffs on.</div></div></div>';
+        body.innerHTML = html;
+        return;
+    }
+
+    // Check for existing active UTR with this target
+    const { data: existingUtr } = await _supabase
+        .from('trade_agreements')
+        .select('id')
+        .eq('status', 'active')
+        .eq('agreement_type', 'unilateral_tariff_reduction')
+        .eq('nation_a_id', currentNation.id)
+        .eq('nation_b_id', activeDraftTarget.id);
+
+    if (existingUtr && existingUtr.length > 0) {
+        html += '<div class="trade-info-box warning" style="margin:12px 14px;">You already have an active tariff reduction for ' + escapeHtml(activeDraftTarget.name) + '. Withdraw it first to issue a new one.</div></div>';
+        body.innerHTML = html;
+        return;
+    }
+
+    // Reduction % selector
+    html += '<div style="padding:8px 14px;">';
+    html += '<div class="draft-field-label">Reduction Percentage</div>';
+    html += '<div class="trade-radio-group" style="margin-top:4px;">';
+    html += '<label class="trade-radio-option" onclick="selectRadioOption(this)"><input type="radio" name="utr-draft-pct" value="25" /><div><div class="trade-radio-label">25%</div><div class="trade-radio-desc">Modest gesture</div></div></label>';
+    html += '<label class="trade-radio-option selected" onclick="selectRadioOption(this)"><input type="radio" name="utr-draft-pct" value="50" checked /><div><div class="trade-radio-label">50%</div><div class="trade-radio-desc">Significant opening</div></div></label>';
+    html += '<label class="trade-radio-option" onclick="selectRadioOption(this)"><input type="radio" name="utr-draft-pct" value="75" /><div><div class="trade-radio-label">75%</div><div class="trade-radio-desc">Major concession</div></div></label>';
+    html += '<label class="trade-radio-option" onclick="selectRadioOption(this)"><input type="radio" name="utr-draft-pct" value="100" /><div><div class="trade-radio-label">100%</div><div class="trade-radio-desc">Full removal</div></div></label>';
+    html += '</div></div>';
+
+    // Effects summary
+    html += '<div style="padding:8px 14px;">';
+    html += '<div class="draft-field-label">Per-Tick Effects</div>';
+    html += '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">';
+    html += '<span class="effect-tag effect-tag--positive">↓ Cost of Living</span>';
+    html += '<span class="effect-tag effect-tag--positive">↓ Inflation</span>';
+    html += '<span class="effect-tag effect-tag--positive">↑ Happiness</span>';
+    html += '<span class="effect-tag effect-tag--positive">↑ Foreign Investment</span>';
+    html += '<span class="effect-tag effect-tag--negative">↓ Manufacturing Output</span>';
+    html += '<span class="effect-tag effect-tag--negative">↓ Tariff Revenue</span>';
+    html += '<span class="effect-tag effect-tag--negative">↓ Union Strength</span>';
+    html += '</div>';
+    html += '<div style="font-size:0.62rem;color:var(--text-dim);margin-top:6px;">A diplomatic gesture that reduces import costs but pressures domestic industry. Takes effect immediately — no parliamentary approval needed.</div>';
+    html += '</div>';
+
+    // Submit button
+    html += '<div style="padding:12px 14px;display:flex;justify-content:flex-end;">';
+    html += '<button onclick="submitUTRDraft()" class="draft-submit-btn" style="background:var(--green);">Execute — ' + apCost + ' AP</button>';
+    html += '</div>';
+
+    html += '</div>';
+    body.innerHTML = html;
+}
+
+function updateUTRDraftTarget(val) {
+    if (!val) { activeDraftTarget = null; }
+    else {
+        var match = cachedOtherNations.find(n => n.id === val);
+        activeDraftTarget = match || null;
+    }
+    renderDraftBox();
+}
+window.updateUTRDraftTarget = updateUTRDraftTarget;
+
+var _utrDraftLock = false;
+async function submitUTRDraft() {
+    if (_utrDraftLock) return;
+
+    var targetId = activeDraftTarget?.id;
+    if (!targetId) { alert('Select a target nation.'); return; }
+    if (!currentFaction || !currentNation) return;
+
+    var pctEl = document.querySelector('input[name="utr-draft-pct"]:checked');
+    var reductionPct = pctEl ? Number(pctEl.value) : 50;
+    var targetName = escapeHtml(activeDraftTarget.name);
+
+    if (!confirm('Reduce tariffs on ' + activeDraftTarget.name + ' by ' + reductionPct + '%?\n\nCost: 3 AP\n\nThis takes effect immediately.')) return;
+
+    _utrDraftLock = true;
+    try {
+        var apResult = await deductAP(_supabase, currentFaction.id, 3);
+        if (!apResult.success) { alert(apResult.error || 'Not enough AP.'); _utrDraftLock = false; return; }
+
+        var { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        var currentTick = shard?.current_tick || 0;
+
+        var { error } = await _supabase.from('trade_agreements').insert({
+            nation_a_id: currentNation.id,
+            nation_b_id: targetId,
+            agreement_type: 'unilateral_tariff_reduction',
+            agreement_name: currentNation.name + ' Tariff Reduction on ' + activeDraftTarget.name,
+            articles: [{ type: 'tariff_reduction', data: { reduction_pct: reductionPct, direction: 'their_exports', sector: 'all' } }],
+            status: 'active',
+            proposed_by_faction_id: currentFaction.id,
+            proposed_at_tick: currentTick,
+            effective_from_tick: currentTick,
+            shard_name: 'Alpha Shard'
+        });
+
+        if (error) { alert('Failed: ' + error.message); _utrDraftLock = false; return; }
+
+        // Fire diplomatic event
+        try {
+            await _supabase.from('diplomatic_events').insert({
+                shard_name: 'Alpha Shard',
+                nation_id: targetId,
+                event_name: 'Tariff Reduction Received',
+                category: 'Trade',
+                description_chosen: currentNation.name + ' has unilaterally reduced tariffs on ' + activeDraftTarget.name + '\'s exports by ' + reductionPct + '%.',
+                fired_at_tick: currentTick
+            });
+        } catch (e) { /* non-blocking */ }
+
+        alert('Tariff reduction enacted!');
+        cancelDraft();
+    } catch (e) {
+        console.error('UTR draft error:', e);
+        alert('An error occurred.');
+    } finally {
+        _utrDraftLock = false;
+    }
+}
+window.submitUTRDraft = submitUTRDraft;
 
 // ── Impose Embargo (unilateral) ──
 
