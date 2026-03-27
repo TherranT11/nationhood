@@ -2164,7 +2164,7 @@ export async function processPresidentialElectionResult(supabase, nation, comple
                         }
                     }
                     const boostedSum = affinities.reduce((s, a) => s + a.affinity, 0);
-                    for (const a of affinities) a.affinity = a.affinity / boostedSum;
+                    if (boostedSum > 0) for (const a of affinities) a.affinity = a.affinity / boostedSum;
                 }
 
                 // Abstention rate: 15% base, increases with ideological distance to nearest candidate

@@ -592,23 +592,57 @@ async function updateIPOInviteBadge(faction, roles) {
     const dipBadge = document.getElementById('diplomacy-awaiting-badge');
     if (!faction) return;
     try {
+        // Count pending invites
         const { data: invites, error } = await _supabase
             .from('ipo_invitations')
             .select('id')
             .eq('target_faction_id', faction.id)
             .eq('status', 'pending');
         if (error) return;
-        const count = (invites || []).length;
-        // Store count globally so diplomacy.html can read it for the sub-tab badge
-        window._ipoPendingInviteCount = count;
-        // Only add IPO invites to the amber badge if the player holds a diplomatic
-        // position (FM, MoT, or ambassador). Non-diplomatic players should not see
-        // a misleading notification on the Diplomacy nav link.
-        if (count > 0 && dipBadge && roles &&
-            (roles.isFM || roles.isMoT || roles.ambassadorTargetIds.length > 0)) {
-            const existing = parseInt(dipBadge.textContent) || 0;
-            dipBadge.textContent = existing + count;
-            dipBadge.style.display = '';
+        const inviteCount = (invites || []).length;
+        window._ipoPendingInviteCount = inviteCount;
+
+        // Count open IPO votes where player hasn't voted (shows for ALL members)
+        let pendingVoteCount = 0;
+        try {
+            const { data: myOrgs } = await _supabase
+                .from('ipo_members')
+                .select('org_id')
+                .eq('faction_id', faction.id)
+                .eq('is_active', true)
+                .eq('role', 'member');
+            if (myOrgs && myOrgs.length > 0) {
+                const orgIds = myOrgs.map(m => m.org_id);
+                const { data: openVotes } = await _supabase
+                    .from('ipo_votes')
+                    .select('id')
+                    .in('org_id', orgIds)
+                    .eq('status', 'open');
+                if (openVotes && openVotes.length > 0) {
+                    const voteIds = openVotes.map(v => v.id);
+                    const { data: myBallots } = await _supabase
+                        .from('ipo_ballots')
+                        .select('vote_id')
+                        .in('vote_id', voteIds)
+                        .eq('faction_id', faction.id);
+                    const votedSet = new Set((myBallots || []).map(b => b.vote_id));
+                    pendingVoteCount = openVotes.filter(v => !votedSet.has(v.id)).length;
+                }
+            }
+        } catch (_) {}
+
+        const totalIPO = inviteCount + pendingVoteCount;
+        window._ipoPendingVoteCount = pendingVoteCount;
+
+        // Show badge: IPO votes show for ALL players, invites only for diplomatic roles
+        if (dipBadge) {
+            const hasDiploRole = roles && (roles.isFM || roles.isMoT || roles.ambassadorTargetIds.length > 0);
+            const badgeCount = pendingVoteCount + (hasDiploRole ? inviteCount : 0);
+            if (badgeCount > 0) {
+                const existing = parseInt(dipBadge.textContent) || 0;
+                dipBadge.textContent = existing + badgeCount;
+                dipBadge.style.display = '';
+            }
         }
     } catch (e) {
         console.error('Error updating IPO invite badge:', e);

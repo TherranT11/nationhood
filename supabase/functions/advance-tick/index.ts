@@ -11646,7 +11646,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
                         }
                     }
                     const boostedSum = affinities.reduce((s, a) => s + a.affinity, 0);
-                    for (const a of affinities) a.affinity = a.affinity / boostedSum;
+                    if (boostedSum > 0) for (const a of affinities) a.affinity = a.affinity / boostedSum;
                 }
 
                 // Abstention rate: endorsement halves abstention
@@ -22500,7 +22500,7 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
             small_amount: 0,
             tick_created: currentTick,
             deadline_ticks: deadlineTicks,
-            tick_deadline: null,
+            tick_deadline: currentTick + deadlineTicks, // Placeholder — real deadline set on activation after election
             conditions,
             progress: { source: 'make_promise', promise_type: promiseType },
             status: 'pending_election',
@@ -28709,11 +28709,38 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         try {
             const { data: resolvingProtests } = await supabase
                 .from('protest_log')
-                .select('id, faction_id, nation_id, grievance_type, grievance_data, demand_label')
+                .select('id, faction_id, nation_id, grievance_type, grievance_data, demand_label, tick_called')
                 .eq('nation_id', nation.id)
                 .eq('status', 'resolving');
 
+            // Expire stale protests (stuck in 'resolving' for 3+ ticks) as tier 1 fizzle
             for (const protest of (resolvingProtests || [])) {
+                const staleTicks = newTick - (protest.tick_called || newTick);
+                if (staleTicks > 2) {
+                    console.log(`[Protest] Expiring stale protest ${protest.id} in ${nation.name} (stuck ${staleTicks} ticks)`);
+                    await supabase.from('protest_log').update({
+                        status: 'resolved', tick_resolved: newTick, tier: 1, turnout_score: 0, condition_score: 0,
+                        effects_applied: [{ stat: 'stale_expired', note: `Expired after ${staleTicks} ticks in resolving state` }],
+                        roll_breakdown: { stale: true, staleTicks }
+                    }).eq('id', protest.id);
+                    await supabase.from('factions').update({ protest_locked_by: null })
+                        .eq('nation_id', nation.id).eq('protest_locked_by', protest.id);
+                    await supabase.from('factions').update({ protest_cooldown_until_tick: newTick + 6 }).eq('id', protest.faction_id);
+                    try {
+                        await supabase.from('event_log').insert({
+                            nation_id: nation.id, event_name: 'Protest Fizzled (Expired)',
+                            trigger_key: 'protest_tier1', category: 'protest',
+                            description_chosen: 'A protest lost momentum after being stuck in limbo and fizzled out.',
+                            fired_at_tick: newTick
+                        });
+                    } catch (_) {}
+                    continue; // skip normal resolution for this protest
+                }
+            }
+
+            // Normal resolution for fresh protests (called this tick or last tick)
+            const freshProtests = (resolvingProtests || []).filter(p => (newTick - (p.tick_called || newTick)) <= 2);
+            for (const protest of freshProtests) {
                 try {
                     // 1. Fetch protest history for fatigue + escalation
                     const { data: protestHistory } = await supabase
@@ -29910,6 +29937,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     // Match of the week
                     const scored = results.map(r => ({ ...r, _ent: r.homeScore + r.awayScore + (r.homeScore === r.awayScore ? 1 : 0) }));
                     scored.sort((a: any, b: any) => b._ent - a._ent);
+                    if (scored.length === 0) continue;
                     const { _ent, ...motw } = scored[0];
                     updatedState = { active: true, season: year, matchweek: (vlnRow.matchweek || 0) + 1, fixtures, standings, last_results: results, match_of_week: motw };
                 }
