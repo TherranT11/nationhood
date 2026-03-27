@@ -14267,12 +14267,12 @@ async function requestToJoinOrg(orgId) {
                 org_id: orgId,
                 faction_id: null,
                 is_system: true,
-                message_text: `${currentFaction.faction_name} has requested to join as ${requestedRole}. The president may approve or members may vote.`,
+                message_text: `${currentFaction.faction_name} has requested to join as ${requestedRole}. The President will decide on admission.`,
                 tick_posted: shardTick
             });
             if (chatErr) console.error('[IPO] Chat insert failed:', chatErr.message);
 
-            alert('Your request has been submitted. The organisation will review your application.');
+            alert('Your request has been submitted. The President will decide on your admission.');
         }
 
         // Refresh the preview to show "Request Pending" state
@@ -16421,6 +16421,36 @@ async function castIPOBallot(voteId, ballotValue) {
                 alert('Failed to cast ballot: ' + error.message);
             }
             return;
+        }
+
+        // President-decides: if this is a membership vote with president_decides flag,
+        // and the president just voted yes, auto-resolve immediately (admit the member)
+        const vote = ipoVotes.find(v => v.id === voteId);
+        if (vote && vote.meta?.president_decides && org.president_id === currentFaction.id && (ballotValue === 'yes' || ballotValue === 'no')) {
+            const approved = ballotValue === 'yes';
+            try {
+                await _supabase.from('ipo_votes').update({
+                    status: approved ? 'passed' : 'failed',
+                    result: { yes: approved ? 1 : 0, no: approved ? 0 : 1, abstain: 0, passed: approved, president_approved: approved },
+                    resolved_at_tick: shardTick
+                }).eq('id', voteId).eq('status', 'open');
+
+                if (approved) {
+                    await applyVoteEffects(vote, org);
+                }
+
+                await _supabase.from('ipo_chat').insert({
+                    org_id: ipoSelectedOrgId,
+                    faction_id: null,
+                    is_system: true,
+                    message_text: approved
+                        ? `The President has approved the admission of ${vote.meta.target_faction_name || 'a faction'}.`
+                        : `The President has denied the admission of ${vote.meta.target_faction_name || 'a faction'}.`,
+                    tick_posted: shardTick
+                });
+            } catch (resolveErr) {
+                console.error('[IPO] President auto-resolve failed:', resolveErr);
+            }
         }
 
         // Reload votes to reflect the new ballot
