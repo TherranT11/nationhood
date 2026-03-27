@@ -6084,14 +6084,14 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const container = document.getElementById('voters-container');
     if (!container) return;
 
-    const partyColor = playerFaction.party_color || '#9b7ec8';
-    const partyAbbr = playerFaction.abbreviation || '??';
+    try {
+
     const partyName = playerFaction.faction_name || 'Unknown Party';
 
     // Fetch standing (full fields), logs, campaigns, government formation, all standings, and stances in parallel
     const [standingRes, partyLogRes, credLogRes, activeCampaignsRes, govFormRes, allStandingsRes, stancesRes] = await Promise.all([
         _supabase.from('faction_electoral_standing')
-            .select('faction_id, party_approval, polled_party_approval, last_polled_tick, credibility_modifier, ideological_alignment, visibility, platform_appeal, raw_appeal, realized_vote_share, contested_vote_share, turnout_rate, alignment_contribution, appeal_contribution, approval_contribution')
+            .select('faction_id, party_approval, credibility_modifier, ideological_alignment, visibility, platform_appeal, realized_vote_share, contested_vote_share, turnout_rate')
             .eq('nation_id', nation.id)
             .eq('faction_id', playerFaction.id)
             .maybeSingle(),
@@ -6125,7 +6125,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             .eq('nation_id', nation.id),
         // Player's stances for issue landscape
         _supabase.from('faction_issue_stance')
-            .select('issue_id, stance_label, intensity')
+            .select('issue_id, axis, side, intensity, strength')
             .eq('faction_id', playerFaction.id),
     ]);
 
@@ -6137,14 +6137,11 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
 
     // ── Extract all five factor scores ──
     const approval = Number(playerStanding.party_approval ?? 25);
-    const polledApproval = playerStanding.polled_party_approval != null ? Number(playerStanding.polled_party_approval) : null;
-    const lastPolledTick = playerStanding.last_polled_tick || null;
     const visibility = Math.round(Number(playerStanding.visibility ?? 0));
     const platformAppeal = Math.round(Number(playerStanding.platform_appeal ?? 0));
     const alignScore = Math.max(0, Math.min(100, Math.round(Number(playerStanding.ideological_alignment ?? 50))));
     const credModifier = Number(playerStanding.credibility_modifier ?? 1.0);
     const credScore = Math.max(0, Math.min(100, Math.round((credModifier - 0.5) * 100)));
-    const rawAppeal = Number(playerStanding.raw_appeal ?? 0);
     const contestedShare = Number(playerStanding.contested_vote_share ?? 0);
     const realizedShare = Number(playerStanding.realized_vote_share ?? 0);
     const turnout = Number(playerStanding.turnout_rate ?? 0.65);
@@ -6228,60 +6225,6 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         return source.replace(/_/g, ' ').replace(/:/g, ' — ');
     }
 
-    // Approval color based on value
-    function _approvalColor(val) {
-        if (val >= 60) return '#5cb85c';
-        if (val >= 40) return '#c8a44e';
-        if (val >= 25) return '#d98030';
-        return '#d9534f';
-    }
-
-    // Build modifier rows HTML from party-specific approval log
-    let modifiersHtml = '';
-    if (partyLog.length === 0) {
-        modifiersHtml = '<div style="font-size:10px;color:var(--dtext-3);font-style:italic;padding:6px 0">No recorded modifiers yet.</div>';
-    } else {
-        for (const entry of partyLog) {
-            const amt = Number(entry.amount);
-            const sign = amt >= 0 ? '+' : '';
-            const color = amt >= 0 ? '#5cb85c' : '#d9534f';
-            const label = _formatSource(entry.source);
-            const date = tickToDate(entry.tick);
-            modifiersHtml += `
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--dborder-0)">
-                    <div style="flex:1;min-width:0">
-                        <div style="font-size:10px;color:var(--dtext-1);font-family:var(--dfont-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(label)}</div>
-                    </div>
-                    <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:8px">
-                        <span style="font-size:10px;color:var(--dtext-3);font-family:var(--dfont-ui)">${escapeHtml(date)}</span>
-                        <span style="font-size:11px;font-weight:700;font-family:var(--dfont-mono);color:${color};min-width:32px;text-align:right">${sign}${amt}</span>
-                    </div>
-                </div>`;
-        }
-    }
-
-    // Last poll info
-    const lastPollText = lastPolledTick && lastPolledTick > 0
-        ? tickToDate(lastPolledTick)
-        : 'Never';
-    const polledDelta = (polledApproval != null && lastPolledTick > 0)
-        ? (approval - polledApproval)
-        : null;
-    const polledDeltaHtml = polledDelta != null
-        ? ` <span style="font-size:10px;font-weight:600;color:${polledDelta >= 0 ? '#5cb85c' : '#d9534f'}">(${polledDelta >= 0 ? '+' : ''}${polledDelta.toFixed(1)} since poll)</span>`
-        : '';
-
-    // Governing status label
-    const statusLabel = isGoverning
-        ? (playerFaction.id === leadPartyId ? 'GOVERNING — LEAD' : 'GOVERNING — COALITION')
-        : 'OPPOSITION';
-    const statusColor = isGoverning ? '#5cb85c' : '#d98030';
-
-    // ── Credibility data ──
-    const credLog = credLogRes.data || [];
-    const credModifier = Number(playerStanding.credibility_modifier ?? 1.0);
-    const credScore = Math.max(0, Math.min(100, Math.round((credModifier - 0.5) * 100))); // 0-100 scale
-
     // Credibility source labels
     const _credSourceLabels = {
         'attack:received': 'Attacked',
@@ -6302,7 +6245,6 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     };
     function _formatCredSource(source) {
         if (_credSourceLabels[source]) return _credSourceLabels[source];
-        // Promise sources: promise:kept:Lower Unemployment, promise:broken:Unemployment, promise:nervous:Unemployment
         if (source.startsWith('promise:kept:')) return `Promise Kept (${source.slice('promise:kept:'.length)})`;
         if (source.startsWith('promise:broken:')) return `Promise Broken (${source.slice('promise:broken:'.length)})`;
         if (source.startsWith('promise:nervous:')) return `Promise Nervous (${source.slice('promise:nervous:'.length)})`;
@@ -6311,91 +6253,21 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         return source.replace(/_/g, ' ').replace(/:/g, ' — ');
     }
 
-    // Build credibility modifier rows
-    let credModifiersHtml = '';
-    if (credLog.length === 0) {
-        credModifiersHtml = '<div style="font-size:10px;color:var(--dtext-3);font-style:italic;padding:6px 0">No recorded changes yet.</div>';
-    } else {
-        for (const entry of credLog) {
-            const amt = Number(entry.amount);
-            const sign = amt >= 0 ? '+' : '';
-            const color = amt >= 0 ? '#5cb85c' : '#d9534f';
-            const label = _formatCredSource(entry.source);
-            const date = tickToDate(entry.tick);
-            credModifiersHtml += `
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--dborder-0)">
-                    <div style="flex:1;min-width:0">
-                        <div style="font-size:10px;color:var(--dtext-1);font-family:var(--dfont-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(label)}</div>
-                        <div style="font-size:9px;color:var(--dtext-3);font-family:var(--dfont-ui)">${escapeHtml(date)}</div>
-                    </div>
-                    <div style="flex-shrink:0;margin-left:8px">
-                        <span style="font-size:11px;font-weight:700;font-family:var(--dfont-mono);color:${color};min-width:40px;text-align:right;display:inline-block">${sign}${amt.toFixed(2)}</span>
-                    </div>
-                </div>`;
-        }
+    // Score color helper
+    function _scoreColor(val) {
+        if (val >= 60) return '#5cb85c';
+        if (val >= 40) return '#c8a44e';
+        if (val >= 25) return '#d98030';
+        return '#d9534f';
     }
 
-    // Credibility tier label
-    function _credTier(score) {
-        if (score >= 80) return { label: 'Excellent', color: '#5cb85c' };
-        if (score >= 60) return { label: 'Good', color: '#6baf6b' };
-        if (score >= 40) return { label: 'Average', color: '#c8a44e' };
-        if (score >= 20) return { label: 'Poor', color: '#d98030' };
-        return { label: 'Disgraced', color: '#d9534f' };
-    }
-    const tier = _credTier(credScore);
-
-    // ── Alignment data ──
-    const alignScore = Math.max(0, Math.min(100, Math.round(Number(playerStanding.ideological_alignment ?? 50))));
-    const activeCampaigns = activeCampaignsRes.data || [];
-
-    function _alignTier(score) {
-        if (score >= 75) return { label: 'Strong Alignment', color: '#5cb85c' };
-        if (score >= 55) return { label: 'Moderate Alignment', color: '#6baf6b' };
-        if (score >= 40) return { label: 'Weak Alignment', color: '#c8a44e' };
-        if (score >= 25) return { label: 'Misaligned', color: '#d98030' };
-        return { label: 'Severely Misaligned', color: '#d9534f' };
-    }
-    const alignTier = _alignTier(alignScore);
-
-    // Build active campaigns list
-    const _campaignNames = { think_tank: 'Think Tank', media_campaign: 'Media Campaign', grassroots_movement: 'Grassroots Movement' };
-    const _campaignDurations = {
-        think_tank: IDEO_SHIFT_CONFIG.THINK_TANK.DURATION,
-        media_campaign: IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.DURATION + (IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN.VISIBILITY_TICKS || 0),
-        grassroots_movement: IDEO_SHIFT_CONFIG.GRASSROOTS.DURATION,
-    };
-    const axisMap = {};
-    for (const ax of IDEOLOGY_AXES) axisMap[ax.key] = ax;
-
-    let campaignsHtml = '';
-    if (activeCampaigns.length === 0) {
-        campaignsHtml = '<div style="font-size:10px;color:var(--dtext-3);font-style:italic;padding:6px 0">No active ideology campaigns.</div>';
-    } else {
-        for (const c of activeCampaigns) {
-            const name = _campaignNames[c.action_type] || c.action_type;
-            const totalDur = _campaignDurations[c.action_type] || 50;
-            const ticksActive = currentTick - (c.created_tick != null ? c.created_tick : currentTick);
-            const ticksLeft = Math.max(0, totalDur - ticksActive);
-            const pct = Math.max(0, Math.min(100, Math.round((ticksActive / totalDur) * 100)));
-            const axDef = axisMap[c.target_axis];
-            const dirLabel = c.target_direction === 'left' ? (axDef?.leftLabel || 'Left')
-                : c.target_direction === 'right' ? (axDef?.rightLabel || 'Right')
-                : c.target_direction === 'expand' ? 'Polarize'
-                : c.target_direction === 'narrow' ? 'Unify' : c.target_direction || '?';
-            const axisLabel = axDef ? `${axDef.leftLabel}–${axDef.rightLabel}` : c.target_axis || '';
-            campaignsHtml += `
-                <div style="padding:6px 0;border-bottom:1px solid var(--dborder-0)">
-                    <div style="display:flex;justify-content:space-between;align-items:center">
-                        <div style="font-size:10px;font-weight:600;color:var(--dtext-1);font-family:var(--dfont-ui)">${escapeHtml(name)}</div>
-                        <span style="font-size:9px;color:${c.status === 'paused' ? '#f97316' : 'var(--dtext-3)'};font-family:var(--dfont-mono)">${c.status === 'paused' ? 'PAUSED' : ticksLeft + ' ticks left'}</span>
-                    </div>
-                    <div style="font-size:9px;color:var(--dtext-3);margin-top:2px">${escapeHtml(axisLabel)} — ${escapeHtml(dirLabel)}</div>
-                    <div style="height:3px;border-radius:2px;background:var(--dbg-3);margin-top:4px;overflow:hidden">
-                        <div style="width:${pct}%;height:100%;background:${partyColor};border-radius:2px;transition:width 0.5s"></div>
-                    </div>
-                </div>`;
-        }
+    // Tier helper
+    function _scoreTier(val) {
+        if (val >= 75) return { label: 'Excellent', color: '#5cb85c' };
+        if (val >= 55) return { label: 'Good', color: '#6baf6b' };
+        if (val >= 40) return { label: 'Average', color: '#c8a44e' };
+        if (val >= 25) return { label: 'Poor', color: '#d98030' };
+        return { label: 'Critical', color: '#d9534f' };
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -6426,21 +6298,6 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             <div class="vt-factor-detail">${detailHtml}</div>
             ${hintHtml ? `<div class="vt-factor-hint">${hintHtml}</div>` : ''}
         </div>`;
-    }
-
-    // Tier helpers
-    function _scoreTier(val) {
-        if (val >= 75) return { label: 'Excellent', color: '#5cb85c' };
-        if (val >= 55) return { label: 'Good', color: '#6baf6b' };
-        if (val >= 40) return { label: 'Average', color: '#c8a44e' };
-        if (val >= 25) return { label: 'Poor', color: '#d98030' };
-        return { label: 'Critical', color: '#d9534f' };
-    }
-    function _scoreColor(val) {
-        if (val >= 60) return '#5cb85c';
-        if (val >= 40) return '#c8a44e';
-        if (val >= 25) return '#d98030';
-        return '#d9534f';
     }
 
     // Compute contributions for waterfall
@@ -6541,22 +6398,25 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     //  SECTION C — ISSUE LANDSCAPE (with Your Stance column)
     // ══════════════════════════════════════════════════════════════
 
-    // Build issue rows from ISSUE_CATEGORY_STATS keys
+    // Build issue rows from ISSUE_DEFS (the actual issue IDs stances use)
     let issueRowsHtml = '';
-    const issueCatKeys = typeof ISSUE_CATEGORY_STATS !== 'undefined' ? Object.keys(ISSUE_CATEGORY_STATS) : [];
+    const issueDefs = typeof ISSUE_DEFS !== 'undefined' ? ISSUE_DEFS : {};
+    const issueKeys = Object.keys(issueDefs);
 
-    if (issueCatKeys.length > 0) {
-        for (const catKey of issueCatKeys) {
-            const stance = stanceMap[catKey];
+    if (issueKeys.length > 0) {
+        for (const issueId of issueKeys) {
+            const def = issueDefs[issueId];
+            const stance = stanceMap[issueId];
             const hasStance = !!stance;
-            const stanceLabel = hasStance ? escapeHtml(stance.stance_label || 'Taken') : '<span style="color:var(--dtext-3)">No stance</span>';
-            const intensity = hasStance ? Math.round((stance.intensity || 0) * 100) + '%' : '—';
+            const sideLabel = stance ? (stance.side === 'left' ? 'Left' : 'Right') : '';
+            const stanceLabel = hasStance ? escapeHtml(`${(stance.intensity || '?').charAt(0).toUpperCase() + (stance.intensity || '').slice(1)} ${sideLabel}`) : '<span style="color:var(--dtext-3)">No stance</span>';
+            const strength = hasStance ? Math.round(Number(stance.strength ?? 100)) + '%' : '—';
             const rowCls = !hasStance ? 'vt-issue-row--missing' : '';
             issueRowsHtml += `
                 <tr class="vt-issue-row ${rowCls}">
-                    <td class="vt-issue-name">${escapeHtml(catKey)}</td>
+                    <td class="vt-issue-name">${escapeHtml(def.label || issueId)}</td>
                     <td class="vt-issue-stance">${stanceLabel}</td>
-                    <td class="vt-issue-str">${intensity}</td>
+                    <td class="vt-issue-str">${strength}</td>
                 </tr>`;
         }
     } else {
@@ -6718,12 +6578,13 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             });
         });
     }, 0);
+
+    } catch (e) {
+        console.error('[Voters Tab] Render error:', e);
+        container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:20px;text-align:center;">Failed to load voter data. Please refresh.</div>';
+    }
 }
 
-// ── DEAD CODE REMOVED — old 3-card layout and unreachable legacy code cleaned up ──
-
-/* PLACEHOLDER: renderVotersTab used to end here with unreachable dead code. */
-// This line intentionally left to mark the boundary.
 
 /* ═══════════════════════════════════════════════════════════════════
    OTHER PARTIES TAB — Rival party intelligence cards
