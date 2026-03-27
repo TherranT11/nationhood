@@ -3730,10 +3730,16 @@ export async function seizeAutocraticPower(supabase, nationId, callerFactionId) 
     // Ruling faction first (strongman), then others by seats
     const orderedFactions = [rulingFaction, ...(allParties || []).filter(f => f.id !== rulingFaction.id)].slice(0, factionLimit);
 
+    // Generate actual names for pillar leaders using nation name pool
+    const { firstNames, lastNames } = getNationNames(nation.name);
+
     for (let i = 0; i < orderedFactions.length; i++) {
         const faction = orderedFactions[i];
         const deathAge = 75 + Math.floor(Math.random() * 11);
         const startAge = 55 + Math.floor(Math.random() * 15);
+        const leaderFirst = firstNames[Math.floor(Math.random() * firstNames.length)];
+        const leaderLast = lastNames[Math.floor(Math.random() * lastNames.length)];
+        const leaderName = leaderFirst + ' ' + leaderLast;
 
         await supabase.from('faction_pillar_state').upsert({
             faction_id: faction.id,
@@ -3741,7 +3747,7 @@ export async function seizeAutocraticPower(supabase, nationId, callerFactionId) 
             pillar: PILLARS[i],
             is_strongman: (i === 0),
             backing: 20.00,
-            leader_name: faction.faction_name + ' Leader',
+            leader_name: leaderName,
             leader_age: startAge,
             leader_birth_tick: currentTick - (startAge * 12),
             death_age: deathAge,
@@ -3750,6 +3756,20 @@ export async function seizeAutocraticPower(supabase, nationId, callerFactionId) 
             minister_count: 0,
             is_prime_minister: false
         }, { onConflict: 'faction_id' });
+
+        // For the strongman (i === 0), also set nation HoS and faction leader fields
+        if (i === 0) {
+            await supabase.from('nations').update({
+                head_of_state_first_name: leaderFirst,
+                head_of_state_last_name: leaderLast,
+                head_of_state_age: startAge,
+            }).eq('id', nationId);
+            await supabase.from('factions').update({
+                leader_first_name: leaderFirst,
+                leader_last_name: leaderLast,
+                leader_age: startAge,
+            }).eq('id', faction.id);
+        }
     }
 
     // Set wildcard pillar (5th unassigned pillar)
