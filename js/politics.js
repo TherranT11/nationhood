@@ -161,7 +161,7 @@ initPage('politics', async (state) => {
         .select('gov_approval')
         .eq('nation_id', nation.id)
         .eq('tick', currentTick - 1)
-        .single();
+        .maybeSingle();
     const prevApproval = prevSnap?.gov_approval ?? null;
 
     // Fetch active president (presidential systems)
@@ -1420,46 +1420,6 @@ function renderNationalMoodBox(nation, activeCrises, currentTick, issueStateMap)
         </div>`;
 }
 
-function computeCategoryContribution(nation, statKeys) {
-    let total = 0, count = 0;
-    for (const key of statKeys) {
-        const val = Number(nation[key] ?? 50);
-        const dir = statDirectionSign(key);
-        if (dir === 0) continue;
-        const goodness = dir === 1 ? val : (100 - val);
-        total += Math.max(0, Math.min(100, goodness));
-        count++;
-    }
-    if (count === 0) return { avgGoodness: 50, score: 0 };
-    const avgGoodness = total / count;
-    const score = Math.round(((avgGoodness - 50) / 5) * 10) / 10;
-    return { avgGoodness, score };
-}
-
-function formatStatValue(key, val) {
-    if (key === 'gdp') {
-        if (val >= 1e9) return '$' + Math.round(val / 1e9) + 'B';
-        if (val >= 1e6) return '$' + Math.round(val / 1e6) + 'M';
-        return '$' + Math.round(val);
-    }
-    return Math.round(val * 10) / 10;
-}
-
-function getRepresentativeStat(nation, statKeys) {
-    // Return the stat with the worst individual value
-    let worst = null, worstBadness = -1;
-    for (const key of statKeys) {
-        const val = Number(nation[key] ?? 50);
-        const dir = statDirectionSign(key);
-        if (dir === 0) continue;
-        const badness = dir === 1 ? (100 - val) : val;
-        if (badness > worstBadness) {
-            worstBadness = badness;
-            worst = { key, val: formatStatValue(key, val) };
-        }
-    }
-    return worst;
-}
 
 
 function renderGovCard(nation, coalition, allParties, currentTick, prevApproval, president, administration) {
@@ -2182,7 +2142,8 @@ function initEditIdentityBox(f) {
                 custom_logo_url: useCustomImage ? customLogoUrl : null,
                 party_description: descArea ? descArea.value.slice(0, MAX_DESC) : ''
             };
-            await _supabase.from('factions').update(updateData).eq('id', f.id);
+            const { error: saveErr } = await _supabase.from('factions').update(updateData).eq('id', f.id);
+            if (saveErr) { _showToast('Save failed: ' + saveErr.message); return; }
             saveBtn.textContent = '✓ Saved';
             saveBtn.classList.add('saved');
             saveBtn.disabled = false;
@@ -2679,37 +2640,6 @@ function initBlocAlignment() {
     });
 }
 
-function renderUpcomingElectionsBox(scheduledElections, currentTick) {
-    const elections = scheduledElections || [];
-    let bodyHtml;
-    if (elections.length === 0) {
-        bodyHtml = '<div class="pol-el-empty">No elections currently scheduled.</div>';
-    } else {
-        bodyHtml = elections.map(e => {
-            const date = tickToDate(e.election_tick);
-            const ticksAway = e.election_tick - currentTick;
-            const typeClass = e.election_type === 'presidential' ? 'pres' : 'parl';
-            const typeLabel = e.election_type === 'presidential' ? 'General Election' : 'Parliamentary';
-            return `<div class="pol-upcoming-row">
-                <span class="pol-upcoming-type ${typeClass}">${typeLabel}</span>
-                <div class="pol-upcoming-info">
-                    <span class="pol-upcoming-date">${date}</span>
-                    <span class="pol-upcoming-countdown">in ${ticksAway} tick${ticksAway !== 1 ? 's' : ''}</span>
-                </div>
-            </div>`;
-        }).join('');
-    }
-
-    return `<div class="pol-upcoming-box">
-        <div class="pol-box-header">
-            <div class="pol-box-dot pol-box-dot--blue"></div>
-            <span class="pol-box-label">Upcoming Elections</span>
-        </div>
-        <div class="pol-box-body">
-        ${bodyHtml}
-        </div>
-    </div>`;
-}
 
 
 function escapeHtml(str) {
@@ -2823,7 +2753,7 @@ function caIsReady() {
     if (_caSelected === 'fund_think_tank') return !!_caTargetAxis && !!_caTargetDirection;
     if (_caSelected === 'media_campaign') return !!_caTargetAxis && !!_caTargetDirection;
     if (_caSelected === 'grassroots_movement') return !!_caTargetAxis && !!_caTargetDirection;
-    if (_caSelected === 'pivot') return !!_caTargetAxis && !!_caTargetDirection;
+    if (_caSelected === 'pivot') return !!_caTargetAxis && !!_caTargetDirection && !_caCooldowns['pivot'];
     return false;
 }
 
@@ -3250,7 +3180,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
                     if (result.newAp != null) f.action_points = result.newAp;
                     const freshAp = await refreshAP(f.id);
                     if (freshAp !== undefined) f.action_points = freshAp;
-                    _showToast(result.message || 'Done.');
+                    _showToast(result.message || 'Done.', false);
                     await renderDemocracyActions(n, f, _currentShard, _currentAllParties);
                 } else {
                     _showToast(result?.message || 'Action failed.');
@@ -4654,9 +4584,6 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
 // STRONGMAN ACTION PANELS
 // ═══════════════════════════════════════════════════════════════════
 
-function renderSuccessorPanel() { return ''; }
-function renderPurgePanel() { return ''; }
-function renderRedistributePanel() { return ''; }
 // (Successor, Purge, Redistribute panels removed — Phase 0)
 
 
@@ -6091,9 +6018,6 @@ async function _renderStanceSummaryStrip(factionId, nationId) {
    ═══════════════════════════════════════════════════════════════════ */
 
 // Three-pillar colors
-const VC_IDEO_COLOR = '#7ec8c0';
-const VC_PERF_COLOR = '#c8a44e';
-const VC_MOM_COLOR  = '#7ec87e';
 
 async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeologies, currentTick, voteSharePct, totalSeats, mySeats) {
     const container = document.getElementById('voters-container');
@@ -6342,7 +6266,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     // ── Card 3: Party Approval ──
     const approvalTier = _scoreTier(approval);
     const govLabel = isGoverning ? 'Governing' : 'Opposition';
-    const govApproval = Number(nation.government_approval ?? 50);
+    const govApproval = Number(nation.gov_approval ?? 50);
     const approvalDetail = `<span class="vt-detail-line">${govLabel}${isGoverning ? ' · Gov approval ' + Math.round(govApproval) + '%' : ''}</span>`;
     const approvalHint = isGoverning ? 'Improve governance to raise approval' : 'Campaign and fulfill promises';
     const approvalCard = _factorCard('Party Approval', approval, weights.approval,
