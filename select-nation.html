@@ -609,6 +609,7 @@ body {
 <div id="loading" class="loading-msg">LOADING NATIONS...</div>
 
 <div id="page-content" style="display:none; width:100%; flex-direction:column; align-items:center;">
+  <button id="logout-btn" onclick="logoutUser()" style="position:fixed;top:16px;right:20px;z-index:100;background:rgba(217,83,79,0.12);border:1px solid rgba(217,83,79,0.3);color:#d9534f;font-family:var(--font-mono);font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;padding:6px 16px;border-radius:2px;cursor:pointer;">Logout</button>
   <div class="page-header">
     <h1>Nationhood</h1>
     <div class="title">Choose Your Nation</div>
@@ -761,9 +762,12 @@ function getGovTypeClass(govType) {
   return 'gov-democracy';
 }
 
-function getGovTypeLabel(govType) {
+function getGovTypeLabel(govTypeOrNation) {
+  const govType = typeof govTypeOrNation === 'string' ? govTypeOrNation : govTypeOrNation?.government_type;
+  const hosMethod = typeof govTypeOrNation === 'object' ? govTypeOrNation?.hos_election_method : null;
   if (govType === 'Autocracy') return 'AUTOCRACY';
   if (govType === 'Presidential') return 'PRESIDENTIAL';
+  if (hosMethod === 'hereditary') return 'CONSTITUTIONAL MONARCHY';
   return 'PARLIAMENTARY';
 }
 
@@ -814,6 +818,7 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
     const profileFlagUrl = Array.isArray(np) ? np[0]?.flag_url : np?.flag_url;
     const flagUrl = profileFlagUrl || nation.flag_url || `assets/flags/${nation.name}.png`;
     const govClass = getGovTypeClass(nation.government_type);
+    const govLabel = getGovTypeLabel(nation);
     const govLabel = getGovTypeLabel(nation.government_type);
     const needsAlphaCode = ALPHA_CODE_NATIONS.has(nation.id);
 
@@ -919,7 +924,7 @@ function selectNation(nationId) {
 
   const govBadge = document.getElementById('modal-gov-badge');
   const govClass = getGovTypeClass(nation.government_type);
-  const govLabel = getGovTypeLabel(nation.government_type);
+  const govLabel = getGovTypeLabel(nation);
   govBadge.className = 'modal__gov-badge ' + govClass;
   govBadge.textContent = govLabel;
 
@@ -1037,6 +1042,13 @@ init();
 window.selectNation = selectNation;
 window.closeModal = closeModal;
 window.confirmNation = confirmNation;
+
+async function logoutUser() {
+    await _supabase.auth.signOut();
+    sessionStorage.clear();
+    window.location.href = 'login.html';
+}
+window.logoutUser = logoutUser;
 window.switchContinent = switchContinent;
 </script>
 </body>

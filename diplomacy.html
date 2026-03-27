@@ -1096,10 +1096,32 @@ async function renderAgreementsTab() {
             .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id)
             .order('activated_at_tick', { ascending: false });
 
+        // Sort: active first, then expired, then withdrawn; within each group by date desc
+        const statusOrder = { active: 0, expired: 1, withdrawn: 2 };
+        const sortedAgreements = (agreements || []).sort((a, b) => {
+            // Check if effectively expired (active but past expiry)
+            const aExpiry = a.activated_at_tick && (a.proposal_data?.duration_years || 0) > 0
+                ? a.activated_at_tick + (a.proposal_data.duration_years * (GAME_CONFIG.TICKS_PER_YEAR || 12)) : null;
+            const bExpiry = b.activated_at_tick && (b.proposal_data?.duration_years || 0) > 0
+                ? b.activated_at_tick + (b.proposal_data.duration_years * (GAME_CONFIG.TICKS_PER_YEAR || 12)) : null;
+            const aStatus = (a.status === 'active' && aExpiry && aExpiry <= shardTick) ? 'expired' : a.status;
+            const bStatus = (b.status === 'active' && bExpiry && bExpiry <= shardTick) ? 'expired' : b.status;
+            const orderDiff = (statusOrder[aStatus] ?? 3) - (statusOrder[bStatus] ?? 3);
+            if (orderDiff !== 0) return orderDiff;
+            return (b.activated_at_tick || 0) - (a.activated_at_tick || 0);
+        });
+
         let html = '';
-        for (const ag of (agreements || [])) {
+        for (const ag of sortedAgreements) {
             const pd = ag.proposal_data || {};
             const isExpiredOrWithdrawn = ag.status === 'expired' || ag.status === 'withdrawn';
+
+            // Check if agreement is effectively expired (status still 'active' but past expiry date)
+            const signedTick0 = ag.activated_at_tick;
+            const durationYears0 = pd.duration_years || 0;
+            const expiresTick0 = signedTick0 != null && durationYears0 > 0
+                ? signedTick0 + (durationYears0 * (GAME_CONFIG.TICKS_PER_YEAR || 12)) : null;
+            const isEffectivelyExpired = ag.status === 'active' && expiresTick0 != null && expiresTick0 <= shardTick;
 
             // Hide expired/withdrawn agreements after 6 ticks
             if (isExpiredOrWithdrawn) {
@@ -1274,11 +1296,23 @@ async function renderAgreementsTab() {
                 }
             }
 
+            // Status badge
+            let statusBadge = '';
+            if (ag.status === 'withdrawn') {
+                statusBadge = '<span class="badge" style="background:rgba(217,83,79,0.15);color:#d9534f;border:1px solid rgba(217,83,79,0.3);font-size:0.6rem;font-weight:700;">WITHDRAWN</span>';
+            } else if (isExpiredOrWithdrawn || isEffectivelyExpired) {
+                statusBadge = '<span class="badge" style="background:rgba(200,166,78,0.15);color:#c8a64e;border:1px solid rgba(200,166,78,0.3);font-size:0.6rem;font-weight:700;">EXPIRED</span>';
+            } else {
+                statusBadge = '<span class="badge" style="background:rgba(92,184,92,0.15);color:#5cb85c;border:1px solid rgba(92,184,92,0.3);font-size:0.6rem;font-weight:700;">ACTIVE</span>';
+            }
+
+            const cardOpacity = (isExpiredOrWithdrawn || isEffectivelyExpired) ? ' style="opacity:0.6;"' : '';
             html += `
-                <div class="agreement-card"${isExpiredOrWithdrawn ? ' style="opacity:0.7;border-left:3px solid var(--amber);"' : ''}>
+                <div class="agreement-card"${cardOpacity}>
                     <div class="agreement-card-header">
                         <div class="agreement-card-name">${ag.proposal_type === 'state_visit' ? escapeHtml(stateVisitLabel(pd, proposerName, targetName)) : escapeHtml(pd.name || 'Unnamed Agreement')}</div>
                         <div class="agreement-card-badges">
+                            ${statusBadge}
                             ${classBadge}
                             ${withdrawHTML}
                         </div>
@@ -1311,7 +1345,19 @@ async function renderAgreementsTab() {
                 .order('enacted_at_tick', { ascending: false });
 
             if (tradeAgs && tradeAgs.length > 0) {
-                tradeHtml += '<div class="diplo-section-title" style="margin-top:20px;">Active Trade Agreements</div>';
+                // Sort: active first, then expired, then withdrawn; within each by date desc
+                const taStatusOrder = { active: 0, expired: 1, withdrawn: 2 };
+                tradeAgs.sort((a, b) => {
+                    const aEffExpired = a.status === 'active' && a.expires_at_tick && a.expires_at_tick <= shardTick;
+                    const bEffExpired = b.status === 'active' && b.expires_at_tick && b.expires_at_tick <= shardTick;
+                    const aS = aEffExpired ? 'expired' : a.status;
+                    const bS = bEffExpired ? 'expired' : b.status;
+                    const orderDiff = (taStatusOrder[aS] ?? 3) - (taStatusOrder[bS] ?? 3);
+                    if (orderDiff !== 0) return orderDiff;
+                    return (b.enacted_at_tick || 0) - (a.enacted_at_tick || 0);
+                });
+
+                tradeHtml += '<div class="diplo-section-title" style="margin-top:20px;">Trade Agreements</div>';
 
                 // Fetch nation names
                 const tradeNationIds = new Set();
@@ -1362,14 +1408,27 @@ async function renderAgreementsTab() {
                         }
                     }
 
+                    // Status badge for trade agreements
+                    const taEffExpired = ta.status === 'active' && ta.expires_at_tick && ta.expires_at_tick <= shardTick;
+                    let taStatusBadge = '';
+                    if (ta.status === 'withdrawn') {
+                        taStatusBadge = '<span class="badge" style="background:rgba(217,83,79,0.15);color:#d9534f;border:1px solid rgba(217,83,79,0.3);font-size:0.6rem;font-weight:700;">WITHDRAWN</span>';
+                    } else if (taIsExpired || taEffExpired) {
+                        taStatusBadge = '<span class="badge" style="background:rgba(200,166,78,0.15);color:#c8a64e;border:1px solid rgba(200,166,78,0.3);font-size:0.6rem;font-weight:700;">EXPIRED</span>';
+                    } else {
+                        taStatusBadge = '<span class="badge" style="background:rgba(92,184,92,0.15);color:#5cb85c;border:1px solid rgba(92,184,92,0.3);font-size:0.6rem;font-weight:700;">ACTIVE</span>';
+                    }
+                    const taCardOpacity = (taIsExpired || taEffExpired) ? ' style="opacity:0.6;"' : '';
+
                     tradeHtml += `
-                        <div class="agreement-card"${taIsExpired ? ' style="opacity:0.7;border-left:3px solid var(--amber);"' : ''}>
+                        <div class="agreement-card"${taCardOpacity}>
                             <div class="agreement-card-header">
                                 <div class="agreement-card-name" style="display:flex;align-items:center;gap:8px;">
                                     ${typeInfo ? '<div class="trade-type-icon ' + typeInfo.icon + '" style="width:24px;height:24px;font-size:0.8rem;">' + iconHtml + '</div>' : ''}
                                     ${escapeHtml(ta.agreement_name || 'Unnamed')}
                                 </div>
                                 <div class="agreement-card-badges">
+                                    ${taStatusBadge}
                                     <span class="trade-type-short">${typeInfo ? escapeHtml(typeInfo.shortLabel) : ''}</span>
                                     ${withdrawBtn}
                                 </div>
