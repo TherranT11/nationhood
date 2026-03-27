@@ -2656,34 +2656,38 @@ export async function executePollNow(supabase, factionId, nationId, currentTick)
         return { success: false, message: apResult.error || 'Insufficient AP' };
     }
 
-    // ── Load current standing ──
-    const { data: standing } = await supabase
+    // ── Load ALL standings for this nation (poll snapshots every faction) ──
+    const { data: allStandings } = await supabase
         .from('faction_electoral_standing')
         .select('*')
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId)
-        .maybeSingle();
-    if (!standing) {
+        .eq('nation_id', nationId);
+    if (!allStandings || allStandings.length === 0) {
         return { success: false, message: 'No electorate standing found. Advance a tick first.' };
     }
+    const standing = allStandings.find(s => s.faction_id === factionId);
+    if (!standing) {
+        return { success: false, message: 'No electorate standing found for your faction.' };
+    }
 
-    // ── Snapshot to polled columns ──
-    const { error: updErr } = await supabase.from('faction_electoral_standing')
-        .update({
-            last_polled_tick: currentTick,
-            polled_alignment: standing.ideological_alignment,
-            polled_platform_appeal: standing.platform_appeal,
-            polled_party_approval: standing.party_approval,
-            polled_visibility: standing.visibility,
-            polled_credibility: standing.credibility_modifier,
-            polled_vote_share: standing.realized_vote_share,
-            polled_alignment_contribution: standing.alignment_contribution,
-            polled_appeal_contribution: standing.appeal_contribution,
-            polled_approval_contribution: standing.approval_contribution,
-            polled_vote_left_on_table: standing.vote_left_on_table,
-        })
-        .eq('id', standing.id);
-    if (updErr) console.error('[Electorate] Poll snapshot failed:', updErr.message);
+    // ── Snapshot polled columns for ALL factions in this nation ──
+    for (const s of allStandings) {
+        const { error: updErr } = await supabase.from('faction_electoral_standing')
+            .update({
+                last_polled_tick: currentTick,
+                polled_alignment: s.ideological_alignment,
+                polled_platform_appeal: s.platform_appeal,
+                polled_party_approval: s.party_approval,
+                polled_visibility: s.visibility,
+                polled_credibility: s.credibility_modifier,
+                polled_vote_share: s.realized_vote_share,
+                polled_alignment_contribution: s.alignment_contribution,
+                polled_appeal_contribution: s.appeal_contribution,
+                polled_approval_contribution: s.approval_contribution,
+                polled_vote_left_on_table: s.vote_left_on_table,
+            })
+            .eq('id', s.id);
+        if (updErr) console.error('[Electorate] Poll snapshot failed for', s.faction_id, ':', updErr.message);
+    }
 
     // ── Visibility + logs ──
     await boostVisibility(supabase, factionId, nationId, POLL_CONFIG.VISIBILITY_BOOST);
