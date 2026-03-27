@@ -2186,12 +2186,19 @@ export async function processPresidentialElectionResult(supabase, nation, comple
 
             // Update the election record with combined round data
             // Replace presidential_candidates with runoff results so the UI shows the final outcome
+            // Compute runoff turnout from eligible voters
+            const eligible = completedElection.results.total_votes_cast + (completedElection.results.total_abstentions || 0);
+            const runoffTurnoutPct = eligible > 0 ? Math.round((runoffTotalVotes / eligible) * 10000) / 100 : 0;
+
             const combinedResults = {
                 ...completedElection.results,
                 presidential_candidates: runoffResults,
                 round_1_candidates: candidateResults,
+                round_1_total_votes_cast: completedElection.results.total_votes_cast,
+                round_1_turnout_pct: completedElection.results.turnout_pct,
                 runoff_candidates: runoffResults,
                 total_votes_cast: runoffTotalVotes,
+                turnout_pct: runoffTurnoutPct,
                 was_runoff: true,
                 runoff_transfers: runoffTransfers,
                 runoff_abstentions: totalAbstained

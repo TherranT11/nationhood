@@ -2272,7 +2272,10 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
         const cands = r?.round_1_candidates || r?.presidential_candidates;
         if (!cands) return '<div class="pol-el-empty">No first round results.</div>';
         const date = tickToDate(el.election_tick);
-        return renderPresidentialCandidates(cands, date, r.turnout_pct, r.total_votes_cast);
+        // Use round_1 specific totals if available (total_votes_cast gets overwritten with runoff totals)
+        const r1Turnout = r.round_1_turnout_pct ?? r.turnout_pct;
+        const r1Votes = r.round_1_total_votes_cast ?? r.total_votes_cast;
+        return renderPresidentialCandidates(cands, date, r1Turnout, r1Votes);
     }
 
     function renderRunoffContent(el) {
