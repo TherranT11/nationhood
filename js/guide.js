@@ -134,6 +134,28 @@ const guideContent = {
 <li>Embargo: &minus;40</li>
 </ul>
 <p class="guide-tip">Trade agreements significantly boost trade volume. An FTA gives +25 affinity.</p>
+
+<h3>Free Trade Agreement Effects</h3>
+<p>FTAs and PTAs create real tradeoffs &mdash; they boost trade but have ongoing economic costs:</p>
+<table>
+<tr><th>Effect</th><th>FTA</th><th>PTA</th></tr>
+<tr><td><strong>Trade Affinity</strong></td><td>+25</td><td>+15</td></tr>
+<tr><td><strong>Tariff Reduction</strong></td><td>100% all sectors</td><td>Per-article, per-sector</td></tr>
+<tr><td><strong>Manufacturing Pressure</strong></td><td>&minus;0.1/tick manufacturing_output</td><td>&minus;0.05/tick (if manufactured_goods reduced)</td></tr>
+<tr><td><strong>Sector Competition</strong></td><td>&minus;0.05/tick service &amp; manufacturing (if partner GDP &gt;2&times; yours)</td><td>&mdash;</td></tr>
+<tr><td><strong>Polarization on Signing</strong></td><td>+3 both nations</td><td>&mdash;</td></tr>
+</table>
+
+<h4>Withdrawal Penalties</h4>
+<p>Withdrawing from a trade agreement causes an immediate economic shock to <strong>both</strong> nations:</p>
+<table>
+<tr><th>Stat</th><th>FTA Withdrawal</th><th>PTA Withdrawal</th></tr>
+<tr><td>GDP Growth</td><td>&minus;0.3</td><td>&minus;0.15</td></tr>
+<tr><td>Foreign Investment</td><td>&minus;3</td><td>&minus;1</td></tr>
+<tr><td>Stability</td><td>&minus;2</td><td>&minus;1</td></tr>
+<tr><td>Polarization</td><td>+2</td><td>&mdash;</td></tr>
+</table>
+<p class="guide-tip">FTAs are powerful but hard to leave. Think carefully before signing &mdash; your manufacturing sector will feel the pressure, and withdrawal hurts both economies.</p>
 </div></details>
 
 <details><summary>Sectors Sub-Tab</summary><div>
