@@ -22500,7 +22500,7 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
             small_amount: 0,
             tick_created: currentTick,
             deadline_ticks: deadlineTicks,
-            tick_deadline: null,
+            tick_deadline: currentTick + deadlineTicks, // Placeholder — real deadline set on activation after election
             conditions,
             progress: { source: 'make_promise', promise_type: promiseType },
             status: 'pending_election',
