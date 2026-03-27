@@ -11536,6 +11536,73 @@ async function renderUTRDraftPanel(body, statusEl) {
         return;
     }
 
+    // Fetch current trade flows with target + our tariff rate
+    var baseTariff = Number(currentNation.tariffs ?? 0);
+    var { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    var latestTick = shard?.current_tick || 0;
+    var { data: tradeRows } = await _supabase.from('trade_partners')
+        .select('sector, trade_volume, exporter_nation_id, importer_nation_id')
+        .eq('tick', latestTick)
+        .or('and(exporter_nation_id.eq.' + activeDraftTarget.id + ',importer_nation_id.eq.' + currentNation.id + '),' +
+            'and(exporter_nation_id.eq.' + currentNation.id + ',importer_nation_id.eq.' + activeDraftTarget.id + ')');
+
+    // Check for existing agreements that modify tariffs with this target (FTA/PTA)
+    var { data: existingAgreements } = await _supabase.from('trade_agreements')
+        .select('agreement_type, articles')
+        .eq('status', 'active')
+        .or('and(nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + activeDraftTarget.id + '),' +
+            'and(nation_a_id.eq.' + activeDraftTarget.id + ',nation_b_id.eq.' + currentNation.id + ')');
+
+    // Build per-sector existing reduction map from FTA/PTA articles
+    var existingReductions = {};
+    if (existingAgreements) {
+        for (var ag of existingAgreements) {
+            if (ag.agreement_type === 'free_trade') {
+                // FTA = 100% reduction on all sectors
+                TRADEABLE_SECTORS.forEach(function(s) { existingReductions[s.key] = 100; });
+            } else if (ag.articles && Array.isArray(ag.articles)) {
+                for (var art of ag.articles) {
+                    if (art.type === 'tariff_reduction' && art.data?.sector) {
+                        var pct = Number(art.data.reduction_pct || 0);
+                        existingReductions[art.data.sector] = Math.max(existingReductions[art.data.sector] || 0, pct);
+                    }
+                }
+            }
+        }
+    }
+
+    // Build sector import data
+    var sectorImports = {};
+    if (tradeRows) {
+        for (var row of tradeRows) {
+            if (!sectorImports[row.sector]) sectorImports[row.sector] = { imports: 0, exports: 0 };
+            if (row.exporter_nation_id === activeDraftTarget.id) {
+                sectorImports[row.sector].imports += Number(row.trade_volume) || 0;
+            } else {
+                sectorImports[row.sector].exports += Number(row.trade_volume) || 0;
+            }
+        }
+    }
+
+    // Current tariffs overview per sector
+    html += '<div style="padding:8px 14px;">';
+    html += '<div class="draft-field-label">Current Tariff Situation</div>';
+    html += '<div style="font-size:0.6rem;color:var(--text-dim);margin:4px 0 6px;">Your base tariff rate: <strong style="color:var(--text-primary);">' + baseTariff.toFixed(0) + '%</strong></div>';
+    html += '<div style="max-height:200px;overflow-y:auto;">';
+    TRADEABLE_SECTORS.forEach(function(s) {
+        var td = sectorImports[s.key] || { imports: 0, exports: 0 };
+        var existingPct = existingReductions[s.key] || 0;
+        var effectiveRate = Math.max(0, baseTariff * (1 - existingPct / 100));
+        var hasAgreement = existingPct > 0;
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border-hair);font-size:0.72rem;">';
+        html += '<div style="flex:1;font-weight:600;color:var(--text-primary);">' + escapeHtml(s.label) + '</div>';
+        html += '<div style="min-width:70px;text-align:right;color:var(--text-dim);">' + (td.imports > 0 ? fmtBudgetCurrency(td.imports) + '/tick' : '—') + '</div>';
+        html += '<div style="min-width:55px;text-align:right;font-family:var(--font-mono);font-size:0.65rem;' + (hasAgreement ? 'color:var(--green);' : 'color:var(--text-muted);') + '">';
+        html += effectiveRate.toFixed(0) + '%' + (hasAgreement ? ' <span style="font-size:0.55rem;opacity:0.7;">(' + existingPct + '% off)</span>' : '');
+        html += '</div></div>';
+    });
+    html += '</div></div>';
+
     // Reduction % selector
     html += '<div style="padding:8px 14px;">';
     html += '<div class="draft-field-label">Reduction Percentage</div>';
@@ -11609,10 +11676,8 @@ async function submitUTRDraft() {
             agreement_name: currentNation.name + ' Tariff Reduction on ' + activeDraftTarget.name,
             articles: [{ type: 'tariff_reduction', data: { reduction_pct: reductionPct, direction: 'their_exports', sector: 'all' } }],
             status: 'active',
-            proposed_by_faction_id: currentFaction.id,
             proposed_at_tick: currentTick,
-            enacted_at_tick: currentTick,
-            shard_name: 'Alpha Shard'
+            enacted_at_tick: currentTick
         });
 
         if (error) { alert('Failed: ' + error.message); _utrDraftLock = false; return; }

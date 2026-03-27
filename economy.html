@@ -3127,13 +3127,18 @@ function renderTariffMatrix(nation) {
         return (a.name || '').localeCompare(b.name || '');
     });
 
-    // Build agreement lookup: agreementWith[nationId] = { type, details }
+    // Build agreement lookup: agreementWith[nationId] = best agreement (most impactful)
+    // Priority: FTA > PTA > UTR > others
     var agreementWith = {};
+    var AGREEMENT_PRIORITY = { free_trade: 4, fta: 4, pta: 3, preferential_tariff: 3, unilateral_tariff_reduction: 2 };
     if (tradeAgreements) {
         for (var i = 0; i < tradeAgreements.length; i++) {
             var ag = tradeAgreements[i];
+            if (ag.status !== 'active') continue;
             var partnerId = ag.nation_a_id === nation.id ? ag.nation_b_id : ag.nation_a_id;
-            agreementWith[partnerId] = ag;
+            var newPri = AGREEMENT_PRIORITY[ag.agreement_type] || 1;
+            var existPri = agreementWith[partnerId] ? (AGREEMENT_PRIORITY[agreementWith[partnerId].agreement_type] || 1) : 0;
+            if (newPri > existPri) agreementWith[partnerId] = ag;
         }
     }
 
@@ -3192,6 +3197,15 @@ function renderTariffMatrix(nation) {
                     effectiveRate = Math.max(0, rate * (1 - avgReduction / 100));
                 }
                 agBadgeColor = '#5b9bd5';
+            } else if (ag.agreement_type === 'unilateral_tariff_reduction') {
+                // UTR: you cut your tariffs on their exports — use YOUR base rate
+                var articles = ag.articles || [];
+                var utrArt = articles.find(function(a) { return a.type === 'tariff_reduction'; });
+                var utrPct = utrArt ? Number(utrArt.data?.reduction_pct || 0) : 50;
+                var yourRate = Number(nation.tariffs) || 0;
+                effectiveRate = Math.max(0, yourRate * (1 - utrPct / 100));
+                agLabel = 'UTR ' + utrPct + '%';
+                agBadgeColor = '#5cb85c';
             } else if (ag.agreement_type === 'resource_supply') {
                 agBadgeColor = '#d48a3c';
             }
