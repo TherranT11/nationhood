@@ -662,12 +662,12 @@ export async function endNationalEmergency(supabase, nationId, factionId) {
     const { data: endNation } = await supabase
         .from('nations').select('government_type').eq('id', nationId).single();
 
+    // Find active emergency by nation (not faction — any authorized party can end it)
     const { data: emergency } = await supabase
         .from('executive_orders')
         .select('id, issued_tick')
         .eq('nation_id', nationId)
         .eq('order_type', 'national_emergency')
-        .eq('faction_id', factionId)
         .eq('is_active', true)
         .maybeSingle();
 
@@ -781,7 +781,6 @@ export async function advanceBillEmergency(supabase, nationId, factionId, billId
         .select('id, payload')
         .eq('nation_id', nationId)
         .eq('order_type', 'national_emergency')
-        .eq('faction_id', factionId)
         .eq('is_active', true)
         .maybeSingle();
 
