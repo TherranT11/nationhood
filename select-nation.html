@@ -819,7 +819,6 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
     const flagUrl = profileFlagUrl || nation.flag_url || `assets/flags/${nation.name}.png`;
     const govClass = getGovTypeClass(nation.government_type);
     const govLabel = getGovTypeLabel(nation);
-    const govLabel = getGovTypeLabel(nation.government_type);
     const needsAlphaCode = ALPHA_CODE_NATIONS.has(nation.id);
 
     const sortedParties = [...nParties].sort((a, b) => (b.seats || 0) - (a.seats || 0));

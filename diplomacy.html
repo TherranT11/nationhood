@@ -1782,7 +1782,7 @@ async function withdrawTradeAgreement(agreementId) {
                 if (wn) {
                     const wUpdates = {};
                     for (const [stat, delta] of Object.entries(withdrawalEffects)) {
-                        wUpdates[stat] = Math.max(0, Math.min(100, Math.round(((wn[stat] || 50) + delta) * 10) / 10));
+                        wUpdates[stat] = Math.max(0, Math.min(100, Math.round(((wn[stat] ?? 50) + delta) * 10) / 10));
                     }
                     await _supabase.from('nations').update(wUpdates).eq('id', nId);
                 }

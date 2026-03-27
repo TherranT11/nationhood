@@ -932,12 +932,13 @@ function calculateTariffRevenue(totalImports, tariffRate, collectionRate) {
 
 async function processFTAEffects(supabase: any, nationList: any[], currentTick: number) {
     // Load active FTAs and PTAs
-    const { data: activeAgreements } = await supabase
+    const { data: activeAgreements, error: ftaQueryErr } = await supabase
         .from('trade_agreements')
         .select('nation_a_id, nation_b_id, agreement_type, articles')
         .eq('status', 'active')
         .in('agreement_type', ['fta', 'pta']);
 
+    if (ftaQueryErr) { console.error('[FTA Effects] Query error:', ftaQueryErr.message); return; }
     if (!activeAgreements || activeAgreements.length === 0) return;
 
     const nationMap: Record<string, any> = {};
@@ -1020,44 +1021,6 @@ async function processFTAEffects(supabase: any, nationList: any[], currentTick: 
 
 // ==================== FTA WITHDRAWAL SHOCK ====================
 // Applied when a trade agreement is withdrawn. Creates a multi-tick
-// economic disruption recorded as a stat effect.
-
-const FTA_WITHDRAWAL_EFFECTS = {
-    fta: { gdp_growth: -0.3, foreign_investment: -3, stability: -2, polarization: 2 },
-    pta: { gdp_growth: -0.15, foreign_investment: -1, stability: -1 },
-};
-
-async function applyFTAWithdrawalShock(supabase: any, nationId: string, agreementType: string, currentTick: number) {
-    const effects = (FTA_WITHDRAWAL_EFFECTS as any)[agreementType];
-    if (!effects) return;
-
-    const { data: nation } = await supabase.from('nations').select('*').eq('id', nationId).single();
-    if (!nation) return;
-
-    const updates: Record<string, number> = {};
-    for (const [stat, delta] of Object.entries(effects)) {
-        const current = Number((nation as any)[stat] ?? 50);
-        updates[stat] = Math.max(0, Math.min(100, Math.round((current + (delta as number)) * 10) / 10));
-    }
-
-    if (Object.keys(updates).length > 0) {
-        await supabase.from('nations').update(updates).eq('id', nationId);
-    }
-
-    // Fire event
-    try {
-        await supabase.from('event_log').insert({
-            nation_id: nationId,
-            event_name: 'Trade Agreement Withdrawal Shock',
-            trigger_key: 'trade_withdrawal_shock',
-            category: 'ECONOMY',
-            description_chosen: `The withdrawal of a ${agreementType.toUpperCase()} has caused economic disruption: GDP growth dip, reduced foreign investment, and decreased stability.`,
-            fired_at_tick: currentTick
-        });
-    } catch (_) {}
-
-    console.log(`[FTA Withdrawal] Applied shock to ${nationId}: ${JSON.stringify(effects)}`);
-}
 
 async function processTradeFlows(supabase, nationList, currentTick) {
     if (!nationList || nationList.length < 2) {
