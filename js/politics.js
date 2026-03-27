@@ -2723,9 +2723,9 @@ const CA_ACTIONS = [
       category: 'visibility', affects: 'Visibility',
       desc: 'Hold a press conference to make a public statement. Guaranteed small visibility boost (1d3 + 1). Safe and reliable compared to the high-variance rally.' },
     // TOOLS
-    { id: 'poll_now', name: 'Poll Now', ap: POLL_CONFIG.AP_COST, color: '#22d3ee', icon: '📊',
+    { id: 'poll_now', name: 'Poll Now', ap: 1, color: '#22d3ee', icon: '📊',
       category: 'tools', affects: 'Informational',
-      desc: 'Commission a snapshot of your current electoral standing. See your vote share, pillar scores, and limiting factors frozen at this moment.' },
+      desc: 'Commission a poll to update the Current Electoral Standing. 1 AP = ±5% margin, 3 AP = ±3% margin.' },
 ];
 
 // State for new electorate actions
@@ -2735,6 +2735,8 @@ let _caActiveActions = [];  // Active ideology_shift_actions rows
 let _caTargetAxis = null;
 let _caTargetDirection = null;
 let _caPivotIdeo = null; // cached faction ideology for pivot cost calculation
+let _caPollTier = 1; // poll investment: 1 AP (±5%) or 3 AP (±3%)
+window._selectPollTier = function(tier) { _caPollTier = tier; const rerender = document.getElementById('ca-config-panel'); if (rerender) { rerender.innerHTML = renderPollNowConfig(); } };
 let _caTargetDemographic = null;
 let _caTargetBand = null;
 // State for Take Stance action
@@ -2800,6 +2802,7 @@ function caGetCost() {
         }
         return cost;
     }
+    if (_caSelected === 'poll_now') return _caPollTier; // 1 or 3 AP based on tier
     const act = CA_ACTIONS.find(a => a.id === _caSelected);
     if (!act) return 0;
     // Campaign Attack cost scales with current polarization
@@ -3347,8 +3350,8 @@ function renderActionConfig(sel, otherParties, factionIdeo, nation, ap, tick) {
     if (sel.id === 'media_campaign') return renderMediaCampaignConfig();
     if (sel.id === 'grassroots_movement') return renderGrassrootsConfig();
     if (sel.id === 'pivot') return renderPivotConfig(nation);
-    if (sel.id === 'press_conference') return `<div class="ca-info-box">Hold a press conference for guaranteed visibility. Safe, reliable, no risk of backfire.<br><br><strong>Effect:</strong> +1d3+1 Visibility (2–4)</div>`;
-    if (sel.id === 'outreach') return `<div class="ca-info-box">Engage directly with communities through town halls, door-knocking, and local events.<br><br><strong>Effects:</strong> +3 Platform Appeal, +5 Visibility, +1 Approval</div>`;
+    if (sel.id === 'press_conference') return `<div class="ca-info-box">Hold a press conference to make a public statement. Result depends on your position and approval.<br><br><strong>Base roll:</strong> -2 to +2 Visibility<br><strong>Opposition bonus:</strong> +1<br><strong>Government bonus:</strong> +2 (if gov approval ≥ 40)</div>`;
+    if (sel.id === 'outreach') return `<div class="ca-info-box">Engage directly with communities through town halls, door-knocking, and local events.<br><br><strong>Effect:</strong> +3 Platform Appeal</div>`;
     return '';
 }
 
@@ -3435,7 +3438,18 @@ function renderTakeStanceConfig(nation) {
 // ── POLL NOW CONFIG ──
 
 function renderPollNowConfig() {
-    return `<div class="ca-info-box">Take a snapshot of your current electorate standing. Your polled pillars, vote share, and limiters will be frozen so you can compare before/after future actions.</div>
+    return `<div class="ca-info-box">Commission a poll to update the Current Electoral Standing table. Higher investment produces more accurate results.</div>
+    <div style="margin-top:8px;">
+        <label style="font-family:var(--dfont-mono);font-size:9px;color:var(--dtext-3);text-transform:uppercase;display:block;margin-bottom:4px;">Investment Level</label>
+        <div style="display:flex;gap:6px;">
+            <button class="ca-poll-tier-btn${_caPollTier === 1 ? ' selected' : ''}" onclick="window._selectPollTier(1)" style="flex:1;padding:6px;background:${_caPollTier === 1 ? 'var(--dbg-hover)' : 'var(--dbg-3)'};border:1px solid ${_caPollTier === 1 ? 'var(--dtext-1)' : 'var(--dborder-0)'};border-radius:2px;color:var(--dtext-0);font-family:var(--dfont-mono);font-size:10px;cursor:pointer;text-align:center;">
+                <strong>1 AP</strong><br><span style="color:var(--damber)">±5%</span>
+            </button>
+            <button class="ca-poll-tier-btn${_caPollTier === 3 ? ' selected' : ''}" onclick="window._selectPollTier(3)" style="flex:1;padding:6px;background:${_caPollTier === 3 ? 'var(--dbg-hover)' : 'var(--dbg-3)'};border:1px solid ${_caPollTier === 3 ? 'var(--dtext-1)' : 'var(--dborder-0)'};border-radius:2px;color:var(--dtext-0);font-family:var(--dfont-mono);font-size:10px;cursor:pointer;text-align:center;">
+                <strong>3 AP</strong><br><span style="color:var(--dgreen)">±3%</span>
+            </button>
+        </div>
+    </div>
     <div class="ca-info-box" style="margin-top:8px;color:var(--dtext-3);font-size:0.8em">Cooldown: ${POLL_CONFIG.COOLDOWN_WINDOW} ticks between polls.</div>`;
 }
 
@@ -4557,7 +4571,8 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
         } else if (sel.id === 'take_stance') {
             result = await executeTakeStance(_supabase, f.id, n.id, _caStanceIssue, _caStanceAxis, _caStanceSide, _caStanceIntensity, tick);
         } else if (sel.id === 'poll_now') {
-            result = await executePollNow(_supabase, f.id, n.id, tick);
+            // Pass poll tier: 1 AP = ±5% margin, 3 AP = ±3% margin
+            result = await executePollNow(_supabase, f.id, n.id, tick, _caPollTier);
         } else if (sel.id === 'fund_think_tank') {
             result = await executeFundThinkTank(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
         } else if (sel.id === 'media_campaign') {
@@ -4565,43 +4580,42 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
         } else if (sel.id === 'grassroots_movement') {
             result = await executeGrassrootsMovement(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
         } else if (sel.id === 'press_conference') {
-            // Press Conference: 1d3 + 1 visibility, costs 2 AP
+            // Press Conference: base -2 to +2 visibility, +1 if opposition, +2 if gov with approval >= 40
             const apResult = await _supabase.rpc('accumulate_ap', { p_faction_id: f.id, p_gain: -2, p_max_ap: 99 });
             if (apResult.error) { result = { success: false, error: apResult.error.message }; }
             else {
                 const { boostVisibility } = await import('./game/electorate.js');
-                const visBoost = Math.floor(Math.random() * 3) + 2; // 1d3 + 1 = 2-4
-                await boostVisibility(_supabase, f.id, n.id, visBoost);
+                let baseRoll = Math.floor(Math.random() * 5) - 2; // -2 to +2
+                if (!_caIsGoverning) baseRoll += 1; // opposition bonus
+                else if ((n.gov_approval || 0) >= 40) baseRoll += 2; // government with decent approval
+                await boostVisibility(_supabase, f.id, n.id, Math.max(0, baseRoll));
                 await _supabase.from('campaign_actions').insert({
                     party_id: f.id, nation_id: n.id, action_type: 'press_conference',
-                    ap_cost: 2, tick_performed: tick, result: { visBoost }
+                    ap_cost: 2, tick_performed: tick, result: { visBoost: baseRoll }
                 });
+                const sign = baseRoll >= 0 ? '+' : '';
                 result = { success: true, newAp: apResult.data, headline: 'Press Conference',
-                    effects: [{ label: 'Visibility', value: `+${visBoost}` }],
-                    outcomeName: `Press conference held — +${visBoost} visibility` };
+                    effects: [{ label: 'Visibility', value: `${sign}${baseRoll}` }],
+                    outcomeName: `Press conference — ${sign}${baseRoll} visibility` };
             }
         } else if (sel.id === 'outreach') {
-            // Community Outreach: +3 platform appeal, +5 visibility, costs 3 AP
+            // Community Outreach: +3 platform appeal only, costs 3 AP
             const apResult = await _supabase.rpc('accumulate_ap', { p_faction_id: f.id, p_gain: -3, p_max_ap: 99 });
             if (apResult.error) { result = { success: false, error: apResult.error.message }; }
             else {
-                const { boostVisibility, nudgeApproval } = await import('./game/electorate.js');
-                // Boost platform appeal by nudging it directly
                 const { data: standing } = await _supabase.from('faction_electoral_standing')
                     .select('id, platform_appeal').eq('faction_id', f.id).eq('nation_id', n.id).maybeSingle();
                 if (standing) {
                     const newAppeal = Math.min(100, (Number(standing.platform_appeal) || 0) + 3);
                     await _supabase.from('faction_electoral_standing').update({ platform_appeal: newAppeal }).eq('id', standing.id);
                 }
-                await boostVisibility(_supabase, f.id, n.id, 5);
-                await nudgeApproval(_supabase, f.id, n.id, 1, { source: 'outreach:approval' });
                 await _supabase.from('campaign_actions').insert({
                     party_id: f.id, nation_id: n.id, action_type: 'outreach',
-                    ap_cost: 3, tick_performed: tick, result: { appealBoost: 3, visBoost: 5 }
+                    ap_cost: 3, tick_performed: tick, result: { appealBoost: 3 }
                 });
                 result = { success: true, newAp: apResult.data, headline: 'Community Outreach',
-                    effects: [{ label: 'Appeal', value: '+3' }, { label: 'Visibility', value: '+5' }, { label: 'Approval', value: '+1' }],
-                    outcomeName: 'Community outreach — +3 appeal, +5 visibility, +1 approval' };
+                    effects: [{ label: 'Appeal', value: '+3' }],
+                    outcomeName: 'Community outreach — +3 platform appeal' };
             }
         } else if (sel.id === 'pivot') {
             result = await executeIdeologicalPivot(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
@@ -6401,8 +6415,11 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const partyMap = Object.fromEntries(allParties.map(p => [p.id, p]));
     const lastPolledTick = playerStanding.last_polled_tick || null;
     const hasPolled = lastPolledTick && lastPolledTick > 0;
+    const isStale = hasPolled && lastPolledTick < currentTick; // Polled data is from a previous tick
     const pollDateStr = hasPolled ? tickToDate(lastPolledTick) : 'Never';
-    const POLL_MARGIN = 3; // ±3% margin of error
+    // Determine margin from the most recent poll's campaign_actions result
+    // Default to 5% (cheapest poll); will be overridden if we find the last poll's tier
+    let POLL_MARGIN = 5;
 
     // Use polled values if available, otherwise show "No poll data"
     let compRowsHtml = '';
@@ -6528,11 +6545,13 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         </div>
 
         <!-- All-Party Comparison (polled) -->
-        <div class="vt-section">
+        <div class="vt-section" ${isStale ? 'style="opacity:0.5;"' : ''}>
             <div class="vt-comp-header-row">
                 <div class="vt-sec-header" style="margin-bottom:0">CURRENT ELECTORAL STANDING</div>
                 <div class="vt-poll-meta">
-                    <span class="vt-poll-date">Last Poll Run — <strong>${escapeHtml(pollDateStr)}</strong></span>
+                    ${isStale
+                        ? '<span style="font-family:var(--dfont-mono);font-size:9px;color:var(--damber);font-style:italic;">Run a poll to get latest results.</span>'
+                        : `<span class="vt-poll-date">Last Poll Run — <strong>${escapeHtml(pollDateStr)}</strong></span>`}
                     <span class="vt-poll-margin">±${POLL_MARGIN}%</span>
                 </div>
             </div>

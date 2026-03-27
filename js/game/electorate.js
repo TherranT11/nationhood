@@ -2638,7 +2638,7 @@ export const POLL_CONFIG = {
  * Gives the player a frozen reading of their pillars, vote share, and limiters
  * so they can compare before/after campaign actions.
  */
-export async function executePollNow(supabase, factionId, nationId, currentTick) {
+export async function executePollNow(supabase, factionId, nationId, currentTick, pollTier = 1) {
     // ── Cooldown check ──
     const { data: recentPolls } = await supabase
         .from('campaign_actions')
@@ -2650,8 +2650,9 @@ export async function executePollNow(supabase, factionId, nationId, currentTick)
         return { success: false, message: `Poll cooldown: wait ${POLL_CONFIG.COOLDOWN_WINDOW} ticks between polls` };
     }
 
-    // ── Deduct AP ──
-    const apResult = await deductAP(supabase, factionId, POLL_CONFIG.AP_COST);
+    // ── Deduct AP (tiered: 1 AP = ±5%, 3 AP = ±3%) ──
+    const apCost = pollTier === 3 ? 3 : 1;
+    const apResult = await deductAP(supabase, factionId, apCost);
     if (!apResult.success) {
         return { success: false, message: apResult.error || 'Insufficient AP' };
     }
@@ -2692,17 +2693,18 @@ export async function executePollNow(supabase, factionId, nationId, currentTick)
     // ── Visibility + logs ──
     await boostVisibility(supabase, factionId, nationId, POLL_CONFIG.VISIBILITY_BOOST);
 
+    const pollMargin = pollTier === 3 ? 3 : 5;
     const { error: insErr } = await supabase.from('campaign_actions').insert({
         party_id: factionId, nation_id: nationId,
-        action_type: 'poll_now', ap_cost: POLL_CONFIG.AP_COST,
+        action_type: 'poll_now', ap_cost: apCost,
         money_cost: 0, tick_performed: currentTick,
-        result: { polledTick: currentTick },
+        result: { polledTick: currentTick, pollMargin },
     });
     if (insErr) console.error('[Electorate] campaign_actions insert failed:', insErr.message);
 
     await logActivity(supabase, factionId, nationId, 'poll_now',
-        'Poll Now', 'Commissioned a public opinion poll', 'success',
-        POLL_CONFIG.AP_COST, currentTick);
+        'Poll Now', `Commissioned a poll (±${pollMargin}%)`, 'success',
+        apCost, currentTick);
 
     const voteSharePct = round2((standing.realized_vote_share || 0) * 100);
     return {
