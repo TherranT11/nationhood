@@ -29480,6 +29480,119 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
     // 5. Commit shard tick/date AFTER all nation processing completes.
     // This is the last step — if the function timed out earlier, the tick
+    // ══════════════════════════════════════════════════════════════
+    // ── Volbal Ligue Nationale (shard-level, runs once per tick) ──
+    // ══════════════════════════════════════════════════════════════
+    try {
+        const { data: vlnRow } = await supabase
+            .from('vln_state')
+            .select('*')
+            .eq('shard_name', 'Alpha Shard')
+            .maybeSingle();
+
+        if (vlnRow) {
+            const VLN_TEAMS = [
+                { id: 'san_estrella_fc',   name: 'San Estrella FC',   strength: 72 },
+                { id: 'palvera_united',    name: 'Palvera United',    strength: 69 },
+                { id: 'avelia_cf',         name: 'Avelia CF',         strength: 65 },
+                { id: 'fc_montequilla',    name: 'FC Montequilla',    strength: 62 },
+                { id: 'melizea_rovers',    name: 'Melizea Rovers',    strength: 60 },
+                { id: 'real_sangreza',     name: 'Real Sangreza',     strength: 58 },
+                { id: 'crucera_athletic',  name: 'Crucera Athletic',  strength: 55 },
+                { id: 'ossvera_city',      name: 'Ossvera City',      strength: 52 },
+                { id: 'valdoria_sc',       name: 'Valdoria SC',       strength: 48 },
+                { id: 'norte_bravo_fc',    name: 'Norte Bravo FC',    strength: 44 },
+            ];
+            const MATCHES_PER_TICK = 5;
+            const ACTIVE_MONTHS = [2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+            const month = newTick % 12;
+            const year = 2000 + Math.floor(newTick / 12);
+            const active = ACTIVE_MONTHS.includes(month);
+
+            let updatedState: any;
+
+            // Season reset: March of a new year
+            if (month === 2 && vlnRow.season !== year) {
+                // Generate fixtures (round-robin, home & away, shuffled)
+                const fixtures: any[] = [];
+                for (let i = 0; i < VLN_TEAMS.length; i++) {
+                    for (let j = 0; j < VLN_TEAMS.length; j++) {
+                        if (i !== j) fixtures.push({ home: VLN_TEAMS[i].id, away: VLN_TEAMS[j].id, played: false });
+                    }
+                }
+                for (let i = fixtures.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [fixtures[i], fixtures[j]] = [fixtures[j], fixtures[i]];
+                }
+                const standings: any = {};
+                for (const t of VLN_TEAMS) standings[t.id] = { id: t.id, name: t.name, played: 0, w: 0, d: 0, l: 0, form: [] };
+                updatedState = { active: true, season: year, matchweek: 0, fixtures, standings, last_results: [], match_of_week: null };
+            } else if (!active) {
+                updatedState = { active: false, last_results: [], match_of_week: null };
+            } else {
+                // Active season — resolve up to 5 matches
+                const fixtures = vlnRow.fixtures || [];
+                const standings = vlnRow.standings || {};
+                const unplayed = fixtures.filter((f: any) => !f.played);
+
+                if (unplayed.length === 0) {
+                    updatedState = { active: true, last_results: [], match_of_week: null };
+                } else {
+                    const SCORELINES: any = {
+                        home: [{h:1,a:0},{h:2,a:0},{h:2,a:1},{h:3,a:1},{h:3,a:2},{h:4,a:1},{h:1,a:0},{h:2,a:1}],
+                        away: [{h:0,a:1},{h:0,a:2},{h:1,a:2},{h:1,a:3},{h:2,a:3},{h:0,a:1}],
+                        draw: [{h:0,a:0},{h:1,a:1},{h:2,a:2},{h:1,a:1}],
+                    };
+                    const batch = unplayed.slice(0, MATCHES_PER_TICK);
+                    const results = batch.map((f: any) => {
+                        const home = VLN_TEAMS.find(t => t.id === f.home)!;
+                        const away = VLN_TEAMS.find(t => t.id === f.away)!;
+                        let hRoll = Math.ceil(Math.random() * 6);
+                        let aRoll = Math.ceil(Math.random() * 6);
+                        if (home.strength > away.strength) hRoll += 2;
+                        if (away.strength > home.strength) aRoll += 2;
+                        const outcome = hRoll > aRoll ? 'home' : aRoll > hRoll ? 'away' : 'draw';
+                        const score = SCORELINES[outcome][Math.floor(Math.random() * SCORELINES[outcome].length)];
+                        return { home: f.home, away: f.away, homeName: home.name, awayName: away.name, outcome, homeScore: score.h, awayScore: score.a };
+                    });
+                    // Mark played
+                    for (const r of results) {
+                        const fix = fixtures.find((f: any) => f.home === r.home && f.away === r.away && !f.played);
+                        if (fix) fix.played = true;
+                    }
+                    // Update standings
+                    for (const r of results) {
+                        const h = standings[r.home]; const a = standings[r.away];
+                        if (!h || !a) continue;
+                        h.played++; a.played++;
+                        if (r.outcome === 'home') { h.w++; a.l++; }
+                        else if (r.outcome === 'away') { a.w++; h.l++; }
+                        else { h.d++; a.d++; }
+                        h.form = [...(h.form || []).slice(-4), r.outcome === 'home' ? 'W' : r.outcome === 'draw' ? 'D' : 'L'];
+                        a.form = [...(a.form || []).slice(-4), r.outcome === 'away' ? 'W' : r.outcome === 'draw' ? 'D' : 'L'];
+                    }
+                    // Match of the week
+                    const scored = results.map(r => ({ ...r, _ent: r.homeScore + r.awayScore + (r.homeScore === r.awayScore ? 1 : 0) }));
+                    scored.sort((a: any, b: any) => b._ent - a._ent);
+                    const { _ent, ...motw } = scored[0];
+                    updatedState = { active: true, season: year, matchweek: (vlnRow.matchweek || 0) + 1, fixtures, standings, last_results: results, match_of_week: motw };
+                }
+            }
+
+            if (updatedState) {
+                const { error: vlnErr } = await supabase.from('vln_state').update({
+                    ...updatedState,
+                    updated_at: new Date().toISOString()
+                }).eq('shard_name', 'Alpha Shard');
+                if (vlnErr) console.error('[VLN] Update failed:', vlnErr.message);
+                else console.log(`[VLN] Tick ${newTick}: active=${updatedState.active ?? vlnRow.active}, mw=${updatedState.matchweek ?? vlnRow.matchweek}`);
+            }
+        }
+    } catch (vlnErr) {
+        console.error('[VLN] Processing error (non-blocking):', vlnErr);
+    }
+
     // number stays unchanged and the cron will re-process on the next run.
     // Commit shard update — skip entirely in reprocess mode
     if (reprocess) {
