@@ -28939,7 +28939,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 }
 
                 if (demandMet) {
-                    // End crisis early
+                    // End crisis early — reward governing parties
                     await supabase.from('active_crises').delete()
                         .eq('nation_id', nation.id).eq('crisis_id', '00000000-0000-0000-0000-000000000021');
                     await supabase.from('protest_log').update({
@@ -28950,7 +28950,44 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     await supabase.from('factions').update({
                         protest_cooldown_until_tick: newTick + 12
                     }).eq('id', p7.faction_id);
-                    console.log(`[Protest] Tier 7 demand MET in ${nation.name}: ${demand.label}`);
+
+                    // +7 government approval
+                    try {
+                        await supabase.rpc('adjust_gov_approval_event', {
+                            p_nation_id: nation.id, p_delta: 7, p_source: 'protest:tier7_demand_met'
+                        });
+                    } catch (_) {}
+
+                    // +5 party approval to all governing parties
+                    try {
+                        const govCoalition = await fetchActiveCoalition(supabase, nation.id);
+                        const govPartyIds = new Set(govCoalition?.party_ids || []);
+                        if (nation.ruling_faction_id) govPartyIds.add(nation.ruling_faction_id);
+                        for (const gpId of govPartyIds) {
+                            const { data: gpStanding } = await supabase.from('faction_electoral_standing')
+                                .select('id, party_approval').eq('faction_id', gpId).eq('nation_id', nation.id).maybeSingle();
+                            if (gpStanding) {
+                                const newApr = Math.min(100, (Number(gpStanding.party_approval) || 25) + 5);
+                                await supabase.from('faction_electoral_standing').update({ party_approval: newApr }).eq('id', gpStanding.id);
+                                await supabase.from('party_approval_log').insert({
+                                    faction_id: gpId, nation_id: nation.id,
+                                    amount: 5, source: 'protest:tier7_demand_met', tick: newTick
+                                });
+                            }
+                        }
+                    } catch (_) {}
+
+                    // Fire event
+                    try {
+                        await supabase.from('event_log').insert({
+                            nation_id: nation.id, event_name: 'The Big One — Demand Met',
+                            trigger_key: 'protest_tier7_met', category: 'protest',
+                            description_chosen: `The government met the Tier 7 protest demand "${demand.label}". Government approval rises and governing parties are rewarded.`,
+                            fired_at_tick: newTick
+                        });
+                    } catch (_) {}
+
+                    console.log(`[Protest] Tier 7 demand MET in ${nation.name}: ${demand.label} → +7 gov approval, +5 party approval to governing parties`);
                 } else if (elapsed >= (p7.crisis_duration || 7)) {
                     // Demand expired unmet — penalty to ruling party
                     const rulingFactionId = nation.ruling_faction_id;
