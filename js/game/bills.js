@@ -3040,7 +3040,8 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         } else if (newMethod === 'direct_vote') {
             // Direct vote: legitimacy +3, political_engagement +3, polarization +2
             // AND transition Parliamentary → Presidential
-            const wasParliamentary = !nation?.government_type?.toLowerCase().includes('president');
+            const isAutoNation = nation?.government_type?.toLowerCase().includes('autocra');
+            const wasParliamentary = !isAutoNation && !nation?.government_type?.toLowerCase().includes('president');
             const statUpdate = {
                 legitimacy: Math.min(100, (nation?.legitimacy || 50) + 3),
                 political_engagement: Math.min(100, (nation?.political_engagement || 50) + 3),
@@ -3052,22 +3053,25 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
                 console.log(`[enactFoundationalBill] Parliamentary → Presidential transition for nation ${bill.nation_id}`);
 
                 // Close the current coalition/government formation (PM system no longer applies)
-                await supabase.from('government_formations')
-                    .update({ status: 'dissolved', dissolved_at_tick: currentTick })
+                const { error: coalErr } = await supabase.from('government_formations')
+                    .update({ status: 'dissolved' })
                     .eq('nation_id', bill.nation_id)
                     .in('status', ['formed', 'caretaker']);
+                if (coalErr) console.error('[enactFoundationalBill] Failed to dissolve coalition:', coalErr.message);
 
                 // Deactivate parliamentary head of government (PM)
-                await supabase.from('head_of_government')
+                const { error: hogErr } = await supabase.from('head_of_government')
                     .update({ active: false })
                     .eq('nation_id', bill.nation_id)
                     .eq('active', true);
+                if (hogErr) console.error('[enactFoundationalBill] Failed to deactivate PM:', hogErr.message);
 
                 // Clear any scheduled parliamentary-only elections, keep presidential if any
-                await supabase.from('elections').delete()
+                const { error: delElErr } = await supabase.from('elections').delete()
                     .eq('nation_id', bill.nation_id)
                     .eq('status', 'scheduled')
                     .eq('election_type', 'parliamentary');
+                if (delElErr) console.error('[enactFoundationalBill] Failed to clear parliamentary elections:', delElErr.message);
 
                 // Schedule presidential election 3 ticks out (allows endorsement window)
                 const { error: presElErr } = await supabase.from('elections').insert({
@@ -3081,12 +3085,13 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
                 // Also schedule the first parliamentary midterm
                 const parlTermTicks = Number(nation?.parliamentary_term_ticks) || 24;
-                await supabase.from('elections').insert({
+                const { error: midtermErr } = await supabase.from('elections').insert({
                     nation_id: bill.nation_id,
                     election_tick: currentTick + parlTermTicks,
                     status: 'scheduled',
                     election_type: 'parliamentary'
                 });
+                if (midtermErr) console.error('[enactFoundationalBill] Failed to schedule midterm:', midtermErr.message);
 
                 // Reset government approval for the transition
                 statUpdate.gov_approval = 50;
@@ -3104,10 +3109,11 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
                 console.log(`[enactFoundationalBill] Presidential → Parliamentary transition for nation ${bill.nation_id}`);
 
                 // Deactivate the president
-                await supabase.from('presidents')
+                const { error: presErr } = await supabase.from('presidents')
                     .update({ is_active: false })
                     .eq('nation_id', bill.nation_id)
                     .eq('is_active', true);
+                if (presErr) console.error('[enactFoundationalBill] Failed to deactivate president:', presErr.message);
 
                 // Change government type
                 const { error: govErr } = await supabase.from('nations').update({
@@ -3118,11 +3124,11 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
                 if (govErr) console.error(`[enactFoundationalBill] Gov type update failed:`, govErr.message);
 
                 // Clear presidential elections, schedule parliamentary
-                await supabase.from('elections').delete()
+                const { error: clearElErr } = await supabase.from('elections').delete()
                     .eq('nation_id', bill.nation_id)
                     .eq('status', 'scheduled');
+                if (clearElErr) console.error('[enactFoundationalBill] Failed to clear scheduled elections:', clearElErr.message);
 
-                const parlTermTicks = Number(nation?.parliamentary_term_ticks) || 24;
                 const { error: parlElErr } = await supabase.from('elections').insert({
                     nation_id: bill.nation_id,
                     election_tick: currentTick + 3,
@@ -3133,9 +3139,10 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
                 else console.log(`[enactFoundationalBill] Parliamentary election scheduled at tick ${currentTick + 3}`);
 
                 // Clean up presidential candidates
-                await supabase.from('pm_candidates').delete()
+                const { error: candErr } = await supabase.from('pm_candidates').delete()
                     .eq('nation_id', bill.nation_id)
                     .eq('candidate_type', 'presidential');
+                if (candErr) console.error('[enactFoundationalBill] Failed to clean presidential candidates:', candErr.message);
 
                 // Close administration for transition
                 const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
