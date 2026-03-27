@@ -2957,7 +2957,7 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
     const { data: activeShiftActions } = await _supabase.from('ideology_shift_actions')
         .select('id, action_type, target_axis, target_direction, drift_rate, created_tick, status, band_shift_total')
         .eq('faction_id', f.id)
-        .in('status', ['active', 'paused']);
+        .in('status', ['active', 'paused', 'suspended']);
 
     _caCooldowns = {};
     _caUsedThisTick = {};
@@ -3098,7 +3098,9 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
                 ? `<span class="ca-cd-badge">${cdRemaining} tick${cdRemaining !== 1 ? 's' : ''} CD</span>`
                 : isActive ? (() => {
                     const match = _caActiveActions.find(a => a.action_type === act.id.replace('fund_', ''));
-                    return match?.status === 'paused'
+                    return match?.status === 'suspended'
+                        ? `<span class="ca-active-badge" style="background:#d4a017">SUSPENDED</span>`
+                        : match?.status === 'paused'
                         ? `<span class="ca-active-badge" style="background:#f97316">PAUSED</span>`
                         : `<span class="ca-active-badge">ACTIVE</span>`;
                 })() : '';
@@ -3164,12 +3166,13 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             const effectLabel = a.drift_rate ? `+${a.drift_rate}/tick ${dirLabel}` : dirLabel;
             const activatedDate = tickToDate(a.created_tick);
             const isPaused = a.status === 'paused';
-            const statusLabel = isPaused ? '<span style="color:#f97316;font-weight:600">PAUSED</span>' : `${ticksLeft}`;
+            const isSuspended = a.status === 'suspended';
+            const statusLabel = isSuspended ? '<span style="color:#d4a017;font-weight:600">SUSPENDED</span>' : isPaused ? '<span style="color:#f97316;font-weight:600">PAUSED</span>' : `${ticksLeft}`;
 
             // Management buttons for think_tank and grassroots_movement
             let btnsHtml = '';
             if (canManage(a.action_type)) {
-                if (isPaused) {
+                if (isPaused || isSuspended) {
                     btnsHtml = `<td style="text-align:right;white-space:nowrap">
                         <button class="ca-manage-btn" data-action="continue" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#5cb85c;color:#fff;border:none;border-radius:3px">Continue — 1 AP</button>
                         <button class="ca-manage-btn" data-action="cancel" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#d9534f;color:#fff;border:none;border-radius:3px">Cancel — 2 AP</button>
