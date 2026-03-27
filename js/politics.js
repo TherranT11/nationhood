@@ -2714,7 +2714,7 @@ const CA_ACTIONS = [
       desc: 'Declare your party\'s official position on a national issue. Builds platform appeal with aligned voters. Stances lose strength each tick — reinforce them before they fade.' },
     { id: 'outreach', name: 'Community Outreach', ap: 3, color: '#60a5fa', icon: '🤝',
       category: 'appeal', affects: 'Appeal',
-      desc: 'Engage directly with communities through town halls, door-knocking, and local events. Boosts platform appeal and visibility. More effective when your stances align with voter concerns.' },
+      desc: 'Engage directly with communities. +3 platform appeal. Cost starts at 3 AP and increases by 1 each time you use it. Decays back down by 1 each tick you don\'t use it.' },
     // VISIBILITY
     { id: 'rally', name: 'Hold a Rally', ap: RALLY_CONFIG.AP_COST, color: '#f97316', icon: '★',
       category: 'visibility', affects: 'Visibility',
@@ -2736,6 +2736,7 @@ let _caTargetAxis = null;
 let _caTargetDirection = null;
 let _caPivotIdeo = null; // cached faction ideology for pivot cost calculation
 let _caPollTier = 1; // poll investment: 1 AP (±5%) or 3 AP (±3%)
+let _caOutreachEscalation = 0; // outreach cost escalation: +1 per use, -1 per tick of non-use
 window._selectPollTier = function(tier) { _caPollTier = tier; const rerender = document.getElementById('ca-config-panel'); if (rerender) { rerender.innerHTML = renderPollNowConfig(); } };
 let _caTargetDemographic = null;
 let _caTargetBand = null;
@@ -2803,6 +2804,7 @@ function caGetCost() {
         return cost;
     }
     if (_caSelected === 'poll_now') return _caPollTier; // 1 or 3 AP based on tier
+    if (_caSelected === 'outreach') return 3 + (_caOutreachEscalation || 0); // Base 3 + escalation
     const act = CA_ACTIONS.find(a => a.id === _caSelected);
     if (!act) return 0;
     // Campaign Attack cost scales with current polarization
@@ -2984,6 +2986,17 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
     }
     _caActiveActions = activeShiftActions || [];
 
+    // Compute outreach escalation: +1 per use, decays -1 per tick of non-use
+    // Count outreach actions, then subtract ticks since last outreach
+    const outreachActions = (recentActions || []).filter(a => a.action_type === 'outreach');
+    if (outreachActions.length > 0) {
+        const lastOutreachTick = Math.max(...outreachActions.map(a => a.tick_performed));
+        const ticksSinceLastOutreach = tick - lastOutreachTick;
+        _caOutreachEscalation = Math.max(0, outreachActions.length - ticksSinceLastOutreach);
+    } else {
+        _caOutreachEscalation = 0;
+    }
+
     renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost);
 }
 
@@ -3057,7 +3070,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             continue;
         }
 
-        const displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.ap;
+        const displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'outreach' ? (3 + (_caOutreachEscalation || 0)) : act.ap;
         // Map CA_ACTIONS id → campaign_actions action_type
         const dbActionType = act.id === 'promise' ? 'make_promise' : act.id;
         const cdRemaining = _caCooldowns[dbActionType] || 0;
@@ -4588,7 +4601,18 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
                 let baseRoll = Math.floor(Math.random() * 5) - 2; // -2 to +2
                 if (!_caIsGoverning) baseRoll += 1; // opposition bonus
                 else if ((n.gov_approval || 0) >= 40) baseRoll += 2; // government with decent approval
-                await boostVisibility(_supabase, f.id, n.id, Math.max(0, baseRoll));
+                // Positive = boost visibility, negative = reduce visibility
+                if (baseRoll > 0) {
+                    await boostVisibility(_supabase, f.id, n.id, baseRoll);
+                } else if (baseRoll < 0) {
+                    const { data: visStanding } = await _supabase.from('faction_electoral_standing')
+                        .select('id, visibility').eq('faction_id', f.id).eq('nation_id', n.id).maybeSingle();
+                    if (visStanding) {
+                        await _supabase.from('faction_electoral_standing').update({
+                            visibility: Math.max(0, (Number(visStanding.visibility) || 0) + baseRoll)
+                        }).eq('id', visStanding.id);
+                    }
+                }
                 await _supabase.from('campaign_actions').insert({
                     party_id: f.id, nation_id: n.id, action_type: 'press_conference',
                     ap_cost: 2, tick_performed: tick, result: { visBoost: baseRoll }
@@ -4599,8 +4623,9 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
                     outcomeName: `Press conference — ${sign}${baseRoll} visibility` };
             }
         } else if (sel.id === 'outreach') {
-            // Community Outreach: +3 platform appeal only, costs 3 AP
-            const apResult = await _supabase.rpc('accumulate_ap', { p_faction_id: f.id, p_gain: -3, p_max_ap: 99 });
+            // Community Outreach: +3 platform appeal, escalating cost (base 3 + escalation)
+            const outreachCost = 3 + (_caOutreachEscalation || 0);
+            const apResult = await _supabase.rpc('accumulate_ap', { p_faction_id: f.id, p_gain: -outreachCost, p_max_ap: 99 });
             if (apResult.error) { result = { success: false, error: apResult.error.message }; }
             else {
                 const { data: standing } = await _supabase.from('faction_electoral_standing')
@@ -4611,7 +4636,7 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
                 }
                 await _supabase.from('campaign_actions').insert({
                     party_id: f.id, nation_id: n.id, action_type: 'outreach',
-                    ap_cost: 3, tick_performed: tick, result: { appealBoost: 3 }
+                    ap_cost: outreachCost, tick_performed: tick, result: { appealBoost: 3 }
                 });
                 result = { success: true, newAp: apResult.data, headline: 'Community Outreach',
                     effects: [{ label: 'Appeal', value: '+3' }],
