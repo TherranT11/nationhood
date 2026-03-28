@@ -15683,6 +15683,11 @@ function charterRow(label, value) {
 
 let ipoAmendArticles = null; // copy of charter articles for editing
 
+// Amend modal state for logo changes
+let ipoAmendLogo = null; // { symbol, text, image_url } or null (no logo change)
+let ipoAmendLogoFile = null;
+let ipoAmendLogoPreviewUrl = null;
+
 function openIPOAmendModal() {
     if (!currentFaction || !ipoSelectedOrgId) return;
 
@@ -15691,11 +15696,8 @@ function openIPOAmendModal() {
 
     const org = membership.org;
     const charter = org.charter || {};
-    const isPresident = org.president_id === currentFaction.id;
 
-    // Any full member can amend the charter (enables democratic amendments via passed votes)
-    const membership2 = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
-    if (membership2?.role === 'observer') {
+    if (membership.role === 'observer') {
         alert('Observers cannot amend the charter.');
         return;
     }
@@ -15708,12 +15710,15 @@ function openIPOAmendModal() {
     if (charter.governance) ipoAmendArticles.push({ type: 'governance', config: { ...charter.governance } });
     if (charter.resources) ipoAmendArticles.push({ type: 'resources', config: JSON.parse(JSON.stringify(charter.resources)) });
 
-    // If no mission exists (shouldn't happen), add one
     if (!ipoAmendArticles.find(a => a.type === 'mission')) {
         ipoAmendArticles.unshift({ type: 'mission', config: { text: '' } });
     }
 
-    // Reuse the creation modal but swap to amend mode
+    // Init logo state from current org
+    ipoAmendLogo = { symbol: org.logo_symbol || '', text: org.logo_text || '', image_url: org.logo_image_url || null };
+    ipoAmendLogoFile = null;
+    ipoAmendLogoPreviewUrl = org.logo_image_url || null;
+
     const modal = document.getElementById('ipo-create-modal');
     modal.classList.add('active');
     renderIPOAmendStep();
@@ -15741,23 +15746,74 @@ function renderIPOAmendStep() {
                 onclick="ipoAmendAddArticle()">Add</button>
         </div>` : '';
 
+    // Logo editor section
+    const logoPreview = ipoAmendLogoPreviewUrl
+        ? `<img src="${escapeHtml(ipoAmendLogoPreviewUrl)}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--border-0);" />`
+        : `<span style="display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;background:var(--bg-3);border:1px solid var(--border-0);border-radius:6px;font-family:var(--font-mono);font-size:14px;color:var(--text-dim);">${escapeHtml((ipoAmendLogo?.symbol || '') + ' ' + (ipoAmendLogo?.text || ''))}</span>`;
+
+    const logoSection = `
+        <div style="background:var(--bg-2);border:1px solid var(--border-0);border-radius:4px;padding:12px;margin-bottom:12px;">
+            <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">Organisation Logo</div>
+            <div style="display:flex;gap:12px;align-items:flex-start;">
+                <div>${logoPreview}</div>
+                <div style="flex:1;">
+                    <div style="display:flex;gap:6px;margin-bottom:6px;">
+                        <div style="flex:1;">
+                            <label style="display:block;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);text-transform:uppercase;margin-bottom:2px;">Symbol</label>
+                            <input type="text" id="ipo-amend-logo-symbol" value="${escapeHtml(ipoAmendLogo?.symbol || '')}" maxlength="2" placeholder="🌐"
+                                style="width:100%;padding:4px 6px;background:var(--bg-4);border:1px solid var(--border-0);border-radius:3px;color:var(--text-bright);font-size:14px;text-align:center;"
+                                oninput="ipoAmendLogo.symbol=this.value">
+                        </div>
+                        <div style="flex:2;">
+                            <label style="display:block;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);text-transform:uppercase;margin-bottom:2px;">Text</label>
+                            <input type="text" id="ipo-amend-logo-text" value="${escapeHtml(ipoAmendLogo?.text || '')}" maxlength="6" placeholder="IPO"
+                                style="width:100%;padding:4px 6px;background:var(--bg-4);border:1px solid var(--border-0);border-radius:3px;color:var(--text-bright);font-family:var(--font-mono);font-size:11px;"
+                                oninput="ipoAmendLogo.text=this.value">
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <button onclick="document.getElementById('ipo-amend-logo-file').click()" style="font-family:var(--font-mono);font-size:8px;padding:3px 8px;background:var(--bg-3);border:1px solid var(--border-0);color:var(--text-muted);cursor:pointer;border-radius:2px;">Upload Image</button>
+                        ${ipoAmendLogoPreviewUrl ? '<button onclick="ipoAmendRemoveLogo()" style="font-family:var(--font-mono);font-size:8px;padding:3px 8px;background:none;border:1px solid rgba(217,83,79,0.3);color:var(--red);cursor:pointer;border-radius:2px;">Remove</button>' : ''}
+                        <input type="file" accept="image/png,image/jpeg,image/webp" id="ipo-amend-logo-file" style="display:none" onchange="ipoAmendHandleLogoFile(this)">
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
     inner.innerHTML = `
         <div class="ipo-modal-header">
             <span class="ipo-modal-title">Amend Charter</span>
             <button class="modal-close" onclick="closeIPOAmendModal()">&times;</button>
         </div>
         <div class="ipo-modal-body">
-            <div class="ipo-charter-info">Edit the charter articles below. Changes will be put to a vote (1 AP).</div>
+            <div class="ipo-charter-info">Edit the charter articles and logo below. Changes will be put to a vote (1 AP).</div>
+            ${logoSection}
             <div class="ipo-article-list">${articleCards}</div>
             ${addDropdown}
             <div class="wizard-nav">
                 <button class="wizard-back-btn" onclick="closeIPOAmendModal()">Cancel</button>
-                <button class="ipo-btn ipo-btn--create-large" onclick="submitIPOAmend()">Save Changes</button>
+                <button class="ipo-btn ipo-btn--create-large" onclick="submitIPOAmend()">Propose Amendment</button>
             </div>
         </div>`;
 
     // Restore creation articles
     ipoCreateArticles = savedArticles;
+}
+
+function ipoAmendHandleLogoFile(input) {
+    const file = input?.files?.[0];
+    if (!file) return;
+    if (file.size > 512 * 1024) { alert('Logo must be under 512KB.'); return; }
+    ipoAmendLogoFile = file;
+    ipoAmendLogoPreviewUrl = URL.createObjectURL(file);
+    renderIPOAmendStep(); // re-render to show preview
+}
+
+function ipoAmendRemoveLogo() {
+    ipoAmendLogoFile = null;
+    ipoAmendLogoPreviewUrl = null;
+    if (ipoAmendLogo) ipoAmendLogo.image_url = null;
+    renderIPOAmendStep();
 }
 
 function ipoAmendAddArticle() {
@@ -15847,12 +15903,47 @@ async function submitIPOAmend() {
             return;
         }
 
+        // Upload logo image if a new file was selected
+        let proposedLogoImageUrl = ipoAmendLogo?.image_url || null;
+        if (ipoAmendLogoFile) {
+            const ext = ipoAmendLogoFile.name.split('.').pop().toLowerCase();
+            const filePath = `ipo-logos/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+            const { error: upErr } = await _supabase.storage.from('public-assets').upload(filePath, ipoAmendLogoFile, { upsert: true });
+            if (upErr) {
+                console.error('[IPO] Logo upload error:', upErr);
+                alert('Failed to upload logo: ' + upErr.message);
+                return;
+            }
+            const { data: urlData } = _supabase.storage.from('public-assets').getPublicUrl(filePath);
+            proposedLogoImageUrl = urlData?.publicUrl || null;
+        }
+
+        // Build proposed logo change
+        const proposedLogo = {
+            symbol: ipoAmendLogo?.symbol || '',
+            text: ipoAmendLogo?.text || '',
+            image_url: proposedLogoImageUrl,
+        };
+
+        // Include logo change info in title if logo was modified
+        const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+        const currentOrg = membership?.org;
+        const logoChanged = currentOrg && (
+            proposedLogo.symbol !== (currentOrg.logo_symbol || '') ||
+            proposedLogo.text !== (currentOrg.logo_text || '') ||
+            proposedLogo.image_url !== (currentOrg.logo_image_url || null)
+        );
+        const titleParts = [];
+        if (changedArticles) titleParts.push(changedArticles);
+        if (logoChanged) titleParts.push('logo');
+        const voteTitle = 'Charter Amendment: ' + (titleParts.join(', ') || 'no changes');
+
         // Create a charter_amendment VOTE — not a direct update
         const { error } = await _supabase.from('ipo_votes').insert({
             org_id: ipoSelectedOrgId,
-            title: 'Charter Amendment: ' + changedArticles,
+            title: voteTitle,
             vote_type: 'charter_amendment',
-            meta: { description, proposed_charter: proposedCharter },
+            meta: { description, proposed_charter: proposedCharter, proposed_logo: proposedLogo },
             status: 'open',
             opened_at_tick: shardTick,
             closes_at_tick: shardTick + IPO_VOTE_DURATION,
@@ -16880,16 +16971,34 @@ async function applyVoteEffects(vote, org) {
                     .from('international_orgs')
                     .update({ charter: proposedCharter })
                     .eq('id', org.id);
-                if (charterErr) {
-                    console.error('[IPO] Charter amendment apply error:', charterErr);
+                if (charterErr) console.error('[IPO] Charter amendment apply error:', charterErr);
+            }
+
+            // Apply logo changes if proposed
+            const proposedLogo = meta.proposed_logo;
+            if (proposedLogo) {
+                const logoUpdate = {};
+                if (proposedLogo.symbol !== undefined) logoUpdate.logo_symbol = proposedLogo.symbol;
+                if (proposedLogo.text !== undefined) logoUpdate.logo_text = proposedLogo.text;
+                if (proposedLogo.image_url !== undefined) logoUpdate.logo_image_url = proposedLogo.image_url;
+                if (Object.keys(logoUpdate).length > 0) {
+                    const { error: logoErr } = await _supabase
+                        .from('international_orgs')
+                        .update(logoUpdate)
+                        .eq('id', org.id);
+                    if (logoErr) console.error('[IPO] Logo amendment apply error:', logoErr);
                 }
             }
+
+            const changeSummary = [];
+            if (proposedCharter) changeSummary.push('charter');
+            if (proposedLogo) changeSummary.push('logo');
 
             await _supabase.from('ipo_chat').insert({
                 org_id: ipoSelectedOrgId,
                 faction_id: null,
                 is_system: true,
-                message_text: `Charter amendment approved and applied: "${(meta.description || '').substring(0, 200)}".`,
+                message_text: `Amendment approved and applied (${changeSummary.join(', ')}): "${(meta.description || '').substring(0, 200)}".`,
                 tick_posted: shardTick
             });
 
@@ -16897,7 +17006,7 @@ async function applyVoteEffects(vote, org) {
                 org_id: ipoSelectedOrgId,
                 faction_id: currentFaction.id,
                 action_type: 'charter_amendment',
-                action_data: { description: meta.description, proposed_charter: proposedCharter },
+                action_data: { description: meta.description, proposed_charter: proposedCharter, proposed_logo: proposedLogo },
                 ap_cost: 1,
                 performed_at_tick: shardTick
             });
@@ -18503,6 +18612,8 @@ window.ipoSetCreateLogoText = function(v) { ipoCreateLogoText = v.toUpperCase();
 window.ipoSetCreateStep = function(s) { ipoCreateStep = s; renderIPOCreateStep(); };
 window.closeIPOAmendModal = closeIPOAmendModal;
 window.ipoAmendAddArticle = ipoAmendAddArticle;
+window.ipoAmendHandleLogoFile = ipoAmendHandleLogoFile;
+window.ipoAmendRemoveLogo = ipoAmendRemoveLogo;
 window.submitIPOAmend = submitIPOAmend;
 // IPO voting exports
 window.openIPOVoteModal = openIPOVoteModal;
