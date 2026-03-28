@@ -1529,6 +1529,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] resolveStuckFloorBills failed for ${nation.name} (non-fatal):`, stuckErr);
         }
 
+        // Safety net: activate trade agreements where both ratification bills passed
+        // but the negotiation is still stuck at 'ratification' (same-tick race condition)
+        try {
+            await resolveStuckRatifications(supabase, nation.id);
+        } catch (ratErr) {
+            console.error(`[advanceTick] resolveStuckRatifications failed for ${nation.name} (non-fatal):`, ratErr);
+        }
+
         // ── Impeachment processing (Presidential systems) ──
         if (isPresidentialRepublic(nation)) {
             try {

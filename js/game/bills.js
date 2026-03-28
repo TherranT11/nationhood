@@ -1477,7 +1477,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         const nB = neg.nation_a_id < neg.nation_b_id ? neg.nation_b_id : neg.nation_a_id;
 
                         // Insert into trade_agreements
-                        const { data: newAgreement } = await supabase.from('trade_agreements').insert({
+                        const { data: newAgreement, error: taInsertErr } = await supabase.from('trade_agreements').insert({
                             nation_a_id: nA,
                             nation_b_id: nB,
                             negotiation_id: neg.id,
@@ -1494,6 +1494,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                             enacted_at_tick: currentTick,
                             expires_at_tick: isPermanent ? null : (durationTicks ? currentTick + durationTicks : null)
                         }).select('id').single();
+                        if (taInsertErr) console.error('[resolveExpiredVotes] trade_agreements insert failed:', taInsertErr.message);
 
                         // For economic aid agreements, create the aid_agreement_state row
                         if (neg.agreement_type === 'economic_aid' && newAgreement) {
@@ -1528,9 +1529,11 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         }
 
                         // Mark negotiation as concluded
-                        await supabase.from('trade_negotiations')
+                        const { error: negUpdateErr } = await supabase.from('trade_negotiations')
                             .update({ status: 'concluded', concluded_at_tick: currentTick })
                             .eq('id', neg.id);
+                        if (negUpdateErr) console.error('[resolveExpiredVotes] trade_negotiations concluded update failed:', negUpdateErr.message);
+                        else console.log('[resolveExpiredVotes] Trade agreement activated — negotiation', neg.id, 'marked concluded');
 
                         // Update diplomatic relations
                         const { data: rel } = await supabase.from('diplomatic_relations')
@@ -1968,6 +1971,75 @@ export async function resolveExpiredVotes(supabase, nationId) {
     }
 
     return results;
+}
+
+/**
+ * Safety net: catch trade negotiations stuck in 'ratification' where both bills have passed.
+ * This handles the race condition where both ratification bills resolve in the same tick
+ * and the first-processed bill doesn't see the other as passed yet.
+ */
+export async function resolveStuckRatifications(supabase, nationId) {
+    try {
+        const { data: stuckNegs } = await supabase
+            .from('trade_negotiations')
+            .select('id, bill_a_id, bill_b_id, nation_a_id, nation_b_id, agreement_type, agreement_name, draft_articles')
+            .eq('status', 'ratification')
+            .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`);
+
+        if (!stuckNegs || stuckNegs.length === 0) return;
+
+        const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shard?.current_tick || 0;
+
+        for (const neg of stuckNegs) {
+            if (!neg.bill_a_id || !neg.bill_b_id) continue;
+
+            const [billARes, billBRes] = await Promise.all([
+                supabase.from('bills').select('status').eq('id', neg.bill_a_id).single(),
+                supabase.from('bills').select('status').eq('id', neg.bill_b_id).single(),
+            ]);
+
+            if (billARes.data?.status === 'passed' && billBRes.data?.status === 'passed') {
+                console.log(`[resolveStuckRatifications] Both bills passed for negotiation ${neg.id} — activating trade agreement`);
+
+                const articles = neg.draft_articles || [];
+                const durationArt = articles.find(a => a.type === 'duration');
+                const durData = durationArt?.data || {};
+                const isPermanent = durData.duration_type === 'permanent';
+                const durationTicks = durData.duration_ticks || null;
+                const autoRenew = durData.auto_renew || false;
+                const withdrawalNotice = durData.withdrawal_notice_ticks || 3;
+                const nA = neg.nation_a_id < neg.nation_b_id ? neg.nation_a_id : neg.nation_b_id;
+                const nB = neg.nation_a_id < neg.nation_b_id ? neg.nation_b_id : neg.nation_a_id;
+
+                // Check if agreement already exists (avoid duplicate)
+                const { data: existing } = await supabase.from('trade_agreements')
+                    .select('id').eq('negotiation_id', neg.id).maybeSingle();
+                if (!existing) {
+                    await supabase.from('trade_agreements').insert({
+                        nation_a_id: nA, nation_b_id: nB,
+                        negotiation_id: neg.id,
+                        bill_a_id: neg.bill_a_id, bill_b_id: neg.bill_b_id,
+                        agreement_type: neg.agreement_type,
+                        agreement_name: neg.agreement_name || 'Trade Agreement',
+                        articles, duration_type: isPermanent ? 'permanent' : 'fixed',
+                        duration_ticks: isPermanent ? null : durationTicks,
+                        auto_renew: autoRenew, withdrawal_notice_ticks: withdrawalNotice,
+                        status: 'active', enacted_at_tick: currentTick,
+                        expires_at_tick: isPermanent ? null : (durationTicks ? currentTick + durationTicks : null),
+                    });
+                }
+
+                await supabase.from('trade_negotiations')
+                    .update({ status: 'concluded', concluded_at_tick: currentTick })
+                    .eq('id', neg.id);
+
+                console.log(`[resolveStuckRatifications] Negotiation ${neg.id} activated via safety net`);
+            }
+        }
+    } catch (err) {
+        console.error('[resolveStuckRatifications] Error:', err.message);
+    }
 }
 
 /**
