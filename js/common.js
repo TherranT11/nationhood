@@ -942,7 +942,7 @@ export function scaleRawToDollars(val) {
  * on the next page load rather than silently displaying "$100".
  */
 export function assertRawEconomicValue(value, fieldName) {
-    if (value !== null && value !== undefined && Number(value) >= 0 && Number(value) <= 100_000) {
+    if (value !== null && value !== undefined && Number(value) > 0 && Number(value) <= 100_000) {
         console.error(
             `[ECONOMIC DISPLAY BUG] ${fieldName} = ${value} — ` +
             `this looks like a 0-100 stat score instead of a raw monetary value. ` +

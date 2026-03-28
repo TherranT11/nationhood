@@ -135,9 +135,8 @@ async function loadPreviousTickData(nationId) {
 
 // ==================== PREVIOUS YEAR DATA ====================
 async function loadExpenditureData(nationId, nation) {
-    var cacheKey = 'expenditure_data_' + nationId + '_t' + currentTick; // Tick-aware cache key
-    var cached = qCache(cacheKey);
-    if (cached) { expenditureData = cached.totals; expenditureDetails = cached.details; ministryFundingPcts = cached.fundingPcts || {}; return; }
+    // No caching — always compute fresh from config + allocations
+    // (admin config changes need to reflect immediately)
 
     var totals = {};
     var details = {};
@@ -234,7 +233,6 @@ async function loadExpenditureData(nationId, nation) {
 
     expenditureData = totals;
     expenditureDetails = details;
-    qCacheSet(cacheKey, { totals: totals, details: details, fundingPcts: ministryFundingPcts }, 2 * 60 * 1000);
 }
 
 function scaleCost(baseCost, scalingStat, nation) {
