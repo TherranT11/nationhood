@@ -377,6 +377,7 @@ const FLAG_URLS = {
     'Calveth': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Calveth.png'
 };
 
+let currentUser = null;
 let corpSetup = null;
 let allNations = [];
 let corpsByNation = {};  // nation_id → array of corp factions in this subsector
@@ -387,6 +388,7 @@ let activeContinent = 'Crucera';
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
+    currentUser = user;
 
     // Load corp setup from session
     const raw = sessionStorage.getItem('corp_setup');
@@ -526,16 +528,64 @@ function switchContinent(continent) {
     renderNations();
 }
 
-function confirmNation() {
-    if (!selectedNationId) return;
-    // Store selected nation and full corp config
-    const nation = allNations.find(n => n.id === selectedNationId);
-    sessionStorage.setItem('corp_nation', JSON.stringify({
-        id: nation.id,
-        name: nation.name,
-    }));
-    // Phase 7 will handle the actual DB insert — for now go to placeholder
-    window.location.href = 'corp-dashboard.html';
+async function confirmNation() {
+    if (!selectedNationId || !currentUser) return;
+
+    const btn = document.getElementById('btn-confirm');
+    const errEl = document.getElementById('error-message');
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
+    errEl.textContent = '';
+
+    try {
+        const nation = allNations.find(n => n.id === selectedNationId);
+
+        // Get current tick
+        const { data: shardData } = await _supabase
+            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shardData?.current_tick || 0;
+
+        // Upsert corporation faction record
+        const { error: upsertError } = await _supabase
+            .from('factions')
+            .upsert({
+                id: currentUser.id,
+                faction_type: 'corporation',
+                faction_name: corpSetup.corpName,
+                nation_id: nation.id,
+                nation: nation.name,
+                abbreviation: corpSetup.ticker,
+                seats: 0,
+                needs_rebuild: false,
+                party_color: '#5aafa5',
+                party_logo: null,
+                party_description: null,
+                leader_first_name: null,
+                leader_last_name: null,
+                leader_age: null,
+                founded_tick: currentTick,
+                action_points: 5,
+                corp_sector: corpSetup.sector,
+                corp_subsector: corpSetup.subsector,
+                corp_company_type: corpSetup.companyType,
+                corp_ticker: corpSetup.ticker,
+            });
+
+        if (upsertError) throw upsertError;
+
+        // Clean up session storage
+        sessionStorage.removeItem('pending_faction_type');
+        sessionStorage.removeItem('corp_setup');
+
+        // Go to corp dashboard
+        window.location.href = 'corp-dashboard.html';
+    } catch (err) {
+        console.error('Corporation creation failed:', err);
+        errEl.textContent = err.message || 'Failed to create corporation. Please try again.';
+        btn.disabled = false;
+        btn.textContent = 'Confirm \u25B6';
+        btn.classList.add('ready');
+    }
 }
 
 function goBack() {
