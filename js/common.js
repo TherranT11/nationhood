@@ -1062,6 +1062,11 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     if (!state) return;
     updateTopBarInfo(state.faction, state.shard, state.nation);
 
+    // Always fetch fresh AP from DB — cached AP can be minutes stale
+    if (state.faction?.id) {
+        refreshAP(state.faction.id);
+    }
+
     // Record fingerprint (fire-and-forget, non-blocking)
     recordFingerprint();
 
