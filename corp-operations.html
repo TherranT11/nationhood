@@ -244,12 +244,6 @@ body.light-mode .corp-nav__tab.active { color: #1a1a17; border-bottom-color: #1a
 .oc-item.locked { opacity: 0.4; cursor: default; }
 .oc-item.locked:hover { background: transparent; }
 
-/* New indicator dot */
-.oc-item__new-dot {
-  position: absolute; left: 4px; top: 50%; transform: translateY(-50%);
-  width: 4px; height: 4px; border-radius: 50%; background: var(--gold);
-}
-
 /* Row 1: Name + type badge */
 .oc-item__row1 {
   display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 3px;
@@ -840,7 +834,7 @@ function openContractDetail(contract) {
         <span class="cd-header__type-badge ${typeClass}">${isGov ? 'GOV' : 'PRIVATE'}</span>
     `;
 
-    // Blueprint
+    // Blueprint — blueprint_svg is system-generated, not player-authored
     const bpEl = document.getElementById('cd-blueprint');
     if (contract.blueprint_svg) {
         bpEl.innerHTML = contract.blueprint_svg;
@@ -941,7 +935,7 @@ function openContractDetail(contract) {
                 ${materials.map(m => `
                     <div class="cd-mat-row">
                         <span class="cd-mat-row__name">${escapeHtml(m.name)}</span>
-                        <span class="cd-mat-row__qty">${escapeHtml(m.quantity)}</span>
+                        <span class="cd-mat-row__qty">${escapeHtml(String(m.quantity || '—'))}</span>
                     </div>`).join('')}
             </div>`;
     }
@@ -1091,15 +1085,7 @@ async function placeBid() {
     if (bidBtn) { bidBtn.disabled = true; bidBtn.textContent = '...'; }
 
     try {
-        // Deduct 2 AP
-        const newAp = (faction.action_points ?? 0) - 2;
-        const { error: apError } = await _supabase
-            .from('factions')
-            .update({ action_points: newAp })
-            .eq('id', faction.id);
-        if (apError) throw apError;
-
-        // Insert bid
+        // Insert bid first — if this fails (e.g. duplicate), no AP is lost
         const { error: bidError } = await _supabase
             .from('corp_contract_bids')
             .insert({
@@ -1111,6 +1097,17 @@ async function placeBid() {
             });
         if (bidError) throw bidError;
 
+        // Bid succeeded — now deduct 2 AP
+        const newAp = (faction.action_points ?? 0) - 2;
+        const { error: apError } = await _supabase
+            .from('factions')
+            .update({ action_points: newAp })
+            .eq('id', faction.id);
+        if (apError) {
+            // AP deduction failed but bid is placed — log but don't block
+            console.error('AP deduction failed after bid placed:', apError.message);
+        }
+
         // Update local AP
         faction.action_points = newAp;
         document.getElementById('topbar-ap').innerHTML =
@@ -1118,7 +1115,6 @@ async function placeBid() {
 
         if (bidBtn) { bidBtn.textContent = 'BID PLACED'; }
     } catch (err) {
-        console.error('Bid failed:', err);
         if (bidBtn) { bidBtn.disabled = false; bidBtn.textContent = 'BID'; }
         if (err.code === '23505') {
             alert('You have already placed a bid on this contract.');
@@ -1187,7 +1183,9 @@ async function init() {
         _supabase.from('shard').select('current_tick, current_date, next_tick_at').eq('name', 'Alpha Shard').single(),
     ]);
 
+    if (nationRes.error) console.warn('Nation load failed:', nationRes.error.message);
     if (nationRes.data) nationStats = nationRes.data;
+    if (shardRes.error) console.warn('Shard load failed:', shardRes.error.message);
     shard = shardRes.data;
 
     // Top bar — left
