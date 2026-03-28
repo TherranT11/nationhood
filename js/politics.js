@@ -1241,8 +1241,9 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
     const eligibleParties = (allParties || []).filter(p => {
         const voteShare = Number(p.national_vote_share || 0);
         if (voteShare <= 0) return false; // zeroed by Three-Pillar — definitely inactive
-        if (p.last_seen_tick == null) return true; // new/unseen party with vote share — include
-        return (currentTick - p.last_seen_tick) < INACTIVITY_EXCLUSION;
+        if (p.last_seen_tick != null) return (currentTick - p.last_seen_tick) < INACTIVITY_EXCLUSION;
+        // Never logged in — use founded_tick as reference
+        return (currentTick - (p.founded_tick || 0)) < INACTIVITY_EXCLUSION;
     });
     const parties = eligibleParties.map(p => {
         const voteShare = Number(p.national_vote_share || 0);
