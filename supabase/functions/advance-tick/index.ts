@@ -3622,8 +3622,8 @@ const STAT_KEY_ALIASES = {
     tourism: 'international_reputation',
     // Legacy aliases for removed/renamed stats
     religious: 'religiosity',
-    birth_rate: 'population_growth',
-    death_rate: 'population_growth',
+    // NOTE: birth_rate and death_rate aliases REMOVED — they mapped 1:1 to population_growth
+    // which caused direction inversion bugs. Fix policy data to use population_growth directly.
     trade_agreements: 'international_reputation',
     sanctions: 'international_reputation'
 };
