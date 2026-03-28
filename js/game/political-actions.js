@@ -2713,6 +2713,7 @@ export async function processOngoingCosts(supabase, nation, currentTick) {
     for (const law of activeLaws) {
         const policy = law.policies;
         if (!policy) continue;
+        if (policy.policy_type === 'lever') continue; // Levers are one-time — no ongoing cost
 
         const baseCost = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
         if (baseCost === 0) continue;
