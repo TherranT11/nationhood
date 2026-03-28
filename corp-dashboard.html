@@ -155,10 +155,23 @@ body {
 .content {
   padding: 24px 20px;
   display: flex;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 12px;
   align-items: flex-start;
   flex-wrap: wrap;
+}
+/* ── Subsidiaries card — fixed 380×450 ── */
+.subs-card {
+  width: 380px; height: 450px;
+  background: var(--bg-2); border: 1px solid var(--border-0);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.subs-card__body {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+}
+.subs-card__empty {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+  letter-spacing: 0.04em; text-align: center;
 }
 
 /* ── Identity card — fixed 380×450 ── */
@@ -186,8 +199,8 @@ body {
   width: 5px; height: 5px; border-radius: 50%; background: var(--teal);
 }
 .id-card__label {
-  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
-  color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  color: var(--text-muted); letter-spacing: 2px; text-transform: uppercase;
 }
 .id-card__type-badge {
   font-family: var(--font-mono); font-size: 8px; font-weight: 700;
@@ -563,6 +576,20 @@ body {
         <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);" id="prop-count">1 ASSET</span>
       </div>
       <div class="prop-card__content" id="prop-body"></div>
+    </div>
+
+    <!-- Subsidiaries card -->
+    <div class="subs-card">
+      <div class="fin-card__header">
+        <div class="fin-card__header-left">
+          <span style="font-size:8px;color:var(--blue);">●</span>
+          <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text-muted);text-transform:uppercase;">Subsidiaries</span>
+        </div>
+        <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">0 ACTIVE</span>
+      </div>
+      <div class="subs-card__body">
+        <div class="subs-card__empty">No subsidiaries established.<br>Expand into new markets to create subsidiaries.</div>
+      </div>
     </div>
   </div>
 </div>
