@@ -8781,7 +8781,7 @@ function renderAdminCard(admin, isCurrent) {
     // Trade Agreements
     const tradeAgreements = admin.trade_agreements || [];
     if (tradeAgreements.length > 0) {
-        const taTypeLabels = { fta: 'Free Trade Agreement', pta: 'Preferential Trade Agreement', resource_supply: 'Resource Supply', export_subsidy: 'Export Subsidy', impose_embargo: 'Embargo', retaliatory_tariff: 'Retaliatory Tariff' };
+        const taTypeLabels = { fta: 'Free Trade Agreement', pta: 'Preferential Trade Agreement', resource_supply: 'Resource Supply', export_subsidy: 'Export Subsidy', impose_embargo: 'Embargo', retaliatory_tariff: 'Retaliatory Tariff', unilateral_tariff_reduction: 'Tariff Reduction (Unilateral)', free_trade: 'Free Trade Agreement' };
         detailHTML += `<div class="pad-section-title">Trade Agreements (${tradeAgreements.length})</div>`;
         detailHTML += tradeAgreements.map(ta => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(ta.agreement_name || 'Unnamed')}</span><span class="bill-date" style="color:var(--text-dim);">${taTypeLabels[ta.agreement_type] || ta.agreement_type} &middot; ${ta.date || tickToDate(ta.enacted_at_tick)}</span></div>`).join('');
     }
