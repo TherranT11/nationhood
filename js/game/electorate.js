@@ -2265,7 +2265,7 @@ export const STANCE_CONFIG = {
     },
 
     // Visibility boost when taking a stance
-    VISIBILITY_BOOST: 8,
+    VISIBILITY_BOOST: 4,
 };
 
 /**
@@ -2472,11 +2472,11 @@ export async function executeTakeStance(supabase, factionId, nationId, issueId, 
  */
 export async function onRally(supabase, factionId, nationId, outcomeId, currentTick) {
     const visBoost = {
-        rousing: 6,
-        solid: 4,
-        low: 2,
-        gaffe: -2,
-        divisive: -6,
+        rousing: 3,
+        solid: 2,
+        low: 1,
+        gaffe: -1,
+        divisive: -3,
         counter: -3,
     }[outcomeId] ?? 0;
 
@@ -2486,9 +2486,9 @@ export async function onRally(supabase, factionId, nationId, outcomeId, currentT
 
     // Approval penalties for bad outcomes
     const approvalHit = {
-        gaffe: -5,
-        divisive: -3,
-        counter: -5,
+        gaffe: -3,
+        divisive: -2,
+        counter: -3,
     }[outcomeId] ?? 0;
     if (approvalHit !== 0) {
         await nudgeApproval(supabase, factionId, nationId, approvalHit, { source: 'rally:approval_hit' });
@@ -2630,7 +2630,7 @@ export async function logActivity(supabase, factionId, nationId, actionType, act
 export const POLL_CONFIG = {
     AP_COST: 2,
     COOLDOWN_WINDOW: 2,   // ticks between polls
-    VISIBILITY_BOOST: 3,
+    VISIBILITY_BOOST: 0,
 };
 
 /**
@@ -2691,7 +2691,9 @@ export async function executePollNow(supabase, factionId, nationId, currentTick,
     }
 
     // ── Visibility + logs ──
-    await boostVisibility(supabase, factionId, nationId, POLL_CONFIG.VISIBILITY_BOOST);
+    if (POLL_CONFIG.VISIBILITY_BOOST > 0) {
+        await boostVisibility(supabase, factionId, nationId, POLL_CONFIG.VISIBILITY_BOOST);
+    }
 
     const pollMargin = pollTier === 3 ? 3 : 5;
     const { error: insErr } = await supabase.from('campaign_actions').insert({
@@ -2707,14 +2709,17 @@ export async function executePollNow(supabase, factionId, nationId, currentTick,
         apCost, currentTick);
 
     const voteSharePct = round2((standing.realized_vote_share || 0) * 100);
+    const pollEffects = [
+        { label: 'Vote share', value: `${voteSharePct}%` },
+        { label: 'Approval', value: `${round2(standing.party_approval || 50)}` },
+    ];
+    if (POLL_CONFIG.VISIBILITY_BOOST > 0) {
+        pollEffects.push({ label: 'Visibility', value: `+${POLL_CONFIG.VISIBILITY_BOOST}` });
+    }
     return {
         success: true,
         message: `Poll complete — you're polling at ${voteSharePct}%`,
-        effects: [
-            { label: 'Vote share', value: `${voteSharePct}%` },
-            { label: 'Approval', value: `${round2(standing.party_approval || 50)}` },
-            { label: 'Visibility', value: `+${POLL_CONFIG.VISIBILITY_BOOST}` },
-        ],
+        effects: pollEffects,
         newAp: apResult.newAp,
     };
 }
@@ -2742,9 +2747,9 @@ export const IDEO_SHIFT_CONFIG = {
         VARIANCE_MIN: 0.1,      // 1d5: random 0.1–0.5 per tick
         VARIANCE_MAX: 0.5,
         DURATION: 5,            // variance shift for 5 ticks
-        VISIBILITY_TICKS: 5,    // then 1d3 visibility per tick for 5 more ticks
+        VISIBILITY_TICKS: 5,    // then 1d2 visibility per tick for 5 more ticks
         VISIBILITY_MIN: 1,
-        VISIBILITY_MAX: 3,
+        VISIBILITY_MAX: 2,
     },
     GRASSROOTS: {
         AP_COST: 3,             // upfront launch cost
@@ -3177,8 +3182,8 @@ export async function tickIdeologyShiftActions(supabase, nationId, profile, curr
                     profile[col] = newVal;
                 }
             } else if (ticksActive < mcCfg.DURATION + mcCfg.VISIBILITY_TICKS) {
-                // Phase 2 (ticks 5–9): visibility boost — 1d3 (1–3)
-                const visRoll = [1, 2, 3][Math.floor(Math.random() * 3)];
+                // Phase 2 (ticks 5–9): visibility boost — 1d2 (1–2)
+                const visRoll = [1, 2][Math.floor(Math.random() * 2)];
                 await boostVisibility(supabase, act.faction_id, nationId, visRoll);
             }
         } else if (act.action_type === 'grassroots_movement') {
