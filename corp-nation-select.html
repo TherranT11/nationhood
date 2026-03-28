@@ -729,7 +729,7 @@ async function confirmNation() {
         const { firstNames, lastNames } = getNationNames(nation.name);
         const ceoFirst = firstNames[Math.floor(Math.random() * firstNames.length)];
         const ceoLast = lastNames[Math.floor(Math.random() * lastNames.length)];
-        const ceoAge = 35 + Math.floor(Math.random() * 20);
+        const ceoAge = 40 + Math.floor(Math.random() * 36);
 
         // Upsert corporation faction record
         const { error: upsertError } = await _supabase

@@ -155,7 +155,7 @@ body {
 .content {
   padding: 24px 20px;
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 /* ── Identity card — fixed 380×450 ── */
@@ -183,21 +183,21 @@ body {
   width: 5px; height: 5px; border-radius: 50%; background: var(--teal);
 }
 .id-card__label {
-  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
   color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase;
 }
 .id-card__type-badge {
-  font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
   letter-spacing: 0.06em; text-transform: uppercase;
-  padding: 2px 8px; border-radius: 2px;
+  padding: 3px 9px; border-radius: 2px;
   background: var(--teal-faint); border: 1px solid var(--teal-border); color: var(--teal);
 }
 .id-card__body {
-  flex: 1; padding: 16px 20px;
+  flex: 1; padding: 14px 20px;
   display: flex; flex-direction: column;
 }
 .id-card__logo-area {
-  text-align: center; margin-bottom: 10px;
+  text-align: center; margin-bottom: 8px;
 }
 .id-card__logo {
   width: 48px; height: 48px; margin: 0 auto;
@@ -206,15 +206,15 @@ body {
   font-family: var(--font-mono); font-size: 16px; font-weight: 700; color: var(--text-dim);
 }
 .id-card__corp-name {
-  font-family: var(--font-ui); font-size: 16px; font-weight: 700;
+  font-family: var(--font-ui); font-size: 17px; font-weight: 700;
   color: var(--text-bright); text-align: center; margin-bottom: 2px;
 }
 .id-card__slogan {
   font-family: var(--font-serif); font-size: 11px; font-style: italic;
-  color: var(--text-muted); text-align: center; margin-bottom: 14px;
+  color: var(--text-muted); text-align: center; margin-bottom: 10px;
 }
 .id-card__divider {
-  height: 1px; background: var(--border-0); margin-bottom: 8px;
+  height: 1px; background: var(--border-0); margin-bottom: 6px;
 }
 .id-card__rows {
   flex: 1;
@@ -225,13 +225,43 @@ body {
 }
 .id-row:last-child { border-bottom: none; }
 .id-row__label {
-  font-family: var(--font-mono); font-size: 9px; font-weight: 500;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500;
   color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase;
 }
 .id-row__value {
-  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
   color: var(--text-primary); text-align: right;
 }
+
+/* ── Slogan editor ── */
+.slogan-bar {
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid var(--border-0);
+  display: flex; gap: 6px; align-items: center;
+}
+.slogan-bar input {
+  flex: 1; padding: 6px 8px;
+  background: var(--bg-4); border: 1px solid var(--border-0); border-radius: 3px;
+  color: var(--text-bright); font-family: var(--font-serif); font-size: 11px;
+  font-style: italic; outline: none; transition: border-color 0.15s;
+}
+.slogan-bar input:focus { border-color: var(--teal-border); }
+.slogan-bar input::placeholder { color: var(--text-ghost); }
+.slogan-bar button {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 6px 10px; cursor: pointer;
+  background: var(--teal-faint); border: 1px solid var(--teal-border); color: var(--teal);
+  border-radius: 2px; transition: background 0.15s; white-space: nowrap;
+}
+.slogan-bar button:hover { background: rgba(90,175,165,0.14); }
+.slogan-bar button:disabled { opacity: 0.3; cursor: not-allowed; }
+.slogan-hint {
+  font-family: var(--font-mono); font-size: 7.5px; color: var(--text-dim);
+  margin-top: 3px; letter-spacing: 0.02em;
+}
+.slogan-hint--error { color: var(--red); }
+.slogan-hint--ok { color: var(--green); }
 
 /* ── Loading ── */
 .loading-msg {
@@ -296,6 +326,7 @@ body {
         <div class="id-card__slogan" id="id-slogan">"--"</div>
         <div class="id-card__divider"></div>
         <div class="id-card__rows" id="id-rows"></div>
+        <div id="slogan-editor"></div>
       </div>
     </div>
   </div>
@@ -366,7 +397,8 @@ async function init() {
     document.getElementById('id-type-badge').textContent = faction.corp_company_type || '—';
     document.getElementById('id-logo').textContent = ticker.slice(0, 3) || '—';
     document.getElementById('id-corp-name').textContent = faction.faction_name || 'Unnamed Corp';
-    document.getElementById('id-slogan').textContent = '"--"';
+    const currentSlogan = faction.party_description || '';
+    document.getElementById('id-slogan').textContent = currentSlogan ? '"' + currentSlogan + '"' : '"--"';
 
     // Derive established year from game date (e.g. "August, 2013" → "2013")
     const estYear = shard?.current_date ? shard.current_date.replace(/.*,\s*/, '') : '—';
@@ -405,6 +437,26 @@ async function init() {
             <span class="id-row__value" style="color:var(--teal);letter-spacing:0.1em;">${escapeHtml(ticker)}</span>
         </div>
     `;
+
+    // ── Slogan editor ──
+    const sloganCooldownTick = faction.last_rename_tick || 0;
+    const currentTick = shard?.current_tick || 0;
+    const SLOGAN_COOLDOWN = 120;
+    const ticksRemaining = Math.max(0, (sloganCooldownTick + SLOGAN_COOLDOWN) - currentTick);
+    const canEditSlogan = ticksRemaining <= 0;
+
+    const sloganEditor = document.getElementById('slogan-editor');
+    sloganEditor.innerHTML = `
+        <div class="slogan-bar">
+            <input type="text" id="slogan-input" placeholder="Enter a slogan..." maxlength="60" value="${escapeHtml(currentSlogan)}">
+            <button id="slogan-save-btn" onclick="saveSlogan()" ${canEditSlogan ? '' : 'disabled'}>Save</button>
+        </div>
+        <div class="slogan-hint" id="slogan-hint">${canEditSlogan ? '60 characters max. 120 tick cooldown after change.' : ticksRemaining + ' ticks until you can change slogan.'}</div>
+    `;
+
+    // Store for save handler
+    window._corpFactionId = faction.id;
+    window._currentTick = currentTick;
 
     // Show page
     document.getElementById('loading').style.display = 'none';
@@ -446,6 +498,44 @@ if (localStorage.getItem('nationhood_theme') === 'light') {
     if (btn) btn.textContent = 'Dark';
 }
 
+async function saveSlogan() {
+    const input = document.getElementById('slogan-input');
+    const hint = document.getElementById('slogan-hint');
+    const btn = document.getElementById('slogan-save-btn');
+    const slogan = (input.value || '').trim().slice(0, 60);
+
+    if (slogan.length === 0) {
+        hint.textContent = 'Slogan cannot be empty.';
+        hint.className = 'slogan-hint slogan-hint--error';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '...';
+    hint.textContent = '';
+
+    try {
+        const { error } = await _supabase.from('factions').update({
+            party_description: slogan,
+            last_rename_tick: window._currentTick,
+        }).eq('id', window._corpFactionId);
+
+        if (error) throw error;
+
+        document.getElementById('id-slogan').textContent = '"' + slogan + '"';
+        hint.textContent = 'Slogan saved! Next change in 120 ticks.';
+        hint.className = 'slogan-hint slogan-hint--ok';
+        btn.textContent = 'Save';
+        // Keep disabled after save (cooldown now active)
+    } catch (err) {
+        console.error('Slogan save failed:', err);
+        hint.textContent = 'Failed to save slogan.';
+        hint.className = 'slogan-hint slogan-hint--error';
+        btn.disabled = false;
+        btn.textContent = 'Save';
+    }
+}
+
 async function doLogout() {
     await _supabase.auth.signOut();
     window.location.href = 'login.html';
@@ -453,6 +543,7 @@ async function doLogout() {
 
 window.doLogout = doLogout;
 window.toggleTheme = toggleTheme;
+window.saveSlogan = saveSlogan;
 
 init();
 </script>
