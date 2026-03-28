@@ -696,13 +696,14 @@ function startTickCountdown() {
         if (!nextTickAt) return;
         const diff = nextTickAt - Date.now();
         if (diff <= 0) {
-            document.getElementById('tick-countdown').textContent = 'NOW';
+            document.getElementById('tick-countdown').textContent = 'Tick due...';
+            clearInterval(tickInterval);
             return;
         }
-        const m = Math.floor(diff / 60000);
+        const h = Math.floor(diff / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
         const s = Math.floor((diff % 60000) / 1000);
-        document.getElementById('tick-countdown').textContent =
-            String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+        document.getElementById('tick-countdown').textContent = h + 'h ' + m + 'm ' + s + 's';
     }, 1000);
 }
 
