@@ -696,11 +696,17 @@ async function init() {
     if (!user) { window.location.href = 'login.html'; return; }
     currentUser = user;
 
-    // Check if user already has a party
+    // Check if user already has a faction
     const { data: faction } = await _supabase
-      .from('factions').select('id, nation_id').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
+      .from('factions').select('id, nation_id, faction_type').eq('id', user.id).maybeSingle();
     if (faction && faction.nation_id) {
       window.location.href = 'dashboard.html';
+      return;
+    }
+
+    // Corporation flow — redirect to corp setup if pending
+    if (sessionStorage.getItem('pending_faction_type') === 'corp') {
+      window.location.href = 'corp-setup.html';
       return;
     }
 
