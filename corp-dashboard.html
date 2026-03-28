@@ -897,6 +897,18 @@ import { escapeHtml } from './js/utils.js';
 
 let allUserFactions = [];
 
+// Shared utility: format currency values
+function fmtMoney(n) {
+    if (Math.abs(n) >= 1_000_000) return '$' + (n / 1_000_000).toFixed(2) + 'M';
+    if (Math.abs(n) >= 1000) return '$' + (n / 1000).toFixed(1) + 'k';
+    return '$' + Math.round(n).toLocaleString();
+}
+
+// Shared utility: get nation stat with fallback
+function getNationStat(nation, key) {
+    return Number(nation?.[key] ?? 50);
+}
+
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
@@ -937,10 +949,9 @@ async function init() {
             : Promise.resolve({ data: null }),
         _supabase.from('shard').select('current_tick, current_date, next_tick_at').eq('name', 'Alpha Shard').single(),
     ]);
-    if (nationRes.data) {
-        nationName = nationRes.data.name;
-        nationStats = nationRes.data;
-    }
+    if (nationRes.error) console.warn('Nation load failed:', nationRes.error.message);
+    if (nationRes.data) { nationName = nationRes.data.name; nationStats = nationRes.data; }
+    if (shardRes.error) console.warn('Shard load failed:', shardRes.error.message);
     const shard = shardRes.data;
 
     // Populate top bar — left side
@@ -1061,7 +1072,7 @@ async function init() {
     window._corpFactionId = faction.id;
     window._currentTick = currentTick;
 
-    // ── Populate finances card ──
+    // ── Render all dashboard cards ──
     const wfData = renderWorkforce(nationStats, nationName);
     renderFinances(nationStats, shard, wfData);
     renderStats(nationName);
@@ -1074,7 +1085,7 @@ async function init() {
 }
 
 function renderWorkforce(nation, nationName) {
-    const s = (key) => Number(nation?.[key] ?? 50);
+    const s = (key) => getNationStat(nation, key);
     const natUp = (nationName || 'UNKNOWN').toUpperCase();
 
     const TOTAL_WORKFORCE = 3000;
@@ -1105,12 +1116,6 @@ function renderWorkforce(nation, nationName) {
     const innovativeTotal = innovativeCount * innovativeWage;
     const totalWages = generalTotal + skilledTotal + innovativeTotal;
 
-    function fmt(n) {
-        if (Math.abs(n) >= 1_000_000) return '$' + (n / 1_000_000).toFixed(2) + 'M';
-        if (Math.abs(n) >= 1000) return '$' + (n / 1000).toFixed(1) + 'k';
-        return '$' + Math.round(n).toLocaleString();
-    }
-
     function fmtWage(n) {
         return '$' + Math.round(n).toLocaleString() + '/yr';
     }
@@ -1132,7 +1137,7 @@ function renderWorkforce(nation, nationName) {
             </div>
             <div class="wf-tier__detail">
                 <span class="wf-tier__label">Total Annual Cost</span>
-                <span class="wf-tier__value" style="color:var(--text-primary)">${fmt(generalTotal)}</span>
+                <span class="wf-tier__value" style="color:var(--text-primary)">${fmtMoney(generalTotal)}</span>
             </div>
         </div>
 
@@ -1150,7 +1155,7 @@ function renderWorkforce(nation, nationName) {
             </div>
             <div class="wf-tier__detail">
                 <span class="wf-tier__label">Total Annual Cost</span>
-                <span class="wf-tier__value" style="color:var(--text-primary)">${fmt(skilledTotal)}</span>
+                <span class="wf-tier__value" style="color:var(--text-primary)">${fmtMoney(skilledTotal)}</span>
             </div>
         </div>
 
@@ -1168,7 +1173,7 @@ function renderWorkforce(nation, nationName) {
             </div>
             <div class="wf-tier__detail">
                 <span class="wf-tier__label">Total Annual Cost</span>
-                <span class="wf-tier__value" style="color:var(--text-primary)">${fmt(innovativeTotal)}</span>
+                <span class="wf-tier__value" style="color:var(--text-primary)">${fmtMoney(innovativeTotal)}</span>
             </div>
         </div>
 
@@ -1191,11 +1196,11 @@ function renderWorkforce(nation, nationName) {
             </div>
             <div class="wf-total__row">
                 <span class="wf-total__label">Total Annual Wages</span>
-                <span class="wf-total__value" style="color:var(--red);">${fmt(totalWages)}</span>
+                <span class="wf-total__value" style="color:var(--red);">${fmtMoney(totalWages)}</span>
             </div>
             <div class="wf-total__row">
                 <span class="wf-total__label">Per Tick (÷12)</span>
-                <span class="wf-total__value" style="color:var(--red);">${fmt(totalWages / 12)}</span>
+                <span class="wf-total__value" style="color:var(--red);">${fmtMoney(totalWages / 12)}</span>
             </div>
         </div>
     `;
@@ -1209,7 +1214,7 @@ function renderFinances(nation, shard, wfData) {
 
     // Market revenue calculation (annual)
     const BASE_RATE = 50_000_000;
-    const s = (key) => Number(nation?.[key] ?? 50);
+    const s = (key) => getNationStat(nation, key);
 
     const gdpFactor     = 1 + (s('gdp_growth') - 50) / 100 * 0.4;
     const urbanFactor   = 1 + (s('urbanization') - 50) / 100 * 0.3;
@@ -1234,12 +1239,6 @@ function renderFinances(nation, shard, wfData) {
     const totalExpenses = wages + materials + facilities + equipment + debtService + taxes;
     const netProfit = totalRevenue - totalExpenses;
     const cash = 0, debt = 0;
-
-    function fmt(n) {
-        if (Math.abs(n) >= 1_000_000) return '$' + (n / 1_000_000).toFixed(1) + 'M';
-        if (Math.abs(n) >= 1000) return '$' + (n / 1000).toFixed(1) + 'k';
-        return '$' + n.toLocaleString();
-    }
 
     // Driver data for display
     const drivers = [
@@ -1277,42 +1276,42 @@ function renderFinances(nation, shard, wfData) {
                 <div class="seg-legend__item"><div class="seg-legend__dot" style="background:var(--amber)"></div><span class="seg-legend__label">Private</span></div>
                 <div class="seg-legend__item"><div class="seg-legend__dot" style="background:var(--text-dim)"></div><span class="seg-legend__label">Market</span></div>
             </div>
-            <div class="fin-row"><span class="fin-row__label">Government Contracts</span><span class="fin-row__value" style="color:var(--green)">${fmt(govContracts)}</span></div>
-            <div class="fin-row"><span class="fin-row__label">Private Contracts</span><span class="fin-row__value" style="color:var(--green)">${fmt(pvtContracts)}</span></div>
-            <div class="fin-row"><span class="fin-row__label">Market Revenue<span class="fin-row__badge">DERIVED</span></span><span class="fin-row__value" style="color:var(--green)">${fmt(marketRev)}</span></div>
+            <div class="fin-row"><span class="fin-row__label">Government Contracts</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(govContracts)}</span></div>
+            <div class="fin-row"><span class="fin-row__label">Private Contracts</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(pvtContracts)}</span></div>
+            <div class="fin-row"><span class="fin-row__label">Market Revenue<span class="fin-row__badge">DERIVED</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(marketRev)}</span></div>
             <div class="fin-total">
                 <span class="fin-total__label">Total Revenue</span>
-                <span class="fin-total__value" style="color:var(--green)">${fmt(totalRevenue)}</span>
+                <span class="fin-total__value" style="color:var(--green)">${fmtMoney(totalRevenue)}</span>
             </div>
         </div>
         <!-- Expenses -->
         <div class="fin-section">
             <div class="fin-section__title" style="color:var(--red);">Expenses</div>
-            <div class="fin-row"><span class="fin-row__label">Workforce Wages</span><span class="fin-row__value" style="color:#a44">${fmt(wages)}</span></div>
-            <div class="fin-row"><span class="fin-row__label">Materials & Supplies</span><span class="fin-row__value" style="color:#a44">${fmt(materials)}</span></div>
-            <div class="fin-row"><span class="fin-row__label">Facilities</span><span class="fin-row__value" style="color:#a44">${fmt(facilities)}</span></div>
-            <div class="fin-row"><span class="fin-row__label">Equipment</span><span class="fin-row__value" style="color:#a44">${fmt(equipment)}</span></div>
-            <div class="fin-row"><span class="fin-row__label">Debt Service</span><span class="fin-row__value" style="color:#a44">${fmt(debtService)}</span></div>
-            <div class="fin-row"><span class="fin-row__label">Taxes</span><span class="fin-row__value" style="color:#a44">${fmt(taxes)}</span></div>
+            <div class="fin-row"><span class="fin-row__label">Workforce Wages</span><span class="fin-row__value" style="color:#a44">${fmtMoney(wages)}</span></div>
+            <div class="fin-row"><span class="fin-row__label">Materials & Supplies</span><span class="fin-row__value" style="color:#a44">${fmtMoney(materials)}</span></div>
+            <div class="fin-row"><span class="fin-row__label">Facilities</span><span class="fin-row__value" style="color:#a44">${fmtMoney(facilities)}</span></div>
+            <div class="fin-row"><span class="fin-row__label">Equipment</span><span class="fin-row__value" style="color:#a44">${fmtMoney(equipment)}</span></div>
+            <div class="fin-row"><span class="fin-row__label">Debt Service</span><span class="fin-row__value" style="color:#a44">${fmtMoney(debtService)}</span></div>
+            <div class="fin-row"><span class="fin-row__label">Taxes</span><span class="fin-row__value" style="color:#a44">${fmtMoney(taxes)}</span></div>
             <div class="fin-total">
                 <span class="fin-total__label">Total Expenses</span>
-                <span class="fin-total__value" style="color:var(--red)">${fmt(totalExpenses)}</span>
+                <span class="fin-total__value" style="color:var(--red)">${fmtMoney(totalExpenses)}</span>
             </div>
         </div>
         <!-- Net Profit -->
         <div class="fin-net" style="background:${netProfit >= 0 ? 'rgba(92,204,92,0.02)' : 'rgba(204,85,85,0.02)'}">
             <span class="fin-net__label">Net Profit</span>
-            <span class="fin-net__value" style="color:${netProfit >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(netProfit)}</span>
+            <span class="fin-net__value" style="color:${netProfit >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtMoney(netProfit)}</span>
         </div>
         <!-- Cash & Debt -->
         <div class="fin-cash-debt">
             <div class="fin-cash-debt__cell">
                 <div class="fin-cash-debt__label">Cash</div>
-                <div class="fin-cash-debt__value" style="color:var(--text-bright)">${fmt(cash)}</div>
+                <div class="fin-cash-debt__value" style="color:var(--text-bright)">${fmtMoney(cash)}</div>
             </div>
             <div class="fin-cash-debt__cell">
                 <div class="fin-cash-debt__label">Debt</div>
-                <div class="fin-cash-debt__value" style="color:var(--amber)">${fmt(debt)}</div>
+                <div class="fin-cash-debt__value" style="color:var(--amber)">${fmtMoney(debt)}</div>
             </div>
         </div>
         <!-- Market Revenue Drivers -->
@@ -1426,7 +1425,7 @@ function renderStats(nationName) {
 }
 
 function renderProperty(nation, nationName, faction, shard) {
-    const s = (key) => Number(nation?.[key] ?? 50);
+    const s = (key) => getNationStat(nation, key);
     const currentTick = shard?.current_tick || 0;
     const foundedTick = faction.founded_tick || currentTick;
     const TICKS_PER_YEAR = 12;
@@ -1448,13 +1447,6 @@ function renderProperty(nation, nationName, faction, shard) {
     const unrestMult = 1 - (unrest / 100 * 0.2);
 
     const adjustedCost = Math.round(BASE_COST * inflationCompound * stabilityMult * unrestMult);
-
-    function fmtBig(n) {
-        if (Math.abs(n) >= 1_000_000) return '$' + (n / 1_000_000).toFixed(2) + 'M';
-        if (Math.abs(n) >= 1000) return '$' + (n / 1000).toFixed(1) + 'k';
-        return '$' + n.toLocaleString();
-    }
-
     const natUp = (nationName || 'UNKNOWN').toUpperCase();
 
     document.getElementById('prop-body').innerHTML = `
@@ -1491,14 +1483,14 @@ function renderProperty(nation, nationName, faction, shard) {
                 </div>
                 <div class="prop-cost-row" style="padding-top:4px;">
                     <span class="prop-cost-row__label" style="color:var(--text-muted);">ADJUSTED VALUE</span>
-                    <span class="prop-cost-row__value" style="font-size:11px;font-weight:700;color:var(--text-bright);">${fmtBig(adjustedCost)}</span>
+                    <span class="prop-cost-row__value" style="font-size:11px;font-weight:700;color:var(--text-bright);">${fmtMoney(adjustedCost)}</span>
                 </div>
             </div>
         </div>
         <div style="flex:1;"></div>
         <div class="prop-total">
             <span class="prop-total__label">Total Property Value</span>
-            <span class="prop-total__value">${fmtBig(adjustedCost)}</span>
+            <span class="prop-total__value">${fmtMoney(adjustedCost)}</span>
         </div>
     `;
 
@@ -1506,18 +1498,12 @@ function renderProperty(nation, nationName, faction, shard) {
 }
 
 function renderValuation(nation, nationName, faction, wfData, propData) {
-    const s = (key) => Number(nation?.[key] ?? 50);
+    const s = (key) => getNationStat(nation, key);
     const natUp = (nationName || 'UNKNOWN').toUpperCase();
     const companyType = faction.corp_company_type || 'Private';
 
-    function fmtV(n) {
-        if (Math.abs(n) >= 1_000_000) return '$' + (n / 1_000_000).toFixed(2) + 'M';
-        if (Math.abs(n) >= 1000) return '$' + (n / 1000).toFixed(1) + 'k';
-        return '$' + Math.round(n).toLocaleString();
-    }
-
     // Assets
-    const currencyStrength = s('currency_strength') || s('gdp_growth') || 50;
+    const currencyStrength = s('currency_strength') ?? s('gdp_growth') ?? 50;
     const cashReserves = Math.round(5_000_000 * (currencyStrength / 50));
     const propertyValue = propData?.propertyValue || 0;
     const equipmentValue = 0;
@@ -1548,7 +1534,7 @@ function renderValuation(nation, nationName, faction, wfData, propData) {
         const lblCls = opts.bold ? 'val-line__label val-line__label--bold' : 'val-line__label';
         const valCls = opts.bold ? 'val-line__value val-line__value--bold' : 'val-line__value';
         const color = opts.color || (opts.bold ? 'var(--text-bright)' : 'var(--text-muted)');
-        return `<div class="${cls}"><span class="${lblCls}">${label}</span><span class="${valCls}" style="color:${color}">${fmtV(value)}</span></div>`;
+        return `<div class="${cls}"><span class="${lblCls}">${label}</span><span class="${valCls}" style="color:${color}">${fmtMoney(value)}</span></div>`;
     }
 
     document.getElementById('val-body').innerHTML = `
@@ -1567,7 +1553,7 @@ function renderValuation(nation, nationName, faction, wfData, propData) {
 
         <div class="val-net">
             <span class="val-net__label">Net Worth</span>
-            <span class="val-net__value" style="color:${netWorth >= 0 ? 'var(--green)' : 'var(--red)'};">${fmtV(netWorth)}</span>
+            <span class="val-net__value" style="color:${netWorth >= 0 ? 'var(--green)' : 'var(--red)'};">${fmtMoney(netWorth)}</span>
         </div>
 
         <div style="flex:1;"></div>
@@ -1575,11 +1561,11 @@ function renderValuation(nation, nationName, faction, wfData, propData) {
         <div class="val-market">
             <div class="val-market__top">
                 <span class="val-market__label">Market Valuation</span>
-                <span class="val-market__value">${fmtV(valuation)}</span>
+                <span class="val-market__value">${fmtMoney(valuation)}</span>
             </div>
             <div class="val-market__gap">
                 <span class="val-market__gap-label">${valuationAbove ? 'ABOVE' : 'BELOW'} NET WORTH</span>
-                <span class="val-market__gap-value" style="color:${valuationAbove ? 'var(--green)' : 'var(--red)'};">${valuationAbove ? '+' : ''}${fmtV(valuationDelta)}</span>
+                <span class="val-market__gap-value" style="color:${valuationAbove ? 'var(--green)' : 'var(--red)'};">${valuationAbove ? '+' : ''}${fmtMoney(valuationDelta)}</span>
             </div>
             <div class="val-market__note">${valuationAbove ? 'Market believes in future growth.' : 'Market doubts current trajectory.'}</div>
         </div>
