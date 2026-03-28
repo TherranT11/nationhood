@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Corporation HQ | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0: #0e0e0c;
+  --bg-1: #1a1a1a;
+  --bg-2: #1a1a17;
+  --bg-3: #252525;
+  --bg-4: #24241f;
+  --bg-5: #2c2c26;
+  --bg-hover: #282822;
+  --text-bright: #f0efe6;
+  --text-primary: #c4c2b8;
+  --text-secondary: #888;
+  --text-muted: #666;
+  --text-dim: #4a4940;
+  --text-ghost: #333229;
+  --border-hair: rgba(255,255,255,0.04);
+  --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08);
+  --border-2: rgba(255,255,255,0.12);
+  --green: #5cb85c;
+  --green-faint: rgba(92,184,92,0.08);
+  --green-border: rgba(92,184,92,0.18);
+  --red: #d9534f;
+  --amber: #c8a64e;
+  --amber-faint: rgba(200,166,78,0.08);
+  --amber-border: rgba(200,166,78,0.18);
+  --blue: #5b9bd5;
+  --blue-faint: rgba(91,155,213,0.08);
+  --blue-border: rgba(91,155,213,0.18);
+  --teal: #5aafa5;
+  --teal-faint: rgba(90,175,165,0.08);
+  --teal-border: rgba(90,175,165,0.18);
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+  --font-serif: 'IBM Plex Serif', Georgia, serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  min-height: 100vh;
+}
+
+/* ── Top bar ── */
+.top-bar {
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border-0);
+  padding: 0 20px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.top-bar__left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.top-bar__brand {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.top-bar__badge {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 2px;
+  background: var(--teal-faint);
+  border: 1px solid var(--teal-border);
+  color: var(--teal);
+}
+.top-bar__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.top-bar__ticker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--teal);
+  letter-spacing: 0.1em;
+}
+.top-bar__name {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+.top-bar__nation {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.btn-logout {
+  background: rgba(217,83,79,0.12);
+  border: 1px solid rgba(217,83,79,0.3);
+  color: var(--red);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 12px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+/* ── Content ── */
+.content {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 20px;
+}
+
+/* ── Dashboard grid ── */
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+/* ── Card ── */
+.card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  overflow: hidden;
+}
+.card--full { grid-column: 1 / -1; }
+.card__header {
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--border-hair);
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.card__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.card__body {
+  padding: 14px;
+}
+
+/* ── Stat rows ── */
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border-hair);
+}
+.stat-row:last-child { border-bottom: none; }
+.stat-row__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.stat-row__value {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ── Placeholder ── */
+.placeholder {
+  text-align: center;
+  padding: 32px 16px;
+}
+.placeholder__icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+  opacity: 0.4;
+}
+.placeholder__text {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+
+/* ── Loading ── */
+.loading-msg {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 80px 20px;
+}
+
+@media (max-width: 640px) {
+  .dash-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div id="loading" class="loading-msg">LOADING CORPORATION...</div>
+
+<div id="page-content" style="display:none;">
+  <!-- Top bar -->
+  <div class="top-bar">
+    <div class="top-bar__left">
+      <span class="top-bar__brand">Nationhood</span>
+      <span class="top-bar__badge">Corporation</span>
+    </div>
+    <div class="top-bar__right">
+      <span class="top-bar__ticker" id="corp-ticker"></span>
+      <span class="top-bar__name" id="corp-name"></span>
+      <span class="top-bar__nation" id="corp-nation"></span>
+      <button class="btn-logout" onclick="doLogout()">Logout</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- Overview + Financials -->
+    <div class="dash-grid">
+      <div class="card">
+        <div class="card__header">
+          <div class="card__dot" style="background:var(--teal)"></div>
+          <span class="card__label">Corporation Overview</span>
+        </div>
+        <div class="card__body" id="overview-body"></div>
+      </div>
+
+      <div class="card">
+        <div class="card__header">
+          <div class="card__dot" style="background:var(--green)"></div>
+          <span class="card__label">Financials</span>
+        </div>
+        <div class="card__body">
+          <div class="placeholder">
+            <div class="placeholder__icon">$</div>
+            <div class="placeholder__text">Financial data will appear here once your corporation begins operations.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card__header">
+          <div class="card__dot" style="background:var(--amber)"></div>
+          <span class="card__label">Active Contracts</span>
+        </div>
+        <div class="card__body">
+          <div class="placeholder">
+            <div class="placeholder__icon">&mdash;</div>
+            <div class="placeholder__text">No active contracts. Bid on government tenders to win your first project.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card__header">
+          <div class="card__dot" style="background:var(--blue)"></div>
+          <span class="card__label">Equipment &amp; Assets</span>
+        </div>
+        <div class="card__body">
+          <div class="placeholder">
+            <div class="placeholder__icon">&mdash;</div>
+            <div class="placeholder__text">Purchase equipment to expand your operational capacity.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card--full">
+        <div class="card__header">
+          <div class="card__dot" style="background:var(--amber)"></div>
+          <span class="card__label">Government Tenders</span>
+        </div>
+        <div class="card__body">
+          <div class="placeholder">
+            <div class="placeholder__icon">&mdash;</div>
+            <div class="placeholder__text">Available government contracts for your sector will appear here each tick.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { escapeHtml } from './js/utils.js';
+
+async function init() {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) { window.location.href = 'login.html'; return; }
+
+    // Load corporation faction
+    const { data: faction, error } = await _supabase
+        .from('factions')
+        .select('*, nations(name, population, gdp, stability)')
+        .eq('id', user.id)
+        .eq('faction_type', 'corporation')
+        .single();
+
+    if (error || !faction) {
+        window.location.href = 'login.html';
+        return;
+    }
+
+    // Populate top bar
+    document.getElementById('corp-ticker').textContent = faction.corp_ticker || faction.abbreviation || '';
+    document.getElementById('corp-name').textContent = faction.faction_name || 'Unnamed Corp';
+    document.getElementById('corp-nation').textContent = faction.nations?.name || faction.nation || '';
+
+    // Populate overview card
+    const overview = document.getElementById('overview-body');
+    overview.innerHTML = `
+        <div class="stat-row">
+            <span class="stat-row__label">Corporation</span>
+            <span class="stat-row__value">${escapeHtml(faction.faction_name)}</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-row__label">Ticker</span>
+            <span class="stat-row__value" style="color:var(--teal);letter-spacing:0.1em;">${escapeHtml(faction.corp_ticker || '')}</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-row__label">Sector</span>
+            <span class="stat-row__value">${escapeHtml(faction.corp_sector || '—')}</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-row__label">Subsector</span>
+            <span class="stat-row__value">${escapeHtml(faction.corp_subsector || '—')}</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-row__label">Type</span>
+            <span class="stat-row__value">${escapeHtml(faction.corp_company_type || '—')}</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-row__label">Home Nation</span>
+            <span class="stat-row__value">${escapeHtml(faction.nations?.name || faction.nation || '—')}</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-row__label">Action Points</span>
+            <span class="stat-row__value" style="color:var(--amber)">${faction.action_points ?? 0} AP</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-row__label">Founded</span>
+            <span class="stat-row__value">Tick ${faction.founded_tick ?? '—'}</span>
+        </div>
+    `;
+
+    // Show page
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('page-content').style.display = 'block';
+}
+
+async function doLogout() {
+    await _supabase.auth.signOut();
+    window.location.href = 'login.html';
+}
+
+window.doLogout = doLogout;
+
+init();
+</script>
+</body>
+</html>
