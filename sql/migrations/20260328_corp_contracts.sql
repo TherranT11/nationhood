@@ -52,6 +52,22 @@ CREATE TABLE IF NOT EXISTS corp_contracts (
     -- Progress tracking (for active contracts)
     progress_months INTEGER NOT NULL DEFAULT 0,
     started_at_tick INTEGER,
+    current_phase TEXT DEFAULT 'Permits' CHECK (current_phase IN ('Permits', 'Planning', 'Foundation', 'Structural', 'Systems', 'Finishing', 'Delivery')),
+    amount_spent BIGINT NOT NULL DEFAULT 0,
+    deadline_tick INTEGER,                     -- Hard deadline tick (started_at_tick + timeline)
+    expected_finish_tick INTEGER,              -- Projected finish tick (can drift)
+
+    -- Project manager
+    pm_first_name TEXT,
+    pm_last_name TEXT,
+
+    -- Assigned resources
+    assigned_workforce INTEGER NOT NULL DEFAULT 0,
+    assigned_assets INTEGER NOT NULL DEFAULT 0,
+
+    -- Completion tracking
+    completed_at_tick INTEGER,
+    payout_tick INTEGER,                       -- 3 ticks after completion, cash is paid out
 
     -- Timestamps
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
