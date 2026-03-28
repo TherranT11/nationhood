@@ -616,6 +616,7 @@ body {
 <div id="loading" class="loading-msg">LOADING NATIONS...</div>
 
 <div id="page-content" style="display:none; width:100%; flex-direction:column; align-items:center;">
+  <button id="back-btn" onclick="history.back()" style="position:fixed;top:16px;left:20px;z-index:100;background:var(--bg-3);border:1px solid var(--border-0);color:var(--text-muted);font-family:var(--font-mono);font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;padding:6px 16px;border-radius:2px;cursor:pointer;transition:background 0.15s,color 0.15s,border-color 0.15s;" onmouseover="this.style.background='var(--bg-4)';this.style.color='var(--text-secondary)';this.style.borderColor='var(--border-1)'" onmouseout="this.style.background='var(--bg-3)';this.style.color='var(--text-muted)';this.style.borderColor='var(--border-0)'">&#x25C0; Back</button>
   <button id="logout-btn" onclick="logoutUser()" style="position:fixed;top:16px;right:20px;z-index:100;background:rgba(217,83,79,0.12);border:1px solid rgba(217,83,79,0.3);color:#d9534f;font-family:var(--font-mono);font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;padding:6px 16px;border-radius:2px;cursor:pointer;">Logout</button>
   <div class="page-header">
     <h1>Nationhood</h1>
