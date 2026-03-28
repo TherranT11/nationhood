@@ -2137,9 +2137,10 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             // Populate dropdown
             const sel = document.getElementById('mc-nation-select');
             if (sel) {
-                sel.innerHTML = mcAllNations.map(n =>
+                sel.innerHTML = '<option value="__all__">— All Nations —</option>' + mcAllNations.map(n =>
                     '<option value="' + n.id + '">' + (n.name || 'Unknown') + '</option>'
                 ).join('');
+                sel.value = mcAllNations.length > 0 ? mcAllNations[0].id : '__all__';
             }
 
             // Default to first nation
@@ -2157,23 +2158,26 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
 
     window.onMCNationChange = async function(nationId) {
         if (!nationId) return;
+        if (nationId === '__all__') {
+            // All Nations selected — preview first nation but commit applies to all
+            if (mcAllNations.length > 0) {
+                const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', mcAllNations[0].id).single();
+                ministryConfigNation = fullNation;
+            }
+            renderMinistryConfig();
+            return;
+        }
         const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', nationId).single();
         ministryConfigNation = fullNation;
         renderMinistryConfig();
     };
 
-    window.commitAllAllocations = async function() {
-        if (!ministryConfigNation || !ministryConfigData.length) {
-            alert('No nation selected or no config loaded.');
-            return;
-        }
-        const nationId = ministryConfigNation.id;
-        const nationName = ministryConfigNation.name || 'Unknown';
-        if (!confirm('Commit institution costs to budget for ' + nationName + '?\n\nThis updates budget_item_allocations with current costs. Existing funding percentages will be preserved.')) return;
-
-        const pop = Number(ministryConfigNation.population || 0);
-        const gdp = Number(ministryConfigNation.gdp ?? ministryConfigNation.GDP ?? 0);
-        const infMult = getInflationMultiplier(ministryConfigNation.inflation);
+    // Helper: commit allocations for a single nation
+    async function commitAllocationsForNation(nation) {
+        const nationId = nation.id;
+        const pop = Number(nation.population || 0);
+        const gdp = Number(nation.gdp ?? nation.GDP ?? 0);
+        const infMult = getInflationMultiplier(nation.inflation);
 
         let updated = 0;
         let created = 0;
@@ -2182,7 +2186,6 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             const st = cfg.scaling_type || 'population';
             const newNeeded = Math.round((st === 'gdp' ? (bv / 100) * gdp : bv * pop) * infMult);
 
-            // Check if allocation row exists
             const { data: existing } = await _supabase.from('budget_item_allocations')
                 .select('id, allocation_amount, needed_amount')
                 .eq('nation_id', nationId).eq('item_id', cfg.id).eq('item_type', 'institution');
@@ -2199,8 +2202,6 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                     updated++;
                 }
             } else {
-                // No allocation exists — create one at 100% funding
-                // Find the active budget bill for this nation (if any)
                 const { data: activeBill } = await _supabase.from('bills')
                     .select('id').eq('nation_id', nationId).eq('bill_type', 'funding').eq('status', 'enacted')
                     .order('proposed_tick', { ascending: false }).limit(1).maybeSingle();
@@ -2220,12 +2221,50 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 }
             }
         }
+        return { updated, created };
+    }
 
-        const status = document.getElementById('ministry-config-status');
-        status.textContent = '✓ Committed to ' + nationName + ' — ' + updated + ' updated, ' + created + ' created';
-        status.className = 'status success';
-        status.classList.remove('hidden');
-        setTimeout(() => status.classList.add('hidden'), 4000);
+    window.commitAllAllocations = async function() {
+        if (!ministryConfigData.length) {
+            alert('No config loaded.');
+            return;
+        }
+        const selectVal = document.getElementById('mc-nation-select')?.value;
+        const isAll = selectVal === '__all__';
+
+        if (isAll) {
+            if (!confirm('Commit institution costs to budget for ALL ' + mcAllNations.length + ' nations?\n\nThis updates budget_item_allocations with current costs for every nation. Existing funding percentages will be preserved.')) return;
+
+            let totalUpdated = 0;
+            let totalCreated = 0;
+            for (const n of mcAllNations) {
+                const result = await commitAllocationsForNation(n);
+                totalUpdated += result.updated;
+                totalCreated += result.created;
+            }
+
+            const status = document.getElementById('ministry-config-status');
+            status.textContent = '✓ Committed to ALL ' + mcAllNations.length + ' nations — ' + totalUpdated + ' updated, ' + totalCreated + ' created';
+            status.className = 'status success';
+            status.classList.remove('hidden');
+            setTimeout(() => status.classList.add('hidden'), 5000);
+        } else {
+            if (!ministryConfigNation) {
+                alert('No nation selected.');
+                return;
+            }
+            const nationName = ministryConfigNation.name || 'Unknown';
+            if (!confirm('Commit institution costs to budget for ' + nationName + '?\n\nThis updates budget_item_allocations with current costs. Existing funding percentages will be preserved.')) return;
+
+            const result = await commitAllocationsForNation(ministryConfigNation);
+
+            const status = document.getElementById('ministry-config-status');
+            status.textContent = '✓ Committed to ' + nationName + ' — ' + result.updated + ' updated, ' + result.created + ' created';
+            status.className = 'status success';
+            status.classList.remove('hidden');
+            setTimeout(() => status.classList.add('hidden'), 4000);
+        }
+    };
     };
 
     function renderMinistryConfig() {
