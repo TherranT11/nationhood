@@ -94,3 +94,11 @@ body { background-color: #121212; color: #e0e0e0; font-family: sans-serif; displ
         .confirm-box .confirm-desc { color: #888; font-size: 0.9rem; line-height: 1.6; }
         .confirm-box .confirm-email { color: #ffcc00; font-weight: bold; }
         .confirm-box .confirm-note { color: #666; font-size: 0.8rem; margin-top: 16px; }
+
+        /* ── Mobile ── */
+        @media (max-width: 480px) {
+            .signup-card { padding: 24px 16px; }
+            h2 { font-size: 1.2rem; }
+            .faction-option { padding: 10px; }
+            .faction-option h3 { font-size: 0.95rem; }
+        }
