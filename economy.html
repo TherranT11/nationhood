@@ -143,7 +143,7 @@ async function loadExpenditureData(nationId, nation) {
     var details = {};
 
     var res = await _supabase.from('active_laws')
-        .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat)')
+        .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat, policy_type)')
         .eq('nation_id', nationId);
 
     var yearStartTick = Math.floor(currentTick / GAME_CONFIG.TICKS_PER_YEAR) * GAME_CONFIG.TICKS_PER_YEAR;
@@ -154,6 +154,7 @@ async function loadExpenditureData(nationId, nation) {
         if (law.is_reversal) continue;
         var policy = law.policies;
         if (!policy || !policy.fiscal_category) continue;
+        if (policy.policy_type === 'lever') continue; // Levers have no ongoing cost
 
         var cat = policy.fiscal_category;
         if (!totals[cat]) totals[cat] = 0;
