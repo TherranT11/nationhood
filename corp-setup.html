@@ -449,6 +449,68 @@ const STEP_META = {
     },
 };
 
+// ── Sector data ──
+const SECTORS = [
+    {
+        key: 'construction',
+        name: 'Construction',
+        desc: 'Build the infrastructure that powers nations. From roads and schools to megaprojects — construction corporations bid on government contracts and shape the physical landscape.',
+        available: true,
+    },
+    {
+        key: 'energy',
+        name: 'Energy',
+        desc: 'Power the nation through oil, gas, renewables, and nuclear. Control the energy grid and fuel economic growth.',
+        available: false,
+    },
+    {
+        key: 'finance',
+        name: 'Finance',
+        desc: 'Banks, investment firms, and insurance. Control the flow of capital and shape monetary policy.',
+        available: false,
+    },
+    {
+        key: 'defense',
+        name: 'Defense',
+        desc: 'Arms manufacturing, military technology, and security contracting. Profit from national defense.',
+        available: false,
+    },
+];
+
+function renderStep1() {
+    const container = document.getElementById('step-1');
+    container.innerHTML = `
+        <div class="section-block">
+            <div class="section-header">
+                <div class="section-dot" style="background:var(--teal)"></div>
+                <span class="section-label">Select a Sector</span>
+            </div>
+            <div class="section-body">
+                ${SECTORS.map(s => `
+                    <div class="option-card${s.available ? '' : ' disabled'}${state.sector === s.name ? ' selected' : ''}"
+                         data-sector="${s.key}" data-name="${s.name}"
+                         onclick="${s.available ? 'selectSector(this)' : ''}">
+                        ${!s.available ? '<span class="option-card__badge option-card__badge--soon">Coming Soon</span>' : ''}
+                        <div class="option-card__name">${s.name}</div>
+                        <div class="option-card__desc">${s.desc}</div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function selectSector(el) {
+    // Deselect all
+    document.querySelectorAll('#step-1 .option-card').forEach(c => c.classList.remove('selected'));
+    // Select this one
+    el.classList.add('selected');
+    state.sector = el.dataset.name;
+
+    updateSelectionBar();
+    updateButtons();
+}
+
 // ── Init ──
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
@@ -490,6 +552,9 @@ function renderStep(step) {
     document.querySelectorAll('.step-section').forEach(sec => sec.classList.remove('active'));
     const activeSection = document.getElementById('step-' + step);
     if (activeSection) activeSection.classList.add('active');
+
+    // Render step content
+    if (step === 1) renderStep1();
 
     // Update selection bar
     updateSelectionBar();
@@ -552,6 +617,7 @@ function goBack() {
 // ── Expose to global scope for onclick handlers ──
 window.goNext = goNext;
 window.goBack = goBack;
+window.selectSector = selectSector;
 window.corpState = state;
 window.updateButtons = updateButtons;
 window.updateSelectionBar = updateSelectionBar;
