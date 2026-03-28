@@ -1,3 +1,4 @@
+INSERT INTO system_config (key, value) VALUES ('admin_panel_html', $$
 <div class="admin-container">
         <button class="logout-btn" onclick="logout()">Logout</button>
         <h1>🛡️ Admin Control Panel</h1>
@@ -476,3 +477,4 @@
 
 
     </div>
+$$);
