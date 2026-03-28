@@ -142,6 +142,16 @@ body {
   background: var(--bg-3);
   border-color: var(--border-1);
 }
+.continent-tab--crucera.active {
+  border-color: var(--amber-border);
+  background: var(--amber-faint);
+}
+.continent-tab--crucera .continent-tab__name { color: var(--amber); }
+.continent-tab--meridian.active {
+  border-color: var(--blue-border);
+  background: var(--blue-faint);
+}
+.continent-tab--meridian .continent-tab__name { color: var(--blue); }
 .continent-tab__name {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -222,6 +232,16 @@ body {
 
 .nation-card__body {
   padding: 10px 12px;
+}
+.nation-card__culture {
+  font-family: var(--font-serif);
+  font-size: 9.5px;
+  font-style: italic;
+  color: var(--text-dim);
+  line-height: 1.4;
+  padding: 4px 0 6px;
+  border-bottom: 1px solid var(--border-hair);
+  margin-bottom: 2px;
 }
 
 /* ── Stat rows ── */
@@ -319,6 +339,53 @@ body {
   margin-top: 10px;
 }
 
+/* ── Company details phase ── */
+.details-panel {
+  width: 100%; max-width: 800px; padding: 0 16px 16px; display: none;
+}
+.details-panel.active { display: block; }
+.section-block {
+  background: var(--bg-2); border: 1px solid var(--border-0); margin-bottom: 12px;
+}
+.section-header {
+  background: var(--bg-3); border-bottom: 1px solid var(--border-hair);
+  padding: 8px 12px; display: flex; align-items: center; gap: 8px;
+}
+.section-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+.section-label {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase;
+}
+.section-body { padding: 10px; }
+.option-card {
+  background: var(--bg-3); border: 1px solid var(--border-0);
+  padding: 12px 14px; cursor: pointer; margin-bottom: 6px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.option-card:last-child { margin-bottom: 0; }
+.option-card:hover { background: var(--bg-hover); border-color: var(--border-1); }
+.option-card.selected { background: var(--teal-faint); border-color: var(--teal-border); }
+.option-card__name {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  color: var(--text-bright); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.option-card.selected .option-card__name { color: var(--teal); }
+.option-card__desc { font-family: var(--font-ui); font-size: 10.5px; color: var(--text-muted); line-height: 1.45; }
+.input-group { margin-bottom: 14px; }
+.input-group label {
+  display: block; margin-bottom: 6px; font-family: var(--font-mono);
+  font-size: 8.5px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim);
+}
+.input-group input {
+  width: 100%; padding: 10px 12px; background: var(--bg-4);
+  border: 1px solid var(--border-0); border-radius: 3px; color: var(--text-bright);
+  font-family: var(--font-mono); font-size: 12px; outline: none; transition: border-color 0.15s;
+}
+.input-group input:focus { border-color: var(--teal-border); }
+.input-group input::placeholder { color: var(--text-ghost); }
+.input-hint { font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); margin-top: 4px; }
+.input-hint--error { color: var(--red); }
+
 @media (max-width: 640px) {
   .nations-grid { grid-template-columns: 1fr; }
 }
@@ -342,17 +409,20 @@ body {
 
   <!-- Continent tabs -->
   <div class="continent-tabs" id="continent-tabs">
-    <div class="continent-tab active" data-continent="Crucera" onclick="switchContinent('Crucera')">
+    <div class="continent-tab continent-tab--crucera active" data-continent="Crucera" onclick="switchContinent('Crucera')">
       <div class="continent-tab__name">Crucera</div>
       <div class="continent-tab__desc">Southern Hemisphere — rich in natural resources, oil, gas, and raw materials.</div>
     </div>
-    <div class="continent-tab" data-continent="Meridian" onclick="switchContinent('Meridian')">
+    <div class="continent-tab continent-tab--meridian" data-continent="Meridian" onclick="switchContinent('Meridian')">
       <div class="continent-tab__name">Meridian</div>
       <div class="continent-tab__desc">The old world — diverse nations, ancient traditions, kingdoms and republics.</div>
     </div>
   </div>
 
   <div class="nations-grid" id="nations-grid"></div>
+
+  <!-- Company details (shown after nation selected) -->
+  <div class="details-panel" id="details-panel"></div>
 
   <!-- Navigation -->
   <div class="action-bar">
@@ -377,12 +447,26 @@ const FLAG_URLS = {
     'Calveth': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Calveth.png'
 };
 
+const NATION_CULTURE = {
+    'Melizea': 'A nation inspired by Spanish culture and language.',
+    'Sangreza': 'A nation inspired by Spanish culture and language.',
+    'San Estrella': 'A nation inspired by Spanish culture and language.',
+    'Palvera': 'A nation inspired by Spanish culture and language.',
+    'Montequilla': 'A nation inspired by Spanish culture and language.',
+    'Avelia': 'A nation inspired by a hybrid of Spanish and Italian culture and language.',
+    'Calveth': 'A nation inspired by Danish culture and language.',
+};
+
 let currentUser = null;
 let corpSetup = null;
 let allNations = [];
 let corpsByNation = {};  // nation_id → array of corp factions in this subsector
 let selectedNationId = null;
 let activeContinent = 'Crucera';
+// Company details state (filled after nation selection)
+let companyType = null;
+let corpName = '';
+let ticker = '';
 
 // ── Init ──
 async function init() {
@@ -487,6 +571,7 @@ function renderNations() {
                     <span class="nation-card__gov ${govClass}">${govLabel}</span>
                 </div>
                 <div class="nation-card__body">
+                    ${NATION_CULTURE[nation.name] ? '<div class="nation-card__culture">' + escapeHtml(NATION_CULTURE[nation.name]) + '</div>' : ''}
                     <div class="stat-row">
                         <span class="stat-row__label">Population</span>
                         <span class="stat-row__value">${pop}</span>
@@ -515,9 +600,103 @@ function renderNations() {
 function selectNation(nationId) {
     selectedNationId = nationId;
     renderNations();
+    showCompanyDetails();
+}
+
+function showCompanyDetails() {
+    const panel = document.getElementById('details-panel');
+    panel.classList.add('active');
+    panel.innerHTML = `
+        <div class="section-block">
+            <div class="section-header">
+                <div class="section-dot" style="background:var(--teal)"></div>
+                <span class="section-label">Company Type</span>
+            </div>
+            <div class="section-body" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;align-items:stretch;">
+                <div class="option-card${companyType === 'Public' ? ' selected' : ''}"
+                     data-type="Public" onclick="selectCompanyType(this)" style="margin-bottom:0;display:flex;flex-direction:column;">
+                    <div class="option-card__name">Public</div>
+                    <div class="option-card__desc" style="flex:1;">Your stock is listed on the market. Shareholders influence decisions, but IPO capital fuels rapid growth. Transparent financials required.</div>
+                </div>
+                <div class="option-card${companyType === 'Private' ? ' selected' : ''}"
+                     data-type="Private" onclick="selectCompanyType(this)" style="margin-bottom:0;display:flex;flex-direction:column;">
+                    <div class="option-card__name">Private</div>
+                    <div class="option-card__desc" style="flex:1;">Full control, no shareholders. Slower growth but total autonomy over strategy. Financials stay behind closed doors.</div>
+                </div>
+            </div>
+        </div>
+        <div class="section-block">
+            <div class="section-header">
+                <div class="section-dot" style="background:var(--amber)"></div>
+                <span class="section-label">Name Corporation</span>
+            </div>
+            <div class="section-body">
+                <div class="input-group" style="margin-bottom:0;">
+                    <input type="text" id="corp-name-input" placeholder="e.g. Meridian Construction Group"
+                           maxlength="40" value="${corpName}" oninput="onCorpNameInput(this.value)">
+                    <div class="input-hint" id="corp-name-hint">2-40 characters</div>
+                </div>
+            </div>
+        </div>
+        <div class="section-block">
+            <div class="section-header">
+                <div class="section-dot" style="background:var(--amber)"></div>
+                <span class="section-label">Stock Ticker</span>
+            </div>
+            <div class="section-body">
+                <div class="input-group" style="margin-bottom:0;">
+                    <input type="text" id="ticker-input" placeholder="e.g. MCG"
+                           maxlength="4" value="${ticker}" style="text-transform:uppercase;letter-spacing:0.15em;font-weight:600;"
+                           oninput="onTickerInput(this.value)">
+                    <div class="input-hint" id="ticker-hint">2-4 uppercase letters</div>
+                </div>
+            </div>
+        </div>
+    `;
+    updateConfirmBtn();
+}
+
+function selectCompanyType(el) {
+    document.querySelectorAll('#details-panel .option-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    companyType = el.dataset.type;
+    updateConfirmBtn();
+}
+
+function onCorpNameInput(val) {
+    corpName = val.trim();
+    const hint = document.getElementById('corp-name-hint');
+    if (corpName.length > 0 && corpName.length < 2) {
+        hint.textContent = 'Too short — minimum 2 characters';
+        hint.className = 'input-hint input-hint--error';
+    } else {
+        hint.textContent = '2-40 characters';
+        hint.className = 'input-hint';
+    }
+    updateConfirmBtn();
+}
+
+function onTickerInput(val) {
+    const cleaned = val.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 4);
+    const input = document.getElementById('ticker-input');
+    if (input.value !== cleaned) input.value = cleaned;
+    ticker = cleaned;
+    const hint = document.getElementById('ticker-hint');
+    if (cleaned.length > 0 && cleaned.length < 2) {
+        hint.textContent = 'Too short — minimum 2 letters';
+        hint.className = 'input-hint input-hint--error';
+    } else {
+        hint.textContent = '2-4 uppercase letters';
+        hint.className = 'input-hint';
+    }
+    updateConfirmBtn();
+}
+
+function updateConfirmBtn() {
     const btn = document.getElementById('btn-confirm');
-    btn.disabled = false;
-    btn.classList.add('ready');
+    const ready = selectedNationId && companyType && corpName.length >= 2 && ticker.length >= 2;
+    btn.disabled = !ready;
+    btn.classList.toggle('ready', !!ready);
 }
 
 function switchContinent(continent) {
@@ -529,7 +708,7 @@ function switchContinent(continent) {
 }
 
 async function confirmNation() {
-    if (!selectedNationId || !currentUser) return;
+    if (!selectedNationId || !currentUser || !companyType || corpName.length < 2 || ticker.length < 2) return;
 
     const btn = document.getElementById('btn-confirm');
     const errEl = document.getElementById('error-message');
@@ -551,10 +730,10 @@ async function confirmNation() {
             .upsert({
                 id: currentUser.id,
                 faction_type: 'corporation',
-                faction_name: corpSetup.corpName,
+                faction_name: corpName,
                 nation_id: nation.id,
                 nation: nation.name,
-                abbreviation: corpSetup.ticker,
+                abbreviation: ticker,
                 seats: 0,
                 needs_rebuild: false,
                 party_color: '#5aafa5',
@@ -567,8 +746,8 @@ async function confirmNation() {
                 action_points: 5,
                 corp_sector: corpSetup.sector,
                 corp_subsector: corpSetup.subsector,
-                corp_company_type: corpSetup.companyType,
-                corp_ticker: corpSetup.ticker,
+                corp_company_type: companyType,
+                corp_ticker: ticker,
             });
 
         if (upsertError) throw upsertError;
@@ -596,6 +775,9 @@ window.selectNation = selectNation;
 window.switchContinent = switchContinent;
 window.confirmNation = confirmNation;
 window.goBack = goBack;
+window.selectCompanyType = selectCompanyType;
+window.onCorpNameInput = onCorpNameInput;
+window.onTickerInput = onTickerInput;
 
 init();
 </script>
