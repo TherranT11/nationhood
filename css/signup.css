@@ -1,104 +1,320 @@
-body { background-color: #121212; color: #e0e0e0; font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
-        .signup-card { background: #1e1e1e; padding: 40px; border-radius: 8px; border-top: 4px solid #ffcc00; width: 100%; max-width: 450px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        h2 { color: #ffcc00; margin-top: 0; }
-        .input-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 8px; font-size: 0.9rem; color: #888; }
-        input { width: 100%; padding: 12px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 4px; box-sizing: border-box; }
-        
-        /* Faction Type Cards */
-        .faction-types {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-        
-        .faction-option {
-            padding: 15px;
-            background: #252525;
-            border: 2px solid #444;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.3s;
-            position: relative;
-        }
-        
-        .faction-option.available:hover {
-            border-color: #ffcc00;
-            background: #2a2a2a;
-        }
-        
-        .faction-option.selected {
-            border-color: #ffcc00;
-            background: #2a2a2a;
-        }
-        
-        .faction-option.disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-            background: #1a1a1a;
-        }
-        
-        .faction-title {
-            font-weight: bold;
-            color: #ffcc00;
-            font-size: 1.1rem;
-            margin-bottom: 5px;
-        }
-        
-        .faction-option.disabled .faction-title {
-            color: #666;
-        }
-        
-        .faction-desc {
-            font-size: 0.85rem;
-            color: #888;
-            line-height: 1.4;
-        }
-        
-        .coming-soon {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: #ffcc00;
-            color: #000;
-            padding: 3px 8px;
-            border-radius: 3px;
-            font-size: 0.7rem;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        
-        .btn-join { width: 100%; padding: 15px; background: #ffcc00; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; color: #000; font-size: 1rem; }
-        .btn-join:hover { background: #e6b800; }
-        .btn-join:disabled { background: #666; cursor: not-allowed; }
-        .login-link { text-align: center; margin-top: 15px; font-size: 0.8rem; }
-        .login-link a { color: #ffcc00; text-decoration: none; }
-        .error { color: var(--red); font-size: 0.9rem; margin-top: 10px; text-align: center; }
-        .info-note {
-            background: #1a2a1a;
-            border-left: 3px solid var(--green);
-            padding: 12px;
-            margin-bottom: 20px;
-            font-size: 0.85rem;
-            line-height: 1.5;
-            color: #aaa;
-        }
-        .confirm-box {
-            text-align: center;
-            padding: 20px 0;
-            display: none;
-        }
-        .confirm-box .confirm-icon { font-size: 2.5rem; margin-bottom: 16px; }
-        .confirm-box .confirm-title { color: #ffcc00; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
-        .confirm-box .confirm-desc { color: #888; font-size: 0.9rem; line-height: 1.6; }
-        .confirm-box .confirm-email { color: #ffcc00; font-weight: bold; }
-        .confirm-box .confirm-note { color: #666; font-size: 0.8rem; margin-top: 16px; }
+/* Nationhood — Signup Page (signup.html)
+   Design language v4: warm olive-dark, monospace system text, color as status only */
 
-        /* ── Mobile ── */
-        @media (max-width: 480px) {
-            .signup-card { padding: 24px 16px; }
-            h2 { font-size: 1.2rem; }
-            .faction-option { padding: 10px; }
-            .faction-option h3 { font-size: 0.95rem; }
-        }
+:root {
+    /* Backgrounds */
+    --bg-1: #141412;
+    --bg-2: #1a1a17;
+    --bg-3: #1e1e1a;
+    --bg-4: #242420;
+    --bg-5: #2a2a25;
+
+    /* Text */
+    --text-bright: #e8e4d9;
+    --text-primary: #c8c4b8;
+    --text-secondary: #8a8778;
+    --text-muted: #6b6a5e;
+    --text-dim: #5c5a50;
+    --text-faint: #3d3b34;
+
+    /* Borders */
+    --border-0: rgba(255,255,255,0.06);
+    --border-hair: rgba(255,255,255,0.04);
+
+    /* Status colors */
+    --blue: #5b9bd5;
+    --blue-faint: rgba(91,155,213,0.08);
+    --blue-border: rgba(91,155,213,0.2);
+    --green: #5cb85c;
+    --green-faint: rgba(92,184,92,0.08);
+    --green-border: rgba(92,184,92,0.2);
+    --amber: #c8a64e;
+    --amber-faint: rgba(200,166,78,0.08);
+    --amber-border: rgba(200,166,78,0.2);
+    --red: #d9534f;
+    --teal: #5aafa5;
+
+    /* Fonts */
+    --font-mono: 'JetBrains Mono', monospace;
+    --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+    --font-serif: 'IBM Plex Serif', Georgia, serif;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: var(--bg-1);
+    color: var(--text-primary);
+    font-family: var(--font-ui);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+    padding: 20px;
+}
+
+/* ── Signup card ── */
+.signup-card {
+    background: var(--bg-2);
+    border: 1px solid var(--border-0);
+    border-radius: 3px;
+    width: 400px;
+    overflow: hidden;
+    padding: 24px 14px 14px;
+}
+
+/* ── Title ── */
+h2 {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+    text-align: center;
+}
+
+/* ── Info note ── */
+.info-note {
+    background: var(--green-faint);
+    border: 1px solid var(--green-border);
+    border-radius: 3px;
+    padding: 10px 12px;
+    margin-bottom: 18px;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+/* ── Form elements ── */
+.input-group {
+    margin-bottom: 14px;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-family: var(--font-mono);
+    font-size: 8.5px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+
+.input-group input {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg-4);
+    border: 1px solid var(--border-0);
+    border-radius: 3px;
+    color: var(--text-bright);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 400;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.input-group input:focus {
+    border-color: var(--blue-border);
+}
+
+.input-group input::placeholder {
+    color: var(--text-faint);
+}
+
+/* ── Faction type cards ── */
+.faction-types {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.faction-option {
+    padding: 10px 12px;
+    background: var(--bg-3);
+    border: 1px solid var(--border-0);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    position: relative;
+}
+
+.faction-option.available:hover {
+    background: var(--bg-4);
+    border-color: rgba(255,255,255,0.1);
+}
+
+.faction-option.selected {
+    background: var(--green-faint);
+    border-color: var(--green-border);
+}
+
+.faction-option.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.faction-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-primary);
+    margin-bottom: 3px;
+}
+
+.faction-option.selected .faction-title {
+    color: var(--green);
+}
+
+.faction-option.disabled .faction-title {
+    color: var(--text-dim);
+}
+
+.faction-desc {
+    font-family: var(--font-ui);
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.coming-soon {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--amber-faint);
+    border: 1px solid var(--amber-border);
+    color: var(--amber);
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-family: var(--font-mono);
+    font-size: 7px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+/* ── Submit button ── */
+.btn-join {
+    width: 100%;
+    padding: 10px;
+    background: var(--green-faint);
+    border: 1px solid var(--green-border);
+    border-radius: 3px;
+    color: var(--green);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    margin-top: 6px;
+}
+
+.btn-join:hover {
+    background: rgba(92,184,92,0.14);
+    border-color: rgba(92,184,92,0.35);
+}
+
+.btn-join:disabled {
+    background: var(--bg-4);
+    border-color: var(--border-0);
+    color: var(--text-dim);
+    cursor: not-allowed;
+}
+
+/* ── Login link ── */
+.login-link {
+    text-align: center;
+    margin-top: 14px;
+    font-family: var(--font-mono);
+    font-size: 8.5px;
+    font-weight: 500;
+    color: var(--text-dim);
+    letter-spacing: 0.02em;
+}
+
+.login-link a {
+    color: var(--teal);
+    text-decoration: none;
+    transition: color 0.15s;
+}
+
+.login-link a:hover {
+    color: var(--text-bright);
+}
+
+/* ── Error message ── */
+.error {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 500;
+    color: var(--red);
+    margin-top: 10px;
+    text-align: center;
+    letter-spacing: 0.02em;
+}
+
+/* ── Confirmation state ── */
+.confirm-box {
+    text-align: center;
+    padding: 20px 0;
+    display: none;
+}
+
+.confirm-box .confirm-icon {
+    font-size: 2rem;
+    margin-bottom: 14px;
+}
+
+.confirm-box .confirm-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--green);
+    margin-bottom: 10px;
+}
+
+.confirm-box .confirm-desc {
+    font-family: var(--font-ui);
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.confirm-box .confirm-email {
+    color: var(--text-bright);
+    font-family: var(--font-mono);
+    font-weight: 600;
+}
+
+.confirm-box .confirm-note {
+    font-family: var(--font-mono);
+    font-size: 8.5px;
+    color: var(--text-dim);
+    margin-top: 14px;
+    letter-spacing: 0.02em;
+}
+
+/* ── Mobile ── */
+@media (max-width: 480px) {
+    .signup-card {
+        width: 100%;
+        margin: 0 12px;
+        border-radius: 0;
+    }
+}
