@@ -195,6 +195,62 @@ body {
   font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
   letter-spacing: 0.04em; text-align: center;
 }
+/* ── Workforce card — fixed 380×450 ── */
+.wf-card {
+  width: 380px; height: 450px;
+  background: var(--bg-2); border: 1px solid var(--border-0);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.wf-card__scroll { flex: 1; overflow-y: auto; }
+.wf-section {
+  padding: 8px 14px; border-bottom: 1px solid var(--border-0);
+}
+.wf-section__title {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 6px;
+}
+.wf-tier {
+  padding: 10px 14px; border-bottom: 1px solid var(--border-0);
+}
+.wf-tier__top {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;
+}
+.wf-tier__name {
+  font-family: var(--font-ui); font-size: 12px; font-weight: 600; color: var(--text-bright);
+}
+.wf-tier__count {
+  font-family: var(--font-mono); font-size: 14px; font-weight: 700;
+}
+.wf-tier__detail {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 2px 0;
+}
+.wf-tier__label {
+  font-family: var(--font-mono); font-size: 8.5px; color: var(--text-dim);
+  letter-spacing: 0.04em; text-transform: uppercase;
+}
+.wf-tier__value {
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+}
+.wf-tier__nation {
+  font-family: var(--font-mono); font-size: 7px; letter-spacing: 0.5px;
+  color: var(--teal); padding: 0 4px; display: inline-block;
+  background: var(--teal-faint); border: 1px solid var(--teal-border); line-height: 12px;
+  margin-left: 6px;
+}
+.wf-total {
+  padding: 10px 14px; border-top: 1px solid var(--border-0);
+  background: rgba(90,175,165,0.02); margin-top: auto;
+}
+.wf-total__row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 3px 0;
+}
+.wf-total__label {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 1.5px; color: var(--text-dim); text-transform: uppercase;
+}
+.wf-total__value { font-family: var(--font-mono); font-size: 14px; font-weight: 700; }
 
 /* ── Identity card — fixed 380×450 ── */
 .id-card {
@@ -630,6 +686,18 @@ body {
         <div class="subs-card__empty">No events.<br>Corporate events will appear here as your company grows.</div>
       </div>
     </div>
+
+    <!-- Workforce card -->
+    <div class="wf-card">
+      <div class="fin-card__header">
+        <div class="fin-card__header-left">
+          <span style="font-size:8px;color:var(--green);">●</span>
+          <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text-muted);text-transform:uppercase;">Workforce</span>
+        </div>
+        <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);" id="wf-total-header">3,000</span>
+      </div>
+      <div class="wf-card__scroll" id="wf-body"></div>
+    </div>
   </div>
 </div>
 
@@ -804,7 +872,8 @@ async function init() {
     window._currentTick = currentTick;
 
     // ── Populate finances card ──
-    renderFinances(nationStats, shard);
+    const wfData = renderWorkforce(nationStats, nationName);
+    renderFinances(nationStats, shard, wfData);
     renderStats(nationName);
     renderProperty(nationStats, nationName, faction, shard);
 
@@ -813,12 +882,142 @@ async function init() {
     document.getElementById('page-content').style.display = 'block';
 }
 
-function renderFinances(nation, shard) {
+function renderWorkforce(nation, nationName) {
+    const s = (key) => Number(nation?.[key] ?? 50);
+    const natUp = (nationName || 'UNKNOWN').toUpperCase();
+
+    const TOTAL_WORKFORCE = 3000;
+    const CONSTRUCTION_SECTOR_MULT = 0.20; // low-skill sector multiplier
+
+    // Workforce tiers (% split)
+    const generalCount = Math.round(TOTAL_WORKFORCE * 0.75);  // 75%
+    const skilledCount = Math.round(TOTAL_WORKFORCE * 0.20);   // 20%
+    const innovativeCount = TOTAL_WORKFORCE - generalCount - skilledCount; // 5%
+
+    // Wage multipliers per tier
+    const GENERAL_MULT = 1.00;
+    const SKILLED_MULT = 1.50;
+    const INNOVATIVE_MULT = 2.75;
+
+    // Base annual wage derived from minimum_wage stat
+    // minimum_wage is 1-100 scale → map to ~$8,000–$40,000 annual range
+    const minWageStat = s('minimum_wage');
+    const baseAnnualWage = 8000 + (minWageStat / 100) * 32000; // $8k at 0, $40k at 100
+
+    // Per-tier annual wages
+    const generalWage = baseAnnualWage * GENERAL_MULT * CONSTRUCTION_SECTOR_MULT;
+    const skilledWage = baseAnnualWage * SKILLED_MULT * CONSTRUCTION_SECTOR_MULT;
+    const innovativeWage = baseAnnualWage * INNOVATIVE_MULT * CONSTRUCTION_SECTOR_MULT;
+
+    const generalTotal = generalCount * generalWage;
+    const skilledTotal = skilledCount * skilledWage;
+    const innovativeTotal = innovativeCount * innovativeWage;
+    const totalWages = generalTotal + skilledTotal + innovativeTotal;
+
+    function fmt(n) {
+        if (Math.abs(n) >= 1_000_000) return '$' + (n / 1_000_000).toFixed(2) + 'M';
+        if (Math.abs(n) >= 1000) return '$' + (n / 1000).toFixed(1) + 'k';
+        return '$' + Math.round(n).toLocaleString();
+    }
+
+    function fmtWage(n) {
+        return '$' + Math.round(n).toLocaleString() + '/yr';
+    }
+
+    document.getElementById('wf-total-header').textContent = TOTAL_WORKFORCE.toLocaleString();
+
+    document.getElementById('wf-body').innerHTML = `
+        <div class="wf-tier">
+            <div class="wf-tier__top">
+                <div>
+                    <span class="wf-tier__name">General Workforce</span>
+                    <span class="wf-tier__nation">${escapeHtml(natUp)}</span>
+                </div>
+                <span class="wf-tier__count" style="color:var(--text-primary);">${generalCount.toLocaleString()}</span>
+            </div>
+            <div class="wf-tier__detail">
+                <span class="wf-tier__label">Wage (min &times; ${GENERAL_MULT.toFixed(2)} &times; ${CONSTRUCTION_SECTOR_MULT.toFixed(2)})</span>
+                <span class="wf-tier__value">${fmtWage(generalWage)}</span>
+            </div>
+            <div class="wf-tier__detail">
+                <span class="wf-tier__label">Total Annual Cost</span>
+                <span class="wf-tier__value" style="color:var(--text-primary)">${fmt(generalTotal)}</span>
+            </div>
+        </div>
+
+        <div class="wf-tier">
+            <div class="wf-tier__top">
+                <div>
+                    <span class="wf-tier__name">Skilled Workforce</span>
+                    <span class="wf-tier__nation">${escapeHtml(natUp)}</span>
+                </div>
+                <span class="wf-tier__count" style="color:var(--blue);">${skilledCount.toLocaleString()}</span>
+            </div>
+            <div class="wf-tier__detail">
+                <span class="wf-tier__label">Wage (min &times; ${SKILLED_MULT.toFixed(2)} &times; ${CONSTRUCTION_SECTOR_MULT.toFixed(2)})</span>
+                <span class="wf-tier__value">${fmtWage(skilledWage)}</span>
+            </div>
+            <div class="wf-tier__detail">
+                <span class="wf-tier__label">Total Annual Cost</span>
+                <span class="wf-tier__value" style="color:var(--text-primary)">${fmt(skilledTotal)}</span>
+            </div>
+        </div>
+
+        <div class="wf-tier">
+            <div class="wf-tier__top">
+                <div>
+                    <span class="wf-tier__name">Innovative Workforce</span>
+                    <span class="wf-tier__nation">${escapeHtml(natUp)}</span>
+                </div>
+                <span class="wf-tier__count" style="color:var(--amber);">${innovativeCount.toLocaleString()}</span>
+            </div>
+            <div class="wf-tier__detail">
+                <span class="wf-tier__label">Wage (min &times; ${INNOVATIVE_MULT.toFixed(2)} &times; ${CONSTRUCTION_SECTOR_MULT.toFixed(2)})</span>
+                <span class="wf-tier__value">${fmtWage(innovativeWage)}</span>
+            </div>
+            <div class="wf-tier__detail">
+                <span class="wf-tier__label">Total Annual Cost</span>
+                <span class="wf-tier__value" style="color:var(--text-primary)">${fmt(innovativeTotal)}</span>
+            </div>
+        </div>
+
+        <div class="wf-section" style="background:var(--bg-3);">
+            <div class="wf-section__title" style="color:var(--text-dim);margin-bottom:2px;">Wage Inputs</div>
+            <div class="wf-tier__detail">
+                <span class="wf-tier__label">Minimum Wage (${escapeHtml(natUp)})</span>
+                <span class="wf-tier__value">${minWageStat}/100 → ${fmtWage(baseAnnualWage)}</span>
+            </div>
+            <div class="wf-tier__detail">
+                <span class="wf-tier__label">Sector Multiplier (Construction)</span>
+                <span class="wf-tier__value">&times;${CONSTRUCTION_SECTOR_MULT.toFixed(2)}</span>
+            </div>
+        </div>
+
+        <div class="wf-total">
+            <div class="wf-total__row">
+                <span class="wf-total__label">Total Workforce</span>
+                <span class="wf-total__value" style="color:var(--text-bright);">${TOTAL_WORKFORCE.toLocaleString()}</span>
+            </div>
+            <div class="wf-total__row">
+                <span class="wf-total__label">Total Annual Wages</span>
+                <span class="wf-total__value" style="color:var(--red);">${fmt(totalWages)}</span>
+            </div>
+            <div class="wf-total__row">
+                <span class="wf-total__label">Per Tick (÷12)</span>
+                <span class="wf-total__value" style="color:var(--red);">${fmt(totalWages / 12)}</span>
+            </div>
+        </div>
+    `;
+
+    return { totalWages, generalTotal, skilledTotal, innovativeTotal, monthlyWages: Math.round(totalWages / 12) };
+}
+
+function renderFinances(nation, shard, wfData) {
     const currentTick = shard?.current_tick || 0;
     document.getElementById('fin-tick').textContent = 'TICK ' + currentTick;
 
-    // Market revenue calculation
-    const BASE_RATE = 50_000_000; // $50M base → output $10M-$99M range
+    // Market revenue calculation (annual)
+    const BASE_RATE = 50_000_000;
     const s = (key) => Number(nation?.[key] ?? 50);
 
     const gdpFactor     = 1 + (s('gdp_growth') - 50) / 100 * 0.4;
@@ -830,14 +1029,17 @@ function renderFinances(nation, shard) {
     const intFactor     = 1 - Math.max(0, s('interest_rates') - 50) / 100 * 0.1;
 
     const multiplier = gdpFactor * urbanFactor * popFactor * solFactor * infraFactor * inflFactor * intFactor;
-    const marketRev = Math.round(BASE_RATE * multiplier);
+    const annualMarketRev = Math.round(BASE_RATE * multiplier);
+    const marketRev = Math.round(annualMarketRev / 12); // per-tick (monthly)
 
     const govContracts = 0;
     const pvtContracts = 0;
     const totalRevenue = govContracts + pvtContracts + marketRev;
 
-    // Expenses (all zero for now — placeholder)
-    const wages = 0, materials = 0, facilities = 0, equipment = 0, debtService = 0, taxes = 0;
+    // Expenses — workforce wages from wfData, divided by 12 (monthly)
+    const annualWages = wfData?.totalWages || 0;
+    const wages = Math.round(annualWages / 12);
+    const materials = 0, facilities = 0, equipment = 0, debtService = 0, taxes = 0;
     const totalExpenses = wages + materials + facilities + equipment + debtService + taxes;
     const netProfit = totalRevenue - totalExpenses;
     const cash = 0, debt = 0;
