@@ -843,16 +843,29 @@ export function updateTopBarInfo(faction, shard, nation) {
         if (nationName) nationName.textContent = 'No Nation';
     }
 
-    // Corporation faction on shared pages — swap nav to corp tabs
+    // Corporation faction on shared pages — show full corp nav
     if (faction?.faction_type === 'corporation') {
         const navEl = document.querySelector('.nav-tabs');
         if (navEl) {
             const currentTab = window.__currentTab || '';
-            navEl.innerHTML = [
+            const corpTabs = [
                 { id: 'home', label: 'Home', href: 'corp-dashboard.html' },
+                { id: 'operations', label: 'Operations' },
+                { id: 'workforce', label: 'Workforce' },
+                { id: 'expansion', label: 'Expansion' },
+                { id: 'industries', label: 'Industries' },
+                { id: 'innovation', label: 'Innovation' },
+                { id: 'lobbying', label: 'Lobbying' },
                 { id: 'news', label: 'News', href: 'news.html' },
                 { id: 'wiki', label: 'Wiki', href: 'wiki.html' },
-            ].map(t => `<a href="${t.href}" class="nav-tab ${t.id === currentTab ? 'active' : ''}" data-tab="${t.id}">${t.label}</a>`).join('');
+            ];
+            navEl.innerHTML = corpTabs.map(t => {
+                const isActive = t.id === currentTab;
+                if (t.href) {
+                    return `<a href="${t.href}" class="nav-tab ${isActive ? 'active' : ''}" data-tab="${t.id}">${t.label}</a>`;
+                }
+                return `<a href="#" class="nav-tab" data-tab="${t.id}" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">${t.label}</a>`;
+            }).join('');
         }
         // Update nation badge to show corp name instead
         if (nationName) nationName.textContent = faction.faction_name || 'Corporation';
