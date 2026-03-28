@@ -55,6 +55,7 @@ const MODULE_FILES = [
     'autocracy-actions-security-media-strongman.js',
     'autocracy-coups.js',
     'autocracy-silent-coup.js',
+    'protest.js',
     'political-actions.js',
     'election-simulation.js',
     'sovereign-default.js',
