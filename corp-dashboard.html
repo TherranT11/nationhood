@@ -158,6 +158,7 @@ body {
   justify-content: flex-start;
   gap: 12px;
   align-items: flex-start;
+  flex-wrap: wrap;
 }
 
 /* ── Identity card — fixed 380×450 ── */
@@ -353,6 +354,66 @@ body {
 .drv-multiplier__label { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
 .drv-multiplier__value { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--teal); }
 
+/* ── Stats card — fixed 380×450 ── */
+.stats-card {
+  width: 380px; height: 450px;
+  background: var(--bg-2); border: 1px solid var(--border-0);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.stats-card__scroll { flex: 1; overflow-y: auto; }
+.stats-section {
+  padding: 6px 14px; border-bottom: 1px solid var(--border-0);
+  background: var(--bg-3);
+}
+.stats-section__label {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 1.5px; color: var(--teal); text-transform: uppercase;
+}
+.stats-hero {
+  padding: 10px 14px; border-bottom: 1px solid var(--border-0);
+  background: rgba(90,175,165,0.02);
+}
+.stats-hero__top {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+}
+.stats-hero__name {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 1.5px; color: var(--teal); text-transform: uppercase;
+}
+.stats-hero__right { display: flex; align-items: baseline; gap: 6px; }
+.stats-hero__val { font-family: var(--font-mono); font-size: 22px; font-weight: 700; color: var(--teal); }
+.stats-hero__max { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
+.stats-hero__bar { width: 100%; height: 4px; background: var(--border-0); }
+.stats-hero__bar-fill { height: 100%; background: var(--teal); }
+.stat-item {
+  display: flex; align-items: center; padding: 5px 14px;
+  border-bottom: 1px solid var(--border-hair);
+}
+.stat-item__left { flex: 1; min-width: 0; }
+.stat-item__name-row { display: flex; align-items: center; gap: 6px; }
+.stat-item__name {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 1px;
+  color: var(--text-dim); text-transform: uppercase;
+}
+.stat-item__decay {
+  font-family: var(--font-mono); font-size: 7px; color: var(--red);
+  padding: 0 3px; border: 1px solid var(--border-0); line-height: 12px;
+}
+.stat-item__nation {
+  font-family: var(--font-mono); font-size: 7px; letter-spacing: 0.5px;
+  color: var(--teal); padding: 0 4px; margin-top: 2px; display: inline-block;
+  background: var(--teal-faint); border: 1px solid var(--teal-border); line-height: 12px;
+}
+.stat-item__right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.stat-item__val { font-family: var(--font-mono); font-size: 13px; font-weight: 700; }
+.stat-item__max { font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); }
+.stat-item__change {
+  display: flex; align-items: center; gap: 2px;
+  min-width: 36px; justify-content: flex-end;
+}
+.stat-item__dir { font-family: var(--font-mono); font-size: 9px; }
+.stat-item__delta { font-family: var(--font-mono); font-size: 9px; }
+
 /* ── Loading ── */
 .loading-msg {
   font-family: var(--font-mono);
@@ -430,6 +491,21 @@ body {
         <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);" id="fin-tick">--</span>
       </div>
       <div class="fin-card__scroll" id="fin-body"></div>
+    </div>
+
+    <!-- Stats card -->
+    <div class="stats-card">
+      <div class="fin-card__header">
+        <div class="fin-card__header-left">
+          <span style="font-size:8px;color:var(--teal);">●</span>
+          <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text-muted);text-transform:uppercase;">Core Stats</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:1px;">VAL</span>
+          <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:1px;width:42px;text-align:right;">CHANGE</span>
+        </div>
+      </div>
+      <div class="stats-card__scroll" id="stats-body"></div>
     </div>
   </div>
 </div>
@@ -566,6 +642,7 @@ async function init() {
 
     // ── Populate finances card ──
     renderFinances(nationStats, shard);
+    renderStats(nationName);
 
     // Show page
     document.getElementById('loading').style.display = 'none';
@@ -699,6 +776,96 @@ function renderFinances(nation, shard) {
             </div>
         </div>
     `;
+}
+
+function renderStats(nationName) {
+    const nation = nationName.toUpperCase();
+
+    // Starting values (these will come from DB later)
+    const stats = [
+        // { label, value, change, decay, nation, max, isHero }
+        { label: 'Reputation', value: 65, change: 0, decay: true, max: 100, isHero: true },
+        // Core
+        { label: 'Workforce Size', value: 3000, change: 0, section: 'Core' },
+        { label: 'Workforce Skill', value: 50, change: 0, decay: true, max: 100 },
+        { label: 'Operational Efficiency', value: 50, change: 0, decay: true, max: 100 },
+        // Market & Financials
+        { label: 'Market Share', value: 5, change: 0, nation, max: 100, section: 'Market & Financials' },
+        { label: 'Credit Rating', value: 50, change: 0, max: 100 },
+        // Political Standing
+        { label: 'Regulatory Standing', value: 50, change: 0, nation, max: 100, section: 'Political Standing' },
+        { label: 'Political Influence', value: 10, change: 0, decay: true, nation, max: 100 },
+        // Innovation
+        { label: 'Innovation', value: 20, change: 0, decay: true, max: 100, section: 'Innovation' },
+    ];
+
+    function valColor(v, max) {
+        if (!max || max > 100) return 'var(--text-primary)';
+        const pct = v / max * 100;
+        if (pct >= 70) return 'var(--green)';
+        if (pct >= 40) return 'var(--amber)';
+        if (pct >= 20) return 'var(--orange, #d48a3c)';
+        return 'var(--red)';
+    }
+
+    function changeHtml(change) {
+        const n = parseFloat(change);
+        const color = n > 0 ? 'var(--green)' : n < 0 ? 'var(--red)' : 'var(--text-dim)';
+        const arrow = n > 0 ? '▲' : n < 0 ? '▼' : '–';
+        return `<div class="stat-item__change">
+            <span class="stat-item__dir" style="color:${color}">${arrow}</span>
+            <span class="stat-item__delta" style="color:${color}">${Math.abs(n).toFixed(1)}</span>
+        </div>`;
+    }
+
+    let html = '';
+
+    for (const s of stats) {
+        // Hero stat (reputation)
+        if (s.isHero) {
+            html += `
+                <div class="stats-hero">
+                    <div class="stats-hero__top">
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span class="stats-hero__name">${s.label}</span>
+                            ${s.decay ? '<span class="stat-item__decay">DECAYS</span>' : ''}
+                        </div>
+                        <div class="stats-hero__right">
+                            <span class="stats-hero__val">${s.value}</span>
+                            <span class="stats-hero__max">/100</span>
+                            ${changeHtml(s.change)}
+                        </div>
+                    </div>
+                    <div class="stats-hero__bar"><div class="stats-hero__bar-fill" style="width:${s.value}%"></div></div>
+                </div>`;
+            continue;
+        }
+
+        // Section header
+        if (s.section) {
+            html += `<div class="stats-section"><span class="stats-section__label">${s.section}</span></div>`;
+        }
+
+        // Regular stat row
+        const hasMax = s.max && s.max <= 100;
+        html += `
+            <div class="stat-item">
+                <div class="stat-item__left">
+                    <div class="stat-item__name-row">
+                        <span class="stat-item__name">${s.label}</span>
+                        ${s.decay ? '<span class="stat-item__decay">DECAYS</span>' : ''}
+                    </div>
+                    ${s.nation ? '<span class="stat-item__nation">' + escapeHtml(s.nation) + '</span>' : ''}
+                </div>
+                <div class="stat-item__right">
+                    <span class="stat-item__val" style="color:${hasMax ? valColor(s.value, s.max) : 'var(--text-primary)'}">${typeof s.value === 'number' ? s.value.toLocaleString() : s.value}</span>
+                    ${hasMax ? '<span class="stat-item__max">/100</span>' : ''}
+                    ${changeHtml(s.change)}
+                </div>
+            </div>`;
+    }
+
+    document.getElementById('stats-body').innerHTML = html;
 }
 
 // ── Tick countdown ──
