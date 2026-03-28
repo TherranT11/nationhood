@@ -87,6 +87,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate, fmtBudgetCurrency } from './js/utils.js';
+import { getPartyLogoHTML } from './js/party-icons.js';
 import { isGovernmentAutocracy, isGovernmentPresidential, getGovDisplayLabel, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkCreditForTradeAgreement, TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume } from './js/game-common.js';
 /**
  * Diplomacy Page
@@ -229,7 +230,8 @@ const FLAG_URLS = {
     'Sangreza': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/sangreza.png',
     'Montequilla': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Montequilla.png',
     'San Estrella': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/sanestrella.png',
-    'Palvera': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Palvera.png'
+    'Palvera': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Palvera.png',
+    'Calveth': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Calveth.png'
 };
 
 // Nation info page URL builder
@@ -525,7 +527,7 @@ async function renderWorldNations() {
     try {
         const [nationsRes, factionsRes, crisesRes, relationsRes, ambassadorsRes, theirAmbassadorsRes, ceasefireRes] = await Promise.all([
             _supabase.from('nations').select('*').order('name'),
-            _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, seats, nation_id, party_color, ideology_value_1, ideology_value_2').eq('faction_type', 'party'),
+            _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, seats, nation_id, party_color, ideology_value_1, ideology_value_2, party_logo, custom_logo_url').eq('faction_type', 'party'),
             _supabase.from('active_crises').select('nation_id, crisis_id, crisis_templates(name)'),
             _supabase.from('diplomatic_relations').select('*')
                 .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id),
@@ -612,7 +614,7 @@ async function renderWorldNations() {
             // Gov badge
             const govClass = wnGetGovClass(nation);
             const govLabel = wnGetGovLabel(nation);
-            const flagUrl = nation.flag_url || '';
+            const flagUrl = nation.flag_url || FLAG_URLS[nation.name] || '';
             const isMonarchy = nation.hos_election_method === 'hereditary';
             const isPres = nation.government_type === 'Presidential';
             const isAuto = nation.government_type === 'Autocracy';
@@ -636,7 +638,8 @@ async function renderWorldNations() {
                 if (pmParty) {
                     const pmC = pmParty.party_color || '#666';
                     const pmA = pmParty.abbreviation || '';
-                    pmPartyBadge = pmA ? ' <span style="display:inline-block;background:' + pmC + ';color:#fff;padding:1px 6px;border-radius:2px;font-size:0.6rem;font-weight:700;margin-left:6px;">' + escapeHtml(pmA) + '</span>' : '';
+                    const pmLogo = getPartyLogoHTML({ customLogoUrl: pmParty.custom_logo_url, iconKey: pmParty.party_logo, size: 16, color: pmC });
+                    pmPartyBadge = ' <span style="display:inline-flex;align-items:center;gap:4px;margin-left:6px;">' + pmLogo + (pmA ? '<span style="display:inline-block;background:' + pmC + ';color:#fff;padding:1px 6px;border-radius:2px;font-size:0.6rem;font-weight:700;">' + escapeHtml(pmA) + '</span>' : '') + '</span>';
                 }
             }
 
