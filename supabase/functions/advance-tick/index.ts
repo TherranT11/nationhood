@@ -28308,8 +28308,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             .eq('nation_id', nation.id)
             .eq('faction_type', 'party');
 
-        if (!factions || factions.length === 0) continue;
-
+        if (factions && factions.length > 0) {
         // Autocracy V5: +5 AP per tick, capped at 20. No coalition bonus.
         if (isAutocracy(nation)) {
             for (const faction of factions) {
@@ -28322,9 +28321,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     apFailed++;
                 }
             }
-            continue;  // skip democracy AP logic
-        }
-
+        } else {
+        // Democracy AP logic
         const coalition = await fetchActiveCoalition(supabase, nation.id);
         const governmentPartyIds = new Set([
             ...(coalition?.party_ids || []),
@@ -28358,6 +28356,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 failedFactionIds.add(faction.id);
             }
         }
+        } // end democracy AP
+        } // end factions.length > 0
       } catch (apErr) {
         console.error(`[advanceTick] AP distribution FAILED for nation ${nation.id} (${nation.name}):`, apErr);
         summary.errors = summary.errors || [];
