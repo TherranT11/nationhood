@@ -11695,12 +11695,6 @@ async function submitUTRDraft() {
                 // Target nation event
                 { nation_id: targetId, event_name: 'Tariff Reduction Received', category: 'trade', description_chosen: desc, fired_at_tick: currentTick }
             ];
-            // World event — notify all other nations
-            cachedOtherNations.forEach(function(n) {
-                if (n.id !== targetId) {
-                    eventRows.push({ nation_id: n.id, event_name: 'Tariff Reduction — World', category: 'trade', description_chosen: desc, fired_at_tick: currentTick });
-                }
-            });
             await _supabase.from('event_log').insert(eventRows);
         } catch (e) { /* non-blocking */ }
 
