@@ -11676,7 +11676,6 @@ async function submitUTRDraft() {
             agreement_name: currentNation.name + ' Tariff Reduction on ' + activeDraftTarget.name,
             articles: [{ type: 'tariff_reduction', data: { reduction_pct: reductionPct, direction: 'their_exports', sector: 'all' } }],
             status: 'active',
-            proposed_at_tick: currentTick,
             enacted_at_tick: currentTick
         });
 
