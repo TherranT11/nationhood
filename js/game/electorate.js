@@ -2868,7 +2868,7 @@ export async function continueIdeologyAction(supabase, factionId, actionId, curr
         .select('id, faction_id, status, action_type')
         .eq('id', actionId).eq('faction_id', factionId).single();
     if (!action) return { success: false, message: 'Action not found.' };
-    if (action.status !== 'paused') return { success: false, message: 'Action is not paused.' };
+    if (action.status !== 'paused' && action.status !== 'suspended') return { success: false, message: 'Action is not paused.' };
 
     const apResult = await deductAP(supabase, factionId, 1);
     if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP' };
@@ -2889,7 +2889,7 @@ export async function cancelIdeologyAction(supabase, factionId, nationId, action
         .select('id, faction_id, nation_id, status, action_type, target_axis, target_direction, band_shift_total')
         .eq('id', actionId).eq('faction_id', factionId).single();
     if (!action) return { success: false, message: 'Action not found.' };
-    if (action.status !== 'active' && action.status !== 'paused')
+    if (action.status !== 'active' && action.status !== 'paused' && action.status !== 'suspended')
         return { success: false, message: 'Action cannot be cancelled (already completed or disbanded).' };
     if (action.action_type !== 'think_tank' && action.action_type !== 'grassroots_movement')
         return { success: false, message: 'Only Think Tanks and Grassroots Movements can be cancelled.' };
