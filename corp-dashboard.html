@@ -320,20 +320,38 @@ async function init() {
     // Load corporation faction
     const { data: faction, error } = await _supabase
         .from('factions')
-        .select('*, nations(name, population, gdp, stability)')
+        .select('*')
         .eq('id', user.id)
-        .eq('faction_type', 'corporation')
         .single();
 
     if (error || !faction) {
+        console.error('Corp dashboard: faction load failed', error);
+        await _supabase.auth.signOut();
         window.location.href = 'login.html';
         return;
+    }
+
+    // If this isn't a corporation, redirect to the right dashboard
+    if (faction.faction_type !== 'corporation') {
+        window.location.href = 'dashboard.html';
+        return;
+    }
+
+    // Load nation data separately
+    let nationName = faction.nation || '';
+    if (faction.nation_id) {
+        const { data: nationData } = await _supabase
+            .from('nations')
+            .select('name')
+            .eq('id', faction.nation_id)
+            .single();
+        if (nationData) nationName = nationData.name;
     }
 
     // Populate top bar
     document.getElementById('corp-ticker').textContent = faction.corp_ticker || faction.abbreviation || '';
     document.getElementById('corp-name').textContent = faction.faction_name || 'Unnamed Corp';
-    document.getElementById('corp-nation').textContent = faction.nations?.name || faction.nation || '';
+    document.getElementById('corp-nation').textContent = nationName;
 
     // Populate overview card
     const overview = document.getElementById('overview-body');
@@ -360,7 +378,7 @@ async function init() {
         </div>
         <div class="stat-row">
             <span class="stat-row__label">Home Nation</span>
-            <span class="stat-row__value">${escapeHtml(faction.nations?.name || faction.nation || '—')}</span>
+            <span class="stat-row__value">${escapeHtml(nationName || '—')}</span>
         </div>
         <div class="stat-row">
             <span class="stat-row__label">Action Points</span>
