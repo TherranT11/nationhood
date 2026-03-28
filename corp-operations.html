@@ -1085,7 +1085,24 @@ async function placeBid() {
     if (bidBtn) { bidBtn.disabled = true; bidBtn.textContent = '...'; }
 
     try {
-        // Insert bid first — if this fails (e.g. duplicate), no AP is lost
+        // Atomic AP deduction via RPC — prevents race conditions from multiple tabs
+        const { data: newAp, error: apErr } = await _supabase.rpc('deduct_ap', {
+            p_faction_id: faction.id,
+            p_cost: 2,
+        });
+        if (apErr) throw apErr;
+        if (newAp < 0) {
+            // Decode actual balance: actual = -(newAp) - 1
+            const actualAp = -(newAp) - 1;
+            faction.action_points = actualAp;
+            document.getElementById('topbar-ap').innerHTML =
+                '<span class="topbar-ap__count">' + actualAp + ' AP</span>';
+            if (bidBtn) { bidBtn.disabled = false; bidBtn.textContent = 'BID'; }
+            alert('Insufficient AP. You have ' + actualAp + ' AP, need 2.');
+            return;
+        }
+
+        // AP deducted — now insert the bid
         const { error: bidError } = await _supabase
             .from('corp_contract_bids')
             .insert({
@@ -1095,20 +1112,17 @@ async function placeBid() {
                 ap_spent: 2,
                 created_at_tick: shard?.current_tick || null,
             });
-        if (bidError) throw bidError;
 
-        // Bid succeeded — now deduct 2 AP
-        const newAp = (faction.action_points ?? 0) - 2;
-        const { error: apError } = await _supabase
-            .from('factions')
-            .update({ action_points: newAp })
-            .eq('id', faction.id);
-        if (apError) {
-            // AP deduction failed but bid is placed — log but don't block
-            console.error('AP deduction failed after bid placed:', apError.message);
+        if (bidError) {
+            // Bid failed — refund AP
+            await _supabase.rpc('deduct_ap', { p_faction_id: faction.id, p_cost: -2 });
+            faction.action_points = newAp + 2;
+            document.getElementById('topbar-ap').innerHTML =
+                '<span class="topbar-ap__count">' + (newAp + 2) + ' AP</span>';
+            throw bidError;
         }
 
-        // Update local AP
+        // Success — update local AP display
         faction.action_points = newAp;
         document.getElementById('topbar-ap').innerHTML =
             '<span class="topbar-ap__count">' + newAp + ' AP</span>';
