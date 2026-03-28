@@ -94,30 +94,54 @@ CREATE INDEX IF NOT EXISTS idx_corp_contract_bids_faction ON corp_contract_bids(
 ALTER TABLE corp_contracts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE corp_contract_bids ENABLE ROW LEVEL SECURITY;
 
--- All authenticated users can read contracts
+-- ── corp_contracts: read-only for clients, system writes only ──
+
+-- All authenticated users can read open contracts
 CREATE POLICY "Contracts are viewable by all authenticated users"
     ON corp_contracts FOR SELECT TO authenticated USING (true);
 
--- Only system/admin inserts contracts (government generation or private corp requests)
-CREATE POLICY "Contracts are created by system"
-    ON corp_contracts FOR INSERT TO authenticated WITH CHECK (true);
+-- No INSERT/UPDATE/DELETE for authenticated — contracts are created and managed
+-- by the tick processor (service_role) or admin tools only.
+-- service_role bypasses RLS, so no explicit policy needed for it.
 
-CREATE POLICY "Contracts can be updated"
-    ON corp_contracts FOR UPDATE TO authenticated USING (true);
+-- ── corp_contract_bids: players can insert their own, system manages status ──
 
--- Bids: anyone can read bids on contracts
+-- Anyone can read bids (needed to show bid count, check if already bid)
 CREATE POLICY "Bids are viewable by all authenticated users"
     ON corp_contract_bids FOR SELECT TO authenticated USING (true);
 
--- Corps can place their own bids
-CREATE POLICY "Corps can place bids"
+-- Corps can place bids on their own behalf
+CREATE POLICY "Corps can place their own bids"
     ON corp_contract_bids FOR INSERT TO authenticated
-    WITH CHECK (faction_id = auth.uid() OR EXISTS (
-        SELECT 1 FROM factions WHERE id = faction_id AND linked_user_id = auth.uid()
-    ));
+    WITH CHECK (
+        faction_id = auth.uid()
+        OR EXISTS (
+            SELECT 1 FROM factions
+            WHERE id = faction_id AND linked_user_id = auth.uid()
+        )
+    );
 
-CREATE POLICY "Bids can be updated"
-    ON corp_contract_bids FOR UPDATE TO authenticated USING (true);
+-- Bid status updates (accept/reject) are done by the contract issuer.
+-- For GOVERNMENT contracts, the issuer_faction_id is NULL so only service_role
+-- (tick processor) can update. For PRIVATE contracts, the issuing corp can update.
+CREATE POLICY "Contract issuer can update bid status"
+    ON corp_contract_bids FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM corp_contracts c
+            WHERE c.id = contract_id
+              AND c.issuer_faction_id IS NOT NULL
+              AND (
+                  c.issuer_faction_id = auth.uid()
+                  OR EXISTS (
+                      SELECT 1 FROM factions
+                      WHERE id = c.issuer_faction_id AND linked_user_id = auth.uid()
+                  )
+              )
+        )
+    );
 
-COMMENT ON TABLE corp_contracts IS 'Available construction contracts from government ministries or private corporations.';
-COMMENT ON TABLE corp_contract_bids IS 'Bids placed by construction corps on open contracts. Costs 2 AP to bid.';
+-- No DELETE for bids — bids are permanent once placed
+
+COMMENT ON TABLE corp_contracts IS 'Construction contracts from government ministries or private corps. System-managed, read-only for clients.';
+COMMENT ON TABLE corp_contract_bids IS 'Bids placed by construction corps on open contracts. Costs 2 AP to bid. Status managed by contract issuer or system.';

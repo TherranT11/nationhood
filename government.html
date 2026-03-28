@@ -716,8 +716,8 @@ async function cancelMinistryAction(actionId, actionName) {
         // Clear local active state
         delete activeMinistryActions[actionId];
 
-        // Refresh the ministry card UI
-        await renderMinistryCard(ministryKey);
+        // Refresh the full government page UI
+        await renderGovernmentPage();
     } catch (e) {
         alert('Failed to cancel: ' + (e.message || 'Unknown error'));
     }
