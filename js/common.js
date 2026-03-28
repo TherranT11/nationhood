@@ -323,7 +323,7 @@ export function renderTopBar(activeTab) {
             </div>
             <div class="top-bar-right">
                 <button class="guide-btn" id="guide-btn" title="Page Guide" style="display:none;"></button>
-                <button class="guide-btn" id="welcome-guide-btn" onclick="toggleWelcomeGuide()" title="Welcome Guide">? Guide</button>
+                ${activeTab === 'dashboard' ? '<button class="guide-btn" id="welcome-guide-btn" onclick="toggleWelcomeGuide()" title="Welcome Guide">? Guide</button>' : ''}
                 <span class="party-badge" id="party-badge">--</span>
                 <span class="topbar-ap" id="topbar-ap"></span>
                 <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle" title="Toggle light/dark mode">Light</button>
@@ -337,8 +337,8 @@ export function renderTopBar(activeTab) {
     `;
     document.getElementById('top-bar').innerHTML = topBarHTML;
 
-    // Inject welcome guide overlay (once)
-    if (!document.getElementById('welcome-guide-overlay')) {
+    // Inject welcome guide overlay (dashboard only)
+    if (activeTab === 'dashboard' && !document.getElementById('welcome-guide-overlay')) {
         const overlay = document.createElement('div');
         overlay.id = 'welcome-guide-overlay';
         overlay.className = 'guide-overlay';
