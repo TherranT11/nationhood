@@ -169,6 +169,12 @@ export function getCachedState() {
         const state = JSON.parse(cached);
         const age = Date.now() - state.timestamp;
         if (age > STATE_TTL) { console.log('State cache expired, will refresh'); return null; }
+        // Invalidate cache if active faction changed (e.g. switched from corp to party)
+        const activeFactionId = sessionStorage.getItem('active_faction_id');
+        if (activeFactionId && state.faction && state.faction.id !== activeFactionId) {
+            console.log('Active faction changed, invalidating cache');
+            return null;
+        }
         return state;
     } catch (e) { console.error('Error reading cached state:', e); return null; }
 }
@@ -836,6 +842,22 @@ export function updateTopBarInfo(faction, shard, nation) {
     } else {
         if (nationName) nationName.textContent = 'No Nation';
     }
+
+    // Corporation faction on shared pages — swap nav to corp tabs
+    if (faction?.faction_type === 'corporation') {
+        const navEl = document.querySelector('.nav-tabs');
+        if (navEl) {
+            const currentTab = window.__currentTab || '';
+            navEl.innerHTML = [
+                { id: 'home', label: 'Home', href: 'corp-dashboard.html' },
+                { id: 'news', label: 'News', href: 'news.html' },
+                { id: 'wiki', label: 'Wiki', href: 'wiki.html' },
+            ].map(t => `<a href="${t.href}" class="nav-tab ${t.id === currentTab ? 'active' : ''}" data-tab="${t.id}">${t.label}</a>`).join('');
+        }
+        // Update nation badge to show corp name instead
+        if (nationName) nationName.textContent = faction.faction_name || 'Corporation';
+        if (nationFlag) nationFlag.style.display = 'none';
+    }
     
     if (shard) {
         const gameDate = document.getElementById('game-date');
@@ -1133,6 +1155,15 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
 
     const state = await loadGameState(requireFaction);
     if (!state) return;
+
+    // Corporation faction on a party page — redirect to corp dashboard
+    // (except shared pages like news and wiki which both factions can use)
+    const SHARED_TABS = ['news', 'wiki'];
+    if (state.faction?.faction_type === 'corporation' && !SHARED_TABS.includes(activeTab)) {
+        window.location.href = 'corp-dashboard.html';
+        return;
+    }
+
     updateTopBarInfo(state.faction, state.shard, state.nation);
 
     // Always fetch fresh AP from DB — cached AP can be minutes stale
