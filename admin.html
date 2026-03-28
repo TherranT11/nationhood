@@ -103,6 +103,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 if (!resp.ok) throw new Error('Failed to load admin panel');
                 const html = await resp.text();
                 document.getElementById('admin-section').innerHTML = html;
+                document.dispatchEvent(new Event('admin-panel-loaded'));
                 loadAllData();
             } else {
                 throw new Error(result?.reason || 'Not authorized. Your account does not have admin privileges.');
@@ -1418,7 +1419,13 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         document.getElementById('voter-eligible-pct').textContent = `(${pct}% of population)`;
     }
 
-    document.getElementById('voter-eligible-input').addEventListener('input', updateEligiblePct);
+    function initVoterListeners() {
+        const el = document.getElementById('voter-eligible-input');
+        if (el) el.addEventListener('input', updateEligiblePct);
+    }
+    // Defer until admin panel HTML is loaded
+    if (document.getElementById('voter-eligible-input')) initVoterListeners();
+    else document.addEventListener('admin-panel-loaded', initVoterListeners);
 
     // ---- Weight validator ----
     function updateWeightValidator() {
