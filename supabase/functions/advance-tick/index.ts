@@ -28254,6 +28254,35 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Government vacancy failed for ${nation.name} (non-fatal):`, vacancyErr);
         }
 
+        // Safety net: ensure every nation with a government has an active administration record
+        try {
+            if (!isAutocracy(nation)) {
+                const { data: activeAdmin } = await supabase.from('administrations')
+                    .select('id').eq('nation_id', nation.id).is('ended_at_tick', null).limit(1).maybeSingle();
+                if (!activeAdmin) {
+                    const { data: hog } = await supabase.from('head_of_government')
+                        .select('first_name, last_name, faction_id, appointed_tick')
+                        .eq('nation_id', nation.id).eq('active', true).maybeSingle();
+                    if (hog) {
+                        const { data: shardDate } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                        await supabase.from('administrations').insert({
+                            nation_id: nation.id,
+                            admin_name: (hog.last_name || 'Interim') + ' Administration',
+                            head_of_state: (hog.first_name || '') + ' ' + (hog.last_name || ''),
+                            government_type: nation.government_type || 'Parliamentary Democracy',
+                            started_at_tick: hog.appointed_tick || newTick,
+                            started_at_date: shardDate?.current_date || '',
+                            approval_at_start: Number(nation.gov_approval ?? 50),
+                            pm_party_id: hog.faction_id
+                        });
+                        console.log(`[advanceTick] Safety net: created missing administration for ${nation.name} (${hog.last_name} Administration)`);
+                    }
+                }
+            }
+        } catch (adminSafetyErr) {
+            console.error(`[advanceTick] Admin safety net failed for ${nation.name} (non-fatal):`, adminSafetyErr);
+        }
+
         // Caucus system: activate/deactivate internal factions based on seat share
         try {
             await evaluateCaucusActivation(supabase, nation.id, GAME_CONFIG.TOTAL_SEATS);
