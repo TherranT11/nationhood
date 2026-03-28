@@ -2448,9 +2448,25 @@ export async function enactBill(supabase, bill, currentTick) {
             });
 
             // Upsert per-institution funding into budget_item_allocations
-            // Uses proposed_pct as allocation_amount and 100 as needed_amount
-            // so buildStatInstitutionMap computes fundingPct = (proposed_pct / 100) * 100 = proposed_pct
+            // Stores actual dollar amounts: needed_amount = true cost, allocation_amount = funded amount
+            // so fundingPct = allocation_amount / needed_amount * 100
+            const { data: _billNation } = await supabase.from('nations').select('population, gdp, inflation').eq('id', bill.nation_id).single();
+            const { data: _instConfigs } = await supabase.from('ministry_institution_config').select('id, base_cost_per_capita, scaling_type');
+            const _billPop = Number(_billNation?.population || 0);
+            const _billGdp = Number(_billNation?.gdp || 0);
+            const _billInfRate = Math.pow(Math.max(0, Number(_billNation?.inflation || 0)), 1.5) / 100;
+            const _billInfMult = 1 + (_billInfRate / 100);
+
             for (const inst of allInst) {
+                const instCfg = (_instConfigs || []).find(c => c.id === inst.id);
+                let neededAmt = 0;
+                if (instCfg) {
+                    const bv = Number(instCfg.base_cost_per_capita || 0);
+                    const st = instCfg.scaling_type || 'population';
+                    neededAmt = Math.round((st === 'gdp' ? (bv / 100) * _billGdp : bv * _billPop) * _billInfMult);
+                }
+                const allocAmt = Math.round(neededAmt * (inst.proposed_pct / 100));
+
                 const { error: allocErr } = await supabase.from('budget_item_allocations')
                     .upsert({
                         bill_id: bill.id,
@@ -2459,8 +2475,8 @@ export async function enactBill(supabase, bill, currentTick) {
                         item_type: 'institution',
                         item_id: inst.id,
                         item_name: inst.name,
-                        allocation_amount: inst.proposed_pct,
-                        needed_amount: 100
+                        allocation_amount: allocAmt,
+                        needed_amount: neededAmt
                     }, { onConflict: 'bill_id,item_type,item_id' });
                 if (allocErr) {
                     console.error('[enactBill] stage=upsert_institution_allocation result=error', {
