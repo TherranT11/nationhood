@@ -10,8 +10,8 @@ ALTER TABLE nations ADD COLUMN IF NOT EXISTS parliamentary_term_ticks INT DEFAUL
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS proposed_parliamentary_term_length INT DEFAULT NULL;
 
 -- ── Set initial values per nation ──
--- Melizea (Autocracy): 24 ticks (2 years) — preserves current behavior
-UPDATE nations SET parliamentary_term_ticks = 24 WHERE name = 'Melizea';
+-- Melizea (Autocracy): 48 ticks (4 years)
+UPDATE nations SET parliamentary_term_ticks = 48 WHERE name = 'Melizea';
 -- Avelia (Parliamentary): 48 ticks (4 years)
 UPDATE nations SET parliamentary_term_ticks = 48 WHERE name = 'Avelia';
 -- Palvera (Presidential): 48 ticks (4 years)

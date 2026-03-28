@@ -11555,7 +11555,7 @@ async function processElections(supabase, nation, currentTick) {
             .maybeSingle();
 
         if (!futureElection) {
-            const frequency = nation.election_frequency || 48;
+            const frequency = getParliamentaryTermTicks(nation);
             const nextTick = currentTick + frequency;
 
             await supabase.from('elections').insert({
