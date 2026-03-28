@@ -38,6 +38,7 @@ DECLARE
         ARRAY['government_formation_chat',    $$DELETE FROM government_formation_chat WHERE faction_id = '%s'$$],
         ARRAY['shakeups',                     $$DELETE FROM shakeups WHERE faction_id = '%s'$$],
         ARRAY['bill_comments',               $$DELETE FROM bill_comments WHERE faction_id = '%s'$$],
+        ARRAY['bill_articles.added_by',      $$UPDATE bill_articles SET added_by = NULL WHERE added_by = '%s'$$],
         ARRAY['bill_amendment_requests',     $$DELETE FROM bill_amendment_requests WHERE faction_id = '%s'$$],
         ARRAY['bill_support',                 $$DELETE FROM bill_support WHERE faction_id = '%s'$$],
         ARRAY['active_laws.proposed_by',      $$UPDATE active_laws SET proposed_by = NULL WHERE proposed_by = '%s'$$],
