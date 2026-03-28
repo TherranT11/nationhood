@@ -174,17 +174,17 @@ export async function applyBlocPreferenceOnPassage(supabase, bill, nationId) {
 
 /**
  * Penalize factions that did not cast any vote (YES/NO/ABSTAIN) on a bill.
- * - Momentum: lose [1d3+1] (2-4) across all blocs
- * - Preference: -2 preference_score with every voter bloc whose ideology axis score
- *   is at least ±10 from center (≤40 or ≥60) on any axis present in the bill.
+ * - Party approval: -1d3 (1-3)
+ * - Visibility: -5
+ * - Credibility: -5 (i.e. -0.05 on the modifier)
  *
  * @param {object} supabase
  * @param {object} bill - Full bill row with bill_articles (with policies) and bill_support
  * @param {string} nationId
  */
 export async function applyNoVotePenalty(supabase, bill, nationId) {
-    const PREFERENCE_PENALTY = -2;
-    const AXIS_THRESHOLD = 10; // distance from center (50) to count as "having" an ideology
+    const VISIBILITY_PENALTY = -5;
+    const CREDIBILITY_PENALTY = -0.05; // -5 on the 0-100 display scale
 
     // 1. Get all party factions in this nation
     const { data: allFactions } = await supabase
@@ -206,19 +206,36 @@ export async function applyNoVotePenalty(supabase, bill, nationId) {
     const nonVoters = allFactions.filter(f => !votedFactionIds.has(f.id));
     if (nonVoters.length === 0) return [];
 
-    // 4. Apply penalties to each non-voter (party_approval hit)
+    // 4. Apply penalties to each non-voter
     const penalized = [];
     for (const faction of nonVoters) {
-        // Lose 1-2 party_approval for not voting
-        const approvalLoss = -(1 + Math.random());
-        await nudgeApproval(supabase, faction.id, nationId, round2(approvalLoss), { source: 'bill:failed' });
+        // -1d3 party_approval
+        const approvalLoss = -(1 + Math.floor(Math.random() * 3));
+        await nudgeApproval(supabase, faction.id, nationId, approvalLoss, { source: 'bill:no_vote' });
+
+        // -5 visibility
+        const { data: standing } = await supabase
+            .from('faction_electoral_standing')
+            .select('id, visibility')
+            .eq('faction_id', faction.id)
+            .eq('nation_id', nationId)
+            .maybeSingle();
+        if (standing) {
+            const newVis = Math.max(0, (Number(standing.visibility) || 0) + VISIBILITY_PENALTY);
+            await supabase.from('faction_electoral_standing')
+                .update({ visibility: newVis })
+                .eq('id', standing.id);
+        }
+
+        // -5 credibility
+        await adjustCredibility(supabase, faction.id, nationId, CREDIBILITY_PENALTY);
 
         penalized.push({
             factionId: faction.id,
             factionName: faction.faction_name,
-            momentumLoss,
-            preferencePenalty: 0,
-            affectedBlocCount: 0
+            approvalLoss,
+            visibilityLoss: VISIBILITY_PENALTY,
+            credibilityLoss: VISIBILITY_PENALTY,
         });
     }
 
@@ -1911,7 +1928,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
         try {
             const penalized = await applyNoVotePenalty(supabase, bill, bill.nation_id);
             if (penalized.length > 0) {
-                const names = penalized.map(p => `${p.factionName} (${p.momentumLoss} momentum, ${p.preferencePenalty} pref to ${p.affectedBlocCount} blocs)`).join(', ');
+                const names = penalized.map(p => `${p.factionName} (${p.approvalLoss} approval, ${p.visibilityLoss} vis, ${p.credibilityLoss} cred)`).join(', ');
                 console.log(`[resolveExpiredVotes] No-vote penalty on "${bill.bill_name}": ${names}`);
                 try {
                     await supabase.rpc('fire_system_event', {

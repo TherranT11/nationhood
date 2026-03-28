@@ -1416,6 +1416,29 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] PM trait effects failed for ${nation.name} (non-fatal):`, pmTraitErr);
         }
 
+        // Protest resolution (resolve protests that have been in 'resolving' for 1+ ticks)
+        try {
+            const { data: resolvingProtests } = await supabase
+                .from('protest_log')
+                .select('*')
+                .eq('nation_id', nation.id)
+                .eq('status', 'resolving')
+                .lt('tick_called', newTick);
+            if (resolvingProtests && resolvingProtests.length > 0) {
+                summary.protests = summary.protests || [];
+                for (const protest of resolvingProtests) {
+                    try {
+                        const result = await resolveProtest(supabase, protest, nation, newTick);
+                        summary.protests.push({ nation: nation.name, protestId: protest.id, ...result });
+                    } catch (prErr) {
+                        console.error(`[advanceTick] resolveProtest failed for protest ${protest.id} in ${nation.name} (non-fatal):`, prErr);
+                    }
+                }
+            }
+        } catch (protestErr) {
+            console.error(`[advanceTick] Protest resolution failed for ${nation.name} (non-fatal):`, protestErr);
+        }
+
         // Elections (democracy only)
         try {
             const electionResults = await processElections(supabase, nation, newTick);
