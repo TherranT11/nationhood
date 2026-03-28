@@ -68,7 +68,29 @@ DECLARE
         ARRAY['administrations.pm_party_id',  $$UPDATE administrations SET pm_party_id = NULL WHERE pm_party_id = '%s'$$],
         ARRAY['election_candidates',          $$DELETE FROM election_candidates WHERE faction_id = '%s'$$],
         ARRAY['presidential_candidates',      $$DELETE FROM presidential_candidates WHERE faction_id = '%s'$$],
-        ARRAY['protests.faction_id',          $$UPDATE protests SET faction_id = NULL WHERE faction_id = '%s'$$]
+        ARRAY['protests.faction_id',          $$UPDATE protests SET faction_id = NULL WHERE faction_id = '%s'$$],
+        -- IPO tables
+        ARRAY['ipo_invitations(target)',      $$DELETE FROM ipo_invitations WHERE target_faction_id = '%s'$$],
+        ARRAY['ipo_invitations(invited_by)',   $$DELETE FROM ipo_invitations WHERE invited_by_faction_id = '%s'$$],
+        ARRAY['ipo_members',                  $$DELETE FROM ipo_members WHERE faction_id = '%s'$$],
+        ARRAY['ipo_ballots',                  $$DELETE FROM ipo_ballots WHERE faction_id = '%s'$$],
+        ARRAY['ipo_chat',                     $$DELETE FROM ipo_chat WHERE faction_id = '%s'$$],
+        ARRAY['ipo_votes(proposed_by)',        $$DELETE FROM ipo_votes WHERE proposed_by = '%s'$$],
+        ARRAY['ipo_organisations.president_id', $$UPDATE ipo_organisations SET president_id = NULL WHERE president_id = '%s'$$],
+        -- Autocracy tables
+        ARRAY['faction_pillar_state',          $$DELETE FROM faction_pillar_state WHERE faction_id = '%s'$$],
+        ARRAY['autocracy_action_log',          $$DELETE FROM autocracy_action_log WHERE faction_id = '%s'$$],
+        ARRAY['silent_coup_offers',            $$DELETE FROM silent_coup_offers WHERE from_faction_id = '%s' OR to_faction_id = '%s'$$],
+        ARRAY['silent_coup_votes',             $$DELETE FROM silent_coup_votes WHERE faction_id = '%s'$$],
+        ARRAY['putsch_state',                  $$DELETE FROM putsch_state WHERE military_faction_id = '%s'$$],
+        -- Electoral / standing
+        ARRAY['faction_electoral_standing',     $$DELETE FROM faction_electoral_standing WHERE faction_id = '%s'$$],
+        ARRAY['faction_issue_stance',          $$DELETE FROM faction_issue_stance WHERE faction_id = '%s'$$],
+        ARRAY['ideology_shift_actions',        $$DELETE FROM ideology_shift_actions WHERE faction_id = '%s'$$],
+        ARRAY['party_approval_log',            $$DELETE FROM party_approval_log WHERE faction_id = '%s'$$],
+        ARRAY['credibility_log',               $$DELETE FROM credibility_log WHERE faction_id = '%s'$$],
+        ARRAY['protest_log.faction_id',        $$UPDATE protest_log SET faction_id = NULL WHERE faction_id = '%s'$$],
+        ARRAY['event_log.faction_id',          $$UPDATE event_log SET faction_id = NULL WHERE faction_id = '%s'$$]
     ];
     i INT;
 BEGIN

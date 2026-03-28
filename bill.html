@@ -78,7 +78,7 @@
             <div class="modal-title">Propose Conditional Support</div>
             <button class="modal-close" onclick="closeAmendmentModal()">&times;</button>
         </div>
-        <p style="color: var(--text-primary); margin-bottom: 16px; font-size: 0.9rem;">Select a policy you want added to this bill. Your support will be conditional on the sponsor accepting your amendment.</p>
+        <p style="color: var(--text-primary); margin-bottom: 16px; font-size: 0.9rem;">Select a policy you want added to this bill. Your party will vote YES if your support is agreed to.</p>
         <div class="form-group">
             <label class="form-label">Select Sector</label>
             <select class="form-select" id="amendment-sector" onchange="onAmendmentSectorChange()">
@@ -103,7 +103,7 @@
             <div class="modal-title">Propose Text Amendment</div>
             <button class="modal-close" onclick="closeTextAmendmentModal()">&times;</button>
         </div>
-        <p style="color: var(--text-primary); margin-bottom: 16px; font-size: 0.9rem;">Write a freeform text article to propose adding to this bill. Your support will be conditional on the sponsor accepting it.</p>
+        <p style="color: var(--text-primary); margin-bottom: 16px; font-size: 0.9rem;">Write a freeform text article to propose adding to this bill. Your party will vote YES if your support is agreed to.</p>
         <div class="form-group">
             <label class="form-label">Article Title</label>
             <input type="text" class="form-input" id="text-amendment-title" placeholder="e.g., Transitional Provisions">
@@ -126,7 +126,7 @@
             <div class="modal-title" style="color: var(--orange);">Request Article Removal</div>
             <button class="modal-close" onclick="closeStrikeAmendmentModal()">&times;</button>
         </div>
-        <p style="color: var(--text-primary); margin-bottom: 16px; font-size: 0.9rem;">Select an article you want removed from this bill. Your support will be conditional on the sponsor removing it.</p>
+        <p style="color: var(--text-primary); margin-bottom: 16px; font-size: 0.9rem;">Select an article you want removed from this bill. Costs 1 AP. The sponsor must accept or reject the request.</p>
         <div id="strike-article-list"></div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeStrikeAmendmentModal()">Cancel</button>
@@ -2435,13 +2435,17 @@ async function submitAmendment() {
     if (mySupport?.locked) { alert('Your support is locked — a strike deal was accepted.'); return; }
     if ((currentBill.struck_policy_ids || []).includes(selectedAmendmentPolicy.id)) { alert('This policy was struck from the bill and cannot be re-added.'); return; }
     try {
+        // Conditional support costs 1 AP
+        const apResult = await deductAP(_supabase, currentFaction.id, 1);
+        if (!apResult.success) { alert(apResult.error || 'Insufficient AP (need 1).'); return; }
+
         const { error } = await _supabase.from('bill_amendment_requests').insert({ bill_id: billId, faction_id: currentFaction.id, policy_id: selectedAmendmentPolicy.id, request_type: 'add', status: 'pending' });
         if (error) throw error;
-        // Auto-set stance to conditional — support is contingent on amendment acceptance
+        // Auto-set stance to conditional — if accepted, auto-locks as YES on floor
         await _supabase.from('bill_support').upsert({ bill_id: billId, faction_id: currentFaction.id, stance: 'conditional', seat_count: currentSeats }, { onConflict: 'bill_id,faction_id' });
         closeAmendmentModal();
         await loadBillData();
-        alert('Conditional support proposed! The bill sponsor can accept or reject your amendment.');
+        alert('Conditional support proposed (1 AP). If accepted, your vote will be locked as YES on the floor.');
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
@@ -2526,17 +2530,21 @@ async function submitTextAmendment() {
     const body = document.getElementById('text-amendment-body').value.trim();
     if (!body) { alert('Please enter article text.'); return; }
     try {
+        // Conditional support costs 1 AP
+        const apResult = await deductAP(_supabase, currentFaction.id, 1);
+        if (!apResult.success) { alert(apResult.error || 'Insufficient AP (need 1).'); return; }
+
         const { error } = await _supabase.from('bill_amendment_requests').insert({
             bill_id: billId, faction_id: currentFaction.id, policy_id: null,
             request_type: 'add_text', status: 'pending',
             article_title: title || 'Untitled Provision', article_text: body
         });
         if (error) throw error;
-        // Auto-set stance to conditional — support is contingent on amendment acceptance
+        // Auto-set stance to conditional — if accepted, auto-locks as YES on floor
         await _supabase.from('bill_support').upsert({ bill_id: billId, faction_id: currentFaction.id, stance: 'conditional', seat_count: currentSeats }, { onConflict: 'bill_id,faction_id' });
         closeTextAmendmentModal();
         await loadBillData();
-        alert('Conditional support proposed! The bill sponsor can accept or reject your amendment.');
+        alert('Conditional support proposed (1 AP). If accepted, your vote will be locked as YES on the floor.');
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
@@ -2580,6 +2588,10 @@ async function submitStrikeAmendment() {
     const mySupport = (currentBill.bill_support || []).find(s => s.faction_id === currentFaction.id);
     if (mySupport?.locked) { alert('Your support is locked — a strike deal was accepted.'); return; }
     try {
+        // Strike request costs 1 AP
+        const apResult = await deductAP(_supabase, currentFaction.id, 1);
+        if (!apResult.success) { alert(apResult.error || 'Insufficient AP (need 1).'); return; }
+
         const { error } = await _supabase.from('bill_amendment_requests').insert({
             bill_id: billId,
             faction_id: currentFaction.id,
@@ -2595,7 +2607,7 @@ async function submitStrikeAmendment() {
         }, { onConflict: 'bill_id,faction_id' });
         closeStrikeAmendmentModal();
         await loadBillData();
-        alert('Conditional support proposed! The sponsor can accept or reject your removal request.');
+        alert('Strike requested (1 AP). The bill sponsor must accept or reject the removal.');
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
