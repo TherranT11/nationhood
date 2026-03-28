@@ -611,6 +611,91 @@ body {
   text-align: center;
   padding: 80px 20px;
 }
+
+/* ═══════ LIGHT MODE ═══════ */
+body.light-mode {
+  --bg-0: #f4f3ef;
+  --bg-1: #eae9e4;
+  --bg-2: #ffffff;
+  --bg-3: #f0efeb;
+  --bg-4: #e8e7e2;
+  --bg-5: #dddcd7;
+  --bg-hover: #e8e7e2;
+  --text-bright: #1a1a17;
+  --text-primary: #333;
+  --text-secondary: #666;
+  --text-muted: #888;
+  --text-dim: #aaa;
+  --text-ghost: #ccc;
+  --border-hair: rgba(0,0,0,0.04);
+  --border-0: rgba(0,0,0,0.08);
+  --border-1: rgba(0,0,0,0.12);
+  --border-2: rgba(0,0,0,0.16);
+  --green: #2d8a2d;
+  --green-faint: rgba(45,138,45,0.08);
+  --green-border: rgba(45,138,45,0.2);
+  --red: #c0392b;
+  --amber: #b8860b;
+  --amber-faint: rgba(184,134,11,0.08);
+  --amber-border: rgba(184,134,11,0.2);
+  --blue: #2874a6;
+  --blue-faint: rgba(40,116,166,0.08);
+  --blue-border: rgba(40,116,166,0.2);
+  --teal: #1a8a7d;
+  --teal-faint: rgba(26,138,125,0.08);
+  --teal-border: rgba(26,138,125,0.2);
+}
+body.light-mode .top-bar-row1 { background: #fff; border-bottom-color: rgba(0,0,0,0.1); }
+body.light-mode .top-bar-sep { background: rgba(0,0,0,0.1); }
+body.light-mode .corp-logo { background: var(--bg-3); border-color: rgba(0,0,0,0.1); color: #999; }
+body.light-mode .corp-name-bar { color: #1a1a17; }
+body.light-mode .tick-label { color: #999; }
+body.light-mode .tick-value { color: #1a1a17; }
+body.light-mode .corp-name-badge { background: rgba(26,138,125,0.08); border-color: rgba(26,138,125,0.2); color: #1a8a7d; }
+body.light-mode .topbar-ap { background: rgba(184,134,11,0.08); border-color: rgba(184,134,11,0.2); }
+body.light-mode .topbar-ap__count { color: #b8860b; }
+body.light-mode .theme-toggle-btn { background: #f0efeb; border-color: rgba(0,0,0,0.1); color: #666; }
+body.light-mode .logout-btn { background: rgba(192,57,43,0.06); border-color: rgba(192,57,43,0.2); color: #c0392b; }
+body.light-mode .corp-faction-dropdown { background: #fff; border-color: rgba(0,0,0,0.1); box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+body.light-mode .corp-dd-item:hover { background: #f5f5f0; }
+body.light-mode .corp-dd-item.active { background: rgba(26,138,125,0.08); border-left-color: #1a8a7d; }
+body.light-mode .corp-dd-name { color: #1a1a17; }
+
+/* ═══════ RESPONSIVE / MOBILE ═══════ */
+@media (max-width: 1200px) {
+  .content { padding: 16px 12px; gap: 10px; }
+}
+@media (max-width: 820px) {
+  .top-bar-row1 { height: auto; padding: 8px 12px; flex-wrap: wrap; gap: 8px; }
+  .top-bar-left { flex-wrap: wrap; gap: 8px; }
+  .top-bar-sep { display: none; }
+  .tick-info { gap: 12px; }
+  .top-bar-right { gap: 6px; flex-wrap: wrap; }
+  .corp-name-badge { font-size: 10px; }
+  .content {
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 8px;
+  }
+  .id-card, .fin-card, .stats-card, .prop-card, .subs-card, .wf-card, .val-card {
+    width: 100%;
+    max-width: 420px;
+    height: auto;
+    min-height: 380px;
+  }
+}
+@media (max-width: 480px) {
+  .top-bar-row1 { padding: 6px 8px; }
+  .corp-logo { width: 28px; height: 28px; font-size: 12px; }
+  .corp-name-bar { font-size: 12px; }
+  .tick-info { gap: 8px; }
+  .tick-label { font-size: 8px; }
+  .tick-value { font-size: 11px; }
+  .corp-name-badge { font-size: 9px; padding: 2px 6px; }
+  .id-card, .fin-card, .stats-card, .prop-card, .subs-card, .wf-card, .val-card {
+    max-width: 100%;
+  }
+}
 </style>
 </head>
 <body>
