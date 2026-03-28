@@ -98,11 +98,10 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             if (result?.authorized) {
                 isAuthenticated = true;
                 document.getElementById('login-section').classList.add('hidden');
-                // Fetch admin panel HTML from separate file — NOT in the page source
-                const resp = await fetch('admin-panel.html');
-                if (!resp.ok) throw new Error('Failed to load admin panel');
-                const html = await resp.text();
-                document.getElementById('admin-section').innerHTML = html;
+                // Load admin panel HTML from database via RPC — only admins can access
+                const { data: panelHtml, error: panelErr } = await _supabase.rpc('get_admin_panel');
+                if (panelErr || !panelHtml) throw new Error('Failed to load admin panel: ' + (panelErr?.message || 'no content'));
+                document.getElementById('admin-section').innerHTML = panelHtml;
                 document.dispatchEvent(new Event('admin-panel-loaded'));
                 loadAllData();
             } else {
@@ -169,6 +168,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         });
     }
     async function setTickInterval(hours) {
+        if (!isAuthenticated) return;
         const status = document.getElementById('interval-status');
         try {
             // Recalculate next_tick_at from NOW + new interval
@@ -229,6 +229,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     }
 
     async function reprocessTickAdmin() {
+        if (!isAuthenticated) return;
         const status = document.getElementById('tick-status');
         status.className = 'status info'; status.textContent = 'Reprocessing current tick (no advance)...'; status.classList.remove('hidden');
 
@@ -386,6 +387,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         }
     }
     async function runElection() {
+        if (!isAuthenticated) return;
         if (!selectedElectionNation) return;
         const status = document.getElementById('election-status');
         const resultsDiv = document.getElementById('election-results');
@@ -715,6 +717,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     let scheduleCurrentTick = 0;
 
     async function scheduleElection() {
+        if (!isAuthenticated) return;
         const nationSelect = document.getElementById('schedule-nation-select');
         const typeSelect = document.getElementById('schedule-type-select');
         const tickInput = document.getElementById('schedule-tick-input');
@@ -987,6 +990,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         }).join('');
     }
     async function removePlayer(playerId, nationId, partyName) {
+        if (!isAuthenticated) return;
         if (!confirm(`Remove ${partyName} from this nation? This will zero their seats, redistribute to remaining parties, and clean up related records.`)) return;
         try {
             const { data, error } = await _supabase.rpc('admin_kick_party', { p_faction_id: playerId, p_nation_id: nationId });
@@ -1006,6 +1010,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
 
     /** Save every nation's current stats into seed_stats JSONB column */
     async function snapshotSeedStats() {
+        if (!isAuthenticated) return;
         const statusEl = document.getElementById('seed-status');
         const infoEl = document.getElementById('seed-info');
         statusEl.innerHTML = '<span style="color:#5b9bd5; font-weight:bold;">Snapshotting...</span>';
@@ -1058,6 +1063,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
 
     /** Full shard reset — restores nation stats, deletes all game state */
     async function resetShard() {
+        if (!isAuthenticated) return;
         if (!confirm('⚠️ FULL SHARD RESET — this will delete ALL parties, laws, elections, and game data. Continue?')) return;
         if (!confirm('⚠️ SECOND CONFIRMATION — Are you absolutely sure? This cannot be undone!')) return;
 
