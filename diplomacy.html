@@ -11527,8 +11527,8 @@ async function renderUTRDraftPanel(body, statusEl) {
         .select('id')
         .eq('status', 'active')
         .eq('agreement_type', 'unilateral_tariff_reduction')
-        .eq('nation_a_id', currentNation.id)
-        .eq('nation_b_id', activeDraftTarget.id);
+        .or('and(nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + activeDraftTarget.id + '),' +
+            'and(nation_a_id.eq.' + activeDraftTarget.id + ',nation_b_id.eq.' + currentNation.id + ')');
 
     if (existingUtr && existingUtr.length > 0) {
         html += '<div class="trade-info-box warning" style="margin:12px 14px;">You already have an active tariff reduction for ' + escapeHtml(activeDraftTarget.name) + '. Withdraw it first to issue a new one.</div></div>';
@@ -11669,12 +11669,17 @@ async function submitUTRDraft() {
         var { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         var currentTick = shard?.current_tick || 0;
 
+        // Canonical nation ordering (lexicographic UUID — required by check constraint)
+        var issuerId = currentNation.id;
+        var natA = currentNation.id < targetId ? currentNation.id : targetId;
+        var natB = currentNation.id < targetId ? targetId : currentNation.id;
+
         var { error } = await _supabase.from('trade_agreements').insert({
-            nation_a_id: currentNation.id,
-            nation_b_id: targetId,
+            nation_a_id: natA,
+            nation_b_id: natB,
             agreement_type: 'unilateral_tariff_reduction',
             agreement_name: currentNation.name + ' Tariff Reduction on ' + activeDraftTarget.name,
-            articles: [{ type: 'tariff_reduction', data: { reduction_pct: reductionPct, direction: 'their_exports', sector: 'all' } }],
+            articles: [{ type: 'tariff_reduction', data: { reduction_pct: reductionPct, direction: 'their_exports', sector: 'all', issuer_nation_id: issuerId } }],
             status: 'active',
             enacted_at_tick: currentTick
         });
