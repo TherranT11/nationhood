@@ -2631,7 +2631,7 @@ export async function logActivity(supabase, factionId, nationId, actionType, act
 
 export const POLL_CONFIG = {
     AP_COST: 2,
-    COOLDOWN_WINDOW: 2,   // ticks between polls
+    COOLDOWN_WINDOW: 0,   // no cooldown
     VISIBILITY_BOOST: 0,
 };
 
@@ -2642,14 +2642,17 @@ export const POLL_CONFIG = {
  */
 export async function executePollNow(supabase, factionId, nationId, currentTick, pollTier = 1) {
     // ── Cooldown check ──
-    const { data: recentPolls } = await supabase
-        .from('campaign_actions')
-        .select('id')
-        .eq('party_id', factionId)
-        .eq('action_type', 'poll_now')
-        .gte('tick_performed', currentTick - POLL_CONFIG.COOLDOWN_WINDOW);
-    if (recentPolls && recentPolls.length > 0) {
-        return { success: false, message: `Poll cooldown: wait ${POLL_CONFIG.COOLDOWN_WINDOW} ticks between polls` };
+    // Cooldown check (skip if cooldown is 0)
+    if (POLL_CONFIG.COOLDOWN_WINDOW > 0) {
+        const { data: recentPolls } = await supabase
+            .from('campaign_actions')
+            .select('id')
+            .eq('party_id', factionId)
+            .eq('action_type', 'poll_now')
+            .gte('tick_performed', currentTick - POLL_CONFIG.COOLDOWN_WINDOW);
+        if (recentPolls && recentPolls.length > 0) {
+            return { success: false, message: `Poll cooldown: wait ${POLL_CONFIG.COOLDOWN_WINDOW} ticks between polls` };
+        }
     }
 
     // ── Deduct AP (tiered: 1 AP = ±5%, 3 AP = ±3%) ──

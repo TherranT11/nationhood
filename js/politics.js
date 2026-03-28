@@ -3478,7 +3478,7 @@ function renderPollNowConfig() {
             </button>
         </div>
     </div>
-    <div class="ca-info-box" style="margin-top:8px;color:var(--dtext-3);font-size:0.8em">Cooldown: ${POLL_CONFIG.COOLDOWN_WINDOW} ticks between polls.</div>`;
+    ${POLL_CONFIG.COOLDOWN_WINDOW > 0 ? `<div class="ca-info-box" style="margin-top:8px;color:var(--dtext-3);font-size:0.8em">Cooldown: ${POLL_CONFIG.COOLDOWN_WINDOW} ticks between polls.</div>` : ''}`;
 }
 
 // ── THINK TANK CONFIG ──
