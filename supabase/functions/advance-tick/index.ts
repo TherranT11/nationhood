@@ -8572,10 +8572,7 @@ async function enactBill(supabase, bill, currentTick) {
     console.log('[enactBill] stage=update_bill_status result=success', logContext);
 
     // Legislative activity: boost gov_approval_events — scales with article count
-    // +1 per 3 articles, capped at +5
-    const _articleCount = (bill.bill_articles || []).filter(a => a.status !== 'struck').length;
-    const _govBonus = Math.min(5, Math.max(1, 1 + Math.floor(_articleCount / 3)));
-    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, _govBonus, 'bill_passage');
+    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, billGovApprovalBonus(bill), 'bill_passage');
 
     console.log('[enactBill] stage=terminal_result result=success', logContext);
     return { success: true };
@@ -9243,7 +9240,7 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             fired_at_tick: currentTick
         });
 
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, Math.min(5, Math.max(1, 1 + Math.floor(((bill.bill_articles || []).filter(a => a.status !== 'struck').length) / 3))), 'bill_passage');
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, billGovApprovalBonus(bill), 'bill_passage');
         console.log(`[enactFoundationalBill] Abolish Term Limits enacted for nation ${bill.nation_id}`);
         return true;
     }
@@ -9271,7 +9268,7 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             fired_at_tick: currentTick
         });
 
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, Math.min(5, Math.max(1, 1 + Math.floor(((bill.bill_articles || []).filter(a => a.status !== 'struck').length) / 3))), 'bill_passage');
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, billGovApprovalBonus(bill), 'bill_passage');
         console.log(`[enactFoundationalBill] State Media Control Act enacted for nation ${bill.nation_id}`);
         return true;
     }
@@ -9298,7 +9295,7 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             fired_at_tick: currentTick
         });
 
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, Math.min(5, Math.max(1, 1 + Math.floor(((bill.bill_articles || []).filter(a => a.status !== 'struck').length) / 3))), 'bill_passage');
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, billGovApprovalBonus(bill), 'bill_passage');
         console.log(`[enactFoundationalBill] Emergency Powers Act enacted for nation ${bill.nation_id}`);
         return true;
     }
@@ -9436,11 +9433,15 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
     initGameConfigForNation({ total_seats: newTotalSeats });
 
     // Legislative activity: boost gov_approval_events — scales with article count
-    const _fArticles = (bill.bill_articles || []).filter(a => a.status !== 'struck').length;
-    const _fGovBonus = Math.min(5, Math.max(1, 1 + Math.floor(_fArticles / 3)));
-    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, _fGovBonus, 'bill_passage');
+    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, billGovApprovalBonus(bill), 'bill_passage');
 
     return true;
+}
+
+/** Compute gov approval bonus/penalty from article count. Pass: +1 per 3, cap +5. */
+function billGovApprovalBonus(bill) {
+    const count = (bill.bill_articles || []).filter(a => a.status !== 'struck').length;
+    return Math.min(5, Math.max(1, 1 + Math.floor(count / 3)));
 }
 
 async function failBill(supabase, bill) {
