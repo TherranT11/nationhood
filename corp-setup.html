@@ -501,11 +501,88 @@ function renderStep1() {
 }
 
 function selectSector(el) {
+    const prev = state.sector;
     // Deselect all
     document.querySelectorAll('#step-1 .option-card').forEach(c => c.classList.remove('selected'));
     // Select this one
     el.classList.add('selected');
     state.sector = el.dataset.name;
+
+    // If sector changed, reset subsector
+    if (prev !== state.sector) {
+        state.subsector = null;
+    }
+
+    updateSelectionBar();
+    updateButtons();
+}
+
+// ── Subsector data (per sector) ──
+const SUBSECTORS = {
+    construction: [
+        {
+            key: 'light_infra',
+            name: 'Light Infrastructure',
+            desc: 'Small-to-medium projects: schools, municipal buildings, residential developments, road resurfacing. Fast turnaround (6-14 ticks), low capital requirements, moderate margins. The starting specialization for most new corporations.',
+        },
+        {
+            key: 'heavy_infra',
+            name: 'Heavy Infrastructure',
+            desc: 'Large-scale projects: highways, bridges, hospitals, rail extensions, stadiums. Longer timelines (14-24 ticks), significant capital requirements, higher margins but higher risk. Failed delivery is painful.',
+        },
+        {
+            key: 'megaprojects',
+            name: 'Megaprojects',
+            desc: 'Nation-defining projects: international airports, hydroelectric dams, national rail networks. Very long timelines (20-40+ ticks), enormous capital requirements, massive payoff on success and devastating loss on failure.',
+        },
+    ],
+};
+
+function renderStep2() {
+    const sectorKey = SECTORS.find(s => s.name === state.sector)?.key;
+    const subs = SUBSECTORS[sectorKey] || [];
+
+    const container = document.getElementById('step-2');
+    container.innerHTML = `
+        <div class="section-block">
+            <div class="section-header">
+                <div class="section-dot" style="background:var(--teal)"></div>
+                <span class="section-label">Select a Subsector</span>
+            </div>
+            <div class="section-body">
+                ${subs.map(s => `
+                    <div class="option-card${state.subsector === s.name ? ' selected' : ''}"
+                         data-subsector="${s.key}" data-name="${s.name}"
+                         onclick="selectSubsector(this)">
+                        <div class="option-card__name">${s.name}</div>
+                        <div class="option-card__desc">${s.desc}</div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function selectSubsector(el) {
+    const cards = document.querySelectorAll('#step-2 .option-card');
+    const name = el.dataset.name;
+
+    // Toggle: clicking the already-selected card deselects it
+    if (el.classList.contains('selected')) {
+        el.classList.remove('selected');
+        state.subsector = null;
+        cards.forEach(c => c.classList.remove('disabled'));
+    } else {
+        // Select this one, grey out the others
+        cards.forEach(c => {
+            c.classList.remove('selected', 'disabled');
+        });
+        el.classList.add('selected');
+        state.subsector = name;
+        cards.forEach(c => {
+            if (c !== el) c.classList.add('disabled');
+        });
+    }
 
     updateSelectionBar();
     updateButtons();
@@ -555,6 +632,7 @@ function renderStep(step) {
 
     // Render step content
     if (step === 1) renderStep1();
+    else if (step === 2) renderStep2();
 
     // Update selection bar
     updateSelectionBar();
@@ -618,6 +696,7 @@ function goBack() {
 window.goNext = goNext;
 window.goBack = goBack;
 window.selectSector = selectSector;
+window.selectSubsector = selectSubsector;
 window.corpState = state;
 window.updateButtons = updateButtons;
 window.updateSelectionBar = updateSelectionBar;
