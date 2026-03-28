@@ -211,7 +211,10 @@ body {
 }
 .top-bar-right { display: flex; align-items: center; gap: 10px; }
 
-/* Party badge */
+/* Faction switcher */
+.faction-switcher {
+    position: relative;
+}
 .party-badge {
     font-family: var(--font-mono);
     font-size: 12px; font-weight: 700;
@@ -221,6 +224,58 @@ body {
     border: 1px solid var(--amber-border);
     border-left: 3px solid var(--accent);
     padding: 3px 9px;
+    user-select: none;
+}
+.faction-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    min-width: 260px;
+    background: var(--bg-panel, #1a1a17);
+    border: 1px solid var(--border-main, rgba(255,255,255,0.08));
+    z-index: 1000;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.faction-dropdown.open { display: block; }
+.faction-dropdown__item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-light, rgba(255,255,255,0.04));
+    transition: background 0.1s;
+}
+.faction-dropdown__item:last-child { border-bottom: none; }
+.faction-dropdown__item:hover { background: var(--bg-hover, #282822); }
+.faction-dropdown__item.active {
+    background: var(--amber-faint);
+    border-left: 3px solid var(--accent);
+}
+.faction-dropdown__item--create {
+    border-top: 1px solid var(--border-main, rgba(255,255,255,0.08));
+    opacity: 0.7;
+}
+.faction-dropdown__item--create:hover { opacity: 1; }
+.faction-dropdown__type {
+    font-family: var(--font-mono);
+    font-size: 8px; font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    min-width: 36px;
+}
+.faction-dropdown__name {
+    font-family: var(--font-ui);
+    font-size: 12px; font-weight: 600;
+    color: var(--text-bright, #f0efe6);
+}
+.faction-dropdown__abbr {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim, #4a4940);
+    margin-left: auto;
 }
 
 /* AP display */

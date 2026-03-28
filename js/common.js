@@ -108,6 +108,15 @@ const STATE_TTL = 5 * 60 * 1000; // 5 minutes
 // The _admin_verified flag is set ONLY after verify_admin_access() RPC succeeds.
 let _admin_verified = false;
 
+// Multi-faction support: all factions owned by the current user
+let _userFactions = [];
+export function getUserFactions() { return _userFactions; }
+export function switchFaction(factionId) {
+    sessionStorage.setItem('active_faction_id', factionId);
+    sessionStorage.removeItem(STATE_KEY); // Clear cached state to force reload
+    window.location.reload();
+}
+
 export async function verifyAdminOverrides() {
     if (_admin_verified) return true;
     try {
@@ -237,21 +246,28 @@ export async function loadGameState(requireFaction = true) {
             faction = factionData;
         }
     } else {
-        const { data: userFaction, error: factionError } = await _supabase
-            .from('factions').select('*').eq('id', user.id).single();
-        if (factionError || !userFaction) {
+        // Load ALL factions owned by this user (primary + linked)
+        const { data: allFactions } = await _supabase
+            .from('factions').select('*')
+            .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
+
+        const ownedFactions = (allFactions || []).filter(f => f.nation_id);
+        // Store all factions for the dropdown switcher
+        _userFactions = ownedFactions;
+
+        if (ownedFactions.length === 0) {
             if (requireFaction) {
                 sessionStorage.removeItem(STATE_KEY);
                 window.location.href = 'select-nation.html';
                 return null;
             }
-        } else if (!userFaction.nation_id && requireFaction) {
-            // Faction exists but has no nation (e.g. disbanded) — send to nation select
-            sessionStorage.removeItem(STATE_KEY);
-            window.location.href = 'select-nation.html';
-            return null;
+        } else {
+            // Pick the active faction from sessionStorage, or default to primary
+            const activeFactionId = sessionStorage.getItem('active_faction_id');
+            faction = ownedFactions.find(f => f.id === activeFactionId)
+                || ownedFactions.find(f => f.id === user.id)
+                || ownedFactions[0];
         }
-        faction = userFaction;
     }
 
     // === ADMIN NATION OVERRIDE ===
@@ -345,7 +361,10 @@ export function renderTopBar(activeTab) {
             <div class="top-bar-right">
                 <button class="guide-btn" id="guide-btn" title="Page Guide" style="display:none;"></button>
                 ${activeTab === 'home' ? '<button class="guide-btn" id="welcome-guide-btn" onclick="toggleWelcomeGuide()" title="Welcome Guide">? Guide</button>' : ''}
-                <span class="party-badge" id="party-badge">--</span>
+                <div class="faction-switcher" id="faction-switcher">
+                    <span class="party-badge" id="party-badge" onclick="toggleFactionDropdown()" style="cursor:pointer;">--</span>
+                    <div class="faction-dropdown" id="faction-dropdown"></div>
+                </div>
                 <span class="topbar-ap" id="topbar-ap"></span>
                 <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle" title="Toggle light/dark mode">Light</button>
                 <button class="logout-btn" onclick="handleLogout()">Logout</button>
@@ -751,10 +770,43 @@ export function updateTopBarInfo(faction, shard, nation) {
     const badge = document.getElementById('party-badge');
     if (badge) {
         if (faction && faction.nation_id) {
-            badge.textContent = faction.faction_name + ' [' + (faction.abbreviation || '—') + ']';
+            badge.textContent = faction.faction_name + ' [' + (faction.abbreviation || '—') + '] ▾';
         } else {
-            badge.textContent = '[No Party]';
+            badge.textContent = '[No Faction] ▾';
         }
+    }
+
+    // Populate faction switcher dropdown
+    const dropdown = document.getElementById('faction-dropdown');
+    if (dropdown && _userFactions.length > 0) {
+        let html = '';
+        for (const f of _userFactions) {
+            const isActive = faction && f.id === faction.id;
+            const typeLabel = f.faction_type === 'corporation' ? 'CORP' : 'PARTY';
+            const typeColor = f.faction_type === 'corporation' ? 'var(--teal)' : 'var(--amber)';
+            html += `<div class="faction-dropdown__item${isActive ? ' active' : ''}" onclick="handleFactionSwitch('${f.id}', '${f.faction_type}')">
+                <span class="faction-dropdown__type" style="color:${typeColor}">${typeLabel}</span>
+                <span class="faction-dropdown__name">${f.faction_name || 'Unnamed'}</span>
+                <span class="faction-dropdown__abbr">[${f.abbreviation || '—'}]</span>
+            </div>`;
+        }
+        // "Found a Corporation" option if no corp exists
+        const hasCorp = _userFactions.some(f => f.faction_type === 'corporation');
+        if (!hasCorp) {
+            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="window.location.href='corp-setup.html'">
+                <span class="faction-dropdown__type" style="color:var(--teal)">+</span>
+                <span class="faction-dropdown__name">Found a Corporation</span>
+            </div>`;
+        }
+        // "Found a Party" option if no party exists
+        const hasParty = _userFactions.some(f => f.faction_type === 'party');
+        if (!hasParty) {
+            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="window.location.href='select-nation.html'">
+                <span class="faction-dropdown__type" style="color:var(--amber)">+</span>
+                <span class="faction-dropdown__name">Found a Political Party</span>
+            </div>`;
+        }
+        dropdown.innerHTML = html;
     }
 
     const apEl = document.getElementById('topbar-ap');
@@ -1107,9 +1159,35 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     }
 }
 
+// Faction switcher dropdown toggle
+function toggleFactionDropdown() {
+    const dd = document.getElementById('faction-dropdown');
+    if (dd) dd.classList.toggle('open');
+}
+function handleFactionSwitch(factionId, factionType) {
+    const dd = document.getElementById('faction-dropdown');
+    if (dd) dd.classList.remove('open');
+    sessionStorage.setItem('active_faction_id', factionId);
+    sessionStorage.removeItem(STATE_KEY);
+    // Route to the right dashboard
+    if (factionType === 'corporation') {
+        window.location.href = 'corp-dashboard.html';
+    } else {
+        window.location.href = 'dashboard.html';
+    }
+}
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+    const switcher = document.getElementById('faction-switcher');
+    const dd = document.getElementById('faction-dropdown');
+    if (dd && switcher && !switcher.contains(e.target)) dd.classList.remove('open');
+});
+
 // Expose onclick handlers used by renderTopBar() HTML templates
 window.handleLogout = handleLogout;
 window.toggleTheme = toggleTheme;
+window.toggleFactionDropdown = toggleFactionDropdown;
+window.handleFactionSwitch = handleFactionSwitch;
 window.toggleWelcomeGuide = function() {
     const overlay = document.getElementById('welcome-guide-overlay');
     if (overlay) overlay.classList.toggle('active');

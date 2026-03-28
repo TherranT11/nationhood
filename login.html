@@ -95,20 +95,27 @@ import { _supabase } from './js/supabase-client.js';
 
     async function routeUser(user) {
         try {
-            const { data: faction } = await _supabase
+            // Load all factions owned by this user (primary + linked)
+            const { data: allFactions } = await _supabase
                 .from('factions')
-                .select('*')
-                .eq('id', user.id)
-                .single();
+                .select('id, faction_type, nation_id')
+                .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
 
-            if (faction && faction.nation_id) {
-                if (faction.faction_type === 'corporation') {
-                    window.location.href = 'corp-dashboard.html';
-                } else {
-                    window.location.href = 'dashboard.html';
-                }
-            } else {
+            const ownedFactions = (allFactions || []).filter(f => f.nation_id);
+
+            if (ownedFactions.length === 0) {
                 window.location.href = 'select-nation.html';
+                return;
+            }
+
+            // Route to last active faction, or default to first owned
+            const activeFactionId = sessionStorage.getItem('active_faction_id');
+            const activeFaction = ownedFactions.find(f => f.id === activeFactionId) || ownedFactions[0];
+
+            if (activeFaction.faction_type === 'corporation') {
+                window.location.href = 'corp-dashboard.html';
+            } else {
+                window.location.href = 'dashboard.html';
             }
         } catch (error) {
             console.error('Faction check error:', error);

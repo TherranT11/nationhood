@@ -150,6 +150,28 @@ body {
 .logout-btn:hover {
   background: rgba(217,83,79,0.08);
 }
+/* Faction switcher dropdown */
+.corp-faction-dropdown {
+  display: none; position: absolute; top: 100%; right: 0; margin-top: 4px;
+  min-width: 260px; background: var(--bg-2); border: 1px solid var(--border-0);
+  z-index: 1000; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.corp-faction-dropdown.open { display: block; }
+.corp-dd-item {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer;
+  border-bottom: 1px solid var(--border-hair); transition: background 0.1s;
+}
+.corp-dd-item:last-child { border-bottom: none; }
+.corp-dd-item:hover { background: var(--bg-hover); }
+.corp-dd-item.active { background: var(--teal-faint); border-left: 3px solid var(--teal); }
+.corp-dd-item--create { opacity: 0.7; }
+.corp-dd-item--create:hover { opacity: 1; }
+.corp-dd-type {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; min-width: 36px;
+}
+.corp-dd-name { font-family: var(--font-ui); font-size: 12px; font-weight: 600; color: var(--text-bright); }
+.corp-dd-abbr { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); margin-left: auto; }
 
 /* ── Content ── */
 .content {
@@ -511,7 +533,10 @@ body {
       </div>
     </div>
     <div class="top-bar-right">
-      <span class="corp-name-badge" id="corp-name-badge">--</span>
+      <div class="faction-switcher" id="faction-switcher" style="position:relative;">
+        <span class="corp-name-badge" id="corp-name-badge" onclick="toggleCorpDropdown()" style="cursor:pointer;">--</span>
+        <div class="corp-faction-dropdown" id="corp-faction-dropdown"></div>
+      </div>
       <span class="topbar-ap" id="topbar-ap"></span>
       <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle">Light</button>
       <button class="logout-btn" onclick="doLogout()">Logout</button>
@@ -598,25 +623,34 @@ body {
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 
+let allUserFactions = [];
+
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
 
-    // Load corporation faction
-    const { data: faction, error } = await _supabase
+    // Load ALL factions owned by this user
+    const { data: allFactions } = await _supabase
         .from('factions')
         .select('*')
-        .eq('id', user.id)
-        .single();
+        .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
 
-    if (error || !faction) {
-        console.error('Corp dashboard: faction load failed', error);
+    allUserFactions = (allFactions || []).filter(f => f.nation_id);
+
+    // Pick active faction — prefer sessionStorage, then first corp, then first
+    const activeFactionId = sessionStorage.getItem('active_faction_id');
+    let faction = allUserFactions.find(f => f.id === activeFactionId)
+        || allUserFactions.find(f => f.faction_type === 'corporation')
+        || allUserFactions[0];
+
+    if (!faction) {
+        console.error('Corp dashboard: no factions found');
         await _supabase.auth.signOut();
         window.location.href = 'login.html';
         return;
     }
 
-    // If this isn't a corporation, redirect to the right dashboard
+    // If active faction isn't a corporation, redirect to party dashboard
     if (faction.faction_type !== 'corporation') {
         window.location.href = 'dashboard.html';
         return;
@@ -652,12 +686,43 @@ async function init() {
         }
     }
 
-    // Top bar — right side
+    // Top bar — right side (badge + dropdown)
     document.getElementById('corp-name-badge').textContent =
-        (faction.faction_name || 'Corp') + (ticker ? ' [' + ticker + ']' : '');
+        (faction.faction_name || 'Corp') + (ticker ? ' [' + ticker + ']' : '') + ' ▾';
     const ap = faction.action_points ?? 0;
     document.getElementById('topbar-ap').innerHTML =
         '<span class="topbar-ap__count">' + ap + ' AP</span>';
+
+    // Populate faction dropdown
+    const dd = document.getElementById('corp-faction-dropdown');
+    if (dd) {
+        let ddHtml = '';
+        for (const f of allUserFactions) {
+            const isActive = f.id === faction.id;
+            const typeLabel = f.faction_type === 'corporation' ? 'CORP' : 'PARTY';
+            const typeColor = f.faction_type === 'corporation' ? 'var(--teal)' : 'var(--amber)';
+            ddHtml += `<div class="corp-dd-item${isActive ? ' active' : ''}" onclick="switchToFaction('${f.id}', '${f.faction_type}')">
+                <span class="corp-dd-type" style="color:${typeColor}">${typeLabel}</span>
+                <span class="corp-dd-name">${escapeHtml(f.faction_name || 'Unnamed')}</span>
+                <span class="corp-dd-abbr">[${escapeHtml(f.abbreviation || '—')}]</span>
+            </div>`;
+        }
+        const hasCorp = allUserFactions.some(f => f.faction_type === 'corporation');
+        if (!hasCorp) {
+            ddHtml += `<div class="corp-dd-item corp-dd-item--create" onclick="window.location.href='corp-setup.html'">
+                <span class="corp-dd-type" style="color:var(--teal)">+</span>
+                <span class="corp-dd-name">Found a Corporation</span>
+            </div>`;
+        }
+        const hasParty = allUserFactions.some(f => f.faction_type === 'party');
+        if (!hasParty) {
+            ddHtml += `<div class="corp-dd-item corp-dd-item--create" onclick="window.location.href='select-nation.html'">
+                <span class="corp-dd-type" style="color:var(--amber)">+</span>
+                <span class="corp-dd-name">Found a Political Party</span>
+            </div>`;
+        }
+        dd.innerHTML = ddHtml;
+    }
 
     // ── Populate identity card ──
     document.getElementById('id-type-badge').textContent = faction.corp_company_type || '—';
@@ -1109,9 +1174,31 @@ async function doLogout() {
     window.location.href = 'login.html';
 }
 
+function toggleCorpDropdown() {
+    const dd = document.getElementById('corp-faction-dropdown');
+    if (dd) dd.classList.toggle('open');
+}
+function switchToFaction(factionId, factionType) {
+    const dd = document.getElementById('corp-faction-dropdown');
+    if (dd) dd.classList.remove('open');
+    sessionStorage.setItem('active_faction_id', factionId);
+    if (factionType === 'corporation') {
+        window.location.href = 'corp-dashboard.html';
+    } else {
+        window.location.href = 'dashboard.html';
+    }
+}
+document.addEventListener('click', (e) => {
+    const sw = document.getElementById('faction-switcher');
+    const dd = document.getElementById('corp-faction-dropdown');
+    if (dd && sw && !sw.contains(e.target)) dd.classList.remove('open');
+});
+
 window.doLogout = doLogout;
 window.toggleTheme = toggleTheme;
 window.saveSlogan = saveSlogan;
+window.toggleCorpDropdown = toggleCorpDropdown;
+window.switchToFaction = switchToFaction;
 
 init();
 </script>
