@@ -86,8 +86,8 @@ BEGIN
           AND f.faction_type = 'party'
           AND f.abandoned_at IS NULL
           AND (
-              f.last_seen_tick IS NULL
-              OR v_current_tick - f.last_seen_tick < 12
+              (f.last_seen_tick IS NOT NULL AND v_current_tick - f.last_seen_tick < 12)
+              OR (f.last_seen_tick IS NULL AND v_current_tick - COALESCE(f.founded_tick, 0) < 12)
           )
     LOOP
         -- Track faction vote totals and candidate counts for splitting

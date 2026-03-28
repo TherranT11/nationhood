@@ -1054,16 +1054,18 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     // parties with real vote share to get 0 seats in elections.
     const { data: allFactions } = await supabase
         .from('factions')
-        .select('id, seats, last_seen_tick, faction_type, abandoned_at')
+        .select('id, seats, last_seen_tick, founded_tick, faction_type, abandoned_at')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party')
         .is('abandoned_at', null);
     if (!allFactions || allFactions.length === 0) return;
 
     const factions = allFactions; // alias used throughout function
-    const inactiveFactions = allFactions.filter(f =>
-        f.last_seen_tick != null && (currentTick - f.last_seen_tick) >= CFG.INACTIVITY_EXCLUSION_TICKS
-    );
+    const inactiveFactions = allFactions.filter(f => {
+        if (f.last_seen_tick != null) return (currentTick - f.last_seen_tick) >= CFG.INACTIVITY_EXCLUSION_TICKS;
+        // Never logged in — use founded_tick as reference
+        return (currentTick - (f.founded_tick || 0)) >= CFG.INACTIVITY_EXCLUSION_TICKS;
+    });
     const factionIds = factions.map(f => f.id);
 
     // ── 1b. Reset campaign action counter for diminishing returns ──

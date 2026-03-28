@@ -1364,7 +1364,17 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     function filterPlayers(filter) { renderPlayers(filter); }
     function getInactivityBadge(player) {
         if (!player.nation_id) return '';
-        if (player.last_seen_tick == null) return '<span style="background:#1a1a2a; color:#64b5f6; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NEW</span>';
+        // If never seen, use founded_tick as reference — only truly "new" if founded recently (< 3 ticks)
+        if (player.last_seen_tick == null) {
+            const ticksSinceFounded = shardCurrentTick - (player.founded_tick || 0);
+            if (ticksSinceFounded < 3) return '<span style="background:#1a1a2a; color:#64b5f6; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NEW</span>';
+            // Never logged in but founded long ago — treat as inactive using founded_tick
+            const inactive = ticksSinceFounded;
+            if (inactive >= 12) return `<span style="background:#2a1a1a; color:#d9534f; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NO SEATS (${inactive} ticks)</span>`;
+            if (inactive >= 6) return `<span style="background:#2a1a0a; color:#ff8800; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">DRAINING (${inactive} ticks)</span>`;
+            if (inactive >= 3) return `<span style="background:#2a2a0a; color:#ffcc00; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">IDLE (${inactive} ticks)</span>`;
+            return '<span style="background:#1a2a1a; color:#5cb85c; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">ACTIVE</span>';
+        }
         const inactive = shardCurrentTick - player.last_seen_tick;
         if (inactive >= 12) return `<span style="background:#2a1a1a; color:#d9534f; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NO SEATS (${inactive} ticks)</span>`;
         if (inactive >= 6) return `<span style="background:#2a1a0a; color:#ff8800; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">DRAINING (${inactive} ticks)</span>`;

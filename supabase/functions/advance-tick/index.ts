@@ -14300,16 +14300,18 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     // parties with real vote share to get 0 seats in elections.
     const { data: allFactions } = await supabase
         .from('factions')
-        .select('id, seats, last_seen_tick, faction_type, abandoned_at')
+        .select('id, seats, last_seen_tick, founded_tick, faction_type, abandoned_at')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party')
         .is('abandoned_at', null);
     if (!allFactions || allFactions.length === 0) return;
 
     const factions = allFactions; // alias used throughout function
-    const inactiveFactions = allFactions.filter(f =>
-        f.last_seen_tick != null && (currentTick - f.last_seen_tick) >= CFG.INACTIVITY_EXCLUSION_TICKS
-    );
+    const inactiveFactions = allFactions.filter(f => {
+        if (f.last_seen_tick != null) return (currentTick - f.last_seen_tick) >= CFG.INACTIVITY_EXCLUSION_TICKS;
+        // Never logged in — use founded_tick as reference
+        return (currentTick - (f.founded_tick || 0)) >= CFG.INACTIVITY_EXCLUSION_TICKS;
+    });
     const factionIds = factions.map(f => f.id);
 
     // ── 1b. Reset campaign action counter for diminishing returns ──
@@ -27680,13 +27682,15 @@ async function runElectionPreview(supabase, nationId) {
     const currentTick = shard?.current_tick || 0;
     const { data: allFactions } = await supabase
         .from('factions')
-        .select('id, faction_name, seats, electability, last_seen_tick, abandoned_at')
+        .select('id, faction_name, seats, electability, last_seen_tick, founded_tick, abandoned_at')
         .eq('nation_id', nationId)
         .eq('faction_type', 'party')
         .is('abandoned_at', null);
-    const factions = (allFactions || []).filter(f =>
-        f.last_seen_tick == null || (currentTick - f.last_seen_tick) < 12
-    );
+    const factions = (allFactions || []).filter(f => {
+        if (f.last_seen_tick != null) return (currentTick - f.last_seen_tick) < 12;
+        // Never logged in — use founded_tick; exclude if founded 12+ ticks ago
+        return (currentTick - (f.founded_tick || 0)) < 12;
+    });
     if (!factions || factions.length === 0) throw new Error('No eligible parties found for this nation');
 
     // 3. Load electoral standings from Three Pillars electorate engine
@@ -27844,11 +27848,14 @@ async function runPresidentialElectionPreview(supabase, nationId) {
     const allFactionIds = [...new Set(candidates.map(c => c.faction_id))];
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, faction_name, last_seen_tick, abandoned_at')
+        .select('id, faction_name, last_seen_tick, founded_tick, abandoned_at')
         .in('id', allFactionIds)
         .is('abandoned_at', null);
     const activeFactionIds = new Set((factions || [])
-        .filter(f => f.last_seen_tick == null || (presTick - f.last_seen_tick) < 12)
+        .filter(f => {
+            if (f.last_seen_tick != null) return (presTick - f.last_seen_tick) < 12;
+            return (presTick - (f.founded_tick || 0)) < 12;
+        })
         .map(f => f.id));
     const eligibleCandidates = candidates.filter(c => activeFactionIds.has(c.faction_id));
     if (eligibleCandidates.length === 0) throw new Error('No eligible presidential candidates (all factions inactive)');
