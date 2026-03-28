@@ -104,7 +104,21 @@ const STATE_TTL = 5 * 60 * 1000; // 5 minutes
 // Admin inspector overrides: ?nation_id= and ?faction_id= in URL
 // Falls back to sessionStorage so overrides survive in-page navigations
 // (e.g. Appoint Ambassador link) that may lose URL params.
+// Admin overrides are gated behind server-side admin role verification.
+// The _admin_verified flag is set ONLY after verify_admin_access() RPC succeeds.
+let _admin_verified = false;
+
+export async function verifyAdminOverrides() {
+    if (_admin_verified) return true;
+    try {
+        const { data } = await _supabase.rpc('verify_admin_access');
+        _admin_verified = !!(data?.authorized);
+    } catch (e) { _admin_verified = false; }
+    return _admin_verified;
+}
+
 export function getAdminNationOverride() {
+    if (!_admin_verified) return null; // Block unless server-verified admin
     try {
         const params = new URLSearchParams(window.location.search);
         const fromUrl = params.get('nation_id') || null;
@@ -114,6 +128,7 @@ export function getAdminNationOverride() {
 }
 
 export function getAdminFactionOverride() {
+    if (!_admin_verified) return null; // Block unless server-verified admin
     try {
         const params = new URLSearchParams(window.location.search);
         const fromUrl = params.get('faction_id') || null;
@@ -198,8 +213,14 @@ export async function loadGameState(requireFaction = true) {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return null; }
 
+    // Verify admin overrides server-side before allowing inspection
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('faction_id') || urlParams.has('nation_id')) {
+        await verifyAdminOverrides();
+    }
+
     // === ADMIN FACTION OVERRIDE ===
-    // If ?faction_id= is in the URL, load that faction instead of the user's own.
+    // If ?faction_id= is in the URL and user is a server-verified admin, load that faction.
     const overrideFactionId = getAdminFactionOverride();
     let faction = null;
 

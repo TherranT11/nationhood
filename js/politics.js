@@ -2722,7 +2722,7 @@ const CA_ACTIONS = [
       desc: 'Rally your supporters in a public show of strength. Outcomes range from rousing success to embarrassing gaffe — results are random and generate headlines.' },
     { id: 'press_conference', name: 'Press Conference', ap: 2, color: '#fbbf24', icon: '🎤',
       category: 'visibility', affects: 'Visibility',
-      desc: 'Hold a press conference to make a public statement. Guaranteed small visibility boost (1d3 + 1). Safe and reliable compared to the high-variance rally.' },
+      desc: 'Hold a press conference to make a public statement. Base roll: -2 to +2 Visibility. Opposition parties get +1 bonus. Parties with approval above 40 get +1 bonus.' },
     // TOOLS
     { id: 'poll_now', name: 'Poll Now', ap: 1, color: '#22d3ee', icon: '📊',
       category: 'tools', affects: 'Informational',

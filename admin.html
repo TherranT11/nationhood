@@ -15,14 +15,20 @@
         <h1>⚠️ Admin Panel ⚠️</h1>
         <div class="warning">
             <strong>⚠️ RESTRICTED ACCESS</strong><br>
-            This panel contains dangerous operations. Unauthorized access is prohibited.
+            This panel contains dangerous operations. Unauthorized access is prohibited.<br>
+            You must be logged in with an admin-role account.
         </div>
         <div class="input-group">
-            <label>Admin Password</label>
-            <input type="password" id="admin-password" placeholder="Enter admin password">
+            <label>Email Address</label>
+            <input type="email" id="admin-email" placeholder="Admin email">
+        </div>
+        <div class="input-group">
+            <label>Password</label>
+            <input type="password" id="admin-password" placeholder="Enter password">
         </div>
         <button class="btn btn-danger btn-full" id="admin-auth-btn">AUTHENTICATE</button>
         <div id="auth-error" class="status error hidden"></div>
+        <div id="auth-checking" class="status" style="display:none;color:#c8a64e;text-align:center;margin-top:10px;">Verifying admin access...</div>
         <div class="back-link"><a href="dashboard.html">← Back to Game</a></div>
     </div>
 </div>
@@ -517,18 +523,12 @@ import { _supabase } from './js/supabase-client.js';
 import { fmtBudgetCurrency } from './js/utils.js';
 import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName, STAT_DECAY_CONFIG, normalizeNationStatKey, SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES, BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, OPINION_TRIGGERS, REPORTERS, generateArticle, generateTickArticles, buildFundingPctMap, getInstFundingPct } from './js/game-common.js';
 
-    const ADMIN_PW_HASH = 'dd5e5d55d1f108d2d4706f35672acf7eef98156c70101dd07279c1aa436de3b4';
-    async function hashPassword(pw) {
-        const encoded = new TextEncoder().encode(pw);
-        const buf = await crypto.subtle.digest('SHA-256', encoded);
-        return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-    }
     let isAuthenticated = false;
     let nations = [];
     let selectedElectionNation = null;
     let currentTickInterval = 1;
 
-    // ==================== AUTH & TABS ====================
+    // ==================== SERVER-SIDE AUTH ====================
     function showTab(tabName) {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
@@ -536,30 +536,75 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         document.getElementById(`tab-${tabName}`).classList.add('active');
         if (tabName === 'integrity') showIntegrityView('clusters');
     }
+
+    // Check if already logged in with admin role on page load
+    (async () => {
+        const { data: { user } } = await _supabase.auth.getUser();
+        if (user) {
+            await verifyAdminRole();
+        }
+    })();
+
     async function authenticate() {
+        const email = document.getElementById('admin-email').value.trim();
         const password = document.getElementById('admin-password').value;
         const errorDiv = document.getElementById('auth-error');
-        if (await hashPassword(password) === ADMIN_PW_HASH) {
-            isAuthenticated = true;
-            document.getElementById('login-section').classList.add('hidden');
-            // Clone admin template into the DOM — content only exists after auth
-            const template = document.getElementById('admin-template');
-            const container = document.getElementById('admin-section');
-            container.appendChild(template.content.cloneNode(true));
-            template.remove(); // Remove template so it can't be cloned again
-            loadAllData();
-            errorDiv.classList.add('hidden');
-        } else { errorDiv.textContent = 'Invalid password. Access denied.'; errorDiv.classList.remove('hidden'); }
+        const checkingDiv = document.getElementById('auth-checking');
+        errorDiv.classList.add('hidden');
+        checkingDiv.style.display = 'block';
+
+        try {
+            // Step 1: Sign in via Supabase Auth (server-side JWT validation)
+            const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
+            if (error) throw new Error(error.message);
+
+            // Step 2: Verify admin role server-side via RPC
+            await verifyAdminRole();
+        } catch (err) {
+            checkingDiv.style.display = 'none';
+            errorDiv.textContent = err.message || 'Authentication failed.';
+            errorDiv.classList.remove('hidden');
+        }
     }
-    function logout() {
+
+    async function verifyAdminRole() {
+        const errorDiv = document.getElementById('auth-error');
+        const checkingDiv = document.getElementById('auth-checking');
+
+        try {
+            const { data: result, error } = await _supabase.rpc('verify_admin_access');
+            if (error) throw new Error(error.message);
+
+            if (result?.authorized) {
+                isAuthenticated = true;
+                document.getElementById('login-section').classList.add('hidden');
+                // Clone admin template into the DOM — content only exists after server-side auth
+                const template = document.getElementById('admin-template');
+                if (template) {
+                    const container = document.getElementById('admin-section');
+                    container.appendChild(template.content.cloneNode(true));
+                    template.remove();
+                }
+                loadAllData();
+            } else {
+                throw new Error(result?.reason || 'Not authorized. Your account does not have admin privileges.');
+            }
+        } catch (err) {
+            if (checkingDiv) checkingDiv.style.display = 'none';
+            errorDiv.textContent = err.message || 'Admin verification failed.';
+            errorDiv.classList.remove('hidden');
+            // Sign out if they authenticated but aren't admin
+            await _supabase.auth.signOut();
+        }
+    }
+
+    async function logout() {
         isAuthenticated = false;
-        document.getElementById('login-section').classList.remove('hidden');
-        // Remove admin content from DOM entirely — forces re-auth
+        await _supabase.auth.signOut();
         document.getElementById('admin-section').innerHTML = '';
-        // Reload page to restore the template for re-authentication
         window.location.reload();
-        document.getElementById('admin-password').value = '';
     }
+
     document.getElementById('admin-auth-btn').addEventListener('click', authenticate);
     document.getElementById('admin-password').addEventListener('keypress', (e) => { if (e.key === 'Enter') authenticate(); });
 
