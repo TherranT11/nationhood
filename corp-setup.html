@@ -588,6 +588,101 @@ function selectSubsector(el) {
     updateButtons();
 }
 
+// ── Step 3: Company Details ──
+function renderStep3() {
+    const container = document.getElementById('step-3');
+    container.innerHTML = `
+        <div class="section-block">
+            <div class="section-header">
+                <div class="section-dot" style="background:var(--teal)"></div>
+                <span class="section-label">Company Type</span>
+            </div>
+            <div class="section-body" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                <div class="option-card${state.companyType === 'Public' ? ' selected' : ''}"
+                     data-type="Public" onclick="selectCompanyType(this)">
+                    <div class="option-card__name">Public</div>
+                    <div class="option-card__desc">Your stock is listed on the market. Shareholders influence decisions, but IPO capital fuels rapid growth. Transparent financials required.</div>
+                </div>
+                <div class="option-card${state.companyType === 'Private' ? ' selected' : ''}"
+                     data-type="Private" onclick="selectCompanyType(this)">
+                    <div class="option-card__name">Private</div>
+                    <div class="option-card__desc">Full control, no shareholders. Slower growth but total autonomy over strategy. Financials stay behind closed doors.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-block">
+            <div class="section-header">
+                <div class="section-dot" style="background:var(--amber)"></div>
+                <span class="section-label">Name Corporation</span>
+            </div>
+            <div class="section-body">
+                <div class="input-group" style="margin-bottom:0;">
+                    <input type="text" id="corp-name-input" placeholder="e.g. Meridian Construction Group"
+                           maxlength="40" value="${state.corpName}"
+                           oninput="onCorpNameInput(this.value)">
+                    <div class="input-hint" id="corp-name-hint">2-40 characters</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-block">
+            <div class="section-header">
+                <div class="section-dot" style="background:var(--amber)"></div>
+                <span class="section-label">Stock Ticker</span>
+            </div>
+            <div class="section-body">
+                <div class="input-group" style="margin-bottom:0;">
+                    <input type="text" id="ticker-input" placeholder="e.g. MCG"
+                           maxlength="4" value="${state.ticker}" style="text-transform:uppercase;letter-spacing:0.15em;font-weight:600;"
+                           oninput="onTickerInput(this.value)">
+                    <div class="input-hint" id="ticker-hint">2-4 uppercase letters</div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function selectCompanyType(el) {
+    document.querySelectorAll('#step-3 .section-body .option-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    state.companyType = el.dataset.type;
+    updateSelectionBar();
+    updateButtons();
+}
+
+function onCorpNameInput(val) {
+    state.corpName = val.trim();
+    const hint = document.getElementById('corp-name-hint');
+    if (state.corpName.length > 0 && state.corpName.length < 2) {
+        hint.textContent = 'Too short — minimum 2 characters';
+        hint.className = 'input-hint input-hint--error';
+    } else {
+        hint.textContent = '2-40 characters';
+        hint.className = 'input-hint';
+    }
+    updateButtons();
+}
+
+function onTickerInput(val) {
+    // Strip non-alpha characters and uppercase
+    const cleaned = val.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 4);
+    const input = document.getElementById('ticker-input');
+    if (input.value !== cleaned) input.value = cleaned;
+    state.ticker = cleaned;
+
+    const hint = document.getElementById('ticker-hint');
+    if (cleaned.length > 0 && cleaned.length < 2) {
+        hint.textContent = 'Too short — minimum 2 letters';
+        hint.className = 'input-hint input-hint--error';
+    } else {
+        hint.textContent = '2-4 uppercase letters';
+        hint.className = 'input-hint';
+    }
+    updateSelectionBar();
+    updateButtons();
+}
+
 // ── Init ──
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
@@ -633,6 +728,7 @@ function renderStep(step) {
     // Render step content
     if (step === 1) renderStep1();
     else if (step === 2) renderStep2();
+    else if (step === 3) renderStep3();
 
     // Update selection bar
     updateSelectionBar();
@@ -697,6 +793,9 @@ window.goNext = goNext;
 window.goBack = goBack;
 window.selectSector = selectSector;
 window.selectSubsector = selectSubsector;
+window.selectCompanyType = selectCompanyType;
+window.onCorpNameInput = onCorpNameInput;
+window.onTickerInput = onTickerInput;
 window.corpState = state;
 window.updateButtons = updateButtons;
 window.updateSelectionBar = updateSelectionBar;
