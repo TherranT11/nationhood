@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Corporation Setup | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0: #0e0e0c;
+  --bg-1: #1a1a1a;
+  --bg-2: #1a1a17;
+  --bg-3: #252525;
+  --bg-4: #24241f;
+  --bg-5: #2c2c26;
+  --bg-hover: #282822;
+  --text-bright: #f0efe6;
+  --text-primary: #c4c2b8;
+  --text-secondary: #888;
+  --text-muted: #666;
+  --text-dim: #4a4940;
+  --text-ghost: #333229;
+  --border-hair: rgba(255,255,255,0.04);
+  --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08);
+  --border-2: rgba(255,255,255,0.12);
+  --green: #5cb85c;
+  --green-faint: rgba(92,184,92,0.08);
+  --green-border: rgba(92,184,92,0.18);
+  --red: #d9534f;
+  --red-faint: rgba(217,83,79,0.08);
+  --red-border: rgba(217,83,79,0.18);
+  --amber: #c8a64e;
+  --amber-faint: rgba(200,166,78,0.08);
+  --amber-border: rgba(200,166,78,0.18);
+  --blue: #5b9bd5;
+  --blue-faint: rgba(91,155,213,0.08);
+  --blue-border: rgba(91,155,213,0.18);
+  --purple: #8b7ec8;
+  --purple-faint: rgba(139,126,200,0.08);
+  --purple-border: rgba(139,126,200,0.18);
+  --teal: #5aafa5;
+  --teal-faint: rgba(90,175,165,0.08);
+  --teal-border: rgba(90,175,165,0.18);
+  --orange: #d48a3c;
+  --orange-faint: rgba(212,138,60,0.08);
+  --orange-border: rgba(212,138,60,0.18);
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+  --font-serif: 'IBM Plex Serif', Georgia, serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ── Page header ── */
+.page-header {
+  text-align: center;
+  padding: 48px 20px 12px;
+  max-width: 640px;
+}
+.page-header h1 {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.page-header .title {
+  font-family: var(--font-ui);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: 6px;
+}
+.page-header .subtitle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* ── Step indicator ── */
+.step-indicator {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-bottom: 24px;
+  padding: 0 16px;
+}
+.step-pip {
+  width: 48px;
+  height: 3px;
+  background: var(--bg-4);
+  border-radius: 1px;
+  transition: background 0.3s;
+}
+.step-pip.active {
+  background: var(--teal);
+}
+.step-pip.done {
+  background: var(--green);
+}
+
+/* ── Step container ── */
+.step-container {
+  width: 100%;
+  max-width: 640px;
+  padding: 0 16px 24px;
+}
+
+.step-section {
+  display: none;
+}
+.step-section.active {
+  display: block;
+}
+
+/* ── Section block (reusable container) ── */
+.section-block {
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  margin-bottom: 12px;
+}
+.section-header {
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--border-hair);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.section-body {
+  padding: 10px;
+}
+
+/* ── Option cards (sector, subsector, company type) ── */
+.option-card {
+  background: var(--bg-3);
+  border: 1px solid var(--border-0);
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  margin-bottom: 6px;
+  position: relative;
+}
+.option-card:last-child { margin-bottom: 0; }
+.option-card:hover:not(.disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-1);
+}
+.option-card.selected {
+  background: var(--teal-faint);
+  border-color: var(--teal-border);
+}
+.option-card.disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.option-card__name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.option-card.selected .option-card__name {
+  color: var(--teal);
+}
+.option-card__desc {
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+.option-card__badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 2px;
+}
+.option-card__badge--soon {
+  background: var(--amber-faint);
+  border: 1px solid var(--amber-border);
+  color: var(--amber);
+}
+
+/* ── Text inputs ── */
+.input-group {
+  margin-bottom: 14px;
+}
+.input-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.input-group input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-4);
+  border: 1px solid var(--border-0);
+  border-radius: 3px;
+  color: var(--text-bright);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input-group input:focus {
+  border-color: var(--teal-border);
+}
+.input-group input::placeholder {
+  color: var(--text-ghost);
+}
+.input-hint {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  letter-spacing: 0.02em;
+}
+.input-hint--error {
+  color: var(--red);
+}
+
+/* ── Selection summary bar ── */
+.selection-bar {
+  width: 100%;
+  max-width: 640px;
+  padding: 0 16px;
+  margin-bottom: 16px;
+}
+.selection-inner {
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sel-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.sel-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.sel-tag {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--teal-faint);
+  color: var(--teal);
+  border: 1px solid var(--teal-border);
+}
+.sel-placeholder {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+/* ── Action bar ── */
+.action-bar {
+  width: 100%;
+  max-width: 640px;
+  padding: 0 16px 48px;
+  display: flex;
+  justify-content: space-between;
+}
+.btn-next {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 7px 14px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-0);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.btn-next:hover:not(:disabled) {
+  background: var(--bg-4);
+  color: var(--text-secondary);
+  border-color: var(--border-1);
+}
+.btn-next:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.btn-next.ready {
+  background: var(--green-faint);
+  color: var(--green);
+  border-color: var(--green-border);
+}
+.btn-next.ready:hover {
+  background: rgba(92,184,92,0.14);
+}
+
+/* ── Loading ── */
+.loading-msg {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 80px 20px;
+}
+
+/* ── Error ── */
+.error-msg {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--red);
+  text-align: center;
+  margin-top: 10px;
+}
+</style>
+</head>
+<body>
+
+<div id="loading" class="loading-msg">AUTHENTICATING...</div>
+
+<div id="page-content" style="display:none; width:100%; flex-direction:column; align-items:center;">
+  <div class="page-header">
+    <h1 id="step-label">Step 1 of 3</h1>
+    <div class="title" id="step-title">Select Your Sector</div>
+    <div class="subtitle" id="step-subtitle">Choose the industry your corporation will operate in. This determines your contracts, revenue, and growth path.</div>
+  </div>
+
+  <!-- Step progress pips -->
+  <div class="step-indicator" id="step-indicator">
+    <div class="step-pip active" data-step="1"></div>
+    <div class="step-pip" data-step="2"></div>
+    <div class="step-pip" data-step="3"></div>
+  </div>
+
+  <!-- Step container — each step rendered here -->
+  <div class="step-container" id="step-container">
+    <!-- Step 1: Select Sector (Phase 3 will populate) -->
+    <div class="step-section active" id="step-1"></div>
+
+    <!-- Step 2: Select Subsector (Phase 4 will populate) -->
+    <div class="step-section" id="step-2"></div>
+
+    <!-- Step 3: Company Type + Name + Ticker (Phase 5 will populate) -->
+    <div class="step-section" id="step-3"></div>
+  </div>
+
+  <!-- Selection summary -->
+  <div class="selection-bar">
+    <div class="selection-inner">
+      <span class="sel-label">Selected</span>
+      <div id="sel-tags" class="sel-tags">
+        <span class="sel-placeholder">Choose a sector to begin</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <div class="action-bar">
+    <button class="btn-next" id="btn-back" onclick="goBack()">&#x25C0; Back</button>
+    <button class="btn-next" id="btn-next" disabled onclick="goNext()">Next &#x25B6;</button>
+  </div>
+
+  <div class="error-msg" id="error-message"></div>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+
+// ── State ──
+let currentStep = 1;
+const TOTAL_STEPS = 3;
+const state = {
+    sector: null,
+    subsector: null,
+    companyType: null,
+    corpName: '',
+    ticker: '',
+};
+
+// ── Step definitions ──
+const STEP_META = {
+    1: {
+        label: 'Step 1 of 3',
+        title: 'Select Your Sector',
+        subtitle: 'Choose the industry your corporation will operate in. This determines your contracts, revenue, and growth path.',
+    },
+    2: {
+        label: 'Step 2 of 3',
+        title: 'Select Your Subsector',
+        subtitle: 'Pick a specialization within your sector. This sets your starting contracts and equipment.',
+    },
+    3: {
+        label: 'Step 3 of 3',
+        title: 'Company Details',
+        subtitle: 'Choose your company type, name your corporation, and pick a stock ticker.',
+    },
+};
+
+// ── Sector data ──
+const SECTORS = [
+    {
+        key: 'construction',
+        name: 'Construction',
+        desc: 'Build the infrastructure that powers nations. From roads and schools to megaprojects — construction corporations bid on government contracts and shape the physical landscape.',
+        available: true,
+    },
+    {
+        key: 'energy',
+        name: 'Energy',
+        desc: 'Power the nation through oil, gas, renewables, and nuclear. Control the energy grid and fuel economic growth.',
+        available: false,
+    },
+    {
+        key: 'finance',
+        name: 'Finance',
+        desc: 'Banks, investment firms, and insurance. Control the flow of capital and shape monetary policy.',
+        available: false,
+    },
+    {
+        key: 'defense',
+        name: 'Defense',
+        desc: 'Arms manufacturing, military technology, and security contracting. Profit from national defense.',
+        available: false,
+    },
+];
+
+function renderStep1() {
+    const container = document.getElementById('step-1');
+    container.innerHTML = `
+        <div class="section-block">
+            <div class="section-header">
+                <div class="section-dot" style="background:var(--teal)"></div>
+                <span class="section-label">Select a Sector</span>
+            </div>
+            <div class="section-body">
+                ${SECTORS.map(s => `
+                    <div class="option-card${s.available ? '' : ' disabled'}${state.sector === s.name ? ' selected' : ''}"
+                         data-sector="${s.key}" data-name="${s.name}"
+                         onclick="${s.available ? 'selectSector(this)' : ''}">
+                        ${!s.available ? '<span class="option-card__badge option-card__badge--soon">Coming Soon</span>' : ''}
+                        <div class="option-card__name">${s.name}</div>
+                        <div class="option-card__desc">${s.desc}</div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function selectSector(el) {
+    const prev = state.sector;
+    // Deselect all
+    document.querySelectorAll('#step-1 .option-card').forEach(c => c.classList.remove('selected'));
+    // Select this one
+    el.classList.add('selected');
+    state.sector = el.dataset.name;
+
+    // If sector changed, reset subsector
+    if (prev !== state.sector) {
+        state.subsector = null;
+    }
+
+    updateSelectionBar();
+    updateButtons();
+}
+
+// ── Subsector data (per sector) ──
+const SUBSECTORS = {
+    construction: [
+        {
+            key: 'light_infra',
+            name: 'Light Infrastructure',
+            desc: 'Small-to-medium projects: schools, municipal buildings, residential developments, road resurfacing. Fast turnaround (6-14 ticks), low capital requirements, moderate margins. The starting specialization for most new corporations.',
+        },
+        {
+            key: 'heavy_infra',
+            name: 'Heavy Infrastructure',
+            desc: 'Large-scale projects: highways, bridges, hospitals, rail extensions, stadiums. Longer timelines (14-24 ticks), significant capital requirements, higher margins but higher risk. Failed delivery is painful.',
+        },
+        {
+            key: 'megaprojects',
+            name: 'Megaprojects',
+            desc: 'Nation-defining projects: international airports, hydroelectric dams, national rail networks. Very long timelines (20-40+ ticks), enormous capital requirements, massive payoff on success and devastating loss on failure.',
+        },
+    ],
+};
+
+function renderStep2() {
+    const sectorKey = SECTORS.find(s => s.name === state.sector)?.key;
+    const subs = SUBSECTORS[sectorKey] || [];
+
+    const container = document.getElementById('step-2');
+    container.innerHTML = `
+        <div class="section-block">
+            <div class="section-header">
+                <div class="section-dot" style="background:var(--teal)"></div>
+                <span class="section-label">Select a Subsector</span>
+            </div>
+            <div class="section-body">
+                ${subs.map(s => `
+                    <div class="option-card${state.subsector === s.name ? ' selected' : ''}"
+                         data-subsector="${s.key}" data-name="${s.name}"
+                         onclick="selectSubsector(this)">
+                        <div class="option-card__name">${s.name}</div>
+                        <div class="option-card__desc">${s.desc}</div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function selectSubsector(el) {
+    const cards = document.querySelectorAll('#step-2 .option-card');
+    const name = el.dataset.name;
+
+    // Toggle: clicking the already-selected card deselects it
+    if (el.classList.contains('selected')) {
+        el.classList.remove('selected');
+        state.subsector = null;
+        cards.forEach(c => c.classList.remove('disabled'));
+    } else {
+        // Select this one, grey out the others
+        cards.forEach(c => {
+            c.classList.remove('selected', 'disabled');
+        });
+        el.classList.add('selected');
+        state.subsector = name;
+        cards.forEach(c => {
+            if (c !== el) c.classList.add('disabled');
+        });
+    }
+
+    updateSelectionBar();
+    updateButtons();
+}
+
+// ── Step 3: Company Details ──
+function renderStep3() {
+    const container = document.getElementById('step-3');
+    container.innerHTML = `
+        <div class="section-block">
+            <div class="section-header">
+                <div class="section-dot" style="background:var(--teal)"></div>
+                <span class="section-label">Company Type</span>
+            </div>
+            <div class="section-body" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                <div class="option-card${state.companyType === 'Public' ? ' selected' : ''}"
+                     data-type="Public" onclick="selectCompanyType(this)">
+                    <div class="option-card__name">Public</div>
+                    <div class="option-card__desc">Your stock is listed on the market. Shareholders influence decisions, but IPO capital fuels rapid growth. Transparent financials required.</div>
+                </div>
+                <div class="option-card${state.companyType === 'Private' ? ' selected' : ''}"
+                     data-type="Private" onclick="selectCompanyType(this)">
+                    <div class="option-card__name">Private</div>
+                    <div class="option-card__desc">Full control, no shareholders. Slower growth but total autonomy over strategy. Financials stay behind closed doors.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-block">
+            <div class="section-header">
+                <div class="section-dot" style="background:var(--amber)"></div>
+                <span class="section-label">Name Corporation</span>
+            </div>
+            <div class="section-body">
+                <div class="input-group" style="margin-bottom:0;">
+                    <input type="text" id="corp-name-input" placeholder="e.g. Meridian Construction Group"
+                           maxlength="40" value="${state.corpName}"
+                           oninput="onCorpNameInput(this.value)">
+                    <div class="input-hint" id="corp-name-hint">2-40 characters</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-block">
+            <div class="section-header">
+                <div class="section-dot" style="background:var(--amber)"></div>
+                <span class="section-label">Stock Ticker</span>
+            </div>
+            <div class="section-body">
+                <div class="input-group" style="margin-bottom:0;">
+                    <input type="text" id="ticker-input" placeholder="e.g. MCG"
+                           maxlength="4" value="${state.ticker}" style="text-transform:uppercase;letter-spacing:0.15em;font-weight:600;"
+                           oninput="onTickerInput(this.value)">
+                    <div class="input-hint" id="ticker-hint">2-4 uppercase letters</div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function selectCompanyType(el) {
+    document.querySelectorAll('#step-3 .section-body .option-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    state.companyType = el.dataset.type;
+    updateSelectionBar();
+    updateButtons();
+}
+
+function onCorpNameInput(val) {
+    state.corpName = val.trim();
+    const hint = document.getElementById('corp-name-hint');
+    if (state.corpName.length > 0 && state.corpName.length < 2) {
+        hint.textContent = 'Too short — minimum 2 characters';
+        hint.className = 'input-hint input-hint--error';
+    } else {
+        hint.textContent = '2-40 characters';
+        hint.className = 'input-hint';
+    }
+    updateButtons();
+}
+
+function onTickerInput(val) {
+    // Strip non-alpha characters and uppercase
+    const cleaned = val.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 4);
+    const input = document.getElementById('ticker-input');
+    if (input.value !== cleaned) input.value = cleaned;
+    state.ticker = cleaned;
+
+    const hint = document.getElementById('ticker-hint');
+    if (cleaned.length > 0 && cleaned.length < 2) {
+        hint.textContent = 'Too short — minimum 2 letters';
+        hint.className = 'input-hint input-hint--error';
+    } else {
+        hint.textContent = '2-4 uppercase letters';
+        hint.className = 'input-hint';
+    }
+    updateSelectionBar();
+    updateButtons();
+}
+
+// ── Init ──
+async function init() {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) { window.location.href = 'login.html'; return; }
+
+    // Verify this is a corp signup flow
+    const factionType = sessionStorage.getItem('pending_faction_type');
+    if (factionType !== 'corp') {
+        window.location.href = 'select-nation.html';
+        return;
+    }
+
+    document.getElementById('loading').style.display = 'none';
+    const content = document.getElementById('page-content');
+    content.style.display = 'flex';
+
+    renderStep(1);
+}
+
+// ── Step navigation ──
+function renderStep(step) {
+    currentStep = step;
+    const meta = STEP_META[step];
+
+    // Update header
+    document.getElementById('step-label').textContent = meta.label;
+    document.getElementById('step-title').textContent = meta.title;
+    document.getElementById('step-subtitle').textContent = meta.subtitle;
+
+    // Update pips
+    document.querySelectorAll('.step-pip').forEach(pip => {
+        const s = parseInt(pip.dataset.step);
+        pip.className = 'step-pip';
+        if (s < step) pip.classList.add('done');
+        else if (s === step) pip.classList.add('active');
+    });
+
+    // Show/hide step sections
+    document.querySelectorAll('.step-section').forEach(sec => sec.classList.remove('active'));
+    const activeSection = document.getElementById('step-' + step);
+    if (activeSection) activeSection.classList.add('active');
+
+    // Render step content
+    if (step === 1) renderStep1();
+    else if (step === 2) renderStep2();
+    else if (step === 3) renderStep3();
+
+    // Update selection bar
+    updateSelectionBar();
+
+    // Update buttons
+    updateButtons();
+
+    // Clear error
+    document.getElementById('error-message').textContent = '';
+}
+
+function updateSelectionBar() {
+    const tags = document.getElementById('sel-tags');
+    const parts = [];
+    if (state.sector) parts.push(state.sector);
+    if (state.subsector) parts.push(state.subsector);
+    if (state.companyType) parts.push(state.companyType);
+    if (state.ticker) parts.push(state.ticker);
+
+    if (parts.length === 0) {
+        tags.innerHTML = '<span class="sel-placeholder">Choose a sector to begin</span>';
+    } else {
+        tags.innerHTML = parts.map(p => `<span class="sel-tag">${p}</span>`).join('');
+    }
+}
+
+function updateButtons() {
+    const nextBtn = document.getElementById('btn-next');
+    let canProceed = false;
+
+    if (currentStep === 1) canProceed = !!state.sector;
+    else if (currentStep === 2) canProceed = !!state.subsector;
+    else if (currentStep === 3) canProceed = !!state.companyType && state.corpName.trim().length >= 2 && state.ticker.trim().length >= 2;
+
+    nextBtn.disabled = !canProceed;
+    nextBtn.classList.toggle('ready', canProceed);
+
+    // Final step shows "Next" to go to nation select
+    nextBtn.textContent = currentStep === TOTAL_STEPS ? 'Next \u25B6' : 'Next \u25B6';
+}
+
+function goNext() {
+    if (currentStep < TOTAL_STEPS) {
+        renderStep(currentStep + 1);
+    } else {
+        // Store corp setup state and go to nation select
+        sessionStorage.setItem('corp_setup', JSON.stringify(state));
+        window.location.href = 'corp-nation-select.html';
+    }
+}
+
+function goBack() {
+    if (currentStep > 1) {
+        renderStep(currentStep - 1);
+    } else {
+        window.location.href = 'select-nation.html';
+    }
+}
+
+// ── Expose to global scope for onclick handlers ──
+window.goNext = goNext;
+window.goBack = goBack;
+window.selectSector = selectSector;
+window.selectSubsector = selectSubsector;
+window.selectCompanyType = selectCompanyType;
+window.onCorpNameInput = onCorpNameInput;
+window.onTickerInput = onTickerInput;
+window.corpState = state;
+window.updateButtons = updateButtons;
+window.updateSelectionBar = updateSelectionBar;
+
+init();
+</script>
+</body>
+</html>

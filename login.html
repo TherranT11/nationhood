@@ -101,8 +101,12 @@ import { _supabase } from './js/supabase-client.js';
                 .eq('id', user.id)
                 .single();
 
-            if (faction && faction.faction_type === 'party' && faction.nation_id) {
-                window.location.href = 'dashboard.html';
+            if (faction && faction.nation_id) {
+                if (faction.faction_type === 'corporation') {
+                    window.location.href = 'corp-dashboard.html';
+                } else {
+                    window.location.href = 'dashboard.html';
+                }
             } else {
                 window.location.href = 'select-nation.html';
             }
