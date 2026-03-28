@@ -173,6 +173,25 @@ body {
 .corp-dd-name { font-family: var(--font-ui); font-size: 12px; font-weight: 600; color: var(--text-bright); }
 .corp-dd-abbr { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); margin-left: auto; }
 
+/* ── Nav tabs ── */
+.corp-nav { display: flex; padding: 0 22px; gap: 0; height: 40px; background: var(--bg-2); border-bottom: 1px solid var(--border-0); }
+.corp-nav__tab {
+  position: relative; font-family: var(--font-mono); font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase; padding: 10px 15px;
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  color: #8a8978; cursor: pointer; transition: color 0.1s; white-space: nowrap; text-decoration: none;
+}
+.corp-nav__tab:hover { color: #a8a797; }
+.corp-nav__tab.active { color: var(--text-bright); border-bottom-color: var(--text-bright); }
+.corp-hamburger {
+  display: none; background: var(--bg-3); border: 1px solid var(--border-0);
+  color: var(--text-dim); font-size: 18px; padding: 4px 10px; cursor: pointer; margin: 4px 22px;
+}
+.corp-hamburger:hover { color: var(--text-muted); }
+body.light-mode .corp-nav__tab { color: #666660; }
+body.light-mode .corp-nav__tab:hover { color: #333330; }
+body.light-mode .corp-nav__tab.active { color: #1a1a17; border-bottom-color: #1a1a17; }
+
 /* ── Content ── */
 .content {
   padding: 24px 20px;
@@ -684,6 +703,13 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
     min-height: 380px;
   }
 }
+@media (max-width: 820px) {
+  .corp-hamburger { display: block; }
+  .corp-nav { display: none; flex-direction: column; height: auto; padding: 0; }
+  .corp-nav.nav-open { display: flex; }
+  .corp-nav.nav-open .corp-nav__tab { padding: 10px 22px; border-bottom: none; border-left: 2px solid transparent; }
+  .corp-nav.nav-open .corp-nav__tab.active { border-left-color: var(--text-bright); border-bottom: none; }
+}
 @media (max-width: 480px) {
   .top-bar-row1 { padding: 6px 8px; }
   .corp-logo { width: 28px; height: 28px; font-size: 12px; }
@@ -736,6 +762,20 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
       <button class="logout-btn" onclick="doLogout()">Logout</button>
     </div>
   </div>
+
+  <!-- Nav tabs -->
+  <button class="corp-hamburger" onclick="document.querySelector('.corp-nav').classList.toggle('nav-open')">&#9776;</button>
+  <nav class="corp-nav" id="corp-nav">
+    <a href="corp-dashboard.html" class="corp-nav__tab active" data-tab="home">Home</a>
+    <a href="#" class="corp-nav__tab" data-tab="operations" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Operations</a>
+    <a href="#" class="corp-nav__tab" data-tab="finances" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Finances</a>
+    <a href="#" class="corp-nav__tab" data-tab="workforce" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Workforce</a>
+    <a href="#" class="corp-nav__tab" data-tab="expansion" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Expansion</a>
+    <a href="#" class="corp-nav__tab" data-tab="industries" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Industries</a>
+    <a href="#" class="corp-nav__tab" data-tab="lobbying" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Lobbying</a>
+    <a href="news.html" class="corp-nav__tab" data-tab="news">News</a>
+    <a href="wiki.html" class="corp-nav__tab" data-tab="wiki">Wiki</a>
+  </nav>
 
   <div class="content">
     <div class="id-card">
