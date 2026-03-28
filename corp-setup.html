@@ -597,16 +597,16 @@ function renderStep3() {
                 <div class="section-dot" style="background:var(--teal)"></div>
                 <span class="section-label">Company Type</span>
             </div>
-            <div class="section-body" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <div class="section-body" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;align-items:stretch;">
                 <div class="option-card${state.companyType === 'Public' ? ' selected' : ''}"
-                     data-type="Public" onclick="selectCompanyType(this)">
+                     data-type="Public" onclick="selectCompanyType(this)" style="margin-bottom:0;display:flex;flex-direction:column;">
                     <div class="option-card__name">Public</div>
-                    <div class="option-card__desc">Your stock is listed on the market. Shareholders influence decisions, but IPO capital fuels rapid growth. Transparent financials required.</div>
+                    <div class="option-card__desc" style="flex:1;">Your stock is listed on the market. Shareholders influence decisions, but IPO capital fuels rapid growth. Transparent financials required.</div>
                 </div>
                 <div class="option-card${state.companyType === 'Private' ? ' selected' : ''}"
-                     data-type="Private" onclick="selectCompanyType(this)">
+                     data-type="Private" onclick="selectCompanyType(this)" style="margin-bottom:0;display:flex;flex-direction:column;">
                     <div class="option-card__name">Private</div>
-                    <div class="option-card__desc">Full control, no shareholders. Slower growth but total autonomy over strategy. Financials stay behind closed doors.</div>
+                    <div class="option-card__desc" style="flex:1;">Full control, no shareholders. Slower growth but total autonomy over strategy. Financials stay behind closed doors.</div>
                 </div>
             </div>
         </div>
