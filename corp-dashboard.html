@@ -1502,16 +1502,15 @@ function renderValuation(nation, nationName, faction, wfData, propData) {
     const natUp = (nationName || 'UNKNOWN').toUpperCase();
     const companyType = faction.corp_company_type || 'Private';
 
-    // Assets
-    const currencyStrength = s('currency_strength') ?? s('gdp_growth') ?? 50;
-    const cashReserves = Math.round(5_000_000 * (currencyStrength / 50));
+    // Assets — read from DB columns (set at corp creation, scaled by currency strength)
+    const cashReserves = Number(faction.corp_cash_reserves) || 0;
     const propertyValue = propData?.propertyValue || 0;
     const equipmentValue = 0;
     const activeContracts = 0;
     const totalAssets = cashReserves + propertyValue + equipmentValue + activeContracts;
 
     // Liabilities
-    const outstandingLoans = 8_000_000;
+    const outstandingLoans = Number(faction.corp_loans) || 0;
     const monthlyExpenses = wfData?.monthlyWages || 0;
     const accountsPayable = monthlyExpenses; // 1 month of expenses
     const pendingProjectCosts = 0;
