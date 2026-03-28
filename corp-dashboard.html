@@ -551,6 +551,59 @@ body {
 .prop-total__value { font-family: var(--font-mono); font-size: 16px; font-weight: 700; color: var(--teal); }
 
 /* ── Loading ── */
+/* ── Valuation card — fixed 380×450 ── */
+.val-card {
+  width: 380px; height: 450px;
+  background: var(--bg-2); border: 1px solid var(--border-0);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.val-card__scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.val-section-hdr {
+  padding: 6px 14px; border-bottom: 1px solid var(--border-0); background: var(--bg-3);
+}
+.val-section-hdr__label {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+}
+.val-line {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 14px; border-bottom: 1px solid var(--border-hair);
+}
+.val-line--indent { padding-left: 28px; }
+.val-line__label { font-family: var(--font-ui); font-size: 11px; color: var(--text-muted); }
+.val-line__label--bold { font-weight: 600; color: var(--text-bright); }
+.val-line__value { font-family: var(--font-mono); font-size: 11px; }
+.val-line__value--bold { font-size: 12px; font-weight: 700; }
+.val-net {
+  padding: 8px 14px; border-bottom: 1px solid var(--border-0);
+  display: flex; justify-content: space-between; align-items: center;
+  background: rgba(90,175,165,0.02);
+}
+.val-net__label {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 1.5px; color: var(--text-dim); text-transform: uppercase;
+}
+.val-net__value { font-family: var(--font-mono); font-size: 16px; font-weight: 700; }
+.val-market {
+  padding: 10px 14px; border-top: 1px solid var(--border-0);
+  background: rgba(200,166,78,0.03); margin-top: auto;
+}
+.val-market__top {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+}
+.val-market__label {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 1.5px; color: var(--amber); text-transform: uppercase;
+}
+.val-market__value { font-family: var(--font-mono); font-size: 20px; font-weight: 700; color: var(--amber); }
+.val-market__delta { font-family: var(--font-mono); font-size: 9px; }
+.val-market__gap {
+  display: flex; justify-content: space-between; align-items: center; padding: 4px 0;
+}
+.val-market__gap-label { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
+.val-market__gap-value { font-family: var(--font-mono); font-size: 10px; }
+.val-market__note { font-size: 9px; color: var(--text-dim); line-height: 1.4; margin-top: 2px; }
+
 .loading-msg {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -697,6 +750,18 @@ body {
         <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);" id="wf-total-header">3,000</span>
       </div>
       <div class="wf-card__scroll" id="wf-body"></div>
+    </div>
+
+    <!-- Valuation card -->
+    <div class="val-card">
+      <div class="fin-card__header">
+        <div class="fin-card__header-left">
+          <span style="font-size:8px;color:var(--amber);">●</span>
+          <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text-muted);text-transform:uppercase;">Valuation</span>
+        </div>
+        <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;padding:1px 8px;color:var(--amber);background:var(--amber-faint);border:1px solid var(--amber-border);" id="val-type-badge">--</span>
+      </div>
+      <div class="val-card__scroll" id="val-body"></div>
     </div>
   </div>
 </div>
@@ -875,7 +940,8 @@ async function init() {
     const wfData = renderWorkforce(nationStats, nationName);
     renderFinances(nationStats, shard, wfData);
     renderStats(nationName);
-    renderProperty(nationStats, nationName, faction, shard);
+    const propData = renderProperty(nationStats, nationName, faction, shard);
+    renderValuation(nationStats, nationName, faction, wfData, propData);
 
     // Show page
     document.getElementById('loading').style.display = 'none';
@@ -1308,6 +1374,89 @@ function renderProperty(nation, nationName, faction, shard) {
         <div class="prop-total">
             <span class="prop-total__label">Total Property Value</span>
             <span class="prop-total__value">${fmtBig(adjustedCost)}</span>
+        </div>
+    `;
+
+    return { propertyValue: adjustedCost };
+}
+
+function renderValuation(nation, nationName, faction, wfData, propData) {
+    const s = (key) => Number(nation?.[key] ?? 50);
+    const natUp = (nationName || 'UNKNOWN').toUpperCase();
+    const companyType = faction.corp_company_type || 'Private';
+
+    function fmtV(n) {
+        if (Math.abs(n) >= 1_000_000) return '$' + (n / 1_000_000).toFixed(2) + 'M';
+        if (Math.abs(n) >= 1000) return '$' + (n / 1000).toFixed(1) + 'k';
+        return '$' + Math.round(n).toLocaleString();
+    }
+
+    // Assets
+    const currencyStrength = s('currency_strength') || s('gdp_growth') || 50;
+    const cashReserves = Math.round(5_000_000 * (currencyStrength / 50));
+    const propertyValue = propData?.propertyValue || 0;
+    const equipmentValue = 0;
+    const activeContracts = 0;
+    const totalAssets = cashReserves + propertyValue + equipmentValue + activeContracts;
+
+    // Liabilities
+    const outstandingLoans = 8_000_000;
+    const monthlyExpenses = wfData?.monthlyWages || 0;
+    const accountsPayable = monthlyExpenses; // 1 month of expenses
+    const pendingProjectCosts = 0;
+    const totalLiabilities = outstandingLoans + accountsPayable + pendingProjectCosts;
+
+    // Net Worth
+    const netWorth = totalAssets - totalLiabilities;
+
+    // Market Valuation — based on net worth + demand modifier
+    // Demand: count corps in this subsector in this nation
+    const demandBonus = 0.30; // HIGH demand (0-1 corps) — will be dynamic later
+    const valuation = Math.round(netWorth * (1 + demandBonus));
+    const valuationDelta = valuation - netWorth;
+    const valuationAbove = valuationDelta > 0;
+
+    document.getElementById('val-type-badge').textContent = companyType.toUpperCase();
+
+    function line(label, value, opts = {}) {
+        const cls = opts.indent ? 'val-line val-line--indent' : 'val-line';
+        const lblCls = opts.bold ? 'val-line__label val-line__label--bold' : 'val-line__label';
+        const valCls = opts.bold ? 'val-line__value val-line__value--bold' : 'val-line__value';
+        const color = opts.color || (opts.bold ? 'var(--text-bright)' : 'var(--text-muted)');
+        return `<div class="${cls}"><span class="${lblCls}">${label}</span><span class="${valCls}" style="color:${color}">${fmtV(value)}</span></div>`;
+    }
+
+    document.getElementById('val-body').innerHTML = `
+        <div class="val-section-hdr"><span class="val-section-hdr__label" style="color:var(--green);">Assets</span></div>
+        ${line('Cash & Reserves', cashReserves, { indent: true })}
+        ${line('Property', propertyValue, { indent: true })}
+        ${line('Equipment', equipmentValue, { indent: true })}
+        ${line('Active Contracts', activeContracts, { indent: true })}
+        ${line('Total Assets', totalAssets, { bold: true, color: 'var(--green)' })}
+
+        <div class="val-section-hdr"><span class="val-section-hdr__label" style="color:var(--red);">Liabilities</span></div>
+        ${line('Outstanding Loans', outstandingLoans, { indent: true })}
+        ${line('Accounts Payable', accountsPayable, { indent: true })}
+        ${line('Pending Project Costs', pendingProjectCosts, { indent: true })}
+        ${line('Total Liabilities', totalLiabilities, { bold: true, color: 'var(--red)' })}
+
+        <div class="val-net">
+            <span class="val-net__label">Net Worth</span>
+            <span class="val-net__value" style="color:${netWorth >= 0 ? 'var(--green)' : 'var(--red)'};">${fmtV(netWorth)}</span>
+        </div>
+
+        <div style="flex:1;"></div>
+
+        <div class="val-market">
+            <div class="val-market__top">
+                <span class="val-market__label">Market Valuation</span>
+                <span class="val-market__value">${fmtV(valuation)}</span>
+            </div>
+            <div class="val-market__gap">
+                <span class="val-market__gap-label">${valuationAbove ? 'ABOVE' : 'BELOW'} NET WORTH</span>
+                <span class="val-market__gap-value" style="color:${valuationAbove ? 'var(--green)' : 'var(--red)'};">${valuationAbove ? '+' : ''}${fmtV(valuationDelta)}</span>
+            </div>
+            <div class="val-market__note">${valuationAbove ? 'Market believes in future growth.' : 'Market doubts current trajectory.'}</div>
         </div>
     `;
 }
