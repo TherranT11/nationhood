@@ -5573,27 +5573,6 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
             </div>
             ${spreadDriversHtml}
             <div class="es-body">${axesHtml}</div>
-            <div class="es-summary">
-                <div class="es-sb-item">
-                    <div class="es-sb-label">Ideological Alignment</div>
-                    <div class="es-sb-val" style="color:${alignColor}">${avgAlignment}</div>
-                </div>
-                <div class="es-sb-div"></div>
-                <div class="es-sb-item">
-                    <div class="es-sb-label">Axes Aligned</div>
-                    <div class="es-sb-val" style="color:var(--dgreen)">${alignedCount}</div>
-                </div>
-                <div class="es-sb-div"></div>
-                <div class="es-sb-item">
-                    <div class="es-sb-label">Partial</div>
-                    <div class="es-sb-val" style="color:var(--damber)">${partialCount}</div>
-                </div>
-                <div class="es-sb-div"></div>
-                <div class="es-sb-item">
-                    <div class="es-sb-label">Misaligned</div>
-                    <div class="es-sb-val" style="color:var(--dred)">${misalignedCount}</div>
-                </div>
-            </div>
             <div class="es-legend-bar">
                 <div class="es-lb-item">
                     <svg width="16" height="16"><circle cx="8" cy="8" r="6" fill="rgba(255,255,255,0.85)"/></svg>
