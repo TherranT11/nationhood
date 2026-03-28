@@ -2305,6 +2305,48 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             }
             // Re-render to update cost formulas and ministry totals
             renderMinistryConfig();
+
+            // Propagate updated costs to all nations' budget_item_allocations
+            // This recalculates needed_amount (true cost) and scales allocation_amount
+            // proportionally so funding percentages update correctly.
+            try {
+                const { data: allNations } = await _supabase.from('nations').select('id, population, gdp, inflation');
+                const updatedInst = ministryConfigData.find(r => r.id === instId);
+                if (allNations && updatedInst) {
+                    const baseVal = Number(updatedInst.base_cost_per_capita || 0);
+                    const sType = updatedInst.scaling_type || 'population';
+                    let propagated = 0;
+                    for (const n of allNations) {
+                        const pop = Number(n.population || 0);
+                        const gdpVal = Number(n.gdp || 0);
+                        const infMult = getInflationMultiplier(n.inflation);
+                        const newNeeded = Math.round((sType === 'gdp' ? (baseVal / 100) * gdpVal : baseVal * pop) * infMult);
+
+                        // Read existing allocation for this nation + institution
+                        const { data: existing } = await _supabase.from('budget_item_allocations')
+                            .select('id, allocation_amount, needed_amount')
+                            .eq('nation_id', n.id).eq('item_id', instId).eq('item_type', 'institution');
+
+                        if (existing && existing.length > 0) {
+                            for (const row of existing) {
+                                const oldNeeded = Number(row.needed_amount || 100);
+                                const oldAlloc = Number(row.allocation_amount || oldNeeded);
+                                // Preserve the funding PERCENTAGE: pct = oldAlloc / oldNeeded
+                                const pct = oldNeeded > 0 ? oldAlloc / oldNeeded : 1;
+                                const newAlloc = Math.round(newNeeded * pct);
+                                await _supabase.from('budget_item_allocations')
+                                    .update({ needed_amount: newNeeded, allocation_amount: newAlloc })
+                                    .eq('id', row.id);
+                            }
+                            propagated++;
+                        }
+                    }
+                    console.log('[Admin] Propagated ' + updatedInst.institution_name + ' costs to ' + propagated + ' nations');
+                }
+            } catch (propErr) {
+                console.warn('[Admin] Cost propagation failed (non-fatal):', propErr);
+            }
+
             // Show success feedback with institution name
             const instName = localRow ? localRow.institution_name : instId;
             const status = document.getElementById('ministry-config-status');

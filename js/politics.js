@@ -6115,7 +6115,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     // Fetch standing (full fields), logs, campaigns, government formation, all standings, and stances in parallel
     const [standingRes, partyLogRes, credLogRes, activeCampaignsRes, govFormRes, allStandingsRes, stancesRes] = await Promise.all([
         _supabase.from('faction_electoral_standing')
-            .select('faction_id, party_approval, credibility_modifier, ideological_alignment, visibility, platform_appeal, realized_vote_share, contested_vote_share, turnout_rate, last_polled_tick, polled_party_approval, polled_alignment, polled_platform_appeal, polled_visibility, polled_credibility, polled_vote_share')
+            .select('faction_id, party_approval, credibility_modifier, ideological_alignment, visibility, platform_appeal, realized_vote_share, contested_vote_share, turnout_rate, last_polled_tick, polled_party_approval, polled_alignment, polled_platform_appeal, polled_visibility, polled_credibility, polled_vote_share, prev_ideological_alignment, prev_platform_appeal, prev_party_approval, prev_visibility, prev_credibility_modifier')
             .eq('nation_id', nation.id)
             .eq('faction_id', playerFaction.id)
             .maybeSingle(),
@@ -6169,6 +6169,14 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const contestedShare = Number(playerStanding.contested_vote_share ?? 0);
     const realizedShare = Number(playerStanding.realized_vote_share ?? 0);
     const turnout = Number(playerStanding.turnout_rate ?? 0.65);
+
+    // ── Previous-tick values for delta arrows ──
+    const prevAlignment = playerStanding.prev_ideological_alignment != null ? Math.max(0, Math.min(100, Math.round(Number(playerStanding.prev_ideological_alignment)))) : null;
+    const prevAppeal = playerStanding.prev_platform_appeal != null ? Math.round(Number(playerStanding.prev_platform_appeal)) : null;
+    const prevApproval = playerStanding.prev_party_approval != null ? Number(playerStanding.prev_party_approval) : null;
+    const prevVisibility = playerStanding.prev_visibility != null ? Math.round(Number(playerStanding.prev_visibility)) : null;
+    const prevCredMod = playerStanding.prev_credibility_modifier != null ? Number(playerStanding.prev_credibility_modifier) : null;
+    const prevCredScore = prevCredMod != null ? Math.max(0, Math.min(100, Math.round((prevCredMod - 0.5) * 100))) : null;
 
     // Determine if player is in government
     const coalitionIds = govFormRes.data?.party_ids || [];
@@ -6305,8 +6313,18 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const statusColor = isGoverning ? '#5cb85c' : '#d98030';
 
     // Factor card builder
-    function _factorCard(label, score, weight, barColor, tierLabel, tierColor, detailHtml, hintHtml) {
+    function _deltaArrow(current, prev) {
+        if (prev == null || prev === current) return '';
+        const delta = Math.round(current) - Math.round(prev);
+        if (delta === 0) return '';
+        const color = delta > 0 ? '#4ade80' : '#ef4444';
+        const arrow = delta > 0 ? '▲' : '▼';
+        return `<span style="font-family:var(--dfont-mono);font-size:9px;color:${color};margin-left:4px;" title="Change since last tick">${arrow}${Math.abs(delta)}</span>`;
+    }
+
+    function _factorCard(label, score, weight, barColor, tierLabel, tierColor, detailHtml, hintHtml, prevScore) {
         const wPct = Math.round(weight * 100);
+        const deltaHtml = _deltaArrow(score, prevScore);
         return `
         <div class="vt-factor-card">
             <div class="vt-factor-header">
@@ -6315,7 +6333,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             </div>
             <div class="vt-factor-score-row">
                 <span class="vt-factor-score" style="color:${barColor}">${typeof score === 'number' ? Math.round(score) : score}</span>
-                <span class="vt-factor-max">/ 100</span>
+                <span class="vt-factor-max">/ 100</span>${deltaHtml}
                 <span class="vt-factor-tier" style="color:${tierColor}">${escapeHtml(tierLabel)}</span>
             </div>
             <div class="vt-factor-bar"><div class="vt-factor-bar-fill" style="width:${Math.min(100, Math.max(0, score))}%;background:${barColor}"></div></div>
@@ -6338,7 +6356,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
         ? `${activeCampaigns.length} active campaign${activeCampaigns.length > 1 ? 's' : ''} shifting alignment`
         : 'Use Think Tanks, Grassroots, or Media Campaigns to shift';
     const alignCard = _factorCard('Ideological Alignment', alignScore, weights.alignment,
-        '#7ec8c0', alignTier.label, alignTier.color, alignDetail, alignHint);
+        '#7ec8c0', alignTier.label, alignTier.color, alignDetail, alignHint, prevAlignment);
 
     // ── Card 2: Platform Appeal ──
     const appealTier = _scoreTier(platformAppeal);
@@ -6346,7 +6364,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const appealDetail = `<span class="vt-detail-line">${stanceCount} stance${stanceCount !== 1 ? 's' : ''} taken</span>`;
     const appealHint = 'Take stances on high-salience issues to increase';
     const appealCard = _factorCard('Platform Appeal', platformAppeal, weights.appeal,
-        '#c8a44e', appealTier.label, appealTier.color, appealDetail, appealHint);
+        '#c8a44e', appealTier.label, appealTier.color, appealDetail, appealHint, prevAppeal);
 
     // ── Card 3: Party Approval ──
     const approvalTier = _scoreTier(approval);
@@ -6355,7 +6373,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const approvalDetail = `<span class="vt-detail-line">${govLabel}${isGoverning ? ' · Gov approval ' + Math.round(govApproval) + '%' : ''}</span>`;
     const approvalHint = isGoverning ? 'Improve governance to raise approval' : 'Campaign and fulfill promises';
     const approvalCard = _factorCard('Party Approval', approval, weights.approval,
-        '#7ec87e', approvalTier.label, approvalTier.color, approvalDetail, approvalHint);
+        '#7ec87e', approvalTier.label, approvalTier.color, approvalDetail, approvalHint, prevApproval);
 
     // ── Card 4: Visibility ──
     const visTier = _scoreTier(visibility);
@@ -6364,7 +6382,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const visDetail = `<span class="vt-detail-line">Decaying ${visDecayPct}%/tick · Floor: ${visFloor}</span>`;
     const visHint = 'Hold rallies, outreach, or take stances to boost';
     const visCard = _factorCard('Visibility', visibility, weights.visibility,
-        '#5b9bd5', visTier.label, visTier.color, visDetail, visHint);
+        '#5b9bd5', visTier.label, visTier.color, visDetail, visHint, prevVisibility);
 
     // ── Card 5: Credibility ──
     const credTier = _scoreTier(credScore);
@@ -6372,7 +6390,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const credDetail = `<span class="vt-detail-line">${credModifier.toFixed(2)}x multiplier · Weight: ${credWeightPct}% (dynamic)</span>`;
     const credHint = credScore >= 80 ? 'Fully healthy — maintain by avoiding scandals' : 'Recovers +1%/tick toward 100';
     const credCard = _factorCard('Credibility', credScore, weights.credibility,
-        '#9b7ec8', credTier.label, credTier.color, credDetail, credHint);
+        '#9b7ec8', credTier.label, credTier.color, credDetail, credHint, prevCredScore);
 
     // ══════════════════════════════════════════════════════════════
     //  SECTION B — VOTE SHARE WATERFALL

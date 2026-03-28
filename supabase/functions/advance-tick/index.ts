@@ -14872,6 +14872,13 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
             id: standing.id,
             faction_id: factionId,
             nation_id: nation.id,
+            // Previous-tick values for delta arrows on the UI
+            prev_ideological_alignment: Number(standing.ideological_alignment ?? 50),
+            prev_platform_appeal: Number(standing.platform_appeal ?? 0),
+            prev_party_approval: Number(standing.party_approval ?? 25),
+            prev_visibility: Number(standing.visibility ?? 0),
+            prev_credibility_modifier: Number(standing.credibility_modifier ?? 1.0),
+            // New values
             ideological_alignment: newAlignment,
             platform_appeal: newAppeal,
             party_approval: newApproval,
@@ -14907,6 +14914,11 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         const { error } = await supabase
             .from('faction_electoral_standing')
             .update({
+                prev_ideological_alignment: u.prev_ideological_alignment,
+                prev_platform_appeal: u.prev_platform_appeal,
+                prev_party_approval: u.prev_party_approval,
+                prev_visibility: u.prev_visibility,
+                prev_credibility_modifier: u.prev_credibility_modifier,
                 ideological_alignment: u.ideological_alignment,
                 platform_appeal: u.platform_appeal,
                 party_approval: u.party_approval,
@@ -28579,10 +28591,49 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 _institutionConfig = icRows || [];
             }
             const { data: _fundingRows } = await supabase.from('budget_item_allocations')
-                .select('item_id, item_type, allocation_amount, needed_amount')
+                .select('id, item_id, item_type, allocation_amount, needed_amount')
                 .eq('nation_id', nation.id)
                 .eq('item_type', 'institution')
                 .order('created_at', { ascending: true });
+
+            // Refresh needed_amount from current config so funding pcts stay accurate
+            // as population/GDP/inflation change each tick.
+            // Also migrates legacy rows where needed_amount=100 (percentage-based) to
+            // actual dollar amounts, preserving the original funding percentage.
+            if (_fundingRows && _fundingRows.length > 0 && _institutionConfig.length > 0) {
+                const pop = Number(nation.population || 0);
+                const gdp = Number(nation.gdp ?? 0);
+                const infMult = getInflationMultiplier(Number(nation.inflation ?? 0));
+                for (const row of _fundingRows) {
+                    const cfg = _institutionConfig.find(c => c.id === row.item_id);
+                    if (!cfg) continue;
+                    const bv = Number(cfg.base_cost_per_capita || 0);
+                    const st = cfg.scaling_type || 'population';
+                    const newNeeded = Math.round((st === 'gdp' ? (bv / 100) * gdp : bv * pop) * infMult);
+                    const oldNeeded = Number(row.needed_amount || 0);
+                    const oldAlloc = Number(row.allocation_amount || 0);
+
+                    // Detect legacy percentage-based rows (needed_amount <= 200 means old %-based system)
+                    const isLegacy = oldNeeded <= 200;
+                    if (isLegacy) {
+                        // Convert: old pct = oldAlloc / oldNeeded, new allocation = newNeeded * pct
+                        const pct = oldNeeded > 0 ? oldAlloc / oldNeeded : 1;
+                        const newAlloc = Math.round(newNeeded * pct);
+                        await supabase.from('budget_item_allocations')
+                            .update({ needed_amount: newNeeded, allocation_amount: newAlloc })
+                            .eq('id', row.id);
+                        row.needed_amount = newNeeded;
+                        row.allocation_amount = newAlloc;
+                    } else if (newNeeded !== oldNeeded) {
+                        // Already dollar-based — just refresh needed_amount (allocation stays as parliament set it)
+                        await supabase.from('budget_item_allocations')
+                            .update({ needed_amount: newNeeded })
+                            .eq('id', row.id);
+                        row.needed_amount = newNeeded;
+                    }
+                }
+            }
+
             const statInstMap = buildStatInstitutionMap(_institutionConfig, _fundingRows);
             const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
             const decayResults = await processStatDecay(supabase, nation, statInstMap, policyDecayAdj);

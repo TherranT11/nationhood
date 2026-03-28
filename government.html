@@ -7390,6 +7390,24 @@ const STIMULUS_IDEOLOGY_AXES = [
     { label: 'Security vs Freedom', ideologies: ['SECURITY', 'FREEDOM'] },
 ];
 
+// Stats where HIGHER = WORSE (increasing these is bad, decreasing is good)
+const _EO_BAD_STATS = new Set([
+    'pollution', 'carbon_emissions', 'crime_rate', 'corruption', 'unemployment',
+    'income_inequality', 'poverty_rate', 'civil_unrest', 'cost_of_living',
+    'fuel_prices', 'incarceration_rate', 'drug_use', 'illegal_immigration',
+    'polarization', 'inflation'
+]);
+
+function _eoStatBadge(statKey, magnitude, direction) {
+    // direction: 'up' = stat value increases, 'down' = stat value decreases
+    const isBadStat = _EO_BAD_STATS.has(statKey);
+    // An increase in a bad stat is negative; a decrease in a bad stat is positive
+    const isPositive = direction === 'up' ? !isBadStat : isBadStat;
+    const sign = direction === 'up' ? '+' : '−';
+    const cls = isPositive ? 'eo-stimulus-up' : 'eo-stimulus-down';
+    return `<span class="${cls}">${sign}${magnitude} ${formatStatName(statKey)}</span>`;
+}
+
 function renderStimulusPanel(panel) {
     const stimData = eoAvailability?.stimulate_economy;
     if (!stimData) {
@@ -7424,8 +7442,8 @@ function renderStimulusPanel(panel) {
             const statusLabel = used ? 'USED' : (avail ? 'AVAILABLE' : (o.reason || 'LOCKED'));
             const statusClass = used ? 'cooldown' : (avail ? 'available' : 'locked');
 
-            const increases = o.stat_increases ? Object.entries(o.stat_increases).map(([k, v]) => `+${v} ${formatStatName(k)}`).join(', ') : '';
-            const decreases = o.stat_decreases ? Object.entries(o.stat_decreases).map(([k, v]) => `−${v} ${formatStatName(k)}`).join(', ') : '';
+            const increases = o.stat_increases ? Object.entries(o.stat_increases).map(([k, v]) => `${_eoStatBadge(k, v, 'up')}`).join(', ') : '';
+            const decreases = o.stat_decreases ? Object.entries(o.stat_decreases).map(([k, v]) => `${_eoStatBadge(k, v, 'down')}`).join(', ') : '';
 
             html += `
                 <div class="eo-stimulus-card ${avail ? '' : 'unavailable'}" onclick="${avail ? `selectStimulusOrder('${o.key}')` : ''}">
@@ -7473,8 +7491,8 @@ function selectStimulusOrder(stimulusKey) {
     const confirmPanel = document.getElementById('eo-confirm-panel');
     const confirmBtn = document.getElementById('eo-confirm-btn');
 
-    const increases = orderDef.stat_increases ? Object.entries(orderDef.stat_increases).map(([k, v]) => `<span class="eo-stimulus-up">+${v} ${formatStatName(k)}</span>`).join(', ') : '';
-    const decreases = orderDef.stat_decreases ? Object.entries(orderDef.stat_decreases).map(([k, v]) => `<span class="eo-stimulus-down">−${v} ${formatStatName(k)}</span>`).join(', ') : '';
+    const increases = orderDef.stat_increases ? Object.entries(orderDef.stat_increases).map(([k, v]) => _eoStatBadge(k, v, 'up')).join(', ') : '';
+    const decreases = orderDef.stat_decreases ? Object.entries(orderDef.stat_decreases).map(([k, v]) => _eoStatBadge(k, v, 'down')).join(', ') : '';
 
     confirmPanel.innerHTML = `
         <div class="eo-stimulus-back" onclick="renderStimulusPanel(document.getElementById('eo-confirm-panel'))">&#8592; Back to Stimulus Orders</div>
