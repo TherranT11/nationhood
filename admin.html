@@ -27,8 +27,10 @@
     </div>
 </div>
 
-<!-- Admin Controls Section -->
-<div id="admin-section" class="hidden">
+<!-- Admin content lives in a <template> — NOT rendered in the DOM until auth succeeds -->
+<div id="admin-section"></div>
+<template id="admin-template">
+<div
     <div class="admin-container">
         <button class="logout-btn" onclick="logout()">Logout</button>
         <h1>🛡️ Admin Control Panel</h1>
@@ -508,6 +510,7 @@
 
     </div>
 </div>
+</template>
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
@@ -539,7 +542,11 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         if (await hashPassword(password) === ADMIN_PW_HASH) {
             isAuthenticated = true;
             document.getElementById('login-section').classList.add('hidden');
-            document.getElementById('admin-section').classList.remove('hidden');
+            // Clone admin template into the DOM — content only exists after auth
+            const template = document.getElementById('admin-template');
+            const container = document.getElementById('admin-section');
+            container.appendChild(template.content.cloneNode(true));
+            template.remove(); // Remove template so it can't be cloned again
             loadAllData();
             errorDiv.classList.add('hidden');
         } else { errorDiv.textContent = 'Invalid password. Access denied.'; errorDiv.classList.remove('hidden'); }
@@ -547,13 +554,17 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     function logout() {
         isAuthenticated = false;
         document.getElementById('login-section').classList.remove('hidden');
-        document.getElementById('admin-section').classList.add('hidden');
+        // Remove admin content from DOM entirely — forces re-auth
+        document.getElementById('admin-section').innerHTML = '';
+        // Reload page to restore the template for re-authentication
+        window.location.reload();
         document.getElementById('admin-password').value = '';
     }
     document.getElementById('admin-auth-btn').addEventListener('click', authenticate);
     document.getElementById('admin-password').addEventListener('keypress', (e) => { if (e.key === 'Enter') authenticate(); });
 
     async function loadAllData() {
+        if (!isAuthenticated) return;
         await loadShardInfo();
         await loadStats();
         await loadNations();
@@ -607,6 +618,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         } catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; status.classList.remove('hidden'); }
     }
     async function advanceTickAdmin() {
+        if (!isAuthenticated) return;
         const status = document.getElementById('tick-status');
         status.className = 'status info'; status.textContent = 'Invoking advance-tick Edge Function...'; status.classList.remove('hidden');
 
@@ -1413,6 +1425,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         } catch (error) { alert('❌ Error: ' + error.message); }
     }
     async function deleteParty(factionId, partyName) {
+        if (!isAuthenticated) return;
         if (!confirm(`⚠️ PERMANENTLY DELETE "${partyName}"?`)) return;
         try { const { data, error } = await _supabase.rpc('admin_delete_party', { p_faction_id: factionId }); if (error) throw error; alert(`✅ "${partyName}" deleted!`); await loadStats(); await loadNations(); } catch (error) { alert('❌ Error: ' + error.message); }
     }
