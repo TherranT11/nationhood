@@ -3516,7 +3516,7 @@ body.light-mode .diplo-view-btn.is-active {
 
 /* ── Chat Area ── */
 .ipo-chat-area {
-  max-height: 55%;
+  max-height: 360px;
   min-height: 180px;
   display: flex;
   flex-direction: column;
