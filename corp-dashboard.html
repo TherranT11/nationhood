@@ -404,7 +404,7 @@ async function init() {
     const estYear = shard?.current_date ? shard.current_date.replace(/.*,\s*/, '') : '—';
 
     const ceoName = (faction.leader_first_name && faction.leader_last_name)
-        ? faction.leader_first_name + ' ' + faction.leader_last_name
+        ? faction.leader_first_name + ' ' + faction.leader_last_name + (faction.leader_age ? ' (' + faction.leader_age + ')' : '')
         : '—';
 
     document.getElementById('id-rows').innerHTML = `
