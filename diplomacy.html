@@ -15747,7 +15747,7 @@ function renderIPOAmendStep() {
             <button class="modal-close" onclick="closeIPOAmendModal()">&times;</button>
         </div>
         <div class="ipo-modal-body">
-            <div class="ipo-charter-info">Edit the charter articles below. Changes take effect immediately.</div>
+            <div class="ipo-charter-info">Edit the charter articles below. Changes will be put to a vote (1 AP).</div>
             <div class="ipo-article-list">${articleCards}</div>
             ${addDropdown}
             <div class="wizard-nav">
@@ -15785,34 +15785,35 @@ function closeIPOAmendModal() {
 
 async function submitIPOAmend() {
     if (!currentFaction || !ipoSelectedOrgId || !ipoAmendArticles) return;
+    if (_ipoActionLock) return;
 
-    // Build charter from amend articles (same logic as creation)
-    const charter = {};
+    // Build proposed charter from amend articles
+    const proposedCharter = {};
     for (const art of ipoAmendArticles) {
         switch (art.type) {
-            case 'mission': charter.mission = art.config.text || ''; break;
+            case 'mission': proposedCharter.mission = art.config.text || ''; break;
             case 'leadership':
-                charter.leadership = {
+                proposedCharter.leadership = {
                     type: art.config.type,
                     termYears: Number(art.config.termYears),
                     votingWeight: art.config.votingWeight,
                     votePass: art.config.votePass
                 }; break;
             case 'membership':
-                charter.membership = {
+                proposedCharter.membership = {
                     admission: art.config.admission,
                     ideologicalThreshold: art.config.ideologicalThreshold || { enabled: false, directions: [] },
                     expulsionClause: art.config.expulsionClause || null
                 }; break;
             case 'governance':
-                charter.governance = {
+                proposedCharter.governance = {
                     voteTransparency: art.config.voteTransparency,
                     observerStatus: !!art.config.observerStatus,
                     vetoRight: art.config.vetoRight || null,
                     emergencyPowers: !!art.config.emergencyPowers
                 }; break;
             case 'resources':
-                charter.resources = {
+                proposedCharter.resources = {
                     solidarityFund: art.config.solidarityFund || { enabled: false, contributionPerQuarter: 1 },
                     resourceSharingCap: art.config.resourceSharingCap ?? null,
                     jointStatementClause: art.config.jointStatementClause || 'vote',
@@ -15822,37 +15823,64 @@ async function submitIPOAmend() {
     }
 
     // Defaults for missing articles
-    if (!charter.leadership) charter.leadership = { type: 'rotation', termYears: 2, votingWeight: 'equal', votePass: 'majority' };
-    if (!charter.membership) charter.membership = { admission: 'vote', ideologicalThreshold: { enabled: false, directions: [] }, expulsionClause: null };
-    if (!charter.governance) charter.governance = { voteTransparency: 'public', observerStatus: false, vetoRight: null, emergencyPowers: false };
-    if (!charter.resources) charter.resources = { solidarityFund: { enabled: false, contributionPerQuarter: 1 }, resourceSharingCap: null, jointStatementClause: 'vote', headquarters: null };
+    if (!proposedCharter.leadership) proposedCharter.leadership = { type: 'rotation', termYears: 2, votingWeight: 'equal', votePass: 'majority' };
+    if (!proposedCharter.membership) proposedCharter.membership = { admission: 'vote', ideologicalThreshold: { enabled: false, directions: [] }, expulsionClause: null };
+    if (!proposedCharter.governance) proposedCharter.governance = { voteTransparency: 'public', observerStatus: false, vetoRight: null, emergencyPowers: false };
+    if (!proposedCharter.resources) proposedCharter.resources = { solidarityFund: { enabled: false, contributionPerQuarter: 1 }, resourceSharingCap: null, jointStatementClause: 'vote', headquarters: null };
 
+    // Summarize changes for the vote description
+    const changedArticles = ipoAmendArticles.map(a => a.type).join(', ');
+    const description = 'Amend charter articles: ' + changedArticles;
+
+    _ipoActionLock = true;
     try {
-        const { error } = await _supabase
-            .from('international_orgs')
-            .update({ charter: charter })
-            .eq('id', ipoSelectedOrgId);
-
-        if (error) {
-            console.error('[IPO] Amend charter error:', error);
-            alert('Failed to save charter: ' + error.message);
+        // Deduct 1 AP
+        const apResult = await deductAP(currentFaction.id, 1);
+        if (!apResult?.success) {
+            alert('Not enough AP. Charter amendments cost 1 AP.');
             return;
         }
 
-        // System chat message
+        // Check open vote limit
+        if (!await _checkOpenVoteLimit(ipoSelectedOrgId)) {
+            alert(`This organisation already has ${IPO_MAX_OPEN_VOTES} open votes. Wait for some to close.`);
+            return;
+        }
+
+        // Create a charter_amendment VOTE — not a direct update
+        const { error } = await _supabase.from('ipo_votes').insert({
+            org_id: ipoSelectedOrgId,
+            title: 'Charter Amendment: ' + changedArticles,
+            vote_type: 'charter_amendment',
+            meta: { description, proposed_charter: proposedCharter },
+            status: 'open',
+            opened_at_tick: shardTick,
+            closes_at_tick: shardTick + IPO_VOTE_DURATION,
+            proposed_by: currentFaction.id
+        });
+
+        if (error) {
+            console.error('[IPO] Amend charter vote error:', error);
+            alert('Failed to propose charter amendment: ' + error.message);
+            return;
+        }
+
         await _supabase.from('ipo_chat').insert({
             org_id: ipoSelectedOrgId,
             faction_id: null,
             is_system: true,
-            message_text: `Charter amended by ${currentFaction.faction_name}.`,
+            message_text: `${currentFaction.faction_name} proposed a charter amendment (${changedArticles}). Members must vote to approve.`,
             tick_posted: shardTick
         });
 
         closeIPOAmendModal();
+        await loadIPOVotes(ipoSelectedOrgId);
         renderIPOView();
     } catch (e) {
         console.error('[IPO] Amend error:', e);
-        alert('Failed to save charter changes.');
+        alert('Failed to propose charter amendment.');
+    } finally {
+        _ipoActionLock = false;
     }
 }
 
@@ -16845,12 +16873,23 @@ async function applyVoteEffects(vote, org) {
             break;
         }
         case 'charter_amendment': {
-            // Log the amendment proposal — actual charter changes require president to apply via Amend Charter
+            // Apply the proposed charter changes now that the vote passed
+            const proposedCharter = meta.proposed_charter;
+            if (proposedCharter) {
+                const { error: charterErr } = await _supabase
+                    .from('international_orgs')
+                    .update({ charter: proposedCharter })
+                    .eq('id', org.id);
+                if (charterErr) {
+                    console.error('[IPO] Charter amendment apply error:', charterErr);
+                }
+            }
+
             await _supabase.from('ipo_chat').insert({
                 org_id: ipoSelectedOrgId,
                 faction_id: null,
                 is_system: true,
-                message_text: `Charter amendment approved: ${meta.article_type || 'charter'} — "${(meta.description || '').substring(0, 200)}". The president should apply the changes via Amend Charter.`,
+                message_text: `Charter amendment approved and applied: "${(meta.description || '').substring(0, 200)}".`,
                 tick_posted: shardTick
             });
 
@@ -16858,8 +16897,8 @@ async function applyVoteEffects(vote, org) {
                 org_id: ipoSelectedOrgId,
                 faction_id: currentFaction.id,
                 action_type: 'charter_amendment',
-                action_data: { article_type: meta.article_type, description: meta.description },
-                ap_cost: 0,
+                action_data: { description: meta.description, proposed_charter: proposedCharter },
+                ap_cost: 1,
                 performed_at_tick: shardTick
             });
             break;
