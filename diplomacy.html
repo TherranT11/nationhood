@@ -16556,15 +16556,17 @@ async function resolveIPOVote(voteId) {
     const abstain = ballots.filter(b => b.ballot === 'abstain').length;
     const totalEligible = ipoVoteMembers.length;
 
-    // Determine if passed — guard against 0 eligible members
+    // Determine if passed
+    const totalCast = yes + no + abstain;
     let passed = false;
-    if (totalEligible === 0) {
-        passed = false; // No members = cannot pass
+    if (totalCast === 0) {
+        passed = false; // No votes cast = cannot pass
     } else if (votePass === 'unanimous') {
-        passed = yes === totalEligible && no === 0;
+        // Unanimous: every member who voted must vote yes, no "no" votes
+        passed = yes === totalCast && no === 0;
     } else {
-        // majority: yes > no AND yes > 50% of eligible
-        passed = yes > no && (yes / totalEligible) > 0.5;
+        // Majority: yes > 50% of votes cast (abstains count in denominator, non-voters don't)
+        passed = (yes / totalCast) > 0.5;
     }
 
     // Veto check
