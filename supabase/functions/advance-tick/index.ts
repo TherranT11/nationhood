@@ -14872,6 +14872,13 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
             id: standing.id,
             faction_id: factionId,
             nation_id: nation.id,
+            // Previous-tick values for delta arrows on the UI
+            prev_ideological_alignment: Number(standing.ideological_alignment ?? 50),
+            prev_platform_appeal: Number(standing.platform_appeal ?? 0),
+            prev_party_approval: Number(standing.party_approval ?? 25),
+            prev_visibility: Number(standing.visibility ?? 0),
+            prev_credibility_modifier: Number(standing.credibility_modifier ?? 1.0),
+            // New values
             ideological_alignment: newAlignment,
             platform_appeal: newAppeal,
             party_approval: newApproval,
@@ -14907,6 +14914,11 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         const { error } = await supabase
             .from('faction_electoral_standing')
             .update({
+                prev_ideological_alignment: u.prev_ideological_alignment,
+                prev_platform_appeal: u.prev_platform_appeal,
+                prev_party_approval: u.prev_party_approval,
+                prev_visibility: u.prev_visibility,
+                prev_credibility_modifier: u.prev_credibility_modifier,
                 ideological_alignment: u.ideological_alignment,
                 platform_appeal: u.platform_appeal,
                 party_approval: u.party_approval,
