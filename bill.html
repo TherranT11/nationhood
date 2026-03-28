@@ -2453,6 +2453,12 @@ async function respondToAmendment(reqId, response) {
     if (!currentFaction || currentBill.proposed_by !== currentFaction.id) return;
     try {
         const req = amendmentRequests.find(r => r.id === reqId);
+        if (!req) {
+            // Stale UI — reload to get fresh amendment data
+            await loadBillData();
+            alert('Amendment request not found. The page has been refreshed.');
+            return;
+        }
         await _supabase.from('bill_amendment_requests').update({ status: response }).eq('id', reqId);
         if (response === 'accepted') {
             // Convert conditional vote to locked accept FIRST (before article deletion

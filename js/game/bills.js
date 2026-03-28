@@ -2010,9 +2010,7 @@ export async function resolveStuckFloorBills(supabase, nationId) {
             await failBill(supabase, bill);
             await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor: 0, votesAgainst: 0, extra: { reason: `safety net: special type ${bill.bill_type} could not be resolved normally` } });
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_safety_net', billType: bill.bill_type });
-            continue;
-        }
-
+        } else {
         // Load support data individually — simple query, no nested joins
         const { data: supportRows } = await supabase
             .from('bill_support')
@@ -2098,6 +2096,7 @@ export async function resolveStuckFloorBills(supabase, nationId) {
             await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed' });
         }
+        } // end else (non-special bill type)
       } catch (billErr) {
         console.error(`[resolveStuckFloorBills] Error processing bill ${bill.id}:`, billErr);
         try {
