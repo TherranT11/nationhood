@@ -209,7 +209,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination, advanceBillEmergency, EO_CONFIG, executeWhipCaucus } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, adjustCredibility, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination, advanceBillEmergency, EO_CONFIG, executeWhipCaucus } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 /** Scale a policy cost by its scaling stat (e.g., population). */
 function scalePolicyCost(baseCost, scalingStat, nation) {
@@ -2217,15 +2217,19 @@ async function enactDecree() {
         const { error } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
         if (error) throw error;
 
-        // Apply dynamic ideology penalty to sponsor (skip for system-generated bills)
+        // Apply credibility penalty for opposed ideology articles (-3% per opposed article)
         if (currentBill.proposed_by) {
             let sponsorIdeology = await loadFactionIdeology(_supabase, currentBill.proposed_by);
             if (sponsorIdeology?._error) sponsorIdeology = null;
             if (sponsorIdeology) {
-                const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, currentBill.bill_articles || []);
-                if (dynamicPenalty < 0) {
-                    await adjustMomentumAll(_supabase, currentNation.id, currentBill.proposed_by, dynamicPenalty, 'legislation:floor');
-                    console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
+                const opposedCount = (currentBill.bill_articles || []).filter(art => {
+                    const p = art.policies || art;
+                    if (!p) return false;
+                    return calculateBillDynamicPenalty(sponsorIdeology, [art]) < 0;
+                }).length;
+                if (opposedCount > 0) {
+                    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+                    await adjustCredibility(_supabase, currentBill.proposed_by, currentNation.id, -(opposedCount * 0.03), 0, shard?.current_tick || 0, { source: 'legislation:ideology_conflict' });
                 }
             }
         }
@@ -2276,13 +2280,19 @@ async function sendToFloor() {
         const { error } = await _supabase.from('bills').update(updateFields).eq('id', billId);
         if (error) throw error;
 
-        // Apply dynamic ideology penalty to sponsor (replaces static penalty)
+        // Apply credibility penalty for opposed ideology articles (-3% per opposed article)
         let penaltyMsg = '';
         if (factionIdeology && currentBill.proposed_by) {
-            const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, currentBill.bill_articles || []);
-            if (dynamicPenalty < 0) {
-                await adjustMomentumAll(_supabase, currentNation.id, currentBill.proposed_by, dynamicPenalty, 'legislation:floor');
-                penaltyMsg = `\n\n⚠ Ideology penalty: ${dynamicPenalty.toFixed(1)} momentum (bill conflicts with your values)`;
+            const opposedCount = (currentBill.bill_articles || []).filter(art => {
+                const p = art.policies || art;
+                if (!p) return false;
+                return calculateBillDynamicPenalty(factionIdeology, [art]) < 0;
+            }).length;
+            if (opposedCount > 0) {
+                const credDelta = -(opposedCount * 0.03);
+                const { data: _shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+                await adjustCredibility(_supabase, currentBill.proposed_by, currentNation.id, credDelta, 0, _shard?.current_tick || 0, { source: 'legislation:ideology_conflict' });
+                penaltyMsg = `\n\n⚠ Ideology penalty: -${(opposedCount * 3)}% credibility (${opposedCount} article${opposedCount !== 1 ? 's' : ''} conflict${opposedCount === 1 ? 's' : ''} with your values)`;
             }
         }
 
