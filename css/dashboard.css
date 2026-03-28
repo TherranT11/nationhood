@@ -1074,6 +1074,12 @@ body.light-mode .coalition-party-card.locked { background: var(--orange-faint); 
         overflow-y: auto;
     }
 
+    #top-bar {
+        position: sticky;
+        top: 0;
+        z-index: 200;
+    }
+
     .hamburger-btn { display: block; }
 
     .top-bar-row1 {
