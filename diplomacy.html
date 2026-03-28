@@ -15891,7 +15891,7 @@ async function submitIPOAmend() {
     _ipoActionLock = true;
     try {
         // Deduct 1 AP
-        const apResult = await deductAP(currentFaction.id, 1);
+        const apResult = await deductAP(_supabase, currentFaction.id, 1);
         if (!apResult?.success) {
             alert('Not enough AP. Charter amendments cost 1 AP.');
             return;
