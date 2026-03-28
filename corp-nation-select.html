@@ -731,6 +731,11 @@ async function confirmNation() {
         const ceoLast = lastNames[Math.floor(Math.random() * lastNames.length)];
         const ceoAge = 40 + Math.floor(Math.random() * 36);
 
+        // Starting financials: $20M cash, $8M loans, scaled by currency strength
+        const currencyMult = (Number(nation.currency_strength) || 50) / 50;
+        const startingCash = Math.round(20_000_000 * currencyMult);
+        const startingLoans = Math.round(8_000_000 * currencyMult);
+
         // Upsert corporation faction record
         const { error: upsertError } = await _supabase
             .from('factions')
@@ -755,6 +760,8 @@ async function confirmNation() {
                 corp_subsector: corpSetup.subsector,
                 corp_company_type: companyType,
                 corp_ticker: ticker,
+                corp_cash_reserves: startingCash,
+                corp_loans: startingLoans,
             });
 
         if (upsertError) throw upsertError;
