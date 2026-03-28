@@ -2585,45 +2585,29 @@ function selectStrikeArticle(articleId) {
 
 async function submitStrikeAmendment() {
     if (!selectedStrikeArticleId || !currentFaction) return;
+    const mySupport = (currentBill.bill_support || []).find(s => s.faction_id === currentFaction.id);
+    if (mySupport?.locked) { alert('Your support is locked — a strike deal was accepted.'); return; }
     try {
-        // Strike costs 1 AP and takes effect immediately
+        // Strike request costs 1 AP
         const apResult = await deductAP(_supabase, currentFaction.id, 1);
         if (!apResult.success) { alert(apResult.error || 'Insufficient AP (need 1).'); return; }
 
-        // Check last article guard
-        const articleCount = (currentBill.bill_articles || []).length;
-        if (articleCount <= 1) {
-            if (!confirm('This is the last article in the bill. Striking it will leave the bill empty. Continue?')) return;
-        }
-
-        // Record the struck policy so it can't be re-added
-        const targetArticle = (currentBill.bill_articles || []).find(a => a.id === selectedStrikeArticleId);
-        if (targetArticle?.policy_id) {
-            const existing = currentBill.struck_policy_ids || [];
-            if (!existing.includes(targetArticle.policy_id)) {
-                await _supabase.from('bills').update({
-                    struck_policy_ids: [...existing, targetArticle.policy_id]
-                }).eq('id', billId);
-            }
-        }
-
-        // Remove the article immediately
-        await _supabase.from('bill_articles').delete().eq('id', selectedStrikeArticleId);
-        await renumberArticles(billId);
-
-        // Log the strike as an amendment request (for audit trail)
-        await _supabase.from('bill_amendment_requests').insert({
+        const { error } = await _supabase.from('bill_amendment_requests').insert({
             bill_id: billId,
             faction_id: currentFaction.id,
             policy_id: null,
             request_type: 'strike',
-            status: 'accepted',
+            status: 'pending',
             target_article_id: selectedStrikeArticleId
         });
-
+        if (error) throw error;
+        await _supabase.from('bill_support').upsert({
+            bill_id: billId, faction_id: currentFaction.id,
+            stance: 'conditional', seat_count: currentSeats
+        }, { onConflict: 'bill_id,faction_id' });
         closeStrikeAmendmentModal();
         await loadBillData();
-        alert('Article struck (1 AP). The article has been removed from the bill.');
+        alert('Strike requested (1 AP). The bill sponsor must accept or reject the removal.');
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
