@@ -6165,7 +6165,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const platformAppeal = Math.round(Number(playerStanding.platform_appeal ?? 0));
     const alignScore = Math.max(0, Math.min(100, Math.round(Number(playerStanding.ideological_alignment ?? 50))));
     const credModifier = Number(playerStanding.credibility_modifier ?? 1.0);
-    const credScore = Math.max(0, Math.min(100, Math.round((credModifier - 0.5) * 100)));
+    const credScore = Math.max(0, Math.min(100, Math.round((credModifier - 0.5) * 200)));
     const contestedShare = Number(playerStanding.contested_vote_share ?? 0);
     const realizedShare = Number(playerStanding.realized_vote_share ?? 0);
     const turnout = Number(playerStanding.turnout_rate ?? 0.65);
@@ -6176,7 +6176,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const prevApproval = playerStanding.prev_party_approval != null ? Number(playerStanding.prev_party_approval) : null;
     const prevVisibility = playerStanding.prev_visibility != null ? Math.round(Number(playerStanding.prev_visibility)) : null;
     const prevCredMod = playerStanding.prev_credibility_modifier != null ? Number(playerStanding.prev_credibility_modifier) : null;
-    const prevCredScore = prevCredMod != null ? Math.max(0, Math.min(100, Math.round((prevCredMod - 0.5) * 100))) : null;
+    const prevCredScore = prevCredMod != null ? Math.max(0, Math.min(100, Math.round((prevCredMod - 0.5) * 200))) : null;
 
     // Determine if player is in government
     const coalitionIds = govFormRes.data?.party_ids || [];
@@ -6388,7 +6388,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const credTier = _scoreTier(credScore);
     const credWeightPct = Math.round(credWeight * 100);
     const credDetail = `<span class="vt-detail-line">${credModifier.toFixed(2)}x multiplier · Weight: ${credWeightPct}% (dynamic)</span>`;
-    const credHint = credScore >= 80 ? 'Fully healthy — maintain by avoiding scandals' : 'Recovers +1%/tick toward 100';
+    const credHint = credScore >= 95 ? 'Fully healthy — maintain by avoiding scandals' : 'Recovers toward 100 each tick';
     const credCard = _factorCard('Credibility', credScore, weights.credibility,
         '#9b7ec8', credTier.label, credTier.color, credDetail, credHint, prevCredScore);
 
