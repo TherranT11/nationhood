@@ -6919,11 +6919,8 @@ async function resolveExpiredVotes(supabase, nationId) {
 
             console.log(`[resolveExpiredVotes] ${bill.bill_name}: quorum not met (${participating}/${quorumThreshold}), deferred to tick ${newDeadline}`);
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'deferred', votesFor, votesAgainst, votesAbstain, type: bill.bill_type });
-            continue;
-        }
 
-        // Handle second quorum failure: bill dies
-        if (resolution === 'failed_no_quorum') {
+        } else if (resolution === 'failed_no_quorum') {
             await failBill(supabase, bill);
             await syncFailedMinisterConfirmationBill(supabase, bill);
             await syncFailedAmbassadorConfirmationBill(supabase, bill);
@@ -6932,9 +6929,9 @@ async function resolveExpiredVotes(supabase, nationId) {
             await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, extra: { reason: `quorum not met after two attempts (${participating}/${quorumThreshold} participating)` } });
             console.log(`[resolveExpiredVotes] ${bill.bill_name}: quorum failed twice (${participating}/${quorumThreshold}), bill dies`);
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_no_quorum', votesFor, votesAgainst, votesAbstain, type: bill.bill_type });
-            continue;
-        }
 
+        } else {
+        // Normal bill resolution (not deferred, not quorum failure)
         let passed = resolution === 'passed';
         const isNoConfidence = bill.bill_type === 'no_confidence';
         const isFoundational = bill.bill_type === 'foundational';
@@ -7932,6 +7929,7 @@ async function resolveExpiredVotes(supabase, nationId) {
         } catch (caucusRelErr) {
             console.error(`[resolveExpiredVotes] Caucus relationship update failed for bill ${bill.id}:`, caucusRelErr.message);
         }
+        } // end else (normal bill resolution)
       } catch (billErr) {
         // Per-bill error handler: prevents one bill's failure from blocking all others
         console.error(`[resolveExpiredVotes] UNHANDLED error processing bill ${bill.id} ("${bill.bill_name}"):`, billErr);
@@ -8005,9 +8003,7 @@ async function resolveStuckFloorBills(supabase, nationId) {
             await failBill(supabase, bill);
             await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor: 0, votesAgainst: 0, extra: { reason: `safety net: special type ${bill.bill_type} could not be resolved normally` } });
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_safety_net', billType: bill.bill_type });
-            continue;
-        }
-
+        } else {
         // Load support data individually — simple query, no nested joins
         const { data: supportRows } = await supabase
             .from('bill_support')
@@ -8093,6 +8089,7 @@ async function resolveStuckFloorBills(supabase, nationId) {
             await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed' });
         }
+        } // end else (non-special bill type)
       } catch (billErr) {
         console.error(`[resolveStuckFloorBills] Error processing bill ${bill.id}:`, billErr);
         try {
@@ -9574,7 +9571,7 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
     for (const amb of ambassadors) {
       try {
         const appointedTick = amb.appointed_at_tick;
-        if (appointedTick == null) continue; // No term tracking — skip
+        if (appointedTick != null) { // Only process if term tracking exists
 
         const termLength = amb.term_length || DIPLOMACY_CONFIG.AMBASSADOR_TERM_LENGTH;
         const ticksServed = currentTick - appointedTick;
@@ -9667,6 +9664,7 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
             results.push({ ambassadorId: amb.id, name: ambName, target: targetNationName, action: 'warning' });
             console.log(`[processAmbassadorRetirements] Retirement warning for ${ambName} (${nation.name} → ${targetNationName}): ${ticksRemaining} ticks remaining.`);
         }
+        } // end if appointedTick != null
       } catch (ambErr) {
         console.error(`[processAmbassadorRetirements] Error processing ambassador ${amb.id}:`, ambErr);
       }
@@ -29151,11 +29149,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                             fired_at_tick: newTick
                         });
                     } catch (_) {}
-                    continue; // skip normal resolution for this protest
                 }
             }
 
-            // Normal resolution for fresh protests (called this tick or last tick)
+            // Normal resolution for fresh protests (called this tick or last tick — skip stale ones already handled above)
             const freshProtests = (resolvingProtests || []).filter(p => (newTick - (p.tick_called || newTick)) <= 2);
             for (const protest of freshProtests) {
                 try {
