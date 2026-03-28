@@ -153,88 +153,84 @@ body {
 
 /* ── Content ── */
 .content {
-  max-width: 960px;
-  margin: 0 auto;
   padding: 24px 20px;
+  display: flex;
+  justify-content: center;
 }
 
-/* ── Dashboard grid ── */
-.dash-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 24px;
-}
-
-/* ── Card ── */
-.card {
+/* ── Identity card — fixed 380×450 ── */
+.id-card {
+  width: 380px;
+  height: 450px;
   background: var(--bg-2);
   border: 1px solid var(--border-0);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
-.card--full { grid-column: 1 / -1; }
-.card__header {
+.id-card__header {
   background: var(--bg-3);
   border-bottom: 1px solid var(--border-hair);
   padding: 8px 14px;
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-.card__dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.card__label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 600;
-  color: var(--text-dim);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-.card__body {
-  padding: 14px;
-}
-
-/* ── Stat rows ── */
-.stat-row {
-  display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 5px 0;
-  border-bottom: 1px solid var(--border-hair);
 }
-.stat-row:last-child { border-bottom: none; }
-.stat-row__label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--text-muted);
+.id-card__header-left {
+  display: flex; align-items: center; gap: 8px;
 }
-.stat-row__value {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 600;
-  color: var(--text-primary);
+.id-card__dot {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--teal);
 }
-
-/* ── Placeholder ── */
-.placeholder {
-  text-align: center;
-  padding: 32px 16px;
+.id-card__label {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase;
 }
-.placeholder__icon {
-  font-size: 24px;
-  margin-bottom: 8px;
-  opacity: 0.4;
+.id-card__type-badge {
+  font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 2px;
+  background: var(--teal-faint); border: 1px solid var(--teal-border); color: var(--teal);
 }
-.placeholder__text {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--text-dim);
-  letter-spacing: 0.04em;
+.id-card__body {
+  flex: 1; padding: 16px 20px;
+  display: flex; flex-direction: column;
+}
+.id-card__logo-area {
+  text-align: center; margin-bottom: 10px;
+}
+.id-card__logo {
+  width: 48px; height: 48px; margin: 0 auto;
+  background: var(--bg-3); border: 1px solid var(--border-0); border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 16px; font-weight: 700; color: var(--text-dim);
+}
+.id-card__corp-name {
+  font-family: var(--font-ui); font-size: 16px; font-weight: 700;
+  color: var(--text-bright); text-align: center; margin-bottom: 2px;
+}
+.id-card__slogan {
+  font-family: var(--font-serif); font-size: 11px; font-style: italic;
+  color: var(--text-muted); text-align: center; margin-bottom: 14px;
+}
+.id-card__divider {
+  height: 1px; background: var(--border-0); margin-bottom: 8px;
+}
+.id-card__rows {
+  flex: 1;
+}
+.id-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 5px 0; border-bottom: 1px solid var(--border-hair);
+}
+.id-row:last-child { border-bottom: none; }
+.id-row__label {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 500;
+  color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase;
+}
+.id-row__value {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  color: var(--text-primary); text-align: right;
 }
 
 /* ── Loading ── */
@@ -244,10 +240,6 @@ body {
   color: var(--text-dim);
   text-align: center;
   padding: 80px 20px;
-}
-
-@media (max-width: 640px) {
-  .dash-grid { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -288,66 +280,22 @@ body {
   </div>
 
   <div class="content">
-    <!-- Overview + Financials -->
-    <div class="dash-grid">
-      <div class="card">
-        <div class="card__header">
-          <div class="card__dot" style="background:var(--teal)"></div>
-          <span class="card__label">Corporation Overview</span>
+    <div class="id-card">
+      <div class="id-card__header">
+        <div class="id-card__header-left">
+          <div class="id-card__dot"></div>
+          <span class="id-card__label">Corporation</span>
         </div>
-        <div class="card__body" id="overview-body"></div>
+        <span class="id-card__type-badge" id="id-type-badge">--</span>
       </div>
-
-      <div class="card">
-        <div class="card__header">
-          <div class="card__dot" style="background:var(--green)"></div>
-          <span class="card__label">Financials</span>
+      <div class="id-card__body">
+        <div class="id-card__logo-area">
+          <div class="id-card__logo" id="id-logo"></div>
         </div>
-        <div class="card__body">
-          <div class="placeholder">
-            <div class="placeholder__icon">$</div>
-            <div class="placeholder__text">Financial data will appear here once your corporation begins operations.</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card__header">
-          <div class="card__dot" style="background:var(--amber)"></div>
-          <span class="card__label">Active Contracts</span>
-        </div>
-        <div class="card__body">
-          <div class="placeholder">
-            <div class="placeholder__icon">&mdash;</div>
-            <div class="placeholder__text">No active contracts. Bid on government tenders to win your first project.</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card__header">
-          <div class="card__dot" style="background:var(--blue)"></div>
-          <span class="card__label">Equipment &amp; Assets</span>
-        </div>
-        <div class="card__body">
-          <div class="placeholder">
-            <div class="placeholder__icon">&mdash;</div>
-            <div class="placeholder__text">Purchase equipment to expand your operational capacity.</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card card--full">
-        <div class="card__header">
-          <div class="card__dot" style="background:var(--amber)"></div>
-          <span class="card__label">Government Tenders</span>
-        </div>
-        <div class="card__body">
-          <div class="placeholder">
-            <div class="placeholder__icon">&mdash;</div>
-            <div class="placeholder__text">Available government contracts for your sector will appear here each tick.</div>
-          </div>
-        </div>
+        <div class="id-card__corp-name" id="id-corp-name">--</div>
+        <div class="id-card__slogan" id="id-slogan">"--"</div>
+        <div class="id-card__divider"></div>
+        <div class="id-card__rows" id="id-rows"></div>
       </div>
     </div>
   </div>
@@ -414,40 +362,47 @@ async function init() {
     document.getElementById('topbar-ap').innerHTML =
         '<span class="topbar-ap__count">' + ap + ' AP</span>';
 
-    // Populate overview card
-    const overview = document.getElementById('overview-body');
-    overview.innerHTML = `
-        <div class="stat-row">
-            <span class="stat-row__label">Corporation</span>
-            <span class="stat-row__value">${escapeHtml(faction.faction_name)}</span>
+    // ── Populate identity card ──
+    document.getElementById('id-type-badge').textContent = faction.corp_company_type || '—';
+    document.getElementById('id-logo').textContent = ticker.slice(0, 3) || '—';
+    document.getElementById('id-corp-name').textContent = faction.faction_name || 'Unnamed Corp';
+    document.getElementById('id-slogan').textContent = '"--"';
+
+    // Derive established year from game date (e.g. "August, 2013" → "2013")
+    const estYear = shard?.current_date ? shard.current_date.replace(/.*,\s*/, '') : '—';
+
+    const ceoName = (faction.leader_first_name && faction.leader_last_name)
+        ? faction.leader_first_name + ' ' + faction.leader_last_name
+        : '—';
+
+    document.getElementById('id-rows').innerHTML = `
+        <div class="id-row">
+            <span class="id-row__label">Established</span>
+            <span class="id-row__value">${escapeHtml(estYear)}</span>
         </div>
-        <div class="stat-row">
-            <span class="stat-row__label">Ticker</span>
-            <span class="stat-row__value" style="color:var(--teal);letter-spacing:0.1em;">${escapeHtml(faction.corp_ticker || '')}</span>
+        <div class="id-row">
+            <span class="id-row__label">Headquarters</span>
+            <span class="id-row__value">${escapeHtml(nationName || '—')}</span>
         </div>
-        <div class="stat-row">
-            <span class="stat-row__label">Sector</span>
-            <span class="stat-row__value">${escapeHtml(faction.corp_sector || '—')}</span>
+        <div class="id-row">
+            <span class="id-row__label">Sector</span>
+            <span class="id-row__value">${escapeHtml(faction.corp_sector || '—')}</span>
         </div>
-        <div class="stat-row">
-            <span class="stat-row__label">Subsector</span>
-            <span class="stat-row__value">${escapeHtml(faction.corp_subsector || '—')}</span>
+        <div class="id-row">
+            <span class="id-row__label">Specialization</span>
+            <span class="id-row__value">${escapeHtml(faction.corp_subsector || '—')}</span>
         </div>
-        <div class="stat-row">
-            <span class="stat-row__label">Type</span>
-            <span class="stat-row__value">${escapeHtml(faction.corp_company_type || '—')}</span>
+        <div class="id-row">
+            <span class="id-row__label">CEO</span>
+            <span class="id-row__value">${escapeHtml(ceoName)}</span>
         </div>
-        <div class="stat-row">
-            <span class="stat-row__label">Home Nation</span>
-            <span class="stat-row__value">${escapeHtml(nationName || '—')}</span>
+        <div class="id-row">
+            <span class="id-row__label">Company Type</span>
+            <span class="id-row__value">${escapeHtml(faction.corp_company_type || '—')}</span>
         </div>
-        <div class="stat-row">
-            <span class="stat-row__label">Action Points</span>
-            <span class="stat-row__value" style="color:var(--amber)">${faction.action_points ?? 0} AP</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-row__label">Founded</span>
-            <span class="stat-row__value">Tick ${faction.founded_tick ?? '—'}</span>
+        <div class="id-row">
+            <span class="id-row__label">Stock Ticker</span>
+            <span class="id-row__value" style="color:var(--teal);letter-spacing:0.1em;">${escapeHtml(ticker)}</span>
         </div>
     `;
 

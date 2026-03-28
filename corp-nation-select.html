@@ -436,6 +436,7 @@ body {
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
+import { getNationNames } from './js/game/political-actions.js';
 
 const FLAG_URLS = {
     'Melizea': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Melizea.png',
@@ -724,6 +725,12 @@ async function confirmNation() {
             .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const currentTick = shardData?.current_tick || 0;
 
+        // Generate CEO name from nation name pool
+        const { firstNames, lastNames } = getNationNames(nation.name);
+        const ceoFirst = firstNames[Math.floor(Math.random() * firstNames.length)];
+        const ceoLast = lastNames[Math.floor(Math.random() * lastNames.length)];
+        const ceoAge = 35 + Math.floor(Math.random() * 20);
+
         // Upsert corporation faction record
         const { error: upsertError } = await _supabase
             .from('factions')
@@ -739,9 +746,9 @@ async function confirmNation() {
                 party_color: '#5aafa5',
                 party_logo: null,
                 party_description: null,
-                leader_first_name: null,
-                leader_last_name: null,
-                leader_age: null,
+                leader_first_name: ceoFirst,
+                leader_last_name: ceoLast,
+                leader_age: ceoAge,
                 founded_tick: currentTick,
                 action_points: 5,
                 corp_sector: corpSetup.sector,
