@@ -36,7 +36,7 @@ function injectStyles() {
 .msg-bubble__badge {
     position: absolute; top: -4px; right: -4px;
     min-width: 18px; height: 18px; border-radius: 9px;
-    background: #d9534f; color: #fff;
+    background: var(--amber, #c8a64e); color: #000;
     font-family: var(--font-mono, monospace); font-size: 10px; font-weight: 700;
     display: none; align-items: center; justify-content: center;
     padding: 0 4px; line-height: 1;
@@ -1393,19 +1393,21 @@ async function calculateUnread() {
     if (!_msgFaction?.id) return;
 
     try {
-        // Count unread DMs
-        const { count: dmCount, error: dmErr } = await _supabase
+        // Count total DM conversations (distinct partners)
+        const { data: dms } = await _supabase
             .from('direct_messages')
-            .select('id', { count: 'exact', head: true })
-            .eq('receiver_id', _msgFaction.id)
-            .is('read_at', null);
+            .select('sender_id, receiver_id')
+            .or(`sender_id.eq.${_msgFaction.id},receiver_id.eq.${_msgFaction.id}`)
+            .limit(200);
 
-        _totalUnread = (dmErr ? 0 : (dmCount || 0));
-
-        // For group chats, approximate: check if any chat has messages after last_read_at
-        for (const g of _groupChats) {
-            if (g.unreadCount > 0) _totalUnread += g.unreadCount;
+        const dmPartners = new Set();
+        for (const dm of (dms || [])) {
+            const otherId = dm.sender_id === _msgFaction.id ? dm.receiver_id : dm.sender_id;
+            dmPartners.add(otherId);
         }
+
+        // Total = DM conversations + group chats
+        _totalUnread = dmPartners.size + _groupChats.length;
     } catch (_) {
         // Non-critical
     }
