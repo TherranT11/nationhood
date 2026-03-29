@@ -31389,6 +31389,145 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] IPO processing failed (non-fatal):', ipoErr);
     }
 
+    // ══ EQUIPMENT TICK PROCESSING ══
+    // 1. Process pending deliveries (move to corp_equipment on delivery_tick)
+    // 2. Degrade condition on deployed equipment (2%/tick)
+    // 3. Destroy equipment at 0% condition
+    // 4. Deduct maintenance costs from corp_cash_reserves
+    if (!reprocess) {
+        // Equipment config lookups (mirrored from js/game/equipment.js)
+        const EQ_MAINT = {
+            trucks: 1500, excavators: 5500, bulldozers: 7000, mixers: 4500,
+            cranes: 32500, haulers: 15000, piledrivers: 18000, asphalt: 22000,
+            industrial: 85000, tbm: 200000, dredge: 95000,
+        };
+        const EQ_TIER = {
+            trucks: 1, excavators: 1, bulldozers: 1, mixers: 1,
+            cranes: 2, haulers: 2, piledrivers: 2, asphalt: 2,
+            industrial: 3, tbm: 3, dredge: 3,
+        };
+
+        try {
+            // ── 1. Process deliveries ──
+            const { data: arrivals } = await supabase
+                .from('corp_equipment_deliveries')
+                .select('*')
+                .lte('delivery_tick', newTick);
+
+            for (const del of (arrivals || [])) {
+                try {
+                    // Load existing equipment row
+                    const { data: existing } = await supabase
+                        .from('corp_equipment')
+                        .select('owned, deployed, condition, purchase_price_avg, maintenance_per_tick')
+                        .eq('faction_id', del.faction_id)
+                        .eq('equipment_key', del.equipment_key)
+                        .maybeSingle();
+
+                    const oldOwned = existing?.owned || 0;
+                    const newOwned = oldOwned + del.quantity;
+                    const oldCond = existing?.condition || 100;
+                    const newCond = Math.round(((oldCond * oldOwned) + (del.condition * del.quantity)) / newOwned);
+                    const oldAvg = existing?.purchase_price_avg || 0;
+                    const newAvg = oldOwned > 0
+                        ? Math.round(((oldAvg * oldOwned) + (del.price_paid)) / newOwned)
+                        : Math.round(del.price_paid / del.quantity);
+
+                    const maintPerUnit = EQ_MAINT[del.equipment_key] || 0;
+                    const tier = EQ_TIER[del.equipment_key] || 1;
+
+                    // Load faction's nation_id for the upsert
+                    const { data: factionRow } = await supabase
+                        .from('factions').select('nation_id').eq('id', del.faction_id).single();
+
+                    await supabase.from('corp_equipment').upsert({
+                        faction_id: del.faction_id,
+                        nation_id: factionRow?.nation_id || del.source_nation_id,
+                        equipment_key: del.equipment_key,
+                        tier,
+                        owned: newOwned,
+                        deployed: existing?.deployed || 0,
+                        condition: newCond,
+                        maintenance_per_tick: maintPerUnit * newOwned,
+                        purchase_price_avg: newAvg,
+                        last_purchased_tick: newTick,
+                        updated_at: new Date().toISOString(),
+                    }, { onConflict: 'faction_id,equipment_key' });
+
+                    // Delete the delivery record
+                    await supabase.from('corp_equipment_deliveries').delete().eq('id', del.id);
+                    console.log(`[Equipment] Delivery arrived: ${del.quantity}x ${del.equipment_key} for faction ${del.faction_id}`);
+                } catch (delErr) {
+                    console.error(`[Equipment] Delivery processing failed for ${del.id}:`, delErr.message);
+                }
+            }
+
+            // ── 2+3. Condition decay + destruction for deployed equipment ──
+            const { data: allEquip } = await supabase
+                .from('corp_equipment')
+                .select('id, faction_id, equipment_key, owned, deployed, condition')
+                .gt('deployed', 0);
+
+            for (const eq of (allEquip || [])) {
+                try {
+                    const newCond = Math.max(0, eq.condition - 2); // 2%/tick decay when deployed
+
+                    if (newCond <= 0) {
+                        // Destroy all units of this type — they're broken
+                        await supabase.from('corp_equipment').delete().eq('id', eq.id);
+                        console.log(`[Equipment] DESTROYED: ${eq.equipment_key} for faction ${eq.faction_id} (condition hit 0%)`);
+                    } else {
+                        await supabase.from('corp_equipment')
+                            .update({ condition: newCond, updated_at: new Date().toISOString() })
+                            .eq('id', eq.id);
+                    }
+                } catch (condErr) {
+                    console.error(`[Equipment] Condition decay failed for ${eq.id}:`, condErr.message);
+                }
+            }
+
+            // ── 4. Maintenance cost deduction ──
+            // Load all corps with equipment and deduct maintenance from cash reserves
+            const { data: corpEquipment } = await supabase
+                .from('corp_equipment')
+                .select('faction_id, equipment_key, owned');
+
+            // Aggregate maintenance per faction
+            const factionMaint = {};
+            for (const row of (corpEquipment || [])) {
+                const maint = (EQ_MAINT[row.equipment_key] || 0) * (row.owned || 0);
+                if (maint > 0) {
+                    factionMaint[row.faction_id] = (factionMaint[row.faction_id] || 0) + maint;
+                }
+            }
+
+            // Deduct from each corp's cash reserves
+            for (const [factionId, totalMaint] of Object.entries(factionMaint)) {
+                try {
+                    const { data: corp } = await supabase
+                        .from('factions')
+                        .select('corp_cash_reserves')
+                        .eq('id', factionId)
+                        .single();
+
+                    if (corp) {
+                        const currentCash = Number(corp.corp_cash_reserves) || 0;
+                        const newCash = Math.max(0, currentCash - totalMaint);
+                        await supabase.from('factions')
+                            .update({ corp_cash_reserves: newCash })
+                            .eq('id', factionId);
+                    }
+                } catch (maintErr) {
+                    console.error(`[Equipment] Maintenance deduction failed for ${factionId}:`, maintErr.message);
+                }
+            }
+
+            console.log(`[Equipment] Tick processing complete: ${(arrivals || []).length} deliveries, ${(allEquip || []).length} equipment rows decayed, ${Object.keys(factionMaint).length} corps charged maintenance`);
+        } catch (equipErr) {
+            console.error('[Equipment] Tick processing failed (non-fatal):', equipErr);
+        }
+    }
+
     // AP summary (accumulated inside per-nation loop)
     summary.apDistributed = apDistributed;
     summary.apFailed = apFailed;

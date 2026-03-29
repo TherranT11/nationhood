@@ -14369,7 +14369,7 @@ async function renderIPOView() {
                 org:international_orgs (
                     id, name, logo_symbol, logo_text, logo_image_url, description,
                     founded_at_tick, founding_party_id,
-                    president_id, president_term_start_tick,
+                    president_id, president_term_start_tick, emergency_power_used_tick,
                     headquarters_nation_id, solidarity_fund_balance,
                     charter, is_active,
                     symposium_cooldown_remaining, pending_symposium
@@ -17125,7 +17125,7 @@ async function applyVoteEffects(vote, org) {
 const IPO_ACTION_COSTS = {
     hold_rally:      4,
     rally_all:       7,
-    back_channel:    3,
+    back_channel:    2,  // personal AP overhead (fund source costs 0 personal AP)
     joint_statement: 1,
     fund_draw:       0   // no AP — draws from solidarity fund
 };
@@ -17256,30 +17256,48 @@ function renderIPOActionsPanel() {
 
     // ── Enforce Action Leadership charter rules ──
     const actionMode = charter.governance?.actionLeadership || 'unilateral';
+    const hasEmergencyPowers = !!charter.governance?.emergencyPowers;
+    const emergencyUsedTick = org.emergency_power_used_tick || 0;
+    const termStartTick = org.president_term_start_tick || 0;
+    // Emergency available if: powers enabled, is president, and hasn't been used since current term started
+    // (emergencyUsedTick === 0 means never used → always available)
+    const emergencyAvailable = hasEmergencyPowers && isPresident && (emergencyUsedTick === 0 || emergencyUsedTick < termStartTick);
+
     for (const a of actions) {
-        if (!a.available || a.key === 'fund_draw') continue; // skip already-unavailable and fund_draw (always vote)
+        if (!a.available || a.key === 'fund_draw') continue;
+
+        let blocked = false;
+        let blockReason = '';
 
         if (actionMode === 'committee') {
-            // Committee: all actions require a vote — disable direct execution
-            a.available = false;
-            a.desc = `${a.desc} (Charter requires a vote — use Votes panel)`;
+            blocked = true;
+            blockReason = 'Charter requires a vote — use Votes panel';
         } else if (actionMode === 'presidential' && !isPresident) {
-            // Presidential: only president can act
-            a.available = false;
-            a.desc = `${a.desc} (Only the president can execute actions)`;
+            blocked = true;
+            blockReason = 'Only the president can execute actions';
         } else if (actionMode === 'delegated' && !isPresident) {
-            // Delegated: president + officers. For now, only president (officers TBD)
-            a.available = false;
-            a.desc = `${a.desc} (Only the president or officers can execute actions)`;
+            blocked = true;
+            blockReason = 'Only the president or officers can execute actions';
         } else if (actionMode === 'tiered' && a.cost > 2) {
-            // Tiered: actions >2 AP require a vote
+            blocked = true;
+            blockReason = 'Costs >2 AP — charter requires a vote';
+        }
+
+        if (blocked) {
             a.available = false;
-            a.desc = `${a.desc} (Costs >2 AP — charter requires a vote)`;
+            a.desc = `${a.desc} (${blockReason})`;
+            // Tag as emergency-eligible if president has unused emergency powers
+            if (emergencyAvailable) {
+                a._emergencyEligible = true;
+            }
         }
     }
 
-    const actionCardsHtml = actions.map(a => `
-        <div class="ipo-action-card ${a.available ? '' : 'ipo-action-card--disabled'}">
+    const actionCardsHtml = actions.map(a => {
+        const emergencyBtn = a._emergencyEligible
+            ? `<button class="ipo-action-exec-btn" style="background:rgba(217,83,79,0.15);border-color:rgba(217,83,79,0.3);color:#d9534f;" onclick="executeIPOAction('${a.key}', true)">⚡ EMERGENCY</button>`
+            : '';
+        return `<div class="ipo-action-card ${a.available ? '' : 'ipo-action-card--disabled'}">
             <div class="ipo-action-card-top">
                 <span class="ipo-action-icon">${a.icon}</span>
                 <div class="ipo-action-info">
@@ -17289,12 +17307,12 @@ function renderIPOActionsPanel() {
             </div>
             <div class="ipo-action-card-bottom">
                 ${a.cost > 0 ? `<span class="ipo-action-cost">${a.cost} AP</span>` : '<span class="ipo-action-cost">Free</span>'}
-                <button class="ipo-action-exec-btn" ${a.available ? `onclick="executeIPOAction('${a.key}')"` : 'disabled'}>
-                    ${a.available ? 'Execute' : 'Unavailable'}
-                </button>
+                ${a.available
+                    ? `<button class="ipo-action-exec-btn" onclick="executeIPOAction('${a.key}')">Execute</button>`
+                    : emergencyBtn || '<button class="ipo-action-exec-btn" disabled>Unavailable</button>'}
             </div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 
     // Split layout: scrollable action cards on top, scrollable event log on bottom
     container.innerHTML = `
@@ -17373,8 +17391,50 @@ async function loadIPOEventLog(orgId) {
 /**
  * Execute an IPO action — routes to the appropriate handler.
  */
-async function executeIPOAction(actionKey) {
+async function executeIPOAction(actionKey, useEmergencyPowers = false) {
     if (!currentFaction || !ipoSelectedOrgId) return;
+
+    // If invoking emergency powers, confirm and record usage
+    if (useEmergencyPowers) {
+        if (!confirm('⚡ INVOKE EMERGENCY POWERS?\n\nThis bypasses the charter\'s action leadership rules.\nYou can only use this once per presidential term.\n\nProceed?')) return;
+
+        // Record emergency power usage on the org
+        try {
+            await _supabase.from('international_orgs')
+                .update({ emergency_power_used_tick: shardTick })
+                .eq('id', ipoSelectedOrgId);
+
+            // Post to chat
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: `⚡ ${currentFaction.faction_name} has invoked EMERGENCY POWERS to execute: ${actionKey.replace(/_/g, ' ')}.`,
+                tick_posted: shardTick
+            });
+
+            // World event for every member nation (non-blocking — don't prevent action if this fails)
+            try {
+                const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+                const orgName = membership?.org?.name || 'An organisation';
+                const { data: members } = await _supabase.from('ipo_members')
+                    .select('nation_id').eq('org_id', ipoSelectedOrgId);
+                const nationIds = [...new Set((members || []).map(m => m.nation_id).filter(Boolean))];
+                for (const nid of nationIds) {
+                    await _supabase.from('event_log').insert({
+                        nation_id: nid,
+                        event_name: 'Emergency Powers Invoked',
+                        description_chosen: `${orgName}: ${currentFaction.faction_name} invoked emergency powers to ${actionKey.replace(/_/g, ' ')}.`,
+                        category: 'DIPLOMATIC',
+                        fired_at_tick: shardTick
+                    });
+                }
+            } catch (_) { /* world event is non-blocking */ }
+        } catch (e) {
+            alert('Failed to invoke emergency powers: ' + (e.message || 'Unknown error'));
+            return;
+        }
+    }
 
     switch (actionKey) {
         case 'hold_rally':      await executeHoldRally(); break;

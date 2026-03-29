@@ -16,6 +16,8 @@ DECLARE
         'corp_contract_bids',
         'corp_contracts',
         'corp_warehouse',
+        'corp_equipment_deliveries',
+        'corp_equipment',
 
         -- ══ IPO system ══
         'ipo_ballots',
