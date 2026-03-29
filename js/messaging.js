@@ -1095,6 +1095,157 @@ async function createGroupChat() {
     }
 }
 
+// ── Auto-create / sync IPO group chats ──
+async function syncAutoChats() {
+    if (!_msgFaction || !_msgFaction.id) return;
+
+    try {
+        // 1. Sync nation chat — one per nation
+        if (_msgNation?.id) {
+            await ensureNationChat(_msgNation.id, _msgNation.name || 'Nation');
+        }
+
+        // 2. Sync IPO chats — one per org the player is a member of
+        const { data: memberships } = await _supabase
+            .from('ipo_members')
+            .select('org_id, international_orgs!inner(id, name, is_active)')
+            .eq('faction_id', _msgFaction.id)
+            .eq('is_active', true);
+
+        for (const m of (memberships || [])) {
+            const org = m.international_orgs;
+            if (!org || !org.is_active) continue;
+            await ensureIPOChat(org.id, org.name);
+        }
+    } catch (e) {
+        console.warn('[Messaging] Auto-chat sync failed (non-blocking):', e);
+    }
+}
+
+async function ensureNationChat(nationId, nationName) {
+    // Check if nation chat already exists
+    const { data: existing } = await _supabase
+        .from('group_chats')
+        .select('id')
+        .eq('nation_id', nationId)
+        .eq('chat_type', 'nation')
+        .maybeSingle();
+
+    let chatId;
+    if (existing) {
+        chatId = existing.id;
+    } else {
+        // Create nation chat
+        const { data: chat, error } = await _supabase
+            .from('group_chats')
+            .insert({ name: nationName + ' Chat', chat_type: 'nation', nation_id: nationId })
+            .select('id')
+            .single();
+        if (error) {
+            // Might be a race — another player created it simultaneously
+            if (error.code === '23505') {
+                const { data: retry } = await _supabase
+                    .from('group_chats')
+                    .select('id')
+                    .eq('nation_id', nationId)
+                    .eq('chat_type', 'nation')
+                    .maybeSingle();
+                chatId = retry?.id;
+            } else {
+                console.warn('[Messaging] Nation chat create failed:', error.message);
+                return;
+            }
+        } else {
+            chatId = chat.id;
+        }
+    }
+
+    if (!chatId) return;
+
+    // Ensure we're a member
+    await _supabase
+        .from('group_chat_members')
+        .upsert({ chat_id: chatId, faction_id: _msgFaction.id }, { onConflict: 'chat_id,faction_id' });
+
+    // Sync all parties in this nation as members (best-effort)
+    try {
+        const { data: parties } = await _supabase
+            .from('factions')
+            .select('id')
+            .eq('nation_id', _msgNation.id)
+            .eq('faction_type', 'party')
+            .not('nation_id', 'is', null);
+
+        if (parties && parties.length > 0) {
+            const rows = parties.map(p => ({ chat_id: chatId, faction_id: p.id }));
+            await _supabase
+                .from('group_chat_members')
+                .upsert(rows, { onConflict: 'chat_id,faction_id' });
+        }
+    } catch (_) { /* best-effort sync */ }
+}
+
+async function ensureIPOChat(orgId, orgName) {
+    // Check if IPO chat already exists
+    const { data: existing } = await _supabase
+        .from('group_chats')
+        .select('id')
+        .eq('ipo_org_id', orgId)
+        .eq('chat_type', 'ipo')
+        .maybeSingle();
+
+    let chatId;
+    if (existing) {
+        chatId = existing.id;
+    } else {
+        // Create IPO chat
+        const { data: chat, error } = await _supabase
+            .from('group_chats')
+            .insert({ name: orgName, chat_type: 'ipo', ipo_org_id: orgId })
+            .select('id')
+            .single();
+        if (error) {
+            if (error.code === '23505') {
+                const { data: retry } = await _supabase
+                    .from('group_chats')
+                    .select('id')
+                    .eq('ipo_org_id', orgId)
+                    .eq('chat_type', 'ipo')
+                    .maybeSingle();
+                chatId = retry?.id;
+            } else {
+                console.warn('[Messaging] IPO chat create failed:', error.message);
+                return;
+            }
+        } else {
+            chatId = chat.id;
+        }
+    }
+
+    if (!chatId) return;
+
+    // Ensure we're a member
+    await _supabase
+        .from('group_chat_members')
+        .upsert({ chat_id: chatId, faction_id: _msgFaction.id }, { onConflict: 'chat_id,faction_id' });
+
+    // Sync all active IPO members into the group chat (best-effort)
+    try {
+        const { data: members } = await _supabase
+            .from('ipo_members')
+            .select('faction_id')
+            .eq('org_id', orgId)
+            .eq('is_active', true);
+
+        if (members && members.length > 0) {
+            const rows = members.map(m => ({ chat_id: chatId, faction_id: m.faction_id }));
+            await _supabase
+                .from('group_chat_members')
+                .upsert(rows, { onConflict: 'chat_id,faction_id' });
+        }
+    } catch (_) { /* best-effort sync */ }
+}
+
 // ── Public init ──
 export function initMessaging(faction, nation, shard) {
     _msgFaction = faction;
@@ -1106,4 +1257,7 @@ export function initMessaging(faction, nation, shard) {
 
     injectStyles();
     injectHTML();
+
+    // Sync auto-chats in background (non-blocking)
+    syncAutoChats();
 }
