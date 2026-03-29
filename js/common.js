@@ -161,12 +161,13 @@ export function getAdminFactionOverride() {
 })();
 
 export function getCachedState() {
-    // Skip cache entirely when admin override params are in the URL — always fetch fresh.
-    // We check URL params directly here instead of getAdminNationOverride() because
-    // _admin_verified is false at this point (verification happens later in loadGameState).
+    // Skip cache entirely when admin override is active — always fetch fresh.
+    // Check URL params AND sessionStorage (for in-iframe navigation without params).
+    // _admin_verified is false at this point so we can't use getAdminNationOverride().
     try {
         const params = new URLSearchParams(window.location.search);
         if (params.has('nation_id') || params.has('faction_id')) return null;
+        if (sessionStorage.getItem('_admin_nation') || sessionStorage.getItem('_admin_faction')) return null;
     } catch (_) {}
     if (getAdminNationOverride() || getAdminFactionOverride()) return null;
     try {
@@ -234,9 +235,12 @@ export async function loadGameState(requireFaction = true) {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return null; }
 
-    // Verify admin overrides server-side before allowing inspection
+    // Verify admin overrides server-side before allowing inspection.
+    // Check both URL params (initial load) and sessionStorage (in-iframe navigation).
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('faction_id') || urlParams.has('nation_id')) {
+    const hasAdminContext = urlParams.has('faction_id') || urlParams.has('nation_id')
+        || sessionStorage.getItem('_admin_nation') || sessionStorage.getItem('_admin_faction');
+    if (hasAdminContext) {
         await verifyAdminOverrides();
     }
 
