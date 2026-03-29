@@ -80,6 +80,12 @@ BEGIN
             WHEN 'ministry_labor_deregulate'           THEN 'Labor Market Deregulated'
             WHEN 'ministry_labor_direction_changed'    THEN 'Labor Policy Reversed'
             WHEN 'ministry_workforce_development'      THEN 'Workforce Development Programme Activated'
+            -- Transportation Ministry
+            WHEN 'ministry_public_transit'                THEN 'Public Transit Investment Activated'
+            WHEN 'ministry_public_transit_expired'        THEN 'Public Transit Investment Concluded'
+            WHEN 'ministry_road_maintenance'              THEN 'Road & Highway Maintenance Activated'
+            WHEN 'ministry_road_maintenance_expired'      THEN 'Road & Highway Maintenance Concluded'
+            WHEN 'ministry_expand_infrastructure'         THEN 'Infrastructure Expansion Launched'
             WHEN 'bill_passed'              THEN 'Bill Passed'
             WHEN 'bill_failed'              THEN 'Bill Failed'
             WHEN 'quorum_failed'            THEN 'Quorum Failed'
@@ -137,6 +143,12 @@ BEGIN
                 'ministry_labor_deregulate',
                 'ministry_labor_direction_changed',
                 'ministry_workforce_development') THEN 'LABOR'
+            -- Transportation Ministry
+            WHEN p_trigger_key IN ('ministry_public_transit',
+                'ministry_public_transit_expired',
+                'ministry_road_maintenance',
+                'ministry_road_maintenance_expired',
+                'ministry_expand_infrastructure') THEN 'TRANSPORT'
             WHEN p_trigger_key IN ('trade_agreement_proposed', 'trade_agreement_accepted',
                 'trade_agreement_rejected', 'trade_agreement_expired', 'trade_negotiation_proposed',
                 'sanctions_imposed', 'aid_terminated', 'aid_suspended', 'aid_resumed') THEN 'Trade'

@@ -667,6 +667,42 @@ function calculateImportDemand(nation, sector, opts) {
         rawDemand = defenseBudget * 0.15 * (1 - domesticArms);
     }
 
+    // ── Minimum import floor ──
+    // No nation is truly self-sufficient unless ALL relevant stats are at 100.
+    // Even highly developed nations import — Japan (mfg ~80) imports $750B/yr.
+    // The floor is a percentage of GDP that scales DOWN as self-sufficiency
+    // approaches perfection (stat = 100). At stat 85, floor is still ~15% of
+    // the baseline. Only at stat 100 does the floor reach zero.
+    if (rawDemand <= 0 && !sector.export_only) {
+        // Determine the primary self-sufficiency stat for this sector
+        var selfSuffStat = 50;
+        if (sector.key === 'fuel_energy') {
+            selfSuffStat = Math.max(Number(nation.oil_and_gas) || 0, Number(nation.energy_generation) || 0);
+        } else if (sector.key === 'minerals') {
+            selfSuffStat = Number(nation.rare_minerals) || 0;
+        } else if (sector.key === 'food_agriculture') {
+            selfSuffStat = Number(nation.arable_land) || 0;
+        } else if (sector.key === 'manufactured_goods') {
+            selfSuffStat = Number(nation.manufacturing_output) || 0;
+        } else if (sector.key === 'technology') {
+            selfSuffStat = ((Number(nation.digital_infrastructure) || 0) + (Number(nation.higher_education) || 0)) / 2;
+        } else if (sector.key === 'arms') {
+            selfSuffStat = 50; // arms handled separately, no floor needed
+        }
+
+        // Floor = 0 at stat 100, scales up as stat decreases from 100
+        // At stat 85: floor factor = (100-85)/100 = 0.15 → 15% of baseline demand
+        // At stat 50: floor factor = 0.50 → 50% of baseline
+        // At stat 100: floor factor = 0 → truly self-sufficient
+        var floorFactor = Math.max(0, (100 - selfSuffStat) / 100);
+
+        if (floorFactor > 0) {
+            var popNorm = (Number(nation.population) || 1) / 5000000;
+            var baselineDemand = popNorm * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.3;
+            rawDemand = Math.round(baselineDemand * floorFactor);
+        }
+    }
+
     if (rawDemand <= 0) return 0;
 
     // ── Currency strength on imports ──
@@ -25459,6 +25495,63 @@ async function processMinistryActions(supabase, nation, currentTick) {
                         newValue: newVal
                     });
                 }
+            }
+        }
+
+        // Permanent residue: when all effects complete, apply one-time permanent stat bumps
+        // This prevents the stat from decaying back — it's a baseline shift.
+        if (allEffectsComplete && !action.processed) {
+            for (const eff of effects) {
+                if (eff.permanentResidue && Number(eff.permanentResidue) > 0) {
+                    const residueKey = (eff.target === 'nation') ? normalizeNationStatKey(eff.stat_key) : eff.stat_key;
+                    if (residueKey && NATION_STAT_COLUMN_SET.has(residueKey)) {
+                        const currentVal = nationUpdates[residueKey] !== undefined
+                            ? nationUpdates[residueKey]
+                            : (nation[residueKey] !== undefined && nation[residueKey] !== null ? Number(nation[residueKey]) : 50);
+                        const residueAmt = Number(eff.permanentResidue);
+                        const residueDir = eff.direction === 'up' ? 1 : -1;
+                        const newVal = Math.round(Math.max(0, Math.min(100, currentVal + (residueAmt * residueDir))) * 10) / 10;
+                        nationUpdates[residueKey] = newVal;
+                        console.log(`[processMinistryActions] Permanent residue applied: ${residueKey} ${residueDir > 0 ? '+' : ''}${residueAmt} → ${newVal} (action: ${action.action_key})`);
+                    }
+                }
+            }
+        }
+
+        // Fire expiry event when action completes
+        if (allEffectsComplete && !action.processed) {
+            try {
+                const triggerKey = (action.action_data?.trigger_key || action.action_key) + '_expired';
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'ministry_' + triggerKey,
+                    p_nation_id: nation.id,
+                    p_tick: currentTick,
+                    p_placeholders: {
+                        ministry: action.ministry_key,
+                        action: action.action_key,
+                        nation: nation.name
+                    }
+                });
+            } catch (_) { /* non-blocking */ }
+        }
+
+        // Minister approval bonus on first tick of processing
+        if (action.action_data?.minister_approval && action.effects_applied_through_tick === action.applied_at_tick) {
+            const approvalBonus = Number(action.action_data.minister_approval);
+            if (approvalBonus !== 0) {
+                const mKey = action.ministry_key + ':' + action.faction_id;
+                if (ministerUpdates[mKey] === undefined) {
+                    const { data: ministry } = await supabase
+                        .from('ministries')
+                        .select('minister_approval')
+                        .eq('nation_id', nation.id)
+                        .eq('ministry_key', action.ministry_key)
+                        .eq('party_id', action.faction_id)
+                        .single();
+                    ministerUpdates[mKey] = (ministry?.minister_approval ?? MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL);
+                    ministerBaseline[mKey] = ministerUpdates[mKey];
+                }
+                ministerUpdates[mKey] = Math.round(Math.max(0, Math.min(100, ministerUpdates[mKey] + approvalBonus)) * 10) / 10;
             }
         }
 

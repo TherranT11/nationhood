@@ -550,6 +550,76 @@ const MINISTRY_ACTIONS = {
                 ]
             }
         ]
+    },
+    transportation: {
+        actions: [
+            {
+                id: 'expandInfrastructure',
+                triggerKey: 'ministry_expand_infrastructure',
+                name: 'Expand Infrastructure',
+                desc: 'Fund construction and expansion of major transport infrastructure including highways, rail, and ports.',
+                comingSoon: true, // Disabled — future phase
+                apCosts: [3, 4, 6, 8],
+                oneTimeCostPerMillion: 15_000_000,
+                delay: 3,
+                duration: 12,
+                useResetInterval: 15,
+                tags: [],
+                baseEffects: []
+            },
+            {
+                id: 'publicTransit',
+                triggerKey: 'ministry_public_transit',
+                name: 'Public Transit Investment',
+                desc: 'Fund buses, metro, and rail systems to improve urban and intercity movement.',
+                apCosts: [2, 3, 5, 7],
+                oneTimeCostPerMillion: 10_000_000,
+                delay: 2,
+                duration: 10,
+                decayTicks: 4,
+                useResetInterval: 15,
+                ministerApproval: 1,
+                tags: [
+                    { label: 'PHYSICAL INFRA ↑ PERM', cls: 'positive' },
+                    { label: 'STD LIVING ↑', cls: 'positive' },
+                    { label: 'HAPPINESS ↑', cls: 'positive' },
+                    { label: 'POLLUTION ↓', cls: 'positive' },
+                    { label: 'UNEMPLOYMENT ↓', cls: 'positive' }
+                ],
+                baseEffects: [
+                    { stat_key: 'physical_infrastructure', direction: 'up',   rate: 0.1, scalable: true, permanentResidue: 0.1 },
+                    { stat_key: 'standard_of_living',      direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'happiness',               direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'pollution',               direction: 'down', rate: 0.1, scalable: false },
+                    { stat_key: 'unemployment',            direction: 'down', rate: 0.1, scalable: false }
+                ]
+            },
+            {
+                id: 'roadMaintenance',
+                triggerKey: 'ministry_road_maintenance',
+                name: 'Road & Highway Maintenance Programme',
+                desc: 'Fund the repair, resurfacing, and upkeep of existing road and highway networks nationally.',
+                apCosts: [2, 3, 5, 7],
+                oneTimeCostPerMillion: 6_000_000,
+                delay: 1,
+                duration: 8,
+                decayTicks: 4,
+                useResetInterval: 15,
+                ministerApproval: 1,
+                tags: [
+                    { label: 'PHYSICAL INFRA ↑', cls: 'positive' },
+                    { label: 'GDP ↑', cls: 'positive' },
+                    { label: 'STD LIVING ↑', cls: 'positive' },
+                    { label: 'POLLUTION ↑', cls: 'negative' }
+                ],
+                baseEffects: [
+                    { stat_key: 'physical_infrastructure', direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'gdp_growth',             direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'standard_of_living',      direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'pollution',               direction: 'up',   rate: 0.1, scalable: false }
+                ]
+            }
+        ]
     }
 };
 
@@ -1479,10 +1549,15 @@ async function renderGovernmentPage() {
                 .eq('faction_id', currentFaction?.id || '00000000-0000-0000-0000-000000000000');
             ministryActionUseCounts = {};
             activeMinistryActions = {};
+            // Track last-use tick per action for use-reset-interval decay
+            const lastUseTick = {};
             if (actionLogs) {
                 for (const log of actionLogs) {
                     const countKey = log.ministry_key + ':' + log.action_key;
                     ministryActionUseCounts[countKey] = (ministryActionUseCounts[countKey] || 0) + 1;
+                    // Track the most recent activation tick
+                    const logTick = log.applied_at_tick || 0;
+                    if (!lastUseTick[countKey] || logTick > lastUseTick[countKey]) lastUseTick[countKey] = logTick;
                     if (!log.processed) {
                         // For direction-based actions, store the direction as the value
                         if (log.action_data?.direction) {
@@ -1496,6 +1571,18 @@ async function renderGovernmentPage() {
                         const failTick = log.action_data.resolution_tick || log.applied_at_tick;
                         sessionStorage.setItem('finance:debtRestructuring:lastFailTick', String(failTick));
                     }
+                }
+            }
+            // Apply use-reset-interval decay: -1 use count per interval of non-use
+            for (const [countKey, rawCount] of Object.entries(ministryActionUseCounts)) {
+                const [mKey, aKey] = countKey.split(':');
+                const actionConfig = MINISTRY_ACTIONS[mKey]?.actions?.find(a => a.id === aKey);
+                const resetInterval = actionConfig?.useResetInterval || 15;
+                const lastTick = lastUseTick[countKey] || 0;
+                const ticksSinceLast = currentTick - lastTick;
+                if (ticksSinceLast > 0 && resetInterval > 0) {
+                    const decay = Math.floor(ticksSinceLast / resetInterval);
+                    ministryActionUseCounts[countKey] = Math.max(0, rawCount - decay);
                 }
             }
         } catch (e) { /* non-blocking — defaults to 0 use counts */ }
@@ -3577,21 +3664,41 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
         <span style="font-size:8px;font-weight:600;${balCls};letter-spacing:0.03em;">Discretionary Funds: ${balFmt}</span>
     </div>`;
     config.actions.forEach(action => {
+        // Coming Soon actions render as disabled placeholder
+        if (action.comingSoon) {
+            html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
+                <div class="ministry-action__top">
+                    <span class="ministry-action__name">${escapeHtml(action.name)}</span>
+                    <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
+                </div>
+                <div class="ministry-action__desc">${escapeHtml(action.desc)}</div>
+                <div class="ministry-action__bottom">
+                    <div class="ministry-action__tags"></div>
+                    <div><div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div></div>
+                </div>
+            </div>`;
+            return;
+        }
+
         const countKey = ministryKey + ':' + action.id;
         const useCount = ministryActionUseCounts[countKey] || 0;
         const apCost = action.apCosts[Math.min(useCount, 3)];
-        const tagsHtml = action.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
+        const tagsHtml = (action.tags || []).map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
         const actionId = ministryKey + '-' + action.id;
         const isActive = activeMinistryActions[actionId] || false;
 
-        // Budget tag: saves (green), no cost, or standard draw
+        // Budget tag: one-time cost, saves (green), no cost, or standard draw
         let budgetTagHtml = '';
-        if (action.budgetSavesPerCapita) {
+        if (action.oneTimeCostPerMillion && !action.budgetPerCapita) {
+            const otCost = calculateOneTimeCost(action, pop);
+            const otFmt = otCost >= 1e9 ? '$' + (otCost / 1e9).toFixed(1) + 'B' : otCost >= 1e6 ? '$' + (otCost / 1e6).toFixed(0) + 'M' : '$' + Math.round(otCost).toLocaleString();
+            budgetTagHtml = `<span class="tag tag--budget">${otFmt} UPFRONT</span>`;
+        } else if (action.budgetSavesPerCapita) {
             const saves = formatBudgetDraw(action.budgetSavesPerCapita, pop);
             budgetTagHtml = `<span class="tag tag--positive">SAVES ${saves}/TICK</span>`;
-        } else if (action.budgetPerCapita === 0) {
+        } else if (action.budgetPerCapita === 0 && !action.oneTimeCostPerMillion) {
             budgetTagHtml = `<span class="tag tag--neutral">NO TICK COST</span>`;
-        } else {
+        } else if (action.budgetPerCapita) {
             const budgetDraw = formatBudgetDraw(action.budgetPerCapita, pop);
             budgetTagHtml = `<span class="tag tag--budget">${budgetDraw}/TICK</span>`;
         }
@@ -3604,6 +3711,13 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
         // Block money-drawing actions when ministry has no discretionary funds
         if (!blockReason && action.budgetPerCapita > 0 && discretionaryBalance <= 0 && canUse && !isActive) {
             blockReason = 'No Discretionary Funds available.';
+        }
+        // Block one-time cost actions when fund can't cover it
+        if (!blockReason && action.oneTimeCostPerMillion && !action.budgetPerCapita && canUse && !isActive) {
+            const otCost = calculateOneTimeCost(action, pop);
+            if (otCost > discretionaryBalance) {
+                blockReason = 'Insufficient discretionary funds.';
+            }
         }
 
         const isBlocked = !!blockReason;
@@ -5611,8 +5725,24 @@ function ministryActionSelect(actionId) {
 
     const btns = document.getElementById(actionId + '-btns');
     if (btns) {
+        // Build confirm label with cost info for one-time cost actions
+        const confirmParts = actionId.split('-');
+        const cMinKey = confirmParts[0];
+        const cActId = confirmParts.slice(1).join('');
+        const cConfig = MINISTRY_ACTIONS[cMinKey];
+        const cAction = cConfig?.actions?.find(a => a.id === cActId);
+        let confirmLabel = '✓ CONFIRM';
+        if (cAction?.oneTimeCostPerMillion && !cAction?.budgetPerCapita) {
+            const cPop = currentNation?.population || 20000000;
+            const cCost = calculateOneTimeCost(cAction, cPop);
+            const cCountKey = cMinKey + ':' + cActId;
+            const cUseCount = ministryActionUseCounts[cCountKey] || 0;
+            const cApCost = cAction.apCosts[Math.min(cUseCount, 3)];
+            const cFmt = cCost >= 1e9 ? '$' + (cCost/1e9).toFixed(1) + 'B' : cCost >= 1e6 ? '$' + Math.round(cCost/1e6) + 'M' : '$' + Math.round(cCost).toLocaleString();
+            confirmLabel = `✓ ${cApCost} AP · ${cFmt}`;
+        }
         btns.innerHTML = `<div style="display:flex;gap:4px;">
-            <div class="ministry-action__btn-confirm" onclick="event.stopPropagation();ministryActionConfirm('${actionId}')">✓ CONFIRM</div>
+            <div class="ministry-action__btn-confirm" onclick="event.stopPropagation();ministryActionConfirm('${actionId}')">${confirmLabel}</div>
             <div class="ministry-action__btn-cancel" onclick="event.stopPropagation();ministryActionDeselect('${actionId}')">✕</div>
         </div>`;
     }
@@ -5742,6 +5872,21 @@ async function ministryActionConfirm(actionId) {
         }
     }
 
+    // One-time cost fund check + deduction for upfront-cost actions
+    let oneTimeCost = 0;
+    if (action.oneTimeCostPerMillion && !action.budgetPerCapita) {
+        oneTimeCost = calculateOneTimeCost(action, pop);
+        const mData = ministryData.find(m => m.ministry_key === ministryKey);
+        const bal = Number(mData?.discretionary_balance || 0);
+        if (oneTimeCost > bal) {
+            _ministryActionConfirming = false;
+            const fmtAmt = (n) => n >= 1e9 ? '$' + (n/1e9).toFixed(1) + 'B' : n >= 1e6 ? '$' + (n/1e6).toFixed(0) + 'M' : '$' + Math.round(n).toLocaleString();
+            alert('Insufficient discretionary funds. Need ' + fmtAmt(oneTimeCost) + ', have ' + fmtAmt(bal) + '.');
+            ministryActionDeselect(actionId);
+            return;
+        }
+    }
+
     // Debt Restructuring: final block check before confirm
     if (action.id === 'debtRestructuring') {
         const blockMsg = getDebtRestructuringBlock();
@@ -5781,7 +5926,9 @@ async function ministryActionConfirm(actionId) {
     const actionData = {
         use_count: useCount,
         scale: getUseCountScale(useCount),
-        budget_per_tick: Math.round((action.budgetPerCapita || 0) * pop)
+        budget_per_tick: Math.round((action.budgetPerCapita || 0) * pop),
+        one_time_cost: oneTimeCost || 0,
+        minister_approval: action.ministerApproval || 0
     };
     if (action.budgetSavesPerCapita) {
         actionData.budget_saves_per_tick = Math.round(action.budgetSavesPerCapita * pop);
@@ -5804,6 +5951,13 @@ async function ministryActionConfirm(actionId) {
         });
 
         if (error) throw error;
+
+        // Deduct one-time cost from ministry discretionary fund
+        if (oneTimeCost > 0) {
+            const mData = ministryData.find(m => m.ministry_key === ministryKey);
+            const currentBal = Number(mData?.discretionary_balance || 0);
+            await deductDiscretionaryFund(ministryKey, mData, currentBal, oneTimeCost);
+        }
 
         // Update local state
         const prevAP = currentFaction.action_points || 0;
