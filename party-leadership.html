@@ -124,6 +124,8 @@ async function generateAllCandidates() {
 
     // Try to load persisted candidates from DB first
     let candidates = null;
+    const storageKey = `leadership_candidates_${factionId}_leader`;
+
     const { data: stored, error: loadErr } = await _supabase
         .from('leadership_candidates')
         .select('candidates, last_refresh_tick')
@@ -134,10 +136,26 @@ async function generateAllCandidates() {
     if (!loadErr && stored && Array.isArray(stored.candidates) && stored.candidates.length > 0) {
         candidates = stored.candidates;
         lastRefreshTick = stored.last_refresh_tick;
+        // Cache locally in case DB is unavailable on next load
+        try { sessionStorage.setItem(storageKey, JSON.stringify(candidates)); } catch (_) {}
     } else {
-        // Generate fresh candidates and persist them
-        candidates = generateLeadershipCandidates(nationName, getNationNames, 3, 'leader');
-        await persistCandidates(factionId, 'leader', candidates);
+        // DB unavailable or empty — check sessionStorage fallback
+        try {
+            const cached = sessionStorage.getItem(storageKey);
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    candidates = parsed;
+                }
+            }
+        } catch (_) {}
+
+        if (!candidates) {
+            // No persisted candidates anywhere — generate fresh and persist
+            candidates = generateLeadershipCandidates(nationName, getNationNames, 3, 'leader');
+            await persistCandidates(factionId, 'leader', candidates);
+            try { sessionStorage.setItem(storageKey, JSON.stringify(candidates)); } catch (_) {}
+        }
     }
 
     candidatesByRole.leader = candidates;
@@ -411,9 +429,10 @@ window._refreshLeaders = async function() {
             return;
         }
 
-        // Update local state
+        // Update local state + sessionStorage cache
         lastRefreshTick = currentTick;
         candidatesByRole.leader = newCandidates;
+        try { sessionStorage.setItem(`leadership_candidates_${currentFaction.id}_leader`, JSON.stringify(newCandidates)); } catch (_) {}
 
         // Prepend current leader as 0-cost option
         const currentEntry = buildCurrentCandidateEntry();
@@ -596,10 +615,11 @@ window._appointLeader = async function() {
         if (candidate.electability != null) leaderState.electability = candidate.electability;
         currentLeaders.leader = leaderState;
 
-        // Generate fresh candidates for this role and persist to DB
+        // Generate fresh candidates for this role and persist to DB + sessionStorage
         const nationName = currentNation.name || '';
         const newCandidates = generateLeadershipCandidates(nationName, getNationNames, 3, 'leader');
         await persistCandidates(currentFaction.id, 'leader', newCandidates);
+        try { sessionStorage.setItem(`leadership_candidates_${currentFaction.id}_leader`, JSON.stringify(newCandidates)); } catch (_) {}
 
         candidatesByRole.leader = newCandidates;
 
