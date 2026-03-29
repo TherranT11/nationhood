@@ -933,14 +933,36 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
         .eq('nation_id', nationId)
         .is('dissolved_at', null);
 
-    // 3. Apply approval penalties — PM party: -5, other coalition parties: -3
-    // (After status transition so penalties aren't lost if transition fails)
-    for (const partyId of coalitionPartyIds) {
-        const penalty = partyId === pmFactionId
-            ? GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST
-            : GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST;
-        await nudgeApproval(supabase, partyId, nationId, -round2(penalty * 0.5), { source: 'election:early_election' });
+    // 3. Apply approval effects based on PM's current approval
+    // High approval (≥45): PM benefits from calling election at peak popularity
+    // Low approval (≤39): PM punished for calling election while unpopular
+    // Middle (40-44): no approval effect
+    const { data: pmStanding } = await supabase
+        .from('faction_electoral_standing')
+        .select('party_approval')
+        .eq('faction_id', pmFactionId)
+        .eq('nation_id', nationId)
+        .maybeSingle();
+    const pmApproval = Number(pmStanding?.party_approval ?? 25);
+
+    if (pmApproval >= 45) {
+        // PM riding high — gains +3, coalition gets +1
+        await nudgeApproval(supabase, pmFactionId, nationId, 3, { source: 'election:snap_popular' });
+        for (const partyId of coalitionPartyIds) {
+            if (partyId !== pmFactionId) {
+                await nudgeApproval(supabase, partyId, nationId, 1, { source: 'election:snap_popular_coalition' });
+            }
+        }
+    } else if (pmApproval <= 39) {
+        // PM unpopular — loses -3, coalition gets -2
+        await nudgeApproval(supabase, pmFactionId, nationId, -3, { source: 'election:snap_unpopular' });
+        for (const partyId of coalitionPartyIds) {
+            if (partyId !== pmFactionId) {
+                await nudgeApproval(supabase, partyId, nationId, -2, { source: 'election:snap_unpopular_coalition' });
+            }
+        }
     }
+    // 40-44: no approval change
 
     // Bust coalition cache after caretaker transition
     if (typeof qCacheBust === 'function') qCacheBust('coalition_' + nationId);
@@ -977,9 +999,12 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
     const pmName = hog ? `${hog.first_name} ${hog.last_name}` : 'The Prime Minister';
 
     // 8. Fire system event
+    const approvalEffect = pmApproval >= 45 ? 'Popular snap: PM +3, coalition +1'
+        : pmApproval <= 39 ? 'Unpopular snap: PM -3, coalition -2'
+        : 'Neutral snap: no approval change';
     await supabase.from('event_log').insert({
         nation_id: nationId,
-        event_name: 'Legislature Dissolved — Early Elections Called',
+        event_name: 'Legislature Dissolved — Snap Elections Called',
         trigger_key: 'snap_election_called',
         fired_at_tick: currentTick,
         category: 'government',
@@ -987,8 +1012,8 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
         effects_applied: {
             caretaker: true,
             election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
-            pm_approval: -GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST,
-            coalition_approval: -GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST,
+            pm_approval_at_call: pmApproval,
+            approval_effect: approvalEffect,
             bills_frozen: true
         }
     });
