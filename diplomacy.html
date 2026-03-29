@@ -15645,9 +15645,17 @@ function renderIPOCharterPanel(charter, org) {
     // Article IV — Transparency & Governance
     if (charter.governance) {
         const g = charter.governance;
+        const actionLabels = {
+            unilateral: 'Unilateral — any member can execute actions',
+            committee: 'Committee — all actions require a vote (funded from solidarity fund)',
+            presidential: 'Presidential — only the president can execute actions',
+            delegated: 'Delegated — president + officers can act, others must vote',
+            tiered: 'Tiered — actions ≤2 AP are unilateral, higher cost requires a vote'
+        };
         const transLabels = { public: 'Public Ballot', secret: 'Secret Ballot' };
         const vetoLabels = { founding: 'Founding Party', president: 'Current President', hq: 'HQ Nation Party' };
         sections.push(renderCharterSection('Article IV — Transparency & Governance', `
+            ${charterRow('Action Leadership', actionLabels[g.actionLeadership] || actionLabels.unilateral)}
             ${charterRow('Vote Transparency', transLabels[g.voteTransparency] || g.voteTransparency)}
             ${charterRow('Observer Status', g.observerStatus ? 'Enabled' : 'Disabled')}
             ${charterRow('Veto Right', g.vetoRight ? vetoLabels[g.vetoRight] || g.vetoRight : 'None')}
@@ -15841,7 +15849,7 @@ function ipoAmendAddArticle() {
     const defaults = {
         leadership:  { type: 'rotation', termYears: 2, votingWeight: 'equal', votePass: 'majority' },
         membership:  { admission: 'vote', ideologicalThreshold: { enabled: false, directions: [] }, expulsionClause: null },
-        governance:  { voteTransparency: 'public', observerStatus: false, vetoRight: null, emergencyPowers: false },
+        governance:  { actionLeadership: 'unilateral', voteTransparency: 'public', observerStatus: false, vetoRight: null, emergencyPowers: false },
         resources:   { solidarityFund: { enabled: false, contributionPerQuarter: 1 }, resourceSharingCap: null, jointStatementClause: 'vote', headquarters: null }
     };
     ipoAmendArticles.push({ type: key, config: defaults[key] || {} });
@@ -15881,6 +15889,7 @@ async function submitIPOAmend() {
                 }; break;
             case 'governance':
                 proposedCharter.governance = {
+                    actionLeadership: art.config.actionLeadership || 'unilateral',
                     voteTransparency: art.config.voteTransparency,
                     observerStatus: !!art.config.observerStatus,
                     vetoRight: art.config.vetoRight || null,
@@ -17245,6 +17254,30 @@ function renderIPOActionsPanel() {
         available: false  // always route through vote panel
     });
 
+    // ── Enforce Action Leadership charter rules ──
+    const actionMode = charter.governance?.actionLeadership || 'unilateral';
+    for (const a of actions) {
+        if (!a.available || a.key === 'fund_draw') continue; // skip already-unavailable and fund_draw (always vote)
+
+        if (actionMode === 'committee') {
+            // Committee: all actions require a vote — disable direct execution
+            a.available = false;
+            a.desc = `${a.desc} (Charter requires a vote — use Votes panel)`;
+        } else if (actionMode === 'presidential' && !isPresident) {
+            // Presidential: only president can act
+            a.available = false;
+            a.desc = `${a.desc} (Only the president can execute actions)`;
+        } else if (actionMode === 'delegated' && !isPresident) {
+            // Delegated: president + officers. For now, only president (officers TBD)
+            a.available = false;
+            a.desc = `${a.desc} (Only the president or officers can execute actions)`;
+        } else if (actionMode === 'tiered' && a.cost > 2) {
+            // Tiered: actions >2 AP require a vote
+            a.available = false;
+            a.desc = `${a.desc} (Costs >2 AP — charter requires a vote)`;
+        }
+    }
+
     const actionCardsHtml = actions.map(a => `
         <div class="ipo-action-card ${a.available ? '' : 'ipo-action-card--disabled'}">
             <div class="ipo-action-card-top">
@@ -18220,7 +18253,7 @@ function ipoAddArticle() {
     const defaults = {
         leadership:  { type: 'rotation', termYears: 2, votingWeight: 'equal', votePass: 'majority' },
         membership:  { admission: 'vote', ideologicalThreshold: { enabled: false, directions: [] }, expulsionClause: null },
-        governance:  { voteTransparency: 'public', observerStatus: false, vetoRight: null, emergencyPowers: false },
+        governance:  { actionLeadership: 'unilateral', voteTransparency: 'public', observerStatus: false, vetoRight: null, emergencyPowers: false },
         resources:   { solidarityFund: { enabled: false, contributionPerQuarter: 1 }, resourceSharingCap: null, jointStatementClause: 'vote', headquarters: null }
     };
     ipoActiveArticles().push({ type: key, config: defaults[key] || {} });
@@ -18327,6 +18360,13 @@ function renderMembershipFields(art, idx) {
 function renderGovernanceFields(art, idx) {
     const c = art.config;
     return `
+        ${ipoRadioGroup('Action Leadership', idx, 'actionLeadership', [
+            { value: 'unilateral', label: 'Unilateral', hint: 'Any member can execute actions with their own AP' },
+            { value: 'committee', label: 'Committee', hint: 'All actions require a vote. Funded from solidarity fund' },
+            { value: 'presidential', label: 'Presidential', hint: 'Only the president can execute actions' },
+            { value: 'delegated', label: 'Delegated', hint: 'President + designated officers can act. Others vote' },
+            { value: 'tiered', label: 'Tiered', hint: 'Actions ≤2 AP are unilateral. Higher cost requires a vote' }
+        ], c.actionLeadership || 'unilateral')}
         ${ipoRadioGroup('Vote Transparency', idx, 'voteTransparency', [
             { value: 'public', label: 'Public Ballot', hint: 'All see how everyone voted' },
             { value: 'secret', label: 'Secret Ballot', hint: 'Only outcome revealed' }
