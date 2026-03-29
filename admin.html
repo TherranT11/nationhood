@@ -1003,7 +1003,18 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     async function deleteParty(factionId, partyName) {
         if (!isAuthenticated) return;
         if (!confirm(`⚠️ PERMANENTLY DELETE "${partyName}"?`)) return;
-        try { const { data, error } = await _supabase.rpc('admin_delete_party', { p_faction_id: factionId }); if (error) throw error; alert(`✅ "${partyName}" deleted!`); await loadStats(); await loadNations(); } catch (error) { alert('❌ Error: ' + error.message); }
+        try {
+            const { data, error } = await _supabase.rpc('admin_delete_party', { p_faction_id: factionId });
+            if (error) throw error;
+            if (data?.error) {
+                // Safeguard triggered — faction belongs to a real player
+                if (!confirm(`⚠️ ${data.error}\n\nForce delete anyway?`)) return;
+                const { data: d2, error: e2 } = await _supabase.rpc('admin_delete_party', { p_faction_id: factionId, p_force: true });
+                if (e2) throw e2;
+            }
+            alert(`✅ "${partyName}" deleted!`);
+            await loadStats(); await loadNations();
+        } catch (error) { alert('❌ Error: ' + error.message); }
     }
 
     // ==================== DANGER ZONE ====================
@@ -1113,7 +1124,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             if (facErr) logMsg('⚠ Failed to load factions: ' + facErr.message, '#d48a3c');
             let delOk = 0, delFail = 0;
             for (const f of (allFactions || [])) {
-                const { error: rpcErr } = await _supabase.rpc('admin_delete_party', { p_faction_id: f.id });
+                const { error: rpcErr } = await _supabase.rpc('admin_delete_party', { p_faction_id: f.id, p_force: true });
                 if (rpcErr) {
                     logMsg(`  ⚠ ${f.faction_name} (${f.faction_type}): ${rpcErr.message}`, '#d48a3c');
                     delFail++;
