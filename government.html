@@ -564,7 +564,7 @@ const MINISTRY_ACTIONS = {
                 delay: 3,
                 duration: 12,
                 useResetInterval: 15,
-                statTags: [],
+                tags: [],
                 baseEffects: []
             },
             {
@@ -579,7 +579,7 @@ const MINISTRY_ACTIONS = {
                 decayTicks: 4,
                 useResetInterval: 15,
                 ministerApproval: 1,
-                statTags: [
+                tags: [
                     { label: 'PHYSICAL INFRA ↑ PERM', cls: 'positive' },
                     { label: 'STD LIVING ↑', cls: 'positive' },
                     { label: 'HAPPINESS ↑', cls: 'positive' },
@@ -606,7 +606,7 @@ const MINISTRY_ACTIONS = {
                 decayTicks: 4,
                 useResetInterval: 15,
                 ministerApproval: 1,
-                statTags: [
+                tags: [
                     { label: 'PHYSICAL INFRA ↑', cls: 'positive' },
                     { label: 'GDP ↑', cls: 'positive' },
                     { label: 'STD LIVING ↑', cls: 'positive' },
@@ -3647,21 +3647,41 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
         <span style="font-size:8px;font-weight:600;${balCls};letter-spacing:0.03em;">Discretionary Funds: ${balFmt}</span>
     </div>`;
     config.actions.forEach(action => {
+        // Coming Soon actions render as disabled placeholder
+        if (action.comingSoon) {
+            html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
+                <div class="ministry-action__top">
+                    <span class="ministry-action__name">${escapeHtml(action.name)}</span>
+                    <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
+                </div>
+                <div class="ministry-action__desc">${escapeHtml(action.desc)}</div>
+                <div class="ministry-action__bottom">
+                    <div class="ministry-action__tags"></div>
+                    <div><div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div></div>
+                </div>
+            </div>`;
+            return;
+        }
+
         const countKey = ministryKey + ':' + action.id;
         const useCount = ministryActionUseCounts[countKey] || 0;
         const apCost = action.apCosts[Math.min(useCount, 3)];
-        const tagsHtml = action.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
+        const tagsHtml = (action.tags || []).map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
         const actionId = ministryKey + '-' + action.id;
         const isActive = activeMinistryActions[actionId] || false;
 
-        // Budget tag: saves (green), no cost, or standard draw
+        // Budget tag: one-time cost, saves (green), no cost, or standard draw
         let budgetTagHtml = '';
-        if (action.budgetSavesPerCapita) {
+        if (action.oneTimeCostPerMillion && !action.budgetPerCapita) {
+            const otCost = calculateOneTimeCost(action, pop);
+            const otFmt = otCost >= 1e9 ? '$' + (otCost / 1e9).toFixed(1) + 'B' : otCost >= 1e6 ? '$' + (otCost / 1e6).toFixed(0) + 'M' : '$' + Math.round(otCost).toLocaleString();
+            budgetTagHtml = `<span class="tag tag--budget">${otFmt} UPFRONT</span>`;
+        } else if (action.budgetSavesPerCapita) {
             const saves = formatBudgetDraw(action.budgetSavesPerCapita, pop);
             budgetTagHtml = `<span class="tag tag--positive">SAVES ${saves}/TICK</span>`;
-        } else if (action.budgetPerCapita === 0) {
+        } else if (action.budgetPerCapita === 0 && !action.oneTimeCostPerMillion) {
             budgetTagHtml = `<span class="tag tag--neutral">NO TICK COST</span>`;
-        } else {
+        } else if (action.budgetPerCapita) {
             const budgetDraw = formatBudgetDraw(action.budgetPerCapita, pop);
             budgetTagHtml = `<span class="tag tag--budget">${budgetDraw}/TICK</span>`;
         }
@@ -3674,6 +3694,13 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
         // Block money-drawing actions when ministry has no discretionary funds
         if (!blockReason && action.budgetPerCapita > 0 && discretionaryBalance <= 0 && canUse && !isActive) {
             blockReason = 'No Discretionary Funds available.';
+        }
+        // Block one-time cost actions when fund can't cover it
+        if (!blockReason && action.oneTimeCostPerMillion && !action.budgetPerCapita && canUse && !isActive) {
+            const otCost = calculateOneTimeCost(action, pop);
+            if (otCost > discretionaryBalance) {
+                blockReason = 'Insufficient discretionary funds.';
+            }
         }
 
         const isBlocked = !!blockReason;
