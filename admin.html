@@ -1083,10 +1083,11 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             // 1. Reset shard clock to tick 1, January 2000
             logMsg('Resetting shard clock...');
             const nextTick = new Date(Date.now() + currentTickInterval * 60 * 60 * 1000);
-            await _supabase.from('shard').update({
+            const { error: shardErr } = await _supabase.from('shard').update({
                 current_date: 'January, 2000', current_tick: 1,
                 next_tick_at: nextTick.toISOString()
             }).eq('name', 'Alpha Shard');
+            if (shardErr) throw shardErr;
             logMsg('✓ Shard clock reset to January 2000, tick 1', '#5cb85c');
 
             // 2. Clear all game-state tables via RPC (bypasses RLS, handles FK ordering)
@@ -1108,7 +1109,8 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
 
             // 3. Delete all factions (parties + corporations) using admin_delete_party RPC
             logMsg('Deleting all factions (parties + corporations)...');
-            const { data: allFactions } = await _supabase.from('factions').select('id, faction_name, faction_type');
+            const { data: allFactions, error: facErr } = await _supabase.from('factions').select('id, faction_name, faction_type');
+            if (facErr) logMsg('⚠ Failed to load factions: ' + facErr.message, '#d48a3c');
             let delOk = 0, delFail = 0;
             for (const f of (allFactions || [])) {
                 const { error: rpcErr } = await _supabase.rpc('admin_delete_party', { p_faction_id: f.id });
@@ -1125,7 +1127,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
 
             // 4. Restore nation stats from seed_stats
             logMsg('Restoring nation stats from seed...');
-            const { data: nations, error: nErr } = await _supabase.from('nations').select('id, name, seed_stats, hos_election_method, head_of_state_title, head_of_state_first_name, head_of_state_last_name, head_of_state_age, dynasty_name');
+            const { data: nations, error: nErr } = await _supabase.from('nations').select('id, name, seed_stats');
             if (nErr) throw nErr;
 
             let restored = 0, skipped = 0;
@@ -1162,7 +1164,18 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             logMsg('Scheduling initial elections...');
             let electionsSch = 0;
             for (const nation of (nations || [])) {
-                const parlTerm = nation.seed_stats?.parliamentary_term_ticks || 48;
+                // Skip autocracies — no elections
+                const govType = (nation.seed_stats?.government_type || '').toLowerCase();
+                if (govType === 'autocracy' || govType.includes('autocra')) {
+                    logMsg(`  — ${nation.name}: autocracy, no election scheduled`, '#888');
+                    continue;
+                }
+                // Skip nations with no parliamentary_term_ticks set (e.g. no elections configured)
+                const parlTerm = nation.seed_stats?.parliamentary_term_ticks;
+                if (!parlTerm) {
+                    logMsg(`  — ${nation.name}: no term length in seed, skipping`, '#888');
+                    continue;
+                }
                 const { error: elErr } = await _supabase.from('elections').insert({
                     nation_id: nation.id,
                     election_tick: parlTerm,
