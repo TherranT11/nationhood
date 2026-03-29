@@ -667,6 +667,42 @@ function calculateImportDemand(nation, sector, opts) {
         rawDemand = defenseBudget * 0.15 * (1 - domesticArms);
     }
 
+    // ── Minimum import floor ──
+    // No nation is truly self-sufficient unless ALL relevant stats are at 100.
+    // Even highly developed nations import — Japan (mfg ~80) imports $750B/yr.
+    // The floor is a percentage of GDP that scales DOWN as self-sufficiency
+    // approaches perfection (stat = 100). At stat 85, floor is still ~15% of
+    // the baseline. Only at stat 100 does the floor reach zero.
+    if (rawDemand <= 0 && !sector.export_only) {
+        // Determine the primary self-sufficiency stat for this sector
+        var selfSuffStat = 50;
+        if (sector.key === 'fuel_energy') {
+            selfSuffStat = Math.max(Number(nation.oil_and_gas) || 0, Number(nation.energy_generation) || 0);
+        } else if (sector.key === 'minerals') {
+            selfSuffStat = Number(nation.rare_minerals) || 0;
+        } else if (sector.key === 'food_agriculture') {
+            selfSuffStat = Number(nation.arable_land) || 0;
+        } else if (sector.key === 'manufactured_goods') {
+            selfSuffStat = Number(nation.manufacturing_output) || 0;
+        } else if (sector.key === 'technology') {
+            selfSuffStat = ((Number(nation.digital_infrastructure) || 0) + (Number(nation.higher_education) || 0)) / 2;
+        } else if (sector.key === 'arms') {
+            selfSuffStat = 50; // arms handled separately, no floor needed
+        }
+
+        // Floor = 0 at stat 100, scales up as stat decreases from 100
+        // At stat 85: floor factor = (100-85)/100 = 0.15 → 15% of baseline demand
+        // At stat 50: floor factor = 0.50 → 50% of baseline
+        // At stat 100: floor factor = 0 → truly self-sufficient
+        var floorFactor = Math.max(0, (100 - selfSuffStat) / 100);
+
+        if (floorFactor > 0) {
+            var popNorm = (Number(nation.population) || 1) / 5000000;
+            var baselineDemand = popNorm * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.3;
+            rawDemand = Math.round(baselineDemand * floorFactor);
+        }
+    }
+
     if (rawDemand <= 0) return 0;
 
     // ── Currency strength on imports ──
