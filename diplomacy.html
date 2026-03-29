@@ -17125,7 +17125,7 @@ async function applyVoteEffects(vote, org) {
 const IPO_ACTION_COSTS = {
     hold_rally:      4,
     rally_all:       7,
-    back_channel:    3,
+    back_channel:    2,  // personal AP overhead (fund source costs 0 personal AP)
     joint_statement: 1,
     fund_draw:       0   // no AP — draws from solidarity fund
 };
@@ -17259,7 +17259,9 @@ function renderIPOActionsPanel() {
     const hasEmergencyPowers = !!charter.governance?.emergencyPowers;
     const emergencyUsedTick = org.emergency_power_used_tick || 0;
     const termStartTick = org.president_term_start_tick || 0;
-    const emergencyAvailable = hasEmergencyPowers && isPresident && emergencyUsedTick < termStartTick;
+    // Emergency available if: powers enabled, is president, and hasn't been used since current term started
+    // (emergencyUsedTick === 0 means never used → always available)
+    const emergencyAvailable = hasEmergencyPowers && isPresident && (emergencyUsedTick === 0 || emergencyUsedTick < termStartTick);
 
     for (const a of actions) {
         if (!a.available || a.key === 'fund_draw') continue;
@@ -17411,21 +17413,23 @@ async function executeIPOAction(actionKey, useEmergencyPowers = false) {
                 tick_posted: shardTick
             });
 
-            // World event for every member nation
-            const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
-            const orgName = membership?.org?.name || 'An organisation';
-            const { data: members } = await _supabase.from('ipo_members')
-                .select('nation_id').eq('org_id', ipoSelectedOrgId);
-            const nationIds = [...new Set((members || []).map(m => m.nation_id).filter(Boolean))];
-            for (const nid of nationIds) {
-                await _supabase.from('event_log').insert({
-                    nation_id: nid,
-                    event_name: 'Emergency Powers Invoked',
-                    description_chosen: `${orgName}: ${currentFaction.faction_name} invoked emergency powers to ${actionKey.replace(/_/g, ' ')}.`,
-                    category: 'DIPLOMATIC',
-                    fired_at_tick: shardTick
-                });
-            }
+            // World event for every member nation (non-blocking — don't prevent action if this fails)
+            try {
+                const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+                const orgName = membership?.org?.name || 'An organisation';
+                const { data: members } = await _supabase.from('ipo_members')
+                    .select('nation_id').eq('org_id', ipoSelectedOrgId);
+                const nationIds = [...new Set((members || []).map(m => m.nation_id).filter(Boolean))];
+                for (const nid of nationIds) {
+                    await _supabase.from('event_log').insert({
+                        nation_id: nid,
+                        event_name: 'Emergency Powers Invoked',
+                        description_chosen: `${orgName}: ${currentFaction.faction_name} invoked emergency powers to ${actionKey.replace(/_/g, ' ')}.`,
+                        category: 'DIPLOMATIC',
+                        fired_at_tick: shardTick
+                    });
+                }
+            } catch (_) { /* world event is non-blocking */ }
         } catch (e) {
             alert('Failed to invoke emergency powers: ' + (e.message || 'Unknown error'));
             return;
