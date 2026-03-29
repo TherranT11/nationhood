@@ -20384,15 +20384,19 @@ async function processVulnerabilityWindows(supabase, nation, currentTick) {
 
     if (existing && existing.length > 0) return events.length ? events : null;
 
-    // Open new window
-    await supabase.from('vulnerability_window').insert({
+    // Open new window (UNIQUE on nation_id+start_tick prevents duplicates)
+    const { error: vwErr } = await supabase.from('vulnerability_window').insert({
         nation_id: nationId,
         start_tick: currentTick,
         end_tick: currentTick + 3,
     });
-    events.push({ type: 'vulnerability_opened', start: currentTick, end: currentTick + 3 });
+    if (vwErr) {
+        console.error(`[Autocracy] vulnerability_window insert failed for ${nation.name}:`, vwErr.message);
+    } else {
+        events.push({ type: 'vulnerability_opened', start: currentTick, end: currentTick + 3 });
+        console.log(`[Autocracy] Vulnerability window opened for ${nation.name} at tick ${currentTick}`);
+    }
 
-    console.log(`[Autocracy] Vulnerability window opened for ${nation.name} at tick ${currentTick}`);
     return events;
 }
 

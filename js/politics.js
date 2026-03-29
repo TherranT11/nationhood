@@ -152,7 +152,8 @@ initPage('politics', async (state) => {
 
     // Fallback: if no scheduled election in DB, project from term length
     // (mirrors dashboard projection logic so both pages stay consistent)
-    if (!nextElection) {
+    // Skip for autocracies — they have no elections by design.
+    if (!nextElection && !isAutocracy(nation)) {
         const termTicks = Number(nation.parliamentary_term_ticks) || 24;
         nextElection = { election_tick: currentTick + termTicks, election_type: 'parliamentary' };
     }
