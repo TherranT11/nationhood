@@ -1258,6 +1258,7 @@ body.light-mode .wh-empty__text { color: #1a1a17; }
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
+import { initMessaging } from './js/messaging.js';
 import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
 
 let allUserFactions = [];
@@ -2460,6 +2461,9 @@ async function init() {
 
     // Render procurement (uses nationStats + warehouseData, no separate load needed)
     renderProcurement();
+
+    // Messaging bubble
+    initMessaging(faction, nationStats, shard);
 
     // Show page
     document.getElementById('loading').style.display = 'none';
