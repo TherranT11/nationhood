@@ -550,6 +550,76 @@ const MINISTRY_ACTIONS = {
                 ]
             }
         ]
+    },
+    transportation: {
+        actions: [
+            {
+                id: 'expandInfrastructure',
+                triggerKey: 'ministry_expand_infrastructure',
+                name: 'Expand Infrastructure',
+                desc: 'Fund construction and expansion of major transport infrastructure including highways, rail, and ports.',
+                comingSoon: true, // Disabled — future phase
+                apCosts: [3, 4, 6, 8],
+                oneTimeCostPerMillion: 15_000_000,
+                delay: 3,
+                duration: 12,
+                useResetInterval: 15,
+                statTags: [],
+                baseEffects: []
+            },
+            {
+                id: 'publicTransit',
+                triggerKey: 'ministry_public_transit',
+                name: 'Public Transit Investment',
+                desc: 'Fund buses, metro, and rail systems to improve urban and intercity movement.',
+                apCosts: [2, 3, 5, 7],
+                oneTimeCostPerMillion: 10_000_000,
+                delay: 2,
+                duration: 10,
+                decayTicks: 4,
+                useResetInterval: 15,
+                ministerApproval: 1,
+                statTags: [
+                    { label: 'PHYSICAL INFRA ↑ PERM', cls: 'positive' },
+                    { label: 'STD LIVING ↑', cls: 'positive' },
+                    { label: 'HAPPINESS ↑', cls: 'positive' },
+                    { label: 'POLLUTION ↓', cls: 'positive' },
+                    { label: 'UNEMPLOYMENT ↓', cls: 'positive' }
+                ],
+                baseEffects: [
+                    { stat_key: 'physical_infrastructure', direction: 'up',   rate: 0.1, scalable: true, permanentResidue: 0.1 },
+                    { stat_key: 'standard_of_living',      direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'happiness',               direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'pollution',               direction: 'down', rate: 0.1, scalable: false },
+                    { stat_key: 'unemployment',            direction: 'down', rate: 0.1, scalable: false }
+                ]
+            },
+            {
+                id: 'roadMaintenance',
+                triggerKey: 'ministry_road_maintenance',
+                name: 'Road & Highway Maintenance Programme',
+                desc: 'Fund the repair, resurfacing, and upkeep of existing road and highway networks nationally.',
+                apCosts: [2, 3, 5, 7],
+                oneTimeCostPerMillion: 6_000_000,
+                delay: 1,
+                duration: 8,
+                decayTicks: 4,
+                useResetInterval: 15,
+                ministerApproval: 1,
+                statTags: [
+                    { label: 'PHYSICAL INFRA ↑', cls: 'positive' },
+                    { label: 'GDP ↑', cls: 'positive' },
+                    { label: 'STD LIVING ↑', cls: 'positive' },
+                    { label: 'POLLUTION ↑', cls: 'negative' }
+                ],
+                baseEffects: [
+                    { stat_key: 'physical_infrastructure', direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'gdp_growth',             direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'standard_of_living',      direction: 'up',   rate: 0.1, scalable: true },
+                    { stat_key: 'pollution',               direction: 'up',   rate: 0.1, scalable: false }
+                ]
+            }
+        ]
     }
 };
 
