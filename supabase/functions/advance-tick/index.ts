@@ -3727,6 +3727,9 @@ const STAT_DECAY_CONFIG = {
     emigration:          { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
     fuel_prices:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     debt_growth:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    crime_rate:          { type: 'equilibrium', target: 18, speed: DECAY_SPEED.CRAWL },
+    stability:           { type: 'equilibrium', target: 45, speed: DECAY_SPEED.CRAWL },
+    legitimacy:          { type: 'equilibrium', target: 40, speed: DECAY_SPEED.CRAWL },
 
     // ── Erosion (degrade toward bad floor if neglected) ──
     physical_infrastructure:  { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
