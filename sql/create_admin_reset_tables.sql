@@ -145,7 +145,13 @@ DECLARE
 
         -- ══ Misc ══
         'military_doctrines',
-        'vln_state'
+        'vln_state',
+
+        -- ══ Messaging ══
+        'direct_messages',
+        'group_chat_messages',
+        'group_chat_members',
+        'group_chats'
     ];
 BEGIN
     -- First: null out FKs on nations so factions can be deleted
