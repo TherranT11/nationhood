@@ -811,13 +811,288 @@ async function sendMessage() {
     }
 }
 
-// ── Placeholder functions for Phase 5/6 ──
+// ── New DM: search any party in the game ──
+let _searchResults = [];
+let _searchTimeout = null;
+
 function openNewDM() {
-    // Phase 5 will implement
+    _msgView = 'new-dm';
+    const body = document.getElementById('msg-body');
+    const actions = document.getElementById('msg-actions');
+    if (actions) actions.style.display = 'none';
+
+    const headerTitle = document.querySelector('.msg-panel__title');
+    if (headerTitle) headerTitle.textContent = 'New Message';
+
+    body.innerHTML = `
+        <div class="msg-thread-header">
+            <button class="msg-thread-back" id="msg-back">&#8592;</button>
+            <span class="msg-thread-name">Select a party to message</span>
+        </div>
+        <div style="padding:8px 14px;border-bottom:1px solid var(--border-0, rgba(255,255,255,0.06));">
+            <input type="text" class="msg-input" id="msg-search" placeholder="Search by name or nation..." style="width:100%;" />
+        </div>
+        <div class="msg-panel__body" id="msg-search-results" style="flex:1;overflow-y:auto;">
+            <div class="msg-empty"><div class="msg-empty__text">Type to search all parties...</div></div>
+        </div>
+    `;
+
+    document.getElementById('msg-back').addEventListener('click', () => {
+        if (headerTitle) headerTitle.textContent = 'Messages';
+        renderChatList();
+    });
+
+    const searchInput = document.getElementById('msg-search');
+    searchInput.addEventListener('input', () => {
+        clearTimeout(_searchTimeout);
+        _searchTimeout = setTimeout(() => searchParties(searchInput.value.trim()), 250);
+    });
+    searchInput.focus();
 }
 
+async function searchParties(query) {
+    const container = document.getElementById('msg-search-results');
+    if (!container) return;
+
+    if (!query || query.length < 1) {
+        // Show all parties in our nation as default
+        try {
+            const { data } = await _supabase
+                .from('factions')
+                .select('id, faction_name, abbreviation, party_color, nation, faction_type')
+                .eq('nation_id', _msgNation?.id)
+                .eq('faction_type', 'party')
+                .neq('id', _msgFaction.id)
+                .order('faction_name')
+                .limit(20);
+            _searchResults = data || [];
+        } catch (_) { _searchResults = []; }
+    } else {
+        // Search across all nations
+        try {
+            const { data } = await _supabase
+                .from('factions')
+                .select('id, faction_name, abbreviation, party_color, nation, faction_type')
+                .neq('id', _msgFaction.id)
+                .or(`faction_name.ilike.%${query}%,abbreviation.ilike.%${query}%,nation.ilike.%${query}%`)
+                .eq('faction_type', 'party')
+                .not('nation_id', 'is', null)
+                .order('faction_name')
+                .limit(20);
+            _searchResults = data || [];
+        } catch (_) { _searchResults = []; }
+    }
+
+    if (_searchResults.length === 0) {
+        container.innerHTML = `<div class="msg-empty"><div class="msg-empty__text">No parties found.</div></div>`;
+        return;
+    }
+
+    container.innerHTML = _searchResults.map(p => {
+        const abbr = (p.abbreviation || p.faction_name || '?').slice(0, 3).toUpperCase();
+        const color = p.party_color || '#666';
+        const nationLabel = p.nation || '';
+        return `<div class="msg-chat-item" data-msg-action="pick-dm" data-faction-id="${p.id}">
+            <div class="msg-chat-item__avatar" style="color:${escapeHtml(color)};border-color:${escapeHtml(color)};">${escapeHtml(abbr)}</div>
+            <div class="msg-chat-item__info">
+                <div class="msg-chat-item__name">${escapeHtml(p.faction_name)}</div>
+                <div class="msg-chat-item__preview">${escapeHtml(nationLabel)}</div>
+            </div>
+        </div>`;
+    }).join('');
+
+    container.querySelectorAll('[data-msg-action="pick-dm"]').forEach(el => {
+        el.addEventListener('click', () => {
+            const fid = el.dataset.factionId;
+            const party = _searchResults.find(p => p.id === fid);
+            if (party) openThread({ type: 'dm', id: fid, name: party.faction_name, faction: party });
+        });
+    });
+}
+
+// ── New Group Chat: multi-select parties ──
+let _groupSelectIds = new Set();
+
 function openNewGroup() {
-    // Phase 6 will implement
+    _msgView = 'new-group';
+    _groupSelectIds = new Set();
+    const body = document.getElementById('msg-body');
+    const actions = document.getElementById('msg-actions');
+    if (actions) actions.style.display = 'none';
+
+    const headerTitle = document.querySelector('.msg-panel__title');
+    if (headerTitle) headerTitle.textContent = 'New Group Chat';
+
+    body.innerHTML = `
+        <div class="msg-thread-header">
+            <button class="msg-thread-back" id="msg-back">&#8592;</button>
+            <span class="msg-thread-name">Select members</span>
+        </div>
+        <div style="padding:8px 14px;border-bottom:1px solid var(--border-0, rgba(255,255,255,0.06));">
+            <input type="text" class="msg-input" id="msg-group-name" placeholder="Group chat name..." maxlength="100" style="width:100%;margin-bottom:6px;" />
+            <input type="text" class="msg-input" id="msg-group-search" placeholder="Search parties to add..." style="width:100%;" />
+        </div>
+        <div id="msg-group-selected" style="padding:4px 14px;display:none;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--border-0, rgba(255,255,255,0.06));"></div>
+        <div class="msg-panel__body" id="msg-group-results" style="flex:1;overflow-y:auto;">
+            <div class="msg-empty"><div class="msg-empty__text">Search for parties to add...</div></div>
+        </div>
+        <div class="msg-input-bar">
+            <button class="msg-send-btn" id="msg-create-group" style="width:100%;" disabled>Create Group Chat</button>
+        </div>
+    `;
+
+    document.getElementById('msg-back').addEventListener('click', () => {
+        if (headerTitle) headerTitle.textContent = 'Messages';
+        renderChatList();
+    });
+
+    const searchInput = document.getElementById('msg-group-search');
+    searchInput.addEventListener('input', () => {
+        clearTimeout(_searchTimeout);
+        _searchTimeout = setTimeout(() => searchPartiesForGroup(searchInput.value.trim()), 250);
+    });
+
+    document.getElementById('msg-create-group').addEventListener('click', createGroupChat);
+
+    // Show nation parties by default
+    searchPartiesForGroup('');
+}
+
+async function searchPartiesForGroup(query) {
+    const container = document.getElementById('msg-group-results');
+    if (!container) return;
+
+    let results = [];
+    try {
+        if (!query) {
+            const { data } = await _supabase
+                .from('factions')
+                .select('id, faction_name, abbreviation, party_color, nation')
+                .eq('nation_id', _msgNation?.id)
+                .eq('faction_type', 'party')
+                .neq('id', _msgFaction.id)
+                .order('faction_name')
+                .limit(20);
+            results = data || [];
+        } else {
+            const { data } = await _supabase
+                .from('factions')
+                .select('id, faction_name, abbreviation, party_color, nation')
+                .neq('id', _msgFaction.id)
+                .or(`faction_name.ilike.%${query}%,abbreviation.ilike.%${query}%,nation.ilike.%${query}%`)
+                .eq('faction_type', 'party')
+                .not('nation_id', 'is', null)
+                .order('faction_name')
+                .limit(20);
+            results = data || [];
+        }
+    } catch (_) { results = []; }
+
+    if (results.length === 0) {
+        container.innerHTML = `<div class="msg-empty"><div class="msg-empty__text">No parties found.</div></div>`;
+        return;
+    }
+
+    container.innerHTML = results.map(p => {
+        const abbr = (p.abbreviation || p.faction_name || '?').slice(0, 3).toUpperCase();
+        const color = p.party_color || '#666';
+        const selected = _groupSelectIds.has(p.id);
+        return `<div class="msg-chat-item" data-msg-action="toggle-group-member" data-faction-id="${p.id}" style="${selected ? 'background:rgba(90,175,165,0.08);' : ''}">
+            <div class="msg-chat-item__avatar" style="color:${escapeHtml(color)};border-color:${escapeHtml(color)};">${escapeHtml(abbr)}</div>
+            <div class="msg-chat-item__info">
+                <div class="msg-chat-item__name">${escapeHtml(p.faction_name)}</div>
+                <div class="msg-chat-item__preview">${escapeHtml(p.nation || '')}</div>
+            </div>
+            <div style="font-family:var(--font-mono,monospace);font-size:14px;color:${selected ? 'var(--teal,#5aafa5)' : 'var(--text-dim,#4a4940)'};">${selected ? '✓' : '+'}</div>
+        </div>`;
+    }).join('');
+
+    container.querySelectorAll('[data-msg-action="toggle-group-member"]').forEach(el => {
+        el.addEventListener('click', () => {
+            const fid = el.dataset.factionId;
+            if (_groupSelectIds.has(fid)) {
+                _groupSelectIds.delete(fid);
+            } else {
+                _groupSelectIds.add(fid);
+            }
+            // Re-render
+            searchPartiesForGroup(document.getElementById('msg-group-search')?.value?.trim() || '');
+            renderGroupSelected();
+            updateCreateGroupBtn();
+        });
+    });
+}
+
+function renderGroupSelected() {
+    const container = document.getElementById('msg-group-selected');
+    if (!container) return;
+    if (_groupSelectIds.size === 0) {
+        container.style.display = 'none';
+        container.innerHTML = '';
+        return;
+    }
+    container.style.display = 'flex';
+    // Show selected as small tags — we only have IDs, so show abbreviated
+    container.innerHTML = `<span style="font-family:var(--font-mono,monospace);font-size:8px;color:var(--text-dim);">${_groupSelectIds.size} member${_groupSelectIds.size > 1 ? 's' : ''} selected</span>`;
+}
+
+function updateCreateGroupBtn() {
+    const btn = document.getElementById('msg-create-group');
+    if (btn) btn.disabled = _groupSelectIds.size === 0;
+}
+
+async function createGroupChat() {
+    const nameInput = document.getElementById('msg-group-name');
+    const btn = document.getElementById('msg-create-group');
+    const chatName = nameInput?.value?.trim() || 'Group Chat';
+
+    if (_groupSelectIds.size === 0) return;
+    if (btn) btn.disabled = true;
+
+    try {
+        // Create the group chat
+        const { data: chat, error: chatErr } = await _supabase
+            .from('group_chats')
+            .insert({
+                name: chatName,
+                chat_type: 'custom',
+                created_by: _msgFaction.id,
+            })
+            .select()
+            .single();
+        if (chatErr) throw chatErr;
+
+        // Add self + all selected members
+        const members = [_msgFaction.id, ..._groupSelectIds];
+        const memberRows = members.map(fid => ({
+            chat_id: chat.id,
+            faction_id: fid,
+        }));
+
+        const { error: memErr } = await _supabase
+            .from('group_chat_members')
+            .insert(memberRows);
+        if (memErr) throw memErr;
+
+        // Post a system message
+        await _supabase.from('group_chat_messages').insert({
+            chat_id: chat.id,
+            sender_id: null,
+            is_system: true,
+            message_text: `${_msgFaction.faction_name || 'Someone'} created this group chat.`,
+            sent_at_tick: _msgShard?.current_tick || null,
+        });
+
+        // Open the new chat thread
+        const headerTitle = document.querySelector('.msg-panel__title');
+        if (headerTitle) headerTitle.textContent = 'Messages';
+        openThread({ type: 'group', id: chat.id, name: chatName });
+
+    } catch (err) {
+        console.error('[Messaging] Create group failed:', err);
+        alert('Failed to create group chat: ' + (err.message || 'Unknown error'));
+        if (btn) btn.disabled = false;
+    }
 }
 
 // ── Public init ──
