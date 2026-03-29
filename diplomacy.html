@@ -15558,9 +15558,27 @@ async function acceptIPOInvite(inviteId) {
 async function declineIPOInvite(inviteId) {
     if (!currentFaction) return;
     try {
+        // Look up the invite to find the org
+        const { data: invite } = await _supabase.from('ipo_invitations')
+            .select('org_id')
+            .eq('id', inviteId)
+            .single();
+
         await _supabase.from('ipo_invitations')
             .update({ status: 'declined', responded_at_tick: shardTick })
             .eq('id', inviteId);
+
+        // Post to chat
+        if (invite?.org_id) {
+            await _supabase.from('ipo_chat').insert({
+                org_id: invite.org_id,
+                faction_id: null,
+                is_system: true,
+                message_text: `${currentFaction.faction_name} declined the invitation to join.`,
+                tick_posted: shardTick
+            });
+        }
+
         renderIPOView();
     } catch (e) {
         console.error('[IPO] Decline invite error:', e);
@@ -16608,9 +16626,27 @@ async function castIPOBallot(voteId, ballotValue) {
             return;
         }
 
+        // Post ballot to chat (secret ballots show "a member voted", public show faction name)
+        const ballotLabel = ballotValue === 'yes' ? 'YES' : ballotValue === 'no' ? 'NO' : 'ABSTAIN';
+        const voteForChat = ipoVotes.find(v => v.id === voteId);
+        const voteTitle = voteForChat?.title || 'a vote';
+        if (isSecret) {
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId, faction_id: null, is_system: true,
+                message_text: `A member cast a ballot on "${voteTitle}".`,
+                tick_posted: shardTick
+            });
+        } else {
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId, faction_id: null, is_system: true,
+                message_text: `${currentFaction.faction_name} voted ${ballotLabel} on "${voteTitle}".`,
+                tick_posted: shardTick
+            });
+        }
+
         // President-decides: if this is a membership vote with president_decides flag,
         // and the president just voted yes, auto-resolve immediately (admit the member)
-        const vote = ipoVotes.find(v => v.id === voteId);
+        const vote = voteForChat;
         if (vote && vote.meta?.president_decides && org.president_id === currentFaction.id && (ballotValue === 'yes' || ballotValue === 'no')) {
             const approved = ballotValue === 'yes';
             try {
