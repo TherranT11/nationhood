@@ -10639,7 +10639,20 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
     if (ticksElapsed <= 0) return null;
 
     const failedAttempts = nation.failed_formation_attempts || 0;
-    const deadline = failedAttempts >= 1 ? POST_SNAP_DEADLINE_TICKS : FORMATION_DEADLINE_TICKS;
+    let deadline = failedAttempts >= 1 ? POST_SNAP_DEADLINE_TICKS : FORMATION_DEADLINE_TICKS;
+
+    // deal_maker trait: lead party gets +3 ticks to form a government
+    try {
+        const { data: topParty } = await supabase.from('factions')
+            .select('leader_positive_traits')
+            .eq('nation_id', nation.id).eq('faction_type', 'party')
+            .is('abandoned_at', null)
+            .order('seats', { ascending: false })
+            .limit(1).maybeSingle();
+        if (topParty?.leader_positive_traits?.includes('deal_maker')) {
+            deadline += 3;
+        }
+    } catch (_) { /* non-critical */ }
 
     const result = {
         nation: nation.name,
@@ -14372,13 +14385,21 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     // parties with real vote share to get 0 seats in elections.
     const { data: allFactions } = await supabase
         .from('factions')
-        .select('id, seats, last_seen_tick, founded_tick, faction_type, abandoned_at')
+        .select('id, seats, last_seen_tick, founded_tick, faction_type, abandoned_at, leader_positive_traits, leader_negative_traits')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party')
         .is('abandoned_at', null);
     if (!allFactions || allFactions.length === 0) return;
 
     const factions = allFactions; // alias used throughout function
+    // Build trait lookup by faction ID for electorate modifiers
+    const factionTraits = {};
+    for (const f of factions) {
+        factionTraits[f.id] = {
+            pos: f.leader_positive_traits || [],
+            neg: f.leader_negative_traits || [],
+        };
+    }
     const inactiveFactions = allFactions.filter(f => {
         if (f.last_seen_tick != null) return (currentTick - f.last_seen_tick) >= CFG.INACTIVITY_EXCLUSION_TICKS;
         // Never logged in — use founded_tick as reference
@@ -14602,9 +14623,11 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         const adjustedAppeal = round2(appealResult.appeal * engagementMult);
 
         const oldAppeal = Number(standing.platform_appeal ?? CFG.DEFAULT_PLATFORM_APPEAL);
-        const newAppeal = opts.snap
-            ? round2(clamp(adjustedAppeal, CFG.APPEAL_MIN, CFG.APPEAL_MAX))
-            : round2(clamp(oldAppeal + clamp(adjustedAppeal - oldAppeal, -CFG.APPEAL_DRIFT_SPEED, CFG.APPEAL_DRIFT_SPEED), CFG.APPEAL_MIN, CFG.APPEAL_MAX));
+        // deal_maker: +5 Platform Appeal while in a coalition
+        const dealMakerBonus = (factionTraits[factionId]?.pos?.includes('deal_maker') && isCoalition) ? 5 : 0;
+        let newAppeal = opts.snap
+            ? round2(clamp(adjustedAppeal + dealMakerBonus, CFG.APPEAL_MIN, CFG.APPEAL_MAX))
+            : round2(clamp(oldAppeal + clamp(adjustedAppeal - oldAppeal, -CFG.APPEAL_DRIFT_SPEED, CFG.APPEAL_DRIFT_SPEED) + dealMakerBonus, CFG.APPEAL_MIN, CFG.APPEAL_MAX));
 
         // ─── PILLAR 3: Party Approval (0-100) ───
         const oldApproval = Number(standing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);
@@ -14638,6 +14661,20 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         let newVisibility = Number(standing.visibility ?? CFG.DEFAULT_VISIBILITY);
         newVisibility = round2(newVisibility * CFG.VISIBILITY_DECAY);
         const visFloor = isCoalition ? CFG.VISIBILITY_GOV_FLOOR : CFG.VISIBILITY_FLOOR;
+
+        // Leader trait modifiers for visibility
+        const traits = factionTraits[factionId] || { pos: [], neg: [] };
+        if (traits.pos.includes('born_leader'))     newVisibility += 3;   // +3 visibility/tick
+        if (traits.pos.includes('telegenic'))        newVisibility += 2;   // +2 visibility/tick
+        if (traits.pos.includes('base_energizer'))   newVisibility += 1;   // +1 visibility/tick
+        if (traits.neg.includes('unelectable'))      newVisibility -= 2;   // -2 visibility/tick
+        if (traits.neg.includes('wooden_speaker'))   newVisibility -= 2;   // -2 visibility/tick
+        // gaffe_prone: 20% chance per tick of -3 visibility + credibility hit
+        if (traits.neg.includes('gaffe_prone') && Math.random() < 0.20) {
+            newVisibility -= 3;
+            // Credibility hit applied below in credibility section
+        }
+
         newVisibility = round2(clamp(newVisibility, visFloor, 100));
 
         // ─── CREDIBILITY (recovery toward 1.0) ───
@@ -14646,8 +14683,18 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
             // Check if recovery is suspended
             const suspendedUntil = Number(standing.credibility_recovery_suspended_until ?? 0);
             if (currentTick >= suspendedUntil) {
-                newCredibility = round3(Math.min(1.0, newCredibility + CFG.CREDIBILITY_RECOVERY_RATE));
+                let recoveryRate = CFG.CREDIBILITY_RECOVERY_RATE;
+                // born_leader: credibility recovers 50% faster
+                if (traits.pos.includes('born_leader')) recoveryRate *= 1.5;
+                // unelectable: credibility recovers 50% slower
+                if (traits.neg.includes('unelectable')) recoveryRate *= 0.5;
+                newCredibility = round3(Math.min(1.0, newCredibility + recoveryRate));
             }
+        }
+        // gaffe_prone credibility hit (if the random roll above triggered)
+        if (traits.neg.includes('gaffe_prone') && newVisibility < Number(standing.visibility ?? 0)) {
+            // The gaffe fired this tick (visibility was reduced above)
+            newCredibility = round3(Math.max(CFG.CREDIBILITY_MIN, newCredibility - 0.02));
         }
         newCredibility = round3(clamp(newCredibility, CFG.CREDIBILITY_MIN, CFG.CREDIBILITY_MAX));
 
@@ -16769,15 +16816,15 @@ const POSITIVE_TRAITS = [
     { key: 'efficient_operator', name: 'Efficient Operator', cost: 3.5, category: 'AP', effect: 'All campaign actions cost -1 AP (minimum 1).' },
     { key: 'quick_study', name: 'Quick Study', cost: 1.5, category: 'AP', effect: 'First action each tick costs -1 AP (minimum 1).' },
     { key: 'delegation', name: 'Delegation', cost: 1.0, category: 'AP', effect: 'Outreach and Rally actions cost -1 AP each.' },
-    // Electoral & Electability
-    { key: 'born_leader', name: 'Born Leader', cost: 3.5, category: 'Electoral', effect: 'Electability gains are doubled.' },
-    { key: 'comeback_kid', name: 'Comeback Kid', cost: 3.5, category: 'Electoral', effect: 'Electability losses are halved.' },
-    { key: 'crowd_pleaser', name: 'Crowd Pleaser', cost: 1.5, category: 'Electoral', effect: 'Rally turnout +8%. Mobilize campaign reaches +1 additional bloc.' },
-    { key: 'telegenic', name: 'Telegenic', cost: 1.5, category: 'Electoral', effect: 'Campaign: Message effectiveness +30%. Media coverage events favor your party.' },
+    // Electoral & Visibility
+    { key: 'born_leader', name: 'Born Leader', cost: 3.5, category: 'Electoral', effect: '+3 Visibility per tick. Credibility recovers 50% faster.' },
+    { key: 'comeback_kid', name: 'Comeback Kid', cost: 3.5, category: 'Electoral', effect: 'After losing an election: +5 Party Approval and +10 Visibility bounce.' },
+    { key: 'crowd_pleaser', name: 'Crowd Pleaser', cost: 1.5, category: 'Electoral', effect: 'Rally actions give +2 bonus Visibility. Approval gains from rallies +30%.' },
+    { key: 'telegenic', name: 'Telegenic', cost: 1.5, category: 'Electoral', effect: '+30% Approval gains from all campaign actions. +2 Visibility per tick.' },
     // Legislative & Parliamentary
-    { key: 'arm_twister', name: 'Arm Twister', cost: 1.5, category: 'Legislative', effect: 'Bills your party sponsors have +15% passage rate.' },
-    { key: 'deal_maker', name: 'Deal Maker', cost: 1.5, category: 'Legislative', effect: 'Coalition negotiations complete 50% faster. Coalition partners demand 1 fewer ministry.' },
-    { key: 'policy_wonk', name: 'Policy Wonk', cost: 1.0, category: 'Legislative', effect: 'Bills you sponsor cost -1 AP to draft. Voters credit your party +5 approval for each enacted bill.' },
+    { key: 'arm_twister', name: 'Arm Twister', cost: 1.5, category: 'Legislative', effect: 'Whip effectiveness +20%. Party members vote with leadership 15% more often.' },
+    { key: 'deal_maker', name: 'Deal Maker', cost: 1.5, category: 'Legislative', effect: '+5 Platform Appeal while in a coalition. Formation deadline extended by 3 ticks when lead party.' },
+    { key: 'policy_wonk', name: 'Policy Wonk', cost: 1.0, category: 'Legislative', effect: 'Bills you sponsor cost -1 AP to draft. Each enacted bill gives +3 Platform Appeal.' },
     { key: 'constitutional_scholar', name: 'Constitutional Scholar', cost: 1.0, category: 'Legislative', effect: 'Impeachment and no-confidence attempts against your leader cost opponents +3 AP.' },
     // Governance
     { key: 'cabinet_builder', name: 'Cabinet Builder', cost: 3.5, category: 'Governance', effect: 'Your party gets +2 ministry slots in any coalition. Ministers you appoint start with +10 approval.' },
@@ -16789,7 +16836,7 @@ const POSITIVE_TRAITS = [
     { key: 'international_presence', name: 'International Presence', cost: 1.0, category: 'Diplomatic', effect: 'International reputation +5 while leader. Foreign leaders accept diplomatic proposals 1 tick faster.' },
     // Voter Blocs
     { key: 'populist_touch', name: 'Populist Touch', cost: 3.5, category: 'Voter Blocs', effect: 'SKEPTICAL blocs are treated as SWING for all action targeting.' },
-    { key: 'base_energizer', name: 'Base Energizer', cost: 1.5, category: 'Voter Blocs', effect: 'BASE bloc turnout permanently +5%. Champion demands arrive 1 tick later.' },
+    { key: 'base_energizer', name: 'Base Energizer', cost: 1.5, category: 'Voter Blocs', effect: 'BASE bloc approval decay halved. +1 Visibility per tick.' },
 ];
 
 // ═══════════════════════════════════════
@@ -16802,12 +16849,12 @@ const NEGATIVE_TRAITS = [
     { key: 'slow_to_act', name: 'Slow to Act', relief: 1.0, category: 'AP', effect: 'First action each tick costs +1 AP.' },
     { key: 'high_maintenance', name: 'High Maintenance', relief: 0.5, category: 'AP', effect: 'Outreach and Rally actions cost +1 AP each.' },
     // Electoral
-    { key: 'unelectable', name: 'Unelectable', relief: 1.5, category: 'Electoral', effect: 'Electability gains are halved.' },
-    { key: 'sore_loser', name: 'Sore Loser', relief: 1.5, category: 'Electoral', effect: 'Electability losses are doubled. Losing an election triggers -5 approval across all blocs.' },
-    { key: 'gaffe_prone', name: 'Gaffe Prone', relief: 1.0, category: 'Electoral', effect: '20% chance per tick of a gaffe event: -3 approval with a random bloc.' },
-    { key: 'wooden_speaker', name: 'Wooden Speaker', relief: 1.0, category: 'Electoral', effect: 'Campaign: Message effectiveness -30%. Rally turnout -5%.' },
+    { key: 'unelectable', name: 'Unelectable', relief: 1.5, category: 'Electoral', effect: '-2 Visibility per tick. Credibility recovers 50% slower.' },
+    { key: 'sore_loser', name: 'Sore Loser', relief: 1.5, category: 'Electoral', effect: 'After losing an election: -5 Party Approval and -10 Visibility.' },
+    { key: 'gaffe_prone', name: 'Gaffe Prone', relief: 1.0, category: 'Electoral', effect: '20% chance per tick of a gaffe: -2 Credibility and -3 Visibility.' },
+    { key: 'wooden_speaker', name: 'Wooden Speaker', relief: 1.0, category: 'Electoral', effect: '-30% Approval gains from campaign actions. -2 Visibility per tick.' },
     // Legislative
-    { key: 'poor_whip', name: 'Poor Whip', relief: 1.0, category: 'Legislative', effect: 'Bills your party sponsors have -15% passage rate.' },
+    { key: 'poor_whip', name: 'Poor Whip', relief: 1.0, category: 'Legislative', effect: 'Whip effectiveness -20%. Party members break ranks 15% more often.' },
     { key: 'stubborn_negotiator', name: 'Stubborn Negotiator', relief: 1.0, category: 'Legislative', effect: 'Coalition negotiations take +3 ticks. Partners demand 1 additional ministry.' },
     { key: 'single_issue', name: 'Single-Issue', relief: 0.5, category: 'Legislative', effect: 'Bills outside leader\'s ideology axis cost +2 AP to sponsor.' },
     { key: 'paper_thin_mandate', name: 'Paper Thin Mandate', relief: 0.5, category: 'Legislative', effect: 'Impeachment and no-confidence attempts against your leader cost opponents -2 AP.' },
