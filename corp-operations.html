@@ -1258,7 +1258,7 @@ body.light-mode .wh-empty__text { color: #1a1a17; }
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
-import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, checkTierAvailability } from './js/game/materials.js';
+import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -1268,6 +1268,11 @@ let contracts = [];
 let activeProjects = [];
 let warehouseData = {};  // { materialKey: { LOW: {qty,value}, STD: {qty,value}, HIGH: {qty,value} } }
 let whExpandedRow = -1;  // index of expanded material row, -1 = none
+
+// Procurement state
+let prSelectedMat = 'concrete';
+let prSelectedTier = 'STD';
+let prPurchaseQty = 500;
 let nextTickAt = null;
 let tickInterval = null;
 
@@ -2072,6 +2077,299 @@ async function loadWarehouse() {
     renderWarehouse();
 }
 
+// ── Procurement ──
+const PRICE_DRIVER_LABELS = {
+    manufacturing_output: 'base production',
+    rare_minerals: 'raw input',
+    inflation: 'price modifier',
+    fuel_prices: 'transport cost',
+    urbanization: 'demand pressure',
+    arable_land: 'base production',
+    physical_infrastructure: 'transport',
+    digital_infrastructure: 'component quality',
+    energy_generation: 'electrical supply',
+    standard_of_living: 'demand tier',
+    oil_and_gas: 'base input',
+    higher_education: 'engineering',
+};
+
+function renderProcurement() {
+    const nationName = (nationStats?.name || faction?.nation || '—').toUpperCase();
+
+    // Nation badge
+    document.getElementById('pr-nation-badge').textContent = 'LOCAL — ' + nationName;
+
+    // Footer: cash + warehouse capacity
+    const cash = Number(faction?.corp_cash_reserves) || 0;
+    document.getElementById('pr-cash').textContent = fmtBig(cash);
+
+    let totalUnits = 0;
+    for (const mat of MATERIALS) {
+        for (const tier of QUALITY_TIERS) {
+            totalUnits += (warehouseData[mat.key]?.[tier]?.qty || 0);
+        }
+    }
+    const capPct = Math.round((totalUnits / MAX_WAREHOUSE_CAPACITY) * 100);
+    const capEl = document.getElementById('pr-wh-capacity');
+    capEl.textContent = capPct + '%';
+    capEl.style.color = capPct > 80 ? 'var(--red)' : capPct > 50 ? 'var(--orange)' : 'var(--green)';
+
+    renderPrMatGrid();
+    renderPrTierBar();
+    renderPrContent();
+}
+
+function renderPrMatGrid() {
+    const grid = document.getElementById('pr-mat-grid');
+    let html = '';
+    for (const mat of MATERIALS) {
+        const active = prSelectedMat === mat.key;
+        // Check if ALL tiers are locked
+        const allLocked = QUALITY_TIERS.every(t => !checkTierAvailability(mat.key, t, nationStats).available);
+        const cls = 'pr-mat-btn' + (active ? ' active' : '') + (allLocked ? ' all-locked' : '');
+        html += `<span class="${cls}" onclick="setPrMat('${mat.key}')">${escapeHtml(mat.name)}</span>`;
+    }
+    grid.innerHTML = html;
+}
+
+function renderPrTierBar() {
+    const bar = document.getElementById('pr-tier-bar');
+    let html = '<span class="pr-tier-label">GRADE</span>';
+    for (const tier of QUALITY_TIERS) {
+        const avail = checkTierAvailability(prSelectedMat, tier, nationStats);
+        const active = prSelectedTier === tier;
+        const price = avail.available ? calculateBasePrice(prSelectedMat, tier, nationStats) : null;
+        const dotColor = MATERIAL_QUALITY_COLORS[tier];
+        const locked = !avail.available;
+        const cls = 'pr-tier-btn' + (active ? ' active' : '') + (locked ? ' locked' : '');
+
+        html += `<div class="${cls}" onclick="${locked ? '' : `setPrTier('${tier}')`}">
+            <div class="pr-tier-btn__label">
+                <div class="wh-dot" style="width:5px;height:5px;background:${dotColor};border-radius:1px;"></div>
+                <span class="pr-tier-btn__name" style="color:${active ? 'var(--text-bright)' : 'var(--text-dim)'}">${QUALITY_LABELS[tier]}</span>
+            </div>
+            ${price !== null
+                ? `<div class="pr-tier-btn__price" style="color:${active ? 'var(--text-bright)' : 'var(--text-muted)'}">$${price}<span style="font-size:7px;color:var(--text-dim)">/unit</span></div>`
+                : `<div class="pr-tier-btn__locked-text">LOCKED</div>`}
+        </div>`;
+    }
+    bar.innerHTML = html;
+}
+
+function renderPrContent() {
+    const content = document.getElementById('pr-content');
+    const avail = checkTierAvailability(prSelectedMat, prSelectedTier, nationStats);
+    const mat = MATERIALS.find(m => m.key === prSelectedMat);
+
+    if (!avail.available) {
+        // Locked tier panel
+        content.innerHTML = `<div class="pr-locked-panel">
+            <div class="pr-locked-box">
+                <div class="pr-locked-box__title">QUALITY TIER UNAVAILABLE</div>
+                <div class="pr-locked-box__desc">
+                    ${escapeHtml(mat.name)} — ${QUALITY_LABELS[prSelectedTier]} grade
+                    is not produced domestically in ${escapeHtml(nationStats?.name || '—')}.
+                </div>
+                <div class="pr-locked-box__reason">
+                    ${escapeHtml(avail.failedStat || 'unknown')} &lt; ${avail.failedMin || '?'}
+                </div>
+                <div class="pr-locked-box__hint">
+                    Import from a nation with sufficient capacity<br>or lobby for industrial development policy.
+                </div>
+            </div>
+        </div>`;
+        return;
+    }
+
+    const price = calculateBasePrice(prSelectedMat, prSelectedTier, nationStats);
+    const supply = calculateSupply(prSelectedMat, prSelectedTier, nationStats);
+    const totalCost = price * prPurchaseQty;
+
+    // Demand estimate: ratio of supply to a baseline
+    const demandRatio = supply > 3000 ? 'LOW' : supply > 1000 ? 'MODERATE' : 'HIGH';
+    const demandColor = demandRatio === 'LOW' ? 'var(--green)' : demandRatio === 'MODERATE' ? 'var(--amber)' : 'var(--red)';
+
+    // Trend: simple heuristic based on inflation and demand
+    const inflation = Number(nationStats?.inflation ?? 50);
+    const trend = inflation > 55 ? 'up' : inflation < 45 ? 'down' : 'flat';
+    const trendChar = trend === 'up' ? '&#9650;' : trend === 'down' ? '&#9660;' : '&#8212;';
+    const trendColor = trend === 'up' ? 'var(--red)' : trend === 'down' ? 'var(--green)' : 'var(--text-dim)';
+
+    let html = '';
+
+    // Market info panel
+    html += `<div style="padding:8px 14px;border-bottom:1px solid var(--border-0);">
+        <div class="pr-market-grid">
+            <div class="pr-market-cell">
+                <div class="pr-market-cell__label">PRICE/UNIT</div>
+                <div style="display:flex;align-items:baseline;gap:4px;margin-top:2px;">
+                    <span class="pr-market-cell__value" style="font-size:16px;color:var(--text-bright)">$${price}</span>
+                    <span style="font-family:var(--font-mono);font-size:9px;color:${trendColor}">${trendChar}</span>
+                </div>
+            </div>
+            <div class="pr-market-cell">
+                <div class="pr-market-cell__label">SUPPLY/TICK</div>
+                <div class="pr-market-cell__value" style="font-size:14px;color:var(--text-bright);margin-top:2px;">${supply.toLocaleString()}</div>
+            </div>
+            <div class="pr-market-cell">
+                <div class="pr-market-cell__label">DEMAND</div>
+                <div class="pr-market-cell__value" style="font-size:12px;color:${demandColor};margin-top:2px;">${demandRatio}</div>
+            </div>
+        </div>
+    </div>`;
+
+    // Price drivers
+    html += `<div class="pr-drivers">
+        <div class="pr-drivers__title">Price Drivers (${escapeHtml(nationStats?.name || '—')})</div>`;
+    for (const statKey of mat.priceDrivers) {
+        const val = Number(nationStats?.[statKey] ?? 50);
+        const barColor = val >= 50 ? 'var(--green)' : val >= 30 ? 'var(--amber)' : val >= 15 ? 'var(--orange)' : 'var(--red)';
+        const label = PRICE_DRIVER_LABELS[statKey] || statKey;
+        html += `<div class="pr-driver-row">
+            <span class="pr-driver-row__stat">${escapeHtml(statKey)}</span>
+            <div class="pr-driver-row__bar">
+                <div class="pr-driver-row__fill" style="width:${val}%;background:${barColor}"></div>
+            </div>
+            <span class="pr-driver-row__val">${val}</span>
+            <span class="pr-driver-row__effect">${escapeHtml(label)}</span>
+        </div>`;
+    }
+    html += `</div>`;
+
+    // Purchase order
+    const cash = Number(faction?.corp_cash_reserves) || 0;
+    const canAfford = cash >= totalCost;
+    const overSupply = prPurchaseQty > supply;
+    const dotColor = MATERIAL_QUALITY_COLORS[prSelectedTier];
+
+    html += `<div class="pr-order">
+        <div class="pr-order__title">Purchase Order</div>
+        <div class="pr-order__box">
+            <div class="pr-order__header">
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <span class="pr-order__mat-name">${escapeHtml(mat.name)}</span>
+                    <div class="wh-dot" style="width:5px;height:5px;background:${dotColor};border-radius:1px;"></div>
+                    <span style="font-family:var(--font-mono);font-size:9px;color:${dotColor}">${QUALITY_LABELS[prSelectedTier]}</span>
+                </div>
+                <span class="pr-order__mat-price">$${price}/unit</span>
+            </div>
+            <div class="pr-qty-row">
+                <span class="pr-qty-label">QTY</span>
+                <div class="pr-qty-btns">
+                    ${[100, 250, 500, 1000].map(q =>
+                        `<span class="pr-qty-btn${prPurchaseQty === q ? ' active' : ''}" onclick="setPrQty(${q})">${q >= 1000 ? (q / 1000) + 'k' : q}</span>`
+                    ).join('')}
+                </div>
+            </div>
+            ${overSupply ? `<div class="pr-supply-warn">
+                <span class="pr-supply-warn__text">EXCEEDS AVAILABLE SUPPLY — max ${supply.toLocaleString()} this tick</span>
+            </div>` : ''}
+            <div class="pr-order__total">
+                <div>
+                    <div class="pr-order__total-label">TOTAL COST</div>
+                    <div class="pr-order__total-value">${fmtBig(totalCost)}</div>
+                </div>
+                <button class="pr-purchase-btn" onclick="purchaseMaterial()"
+                    ${canAfford && !overSupply ? '' : 'disabled'}
+                    title="${!canAfford ? 'Insufficient cash' : overSupply ? 'Exceeds supply' : 'Purchase materials'}"
+                >PURCHASE</button>
+            </div>
+        </div>
+    </div>`;
+
+    content.innerHTML = html;
+}
+
+function setPrMat(key) {
+    prSelectedMat = key;
+    // Auto-select highest available tier
+    prSelectedTier = 'STD';
+    for (const tier of ['STD', 'HIGH', 'LOW']) {
+        if (checkTierAvailability(key, tier, nationStats).available) {
+            prSelectedTier = tier;
+            break;
+        }
+    }
+    renderPrMatGrid();
+    renderPrTierBar();
+    renderPrContent();
+}
+
+function setPrTier(tier) {
+    prSelectedTier = tier;
+    renderPrTierBar();
+    renderPrContent();
+}
+
+function setPrQty(qty) {
+    prPurchaseQty = qty;
+    renderPrContent();
+}
+
+async function purchaseMaterial() {
+    if (!faction || !nationStats) return;
+
+    const price = calculateBasePrice(prSelectedMat, prSelectedTier, nationStats);
+    const supply = calculateSupply(prSelectedMat, prSelectedTier, nationStats);
+    const totalCost = price * prPurchaseQty;
+    const cash = Number(faction.corp_cash_reserves) || 0;
+
+    if (totalCost > cash) { alert('Insufficient cash reserves.'); return; }
+    if (prPurchaseQty > supply) { alert('Exceeds available supply this tick.'); return; }
+
+    // Disable button
+    const btn = document.querySelector('.pr-purchase-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '...'; }
+
+    try {
+        // Deduct cash
+        const newCash = cash - totalCost;
+        const { error: cashErr } = await _supabase
+            .from('factions')
+            .update({ corp_cash_reserves: newCash })
+            .eq('id', faction.id);
+        if (cashErr) throw cashErr;
+
+        // Upsert warehouse row
+        const existing = warehouseData[prSelectedMat]?.[prSelectedTier];
+        const newQty = (existing?.qty || 0) + prPurchaseQty;
+        const newValue = (existing?.value || 0) + totalCost;
+
+        const { error: whErr } = await _supabase
+            .from('corp_warehouse')
+            .upsert({
+                faction_id: faction.id,
+                nation_id: faction.nation_id,
+                material_key: prSelectedMat,
+                quality_tier: prSelectedTier,
+                quantity: newQty,
+                total_value: newValue,
+                last_purchased_tick: shard?.current_tick || null,
+                updated_at: new Date().toISOString(),
+            }, { onConflict: 'faction_id,material_key,quality_tier' });
+
+        if (whErr) {
+            // Refund cash
+            await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
+            throw whErr;
+        }
+
+        // Update local state
+        faction.corp_cash_reserves = newCash;
+        if (!warehouseData[prSelectedMat]) warehouseData[prSelectedMat] = {};
+        warehouseData[prSelectedMat][prSelectedTier] = { qty: newQty, value: newValue };
+
+        // Re-render both cards
+        renderWarehouse();
+        renderProcurement();
+
+        if (btn) { btn.textContent = 'PURCHASED'; setTimeout(() => { if (btn.isConnected) { btn.disabled = false; btn.textContent = 'PURCHASE'; } }, 1500); }
+    } catch (err) {
+        if (btn) { btn.disabled = false; btn.textContent = 'PURCHASE'; }
+        alert('Purchase failed: ' + (err.message || 'Unknown error'));
+    }
+}
+
 // ── Init ──
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
@@ -2161,6 +2459,9 @@ async function init() {
     // Load contracts
     await Promise.all([loadContracts(), loadActiveProjects(), loadWarehouse()]);
 
+    // Render procurement (uses nationStats + warehouseData, no separate load needed)
+    renderProcurement();
+
     // Show page
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = 'block';
@@ -2207,6 +2508,10 @@ window.openContractDetail = openContractDetail;
 window.closeContractDetail = closeContractDetail;
 window.placeBid = placeBid;
 window.toggleWhRow = toggleWhRow;
+window.setPrMat = setPrMat;
+window.setPrTier = setPrTier;
+window.setPrQty = setPrQty;
+window.purchaseMaterial = purchaseMaterial;
 
 init();
 </script>
