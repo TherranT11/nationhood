@@ -1095,21 +1095,97 @@ const guideContent = {
 <p>Click <strong>&ldquo;View full legislative record&rdquo;</strong> below the Recently Resolved section to see every bill that has ever been voted on, with pass/fail status, vote tallies, and party breakdowns. Use it to review the nation&rsquo;s legislative history and track which factions voted which way.</p>
 </div></details>
 
-<details><summary>Special Bill Types</summary><div>
-<h3>Foundational Bills</h3>
-<p>Foundational bills change the constitutional structure of the nation. They cost <strong>3 AP</strong> to draft (vs. 2 AP for standard bills) and require a <strong>two-thirds supermajority</strong> to pass. They also <em>must</em> have at least one co-sponsor to advance from committee.</p>
+<details><summary>Approval, Ideology &amp; Penalties</summary><div>
+<h3>How Bills Affect Party Approval</h3>
+<p>When a bill passes, every faction that voted receives an <strong>approval adjustment</strong> based on how the bill&rsquo;s ideology aligns with their own. The system checks each policy article&rsquo;s ideology tags against your faction&rsquo;s ideology scores on each axis.</p>
 
-<p>When drafting, select the <strong>Foundational</strong> sector in the policy picker. Available subtypes:</p>
 <table>
-<tr><th>Subtype</th><th>What It Changes</th></tr>
-<tr><td><strong>Electoral Makeup</strong></td><td>Changes the total number of parliamentary seats (50&ndash;500).</td></tr>
-<tr><td><strong>Head of State Title</strong></td><td>Renames the head of state (e.g., President, Chancellor, Supreme Leader).</td></tr>
-<tr><td><strong>Term Length</strong></td><td>Changes how many ticks a presidential term lasts. Shorter terms increase polarization; longer terms reduce legitimacy.</td></tr>
-<tr><td><strong>Term Limits</strong></td><td>Sets the maximum number of terms a president may serve, or removes term limits entirely.</td></tr>
-<tr><td><strong>HoS Election Method</strong></td><td>Changes how the head of state is chosen: direct popular vote, appointed by parliament, or constitutional monarchy (hereditary).</td></tr>
+<tr><th>Scenario</th><th>Approval Effect</th></tr>
+<tr><td>Voted YES on an aligned bill</td><td><strong>+1 to +4</strong> (scaled &times;0.3)</td></tr>
+<tr><td>Voted YES on an opposed bill</td><td><strong>&minus;2 to &minus;10</strong> (scaled &times;0.3) &mdash; includes a &minus;2 opposition kicker</td></tr>
+<tr><td>Voted NO on an opposed bill</td><td><strong>+1 to +4</strong> (inverted &mdash; voting against something you oppose is good)</td></tr>
+<tr><td>Voted NO on an aligned bill</td><td><strong>&minus;2 to &minus;10</strong> (inverted &mdash; voting against something you support hurts)</td></tr>
+<tr><td>Abstained</td><td>No approval change from ideology alignment</td></tr>
 </table>
-<p>Foundational bills contain exactly <strong>one article</strong> and cannot have policy, text, or funding articles added.</p>
 
+<p class="guide-tip">The more ideology tags a bill has, the bigger the swing. A bill with 3 articles all opposed to your faction could cost you up to &minus;3 approval (after scaling) if you vote Yes. Vote strategically.</p>
+
+<h3>Ideology Chip Colours</h3>
+<p>Every policy in the game has ideology tags (e.g., PROGRESS, LIBERTY, SECURITY). These appear as coloured chips on bill articles:</p>
+<ul>
+<li><strong style="color:#7a9a5b;">Green</strong> &mdash; Your faction scores <strong>+20 or higher</strong> on that ideology&rsquo;s axis. This is aligned with your position.</li>
+<li><strong style="color:#a65d5d;">Red</strong> &mdash; Your faction scores <strong>&minus;20 or lower</strong> on that ideology&rsquo;s axis. This is opposed to your position.</li>
+<li><strong style="color:#8a8778;">Grey</strong> &mdash; Your faction is between &minus;19 and +19 on the axis. No strong signal either way.</li>
+</ul>
+<p>Chip colours are <strong>relative to your faction</strong>. The same bill may show green chips for one party and red for another. On repeal bills, the colours are inverted &mdash; repealing an opposed policy shows green.</p>
+
+<h3>The Five Ideology Axes</h3>
+<table>
+<tr><th>Axis</th><th>Left Pole</th><th>Right Pole</th></tr>
+<tr><td>Liberty &harr; Equality</td><td>Liberty</td><td>Equality</td></tr>
+<tr><td>Tradition &harr; Progress</td><td>Tradition</td><td>Progress</td></tr>
+<tr><td>Security &harr; Freedom</td><td>Security</td><td>Freedom</td></tr>
+<tr><td>Globalism &harr; Nationalism</td><td>Globalism</td><td>Nationalism</td></tr>
+<tr><td>Individualism &harr; Collectivism</td><td>Individualism</td><td>Collectivism</td></tr>
+</table>
+<p>Your faction&rsquo;s position on each axis ranges from &minus;100 to +100. Positive scores mean you lean toward the <em>right pole</em>; negative toward the <em>left pole</em>. You shift your position over time through stances, campaigns, and legislative activity.</p>
+
+<h3>Penalty for Not Voting</h3>
+<p>If your faction <strong>does not vote at all</strong> (no Yes, No, or Abstain) on a floor bill, you suffer penalties when it resolves:</p>
+<table>
+<tr><th>Stat</th><th>Penalty</th></tr>
+<tr><td>Party Approval</td><td><strong>&minus;1 to &minus;3</strong> (random)</td></tr>
+<tr><td>Visibility</td><td><strong>&minus;5</strong></td></tr>
+<tr><td>Credibility</td><td><strong>&minus;5</strong> (on the 0&ndash;100 display scale)</td></tr>
+</table>
+<p>These penalties apply <strong>per bill</strong>. If three bills resolve in one tick and you didn&rsquo;t vote on any of them, you take the penalty three times.</p>
+<p class="guide-tip"><strong>Always vote.</strong> Even if you don&rsquo;t care about a bill, casting Abstain avoids the penalty entirely. The only scenario where not voting makes sense is if you want to intentionally torpedo quorum.</p>
+
+<h3>Government Approval Bonus</h3>
+<p>Every bill that passes gives a small <strong>government approval event bonus</strong>, reflecting that the legislature is actively governing. This nudges the nation&rsquo;s <em>gov_approval_events</em> stat positively, benefiting all coalition parties.</p>
+</div></details>
+
+<details><summary>Foundational Laws &amp; Repeal</summary><div>
+<h3>What Are Foundational Laws?</h3>
+<p>Foundational laws change the constitutional structure of the nation. They are different from standard bills:</p>
+<ul>
+<li>Cost <strong>3 AP</strong> to draft (vs. 2 AP for standard bills)</li>
+<li>Require a <strong>two-thirds supermajority</strong> to pass (80 of 120 seats)</li>
+<li><strong>Must</strong> have at least one co-sponsor to advance from committee</li>
+<li>Contain exactly <strong>one article</strong> (no additional policies or text)</li>
+<li>Have <strong>cooldown timers</strong> between changes (120&ndash;360 ticks depending on type)</li>
+</ul>
+
+<h3>Established Foundational Laws</h3>
+<p>Some foundational laws start the game already established (e.g., Legislative Term Length). When a foundational law is established:</p>
+<ul>
+<li>It shows an <strong style="color:#5cb85c;">ACTIVE</strong> badge in the foundational law picker</li>
+<li>You <strong>cannot directly change</strong> it by proposing a new value</li>
+<li>You must first <strong>repeal</strong> it (supermajority vote), then propose a replacement</li>
+</ul>
+
+<h3>Repealing a Foundational Law</h3>
+<p>To change an established foundational law:</p>
+<ol>
+<li>Click the active foundational law card &mdash; this selects it as a <strong>repeal</strong></li>
+<li>Confirm and submit. A repeal bill is created requiring a two-thirds supermajority</li>
+<li>Once the repeal passes, the law&rsquo;s active status is cleared</li>
+<li>You can now propose a new value through the normal foundational bill flow</li>
+</ol>
+<p class="guide-tip">Repealing a foundational law does not change the nation&rsquo;s current settings immediately &mdash; it only unlocks the ability to propose a new value. Elections continue on the current schedule until a replacement law passes.</p>
+
+<h3>Cooldowns</h3>
+<table>
+<tr><th>Foundational Law</th><th>Cooldown</th></tr>
+<tr><td>Presidential Term Length</td><td>120 ticks (10 years)</td></tr>
+<tr><td>Legislative Term Length</td><td>120 ticks (10 years)</td></tr>
+<tr><td>Presidential Term Limits</td><td>240 ticks (20 years)</td></tr>
+<tr><td>Head of State Election Method</td><td>360 ticks (30 years)</td></tr>
+</table>
+<p>Cooldowns apply to both establishing and repealing foundational laws. The cooldown starts from the tick the last foundational bill of that type passed.</p>
+</div></details>
+
+<details><summary>Other Special Bill Types</summary><div>
 <h3>Repeal Bills</h3>
 <p>Repeal bills are created when you click <strong>Rescind</strong> on an active law. They target a single active law for removal and pass with a simple majority. The bill is pre-configured &mdash; you cannot add articles to it.</p>
 
