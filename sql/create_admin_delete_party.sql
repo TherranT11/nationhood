@@ -7,7 +7,7 @@
 
 DROP FUNCTION IF EXISTS admin_delete_party(uuid);
 
-CREATE FUNCTION admin_delete_party(p_faction_id UUID)
+CREATE FUNCTION admin_delete_party(p_faction_id UUID, p_force BOOLEAN DEFAULT false)
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -18,6 +18,7 @@ DECLARE
     v_sql TEXT;
     v_label TEXT;
     v_rec RECORD;
+    v_has_user BOOLEAN;
     deletes TEXT[][] := ARRAY[
         -- [label, sql]  —  use %s as placeholder for the faction UUID
         ARRAY['nations.ruling_faction_id',    $$UPDATE nations SET ruling_faction_id = NULL WHERE ruling_faction_id = '%s'$$],
@@ -95,6 +96,23 @@ DECLARE
     ];
     i INT;
 BEGIN
+    -- SAFEGUARD: block deletion of factions owned by real players unless p_force = true.
+    -- A faction is "owned" if its id matches an auth.users row or it has a linked_user_id.
+    IF NOT p_force THEN
+        SELECT EXISTS (
+            SELECT 1 FROM auth.users u WHERE u.id = p_faction_id
+        ) OR EXISTS (
+            SELECT 1 FROM factions f WHERE f.id = p_faction_id AND f.linked_user_id IS NOT NULL
+        ) INTO v_has_user;
+
+        IF v_has_user THEN
+            RETURN jsonb_build_object(
+                'error', 'BLOCKED: This faction belongs to a real player. Use p_force=true to override.',
+                'faction_id', p_faction_id
+            );
+        END IF;
+    END IF;
+
     FOR i IN 1..array_length(deletes, 1)
     LOOP
         v_label := deletes[i][1];
