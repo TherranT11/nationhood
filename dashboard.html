@@ -778,7 +778,7 @@ initPage('home', async (state) => {
   // ── Stats rows ──
   const rows = [
     { label: 'Established', value: profile.founded_year || '\u2014' },
-    { label: 'Government', value: nation.government_type || '\u2014' },
+    { label: 'Government', value: nation.hos_election_method === 'hereditary' ? 'Constitutional Monarchy' : (nation.government_type || '\u2014') },
     { label: 'Capital', value: nation.capital || '\u2014' },
     { label: 'Language', value: profile.languages || 'Estrellan' },
     { label: 'Population', value: formatNumber(nation.population) },
