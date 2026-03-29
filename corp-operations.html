@@ -1014,6 +1014,7 @@ body.light-mode .wh-empty__text { color: #1a1a17; }
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
+import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, checkTierAvailability } from './js/game/materials.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -1021,6 +1022,8 @@ let nationStats = null;
 let shard = null;
 let contracts = [];
 let activeProjects = [];
+let warehouseData = {};  // { materialKey: { LOW: {qty,value}, STD: {qty,value}, HIGH: {qty,value} } }
+let whExpandedRow = -1;  // index of expanded material row, -1 = none
 let nextTickAt = null;
 let tickInterval = null;
 
@@ -1675,6 +1678,156 @@ async function loadActiveProjects() {
     renderActiveProjects();
 }
 
+// ── Warehouse ──
+const MAX_WAREHOUSE_CAPACITY = 30000; // total units across all materials
+
+function renderWarehouse() {
+    const list = document.getElementById('wh-list');
+
+    // Calculate totals
+    let totalUnits = 0;
+    let totalValue = 0;
+    for (const mat of MATERIALS) {
+        for (const tier of QUALITY_TIERS) {
+            const entry = warehouseData[mat.key]?.[tier];
+            if (entry) {
+                totalUnits += entry.qty;
+                totalValue += entry.value;
+            }
+        }
+    }
+
+    document.getElementById('wh-count').textContent = totalUnits.toLocaleString() + ' UNITS';
+    document.getElementById('wh-total-value').textContent = fmtBig(totalValue);
+
+    // Capacity %
+    const capacityPct = Math.round((totalUnits / MAX_WAREHOUSE_CAPACITY) * 100);
+    const capEl = document.getElementById('wh-capacity');
+    capEl.textContent = capacityPct + '%';
+    capEl.style.color = capacityPct > 80 ? 'var(--red)' : capacityPct > 50 ? 'var(--orange)' : 'var(--green)';
+
+    // Build rows
+    let html = '';
+    for (let i = 0; i < MATERIALS.length; i++) {
+        const mat = MATERIALS[i];
+        const isExpanded = whExpandedRow === i;
+        const low = warehouseData[mat.key]?.LOW || { qty: 0, value: 0 };
+        const std = warehouseData[mat.key]?.STD || { qty: 0, value: 0 };
+        const high = warehouseData[mat.key]?.HIGH || { qty: 0, value: 0 };
+        const matQty = low.qty + std.qty + high.qty;
+        const matVal = low.value + std.value + high.value;
+        const isEmpty = matQty === 0;
+
+        // Check tier availability from nation stats
+        const lowAvail = checkTierAvailability(mat.key, 'LOW', nationStats);
+        const stdAvail = checkTierAvailability(mat.key, 'STD', nationStats);
+        const highAvail = checkTierAvailability(mat.key, 'HIGH', nationStats);
+
+        // Quality dots
+        const lowDotClass = low.qty > 0 ? 'wh-dot wh-dot--low' : 'wh-dot wh-dot--empty';
+        const stdDotClass = std.qty > 0 ? 'wh-dot wh-dot--std' : 'wh-dot wh-dot--empty';
+        const highDotClass = !highAvail.available ? 'wh-dot wh-dot--locked' : high.qty > 0 ? 'wh-dot wh-dot--high' : 'wh-dot wh-dot--empty';
+
+        html += `<div class="wh-row">`;
+
+        // Collapsed row
+        html += `<div class="wh-row__collapsed${isExpanded ? ' expanded' : ''}" onclick="toggleWhRow(${i})">
+            <span class="wh-row__arrow">${isExpanded ? '▾' : '▸'}</span>
+            <span class="wh-row__name${isEmpty ? ' empty' : ''}">${escapeHtml(mat.name)}</span>
+            <div class="wh-row__dots">
+                <div class="${lowDotClass}"></div>
+                <div class="${stdDotClass}"></div>
+                <div class="${highDotClass}"></div>
+            </div>
+            <span class="wh-row__qty${isEmpty ? ' empty' : ''}">${matQty > 0 ? matQty.toLocaleString() : '—'}</span>
+            <span class="wh-row__val${isEmpty ? ' empty' : ''}">${matVal > 0 ? fmtBig(matVal) : '—'}</span>
+        </div>`;
+
+        // Expanded grade breakdown
+        if (isExpanded) {
+            html += `<div class="wh-expand">`;
+
+            // Header
+            html += `<div class="wh-expand__hdr">
+                <span class="wh-expand__hdr-label" style="flex:1">GRADE</span>
+                <span class="wh-expand__hdr-label" style="width:50px;text-align:right">QTY</span>
+                <span class="wh-expand__hdr-label" style="width:60px;text-align:right">VALUE</span>
+                <span class="wh-expand__hdr-label" style="width:55px;text-align:right">$/UNIT</span>
+            </div>`;
+
+            // Grade rows
+            const tiers = [
+                { key: 'LOW', label: 'Low', data: low, avail: lowAvail, color: 'var(--orange)', dotClass: 'wh-dot--low' },
+                { key: 'STD', label: 'Standard', data: std, avail: stdAvail, color: 'var(--amber)', dotClass: 'wh-dot--std' },
+                { key: 'HIGH', label: 'High', data: high, avail: highAvail, color: 'var(--green)', dotClass: 'wh-dot--high' },
+            ];
+
+            for (const t of tiers) {
+                const unavailable = !t.avail.available;
+                const hasQty = t.data.qty > 0;
+                const cpu = hasQty ? '$' + Math.round(t.data.value / t.data.qty) : '—';
+
+                html += `<div class="wh-grade${unavailable ? ' unavailable' : ''}">
+                    <div class="wh-grade__label">
+                        <div class="wh-dot ${t.dotClass}" style="width:5px;height:5px"></div>
+                        <span class="wh-grade__name" style="color:${unavailable ? 'var(--red)' : t.color}">${t.label}</span>
+                        ${unavailable ? '<span class="wh-grade__tag">UNAVAILABLE</span>' : ''}
+                    </div>
+                    <span class="wh-grade__qty" style="color:${hasQty ? 'var(--text-bright)' : 'var(--text-dim)'}">${hasQty ? t.data.qty.toLocaleString() : '—'}</span>
+                    <span class="wh-grade__val" style="color:${t.data.value > 0 ? 'var(--text-muted)' : 'var(--text-dim)'}">${t.data.value > 0 ? fmtBig(t.data.value) : '—'}</span>
+                    <span class="wh-grade__cpu">${cpu}</span>
+                </div>`;
+            }
+
+            // Lock reason for unavailable tiers
+            for (const t of tiers) {
+                if (!t.avail.available && t.avail.failedStat) {
+                    html += `<div class="wh-lock">
+                        <span class="wh-lock__text">${t.label.toUpperCase()} GRADE LOCKED — ${escapeHtml(t.avail.failedStat)} &lt; ${t.avail.failedMin}</span>
+                    </div>`;
+                }
+            }
+
+            html += `</div>`; // close wh-expand
+        }
+
+        html += `</div>`; // close wh-row
+    }
+
+    list.innerHTML = html;
+}
+
+function toggleWhRow(index) {
+    whExpandedRow = whExpandedRow === index ? -1 : index;
+    renderWarehouse();
+}
+
+async function loadWarehouse() {
+    if (!faction) return;
+
+    const { data, error } = await _supabase
+        .from('corp_warehouse')
+        .select('material_key, quality_tier, quantity, total_value')
+        .eq('faction_id', faction.id);
+
+    warehouseData = {};
+    if (error) {
+        console.warn('Failed to load warehouse:', error.message);
+    } else if (data) {
+        for (const row of data) {
+            if (!warehouseData[row.material_key]) {
+                warehouseData[row.material_key] = {};
+            }
+            warehouseData[row.material_key][row.quality_tier] = {
+                qty: row.quantity || 0,
+                value: Number(row.total_value) || 0,
+            };
+        }
+    }
+
+    renderWarehouse();
+}
+
 // ── Init ──
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
@@ -1762,7 +1915,7 @@ async function init() {
     }
 
     // Load contracts
-    await Promise.all([loadContracts(), loadActiveProjects()]);
+    await Promise.all([loadContracts(), loadActiveProjects(), loadWarehouse()]);
 
     // Show page
     document.getElementById('loading').style.display = 'none';
@@ -1809,6 +1962,7 @@ window.setFilter = setFilter;
 window.openContractDetail = openContractDetail;
 window.closeContractDetail = closeContractDetail;
 window.placeBid = placeBid;
+window.toggleWhRow = toggleWhRow;
 
 init();
 </script>
