@@ -16239,7 +16239,19 @@ function renderVoteMetaSummary(vote) {
             break;
         }
         case 'joint_statement':
-            text = meta.statement_text ? `"${escapeHtml(meta.statement_text.substring(0, 120))}${meta.statement_text.length > 120 ? '...' : ''}"` : '';
+            if (meta.statement_text) {
+                const escaped = escapeHtml(meta.statement_text);
+                if (meta.statement_text.length > 120) {
+                    const preview = escapeHtml(meta.statement_text.substring(0, 120));
+                    text = `<div class="ipo-statement-text">
+                        <span class="ipo-statement-preview">"${preview}…"</span>
+                        <span class="ipo-statement-full" style="display:none">"${escaped}"</span>
+                        <button class="ipo-statement-toggle" onclick="this.parentElement.classList.toggle('expanded'); this.textContent = this.parentElement.classList.contains('expanded') ? 'Show less' : 'Read more'">Read more</button>
+                    </div>`;
+                } else {
+                    text = `"${escaped}"`;
+                }
+            }
             break;
         case 'fund_draw':
             text = `Withdraw <strong>${meta.amount_requested || 0} AP</strong> from the solidarity fund.`;
@@ -17259,7 +17271,15 @@ async function loadIPOEventLog(orgId) {
                             : `transferred resources`;
                         break;
                     case 'joint_statement':
-                        desc = 'issued a joint statement';
+                        if (data.statement_text && data.statement_text.length > 80) {
+                            const preview = escapeHtml(data.statement_text.substring(0, 80));
+                            const full = escapeHtml(data.statement_text);
+                            desc = `issued a joint statement: <span class="ipo-statement-text"><span class="ipo-statement-preview">"${preview}…"</span><span class="ipo-statement-full" style="display:none">"${full}"</span><button class="ipo-statement-toggle" onclick="this.parentElement.classList.toggle('expanded'); this.textContent = this.parentElement.classList.contains('expanded') ? 'Less' : 'More'">More</button></span>`;
+                        } else if (data.statement_text) {
+                            desc = `issued a joint statement: "${escapeHtml(data.statement_text)}"`;
+                        } else {
+                            desc = 'issued a joint statement';
+                        }
                         break;
                     case 'fund_draw':
                         desc = `withdrew ${data.amount || '?'} AP from fund`;

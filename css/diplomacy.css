@@ -4605,6 +4605,25 @@ img.ipo-logo-img.ipo-header-logo {
 }
 .ipo-vote-meta-summary strong { color: var(--text-primary); font-weight: 600; }
 
+/* Collapsible joint-statement text */
+.ipo-statement-text .ipo-statement-full { display: none; }
+.ipo-statement-text.expanded .ipo-statement-preview { display: none; }
+.ipo-statement-text.expanded .ipo-statement-full { display: inline; }
+.ipo-statement-toggle {
+  display: inline;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 4px;
+  font-family: var(--font-mono);
+  font-size: inherit;
+  color: var(--ipo-purple, #8b7ec8);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ipo-statement-toggle:hover { opacity: 0.8; }
+
 /* Tally bar */
 .ipo-vote-tally { margin: 6px 0; }
 
