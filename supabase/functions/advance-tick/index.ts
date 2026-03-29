@@ -25462,6 +25462,46 @@ async function processMinistryActions(supabase, nation, currentTick) {
             }
         }
 
+        // Permanent residue: when all effects complete, apply one-time permanent stat bumps
+        // This prevents the stat from decaying back — it's a baseline shift.
+        if (allEffectsComplete && !action.processed) {
+            for (const eff of effects) {
+                if (eff.permanentResidue && Number(eff.permanentResidue) > 0) {
+                    const residueKey = (eff.target === 'nation') ? normalizeNationStatKey(eff.stat_key) : eff.stat_key;
+                    if (residueKey && NATION_STAT_COLUMN_SET.has(residueKey)) {
+                        const currentVal = nationUpdates[residueKey] !== undefined
+                            ? nationUpdates[residueKey]
+                            : (nation[residueKey] !== undefined && nation[residueKey] !== null ? Number(nation[residueKey]) : 50);
+                        const residueAmt = Number(eff.permanentResidue);
+                        const residueDir = eff.direction === 'up' ? 1 : -1;
+                        const newVal = Math.round(Math.max(0, Math.min(100, currentVal + (residueAmt * residueDir))) * 10) / 10;
+                        nationUpdates[residueKey] = newVal;
+                        console.log(`[processMinistryActions] Permanent residue applied: ${residueKey} ${residueDir > 0 ? '+' : ''}${residueAmt} → ${newVal} (action: ${action.action_key})`);
+                    }
+                }
+            }
+        }
+
+        // Minister approval bonus on first tick of processing
+        if (action.action_data?.minister_approval && action.effects_applied_through_tick === action.applied_at_tick) {
+            const approvalBonus = Number(action.action_data.minister_approval);
+            if (approvalBonus !== 0) {
+                const mKey = action.ministry_key + ':' + action.faction_id;
+                if (ministerUpdates[mKey] === undefined) {
+                    const { data: ministry } = await supabase
+                        .from('ministries')
+                        .select('minister_approval')
+                        .eq('nation_id', nation.id)
+                        .eq('ministry_key', action.ministry_key)
+                        .eq('party_id', action.faction_id)
+                        .single();
+                    ministerUpdates[mKey] = (ministry?.minister_approval ?? MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL);
+                    ministerBaseline[mKey] = ministerUpdates[mKey];
+                }
+                ministerUpdates[mKey] = Math.round(Math.max(0, Math.min(100, ministerUpdates[mKey] + approvalBonus)) * 10) / 10;
+            }
+        }
+
         // Defer tracking update — only apply after nation stats are persisted
         trackingUpdates.push({ id: action.id, allEffectsComplete });
     }
