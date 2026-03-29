@@ -198,9 +198,25 @@ CREATE POLICY "GC messages visible to members"
 CREATE POLICY "GC messages sendable by members"
     ON group_chat_messages FOR INSERT TO authenticated
     WITH CHECK (
-        sender_id = auth.uid()
-        OR EXISTS (SELECT 1 FROM factions WHERE id = sender_id AND linked_user_id = auth.uid())
-        OR is_system = true
+        -- Regular message: sender must be own faction and a member of the chat
+        (
+            (sender_id = auth.uid() OR EXISTS (SELECT 1 FROM factions WHERE id = sender_id AND linked_user_id = auth.uid()))
+            AND EXISTS (
+                SELECT 1 FROM group_chat_members
+                WHERE chat_id = group_chat_messages.chat_id AND (
+                    faction_id = auth.uid()
+                    OR EXISTS (SELECT 1 FROM factions WHERE id = faction_id AND linked_user_id = auth.uid())
+                )
+            )
+        )
+        -- System messages: also require membership (creator posting system msg on group creation)
+        OR (is_system = true AND EXISTS (
+            SELECT 1 FROM group_chat_members
+            WHERE chat_id = group_chat_messages.chat_id AND (
+                faction_id = auth.uid()
+                OR EXISTS (SELECT 1 FROM factions WHERE id = faction_id AND linked_user_id = auth.uid())
+            )
+        ))
     );
 
 -- ══════════════════════════════════════════════════════════════════════

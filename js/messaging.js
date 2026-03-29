@@ -718,13 +718,17 @@ async function loadFactionNames(factionIds) {
     const toLoad = factionIds.filter(id => !_threadFactionCache[id]);
     if (toLoad.length === 0) return;
 
-    const { data } = await _supabase
-        .from('factions')
-        .select('id, faction_name, abbreviation, party_color')
-        .in('id', toLoad);
-
-    for (const f of (data || [])) {
-        _threadFactionCache[f.id] = f;
+    try {
+        const { data, error } = await _supabase
+            .from('factions')
+            .select('id, faction_name, abbreviation, party_color')
+            .in('id', toLoad);
+        if (error) throw error;
+        for (const f of (data || [])) {
+            _threadFactionCache[f.id] = f;
+        }
+    } catch (e) {
+        // Non-critical — sender names will show as '...'
     }
 }
 
@@ -857,7 +861,10 @@ async function searchParties(query) {
     const container = document.getElementById('msg-search-results');
     if (!container) return;
 
-    if (!query || query.length < 1) {
+    // Sanitize query for Supabase ilike filter (escape special chars)
+    const safeQuery = (query || '').replace(/[%_\\]/g, '');
+
+    if (!safeQuery) {
         // Show all parties in our nation as default
         try {
             const { data } = await _supabase
@@ -877,7 +884,7 @@ async function searchParties(query) {
                 .from('factions')
                 .select('id, faction_name, abbreviation, party_color, nation, faction_type')
                 .neq('id', _msgFaction.id)
-                .or(`faction_name.ilike.%${query}%,abbreviation.ilike.%${query}%,nation.ilike.%${query}%`)
+                .or(`faction_name.ilike.%${safeQuery}%,abbreviation.ilike.%${safeQuery}%,nation.ilike.%${safeQuery}%`)
                 .eq('faction_type', 'party')
                 .not('nation_id', 'is', null)
                 .order('faction_name')
@@ -965,9 +972,10 @@ async function searchPartiesForGroup(query) {
     const container = document.getElementById('msg-group-results');
     if (!container) return;
 
+    const safeQuery = (query || '').replace(/[%_\\]/g, '');
     let results = [];
     try {
-        if (!query) {
+        if (!safeQuery) {
             const { data } = await _supabase
                 .from('factions')
                 .select('id, faction_name, abbreviation, party_color, nation')
@@ -982,7 +990,7 @@ async function searchPartiesForGroup(query) {
                 .from('factions')
                 .select('id, faction_name, abbreviation, party_color, nation')
                 .neq('id', _msgFaction.id)
-                .or(`faction_name.ilike.%${query}%,abbreviation.ilike.%${query}%,nation.ilike.%${query}%`)
+                .or(`faction_name.ilike.%${safeQuery}%,abbreviation.ilike.%${safeQuery}%,nation.ilike.%${safeQuery}%`)
                 .eq('faction_type', 'party')
                 .not('nation_id', 'is', null)
                 .order('faction_name')
