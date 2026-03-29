@@ -161,7 +161,13 @@ export function getAdminFactionOverride() {
 })();
 
 export function getCachedState() {
-    // Skip cache entirely when admin override is active — always fetch fresh
+    // Skip cache entirely when admin override params are in the URL — always fetch fresh.
+    // We check URL params directly here instead of getAdminNationOverride() because
+    // _admin_verified is false at this point (verification happens later in loadGameState).
+    try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('nation_id') || params.has('faction_id')) return null;
+    } catch (_) {}
     if (getAdminNationOverride() || getAdminFactionOverride()) return null;
     try {
         const cached = sessionStorage.getItem(STATE_KEY);
