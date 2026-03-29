@@ -6912,10 +6912,23 @@ async function fileNoConfidence() {
         ? `Motion of No Confidence in the ${pmLastName} Government`
         : `Motion of No Confidence in the Government`;
 
+    // Pre-calculate trait-modified AP cost for display in confirm dialog
+    let voncDisplayCost = GAME_CONFIG.NO_CONFIDENCE_AP_COST;
+    try {
+        const pmPartyId = currentNation.ruling_faction_id;
+        if (pmPartyId) {
+            const { data: pmParty } = await _supabase.from('factions')
+                .select('leader_positive_traits, leader_negative_traits').eq('id', pmPartyId).single();
+            if (pmParty?.leader_positive_traits?.includes('constitutional_scholar')) voncDisplayCost += 3;
+            if (pmParty?.leader_negative_traits?.includes('paper_thin_mandate')) voncDisplayCost -= 2;
+            voncDisplayCost = Math.max(1, voncDisplayCost);
+        }
+    } catch (_) { /* use base cost */ }
+
     if (!confirm(
         `⚡ FILE VOTE OF NO CONFIDENCE?\n\n` +
         `"${motionName}"\n\n` +
-        `Cost: ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP\n` +
+        `Cost: ${voncDisplayCost} AP${voncDisplayCost !== GAME_CONFIG.NO_CONFIDENCE_AP_COST ? ' (modified by PM traits)' : ''}\n` +
         `Voting period: ${GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS} ticks\n` +
         `Needs simple majority (YES > NO) to pass.\n\n` +
         `IF IT PASSES:\n` +
@@ -6964,21 +6977,8 @@ async function fileNoConfidence() {
             return;
         }
 
-        // Check PM's leader traits for AP cost modifiers
-        let voncCost = GAME_CONFIG.NO_CONFIDENCE_AP_COST;
-        try {
-            const pmPartyId = currentNation.ruling_faction_id;
-            if (pmPartyId) {
-                const { data: pmParty } = await _supabase.from('factions')
-                    .select('leader_positive_traits, leader_negative_traits').eq('id', pmPartyId).single();
-                if (pmParty?.leader_positive_traits?.includes('constitutional_scholar')) voncCost += 3;
-                if (pmParty?.leader_negative_traits?.includes('paper_thin_mandate')) voncCost -= 2;
-                voncCost = Math.max(1, voncCost);
-            }
-        } catch (_) { /* use base cost */ }
-
-        // Deduct AP only after bill creation succeeds
-        const apResult = await deductAP(_supabase, currentFaction.id, voncCost);
+        // Deduct AP only after bill creation succeeds (cost pre-calculated above with trait modifiers)
+        const apResult = await deductAP(_supabase, currentFaction.id, voncDisplayCost);
         if (!apResult.success) {
             if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
             alert('Not enough AP. Need ' + GAME_CONFIG.NO_CONFIDENCE_AP_COST + ' AP, have ' + (apResult.currentAp ?? '?') + '.');

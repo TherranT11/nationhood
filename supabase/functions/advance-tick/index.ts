@@ -11469,29 +11469,40 @@ async function processElections(supabase, nation, currentTick) {
             } catch (e) { /* non-blocking */ }
 
             // Apply comeback_kid / sore_loser traits based on election outcome
-            // A party "lost" if it had seats before and lost seats (or had most seats and no longer does)
+            // Compare previous vote share (from standings) with new results
             try {
-                const prevSeats = {};
-                for (const f of (await supabase.from('factions').select('id, seats, leader_positive_traits, leader_negative_traits').eq('nation_id', nation.id).eq('faction_type', 'party').is('abandoned_at', null)).data || []) {
-                    prevSeats[f.id] = f;
-                }
-                const newSeatsMap = {};
-                for (const r of completedElection.results.seats) newSeatsMap[r.party_id] = r.seats || 0;
+                const { data: traitFactions } = await supabase.from('factions')
+                    .select('id, leader_positive_traits, leader_negative_traits')
+                    .eq('nation_id', nation.id).eq('faction_type', 'party').is('abandoned_at', null);
 
-                for (const [fid, fData] of Object.entries(prevSeats)) {
-                    const oldS = fData.seats || 0;
-                    const newS = newSeatsMap[fid] || 0;
-                    const pos = fData.leader_positive_traits || [];
-                    const neg = fData.leader_negative_traits || [];
-                    const lost = newS < oldS;
+                // Use previous standings vote share as proxy for "before" position
+                const { data: standings } = await supabase.from('faction_electoral_standing')
+                    .select('faction_id, realized_vote_share')
+                    .eq('nation_id', nation.id);
+                const prevShareMap = {};
+                for (const s of (standings || [])) prevShareMap[s.faction_id] = Number(s.realized_vote_share || 0);
+
+                // New results from election
+                const newShareMap = {};
+                const totalNewSeats = completedElection.results.seats.reduce((s, r) => s + (r.seats || 0), 0) || 1;
+                for (const r of completedElection.results.seats) {
+                    newShareMap[r.party_id] = (r.seats || 0) / totalNewSeats;
+                }
+
+                for (const f of (traitFactions || [])) {
+                    const prevShare = prevShareMap[f.id] || 0;
+                    const newShare = newShareMap[f.id] || 0;
+                    const lost = newShare < prevShare - 0.01; // lost vote share (with small tolerance)
+                    const pos = f.leader_positive_traits || [];
+                    const neg = f.leader_negative_traits || [];
 
                     if (lost && pos.includes('comeback_kid')) {
-                        await nudgeApproval(supabase, fid, nation.id, 5, { source: 'trait:comeback_kid' });
-                        await boostVisibility(supabase, fid, nation.id, 10);
+                        await nudgeApproval(supabase, f.id, nation.id, 5, { source: 'trait:comeback_kid' });
+                        await boostVisibility(supabase, f.id, nation.id, 10);
                     }
                     if (lost && neg.includes('sore_loser')) {
-                        await nudgeApproval(supabase, fid, nation.id, -5, { source: 'trait:sore_loser' });
-                        await boostVisibility(supabase, fid, nation.id, -10);
+                        await nudgeApproval(supabase, f.id, nation.id, -5, { source: 'trait:sore_loser' });
+                        await boostVisibility(supabase, f.id, nation.id, -10);
                     }
                 }
             } catch (traitErr) { /* non-blocking */ }
@@ -14740,9 +14751,10 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         if (traits.neg.includes('unelectable'))      newVisibility -= 2;   // -2 visibility/tick
         if (traits.neg.includes('wooden_speaker'))   newVisibility -= 2;   // -2 visibility/tick
         // gaffe_prone: 20% chance per tick of -3 visibility + credibility hit
+        let gaffeFired = false;
         if (traits.neg.includes('gaffe_prone') && Math.random() < 0.20) {
             newVisibility -= 3;
-            // Credibility hit applied below in credibility section
+            gaffeFired = true;
         }
 
         newVisibility = round2(clamp(newVisibility, visFloor, 100));
@@ -14762,8 +14774,7 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
             }
         }
         // gaffe_prone credibility hit (if the random roll above triggered)
-        if (traits.neg.includes('gaffe_prone') && newVisibility < Number(standing.visibility ?? 0)) {
-            // The gaffe fired this tick (visibility was reduced above)
+        if (gaffeFired) {
             newCredibility = round3(Math.max(CFG.CREDIBILITY_MIN, newCredibility - 0.02));
         }
         newCredibility = round3(clamp(newCredibility, CFG.CREDIBILITY_MIN, CFG.CREDIBILITY_MAX));
