@@ -1157,6 +1157,29 @@ body.light-mode .wh-empty__text { color: #1a1a17; }
   letter-spacing: 0.8px; padding: 1px 6px;
 }
 
+/* Nation switcher */
+.em-nation-bar {
+  padding: 6px 14px; border-bottom: 1px solid var(--border-0);
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+}
+.em-nation-label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim);
+  letter-spacing: 1px; text-transform: uppercase; flex-shrink: 0;
+}
+.em-nation-select {
+  flex: 1; padding: 3px 6px;
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  background: var(--bg-3); border: 1px solid var(--border-0);
+  color: var(--text-bright); cursor: pointer; outline: none;
+}
+.em-nation-select:focus { border-color: var(--teal-border); }
+.em-import-tag {
+  font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+  padding: 0 5px; line-height: 13px; letter-spacing: 0.5px;
+  color: var(--orange); background: var(--orange-faint); border: 1px solid var(--orange-border);
+  flex-shrink: 0;
+}
+
 /* Equipment selector grid */
 .em-selector {
   padding: 6px 10px; border-bottom: 1px solid var(--border-0);
@@ -1558,6 +1581,11 @@ body.light-mode .wh-empty__text { color: #1a1a17; }
         </div>
         <span class="em-tier-badge" id="em-tier-badge">TIER 1</span>
       </div>
+      <div class="em-nation-bar">
+        <span class="em-nation-label">MARKET</span>
+        <select class="em-nation-select" id="em-nation-select" onchange="switchEmNation(this.value)"></select>
+        <span class="em-import-tag" id="em-import-tag" style="display:none;">IMPORT</span>
+      </div>
       <div id="em-selector"></div>
       <div style="flex:1;overflow-y:auto;" id="em-content"></div>
       <div class="em-card__footer">
@@ -1607,7 +1635,7 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
-import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, conditionColor, calculateTotalMaintenance, calculateEquipmentPrice, calculateEquipmentSupply } from './js/game/equipment.js';
+import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, conditionColor, calculateTotalMaintenance, calculateEquipmentPrice, calculateEquipmentSupply, calculateEquipmentImportCost } from './js/game/equipment.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -1632,6 +1660,8 @@ let emSelectedType = 'trucks';
 let emSelectedListing = 0;
 let emPurchaseQty = 1;
 let emListings = [];       // generated listings for current selection
+let emSelectedNation = null; // null = HQ nation (nationStats), otherwise a foreign nation object
+let emAllNations = [];       // all nations for the dropdown
 let nextTickAt = null;
 let tickInterval = null;
 
@@ -2730,50 +2760,99 @@ async function purchaseMaterial() {
 
 // ── Equipment Market ──
 function generateListings(equipmentKey) {
-    if (!nationStats) return [];
+    const marketNation = emSelectedNation || nationStats;
+    if (!marketNation) return [];
     const eq = getEquipment(equipmentKey);
     if (!eq) return [];
 
-    const supply = calculateEquipmentSupply(equipmentKey, nationStats);
-    const nationName = (nationStats?.name || '—').toUpperCase();
+    const supply = calculateEquipmentSupply(equipmentKey, marketNation);
     const listings = [];
-    const inflation = Number(nationStats?.inflation ?? 50);
-    const fuel = Number(nationStats?.fuel_prices ?? 50);
-    const mfg = Number(nationStats?.manufacturing_output ?? 50);
+    const inflation = Number(marketNation?.inflation ?? 50);
+    const fuel = Number(marketNation?.fuel_prices ?? 50);
+    const mfg = Number(marketNation?.manufacturing_output ?? 50);
+    const isImport = emSelectedNation && nationStats && emSelectedNation.id !== nationStats.id;
 
-    // Local NEW
+    // Calculate import costs if browsing a foreign nation
+    let importCost = null;
+    if (isImport) {
+        importCost = calculateEquipmentImportCost(marketNation, nationStats);
+    }
+
+    // NEW equipment from this nation
     if (supply.newAvailable > 0) {
-        const price = calculateEquipmentPrice(equipmentKey, nationStats);
+        const localPrice = calculateEquipmentPrice(equipmentKey, marketNation);
         const basePrice = eq.basePrice;
         const inflationMod = Math.round(basePrice * ((inflation - 50) / 200));
         const fuelMod = Math.round(basePrice * ((fuel - 50) / 300));
-        const demandMod = price - basePrice - inflationMod - fuelMod;
+
+        let price = localPrice;
+        const factors = [
+            { label: 'Base price', value: fmtBig(basePrice) },
+            inflationMod !== 0 ? { label: `Inflation (${inflation})`, mod: (inflationMod >= 0 ? '+' : '') + fmtBig(Math.abs(inflationMod)) } : null,
+            fuelMod !== 0 ? { label: `Fuel transport (${fuel})`, mod: (fuelMod >= 0 ? '+' : '') + fmtBig(Math.abs(fuelMod)) } : null,
+        ].filter(Boolean);
+
+        // Local demand premium (remainder after inflation + fuel)
+        const localDemand = localPrice - basePrice - inflationMod - fuelMod;
+        if (localDemand !== 0 && !isImport) {
+            factors.push({ label: 'Demand/scarcity', mod: (localDemand >= 0 ? '+' : '') + fmtBig(Math.abs(localDemand)) });
+        }
+
+        // Import surcharges
+        if (isImport && importCost) {
+            const tariffAmt = Math.round(localPrice * importCost.tariff);
+            const transportAmt = Math.round(localPrice * importCost.transport);
+            price = localPrice + tariffAmt + transportAmt;
+            factors.push({ label: `Import tariff (${Math.round(importCost.tariff * 100)}%)`, mod: '+' + fmtBig(tariffAmt) });
+            factors.push({ label: `Transport (${importCost.deliveryTicks} tick${importCost.deliveryTicks > 1 ? 's' : ''})`, mod: '+' + fmtBig(transportAmt) });
+        }
 
         listings.push({
-            seller: 'Local Buyers', sellerType: 'LOCAL', nation: nationStats.name || '—',
-            distance: 0, condition: 100, price, available: supply.newAvailable,
-            delivery: 'Immediate', used: false,
-            priceFactors: [
-                { label: 'Base price', value: fmtBig(basePrice) },
-                inflationMod !== 0 ? { label: `Inflation (${inflation})`, mod: (inflationMod >= 0 ? '+' : '') + fmtBig(Math.abs(inflationMod)) } : null,
-                fuelMod !== 0 ? { label: `Fuel transport (${fuel})`, mod: (fuelMod >= 0 ? '+' : '') + fmtBig(Math.abs(fuelMod)) } : null,
-                demandMod !== 0 ? { label: 'Demand/scarcity', mod: (demandMod >= 0 ? '+' : '') + fmtBig(Math.abs(demandMod)) } : null,
-            ].filter(Boolean),
+            seller: isImport ? `${marketNation.name} Buyers` : 'Local Buyers',
+            sellerType: 'LOCAL',
+            nation: marketNation.name || '—',
+            distance: isImport ? (importCost?.deliveryTicks || 1) : 0,
+            condition: 100, price: Math.round(price),
+            available: supply.newAvailable,
+            delivery: isImport ? importCost.deliveryTicks + ' tick' + (importCost.deliveryTicks > 1 ? 's' : '') : 'Immediate',
+            deliveryTicks: isImport ? importCost.deliveryTicks : 0,
+            used: false,
+            priceFactors: factors,
+            sourceNationId: marketNation.id,
         });
     }
 
-    // Local USED
+    // USED equipment from this nation
     if (supply.usedAvailable > 0) {
         const usedCond = supply.usedCondition;
-        const usedPrice = calculateEquipmentPrice(equipmentKey, nationStats, { used: true, condition: usedCond });
+        const usedLocalPrice = calculateEquipmentPrice(equipmentKey, marketNation, { used: true, condition: usedCond });
+        let usedPrice = usedLocalPrice;
+
+        const usedFactors = [
+            { label: 'Base price', value: fmtBig(eq.basePrice) },
+            { label: `Condition (${usedCond}%)`, mod: '-' + fmtBig(Math.max(0, eq.basePrice - usedLocalPrice)) },
+        ];
+
+        if (isImport && importCost) {
+            const tariffAmt = Math.round(usedLocalPrice * importCost.tariff);
+            const transportAmt = Math.round(usedLocalPrice * importCost.transport);
+            usedPrice = usedLocalPrice + tariffAmt + transportAmt;
+            usedFactors.push({ label: `Import tariff (${Math.round(importCost.tariff * 100)}%)`, mod: '+' + fmtBig(tariffAmt) });
+            usedFactors.push({ label: `Transport (${importCost.deliveryTicks} tick${importCost.deliveryTicks > 1 ? 's' : ''})`, mod: '+' + fmtBig(transportAmt) });
+        }
+
         listings.push({
-            seller: 'Local Buyers', sellerType: 'LOCAL', nation: nationStats.name || '—',
-            distance: 0, condition: usedCond, price: usedPrice, available: supply.usedAvailable,
-            delivery: 'Immediate', used: true,
-            priceFactors: [
-                { label: 'Base price', value: fmtBig(eq.basePrice) },
-                { label: `Condition (${usedCond}%)`, mod: '-' + fmtBig(eq.basePrice - usedPrice) },
-            ],
+            seller: isImport ? `${marketNation.name} Buyers` : 'Local Buyers',
+            sellerType: 'LOCAL',
+            nation: marketNation.name || '—',
+            distance: isImport ? (importCost?.deliveryTicks || 1) : 0,
+            condition: usedCond, price: Math.round(usedPrice),
+            available: supply.usedAvailable,
+            delivery: isImport ? importCost.deliveryTicks + ' tick' + (importCost.deliveryTicks > 1 ? 's' : '') : 'Immediate',
+            deliveryTicks: isImport ? importCost.deliveryTicks : 0,
+            used: true,
+            priceFactors: usedFactors,
+            sourceNationId: marketNation.id,
         });
     }
 
@@ -2791,6 +2870,24 @@ function renderEquipmentMarket() {
     badge.style.color = tierDef.color;
     badge.style.background = tierDef.color + '0a';
     badge.style.border = '1px solid ' + tierDef.color + '33';
+
+    // Nation dropdown
+    const select = document.getElementById('em-nation-select');
+    if (select && select.options.length === 0) {
+        // HQ nation first
+        const hqName = nationStats?.name || faction?.nation || '—';
+        let opts = `<option value="">${escapeHtml(hqName)} (HQ)</option>`;
+        for (const n of emAllNations) {
+            if (n.id === nationStats?.id) continue;
+            opts += `<option value="${n.id}">${escapeHtml(n.name)}</option>`;
+        }
+        select.innerHTML = opts;
+    }
+
+    // Import tag
+    const importTag = document.getElementById('em-import-tag');
+    const isImport = emSelectedNation && nationStats && emSelectedNation.id !== nationStats.id;
+    if (importTag) importTag.style.display = isImport ? '' : 'none';
 
     renderEmSelector();
     renderEmContent();
@@ -2929,6 +3026,26 @@ function renderEmContent() {
     }
 
     content.innerHTML = html;
+}
+
+async function switchEmNation(nationId) {
+    if (!nationId) {
+        emSelectedNation = null; // back to HQ
+    } else {
+        // Find from cached list or load fresh
+        let n = emAllNations.find(x => x.id === nationId);
+        if (!n) {
+            const { data } = await _supabase.from('nations').select('*').eq('id', nationId).single();
+            n = data;
+        }
+        emSelectedNation = n || null;
+    }
+    emSelectedListing = 0;
+    emPurchaseQty = 1;
+    // Re-populate dropdown to keep selection in sync
+    const select = document.getElementById('em-nation-select');
+    if (select) select.value = nationId || '';
+    renderEquipmentMarket();
 }
 
 function setEmType(key) {
@@ -3209,6 +3326,12 @@ async function init() {
     // Load contracts
     await Promise.all([loadContracts(), loadActiveProjects(), loadWarehouse(), loadEquipment()]);
 
+    // Load all nations for equipment market nation switcher
+    try {
+        const { data: nations } = await _supabase.from('nations').select('*').order('name');
+        emAllNations = nations || [];
+    } catch (_) { emAllNations = []; }
+
     // Render procurement + equipment market (use nationStats, no separate load)
     renderProcurement();
     renderEquipmentMarket();
@@ -3263,6 +3386,7 @@ window.closeContractDetail = closeContractDetail;
 window.placeBid = placeBid;
 window.toggleWhRow = toggleWhRow;
 window.toggleEqTier = toggleEqTier;
+window.switchEmNation = switchEmNation;
 window.setEmType = setEmType;
 window.setEmListing = setEmListing;
 window.setEmQty = setEmQty;
