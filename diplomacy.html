@@ -16180,10 +16180,15 @@ function renderIPOVotesPanel() {
                 ballotHtml = `<div class="ipo-vote-my-ballot">Your vote: <strong>${myBallot.ballot.toUpperCase()}</strong></div>`;
             } else {
                 ballotHtml = `
-                    <div class="ipo-vote-ballot-row">
-                        <button class="ipo-vote-btn ipo-vote-btn--yes" onclick="castIPOBallot('${vote.id}','yes')">Yes</button>
-                        <button class="ipo-vote-btn ipo-vote-btn--no" onclick="castIPOBallot('${vote.id}','no')">No</button>
-                        <button class="ipo-vote-btn ipo-vote-btn--abstain" onclick="castIPOBallot('${vote.id}','abstain')">Abstain</button>
+                    <div class="ipo-vote-ballot-row" id="ipo-ballot-row-${vote.id}">
+                        <button class="ipo-vote-btn ipo-vote-btn--yes" onclick="selectIPOBallot('${vote.id}','yes')">Yes</button>
+                        <button class="ipo-vote-btn ipo-vote-btn--no" onclick="selectIPOBallot('${vote.id}','no')">No</button>
+                        <button class="ipo-vote-btn ipo-vote-btn--abstain" onclick="selectIPOBallot('${vote.id}','abstain')">Abstain</button>
+                    </div>
+                    <div class="ipo-vote-confirm-row" id="ipo-ballot-confirm-${vote.id}" style="display:none">
+                        <span class="ipo-vote-confirm-label">Vote <strong id="ipo-ballot-choice-${vote.id}"></strong>?</span>
+                        <button class="ipo-vote-btn ipo-vote-btn--confirm" onclick="confirmIPOBallot('${vote.id}')">Confirm</button>
+                        <button class="ipo-vote-btn ipo-vote-btn--cancel" onclick="cancelIPOBallot('${vote.id}')">Cancel</button>
                     </div>`;
             }
         }
@@ -16581,6 +16586,36 @@ async function submitIPOVote() {
 }
 
 // ── Ballot Casting ──
+
+let _pendingBallot = {};  // { voteId: ballotValue }
+
+function selectIPOBallot(voteId, ballotValue) {
+    _pendingBallot[voteId] = ballotValue;
+    const row = document.getElementById(`ipo-ballot-row-${voteId}`);
+    const confirm = document.getElementById(`ipo-ballot-confirm-${voteId}`);
+    const choiceEl = document.getElementById(`ipo-ballot-choice-${voteId}`);
+    if (row) row.style.display = 'none';
+    if (confirm) confirm.style.display = 'flex';
+    if (choiceEl) {
+        choiceEl.textContent = ballotValue.toUpperCase();
+        choiceEl.className = `ipo-vote-choice--${ballotValue}`;
+    }
+}
+
+function cancelIPOBallot(voteId) {
+    delete _pendingBallot[voteId];
+    const row = document.getElementById(`ipo-ballot-row-${voteId}`);
+    const confirm = document.getElementById(`ipo-ballot-confirm-${voteId}`);
+    if (row) row.style.display = 'flex';
+    if (confirm) confirm.style.display = 'none';
+}
+
+async function confirmIPOBallot(voteId) {
+    const ballotValue = _pendingBallot[voteId];
+    if (!ballotValue) return;
+    delete _pendingBallot[voteId];
+    await castIPOBallot(voteId, ballotValue);
+}
 
 /**
  * Cast a ballot on an open vote.
@@ -18641,6 +18676,9 @@ window.closeIPOVoteModal = closeIPOVoteModal;
 window.renderIPOVoteModalTypeSelect = renderIPOVoteModalTypeSelect;
 window.selectIPOVoteType = selectIPOVoteType;
 window.submitIPOVote = submitIPOVote;
+window.selectIPOBallot = selectIPOBallot;
+window.cancelIPOBallot = cancelIPOBallot;
+window.confirmIPOBallot = confirmIPOBallot;
 window.castIPOBallot = castIPOBallot;
 window.resolveIPOVote = resolveIPOVote;
 // IPO actions exports
