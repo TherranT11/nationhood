@@ -2070,13 +2070,17 @@ function renderDefaultBlueprint(contract) {
 }
 
 // ── Bid placement ──
+let _bidding = false;
+
 async function placeBid() {
+    if (_bidding) return;
     if (!selectedContract || !faction) return;
     if ((faction.action_points ?? 0) < 2) {
         alert('You need at least 2 AP to place a bid.');
         return;
     }
 
+    _bidding = true;
     const bidBtn = document.querySelector('.cd-btn.primary');
     if (bidBtn) { bidBtn.disabled = true; bidBtn.textContent = '...'; }
 
@@ -2131,6 +2135,8 @@ async function placeBid() {
         } else {
             alert('Failed to place bid: ' + (err.message || 'Unknown error'));
         }
+    } finally {
+        _bidding = false;
     }
 }
 
@@ -2203,7 +2209,6 @@ function renderActiveProjects() {
     let totalBudget = 0;
     let totalSpent = 0;
     let lateCount = 0;
-    const currentTick = shard?.current_tick || 0;
 
     let html = '';
     for (const p of activeProjects) {
@@ -2547,6 +2552,7 @@ function renderPrContent() {
     const content = document.getElementById('pr-content');
     const avail = checkTierAvailability(prSelectedMat, prSelectedTier, nationStats);
     const mat = MATERIALS.find(m => m.key === prSelectedMat);
+    if (!mat) return;
 
     if (!avail.available) {
         // Locked tier panel
@@ -2872,8 +2878,10 @@ function renderEquipmentMarket() {
     const eqDef = getEquipment(emSelectedType);
     const tierDef = EQUIPMENT_TIERS[eqDef?.tier || 1];
     const badge = document.getElementById('em-tier-badge');
-    badge.textContent = tierDef.tag;
-    badge.style.color = tierDef.color;
+    if (badge) {
+        badge.textContent = tierDef.tag;
+        badge.style.color = tierDef.color;
+    }
     badge.style.background = tierDef.color + '0a';
     badge.style.border = '1px solid ' + tierDef.color + '33';
 
