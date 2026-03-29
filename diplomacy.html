@@ -16996,6 +16996,27 @@ async function applyVoteEffects(vote, org) {
                     ap_cost: 0,
                     performed_at_tick: shardTick
                 });
+
+                // Post to world events for every member nation (unless private)
+                if (meta.visibility !== 'private') {
+                    try {
+                        const { data: members } = await _supabase.from('ipo_members')
+                            .select('nation_id')
+                            .eq('org_id', ipoSelectedOrgId);
+                        const nationIds = [...new Set((members || []).map(m => m.nation_id).filter(Boolean))];
+                        for (const nid of nationIds) {
+                            await _supabase.from('event_log').insert({
+                                nation_id: nid,
+                                event_name: 'Joint Statement',
+                                description_chosen: `${org.name || 'International Organisation'}: "${meta.statement_text}"`,
+                                category: 'DIPLOMATIC',
+                                fired_at_tick: shardTick
+                            });
+                        }
+                    } catch (evErr) {
+                        console.warn('[IPO] Joint statement event_log failed (non-blocking):', evErr);
+                    }
+                }
             }
             break;
         }
@@ -17706,6 +17727,27 @@ async function executeDirectStatement() {
             message_text: `JOINT STATEMENT (by president): "${text}"`,
             tick_posted: shardTick
         });
+
+        // Post to world events for every member nation
+        const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+        const orgName = membership?.org?.name || 'International Organisation';
+        try {
+            const { data: members } = await _supabase.from('ipo_members')
+                .select('nation_id')
+                .eq('org_id', ipoSelectedOrgId);
+            const nationIds = [...new Set((members || []).map(m => m.nation_id).filter(Boolean))];
+            for (const nid of nationIds) {
+                await _supabase.from('event_log').insert({
+                    nation_id: nid,
+                    event_name: 'Joint Statement',
+                    description_chosen: `${orgName}: "${text}"`,
+                    category: 'DIPLOMATIC',
+                    fired_at_tick: shardTick
+                });
+            }
+        } catch (evErr) {
+            console.warn('[IPO] Joint statement event_log insert failed (non-blocking):', evErr);
+        }
 
         closeIPOActionModal();
         renderIPOActionsPanel();
