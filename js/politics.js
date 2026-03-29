@@ -1431,7 +1431,7 @@ function renderGovCard(nation, coalition, allParties, currentTick, prevApproval,
     const approval = Math.round(Number(nation.gov_approval ?? 40));
     const ac = approval >= 50 ? 'var(--dgreen)' : approval >= 35 ? 'var(--damber)' : 'var(--dred)';
     const adminName = administration?.admin_name || 'Government';
-    const govTypeLabel = isAuto ? 'Autocracy' : isPres ? 'Presidential' : 'Parliamentary';
+    const govTypeLabel = isAuto ? 'Autocracy' : isPres ? 'Presidential' : nation?.hos_election_method === 'hereditary' ? 'Constitutional Monarchy' : 'Parliamentary';
 
     // Coalition info
     const coalitionIds = new Set(coalition?.party_ids || []);
