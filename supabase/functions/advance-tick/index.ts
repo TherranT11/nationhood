@@ -8721,9 +8721,10 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             return false;
         }
 
-        // Update nation's parliamentary_term_ticks
+        // Update nation's parliamentary_term_ticks and mark the law as established
         const { error: nationErr } = await supabase.from('nations').update({
-            parliamentary_term_ticks: newParlTermTicks
+            parliamentary_term_ticks: newParlTermTicks,
+            parliamentary_term_established_tick: currentTick
         }).eq('id', bill.nation_id);
         if (nationErr) {
             console.error(`[enactFoundationalBill] Failed to update parliamentary_term_ticks for nation ${bill.nation_id}:`, nationErr.message);
@@ -8757,6 +8758,28 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
         const newYears = newParlTermTicks / ticksPerYear;
         console.log(`[enactFoundationalBill] Nation ${bill.nation_id} parliamentary term set to ${newYears} years (${newParlTermTicks} ticks).`);
+        return true;
+    }
+
+    // ── Repeal Legislative Term Length subtype ──
+    if (bill.is_foundational_repeal && bill.foundational_repeal_subtype === 'parliamentary_term_length') {
+        const { error: billErr } = await supabase.from('bills').update({
+            status: 'passed', passed_tick: currentTick
+        }).eq('id', bill.id);
+        if (billErr) {
+            console.error(`[enactFoundationalBill] Failed to mark repeal bill ${bill.id} as passed:`, billErr.message);
+            return false;
+        }
+
+        // Clear the established flag — term value stays so elections continue on current schedule
+        const { error: nationErr } = await supabase.from('nations').update({
+            parliamentary_term_established_tick: null
+        }).eq('id', bill.nation_id);
+        if (nationErr) {
+            console.error(`[enactFoundationalBill] Failed to clear parliamentary_term_established_tick:`, nationErr.message);
+        }
+
+        console.log(`[enactFoundationalBill] Legislative Term Length law repealed for nation ${bill.nation_id}`);
         return true;
     }
 

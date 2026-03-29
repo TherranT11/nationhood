@@ -1644,24 +1644,40 @@ function renderFoundationalOptions() {
                 <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">Removing term limits costs legitimacy and triggers opposition momentum. Adding limits strengthens democratic institutions.</div>
             </div>
         </div>
-        <div class="policy-option${selectedFoundationalType === 'parliamentary_term_length' ? ' selected' : ''}" style="${selectedFoundationalType === 'parliamentary_term_length' ? 'border-color:var(--purple);' : ''}${lawsIsAutocracy ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('parliamentary_term_length')" data-foundational-type="parliamentary_term_length">
-            <div class="policy-option-name">🗓 Legislative Term Length <span class="article-ideology" style="background:var(--purple);color:#fff;">FOUNDATIONAL</span></div>
-            <div class="policy-option-desc">${lawsIsAutocracy
-                ? 'Not available in Autocracies — elections are not held.'
-                : `Change how often legislative elections occur. Requires 2/3 supermajority (${required} seats) to pass. ${GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS} tick cooldown between changes.`}</div>
-            <div id="foundational-parl-term-config" style="margin-top:12px;${selectedFoundationalType === 'parliamentary_term_length' ? '' : 'display:none;'}">
-                <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-bottom:6px;">Current term: <strong>${(currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS) / (GAME_CONFIG.TICKS_PER_YEAR || 12)} Years</strong> — Select new term length:</label>
-                <select id="foundational-parl-term-select" style="background:var(--bg-card);border:1px solid var(--purple);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:220px;">
-                    ${(GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_OPTIONS || [24,36,48,60,72]).map(t => {
-                        const years = t / (GAME_CONFIG.TICKS_PER_YEAR || 12);
-                        const currentTicks = currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS;
-                        const isCurrent = t === currentTicks;
-                        return '<option value="' + t + '"' + (isCurrent ? ' selected disabled' : '') + '>' + years + ' Years' + (isCurrent ? ' (Current)' : '') + '</option>';
-                    }).join('')}
-                </select>
-                <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">The new term length takes effect after the next scheduled election — the current legislature's term is not changed.</div>
-            </div>
-        </div>
+        ${(() => {
+            const parlTermEstablished = currentNation.parliamentary_term_established_tick != null;
+            const parlTermYears = (currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS) / (GAME_CONFIG.TICKS_PER_YEAR || 12);
+            if (lawsIsAutocracy) {
+                return `<div class="policy-option" style="opacity:0.5;pointer-events:none;" data-foundational-type="parliamentary_term_length">
+                    <div class="policy-option-name">🗓 Legislative Term Length <span class="article-ideology" style="background:var(--purple);color:#fff;">FOUNDATIONAL</span></div>
+                    <div class="policy-option-desc">Not available in Autocracies — elections are not held.</div>
+                </div>`;
+            }
+            if (parlTermEstablished) {
+                // Law is active — show current value and repeal option
+                return `<div class="policy-option${selectedFoundationalType === 'repeal_parliamentary_term' ? ' selected' : ''}" style="${selectedFoundationalType === 'repeal_parliamentary_term' ? 'border-color:var(--purple);' : ''}" onclick="selectFoundationalType('repeal_parliamentary_term')" data-foundational-type="repeal_parliamentary_term">
+                    <div class="policy-option-name">🗓 Legislative Term Length <span class="article-ideology" style="background:var(--purple);color:#fff;">FOUNDATIONAL</span> <span style="background:var(--green,#5cb85c);color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">ACTIVE</span></div>
+                    <div class="policy-option-desc">Current term: <strong>${parlTermYears} Years</strong>. To change the term length, this law must first be repealed. Repeal requires 2/3 supermajority (${required} seats).</div>
+                </div>`;
+            }
+            // Law not active — show proposal form
+            return `<div class="policy-option${selectedFoundationalType === 'parliamentary_term_length' ? ' selected' : ''}" style="${selectedFoundationalType === 'parliamentary_term_length' ? 'border-color:var(--purple);' : ''}" onclick="selectFoundationalType('parliamentary_term_length')" data-foundational-type="parliamentary_term_length">
+                <div class="policy-option-name">🗓 Legislative Term Length <span class="article-ideology" style="background:var(--purple);color:#fff;">FOUNDATIONAL</span></div>
+                <div class="policy-option-desc">Set how often legislative elections occur. Requires 2/3 supermajority (${required} seats) to pass. ${GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS} tick cooldown between changes.</div>
+                <div id="foundational-parl-term-config" style="margin-top:12px;${selectedFoundationalType === 'parliamentary_term_length' ? '' : 'display:none;'}">
+                    <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-bottom:6px;">Current term: <strong>${parlTermYears} Years</strong> — Select new term length:</label>
+                    <select id="foundational-parl-term-select" style="background:var(--bg-card);border:1px solid var(--purple);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:220px;">
+                        ${(GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_OPTIONS || [24,36,48,60,72]).map(t => {
+                            const years = t / (GAME_CONFIG.TICKS_PER_YEAR || 12);
+                            const currentTicks = currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS;
+                            const isCurrent = t === currentTicks;
+                            return '<option value="' + t + '"' + (isCurrent ? ' selected disabled' : '') + '>' + years + ' Years' + (isCurrent ? ' (Current)' : '') + '</option>';
+                        }).join('')}
+                    </select>
+                    <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">The new term length takes effect after the next scheduled election — the current legislature's term is not changed.</div>
+                </div>
+            </div>`;
+        })()}
         <div class="policy-option${selectedFoundationalType === 'hos_election' ? ' selected' : ''}" style="${selectedFoundationalType === 'hos_election' ? 'border-color:var(--purple);' : ''}" onclick="selectFoundationalType('hos_election')" data-foundational-type="hos_election">
             <div class="policy-option-name">🗳 Election of Head of State <span class="article-ideology" style="background:var(--purple);color:#fff;">FOUNDATIONAL</span></div>
             <div class="policy-option-desc">Change how the Head of State is selected. Requires 2/3 supermajority (${required} seats) to pass. 360 tick cooldown.</div>
@@ -1913,6 +1929,23 @@ function addArticle() {
             });
             renderDraftArticles(); hideAddArticleForm();
             document.getElementById('bill-name-input').value = `Presidential Term Length Act (${years} Years)`;
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'repeal_parliamentary_term') {
+            // Repeal the active Legislative Term Length law
+            const parlTermYears = (currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS) / (GAME_CONFIG.TICKS_PER_YEAR || 12);
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'repeal_parliamentary_term',
+                isFoundationalRepeal: true,
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = `Repeal: Legislative Term Length Act (${parlTermYears} Years)`;
             document.getElementById('bill-name-section').style.display = 'block';
             document.getElementById('submit-bill-btn').disabled = false;
             _hideAllArticleButtons();
@@ -2392,8 +2425,8 @@ async function submitToCommittee() {
             }
         }
 
-        // Legislative term length cooldown check
-        if (foundationalArt.foundationalSubtype === 'parliamentary_term_length') {
+        // Legislative term length cooldown check (applies to both new proposals and repeals)
+        if (foundationalArt.foundationalSubtype === 'parliamentary_term_length' || foundationalArt.foundationalSubtype === 'repeal_parliamentary_term') {
             const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
             const nowTick = shard?.current_tick || 0;
             const { data: lastParlTermBill } = await _supabase
@@ -2660,6 +2693,8 @@ async function submitToCommittee() {
                     ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the presidential term length in ${currentNation.name} to ${draftArticles.find(a => a.isFoundational).proposedTermLength / (GAME_CONFIG.TICKS_PER_YEAR || 12)} years. Requires a two-thirds supermajority to pass.`
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'term_limit'
                     ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to ${draftArticles.find(a => a.isFoundational).proposedTermLimit === 0 ? 'remove presidential term limits' : 'set presidential term limits to ' + draftArticles.find(a => a.isFoundational).proposedTermLimit + ' term' + (draftArticles.find(a => a.isFoundational).proposedTermLimit !== 1 ? 's' : '')} in ${currentNation.name}. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'repeal_parliamentary_term'
+                    ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to repeal the current Legislative Term Length law (${(currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS) / (GAME_CONFIG.TICKS_PER_YEAR || 12)} years) in ${currentNation.name}. Once repealed, a new term length may be proposed. Requires a two-thirds supermajority to pass.`
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'parliamentary_term_length'
                     ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the legislative term length in ${currentNation.name} to ${draftArticles.find(a => a.isFoundational).proposedParliamentaryTermLength / (GAME_CONFIG.TICKS_PER_YEAR || 12)} years. The new term length takes effect after the next scheduled election. Requires a two-thirds supermajority to pass.`
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'hos_election'
@@ -2677,6 +2712,9 @@ async function submitToCommittee() {
                 billInsert.proposed_term_length = fArt.proposedTermLength;
             } else if (fArt.foundationalSubtype === 'term_limit') {
                 billInsert.proposed_term_limit = fArt.proposedTermLimit;
+            } else if (fArt.foundationalSubtype === 'repeal_parliamentary_term') {
+                billInsert.is_foundational_repeal = true;
+                billInsert.foundational_repeal_subtype = 'parliamentary_term_length';
             } else if (fArt.foundationalSubtype === 'parliamentary_term_length') {
                 billInsert.proposed_parliamentary_term_length = fArt.proposedParliamentaryTermLength;
             } else if (fArt.foundationalSubtype === 'hos_election') {
