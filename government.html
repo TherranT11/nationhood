@@ -56,7 +56,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest, seizeAutocraticPower, nudgeApproval } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest, seizeAutocraticPower, nudgeApproval, getNationNames } from './js/game-common.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
 (function () {
@@ -937,13 +937,12 @@ initPage('government', async (state) => {
     isAutocracy = isGovernmentAutocracy(nation);
     isPresidential = isGovernmentPresidential(nation);
 
-    // Backfill head of state if missing/incomplete
+    // Backfill head of state if missing/incomplete — use nation-specific names
     const hasValidHosAge = Number.isFinite(Number(nation.head_of_state_age)) && Number(nation.head_of_state_age) > 0;
     if (!nation.head_of_state_first_name || !nation.head_of_state_last_name || !hasValidHosAge) {
-        const HOS_FIRST = FIRST_NAMES_POOL;
-        const HOS_LAST = LAST_NAMES_POOL;
-        const hosFirst = nation.head_of_state_first_name || HOS_FIRST[Math.floor(Math.random() * HOS_FIRST.length)];
-        const hosLast = nation.head_of_state_last_name || HOS_LAST[Math.floor(Math.random() * HOS_LAST.length)];
+        const { firstNames: hosFirstPool, lastNames: hosLastPool } = getNationNames(nation.name);
+        const hosFirst = nation.head_of_state_first_name || hosFirstPool[Math.floor(Math.random() * hosFirstPool.length)];
+        const hosLast = nation.head_of_state_last_name || hosLastPool[Math.floor(Math.random() * hosLastPool.length)];
         const hosAge = hasValidHosAge ? Number(nation.head_of_state_age) : (45 + Math.floor(Math.random() * 25));
         const { error } = await _supabase.from('nations').update({
             head_of_state_first_name: hosFirst,
@@ -6912,10 +6911,23 @@ async function fileNoConfidence() {
         ? `Motion of No Confidence in the ${pmLastName} Government`
         : `Motion of No Confidence in the Government`;
 
+    // Pre-calculate trait-modified AP cost for display in confirm dialog
+    let voncDisplayCost = GAME_CONFIG.NO_CONFIDENCE_AP_COST;
+    try {
+        const pmPartyId = currentNation.ruling_faction_id;
+        if (pmPartyId) {
+            const { data: pmParty } = await _supabase.from('factions')
+                .select('leader_positive_traits, leader_negative_traits').eq('id', pmPartyId).single();
+            if (pmParty?.leader_positive_traits?.includes('constitutional_scholar')) voncDisplayCost += 3;
+            if (pmParty?.leader_negative_traits?.includes('paper_thin_mandate')) voncDisplayCost -= 2;
+            voncDisplayCost = Math.max(1, voncDisplayCost);
+        }
+    } catch (_) { /* use base cost */ }
+
     if (!confirm(
         `⚡ FILE VOTE OF NO CONFIDENCE?\n\n` +
         `"${motionName}"\n\n` +
-        `Cost: ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP\n` +
+        `Cost: ${voncDisplayCost} AP${voncDisplayCost !== GAME_CONFIG.NO_CONFIDENCE_AP_COST ? ' (modified by PM traits)' : ''}\n` +
         `Voting period: ${GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS} ticks\n` +
         `Needs simple majority (YES > NO) to pass.\n\n` +
         `IF IT PASSES:\n` +
@@ -6964,8 +6976,8 @@ async function fileNoConfidence() {
             return;
         }
 
-        // Deduct AP only after bill creation succeeds
-        const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.NO_CONFIDENCE_AP_COST);
+        // Deduct AP only after bill creation succeeds (cost pre-calculated above with trait modifiers)
+        const apResult = await deductAP(_supabase, currentFaction.id, voncDisplayCost);
         if (!apResult.success) {
             if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
             alert('Not enough AP. Need ' + GAME_CONFIG.NO_CONFIDENCE_AP_COST + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
