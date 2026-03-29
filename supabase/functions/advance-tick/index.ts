@@ -29716,102 +29716,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     const failedNationIds = new Set();
     const failedFactionIds = new Set();
 
-    // Accumulate AP for party factions each tick:
-    // base 5 AP, +2 if in government coalition or strongman. Capped at MAX_AP (20).
-    // Uses atomic RPC to prevent race conditions with concurrent player deductions.
-    // Skip AP accumulation in reprocess mode — AP was already granted on the original tick.
+    // AP accumulation moved into per-nation loop (before electorate engine)
+    // to guarantee AP is granted before think tank / grassroots AP deductions.
     let apDistributed = 0;
     let apFailed = 0;
     if (reprocess) {
         console.log(`[advanceTick] REPROCESS mode — skipping AP accumulation`);
-    }
-    for (const nation of (reprocess ? [] : nationList)) {
-      try {
-        const { data: factions } = await supabase
-            .from('factions')
-            .select('id, faction_type')
-            .eq('nation_id', nation.id)
-            .eq('faction_type', 'party');
-
-        if (factions && factions.length > 0) {
-        // Autocracy V5: +5 AP per tick, capped at 20. No coalition bonus.
-        if (isAutocracy(nation)) {
-            for (const faction of factions) {
-                const result = await accumulateAP(supabase, faction.id, 5, GAME_CONFIG.MAX_AP);
-                if (result.success) {
-                    console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+5, autocracy)`);
-                    apDistributed++;
-                } else {
-                    console.error(`[advanceTick] Autocracy AP FAILED for faction ${faction.id}: ${result.error}`);
-                    apFailed++;
-                }
-            }
-        } else {
-        // Democracy AP logic
-        const coalition = await fetchActiveCoalition(supabase, nation.id);
-        const governmentPartyIds = new Set([
-            ...(coalition?.party_ids || []),
-            nation.ruling_faction_id
-        ].filter(Boolean));
-
-        for (const faction of factions) {
-            const isInGovernment = governmentPartyIds.has(faction.id);
-            let apGain = 5;
-            if (isInGovernment) apGain += 2;
-
-            // Family member successor penalty: ruling faction loses 1 AP/tick
-            if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) {
-                apGain = Math.max(1, apGain - 1);
-            }
-
-            const result = await accumulateAP(supabase, faction.id, apGain);
-            if (result.success) {
-                console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+${apGain})`);
-                apDistributed++;
-            } else {
-                console.error(`[advanceTick] AP accumulation FAILED for faction ${faction.id}: ${result.error}`);
-                apFailed++;
-                summary.apFailures.push({
-                    nationId: nation.id,
-                    nation: nation.name,
-                    factionId: faction.id,
-                    error: result.error
-                });
-                failedNationIds.add(nation.id);
-                failedFactionIds.add(faction.id);
-            }
-        }
-        } // end democracy AP
-        } // end factions.length > 0
-      } catch (apErr) {
-        console.error(`[advanceTick] AP distribution FAILED for nation ${nation.id} (${nation.name}):`, apErr);
-        summary.errors = summary.errors || [];
-        summary.errors.push({ nation: nation.name, nationId: nation.id, phase: 'ap_distribution', error: String(apErr) });
-        apFailed++;
-        summary.apFailures.push({
-            nationId: nation.id,
-            nation: nation.name,
-            factionId: null,
-            error: String(apErr)
-        });
-        failedNationIds.add(nation.id);
-      }
-    }
-    summary.apDistributed = apDistributed;
-    summary.apFailed = apFailed;
-
-    if (apFailed > 0) {
-        // Log AP failures but DO NOT abort the tick.
-        // AP is non-critical — stats, elections, history snapshots, and the
-        // entire simulation must continue even if AP distribution fails.
-        // Aborting here previously caused the shard tick to never advance,
-        // freezing all stat updates, arrows, and game progression.
-        console.error(`[advanceTick] AP distribution had ${apFailed} failure(s) — continuing tick processing`);
-        summary.apWarnings = {
-            failedNationIds: Array.from(failedNationIds),
-            failedFactionIds: Array.from(failedFactionIds),
-            message: `AP distribution failed for ${apFailed} faction(s); tick processing continued.`
-        };
     }
 
     // NOTE: Shard tick/date commit moved to AFTER nation processing (see below).
@@ -30556,6 +30466,50 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // Electorate engine
+        // NOTE: AP must be accumulated BEFORE electorate runs, because
+        // tickIdeologyShiftActions (inside tickElectorate) deducts AP for
+        // active think tanks and grassroots movements. If AP hasn't been
+        // granted yet, these actions get incorrectly suspended.
+        if (!reprocess) {
+            try {
+                const { data: partyFactions } = await supabase
+                    .from('factions')
+                    .select('id')
+                    .eq('nation_id', nation.id)
+                    .eq('faction_type', 'party');
+
+                if (partyFactions && partyFactions.length > 0) {
+                    const isAuto = isAutocracy(nation);
+                    const coalition = isAuto ? null : await fetchActiveCoalition(supabase, nation.id);
+                    const governmentPartyIds = isAuto ? new Set() : new Set([
+                        ...(coalition?.party_ids || []),
+                        nation.ruling_faction_id
+                    ].filter(Boolean));
+
+                    for (const pf of partyFactions) {
+                        let apGain = 5;
+                        if (isAuto) {
+                            // Autocracy: flat +5, capped at 20
+                        } else {
+                            if (governmentPartyIds.has(pf.id)) apGain += 2;
+                            if (nation.successor_is_family_member && pf.id === nation.ruling_faction_id) {
+                                apGain = Math.max(1, apGain - 1);
+                            }
+                        }
+                        const result = await accumulateAP(supabase, pf.id, apGain, GAME_CONFIG.MAX_AP);
+                        if (result.success) {
+                            apDistributed++;
+                        } else {
+                            console.error(`[advanceTick] AP failed for faction ${pf.id}: ${result.error}`);
+                            apFailed++;
+                        }
+                    }
+                }
+            } catch (apErr) {
+                console.error(`[advanceTick] AP distribution failed for ${nation.name} (non-fatal):`, apErr);
+            }
+        }
+
         try {
             await tickElectorate(supabase, nation, newTick);
         } catch (electorateErr) {
@@ -31254,6 +31208,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
     } catch (ipoErr) {
         console.error('[advanceTick] IPO processing failed (non-fatal):', ipoErr);
+    }
+
+    // AP summary (accumulated inside per-nation loop)
+    summary.apDistributed = apDistributed;
+    summary.apFailed = apFailed;
+    if (apFailed > 0) {
+        console.error(`[advanceTick] AP distribution had ${apFailed} failure(s) — continuing tick processing`);
     }
 
     // 5. Commit shard tick/date AFTER all nation processing completes.
