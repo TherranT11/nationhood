@@ -17212,15 +17212,16 @@ function renderIPOActionsPanel() {
         available: stmtClause === 'president' && isPresident && currentAp >= IPO_ACTION_COSTS.joint_statement
     });
 
-    // Solidarity Fund Draw — president direct or vote
-    const drawAvailable = isPresident && fundEnabled && (org.solidarity_fund_balance || 0) > 0;
+    // Solidarity Fund Draw — always requires a vote (proposed via Votes panel)
     actions.push({
         key: 'fund_draw',
         label: 'Draw from Fund',
-        desc: drawAvailable ? `Withdraw AP from fund (${org.solidarity_fund_balance} AP available).` : 'Requires vote — use Votes panel.',
+        desc: fundEnabled && (org.solidarity_fund_balance || 0) > 0
+            ? `Withdraw AP from fund (${org.solidarity_fund_balance} AP available). Requires vote — use Votes panel.`
+            : fundEnabled ? 'Fund is empty.' : 'Solidarity fund is not enabled.',
         cost: 0,
         icon: '💰',
-        available: drawAvailable
+        available: false  // always route through vote panel
     });
 
     const actionCardsHtml = actions.map(a => `
