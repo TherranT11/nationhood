@@ -29710,12 +29710,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         effects: [],
         costs: [],
         resolutions: [],
-        events: [],
-        apFailures: []
+        events: []
     };
-    const failedNationIds = new Set();
-    const failedFactionIds = new Set();
-
     // AP accumulation moved into per-nation loop (before electorate engine)
     // to guarantee AP is granted before think tank / grassroots AP deductions.
     let apDistributed = 0;
