@@ -4768,6 +4768,17 @@ async function applyGdpGrowth(supabase, nation, currentTick) {
 
     let monthlyChangePercent = ((gdpGrowth - 50) / 50) * 1;
 
+    // Leader trait modifiers for GDP growth (ruling faction only)
+    if (nation.ruling_faction_id) {
+        try {
+            const { data: rulerF } = await supabase.from('factions')
+                .select('leader_positive_traits, leader_negative_traits')
+                .eq('id', nation.ruling_faction_id).single();
+            if (rulerF?.leader_positive_traits?.includes('economic_steward')) monthlyChangePercent += 0.5;
+            if (rulerF?.leader_negative_traits?.includes('economically_illiterate')) monthlyChangePercent -= 0.3;
+        } catch (_) { /* use base rate */ }
+    }
+
     // Diminishing returns: scale negative growth when GDP < 50% of starting
     if (monthlyChangePercent < 0) {
         const gdpRatio = currentGdp / startingGdp;
@@ -5346,15 +5357,21 @@ async function calculateCaucusDispositions(supabase, billId, nationId, billArtic
 
     if (error || !caucuses || caucuses.length === 0) return [];
 
-    // Load party seats for vote calculation
+    // Load party seats + leader traits for vote calculation
     const partyIds = [...new Set(caucuses.map(c => c.party_id))];
     const { data: parties } = await supabase
         .from('factions')
-        .select('id, seats')
+        .select('id, seats, leader_positive_traits, leader_negative_traits')
         .in('id', partyIds);
 
     const partySeatsMap = {};
-    for (const p of (parties || [])) partySeatsMap[p.id] = p.seats || 0;
+    const partyTraitsMap = {};
+    for (const p of (parties || [])) {
+        partySeatsMap[p.id] = p.seats || 0;
+        partyTraitsMap[p.id] = { pos: p.leader_positive_traits || [], neg: p.leader_negative_traits || [] };
+    }
+    // Inject owner traits into each caucus for trait-based vote modification
+    for (const c of caucuses) c._ownerTraits = partyTraitsMap[c.party_id] || { pos: [], neg: [] };
 
     // Check which parties are in the governing coalition
     const coalition = await fetchActiveCoalition(supabase, nationId);
@@ -5409,9 +5426,18 @@ async function calculateCaucusDispositions(supabase, billId, nationId, billArtic
         }
 
         const partySeats = partySeatsMap[caucus.party_id] || 0;
-        const votesAffected = disposition === 'not_triggered' || disposition === 'aligned'
+        let votesAffected = disposition === 'not_triggered' || disposition === 'aligned'
             ? 0
             : Math.round(partySeats * caucus.seat_share);
+
+        // arm_twister: 20% fewer votes break ranks (fewer defections)
+        // poor_whip: 20% more votes break ranks (more defections)
+        // Applied to the party that owns this caucus faction
+        if (votesAffected > 0) {
+            const ownerTraits = caucus._ownerTraits; // injected by caller if available
+            if (ownerTraits?.pos?.includes('arm_twister')) votesAffected = Math.round(votesAffected * 0.8);
+            if (ownerTraits?.neg?.includes('poor_whip')) votesAffected = Math.round(votesAffected * 1.2);
+        }
 
         dispositions.push({
             caucus_faction_id: caucus.id,
@@ -7718,6 +7744,22 @@ async function resolveExpiredVotes(supabase, nationId) {
                 } else {
                     await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: (bill.bill_articles || []).length });
                     results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
+                    // policy_wonk: +3 Platform Appeal for the sponsoring faction on enacted bill
+                    if (bill.proposed_by) {
+                        try {
+                            const { data: sponsor } = await supabase.from('factions')
+                                .select('leader_positive_traits').eq('id', bill.proposed_by).single();
+                            if (sponsor?.leader_positive_traits?.includes('policy_wonk')) {
+                                const { data: st } = await supabase.from('faction_electoral_standing')
+                                    .select('id, platform_appeal').eq('faction_id', bill.proposed_by).eq('nation_id', bill.nation_id).maybeSingle();
+                                if (st) {
+                                    await supabase.from('faction_electoral_standing')
+                                        .update({ platform_appeal: Math.min(100, (Number(st.platform_appeal) || 0) + 3) })
+                                        .eq('id', st.id);
+                                }
+                            }
+                        } catch (_) { /* non-blocking */ }
+                    }
                 }
             }
         } else {
@@ -11425,6 +11467,34 @@ async function processElections(supabase, nation, currentTick) {
                     fired_at_tick: currentTick
                 });
             } catch (e) { /* non-blocking */ }
+
+            // Apply comeback_kid / sore_loser traits based on election outcome
+            // A party "lost" if it had seats before and lost seats (or had most seats and no longer does)
+            try {
+                const prevSeats = {};
+                for (const f of (await supabase.from('factions').select('id, seats, leader_positive_traits, leader_negative_traits').eq('nation_id', nation.id).eq('faction_type', 'party').is('abandoned_at', null)).data || []) {
+                    prevSeats[f.id] = f;
+                }
+                const newSeatsMap = {};
+                for (const r of completedElection.results.seats) newSeatsMap[r.party_id] = r.seats || 0;
+
+                for (const [fid, fData] of Object.entries(prevSeats)) {
+                    const oldS = fData.seats || 0;
+                    const newS = newSeatsMap[fid] || 0;
+                    const pos = fData.leader_positive_traits || [];
+                    const neg = fData.leader_negative_traits || [];
+                    const lost = newS < oldS;
+
+                    if (lost && pos.includes('comeback_kid')) {
+                        await nudgeApproval(supabase, fid, nation.id, 5, { source: 'trait:comeback_kid' });
+                        await boostVisibility(supabase, fid, nation.id, 10);
+                    }
+                    if (lost && neg.includes('sore_loser')) {
+                        await nudgeApproval(supabase, fid, nation.id, -5, { source: 'trait:sore_loser' });
+                        await boostVisibility(supabase, fid, nation.id, -10);
+                    }
+                }
+            } catch (traitErr) { /* non-blocking */ }
         }
 
         // Dissolve legislature — fail all pending bills (new parliament must re-propose)
@@ -26119,13 +26189,25 @@ async function processCrises(supabase, nation, currentTick) {
                     : (nation[statKey] !== undefined && nation[statKey] !== null
                         ? Number(nation[statKey]) : 50);
 
+                // Leader trait modifiers for stability during crises
+                let effectiveChange = changePT;
+                if (statKey === 'stability' && changePT < 0 && nation.ruling_faction_id) {
+                    try {
+                        const { data: rulerF } = await supabase.from('factions')
+                            .select('leader_positive_traits, leader_negative_traits')
+                            .eq('id', nation.ruling_faction_id).single();
+                        if (rulerF?.leader_positive_traits?.includes('crisis_manager')) effectiveChange *= 0.5;
+                        if (rulerF?.leader_negative_traits?.includes('panic_under_pressure')) effectiveChange *= 2;
+                    } catch (_) { /* use base change */ }
+                }
+
                 // Raw-value stats (population) must not be clamped to 0-100
                 let newVal;
                 if (RAW_SCALING_DIVISORS[statKey]) {
-                    const scaledCrisisChange = changePT * RAW_SCALING_DIVISORS[statKey];
+                    const scaledCrisisChange = effectiveChange * RAW_SCALING_DIVISORS[statKey];
                     newVal = Math.max(0, currentVal + scaledCrisisChange);
                 } else {
-                    newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 10) / 10;
+                    newVal = Math.round(Math.max(0, Math.min(100, currentVal + effectiveChange)) * 10) / 10;
                 }
                 nationUpdates[statKey] = newVal;
                 nation[statKey] = newVal;
@@ -29865,20 +29947,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         const RELATION_DECAY_ISOLATIONIST = 0.15;
 
         const isolationistNationIds = new Set<string>();
+        const intPresenceNationIds = new Set<string>();   // international_presence: +0.5 relations/tick
+        const intPariahNationIds = new Set<string>();     // international_pariah: -0.5 relations/tick
         const { data: coalitions } = await supabase.from('coalitions')
             .select('nation_id, lead_party_id')
             .eq('is_active', true);
         if (coalitions && coalitions.length > 0) {
             const leadIds = coalitions.map(c => c.lead_party_id);
             const { data: leadFactions } = await supabase.from('factions')
-                .select('id, nation_id, leader_negative_traits')
+                .select('id, nation_id, leader_positive_traits, leader_negative_traits')
                 .in('id', leadIds);
             if (leadFactions) {
                 for (const lf of leadFactions) {
+                    const pos: string[] = lf.leader_positive_traits || [];
                     const neg: string[] = lf.leader_negative_traits || [];
-                    if (neg.includes('isolationist')) {
-                        isolationistNationIds.add(lf.nation_id);
-                    }
+                    if (neg.includes('isolationist')) isolationistNationIds.add(lf.nation_id);
+                    if (pos.includes('international_presence')) intPresenceNationIds.add(lf.nation_id);
+                    if (neg.includes('international_pariah')) intPariahNationIds.add(lf.nation_id);
                 }
             }
         }
@@ -29894,13 +29979,19 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 const hasIsolationist = isolationistNationIds.has(rel.nation_a_id) || isolationistNationIds.has(rel.nation_b_id);
                 const decayRate = hasIsolationist ? RELATION_DECAY_ISOLATIONIST : RELATION_DECAY_BASE;
 
+                // international_presence: positive relations drift +0.5/tick (slows decay)
+                // international_pariah: negative relations drift -0.5/tick (accelerates decay)
+                let traitNudge = 0;
+                if (intPresenceNationIds.has(rel.nation_a_id) || intPresenceNationIds.has(rel.nation_b_id)) traitNudge += 0.5;
+                if (intPariahNationIds.has(rel.nation_a_id) || intPariahNationIds.has(rel.nation_b_id)) traitNudge -= 0.5;
+
                 let newScore: number;
                 if (score > 0) {
-                    newScore = Math.max(0, score - decayRate);
+                    newScore = Math.max(0, score - decayRate + traitNudge);
                 } else {
-                    newScore = Math.min(0, score + decayRate);
+                    newScore = Math.min(0, score + decayRate + traitNudge);
                 }
-                newScore = Math.round(newScore * 100) / 100;
+                newScore = Math.round(Math.max(-100, Math.min(100, newScore)) * 100) / 100;
 
                 if (newScore !== score) {
                     await supabase.from('diplomatic_relations')

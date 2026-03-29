@@ -6964,8 +6964,21 @@ async function fileNoConfidence() {
             return;
         }
 
+        // Check PM's leader traits for AP cost modifiers
+        let voncCost = GAME_CONFIG.NO_CONFIDENCE_AP_COST;
+        try {
+            const pmPartyId = currentNation.ruling_faction_id;
+            if (pmPartyId) {
+                const { data: pmParty } = await _supabase.from('factions')
+                    .select('leader_positive_traits, leader_negative_traits').eq('id', pmPartyId).single();
+                if (pmParty?.leader_positive_traits?.includes('constitutional_scholar')) voncCost += 3;
+                if (pmParty?.leader_negative_traits?.includes('paper_thin_mandate')) voncCost -= 2;
+                voncCost = Math.max(1, voncCost);
+            }
+        } catch (_) { /* use base cost */ }
+
         // Deduct AP only after bill creation succeeds
-        const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.NO_CONFIDENCE_AP_COST);
+        const apResult = await deductAP(_supabase, currentFaction.id, voncCost);
         if (!apResult.success) {
             if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
             alert('Not enough AP. Need ' + GAME_CONFIG.NO_CONFIDENCE_AP_COST + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
