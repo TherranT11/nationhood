@@ -30687,6 +30687,27 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             } catch (apErr) {
                 console.error(`[advanceTick] AP distribution failed for ${nation.name} (non-fatal):`, apErr);
             }
+
+            // Corporation AP: flat +5 per tick, capped at MAX_AP (20)
+            try {
+                const { data: corpFactions } = await supabase
+                    .from('factions')
+                    .select('id')
+                    .eq('nation_id', nation.id)
+                    .eq('faction_type', 'corporation')
+                    .is('abandoned_at', null);
+
+                for (const cf of (corpFactions || [])) {
+                    const result = await accumulateAP(supabase, cf.id, 5, GAME_CONFIG.MAX_AP);
+                    if (result.success) {
+                        apDistributed++;
+                    } else {
+                        apFailed++;
+                    }
+                }
+            } catch (corpApErr) {
+                console.error(`[advanceTick] Corp AP distribution failed for ${nation.name} (non-fatal):`, corpApErr);
+            }
         }
 
         try {
