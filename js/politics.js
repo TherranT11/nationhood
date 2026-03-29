@@ -6140,13 +6140,14 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     }
 
     // ── Extract all five factor scores ──
-    // Use polled values when available (same source as the Electoral Standing table),
-    // fall back to live values if no poll has been run yet
-    const approval = Math.round(Number(playerStanding.polled_party_approval ?? playerStanding.party_approval ?? 25));
-    const visibility = Math.round(Number(playerStanding.polled_visibility ?? playerStanding.visibility ?? 0));
-    const platformAppeal = Math.round(Number(playerStanding.polled_platform_appeal ?? playerStanding.platform_appeal ?? 0));
-    const alignScore = Math.max(0, Math.min(100, Math.round(Number(playerStanding.polled_alignment ?? playerStanding.ideological_alignment ?? 50))));
-    const credModifier = Number(playerStanding.polled_credibility ?? playerStanding.credibility_modifier ?? 1.0);
+    // Five factor cards show LIVE values (updated every tick by the electorate engine).
+    // The Electoral Standing comparison table shows POLLED snapshots (from last poll).
+    // These are intentionally different — cards = current, table = last-polled.
+    const approval = Math.round(Number(playerStanding.party_approval ?? 25));
+    const visibility = Math.round(Number(playerStanding.visibility ?? 0));
+    const platformAppeal = Math.round(Number(playerStanding.platform_appeal ?? 0));
+    const alignScore = Math.max(0, Math.min(100, Math.round(Number(playerStanding.ideological_alignment ?? 50))));
+    const credModifier = Number(playerStanding.credibility_modifier ?? 1.0);
     // Canonical formula: (cred - 0.5) * 100 maps 0.5→0, 1.0→50, 1.5→100
     const credScore = Math.max(0, Math.min(100, Math.round((credModifier - 0.5) * 100)));
     const contestedShare = Number(playerStanding.contested_vote_share ?? 0);
