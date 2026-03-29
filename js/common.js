@@ -9,6 +9,7 @@
 
 import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
+import { initMessaging } from './messaging.js';
 
 // ===== QUERY CACHE =====
 // Generic sessionStorage cache for Supabase query results.
@@ -1208,6 +1209,10 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     }
     updateDiplomacyAwaitingBadge(state.faction, state.nation, diploRoles);
     updateIPOInviteBadge(state.faction, diploRoles);
+
+    // Inject messaging bubble on all pages
+    initMessaging(state.faction, state.nation, state.shard);
+
     if (onReady) {
         await onReady(state);
     }

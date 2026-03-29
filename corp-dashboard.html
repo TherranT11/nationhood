@@ -894,6 +894,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
+import { initMessaging } from './js/messaging.js';
 
 let allUserFactions = [];
 
@@ -1078,6 +1079,9 @@ async function init() {
     renderStats(nationName);
     const propData = renderProperty(nationStats, nationName, faction, shard);
     renderValuation(nationStats, nationName, faction, wfData, propData);
+
+    // Messaging bubble
+    initMessaging(faction, nationStats, shard);
 
     // Show page
     document.getElementById('loading').style.display = 'none';
