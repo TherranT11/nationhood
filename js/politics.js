@@ -1441,7 +1441,7 @@ function renderGovCard(nation, coalition, allParties, currentTick, prevApproval,
     const approval = Math.round(Number(nation.gov_approval ?? 40));
     const ac = approval >= 50 ? 'var(--dgreen)' : approval >= 35 ? 'var(--damber)' : 'var(--dred)';
     const adminName = administration?.admin_name || 'Government';
-    const govTypeLabel = isAuto ? 'Autocracy' : isPres ? 'Presidential' : 'Parliamentary';
+    const govTypeLabel = isAuto ? 'Autocracy' : isPres ? 'Presidential' : nation?.hos_election_method === 'hereditary' ? 'Constitutional Monarchy' : 'Parliamentary';
 
     // Coalition info
     const coalitionIds = new Set(coalition?.party_ids || []);
@@ -6150,12 +6150,16 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     }
 
     // ── Extract all five factor scores ──
-    const approval = Number(playerStanding.party_approval ?? 25);
+    // Five factor cards show LIVE values (updated every tick by the electorate engine).
+    // The Electoral Standing comparison table shows POLLED snapshots (from last poll).
+    // These are intentionally different — cards = current, table = last-polled.
+    const approval = Math.round(Number(playerStanding.party_approval ?? 25));
     const visibility = Math.round(Number(playerStanding.visibility ?? 0));
     const platformAppeal = Math.round(Number(playerStanding.platform_appeal ?? 0));
     const alignScore = Math.max(0, Math.min(100, Math.round(Number(playerStanding.ideological_alignment ?? 50))));
     const credModifier = Number(playerStanding.credibility_modifier ?? 1.0);
-    const credScore = Math.max(0, Math.min(100, Math.round((credModifier - 0.5) * 200)));
+    // Canonical formula: (cred - 0.5) * 100 maps 0.5→0, 1.0→50, 1.5→100
+    const credScore = Math.max(0, Math.min(100, Math.round((credModifier - 0.5) * 100)));
     const contestedShare = Number(playerStanding.contested_vote_share ?? 0);
     const realizedShare = Number(playerStanding.realized_vote_share ?? 0);
     const turnout = Number(playerStanding.turnout_rate ?? 0.65);
@@ -6166,7 +6170,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const prevApproval = playerStanding.prev_party_approval != null ? Number(playerStanding.prev_party_approval) : null;
     const prevVisibility = playerStanding.prev_visibility != null ? Math.round(Number(playerStanding.prev_visibility)) : null;
     const prevCredMod = playerStanding.prev_credibility_modifier != null ? Number(playerStanding.prev_credibility_modifier) : null;
-    const prevCredScore = prevCredMod != null ? Math.max(0, Math.min(100, Math.round((prevCredMod - 0.5) * 200))) : null;
+    const prevCredScore = prevCredMod != null ? Math.max(0, Math.min(100, Math.round((prevCredMod - 0.5) * 100))) : null;
 
     // Determine if player is in government
     const coalitionIds = govFormRes.data?.party_ids || [];

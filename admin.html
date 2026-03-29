@@ -1003,7 +1003,18 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     async function deleteParty(factionId, partyName) {
         if (!isAuthenticated) return;
         if (!confirm(`⚠️ PERMANENTLY DELETE "${partyName}"?`)) return;
-        try { const { data, error } = await _supabase.rpc('admin_delete_party', { p_faction_id: factionId }); if (error) throw error; alert(`✅ "${partyName}" deleted!`); await loadStats(); await loadNations(); } catch (error) { alert('❌ Error: ' + error.message); }
+        try {
+            const { data, error } = await _supabase.rpc('admin_delete_party', { p_faction_id: factionId });
+            if (error) throw error;
+            if (data?.error) {
+                // Safeguard triggered — faction belongs to a real player
+                if (!confirm(`⚠️ ${data.error}\n\nForce delete anyway?`)) return;
+                const { data: d2, error: e2 } = await _supabase.rpc('admin_delete_party', { p_faction_id: factionId, p_force: true });
+                if (e2) throw e2;
+            }
+            alert(`✅ "${partyName}" deleted!`);
+            await loadStats(); await loadNations();
+        } catch (error) { alert('❌ Error: ' + error.message); }
     }
 
     // ==================== DANGER ZONE ====================
@@ -1064,7 +1075,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
     /** Full shard reset — restores nation stats, deletes all game state */
     async function resetShard() {
         if (!isAuthenticated) return;
-        if (!confirm('⚠️ FULL SHARD RESET — this will delete ALL parties, laws, elections, and game data. Continue?')) return;
+        if (!confirm('⚠️ FULL SHARD RESET — this will delete ALL parties, corporations, laws, elections, and game data. All players will be sent to faction-select on next login. Continue?')) return;
         if (!confirm('⚠️ SECOND CONFIRMATION — Are you absolutely sure? This cannot be undone!')) return;
 
         const btn = document.getElementById('reset-btn');
@@ -1080,48 +1091,50 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         };
 
         try {
-            // 1. Reset shard clock
+            // 1. Reset shard clock to tick 1, January 2000
             logMsg('Resetting shard clock...');
             const nextTick = new Date(Date.now() + currentTickInterval * 60 * 60 * 1000);
-            await _supabase.from('shard').update({
-                current_date: 'January, 2000', current_tick: 0,
+            const { error: shardErr } = await _supabase.from('shard').update({
+                current_date: 'January, 2000', current_tick: 1,
                 next_tick_at: nextTick.toISOString()
             }).eq('name', 'Alpha Shard');
-            logMsg('✓ Shard clock reset to January 2000, tick 0', '#5cb85c');
+            if (shardErr) throw shardErr;
+            logMsg('✓ Shard clock reset to January 2000, tick 1', '#5cb85c');
 
             // 2. Clear all game-state tables via RPC (bypasses RLS, handles FK ordering)
-            logMsg('Clearing game state tables...');
+            logMsg('Clearing game state tables (106+ tables)...');
             const { data: clearResult, error: clearErr } = await _supabase.rpc('admin_reset_tables');
             if (clearErr) {
                 logMsg('⚠ admin_reset_tables RPC failed: ' + clearErr.message, '#d48a3c');
                 logMsg('  (Run sql/create_admin_reset_tables.sql in Supabase first)', '#888');
             } else {
+                let tablesCleared = 0;
                 for (const [table, val] of Object.entries(clearResult || {})) {
-                    if (typeof val === 'number') {
+                    if (typeof val === 'number' && val > 0) {
                         logMsg(`  ✓ ${table}: ${val} rows deleted`, '#666');
-                    } else {
-                        logMsg(`  ⚠ ${table}: ${val}`, '#d48a3c');
+                        tablesCleared++;
                     }
                 }
-                logMsg('✓ Game state tables cleared', '#5cb85c');
+                logMsg(`✓ Game state tables cleared (${tablesCleared} had data)`, '#5cb85c');
             }
 
-            // 3. Delete all factions using admin_delete_party RPC (bypasses RLS)
-            logMsg('Deleting all political parties...');
-            const { data: allFactions } = await _supabase.from('factions').select('id, faction_name');
+            // 3. Delete all factions (parties + corporations) using admin_delete_party RPC
+            logMsg('Deleting all factions (parties + corporations)...');
+            const { data: allFactions, error: facErr } = await _supabase.from('factions').select('id, faction_name, faction_type');
+            if (facErr) logMsg('⚠ Failed to load factions: ' + facErr.message, '#d48a3c');
             let delOk = 0, delFail = 0;
             for (const f of (allFactions || [])) {
-                const { error: rpcErr } = await _supabase.rpc('admin_delete_party', { p_faction_id: f.id });
+                const { error: rpcErr } = await _supabase.rpc('admin_delete_party', { p_faction_id: f.id, p_force: true });
                 if (rpcErr) {
-                    logMsg(`  ⚠ ${f.faction_name}: ${rpcErr.message}`, '#d48a3c');
+                    logMsg(`  ⚠ ${f.faction_name} (${f.faction_type}): ${rpcErr.message}`, '#d48a3c');
                     delFail++;
                 } else {
                     delOk++;
                 }
             }
-            if (delOk > 0) logMsg(`✓ Deleted ${delOk} political parties`, '#5cb85c');
-            if (delFail > 0) logMsg(`⚠ ${delFail} parties failed to delete`, '#d48a3c');
-            if (delOk === 0 && delFail === 0) logMsg('No parties to delete', '#888');
+            if (delOk > 0) logMsg(`✓ Deleted ${delOk} factions`, '#5cb85c');
+            if (delFail > 0) logMsg(`⚠ ${delFail} factions failed to delete`, '#d48a3c');
+            if (delOk === 0 && delFail === 0) logMsg('No factions to delete', '#888');
 
             // 4. Restore nation stats from seed_stats
             logMsg('Restoring nation stats from seed...');
@@ -1141,6 +1154,12 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 for (const [k, v] of Object.entries(nation.seed_stats)) {
                     if (validKeys.has(k)) update[k] = v;
                 }
+                // Clear leader references (they point to deleted factions)
+                update.ruling_faction_id = null;
+                // Reset foundational law terms to defaults
+                update.parliamentary_term_ticks = nation.seed_stats.parliamentary_term_ticks || 48;
+                update.presidential_term_ticks = nation.seed_stats.presidential_term_ticks || null;
+
                 const { error: uErr } = await _supabase.from('nations').update(update).eq('id', nation.id);
                 if (uErr) logMsg(`  ⚠ ${nation.name}: ${uErr.message}`, '#d48a3c');
                 else { logMsg(`  ✓ ${nation.name} restored (${Object.keys(update).length} stats)`, '#666'); restored++; }
@@ -1148,9 +1167,40 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             if (skipped > 0) logMsg(`⚠ ${skipped} nation(s) had no seed — use "Save Current Stats as Seed" first`, '#d48a3c');
             logMsg(`✓ ${restored} nation(s) restored from seed`, '#5cb85c');
 
-            // 5. Done
+            // 5. Clear session storage for all users (force faction-select on next login)
+            // Players with no faction_id → redirected to select-nation.html by loadGameState()
+            logMsg('✓ All factions deleted — players will be sent to faction-select on next login', '#5cb85c');
+
+            // 6. Re-seed initial elections for each nation
+            logMsg('Scheduling initial elections...');
+            let electionsSch = 0;
+            for (const nation of (nations || [])) {
+                // Skip autocracies — no elections
+                const govType = (nation.seed_stats?.government_type || '').toLowerCase();
+                if (govType === 'autocracy' || govType.includes('autocra')) {
+                    logMsg(`  — ${nation.name}: autocracy, no election scheduled`, '#888');
+                    continue;
+                }
+                // Skip nations with no parliamentary_term_ticks set (e.g. no elections configured)
+                const parlTerm = nation.seed_stats?.parliamentary_term_ticks;
+                if (!parlTerm) {
+                    logMsg(`  — ${nation.name}: no term length in seed, skipping`, '#888');
+                    continue;
+                }
+                const { error: elErr } = await _supabase.from('elections').insert({
+                    nation_id: nation.id,
+                    election_tick: parlTerm,
+                    election_type: 'parliamentary',
+                    status: 'scheduled'
+                });
+                if (!elErr) electionsSch++;
+                else logMsg(`  ⚠ ${nation.name} election: ${elErr.message}`, '#d48a3c');
+            }
+            logMsg(`✓ ${electionsSch} initial elections scheduled`, '#5cb85c');
+
+            // 7. Done
             status.className = 'status success';
-            status.textContent = `✅ Shard reset complete! ${restored} nations restored, all game tables cleared.`;
+            status.textContent = `✅ Shard reset complete! ${restored} nations restored, ${delOk} factions deleted, ${electionsSch} elections scheduled.`;
             await loadAllData();
         } catch (error) {
             console.error(error);

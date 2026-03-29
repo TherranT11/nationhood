@@ -3859,13 +3859,44 @@ export const AVELIA_LAST_NAMES = [
 
 const AVELIA_NATIONS = ['Avelia'];
 
+// Calveth names (Danish)
+export const CALVETH_FIRST_NAMES = [
+    'Lukas', 'Noah', 'Victor', 'Oliver', 'Oscar', 'William', 'Emil', 'Alfred',
+    'Magnus', 'Mads', 'Frederik', 'Christian', 'Mikkel', 'Anders', 'Lars',
+    'Søren', 'Rasmus', 'Kristian', 'Morten', 'Jesper', 'Henrik', 'Thomas',
+    'Jacob', 'Sebastian', 'Mathias', 'Valdemar', 'Karl', 'Arthur', 'Otto',
+    'August', 'Erik', 'Jens', 'Niels', 'Hans', 'Poul', 'Viggo', 'Aksel',
+    'Felix', 'Malthe', 'Gustav', 'Alma', 'Ida', 'Clara', 'Ella', 'Olivia',
+    'Freja', 'Sofie', 'Astrid', 'Maja', 'Agnes'
+];
+
+export const CALVETH_LAST_NAMES = [
+    'Jensen', 'Nielsen', 'Hansen', 'Pedersen', 'Andersen', 'Christensen',
+    'Larsen', 'Sørensen', 'Rasmussen', 'Jørgensen', 'Petersen', 'Madsen',
+    'Kristensen', 'Olsen', 'Thomsen', 'Christiansen', 'Poulsen', 'Johansen',
+    'Knudsen', 'Mortensen', 'Møller', 'Jacobsen', 'Jakobsen', 'Olesen',
+    'Frederiksen', 'Mikkelsen', 'Henriksen', 'Laursen', 'Lund', 'Schmidt',
+    'Eriksen', 'Holm', 'Clausen', 'Svendsen', 'Andreasen', 'Iversen',
+    'Jeppesen', 'Vestergaard', 'Bertelsen', 'Nissen', 'Kjær', 'Gregersen',
+    'Jepsen', 'Hermansen', 'Bayer', 'Buch', 'Dahl', 'Dam', 'Haugaard',
+    'Høeg', 'Jespersen', 'Kjeldsen', 'Kofod', 'Kragh', 'Krogh', 'Lassen',
+    'Lind', 'Lorentzen', 'Ludvigsen', 'Mathiasen', 'Mogensen', 'Munk',
+    'Nedergaard', 'Nygaard', 'Nørgaard', 'Ottosen', 'Overgaard', 'Pallesen',
+    'Schiøtz', 'Simonsen', 'Skov', 'Søndergaard', 'Villadsen', 'Winther'
+];
+
+const CALVETH_NATIONS = ['Calveth'];
+
 // Female first names from both name pools (used for gendered title selection)
 const FEMALE_NAMES = new Set([
     // Crucera
     'Camila', 'Valentina', 'Isabela', 'Mariana', 'Catalina', 'Renata',
     // Avelia
     'Luciana', 'Sofía', 'Elena', 'Rosario', 'Carolina', 'Paloma', 'Inés',
-    'Marisol', 'Florencia', 'Celeste'
+    'Marisol', 'Florencia', 'Celeste',
+    // Calveth
+    'Alma', 'Ida', 'Clara', 'Ella', 'Olivia', 'Freja', 'Sofie', 'Astrid',
+    'Maja', 'Agnes'
 ]);
 
 export function isFemaleName(firstName) {
@@ -3875,6 +3906,9 @@ export function isFemaleName(firstName) {
 export function getNationNames(nationName) {
     if (AVELIA_NATIONS.includes(nationName)) {
         return { firstNames: AVELIA_FIRST_NAMES, lastNames: AVELIA_LAST_NAMES };
+    }
+    if (CALVETH_NATIONS.includes(nationName)) {
+        return { firstNames: CALVETH_FIRST_NAMES, lastNames: CALVETH_LAST_NAMES };
     }
     return { firstNames: PM_FIRST_NAMES, lastNames: PM_LAST_NAMES };
 }
@@ -4421,7 +4455,11 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
 
                 const { error: minErr } = await supabase
                     .from('ministries')
-                    .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
+                    .update({
+                        party_id: null, minister_first_name: null, minister_last_name: null,
+                        minister_age: null, pending_minister: null,
+                        confirmation_status: null
+                    })
                     .eq('nation_id', nationId)
                     .eq('party_id', factionId)
                     .eq('is_active', true);
@@ -4434,11 +4472,36 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     //     (covers edge cases where party holds ministries but isn't in an active coalition)
     const { error: catchAllMinErr } = await supabase
         .from('ministries')
-        .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
+        .update({
+            party_id: null, minister_first_name: null, minister_last_name: null,
+            minister_age: null, pending_minister: null,
+            confirmation_status: null
+        })
         .eq('nation_id', nationId)
         .eq('party_id', factionId)
         .eq('is_active', true);
     if (catchAllMinErr) console.warn('disbandParty: catch-all ministry vacate failed:', catchAllMinErr);
+
+    // 4c. Clear any pending nominations in this nation where the pending_minister
+    //     references the disbanded faction (the nomination bill is already gone)
+    const { data: pendingMins } = await supabase
+        .from('ministries')
+        .select('id, pending_minister')
+        .eq('nation_id', nationId)
+        .eq('is_active', true)
+        .not('pending_minister', 'is', null);
+    if (pendingMins) {
+        for (const m of pendingMins) {
+            const pm = m.pending_minister;
+            if (pm && (pm.party_id === factionId || pm.nominated_by === factionId)) {
+                await supabase.from('ministries').update({
+                    pending_minister: null,
+                    confirmation_status: null,
+                    minister_first_name: null, minister_last_name: null, minister_age: null
+                }).eq('id', m.id);
+            }
+        }
+    }
 
     // 5. Zero seats and redistribute to remaining parties
     const { data: dyingFaction } = await supabase

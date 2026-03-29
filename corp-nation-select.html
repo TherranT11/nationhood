@@ -437,6 +437,7 @@ body {
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 import { getNationNames } from './js/game/political-actions.js';
+import { getStartingEquipment } from './js/game/equipment.js';
 
 const FLAG_URLS = {
     'Melizea': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Melizea.png',
@@ -731,6 +732,11 @@ async function confirmNation() {
         const ceoLast = lastNames[Math.floor(Math.random() * lastNames.length)];
         const ceoAge = 40 + Math.floor(Math.random() * 36);
 
+        // Starting financials: $20M cash, $8M loans, scaled by currency strength
+        const currencyMult = (Number(nation.currency_strength) || 50) / 50;
+        const startingCash = Math.round(20_000_000 * currencyMult);
+        const startingLoans = Math.round(8_000_000 * currencyMult);
+
         // Upsert corporation faction record
         const { error: upsertError } = await _supabase
             .from('factions')
@@ -755,11 +761,31 @@ async function confirmNation() {
                 corp_subsector: corpSetup.subsector,
                 corp_company_type: companyType,
                 corp_ticker: ticker,
+                corp_cash_reserves: startingCash,
+                corp_loans: startingLoans,
             });
 
         if (upsertError) throw upsertError;
 
         // Clean up session storage
+        // Seed starting equipment for construction corps
+        if (corpSetup.sector === 'Construction') {
+            const startingEquip = getStartingEquipment();
+            if (startingEquip.length > 0) {
+                const equipRows = startingEquip.map(e => ({
+                    faction_id: currentUser.id,
+                    nation_id: nation.id,
+                    equipment_key: e.equipment_key,
+                    tier: e.tier,
+                    owned: e.owned,
+                    deployed: e.deployed,
+                    condition: e.condition,
+                    maintenance_per_tick: e.maintenance_per_tick,
+                }));
+                await _supabase.from('corp_equipment').insert(equipRows);
+            }
+        }
+
         sessionStorage.removeItem('pending_faction_type');
         sessionStorage.removeItem('corp_setup');
 

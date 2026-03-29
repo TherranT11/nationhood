@@ -9,6 +9,7 @@
 
 import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
+import { initMessaging } from './messaging.js';
 
 // ===== QUERY CACHE =====
 // Generic sessionStorage cache for Supabase query results.
@@ -161,7 +162,14 @@ export function getAdminFactionOverride() {
 })();
 
 export function getCachedState() {
-    // Skip cache entirely when admin override is active — always fetch fresh
+    // Skip cache entirely when admin override is active — always fetch fresh.
+    // Check URL params AND sessionStorage (for in-iframe navigation without params).
+    // _admin_verified is false at this point so we can't use getAdminNationOverride().
+    try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('nation_id') || params.has('faction_id')) return null;
+        if (sessionStorage.getItem('_admin_nation') || sessionStorage.getItem('_admin_faction')) return null;
+    } catch (_) {}
     if (getAdminNationOverride() || getAdminFactionOverride()) return null;
     try {
         const cached = sessionStorage.getItem(STATE_KEY);
@@ -217,6 +225,18 @@ async function refreshCachedNation(cached) {
 export async function loadGameState(requireFaction = true) {
     const cached = getCachedState();
     if (cached) {
+        // Always load factions for the dropdown switcher (cache doesn't store _userFactions)
+        if (_userFactions.length === 0 && cached.faction?.id) {
+            try {
+                const userId = (await _supabase.auth.getUser())?.data?.user?.id;
+                if (userId) {
+                    const { data: allFactions } = await _supabase
+                        .from('factions').select('*')
+                        .or(`id.eq.${userId},linked_user_id.eq.${userId}`);
+                    _userFactions = (allFactions || []).filter(f => f.nation_id);
+                }
+            } catch (_) { /* dropdown will just show current faction */ }
+        }
         if (shouldRefreshNationForPage()) {
             console.log('Using cached user/faction/shard with fresh nation for current page');
             return await refreshCachedNation(cached);
@@ -228,9 +248,12 @@ export async function loadGameState(requireFaction = true) {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return null; }
 
-    // Verify admin overrides server-side before allowing inspection
+    // Verify admin overrides server-side before allowing inspection.
+    // Check both URL params (initial load) and sessionStorage (in-iframe navigation).
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('faction_id') || urlParams.has('nation_id')) {
+    const hasAdminContext = urlParams.has('faction_id') || urlParams.has('nation_id')
+        || sessionStorage.getItem('_admin_nation') || sessionStorage.getItem('_admin_faction');
+    if (hasAdminContext) {
         await verifyAdminOverrides();
     }
 
@@ -1198,6 +1221,10 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     }
     updateDiplomacyAwaitingBadge(state.faction, state.nation, diploRoles);
     updateIPOInviteBadge(state.faction, diploRoles);
+
+    // Inject messaging bubble on all pages
+    initMessaging(state.faction, state.nation, state.shard);
+
     if (onReady) {
         await onReady(state);
     }

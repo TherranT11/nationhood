@@ -1,0 +1,3536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Operations | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0: #0e0e0c;
+  --bg-1: #1a1a1a;
+  --bg-2: #1a1a17;
+  --bg-3: #252525;
+  --bg-4: #24241f;
+  --bg-5: #2c2c26;
+  --bg-hover: #282822;
+  --text-bright: #f0efe6;
+  --text-primary: #c4c2b8;
+  --text-secondary: #888;
+  --text-muted: #666;
+  --text-dim: #4a4940;
+  --text-ghost: #333229;
+  --border-hair: rgba(255,255,255,0.04);
+  --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08);
+  --border-2: rgba(255,255,255,0.12);
+  --green: #5cb85c;
+  --green-faint: rgba(92,184,92,0.08);
+  --green-border: rgba(92,184,92,0.18);
+  --red: #d9534f;
+  --red-faint: rgba(217,83,79,0.08);
+  --red-border: rgba(217,83,79,0.18);
+  --amber: #c8a64e;
+  --amber-faint: rgba(200,166,78,0.08);
+  --amber-border: rgba(200,166,78,0.18);
+  --blue: #5b9bd5;
+  --blue-faint: rgba(91,155,213,0.08);
+  --blue-border: rgba(91,155,213,0.18);
+  --teal: #5aafa5;
+  --teal-faint: rgba(90,175,165,0.08);
+  --teal-border: rgba(90,175,165,0.18);
+  --gold: #c8a832;
+  --gold-faint: rgba(200,168,50,0.08);
+  --gold-border: rgba(200,168,50,0.20);
+  --orange: #c88444;
+  --orange-faint: rgba(200,132,68,0.08);
+  --orange-border: rgba(200,132,68,0.18);
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+  --font-serif: 'IBM Plex Serif', Georgia, serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  min-height: 100vh;
+}
+
+/* ── Loading ── */
+.loading-msg {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 100vh;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  letter-spacing: 2px; color: var(--text-dim);
+}
+
+/* ── Top bar ── */
+.top-bar-row1 {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 22px; height: 53px;
+  background: var(--bg-2); border-bottom: 1px solid var(--border-0);
+}
+.top-bar-left { display: flex; align-items: center; gap: 0; }
+.top-bar-sep {
+  width: 1px; height: 31px; background: rgba(255,255,255,0.08);
+  margin: 0 16px; flex-shrink: 0;
+}
+.corp-badge { display: flex; align-items: center; gap: 8px; }
+.corp-logo {
+  width: 35px; height: 35px; background: var(--bg-3);
+  border: 1px solid var(--border-0); border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--text-dim);
+}
+.corp-name-bar {
+  font-family: var(--font-serif); font-size: 14px; font-weight: 500;
+  color: var(--text-bright); letter-spacing: 0.02em; white-space: nowrap;
+}
+.tick-info { display: flex; gap: 20px; align-items: center; }
+.tick-item { display: flex; flex-direction: column; gap: 1px; }
+.tick-label {
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase; color: #7a7868;
+}
+.tick-value { font-family: var(--font-mono); font-size: 13px; font-weight: 500; color: var(--text-bright); }
+.top-bar-right { display: flex; align-items: center; gap: 10px; }
+.corp-name-badge {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--teal); background: var(--teal-faint);
+  border: 1px solid var(--teal-border); border-left: 3px solid var(--teal);
+  padding: 3px 9px;
+}
+.topbar-ap {
+  display: flex; align-items: center; gap: 3px;
+  padding: 3px 8px; background: var(--amber-faint); border: 1px solid var(--amber-border);
+}
+.topbar-ap__count {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 800; color: var(--amber);
+  min-width: 18px; text-align: right;
+}
+.theme-toggle-btn {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  background: var(--bg-3); border: 1px solid var(--border-0); color: var(--text-dim);
+  padding: 4px 10px; cursor: pointer; transition: all 0.1s;
+}
+.theme-toggle-btn:hover { background: var(--bg-hover); color: var(--text-muted); border-color: var(--border-1); }
+.logout-btn {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  background: transparent; border: 1px solid rgba(217,83,79,0.3); color: var(--red);
+  padding: 4px 10px; cursor: pointer; transition: background 0.1s;
+}
+.logout-btn:hover { background: rgba(217,83,79,0.08); }
+/* Faction switcher dropdown */
+.corp-faction-dropdown {
+  display: none; position: absolute; top: 100%; right: 0; margin-top: 4px;
+  min-width: 260px; background: var(--bg-2); border: 1px solid var(--border-0);
+  z-index: 1000; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.corp-faction-dropdown.open { display: block; }
+.corp-dd-item {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer;
+  border-bottom: 1px solid var(--border-hair); transition: background 0.1s;
+}
+.corp-dd-item:last-child { border-bottom: none; }
+.corp-dd-item:hover { background: var(--bg-hover); }
+.corp-dd-item.active { background: var(--teal-faint); border-left: 3px solid var(--teal); }
+.corp-dd-item--create { opacity: 0.7; }
+.corp-dd-item--create:hover { opacity: 1; }
+.corp-dd-type {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; min-width: 36px;
+}
+.corp-dd-name { font-family: var(--font-ui); font-size: 12px; font-weight: 600; color: var(--text-bright); }
+.corp-dd-abbr { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); margin-left: auto; }
+
+/* ── Nav tabs ── */
+.corp-nav { display: flex; padding: 0 22px; gap: 0; height: 40px; background: var(--bg-2); border-bottom: 1px solid var(--border-0); }
+.corp-nav__tab {
+  position: relative; font-family: var(--font-mono); font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase; padding: 10px 15px;
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  color: #8a8978; cursor: pointer; transition: color 0.1s; white-space: nowrap; text-decoration: none;
+}
+.corp-nav__tab:hover { color: #a8a797; }
+.corp-nav__tab.active { color: var(--text-bright); border-bottom-color: var(--text-bright); }
+.corp-hamburger {
+  display: none; background: var(--bg-3); border: 1px solid var(--border-0);
+  color: var(--text-dim); font-size: 18px; padding: 4px 10px; cursor: pointer; margin: 4px 22px;
+}
+.corp-hamburger:hover { color: var(--text-muted); }
+body.light-mode .corp-nav__tab { color: #666660; }
+body.light-mode .corp-nav__tab:hover { color: #333330; }
+body.light-mode .corp-nav__tab.active { color: #1a1a17; border-bottom-color: #1a1a17; }
+
+/* ── Content ── */
+.content {
+  padding: 24px 20px;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+/* ── Open Contracts card — 380×450 ── */
+.oc-card {
+  width: 380px; height: 450px;
+  background: var(--bg-2); border: 1px solid var(--border-0);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.oc-card__header {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-0);
+  display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0;
+}
+.oc-card__header-left { display: flex; align-items: center; gap: 6px; }
+.oc-card__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--teal); }
+.oc-card__label {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 2px; color: var(--text-muted); text-transform: uppercase;
+}
+.oc-card__count {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+}
+
+/* Filter bar */
+.oc-filters {
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border-0);
+  background: var(--bg-3);
+  flex-shrink: 0;
+}
+.oc-filters__row {
+  display: flex; gap: 4px; align-items: center;
+}
+.oc-filters__row + .oc-filters__row { margin-top: 5px; }
+.oc-filters__label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim);
+  letter-spacing: 1px; width: 32px; text-transform: uppercase;
+}
+.filter-pill {
+  padding: 2px 8px;
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 0.8px; cursor: pointer; text-transform: uppercase;
+  color: var(--text-dim); background: transparent;
+  border: 1px solid var(--border-0);
+  transition: all 0.1s;
+}
+.filter-pill:hover { color: var(--text-muted); border-color: var(--border-1); }
+.filter-pill.active {
+  color: #000; background: var(--teal); border-color: var(--teal);
+}
+
+/* Contract list */
+.oc-list { flex: 1; overflow-y: auto; }
+.oc-list::-webkit-scrollbar { width: 4px; }
+.oc-list::-webkit-scrollbar-track { background: transparent; }
+.oc-list::-webkit-scrollbar-thumb { background: var(--border-1); }
+
+.oc-item {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-0);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.oc-item:hover { background: var(--bg-hover); }
+.oc-item.locked { opacity: 0.4; cursor: default; }
+.oc-item.locked:hover { background: transparent; }
+
+/* Row 1: Name + type badge */
+.oc-item__row1 {
+  display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 3px;
+}
+.oc-item__name {
+  font-size: 12px; font-weight: 600; color: var(--text-bright);
+  flex: 1; margin-right: 8px; line-height: 1.3;
+}
+.oc-item__type-badge {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 0.8px; padding: 1px 6px; flex-shrink: 0;
+}
+.oc-item__type-badge.gov {
+  color: var(--teal); background: var(--teal-faint); border: 1px solid var(--teal-border);
+}
+.oc-item__type-badge.private {
+  color: var(--gold); background: var(--gold-faint); border: 1px solid var(--gold-border);
+}
+
+/* Row 2: Issuer + ID */
+.oc-item__row2 {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+}
+.oc-item__issuer { font-size: 10px; }
+.oc-item__issuer.gov { color: var(--teal); }
+.oc-item__issuer.private { color: var(--gold); }
+.oc-item__id { font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); }
+
+/* Row 3: Stats */
+.oc-item__stats {
+  display: flex; align-items: center; gap: 0;
+}
+.oc-stat {
+  flex: 1;
+}
+.oc-stat__label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim);
+  letter-spacing: 0.8px; text-transform: uppercase;
+}
+.oc-stat__value {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--text-bright);
+}
+.oc-stat__value.warn { color: var(--orange); }
+.oc-stat__value.light { color: var(--teal); }
+.oc-stat__value.heavy { color: var(--orange); }
+.oc-stat__value.mega { color: var(--red); }
+.oc-eligibility {
+  width: 50px; text-align: right;
+}
+.oc-eligible-badge {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  padding: 1px 6px;
+}
+.oc-eligible-badge.yes {
+  color: var(--green); background: var(--green-faint); border: 1px solid var(--green-border);
+}
+.oc-eligible-badge.no {
+  color: var(--red); background: var(--red-faint); border: 1px solid var(--red-border);
+}
+
+/* Footer */
+.oc-card__footer {
+  padding: 8px 14px;
+  border-top: 1px solid var(--border-0);
+  background: var(--bg-3);
+  display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0;
+}
+.oc-card__footer-hint {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+}
+
+/* Empty state */
+.oc-empty {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+}
+.oc-empty__text {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-bright);
+  letter-spacing: 0.04em; text-align: center; line-height: 1.8;
+}
+body.light-mode .oc-empty__text { color: #1a1a17; }
+
+/* ── Contract Detail Modal ── */
+.cd-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6); z-index: 2000;
+  align-items: center; justify-content: center;
+}
+.cd-overlay.open { display: flex; }
+.cd-modal {
+  width: 720px; max-height: 90vh;
+  background: var(--bg-2); border: 1px solid var(--border-0);
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.6);
+}
+
+/* Modal header */
+.cd-header {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-0);
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--bg-3); flex-shrink: 0;
+}
+.cd-header__left { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.cd-header__nation {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 0.8px; padding: 2px 8px; flex-shrink: 0;
+  color: var(--teal); background: var(--teal-faint); border: 1px solid var(--teal-border);
+}
+.cd-header__name {
+  font-size: 15px; font-weight: 700; color: var(--text-bright);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cd-header__sep { color: var(--text-dim); font-size: 12px; flex-shrink: 0; }
+.cd-header__issuer { font-size: 12px; flex-shrink: 0; }
+.cd-header__issuer.gov { color: var(--teal); }
+.cd-header__issuer.private { color: var(--gold); }
+.cd-header__type-badge {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 0.8px; padding: 2px 6px; flex-shrink: 0;
+}
+.cd-header__type-badge.gov {
+  color: var(--teal); background: var(--teal-faint); border: 1px solid var(--teal-border);
+}
+.cd-header__type-badge.private {
+  color: var(--gold); background: var(--gold-faint); border: 1px solid var(--gold-border);
+}
+.cd-close {
+  font-family: var(--font-mono); font-size: 16px; color: var(--text-dim);
+  cursor: pointer; padding: 0 4px; line-height: 1; flex-shrink: 0; margin-left: 8px;
+  background: none; border: none;
+}
+.cd-close:hover { color: var(--text-muted); }
+
+/* Blueprint area */
+.cd-blueprint {
+  border-bottom: 1px solid var(--border-0); flex-shrink: 0;
+  background: #1a2a3a;
+}
+
+/* Scrollable content */
+.cd-content { flex: 1; overflow-y: auto; padding: 0 16px; }
+.cd-content::-webkit-scrollbar { width: 4px; }
+.cd-content::-webkit-scrollbar-track { background: transparent; }
+.cd-content::-webkit-scrollbar-thumb { background: var(--border-1); }
+
+/* Project issue row */
+.cd-issue {
+  padding: 10px 0; border-bottom: 1px solid var(--border-0);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.cd-issue__left { display: flex; align-items: center; gap: 10px; }
+.cd-issue__label {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); letter-spacing: 1px;
+}
+.cd-issue__number {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--text-bright);
+}
+.cd-issue__tags { display: flex; gap: 6px; }
+.cd-tag {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 0.8px; padding: 2px 8px;
+}
+.cd-tag.teal { color: var(--teal); background: var(--teal-faint); border: 1px solid var(--teal-border); }
+.cd-tag.gold { color: var(--gold); background: var(--gold-faint); border: 1px solid var(--gold-border); }
+
+/* Description */
+.cd-desc {
+  padding: 10px 0; border-bottom: 1px solid var(--border-0);
+}
+.cd-section-label {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+  letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px;
+}
+.cd-desc__text {
+  font-size: 12px; color: var(--text-muted); line-height: 1.6;
+}
+
+/* Detail rows */
+.cd-details { padding: 4px 0; }
+.cd-detail-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 5px 0; border-bottom: 1px solid var(--border-0);
+}
+.cd-detail-row__label {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px;
+  color: var(--text-dim); text-transform: uppercase;
+}
+.cd-detail-row__value {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--text-bright);
+}
+
+/* Permit / Equipment / Material items */
+.cd-items {
+  padding: 10px 0; border-bottom: 1px solid var(--border-0);
+}
+.cd-items__list { display: flex; gap: 6px; flex-wrap: wrap; }
+.cd-chip {
+  padding: 3px 8px; display: flex; align-items: center; gap: 5px;
+  border: 1px solid var(--border-0); background: var(--bg-3);
+}
+.cd-chip__icon {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+}
+.cd-chip__label {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-muted);
+}
+.cd-chip.approved { border-color: rgba(92,184,92,0.2); background: rgba(92,184,92,0.04); }
+.cd-chip.approved .cd-chip__icon { color: var(--green); }
+.cd-chip.approved .cd-chip__label { color: var(--green); }
+.cd-chip.required { border-color: var(--border-0); }
+.cd-chip.required .cd-chip__icon { color: var(--orange); }
+.cd-chip.owned { border-color: rgba(92,184,92,0.2); background: rgba(92,184,92,0.04); }
+.cd-chip.owned .cd-chip__icon { color: var(--green); }
+.cd-chip.owned .cd-chip__label { color: var(--green); }
+.cd-chip.missing { border-color: rgba(217,83,79,0.2); background: rgba(217,83,79,0.04); }
+.cd-chip.missing .cd-chip__icon { color: var(--red); }
+.cd-chip.missing .cd-chip__label { color: var(--red); }
+
+/* Materials list */
+.cd-materials { padding: 10px 0; }
+.cd-mat-row {
+  display: flex; justify-content: space-between; padding: 3px 0;
+  border-bottom: 1px solid var(--border-0);
+}
+.cd-mat-row__name { font-size: 11px; color: var(--text-muted); }
+.cd-mat-row__qty { font-family: var(--font-mono); font-size: 10px; color: var(--text-bright); }
+
+/* Modal footer */
+.cd-footer {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border-0);
+  background: var(--bg-3);
+  display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0;
+}
+.cd-footer__badges { display: flex; align-items: center; gap: 12px; }
+.cd-footer__badge {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  padding: 2px 8px;
+}
+.cd-footer__badge.ok {
+  color: var(--green); background: var(--green-faint); border: 1px solid var(--green-border);
+}
+.cd-footer__badge.warn {
+  color: var(--orange); background: var(--orange-faint); border: 1px solid var(--orange-border);
+}
+.cd-footer__badge.bad {
+  color: var(--red); background: var(--red-faint); border: 1px solid var(--red-border);
+}
+.cd-footer__actions { display: flex; gap: 8px; }
+.cd-btn {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 1px; padding: 6px 20px; cursor: pointer; border: none;
+}
+.cd-btn.secondary {
+  color: var(--text-dim); background: transparent; border: 1px solid var(--border-0);
+}
+.cd-btn.secondary:hover { color: var(--text-muted); border-color: var(--border-1); }
+.cd-btn.primary {
+  color: #000; background: var(--teal);
+}
+.cd-btn.primary:hover { background: #6bc0b6; }
+.cd-btn.primary:disabled {
+  opacity: 0.3; cursor: not-allowed;
+}
+
+/* ── Responsive modal ── */
+@media (max-width: 780px) {
+  .cd-modal { width: 95vw; max-height: 95vh; }
+  .cd-header__left { flex-wrap: wrap; gap: 4px; }
+  .cd-header__name { font-size: 13px; }
+}
+
+/* ── Active Projects card — 380×450 ── */
+.ap-card {
+  width: 380px; height: 450px;
+  background: var(--bg-2); border: 1px solid var(--border-0);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.ap-card__header {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-0);
+  display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0;
+}
+.ap-card__header-left { display: flex; align-items: center; gap: 6px; }
+.ap-card__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--amber); }
+.ap-card__label {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 2px; color: var(--text-muted); text-transform: uppercase;
+}
+.ap-card__count {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+}
+
+/* Project list */
+.ap-list { flex: 1; overflow-y: auto; }
+.ap-list::-webkit-scrollbar { width: 4px; }
+.ap-list::-webkit-scrollbar-track { background: transparent; }
+.ap-list::-webkit-scrollbar-thumb { background: var(--border-1); }
+
+/* Project item */
+.ap-item { padding: 10px 14px; border-bottom: 1px solid var(--border-0); }
+
+/* Row 1: name + type */
+.ap-item__row1 {
+  display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;
+}
+.ap-item__info { flex: 1; margin-right: 8px; }
+.ap-item__name { font-size: 12px; font-weight: 600; color: var(--text-bright); line-height: 1.3; }
+.ap-item__id { font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); margin-top: 2px; }
+
+/* Phase track */
+.ap-phase-track { display: flex; gap: 2px; align-items: center; margin-bottom: 6px; }
+.ap-phase-dot {
+  width: 6px; height: 6px; background: var(--border-0);
+}
+.ap-phase-dot.done { background: var(--teal); }
+.ap-phase-dot.active { width: 10px; background: #a3b07e; border-radius: 1px; }
+.ap-phase-label {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  color: #a3b07e; margin-left: 4px;
+}
+
+/* Budget bar */
+.ap-budget { margin-bottom: 6px; }
+.ap-budget__header {
+  display: flex; justify-content: space-between; margin-bottom: 2px;
+}
+.ap-budget__label {
+  font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); letter-spacing: 0.8px;
+}
+.ap-budget__values { font-family: var(--font-mono); font-size: 9px; }
+.ap-budget__bar { width: 100%; height: 3px; background: var(--border-0); }
+.ap-budget__fill { height: 100%; }
+
+/* Details grid */
+.ap-details {
+  display: flex; gap: 0; background: var(--bg-3); border: 1px solid var(--border-0); padding: 5px 0;
+}
+.ap-detail-cell { padding: 0 8px; }
+.ap-detail-cell + .ap-detail-cell { border-left: 1px solid var(--border-0); }
+.ap-detail-cell__label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim);
+  letter-spacing: 0.8px; text-transform: uppercase;
+}
+.ap-detail-cell__value {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-bright); margin-top: 1px;
+}
+.ap-detail-cell__value.zero { color: var(--text-dim); }
+.ap-detail-cell__sub {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); margin-top: 1px;
+}
+.ap-late-tag {
+  font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+  color: var(--red); margin-left: 4px;
+}
+
+/* View button */
+.ap-item__view-row { display: flex; justify-content: flex-end; margin-top: 6px; }
+.ap-view-btn {
+  padding: 3px 12px; font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 1px; color: var(--teal); border: 1px solid var(--teal-border);
+  background: transparent; cursor: pointer;
+}
+.ap-view-btn:hover { background: var(--teal-faint); }
+
+/* Footer */
+.ap-card__footer {
+  padding: 8px 14px; border-top: 1px solid var(--border-0);
+  background: var(--bg-3); display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0;
+}
+.ap-footer-stats { display: flex; gap: 12px; }
+.ap-footer-stat__label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); letter-spacing: 0.8px;
+}
+.ap-footer-stat__value {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--text-bright);
+}
+
+/* Empty state */
+.ap-empty {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+}
+.ap-empty__text {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-bright);
+  letter-spacing: 0.04em; text-align: center; line-height: 1.8;
+}
+body.light-mode .ap-empty__text { color: #1a1a17; }
+
+/* ── Warehouse card — 380×450 ── */
+.wh-card {
+  width: 380px; height: 450px;
+  background: var(--bg-2); border: 1px solid var(--border-0);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.wh-card__header {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-0);
+  display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0;
+}
+.wh-card__header-left { display: flex; align-items: center; gap: 6px; }
+.wh-card__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
+.wh-card__label {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 2px; color: var(--text-muted); text-transform: uppercase;
+}
+.wh-card__count {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+}
+
+/* Material list */
+.wh-list { flex: 1; overflow-y: auto; }
+.wh-list::-webkit-scrollbar { width: 4px; }
+.wh-list::-webkit-scrollbar-track { background: transparent; }
+.wh-list::-webkit-scrollbar-thumb { background: var(--border-1); }
+
+/* Collapsed material row */
+.wh-row { border-bottom: 1px solid var(--border-0); }
+.wh-row__collapsed {
+  padding: 7px 14px; display: flex; align-items: center;
+  cursor: pointer; transition: background 0.1s;
+}
+.wh-row__collapsed:hover { background: var(--bg-hover); }
+.wh-row__collapsed.expanded { background: rgba(139,154,107,0.03); }
+
+.wh-row__arrow {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+  width: 12px; flex-shrink: 0;
+}
+.wh-row__name {
+  font-size: 11px; font-weight: 600; color: var(--text-bright); flex: 1;
+}
+.wh-row__name.empty { color: var(--text-dim); }
+
+/* Quality dots */
+.wh-row__dots { display: flex; gap: 3px; margin-right: 8px; align-items: center; }
+.wh-dot {
+  width: 5px; height: 5px; border-radius: 1px;
+}
+.wh-dot--low { background: var(--orange); }
+.wh-dot--std { background: var(--amber); }
+.wh-dot--high { background: var(--green); }
+.wh-dot--empty { background: var(--border-0); }
+.wh-dot--locked { background: var(--red); opacity: 0.4; }
+
+.wh-row__qty {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  color: var(--text-bright); width: 45px; text-align: right;
+}
+.wh-row__qty.empty { color: var(--text-dim); }
+.wh-row__val {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-muted);
+  width: 55px; text-align: right;
+}
+.wh-row__val.empty { color: var(--text-dim); }
+
+/* Expanded grade breakdown */
+.wh-expand {
+  padding: 0 14px 8px 26px;
+  background: rgba(139,154,107,0.03);
+}
+.wh-expand__hdr {
+  display: flex; align-items: center; padding: 4px 0 3px;
+  border-bottom: 1px solid var(--border-0);
+}
+.wh-expand__hdr-label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim);
+  letter-spacing: 1px; text-transform: uppercase;
+}
+
+/* Grade row */
+.wh-grade {
+  display: flex; align-items: center; padding: 4px 0;
+  border-bottom: 1px solid var(--border-0);
+}
+.wh-grade:last-child { border-bottom: none; }
+.wh-grade.unavailable { opacity: 0.4; }
+.wh-grade__label { flex: 1; display: flex; align-items: center; gap: 5px; }
+.wh-grade__name { font-family: var(--font-mono); font-size: 10px; }
+.wh-grade__tag {
+  font-family: var(--font-mono); font-size: 7px; color: var(--red);
+  padding: 0 4px; border: 1px solid var(--border-0); line-height: 12px;
+}
+.wh-grade__qty {
+  font-family: var(--font-mono); font-size: 10px; width: 50px; text-align: right;
+}
+.wh-grade__val {
+  font-family: var(--font-mono); font-size: 9px; width: 60px; text-align: right;
+}
+.wh-grade__cpu {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+  width: 55px; text-align: right;
+}
+
+/* Lock reason box */
+.wh-lock {
+  margin-top: 4px; padding: 3px 6px;
+  background: rgba(217,83,79,0.04); border: 1px solid rgba(217,83,79,0.1);
+}
+.wh-lock__text {
+  font-family: var(--font-mono); font-size: 8px; color: var(--red);
+}
+
+/* Footer */
+.wh-card__footer {
+  padding: 8px 14px; border-top: 1px solid var(--border-0);
+  background: var(--bg-3); display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0;
+}
+.wh-footer__total-label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); letter-spacing: 0.8px;
+}
+.wh-footer__total-value {
+  font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--teal);
+}
+.wh-footer__right { display: flex; gap: 8px; align-items: center; }
+.wh-footer__stat {
+  text-align: center;
+}
+.wh-footer__stat-label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); letter-spacing: 0.8px;
+}
+.wh-footer__stat-value {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+}
+.wh-legend {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.wh-legend__item { display: flex; gap: 2px; align-items: center; }
+.wh-legend__label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim);
+}
+
+/* Empty state */
+.wh-empty {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+}
+.wh-empty__text {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-bright);
+  letter-spacing: 0.04em; text-align: center; line-height: 1.8;
+}
+body.light-mode .wh-empty__text { color: #1a1a17; }
+
+/* ── Procurement card — 380×450 ── */
+.pr-card {
+  width: 380px; height: 450px;
+  background: var(--bg-2); border: 1px solid var(--border-0);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.pr-card__header {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-0);
+  display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0;
+}
+.pr-card__header-left { display: flex; align-items: center; gap: 6px; }
+.pr-card__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--amber); }
+.pr-card__label {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 2px; color: var(--text-muted); text-transform: uppercase;
+}
+.pr-card__nation-badge {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 0.8px; padding: 1px 6px;
+  color: var(--teal); background: var(--teal-faint); border: 1px solid var(--teal-border);
+}
+
+/* Material selector grid — 2×4 */
+.pr-mat-grid {
+  padding: 6px 14px; border-bottom: 1px solid var(--border-0);
+  background: var(--bg-3);
+  display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 3px;
+  flex-shrink: 0;
+}
+.pr-mat-btn {
+  padding: 4px 0; font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 0.3px; cursor: pointer; text-align: center;
+  color: var(--text-dim); background: transparent;
+  border: 1px solid var(--border-0); transition: all 0.1s;
+}
+.pr-mat-btn:hover { color: var(--text-muted); border-color: var(--border-1); }
+.pr-mat-btn.active { color: #000; background: var(--teal); border-color: var(--teal); }
+.pr-mat-btn.all-locked { color: var(--red); opacity: 0.4; }
+
+/* Quality tier selector */
+.pr-tier-bar {
+  padding: 6px 14px; border-bottom: 1px solid var(--border-0);
+  display: flex; gap: 6px; align-items: center; flex-shrink: 0;
+}
+.pr-tier-label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim);
+  letter-spacing: 1px; text-transform: uppercase; width: 38px;
+}
+.pr-tier-btn {
+  flex: 1; padding: 4px 0; text-align: center;
+  cursor: pointer; border: 1px solid var(--border-0);
+  background: transparent; transition: all 0.1s;
+}
+.pr-tier-btn:hover { border-color: var(--border-1); }
+.pr-tier-btn.active { background: rgba(139,154,107,0.06); border-color: rgba(139,154,107,0.4); }
+.pr-tier-btn.locked { opacity: 0.3; cursor: not-allowed; }
+.pr-tier-btn__label {
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+}
+.pr-tier-btn__name {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+}
+.pr-tier-btn__price {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700; margin-top: 2px;
+}
+.pr-tier-btn__locked-text {
+  font-family: var(--font-mono); font-size: 8px; color: var(--red); margin-top: 2px;
+}
+
+/* Market info panel */
+.pr-market-grid {
+  display: flex; gap: 0; background: var(--bg-3); border: 1px solid var(--border-0);
+}
+.pr-market-cell {
+  flex: 1; padding: 6px 10px;
+}
+.pr-market-cell + .pr-market-cell { border-left: 1px solid var(--border-0); }
+.pr-market-cell__label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim);
+  letter-spacing: 0.8px; text-transform: uppercase;
+}
+.pr-market-cell__value {
+  font-family: var(--font-mono); font-weight: 700; margin-top: 2px;
+}
+
+/* Price drivers */
+.pr-drivers { padding: 6px 14px; border-bottom: 1px solid var(--border-0); }
+.pr-drivers__title {
+  font-family: var(--font-mono); font-size: 8px; letter-spacing: 1.5px;
+  color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px;
+}
+.pr-driver-row {
+  display: flex; align-items: center; gap: 6px; padding: 2px 0;
+}
+.pr-driver-row__stat {
+  font-family: var(--font-mono); font-size: 8px; color: var(--text-muted);
+  width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pr-driver-row__bar { width: 40px; height: 3px; background: var(--border-0); }
+.pr-driver-row__fill { height: 100%; }
+.pr-driver-row__val {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-bright);
+  width: 18px; text-align: right;
+}
+.pr-driver-row__effect {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim);
+  flex: 1; text-align: right;
+}
+
+/* Purchase order box */
+.pr-order { padding: 8px 14px; }
+.pr-order__title {
+  font-family: var(--font-mono); font-size: 8px; letter-spacing: 1.5px;
+  color: #a3b07e; text-transform: uppercase; margin-bottom: 6px;
+}
+.pr-order__box {
+  background: var(--bg-3); border: 1px solid var(--border-0); padding: 8px 10px;
+}
+.pr-order__header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border-0);
+}
+.pr-order__mat-name { font-size: 12px; font-weight: 600; color: var(--text-bright); }
+.pr-order__mat-price {
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+}
+
+/* Quantity selector */
+.pr-qty-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+}
+.pr-qty-label {
+  font-family: var(--font-mono); font-size: 8px; color: var(--text-dim);
+  letter-spacing: 0.8px; text-transform: uppercase; width: 32px;
+}
+.pr-qty-btns { display: flex; gap: 4px; flex: 1; }
+.pr-qty-btn {
+  flex: 1; text-align: center; padding: 3px 0;
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  cursor: pointer; color: var(--text-dim); background: transparent;
+  border: 1px solid var(--border-0); transition: all 0.1s;
+}
+.pr-qty-btn:hover { color: var(--text-muted); border-color: var(--border-1); }
+.pr-qty-btn.active { color: #000; background: var(--teal); border-color: var(--teal); }
+
+/* Supply warning */
+.pr-supply-warn {
+  padding: 3px 6px; margin-bottom: 6px;
+  background: rgba(217,83,79,0.04); border: 1px solid rgba(217,83,79,0.12);
+}
+.pr-supply-warn__text {
+  font-family: var(--font-mono); font-size: 8px; color: var(--red);
+}
+
+/* Total cost + purchase button */
+.pr-order__total {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 0; border-top: 1px solid var(--border-0);
+}
+.pr-order__total-label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); letter-spacing: 0.8px;
+}
+.pr-order__total-value {
+  font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--text-bright);
+}
+.pr-purchase-btn {
+  padding: 5px 18px; font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 1px; color: #000; background: var(--teal);
+  cursor: pointer; border: none;
+}
+.pr-purchase-btn:hover { background: #6bc0b6; }
+.pr-purchase-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* Locked tier panel */
+.pr-locked-panel {
+  padding: 20px 14px; text-align: center;
+}
+.pr-locked-box {
+  padding: 16px; background: rgba(217,83,79,0.04);
+  border: 1px solid rgba(217,83,79,0.12);
+}
+.pr-locked-box__title {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  color: var(--red); letter-spacing: 1px; margin-bottom: 6px;
+}
+.pr-locked-box__desc {
+  font-size: 11px; color: var(--text-muted); line-height: 1.5; margin-bottom: 8px;
+}
+.pr-locked-box__reason {
+  font-family: var(--font-mono); font-size: 9px; color: var(--red);
+  padding: 4px 8px; background: var(--bg-3); border: 1px solid var(--border-0);
+  display: inline-block;
+}
+.pr-locked-box__hint {
+  font-size: 10px; color: var(--text-dim); margin-top: 10px; line-height: 1.5;
+}
+
+/* Footer */
+.pr-card__footer {
+  padding: 6px 14px; border-top: 1px solid var(--border-0);
+  background: var(--bg-3); display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0;
+}
+.pr-footer__label {
+  font-family: var(--font-mono); font-size: 8px; color: var(--text-dim);
+}
+.pr-footer__value {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+}
+
+/* ── Equipment Inventory card — 380×450 ── */
+.eq-card {
+  width: 380px; height: 450px;
+  background: var(--bg-2); border: 1px solid var(--border-0);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.eq-card__header {
+  padding: 8px 14px; border-bottom: 1px solid var(--border-0);
+  display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+}
+.eq-card__header-left { display: flex; align-items: center; gap: 6px; }
+.eq-card__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--blue); }
+.eq-card__label {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 2px; color: var(--text-muted); text-transform: uppercase;
+}
+.eq-card__count { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
+
+/* Summary bar */
+.eq-summary {
+  display: flex; border-bottom: 1px solid var(--border-0);
+  background: var(--bg-3); flex-shrink: 0;
+}
+.eq-summary__cell { flex: 1; padding: 6px 14px; }
+.eq-summary__cell + .eq-summary__cell { border-left: 1px solid var(--border-0); }
+.eq-summary__label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim);
+  letter-spacing: 0.8px; text-transform: uppercase;
+}
+.eq-summary__value { font-family: var(--font-mono); font-weight: 700; margin-top: 1px; }
+
+/* Equipment list */
+.eq-list { flex: 1; overflow-y: auto; }
+.eq-list::-webkit-scrollbar { width: 4px; }
+.eq-list::-webkit-scrollbar-track { background: transparent; }
+.eq-list::-webkit-scrollbar-thumb { background: var(--border-1); }
+
+/* Tier header */
+.eq-tier-hdr {
+  padding: 6px 14px; border-bottom: 1px solid var(--border-0);
+  background: var(--bg-3); display: flex; justify-content: space-between; align-items: center;
+  cursor: pointer; transition: background 0.1s;
+}
+.eq-tier-hdr:hover { background: var(--bg-hover); }
+.eq-tier-hdr__left { display: flex; align-items: center; gap: 6px; }
+.eq-tier-hdr__arrow {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); width: 12px;
+}
+.eq-tier-hdr__name {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 1px; text-transform: uppercase;
+}
+.eq-tier-hdr__tag {
+  font-family: var(--font-mono); font-size: 7px; letter-spacing: 0.8px;
+  padding: 0 4px; line-height: 12px;
+}
+.eq-tier-hdr__count {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-muted);
+}
+.eq-tier-hdr__none {
+  font-family: var(--font-mono); font-size: 8px; color: var(--text-dim);
+}
+
+/* Equipment row */
+.eq-row {
+  padding: 6px 14px 6px 32px; border-bottom: 1px solid var(--border-0);
+}
+.eq-row.unowned { opacity: 0.35; }
+.eq-row__top {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.eq-row__name-area { display: flex; align-items: center; gap: 6px; }
+.eq-row__name { font-size: 11px; font-weight: 600; color: var(--text-bright); }
+.eq-row__name.dim { color: var(--text-dim); }
+.eq-row__wear {
+  font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+  padding: 0 4px; line-height: 12px;
+  color: var(--orange); background: var(--orange-faint); border: 1px solid var(--orange-border);
+}
+.eq-row__right { display: flex; align-items: center; gap: 8px; }
+.eq-row__free { font-family: var(--font-mono); font-size: 9px; font-weight: 700; }
+.eq-row__ratio { font-family: var(--font-mono); font-size: 9px; color: var(--text-muted); }
+
+/* Equipment detail bar */
+.eq-detail {
+  display: flex; gap: 0; background: var(--bg-3); border: 1px solid var(--border-0);
+  padding: 4px 0; margin-top: 5px;
+}
+.eq-detail__cell { padding: 0 8px; }
+.eq-detail__cell + .eq-detail__cell { border-left: 1px solid var(--border-0); }
+.eq-detail__label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim);
+  letter-spacing: 0.8px; text-transform: uppercase;
+}
+.eq-detail__value {
+  font-family: var(--font-mono); font-size: 9px; margin-top: 2px;
+}
+.eq-detail__bar { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.eq-detail__bar-track { flex: 1; height: 3px; background: var(--border-0); }
+.eq-detail__bar-fill { height: 100%; }
+.eq-detail__bar-pct {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700; width: 28px; text-align: right;
+}
+
+/* Unowned hint */
+.eq-row__hint {
+  font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); margin-top: 2px;
+}
+
+/* Footer */
+.eq-card__footer {
+  padding: 8px 14px; border-top: 1px solid var(--border-0);
+  background: var(--bg-3); display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0;
+}
+.eq-footer__maint-label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); letter-spacing: 0.8px;
+}
+.eq-footer__maint-value {
+  font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--red);
+}
+.eq-footer__tiers { display: flex; gap: 6px; }
+.eq-footer__tier-box {
+  text-align: center; padding: 2px 8px;
+  border: 1px solid var(--border-0);
+}
+.eq-footer__tier-tag {
+  font-family: var(--font-mono); font-size: 7px; letter-spacing: 0.5px;
+}
+.eq-footer__tier-count {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+}
+
+/* ── Equipment Market card — 380×450 ── */
+.em-card {
+  width: 380px; height: 450px;
+  background: var(--bg-2); border: 1px solid var(--border-0);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.em-card__header {
+  padding: 8px 14px; border-bottom: 1px solid var(--border-0);
+  display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+}
+.em-card__header-left { display: flex; align-items: center; gap: 6px; }
+.em-card__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--blue); }
+.em-card__label {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 2px; color: var(--text-muted); text-transform: uppercase;
+}
+.em-tier-badge {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 0.8px; padding: 1px 6px;
+}
+
+/* Nation switcher */
+.em-nation-bar {
+  padding: 6px 14px; border-bottom: 1px solid var(--border-0);
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+}
+.em-nation-label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim);
+  letter-spacing: 1px; text-transform: uppercase; flex-shrink: 0;
+}
+.em-nation-select {
+  flex: 1; padding: 3px 6px;
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  background: var(--bg-3); border: 1px solid var(--border-0);
+  color: var(--text-bright); cursor: pointer; outline: none;
+}
+.em-nation-select:focus { border-color: var(--teal-border); }
+.em-import-tag {
+  font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+  padding: 0 5px; line-height: 13px; letter-spacing: 0.5px;
+  color: var(--orange); background: var(--orange-faint); border: 1px solid var(--orange-border);
+  flex-shrink: 0;
+}
+
+/* Equipment selector grid */
+.em-selector {
+  padding: 6px 10px; border-bottom: 1px solid var(--border-0);
+  background: var(--bg-3); flex-shrink: 0;
+}
+.em-selector__tier-label {
+  font-family: var(--font-mono); font-size: 7px; letter-spacing: 1px;
+  margin-bottom: 2px; opacity: 0.7;
+}
+.em-selector__grid {
+  display: grid; gap: 2px;
+}
+.em-selector__grid--t12 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+.em-selector__grid--t3 { grid-template-columns: 1fr 1fr 1fr; }
+.em-selector__btn {
+  padding: 3px 0; font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+  letter-spacing: 0.2px; cursor: pointer; text-align: center;
+  color: var(--text-dim); background: transparent;
+  border: 1px solid var(--border-0); transition: all 0.1s;
+}
+.em-selector__btn:hover { color: var(--text-muted); border-color: var(--border-1); }
+.em-selector__btn.active { color: #000; }
+.em-selector__btn.no-listings { opacity: 0.35; }
+.em-selector__row + .em-selector__row { margin-top: 3px; }
+
+/* Listing item */
+.em-listing {
+  padding: 8px 14px; border-bottom: 1px solid var(--border-0);
+  cursor: pointer; transition: background 0.1s;
+  border-left: 2px solid transparent;
+}
+.em-listing:hover { background: var(--bg-hover); }
+.em-listing.selected { border-left-color: var(--teal); background: rgba(90,175,165,0.04); }
+.em-listing__row1 {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;
+}
+.em-listing__seller { font-size: 11px; font-weight: 600; color: var(--text-bright); }
+.em-listing__badges { display: flex; gap: 4px; align-items: center; }
+.em-badge {
+  font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+  padding: 0 5px; line-height: 13px; letter-spacing: 0.5px;
+}
+.em-badge--local { color: var(--teal); background: var(--teal-faint); border: 1px solid var(--teal-border); }
+.em-badge--corp { color: #5a8aaa; background: rgba(90,138,170,0.1); border: 1px solid rgba(90,138,170,0.25); }
+.em-badge--used { color: var(--orange); background: var(--orange-faint); border: 1px solid var(--orange-border); }
+
+.em-listing__row2 {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 5px;
+}
+.em-listing__nation {
+  font-family: var(--font-mono); font-size: 7px; letter-spacing: 0.5px;
+  color: var(--teal); padding: 0 4px; line-height: 12px;
+  background: var(--teal-faint); border: 1px solid var(--teal-border);
+}
+.em-listing__distance { font-family: var(--font-mono); font-size: 8px; color: var(--orange); }
+.em-listing__delivery { font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); }
+
+/* Listing stats bar */
+.em-listing__stats {
+  display: flex; gap: 0; background: var(--bg-3); border: 1px solid var(--border-0);
+}
+.em-stat-cell { padding: 4px 8px; }
+.em-stat-cell + .em-stat-cell { border-left: 1px solid var(--border-0); }
+.em-stat-cell__label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); letter-spacing: 0.8px;
+}
+.em-stat-cell__value { font-family: var(--font-mono); font-weight: 700; margin-top: 2px; }
+.em-stat-cell__bar { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+.em-stat-cell__bar-track { flex: 1; height: 3px; background: var(--border-0); }
+.em-stat-cell__bar-fill { height: 100%; }
+
+/* Price breakdown */
+.em-breakdown {
+  margin-top: 5px; padding: 5px 8px;
+  background: var(--bg-0); border: 1px solid var(--border-0);
+}
+.em-breakdown__title {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim);
+  letter-spacing: 1px; text-transform: uppercase; margin-bottom: 3px;
+}
+.em-breakdown__row {
+  display: flex; justify-content: space-between; padding: 1px 0; font-size: 10px;
+}
+.em-breakdown__label { color: var(--text-muted); }
+.em-breakdown__mod { font-family: var(--font-mono); font-size: 9px; }
+
+/* Purchase section */
+.em-purchase { padding: 8px 14px; border-top: 1px solid var(--border-0); }
+.em-purchase__box {
+  background: var(--bg-3); border: 1px solid var(--border-0); padding: 8px 10px;
+}
+.em-purchase__header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 6px; padding-bottom: 5px; border-bottom: 1px solid var(--border-0);
+}
+.em-purchase__name { font-size: 11px; font-weight: 600; color: var(--text-bright); }
+.em-purchase__price { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+.em-purchase__qty { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.em-purchase__qty-label {
+  font-family: var(--font-mono); font-size: 8px; color: var(--text-dim);
+  letter-spacing: 0.8px; width: 28px;
+}
+.em-purchase__qty-btns { display: flex; gap: 3px; }
+.em-qty-btn {
+  width: 28px; text-align: center; padding: 3px 0;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  cursor: pointer; color: var(--text-dim); background: transparent;
+  border: 1px solid var(--border-0); transition: all 0.1s;
+}
+.em-qty-btn:hover { color: var(--text-muted); border-color: var(--border-1); }
+.em-qty-btn.active { color: #000; }
+.em-purchase__total {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-top: 6px; border-top: 1px solid var(--border-0);
+}
+.em-purchase__total-label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); letter-spacing: 0.8px;
+}
+.em-purchase__total-value {
+  font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--text-bright);
+}
+.em-purchase__delivery-warn {
+  font-family: var(--font-mono); font-size: 8px; color: var(--orange); margin-top: 1px;
+}
+.em-purchase-btn {
+  padding: 5px 18px; font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 1px; color: #000; cursor: pointer; border: none;
+}
+.em-purchase-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* No listings panel */
+.em-no-listings { padding: 30px 14px; text-align: center; }
+.em-no-listings__box {
+  padding: 20px; background: var(--bg-3); border: 1px solid var(--border-0);
+}
+.em-no-listings__title {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  color: var(--text-dim); letter-spacing: 1px; margin-bottom: 6px;
+}
+.em-no-listings__desc {
+  font-size: 11px; color: var(--text-muted); line-height: 1.5;
+}
+
+/* Footer */
+.em-card__footer {
+  padding: 6px 14px; border-top: 1px solid var(--border-0);
+  background: var(--bg-3); display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0;
+}
+.em-footer__label { font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); }
+.em-footer__value { font-family: var(--font-mono); font-size: 11px; font-weight: 700; }
+.em-legend { display: flex; align-items: center; gap: 8px; }
+.em-legend__item { display: flex; gap: 3px; align-items: center; }
+.em-legend__dot { width: 5px; height: 5px; border-radius: 1px; }
+.em-legend__label { font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); }
+
+/* ── Responsive ── */
+@media (max-width: 1100px) {
+  .top-bar-sep { display: none; }
+  .tick-info { gap: 12px; }
+  .top-bar-right { gap: 6px; flex-wrap: wrap; }
+  .corp-name-badge { font-size: 10px; }
+  .content { flex-direction: column; align-items: center; padding: 12px 8px; }
+  .oc-card, .ap-card, .wh-card, .pr-card, .eq-card, .em-card { width: 100%; max-width: 420px; height: auto; min-height: 380px; }
+}
+@media (max-width: 820px) {
+  .corp-hamburger { display: block; }
+  .corp-nav { display: none; flex-direction: column; height: auto; padding: 0; }
+  .corp-nav.nav-open { display: flex; }
+  .corp-nav.nav-open .corp-nav__tab { padding: 10px 22px; border-bottom: none; border-left: 2px solid transparent; }
+  .corp-nav.nav-open .corp-nav__tab.active { border-left-color: var(--text-bright); border-bottom: none; }
+}
+@media (max-width: 480px) {
+  .top-bar-row1 { padding: 6px 8px; }
+  .corp-logo { width: 28px; height: 28px; font-size: 12px; }
+  .corp-name-bar { font-size: 12px; }
+  .tick-info { gap: 8px; }
+  .tick-label { font-size: 8px; }
+  .tick-value { font-size: 11px; }
+  .corp-name-badge { font-size: 9px; padding: 2px 6px; }
+  .oc-card, .ap-card, .wh-card, .pr-card, .eq-card, .em-card { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<div id="loading" class="loading-msg">LOADING OPERATIONS...</div>
+
+<div id="page-content" style="display:none;">
+  <!-- Top bar -->
+  <div class="top-bar-row1">
+    <div class="top-bar-left">
+      <div class="corp-badge">
+        <div class="corp-logo" id="corp-logo"></div>
+        <span class="corp-name-bar" id="corp-name-bar">Loading...</span>
+      </div>
+      <div class="top-bar-sep"></div>
+      <div class="tick-info">
+        <div class="tick-item">
+          <div class="tick-label">Game Date</div>
+          <div class="tick-value" id="game-date">--</div>
+        </div>
+        <div class="tick-item">
+          <div class="tick-label">Tick</div>
+          <div class="tick-value" id="tick-number">--</div>
+        </div>
+        <div class="tick-item">
+          <div class="tick-label">Next Tick</div>
+          <div class="tick-value" id="tick-countdown">--</div>
+        </div>
+      </div>
+    </div>
+    <div class="top-bar-right">
+      <div class="faction-switcher" id="faction-switcher" style="position:relative;">
+        <span class="corp-name-badge" id="corp-name-badge" onclick="toggleCorpDropdown()" style="cursor:pointer;">--</span>
+        <div class="corp-faction-dropdown" id="corp-faction-dropdown"></div>
+      </div>
+      <span class="topbar-ap" id="topbar-ap"></span>
+      <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle">Light</button>
+      <button class="logout-btn" onclick="doLogout()">Logout</button>
+    </div>
+  </div>
+
+  <!-- Nav tabs -->
+  <button class="corp-hamburger" onclick="document.querySelector('.corp-nav').classList.toggle('nav-open')">&#9776;</button>
+  <nav class="corp-nav" id="corp-nav">
+    <a href="corp-dashboard.html" class="corp-nav__tab" data-tab="home">Home</a>
+    <a href="corp-operations.html" class="corp-nav__tab active" data-tab="operations">Operations</a>
+    <a href="#" class="corp-nav__tab" data-tab="workforce" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Workforce</a>
+    <a href="#" class="corp-nav__tab" data-tab="expansion" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Expansion</a>
+    <a href="#" class="corp-nav__tab" data-tab="industries" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Industries</a>
+    <a href="#" class="corp-nav__tab" data-tab="innovation" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Innovation</a>
+    <a href="#" class="corp-nav__tab" data-tab="lobbying" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Lobbying</a>
+    <a href="news.html" class="corp-nav__tab" data-tab="news">News</a>
+    <a href="wiki.html" class="corp-nav__tab" data-tab="wiki">Wiki</a>
+  </nav>
+
+  <!-- Page content -->
+  <div class="content">
+
+    <!-- Open Contracts card -->
+    <div class="oc-card">
+      <div class="oc-card__header">
+        <div class="oc-card__header-left">
+          <div class="oc-card__dot"></div>
+          <span class="oc-card__label">Open Contracts</span>
+        </div>
+        <span class="oc-card__count" id="oc-count">0 AVAILABLE</span>
+      </div>
+
+      <!-- Filter bar -->
+      <div class="oc-filters">
+        <div class="oc-filters__row">
+          <span class="oc-filters__label">Type</span>
+          <span class="filter-pill active" data-filter="type" data-value="ALL" onclick="setFilter('type','ALL')">All</span>
+          <span class="filter-pill" data-filter="type" data-value="GOVERNMENT" onclick="setFilter('type','GOVERNMENT')">Gov</span>
+          <span class="filter-pill" data-filter="type" data-value="PRIVATE" onclick="setFilter('type','PRIVATE')">Private</span>
+          <div style="flex:1"></div>
+          <span class="oc-filters__label" style="width:auto;">Nation</span>
+          <span class="filter-pill active" id="nation-pill">--</span>
+        </div>
+        <div class="oc-filters__row">
+          <span class="oc-filters__label">Sort</span>
+          <span class="filter-pill active" data-filter="sort" data-value="TIMELINE" onclick="setFilter('sort','TIMELINE')">Timeline</span>
+          <span class="filter-pill" data-filter="sort" data-value="BUDGET" onclick="setFilter('sort','BUDGET')">Budget</span>
+        </div>
+      </div>
+
+      <!-- Contract list (populated by JS) -->
+      <div class="oc-list" id="oc-list">
+        <div class="oc-empty">
+          <div class="oc-empty__text">No open contracts available.<br>Contracts appear when governments allocate<br>infrastructure budgets or corporations<br>request construction services.</div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="oc-card__footer">
+        <span class="oc-card__footer-hint">Select a contract to view full details</span>
+      </div>
+    </div>
+
+    <!-- Active Projects card -->
+    <div class="ap-card">
+      <div class="ap-card__header">
+        <div class="ap-card__header-left">
+          <div class="ap-card__dot"></div>
+          <span class="ap-card__label">Active Projects</span>
+        </div>
+        <span class="ap-card__count" id="ap-count">0 ACTIVE</span>
+      </div>
+
+      <div class="ap-list" id="ap-list">
+        <div class="ap-empty">
+          <div class="ap-empty__text">No active projects.<br>Win a contract bid to start<br>your first construction project.</div>
+        </div>
+      </div>
+
+      <div class="ap-card__footer" id="ap-footer" style="display:none;">
+        <div class="ap-footer-stats">
+          <div>
+            <div class="ap-footer-stat__label">TOTAL CREW</div>
+            <div class="ap-footer-stat__value" id="ap-total-crew">0</div>
+          </div>
+          <div>
+            <div class="ap-footer-stat__label">TOTAL BUDGET</div>
+            <div class="ap-footer-stat__value" id="ap-total-budget">$0</div>
+          </div>
+          <div>
+            <div class="ap-footer-stat__label">TOTAL SPENT</div>
+            <div class="ap-footer-stat__value" id="ap-total-spent" style="color:var(--amber);">$0</div>
+          </div>
+        </div>
+        <div id="ap-late-badge"></div>
+      </div>
+    </div>
+
+    <!-- Warehouse card -->
+    <div class="wh-card">
+      <div class="wh-card__header">
+        <div class="wh-card__header-left">
+          <div class="wh-card__dot"></div>
+          <span class="wh-card__label">Warehouse</span>
+        </div>
+        <span class="wh-card__count" id="wh-count">0 UNITS</span>
+      </div>
+
+      <div class="wh-list" id="wh-list">
+        <div class="wh-empty">
+          <div class="wh-empty__text">No materials in warehouse.<br>Purchase materials from the<br>Procurement panel to stock up.</div>
+        </div>
+      </div>
+
+      <div class="wh-card__footer">
+        <div>
+          <div class="wh-footer__total-label">TOTAL INVENTORY VALUE</div>
+          <div class="wh-footer__total-value" id="wh-total-value">$0</div>
+        </div>
+        <div class="wh-footer__right">
+          <div class="wh-footer__stat">
+            <div class="wh-footer__stat-label">CAPACITY</div>
+            <div class="wh-footer__stat-value" id="wh-capacity" style="color:var(--text-dim);">0%</div>
+          </div>
+          <div class="wh-legend">
+            <div class="wh-legend__item">
+              <div class="wh-dot wh-dot--low" style="width:5px;height:5px;"></div>
+              <span class="wh-legend__label">LOW</span>
+            </div>
+            <div class="wh-legend__item">
+              <div class="wh-dot wh-dot--std" style="width:5px;height:5px;"></div>
+              <span class="wh-legend__label">STD</span>
+            </div>
+            <div class="wh-legend__item">
+              <div class="wh-dot wh-dot--high" style="width:5px;height:5px;"></div>
+              <span class="wh-legend__label">HIGH</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Procurement card -->
+    <div class="pr-card">
+      <div class="pr-card__header">
+        <div class="pr-card__header-left">
+          <div class="pr-card__dot"></div>
+          <span class="pr-card__label">Procurement</span>
+        </div>
+        <span class="pr-card__nation-badge" id="pr-nation-badge">LOCAL — --</span>
+      </div>
+
+      <!-- Material selector grid -->
+      <div class="pr-mat-grid" id="pr-mat-grid"></div>
+
+      <!-- Quality tier selector -->
+      <div class="pr-tier-bar" id="pr-tier-bar"></div>
+
+      <!-- Scrollable content: market info + purchase order OR locked panel -->
+      <div style="flex:1;overflow-y:auto;" id="pr-content"></div>
+
+      <!-- Footer -->
+      <div class="pr-card__footer">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="pr-footer__label">CASH AVAILABLE</span>
+          <span class="pr-footer__value" id="pr-cash" style="color:var(--text-bright);">--</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="pr-footer__label">WAREHOUSE</span>
+          <span class="pr-footer__value" id="pr-wh-capacity" style="color:var(--text-dim);">--%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Equipment Market card -->
+    <div class="em-card">
+      <div class="em-card__header">
+        <div class="em-card__header-left">
+          <div class="em-card__dot"></div>
+          <span class="em-card__label">Equipment Market</span>
+        </div>
+        <span class="em-tier-badge" id="em-tier-badge">TIER 1</span>
+      </div>
+      <div class="em-nation-bar">
+        <span class="em-nation-label">MARKET</span>
+        <select class="em-nation-select" id="em-nation-select" onchange="switchEmNation(this.value)"></select>
+        <span class="em-import-tag" id="em-import-tag" style="display:none;">IMPORT</span>
+      </div>
+      <div id="em-selector"></div>
+      <div style="flex:1;overflow-y:auto;" id="em-content"></div>
+      <div class="em-card__footer">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="em-footer__label">CASH</span>
+          <span class="em-footer__value" id="em-cash" style="color:var(--text-bright);">--</span>
+        </div>
+        <div class="em-legend">
+          <div class="em-legend__item"><div class="em-legend__dot" style="background:var(--teal);"></div><span class="em-legend__label">LOCAL</span></div>
+          <div class="em-legend__item"><div class="em-legend__dot" style="background:#5a8aaa;"></div><span class="em-legend__label">CORP</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Equipment Inventory card -->
+    <div class="eq-card">
+      <div class="eq-card__header">
+        <div class="eq-card__header-left">
+          <div class="eq-card__dot"></div>
+          <span class="eq-card__label">Equipment</span>
+        </div>
+        <span class="eq-card__count" id="eq-count">0 UNITS</span>
+      </div>
+      <div class="eq-summary" id="eq-summary"></div>
+      <div class="eq-list" id="eq-list"></div>
+      <div class="eq-card__footer" id="eq-footer"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Contract Detail Modal -->
+<div class="cd-overlay" id="cd-overlay" onclick="closeContractDetail(event)">
+  <div class="cd-modal" id="cd-modal" onclick="event.stopPropagation()">
+    <div class="cd-header">
+      <div class="cd-header__left" id="cd-header-left"></div>
+      <button class="cd-close" onclick="closeContractDetail()">&times;</button>
+    </div>
+    <div class="cd-blueprint" id="cd-blueprint"></div>
+    <div class="cd-content" id="cd-content"></div>
+    <div class="cd-footer" id="cd-footer"></div>
+  </div>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { escapeHtml } from './js/utils.js';
+import { initMessaging } from './js/messaging.js';
+import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
+import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, conditionColor, calculateTotalMaintenance, calculateEquipmentPrice, calculateEquipmentSupply, calculateEquipmentImportCost } from './js/game/equipment.js';
+
+let allUserFactions = [];
+let faction = null;
+let nationStats = null;
+let shard = null;
+let contracts = [];
+let activeProjects = [];
+let warehouseData = {};  // { materialKey: { LOW: {qty,value}, STD: {qty,value}, HIGH: {qty,value} } }
+let whExpandedRow = -1;  // index of expanded material row, -1 = none
+
+// Procurement state
+let prSelectedMat = 'concrete';
+let prSelectedTier = 'STD';
+let prPurchaseQty = 500;
+
+// Equipment state
+let equipmentData = [];   // rows from corp_equipment
+let eqExpandedTier = 0;   // which tier is expanded (-1 = none)
+
+// Equipment Market state
+let emSelectedType = 'trucks';
+let emSelectedListing = 0;
+let emPurchaseQty = 1;
+let emListings = [];       // generated listings for current selection
+let emSelectedNation = null; // null = HQ nation (nationStats), otherwise a foreign nation object
+let emAllNations = [];       // all nations for the dropdown
+let nextTickAt = null;
+let tickInterval = null;
+
+// Filters
+let typeFilter = 'ALL';
+let sortBy = 'TIMELINE';
+
+function fmtBig(n) {
+    if (Math.abs(n) >= 1_000_000) return '$' + (n / 1_000_000).toFixed(1) + 'M';
+    if (Math.abs(n) >= 1000) return '$' + (n / 1000).toFixed(0) + 'k';
+    return '$' + n;
+}
+
+function fmtTimeline(months) {
+    if (months >= 12) {
+        const y = Math.floor(months / 12);
+        const m = months % 12;
+        return m > 0 ? y + 'y ' + m + 'mo' : y + 'y';
+    }
+    return months + 'mo';
+}
+
+// ── Tick countdown ──
+function startTickCountdown() {
+    if (tickInterval) clearInterval(tickInterval);
+    tickInterval = setInterval(() => {
+        if (!nextTickAt) return;
+        const diff = nextTickAt - Date.now();
+        if (diff <= 0) {
+            document.getElementById('tick-countdown').textContent = 'Tick due...';
+            clearInterval(tickInterval);
+            return;
+        }
+        const h = Math.floor(diff / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        document.getElementById('tick-countdown').textContent = h + 'h ' + m + 'm ' + s + 's';
+    }, 1000);
+}
+
+// ── Theme toggle ──
+function toggleTheme() {
+    document.body.classList.toggle('light-mode');
+    const btn = document.getElementById('theme-toggle');
+    btn.textContent = document.body.classList.contains('light-mode') ? 'Dark' : 'Light';
+}
+
+// ── Filter logic ──
+function setFilter(group, value) {
+    if (group === 'type') typeFilter = value;
+    if (group === 'sort') sortBy = value;
+
+    // Update pill active states
+    document.querySelectorAll(`.filter-pill[data-filter="${group}"]`).forEach(pill => {
+        pill.classList.toggle('active', pill.dataset.value === value);
+    });
+
+    renderContracts();
+}
+
+// ── Check qualification ──
+function isQualified(contract) {
+    if (!faction) return false;
+    if (faction.corp_sector !== contract.required_sector) return false;
+    if (contract.required_subsector && faction.corp_subsector !== contract.required_subsector) return false;
+    // Megaprojects require the Megaprojects subsector
+    if (contract.spec_category === 'Megaproject' && faction.corp_subsector !== 'Megaprojects') return false;
+    return true;
+}
+
+// ── Render contracts ──
+function renderContracts() {
+    const list = document.getElementById('oc-list');
+    let filtered = [...contracts];
+
+    if (typeFilter !== 'ALL') {
+        filtered = filtered.filter(c => c.contract_type === typeFilter);
+    }
+
+    if (sortBy === 'TIMELINE') filtered.sort((a, b) => a.timeline_months - b.timeline_months);
+    if (sortBy === 'BUDGET') filtered.sort((a, b) => b.budget - a.budget);
+
+    document.getElementById('oc-count').textContent = filtered.length + ' AVAILABLE';
+
+    if (filtered.length === 0) {
+        list.innerHTML = `
+            <div class="oc-empty">
+                <div class="oc-empty__text">No open contracts available.<br>Contracts appear when governments allocate<br>infrastructure budgets or corporations<br>request construction services.</div>
+            </div>`;
+        return;
+    }
+
+    let html = '';
+    for (const c of filtered) {
+        const isGov = c.contract_type === 'GOVERNMENT';
+        const typeClass = isGov ? 'gov' : 'private';
+        const qualified = isQualified(c);
+        const lockedClass = qualified ? '' : ' locked';
+
+        let specClass = 'light';
+        let specLabel = 'LIGHT';
+        if (c.spec_category === 'Heavy Infrastructure') { specClass = 'heavy'; specLabel = 'HEAVY'; }
+        if (c.spec_category === 'Megaproject') { specClass = 'mega'; specLabel = 'MEGA'; }
+
+        const timelineWarn = c.timeline_months > 18 ? ' warn' : '';
+
+        html += `
+            <div class="oc-item${lockedClass}" data-contract-id="${c.id}">
+                <div class="oc-item__row1">
+                    <span class="oc-item__name">${escapeHtml(c.name)}</span>
+                    <span class="oc-item__type-badge ${typeClass}">${isGov ? 'GOV' : 'PRIVATE'}</span>
+                </div>
+                <div class="oc-item__row2">
+                    <span class="oc-item__issuer ${typeClass}">${escapeHtml(c.issuer_name)}</span>
+                    <span class="oc-item__id">${escapeHtml(c.contract_number)}</span>
+                </div>
+                <div class="oc-item__stats">
+                    <div class="oc-stat">
+                        <div class="oc-stat__label">BUDGET</div>
+                        <div class="oc-stat__value">${fmtBig(c.budget)}</div>
+                    </div>
+                    <div class="oc-stat">
+                        <div class="oc-stat__label">TIMELINE</div>
+                        <div class="oc-stat__value${timelineWarn}">${fmtTimeline(c.timeline_months)}</div>
+                    </div>
+                    <div class="oc-stat">
+                        <div class="oc-stat__label">SPEC</div>
+                        <div class="oc-stat__value ${specClass}">${specLabel}</div>
+                    </div>
+                    <div class="oc-eligibility">
+                        <span class="oc-eligible-badge ${qualified ? 'yes' : 'no'}">${qualified ? 'ELIGIBLE' : 'LOCKED'}</span>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    list.innerHTML = html;
+
+    // Attach click handlers
+    list.querySelectorAll('.oc-item:not(.locked)').forEach(el => {
+        el.addEventListener('click', () => {
+            const id = el.dataset.contractId;
+            const contract = contracts.find(c => c.id === id);
+            if (contract) openContractDetail(contract);
+        });
+    });
+}
+
+// ── Contract Detail Modal ──
+let selectedContract = null;
+
+function openContractDetail(contract) {
+    selectedContract = contract;
+    const overlay = document.getElementById('cd-overlay');
+    const isGov = contract.contract_type === 'GOVERNMENT';
+    const typeClass = isGov ? 'gov' : 'private';
+    const nationName = (nationStats?.name || faction.nation || '—').toUpperCase();
+    const qualified = isQualified(contract);
+
+    // Header
+    document.getElementById('cd-header-left').innerHTML = `
+        <span class="cd-header__nation">${escapeHtml(nationName)}</span>
+        <span class="cd-header__name">${escapeHtml(contract.name)}</span>
+        <span class="cd-header__sep">&mdash;</span>
+        <span class="cd-header__issuer ${typeClass}">${escapeHtml(contract.issuer_name)}</span>
+        <span class="cd-header__type-badge ${typeClass}">${isGov ? 'GOV' : 'PRIVATE'}</span>
+    `;
+
+    // Blueprint — blueprint_svg is system-generated, not player-authored
+    const bpEl = document.getElementById('cd-blueprint');
+    if (contract.blueprint_svg) {
+        bpEl.innerHTML = contract.blueprint_svg;
+        bpEl.style.display = '';
+    } else {
+        bpEl.innerHTML = renderDefaultBlueprint(contract);
+        bpEl.style.display = '';
+    }
+
+    // Content
+    const permits = contract.permits_required || [];
+    const equipment = contract.equipment_required || [];
+    const materials = contract.materials_estimated || [];
+
+    let specColor = 'var(--teal)';
+    if (contract.spec_category === 'Heavy Infrastructure') specColor = 'var(--orange)';
+    if (contract.spec_category === 'Megaproject') specColor = 'var(--red)';
+
+    let budgetStr = fmtBig(contract.budget);
+    let timelineStr = contract.timeline_months + ' Months';
+
+    let contentHtml = '';
+
+    // Project issue row
+    contentHtml += `
+        <div class="cd-issue">
+            <div class="cd-issue__left">
+                <span class="cd-issue__label">PROJECT ISSUE</span>
+                <span class="cd-issue__number">${escapeHtml(contract.contract_number)}</span>
+            </div>
+            <div class="cd-issue__tags">
+                ${contract.project_type ? `<span class="cd-tag teal">${escapeHtml(contract.project_type.toUpperCase())}</span>` : ''}
+                ${contract.project_subtype ? `<span class="cd-tag gold">${escapeHtml(contract.project_subtype.toUpperCase())}</span>` : ''}
+            </div>
+        </div>`;
+
+    // Description
+    if (contract.description) {
+        contentHtml += `
+            <div class="cd-desc">
+                <div class="cd-section-label">Brief Description</div>
+                <div class="cd-desc__text">${escapeHtml(contract.description)}</div>
+            </div>`;
+    }
+
+    // Detail rows
+    contentHtml += `<div class="cd-details">`;
+    if (contract.project_type) contentHtml += detailRow('Type', contract.project_type);
+    if (contract.project_subtype) contentHtml += detailRow('Sub-Type', contract.project_subtype);
+    contentHtml += detailRow('Specialization', contract.spec_category, specColor);
+    contentHtml += detailRow('Total Budget', budgetStr, 'var(--green)');
+    contentHtml += detailRow('Timeline', timelineStr);
+    contentHtml += detailRow('Nation', nationStats?.name || faction.nation || '—');
+    if (contract.region) contentHtml += detailRow('Region', contract.region);
+    contentHtml += `</div>`;
+
+    // Permits
+    if (permits.length > 0) {
+        contentHtml += `
+            <div class="cd-items">
+                <div class="cd-section-label">Permits Required</div>
+                <div class="cd-items__list">
+                    ${permits.map(p => {
+                        const cls = p.status === 'approved' ? 'approved' : 'required';
+                        const icon = p.status === 'approved' ? '&#10003;' : '&#9675;';
+                        return `<div class="cd-chip ${cls}">
+                            <span class="cd-chip__icon">${icon}</span>
+                            <span class="cd-chip__label">${escapeHtml(p.name)}</span>
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>`;
+    }
+
+    // Equipment
+    if (equipment.length > 0) {
+        contentHtml += `
+            <div class="cd-items">
+                <div class="cd-section-label">Required Equipment</div>
+                <div class="cd-items__list">
+                    ${equipment.map(e => {
+                        const cls = e.owned ? 'owned' : 'missing';
+                        const icon = e.owned ? '&#10003;' : '&#10007;';
+                        return `<div class="cd-chip ${cls}">
+                            <span class="cd-chip__icon">${icon}</span>
+                            <span class="cd-chip__label">${escapeHtml(e.name)}</span>
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>`;
+    }
+
+    // Materials
+    if (materials.length > 0) {
+        contentHtml += `
+            <div class="cd-materials">
+                <div class="cd-section-label">Estimated Materials</div>
+                ${materials.map(m => `
+                    <div class="cd-mat-row">
+                        <span class="cd-mat-row__name">${escapeHtml(m.name)}</span>
+                        <span class="cd-mat-row__qty">${escapeHtml(String(m.quantity || '—'))}</span>
+                    </div>`).join('')}
+            </div>`;
+    }
+
+    document.getElementById('cd-content').innerHTML = contentHtml;
+
+    // Footer
+    const permitsApproved = permits.filter(p => p.status === 'approved').length;
+    const permitsPending = permits.length - permitsApproved;
+    const equipOwned = equipment.filter(e => e.owned).length;
+    const equipMissing = equipment.length - equipOwned;
+
+    let badgesHtml = '';
+    if (equipment.length > 0) {
+        if (equipMissing === 0) {
+            badgesHtml += `<span class="cd-footer__badge ok">ALL EQUIPMENT MET</span>`;
+        } else {
+            badgesHtml += `<span class="cd-footer__badge bad">${equipMissing} EQUIPMENT MISSING</span>`;
+        }
+    }
+    if (permits.length > 0) {
+        if (permitsPending === 0) {
+            badgesHtml += `<span class="cd-footer__badge ok">ALL PERMITS APPROVED</span>`;
+        } else {
+            badgesHtml += `<span class="cd-footer__badge warn">${permitsPending} PERMITS PENDING</span>`;
+        }
+    }
+
+    const canBid = qualified;
+    const apAvailable = (faction.action_points ?? 0) >= 2;
+
+    document.getElementById('cd-footer').innerHTML = `
+        <div class="cd-footer__badges">${badgesHtml}</div>
+        <div class="cd-footer__actions">
+            <button class="cd-btn secondary" onclick="closeContractDetail()">CLOSE</button>
+            <button class="cd-btn primary" onclick="placeBid()" ${canBid && apAvailable ? '' : 'disabled'}
+                title="${!canBid ? 'Not qualified for this contract' : !apAvailable ? 'Need 2 AP to bid' : 'Place a bid (2 AP)'}">BID</button>
+        </div>
+    `;
+
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeContractDetail(event) {
+    if (event && event.target && event.target !== document.getElementById('cd-overlay')) return;
+    document.getElementById('cd-overlay').classList.remove('open');
+    document.body.style.overflow = '';
+    selectedContract = null;
+}
+
+function detailRow(label, value, color) {
+    const colorStyle = color ? ` style="color:${color}"` : '';
+    return `<div class="cd-detail-row">
+        <span class="cd-detail-row__label">${escapeHtml(label)}</span>
+        <span class="cd-detail-row__value"${colorStyle}>${escapeHtml(value)}</span>
+    </div>`;
+}
+
+// ── Blueprint SVG renderer ──
+function renderDefaultBlueprint(contract) {
+    const bp = {
+        bg: '#1a2a3a', line: '#3a6a8a', dim: '#2a4a5a',
+        accent: '#5a9aba', text: '#4a8aaa',
+    };
+    const drawingNo = contract.drawing_number || contract.contract_number + '-A1';
+    const gameDate = shard?.current_date || '';
+    // Extract date for title block
+    const dateStr = gameDate ? gameDate.replace(/,\s*/, ' ') : '';
+
+    // Generate a simple generic blueprint based on spec category
+    const isHeavy = contract.spec_category === 'Heavy Infrastructure';
+    const isMega = contract.spec_category === 'Megaproject';
+
+    let buildingLabel = escapeHtml(contract.project_subtype || contract.project_type || 'STRUCTURE');
+    let width = isHeavy ? '80.0m' : isMega ? '200.0m' : '60.0m';
+    let depth = isHeavy ? '40.0m' : isMega ? '100.0m' : '20.0m';
+
+    return `<svg viewBox="0 0 680 200" style="width:100%;display:block;background:${bp.bg}">
+        <!-- Grid -->
+        ${Array.from({length: 35}, (_, i) => `<line x1="${i*20}" y1="0" x2="${i*20}" y2="200" stroke="${bp.dim}" stroke-width="0.3"/>`).join('')}
+        ${Array.from({length: 11}, (_, i) => `<line x1="0" y1="${i*20}" x2="680" y2="${i*20}" stroke="${bp.dim}" stroke-width="0.3"/>`).join('')}
+
+        <!-- Main outline -->
+        <rect x="60" y="30" width="560" height="120" fill="none" stroke="${bp.line}" stroke-width="1.5"/>
+
+        <!-- Center label -->
+        <text x="340" y="85" text-anchor="middle" font-size="9" fill="${bp.accent}" font-family="var(--font-mono)" font-weight="700">${buildingLabel.toUpperCase()}</text>
+        <text x="340" y="100" text-anchor="middle" font-size="6" fill="${bp.text}" font-family="var(--font-mono)">${escapeHtml(contract.name)}</text>
+
+        <!-- Internal divisions -->
+        <line x1="200" y1="30" x2="200" y2="150" stroke="${bp.line}" stroke-width="0.5" stroke-dasharray="4,2"/>
+        <line x1="340" y1="30" x2="340" y2="150" stroke="${bp.line}" stroke-width="0.5" stroke-dasharray="4,2"/>
+        <line x1="480" y1="30" x2="480" y2="150" stroke="${bp.line}" stroke-width="0.5" stroke-dasharray="4,2"/>
+        <line x1="60" y1="90" x2="620" y2="90" stroke="${bp.line}" stroke-width="0.4" stroke-dasharray="4,2"/>
+
+        <!-- Dimension: top -->
+        <line x1="60" y1="20" x2="620" y2="20" stroke="${bp.dim}" stroke-width="0.5"/>
+        <line x1="60" y1="17" x2="60" y2="23" stroke="${bp.dim}" stroke-width="0.5"/>
+        <line x1="620" y1="17" x2="620" y2="23" stroke="${bp.dim}" stroke-width="0.5"/>
+        <text x="340" y="17" text-anchor="middle" font-size="5.5" fill="${bp.dim}" font-family="var(--font-mono)">${width}</text>
+
+        <!-- Dimension: right -->
+        <line x1="630" y1="30" x2="630" y2="150" stroke="${bp.dim}" stroke-width="0.5"/>
+        <line x1="627" y1="30" x2="633" y2="30" stroke="${bp.dim}" stroke-width="0.5"/>
+        <line x1="627" y1="150" x2="633" y2="150" stroke="${bp.dim}" stroke-width="0.5"/>
+        <text x="645" y="93" text-anchor="middle" font-size="5.5" fill="${bp.dim}" font-family="var(--font-mono)" transform="rotate(90,645,93)">${depth}</text>
+
+        <!-- Scale bar -->
+        <line x1="60" y1="175" x2="160" y2="175" stroke="${bp.accent}" stroke-width="0.8"/>
+        <line x1="60" y1="172" x2="60" y2="178" stroke="${bp.accent}" stroke-width="0.8"/>
+        <line x1="110" y1="173" x2="110" y2="177" stroke="${bp.accent}" stroke-width="0.5"/>
+        <line x1="160" y1="172" x2="160" y2="178" stroke="${bp.accent}" stroke-width="0.8"/>
+        <text x="60" y="186" font-size="5" fill="${bp.text}" font-family="var(--font-mono)">0m</text>
+        <text x="107" y="186" font-size="5" fill="${bp.text}" font-family="var(--font-mono)">5m</text>
+        <text x="154" y="186" font-size="5" fill="${bp.text}" font-family="var(--font-mono)">10m</text>
+
+        <!-- Title block -->
+        <rect x="490" y="165" width="180" height="24" fill="${bp.bg}" stroke="${bp.line}" stroke-width="0.5"/>
+        <text x="500" y="175" font-size="5" fill="${bp.dim}" font-family="var(--font-mono)">DWG NO.</text>
+        <text x="540" y="175" font-size="5.5" fill="${bp.accent}" font-family="var(--font-mono)">${escapeHtml(drawingNo)}</text>
+        <text x="500" y="185" font-size="5" fill="${bp.dim}" font-family="var(--font-mono)">SCALE</text>
+        <text x="540" y="185" font-size="5.5" fill="${bp.accent}" font-family="var(--font-mono)">1:200</text>
+        <text x="610" y="175" font-size="5" fill="${bp.dim}" font-family="var(--font-mono)">REV</text>
+        <text x="630" y="175" font-size="5.5" fill="${bp.accent}" font-family="var(--font-mono)">01</text>
+        <text x="610" y="185" font-size="5" fill="${bp.dim}" font-family="var(--font-mono)">DATE</text>
+        <text x="630" y="185" font-size="5.5" fill="${bp.accent}" font-family="var(--font-mono)">${escapeHtml(dateStr)}</text>
+
+        <!-- North arrow -->
+        <g transform="translate(470,172)">
+            <line x1="0" y1="12" x2="0" y2="0" stroke="${bp.accent}" stroke-width="0.8"/>
+            <polygon points="-3,4 0,0 3,4" fill="${bp.accent}"/>
+            <text x="0" y="-3" text-anchor="middle" font-size="5" fill="${bp.text}" font-family="var(--font-mono)">N</text>
+        </g>
+    </svg>`;
+}
+
+// ── Bid placement ──
+async function placeBid() {
+    if (!selectedContract || !faction) return;
+    if ((faction.action_points ?? 0) < 2) {
+        alert('You need at least 2 AP to place a bid.');
+        return;
+    }
+
+    const bidBtn = document.querySelector('.cd-btn.primary');
+    if (bidBtn) { bidBtn.disabled = true; bidBtn.textContent = '...'; }
+
+    try {
+        // Atomic AP deduction via RPC — prevents race conditions from multiple tabs
+        const { data: newAp, error: apErr } = await _supabase.rpc('deduct_ap', {
+            p_faction_id: faction.id,
+            p_cost: 2,
+        });
+        if (apErr) throw apErr;
+        if (newAp < 0) {
+            // Decode actual balance: actual = -(newAp) - 1
+            const actualAp = -(newAp) - 1;
+            faction.action_points = actualAp;
+            document.getElementById('topbar-ap').innerHTML =
+                '<span class="topbar-ap__count">' + actualAp + ' AP</span>';
+            if (bidBtn) { bidBtn.disabled = false; bidBtn.textContent = 'BID'; }
+            alert('Insufficient AP. You have ' + actualAp + ' AP, need 2.');
+            return;
+        }
+
+        // AP deducted — now insert the bid
+        const { error: bidError } = await _supabase
+            .from('corp_contract_bids')
+            .insert({
+                contract_id: selectedContract.id,
+                faction_id: faction.id,
+                nation_id: faction.nation_id,
+                ap_spent: 2,
+                created_at_tick: shard?.current_tick || null,
+            });
+
+        if (bidError) {
+            // Bid failed — refund AP
+            await _supabase.rpc('deduct_ap', { p_faction_id: faction.id, p_cost: -2 });
+            faction.action_points = newAp + 2;
+            document.getElementById('topbar-ap').innerHTML =
+                '<span class="topbar-ap__count">' + (newAp + 2) + ' AP</span>';
+            throw bidError;
+        }
+
+        // Success — update local AP display
+        faction.action_points = newAp;
+        document.getElementById('topbar-ap').innerHTML =
+            '<span class="topbar-ap__count">' + newAp + ' AP</span>';
+
+        if (bidBtn) { bidBtn.textContent = 'BID PLACED'; }
+    } catch (err) {
+        if (bidBtn) { bidBtn.disabled = false; bidBtn.textContent = 'BID'; }
+        if (err.code === '23505') {
+            alert('You have already placed a bid on this contract.');
+        } else {
+            alert('Failed to place bid: ' + (err.message || 'Unknown error'));
+        }
+    }
+}
+
+// ── Load contracts from DB ──
+async function loadContracts() {
+    if (!faction || !faction.nation_id) return;
+
+    const { data, error } = await _supabase
+        .from('corp_contracts')
+        .select('*')
+        .eq('status', 'open')
+        .eq('issuer_nation_id', faction.nation_id)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.warn('Failed to load contracts:', error.message);
+        contracts = [];
+    } else {
+        contracts = data || [];
+    }
+
+    renderContracts();
+}
+
+// ── Active Projects ──
+const PROJECT_PHASES = ['Permits', 'Planning', 'Foundation', 'Structural', 'Systems', 'Finishing', 'Delivery'];
+
+function renderPhaseTrack(currentPhase) {
+    const idx = PROJECT_PHASES.indexOf(currentPhase);
+    let html = '<div class="ap-phase-track">';
+    for (let i = 0; i < PROJECT_PHASES.length; i++) {
+        const done = i < idx;
+        const active = i === idx;
+        const cls = done ? 'ap-phase-dot done' : active ? 'ap-phase-dot active' : 'ap-phase-dot';
+        html += `<div class="${cls}"></div>`;
+    }
+    html += `<span class="ap-phase-label">${escapeHtml((currentPhase || 'Permits').toUpperCase())}</span>`;
+    html += '</div>';
+    return html;
+}
+
+function getBudgetColor(pct) {
+    if (pct > 85) return 'var(--red)';
+    if (pct > 60) return 'var(--amber)';
+    return 'var(--teal)';
+}
+
+function tickToGameDate(tick) {
+    const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const year = 2000 + Math.floor(tick / 12);
+    const month = MONTHS[tick % 12];
+    return month + ', ' + year;
+}
+
+function renderActiveProjects() {
+    const list = document.getElementById('ap-list');
+    const footer = document.getElementById('ap-footer');
+
+    document.getElementById('ap-count').textContent = activeProjects.length + ' ACTIVE';
+
+    if (activeProjects.length === 0) {
+        list.innerHTML = `<div class="ap-empty">
+            <div class="ap-empty__text">No active projects.<br>Win a contract bid to start<br>your first construction project.</div>
+        </div>`;
+        footer.style.display = 'none';
+        return;
+    }
+
+    let totalCrew = 0;
+    let totalBudget = 0;
+    let totalSpent = 0;
+    let lateCount = 0;
+    const currentTick = shard?.current_tick || 0;
+
+    let html = '';
+    for (const p of activeProjects) {
+        const isGov = p.contract_type === 'GOVERNMENT';
+        const typeClass = isGov ? 'gov' : 'private';
+        const spent = Number(p.amount_spent) || 0;
+        const budget = Number(p.budget) || 1;
+        const budgetPct = Math.round((spent / budget) * 100);
+        const budgetColor = getBudgetColor(budgetPct);
+        const phase = p.current_phase || 'Permits';
+        const workforce = Number(p.assigned_workforce) || 0;
+        const assets = Number(p.assigned_assets) || 0;
+
+        const expectedFinishTick = p.expected_finish_tick;
+        const deadlineTick = p.deadline_tick || (p.started_at_tick ? p.started_at_tick + (p.timeline_months * 1) : null);
+        const isLate = expectedFinishTick && deadlineTick && expectedFinishTick > deadlineTick;
+
+        const expectedDate = expectedFinishTick ? tickToGameDate(expectedFinishTick) : '—';
+        const deadlineDate = deadlineTick ? tickToGameDate(deadlineTick) : '—';
+
+        const pmName = (p.pm_first_name && p.pm_last_name)
+            ? escapeHtml(p.pm_first_name) + ' ' + escapeHtml(p.pm_last_name)
+            : '—';
+
+        totalCrew += workforce;
+        totalBudget += budget;
+        totalSpent += spent;
+        if (isLate) lateCount++;
+
+        html += `<div class="ap-item">
+            <div class="ap-item__row1">
+                <div class="ap-item__info">
+                    <div class="ap-item__name">${escapeHtml(p.name)}</div>
+                    <div class="ap-item__id">${escapeHtml(p.contract_number)}</div>
+                </div>
+                <span class="oc-item__type-badge ${typeClass}">${isGov ? 'GOV' : 'PVT'}</span>
+            </div>
+            ${renderPhaseTrack(phase)}
+            <div class="ap-budget">
+                <div class="ap-budget__header">
+                    <span class="ap-budget__label">COST / BUDGET</span>
+                    <span class="ap-budget__values" style="color:${budgetColor}">
+                        ${fmtBig(spent)} <span style="color:var(--text-dim)">/</span> ${fmtBig(budget)}
+                    </span>
+                </div>
+                <div class="ap-budget__bar">
+                    <div class="ap-budget__fill" style="width:${Math.min(budgetPct, 100)}%;background:${budgetColor}"></div>
+                </div>
+            </div>
+            <div class="ap-details">
+                <div class="ap-detail-cell" style="flex:1.2">
+                    <div class="ap-detail-cell__label">PM</div>
+                    <div class="ap-detail-cell__value">${pmName}</div>
+                </div>
+                <div class="ap-detail-cell" style="flex:0.7;text-align:center">
+                    <div class="ap-detail-cell__label">CREW</div>
+                    <div class="ap-detail-cell__value${workforce === 0 ? ' zero' : ''}" style="font-size:10px;font-weight:700">${workforce}</div>
+                </div>
+                <div class="ap-detail-cell" style="flex:0.6;text-align:center">
+                    <div class="ap-detail-cell__label">ASSETS</div>
+                    <div class="ap-detail-cell__value${assets === 0 ? ' zero' : ''}" style="font-size:10px;font-weight:700">${assets}</div>
+                </div>
+                <div class="ap-detail-cell" style="flex:1.5">
+                    <div class="ap-detail-cell__label">FINISH</div>
+                    <div class="ap-detail-cell__value" style="color:${isLate ? 'var(--orange)' : 'var(--text-bright)'}">
+                        ${expectedDate}${isLate ? '<span class="ap-late-tag">LATE</span>' : ''}
+                    </div>
+                    <div class="ap-detail-cell__sub">due ${deadlineDate}</div>
+                </div>
+            </div>
+            <div class="ap-item__view-row">
+                <button class="ap-view-btn" onclick="openContractDetail(activeProjects.find(c=>c.id==='${p.id}'))">VIEW</button>
+            </div>
+        </div>`;
+    }
+
+    list.innerHTML = html;
+
+    // Footer
+    footer.style.display = '';
+    document.getElementById('ap-total-crew').textContent = totalCrew.toLocaleString();
+    document.getElementById('ap-total-budget').textContent = fmtBig(totalBudget);
+    document.getElementById('ap-total-spent').textContent = fmtBig(totalSpent);
+
+    const lateBadge = document.getElementById('ap-late-badge');
+    if (lateCount > 0) {
+        lateBadge.innerHTML = `<span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:1px 6px;color:var(--orange);background:var(--orange-faint);border:1px solid var(--orange-border);">${lateCount} LATE</span>`;
+    } else {
+        lateBadge.innerHTML = '';
+    }
+}
+
+async function loadActiveProjects() {
+    if (!faction) return;
+
+    const { data, error } = await _supabase
+        .from('corp_contracts')
+        .select('*')
+        .eq('winner_faction_id', faction.id)
+        .eq('status', 'active')
+        .order('started_at_tick', { ascending: true });
+
+    if (error) {
+        console.warn('Failed to load active projects:', error.message);
+        activeProjects = [];
+    } else {
+        activeProjects = data || [];
+    }
+
+    renderActiveProjects();
+}
+
+// ── Warehouse ──
+const MAX_WAREHOUSE_CAPACITY = 30000; // total units across all materials
+
+function getWarehouseTotals() {
+    let totalUnits = 0;
+    let totalValue = 0;
+    for (const mat of MATERIALS) {
+        for (const tier of QUALITY_TIERS) {
+            const entry = warehouseData[mat.key]?.[tier];
+            if (entry) {
+                totalUnits += entry.qty;
+                totalValue += entry.value;
+            }
+        }
+    }
+    return { totalUnits, totalValue };
+}
+
+function renderWarehouse() {
+    const list = document.getElementById('wh-list');
+    const { totalUnits, totalValue } = getWarehouseTotals();
+
+    document.getElementById('wh-count').textContent = totalUnits.toLocaleString() + ' UNITS';
+    document.getElementById('wh-total-value').textContent = fmtBig(totalValue);
+
+    // Capacity %
+    const capacityPct = Math.round((totalUnits / MAX_WAREHOUSE_CAPACITY) * 100);
+    const capEl = document.getElementById('wh-capacity');
+    capEl.textContent = capacityPct + '%';
+    capEl.style.color = capacityPct > 80 ? 'var(--red)' : capacityPct > 50 ? 'var(--orange)' : 'var(--green)';
+
+    // Build rows
+    let html = '';
+    for (let i = 0; i < MATERIALS.length; i++) {
+        const mat = MATERIALS[i];
+        const isExpanded = whExpandedRow === i;
+        const low = warehouseData[mat.key]?.LOW || { qty: 0, value: 0 };
+        const std = warehouseData[mat.key]?.STD || { qty: 0, value: 0 };
+        const high = warehouseData[mat.key]?.HIGH || { qty: 0, value: 0 };
+        const matQty = low.qty + std.qty + high.qty;
+        const matVal = low.value + std.value + high.value;
+        const isEmpty = matQty === 0;
+
+        // Check tier availability from nation stats
+        const lowAvail = checkTierAvailability(mat.key, 'LOW', nationStats);
+        const stdAvail = checkTierAvailability(mat.key, 'STD', nationStats);
+        const highAvail = checkTierAvailability(mat.key, 'HIGH', nationStats);
+
+        // Quality dots
+        const lowDotClass = low.qty > 0 ? 'wh-dot wh-dot--low' : 'wh-dot wh-dot--empty';
+        const stdDotClass = std.qty > 0 ? 'wh-dot wh-dot--std' : 'wh-dot wh-dot--empty';
+        const highDotClass = !highAvail.available ? 'wh-dot wh-dot--locked' : high.qty > 0 ? 'wh-dot wh-dot--high' : 'wh-dot wh-dot--empty';
+
+        html += `<div class="wh-row">`;
+
+        // Collapsed row
+        html += `<div class="wh-row__collapsed${isExpanded ? ' expanded' : ''}" onclick="toggleWhRow(${i})">
+            <span class="wh-row__arrow">${isExpanded ? '▾' : '▸'}</span>
+            <span class="wh-row__name${isEmpty ? ' empty' : ''}">${escapeHtml(mat.name)}</span>
+            <div class="wh-row__dots">
+                <div class="${lowDotClass}"></div>
+                <div class="${stdDotClass}"></div>
+                <div class="${highDotClass}"></div>
+            </div>
+            <span class="wh-row__qty${isEmpty ? ' empty' : ''}">${matQty > 0 ? matQty.toLocaleString() : '—'}</span>
+            <span class="wh-row__val${isEmpty ? ' empty' : ''}">${matVal > 0 ? fmtBig(matVal) : '—'}</span>
+        </div>`;
+
+        // Expanded grade breakdown
+        if (isExpanded) {
+            html += `<div class="wh-expand">`;
+
+            // Header
+            html += `<div class="wh-expand__hdr">
+                <span class="wh-expand__hdr-label" style="flex:1">GRADE</span>
+                <span class="wh-expand__hdr-label" style="width:50px;text-align:right">QTY</span>
+                <span class="wh-expand__hdr-label" style="width:60px;text-align:right">VALUE</span>
+                <span class="wh-expand__hdr-label" style="width:55px;text-align:right">$/UNIT</span>
+            </div>`;
+
+            // Grade rows
+            const tiers = [
+                { key: 'LOW', label: 'Low', data: low, avail: lowAvail, color: 'var(--orange)', dotClass: 'wh-dot--low' },
+                { key: 'STD', label: 'Standard', data: std, avail: stdAvail, color: 'var(--amber)', dotClass: 'wh-dot--std' },
+                { key: 'HIGH', label: 'High', data: high, avail: highAvail, color: 'var(--green)', dotClass: 'wh-dot--high' },
+            ];
+
+            for (const t of tiers) {
+                const unavailable = !t.avail.available;
+                const hasQty = t.data.qty > 0;
+                const cpu = hasQty ? '$' + Math.round(t.data.value / t.data.qty) : '—';
+
+                html += `<div class="wh-grade${unavailable ? ' unavailable' : ''}">
+                    <div class="wh-grade__label">
+                        <div class="wh-dot ${t.dotClass}" style="width:5px;height:5px"></div>
+                        <span class="wh-grade__name" style="color:${unavailable ? 'var(--red)' : t.color}">${t.label}</span>
+                        ${unavailable ? '<span class="wh-grade__tag">UNAVAILABLE</span>' : ''}
+                    </div>
+                    <span class="wh-grade__qty" style="color:${hasQty ? 'var(--text-bright)' : 'var(--text-dim)'}">${hasQty ? t.data.qty.toLocaleString() : '—'}</span>
+                    <span class="wh-grade__val" style="color:${t.data.value > 0 ? 'var(--text-muted)' : 'var(--text-dim)'}">${t.data.value > 0 ? fmtBig(t.data.value) : '—'}</span>
+                    <span class="wh-grade__cpu">${cpu}</span>
+                </div>`;
+            }
+
+            // Lock reason for unavailable tiers
+            for (const t of tiers) {
+                if (!t.avail.available && t.avail.failedStat) {
+                    html += `<div class="wh-lock">
+                        <span class="wh-lock__text">${t.label.toUpperCase()} GRADE LOCKED — ${escapeHtml(t.avail.failedStat)} &lt; ${t.avail.failedMin}</span>
+                    </div>`;
+                }
+            }
+
+            html += `</div>`; // close wh-expand
+        }
+
+        html += `</div>`; // close wh-row
+    }
+
+    list.innerHTML = html;
+}
+
+function toggleWhRow(index) {
+    whExpandedRow = whExpandedRow === index ? -1 : index;
+    renderWarehouse();
+}
+
+async function loadWarehouse() {
+    if (!faction) return;
+
+    const { data, error } = await _supabase
+        .from('corp_warehouse')
+        .select('material_key, quality_tier, quantity, total_value')
+        .eq('faction_id', faction.id);
+
+    warehouseData = {};
+    if (error) {
+        console.warn('Failed to load warehouse:', error.message);
+    } else if (data) {
+        for (const row of data) {
+            if (!warehouseData[row.material_key]) {
+                warehouseData[row.material_key] = {};
+            }
+            warehouseData[row.material_key][row.quality_tier] = {
+                qty: row.quantity || 0,
+                value: Number(row.total_value) || 0,
+            };
+        }
+    }
+
+    renderWarehouse();
+}
+
+// ── Procurement ──
+const PRICE_DRIVER_LABELS = {
+    manufacturing_output: 'base production',
+    rare_minerals: 'raw input',
+    inflation: 'price modifier',
+    fuel_prices: 'transport cost',
+    urbanization: 'demand pressure',
+    arable_land: 'base production',
+    physical_infrastructure: 'transport',
+    digital_infrastructure: 'component quality',
+    energy_generation: 'electrical supply',
+    standard_of_living: 'demand tier',
+    oil_and_gas: 'base input',
+    higher_education: 'engineering',
+};
+
+function renderProcurement() {
+    const nationName = (nationStats?.name || faction?.nation || '—').toUpperCase();
+
+    // Nation badge
+    document.getElementById('pr-nation-badge').textContent = 'LOCAL — ' + nationName;
+
+    // Footer: cash + warehouse capacity
+    const cash = Number(faction?.corp_cash_reserves) || 0;
+    document.getElementById('pr-cash').textContent = fmtBig(cash);
+
+    const { totalUnits } = getWarehouseTotals();
+    const capPct = Math.round((totalUnits / MAX_WAREHOUSE_CAPACITY) * 100);
+    const capEl = document.getElementById('pr-wh-capacity');
+    capEl.textContent = capPct + '%';
+    capEl.style.color = capPct > 80 ? 'var(--red)' : capPct > 50 ? 'var(--orange)' : 'var(--green)';
+
+    renderPrMatGrid();
+    renderPrTierBar();
+    renderPrContent();
+}
+
+function renderPrMatGrid() {
+    const grid = document.getElementById('pr-mat-grid');
+    let html = '';
+    for (const mat of MATERIALS) {
+        const active = prSelectedMat === mat.key;
+        // Check if ALL tiers are locked
+        const allLocked = QUALITY_TIERS.every(t => !checkTierAvailability(mat.key, t, nationStats).available);
+        const cls = 'pr-mat-btn' + (active ? ' active' : '') + (allLocked ? ' all-locked' : '');
+        html += `<span class="${cls}" onclick="setPrMat('${mat.key}')">${escapeHtml(mat.name)}</span>`;
+    }
+    grid.innerHTML = html;
+}
+
+function renderPrTierBar() {
+    const bar = document.getElementById('pr-tier-bar');
+    let html = '<span class="pr-tier-label">GRADE</span>';
+    for (const tier of QUALITY_TIERS) {
+        const avail = checkTierAvailability(prSelectedMat, tier, nationStats);
+        const active = prSelectedTier === tier;
+        const price = avail.available ? calculateBasePrice(prSelectedMat, tier, nationStats) : null;
+        const dotColor = MATERIAL_QUALITY_COLORS[tier];
+        const locked = !avail.available;
+        const cls = 'pr-tier-btn' + (active ? ' active' : '') + (locked ? ' locked' : '');
+
+        html += `<div class="${cls}" onclick="${locked ? '' : `setPrTier('${tier}')`}">
+            <div class="pr-tier-btn__label">
+                <div class="wh-dot" style="width:5px;height:5px;background:${dotColor};border-radius:1px;"></div>
+                <span class="pr-tier-btn__name" style="color:${active ? 'var(--text-bright)' : 'var(--text-dim)'}">${QUALITY_LABELS[tier]}</span>
+            </div>
+            ${price !== null
+                ? `<div class="pr-tier-btn__price" style="color:${active ? 'var(--text-bright)' : 'var(--text-muted)'}">$${price}<span style="font-size:7px;color:var(--text-dim)">/unit</span></div>`
+                : `<div class="pr-tier-btn__locked-text">LOCKED</div>`}
+        </div>`;
+    }
+    bar.innerHTML = html;
+}
+
+function renderPrContent() {
+    const content = document.getElementById('pr-content');
+    const avail = checkTierAvailability(prSelectedMat, prSelectedTier, nationStats);
+    const mat = MATERIALS.find(m => m.key === prSelectedMat);
+
+    if (!avail.available) {
+        // Locked tier panel
+        content.innerHTML = `<div class="pr-locked-panel">
+            <div class="pr-locked-box">
+                <div class="pr-locked-box__title">QUALITY TIER UNAVAILABLE</div>
+                <div class="pr-locked-box__desc">
+                    ${escapeHtml(mat.name)} — ${QUALITY_LABELS[prSelectedTier]} grade
+                    is not produced domestically in ${escapeHtml(nationStats?.name || '—')}.
+                </div>
+                <div class="pr-locked-box__reason">
+                    ${escapeHtml(avail.failedStat || 'unknown')} &lt; ${avail.failedMin || '?'}
+                </div>
+                <div class="pr-locked-box__hint">
+                    Import from a nation with sufficient capacity<br>or lobby for industrial development policy.
+                </div>
+            </div>
+        </div>`;
+        return;
+    }
+
+    const price = calculateBasePrice(prSelectedMat, prSelectedTier, nationStats);
+    const supply = calculateSupply(prSelectedMat, prSelectedTier, nationStats);
+    const totalCost = price * prPurchaseQty;
+
+    // Demand estimate: ratio of supply to a baseline
+    const demandRatio = supply > 3000 ? 'LOW' : supply > 1000 ? 'MODERATE' : 'HIGH';
+    const demandColor = demandRatio === 'LOW' ? 'var(--green)' : demandRatio === 'MODERATE' ? 'var(--amber)' : 'var(--red)';
+
+    // Trend: simple heuristic based on inflation and demand
+    const inflation = Number(nationStats?.inflation ?? 50);
+    const trend = inflation > 55 ? 'up' : inflation < 45 ? 'down' : 'flat';
+    const trendChar = trend === 'up' ? '&#9650;' : trend === 'down' ? '&#9660;' : '&#8212;';
+    const trendColor = trend === 'up' ? 'var(--red)' : trend === 'down' ? 'var(--green)' : 'var(--text-dim)';
+
+    let html = '';
+
+    // Market info panel
+    html += `<div style="padding:8px 14px;border-bottom:1px solid var(--border-0);">
+        <div class="pr-market-grid">
+            <div class="pr-market-cell">
+                <div class="pr-market-cell__label">PRICE/UNIT</div>
+                <div style="display:flex;align-items:baseline;gap:4px;margin-top:2px;">
+                    <span class="pr-market-cell__value" style="font-size:16px;color:var(--text-bright)">$${price}</span>
+                    <span style="font-family:var(--font-mono);font-size:9px;color:${trendColor}">${trendChar}</span>
+                </div>
+            </div>
+            <div class="pr-market-cell">
+                <div class="pr-market-cell__label">SUPPLY/TICK</div>
+                <div class="pr-market-cell__value" style="font-size:14px;color:var(--text-bright);margin-top:2px;">${supply.toLocaleString()}</div>
+            </div>
+            <div class="pr-market-cell">
+                <div class="pr-market-cell__label">DEMAND</div>
+                <div class="pr-market-cell__value" style="font-size:12px;color:${demandColor};margin-top:2px;">${demandRatio}</div>
+            </div>
+        </div>
+    </div>`;
+
+    // Price drivers
+    html += `<div class="pr-drivers">
+        <div class="pr-drivers__title">Price Drivers (${escapeHtml(nationStats?.name || '—')})</div>`;
+    for (const statKey of mat.priceDrivers) {
+        const val = Number(nationStats?.[statKey] ?? 50);
+        const barColor = val >= 50 ? 'var(--green)' : val >= 30 ? 'var(--amber)' : val >= 15 ? 'var(--orange)' : 'var(--red)';
+        const label = PRICE_DRIVER_LABELS[statKey] || statKey;
+        html += `<div class="pr-driver-row">
+            <span class="pr-driver-row__stat">${escapeHtml(statKey)}</span>
+            <div class="pr-driver-row__bar">
+                <div class="pr-driver-row__fill" style="width:${val}%;background:${barColor}"></div>
+            </div>
+            <span class="pr-driver-row__val">${val}</span>
+            <span class="pr-driver-row__effect">${escapeHtml(label)}</span>
+        </div>`;
+    }
+    html += `</div>`;
+
+    // Purchase order
+    const cash = Number(faction?.corp_cash_reserves) || 0;
+    const canAfford = cash >= totalCost;
+    const overSupply = prPurchaseQty > supply;
+    const dotColor = MATERIAL_QUALITY_COLORS[prSelectedTier];
+
+    html += `<div class="pr-order">
+        <div class="pr-order__title">Purchase Order</div>
+        <div class="pr-order__box">
+            <div class="pr-order__header">
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <span class="pr-order__mat-name">${escapeHtml(mat.name)}</span>
+                    <div class="wh-dot" style="width:5px;height:5px;background:${dotColor};border-radius:1px;"></div>
+                    <span style="font-family:var(--font-mono);font-size:9px;color:${dotColor}">${QUALITY_LABELS[prSelectedTier]}</span>
+                </div>
+                <span class="pr-order__mat-price">$${price}/unit</span>
+            </div>
+            <div class="pr-qty-row">
+                <span class="pr-qty-label">QTY</span>
+                <div class="pr-qty-btns">
+                    ${[100, 250, 500, 1000].map(q =>
+                        `<span class="pr-qty-btn${prPurchaseQty === q ? ' active' : ''}" onclick="setPrQty(${q})">${q >= 1000 ? (q / 1000) + 'k' : q}</span>`
+                    ).join('')}
+                </div>
+            </div>
+            ${overSupply ? `<div class="pr-supply-warn">
+                <span class="pr-supply-warn__text">EXCEEDS AVAILABLE SUPPLY — max ${supply.toLocaleString()} this tick</span>
+            </div>` : ''}
+            <div class="pr-order__total">
+                <div>
+                    <div class="pr-order__total-label">TOTAL COST</div>
+                    <div class="pr-order__total-value">${fmtBig(totalCost)}</div>
+                </div>
+                <button class="pr-purchase-btn" onclick="purchaseMaterial()"
+                    ${canAfford && !overSupply ? '' : 'disabled'}
+                    title="${!canAfford ? 'Insufficient cash' : overSupply ? 'Exceeds supply' : 'Purchase materials'}"
+                >PURCHASE</button>
+            </div>
+        </div>
+    </div>`;
+
+    content.innerHTML = html;
+}
+
+function setPrMat(key) {
+    prSelectedMat = key;
+    // Auto-select highest available tier
+    prSelectedTier = 'STD';
+    for (const tier of ['STD', 'HIGH', 'LOW']) {
+        if (checkTierAvailability(key, tier, nationStats).available) {
+            prSelectedTier = tier;
+            break;
+        }
+    }
+    renderPrMatGrid();
+    renderPrTierBar();
+    renderPrContent();
+}
+
+function setPrTier(tier) {
+    prSelectedTier = tier;
+    renderPrTierBar();
+    renderPrContent();
+}
+
+function setPrQty(qty) {
+    prPurchaseQty = qty;
+    renderPrContent();
+}
+
+async function purchaseMaterial() {
+    if (!faction || !nationStats) return;
+
+    const price = calculateBasePrice(prSelectedMat, prSelectedTier, nationStats);
+    const supply = calculateSupply(prSelectedMat, prSelectedTier, nationStats);
+    const totalCost = price * prPurchaseQty;
+    const cash = Number(faction.corp_cash_reserves) || 0;
+
+    if (totalCost > cash) { alert('Insufficient cash reserves.'); return; }
+    if (prPurchaseQty > supply) { alert('Exceeds available supply this tick.'); return; }
+
+    // Disable button
+    const btn = document.querySelector('.pr-purchase-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '...'; }
+
+    try {
+        // Deduct cash
+        const newCash = cash - totalCost;
+        const { error: cashErr } = await _supabase
+            .from('factions')
+            .update({ corp_cash_reserves: newCash })
+            .eq('id', faction.id);
+        if (cashErr) throw cashErr;
+
+        // Upsert warehouse row
+        const existing = warehouseData[prSelectedMat]?.[prSelectedTier];
+        const newQty = (existing?.qty || 0) + prPurchaseQty;
+        const newValue = (existing?.value || 0) + totalCost;
+
+        const { error: whErr } = await _supabase
+            .from('corp_warehouse')
+            .upsert({
+                faction_id: faction.id,
+                nation_id: faction.nation_id,
+                material_key: prSelectedMat,
+                quality_tier: prSelectedTier,
+                quantity: newQty,
+                total_value: newValue,
+                last_purchased_tick: shard?.current_tick || null,
+                updated_at: new Date().toISOString(),
+            }, { onConflict: 'faction_id,material_key,quality_tier' });
+
+        if (whErr) {
+            // Refund cash — best effort, log if fails
+            const { error: refundErr } = await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
+            if (refundErr) console.error('Cash refund failed after warehouse error:', refundErr.message);
+            throw whErr;
+        }
+
+        // Update local state
+        faction.corp_cash_reserves = newCash;
+        if (!warehouseData[prSelectedMat]) warehouseData[prSelectedMat] = {};
+        warehouseData[prSelectedMat][prSelectedTier] = { qty: newQty, value: newValue };
+
+        // Re-render both cards
+        renderWarehouse();
+        renderProcurement();
+
+        if (btn) { btn.textContent = 'PURCHASED'; setTimeout(() => { if (btn.isConnected) { btn.disabled = false; btn.textContent = 'PURCHASE'; } }, 1500); }
+    } catch (err) {
+        if (btn) { btn.disabled = false; btn.textContent = 'PURCHASE'; }
+        alert('Purchase failed: ' + (err.message || 'Unknown error'));
+    }
+}
+
+// ── Equipment Market ──
+function generateListings(equipmentKey) {
+    const marketNation = emSelectedNation || nationStats;
+    if (!marketNation) return [];
+    const eq = getEquipment(equipmentKey);
+    if (!eq) return [];
+
+    const supply = calculateEquipmentSupply(equipmentKey, marketNation);
+    const listings = [];
+    const inflation = Number(marketNation?.inflation ?? 50);
+    const fuel = Number(marketNation?.fuel_prices ?? 50);
+    const mfg = Number(marketNation?.manufacturing_output ?? 50);
+    const isImport = emSelectedNation && nationStats && emSelectedNation.id !== nationStats.id;
+
+    // Calculate import costs if browsing a foreign nation
+    let importCost = null;
+    if (isImport) {
+        importCost = calculateEquipmentImportCost(marketNation, nationStats);
+    }
+
+    // NEW equipment from this nation
+    if (supply.newAvailable > 0) {
+        const localPrice = calculateEquipmentPrice(equipmentKey, marketNation);
+        const basePrice = eq.basePrice;
+        const inflationMod = Math.round(basePrice * ((inflation - 50) / 200));
+        const fuelMod = Math.round(basePrice * ((fuel - 50) / 300));
+
+        let price = localPrice;
+        const factors = [
+            { label: 'Base price', value: fmtBig(basePrice) },
+            inflationMod !== 0 ? { label: `Inflation (${inflation})`, mod: (inflationMod >= 0 ? '+' : '') + fmtBig(Math.abs(inflationMod)) } : null,
+            fuelMod !== 0 ? { label: `Fuel transport (${fuel})`, mod: (fuelMod >= 0 ? '+' : '') + fmtBig(Math.abs(fuelMod)) } : null,
+        ].filter(Boolean);
+
+        // Local demand premium (remainder after inflation + fuel)
+        const localDemand = localPrice - basePrice - inflationMod - fuelMod;
+        if (localDemand !== 0 && !isImport) {
+            factors.push({ label: 'Demand/scarcity', mod: (localDemand >= 0 ? '+' : '') + fmtBig(Math.abs(localDemand)) });
+        }
+
+        // Import surcharges
+        if (isImport && importCost) {
+            const tariffAmt = Math.round(localPrice * importCost.tariff);
+            const transportAmt = Math.round(localPrice * importCost.transport);
+            price = localPrice + tariffAmt + transportAmt;
+            factors.push({ label: `Import tariff (${Math.round(importCost.tariff * 100)}%)`, mod: '+' + fmtBig(tariffAmt) });
+            factors.push({ label: `Transport (${importCost.deliveryTicks} tick${importCost.deliveryTicks > 1 ? 's' : ''})`, mod: '+' + fmtBig(transportAmt) });
+        }
+
+        listings.push({
+            seller: isImport ? `${marketNation.name} Buyers` : 'Local Buyers',
+            sellerType: 'LOCAL',
+            nation: marketNation.name || '—',
+            distance: isImport ? (importCost?.deliveryTicks || 1) : 0,
+            condition: 100, price: Math.round(price),
+            available: supply.newAvailable,
+            delivery: isImport ? importCost.deliveryTicks + ' tick' + (importCost.deliveryTicks > 1 ? 's' : '') : 'Immediate',
+            deliveryTicks: isImport ? importCost.deliveryTicks : 0,
+            used: false,
+            priceFactors: factors,
+            sourceNationId: marketNation.id,
+        });
+    }
+
+    // USED equipment from this nation
+    if (supply.usedAvailable > 0) {
+        const usedCond = supply.usedCondition;
+        const usedLocalPrice = calculateEquipmentPrice(equipmentKey, marketNation, { used: true, condition: usedCond });
+        let usedPrice = usedLocalPrice;
+
+        const usedFactors = [
+            { label: 'Base price', value: fmtBig(eq.basePrice) },
+            { label: `Condition (${usedCond}%)`, mod: '-' + fmtBig(Math.max(0, eq.basePrice - usedLocalPrice)) },
+        ];
+
+        if (isImport && importCost) {
+            const tariffAmt = Math.round(usedLocalPrice * importCost.tariff);
+            const transportAmt = Math.round(usedLocalPrice * importCost.transport);
+            usedPrice = usedLocalPrice + tariffAmt + transportAmt;
+            usedFactors.push({ label: `Import tariff (${Math.round(importCost.tariff * 100)}%)`, mod: '+' + fmtBig(tariffAmt) });
+            usedFactors.push({ label: `Transport (${importCost.deliveryTicks} tick${importCost.deliveryTicks > 1 ? 's' : ''})`, mod: '+' + fmtBig(transportAmt) });
+        }
+
+        listings.push({
+            seller: isImport ? `${marketNation.name} Buyers` : 'Local Buyers',
+            sellerType: 'LOCAL',
+            nation: marketNation.name || '—',
+            distance: isImport ? (importCost?.deliveryTicks || 1) : 0,
+            condition: usedCond, price: Math.round(usedPrice),
+            available: supply.usedAvailable,
+            delivery: isImport ? importCost.deliveryTicks + ' tick' + (importCost.deliveryTicks > 1 ? 's' : '') : 'Immediate',
+            deliveryTicks: isImport ? importCost.deliveryTicks : 0,
+            used: true,
+            priceFactors: usedFactors,
+            sourceNationId: marketNation.id,
+        });
+    }
+
+    return listings;
+}
+
+function renderEquipmentMarket() {
+    const cash = Number(faction?.corp_cash_reserves) || 0;
+    document.getElementById('em-cash').textContent = fmtBig(cash);
+
+    const eqDef = getEquipment(emSelectedType);
+    const tierDef = EQUIPMENT_TIERS[eqDef?.tier || 1];
+    const badge = document.getElementById('em-tier-badge');
+    badge.textContent = tierDef.tag;
+    badge.style.color = tierDef.color;
+    badge.style.background = tierDef.color + '0a';
+    badge.style.border = '1px solid ' + tierDef.color + '33';
+
+    // Nation dropdown
+    const select = document.getElementById('em-nation-select');
+    if (select && select.options.length === 0) {
+        // HQ nation first
+        const hqName = nationStats?.name || faction?.nation || '—';
+        let opts = `<option value="">${escapeHtml(hqName)} (HQ)</option>`;
+        for (const n of emAllNations) {
+            if (n.id === nationStats?.id) continue;
+            opts += `<option value="${n.id}">${escapeHtml(n.name)}</option>`;
+        }
+        select.innerHTML = opts;
+    }
+
+    // Import tag
+    const importTag = document.getElementById('em-import-tag');
+    const isImport = emSelectedNation && nationStats && emSelectedNation.id !== nationStats.id;
+    if (importTag) importTag.style.display = isImport ? '' : 'none';
+
+    renderEmSelector();
+    renderEmContent();
+}
+
+function renderEmSelector() {
+    let html = '';
+    for (let tier = 1; tier <= 3; tier++) {
+        const tm = EQUIPMENT_TIERS[tier];
+        const items = getEquipmentByTier(tier);
+        const gridClass = tier === 3 ? 'em-selector__grid em-selector__grid--t3' : 'em-selector__grid em-selector__grid--t12';
+        html += `<div class="em-selector__row">
+            <div class="em-selector__tier-label" style="color:${tm.color}">${tm.tag}</div>
+            <div class="${gridClass}">`;
+        for (const eq of items) {
+            const active = emSelectedType === eq.key;
+            const hasListings = generateListings(eq.key).length > 0;
+            html += `<span class="em-selector__btn${active ? ' active' : ''}${!hasListings ? ' no-listings' : ''}"
+                style="${active ? 'background:' + tm.color + ';border-color:' + tm.color : ''}"
+                onclick="setEmType('${eq.key}')">${escapeHtml(eq.name)}</span>`;
+        }
+        html += `</div></div>`;
+    }
+    document.getElementById('em-selector').innerHTML = `<div class="em-selector">${html}</div>`;
+}
+
+function renderEmContent() {
+    const content = document.getElementById('em-content');
+    emListings = generateListings(emSelectedType);
+
+    if (emListings.length === 0) {
+        content.innerHTML = `<div class="em-no-listings"><div class="em-no-listings__box">
+            <div class="em-no-listings__title">NO SELLERS AVAILABLE</div>
+            <div class="em-no-listings__desc">No local buyers or corporations are currently selling this equipment. Check back next tick or expand search to other nations.</div>
+        </div></div>`;
+        return;
+    }
+
+    if (emSelectedListing >= emListings.length) emSelectedListing = 0;
+
+    let html = '';
+    for (let i = 0; i < emListings.length; i++) {
+        const l = emListings[i];
+        const isSel = emSelectedListing === i;
+        const selColor = l.sellerType === 'LOCAL' ? 'var(--teal)' : '#5a8aaa';
+        const cc = conditionColor(l.condition);
+
+        html += `<div class="em-listing${isSel ? ' selected' : ''}" style="${isSel ? 'border-left-color:' + selColor : ''}" onclick="setEmListing(${i})">`;
+
+        // Row 1: seller + badges
+        html += `<div class="em-listing__row1">
+            <div style="display:flex;align-items:center;gap:6px">
+                <span class="em-listing__seller">${escapeHtml(l.seller)}</span>
+                <span class="em-badge em-badge--${l.sellerType.toLowerCase()}">${l.sellerType}</span>
+                ${l.used ? '<span class="em-badge em-badge--used">USED</span>' : ''}
+            </div>
+        </div>`;
+
+        // Row 2: nation + distance + delivery
+        html += `<div class="em-listing__row2">
+            <span class="em-listing__nation">${escapeHtml((l.nation || '').toUpperCase())}</span>
+            ${l.distance > 0 ? `<span class="em-listing__distance">${l.distance} nation${l.distance > 1 ? 's' : ''} away</span>` : ''}
+            <span class="em-listing__delivery">Delivery: ${escapeHtml(l.delivery)}</span>
+        </div>`;
+
+        // Row 3: stats
+        html += `<div class="em-listing__stats">
+            <div class="em-stat-cell" style="flex:1">
+                <div class="em-stat-cell__label">COND.</div>
+                <div class="em-stat-cell__bar">
+                    <div class="em-stat-cell__bar-track"><div class="em-stat-cell__bar-fill" style="width:${l.condition}%;background:${cc}"></div></div>
+                    <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${cc}">${l.condition}%</span>
+                </div>
+            </div>
+            <div class="em-stat-cell" style="flex:0.8;text-align:center">
+                <div class="em-stat-cell__label">AVAIL.</div>
+                <div class="em-stat-cell__value" style="font-size:11px;color:var(--text-bright);margin-top:2px">${l.available}</div>
+            </div>
+            <div class="em-stat-cell" style="flex:1.2">
+                <div class="em-stat-cell__label">PRICE/UNIT</div>
+                <div class="em-stat-cell__value" style="font-size:11px;color:var(--text-bright);margin-top:2px">${fmtBig(l.price)}</div>
+            </div>
+        </div>`;
+
+        // Price breakdown (selected only)
+        if (isSel && l.priceFactors) {
+            html += `<div class="em-breakdown">
+                <div class="em-breakdown__title">Price Breakdown</div>
+                ${l.priceFactors.map(pf => `<div class="em-breakdown__row">
+                    <span class="em-breakdown__label">${escapeHtml(pf.label)}</span>
+                    <span class="em-breakdown__mod" style="color:${pf.mod ? (pf.mod.startsWith('-') ? 'var(--green)' : pf.mod === '$0' ? 'var(--text-dim)' : 'var(--red)') : 'var(--text-bright)'}">${pf.mod || pf.value}</span>
+                </div>`).join('')}
+            </div>`;
+        }
+
+        html += `</div>`;
+    }
+
+    // Purchase section
+    const listing = emListings[emSelectedListing];
+    if (listing) {
+        const eqDef = getEquipment(emSelectedType);
+        const tierDef = EQUIPMENT_TIERS[eqDef?.tier || 1];
+        const maxQty = Math.min(listing.available, 4);
+        const totalCost = listing.price * emPurchaseQty;
+        const canAfford = (Number(faction?.corp_cash_reserves) || 0) >= totalCost;
+
+        html += `<div class="em-purchase"><div class="em-purchase__box">
+            <div class="em-purchase__header">
+                <div>
+                    <span class="em-purchase__name">${escapeHtml(eqDef?.name || '')}</span>
+                    <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-left:6px">from ${escapeHtml(listing.seller)}</span>
+                </div>
+                <span class="em-purchase__price">${fmtBig(listing.price)}/unit</span>
+            </div>
+            <div class="em-purchase__qty">
+                <span class="em-purchase__qty-label">QTY</span>
+                <div class="em-purchase__qty-btns">
+                    ${Array.from({length: maxQty}, (_, j) => j + 1).map(q =>
+                        `<span class="em-qty-btn${emPurchaseQty === q ? ' active' : ''}" style="${emPurchaseQty === q ? 'background:' + tierDef.color + ';border-color:' + tierDef.color : ''}" onclick="setEmQty(${q})">${q}</span>`
+                    ).join('')}
+                </div>
+                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-left:auto">max ${listing.available}</span>
+            </div>
+            <div class="em-purchase__total">
+                <div>
+                    <div class="em-purchase__total-label">TOTAL COST</div>
+                    <div class="em-purchase__total-value">${fmtBig(totalCost)}</div>
+                    ${listing.delivery !== 'Immediate' ? `<div class="em-purchase__delivery-warn">Delivery: ${escapeHtml(listing.delivery)}</div>` : ''}
+                </div>
+                <button class="em-purchase-btn" style="background:${tierDef.color}" onclick="purchaseEquipment()"
+                    ${canAfford ? '' : 'disabled'}
+                    title="${canAfford ? 'Purchase equipment' : 'Insufficient cash'}">PURCHASE</button>
+            </div>
+        </div></div>`;
+    }
+
+    content.innerHTML = html;
+}
+
+async function switchEmNation(nationId) {
+    if (!nationId) {
+        emSelectedNation = null; // back to HQ
+    } else {
+        // Find from cached list or load fresh
+        let n = emAllNations.find(x => x.id === nationId);
+        if (!n) {
+            try {
+                const { data } = await _supabase.from('nations').select('*').eq('id', nationId).single();
+                n = data;
+            } catch (_) { /* fall back to HQ */ }
+        }
+        emSelectedNation = n || null;
+    }
+    emSelectedListing = 0;
+    emPurchaseQty = 1;
+    // Re-populate dropdown to keep selection in sync
+    const select = document.getElementById('em-nation-select');
+    if (select) select.value = nationId || '';
+    renderEquipmentMarket();
+}
+
+function setEmType(key) {
+    emSelectedType = key;
+    emSelectedListing = 0;
+    emPurchaseQty = 1;
+    renderEquipmentMarket();
+}
+
+function setEmListing(idx) {
+    emSelectedListing = idx;
+    emPurchaseQty = 1;
+    renderEmContent();
+}
+
+function setEmQty(q) {
+    emPurchaseQty = q;
+    renderEmContent();
+}
+
+// Purchase placeholder — Phase 5 will implement the full flow
+let _emPurchasing = false;
+
+async function purchaseEquipment() {
+    if (_emPurchasing) return;
+    const listing = emListings[emSelectedListing];
+    if (!listing || !faction) return;
+
+    const eqDef = getEquipment(emSelectedType);
+    if (!eqDef) return;
+
+    const qty = emPurchaseQty;
+    const totalCost = listing.price * qty;
+    const cash = Number(faction.corp_cash_reserves) || 0;
+
+    if (totalCost > cash) { alert('Insufficient cash reserves.'); return; }
+    if (qty > listing.available) { alert('Not enough units available.'); return; }
+
+    const btn = document.querySelector('.em-purchase-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '...'; }
+    _emPurchasing = true;
+
+    try {
+        // 1. Deduct cash
+        const newCash = cash - totalCost;
+        const { error: cashErr } = await _supabase
+            .from('factions')
+            .update({ corp_cash_reserves: newCash })
+            .eq('id', faction.id);
+        if (cashErr) throw cashErr;
+
+        const isImmediate = !listing.deliveryTicks || listing.deliveryTicks === 0;
+
+        if (isImmediate) {
+            // 2a. Immediate delivery — upsert into corp_equipment
+            const existing = equipmentData.find(e => e.equipment_key === emSelectedType);
+            const newOwned = (existing?.owned || 0) + qty;
+            const oldAvgPrice = existing?.purchase_price_avg || 0;
+            const oldOwned = existing?.owned || 0;
+            const newAvgPrice = oldOwned > 0
+                ? Math.round(((oldAvgPrice * oldOwned) + (listing.price * qty)) / newOwned)
+                : listing.price;
+            const newMaint = eqDef.maintenancePerUnit * newOwned;
+
+            // Weighted average condition: existing condition + new condition
+            const oldCond = existing?.condition || 100;
+            const newCond = Math.round(((oldCond * oldOwned) + (listing.condition * qty)) / newOwned);
+
+            const { error: eqErr } = await _supabase
+                .from('corp_equipment')
+                .upsert({
+                    faction_id: faction.id,
+                    nation_id: faction.nation_id,
+                    equipment_key: emSelectedType,
+                    tier: eqDef.tier,
+                    owned: newOwned,
+                    deployed: existing?.deployed || 0,
+                    condition: newCond,
+                    maintenance_per_tick: newMaint,
+                    purchase_price_avg: newAvgPrice,
+                    last_purchased_tick: shard?.current_tick || null,
+                    updated_at: new Date().toISOString(),
+                }, { onConflict: 'faction_id,equipment_key' });
+
+            if (eqErr) {
+                // Refund cash
+                const { error: refErr } = await _supabase.from('factions')
+                    .update({ corp_cash_reserves: cash }).eq('id', faction.id);
+                if (refErr) console.error('Cash refund failed:', refErr.message);
+                throw eqErr;
+            }
+
+            // Update local state
+            if (existing) {
+                existing.owned = newOwned;
+                existing.condition = newCond;
+                existing.maintenance_per_tick = newMaint;
+            } else {
+                equipmentData.push({
+                    equipment_key: emSelectedType,
+                    tier: eqDef.tier,
+                    owned: newOwned,
+                    deployed: 0,
+                    condition: newCond,
+                    maintenance_per_tick: newMaint,
+                    assigned_projects: [],
+                });
+            }
+
+        } else {
+            // 2b. Delayed delivery — insert into corp_equipment_deliveries
+            const deliveryTick = (shard?.current_tick || 0) + listing.deliveryTicks;
+            const { error: delErr } = await _supabase
+                .from('corp_equipment_deliveries')
+                .insert({
+                    faction_id: faction.id,
+                    equipment_key: emSelectedType,
+                    quantity: qty,
+                    condition: listing.condition,
+                    delivery_tick: deliveryTick,
+                    source_nation_id: listing.sourceNationId || null,
+                    seller_name: listing.seller,
+                    price_paid: totalCost,
+                });
+
+            if (delErr) {
+                // Refund cash
+                const { error: refErr } = await _supabase.from('factions')
+                    .update({ corp_cash_reserves: cash }).eq('id', faction.id);
+                if (refErr) console.error('Cash refund failed:', refErr.message);
+                throw delErr;
+            }
+        }
+
+        // Update local cash
+        faction.corp_cash_reserves = newCash;
+
+        // Re-render both cards
+        renderEquipment();
+        renderEquipmentMarket();
+        // Also update procurement footer cash display
+        const prCash = document.getElementById('pr-cash');
+        if (prCash) prCash.textContent = fmtBig(newCash);
+
+        if (btn) {
+            btn.textContent = isImmediate ? 'PURCHASED' : 'ORDERED';
+            setTimeout(() => {
+                if (btn.isConnected) { btn.disabled = false; btn.textContent = 'PURCHASE'; }
+            }, 1500);
+        }
+
+    } catch (err) {
+        if (btn) { btn.disabled = false; btn.textContent = 'PURCHASE'; }
+        alert('Purchase failed: ' + (err.message || 'Unknown error'));
+    } finally {
+        _emPurchasing = false;
+    }
+}
+
+// ── Equipment Inventory ──
+function renderEquipment() {
+    const totalOwned = equipmentData.reduce((s, e) => s + (e.owned || 0), 0);
+    const totalDeployed = equipmentData.reduce((s, e) => s + (e.deployed || 0), 0);
+    const totalMaint = calculateTotalMaintenance(equipmentData);
+    const available = totalOwned - totalDeployed;
+
+    document.getElementById('eq-count').textContent = totalOwned + ' UNITS';
+
+    // Summary bar
+    document.getElementById('eq-summary').innerHTML = `
+        <div class="eq-summary__cell">
+            <div class="eq-summary__label">DEPLOYED</div>
+            <div class="eq-summary__value" style="font-size:14px;color:var(--text-bright)">
+                ${totalDeployed} <span style="font-size:9px;color:var(--text-dim)">/ ${totalOwned}</span>
+            </div>
+        </div>
+        <div class="eq-summary__cell">
+            <div class="eq-summary__label">AVAILABLE</div>
+            <div class="eq-summary__value" style="font-size:14px;color:${available === 0 ? 'var(--orange)' : 'var(--green)'}">
+                ${available}
+            </div>
+        </div>
+        <div class="eq-summary__cell">
+            <div class="eq-summary__label">MAINT/TICK</div>
+            <div class="eq-summary__value" style="font-size:14px;color:var(--red)">
+                ${fmtBig(totalMaint)}
+            </div>
+        </div>`;
+
+    // Build equipment map by key
+    const eqMap = {};
+    for (const row of equipmentData) eqMap[row.equipment_key] = row;
+
+    // Tier list
+    let listHtml = '';
+    for (let ti = 1; ti <= 3; ti++) {
+        const tierDef = EQUIPMENT_TIERS[ti];
+        const tierEquip = getEquipmentByTier(ti);
+        const isExpanded = eqExpandedTier === ti;
+        const tierOwned = tierEquip.reduce((s, e) => s + (eqMap[e.key]?.owned || 0), 0);
+        const tierDeployed = tierEquip.reduce((s, e) => s + (eqMap[e.key]?.deployed || 0), 0);
+
+        // Tier header
+        listHtml += `<div class="eq-tier-hdr" onclick="toggleEqTier(${ti})">
+            <div class="eq-tier-hdr__left">
+                <span class="eq-tier-hdr__arrow">${isExpanded ? '▾' : '▸'}</span>
+                <span class="eq-tier-hdr__name" style="color:${tierDef.color}">${escapeHtml(tierDef.name)}</span>
+                <span class="eq-tier-hdr__tag" style="color:${tierDef.color};border:1px solid ${tierDef.color}33;background:${tierDef.color}0a">${tierDef.tag}</span>
+            </div>
+            ${tierOwned > 0
+                ? `<span class="eq-tier-hdr__count">${tierDeployed}/${tierOwned}</span>`
+                : `<span class="eq-tier-hdr__none">NONE OWNED</span>`}
+        </div>`;
+
+        // Equipment rows
+        if (isExpanded) {
+            for (const eqDef of tierEquip) {
+                const row = eqMap[eqDef.key];
+                const owned = row?.owned || 0;
+                const deployed = row?.deployed || 0;
+                const condition = row?.condition || 0;
+                const maint = eqDef.maintenancePerUnit * owned;
+                const free = owned - deployed;
+                const allDeployed = owned > 0 && free === 0;
+                const hasWear = owned > 0 && condition < 65;
+                const cc = conditionColor(condition);
+                const assigned = row?.assigned_projects || [];
+                const projectStr = assigned.length > 0
+                    ? assigned.map(a => a.contract_name || 'Project').join(', ').slice(0, 30)
+                    : owned > 0 && deployed > 0 ? deployed + ' project' + (deployed > 1 ? 's' : '') : '—';
+
+                listHtml += `<div class="eq-row${owned === 0 ? ' unowned' : ''}">`;
+
+                // Row 1: name + deployed/owned
+                listHtml += `<div class="eq-row__top">
+                    <div class="eq-row__name-area">
+                        <span class="eq-row__name${owned === 0 ? ' dim' : ''}">${escapeHtml(eqDef.name)}</span>
+                        ${hasWear ? '<span class="eq-row__wear">WEAR</span>' : ''}
+                    </div>
+                    ${owned > 0
+                        ? `<div class="eq-row__right">
+                            <div style="display:flex;gap:3px">
+                                <span class="eq-row__free" style="color:${allDeployed ? 'var(--orange)' : 'var(--green)'}">${free}</span>
+                                <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim)">free</span>
+                            </div>
+                            <span class="eq-row__ratio">${deployed}/${owned}</span>
+                        </div>`
+                        : `<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim)">—</span>`}
+                </div>`;
+
+                // Row 2: detail bar (only if owned)
+                if (owned > 0) {
+                    listHtml += `<div class="eq-detail">
+                        <div class="eq-detail__cell" style="flex:1.2">
+                            <div class="eq-detail__label">CONDITION</div>
+                            <div class="eq-detail__bar">
+                                <div class="eq-detail__bar-track">
+                                    <div class="eq-detail__bar-fill" style="width:${condition}%;background:${cc}"></div>
+                                </div>
+                                <span class="eq-detail__bar-pct" style="color:${cc}">${condition}%</span>
+                            </div>
+                        </div>
+                        <div class="eq-detail__cell" style="flex:0.8">
+                            <div class="eq-detail__label">ASSIGNED</div>
+                            <div class="eq-detail__value" style="color:var(--text-muted)">${escapeHtml(projectStr)}</div>
+                        </div>
+                        <div class="eq-detail__cell" style="flex:0.7">
+                            <div class="eq-detail__label">MAINT</div>
+                            <div class="eq-detail__value" style="color:var(--red)">${fmtBig(maint)}<span style="font-size:7px;color:var(--text-dim)">/t</span></div>
+                        </div>
+                    </div>`;
+                } else {
+                    listHtml += `<div class="eq-row__hint">Purchase from Equipment Market →</div>`;
+                }
+
+                listHtml += `</div>`;
+            }
+        }
+    }
+
+    document.getElementById('eq-list').innerHTML = listHtml;
+
+    // Footer
+    const footerTiers = [1, 2, 3].map(ti => {
+        const tierDef = EQUIPMENT_TIERS[ti];
+        const count = getEquipmentByTier(ti).reduce((s, e) => s + (eqMap[e.key]?.owned || 0), 0);
+        return `<div class="eq-footer__tier-box" style="border-color:${count > 0 ? tierDef.color + '33' : 'var(--border-0)'};background:${count > 0 ? tierDef.color + '0a' : 'transparent'}">
+            <div class="eq-footer__tier-tag" style="color:${tierDef.color}">${tierDef.tag}</div>
+            <div class="eq-footer__tier-count" style="color:${count > 0 ? 'var(--text-bright)' : 'var(--text-dim)'}">${count}</div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('eq-footer').innerHTML = `
+        <div>
+            <div class="eq-footer__maint-label">FLEET MAINTENANCE / TICK</div>
+            <div class="eq-footer__maint-value">${fmtBig(totalMaint)}</div>
+        </div>
+        <div class="eq-footer__tiers">${footerTiers}</div>`;
+}
+
+function toggleEqTier(tier) {
+    eqExpandedTier = eqExpandedTier === tier ? -1 : tier;
+    renderEquipment();
+}
+
+async function loadEquipment() {
+    if (!faction) return;
+
+    const { data, error } = await _supabase
+        .from('corp_equipment')
+        .select('equipment_key, tier, owned, deployed, condition, maintenance_per_tick, assigned_projects')
+        .eq('faction_id', faction.id);
+
+    if (error) {
+        console.warn('Failed to load equipment:', error.message);
+        equipmentData = [];
+    } else {
+        equipmentData = data || [];
+    }
+
+    renderEquipment();
+}
+
+// ── Init ──
+async function init() {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) { window.location.href = 'login.html'; return; }
+
+    // Load all factions for this user
+    const { data: allFactions } = await _supabase
+        .from('factions')
+        .select('*')
+        .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
+
+    allUserFactions = (allFactions || []).filter(f => f.nation_id);
+
+    // Pick active faction
+    const activeFactionId = sessionStorage.getItem('active_faction_id');
+    faction = allUserFactions.find(f => f.id === activeFactionId)
+        || allUserFactions.find(f => f.faction_type === 'corporation')
+        || allUserFactions[0];
+
+    if (!faction) {
+        await _supabase.auth.signOut();
+        window.location.href = 'login.html';
+        return;
+    }
+
+    if (faction.faction_type !== 'corporation') {
+        window.location.href = 'dashboard.html';
+        return;
+    }
+
+    // Load nation + shard
+    const [nationRes, shardRes] = await Promise.all([
+        faction.nation_id
+            ? _supabase.from('nations').select('*').eq('id', faction.nation_id).single()
+            : Promise.resolve({ data: null }),
+        _supabase.from('shard').select('current_tick, current_date, next_tick_at').eq('name', 'Alpha Shard').single(),
+    ]);
+
+    if (nationRes.error) console.warn('Nation load failed:', nationRes.error.message);
+    if (nationRes.data) nationStats = nationRes.data;
+    if (shardRes.error) console.warn('Shard load failed:', shardRes.error.message);
+    shard = shardRes.data;
+
+    // Top bar — left
+    const ticker = faction.corp_ticker || faction.abbreviation || '';
+    document.getElementById('corp-logo').textContent = ticker.slice(0, 2) || '—';
+    document.getElementById('corp-name-bar').textContent = faction.faction_name || 'Unnamed Corp';
+
+    // Tick info
+    if (shard) {
+        document.getElementById('game-date').textContent = shard.current_date || '—';
+        document.getElementById('tick-number').textContent = shard.current_tick || '—';
+        if (shard.next_tick_at) {
+            nextTickAt = new Date(shard.next_tick_at);
+            startTickCountdown();
+        }
+    }
+
+    // Top bar — right
+    document.getElementById('corp-name-badge').textContent =
+        (faction.faction_name || 'Corp') + (ticker ? ' [' + ticker + ']' : '') + ' ▾';
+    const ap = faction.action_points ?? 0;
+    document.getElementById('topbar-ap').innerHTML =
+        '<span class="topbar-ap__count">' + ap + ' AP</span>';
+
+    // Nation pill
+    document.getElementById('nation-pill').textContent =
+        (nationStats?.name || faction.nation || '—').toUpperCase();
+
+    // Faction dropdown
+    const dd = document.getElementById('corp-faction-dropdown');
+    if (dd) {
+        let ddHtml = '';
+        for (const f of allUserFactions) {
+            const isActive = f.id === faction.id;
+            const typeLabel = f.faction_type === 'corporation' ? 'CORP' : 'PARTY';
+            const typeColor = f.faction_type === 'corporation' ? 'var(--teal)' : 'var(--amber)';
+            ddHtml += `<div class="corp-dd-item${isActive ? ' active' : ''}" onclick="switchToFaction('${f.id}', '${f.faction_type}')">
+                <span class="corp-dd-type" style="color:${typeColor}">${typeLabel}</span>
+                <span class="corp-dd-name">${escapeHtml(f.faction_name || 'Unnamed')}</span>
+                <span class="corp-dd-abbr">[${escapeHtml(f.abbreviation || '—')}]</span>
+            </div>`;
+        }
+        dd.innerHTML = ddHtml;
+    }
+
+    // Load contracts
+    await Promise.all([loadContracts(), loadActiveProjects(), loadWarehouse(), loadEquipment()]);
+
+    // Load all nations for equipment market nation switcher
+    try {
+        const { data: nations } = await _supabase.from('nations').select('*').order('name');
+        emAllNations = nations || [];
+    } catch (_) { emAllNations = []; }
+
+    // Render procurement + equipment market (use nationStats, no separate load)
+    renderProcurement();
+    renderEquipmentMarket();
+
+    // Messaging bubble
+    initMessaging(faction, nationStats, shard);
+
+    // Show page
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('page-content').style.display = 'block';
+}
+
+// ── Window functions ──
+async function doLogout() {
+    await _supabase.auth.signOut();
+    window.location.href = 'login.html';
+}
+
+function toggleCorpDropdown() {
+    const dd = document.getElementById('corp-faction-dropdown');
+    if (dd) dd.classList.toggle('open');
+}
+
+function switchToFaction(factionId, factionType) {
+    const dd = document.getElementById('corp-faction-dropdown');
+    if (dd) dd.classList.remove('open');
+    sessionStorage.setItem('active_faction_id', factionId);
+    if (factionType === 'corporation') {
+        window.location.href = 'corp-operations.html';
+    } else {
+        window.location.href = 'dashboard.html';
+    }
+}
+
+document.addEventListener('click', (e) => {
+    const sw = document.getElementById('faction-switcher');
+    const dd = document.getElementById('corp-faction-dropdown');
+    if (dd && sw && !sw.contains(e.target)) dd.classList.remove('open');
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeContractDetail();
+});
+
+window.doLogout = doLogout;
+window.toggleTheme = toggleTheme;
+window.toggleCorpDropdown = toggleCorpDropdown;
+window.switchToFaction = switchToFaction;
+window.setFilter = setFilter;
+window.openContractDetail = openContractDetail;
+window.closeContractDetail = closeContractDetail;
+window.placeBid = placeBid;
+window.toggleWhRow = toggleWhRow;
+window.toggleEqTier = toggleEqTier;
+window.switchEmNation = switchEmNation;
+window.setEmType = setEmType;
+window.setEmListing = setEmListing;
+window.setEmQty = setEmQty;
+window.purchaseEquipment = purchaseEquipment;
+window.setPrMat = setPrMat;
+window.setPrTier = setPrTier;
+window.setPrQty = setPrQty;
+window.purchaseMaterial = purchaseMaterial;
+
+init();
+</script>
+</body>
+</html>

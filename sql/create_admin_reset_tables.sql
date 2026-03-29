@@ -12,47 +12,98 @@ DECLARE
     tbl TEXT;
     cnt BIGINT;
     tables TEXT[] := ARRAY[
-        -- Caucus system (references factions + bills)
+        -- ══ Corp system ══
+        'corp_contract_bids',
+        'corp_contracts',
+        'corp_warehouse',
+        'corp_equipment_deliveries',
+        'corp_equipment',
+
+        -- ══ IPO system ══
+        'ipo_ballots',
+        'ipo_fund_transactions',
+        'ipo_action_log',
+        'ipo_chat',
+        'ipo_votes',
+        'ipo_invitations',
+        'ipo_members',
+        'international_orgs',
+
+        -- ══ Caucus system ══
         'caucus_dispositions',
         'caucus_factions',
-        -- Tables that reference factions (must clear before factions)
+
+        -- ══ Electorate & standings ══
+        'faction_electoral_standing',
+        'faction_engagement',
+        'faction_bloc_approval',
+        'faction_issue_stance',
+        'issue_state',
+        'electorate_profile',
+        'campaign_actions',
+        'party_bases',
+        'leadership_candidates',
+        'credibility_log',
+        'momentum_log',
+        'party_approval_log',
+
+        -- ══ Ideology ══
+        'faction_ideology',
+        'ideology_history',
+        'ideology_shift_actions',
+
+        -- ══ Bills & legislation ══
         'bill_comments',
         'bill_amendment_requests',
-        'campaign_actions',
         'bill_support',
-        'faction_ideology',
-        'ministry_action_log',
-        'government_formation_chat',
-        -- Faction coalitions (children before parents)
-        'coalition_messages',
-        'faction_coalitions',
-        'loyalty_demands',
-        -- Autocracy
-        'stewards',
-        'executive_orders',
-        -- Government tables (children before parents)
+        'bills',
+        'active_laws',
+
+        -- ══ Government ══
         'head_of_government',
         'pm_candidates',
         'shakeups',
         'presidents',
         'impeachment_proceedings',
         'ministries',
+        'ministry_action_log',
         'administrations',
-        'active_coalitions',
         'government_formations',
-        -- Legislative (coalition_proposals references elections)
+
+        -- ══ Coalitions ══
+        'coalition_messages',
         'coalition_proposals',
+        'faction_coalitions',
+        'loyalty_demands',
+
+        -- ══ Autocracy ══
+        'stewards',
+        'executive_orders',
+        'autocracy_action_log',
+        'autocracy_tracker',
+        'regime_pillars',
+        'faction_pillar_state',
+        'coup_attempt_log',
+        'putsch_state',
+        'pyrrhic_window',
+        'vulnerability_window',
+        'silent_coup_offers',
+        'silent_coup_votes',
+
+        -- ══ Elections & endorsements ══
         'presidential_endorsements',
         'party_endorsement_preferences',
-        'bills',
-        'active_laws',
+        'election_results',
         'elections',
-        -- Budget & funding
+
+        -- ══ Budget & funding ══
         'budget_allocations',
         'budget_item_allocations',
         'fundraiser_promises',
         'donor_trust',
-        -- Trade & economy
+        'faction_promises',
+
+        -- ══ Trade & economy ══
         'trade_agreements',
         'trade_negotiations',
         'trade_flows',
@@ -62,40 +113,67 @@ DECLARE
         'default_history',
         'aid_agreement_state',
         'aid_condition_reviews',
-        -- Events & crises
-        'active_crises',
-        'event_log',
-        -- History & logs
-        'nations_history',
-        'ideology_history',
-        'gov_approval_log',
-        'stat_history',
-        -- Content
-        'op_eds',
-        'valdorian_articles',
-        'player_articles',
-        'nation_profiles',
-        'wiki_pages',
-        -- Diplomacy
+
+        -- ══ Diplomacy ══
         'diplomatic_messages',
         'diplomatic_proposals',
         'diplomatic_action_log',
         'ambassadors',
-        -- Forum & chat
+
+        -- ══ Events & crises ══
+        'active_crises',
+        'crisis_effects',
+        'protest_endorsements',
+        'protest_log',
+        'event_log',
+        'curriculum_drift',
+
+        -- ══ History & logs ══
+        'nations_history',
+        'stat_history',
+        'gov_approval_log',
+        'activity_log',
+
+        -- ══ Content ══
+        'op_eds',
+        'valdorian_articles',
+        'player_articles',
+        'wiki_pages',
+
+        -- ══ Forum & chat ══
         'forum_replies',
         'forum_threads',
-        'admin_chat'
+        'admin_chat',
+
+        -- ══ Misc ══
+        'military_doctrines',
+        'vln_state',
+
+        -- ══ Messaging ══
+        'direct_messages',
+        'group_chat_messages',
+        'group_chat_members',
+        'group_chats'
     ];
 BEGIN
-    -- First: null out FKs to factions so factions can be deleted
+    -- First: null out FKs on nations so factions can be deleted
     UPDATE nations SET ruling_faction_id = NULL WHERE ruling_faction_id IS NOT NULL;
     result := result || '{"nations.ruling_faction_id": "nulled"}'::JSONB;
 
+    -- Null out regime_pillars FK if the table exists
     BEGIN
         UPDATE regime_pillars SET steward_faction_id = NULL WHERE steward_faction_id IS NOT NULL;
         result := result || '{"regime_pillars.steward_faction_id": "nulled"}'::JSONB;
     EXCEPTION WHEN undefined_table THEN
         result := result || '{"regime_pillars.steward_faction_id": "table missing (skipped)"}'::JSONB;
+    END;
+
+    -- Null out diplomatic_relations FKs
+    BEGIN
+        DELETE FROM diplomatic_relations WHERE true;
+        result := result || '{"diplomatic_relations": "cleared"}'::JSONB;
+    EXCEPTION WHEN undefined_table THEN
+        result := result || '{"diplomatic_relations": "table missing (skipped)"}'::JSONB;
     END;
 
     -- Clear each game-state table

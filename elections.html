@@ -868,8 +868,9 @@ async function loadElectionInfo() {
                 .eq('status', 'completed').eq('election_type', 'parliamentary')
                 .order('election_tick', { ascending: false }).limit(1).maybeSingle();
             const parlBase = lastParl ? lastParl.election_tick : shard.current_tick;
-            let nextParl = parlBase + (GAME_CONFIG?.PARLIAMENTARY_TERM_TICKS || 24);
-            if (nextParl <= shard.current_tick) nextParl = shard.current_tick + (GAME_CONFIG?.PARLIAMENTARY_TERM_TICKS || 24);
+            const effectiveParlTermTicks = currentNation?.parliamentary_term_ticks || GAME_CONFIG?.PARLIAMENTARY_TERM_TICKS || 24;
+            let nextParl = parlBase + effectiveParlTermTicks;
+            if (nextParl <= shard.current_tick) nextParl = shard.current_tick + effectiveParlTermTicks;
             const { data: newParl, error: insErr } = await _supabase.from('elections')
                 .insert({ nation_id: currentNation.id, election_tick: nextParl, election_type: 'parliamentary', status: 'scheduled' })
                 .select().single();
