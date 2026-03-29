@@ -2693,7 +2693,10 @@ function setPrQty(qty) {
     renderPrContent();
 }
 
+let _prPurchasing = false;
+
 async function purchaseMaterial() {
+    if (_prPurchasing) return;
     if (!faction || !nationStats) return;
 
     const price = calculateBasePrice(prSelectedMat, prSelectedTier, nationStats);
@@ -2704,7 +2707,8 @@ async function purchaseMaterial() {
     if (totalCost > cash) { alert('Insufficient cash reserves.'); return; }
     if (prPurchaseQty > supply) { alert('Exceeds available supply this tick.'); return; }
 
-    // Disable button
+    // Disable button and lock
+    _prPurchasing = true;
     const btn = document.querySelector('.pr-purchase-btn');
     if (btn) { btn.disabled = true; btn.textContent = '...'; }
 
@@ -2755,6 +2759,8 @@ async function purchaseMaterial() {
     } catch (err) {
         if (btn) { btn.disabled = false; btn.textContent = 'PURCHASE'; }
         alert('Purchase failed: ' + (err.message || 'Unknown error'));
+    } finally {
+        _prPurchasing = false;
     }
 }
 
