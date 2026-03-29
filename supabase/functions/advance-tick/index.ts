@@ -8799,9 +8799,10 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             return false;
         }
 
-        // Update nation's parliamentary_term_ticks
+        // Update nation's parliamentary_term_ticks and mark the law as established
         const { error: nationErr } = await supabase.from('nations').update({
-            parliamentary_term_ticks: newParlTermTicks
+            parliamentary_term_ticks: newParlTermTicks,
+            parliamentary_term_established_tick: currentTick
         }).eq('id', bill.nation_id);
         if (nationErr) {
             console.error(`[enactFoundationalBill] Failed to update parliamentary_term_ticks for nation ${bill.nation_id}:`, nationErr.message);
@@ -8835,6 +8836,28 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
         const newYears = newParlTermTicks / ticksPerYear;
         console.log(`[enactFoundationalBill] Nation ${bill.nation_id} parliamentary term set to ${newYears} years (${newParlTermTicks} ticks).`);
+        return true;
+    }
+
+    // ── Repeal Legislative Term Length subtype ──
+    if (bill.is_foundational_repeal && bill.foundational_repeal_subtype === 'parliamentary_term_length') {
+        const { error: billErr } = await supabase.from('bills').update({
+            status: 'passed', passed_tick: currentTick
+        }).eq('id', bill.id);
+        if (billErr) {
+            console.error(`[enactFoundationalBill] Failed to mark repeal bill ${bill.id} as passed:`, billErr.message);
+            return false;
+        }
+
+        // Clear the established flag — term value stays so elections continue on current schedule
+        const { error: nationErr } = await supabase.from('nations').update({
+            parliamentary_term_established_tick: null
+        }).eq('id', bill.nation_id);
+        if (nationErr) {
+            console.error(`[enactFoundationalBill] Failed to clear parliamentary_term_established_tick:`, nationErr.message);
+        }
+
+        console.log(`[enactFoundationalBill] Legislative Term Length law repealed for nation ${bill.nation_id}`);
         return true;
     }
 
@@ -11685,16 +11708,21 @@ async function processElections(supabase, nation, currentTick) {
             .maybeSingle();
 
         if (!futureElection) {
-            const frequency = getParliamentaryTermTicks(nation);
-            const nextTick = currentTick + frequency;
+            const termTicks = getParliamentaryTermTicks(nation);
+            const nextTick = currentTick + termTicks;
 
-            await supabase.from('elections').insert({
+            const { error: schedErr } = await supabase.from('elections').insert({
                 nation_id: nation.id,
                 election_tick: nextTick,
+                election_type: 'parliamentary',
                 status: 'scheduled'
             });
 
-            console.log(`Scheduled next election for ${nation.name} at tick ${nextTick}`);
+            if (schedErr) {
+                console.error(`[Elections] Failed to schedule next election for ${nation.name}:`, schedErr.message);
+            } else {
+                console.log(`Scheduled next election for ${nation.name} at tick ${nextTick}`);
+            }
         }
     }
 
@@ -12406,6 +12434,44 @@ async function scheduleNextPresidentialElections(supabase, nation, currentTick) 
             status: 'scheduled'
         });
         console.log(`Scheduled next presidential election for ${nation.name} at tick ${nextPres}`);
+    }
+}
+
+/**
+ * Safety net: ensure a future scheduled election always exists for every democracy.
+ * Runs independently of processElections so that scheduling survives election
+ * processing errors (which previously left nations with no scheduled elections).
+ */
+async function ensureElectionScheduled(supabase, nation, currentTick) {
+    const isPresidential = isPresidentialRepublic(nation);
+
+    if (isPresidential) {
+        await scheduleNextPresidentialElections(supabase, nation, currentTick);
+    } else {
+        const { data: futureElection } = await supabase
+            .from('elections')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('status', 'scheduled')
+            .gt('election_tick', currentTick)
+            .limit(1)
+            .maybeSingle();
+
+        if (!futureElection) {
+            const termTicks = getParliamentaryTermTicks(nation);
+            const nextTick = currentTick + termTicks;
+            const { error } = await supabase.from('elections').insert({
+                nation_id: nation.id,
+                election_tick: nextTick,
+                election_type: 'parliamentary',
+                status: 'scheduled'
+            });
+            if (error) {
+                console.error(`[Elections] Safety net insert failed for ${nation.name}:`, error.message);
+            } else {
+                console.log(`[Elections] Safety net: scheduled election for ${nation.name} at tick ${nextTick}`);
+            }
+        }
     }
 }
 
@@ -20454,10 +20520,187 @@ registerAutocracyAction('putsch_do_nothing', {
 });
 
 /**
- * NOTE: Tick processors (processVulnerabilityWindows, processPyrrhicWindows,
- * processPutschResolution) are implemented server-side in advance-tick/index.ts.
- * Client-side copies were removed as they were dead code never called from any page.
+ * Tick processors for autocracy V5 windows and putsch resolution.
  */
+
+/**
+ * processVulnerabilityWindows — Detect Strongman backing = 0 → open 3-tick window.
+ * While window is active, coup attempts get +20 bonus.
+ * When window expires and Strongman survived, reset backing to 5.
+ */
+async function processVulnerabilityWindows(supabase, nation, currentTick) {
+    const nationId = nation.id;
+    const events = [];
+
+    // ── 1. Resolve expired windows ──
+    const { data: expired } = await supabase.from('vulnerability_window')
+        .select('*')
+        .eq('nation_id', nationId)
+        .eq('resolved', false)
+        .lt('end_tick', currentTick);
+
+    for (const win of (expired || [])) {
+        // Window survived — stabilize by resetting Strongman backing to 5 if still 0
+        const pCtx = await loadPillarContext(supabase, nationId);
+        if (pCtx) {
+            const strongman = pCtx.pillarStates.find(p => p.is_strongman);
+            if (strongman && strongman.backing <= 0) {
+                applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, strongman.pillar, 5, false);
+                await persistBackingChanges(supabase, nationId, pCtx.pillarStates, pCtx.wildcardState);
+                events.push({ type: 'vulnerability_survived', backing_reset: 5 });
+            }
+        }
+        await supabase.from('vulnerability_window')
+            .update({ resolved: true })
+            .eq('id', win.id);
+    }
+
+    // ── 2. Detect new vulnerability (Strongman foundation backing = 0) ──
+    const pCtx = await loadPillarContext(supabase, nationId);
+    if (!pCtx) return events.length ? events : null;
+
+    const strongman = pCtx.pillarStates.find(p => p.is_strongman);
+    if (!strongman || strongman.backing > 0) return events.length ? events : null;
+
+    // Check no unresolved window already open
+    const { data: existing } = await supabase.from('vulnerability_window')
+        .select('id')
+        .eq('nation_id', nationId)
+        .eq('resolved', false)
+        .limit(1);
+
+    if (existing && existing.length > 0) return events.length ? events : null;
+
+    // Open new window (UNIQUE on nation_id+start_tick prevents duplicates)
+    const { error: vwErr } = await supabase.from('vulnerability_window').insert({
+        nation_id: nationId,
+        start_tick: currentTick,
+        end_tick: currentTick + 3,
+    });
+    if (vwErr) {
+        console.error(`[Autocracy] vulnerability_window insert failed for ${nation.name}:`, vwErr.message);
+    } else {
+        events.push({ type: 'vulnerability_opened', start: currentTick, end: currentTick + 3 });
+        console.log(`[Autocracy] Vulnerability window opened for ${nation.name} at tick ${currentTick}`);
+    }
+
+    return events;
+}
+
+/**
+ * processPutschResolution — Resolve a putsch after the 1-tick response window.
+ * Declared at tick T, response window is T+1, resolution at T+2.
+ */
+async function processPutschResolution(supabase, nation, currentTick) {
+    const nationId = nation.id;
+
+    const { data: pending } = await supabase.from('putsch_state')
+        .select('*')
+        .eq('nation_id', nationId)
+        .eq('resolved', false);
+
+    if (!pending || pending.length === 0) return null;
+
+    for (const putsch of pending) {
+        // Resolve at declared_tick + 2 (response window was declared_tick + 1)
+        if (currentTick < putsch.declared_tick + 2) continue;
+
+        // If Strongman never responded, treat as do_nothing
+        const response = putsch.strongman_response || 'do_nothing';
+
+        let rollBonus = 0;
+
+        if (response === 'appeal_security') {
+            // Security Services choice determines outcome
+            if (putsch.security_response === 'regime') {
+                // SS sided with regime — Military gets penalty
+                rollBonus = -20;
+            } else if (putsch.security_response === 'yourself') {
+                // SS sided with Military — bonus to coup
+                rollBonus = 10;
+            }
+            // If SS never responded (null), no bonus/penalty
+        }
+        // emergency_decree: Strongman already applied tracker reduction at action time, no roll modifier
+        // do_nothing: coup proceeds unmodified
+
+        // Find the military faction's pillar
+        const pCtx = await loadPillarContext(supabase, nationId);
+        if (!pCtx) continue;
+
+        const militaryState = pCtx.pillarStates.find(p => p.faction_id === putsch.military_faction_id);
+        if (!militaryState) continue;
+
+        const result = await resolveStandardCoup(supabase, {
+            nationId,
+            factionId: putsch.military_faction_id,
+            factionPillar: militaryState.pillar,
+            currentTick,
+            rollBonus,
+            coupType: 'putsch',
+        });
+
+        // Mark putsch as resolved
+        await supabase.from('putsch_state').update({
+            resolved: true,
+            outcome: result?.outcome || 'error',
+        }).eq('id', putsch.id);
+
+        console.log(`[Autocracy] Putsch resolved for ${nation.name}: ${result?.outcome || 'error'}`);
+        return { putsch_id: putsch.id, response, ...result };
+    }
+
+    return null;
+}
+
+/**
+ * processPyrrhicWindows — Close 3-tick windows after pyrrhic coup success.
+ * When window expires and new Strongman survived, stabilize the regime.
+ */
+async function processPyrrhicWindows(supabase, nation, currentTick) {
+    const nationId = nation.id;
+    const events = [];
+
+    const { data: expired } = await supabase.from('pyrrhic_window')
+        .select('*')
+        .eq('nation_id', nationId)
+        .eq('resolved', false)
+        .lt('end_tick', currentTick);
+
+    for (const win of (expired || [])) {
+        const pCtx = await loadPillarContext(supabase, nationId);
+
+        if (pCtx) {
+            // Check if the pyrrhic strongman is still in power
+            const stillInPower = pCtx.pillarStates.some(
+                p => p.faction_id === win.new_strongman_id && p.is_strongman
+            );
+
+            if (stillInPower) {
+                // Regime stabilized — clamp tracker at 30 if it drifted higher
+                const tracker = pCtx.tracker;
+                if (tracker && Number(tracker.tracker_value) > 30) {
+                    await supabase.from('autocracy_tracker').update({
+                        tracker_value: 30,
+                        last_updated_tick: currentTick,
+                    }).eq('nation_id', nationId);
+                }
+                events.push({ type: 'pyrrhic_stabilized', faction_id: win.new_strongman_id });
+                console.log(`[Autocracy] Pyrrhic regime stabilized for ${nation.name}`);
+            } else {
+                events.push({ type: 'pyrrhic_overthrown', faction_id: win.new_strongman_id });
+                console.log(`[Autocracy] Pyrrhic regime overthrown in ${nation.name}`);
+            }
+        }
+
+        await supabase.from('pyrrhic_window')
+            .update({ resolved: true })
+            .eq('id', win.id);
+    }
+
+    return events.length ? events : null;
+}
+
 
 // ────────── autocracy-silent-coup ──────────
 
@@ -30275,6 +30518,16 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (electionErr) {
             console.error(`[advanceTick] Elections failed for ${nation.name} (non-fatal):`, electionErr);
+        }
+
+        // Safety net: ensure every democracy always has a future scheduled election.
+        // Runs independently of processElections so scheduling survives election processing errors.
+        try {
+            if (!isAutocracy(nation)) {
+                await ensureElectionScheduled(supabase, nation, newTick);
+            }
+        } catch (schedErr) {
+            console.error(`[advanceTick] Election scheduling safety net failed for ${nation.name}:`, schedErr);
         }
 
         // Government vacancy penalties (democracy only)
