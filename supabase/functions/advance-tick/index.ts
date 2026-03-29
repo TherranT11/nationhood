@@ -11555,16 +11555,21 @@ async function processElections(supabase, nation, currentTick) {
             .maybeSingle();
 
         if (!futureElection) {
-            const frequency = nation.election_frequency || 48;
-            const nextTick = currentTick + frequency;
+            const termTicks = getParliamentaryTermTicks(nation);
+            const nextTick = currentTick + termTicks;
 
-            await supabase.from('elections').insert({
+            const { error: schedErr } = await supabase.from('elections').insert({
                 nation_id: nation.id,
                 election_tick: nextTick,
+                election_type: 'parliamentary',
                 status: 'scheduled'
             });
 
-            console.log(`Scheduled next election for ${nation.name} at tick ${nextTick}`);
+            if (schedErr) {
+                console.error(`[Elections] Failed to schedule next election for ${nation.name}:`, schedErr.message);
+            } else {
+                console.log(`Scheduled next election for ${nation.name} at tick ${nextTick}`);
+            }
         }
     }
 
@@ -12276,6 +12281,44 @@ async function scheduleNextPresidentialElections(supabase, nation, currentTick) 
             status: 'scheduled'
         });
         console.log(`Scheduled next presidential election for ${nation.name} at tick ${nextPres}`);
+    }
+}
+
+/**
+ * Safety net: ensure a future scheduled election always exists for every democracy.
+ * Runs independently of processElections so that scheduling survives election
+ * processing errors (which previously left nations with no scheduled elections).
+ */
+async function ensureElectionScheduled(supabase, nation, currentTick) {
+    const isPresidential = isPresidentialRepublic(nation);
+
+    if (isPresidential) {
+        await scheduleNextPresidentialElections(supabase, nation, currentTick);
+    } else {
+        const { data: futureElection } = await supabase
+            .from('elections')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('status', 'scheduled')
+            .gt('election_tick', currentTick)
+            .limit(1)
+            .maybeSingle();
+
+        if (!futureElection) {
+            const termTicks = getParliamentaryTermTicks(nation);
+            const nextTick = currentTick + termTicks;
+            const { error } = await supabase.from('elections').insert({
+                nation_id: nation.id,
+                election_tick: nextTick,
+                election_type: 'parliamentary',
+                status: 'scheduled'
+            });
+            if (error) {
+                console.error(`[Elections] Safety net insert failed for ${nation.name}:`, error.message);
+            } else {
+                console.log(`[Elections] Safety net: scheduled election for ${nation.name} at tick ${nextTick}`);
+            }
+        }
     }
 }
 
@@ -30266,6 +30309,16 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (electionErr) {
             console.error(`[advanceTick] Elections failed for ${nation.name} (non-fatal):`, electionErr);
+        }
+
+        // Safety net: ensure every democracy always has a future scheduled election.
+        // Runs independently of processElections so scheduling survives election processing errors.
+        try {
+            if (!isAutocracy(nation)) {
+                await ensureElectionScheduled(supabase, nation, newTick);
+            }
+        } catch (schedErr) {
+            console.error(`[advanceTick] Election scheduling safety net failed for ${nation.name}:`, schedErr);
         }
 
         // Government vacancy penalties (democracy only)

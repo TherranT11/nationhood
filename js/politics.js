@@ -139,15 +139,23 @@ initPage('politics', async (state) => {
     const issueStateMapInit = {};
     for (const is of (issueStatesInit || [])) issueStateMapInit[is.issue_id] = is;
 
-    // Fetch next scheduled election
-    const { data: nextElection } = await _supabase
+    // Fetch next scheduled election (future only, matching dashboard query)
+    let { data: nextElection } = await _supabase
         .from('elections')
-        .select('election_tick')
+        .select('election_tick, election_type')
         .eq('nation_id', nation.id)
         .eq('status', 'scheduled')
+        .gt('election_tick', currentTick)
         .order('election_tick', { ascending: true })
         .limit(1)
         .maybeSingle();
+
+    // Fallback: if no scheduled election in DB, project from term length
+    // (mirrors dashboard projection logic so both pages stay consistent)
+    if (!nextElection) {
+        const termTicks = Number(nation.parliamentary_term_ticks) || 24;
+        nextElection = { election_tick: currentTick + termTicks, election_type: 'parliamentary' };
+    }
 
     // Use DB columns for whip if available, otherwise generate deterministically
     const generatedNames = generateOfficerNames(f.id, nation.name);
@@ -207,12 +215,13 @@ initPage('politics', async (state) => {
         .limit(1)
         .maybeSingle();
 
-    // Fetch all scheduled elections (for upcoming panel)
+    // Fetch all scheduled elections (for upcoming panel — future only)
     const { data: scheduledElections } = await _supabase
         .from('elections')
         .select('election_tick, election_type')
         .eq('nation_id', nation.id)
         .eq('status', 'scheduled')
+        .gt('election_tick', currentTick)
         .order('election_tick', { ascending: true });
 
     // Fetch active caucus factions for player's party
