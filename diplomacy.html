@@ -16207,10 +16207,15 @@ function renderIPOVotesPanel() {
                 ballotHtml = `<div class="ipo-vote-my-ballot">Your vote: <strong>${myBallot.ballot.toUpperCase()}</strong></div>`;
             } else {
                 ballotHtml = `
-                    <div class="ipo-vote-ballot-row">
-                        <button class="ipo-vote-btn ipo-vote-btn--yes" onclick="castIPOBallot('${vote.id}','yes')">Yes</button>
-                        <button class="ipo-vote-btn ipo-vote-btn--no" onclick="castIPOBallot('${vote.id}','no')">No</button>
-                        <button class="ipo-vote-btn ipo-vote-btn--abstain" onclick="castIPOBallot('${vote.id}','abstain')">Abstain</button>
+                    <div class="ipo-vote-ballot-row" id="ipo-ballot-row-${vote.id}">
+                        <button class="ipo-vote-btn ipo-vote-btn--yes" onclick="selectIPOBallot('${vote.id}','yes')">Yes</button>
+                        <button class="ipo-vote-btn ipo-vote-btn--no" onclick="selectIPOBallot('${vote.id}','no')">No</button>
+                        <button class="ipo-vote-btn ipo-vote-btn--abstain" onclick="selectIPOBallot('${vote.id}','abstain')">Abstain</button>
+                    </div>
+                    <div class="ipo-vote-confirm-row" id="ipo-ballot-confirm-${vote.id}" style="display:none">
+                        <span class="ipo-vote-confirm-label">Vote <strong id="ipo-ballot-choice-${vote.id}"></strong>?</span>
+                        <button class="ipo-vote-btn ipo-vote-btn--confirm" onclick="confirmIPOBallot('${vote.id}')">Confirm</button>
+                        <button class="ipo-vote-btn ipo-vote-btn--cancel" onclick="cancelIPOBallot('${vote.id}')">Cancel</button>
                     </div>`;
             }
         }
@@ -16266,7 +16271,19 @@ function renderVoteMetaSummary(vote) {
             break;
         }
         case 'joint_statement':
-            text = meta.statement_text ? `"${escapeHtml(meta.statement_text.substring(0, 120))}${meta.statement_text.length > 120 ? '...' : ''}"` : '';
+            if (meta.statement_text) {
+                const escaped = escapeHtml(meta.statement_text);
+                if (meta.statement_text.length > 120) {
+                    const preview = escapeHtml(meta.statement_text.substring(0, 120));
+                    text = `<div class="ipo-statement-text">
+                        <span class="ipo-statement-preview">"${preview}…"</span>
+                        <span class="ipo-statement-full" style="display:none">"${escaped}"</span>
+                        <button class="ipo-statement-toggle" onclick="this.parentElement.classList.toggle('expanded'); this.textContent = this.parentElement.classList.contains('expanded') ? 'Show less' : 'Read more'">Read more</button>
+                    </div>`;
+                } else {
+                    text = `"${escaped}"`;
+                }
+            }
             break;
         case 'fund_draw':
             text = `Withdraw <strong>${meta.amount_requested || 0} AP</strong> from the solidarity fund.`;
@@ -16596,6 +16613,36 @@ async function submitIPOVote() {
 }
 
 // ── Ballot Casting ──
+
+let _pendingBallot = {};  // { voteId: ballotValue }
+
+function selectIPOBallot(voteId, ballotValue) {
+    _pendingBallot[voteId] = ballotValue;
+    const row = document.getElementById(`ipo-ballot-row-${voteId}`);
+    const confirm = document.getElementById(`ipo-ballot-confirm-${voteId}`);
+    const choiceEl = document.getElementById(`ipo-ballot-choice-${voteId}`);
+    if (row) row.style.display = 'none';
+    if (confirm) confirm.style.display = 'flex';
+    if (choiceEl) {
+        choiceEl.textContent = ballotValue.toUpperCase();
+        choiceEl.className = `ipo-vote-choice--${ballotValue}`;
+    }
+}
+
+function cancelIPOBallot(voteId) {
+    delete _pendingBallot[voteId];
+    const row = document.getElementById(`ipo-ballot-row-${voteId}`);
+    const confirm = document.getElementById(`ipo-ballot-confirm-${voteId}`);
+    if (row) row.style.display = 'flex';
+    if (confirm) confirm.style.display = 'none';
+}
+
+async function confirmIPOBallot(voteId) {
+    const ballotValue = _pendingBallot[voteId];
+    if (!ballotValue) return;
+    delete _pendingBallot[voteId];
+    await castIPOBallot(voteId, ballotValue);
+}
 
 /**
  * Cast a ballot on an open vote.
@@ -17368,7 +17415,15 @@ async function loadIPOEventLog(orgId) {
                             : `transferred resources`;
                         break;
                     case 'joint_statement':
-                        desc = 'issued a joint statement';
+                        if (data.statement_text && data.statement_text.length > 80) {
+                            const preview = escapeHtml(data.statement_text.substring(0, 80));
+                            const full = escapeHtml(data.statement_text);
+                            desc = `issued a joint statement: <span class="ipo-statement-text"><span class="ipo-statement-preview">"${preview}…"</span><span class="ipo-statement-full" style="display:none">"${full}"</span><button class="ipo-statement-toggle" onclick="this.parentElement.classList.toggle('expanded'); this.textContent = this.parentElement.classList.contains('expanded') ? 'Less' : 'More'">More</button></span>`;
+                        } else if (data.statement_text) {
+                            desc = `issued a joint statement: "${escapeHtml(data.statement_text)}"`;
+                        } else {
+                            desc = 'issued a joint statement';
+                        }
                         break;
                     case 'fund_draw':
                         desc = `withdrew ${data.amount || '?'} AP from fund`;
@@ -18847,6 +18902,9 @@ window.closeIPOVoteModal = closeIPOVoteModal;
 window.renderIPOVoteModalTypeSelect = renderIPOVoteModalTypeSelect;
 window.selectIPOVoteType = selectIPOVoteType;
 window.submitIPOVote = submitIPOVote;
+window.selectIPOBallot = selectIPOBallot;
+window.cancelIPOBallot = cancelIPOBallot;
+window.confirmIPOBallot = confirmIPOBallot;
 window.castIPOBallot = castIPOBallot;
 window.resolveIPOVote = resolveIPOVote;
 // IPO actions exports

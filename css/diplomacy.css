@@ -4605,6 +4605,25 @@ img.ipo-logo-img.ipo-header-logo {
 }
 .ipo-vote-meta-summary strong { color: var(--text-primary); font-weight: 600; }
 
+/* Collapsible joint-statement text */
+.ipo-statement-text .ipo-statement-full { display: none; }
+.ipo-statement-text.expanded .ipo-statement-preview { display: none; }
+.ipo-statement-text.expanded .ipo-statement-full { display: inline; }
+.ipo-statement-toggle {
+  display: inline;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 4px;
+  font-family: var(--font-mono);
+  font-size: inherit;
+  color: var(--ipo-purple, #8b7ec8);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ipo-statement-toggle:hover { opacity: 0.8; }
+
 /* Tally bar */
 .ipo-vote-tally { margin: 6px 0; }
 
@@ -4705,6 +4724,35 @@ img.ipo-logo-img.ipo-header-logo {
   margin-top: 6px;
 }
 .ipo-vote-btn--resolve:hover { background: rgba(200,166,78,0.2); }
+
+/* Ballot confirmation row */
+.ipo-vote-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.ipo-vote-confirm-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+  margin-right: auto;
+}
+.ipo-vote-choice--yes   { color: #5cb85c; }
+.ipo-vote-choice--no    { color: #d9534f; }
+.ipo-vote-choice--abstain { color: #6b6a5e; }
+.ipo-vote-btn--confirm {
+  color: #5cb85c;
+  background: rgba(92,184,92,0.1);
+  border-color: rgba(92,184,92,0.3);
+}
+.ipo-vote-btn--confirm:hover { background: rgba(92,184,92,0.22); }
+.ipo-vote-btn--cancel {
+  color: #6b6a5e;
+  background: rgba(107,106,94,0.06);
+  border-color: rgba(107,106,94,0.2);
+}
+.ipo-vote-btn--cancel:hover { background: rgba(107,106,94,0.15); }
 
 /* Vote type selection grid */
 .ipo-vote-type-grid {

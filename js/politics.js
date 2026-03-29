@@ -6680,7 +6680,8 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
     for (const row of (rivalStandings || [])) {
         approvalMap[row.faction_id] = Math.round(row.party_approval ?? 40);
         const credMod = Number(row.credibility_modifier ?? 1.0);
-        credibilityMap[row.faction_id] = Math.round(Math.max(0, Math.min(100, (credMod - 0.5) * 100)));
+        // Map 0.5–1.0 → 0–100 (same formula as player's own credibility card)
+        credibilityMap[row.faction_id] = Math.round(Math.max(0, Math.min(100, (credMod - 0.5) * 200)));
     }
 
     // Fetch leader data for each rival (factions table has leader columns)
@@ -6867,8 +6868,8 @@ function renderPartyCard(party, nation) {
     const stancesHtml = '<div style="color:var(--dtxt-dim);font-size:10px;font-style:italic;padding:8px 0;">Rival stance tracking coming soon.</div>';
     const stanceInsight = '';
 
-    // Credibility color
-    const credColor = party.credibility > 50 ? 'var(--dgreen)' : party.credibility >= 25 ? 'var(--damber)' : 'var(--dred)';
+    // Credibility color (0-100 scale where 100 = healthy neutral)
+    const credColor = party.credibility >= 80 ? 'var(--dgreen)' : party.credibility >= 50 ? 'var(--damber)' : 'var(--dred)';
 
     return `
     <div class="op-card" style="background:linear-gradient(135deg, ${cGlow} 0%, var(--dbg-2) 40%);border-color:${cBorder}">
