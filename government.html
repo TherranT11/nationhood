@@ -1549,10 +1549,15 @@ async function renderGovernmentPage() {
                 .eq('faction_id', currentFaction?.id || '00000000-0000-0000-0000-000000000000');
             ministryActionUseCounts = {};
             activeMinistryActions = {};
+            // Track last-use tick per action for use-reset-interval decay
+            const lastUseTick = {};
             if (actionLogs) {
                 for (const log of actionLogs) {
                     const countKey = log.ministry_key + ':' + log.action_key;
                     ministryActionUseCounts[countKey] = (ministryActionUseCounts[countKey] || 0) + 1;
+                    // Track the most recent activation tick
+                    const logTick = log.applied_at_tick || 0;
+                    if (!lastUseTick[countKey] || logTick > lastUseTick[countKey]) lastUseTick[countKey] = logTick;
                     if (!log.processed) {
                         // For direction-based actions, store the direction as the value
                         if (log.action_data?.direction) {
@@ -1566,6 +1571,18 @@ async function renderGovernmentPage() {
                         const failTick = log.action_data.resolution_tick || log.applied_at_tick;
                         sessionStorage.setItem('finance:debtRestructuring:lastFailTick', String(failTick));
                     }
+                }
+            }
+            // Apply use-reset-interval decay: -1 use count per interval of non-use
+            for (const [countKey, rawCount] of Object.entries(ministryActionUseCounts)) {
+                const [mKey, aKey] = countKey.split(':');
+                const actionConfig = MINISTRY_ACTIONS[mKey]?.actions?.find(a => a.id === aKey);
+                const resetInterval = actionConfig?.useResetInterval || 15;
+                const lastTick = lastUseTick[countKey] || 0;
+                const ticksSinceLast = currentTick - lastTick;
+                if (ticksSinceLast > 0 && resetInterval > 0) {
+                    const decay = Math.floor(ticksSinceLast / resetInterval);
+                    ministryActionUseCounts[countKey] = Math.max(0, rawCount - decay);
                 }
             }
         } catch (e) { /* non-blocking — defaults to 0 use counts */ }
@@ -5708,8 +5725,24 @@ function ministryActionSelect(actionId) {
 
     const btns = document.getElementById(actionId + '-btns');
     if (btns) {
+        // Build confirm label with cost info for one-time cost actions
+        const confirmParts = actionId.split('-');
+        const cMinKey = confirmParts[0];
+        const cActId = confirmParts.slice(1).join('');
+        const cConfig = MINISTRY_ACTIONS[cMinKey];
+        const cAction = cConfig?.actions?.find(a => a.id === cActId);
+        let confirmLabel = '✓ CONFIRM';
+        if (cAction?.oneTimeCostPerMillion && !cAction?.budgetPerCapita) {
+            const cPop = currentNation?.population || 20000000;
+            const cCost = calculateOneTimeCost(cAction, cPop);
+            const cCountKey = cMinKey + ':' + cActId;
+            const cUseCount = ministryActionUseCounts[cCountKey] || 0;
+            const cApCost = cAction.apCosts[Math.min(cUseCount, 3)];
+            const cFmt = cCost >= 1e9 ? '$' + (cCost/1e9).toFixed(1) + 'B' : cCost >= 1e6 ? '$' + Math.round(cCost/1e6) + 'M' : '$' + Math.round(cCost).toLocaleString();
+            confirmLabel = `✓ ${cApCost} AP · ${cFmt}`;
+        }
         btns.innerHTML = `<div style="display:flex;gap:4px;">
-            <div class="ministry-action__btn-confirm" onclick="event.stopPropagation();ministryActionConfirm('${actionId}')">✓ CONFIRM</div>
+            <div class="ministry-action__btn-confirm" onclick="event.stopPropagation();ministryActionConfirm('${actionId}')">${confirmLabel}</div>
             <div class="ministry-action__btn-cancel" onclick="event.stopPropagation();ministryActionDeselect('${actionId}')">✕</div>
         </div>`;
     }
@@ -5839,6 +5872,21 @@ async function ministryActionConfirm(actionId) {
         }
     }
 
+    // One-time cost fund check + deduction for upfront-cost actions
+    let oneTimeCost = 0;
+    if (action.oneTimeCostPerMillion && !action.budgetPerCapita) {
+        oneTimeCost = calculateOneTimeCost(action, pop);
+        const mData = ministryData.find(m => m.ministry_key === ministryKey);
+        const bal = Number(mData?.discretionary_balance || 0);
+        if (oneTimeCost > bal) {
+            _ministryActionConfirming = false;
+            const fmtAmt = (n) => n >= 1e9 ? '$' + (n/1e9).toFixed(1) + 'B' : n >= 1e6 ? '$' + (n/1e6).toFixed(0) + 'M' : '$' + Math.round(n).toLocaleString();
+            alert('Insufficient discretionary funds. Need ' + fmtAmt(oneTimeCost) + ', have ' + fmtAmt(bal) + '.');
+            ministryActionDeselect(actionId);
+            return;
+        }
+    }
+
     // Debt Restructuring: final block check before confirm
     if (action.id === 'debtRestructuring') {
         const blockMsg = getDebtRestructuringBlock();
@@ -5878,7 +5926,9 @@ async function ministryActionConfirm(actionId) {
     const actionData = {
         use_count: useCount,
         scale: getUseCountScale(useCount),
-        budget_per_tick: Math.round((action.budgetPerCapita || 0) * pop)
+        budget_per_tick: Math.round((action.budgetPerCapita || 0) * pop),
+        one_time_cost: oneTimeCost || 0,
+        minister_approval: action.ministerApproval || 0
     };
     if (action.budgetSavesPerCapita) {
         actionData.budget_saves_per_tick = Math.round(action.budgetSavesPerCapita * pop);
@@ -5901,6 +5951,13 @@ async function ministryActionConfirm(actionId) {
         });
 
         if (error) throw error;
+
+        // Deduct one-time cost from ministry discretionary fund
+        if (oneTimeCost > 0) {
+            const mData = ministryData.find(m => m.ministry_key === ministryKey);
+            const currentBal = Number(mData?.discretionary_balance || 0);
+            await deductDiscretionaryFund(ministryKey, mData, currentBal, oneTimeCost);
+        }
 
         // Update local state
         const prevAP = currentFaction.action_points || 0;
