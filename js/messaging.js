@@ -540,8 +540,11 @@ function renderDMItem(dm) {
     </div>`;
 }
 
-// ── Open thread (placeholder — Phase 4 will implement full thread view) ──
-function openThread(chatInfo) {
+// ── Open thread view ──
+let _msgSending = false;
+let _threadFactionCache = {}; // { factionId: { faction_name, abbreviation, party_color } }
+
+async function openThread(chatInfo) {
     _msgActiveChat = chatInfo;
     _msgView = 'thread';
     const body = document.getElementById('msg-body');
@@ -557,7 +560,7 @@ function openThread(chatInfo) {
             <span class="msg-thread-name">${escapeHtml(chatInfo.name || 'Chat')}</span>
         </div>
         <div class="msg-messages" id="msg-messages">
-            <div class="msg-empty"><div class="msg-empty__text">No messages yet.</div></div>
+            <div class="msg-empty"><div class="msg-empty__text" style="color:var(--text-dim);">Loading...</div></div>
         </div>
         <div class="msg-input-bar">
             <input type="text" class="msg-input" id="msg-input" placeholder="Type a message..." maxlength="2000" />
@@ -565,26 +568,247 @@ function openThread(chatInfo) {
         </div>
     `;
 
+    // Back button
     document.getElementById('msg-back').addEventListener('click', () => {
-        const headerTitle2 = document.querySelector('.msg-panel__title');
-        if (headerTitle2) headerTitle2.textContent = 'Messages';
+        if (headerTitle) headerTitle.textContent = 'Messages';
         _msgActiveChat = null;
         renderChatList();
     });
 
-    // Enable send button when input has text
+    // Input handlers
     const input = document.getElementById('msg-input');
     const sendBtn = document.getElementById('msg-send');
     input.addEventListener('input', () => {
-        sendBtn.disabled = !input.value.trim();
+        sendBtn.disabled = !input.value.trim() || _msgSending;
     });
     input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey && input.value.trim()) {
+        if (e.key === 'Enter' && !e.shiftKey && input.value.trim() && !_msgSending) {
             e.preventDefault();
-            // Phase 4 will handle actual sending
+            sendMessage();
         }
     });
+    sendBtn.addEventListener('click', () => {
+        if (input.value.trim() && !_msgSending) sendMessage();
+    });
+
+    // Load messages
+    await loadAndRenderMessages();
     input.focus();
+}
+
+async function loadAndRenderMessages() {
+    const container = document.getElementById('msg-messages');
+    if (!container || !_msgActiveChat) return;
+
+    const chat = _msgActiveChat;
+    let messages = [];
+
+    try {
+        if (chat.type === 'dm') {
+            const { data, error } = await _supabase
+                .from('direct_messages')
+                .select('id, sender_id, receiver_id, message_text, created_at, sent_at_tick, read_at')
+                .or(`and(sender_id.eq.${_msgFaction.id},receiver_id.eq.${chat.id}),and(sender_id.eq.${chat.id},receiver_id.eq.${_msgFaction.id})`)
+                .order('created_at', { ascending: true })
+                .limit(100);
+
+            if (error) throw error;
+            messages = (data || []).map(m => ({
+                id: m.id,
+                senderId: m.sender_id,
+                text: m.message_text,
+                createdAt: m.created_at,
+                tick: m.sent_at_tick,
+                isMine: m.sender_id === _msgFaction.id,
+                isSystem: false,
+            }));
+
+            // Mark unread DMs as read
+            const unreadIds = (data || [])
+                .filter(m => m.receiver_id === _msgFaction.id && !m.read_at)
+                .map(m => m.id);
+            if (unreadIds.length > 0) {
+                _supabase.from('direct_messages')
+                    .update({ read_at: new Date().toISOString() })
+                    .in('id', unreadIds)
+                    .then(() => {}); // fire and forget
+            }
+
+        } else if (chat.type === 'group') {
+            const { data, error } = await _supabase
+                .from('group_chat_messages')
+                .select('id, sender_id, is_system, message_text, created_at, sent_at_tick')
+                .eq('chat_id', chat.id)
+                .order('created_at', { ascending: true })
+                .limit(100);
+
+            if (error) throw error;
+
+            // Collect unique sender IDs for name lookup
+            const senderIds = [...new Set((data || []).map(m => m.sender_id).filter(Boolean))];
+            await loadFactionNames(senderIds);
+
+            messages = (data || []).map(m => ({
+                id: m.id,
+                senderId: m.sender_id,
+                text: m.message_text,
+                createdAt: m.created_at,
+                tick: m.sent_at_tick,
+                isMine: m.sender_id === _msgFaction.id,
+                isSystem: m.is_system,
+            }));
+
+            // Update last_read_at for this member
+            _supabase.from('group_chat_members')
+                .update({ last_read_at: new Date().toISOString() })
+                .eq('chat_id', chat.id)
+                .eq('faction_id', _msgFaction.id)
+                .then(() => {}); // fire and forget
+        }
+    } catch (e) {
+        console.warn('[Messaging] Failed to load messages:', e);
+        container.innerHTML = `<div class="msg-empty"><div class="msg-empty__text">Failed to load messages.</div></div>`;
+        return;
+    }
+
+    if (messages.length === 0) {
+        container.innerHTML = `<div class="msg-empty"><div class="msg-empty__text">No messages yet.<br>Send the first message!</div></div>`;
+        return;
+    }
+
+    container.innerHTML = messages.map(m => renderMessage(m)).join('');
+
+    // Scroll to bottom
+    container.scrollTop = container.scrollHeight;
+}
+
+function renderMessage(msg) {
+    if (msg.isSystem) {
+        return `<div class="msg-msg msg-msg--system">${escapeHtml(msg.text)}</div>`;
+    }
+
+    const cls = msg.isMine ? 'msg-msg msg-msg--sent' : 'msg-msg msg-msg--received';
+    const senderName = msg.isMine ? '' : getSenderName(msg.senderId);
+    const timeStr = formatMsgTime(msg.createdAt);
+
+    let senderHtml = '';
+    if (!msg.isMine && _msgActiveChat?.type === 'group' && senderName) {
+        const color = _threadFactionCache[msg.senderId]?.party_color || '#888';
+        senderHtml = `<div class="msg-msg__sender" style="color:${escapeHtml(color)}">${escapeHtml(senderName)}</div>`;
+    }
+
+    return `<div class="${cls}">
+        ${senderHtml}
+        <div>${escapeHtml(msg.text)}</div>
+        <div class="msg-msg__time">${timeStr}</div>
+    </div>`;
+}
+
+function getSenderName(factionId) {
+    if (!factionId) return 'System';
+    const cached = _threadFactionCache[factionId];
+    if (cached) return cached.abbreviation || cached.faction_name || '?';
+    return '...';
+}
+
+async function loadFactionNames(factionIds) {
+    const toLoad = factionIds.filter(id => !_threadFactionCache[id]);
+    if (toLoad.length === 0) return;
+
+    const { data } = await _supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, party_color')
+        .in('id', toLoad);
+
+    for (const f of (data || [])) {
+        _threadFactionCache[f.id] = f;
+    }
+}
+
+function formatMsgTime(isoStr) {
+    if (!isoStr) return '';
+    try {
+        const d = new Date(isoStr);
+        const now = new Date();
+        const diffMs = now - d;
+        const diffMin = Math.floor(diffMs / 60000);
+        if (diffMin < 1) return 'now';
+        if (diffMin < 60) return diffMin + 'm ago';
+        const diffHr = Math.floor(diffMin / 60);
+        if (diffHr < 24) return diffHr + 'h ago';
+        const diffDays = Math.floor(diffHr / 24);
+        if (diffDays < 7) return diffDays + 'd ago';
+        return d.toLocaleDateString();
+    } catch (_) { return ''; }
+}
+
+// ── Send message ──
+async function sendMessage() {
+    const input = document.getElementById('msg-input');
+    const sendBtn = document.getElementById('msg-send');
+    const chat = _msgActiveChat;
+    if (!input || !chat || !_msgFaction) return;
+
+    const text = input.value.trim();
+    if (!text) return;
+
+    _msgSending = true;
+    if (sendBtn) sendBtn.disabled = true;
+    input.value = '';
+
+    try {
+        const tick = _msgShard?.current_tick || null;
+
+        if (chat.type === 'dm') {
+            const { error } = await _supabase.from('direct_messages').insert({
+                sender_id: _msgFaction.id,
+                receiver_id: chat.id,
+                message_text: text,
+                sent_at_tick: tick,
+            });
+            if (error) throw error;
+
+        } else if (chat.type === 'group') {
+            const { error } = await _supabase.from('group_chat_messages').insert({
+                chat_id: chat.id,
+                sender_id: _msgFaction.id,
+                is_system: false,
+                message_text: text,
+                sent_at_tick: tick,
+            });
+            if (error) throw error;
+        }
+
+        // Optimistic render: append the message immediately
+        const container = document.getElementById('msg-messages');
+        if (container) {
+            // Clear "no messages" empty state if present
+            const empty = container.querySelector('.msg-empty');
+            if (empty) empty.remove();
+
+            const msgHtml = renderMessage({
+                id: 'temp-' + Date.now(),
+                senderId: _msgFaction.id,
+                text,
+                createdAt: new Date().toISOString(),
+                tick,
+                isMine: true,
+                isSystem: false,
+            });
+            container.insertAdjacentHTML('beforeend', msgHtml);
+            container.scrollTop = container.scrollHeight;
+        }
+
+    } catch (err) {
+        console.error('[Messaging] Send failed:', err);
+        // Put the text back so the user doesn't lose it
+        input.value = text;
+        alert('Failed to send message: ' + (err.message || 'Unknown error'));
+    } finally {
+        _msgSending = false;
+        if (sendBtn) sendBtn.disabled = !input.value.trim();
+        input.focus();
+    }
 }
 
 // ── Placeholder functions for Phase 5/6 ──
