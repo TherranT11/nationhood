@@ -25482,6 +25482,23 @@ async function processMinistryActions(supabase, nation, currentTick) {
             }
         }
 
+        // Fire expiry event when action completes
+        if (allEffectsComplete && !action.processed) {
+            try {
+                const triggerKey = (action.action_data?.trigger_key || action.action_key) + '_expired';
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'ministry_' + triggerKey,
+                    p_nation_id: nation.id,
+                    p_tick: currentTick,
+                    p_placeholders: {
+                        ministry: action.ministry_key,
+                        action: action.action_key,
+                        nation: nation.name
+                    }
+                });
+            } catch (_) { /* non-blocking */ }
+        }
+
         // Minister approval bonus on first tick of processing
         if (action.action_data?.minister_approval && action.effects_applied_through_tick === action.applied_at_tick) {
             const approvalBonus = Number(action.action_data.minister_approval);
