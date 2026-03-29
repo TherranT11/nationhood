@@ -20290,10 +20290,183 @@ registerAutocracyAction('putsch_do_nothing', {
 });
 
 /**
- * NOTE: Tick processors (processVulnerabilityWindows, processPyrrhicWindows,
- * processPutschResolution) are implemented server-side in advance-tick/index.ts.
- * Client-side copies were removed as they were dead code never called from any page.
+ * Tick processors for autocracy V5 windows and putsch resolution.
  */
+
+/**
+ * processVulnerabilityWindows — Detect Strongman backing = 0 → open 3-tick window.
+ * While window is active, coup attempts get +20 bonus.
+ * When window expires and Strongman survived, reset backing to 5.
+ */
+async function processVulnerabilityWindows(supabase, nation, currentTick) {
+    const nationId = nation.id;
+    const events = [];
+
+    // ── 1. Resolve expired windows ──
+    const { data: expired } = await supabase.from('vulnerability_window')
+        .select('*')
+        .eq('nation_id', nationId)
+        .eq('resolved', false)
+        .lt('end_tick', currentTick);
+
+    for (const win of (expired || [])) {
+        // Window survived — stabilize by resetting Strongman backing to 5 if still 0
+        const pCtx = await loadPillarContext(supabase, nationId);
+        if (pCtx) {
+            const strongman = pCtx.pillarStates.find(p => p.is_strongman);
+            if (strongman && strongman.backing <= 0) {
+                applyBackingDelta(pCtx.pillarStates, pCtx.wildcardState, strongman.pillar, 5, false);
+                await persistBackingChanges(supabase, nationId, pCtx.pillarStates, pCtx.wildcardState);
+                events.push({ type: 'vulnerability_survived', backing_reset: 5 });
+            }
+        }
+        await supabase.from('vulnerability_window')
+            .update({ resolved: true })
+            .eq('id', win.id);
+    }
+
+    // ── 2. Detect new vulnerability (Strongman foundation backing = 0) ──
+    const pCtx = await loadPillarContext(supabase, nationId);
+    if (!pCtx) return events.length ? events : null;
+
+    const strongman = pCtx.pillarStates.find(p => p.is_strongman);
+    if (!strongman || strongman.backing > 0) return events.length ? events : null;
+
+    // Check no unresolved window already open
+    const { data: existing } = await supabase.from('vulnerability_window')
+        .select('id')
+        .eq('nation_id', nationId)
+        .eq('resolved', false)
+        .limit(1);
+
+    if (existing && existing.length > 0) return events.length ? events : null;
+
+    // Open new window
+    await supabase.from('vulnerability_window').insert({
+        nation_id: nationId,
+        start_tick: currentTick,
+        end_tick: currentTick + 3,
+    });
+    events.push({ type: 'vulnerability_opened', start: currentTick, end: currentTick + 3 });
+
+    console.log(`[Autocracy] Vulnerability window opened for ${nation.name} at tick ${currentTick}`);
+    return events;
+}
+
+/**
+ * processPutschResolution — Resolve a putsch after the 1-tick response window.
+ * Declared at tick T, response window is T+1, resolution at T+2.
+ */
+async function processPutschResolution(supabase, nation, currentTick) {
+    const nationId = nation.id;
+
+    const { data: pending } = await supabase.from('putsch_state')
+        .select('*')
+        .eq('nation_id', nationId)
+        .eq('resolved', false);
+
+    if (!pending || pending.length === 0) return null;
+
+    for (const putsch of pending) {
+        // Resolve at declared_tick + 2 (response window was declared_tick + 1)
+        if (currentTick < putsch.declared_tick + 2) continue;
+
+        // If Strongman never responded, treat as do_nothing
+        const response = putsch.strongman_response || 'do_nothing';
+
+        let rollBonus = 0;
+
+        if (response === 'appeal_security') {
+            // Security Services choice determines outcome
+            if (putsch.security_response === 'regime') {
+                // SS sided with regime — Military gets penalty
+                rollBonus = -20;
+            } else if (putsch.security_response === 'yourself') {
+                // SS sided with Military — bonus to coup
+                rollBonus = 10;
+            }
+            // If SS never responded (null), no bonus/penalty
+        }
+        // emergency_decree: Strongman already applied tracker reduction at action time, no roll modifier
+        // do_nothing: coup proceeds unmodified
+
+        // Find the military faction's pillar
+        const pCtx = await loadPillarContext(supabase, nationId);
+        if (!pCtx) continue;
+
+        const militaryState = pCtx.pillarStates.find(p => p.faction_id === putsch.military_faction_id);
+        if (!militaryState) continue;
+
+        const result = await resolveStandardCoup(supabase, {
+            nationId,
+            factionId: putsch.military_faction_id,
+            factionPillar: militaryState.pillar,
+            currentTick,
+            rollBonus,
+            coupType: 'putsch',
+        });
+
+        // Mark putsch as resolved
+        await supabase.from('putsch_state').update({
+            resolved: true,
+            outcome: result?.outcome || 'error',
+        }).eq('id', putsch.id);
+
+        console.log(`[Autocracy] Putsch resolved for ${nation.name}: ${result?.outcome || 'error'}`);
+        return { putsch_id: putsch.id, response, ...result };
+    }
+
+    return null;
+}
+
+/**
+ * processPyrrhicWindows — Close 3-tick windows after pyrrhic coup success.
+ * When window expires and new Strongman survived, stabilize the regime.
+ */
+async function processPyrrhicWindows(supabase, nation, currentTick) {
+    const nationId = nation.id;
+    const events = [];
+
+    const { data: expired } = await supabase.from('pyrrhic_window')
+        .select('*')
+        .eq('nation_id', nationId)
+        .eq('resolved', false)
+        .lt('end_tick', currentTick);
+
+    for (const win of (expired || [])) {
+        const pCtx = await loadPillarContext(supabase, nationId);
+
+        if (pCtx) {
+            // Check if the pyrrhic strongman is still in power
+            const stillInPower = pCtx.pillarStates.some(
+                p => p.faction_id === win.new_strongman_id && p.is_strongman
+            );
+
+            if (stillInPower) {
+                // Regime stabilized — clamp tracker at 30 if it drifted higher
+                const tracker = pCtx.tracker;
+                if (tracker && Number(tracker.tracker_value) > 30) {
+                    await supabase.from('autocracy_tracker').update({
+                        tracker_value: 30,
+                        last_updated_tick: currentTick,
+                    }).eq('nation_id', nationId);
+                }
+                events.push({ type: 'pyrrhic_stabilized', faction_id: win.new_strongman_id });
+                console.log(`[Autocracy] Pyrrhic regime stabilized for ${nation.name}`);
+            } else {
+                events.push({ type: 'pyrrhic_overthrown', faction_id: win.new_strongman_id });
+                console.log(`[Autocracy] Pyrrhic regime overthrown in ${nation.name}`);
+            }
+        }
+
+        await supabase.from('pyrrhic_window')
+            .update({ resolved: true })
+            .eq('id', win.id);
+    }
+
+    return events.length ? events : null;
+}
+
 
 // ────────── autocracy-silent-coup ──────────
 
