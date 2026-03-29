@@ -10,8 +10,11 @@ let _msgFaction = null;
 let _msgNation = null;
 let _msgShard = null;
 let _msgPanelOpen = false;
-let _msgView = 'list';       // 'list' | 'thread'
+let _msgView = 'list';       // 'list' | 'thread' | 'new-dm' | 'new-group'
 let _msgActiveChat = null;   // { type: 'dm'|'group', id, name, ... }
+let _realtimeChannel = null;
+let _groupRealtimeChannel = null;
+let _totalUnread = 0;
 
 // ── Inject CSS ──
 function injectStyles() {
@@ -1246,6 +1249,174 @@ async function ensureIPOChat(orgId, orgName) {
     } catch (_) { /* best-effort sync */ }
 }
 
+// ── Realtime subscriptions ──
+function setupRealtime() {
+    if (!_msgFaction?.id) return;
+    cleanupRealtime();
+
+    // Subscribe to new DMs where we are the receiver
+    _realtimeChannel = _supabase
+        .channel('msg-dm-' + _msgFaction.id)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'direct_messages',
+            filter: `receiver_id=eq.${_msgFaction.id}`,
+        }, (payload) => {
+            onNewDM(payload.new);
+        })
+        .subscribe();
+
+    // Subscribe to group chat messages — we subscribe to ALL inserts
+    // and filter client-side by checking if the chat is one we're in.
+    // This is simpler than managing per-chat subscriptions.
+    _groupRealtimeChannel = _supabase
+        .channel('msg-gc-' + _msgFaction.id)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'group_chat_messages',
+        }, (payload) => {
+            onNewGroupMessage(payload.new);
+        })
+        .subscribe();
+}
+
+function cleanupRealtime() {
+    if (_realtimeChannel) {
+        _supabase.removeChannel(_realtimeChannel);
+        _realtimeChannel = null;
+    }
+    if (_groupRealtimeChannel) {
+        _supabase.removeChannel(_groupRealtimeChannel);
+        _groupRealtimeChannel = null;
+    }
+}
+
+function onNewDM(msg) {
+    if (!msg || msg.sender_id === _msgFaction.id) return;
+
+    // If we're in the thread with this sender, append and mark read
+    if (_msgPanelOpen && _msgView === 'thread' && _msgActiveChat?.type === 'dm' && _msgActiveChat.id === msg.sender_id) {
+        const container = document.getElementById('msg-messages');
+        if (container) {
+            const empty = container.querySelector('.msg-empty');
+            if (empty) empty.remove();
+            container.insertAdjacentHTML('beforeend', renderMessage({
+                id: msg.id,
+                senderId: msg.sender_id,
+                text: msg.message_text,
+                createdAt: msg.created_at,
+                tick: msg.sent_at_tick,
+                isMine: false,
+                isSystem: false,
+            }));
+            container.scrollTop = container.scrollHeight;
+        }
+        // Mark as read
+        _supabase.from('direct_messages')
+            .update({ read_at: new Date().toISOString() })
+            .eq('id', msg.id)
+            .then(() => {});
+        return;
+    }
+
+    // Otherwise increment unread and update badge
+    _totalUnread++;
+    updateUnreadBadge();
+
+    // If chat list is visible, refresh it
+    if (_msgPanelOpen && _msgView === 'list') {
+        renderChatList();
+    }
+}
+
+function onNewGroupMessage(msg) {
+    if (!msg || msg.sender_id === _msgFaction.id) return;
+
+    // Check if this message is in a chat we're a member of
+    const inOurChat = _groupChats.some(g => g.chat.id === msg.chat_id);
+    if (!inOurChat) return; // not our chat
+
+    // If we're viewing this thread, append live
+    if (_msgPanelOpen && _msgView === 'thread' && _msgActiveChat?.type === 'group' && _msgActiveChat.id === msg.chat_id) {
+        // Load sender name if needed
+        const renderAndAppend = async () => {
+            if (msg.sender_id && !_threadFactionCache[msg.sender_id]) {
+                await loadFactionNames([msg.sender_id]);
+            }
+            const container = document.getElementById('msg-messages');
+            if (container) {
+                const empty = container.querySelector('.msg-empty');
+                if (empty) empty.remove();
+                container.insertAdjacentHTML('beforeend', renderMessage({
+                    id: msg.id,
+                    senderId: msg.sender_id,
+                    text: msg.message_text,
+                    createdAt: msg.created_at,
+                    tick: msg.sent_at_tick,
+                    isMine: false,
+                    isSystem: msg.is_system || false,
+                }));
+                container.scrollTop = container.scrollHeight;
+            }
+            // Update last_read_at
+            _supabase.from('group_chat_members')
+                .update({ last_read_at: new Date().toISOString() })
+                .eq('chat_id', msg.chat_id)
+                .eq('faction_id', _msgFaction.id)
+                .then(() => {});
+        };
+        renderAndAppend();
+        return;
+    }
+
+    // Otherwise increment unread
+    _totalUnread++;
+    updateUnreadBadge();
+
+    if (_msgPanelOpen && _msgView === 'list') {
+        renderChatList();
+    }
+}
+
+// ── Unread count ──
+async function calculateUnread() {
+    if (!_msgFaction?.id) return;
+
+    try {
+        // Count unread DMs
+        const { count: dmCount, error: dmErr } = await _supabase
+            .from('direct_messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('receiver_id', _msgFaction.id)
+            .is('read_at', null);
+
+        _totalUnread = (dmErr ? 0 : (dmCount || 0));
+
+        // For group chats, approximate: check if any chat has messages after last_read_at
+        for (const g of _groupChats) {
+            if (g.unreadCount > 0) _totalUnread += g.unreadCount;
+        }
+    } catch (_) {
+        // Non-critical
+    }
+
+    updateUnreadBadge();
+}
+
+function updateUnreadBadge() {
+    const badge = document.getElementById('msg-badge');
+    if (!badge) return;
+
+    if (_totalUnread > 0) {
+        badge.textContent = _totalUnread > 99 ? '99+' : String(_totalUnread);
+        badge.classList.add('visible');
+    } else {
+        badge.classList.remove('visible');
+    }
+}
+
 // ── Public init ──
 export function initMessaging(faction, nation, shard) {
     _msgFaction = faction;
@@ -1258,6 +1429,14 @@ export function initMessaging(faction, nation, shard) {
     injectStyles();
     injectHTML();
 
-    // Sync auto-chats in background (non-blocking)
-    syncAutoChats();
+    // Sync auto-chats then calculate unread (non-blocking)
+    syncAutoChats().then(() => {
+        // Load group chats first so calculateUnread can count group unreads
+        loadGroupChats().then(() => {
+            calculateUnread();
+        });
+    });
+
+    // Start realtime subscriptions
+    setupRealtime();
 }
