@@ -3067,10 +3067,142 @@ function setEmQty(q) {
 }
 
 // Purchase placeholder — Phase 5 will implement the full flow
+let _emPurchasing = false;
+
 async function purchaseEquipment() {
+    if (_emPurchasing) return;
     const listing = emListings[emSelectedListing];
     if (!listing || !faction) return;
-    alert('Equipment purchase will be wired in Phase 5.');
+
+    const eqDef = getEquipment(emSelectedType);
+    if (!eqDef) return;
+
+    const qty = emPurchaseQty;
+    const totalCost = listing.price * qty;
+    const cash = Number(faction.corp_cash_reserves) || 0;
+
+    if (totalCost > cash) { alert('Insufficient cash reserves.'); return; }
+    if (qty > listing.available) { alert('Not enough units available.'); return; }
+
+    const btn = document.querySelector('.em-purchase-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '...'; }
+    _emPurchasing = true;
+
+    try {
+        // 1. Deduct cash
+        const newCash = cash - totalCost;
+        const { error: cashErr } = await _supabase
+            .from('factions')
+            .update({ corp_cash_reserves: newCash })
+            .eq('id', faction.id);
+        if (cashErr) throw cashErr;
+
+        const isImmediate = !listing.deliveryTicks || listing.deliveryTicks === 0;
+
+        if (isImmediate) {
+            // 2a. Immediate delivery — upsert into corp_equipment
+            const existing = equipmentData.find(e => e.equipment_key === emSelectedType);
+            const newOwned = (existing?.owned || 0) + qty;
+            const oldAvgPrice = existing?.purchase_price_avg || 0;
+            const oldOwned = existing?.owned || 0;
+            const newAvgPrice = oldOwned > 0
+                ? Math.round(((oldAvgPrice * oldOwned) + (listing.price * qty)) / newOwned)
+                : listing.price;
+            const newMaint = eqDef.maintenancePerUnit * newOwned;
+
+            // Weighted average condition: existing condition + new condition
+            const oldCond = existing?.condition || 100;
+            const newCond = Math.round(((oldCond * oldOwned) + (listing.condition * qty)) / newOwned);
+
+            const { error: eqErr } = await _supabase
+                .from('corp_equipment')
+                .upsert({
+                    faction_id: faction.id,
+                    nation_id: faction.nation_id,
+                    equipment_key: emSelectedType,
+                    tier: eqDef.tier,
+                    owned: newOwned,
+                    deployed: existing?.deployed || 0,
+                    condition: newCond,
+                    maintenance_per_tick: newMaint,
+                    purchase_price_avg: newAvgPrice,
+                    last_purchased_tick: shard?.current_tick || null,
+                    updated_at: new Date().toISOString(),
+                }, { onConflict: 'faction_id,equipment_key' });
+
+            if (eqErr) {
+                // Refund cash
+                const { error: refErr } = await _supabase.from('factions')
+                    .update({ corp_cash_reserves: cash }).eq('id', faction.id);
+                if (refErr) console.error('Cash refund failed:', refErr.message);
+                throw eqErr;
+            }
+
+            // Update local state
+            if (existing) {
+                existing.owned = newOwned;
+                existing.condition = newCond;
+                existing.maintenance_per_tick = newMaint;
+            } else {
+                equipmentData.push({
+                    equipment_key: emSelectedType,
+                    tier: eqDef.tier,
+                    owned: newOwned,
+                    deployed: 0,
+                    condition: newCond,
+                    maintenance_per_tick: newMaint,
+                    assigned_projects: [],
+                });
+            }
+
+        } else {
+            // 2b. Delayed delivery — insert into corp_equipment_deliveries
+            const deliveryTick = (shard?.current_tick || 0) + listing.deliveryTicks;
+            const { error: delErr } = await _supabase
+                .from('corp_equipment_deliveries')
+                .insert({
+                    faction_id: faction.id,
+                    equipment_key: emSelectedType,
+                    quantity: qty,
+                    condition: listing.condition,
+                    delivery_tick: deliveryTick,
+                    source_nation_id: listing.sourceNationId || null,
+                    seller_name: listing.seller,
+                    price_paid: totalCost,
+                });
+
+            if (delErr) {
+                // Refund cash
+                const { error: refErr } = await _supabase.from('factions')
+                    .update({ corp_cash_reserves: cash }).eq('id', faction.id);
+                if (refErr) console.error('Cash refund failed:', refErr.message);
+                throw delErr;
+            }
+        }
+
+        // Update local cash
+        faction.corp_cash_reserves = newCash;
+
+        // Re-render both cards
+        renderEquipment();
+        renderEquipmentMarket();
+        // Also update procurement footer cash display
+        const prCash = document.getElementById('pr-cash');
+        if (prCash) prCash.textContent = fmtBig(newCash);
+
+        if (btn) {
+            btn.textContent = isImmediate ? 'PURCHASED' : 'ORDERED';
+            setTimeout(() => {
+                if (btn.isConnected) { btn.disabled = false; btn.textContent = 'PURCHASE'; }
+            }, 1500);
+        }
+
+    } catch (err) {
+        if (btn) { btn.disabled = false; btn.textContent = 'PURCHASE'; }
+        alert('Purchase failed: ' + (err.message || 'Unknown error'));
+    } finally {
+        _emPurchasing = false;
+    }
 }
 
 // ── Equipment Inventory ──
