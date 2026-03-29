@@ -17211,15 +17211,15 @@ function renderIPOActionsPanel() {
         available: isPresident && currentAp >= IPO_ACTION_COSTS.rally_all
     });
 
-    // Back Channel Resources — any member, fund must be enabled
+    // Back Channel Resources — any member, always available (personal AP) or with fund
     const fundEnabled = charter.resources?.solidarityFund?.enabled;
     actions.push({
         key: 'back_channel',
         label: 'Back-Channel Resources',
-        desc: `Secretly transfer AP to another member. ${Math.round(IPO_BACK_CHANNEL_EXPOSURE_CHANCE * 100)}% exposure risk.`,
-        cost: IPO_ACTION_COSTS.back_channel,
+        desc: 'Transfer AP to another member. Personal: 2 AP, no risk. Fund: 1 AP from fund, 25% exposure.',
+        cost: 2, // minimum personal cost (2 overhead + transfer)
         icon: '🤝',
-        available: !!fundEnabled && currentAp >= IPO_ACTION_COSTS.back_channel
+        available: currentAp >= 3 // 2 overhead + at least 1 to transfer
     });
 
     // Joint Statement — president or if charter allows vote (vote handled in Votes panel)
@@ -17540,6 +17540,8 @@ function openBackChannelModal() {
     const org = membership?.org;
     const charter = org?.charter || {};
     const cap = charter.resources?.resourceSharingCap;
+    const fundEnabled = charter.resources?.solidarityFund?.enabled;
+    const fundBalance = org?.solidarity_fund_balance || 0;
 
     backChannelTargetId = null;
     backChannelAmount = 1;
@@ -17552,6 +17554,9 @@ function openBackChannelModal() {
     ).join('');
 
     const capNote = cap ? `<div class="ipo-vote-form-note">Resource sharing cap: ${cap} transfers per term.</div>` : '';
+    const fundOption = fundEnabled && fundBalance > 0
+        ? `<option value="fund">Solidarity Fund (1 AP from fund · 25% exposure risk)</option>`
+        : '';
 
     const inner = document.getElementById('ipo-create-modal-inner');
     document.getElementById('ipo-create-modal').classList.add('active');
@@ -17561,11 +17566,16 @@ function openBackChannelModal() {
             <button class="modal-close" onclick="closeIPOActionModal()">&times;</button>
         </div>
         <div class="ipo-modal-body">
-            <div class="ipo-vote-form-note">Secretly transfer AP to another member. ${Math.round(IPO_BACK_CHANNEL_EXPOSURE_CHANCE * 100)}% chance of public exposure.</div>
+            <div class="ipo-vote-form-note">Secretly transfer AP to another member.</div>
             ${capNote}
+            <label class="ipo-vote-form-label">Funding Source</label>
+            <select id="ipo-bc-source" class="ipo-vote-form-select">
+                <option value="personal">Personal AP (2 AP · no exposure risk)</option>
+                ${fundOption}
+            </select>
             <label class="ipo-vote-form-label">Recipient</label>
             <select id="ipo-bc-target" class="ipo-vote-form-select" onchange="backChannelTargetId=this.value">${memberOpts}</select>
-            <label class="ipo-vote-form-label">Amount (AP) — costs ${IPO_ACTION_COSTS.back_channel} AP overhead</label>
+            <label class="ipo-vote-form-label">Amount (AP to transfer)</label>
             <input type="number" id="ipo-bc-amount" class="ipo-vote-form-input" min="1" max="20" value="1" onchange="backChannelAmount=Number(this.value)" />
             <div class="wizard-nav" style="margin-top:16px;">
                 <button class="wizard-back-btn" onclick="closeIPOActionModal()">Cancel</button>
@@ -17581,8 +17591,8 @@ async function executeBackChannel() {
     if (!backChannelTargetId) { alert('Select a recipient.'); return; }
     const amount = Number(document.getElementById('ipo-bc-amount')?.value) || backChannelAmount;
     if (amount < 1) { alert('Enter a valid amount.'); return; }
+    const source = document.getElementById('ipo-bc-source')?.value || 'personal';
 
-    const cost = IPO_ACTION_COSTS.back_channel + amount; // overhead + transfer amount
     const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
     const org = membership?.org;
     const charter = org?.charter || {};
@@ -17606,18 +17616,43 @@ async function executeBackChannel() {
     _ipoActionLock = true;
 
     try {
-        const apResult = await deductAP(_supabase, currentFaction.id, cost);
-        if (!apResult.success) {
-            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
-            alert(`Insufficient AP. You need ${cost} AP (${IPO_ACTION_COSTS.back_channel} overhead + ${amount} transfer).`);
-            return;
+        const targetMember = ipoVoteMembers.find(m => m.faction_id === backChannelTargetId);
+        const targetName = targetMember?.factions?.faction_name || 'Unknown';
+        let exposed = false;
+        let apCostPaid = 0;
+
+        if (source === 'fund') {
+            // Fund source: 1 AP from solidarity fund, 25% exposure risk
+            const fundBalance = org?.solidarity_fund_balance || 0;
+            if (amount > fundBalance) {
+                alert(`Fund only has ${fundBalance} AP available.`);
+                return;
+            }
+
+            // Deduct from fund
+            const newBalance = fundBalance - amount;
+            const { error: fundErr } = await _supabase.from('international_orgs')
+                .update({ solidarity_fund_balance: newBalance })
+                .eq('id', ipoSelectedOrgId);
+            if (fundErr) throw fundErr;
+
+            apCostPaid = 0; // no personal AP cost for fund source
+            exposed = Math.random() < IPO_BACK_CHANNEL_EXPOSURE_CHANCE; // 25% risk
+        } else {
+            // Personal source: 2 AP overhead + transfer amount, no exposure risk
+            const cost = 2 + amount;
+            const apResult = await deductAP(_supabase, currentFaction.id, cost);
+            if (!apResult.success) {
+                if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+                alert(`Insufficient AP. You need ${cost} AP (2 overhead + ${amount} transfer).`);
+                return;
+            }
+            currentFaction.action_points = apResult.newAp;
+            apCostPaid = cost;
+            exposed = false; // personal AP = no exposure risk
         }
-        currentFaction.action_points = apResult.newAp;
 
-        // Exposure roll
-        const exposed = Math.random() < IPO_BACK_CHANNEL_EXPOSURE_CHANCE;
-
-        // Credit recipient (add AP via direct update — simplified)
+        // Credit recipient
         const { data: recipient } = await _supabase
             .from('factions')
             .select('action_points')
@@ -17629,30 +17664,42 @@ async function executeBackChannel() {
                 .eq('id', backChannelTargetId);
         }
 
-        const targetMember = ipoVoteMembers.find(m => m.faction_id === backChannelTargetId);
-        const targetName = targetMember?.factions?.faction_name || 'Unknown';
-
         await _supabase.from('ipo_action_log').insert({
             org_id: ipoSelectedOrgId,
             faction_id: currentFaction.id,
             target_faction_id: backChannelTargetId,
             action_type: 'back_channel',
-            action_data: { amount, exposed, target_name: targetName },
-            ap_cost: cost,
+            action_data: { amount, exposed, target_name: targetName, source },
+            ap_cost: apCostPaid,
             performed_at_tick: shardTick
         });
 
         if (exposed) {
-            // Public exposure — everyone sees it
+            // Public exposure — world event + chat
             await _supabase.from('ipo_chat').insert({
                 org_id: ipoSelectedOrgId,
                 faction_id: null,
                 is_system: true,
-                message_text: `EXPOSED: ${currentFaction.faction_name} secretly transferred ${amount} AP to ${targetName}!`,
+                message_text: `EXPOSED: ${currentFaction.faction_name} used solidarity funds to secretly transfer ${amount} AP to ${targetName}!`,
                 tick_posted: shardTick
             });
+            // World event for every member nation
+            try {
+                const { data: members } = await _supabase.from('ipo_members')
+                    .select('nation_id').eq('org_id', ipoSelectedOrgId);
+                const nationIds = [...new Set((members || []).map(m => m.nation_id).filter(Boolean))];
+                for (const nid of nationIds) {
+                    await _supabase.from('event_log').insert({
+                        nation_id: nid,
+                        event_name: 'Back-Channel Scandal',
+                        description_chosen: `${org.name || 'An organisation'}: ${currentFaction.faction_name} was caught secretly funneling ${amount} AP to ${targetName} from the solidarity fund!`,
+                        category: 'DIPLOMATIC',
+                        fired_at_tick: shardTick
+                    });
+                }
+            } catch (_) { /* non-blocking */ }
         } else {
-            // Private — only system log, no public chat
+            // Private — vague system message
             await _supabase.from('ipo_chat').insert({
                 org_id: ipoSelectedOrgId,
                 faction_id: null,
