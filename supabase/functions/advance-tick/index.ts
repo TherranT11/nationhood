@@ -31395,6 +31395,18 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     // 3. Destroy equipment at 0% condition
     // 4. Deduct maintenance costs from corp_cash_reserves
     if (!reprocess) {
+        // Equipment config lookups (mirrored from js/game/equipment.js)
+        const EQ_MAINT = {
+            trucks: 1500, excavators: 5500, bulldozers: 7000, mixers: 4500,
+            cranes: 32500, haulers: 15000, piledrivers: 18000, asphalt: 22000,
+            industrial: 85000, tbm: 200000, dredge: 95000,
+        };
+        const EQ_TIER = {
+            trucks: 1, excavators: 1, bulldozers: 1, mixers: 1,
+            cranes: 2, haulers: 2, piledrivers: 2, asphalt: 2,
+            industrial: 3, tbm: 3, dredge: 3,
+        };
+
         try {
             // ── 1. Process deliveries ──
             const { data: arrivals } = await supabase
@@ -31421,20 +31433,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         ? Math.round(((oldAvg * oldOwned) + (del.price_paid)) / newOwned)
                         : Math.round(del.price_paid / del.quantity);
 
-                    // Look up maintenance per unit from config
-                    // (equipment config is defined client-side; replicate the key constants here)
-                    const EQUIP_MAINT = {
-                        trucks: 1500, excavators: 5500, bulldozers: 7000, mixers: 4500,
-                        cranes: 32500, haulers: 15000, piledrivers: 18000, asphalt: 22000,
-                        industrial: 85000, tbm: 200000, dredge: 95000,
-                    };
-                    const EQUIP_TIER = {
-                        trucks: 1, excavators: 1, bulldozers: 1, mixers: 1,
-                        cranes: 2, haulers: 2, piledrivers: 2, asphalt: 2,
-                        industrial: 3, tbm: 3, dredge: 3,
-                    };
-                    const maintPerUnit = EQUIP_MAINT[del.equipment_key] || 0;
-                    const tier = EQUIP_TIER[del.equipment_key] || 1;
+                    const maintPerUnit = EQ_MAINT[del.equipment_key] || 0;
+                    const tier = EQ_TIER[del.equipment_key] || 1;
 
                     // Load faction's nation_id for the upsert
                     const { data: factionRow } = await supabase
@@ -31493,14 +31493,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 .select('faction_id, equipment_key, owned');
 
             // Aggregate maintenance per faction
-            const EQUIP_MAINT_LOOKUP = {
-                trucks: 1500, excavators: 5500, bulldozers: 7000, mixers: 4500,
-                cranes: 32500, haulers: 15000, piledrivers: 18000, asphalt: 22000,
-                industrial: 85000, tbm: 200000, dredge: 95000,
-            };
             const factionMaint = {};
             for (const row of (corpEquipment || [])) {
-                const maint = (EQUIP_MAINT_LOOKUP[row.equipment_key] || 0) * (row.owned || 0);
+                const maint = (EQ_MAINT[row.equipment_key] || 0) * (row.owned || 0);
                 if (maint > 0) {
                     factionMaint[row.faction_id] = (factionMaint[row.faction_id] || 0) + maint;
                 }

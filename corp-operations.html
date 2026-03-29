@@ -3035,8 +3035,10 @@ async function switchEmNation(nationId) {
         // Find from cached list or load fresh
         let n = emAllNations.find(x => x.id === nationId);
         if (!n) {
-            const { data } = await _supabase.from('nations').select('*').eq('id', nationId).single();
-            n = data;
+            try {
+                const { data } = await _supabase.from('nations').select('*').eq('id', nationId).single();
+                n = data;
+            } catch (_) { /* fall back to HQ */ }
         }
         emSelectedNation = n || null;
     }
