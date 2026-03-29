@@ -14640,14 +14640,17 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         const visFloor = isCoalition ? CFG.VISIBILITY_GOV_FLOOR : CFG.VISIBILITY_FLOOR;
         newVisibility = round2(clamp(newVisibility, visFloor, 100));
 
-        // ─── CREDIBILITY (recovery toward 1.0) ───
+        // ─── CREDIBILITY (drift toward neutral 1.0) ───
         let newCredibility = Number(standing.credibility_modifier ?? 1.0);
         if (newCredibility < 1.0) {
-            // Check if recovery is suspended
+            // Recovery from below — check if recovery is suspended
             const suspendedUntil = Number(standing.credibility_recovery_suspended_until ?? 0);
             if (currentTick >= suspendedUntil) {
                 newCredibility = round3(Math.min(1.0, newCredibility + CFG.CREDIBILITY_RECOVERY_RATE));
             }
+        } else if (newCredibility > 1.0) {
+            // Decay from above — positive boosts fade back to neutral at the same rate
+            newCredibility = round3(Math.max(1.0, newCredibility - CFG.CREDIBILITY_RECOVERY_RATE));
         }
         newCredibility = round3(clamp(newCredibility, CFG.CREDIBILITY_MIN, CFG.CREDIBILITY_MAX));
 
@@ -14702,6 +14705,12 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
             appeal_contribution: round2(appealContrib / 100),
             approval_contribution: round2(approvalContrib / 100),
             last_updated_tick: currentTick,
+            // Snapshot previous-tick values for UI delta arrows
+            prev_ideological_alignment: Number(standing.ideological_alignment ?? newAlignment),
+            prev_platform_appeal: Number(standing.platform_appeal ?? newAppeal),
+            prev_party_approval: Number(standing.party_approval ?? newApproval),
+            prev_visibility: Number(standing.visibility ?? newVisibility),
+            prev_credibility_modifier: Number(standing.credibility_modifier ?? newCredibility),
         });
     }
 
@@ -14742,6 +14751,11 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
                 approval_contribution: u.approval_contribution,
                 vote_left_on_table: u.vote_left_on_table,
                 last_updated_tick: u.last_updated_tick,
+                prev_ideological_alignment: u.prev_ideological_alignment,
+                prev_platform_appeal: u.prev_platform_appeal,
+                prev_party_approval: u.prev_party_approval,
+                prev_visibility: u.prev_visibility,
+                prev_credibility_modifier: u.prev_credibility_modifier,
             })
             .eq('id', u.id);
         if (error) {
