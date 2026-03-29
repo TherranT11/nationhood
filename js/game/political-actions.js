@@ -4421,7 +4421,11 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
 
                 const { error: minErr } = await supabase
                     .from('ministries')
-                    .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
+                    .update({
+                        party_id: null, minister_first_name: null, minister_last_name: null,
+                        minister_age: null, pending_minister: null,
+                        confirmation_status: null
+                    })
                     .eq('nation_id', nationId)
                     .eq('party_id', factionId)
                     .eq('is_active', true);
@@ -4434,11 +4438,36 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     //     (covers edge cases where party holds ministries but isn't in an active coalition)
     const { error: catchAllMinErr } = await supabase
         .from('ministries')
-        .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
+        .update({
+            party_id: null, minister_first_name: null, minister_last_name: null,
+            minister_age: null, pending_minister: null,
+            confirmation_status: null
+        })
         .eq('nation_id', nationId)
         .eq('party_id', factionId)
         .eq('is_active', true);
     if (catchAllMinErr) console.warn('disbandParty: catch-all ministry vacate failed:', catchAllMinErr);
+
+    // 4c. Clear any pending nominations in this nation where the pending_minister
+    //     references the disbanded faction (the nomination bill is already gone)
+    const { data: pendingMins } = await supabase
+        .from('ministries')
+        .select('id, pending_minister')
+        .eq('nation_id', nationId)
+        .eq('is_active', true)
+        .not('pending_minister', 'is', null);
+    if (pendingMins) {
+        for (const m of pendingMins) {
+            const pm = m.pending_minister;
+            if (pm && (pm.party_id === factionId || pm.nominated_by === factionId)) {
+                await supabase.from('ministries').update({
+                    pending_minister: null,
+                    confirmation_status: null,
+                    minister_first_name: null, minister_last_name: null, minister_age: null
+                }).eq('id', m.id);
+            }
+        }
+    }
 
     // 5. Zero seats and redistribute to remaining parties
     const { data: dyingFaction } = await supabase
