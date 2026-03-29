@@ -256,7 +256,8 @@ export function calculateImportMultiplier(sourceNation, destNation, category) {
     // Tariff markup — would come from nation's trade policy
     // For now, placeholder: raw materials tariff vs manufactured goods tariff
     // These will be read from the nation's tariff settings once wired
-    const tariffRate = 0; // TODO: read from nation trade policy
+    // Tariff rate: will be read from nation trade policy when tariff system is wired
+    const tariffRate = 0;
 
     return Math.max(1.05, transportMult + tariffRate);
 }

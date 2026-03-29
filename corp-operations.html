@@ -1930,10 +1930,7 @@ async function loadActiveProjects() {
 // ── Warehouse ──
 const MAX_WAREHOUSE_CAPACITY = 30000; // total units across all materials
 
-function renderWarehouse() {
-    const list = document.getElementById('wh-list');
-
-    // Calculate totals
+function getWarehouseTotals() {
     let totalUnits = 0;
     let totalValue = 0;
     for (const mat of MATERIALS) {
@@ -1945,6 +1942,12 @@ function renderWarehouse() {
             }
         }
     }
+    return { totalUnits, totalValue };
+}
+
+function renderWarehouse() {
+    const list = document.getElementById('wh-list');
+    const { totalUnits, totalValue } = getWarehouseTotals();
 
     document.getElementById('wh-count').textContent = totalUnits.toLocaleString() + ' UNITS';
     document.getElementById('wh-total-value').textContent = fmtBig(totalValue);
@@ -2103,12 +2106,7 @@ function renderProcurement() {
     const cash = Number(faction?.corp_cash_reserves) || 0;
     document.getElementById('pr-cash').textContent = fmtBig(cash);
 
-    let totalUnits = 0;
-    for (const mat of MATERIALS) {
-        for (const tier of QUALITY_TIERS) {
-            totalUnits += (warehouseData[mat.key]?.[tier]?.qty || 0);
-        }
-    }
+    const { totalUnits } = getWarehouseTotals();
     const capPct = Math.round((totalUnits / MAX_WAREHOUSE_CAPACITY) * 100);
     const capEl = document.getElementById('pr-wh-capacity');
     capEl.textContent = capPct + '%';
@@ -2349,8 +2347,9 @@ async function purchaseMaterial() {
             }, { onConflict: 'faction_id,material_key,quality_tier' });
 
         if (whErr) {
-            // Refund cash
-            await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
+            // Refund cash — best effort, log if fails
+            const { error: refundErr } = await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
+            if (refundErr) console.error('Cash refund failed after warehouse error:', refundErr.message);
             throw whErr;
         }
 
