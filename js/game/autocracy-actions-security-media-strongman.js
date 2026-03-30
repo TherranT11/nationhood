@@ -162,11 +162,13 @@ registerAutocracyAction('blackmail', {
 
         let outcome;
         if (targetFaction && targetFaction.action_points >= 2) {
-            // Lose 2 AP
-            await supabase.from('factions')
-                .update({ action_points: targetFaction.action_points - 2 })
-                .eq('id', targetFactionId);
-            outcome = { type: 'ap_loss', amount: 2 };
+            // Lose 2 AP — use atomic RPC to prevent race conditions
+            const { data: deductedAp } = await supabase.rpc('deduct_ap', {
+                p_faction_id: targetFactionId, p_cost: 2
+            });
+            outcome = (deductedAp !== null && deductedAp >= 0)
+                ? { type: 'ap_loss', amount: 2 }
+                : { type: 'ap_loss_failed' };
         } else {
             // Lose 1d3 Backing
             const backingLoss = roll(1, 3);

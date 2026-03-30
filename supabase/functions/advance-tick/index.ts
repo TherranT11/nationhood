@@ -19047,9 +19047,13 @@ async function attendPartyCongress(supabase, strongmanFactionId, nationId, curre
         return { success: false, error: 'Insufficient AP to attend' };
     }
 
-    await supabase.from('factions')
-        .update({ action_points: faction.action_points - 1 })
-        .eq('id', strongmanFactionId);
+    // Atomic AP deduction to prevent race conditions
+    const { data: _attendAp, error: _attendApErr } = await supabase.rpc('deduct_ap', {
+        p_faction_id: strongmanFactionId, p_cost: 1
+    });
+    if (_attendApErr || (_attendAp !== null && _attendAp < 0)) {
+        return { success: false, error: 'Insufficient AP to attend' };
+    }
 
     // +1 Legitimacy
     const { data: n } = await supabase.from('nations')
@@ -19232,11 +19236,13 @@ registerAutocracyAction('blackmail', {
 
         let outcome;
         if (targetFaction && targetFaction.action_points >= 2) {
-            // Lose 2 AP
-            await supabase.from('factions')
-                .update({ action_points: targetFaction.action_points - 2 })
-                .eq('id', targetFactionId);
-            outcome = { type: 'ap_loss', amount: 2 };
+            // Lose 2 AP — use atomic RPC to prevent race conditions
+            const { data: deductedAp } = await supabase.rpc('deduct_ap', {
+                p_faction_id: targetFactionId, p_cost: 2
+            });
+            outcome = (deductedAp !== null && deductedAp >= 0)
+                ? { type: 'ap_loss', amount: 2 }
+                : { type: 'ap_loss_failed' };
         } else {
             // Lose 1d3 Backing
             const backingLoss = roll(1, 3);
