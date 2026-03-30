@@ -545,13 +545,6 @@ body.light-mode .guide-btn:hover { background: rgba(184,150,10,0.18); }
     min-width: 15px; height: 15px; line-height: 15px;
     text-align: center; padding: 0 3px;
 }
-.nav-badge--amber {
-    background: var(--amber); color: #fff;
-}
-.nav-badge + .nav-badge--amber {
-    right: auto; left: 2px;
-}
-
 /* ===== MAIN CONTENT AREA ===== */
 #content-area { flex: 1; overflow-y: auto; overflow-x: hidden; }
 
