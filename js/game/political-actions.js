@@ -2711,6 +2711,7 @@ export async function processOngoingCosts(supabase, nation, currentTick) {
     const details = [];
 
     for (const law of activeLaws) {
+        if (law.is_reversal) continue; // Reversals undo stat effects, not ongoing costs
         const policy = law.policies;
         if (!policy) continue;
         if (policy.policy_type === 'lever') continue; // Levers are one-time — no ongoing cost
