@@ -473,6 +473,45 @@ export function inflationColorClass(inflationStat) {
     return 'bad';                    // High/hyperinflation
 }
 
+// ==================== FUEL PRICE DISPLAY ====================
+
+/**
+ * Convert the 0-100 fuel_prices stat to a dollars-per-gallon price,
+ * adjusted by currency strength and inflation.
+ * @param {number} fuelStat      - fuel_prices 0-100
+ * @param {number} currencyStat  - currency_strength 0-100
+ * @param {number} inflationStat - inflation 0-100
+ * @returns {number} price in $/gallon
+ */
+export function fuelPricePerGallon(fuelStat, currencyStat, inflationStat) {
+    const fuel = Math.max(0, Math.min(100, Number(fuelStat ?? 50)));
+    const basePrice = 1.0 + (fuel / 100) * 7.0;  // $1.00 at 0, $8.00 at 100
+    const currencyMult = 1.5 - (Math.max(0, Math.min(100, Number(currencyStat ?? 50))) / 100);
+    const inflMult = Math.max(0.98, 1 + (inflationRate(inflationStat) / 100));
+    return Math.round(basePrice * currencyMult * inflMult * 100) / 100;
+}
+
+export function formatFuelPrice(fuelStat, currencyStat, inflationStat) {
+    const price = fuelPricePerGallon(fuelStat, currencyStat, inflationStat);
+    return '$' + price.toFixed(2) + '/gal';
+}
+
+export function getFuelPriceLabel(fuelStat, currencyStat, inflationStat) {
+    const price = fuelPricePerGallon(fuelStat, currencyStat, inflationStat);
+    if (price < 2.00) return 'Cheap';
+    if (price < 4.00) return 'Normal';
+    if (price < 5.50) return 'Elevated';
+    if (price < 7.00) return 'Expensive';
+    return 'Crisis';
+}
+
+export function fuelPriceColorClass(fuelStat, currencyStat, inflationStat) {
+    const price = fuelPricePerGallon(fuelStat, currencyStat, inflationStat);
+    if (price < 4.00) return 'good';
+    if (price < 5.50) return 'medium';
+    return 'bad';
+}
+
 // ==================== STAT TREND CALCULATION ====================
 
 /** Weights for weighted-average trend: most recent delta gets 0.40, oldest gets 0.05 */

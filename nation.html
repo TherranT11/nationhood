@@ -35,7 +35,7 @@ import { initPage, refreshGameState, qCache, qCacheSet, qCacheBust, formatNumber
 import './js/guide.js';
 import { formatCurrencyShort, escapeHtml } from './js/utils.js';
 import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
-import { formatInflationRate, getInflationLabel, inflationColorClass, inflationRate } from './js/game/stats.js';
+import { formatInflationRate, getInflationLabel, inflationColorClass, inflationRate, formatFuelPrice, getFuelPriceLabel, fuelPriceColorClass, fuelPricePerGallon } from './js/game/stats.js';
 /**
  * Nation Page - Comprehensive Stats Display
  * With Rankings and Trend Arrows
@@ -122,7 +122,7 @@ var STAT_CATEGORIES = [
         { name: 'Arable Land', key: 'arable_land', desc: 'Farmable territory' },
         { name: 'Rare Minerals', key: 'rare_minerals', desc: 'Valuable mineral deposits' },
         { name: 'Oil & Gas', key: 'oil_and_gas', desc: 'Fossil fuel reserves' },
-        { name: 'Fuel Prices', key: 'fuel_prices', desc: 'Cost of energy', inverted: true }
+        { name: 'Fuel Prices', key: 'fuel_prices', desc: 'Cost of energy', inverted: true, format: 'fuel' }
     ]},
     { id: 'environment', label: 'Environment', icon: '\u{1F30D}', blocs: ['Urban Progressives'],
       stats: [
@@ -896,6 +896,7 @@ function getDisplayValue(stat, nation) {
     if (format === 'gdpgrowth') return formatGdpGrowth(raw);
     if (format === 'trade') return formatTradeBalance(raw);
     if (format === 'inflation') return formatInflationRate(raw);
+    if (format === 'fuel') return formatFuelPrice(raw, nation.currency_strength, nation.inflation);
     if (format === 'years') return (Math.round(Number(raw) * 10) / 10) + ' yrs';
     if (format === 'unemployment') return formatUnemploymentPct(Number(raw));
     return Math.round(Number(raw) * 10) / 10;
@@ -1436,12 +1437,86 @@ function renderFeaturedStatCard(stat, nation) {
     return h;
 }
 
+function renderFeaturedFuelPrices(nation) {
+    var fuelRaw = Number(nation.fuel_prices ?? 50);
+    var currRaw = Number(nation.currency_strength ?? 50);
+    var inflRaw = Number(nation.inflation ?? 50);
+    var price = fuelPricePerGallon(fuelRaw, currRaw, inflRaw);
+    var priceStr = formatFuelPrice(fuelRaw, currRaw, inflRaw);
+    var label = getFuelPriceLabel(fuelRaw, currRaw, inflRaw);
+
+    // Tag color
+    var fClass = fuelPriceColorClass(fuelRaw, currRaw, inflRaw);
+    var tagColor, tagBorder, dotColor;
+    if (fClass === 'good') { tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green)'; dotColor = 'var(--n-green)'; }
+    else if (fClass === 'medium') { tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow)'; dotColor = 'var(--n-yellow)'; }
+    else { tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red)'; dotColor = 'var(--n-red)'; }
+
+    // Delta per tick (based on price change)
+    var deltaStr = '';
+    if (previousTickData && previousTickData.fuel_prices != null) {
+        var prevPrice = fuelPricePerGallon(
+            Number(previousTickData.fuel_prices),
+            Number(previousTickData.currency_strength ?? currRaw),
+            Number(previousTickData.inflation ?? inflRaw)
+        );
+        var priceDelta = price - prevPrice;
+        if (Math.abs(priceDelta) >= 0.01) {
+            // For fuel prices, down is good
+            var deltaDir = priceDelta >= 0 ? '\u25B2' : '\u25BC';
+            var deltaColor = priceDelta <= 0 ? 'var(--n-green)' : 'var(--n-red)';
+            deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">$' + Math.abs(priceDelta).toFixed(2) + ' ' + deltaDir + ' per tick</span>';
+        }
+    }
+
+    // Scale items
+    var scaleItems = [
+        { label: 'Cheap', range: '<$2', active: price < 2.00 },
+        { label: 'Normal', range: '$2-4', active: price >= 2.00 && price < 4.00 },
+        { label: 'Elevated', range: '$4-5.50', active: price >= 4.00 && price < 5.50 },
+        { label: 'Expensive', range: '$5.50-7', active: price >= 5.50 && price < 7.00 },
+        { label: 'Crisis', range: '$7+', active: price >= 7.00 }
+    ];
+
+    // Sparkline
+    var sparkData = sparklineHistory['fuel_prices'] ? sparklineHistory['fuel_prices'].slice() : [];
+    if (fuelRaw != null) sparkData.push(fuelRaw);
+    var chartColor = fClass === 'good' ? getCSSColor('--n-green') : fClass === 'medium' ? getCSSColor('--n-yellow') : getCSSColor('--n-red');
+    var chartSVG = buildFeaturedSparkSVG(sparkData, chartColor);
+
+    var h = '<div class="featured-card featured-card--fuel">';
+    h += '<div class="featured-card__header">';
+    h += '<div class="featured-card__dot" style="background:' + dotColor + ';"></div>';
+    h += '<span class="featured-card__title">Fuel Prices</span>';
+    h += '<span class="featured-card__tag" style="color:' + tagColor + ';border-color:' + tagBorder + ';">' + escapeHtml(label) + '</span>';
+    h += '</div>';
+    h += '<div class="featured-card__desc">Cost of energy — adjusted for currency strength &amp; inflation</div>';
+    h += '<div class="featured-card__value-row">';
+    h += '<div><span class="featured-card__big-value" style="color:' + tagColor + ';">' + priceStr + '</span></div>';
+    h += '</div>';
+    if (deltaStr) h += deltaStr;
+    h += '<div class="featured-card__chart">' + chartSVG + '</div>';
+    h += '<div class="featured-card__scale">';
+    for (var i = 0; i < scaleItems.length; i++) {
+        var si = scaleItems[i];
+        h += '<div class="featured-card__scale-item' + (si.active ? ' featured-card__scale-item--active' : '') + '">';
+        h += escapeHtml(si.label);
+        h += '<span class="featured-card__scale-range">' + escapeHtml(si.range) + '</span>';
+        h += '</div>';
+    }
+    h += '</div>';
+    h += buildFeaturedAbpHTML('fuel_prices');
+    h += '</div>';
+    return h;
+}
+
 // Map of stat keys to their custom featured renderers
 var FEATURED_RENDERERS = {
     gdp: renderFeaturedGDP,
     gdp_growth: renderFeaturedGDPGrowth,
     inflation: renderFeaturedInflation,
-    debt: renderFeaturedDebt
+    debt: renderFeaturedDebt,
+    fuel_prices: renderFeaturedFuelPrices
 };
 
 function renderFeaturedCategory(cat, nation) {
