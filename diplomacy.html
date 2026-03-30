@@ -8078,6 +8078,32 @@ async function activateTradeAgreement(proposal, currentTick) {
     return true;
 }
 
+/**
+ * Shared auth check for proposal actions (accept/reject/strike).
+ * Returns { authorized: true } or { authorized: false, reason: string }.
+ * Handles both target nation (initial proposal) and proposing nation (counter-proposal).
+ */
+async function checkProposalAuth(proposal, actionLabel) {
+    await refreshRoles();
+    const pd0 = proposal.proposal_data || {};
+    const isTargetNation = proposal.target_nation_id === currentNation.id;
+    const isProposingNation = proposal.proposing_nation_id === currentNation.id;
+    // Proposer can act when reviewing a counter-proposal (status=revised, revised by the other side)
+    const revisedByOtherSide = proposal.status === 'revised' &&
+        (pd0.revised_by_nation_id ? pd0.revised_by_nation_id !== currentNation.id : isProposingNation);
+    const isInvolvedNation = isTargetNation || (isProposingNation && revisedByOtherSide);
+    if (!isInvolvedNation) return { authorized: false, reason: 'You are not authorized to ' + actionLabel + ' this proposal.' };
+    // Role check: ambassador to the other party, FM, HoG, or MoT (trade only)
+    const otherNationId = isTargetNation ? proposal.proposing_nation_id : proposal.target_nation_id;
+    const isAmbToOther = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === otherNationId);
+    const isTradeLike = proposal.proposal_type === 'trade_agreement' || pd0.agreement_type;
+    const isMoTForTrade = isTradeLike && diplomaticRoles.isMoT;
+    if (!isAmbToOther && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !isMoTForTrade) {
+        return { authorized: false, reason: 'You are not authorized to ' + actionLabel + ' this proposal.' };
+    }
+    return { authorized: true };
+}
+
 async function acceptProposal(proposalId) {
     if (_diploActionLock) return;
     // Fetch the proposal
@@ -8096,28 +8122,9 @@ async function acceptProposal(proposalId) {
         return;
     }
 
-    // Authorization: caller must be from a nation involved in this proposal with an appropriate role
-    await refreshRoles();
-    const pd0 = proposal.proposal_data || {};
-    const isTargetNation = proposal.target_nation_id === currentNation.id;
-    const isProposingNation = proposal.proposing_nation_id === currentNation.id;
-    // Proposer can accept when reviewing a counter-proposal (status=revised, revised by the other side)
-    const revisedByOtherSide = proposal.status === 'revised' &&
-        (pd0.revised_by_nation_id ? pd0.revised_by_nation_id !== currentNation.id : isProposingNation);
-    const isInvolvedNation = isTargetNation || (isProposingNation && revisedByOtherSide);
-    if (!isInvolvedNation) {
-        alert('You are not authorized to accept this proposal.');
-        return;
-    }
-    // Role check: ambassador to the other party, FM, HoG, or MoT (trade only)
-    const otherNationId = isTargetNation ? proposal.proposing_nation_id : proposal.target_nation_id;
-    const isAmbToOther = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === otherNationId);
-    const isTradeLike = proposal.proposal_type === 'trade_agreement' || pd0.agreement_type;
-    const isMoTForTrade = isTradeLike && diplomaticRoles.isMoT;
-    if (!isAmbToOther && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !isMoTForTrade) {
-        alert('You are not authorized to accept this proposal.');
-        return;
-    }
+    // Authorization check (shared logic for accept/reject/strike)
+    const authCheck = await checkProposalAuth(proposal, 'accept');
+    if (!authCheck.authorized) { alert(authCheck.reason); return; }
 
     const pd = proposal.proposal_data || {};
     const articles = pd.articles || [];
@@ -8257,7 +8264,7 @@ async function rejectProposal(proposalId) {
     // Fetch proposal for authorization and status check
     const { data: proposal } = await _supabase
         .from('diplomatic_proposals')
-        .select('proposing_nation_id, target_nation_id, status, proposal_type')
+        .select('proposing_nation_id, target_nation_id, status, proposal_type, proposal_data')
         .eq('id', proposalId)
         .single();
 
@@ -8270,23 +8277,9 @@ async function rejectProposal(proposalId) {
         return;
     }
 
-    // Authorization: caller must be from a nation involved in this proposal with an appropriate role
-    await refreshRoles();
-    const isTargetNation = proposal.target_nation_id === currentNation.id;
-    const isProposingNation = proposal.proposing_nation_id === currentNation.id;
-    // Proposer can reject when reviewing a counter-proposal (status=revised, revised by the other side)
-    const isInvolvedNation = isTargetNation || (isProposingNation && proposal.status === 'revised');
-    if (!isInvolvedNation) {
-        alert('You are not authorized to reject this proposal.');
-        return;
-    }
-    const otherNationId = isTargetNation ? proposal.proposing_nation_id : proposal.target_nation_id;
-    const isAmbToOther = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === otherNationId);
-    const isMoTForTrade = proposal.proposal_type === 'trade_agreement' && diplomaticRoles.isMoT;
-    if (!isAmbToOther && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !isMoTForTrade) {
-        alert('You are not authorized to reject this proposal.');
-        return;
-    }
+    // Authorization check (shared logic for accept/reject/strike)
+    const authCheck = await checkProposalAuth(proposal, 'reject');
+    if (!authCheck.authorized) { alert(authCheck.reason); return; }
 
     if (!confirm('Reject this diplomatic initiative?')) return;
 
@@ -8334,24 +8327,9 @@ async function strikeArticles(proposalId) {
 
     if (!proposal) { alert('Could not load proposal.'); return; }
 
-    // Authorization: caller must be from a nation involved in this proposal with an appropriate role
-    await refreshRoles();
-    const isTargetNation = proposal.target_nation_id === currentNation.id;
-    const isProposingNation = proposal.proposing_nation_id === currentNation.id;
-    const isInvolvedNation = isTargetNation || (isProposingNation && proposal.status === 'revised');
-    if (!isInvolvedNation) {
-        alert('You are not authorized to revise this proposal.');
-        return;
-    }
-    const otherNationId = isTargetNation ? proposal.proposing_nation_id : proposal.target_nation_id;
-    const isAmbToOther = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === otherNationId);
-    const pd0 = proposal.proposal_data || {};
-    const isTradeLike = proposal.proposal_type === 'trade_agreement' || pd0.agreement_type;
-    const isMoTForTrade = isTradeLike && diplomaticRoles.isMoT;
-    if (!isAmbToOther && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !isMoTForTrade) {
-        alert('You are not authorized to revise this proposal.');
-        return;
-    }
+    // Authorization check (shared logic for accept/reject/strike)
+    const authCheck = await checkProposalAuth(proposal, 'revise');
+    if (!authCheck.authorized) { alert(authCheck.reason); return; }
 
     const pd = proposal.proposal_data || {};
     const isV2 = pd.version === 2;
