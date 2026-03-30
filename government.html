@@ -931,13 +931,15 @@ function formatBudgetDraw(budgetPerCapita, population) {
     return '$' + draw;
 }
 
-const FIRST_NAMES_POOL = [
+// Name pools — initialized to Spanish defaults, updated per-nation on page init.
+// Avelia → Avelian names, Calveth → Danish names, others → Spanish.
+let FIRST_NAMES_POOL = [
     'Carlos','Diego','Fernando','Héctor','Marcos','Ramón','José','Luis','Miguel',
     'Antonio','Roberto','Francisco','Eduardo','Pablo','Alejandro','Rafael','Gabriel',
     'Santiago','Andrés','Javier','Ricardo','Tomás','Emilio','Sergio','Nicolás',
     'Arturo','Enrique','Oscar','Felipe','Gonzalo','Ignacio','Mateo','Dante'
 ];
-const LAST_NAMES_POOL = [
+let LAST_NAMES_POOL = [
     'Velasco','Salazar','Guerrero','Ríos','Morales','Torres','Mendoza','Castillo',
     'Herrera','Vargas','Reyes','Cruz','Navarro','Delgado','Ortiz','Romero','Flores',
     'Ramírez','Guzmán','Medina','Soto','Pacheco','Ibarra','Carrasco','Espinoza',
@@ -1008,6 +1010,13 @@ initPage('government', async (state) => {
     currentNation = nation;
     currentFaction = faction;
     initGameConfigForNation(nation);
+
+    // Set nation-specific name pools (Avelia→Avelian, Calveth→Danish, others→Spanish)
+    if (nation?.name) {
+        const { firstNames, lastNames } = getNationNames(nation.name);
+        FIRST_NAMES_POOL = firstNames;
+        LAST_NAMES_POOL = lastNames;
+    }
 
     if (!nation) {
         document.getElementById('content-area').innerHTML = '<div class="placeholder-panel"><div class="ph-icon">🏛️</div><h3>No Nation Selected</h3><p>Your party is not assigned to a nation yet.</p></div>';

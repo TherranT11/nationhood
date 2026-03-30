@@ -8096,11 +8096,14 @@ async function acceptProposal(proposalId) {
         return;
     }
 
-    // Authorization: caller must be target nation's ambassador to proposer, FM, HoG, or MoT (for trade)
+    // Authorization: caller must be target nation's ambassador to proposer, FM, HoG, or MoT (trade only)
     await refreshRoles();
     const isTargetNation = proposal.target_nation_id === currentNation.id;
     const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
-    const isMoTForTrade = proposal.proposal_type === 'trade_agreement' && diplomaticRoles.isMoT;
+    // MoT can accept trade agreements and proposals with trade articles
+    const pd0 = proposal.proposal_data || {};
+    const isTradeLike = proposal.proposal_type === 'trade_agreement' || pd0.agreement_type;
+    const isMoTForTrade = isTradeLike && diplomaticRoles.isMoT;
     if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !isMoTForTrade)) {
         alert('You are not authorized to accept this proposal.');
         return;

@@ -41,9 +41,11 @@
     margin: 0 auto;
     padding: 0 20px;
     display: flex;
-    justify-content: space-between;
     align-items: center;
 }
+.nws-top-ribbon-inner > :first-child { flex: 1; text-align: left; }
+.nws-top-ribbon-inner > :nth-child(2) { flex: 0; text-align: center; }
+.nws-top-ribbon-inner > :last-child { flex: 1; text-align: right; }
 
 .nws-top-ribbon span {
     font-family: 'Inter', sans-serif;
