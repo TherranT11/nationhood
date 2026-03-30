@@ -943,8 +943,8 @@ function openNewDM() {
     });
     searchInput.focus();
 
-    // Populate nation dropdown for role-based messaging
-    try {
+    // Populate nation dropdown for role-based messaging (async, non-blocking)
+    (async () => { try {
         const { data: nations } = await _supabase.from('nations').select('id, name').order('name');
         const nationSelect = document.getElementById('msg-role-nation');
         if (nationSelect && nations) {
@@ -952,7 +952,7 @@ function openNewDM() {
                 nations.map(n => '<option value="' + n.id + '">' + escapeHtml(n.name) + '</option>').join('');
             nationSelect.addEventListener('change', () => loadRolesForNation(nationSelect.value));
         }
-    } catch (_) {}
+    } catch (_) {} })();
 }
 
 async function loadRolesForNation(nationId) {

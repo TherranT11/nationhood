@@ -2811,7 +2811,8 @@ function renderFormationDetail(formation) {
                 <button class="form-gov-btn" id="form-gov-btn" onclick="formGovernment()" ${canForm ? '' : 'disabled'}>Form Government</button>
                 ${!canForm ? `<div style="font-size: 0.8rem; color: #888; margin-top: 8px;">${blockers.join(' ')}</div>` : ''}
             ` : pmPartyId ? `
-                <div style="font-size: 0.85rem; color: #888;">Waiting for ${allParties.find(p => p.id === pmPartyId)?.faction_name || 'the PM\'s party'} to form the government.</div>
+                <button class="form-gov-btn" disabled style="opacity:0.4;cursor:not-allowed;">Form Government</button>
+                <div style="font-size: 0.8rem; color: #888; margin-top: 8px;">Only the Prime Minister candidate (${escapeHtml(allParties.find(p => p.id === pmPartyId)?.faction_name || 'PM\'s party')}) can form the government.</div>
             ` : `
                 <div style="font-size: 0.85rem; color: #888;">Assign a Prime Minister to enable government formation.</div>
             `}
@@ -2963,7 +2964,9 @@ async function refreshFormButton(assignments) {
             <button class="form-gov-btn" id="form-gov-btn" onclick="formGovernment()" ${canForm ? '' : 'disabled'}>Form Government</button>
             ${!canForm ? `<div style="font-size: 0.8rem; color: #888; margin-top: 8px;">${blockers.join(' ')}</div>` : ''}`;
     } else if (pmPartyId) {
-        section.innerHTML = `<div style="font-size: 0.85rem; color: #888;">Waiting for ${allParties.find(p => p.id === pmPartyId)?.faction_name || 'the PM\'s party'} to form the government.</div>`;
+        section.innerHTML = `
+            <button class="form-gov-btn" disabled style="opacity:0.4;cursor:not-allowed;">Form Government</button>
+            <div style="font-size: 0.8rem; color: #888; margin-top: 8px;">Only the Prime Minister candidate (${escapeHtml(allParties.find(p => p.id === pmPartyId)?.faction_name || 'PM\'s party')}) can form the government.</div>`;
     } else {
         section.innerHTML = `<div style="font-size: 0.85rem; color: #888;">Assign a Prime Minister to enable government formation.</div>`;
     }
@@ -3167,6 +3170,16 @@ async function retractProposal(formationId) {
 async function formGovernment() {
     if (_formingInProgress) return;
     if (!activeFormationId) return;
+
+    // Only the PM's party can form government
+    const _fData = await _supabase.from('government_formations')
+        .select('ministry_assignments').eq('id', activeFormationId).single();
+    const _pmId = _fData.data?.ministry_assignments?.prime_minister;
+    if (_pmId && _pmId !== currentFaction.id) {
+        alert('Only the Prime Minister candidate can form the government.');
+        return;
+    }
+
     if (!confirm('Form this government? This will finalize all ministry assignments.')) return;
     _formingInProgress = true;
     try {
