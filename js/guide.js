@@ -1209,6 +1209,435 @@ const guideContent = {
 <p>You can optionally include <strong>austerity commitments</strong> (spending cuts) to soften the international backlash.</p>
 </div></details>
 `
+    },
+
+    diplomacy: {
+        title: 'Diplomacy Guide',
+        html: `
+<details open><summary>Dashboard Overview</summary><div>
+<p>The Diplomacy page is your window into foreign affairs. It has <strong>three main views</strong>, toggled at the top:</p>
+<ul>
+<li><strong>Diplomacy</strong> &mdash; the default view with four sub-tabs: Relations, Agreements, Initiative, and Inbox</li>
+<li><strong>International Orgs</strong> &mdash; International Party Organisations (IPOs) you belong to</li>
+<li><strong>World Nations</strong> &mdash; a global overview of every nation in the game</li>
+</ul>
+
+<h3>Diplomacy Sub-Tabs</h3>
+<table>
+<tr><th>Tab</th><th>What It Shows</th></tr>
+<tr><td><strong>Relations</strong></td><td>Lists every foreign nation with embassy status, relation scores, ambassador info, and active agreement counts. Click a nation to see detailed actions.</td></tr>
+<tr><td><strong>Agreements</strong></td><td>All your active treaties, trade agreements, and diplomatic proposals &mdash; both inbound and outbound.</td></tr>
+<tr><td><strong>Initiative</strong></td><td>The drafting workspace for building multi-article diplomatic proposals (Minor and Major initiatives).</td></tr>
+<tr><td><strong>Inbox</strong></td><td>Diplomatic messages from other nations. Only visible to players holding diplomatic roles.</td></tr>
+</table>
+</div></details>
+
+<details><summary>Diplomatic Roles</summary><div>
+<p>Not every player can conduct diplomacy. You need to hold one of these roles through your nation's government:</p>
+
+<h3>Head of Government (HoG)</h3>
+<ul>
+<li><strong>Who:</strong> The Prime Minister's party (parliamentary) or the President's party (presidential). In autocracies, the ruling faction.</li>
+<li><strong>Powers:</strong> State Visits (4 AP). War, ceasefire, and alliance actions are planned for future updates.</li>
+<li><strong>Special:</strong> Can join trade negotiations (2 AP) and override certain diplomatic decisions.</li>
+</ul>
+
+<h3>Foreign Minister (FM)</h3>
+<ul>
+<li><strong>Who:</strong> The party that holds the Foreign Ministry in the coalition government.</li>
+<li><strong>Powers:</strong> Appoint Ambassadors (1 AP), Recall Ambassadors (1 AP), propose Major Diplomatic Initiatives (2 AP).</li>
+<li><strong>Key duty:</strong> Reviews incoming minor proposals before they take effect. Also sees all unread diplomatic messages.</li>
+</ul>
+
+<h3>Minister of Trade (MoT)</h3>
+<ul>
+<li><strong>Who:</strong> The party that holds the Trade Ministry in the coalition government.</li>
+<li><strong>Powers:</strong> Trade Agreements (2 AP), Retaliatory Tariffs (2 AP), Export Subsidies (2 AP), Tariff Reductions (3 AP), Impose Embargo (5 AP).</li>
+<li><strong>Key duty:</strong> Leads trade negotiations. Can join ongoing talks for 2 AP.</li>
+</ul>
+
+<h3>Ambassador</h3>
+<ul>
+<li><strong>Who:</strong> Appointed by the Foreign Minister, confirmed by parliament (6-tick vote). Your party must have an ambassador posted to a specific nation.</li>
+<li><strong>Powers:</strong> Minor Diplomatic Initiatives (2 AP), Formal Protests (2 AP), Send Messages (free).</li>
+<li><strong>Term:</strong> 60 ticks (~5 years). Ambassadors can resign or be recalled by the FM.</li>
+<li><strong>Scope:</strong> You can only act toward the nation you are posted to.</li>
+</ul>
+
+<h3>No Role?</h3>
+<p>If your party doesn't hold any of these roles, you can still view foreign relations and agreements, but you cannot take diplomatic actions. Work with your coalition to get a ministry or an ambassador posting.</p>
+</div></details>
+
+<details><summary>Foreign Relations Panel</summary><div>
+<p>When you click on a foreign nation in the Relations tab, you see a detailed card:</p>
+
+<table>
+<tr><th>Field</th><th>Meaning</th></tr>
+<tr><td><strong>Embassy Status</strong></td><td><span style="color:#4ade80;">Open</span> = both nations have active ambassadors to each other. <span style="color:#ef4444;">Closed</span> = one or both sides have no ambassador.</td></tr>
+<tr><td><strong>Relations Score</strong></td><td>A number reflecting diplomatic warmth. Positive = friendly, negative = hostile. Affected by diplomatic actions, trade deals, protests, and covert operations.</td></tr>
+<tr><td><strong>Relations Tier</strong></td><td>A label derived from the score: Friendly, Neutral, Cool, Adversarial, Hostile, Ceasefire, or War.</td></tr>
+<tr><td><strong>Our Ambassador</strong></td><td>The name and party of your ambassador posted to that nation (if any).</td></tr>
+<tr><td><strong>Their Ambassador</strong></td><td>The name and party of their ambassador posted to your nation (if any).</td></tr>
+<tr><td><strong>Active Agreements</strong></td><td>Count of treaties and trade agreements currently in force between the two nations.</td></tr>
+</table>
+</div></details>
+
+<details><summary>Appointing Ambassadors</summary><div>
+<p>Ambassadors are your diplomatic presence in foreign nations. Only the <strong>Foreign Minister</strong> can appoint them.</p>
+
+<h3>Appointment Flow</h3>
+<ol>
+<li><strong>FM clicks "Appoint Ambassador"</strong> (1 AP) and selects a target nation.</li>
+<li><strong>Select a candidate</strong> from the list of eligible party representatives.</li>
+<li><strong>Click "Nominate"</strong> &mdash; this creates a <em>confirmation bill</em> that goes directly to the parliamentary floor.</li>
+<li><strong>Parliament votes</strong> for 6 ticks. A simple majority (51%) confirms the appointment.</li>
+<li>If confirmed, the ambassador becomes <strong>active</strong> and the appointing party gains that ambassador's powers toward the target nation.</li>
+</ol>
+
+<h3>Key Details</h3>
+<ul>
+<li><strong>Term length:</strong> 60 ticks (~5 years). After that, the ambassador retires and must be re-appointed.</li>
+<li><strong>Autocracies:</strong> Skip the confirmation vote &mdash; the ambassador is appointed immediately.</li>
+<li><strong>One per nation:</strong> You can only have one active ambassador per foreign nation.</li>
+<li><strong>Recall:</strong> The FM (or HoG) can recall an ambassador at any time for 1 AP.</li>
+<li><strong>Resignation:</strong> A player whose party holds an ambassadorship can resign voluntarily.</li>
+</ul>
+</div></details>
+
+<details><summary>AP Costs Reference</summary><div>
+<table>
+<tr><th>Action</th><th>Cost</th><th>Role Required</th></tr>
+<tr><td>Appoint Ambassador</td><td>1 AP</td><td>Foreign Minister</td></tr>
+<tr><td>Recall Ambassador</td><td>1 AP</td><td>Foreign Minister / HoG</td></tr>
+<tr><td>Minor Diplomatic Initiative</td><td>2 AP</td><td>Ambassador</td></tr>
+<tr><td>Major Diplomatic Initiative</td><td>2 AP</td><td>Foreign Minister</td></tr>
+<tr><td>Formal Protest</td><td>2 AP</td><td>Ambassador</td></tr>
+<tr><td>Send Message</td><td>Free</td><td>Ambassador</td></tr>
+<tr><td>Trade Agreement</td><td>2 AP</td><td>Minister of Trade</td></tr>
+<tr><td>Retaliatory Tariff</td><td>2 AP</td><td>Minister of Trade</td></tr>
+<tr><td>Export Subsidy</td><td>2 AP</td><td>Minister of Trade</td></tr>
+<tr><td>Tariff Reduction</td><td>3 AP</td><td>Minister of Trade</td></tr>
+<tr><td>Impose Embargo</td><td>5 AP</td><td>Minister of Trade</td></tr>
+<tr><td>State Visit</td><td>4 AP</td><td>Head of Government</td></tr>
+</table>
+<p><em>Tip: If bilateral trade talks are already open with a nation, some actions cost 1 AP less.</em></p>
+</div></details>
+
+<details><summary>Trade Agreements Overview</summary><div>
+<p>Trade agreements are negotiated between two nations (or enacted unilaterally) through the <strong>Minister of Trade</strong>. There are 6 types:</p>
+
+<table>
+<tr><th>Type</th><th>Abbr.</th><th>Bilateral?</th><th>Description</th></tr>
+<tr><td><strong>Free Trade Agreement</strong></td><td>FTA</td><td>Yes</td><td>Eliminates all tariffs between two nations. You can carve out sector exemptions.</td></tr>
+<tr><td><strong>Preferential Tariff</strong></td><td>PTA</td><td>Yes</td><td>Reduces tariffs on specific sectors. Each side can negotiate different reduction percentages.</td></tr>
+<tr><td><strong>Resource Supply Contract</strong></td><td>RSC</td><td>Yes</td><td>Guaranteed purchase commitment for raw resources (Fuel, Minerals, or Food). Sets price terms and optional breach penalties.</td></tr>
+<tr><td><strong>Export Subsidy</strong></td><td>ES</td><td>No</td><td>Unilateral &mdash; subsidize your own exporters (5-30%) to boost competitiveness. Costs your treasury.</td></tr>
+<tr><td><strong>Economic Aid</strong></td><td>AID</td><td>Yes</td><td>Financial assistance from donor to recipient. Can attach conditions (governance, economic, or social benchmarks).</td></tr>
+<tr><td><strong>Retaliatory Tariff</strong></td><td>RT</td><td>No</td><td>Unilateral &mdash; impose a surcharge (5-50%) on imports from a specific nation. Damages relations.</td></tr>
+</table>
+
+<h3>Credit Rating Requirements</h3>
+<p>Your nation needs a minimum credit rating to propose certain agreements:</p>
+<ul>
+<li><strong>FTA</strong> &mdash; Credit &ge; 25</li>
+<li><strong>PTA</strong> &mdash; Credit &ge; 10</li>
+<li><strong>RSC</strong> &mdash; Credit &ge; 15</li>
+<li><strong>Aid (as donor)</strong> &mdash; Credit &ge; 20</li>
+<li><strong>Export Subsidy / Retaliatory Tariff</strong> &mdash; No requirement</li>
+</ul>
+
+<h3>Tradeable Sectors</h3>
+<p>Six sectors can appear in trade agreements:</p>
+<ol>
+<li>Fuel &amp; Energy</li>
+<li>Minerals &amp; Raw Materials</li>
+<li>Food &amp; Agriculture</li>
+<li>Manufactured Goods</li>
+<li>Technology &amp; Electronics</li>
+<li>Arms &amp; Military Equipment</li>
+</ol>
+<p><em>Tourism and Services &amp; Finance exist as export sectors in the economy but cannot be included in trade agreements.</em></p>
+</div></details>
+
+<details><summary>Trade Negotiation Lifecycle</summary><div>
+<p>Bilateral trade agreements (FTA, PTA, RSC, Aid) follow this lifecycle:</p>
+
+<ol>
+<li><strong>Propose</strong> (2 AP) &mdash; The MoT, FM, or Ambassador opens a negotiation with a target nation. Choose the agreement type.</li>
+<li><strong>Counterpart Joins</strong> &mdash; The other nation's MoT, FM, or Ambassador must join the negotiation. If nobody joins within the time limit, talks expire.</li>
+<li><strong>Draft Articles</strong> &mdash; Both sides add articles (duration, sector terms, conditions). Either side can add or modify articles.</li>
+<li><strong>Close Negotiations</strong> &mdash; When both sides are satisfied, either party can close the negotiation.</li>
+<li><strong>Ratification</strong> &mdash; A ratification bill is created in <em>both</em> parliaments. Each legislature votes for 6 ticks.</li>
+<li><strong>Activation</strong> &mdash; If both parliaments pass the bill, the agreement becomes active. If either rejects it, the agreement fails.</li>
+</ol>
+
+<h3>Timing</h3>
+<ul>
+<li>Negotiations expire after <strong>4 ticks</strong> by default.</li>
+<li>Negotiations can be extended up to <strong>3 times</strong> (+12 ticks each, max ~40 ticks total).</li>
+<li>Ratification voting lasts <strong>6 ticks</strong>.</li>
+</ul>
+
+<h3>Unilateral Actions</h3>
+<p><strong>Export Subsidies</strong> and <strong>Retaliatory Tariffs</strong> skip the negotiation phase. The MoT drafts articles and they take effect immediately (no parliamentary ratification needed).</p>
+
+<h3>Agreement Duration</h3>
+<p>Every agreement requires a Duration article:</p>
+<ul>
+<li><strong>Permanent</strong> &mdash; lasts until one side withdraws (with notice period).</li>
+<li><strong>Fixed term</strong> &mdash; 8 to 48 ticks depending on type. Can optionally auto-renew.</li>
+<li><strong>Withdrawal notice</strong> &mdash; 1 to 6 ticks advance notice required to withdraw early.</li>
+</ul>
+</div></details>
+
+<details><summary>Minor Diplomatic Initiatives</summary><div>
+<p>Minor initiatives are <strong>Tier 1</strong> proposals drafted by an <strong>Ambassador</strong> (2 AP). They bundle one or more articles and are sent to the target nation. The target's Ambassador, FM, or HoG can accept directly &mdash; no parliamentary vote needed.</p>
+
+<h3>Article Types</h3>
+
+<h4>Visa Agreement</h4>
+<p>Establishes visa-free travel between nations. Configurable options:</p>
+<ul>
+<li><strong>Duration:</strong> 30, 90, or 180 days</li>
+<li><strong>Scope:</strong> Tourism Only, Tourism + Business, or All Purposes</li>
+<li><strong>Direction:</strong> Reciprocal, One-way (Our Citizens), or One-way (Their Citizens)</li>
+<li><strong>Excludes:</strong> Can carve out Work Permits, Residency, or Diplomatic Staff</li>
+</ul>
+<p><em>Effects:</em> Improves relations (+6 base), generates tourism revenue, increases international reputation. Broader scope and longer duration amplify effects but may increase immigration and polarization.</p>
+
+<h4>Cultural Exchange</h4>
+<p>Soft power programme (Artist Exchange, Museum Exhibits, Film Festival, etc.):</p>
+<ul>
+<li><strong>Duration:</strong> 1 Year, 2 Years, or Permanent (with ongoing cost)</li>
+<li><strong>Funding:</strong> 50/50, 60/40 We Pay More, or 60/40 They Pay More</li>
+</ul>
+<p><em>Effects:</em> Improves relations (+4 base), boosts international reputation and soft power.</p>
+
+<h4>Student Exchange</h4>
+<p>University exchange programme:</p>
+<ul>
+<li><strong>Seats:</strong> 50&ndash;500 students (diminishing returns above 200)</li>
+<li><strong>Level:</strong> Undergraduate, Graduate, or Both</li>
+<li><strong>Duration:</strong> 1 Semester (6 ticks), Full Year (12), or Full Degree (36+)</li>
+<li><strong>Field:</strong> Sciences, Engineering, Medicine, Humanities, Law, or Economics</li>
+<li><strong>Funding:</strong> Host Pays, Split, or Sender Pays</li>
+</ul>
+<p><em>Effects:</em> Improves relations (+3 base), boosts higher education. Graduate + Sciences/Engineering fields grant a bonus to Technology.</p>
+
+<h4>Joint Statement</h4>
+<p>A public or private declaration between two nations. Purely diplomatic &mdash; no mechanical stat effects, but can signal alignment:</p>
+<ul>
+<li><strong>Visibility:</strong> Public (visible to all) or Private (only signatories see it)</li>
+</ul>
+</div></details>
+
+<details><summary>Major Diplomatic Initiatives</summary><div>
+<p>Major initiatives are <strong>Tier 3</strong> proposals drafted by the <strong>Foreign Minister</strong> (2 AP). They require <strong>bilateral parliamentary ratification</strong> &mdash; both nations' legislatures must pass the agreement within 6 ticks.</p>
+
+<p><em>If a Major initiative fails ratification, you must wait <strong>8 ticks</strong> before re-proposing the same type.</em></p>
+
+<h3>Article Types</h3>
+
+<h4>Open Borders Agreement</h4>
+<p>Freedom of movement between nations. The most impactful treaty type:</p>
+<ul>
+<li><strong>Scope:</strong> Full Freedom (entry + work + residency + settlement), Work &amp; Residency Only, or Labor Mobility Only</li>
+<li><strong>Direction:</strong> Reciprocal or One-way</li>
+<li><strong>Worker Protections:</strong> Enhanced (minimum wage, anti-exploitation, pension portability), Standard, or None</li>
+<li><strong>Transition:</strong> Immediate (unrest spike), 6-Tick Phased, or 12-Tick Gradual</li>
+</ul>
+<p><em>Effects:</em> Large relations boost (+8 base), GDP growth, labor force participation. Also increases immigration, civil unrest, polarization, and cost of living. Enhanced protections cost more but reduce exploitation.</p>
+<p><strong>Sovereignty cost:</strong> Full Open Borders blocks domestic IMMIGRATION and LABOR policy changes. Work/Labor Mobility blocks LABOR policies.</p>
+
+<h4>Mutual Extradition Treaty</h4>
+<p>Criminal extradition agreement:</p>
+<ul>
+<li><strong>Scope:</strong> Serious Crimes Only, All Criminal Offenses, or Political Offenses Included</li>
+<li><strong>Dual Criminality:</strong> Required (must be a crime in both nations) or Waived</li>
+<li><strong>Appeal Process:</strong> Full Judicial Review, Expedited Review, or None</li>
+<li><strong>Exceptions:</strong> Death Penalty Cases, Military Offenses, Financial Crimes</li>
+</ul>
+<p><em>Effects:</em> Improves relations (+6 base), reduces crime and corruption. Including political offenses increases repression risk.</p>
+<p><strong>Sovereignty cost:</strong> Including Political Offenses blocks domestic GOVERNANCE policy changes.</p>
+
+<h4>Bilateral Environmental Accord</h4>
+<p>Environmental commitments with real enforcement:</p>
+<ul>
+<li><strong>Emission Targets:</strong> Modest (&minus;5%), Moderate (&minus;15%), or Ambitious (&minus;25%)</li>
+<li><strong>Renewable Energy Targets:</strong> 25%, 40%, or 60% minimum</li>
+<li><strong>Pollution Standards:</strong> Advisory, Binding, or Strict</li>
+<li><strong>Conservation:</strong> Forest, Marine, Wetland, Biodiversity (pick any combination)</li>
+<li><strong>Review Interval:</strong> 6, 12, or 24 ticks</li>
+<li><strong>Penalty for Non-Compliance:</strong> Warning, Financial, or Sanctions</li>
+</ul>
+<p><em>Effects:</em> Improves relations (+5 base), boosts environmental index and international reputation. Stricter targets are costlier but more effective.</p>
+<p><strong>Sovereignty cost:</strong> Strict/Binding pollution standards block domestic ENERGY policy changes.</p>
+</div></details>
+
+<details><summary>State Visits</summary><div>
+<p>The <strong>Head of Government</strong> can conduct official visits to foreign nations. State visits are highly configurable and build relations, soft power, and trade ties.</p>
+
+<h3>Visit Types</h3>
+<table>
+<tr><th>Type</th><th>AP Modifier</th><th>Specialty</th></tr>
+<tr><td><strong>Official State Visit</strong></td><td>+0</td><td>Balanced &mdash; standard relations multiplier</td></tr>
+<tr><td><strong>Working Visit</strong></td><td>&minus;1</td><td>Trade-focused &mdash; 1.2&times; trade bonus, 0.8&times; relations</td></tr>
+<tr><td><strong>Goodwill Visit</strong></td><td>&minus;2</td><td>Soft power &mdash; 1.3&times; cultural effects</td></tr>
+</table>
+
+<h3>Duration</h3>
+<table>
+<tr><th>Length</th><th>Extra AP</th><th>Effect Multiplier</th><th>Max Agenda Items</th></tr>
+<tr><td>Short</td><td>+1</td><td>0.7&times;</td><td>3</td></tr>
+<tr><td>Moderate</td><td>+2</td><td>1.0&times;</td><td>5</td></tr>
+<tr><td>Lengthy</td><td>+3</td><td>1.3&times;</td><td>7</td></tr>
+</table>
+<p><em>Total AP cost = 4 (base) + duration AP + visit type modifier.</em></p>
+
+<h3>Delegation Size</h3>
+<table>
+<tr><th>Size</th><th>Debt Cost</th><th>Effect Bonus</th></tr>
+<tr><td>Small (4)</td><td>$1.2M</td><td>None</td></tr>
+<tr><td>Standard (8)</td><td>$2.4M</td><td>None</td></tr>
+<tr><td>Large (14)</td><td>$4.8M</td><td>+10%</td></tr>
+</table>
+
+<h3>Agenda Items</h3>
+<p>Pick items up to your duration's max. Each adds specific effects:</p>
+<ul>
+<li><strong>Formal Reception</strong> &mdash; +3 relations, +5 public awareness</li>
+<li><strong>Joint Press Conference</strong> &mdash; +2 gov approval, +2 relations (8% gaffe risk)</li>
+<li><strong>Economic Forum</strong> &mdash; +4 trade relations, unlocks trade deal ($1.2M cost)</li>
+<li><strong>University Address</strong> &mdash; +3 soft power, +2 education approval</li>
+<li><strong>Private Bilateral Talks</strong> &mdash; +5 relations, enables diplomatic discount (future actions cost 1 less AP)</li>
+<li><strong>Military Review</strong> &mdash; +4 military trust (may alarm hostile neighbours)</li>
+<li><strong>Cultural Exchange</strong> &mdash; +4 soft power, +2 relations ($0.8M cost)</li>
+<li><strong>Monument Visit</strong> &mdash; +3 public opinion (symbolic, low cost)</li>
+<li><strong>Treaty Signing</strong> &mdash; Sign a pending treaty during the visit</li>
+</ul>
+</div></details>
+
+<details><summary>Hostile &amp; Confrontational Actions</summary><div>
+<p>Not all diplomacy is friendly. Several tools exist for economic pressure and conflict:</p>
+
+<h3>Implemented</h3>
+<table>
+<tr><th>Action</th><th>Cost</th><th>Role</th><th>Effect</th></tr>
+<tr><td><strong>Impose Embargo</strong></td><td>5 AP</td><td>Minister of Trade</td><td>Block trade in targeted, partial, or all sectors with a nation. Damages their economy and your relations.</td></tr>
+<tr><td><strong>Retaliatory Tariff</strong></td><td>2 AP</td><td>Minister of Trade</td><td>Surcharge (5&ndash;50%) on imports from a specific nation. Less extreme than embargo.</td></tr>
+<tr><td><strong>Recall Ambassador</strong></td><td>1 AP</td><td>Foreign Minister</td><td>Remove your ambassador from a nation. Signals diplomatic displeasure and closes your embassy.</td></tr>
+</table>
+
+<h3>Coming Soon</h3>
+<ul>
+<li><strong>Formal Protest</strong> (2 AP, Ambassador) &mdash; Lodge formal disapproval of another nation's actions</li>
+<li><strong>Declare War</strong> (8 AP, Head of Government) &mdash; Military conflict with justification system</li>
+<li><strong>Call for Ceasefire</strong> (4 AP, Head of Government) &mdash; End active conflicts</li>
+<li><strong>Sign Alliance</strong> (6 AP, Head of Government) &mdash; Mutual defense pacts</li>
+<li><strong>Foreign Aid Proposal</strong> (4 AP, Foreign Minister) &mdash; Direct financial assistance</li>
+</ul>
+</div></details>
+
+<details><summary>International Party Organisations (IPOs)</summary><div>
+<p>IPOs are voluntary cross-nation associations of like-minded parties. They let you coordinate strategy, pool resources, and project ideological influence across borders. Access them via the <strong>International Orgs</strong> tab on the Diplomacy page.</p>
+
+<h3>Creating an Organisation</h3>
+<ul>
+<li><strong>Cost:</strong> 4 AP</li>
+<li>You define a <strong>charter</strong> with up to 5 articles (only Article I &mdash; Mission is required)</li>
+<li>The founding party becomes the first president and member</li>
+<li>Choose a name, logo symbol, and abbreviation</li>
+</ul>
+
+<h3>Charter Articles</h3>
+<table>
+<tr><th>Article</th><th>What It Configures</th></tr>
+<tr><td><strong>I. Mission Statement</strong></td><td>Required. Text describing the organisation's purpose.</td></tr>
+<tr><td><strong>II. Leadership</strong></td><td>Presidency type (Rotation, Most Seats, or Random), term length (1&ndash;7 years), voting weight (Equal or Seat Share), vote threshold (Majority or Unanimous).</td></tr>
+<tr><td><strong>III. Membership</strong></td><td>Admission method (Vote or President decides), ideological threshold (restrict by ideology direction), expulsion clause (Disabled, President, Majority, or Unanimous).</td></tr>
+<tr><td><strong>IV. Governance</strong></td><td>Action leadership model, vote transparency (Public or Secret ballot), observer status, veto rights, emergency powers.</td></tr>
+<tr><td><strong>V. Resources</strong></td><td>Solidarity fund (enable + AP per quarter), resource sharing cap, joint statement clause, headquarters nation.</td></tr>
+</table>
+
+<h3>Membership</h3>
+<ul>
+<li><strong>Members</strong> can vote, propose actions, and send chat messages</li>
+<li><strong>Observers</strong> can view and read chat but cannot vote or act</li>
+<li>Joining requires either a <strong>membership vote</strong> (8 ticks) or <strong>president approval</strong>, depending on the charter</li>
+<li>The charter can set <strong>ideological thresholds</strong> &mdash; applicants must align on at least one selected ideology axis</li>
+</ul>
+
+<h3>Presidency</h3>
+<ul>
+<li>Term length: 1&ndash;7 years (configurable)</li>
+<li><strong>Rotation:</strong> Members take turns in membership order</li>
+<li><strong>Most Seats:</strong> The member with the most legislative seats becomes president</li>
+<li><strong>Random:</strong> A random member is selected each term</li>
+</ul>
+
+<h3>Solidarity Fund</h3>
+<p>If enabled in the charter, members contribute AP each quarter to a shared fund. The fund can be spent on:</p>
+<ul>
+<li><strong>Back-channel transfers</strong> &mdash; Send AP to another member (1 AP from fund, 25% exposure risk)</li>
+<li><strong>Funding org actions</strong> &mdash; Rallies, symposiums, and other collective actions</li>
+</ul>
+<p>The resource sharing cap (if set) limits how many transfers each member can make per term.</p>
+
+<h3>IPO Actions</h3>
+<table>
+<tr><th>Action</th><th>Cost</th><th>Effect</th></tr>
+<tr><td><strong>Targeted Rally</strong></td><td>4 AP</td><td>Roll for approval change for one other member faction (+8 to &minus;1 range)</td></tr>
+<tr><td><strong>Global Rally</strong></td><td>7 AP</td><td>Roll for every member faction independently (president only)</td></tr>
+<tr><td><strong>Back-Channel</strong></td><td>2 AP (or 1 from fund)</td><td>Secret AP transfer to another member (25% exposure risk from fund)</td></tr>
+<tr><td><strong>Joint Statement</strong></td><td>1 AP</td><td>President issues org-wide statement</td></tr>
+<tr><td><strong>Symposium</strong></td><td>Vote required</td><td>Shift a target nation's ideology by +3 on a chosen axis (4-tick delay, 20-tick cooldown)</td></tr>
+</table>
+
+<h3>Voting</h3>
+<ul>
+<li>Votes last <strong>8 ticks</strong> and can be for membership, charter amendments, actions, or symposiums</li>
+<li>Maximum <strong>5 concurrent votes</strong> per organisation</li>
+<li>Ballot options: Yes, No, or Abstain</li>
+<li>Pass condition depends on charter: <strong>Majority</strong> (&gt;50%) or <strong>Unanimous</strong></li>
+<li>Ballots can be <strong>public</strong> (names shown) or <strong>secret</strong> (anonymous) per the charter</li>
+</ul>
+</div></details>
+
+<details><summary>Sovereignty Constraints</summary><div>
+<p>Certain active Major Initiative treaties restrict your ability to change domestic policies. While the treaty is in force, the affected policy sectors are <strong>blocked</strong> from new legislation:</p>
+
+<table>
+<tr><th>Treaty</th><th>Condition</th><th>Blocked Sectors</th></tr>
+<tr><td><strong>Open Borders</strong></td><td>Full Freedom of Movement</td><td>Immigration, Labor</td></tr>
+<tr><td><strong>Open Borders</strong></td><td>Work &amp; Residency / Labor Mobility</td><td>Labor</td></tr>
+<tr><td><strong>Mutual Extradition</strong></td><td>Includes Political Offenses</td><td>Governance</td></tr>
+<tr><td><strong>Environmental Accord</strong></td><td>Strict or Binding Pollution Standards</td><td>Energy</td></tr>
+</table>
+<p>To regain policy freedom, you must either <strong>withdraw</strong> from the treaty (costing relations and reputation) or wait for it to expire.</p>
+
+<p><em>Tip: Before signing a Major Initiative, check which domestic policy sectors it will lock. A treaty that blocks Labor policy changes could prevent you from responding to an unemployment crisis.</em></p>
+</div></details>
+
+<details><summary>Timing &amp; Cooldowns Reference</summary><div>
+<table>
+<tr><th>Element</th><th>Duration</th></tr>
+<tr><td>Ambassador confirmation vote</td><td>6 ticks</td></tr>
+<tr><td>Ambassador term length</td><td>60 ticks (~5 years)</td></tr>
+<tr><td>Trade negotiation default expiry</td><td>4 ticks</td></tr>
+<tr><td>Trade negotiation extension</td><td>+12 ticks (max 3 extensions)</td></tr>
+<tr><td>Trade ratification vote</td><td>6 ticks</td></tr>
+<tr><td>FM review window (minor initiatives)</td><td>3 ticks</td></tr>
+<tr><td>Major initiative ratification vote</td><td>6 ticks (both parliaments)</td></tr>
+<tr><td>Major initiative re-propose cooldown</td><td>8 ticks</td></tr>
+<tr><td>State visit acceptance window</td><td>3 ticks</td></tr>
+<tr><td>Symposium cooldown</td><td>20 ticks</td></tr>
+<tr><td>IPO vote duration</td><td>8 ticks</td></tr>
+<tr><td>IPO max concurrent votes</td><td>5</td></tr>
+<tr><td>Aid condition review interval</td><td>12 ticks (annually)</td></tr>
+<tr><td>Environmental accord compliance window</td><td>24 ticks</td></tr>
+</table>
+</div></details>
+`
     }
 };
 

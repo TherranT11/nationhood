@@ -519,8 +519,7 @@ export function renderNavTabs(activeTab) {
             badgeHtml = '<span class="nav-badge" id="bills-badge" style="display:none;"></span>';
         }
         if (tab.id === 'diplomacy') {
-            badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>'
-                      + '<span class="nav-badge nav-badge--amber" id="diplomacy-awaiting-badge" style="display:none;"></span>';
+            badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>';
         }
         return `
             <a href="${href}"
@@ -558,15 +557,16 @@ async function updateBillsBadge(faction, nation, shard) {
     const badge = document.getElementById('bills-badge');
     if (!badge || !faction || !nation) return;
     try {
-        const { data: floorBills } = await _supabase
+        // Count committee + floor bills the player hasn't voted on
+        const { data: activeBills } = await _supabase
             .from('bills')
-            .select('id, bill_support(faction_id)')
+            .select('id, status, bill_support(faction_id)')
             .eq('nation_id', nation.id)
-            .eq('status', 'floor');
+            .in('status', ['committee', 'floor']);
 
         const seenBills = getSeenBills();
         let count = 0;
-        for (const bill of (floorBills || [])) {
+        for (const bill of (activeBills || [])) {
             const hasVoted = (bill.bill_support || []).some(s => s.faction_id === faction.id);
             const hasSeen = seenBills.includes(bill.id);
             if (!hasVoted && !hasSeen) count++;
@@ -618,7 +618,7 @@ async function getDiploBadgeRoles(faction, nation) {
     return roles;
 }
 
-// ===== DIPLOMACY BADGE (unread diplomatic messages) =====
+// ===== DIPLOMACY BADGE (unread messages + pending proposals, single red badge) =====
 
 async function updateDiplomacyBadge(faction, nation, roles) {
     const badge = document.getElementById('diplomacy-badge');
@@ -632,59 +632,30 @@ async function updateDiplomacyBadge(faction, nation, roles) {
             return;
         }
 
-        // Fetch incoming messages our faction hasn't read yet
+        let count = 0;
+
+        // 1. Unread diplomatic messages
         const { data: msgs } = await _supabase
             .from('diplomatic_messages')
             .select('id, from_nation_id, read_by_factions')
             .eq('to_nation_id', nation.id)
             .neq('from_nation_id', nation.id);
 
-        let count = 0;
         for (const msg of (msgs || [])) {
             const readBy = msg.read_by_factions || [];
             if (readBy.includes(faction.id)) continue;
-            // FM sees all messages; ambassadors only from their posted nation
-            // MoT does NOT see diplomatic messages (those are FM/ambassador domain)
             if (roles.isFM || roles.ambassadorTargetIds.includes(msg.from_nation_id)) {
                 count++;
             }
         }
 
-        if (count > 0) {
-            badge.textContent = count;
-            badge.style.display = '';
-        } else {
-            badge.style.display = 'none';
-        }
-    } catch (e) {
-        console.error('Error updating diplomacy badge:', e);
-    }
-}
-
-
-// ===== DIPLOMACY AWAITING BADGE (incoming proposals needing our attention) =====
-
-async function updateDiplomacyAwaitingBadge(faction, nation, roles) {
-    const badge = document.getElementById('diplomacy-awaiting-badge');
-    if (!badge || !faction || !nation) return;
-    try {
-        if (!roles) roles = await getDiploBadgeRoles(faction, nation);
-
-        // No diplomatic role → no badge
-        if (!roles.isFM && !roles.isMoT && roles.ambassadorTargetIds.length === 0) {
-            badge.style.display = 'none';
-            return;
-        }
-
-        // Count incoming diplomatic proposals that need our attention
+        // 2. Incoming diplomatic proposals needing attention
         const { data: proposals } = await _supabase
             .from('diplomatic_proposals')
             .select('status, proposing_nation_id, target_nation_id, proposal_data')
             .in('status', ['proposed', 'revised'])
             .eq('target_nation_id', nation.id);
 
-        let count = 0;
-        // Diplomatic proposals: FM and ambassadors only (MoT does not handle proposals)
         for (const p of (proposals || [])) {
             if (p.status === 'proposed') {
                 if (roles.isFM || roles.ambassadorTargetIds.includes(p.proposing_nation_id)) {
@@ -699,7 +670,7 @@ async function updateDiplomacyAwaitingBadge(faction, nation, roles) {
             }
         }
 
-        // Trade negotiations: FM, MoT, and relevant ambassadors
+        // 3. Open trade negotiations
         const { data: tradeNegs } = await _supabase
             .from('trade_negotiations')
             .select('initiated_by_nation, nation_a_id, nation_b_id, status')
@@ -721,7 +692,7 @@ async function updateDiplomacyAwaitingBadge(faction, nation, roles) {
             badge.style.display = 'none';
         }
     } catch (e) {
-        console.error('Error updating diplomacy awaiting badge:', e);
+        console.error('Error updating diplomacy badge:', e);
     }
 }
 
@@ -729,7 +700,7 @@ async function updateDiplomacyAwaitingBadge(faction, nation, roles) {
 // ===== IPO INVITE BADGE (pending org invitations) =====
 
 async function updateIPOInviteBadge(faction, roles) {
-    const dipBadge = document.getElementById('diplomacy-awaiting-badge');
+    const dipBadge = document.getElementById('diplomacy-badge');
     if (!faction) return;
     try {
         // Count pending invites
@@ -1214,12 +1185,11 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     if (activeTab !== 'laws') {
         updateBillsBadge(state.faction, state.nation, state.shard);
     }
-    // Update diplomacy badges (role-gated: only FM, MoT, or ambassadors see them)
+    // Update diplomacy badge (role-gated: only FM, MoT, or ambassadors see it)
     const diploRoles = await getDiploBadgeRoles(state.faction, state.nation);
     if (activeTab !== 'diplomacy') {
         updateDiplomacyBadge(state.faction, state.nation, diploRoles);
     }
-    updateDiplomacyAwaitingBadge(state.faction, state.nation, diploRoles);
     updateIPOInviteBadge(state.faction, diploRoles);
 
     // Inject messaging bubble on all pages
