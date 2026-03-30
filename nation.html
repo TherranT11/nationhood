@@ -404,8 +404,8 @@ async function loadStatEffectSources(nationId, nation) {
             .eq('nation_id', nationId)
             .eq('item_type', 'institution')
             .order('created_at', { ascending: true }),
-        _supabase.from('institutions')
-            .select('id, name, primary_stat, secondary_stat, growth_stat, growth_ceiling')
+        _supabase.from('ministry_institution_config')
+            .select('id, institution_name, primary_stat, secondary_stat, growth_stat, growth_ceiling')
     ]);
     } catch (e) {
         console.warn('[loadStatEffectSources] Failed to fetch effect sources:', e.message);
@@ -700,7 +700,7 @@ function parseInstitutionEffects(allocations, institutions, nation, map) {
                 }
             }
 
-            var label = inst.name;
+            var label = inst.institution_name || inst.name;
             addEffectToMap(map, statKey, label, dir, 'Institution', rate, null, {
                 fundingPct: pct,
                 tierLabel: badge,
