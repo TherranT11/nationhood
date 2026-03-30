@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How To Play | Nationhood Alpha</title>
+<link rel="stylesheet" href="css/dashboard.css">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+#content-area { margin: 16px 20px; padding: 20px; overflow-y: auto; }
+.howto-container { max-width: 760px; margin: 0 auto; }
+.howto-hero {
+    text-align: center; padding: 40px 20px 30px;
+    border-bottom: 1px solid var(--border-main);
+    margin-bottom: 24px;
+}
+.howto-hero-title {
+    font-family: var(--font-mono); font-size: 1.6rem; font-weight: 800;
+    color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase;
+    margin-bottom: 8px;
+}
+.howto-hero-sub {
+    font-family: var(--font-ui); font-size: 0.9rem;
+    color: var(--text-secondary); max-width: 540px; margin: 0 auto;
+}
+.howto-hero-version {
+    font-family: var(--font-mono); font-size: 0.65rem;
+    color: var(--text-dim); margin-top: 12px; letter-spacing: 0.1em;
+}
+.howto-back {
+    display: inline-block; margin-bottom: 16px;
+    font-family: var(--font-mono); font-size: 0.72rem;
+    color: var(--accent); text-decoration: none;
+    letter-spacing: 0.04em;
+}
+.howto-back:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div id="top-bar"></div>
+<div id="content-area">
+<div class="howto-container">
+
+<a href="dashboard.html" class="howto-back">&larr; Back to Game</a>
+
+<div class="howto-hero">
+    <div class="howto-hero-title">Welcome to Nationhood</div>
+    <div class="howto-hero-sub">
+        A multiplayer political simulation where you lead a political party, compete in elections,
+        form governments, draft legislation, manage the economy, and navigate international diplomacy.
+    </div>
+    <div class="howto-hero-version">ALPHA &middot; CRUCERA SHARD</div>
+</div>
+
+<!-- Reuses the guide-panel CSS from dashboard.css -->
+<div class="guide-panel" style="max-width:100%;border:none;padding:0;">
+
+<details open><summary>Getting Started</summary><div>
+<p>You've just founded a political party in a nation. Here's what to do first:</p>
+<ol>
+<li><strong>Check your Dashboard</strong> &mdash; the Home tab shows your nation's government, elections, and recent events at a glance.</li>
+<li><strong>Visit the Government page</strong> &mdash; see who holds power, which ministries exist, and whether a government needs to be formed.</li>
+<li><strong>Check the Bills page</strong> &mdash; vote on any bills currently on the floor. Your vote matters even if you have few seats.</li>
+<li><strong>Draft your first bill</strong> &mdash; propose a policy that aligns with your ideology. It costs 2 AP.</li>
+<li><strong>Manage your economy</strong> &mdash; visit the Economy tab to understand revenue, spending, trade, and debt.</li>
+</ol>
+<p><em>Tip: AP (Action Points) regenerate every tick (+5 base, +2 if you're in the governing coalition). Don't hoard them &mdash; spend them to shape your nation.</em></p>
+</div></details>
+
+<details><summary>How Ticks Work</summary><div>
+<p>Nationhood runs on a <strong>tick-based</strong> clock. Every tick (shown in the top bar with a countdown), the game advances one month:</p>
+<ul>
+<li>Elections fire on their scheduled tick</li>
+<li>Bills on the floor resolve after their voting period expires</li>
+<li>Economic stats update (GDP growth, trade, inflation)</li>
+<li>Policy effects apply (stat changes from enacted laws)</li>
+<li>Ministry actions progress through their delay and duration</li>
+<li>Crises evolve (effects apply, protests fizzle or escalate)</li>
+<li>AP is granted to all parties</li>
+</ul>
+<p>You don't need to be online when the tick fires &mdash; everything processes automatically. But plan your actions so they're submitted before the tick you want them to take effect.</p>
+</div></details>
+
+<details><summary>Your Party</summary><div>
+<p>You control a <strong>political party</strong> with:</p>
+<table>
+<tr><th>Attribute</th><th>What It Means</th></tr>
+<tr><td><strong>Seats</strong></td><td>Your share of the legislature, won through elections</td></tr>
+<tr><td><strong>Approval</strong></td><td>How popular your party is with voters (affects next election)</td></tr>
+<tr><td><strong>Ideology</strong></td><td>Your position on 5 axes (Liberty/Equality, Tradition/Progress, etc.) &mdash; affects voter alignment</td></tr>
+<tr><td><strong>AP</strong></td><td>Action Points &mdash; spent to draft bills, use ministry actions, conduct diplomacy</td></tr>
+<tr><td><strong>Leader</strong></td><td>Your party leader with traits that provide bonuses or penalties</td></tr>
+</table>
+</div></details>
+
+<details><summary>Government &amp; Coalitions</summary><div>
+<p>After an election, parties must <strong>form a government</strong>:</p>
+<ol>
+<li>Any party can <strong>propose a coalition</strong> by selecting partner parties</li>
+<li>The coalition needs a <strong>majority of seats</strong> (more than half the legislature)</li>
+<li>Partners must <strong>accept</strong> the invitation and agree on ministry assignments</li>
+<li>The PM's party clicks <strong>Form Government</strong> to finalize</li>
+</ol>
+<p>Being in government gives you:</p>
+<ul>
+<li><strong>+2 AP per tick</strong> (coalition bonus)</li>
+<li>Control of <strong>ministries</strong> (each with unique actions)</li>
+<li>The PM can issue <strong>Public Addresses</strong> during crises</li>
+</ul>
+<p>Not in government? You're the <strong>opposition</strong>. You can still vote on bills, organize protests, and run for election.</p>
+</div></details>
+
+<details><summary>Bills &amp; Legislation</summary><div>
+<p>Bills are how you change your nation. The lifecycle:</p>
+<ol>
+<li><strong>Draft</strong> (2 AP) &mdash; propose articles with policy effects, tax changes, or funding adjustments</li>
+<li><strong>Committee</strong> &mdash; other parties can co-sponsor or add amendments</li>
+<li><strong>Floor Vote</strong> &mdash; send to the floor; all parties vote for 6 ticks</li>
+<li><strong>Passed/Failed</strong> &mdash; majority wins. Passed bills take effect immediately.</li>
+</ol>
+<h3>Bill Types</h3>
+<ul>
+<li><strong>Standard bills</strong> &mdash; enact policies that change nation stats over time</li>
+<li><strong>Tax reform</strong> &mdash; adjust income, corporate, or sales tax rates</li>
+<li><strong>Funding bills</strong> &mdash; change ministry institution funding levels</li>
+<li><strong>Repeal bills</strong> &mdash; reverse an active law</li>
+<li><strong>Foundational laws</strong> &mdash; change seat counts, term lengths, or government structure (requires 2/3 majority)</li>
+<li><strong>No Confidence</strong> &mdash; dissolve the current government and trigger new elections</li>
+</ul>
+</div></details>
+
+<details><summary>Elections</summary><div>
+<p>Elections happen on a regular schedule (visible on the Dashboard). Your result depends on:</p>
+<ul>
+<li><strong>Party approval</strong> &mdash; the single biggest factor. Keep it high.</li>
+<li><strong>Ideology alignment</strong> &mdash; how well your positions match what voters want</li>
+<li><strong>Voter bloc preferences</strong> &mdash; different demographics favor different parties</li>
+<li><strong>Government record</strong> &mdash; incumbents are judged on economic performance</li>
+</ul>
+<p>After an election, the government dissolves and a new formation period begins. If no government forms within the deadline, a snap election is called.</p>
+</div></details>
+
+<details><summary>The Economy</summary><div>
+<p>Every nation has a full economic simulation:</p>
+<ul>
+<li><strong>GDP</strong> &mdash; grows or shrinks based on gdp_growth stat</li>
+<li><strong>Budget</strong> &mdash; revenue (taxes + trade + oil) minus expenditures (ministry costs + debt service)</li>
+<li><strong>Debt</strong> &mdash; deficits accumulate as debt. High debt erodes credit and locks out borrowing.</li>
+<li><strong>Trade</strong> &mdash; nations automatically import and export based on their stats and sector strengths</li>
+<li><strong>Inflation</strong> &mdash; rises with spending and money supply, falls with austerity</li>
+</ul>
+<p>Visit the <strong>Economy tab</strong> and click <strong>? Guide</strong> for detailed breakdowns of each sub-tab.</p>
+</div></details>
+
+<details><summary>Ministries</summary><div>
+<p>Coalition parties are assigned ministries. Each ministry has <strong>unique actions</strong> that cost AP and draw from the ministry's discretionary fund:</p>
+<table>
+<tr><th>Ministry</th><th>Key Actions</th></tr>
+<tr><td><strong>Healthcare</strong></td><td>Pharmaceutical Regulation (increase/decrease)</td></tr>
+<tr><td><strong>Labor</strong></td><td>Strengthen Unions / Deregulate Labor</td></tr>
+<tr><td><strong>Transportation</strong></td><td>Public Transit Investment, Road Maintenance</td></tr>
+<tr><td><strong>Education</strong></td><td>Workforce Development, Curriculum Orientation</td></tr>
+<tr><td><strong>Defense</strong></td><td>Military actions (coming soon)</td></tr>
+<tr><td><strong>Foreign</strong></td><td>Diplomacy actions (on the Diplomacy page)</td></tr>
+<tr><td><strong>Finance</strong></td><td>Debt Restructuring</td></tr>
+</table>
+<p>Ministry actions have <strong>escalating AP costs</strong> on repeated use, and their effects scale down with diminishing returns.</p>
+</div></details>
+
+<details><summary>Diplomacy</summary><div>
+<p>Diplomacy requires holding the right role:</p>
+<ul>
+<li><strong>Foreign Minister</strong> &mdash; appoint ambassadors, propose major initiatives</li>
+<li><strong>Minister of Trade</strong> &mdash; negotiate trade agreements, impose tariffs</li>
+<li><strong>Ambassador</strong> &mdash; conduct minor diplomacy with your posted nation</li>
+<li><strong>Head of Government</strong> &mdash; state visits, war &amp; peace (coming soon)</li>
+</ul>
+<p>Visit the <strong>Diplomacy tab</strong> and click <strong>? Guide</strong> for the full diplomacy guide covering trade agreements, initiatives, IPOs, and more.</p>
+</div></details>
+
+<details><summary>International Party Organisations (IPOs)</summary><div>
+<p>IPOs are cross-nation alliances of like-minded parties. Create or join one from the <strong>Diplomacy &rarr; International Orgs</strong> tab.</p>
+<ul>
+<li><strong>Solidarity Fund</strong> &mdash; members contribute AP quarterly for collective actions</li>
+<li><strong>Rallies</strong> &mdash; boost approval for member parties</li>
+<li><strong>Symposiums</strong> &mdash; shift a nation's ideology</li>
+<li><strong>Back-channels</strong> &mdash; secretly transfer AP between members</li>
+<li><strong>Voting</strong> &mdash; democratic decision-making within the org</li>
+</ul>
+</div></details>
+
+<details><summary>Protests &amp; Crises</summary><div>
+<p>Opposition parties can <strong>organize protests</strong> to pressure the government. Protests have tiers:</p>
+<ul>
+<li><strong>Tiers 1-5</strong> &mdash; one-time effects (approval loss, unrest). Higher tiers require higher turnout scores.</li>
+<li><strong>Tier 6</strong> &mdash; requires 1+ active crisis. Creates an ongoing crisis with per-tick stat penalties. Fizzles after 1-6 ticks.</li>
+<li><strong>Tier 7</strong> &mdash; requires 3+ active crises. The most severe protest crisis. Fizzles after 1-12 ticks. Government must meet a specific demand.</li>
+</ul>
+<p>The PM can use <strong>Public Address</strong> (40% T6 / 15% T7 chance to resolve), the Interior Minister can <strong>Enforce Public Order</strong> (33% resolve, 66% escalate), or the PM can declare a <strong>National Emergency</strong> (guaranteed resolution, severe stat penalties).</p>
+</div></details>
+
+<details><summary>Tips &amp; Strategy</summary><div>
+<h3>For New Players</h3>
+<ul>
+<li>Don't spend all your AP at once &mdash; keep 2-3 in reserve for emergencies</li>
+<li>Co-sponsor bills from other parties to build relationships for coalition negotiations</li>
+<li>Check the Economy tab regularly &mdash; a deficit that spirals into a debt crisis is hard to recover from</li>
+<li>Your party's ideology matters for elections &mdash; be consistent with what your voters want</li>
+</ul>
+<h3>For Government Parties</h3>
+<ul>
+<li>Use ministry actions every few ticks &mdash; they're powerful and you lose access if you lose power</li>
+<li>Watch government approval &mdash; it's computed from minister performance and events</li>
+<li>Fund your institutions &mdash; underfunded ministries trigger crises</li>
+<li>Appoint ambassadors to open trade and diplomatic channels</li>
+</ul>
+<h3>For Opposition</h3>
+<ul>
+<li>Vote strategically on floor bills &mdash; don't just vote no on everything</li>
+<li>Organize protests when the government is vulnerable (low approval, active crises)</li>
+<li>Build ideological appeal with voter blocs you can win</li>
+<li>Join IPOs to coordinate with allies in other nations</li>
+</ul>
+</div></details>
+
+</div>
+</div>
+</div>
+
+<script type="module">
+import { initPage } from './js/common.js';
+initPage('howto', function() {});
+</script>
+</body>
+</html>
