@@ -1473,6 +1473,170 @@ const guideContent = {
 <p><em>Effects:</em> Improves relations (+5 base), boosts environmental index and international reputation. Stricter targets are costlier but more effective.</p>
 <p><strong>Sovereignty cost:</strong> Strict/Binding pollution standards block domestic ENERGY policy changes.</p>
 </div></details>
+
+<details><summary>State Visits</summary><div>
+<p>The <strong>Head of Government</strong> can conduct official visits to foreign nations. State visits are highly configurable and build relations, soft power, and trade ties.</p>
+
+<h3>Visit Types</h3>
+<table>
+<tr><th>Type</th><th>AP Modifier</th><th>Specialty</th></tr>
+<tr><td><strong>Official State Visit</strong></td><td>+0</td><td>Balanced &mdash; standard relations multiplier</td></tr>
+<tr><td><strong>Working Visit</strong></td><td>&minus;1</td><td>Trade-focused &mdash; 1.2&times; trade bonus, 0.8&times; relations</td></tr>
+<tr><td><strong>Goodwill Visit</strong></td><td>&minus;2</td><td>Soft power &mdash; 1.3&times; cultural effects</td></tr>
+</table>
+
+<h3>Duration</h3>
+<table>
+<tr><th>Length</th><th>Extra AP</th><th>Effect Multiplier</th><th>Max Agenda Items</th></tr>
+<tr><td>Short</td><td>+1</td><td>0.7&times;</td><td>3</td></tr>
+<tr><td>Moderate</td><td>+2</td><td>1.0&times;</td><td>5</td></tr>
+<tr><td>Lengthy</td><td>+3</td><td>1.3&times;</td><td>7</td></tr>
+</table>
+<p><em>Total AP cost = 4 (base) + duration AP + visit type modifier.</em></p>
+
+<h3>Delegation Size</h3>
+<table>
+<tr><th>Size</th><th>Debt Cost</th><th>Effect Bonus</th></tr>
+<tr><td>Small (4)</td><td>$1.2M</td><td>None</td></tr>
+<tr><td>Standard (8)</td><td>$2.4M</td><td>None</td></tr>
+<tr><td>Large (14)</td><td>$4.8M</td><td>+10%</td></tr>
+</table>
+
+<h3>Agenda Items</h3>
+<p>Pick items up to your duration's max. Each adds specific effects:</p>
+<ul>
+<li><strong>Formal Reception</strong> &mdash; +3 relations, +5 public awareness</li>
+<li><strong>Joint Press Conference</strong> &mdash; +2 gov approval, +2 relations (8% gaffe risk)</li>
+<li><strong>Economic Forum</strong> &mdash; +4 trade relations, unlocks trade deal ($1.2M cost)</li>
+<li><strong>University Address</strong> &mdash; +3 soft power, +2 education approval</li>
+<li><strong>Private Bilateral Talks</strong> &mdash; +5 relations, enables diplomatic discount (future actions cost 1 less AP)</li>
+<li><strong>Military Review</strong> &mdash; +4 military trust (may alarm hostile neighbours)</li>
+<li><strong>Cultural Exchange</strong> &mdash; +4 soft power, +2 relations ($0.8M cost)</li>
+<li><strong>Monument Visit</strong> &mdash; +3 public opinion (symbolic, low cost)</li>
+<li><strong>Treaty Signing</strong> &mdash; Sign a pending treaty during the visit</li>
+</ul>
+</div></details>
+
+<details><summary>Hostile &amp; Confrontational Actions</summary><div>
+<p>Not all diplomacy is friendly. Several tools exist for economic pressure and conflict:</p>
+
+<h3>Implemented</h3>
+<table>
+<tr><th>Action</th><th>Cost</th><th>Role</th><th>Effect</th></tr>
+<tr><td><strong>Impose Embargo</strong></td><td>5 AP</td><td>Minister of Trade</td><td>Block trade in targeted, partial, or all sectors with a nation. Damages their economy and your relations.</td></tr>
+<tr><td><strong>Retaliatory Tariff</strong></td><td>2 AP</td><td>Minister of Trade</td><td>Surcharge (5&ndash;50%) on imports from a specific nation. Less extreme than embargo.</td></tr>
+<tr><td><strong>Recall Ambassador</strong></td><td>1 AP</td><td>Foreign Minister</td><td>Remove your ambassador from a nation. Signals diplomatic displeasure and closes your embassy.</td></tr>
+</table>
+
+<h3>Coming Soon</h3>
+<ul>
+<li><strong>Formal Protest</strong> (2 AP, Ambassador) &mdash; Lodge formal disapproval of another nation's actions</li>
+<li><strong>Declare War</strong> (8 AP, Head of Government) &mdash; Military conflict with justification system</li>
+<li><strong>Call for Ceasefire</strong> (4 AP, Head of Government) &mdash; End active conflicts</li>
+<li><strong>Sign Alliance</strong> (6 AP, Head of Government) &mdash; Mutual defense pacts</li>
+<li><strong>Foreign Aid Proposal</strong> (4 AP, Foreign Minister) &mdash; Direct financial assistance</li>
+</ul>
+</div></details>
+
+<details><summary>International Party Organisations (IPOs)</summary><div>
+<p>IPOs are voluntary cross-nation associations of like-minded parties. They let you coordinate strategy, pool resources, and project ideological influence across borders. Access them via the <strong>International Orgs</strong> tab on the Diplomacy page.</p>
+
+<h3>Creating an Organisation</h3>
+<ul>
+<li><strong>Cost:</strong> 4 AP</li>
+<li>You define a <strong>charter</strong> with up to 5 articles (only Article I &mdash; Mission is required)</li>
+<li>The founding party becomes the first president and member</li>
+<li>Choose a name, logo symbol, and abbreviation</li>
+</ul>
+
+<h3>Charter Articles</h3>
+<table>
+<tr><th>Article</th><th>What It Configures</th></tr>
+<tr><td><strong>I. Mission Statement</strong></td><td>Required. Text describing the organisation's purpose.</td></tr>
+<tr><td><strong>II. Leadership</strong></td><td>Presidency type (Rotation, Most Seats, or Random), term length (1&ndash;7 years), voting weight (Equal or Seat Share), vote threshold (Majority or Unanimous).</td></tr>
+<tr><td><strong>III. Membership</strong></td><td>Admission method (Vote or President decides), ideological threshold (restrict by ideology direction), expulsion clause (Disabled, President, Majority, or Unanimous).</td></tr>
+<tr><td><strong>IV. Governance</strong></td><td>Action leadership model, vote transparency (Public or Secret ballot), observer status, veto rights, emergency powers.</td></tr>
+<tr><td><strong>V. Resources</strong></td><td>Solidarity fund (enable + AP per quarter), resource sharing cap, joint statement clause, headquarters nation.</td></tr>
+</table>
+
+<h3>Membership</h3>
+<ul>
+<li><strong>Members</strong> can vote, propose actions, and send chat messages</li>
+<li><strong>Observers</strong> can view and read chat but cannot vote or act</li>
+<li>Joining requires either a <strong>membership vote</strong> (8 ticks) or <strong>president approval</strong>, depending on the charter</li>
+<li>The charter can set <strong>ideological thresholds</strong> &mdash; applicants must align on at least one selected ideology axis</li>
+</ul>
+
+<h3>Presidency</h3>
+<ul>
+<li>Term length: 1&ndash;7 years (configurable)</li>
+<li><strong>Rotation:</strong> Members take turns in membership order</li>
+<li><strong>Most Seats:</strong> The member with the most legislative seats becomes president</li>
+<li><strong>Random:</strong> A random member is selected each term</li>
+</ul>
+
+<h3>Solidarity Fund</h3>
+<p>If enabled in the charter, members contribute AP each quarter to a shared fund. The fund can be spent on:</p>
+<ul>
+<li><strong>Back-channel transfers</strong> &mdash; Send AP to another member (1 AP from fund, 25% exposure risk)</li>
+<li><strong>Funding org actions</strong> &mdash; Rallies, symposiums, and other collective actions</li>
+</ul>
+<p>The resource sharing cap (if set) limits how many transfers each member can make per term.</p>
+
+<h3>IPO Actions</h3>
+<table>
+<tr><th>Action</th><th>Cost</th><th>Effect</th></tr>
+<tr><td><strong>Targeted Rally</strong></td><td>4 AP</td><td>Roll for approval change for one other member faction (+8 to &minus;1 range)</td></tr>
+<tr><td><strong>Global Rally</strong></td><td>7 AP</td><td>Roll for every member faction independently (president only)</td></tr>
+<tr><td><strong>Back-Channel</strong></td><td>2 AP (or 1 from fund)</td><td>Secret AP transfer to another member (25% exposure risk from fund)</td></tr>
+<tr><td><strong>Joint Statement</strong></td><td>1 AP</td><td>President issues org-wide statement</td></tr>
+<tr><td><strong>Symposium</strong></td><td>Vote required</td><td>Shift a target nation's ideology by +3 on a chosen axis (4-tick delay, 20-tick cooldown)</td></tr>
+</table>
+
+<h3>Voting</h3>
+<ul>
+<li>Votes last <strong>8 ticks</strong> and can be for membership, charter amendments, actions, or symposiums</li>
+<li>Maximum <strong>5 concurrent votes</strong> per organisation</li>
+<li>Ballot options: Yes, No, or Abstain</li>
+<li>Pass condition depends on charter: <strong>Majority</strong> (&gt;50%) or <strong>Unanimous</strong></li>
+<li>Ballots can be <strong>public</strong> (names shown) or <strong>secret</strong> (anonymous) per the charter</li>
+</ul>
+</div></details>
+
+<details><summary>Sovereignty Constraints</summary><div>
+<p>Certain active Major Initiative treaties restrict your ability to change domestic policies. While the treaty is in force, the affected policy sectors are <strong>blocked</strong> from new legislation:</p>
+
+<table>
+<tr><th>Treaty</th><th>Condition</th><th>Blocked Sectors</th></tr>
+<tr><td><strong>Open Borders</strong></td><td>Full Freedom of Movement</td><td>Immigration, Labor</td></tr>
+<tr><td><strong>Open Borders</strong></td><td>Work &amp; Residency / Labor Mobility</td><td>Labor</td></tr>
+<tr><td><strong>Mutual Extradition</strong></td><td>Includes Political Offenses</td><td>Governance</td></tr>
+<tr><td><strong>Environmental Accord</strong></td><td>Strict or Binding Pollution Standards</td><td>Energy</td></tr>
+</table>
+<p>To regain policy freedom, you must either <strong>withdraw</strong> from the treaty (costing relations and reputation) or wait for it to expire.</p>
+
+<p><em>Tip: Before signing a Major Initiative, check which domestic policy sectors it will lock. A treaty that blocks Labor policy changes could prevent you from responding to an unemployment crisis.</em></p>
+</div></details>
+
+<details><summary>Timing &amp; Cooldowns Reference</summary><div>
+<table>
+<tr><th>Element</th><th>Duration</th></tr>
+<tr><td>Ambassador confirmation vote</td><td>6 ticks</td></tr>
+<tr><td>Ambassador term length</td><td>60 ticks (~5 years)</td></tr>
+<tr><td>Trade negotiation default expiry</td><td>4 ticks</td></tr>
+<tr><td>Trade negotiation extension</td><td>+12 ticks (max 3 extensions)</td></tr>
+<tr><td>Trade ratification vote</td><td>6 ticks</td></tr>
+<tr><td>FM review window (minor initiatives)</td><td>3 ticks</td></tr>
+<tr><td>Major initiative ratification vote</td><td>6 ticks (both parliaments)</td></tr>
+<tr><td>Major initiative re-propose cooldown</td><td>8 ticks</td></tr>
+<tr><td>State visit acceptance window</td><td>3 ticks</td></tr>
+<tr><td>Symposium cooldown</td><td>20 ticks</td></tr>
+<tr><td>IPO vote duration</td><td>8 ticks</td></tr>
+<tr><td>IPO max concurrent votes</td><td>5</td></tr>
+<tr><td>Aid condition review interval</td><td>12 ticks (annually)</td></tr>
+<tr><td>Environmental accord compliance window</td><td>24 ticks</td></tr>
+</table>
+</div></details>
 `
     }
 };
