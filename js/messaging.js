@@ -146,6 +146,50 @@ function injectStyles() {
     font-size: 14px; cursor: pointer; padding: 2px 6px;
 }
 .msg-thread-back:hover { color: var(--text-muted, #666); }
+.msg-thread-members-btn {
+    background: none; border: none; color: var(--text-dim, #4a4940);
+    font-size: 13px; cursor: pointer; padding: 2px 6px; margin-left: auto;
+}
+.msg-thread-members-btn:hover { color: var(--text-muted, #666); }
+.msg-members-bar {
+    display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 14px;
+    border-bottom: 1px solid var(--border-main, rgba(0,0,0,0.08));
+    max-height: 60px; overflow-y: auto;
+}
+.msg-member-chip {
+    font-family: var(--font-mono, monospace); font-size: 9px; font-weight: 700;
+    padding: 2px 6px; border: 1px solid; border-radius: 3px; opacity: 0.7;
+    white-space: nowrap;
+}
+.msg-role-section {
+    padding: 8px 14px; border-bottom: 1px solid var(--border-main, rgba(0,0,0,0.08));
+}
+.msg-role-section-title {
+    font-family: var(--font-mono, monospace); font-size: 8px; font-weight: 700;
+    color: var(--text-dim, #4a4940); text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 6px;
+}
+.msg-role-row {
+    display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer;
+}
+.msg-role-row:hover { opacity: 0.8; }
+.msg-role-badge {
+    font-family: var(--font-mono, monospace); font-size: 8px; font-weight: 700;
+    padding: 2px 6px; border-radius: 3px; text-transform: uppercase;
+    letter-spacing: 0.04em; background: var(--bg-card, #252525);
+    border: 1px solid var(--border-main, rgba(0,0,0,0.08));
+    color: var(--text-muted, #4a4940);
+}
+.msg-role-party {
+    font-size: 11px; color: var(--text-bright, #f0efe6); font-weight: 500;
+}
+.msg-nation-select {
+    width: 100%; padding: 6px 10px; border-radius: 4px;
+    background: var(--bg-input, var(--bg-panel, #24241f));
+    border: 1px solid var(--border-main, rgba(0,0,0,0.08));
+    color: var(--text-bright, #f0efe6); font-family: var(--font-ui, sans-serif);
+    font-size: 12px; margin-bottom: 8px;
+}
 .msg-thread-name {
     font-size: 12px; font-weight: 600; color: var(--text-bright, #f0efe6);
     flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -561,7 +605,9 @@ async function openThread(chatInfo) {
         <div class="msg-thread-header">
             <button class="msg-thread-back" id="msg-back">&#8592;</button>
             <span class="msg-thread-name">${escapeHtml(chatInfo.name || 'Chat')}</span>
+            ${chatInfo.type === 'group' ? '<button class="msg-thread-members-btn" id="msg-members-toggle" title="Show members">&#128101;</button>' : ''}
         </div>
+        ${chatInfo.type === 'group' ? '<div class="msg-members-bar" id="msg-members-bar" style="display:none;"></div>' : ''}
         <div class="msg-messages" id="msg-messages">
             <div class="msg-empty"><div class="msg-empty__text" style="color:var(--text-dim);">Loading...</div></div>
         </div>
@@ -577,6 +623,40 @@ async function openThread(chatInfo) {
         _msgActiveChat = null;
         renderChatList();
     });
+
+    // Members toggle for group chats
+    if (chatInfo.type === 'group') {
+        const membersToggle = document.getElementById('msg-members-toggle');
+        const membersBar = document.getElementById('msg-members-bar');
+        if (membersToggle && membersBar) {
+            membersToggle.addEventListener('click', async () => {
+                if (membersBar.style.display !== 'none') {
+                    membersBar.style.display = 'none';
+                    return;
+                }
+                membersBar.innerHTML = '<span style="color:var(--text-dim);font-size:10px;padding:4px 8px;">Loading...</span>';
+                membersBar.style.display = 'flex';
+                try {
+                    const { data: members } = await _supabase
+                        .from('group_chat_members')
+                        .select('faction_id')
+                        .eq('chat_id', chatInfo.id);
+                    const memberIds = (members || []).map(m => m.faction_id);
+                    await loadFactionNames(memberIds);
+                    membersBar.innerHTML = memberIds.map(id => {
+                        const f = _threadFactionCache[id];
+                        if (!f) return '';
+                        const abbr = (f.abbreviation || f.faction_name || '?').slice(0, 4);
+                        const color = f.party_color || '#666';
+                        const isSelf = id === _msgFaction.id;
+                        return '<span class="msg-member-chip" style="border-color:' + escapeHtml(color) + ';color:' + escapeHtml(color) + (isSelf ? ';opacity:1' : '') + '" title="' + escapeHtml(f.faction_name || '') + '">' + escapeHtml(abbr) + '</span>';
+                    }).filter(Boolean).join('') || '<span style="color:var(--text-dim);font-size:10px;">No members</span>';
+                } catch (e) {
+                    membersBar.innerHTML = '<span style="color:var(--text-dim);font-size:10px;">Failed to load</span>';
+                }
+            });
+        }
+    }
 
     // Input handlers
     const input = document.getElementById('msg-input');
@@ -836,6 +916,13 @@ function openNewDM() {
             <button class="msg-thread-back" id="msg-back">&#8592;</button>
             <span class="msg-thread-name">Select a party to message</span>
         </div>
+        <div class="msg-role-section">
+            <div class="msg-role-section-title">Message by Role</div>
+            <select class="msg-nation-select" id="msg-role-nation">
+                <option value="">Select a nation...</option>
+            </select>
+            <div id="msg-role-results"></div>
+        </div>
         <div style="padding:8px 14px;border-bottom:1px solid var(--border-main, rgba(0,0,0,0.08));">
             <input type="text" class="msg-input" id="msg-search" placeholder="Search by name or nation..." style="width:100%;" />
         </div>
@@ -855,6 +942,106 @@ function openNewDM() {
         _searchTimeout = setTimeout(() => searchParties(searchInput.value.trim()), 250);
     });
     searchInput.focus();
+
+    // Populate nation dropdown for role-based messaging
+    try {
+        const { data: nations } = await _supabase.from('nations').select('id, name').order('name');
+        const nationSelect = document.getElementById('msg-role-nation');
+        if (nationSelect && nations) {
+            nationSelect.innerHTML = '<option value="">Select a nation...</option>' +
+                nations.map(n => '<option value="' + n.id + '">' + escapeHtml(n.name) + '</option>').join('');
+            nationSelect.addEventListener('change', () => loadRolesForNation(nationSelect.value));
+        }
+    } catch (_) {}
+}
+
+async function loadRolesForNation(nationId) {
+    const container = document.getElementById('msg-role-results');
+    if (!container) return;
+    if (!nationId) { container.innerHTML = ''; return; }
+    container.innerHTML = '<span style="color:var(--text-dim);font-size:10px;">Loading roles...</span>';
+
+    try {
+        // Load ministries (FM, MoT), coalition (PM), ambassadors, and ruling faction
+        const [minRes, coalRes, natRes, ambRes] = await Promise.all([
+            _supabase.from('ministries')
+                .select('ministry_key, party_id, factions(id, faction_name, abbreviation, party_color)')
+                .eq('nation_id', nationId)
+                .in('ministry_key', ['foreign', 'trade', 'prime_minister'])
+                .eq('is_active', true),
+            _supabase.from('government_formations')
+                .select('lead_party_id, ministry_assignments')
+                .eq('nation_id', nationId)
+                .eq('status', 'formed')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle(),
+            _supabase.from('nations').select('ruling_faction_id').eq('id', nationId).single(),
+            _supabase.from('ambassadors')
+                .select('faction_id, target_nation_id, factions(id, faction_name, abbreviation, party_color), nations!ambassadors_target_nation_id_fkey(name)')
+                .eq('nation_id', nationId)
+                .eq('is_active', true)
+                .eq('status', 'active')
+        ]);
+
+        const roles = [];
+
+        // Head of Government
+        const pmMinistry = (minRes.data || []).find(m => m.ministry_key === 'prime_minister');
+        const hogFactionId = coalRes.data?.lead_party_id || natRes.data?.ruling_faction_id || pmMinistry?.party_id;
+        if (hogFactionId) {
+            const f = pmMinistry?.factions || (minRes.data || []).find(m => m.party_id === hogFactionId)?.factions;
+            if (f) roles.push({ role: 'Head of Government', faction: f });
+            else {
+                const { data: hogF } = await _supabase.from('factions').select('id, faction_name, abbreviation, party_color').eq('id', hogFactionId).single();
+                if (hogF) roles.push({ role: 'Head of Government', faction: hogF });
+            }
+        }
+
+        // Foreign Minister
+        const fmEntry = (minRes.data || []).find(m => m.ministry_key === 'foreign');
+        if (fmEntry?.factions) roles.push({ role: 'Foreign Minister', faction: fmEntry.factions });
+
+        // Minister of Trade
+        const motEntry = (minRes.data || []).find(m => m.ministry_key === 'trade');
+        if (motEntry?.factions) roles.push({ role: 'Minister of Trade', faction: motEntry.factions });
+
+        // Ambassadors
+        for (const amb of (ambRes.data || [])) {
+            if (amb.factions) {
+                const targetName = amb.nations?.name || 'Unknown';
+                roles.push({ role: 'Ambassador to ' + targetName, faction: amb.factions });
+            }
+        }
+
+        if (roles.length === 0) {
+            container.innerHTML = '<span style="color:var(--text-dim);font-size:10px;">No diplomatic roles found for this nation.</span>';
+            return;
+        }
+
+        container.innerHTML = roles.map(r => {
+            const f = r.faction;
+            const color = f.party_color || '#666';
+            const abbr = (f.abbreviation || f.faction_name || '?').slice(0, 4);
+            const isSelf = f.id === _msgFaction.id;
+            return '<div class="msg-role-row" data-role-faction-id="' + f.id + '"' + (isSelf ? ' style="opacity:0.4;cursor:default;" title="This is you"' : '') + '>' +
+                '<span class="msg-role-badge">' + escapeHtml(r.role) + '</span>' +
+                '<span class="msg-role-party" style="color:' + escapeHtml(color) + ';">' + escapeHtml(abbr) + ' — ' + escapeHtml(f.faction_name) + '</span>' +
+            '</div>';
+        }).join('');
+
+        container.querySelectorAll('.msg-role-row').forEach(el => {
+            const fid = el.dataset.roleFactionId;
+            if (fid === _msgFaction.id) return; // can't message yourself
+            el.addEventListener('click', () => {
+                const role = roles.find(r => r.faction.id === fid);
+                if (role) openThread({ type: 'dm', id: fid, name: role.faction.faction_name, faction: role.faction });
+            });
+        });
+    } catch (e) {
+        console.warn('[Messaging] Role lookup failed:', e);
+        container.innerHTML = '<span style="color:var(--text-dim);font-size:10px;">Failed to load roles.</span>';
+    }
 }
 
 async function searchParties(query) {
