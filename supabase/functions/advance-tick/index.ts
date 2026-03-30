@@ -17767,6 +17767,46 @@ function computePassiveDrift(nation) {
  * Process autocracy pillar/backing for a single nation each tick.
  * Tick order step 1: Passive drift → Wildcard decay → Neglect check.
  *
+ * Ensure an autocracy always has a strongman. If the strongman faction was
+ * deleted or disbanded, assign the remaining faction with highest backing.
+ * The existing leader name stays — only the controlling faction changes.
+ */
+async function ensureStrongmanExists(supabase, nation, currentTick) {
+    const { data: fpsRows } = await supabase
+        .from('faction_pillar_state')
+        .select('id, faction_id, pillar, is_strongman, backing')
+        .eq('nation_id', nation.id);
+
+    if (!fpsRows || fpsRows.length === 0) return;
+
+    const hasStrongman = fpsRows.some(r => r.is_strongman);
+    if (hasStrongman) return;
+
+    // No strongman — assign the faction with highest backing (tie = random)
+    const sorted = [...fpsRows].sort((a, b) => {
+        const diff = Number(b.backing) - Number(a.backing);
+        return diff !== 0 ? diff : (Math.random() - 0.5);
+    });
+    const winner = sorted[0];
+
+    const { error } = await supabase.from('faction_pillar_state')
+        .update({ is_strongman: true, updated_at: new Date().toISOString() })
+        .eq('id', winner.id);
+
+    if (error) {
+        console.error(`[Autocracy] Failed to assign strongman for ${nation.name}:`, error.message);
+        return;
+    }
+
+    // Update nation's ruling_faction_id to match the new strongman
+    await supabase.from('nations')
+        .update({ ruling_faction_id: winner.faction_id })
+        .eq('id', nation.id);
+
+    console.log(`[Autocracy] Assigned strongman for ${nation.name}: faction ${winner.faction_id} (pillar: ${winner.pillar}, backing: ${winner.backing})`);
+}
+
+/**
  * @param {Object} supabase - Supabase client
  * @param {Object} nation   - nation row (must have stat columns)
  * @param {number} currentTick
@@ -30845,6 +30885,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (purgeErr) {
             console.error(`[advanceTick] Purge decay failed for ${nation.name} (non-fatal):`, purgeErr);
+        }
+
+        // Autocracy: ensure a strongman always exists (handles faction deletion/disbanding)
+        try {
+            if (isAutocracy(nation)) {
+                await ensureStrongmanExists(supabase, nation, newTick);
+            }
+        } catch (smErr) {
+            console.error(`[advanceTick] Strongman check failed for ${nation.name} (non-fatal):`, smErr);
         }
 
         // Autocracy V5: pillar passive drift, wildcard decay, neglect, longevity
