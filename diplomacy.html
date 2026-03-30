@@ -14838,20 +14838,21 @@ async function loadIPOChat(orgId) {
         });
     } catch (e) { console.warn('[IPO Chat] Member map error:', e); }
 
-    // Fetch messages (most recent 100)
+    // Fetch messages (most recent 100, then reverse for display)
     try {
         const { data: messages, error } = await _supabase
             .from('ipo_chat')
             .select('id, faction_id, is_system, message_text, tick_posted, created_at')
             .eq('org_id', orgId)
-            .order('created_at', { ascending: true })
+            .order('created_at', { ascending: false })
             .limit(100);
 
         if (error) {
             console.error('[IPO Chat] Fetch error:', error.message);
             ipoChatMessages = [];
         } else {
-            ipoChatMessages = messages || [];
+            // Reverse so oldest is first (chat reads top-to-bottom)
+            ipoChatMessages = (messages || []).reverse();
         }
     } catch (e) {
         console.error('[IPO Chat] Fetch exception:', e);
