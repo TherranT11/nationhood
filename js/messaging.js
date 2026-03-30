@@ -1365,7 +1365,7 @@ async function ensureNationChat(nationId, nationName) {
         .from('group_chat_members')
         .upsert({ chat_id: chatId, faction_id: _msgFaction.id }, { onConflict: 'chat_id,faction_id' });
 
-    // Sync all parties in this nation as members (best-effort)
+    // Sync all parties in this nation as members (best-effort, silently skip RLS failures)
     try {
         const { data: parties } = await _supabase
             .from('factions')
@@ -1374,7 +1374,11 @@ async function ensureNationChat(nationId, nationName) {
             .eq('faction_type', 'party')
             .not('nation_id', 'is', null);
 
-        if (parties && parties.length > 0) {
+        // Only add others if WE created the chat (RLS allows creator to add members)
+        const { data: chatRow } = await _supabase.from('group_chats').select('created_by').eq('id', chatId).single();
+        const isCreator = chatRow?.created_by === _msgFaction.id;
+
+        if (isCreator && parties && parties.length > 0) {
             const rows = parties.map(p => ({ chat_id: chatId, faction_id: p.id }));
             await _supabase
                 .from('group_chat_members')
@@ -1427,19 +1431,24 @@ async function ensureIPOChat(orgId, orgName) {
         .from('group_chat_members')
         .upsert({ chat_id: chatId, faction_id: _msgFaction.id }, { onConflict: 'chat_id,faction_id' });
 
-    // Sync all active IPO members into the group chat (best-effort)
+    // Sync all active IPO members into the group chat (best-effort, only if we created the chat)
     try {
-        const { data: members } = await _supabase
-            .from('ipo_members')
-            .select('faction_id')
-            .eq('org_id', orgId)
-            .eq('is_active', true);
+        const { data: chatRow } = await _supabase.from('group_chats').select('created_by').eq('id', chatId).single();
+        const isCreator = chatRow?.created_by === _msgFaction.id;
 
-        if (members && members.length > 0) {
-            const rows = members.map(m => ({ chat_id: chatId, faction_id: m.faction_id }));
-            await _supabase
-                .from('group_chat_members')
-                .upsert(rows, { onConflict: 'chat_id,faction_id' });
+        if (isCreator) {
+            const { data: members } = await _supabase
+                .from('ipo_members')
+                .select('faction_id')
+                .eq('org_id', orgId)
+                .eq('is_active', true);
+
+            if (members && members.length > 0) {
+                const rows = members.map(m => ({ chat_id: chatId, faction_id: m.faction_id }));
+                await _supabase
+                    .from('group_chat_members')
+                    .upsert(rows, { onConflict: 'chat_id,faction_id' });
+            }
         }
     } catch (_) { /* best-effort sync */ }
 }
