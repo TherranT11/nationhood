@@ -8182,11 +8182,18 @@ async function acceptProposal(proposalId) {
         await applyProposalEffects(proposal, currentTick);
 
         // Fire event for involved nations
-        const articleNames = activeArticles.map(a => a.label || a.text || '').join(', ');
+        // Article labels come from the type definition, not the instance
+        const articleNames = activeArticles.map(a => {
+            const typeDef = INITIATIVE_ARTICLE_TYPES[a.type] || MAJOR_INITIATIVE_ARTICLE_TYPES[a.type];
+            return typeDef?.label || a.type || 'Unknown';
+        }).join(', ');
+        // Duration: check per-article configs (cultural_exchange/student_exchange have duration in ticks)
+        const maxDurationTicks = Math.max(0, ...activeArticles.map(a => Number(a.config?.duration) || 0));
+        const durationLabel = maxDurationTicks > 0 ? Math.round(maxDurationTicks / 12) + ' year(s)' : 'permanent';
         await fireProposalEvent(pd, currentTick, 'activated',
             pd.proposer_nation_name + ' and ' + pd.target_nation_name +
             ' have signed "' + (pd.name || 'Diplomatic Initiative') + '". ' +
-            'The ' + articleCount + '-article agreement (' + articleNames + ') is effective for ' + (pd.duration_years || '?') + ' year(s).',
+            'The ' + articleCount + '-article agreement (' + articleNames + ') is effective ' + durationLabel + '.',
             [proposal.proposing_nation_id, proposal.target_nation_id]);
 
         alert('"' + (pd.name || 'Initiative') + '" has been accepted and is now active!');

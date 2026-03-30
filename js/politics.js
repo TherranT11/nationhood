@@ -421,11 +421,6 @@ async function renderPartyTab(f, nation, data) {
                 <div class="pol-stat-label">Seats</div>
                 <div class="pol-stat-value">${mySeats}<span class="pol-stat-total">/${totalSeats}</span>${deltaHtml}</div>
             </div>
-            <div class="pol-stat-block">
-                <div class="pol-stat-label">Vote Share</div>
-                <div class="pol-stat-value">${voteSharePct}%</div>
-                ${lastElectionDate ? `<div class="pol-stat-note">${lastElectionDate}</div>` : ''}
-            </div>
         </div>
         ${renderCaucusSection(caucusFactions, mySeats)}
         </div>

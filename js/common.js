@@ -388,7 +388,8 @@ export function renderTopBar(activeTab) {
                 </div>
             </div>
             <div class="top-bar-right">
-                <a href="how-to.html" class="guide-btn" style="text-decoration:none;">HOW TO</a>
+                <button class="guide-btn" id="guide-btn" title="Page Guide" style="display:none;"></button>
+                ${activeTab === 'home' ? '<a href="how-to.html" class="guide-btn" style="text-decoration:none;">HOW TO</a>' : ''}
                 <div class="faction-switcher" id="faction-switcher">
                     <span class="party-badge" id="party-badge" onclick="toggleFactionDropdown()" style="cursor:pointer;">--</span>
                     <div class="faction-dropdown" id="faction-dropdown"></div>
@@ -404,76 +405,6 @@ export function renderTopBar(activeTab) {
         </nav>
     `;
     document.getElementById('top-bar').innerHTML = topBarHTML;
-
-    // Inject welcome guide overlay (dashboard only)
-    if (activeTab === 'home' && !document.getElementById('welcome-guide-overlay')) {
-        const overlay = document.createElement('div');
-        overlay.id = 'welcome-guide-overlay';
-        overlay.className = 'guide-overlay';
-        overlay.onclick = function(e) { if (e.target === overlay) overlay.classList.remove('active'); };
-        overlay.innerHTML = `
-        <div class="guide-panel" style="max-width:640px;">
-            <div class="guide-panel-header">
-                <span class="guide-panel-title">Welcome to Nationhood</span>
-                <button class="guide-close" onclick="toggleWelcomeGuide()">&times;</button>
-            </div>
-
-            <p style="color:var(--text-secondary);margin-bottom:16px;">Nationhood is a multiplayer political simulation. You don't play a character — you lead an <strong style="color:var(--text-bright);">entire political party</strong>.</p>
-
-            <h2>Core Concepts</h2>
-
-            <h3>Your Political Party</h3>
-            <p>You control a party with its own ideology, leader, members, and agenda. Your goal is to gain seats in parliament, enter government, and shape the nation through legislation, diplomacy, and political action.</p>
-
-            <h3>Action Points (AP)</h3>
-            <p>Every tick, your party earns AP. Government parties earn more. AP is spent on campaign actions, bills, executive orders, and diplomatic moves. Spend wisely — you can't do everything at once.</p>
-
-            <h3>Ticks</h3>
-            <p>The game advances in <strong style="color:var(--text-bright);">ticks</strong> — each tick represents one month of game time. Every tick, the economy shifts, stats decay, elections approach, and your actions take effect. Check the countdown in the top bar.</p>
-
-            <h3>Elections & Seats</h3>
-            <p>Parliamentary elections determine how many seats your party holds. Seats are won through <strong style="color:var(--text-bright);">vote share</strong>, which depends on five factors: Ideological Alignment, Platform Appeal, Party Approval, Visibility, and Credibility.</p>
-
-            <h3>Government & Opposition</h3>
-            <p>After elections, parties form a <strong style="color:var(--text-bright);">coalition</strong> to govern. The largest coalition partner typically becomes Prime Minister. Opposition parties can campaign, propose bills, and call votes of no confidence.</p>
-
-            <h3>Nation Stats</h3>
-            <p>Your nation has dozens of stats — GDP, stability, healthcare, crime, pollution, and more. These shift based on laws passed, executive orders, global events, and institutional funding. Every decision has trade-offs.</p>
-
-            <h3>The Pages</h3>
-            <ul style="padding-left:18px;color:var(--text-secondary);margin:6px 0 12px;">
-                <li><strong style="color:var(--text-bright);">Dashboard</strong> — Nation overview, government, events, elections</li>
-                <li><strong style="color:var(--text-bright);">Politics</strong> — Campaign actions, voter analysis, ideology shifts</li>
-                <li><strong style="color:var(--text-bright);">Government</strong> — Cabinet, ministries, executive orders, coalitions</li>
-                <li><strong style="color:var(--text-bright);">Economy</strong> — Budget, trade, tariffs, debt, institutional funding</li>
-                <li><strong style="color:var(--text-bright);">Laws</strong> — Draft and vote on bills in parliament</li>
-                <li><strong style="color:var(--text-bright);">Diplomacy</strong> — Trade agreements, alliances, international orgs</li>
-                <li><strong style="color:var(--text-bright);">Nation</strong> — Detailed stat breakdown and historical trends</li>
-                <li><strong style="color:var(--text-bright);">News</strong> — Write articles, read the press, shape public opinion</li>
-            </ul>
-
-            <h3>Getting Started</h3>
-            <ol style="padding-left:18px;color:var(--text-secondary);margin:6px 0;">
-                <li>Check your <strong style="color:var(--text-bright);">AP</strong> in the top bar — spend it on the Politics tab</li>
-                <li>Take <strong style="color:var(--text-bright);">stances</strong> on issues to build Platform Appeal</li>
-                <li>Hold <strong style="color:var(--text-bright);">rallies</strong> and do <strong style="color:var(--text-bright);">outreach</strong> to boost Visibility and Approval</li>
-                <li>When elections come, your vote share determines your seats</li>
-                <li>If you win enough seats, form a <strong style="color:var(--text-bright);">coalition</strong> and govern</li>
-            </ol>
-
-            <div style="margin-top:18px;padding:10px 14px;background:rgba(200,166,78,0.08);border:1px solid rgba(200,166,78,0.2);border-radius:3px;">
-                <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Tip</div>
-                <div style="font-size:0.78rem;color:var(--text-secondary);">Click the <strong style="color:var(--accent);">? Guide</strong> button on any page to reopen this guide. Each page also has its own contextual guide with specific help.</div>
-            </div>
-        </div>`;
-        document.body.appendChild(overlay);
-
-        // Auto-show on first visit
-        if (!localStorage.getItem('nationhood_welcome_seen')) {
-            overlay.classList.add('active');
-            localStorage.setItem('nationhood_welcome_seen', '1');
-        }
-    }
 
     // Work environment banner and Dev Toolbar
     if (IS_WORK_ENV) {
@@ -811,8 +742,7 @@ export function updateTopBarInfo(faction, shard, nation) {
     const apEl = document.getElementById('topbar-ap');
     if (apEl && faction) {
         const ap = faction.action_points ?? 0;
-        apEl.innerHTML = '<span class="topbar-ap__count" onclick="toggleApLedger(event)" style="cursor:pointer;">' + ap + ' AP</span>'
-            + '<div class="ap-ledger-dropdown" id="ap-ledger-dropdown"></div>';
+        renderApDisplay(apEl, ap);
     }
     
     const nationFlag = document.getElementById('nation-flag');
@@ -895,10 +825,7 @@ export async function refreshAP(factionId) {
 
         // Update topbar — preserve the AP ledger dropdown
         const apEl = document.getElementById('topbar-ap');
-        if (apEl) {
-            apEl.innerHTML = '<span class="topbar-ap__count" onclick="toggleApLedger(event)" style="cursor:pointer;">' + ap + ' AP</span>'
-                + '<div class="ap-ledger-dropdown" id="ap-ledger-dropdown"></div>';
-        }
+        if (apEl) renderApDisplay(apEl, ap);
 
         // Sync session cache so page navigations show correct AP
         try {
@@ -915,6 +842,11 @@ export async function refreshAP(factionId) {
 
         return ap;
     } catch (e) { console.warn('[refreshAP] Failed:', e); }
+}
+
+function renderApDisplay(el, ap) {
+    el.innerHTML = '<span class="topbar-ap__count" onclick="toggleApLedger(event)" style="cursor:pointer;">' + ap + ' AP</span>'
+        + '<div class="ap-ledger-dropdown" id="ap-ledger-dropdown"></div>';
 }
 
 // ===== AP LEDGER DROPDOWN =====
@@ -1303,7 +1235,3 @@ window.handleLogout = handleLogout;
 window.toggleTheme = toggleTheme;
 window.toggleFactionDropdown = toggleFactionDropdown;
 window.handleFactionSwitch = handleFactionSwitch;
-window.toggleWelcomeGuide = function() {
-    const overlay = document.getElementById('welcome-guide-overlay');
-    if (overlay) overlay.classList.toggle('active');
-};
