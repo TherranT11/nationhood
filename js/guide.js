@@ -1209,6 +1209,120 @@ const guideContent = {
 <p>You can optionally include <strong>austerity commitments</strong> (spending cuts) to soften the international backlash.</p>
 </div></details>
 `
+    },
+
+    diplomacy: {
+        title: 'Diplomacy Guide',
+        html: `
+<details open><summary>Dashboard Overview</summary><div>
+<p>The Diplomacy page is your window into foreign affairs. It has <strong>three main views</strong>, toggled at the top:</p>
+<ul>
+<li><strong>Diplomacy</strong> &mdash; the default view with four sub-tabs: Relations, Agreements, Initiative, and Inbox</li>
+<li><strong>International Orgs</strong> &mdash; International Party Organisations (IPOs) you belong to</li>
+<li><strong>World Nations</strong> &mdash; a global overview of every nation in the game</li>
+</ul>
+
+<h3>Diplomacy Sub-Tabs</h3>
+<table>
+<tr><th>Tab</th><th>What It Shows</th></tr>
+<tr><td><strong>Relations</strong></td><td>Lists every foreign nation with embassy status, relation scores, ambassador info, and active agreement counts. Click a nation to see detailed actions.</td></tr>
+<tr><td><strong>Agreements</strong></td><td>All your active treaties, trade agreements, and diplomatic proposals &mdash; both inbound and outbound.</td></tr>
+<tr><td><strong>Initiative</strong></td><td>The drafting workspace for building multi-article diplomatic proposals (Minor and Major initiatives).</td></tr>
+<tr><td><strong>Inbox</strong></td><td>Diplomatic messages from other nations. Only visible to players holding diplomatic roles.</td></tr>
+</table>
+</div></details>
+
+<details><summary>Diplomatic Roles</summary><div>
+<p>Not every player can conduct diplomacy. You need to hold one of these roles through your nation's government:</p>
+
+<h3>Head of Government (HoG)</h3>
+<ul>
+<li><strong>Who:</strong> The Prime Minister's party (parliamentary) or the President's party (presidential). In autocracies, the ruling faction.</li>
+<li><strong>Powers:</strong> State Visits (4 AP). War, ceasefire, and alliance actions are planned for future updates.</li>
+<li><strong>Special:</strong> Can join trade negotiations (2 AP) and override certain diplomatic decisions.</li>
+</ul>
+
+<h3>Foreign Minister (FM)</h3>
+<ul>
+<li><strong>Who:</strong> The party that holds the Foreign Ministry in the coalition government.</li>
+<li><strong>Powers:</strong> Appoint Ambassadors (1 AP), Recall Ambassadors (1 AP), propose Major Diplomatic Initiatives (2 AP).</li>
+<li><strong>Key duty:</strong> Reviews incoming minor proposals before they take effect. Also sees all unread diplomatic messages.</li>
+</ul>
+
+<h3>Minister of Trade (MoT)</h3>
+<ul>
+<li><strong>Who:</strong> The party that holds the Trade Ministry in the coalition government.</li>
+<li><strong>Powers:</strong> Trade Agreements (2 AP), Retaliatory Tariffs (2 AP), Export Subsidies (2 AP), Tariff Reductions (3 AP), Impose Embargo (5 AP).</li>
+<li><strong>Key duty:</strong> Leads trade negotiations. Can join ongoing talks for 2 AP.</li>
+</ul>
+
+<h3>Ambassador</h3>
+<ul>
+<li><strong>Who:</strong> Appointed by the Foreign Minister, confirmed by parliament (6-tick vote). Your party must have an ambassador posted to a specific nation.</li>
+<li><strong>Powers:</strong> Minor Diplomatic Initiatives (2 AP), Formal Protests (2 AP), Send Messages (free).</li>
+<li><strong>Term:</strong> 60 ticks (~5 years). Ambassadors can resign or be recalled by the FM.</li>
+<li><strong>Scope:</strong> You can only act toward the nation you are posted to.</li>
+</ul>
+
+<h3>No Role?</h3>
+<p>If your party doesn't hold any of these roles, you can still view foreign relations and agreements, but you cannot take diplomatic actions. Work with your coalition to get a ministry or an ambassador posting.</p>
+</div></details>
+
+<details><summary>Foreign Relations Panel</summary><div>
+<p>When you click on a foreign nation in the Relations tab, you see a detailed card:</p>
+
+<table>
+<tr><th>Field</th><th>Meaning</th></tr>
+<tr><td><strong>Embassy Status</strong></td><td><span style="color:#4ade80;">Open</span> = both nations have active ambassadors to each other. <span style="color:#ef4444;">Closed</span> = one or both sides have no ambassador.</td></tr>
+<tr><td><strong>Relations Score</strong></td><td>A number reflecting diplomatic warmth. Positive = friendly, negative = hostile. Affected by diplomatic actions, trade deals, protests, and covert operations.</td></tr>
+<tr><td><strong>Relations Tier</strong></td><td>A label derived from the score: Friendly, Neutral, Cool, Adversarial, Hostile, Ceasefire, or War.</td></tr>
+<tr><td><strong>Our Ambassador</strong></td><td>The name and party of your ambassador posted to that nation (if any).</td></tr>
+<tr><td><strong>Their Ambassador</strong></td><td>The name and party of their ambassador posted to your nation (if any).</td></tr>
+<tr><td><strong>Active Agreements</strong></td><td>Count of treaties and trade agreements currently in force between the two nations.</td></tr>
+</table>
+</div></details>
+
+<details><summary>Appointing Ambassadors</summary><div>
+<p>Ambassadors are your diplomatic presence in foreign nations. Only the <strong>Foreign Minister</strong> can appoint them.</p>
+
+<h3>Appointment Flow</h3>
+<ol>
+<li><strong>FM clicks "Appoint Ambassador"</strong> (1 AP) and selects a target nation.</li>
+<li><strong>Select a candidate</strong> from the list of eligible party representatives.</li>
+<li><strong>Click "Nominate"</strong> &mdash; this creates a <em>confirmation bill</em> that goes directly to the parliamentary floor.</li>
+<li><strong>Parliament votes</strong> for 6 ticks. A simple majority (51%) confirms the appointment.</li>
+<li>If confirmed, the ambassador becomes <strong>active</strong> and the appointing party gains that ambassador's powers toward the target nation.</li>
+</ol>
+
+<h3>Key Details</h3>
+<ul>
+<li><strong>Term length:</strong> 60 ticks (~5 years). After that, the ambassador retires and must be re-appointed.</li>
+<li><strong>Autocracies:</strong> Skip the confirmation vote &mdash; the ambassador is appointed immediately.</li>
+<li><strong>One per nation:</strong> You can only have one active ambassador per foreign nation.</li>
+<li><strong>Recall:</strong> The FM (or HoG) can recall an ambassador at any time for 1 AP.</li>
+<li><strong>Resignation:</strong> A player whose party holds an ambassadorship can resign voluntarily.</li>
+</ul>
+</div></details>
+
+<details><summary>AP Costs Reference</summary><div>
+<table>
+<tr><th>Action</th><th>Cost</th><th>Role Required</th></tr>
+<tr><td>Appoint Ambassador</td><td>1 AP</td><td>Foreign Minister</td></tr>
+<tr><td>Recall Ambassador</td><td>1 AP</td><td>Foreign Minister / HoG</td></tr>
+<tr><td>Minor Diplomatic Initiative</td><td>2 AP</td><td>Ambassador</td></tr>
+<tr><td>Major Diplomatic Initiative</td><td>2 AP</td><td>Foreign Minister</td></tr>
+<tr><td>Formal Protest</td><td>2 AP</td><td>Ambassador</td></tr>
+<tr><td>Send Message</td><td>Free</td><td>Ambassador</td></tr>
+<tr><td>Trade Agreement</td><td>2 AP</td><td>Minister of Trade</td></tr>
+<tr><td>Retaliatory Tariff</td><td>2 AP</td><td>Minister of Trade</td></tr>
+<tr><td>Export Subsidy</td><td>2 AP</td><td>Minister of Trade</td></tr>
+<tr><td>Tariff Reduction</td><td>3 AP</td><td>Minister of Trade</td></tr>
+<tr><td>Impose Embargo</td><td>5 AP</td><td>Minister of Trade</td></tr>
+<tr><td>State Visit</td><td>4 AP</td><td>Head of Government</td></tr>
+</table>
+<p><em>Tip: If bilateral trade talks are already open with a nation, some actions cost 1 AP less.</em></p>
+</div></details>
+`
     }
 };
 
