@@ -103,7 +103,7 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-top-ribbon-inner">
                 <span>${gameDate}</span>
                 <select class="nws-pub-switcher" id="nws-pub-switcher">${pubSwitcher}</select>
-                ${canWrite ? '<button class="nws-write-btn" id="nws-write-article-btn">Write Article</button>' : ''}
+                ${canWrite ? '<button class="nws-write-btn" id="nws-write-article-btn">Write Article</button>' : '<span></span>'}
             </div>
         </div>
 
