@@ -327,7 +327,13 @@ export function calculateImportDemand(nation, sector, opts) {
         rawDemand = defenseBudget * 0.15 * (1 - domesticArms);
     }
 
-    if (rawDemand <= 0) return 0;
+    // ── Minimum import floor ──
+    // No nation is 100% self-sufficient. Even when domestic production exceeds
+    // demand, nations still import for variety, quality, and specialization.
+    // Floor = 5% of what a baseline economy would import in this sector.
+    var popNormFloor = (Number(nation.population) || 1) / 5000000;
+    var minImport = popNormFloor * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.05;
+    if (rawDemand < minImport) rawDemand = minImport;
 
     // ── Currency strength on imports ──
     // Weak currency makes imports MORE expensive → you can afford LESS.
