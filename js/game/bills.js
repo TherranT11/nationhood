@@ -2770,20 +2770,9 @@ export async function reversePolicy(supabase, nation, policy, passedTick, curren
 
     if (reversalEffects.length === 0) return;
 
-    // Clear FK references to any existing row before upserting the reversal.
-    const { data: existingLaw } = await supabase.from('active_laws')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('policy_id', policy.id)
-        .maybeSingle();
-
-    if (existingLaw) {
-        await supabase.from('bills').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingLaw.id);
-        await supabase.from('bill_articles').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingLaw.id);
-    }
-
-    // Upsert instead of delete+insert to avoid duplicate key errors from race
-    // conditions, stale snapshots, or partially-completed previous ticks.
+    // FK references are already cleared by repealActiveLaw() before calling this.
+    // For the opposed-policy auto-reversal path (bills.js:2369), the original
+    // active_law row is replaced by upsert so no FK cleanup is needed there either.
     const { error: reversalInsertError } = await supabase.from('active_laws')
         .upsert({
             nation_id: nation.id,

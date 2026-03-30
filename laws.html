@@ -1059,7 +1059,9 @@ function renderActiveLaw(law) {
         const cls = p.stat_direction === 'UP' ? 'effect-up' : 'effect-down';
         effectsHTML = `${formatStatName(p.target_stat)} <span class="${cls}">${dir}</span>`;
     }
-    return `<div class="active-law"><div class="active-law-name">${p.policy_name}</div><div class="active-law-desc">${p.description || ''}</div><div class="active-law-meta"><span>${effectsHTML}</span><span>Passed tick ${law.passed_tick || '?'}</span><button class="rescind-btn" onclick="rescindLaw('${law.id}','${p.policy_name.replace(/'/g, "\\'")}','${law.policy_id || ''}')">✕ Rescind</button></div></div>`;
+    const canRescind = currentSeats > 0 && !isCaretaker && !isNoGovernment;
+    const rescindBtn = canRescind ? `<button class="rescind-btn" onclick="rescindLaw('${law.id}','${p.policy_name.replace(/'/g, "\\'")}','${law.policy_id || ''}')">✕ Rescind</button>` : '';
+    return `<div class="active-law"><div class="active-law-name">${p.policy_name}</div><div class="active-law-desc">${p.description || ''}</div><div class="active-law-meta"><span>${effectsHTML}</span><span>Passed tick ${law.passed_tick || '?'}</span>${rescindBtn}</div></div>`;
 }
 
 function toggleMajorSector(key) { document.getElementById('sector-'+key).classList.toggle('expanded'); }
@@ -1068,9 +1070,26 @@ function toggleMinorSector(majorKey, minorKey) { document.getElementById('minor-
 async function rescindLaw(activeLawId, policyName, policyId) {
     if (_actionLock) return;
     if (currentSeats === 0) { alert('Your faction holds no seats and cannot propose bills.'); return; }
-    if (!confirm('Propose a bill to rescind "' + policyName + '"?\n\nThis will create a repeal bill and send it to committee for a vote.')) return;
+    if (isCaretaker) { alert('Legislature is dissolved. No new bills during caretaker government.'); return; }
+    if (isNoGovernment) { alert('Legislature is suspended. A new government must be formed before bills can be proposed.'); return; }
+    if (!confirm('Propose a bill to rescind "' + policyName + '"?\n\nThis will create a repeal bill and send it to committee for a vote.\nCost: ' + GAME_CONFIG.DRAFT_BILL_AP_COST + ' AP')) return;
     _actionLock = true;
     try {
+        // Deduct AP (consistent with regular bill drafting)
+        let apCost = GAME_CONFIG.DRAFT_BILL_AP_COST;
+        if (currentFaction) {
+            if ((currentFaction.leader_positive_traits || []).includes('policy_wonk')) apCost -= 1;
+            if ((currentFaction.leader_negative_traits || []).includes('micromanager')) apCost += 1;
+            apCost = Math.max(1, apCost);
+        }
+        const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+        if (!apResult.success) {
+            alert('Not enough AP. Need ' + apCost + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
+            return;
+        }
+        currentFaction.action_points = apResult.newAp;
+        sessionStorage.removeItem('nationhood_state');
+
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const currentTick = shard?.current_tick || 0;
         const termBill = lawsIsAutocracy ? 'decree' : 'bill';

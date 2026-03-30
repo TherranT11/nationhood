@@ -5760,18 +5760,31 @@ async function repealActiveLaw({
         }
     }
 
-    // Verify cleanup worked by checking if any references remain
-    const { data: remainingRefs } = await supabase
+    // Verify cleanup worked by checking if any references remain (bills + articles)
+    const { data: remainingBillRefs } = await supabase
         .from('bills')
-        .select('id, repeal_active_law_id')
+        .select('id')
         .eq('repeal_active_law_id', resolvedLawId);
-    if (remainingRefs && remainingRefs.length > 0) {
-        console.error(`[repealActiveLaw] FK cleanup failed — ${remainingRefs.length} bills still reference active_law ${resolvedLawId}: ${JSON.stringify(remainingRefs)}`);
+    if (remainingBillRefs && remainingBillRefs.length > 0) {
+        console.error(`[repealActiveLaw] FK cleanup failed — ${remainingBillRefs.length} bills still reference active_law ${resolvedLawId}`);
         return {
             success: false,
             reason: 'clear_bill_references_failed',
             targetLawId: resolvedLawId,
-            error: `${remainingRefs.length} bills still reference this active_law after cleanup`,
+            error: `${remainingBillRefs.length} bills still reference this active_law after cleanup`,
+        };
+    }
+    const { data: remainingArtRefs } = await supabase
+        .from('bill_articles')
+        .select('id')
+        .eq('repeal_active_law_id', resolvedLawId);
+    if (remainingArtRefs && remainingArtRefs.length > 0) {
+        console.error(`[repealActiveLaw] FK cleanup failed — ${remainingArtRefs.length} bill_articles still reference active_law ${resolvedLawId}`);
+        return {
+            success: false,
+            reason: 'clear_article_references_failed',
+            targetLawId: resolvedLawId,
+            error: `${remainingArtRefs.length} bill_articles still reference this active_law after cleanup`,
         };
     }
 
@@ -8658,20 +8671,9 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
 
     if (reversalEffects.length === 0) return;
 
-    // Clear FK references to any existing row before upserting the reversal.
-    const { data: existingLaw } = await supabase.from('active_laws')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('policy_id', policy.id)
-        .maybeSingle();
-
-    if (existingLaw) {
-        await supabase.from('bills').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingLaw.id);
-        await supabase.from('bill_articles').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingLaw.id);
-    }
-
-    // Upsert instead of delete+insert to avoid duplicate key errors from race
-    // conditions, stale snapshots, or partially-completed previous ticks.
+    // FK references are already cleared by repealActiveLaw() before calling this.
+    // For the opposed-policy auto-reversal path, the original active_law row is
+    // replaced by upsert so no FK cleanup is needed there either.
     const { error: reversalInsertError } = await supabase.from('active_laws')
         .upsert({
             nation_id: nation.id,
