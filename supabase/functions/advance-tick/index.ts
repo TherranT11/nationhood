@@ -22459,13 +22459,44 @@ async function executePublicAddress(supabase, factionId, nationId, protestId, cu
     if (apErr) return { success: false, error: apErr.message };
     if (newAp < 0) return { success: false, error: 'Insufficient AP.' };
 
-    // ── 6. Mark Public Address on the protest log ──
+    // ── 6. Roll for crisis resolution ──
+    // T6: 40% chance to end crisis. T7: 15% chance.
+    const resolveChance = protest.tier === 7 ? 0.15 : 0.40;
+    const roll = Math.random();
+    const resolved = roll < resolveChance;
+
+    if (resolved) {
+        // Crisis ends — address succeeded in calming the situation
+        await protestUpdate(supabase, protestId, {
+            status: 'resolved',
+            tick_resolved: currentTick,
+            public_address_last_tick: currentTick,
+        }, true, protest.faction_id, currentTick + PROTEST_CONFIG.CALLING_PARTY_COOLDOWN);
+
+        // Remove active crisis
+        const crisisId = protest.tier === 7 ? PROTEST_CONFIG.TIER7_CRISIS_ID : PROTEST_CONFIG.TIER6_CRISIS_ID;
+        await supabase.from('active_crises').delete()
+            .eq('nation_id', nationId)
+            .eq('crisis_id', crisisId);
+
+        const headline = pickHeadline('protest_public_address');
+        const lede = 'The government\'s public address resonated with the people. The protest crisis has ended peacefully.';
+        dispatchProtestArticle(supabase, nationId, 'protest_public_address', headline, lede, 3, currentTick, protestId);
+        fireProtestEvent(supabase, nationId, 'protest:public_address_resolved', currentTick, { protest_id: protestId });
+
+        return {
+            success: true,
+            newAp,
+            outcome: 'resolved',
+            cooldownUntilTick: currentTick + PROTEST_CONFIG.PUBLIC_ADDRESS_COOLDOWN,
+        };
+    }
+
+    // ── 7. Not resolved — mark cooldown, standard effects still apply ──
     await protestUpdate(supabase, protestId, {
         public_address_last_tick: currentTick,
     });
 
-
-    // Dispatch article + event (non-blocking)
     const headline = pickHeadline('protest_public_address');
     const lede = 'The government issued a public address amid the ongoing protest crisis, calling for calm and dialogue.';
     dispatchProtestArticle(supabase, nationId, 'protest_public_address', headline, lede, 3, currentTick, protestId);
@@ -22474,6 +22505,7 @@ async function executePublicAddress(supabase, factionId, nationId, protestId, cu
     return {
         success: true,
         newAp,
+        outcome: 'continued',
         cooldownUntilTick: currentTick + PROTEST_CONFIG.PUBLIC_ADDRESS_COOLDOWN,
     };
 }
