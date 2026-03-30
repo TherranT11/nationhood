@@ -812,7 +812,8 @@ export function updateTopBarInfo(faction, shard, nation) {
     const apEl = document.getElementById('topbar-ap');
     if (apEl && faction) {
         const ap = faction.action_points ?? 0;
-        apEl.innerHTML = '<span class="topbar-ap__count">' + ap + ' AP</span>';
+        apEl.innerHTML = '<span class="topbar-ap__count" onclick="toggleApLedger(event)" style="cursor:pointer;">' + ap + ' AP</span>'
+            + '<div class="ap-ledger-dropdown" id="ap-ledger-dropdown"></div>';
     }
     
     const nationFlag = document.getElementById('nation-flag');
@@ -913,6 +914,77 @@ export async function refreshAP(factionId) {
         return ap;
     } catch (e) { console.warn('[refreshAP] Failed:', e); }
 }
+
+// ===== AP LEDGER DROPDOWN =====
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function tickToShortDate(tick) {
+    return MONTHS[tick % 12] + ' ' + (2000 + Math.floor(tick / 12));
+}
+
+async function toggleApLedger(e) {
+    e?.stopPropagation();
+    const dropdown = document.getElementById('ap-ledger-dropdown');
+    if (!dropdown) return;
+    if (dropdown.classList.contains('active')) {
+        dropdown.classList.remove('active');
+        return;
+    }
+
+    dropdown.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:0.75rem;">Loading...</div>';
+    dropdown.classList.add('active');
+
+    // Close on outside click
+    const close = (ev) => { if (!dropdown.contains(ev.target) && !ev.target.closest('.topbar-ap__count')) { dropdown.classList.remove('active'); document.removeEventListener('click', close); } };
+    setTimeout(() => document.addEventListener('click', close), 0);
+
+    try {
+        const cached = sessionStorage.getItem('nationhood_state');
+        const factionId = cached ? JSON.parse(cached)?.faction?.id : null;
+        if (!factionId) { dropdown.innerHTML = '<div style="padding:12px;color:var(--text-muted);">No faction</div>'; return; }
+
+        const { data: rows } = await _supabase
+            .from('ap_ledger')
+            .select('tick, delta, reason, detail')
+            .eq('faction_id', factionId)
+            .order('tick', { ascending: false })
+            .order('created_at', { ascending: true })
+            .limit(50);
+
+        if (!rows || rows.length === 0) {
+            dropdown.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:0.75rem;">No AP history yet. History will appear after the next tick.</div>';
+            return;
+        }
+
+        // Group by tick
+        const byTick = {};
+        for (const r of rows) {
+            if (!byTick[r.tick]) byTick[r.tick] = [];
+            byTick[r.tick].push(r);
+        }
+
+        let html = '<div class="ap-ledger-title">AP History</div>';
+        for (const tick of Object.keys(byTick).sort((a, b) => b - a)) {
+            const entries = byTick[tick];
+            const net = entries.reduce((s, e) => s + e.delta, 0);
+            const netCls = net > 0 ? 'ap-pos' : net < 0 ? 'ap-neg' : '';
+            const netStr = (net > 0 ? '+' : '') + net;
+
+            html += '<div class="ap-ledger-tick">';
+            html += '<div class="ap-ledger-tick-header"><span>' + tickToShortDate(Number(tick)) + '</span><span class="' + netCls + '">' + netStr + ' AP</span></div>';
+            for (const e of entries) {
+                const sign = e.delta > 0 ? '+' : '';
+                const cls = e.delta > 0 ? 'ap-pos' : 'ap-neg';
+                html += '<div class="ap-ledger-row"><span class="ap-ledger-detail">' + (e.detail || e.reason) + '</span><span class="' + cls + '">' + sign + e.delta + '</span></div>';
+            }
+            html += '</div>';
+        }
+        dropdown.innerHTML = html;
+    } catch (err) {
+        dropdown.innerHTML = '<div style="padding:12px;color:var(--red);font-size:0.75rem;">Failed to load AP history</div>';
+    }
+}
+window.toggleApLedger = toggleApLedger;
 
 function startTickCountdown() {
     if (tickInterval) clearInterval(tickInterval);

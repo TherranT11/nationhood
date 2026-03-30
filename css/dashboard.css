@@ -284,7 +284,33 @@ body {
     padding: 3px 8px;
     background: var(--amber-faint);
     border: 1px solid var(--amber-border);
+    position: relative;
 }
+/* AP Ledger Dropdown */
+.ap-ledger-dropdown {
+    display: none; position: absolute; top: 100%; right: 0; z-index: 9999;
+    width: 260px; max-height: 350px; overflow-y: auto;
+    background: var(--bg-panel, #1a1a17); border: 1px solid var(--border-main, rgba(0,0,0,0.08));
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4); margin-top: 4px;
+}
+.ap-ledger-dropdown.active { display: block; }
+.ap-ledger-title {
+    padding: 8px 12px; font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted);
+    border-bottom: 1px solid var(--border-main, rgba(0,0,0,0.08));
+}
+.ap-ledger-tick { border-bottom: 1px solid var(--border-main, rgba(0,0,0,0.08)); }
+.ap-ledger-tick-header {
+    display: flex; justify-content: space-between; padding: 6px 12px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--text-bright);
+}
+.ap-ledger-row {
+    display: flex; justify-content: space-between; padding: 2px 12px 2px 20px;
+    font-size: 10px; color: var(--text-secondary);
+}
+.ap-ledger-detail { flex: 1; }
+.ap-pos { color: var(--green); font-weight: 700; }
+.ap-neg { color: var(--red); font-weight: 700; }
 .topbar-ap__label {
     font-family: var(--font-mono);
     font-size: 9.5px; font-weight: 700; color: #7a7868;

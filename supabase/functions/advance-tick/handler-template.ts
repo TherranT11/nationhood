@@ -1110,6 +1110,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 if (result.success) {
                     console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+5, autocracy)`);
                     apDistributed++;
+                    await supabase.from('ap_ledger').insert({ faction_id: faction.id, tick: newTick, delta: 5, reason: 'tick_gain', detail: 'Base AP per tick' }).then(() => {});
                 } else {
                     console.error(`[advanceTick] Autocracy AP FAILED for faction ${faction.id}: ${result.error}`);
                     apFailed++;
@@ -1137,6 +1138,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             if (result.success) {
                 console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+${apGain})`);
                 apDistributed++;
+                const parts = ['Base +5'];
+                if (isInGovernment) parts.push('Coalition +2');
+                if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) parts.push('Family successor -1');
+                await supabase.from('ap_ledger').insert({ faction_id: faction.id, tick: newTick, delta: apGain, reason: 'tick_gain', detail: parts.join(', ') }).then(() => {});
             } else {
                 console.error(`[advanceTick] AP accumulation FAILED for faction ${faction.id}: ${result.error}`);
                 apFailed++;
@@ -2486,6 +2491,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                                 description: 'Quarterly solidarity fund contribution',
                                 tick: newTick
                             });
+                            await supabase.from('ap_ledger').insert({ faction_id: m.faction_id, tick: newTick, delta: -contribution, reason: 'ipo_contribution', detail: org.name + ' solidarity fund' }).then(() => {});
                         }
                         // If deduction fails (insufficient AP), skip silently
                     }
