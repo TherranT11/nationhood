@@ -26,7 +26,7 @@ function injectStyles() {
 .msg-bubble {
     position: fixed; bottom: 20px; right: 20px; z-index: 9000;
     width: 48px; height: 48px; border-radius: 50%;
-    background: var(--teal, #5aafa5); border: 2px solid rgba(255,255,255,0.1);
+    background: var(--teal, #5aafa5); border: 2px solid var(--border-mid, rgba(0,0,0,0.12));
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
     transition: transform 0.15s, box-shadow 0.15s;
@@ -47,7 +47,7 @@ function injectStyles() {
 .msg-panel {
     position: fixed; bottom: 20px; right: 20px; z-index: 9001;
     width: 340px; height: 500px; max-height: calc(100vh - 40px);
-    background: var(--bg-2, #1a1a17); border: 1px solid var(--border-0, rgba(255,255,255,0.06));
+    background: var(--bg-panel, #1a1a17); border: 1px solid var(--border-main, rgba(0,0,0,0.08));
     box-shadow: 0 12px 48px rgba(0,0,0,0.6);
     display: none; flex-direction: column; overflow: hidden;
     border-radius: 8px;
@@ -57,7 +57,7 @@ function injectStyles() {
 /* Panel header */
 .msg-panel__header {
     padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;
-    background: var(--bg-3, #252525); border-bottom: 1px solid var(--border-0, rgba(255,255,255,0.06));
+    background: var(--bg-card, #252525); border-bottom: 1px solid var(--border-main, rgba(0,0,0,0.08));
     flex-shrink: 0;
 }
 .msg-panel__title {
@@ -73,18 +73,18 @@ function injectStyles() {
 /* Panel actions bar */
 .msg-panel__actions {
     padding: 8px 14px; display: flex; gap: 6px;
-    border-bottom: 1px solid var(--border-0, rgba(255,255,255,0.06));
+    border-bottom: 1px solid var(--border-main, rgba(0,0,0,0.08));
     flex-shrink: 0;
 }
 .msg-action-btn {
     flex: 1; padding: 6px 0; text-align: center;
     font-family: var(--font-mono, monospace); font-size: 9px; font-weight: 700;
     letter-spacing: 0.5px; text-transform: uppercase;
-    color: var(--text-dim, #4a4940); background: var(--bg-3, #252525);
-    border: 1px solid var(--border-0, rgba(255,255,255,0.06));
+    color: var(--text-dim, #4a4940); background: var(--bg-card, #252525);
+    border: 1px solid var(--border-main, rgba(0,0,0,0.08));
     cursor: pointer; transition: all 0.1s;
 }
-.msg-action-btn:hover { color: var(--text-muted, #666); border-color: var(--border-1, rgba(255,255,255,0.08)); }
+.msg-action-btn:hover { color: var(--text-muted, #666); border-color: var(--border-mid, rgba(0,0,0,0.12)); }
 
 /* Scrollable content */
 .msg-panel__body {
@@ -92,27 +92,27 @@ function injectStyles() {
 }
 .msg-panel__body::-webkit-scrollbar { width: 4px; }
 .msg-panel__body::-webkit-scrollbar-track { background: transparent; }
-.msg-panel__body::-webkit-scrollbar-thumb { background: var(--border-1, rgba(255,255,255,0.08)); }
+.msg-panel__body::-webkit-scrollbar-thumb { background: var(--border-mid, rgba(0,0,0,0.12)); }
 
 /* Chat list section headers */
 .msg-section-hdr {
     padding: 6px 14px;
     font-family: var(--font-mono, monospace); font-size: 8px; font-weight: 700;
     letter-spacing: 1.5px; text-transform: uppercase;
-    color: var(--text-dim, #4a4940); background: var(--bg-3, #252525);
-    border-bottom: 1px solid var(--border-0, rgba(255,255,255,0.06));
+    color: var(--text-dim, #4a4940); background: var(--bg-card, #252525);
+    border-bottom: 1px solid var(--border-main, rgba(0,0,0,0.08));
 }
 
 /* Chat list item */
 .msg-chat-item {
     padding: 10px 14px; display: flex; align-items: center; gap: 10px;
-    border-bottom: 1px solid var(--border-0, rgba(255,255,255,0.06));
+    border-bottom: 1px solid var(--border-main, rgba(0,0,0,0.08));
     cursor: pointer; transition: background 0.1s;
 }
 .msg-chat-item:hover { background: var(--bg-hover, #282822); }
 .msg-chat-item__avatar {
     width: 32px; height: 32px; border-radius: 50%;
-    background: var(--bg-3, #252525); border: 1px solid var(--border-0, rgba(255,255,255,0.06));
+    background: var(--bg-card, #252525); border: 1px solid var(--border-main, rgba(0,0,0,0.08));
     display: flex; align-items: center; justify-content: center;
     font-family: var(--font-mono, monospace); font-size: 10px; font-weight: 700;
     color: var(--text-dim, #4a4940); flex-shrink: 0;
@@ -138,7 +138,7 @@ function injectStyles() {
 /* Thread view */
 .msg-thread-header {
     padding: 8px 14px; display: flex; align-items: center; gap: 8px;
-    border-bottom: 1px solid var(--border-0, rgba(255,255,255,0.06));
+    border-bottom: 1px solid var(--border-main, rgba(0,0,0,0.08));
     flex-shrink: 0;
 }
 .msg-thread-back {
@@ -158,7 +158,7 @@ function injectStyles() {
 }
 .msg-messages::-webkit-scrollbar { width: 4px; }
 .msg-messages::-webkit-scrollbar-track { background: transparent; }
-.msg-messages::-webkit-scrollbar-thumb { background: var(--border-1, rgba(255,255,255,0.08)); }
+.msg-messages::-webkit-scrollbar-thumb { background: var(--border-mid, rgba(0,0,0,0.12)); }
 
 .msg-msg {
     max-width: 85%; padding: 6px 10px; border-radius: 6px;
@@ -172,8 +172,8 @@ function injectStyles() {
 }
 .msg-msg--received {
     align-self: flex-start;
-    background: var(--bg-3, #252525);
-    border: 1px solid var(--border-0, rgba(255,255,255,0.06));
+    background: var(--bg-card, #252525);
+    border: 1px solid var(--border-main, rgba(0,0,0,0.08));
     color: var(--text-primary, #c4c2b8);
 }
 .msg-msg--system {
@@ -193,12 +193,12 @@ function injectStyles() {
 /* Input bar */
 .msg-input-bar {
     padding: 8px 14px; display: flex; gap: 6px;
-    border-top: 1px solid var(--border-0, rgba(255,255,255,0.06));
-    background: var(--bg-3, #252525); flex-shrink: 0;
+    border-top: 1px solid var(--border-main, rgba(0,0,0,0.08));
+    background: var(--bg-card, #252525); flex-shrink: 0;
 }
 .msg-input {
     flex: 1; padding: 6px 10px; border-radius: 4px;
-    background: var(--bg-4, #24241f); border: 1px solid var(--border-0, rgba(255,255,255,0.06));
+    background: var(--bg-input, var(--bg-panel, #24241f)); border: 1px solid var(--border-main, rgba(0,0,0,0.08));
     color: var(--text-bright, #f0efe6); font-family: var(--font-ui, sans-serif);
     font-size: 12px; outline: none; resize: none;
 }
@@ -836,7 +836,7 @@ function openNewDM() {
             <button class="msg-thread-back" id="msg-back">&#8592;</button>
             <span class="msg-thread-name">Select a party to message</span>
         </div>
-        <div style="padding:8px 14px;border-bottom:1px solid var(--border-0, rgba(255,255,255,0.06));">
+        <div style="padding:8px 14px;border-bottom:1px solid var(--border-main, rgba(0,0,0,0.08));">
             <input type="text" class="msg-input" id="msg-search" placeholder="Search by name or nation..." style="width:100%;" />
         </div>
         <div class="msg-panel__body" id="msg-search-results" style="flex:1;overflow-y:auto;">
@@ -938,11 +938,11 @@ function openNewGroup() {
             <button class="msg-thread-back" id="msg-back">&#8592;</button>
             <span class="msg-thread-name">Select members</span>
         </div>
-        <div style="padding:8px 14px;border-bottom:1px solid var(--border-0, rgba(255,255,255,0.06));">
+        <div style="padding:8px 14px;border-bottom:1px solid var(--border-main, rgba(0,0,0,0.08));">
             <input type="text" class="msg-input" id="msg-group-name" placeholder="Group chat name..." maxlength="100" style="width:100%;margin-bottom:6px;" />
             <input type="text" class="msg-input" id="msg-group-search" placeholder="Search parties to add..." style="width:100%;" />
         </div>
-        <div id="msg-group-selected" style="padding:4px 14px;display:none;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--border-0, rgba(255,255,255,0.06));"></div>
+        <div id="msg-group-selected" style="padding:4px 14px;display:none;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--border-main, rgba(0,0,0,0.08));"></div>
         <div class="msg-panel__body" id="msg-group-results" style="flex:1;overflow-y:auto;">
             <div class="msg-empty"><div class="msg-empty__text">Search for parties to add...</div></div>
         </div>

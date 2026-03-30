@@ -421,7 +421,7 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
             <div class="laws-header">
                 <div class="section-header" style="margin-bottom:0;border-bottom:none;">${pageTitle}</div>
                 <div class="laws-header-buttons">
-                    <button class="passed-laws-btn" onclick="togglePassedLaws()">📜 Passed Laws</button>
+                    <button class="passed-laws-btn" onclick="togglePassedLaws()">📜 Resolved Bills</button>
                     <button class="all-laws-btn" onclick="toggleAllLaws()">📋 All Laws</button>
                     ${showDefaultBtn ? `<button class="default-resolution-btn${defaultEligible ? '' : ' default-btn-locked'}" onclick="${defaultEligible ? 'openDefaultResolutionModal()' : 'void(0)'}" ${defaultEligible ? '' : 'disabled'} title="${defaultEligible ? 'Debt: ' + formatDebtToGDP(debtRatio) + ' of GDP' : 'Requires debt-to-GDP ≥ 150% (current: ' + formatDebtToGDP(debtRatio) + ')'}">💀 Default Resolution</button>` : ''}
                     <button class="draft-btn ${lawsIsAutocracy ? 'autocracy-btn' : ''}" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'} ${noSeatsTitle}>
@@ -457,7 +457,6 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
                 ${frozenBills.length > 0 ? renderFrozenBills() : ''}
                 ${floorBills.length > 0 ? renderFloorBills() : ''}
                 ${committeeBills.length > 0 ? renderCommitteeBills() : ''}
-                ${recentBills.length > 0 ? renderRecentBills() : ''}
                 <div class="section-header">Active Laws</div>
                 <div class="sector-accordion">
                     ${MAJOR_SECTORS.map(sector => renderMajorSector(sector)).join('')}
@@ -770,35 +769,8 @@ function renderCommitteeBills() {
     return `<div class="section-header" style="color:var(--orange);">In Committee</div><div class="committee-section">${committeeBills.map(bill => renderCommitteeBill(bill)).join('')}</div>`;
 }
 
-function renderRecentBills() {
-    return `<div class="section-header" style="color:var(--text-secondary);">Recently Resolved</div>` +
-        recentBills.slice(0, 5).map(bill => {
-            const isPassed = bill.status === 'passed';
-            const statusColor = isPassed ? 'var(--green)' : 'var(--red)';
-            const statusText = isPassed ? 'PASSED' : 'FAILED';
-            const statusClass = isPassed ? '' : 'recent-failed';
-            const typeLabel = bill.bill_type === 'foundational'
-                ? ' <span style="background:var(--purple);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Foundational</span>'
-                : (bill.bill_type === 'no_confidence'
-                    ? ' <span style="background:var(--red);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">No Confidence</span>'
-                    : (bill.bill_type === 'default_resolution'
-                        ? ' <span style="background:var(--red);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Default Resolution</span>'
-                        : (bill.bill_type === 'ratification'
-                            ? ' <span style="background:var(--green);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Ratification</span>'
-                            : '')));
-            return `
-                <div class="floor-bill clickable-bill ${statusClass}" onclick="window.location.href='bill.html?id=${bill.id}'" style="opacity:0.7;">
-                    <div class="committee-bill-header">
-                        <div>
-                            <div class="floor-bill-name" style="color:${statusColor};">${bill.bill_name || 'Unnamed Bill'}${typeLabel}</div>
-                            <div class="committee-bill-sponsor">Proposed by ${bill.factions?.faction_name || 'Unknown'}</div>
-                        </div>
-                        <div class="floor-status ${isPassed ? '' : 'failed-status'}" style="font-weight:bold;">${statusText}</div>
-                    </div>
-                </div>`;
-        }).join('') +
-        `<button class="archive-view-all-btn" onclick="togglePassedLaws()">View full legislative record →</button>`;
-}
+// renderRecentBills removed — resolved bills are now only shown via the
+// "Resolved Bills" toggle button which opens the full legislative record.
 
 // ==================== PASSED LAWS ARCHIVE ====================
 
