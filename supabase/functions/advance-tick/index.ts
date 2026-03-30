@@ -2759,9 +2759,9 @@ const STATE_VISIT_AGENDA_ITEMS = [
     {
         key: 'bilateral_talks', day: 2, slot: 'Evening',
         title: 'Private Bilateral Talks',
-        desc: 'Closed-door meeting between senior officials. No press, no public record. Can discuss sensitive topics and build trust for future negotiations. The content remains private.',
+        desc: 'Closed-door meeting between senior officials. No press, no public record. Opens diplomatic channels — all other actions with this nation cost 1 less AP this tick.',
         effects: { relations: 5 },
-        tags: ['Trust Threshold', 'Enables Initiatives'], costs: {}, risks: {}
+        tags: ['Trust Threshold', 'Enables Initiatives', 'Diplomatic Discount'], costs: {}, risks: {}
     },
     {
         key: 'military_review', day: 3, slot: 'Morning',
@@ -3372,8 +3372,8 @@ function getIdeologyChipClass(ideologyTag, factionIdeology) {
     if (!mapping) return 'neutral';
     const score = factionIdeology[mapping.axisKey] || 0;
     const alignment = score * mapping.direction;
-    if (alignment > 10) return 'aligned';
-    if (alignment < -10) return 'opposed';
+    if (alignment >= 20) return 'aligned';
+    if (alignment <= -20) return 'opposed';
     return 'neutral';
 }
 
@@ -3711,7 +3711,7 @@ const DECAY_SPEED = { CRAWL: 0.15, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 }
  */
 const STAT_DECAY_CONFIG = {
     // ── Equilibrium (drift back to midpoint) ──
-    inflation:           { type: 'equilibrium', target: 28, speed: DECAY_SPEED.CRAWL },
+    inflation:           { type: 'equilibrium', target: 38, speed: DECAY_SPEED.CRAWL },
     interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
@@ -3727,6 +3727,9 @@ const STAT_DECAY_CONFIG = {
     emigration:          { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
     fuel_prices:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     debt_growth:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    crime_rate:          { type: 'equilibrium', target: 18, speed: DECAY_SPEED.CRAWL },
+    stability:           { type: 'equilibrium', target: 45, speed: DECAY_SPEED.CRAWL },
+    legitimacy:          { type: 'equilibrium', target: 40, speed: DECAY_SPEED.CRAWL },
 
     // ── Erosion (degrade toward bad floor if neglected) ──
     physical_infrastructure:  { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
@@ -3945,32 +3948,69 @@ function statDirectionSign(statKey) {
  */
 
 function inflationRate(inflationStat) {
-    const val = Math.max(0, Number(inflationStat ?? 0));
-    return Math.pow(val, 1.5) / 100;
+    // Maps 0-100 stat to roughly -2% to +10%, with ~0% at stat 15
+    // and the healthy 2% target around stat 38 (equilibrium)
+    const val = Math.max(0, Math.min(100, Number(inflationStat ?? 0)));
+    if (val <= 15) return -((15 - val) / 15) * 2;   // 0 → -2%, 15 → 0%
+    return Math.pow(val - 15, 1.5) / 100;            // 15 → 0%, 38 → ~2.1%, 100 → ~7.8%
 }
 
 function formatInflationRate(inflationStat) {
     const rate = inflationRate(inflationStat);
-    if (rate < 0.01) return '0%';
-    if (rate < 1) return '+' + rate.toFixed(2) + '%';
-    return '+' + rate.toFixed(1) + '%';
+    if (Math.abs(rate) < 0.01) return '0%';
+    const sign = rate >= 0 ? '+' : '';
+    if (Math.abs(rate) < 1) return sign + rate.toFixed(2) + '%';
+    return sign + rate.toFixed(1) + '%';
 }
 
 function getInflationLabel(inflationStat) {
-    const rate = inflationRate(inflationStat);
-    if (rate < 0.1)  return 'Negligible';
-    if (rate < 0.5)  return 'Minimal';
-    if (rate < 1.5)  return 'Stable';
-    if (rate < 3)    return 'Low Inflation';
-    if (rate < 5)    return 'Moderate Inflation';
-    if (rate < 8)    return 'High Inflation';
+    const val = Number(inflationStat ?? 0);
+    if (val <= 5)   return 'Severe Deflation';
+    if (val <= 15)  return 'Deflation';
+    if (val <= 25)  return 'Low Inflation';
+    if (val <= 45)  return 'Stable';
+    if (val <= 65)  return 'Moderate Inflation';
+    if (val <= 85)  return 'High Inflation';
     return 'Hyperinflation';
 }
 
 function inflationColorClass(inflationStat) {
-    const rate = inflationRate(inflationStat);
-    if (rate < 1.5)  return 'good';
-    if (rate < 5)    return 'medium';
+    const val = Number(inflationStat ?? 0);
+    if (val <= 15)  return 'bad';    // Deflation is harmful
+    if (val <= 25)  return 'medium'; // Low but not dangerous
+    if (val <= 45)  return 'good';   // Healthy range (equilibrium at 38)
+    if (val <= 65)  return 'medium'; // Getting warm
+    return 'bad';                    // High/hyperinflation
+}
+
+// ==================== FUEL PRICE DISPLAY ====================
+
+function fuelPricePerGallon(fuelStat, currencyStat, inflationStat) {
+    const fuel = Math.max(0, Math.min(100, Number(fuelStat ?? 50)));
+    const basePrice = 1.0 + (fuel / 100) * 7.0;
+    const currencyMult = 1.5 - (Math.max(0, Math.min(100, Number(currencyStat ?? 50))) / 100);
+    const inflMult = Math.max(0.98, 1 + (inflationRate(inflationStat) / 100));
+    return Math.round(basePrice * currencyMult * inflMult * 100) / 100;
+}
+
+function formatFuelPrice(fuelStat, currencyStat, inflationStat) {
+    const price = fuelPricePerGallon(fuelStat, currencyStat, inflationStat);
+    return '$' + price.toFixed(2) + '/gal';
+}
+
+function getFuelPriceLabel(fuelStat, currencyStat, inflationStat) {
+    const price = fuelPricePerGallon(fuelStat, currencyStat, inflationStat);
+    if (price < 2.00) return 'Cheap';
+    if (price < 4.00) return 'Normal';
+    if (price < 5.50) return 'Elevated';
+    if (price < 7.00) return 'Expensive';
+    return 'Crisis';
+}
+
+function fuelPriceColorClass(fuelStat, currencyStat, inflationStat) {
+    const price = fuelPricePerGallon(fuelStat, currencyStat, inflationStat);
+    if (price < 4.00) return 'good';
+    if (price < 5.50) return 'medium';
     return 'bad';
 }
 
@@ -4344,12 +4384,12 @@ const FISCAL_TO_MINISTRY_KEY = {
 
 /**
  * Compute inflation cost multiplier from the 0-100 inflation stat.
- * Rate = stat^1.5 / 100  →  stat 1 = 0.01%, stat 100 = 10%.
- * No deflation — multiplier is always ≥ 1.
+ * Uses inflationRate() so deflation reduces costs, inflation increases them.
+ * Multiplier is clamped to ≥ 0.98 so deflation doesn't make things free.
  */
 function getInflationMultiplier(inflationStat) {
-    const rate = Math.pow(Math.max(0, Number(inflationStat || 0)), 1.5) / 100;
-    return 1 + (rate / 100);
+    const rate = inflationRate(inflationStat);
+    return Math.max(0.98, 1 + (rate / 100));
 }
 
 /**
@@ -17808,6 +17848,46 @@ function computePassiveDrift(nation) {
  * Process autocracy pillar/backing for a single nation each tick.
  * Tick order step 1: Passive drift → Wildcard decay → Neglect check.
  *
+ * Ensure an autocracy always has a strongman. If the strongman faction was
+ * deleted or disbanded, assign the remaining faction with highest backing.
+ * The existing leader name stays — only the controlling faction changes.
+ */
+async function ensureStrongmanExists(supabase, nation, currentTick) {
+    const { data: fpsRows } = await supabase
+        .from('faction_pillar_state')
+        .select('id, faction_id, pillar, is_strongman, backing')
+        .eq('nation_id', nation.id);
+
+    if (!fpsRows || fpsRows.length === 0) return;
+
+    const hasStrongman = fpsRows.some(r => r.is_strongman);
+    if (hasStrongman) return;
+
+    // No strongman — assign the faction with highest backing (tie = random)
+    const sorted = [...fpsRows].sort((a, b) => {
+        const diff = Number(b.backing) - Number(a.backing);
+        return diff !== 0 ? diff : (Math.random() - 0.5);
+    });
+    const winner = sorted[0];
+
+    const { error } = await supabase.from('faction_pillar_state')
+        .update({ is_strongman: true, updated_at: new Date().toISOString() })
+        .eq('id', winner.id);
+
+    if (error) {
+        console.error(`[Autocracy] Failed to assign strongman for ${nation.name}:`, error.message);
+        return;
+    }
+
+    // Update nation's ruling_faction_id to match the new strongman
+    await supabase.from('nations')
+        .update({ ruling_faction_id: winner.faction_id })
+        .eq('id', nation.id);
+
+    console.log(`[Autocracy] Assigned strongman for ${nation.name}: faction ${winner.faction_id} (pillar: ${winner.pillar}, backing: ${winner.backing})`);
+}
+
+/**
  * @param {Object} supabase - Supabase client
  * @param {Object} nation   - nation row (must have stat columns)
  * @param {number} currentTick
@@ -30887,6 +30967,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (purgeErr) {
             console.error(`[advanceTick] Purge decay failed for ${nation.name} (non-fatal):`, purgeErr);
+        }
+
+        // Autocracy: ensure a strongman always exists (handles faction deletion/disbanding)
+        try {
+            if (isAutocracy(nation)) {
+                await ensureStrongmanExists(supabase, nation, newTick);
+            }
+        } catch (smErr) {
+            console.error(`[advanceTick] Strongman check failed for ${nation.name} (non-fatal):`, smErr);
         }
 
         // Autocracy V5: pillar passive drift, wildcard decay, neglect, longevity

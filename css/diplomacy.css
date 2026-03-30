@@ -2502,6 +2502,7 @@
 .sv-effect-tag--cost     { color: var(--amber); background: var(--amber-faint); border: 1px solid var(--amber-border); }
 .sv-effect-tag--risk     { color: var(--red);   background: var(--red-faint);   border: 1px solid var(--red-border); }
 .sv-effect-tag--info     { color: var(--blue);  background: var(--blue-faint);  border: 1px solid var(--blue-border); }
+.sv-effect-tag--discount { color: var(--teal);  background: var(--teal-faint);  border: 1px solid var(--teal-border); font-weight: 700; }
 
 /* Action bar */
 .sv-action-bar {
