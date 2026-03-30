@@ -25774,6 +25774,97 @@ async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
     return govApproval;
 }
 
+/**
+ * Check for government collapse when approval is critically low.
+ * At ≤5%: coalition parties lose -5 party approval/tick, opposition gains +2.
+ * At 0%: government dissolves and snap election is called.
+ * Returns { collapsed, penalized } or null if no government or not in danger zone.
+ */
+async function processGovernmentCollapseCheck(supabase, nation, currentTick) {
+    if (isAutocracy(nation)) return null;
+    const govApproval = Number(nation.gov_approval ?? 50);
+    if (govApproval > 5) return null;
+
+    const coalition = await fetchActiveCoalition(supabase, nation.id);
+    if (!coalition || !coalition.party_ids || coalition.party_ids.length === 0) return null;
+
+    const coalitionIds = new Set(coalition.party_ids);
+
+    // At 0%: auto-dissolve and trigger snap election
+    if (govApproval <= 0) {
+        console.log(`[GovCollapse] ${nation.name}: approval at ${govApproval}% — dissolving government and calling snap election`);
+
+        // Close administration
+        try {
+            const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+            await closeAdministration(supabase, nation.id, nation, 'collapsed', currentTick, shard?.current_date || '', null);
+        } catch (e) { console.warn('[GovCollapse] closeAdministration failed:', e); }
+
+        await dissolveCoalition(supabase, nation.id);
+
+        // Freeze active bills
+        await supabase.from('bills')
+            .update({ status: 'frozen' })
+            .eq('nation_id', nation.id)
+            .in('status', ['committee', 'floor']);
+
+        // Schedule snap election
+        const snapTick = currentTick + FORMATION_DEADLINE_TICKS;
+        await supabase.from('elections').insert({
+            nation_id: nation.id,
+            election_tick: snapTick,
+            election_type: 'parliamentary',
+            status: 'scheduled'
+        });
+
+        // Fire world-visible event
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'Government Collapses',
+            trigger_key: 'government_collapsed',
+            description_chosen: `The government of ${nation.name} has collapsed after approval hit 0%. Snap elections have been called.`,
+            category: 'government',
+            fired_at_tick: currentTick
+        });
+
+        return { collapsed: true, penalized: false };
+    }
+
+    // At 1-5%: cascading penalties
+    console.log(`[GovCollapse] ${nation.name}: approval at ${govApproval}% — applying collapse penalties`);
+
+    const { data: allFactions } = await supabase
+        .from('factions')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+
+    let penalizedCount = 0;
+    for (const f of (allFactions || [])) {
+        const isCoalition = coalitionIds.has(f.id);
+        if (isCoalition) {
+            // Coalition parties lose -5 party approval per tick
+            await nudgeApproval(supabase, f.id, nation.id, -5, { source: 'gov_collapse_penalty' });
+            penalizedCount++;
+        } else {
+            // Opposition parties gain +2 party approval per tick
+            await nudgeApproval(supabase, f.id, nation.id, 2, { source: 'gov_collapse_opposition_boost' });
+        }
+    }
+
+    // Fire event (nation-visible)
+    await supabase.from('event_log').insert({
+        nation_id: nation.id,
+        event_name: 'Government on Verge of Collapse',
+        trigger_key: 'government_collapse_warning',
+        description_chosen: `Government approval in ${nation.name} has fallen to ${govApproval}%. Coalition parties are hemorrhaging support.`,
+        category: 'government',
+        fired_at_tick: currentTick
+    });
+
+    return { collapsed: false, penalized: penalizedCount };
+}
+
 async function processOngoingCosts(supabase, nation, currentTick) {
     const { data: activeLaws } = await supabase
         .from('active_laws')
@@ -30821,6 +30912,20 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             await calculateGovernmentApprovalTick(supabase, nation, newTick);
         } catch (govAppErr) {
             console.error(`[advanceTick] Gov approval calc failed for ${nation.name} (non-fatal):`, govAppErr);
+        }
+
+        // Layer 2b: Government collapse check (≤5% approval → cascading penalties, 0% → dissolve + snap election)
+        try {
+            const collapseResult = await processGovernmentCollapseCheck(supabase, nation, newTick);
+            if (collapseResult) {
+                summary.collapses = summary.collapses || [];
+                summary.collapses.push({ nation: nation.name, ...collapseResult });
+                if (collapseResult.collapsed) {
+                    console.log(`[advanceTick] Government COLLAPSED in ${nation.name} — snap election called`);
+                }
+            }
+        } catch (collapseErr) {
+            console.error(`[advanceTick] Gov collapse check failed for ${nation.name} (non-fatal):`, collapseErr);
         }
 
         // Electorate engine

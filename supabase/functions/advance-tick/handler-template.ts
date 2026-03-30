@@ -1929,6 +1929,20 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Gov approval calc failed for ${nation.name} (non-fatal):`, govAppErr);
         }
 
+        // Layer 2b: Government collapse check (≤5% approval → cascading penalties, 0% → dissolve + snap election)
+        try {
+            const collapseResult = await processGovernmentCollapseCheck(supabase, nation, newTick);
+            if (collapseResult) {
+                summary.collapses = summary.collapses || [];
+                summary.collapses.push({ nation: nation.name, ...collapseResult });
+                if (collapseResult.collapsed) {
+                    console.log(`[advanceTick] Government COLLAPSED in ${nation.name} — snap election called`);
+                }
+            }
+        } catch (collapseErr) {
+            console.error(`[advanceTick] Gov collapse check failed for ${nation.name} (non-fatal):`, collapseErr);
+        }
+
         // Electorate engine
         try {
             await tickElectorate(supabase, nation, newTick);
