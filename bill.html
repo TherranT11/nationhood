@@ -239,15 +239,12 @@ let selectedRepealLaw = null; // Active law selected for repeal article
 const SPECIAL_BILL_TYPES = ['no_confidence', 'confirmation', 'minister_confirmation', 'veto_override', 'repeal', 'impeachment_motion', 'impeachment_conviction'];
 const FREE_ARTICLE_LIMIT = GAME_CONFIG.FREE_BILL_ARTICLES || 3;
 
-/** Count non-text articles currently in a bill (for per-article AP costing). */
-function countBillableArticles_bill(articles) {
-    return (articles || []).filter(a => a.policy_id || a.funding_data || a.effect_data || (!a.article_text && !a.article_title)).length;
-}
-
-/** More reliable: count articles that are NOT text-only. Text articles have no policy_id, no funding_data, no effect_data, but have article_text. */
+/** Count non-text articles in a bill. Text articles have no policy_id, no funding_data, no effect_data. */
 function countNonTextArticles(articles) {
     return (articles || []).filter(a => a.policy_id || a.funding_data || a.effect_data).length;
 }
+
+let _billArticleLock = false; // Prevents double-fire on async article operations
 
 /** Refund 1 AP to a faction (used when removing paid articles). */
 async function refundArticleAP_bill(factionId) {
@@ -2481,16 +2478,9 @@ async function submitAmendment() {
     if (mySupport?.locked) { alert('Your support is locked — a strike deal was accepted.'); return; }
     if ((currentBill.struck_policy_ids || []).includes(selectedAmendmentPolicy.id)) { alert('This policy was struck from the bill and cannot be re-added.'); return; }
     try {
-        // Per-article AP cost: charge 1 AP if bill already has 3+ non-text articles
-        const nonTextCount = countNonTextArticles(currentBill.bill_articles);
-        const articleCostsAP = nonTextCount >= FREE_ARTICLE_LIMIT;
-        if (articleCostsAP) {
-            const apResult = await deductAP(_supabase, currentFaction.id, 1);
-            if (!apResult.success) {
-                alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
-                return;
-            }
-        }
+        // Conditional support always costs 1 AP
+        const apResult = await deductAP(_supabase, currentFaction.id, 1);
+        if (!apResult.success) { alert(apResult.error || 'Insufficient AP (need 1).'); return; }
 
         const { error } = await _supabase.from('bill_amendment_requests').insert({ bill_id: billId, faction_id: currentFaction.id, policy_id: selectedAmendmentPolicy.id, request_type: 'add', status: 'pending' });
         if (error) throw error;
@@ -2498,7 +2488,7 @@ async function submitAmendment() {
         await _supabase.from('bill_support').upsert({ bill_id: billId, faction_id: currentFaction.id, stance: 'conditional', seat_count: currentSeats }, { onConflict: 'bill_id,faction_id' });
         closeAmendmentModal();
         await loadBillData();
-        alert('Conditional support proposed' + (articleCostsAP ? ' (1 AP)' : '') + '. If accepted, your vote will be locked as YES on the floor.');
+        alert('Conditional support proposed (1 AP). If accepted, your vote will be locked as YES on the floor.');
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
@@ -2589,7 +2579,10 @@ async function submitTextAmendment() {
     const body = document.getElementById('text-amendment-body').value.trim();
     if (!body) { alert('Please enter article text.'); return; }
     try {
-        // Text articles are always free — no AP cost
+        // Conditional support always costs 1 AP
+        const apResult = await deductAP(_supabase, currentFaction.id, 1);
+        if (!apResult.success) { alert(apResult.error || 'Insufficient AP (need 1).'); return; }
+
         const { error } = await _supabase.from('bill_amendment_requests').insert({
             bill_id: billId, faction_id: currentFaction.id, policy_id: null,
             request_type: 'add_text', status: 'pending',
@@ -2600,7 +2593,7 @@ async function submitTextAmendment() {
         await _supabase.from('bill_support').upsert({ bill_id: billId, faction_id: currentFaction.id, stance: 'conditional', seat_count: currentSeats }, { onConflict: 'bill_id,faction_id' });
         closeTextAmendmentModal();
         await loadBillData();
-        alert('Conditional support proposed. If accepted, your vote will be locked as YES on the floor.');
+        alert('Conditional support proposed (1 AP). If accepted, your vote will be locked as YES on the floor.');
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
@@ -2708,6 +2701,7 @@ async function cleanupOrphanedConditionalSupport() {
 }
 
 async function rescindArticle(articleId) {
+    if (_billArticleLock) return;
     if (!currentFaction) return;
     if (currentBill.status !== 'committee') return;
 
@@ -2732,6 +2726,7 @@ async function rescindArticle(articleId) {
         if (!confirm(`Remove "${artLabel}" from the bill? This cannot be undone.`)) return;
     }
 
+    _billArticleLock = true;
     try {
         await _supabase.from('bill_articles').delete().eq('id', articleId);
         await renumberArticles(billId);
@@ -2750,6 +2745,7 @@ async function rescindArticle(articleId) {
 
         await loadBillData();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
+    finally { _billArticleLock = false; }
 }
 
 // ==================== EDIT TEXT ARTICLE ====================
@@ -2907,10 +2903,12 @@ function selectRepealLaw(lawId) {
 }
 
 async function submitSponsorAddArticle() {
+    if (_billArticleLock) return;
     if ((!sponsorSelectedPolicy && !selectedRepealLaw) || !currentFaction) return;
     if (sponsorSelectedPolicy && (currentBill.struck_policy_ids || []).includes(sponsorSelectedPolicy.id)) {
         alert('This policy was struck from the bill and cannot be re-added.'); return;
     }
+    _billArticleLock = true;
     try {
         // Check if this article would exceed the free limit
         const nonTextCount = countNonTextArticles(currentBill.bill_articles);
@@ -2944,6 +2942,7 @@ async function submitSponsorAddArticle() {
         closeSponsorAddModal();
         await loadBillData();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
+    finally { _billArticleLock = false; }
 }
 
 // Sponsor Add Text Article

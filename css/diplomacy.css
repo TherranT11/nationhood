@@ -3111,11 +3111,10 @@ body.light-mode .diplo-view-btn.is-active {
 
 /* ── IPO Design Tokens — aligned with diplomacy base tab ── */
 :root {
-  --ipo-purple: var(--teal, #5aafa5);
-  --ipo-purple-faint: rgba(90,175,165,0.06);
-  --ipo-purple-hover: rgba(90,175,165,0.1);
-  --ipo-purple-border: rgba(90,175,165,0.25);
-  --ipo-fund-amber: #c8a64e;
+  --ipo-accent: var(--teal, #5aafa5);
+  --ipo-accent-faint: rgba(90,175,165,0.06);
+  --ipo-accent-hover: rgba(90,175,165,0.1);
+  --ipo-accent-border: rgba(90,175,165,0.25);
 }
 
 /* ── IPO View Container ── */
@@ -3186,15 +3185,15 @@ body.light-mode .diplo-view-btn.is-active {
   background: rgba(255,255,255,0.02);
 }
 .ipo-sidebar-item.is-active {
-  border-left-color: var(--ipo-purple);
-  background: var(--ipo-purple-faint);
+  border-left-color: var(--ipo-accent);
+  background: var(--ipo-accent-faint);
 }
 
 .ipo-sidebar-logo {
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 700;
-  color: var(--ipo-purple);
+  color: var(--ipo-accent);
   flex-shrink: 0;
   white-space: nowrap;
 }
@@ -3232,8 +3231,8 @@ body.light-mode .diplo-view-btn.is-active {
 .ipo-sidebar-invite {
   padding: 9px 14px;
   border-bottom: 1px solid rgba(255,255,255,0.03);
-  border-left: 3px solid var(--ipo-purple-border);
-  background: var(--ipo-purple-faint);
+  border-left: 3px solid var(--ipo-accent-border);
+  background: var(--ipo-accent-faint);
 }
 .ipo-sidebar-invite-header {
   display: flex;
@@ -3379,7 +3378,7 @@ body.light-mode .diplo-view-btn.is-active {
 }
 .ipo-empty-icon {
   font-size: 42px;
-  color: var(--ipo-purple);
+  color: var(--ipo-accent);
   opacity: 0.4;
   margin-bottom: 6px;
 }
@@ -3447,9 +3446,9 @@ body.light-mode .diplo-view-btn.is-active {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
-  color: var(--ipo-purple);
-  background: var(--ipo-purple-hover);
-  border: 1px solid var(--ipo-purple-border);
+  color: var(--ipo-accent);
+  background: var(--ipo-accent-hover);
+  border: 1px solid var(--ipo-accent-border);
   padding: 3px 8px;
   border-radius: 2px;
   white-space: nowrap;
@@ -3508,9 +3507,9 @@ body.light-mode .diplo-view-btn.is-active {
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
-  background: var(--ipo-purple-hover);
-  border: 1px solid var(--ipo-purple-border);
-  color: var(--ipo-purple);
+  background: var(--ipo-accent-hover);
+  border: 1px solid var(--ipo-accent-border);
+  color: var(--ipo-accent);
   padding: 3px 8px;
   border-radius: 2px;
   white-space: nowrap;
@@ -4209,7 +4208,7 @@ body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color:
   font-family: var(--font-mono);
   font-size: 14px;
   font-weight: 600;
-  color: var(--ipo-purple);
+  color: var(--ipo-accent);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -4248,9 +4247,9 @@ body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color:
   background: transparent;
 }
 .wizard-step.active {
-  color: var(--ipo-purple);
-  border-color: var(--ipo-purple-border);
-  background: var(--ipo-purple-faint);
+  color: var(--ipo-accent);
+  border-color: var(--ipo-accent-border);
+  background: var(--ipo-accent-faint);
 }
 .wizard-step.completed {
   color: #5aafa5;
@@ -4282,12 +4281,12 @@ body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color:
   transition: border-color 0.15s, background 0.15s;
 }
 .ipo-symbol-btn:hover {
-  border-color: var(--ipo-purple-border);
-  background: var(--ipo-purple-faint);
+  border-color: var(--ipo-accent-border);
+  background: var(--ipo-accent-faint);
 }
 .ipo-symbol-btn.selected {
-  border-color: var(--ipo-purple);
-  background: var(--ipo-purple-hover);
+  border-color: var(--ipo-accent);
+  background: var(--ipo-accent-hover);
 }
 
 /* ── Logo image (custom upload) ── */
@@ -4296,7 +4295,7 @@ img.ipo-logo-img.ipo-sidebar-logo {
   height: 28px;
   object-fit: cover;
   border-radius: 3px;
-  border: 1px solid var(--ipo-purple-border);
+  border: 1px solid var(--ipo-accent-border);
   flex-shrink: 0;
 }
 img.ipo-logo-img.ipo-header-logo {
@@ -4304,7 +4303,7 @@ img.ipo-logo-img.ipo-header-logo {
   height: 32px;
   object-fit: cover;
   border-radius: 3px;
-  border: 1px solid var(--ipo-purple-border);
+  border: 1px solid var(--ipo-accent-border);
   flex-shrink: 0;
 }
 .ipo-logo-upload-zone {
@@ -4356,7 +4355,7 @@ img.ipo-logo-img.ipo-header-logo {
   background: #141410;
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 3px;
-  border-left: 3px solid var(--ipo-purple-border);
+  border-left: 3px solid var(--ipo-accent-border);
 }
 
 .ipo-article-card-header {
@@ -4456,7 +4455,7 @@ img.ipo-logo-img.ipo-header-logo {
 .ipo-ideology-check input[type="checkbox"] {
   width: 12px;
   height: 12px;
-  accent-color: var(--ipo-purple);
+  accent-color: var(--ipo-accent);
 }
 
 /* ── Confirm step ── */

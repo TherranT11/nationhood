@@ -1115,6 +1115,7 @@ async function rescindLaw(activeLawId, policyName, policyId) {
 // ==================== DRAFT MODAL ====================
 
 const FREE_ARTICLE_LIMIT = GAME_CONFIG.FREE_BILL_ARTICLES || 3;
+let _draftArticleLock = false; // Prevents double-fire on async article add/remove
 
 /** Count non-text draft articles (these are the ones that count toward the free limit). */
 function countBillableArticles(articles) {
@@ -1461,6 +1462,7 @@ function onInstSliderChange(instId) {
 }
 
 async function addFundingArticle() {
+    if (_draftArticleLock) return;
     const key = document.getElementById('funding-ministry-select').value;
     if (!key) return;
     const label = FUNDING_MINISTRY_LABELS[key] || key;
@@ -1509,24 +1511,27 @@ async function addFundingArticle() {
     }
 
     // Charge 1 AP if beyond free article limit
-    const canAdd = await chargeArticleAP();
-    if (!canAdd) return;
+    _draftArticleLock = true;
+    try {
+        const canAdd = await chargeArticleAP();
+        if (!canAdd) return;
 
-    draftArticles.push({
-        articleNumber: draftArticles.length + 2,
-        isFunding: true,
-        policy: null,
-        fundingData: {
-            ministry_key: key,
-            ministry_label: label,
-            institutions: instLevels,
-            discretionary: discretionary !== 0 ? discretionary : null
-        }
-    });
-    renderDraftArticles();
-    hideFundingArticleForm();
-    if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
-    updateSubmitButtonCost();
+        draftArticles.push({
+            articleNumber: draftArticles.length + 2,
+            isFunding: true,
+            policy: null,
+            fundingData: {
+                ministry_key: key,
+                ministry_label: label,
+                institutions: instLevels,
+                discretionary: discretionary !== 0 ? discretionary : null
+            }
+        });
+        renderDraftArticles();
+        hideFundingArticleForm();
+        if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
+        updateSubmitButtonCost();
+    } finally { _draftArticleLock = false; }
 }
 
 function addTextArticle() {
@@ -1871,6 +1876,7 @@ function selectPolicyOption(policyId, buttonId) {
 }
 
 async function selectRepealPolicy(policyId) {
+    if (_draftArticleLock) return;
     const policy = allPolicies.find(p => p.id === policyId);
     if (!policy) return;
     // Find the active law for this policy
@@ -1882,26 +1888,30 @@ async function selectRepealPolicy(policyId) {
         return;
     }
     // Charge 1 AP if beyond free article limit
-    const canAdd = await chargeArticleAP();
-    if (!canAdd) return;
-    draftArticles.push({
-        articleNumber: draftArticles.length + 2,
-        policy: policy,
-        isRepeal: true,
-        repealActiveLawId: activeLaw.id,
-        isOpposed: false
-    });
-    renderDraftArticles();
-    hideAddArticleForm();
-    selectedPolicy = null;
-    if (draftArticles.length > 0) {
-        document.getElementById('bill-name-section').style.display = 'block';
-        document.getElementById('submit-bill-btn').disabled = false;
-    }
-    updateSubmitButtonCost();
+    _draftArticleLock = true;
+    try {
+        const canAdd = await chargeArticleAP();
+        if (!canAdd) return;
+        draftArticles.push({
+            articleNumber: draftArticles.length + 2,
+            policy: policy,
+            isRepeal: true,
+            repealActiveLawId: activeLaw.id,
+            isOpposed: false
+        });
+        renderDraftArticles();
+        hideAddArticleForm();
+        selectedPolicy = null;
+        if (draftArticles.length > 0) {
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+        }
+        updateSubmitButtonCost();
+    } finally { _draftArticleLock = false; }
 }
 
 async function addArticle() {
+    if (_draftArticleLock) return;
     const sector = document.getElementById('sector-select').value;
 
     // Foundational article (Electoral Makeup or HoS Title)
@@ -2127,12 +2137,15 @@ async function addArticle() {
 
     if (!selectedPolicy) return;
     // Charge 1 AP if beyond free article limit
-    const canAdd = await chargeArticleAP();
-    if (!canAdd) return;
-    draftArticles.push({ articleNumber: draftArticles.length + 2, policy: selectedPolicy, isOpposed: selectedPolicy.isOpposed || false });
-    renderDraftArticles(); hideAddArticleForm(); selectedPolicy = null;
-    if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
-    updateSubmitButtonCost();
+    _draftArticleLock = true;
+    try {
+        const canAdd = await chargeArticleAP();
+        if (!canAdd) return;
+        draftArticles.push({ articleNumber: draftArticles.length + 2, policy: selectedPolicy, isOpposed: selectedPolicy.isOpposed || false });
+        renderDraftArticles(); hideAddArticleForm(); selectedPolicy = null;
+        if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
+        updateSubmitButtonCost();
+    } finally { _draftArticleLock = false; }
 }
 
 function renderDraftArticles() {
@@ -2343,17 +2356,22 @@ function renderDraftArticles() {
 }
 
 async function removeArticle(index) {
-    const art = draftArticles[index];
-    const wasPaid = !art.isText && isArticlePaid(index);
-    draftArticles.splice(index, 1);
-    draftArticles.forEach((art, i) => { art.articleNumber = i + 2; });
-    // Refund 1 AP if this was a paid article (beyond the free limit)
-    if (wasPaid) await refundArticleAP();
-    renderDraftArticles();
-    // Re-show add buttons (they may have been hidden for foundational bills)
-    _showAllArticleButtons();
-    if (draftArticles.length === 0) { document.getElementById('bill-name-section').style.display = 'none'; document.getElementById('submit-bill-btn').disabled = true; }
-    updateSubmitButtonCost();
+    if (_draftArticleLock) return;
+    _draftArticleLock = true;
+    try {
+        const art = draftArticles[index];
+        if (!art) return;
+        const wasPaid = !art.isText && isArticlePaid(index);
+        draftArticles.splice(index, 1);
+        draftArticles.forEach((art, i) => { art.articleNumber = i + 2; });
+        // Refund 1 AP if this was a paid article (beyond the free limit)
+        if (wasPaid) await refundArticleAP();
+        renderDraftArticles();
+        // Re-show add buttons (they may have been hidden for foundational bills)
+        _showAllArticleButtons();
+        if (draftArticles.length === 0) { document.getElementById('bill-name-section').style.display = 'none'; document.getElementById('submit-bill-btn').disabled = true; }
+        updateSubmitButtonCost();
+    } finally { _draftArticleLock = false; }
 }
 
 async function submitToCommittee() {
