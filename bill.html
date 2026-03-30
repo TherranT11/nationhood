@@ -249,7 +249,8 @@ let _billArticleLock = false; // Prevents double-fire on async article operation
 /** Refund 1 AP to a faction (used when removing paid articles). */
 async function refundArticleAP_bill(factionId) {
     try {
-        await _supabase.rpc('accumulate_ap', { p_faction_id: factionId, p_gain: 1, p_max_ap: GAME_CONFIG.MAX_AP || 20 });
+        const { error } = await _supabase.rpc('accumulate_ap', { p_faction_id: factionId, p_gain: 1, p_max_ap: GAME_CONFIG.MAX_AP || 20 });
+        if (error) console.error('AP refund RPC error:', error);
     } catch (e) { console.error('AP refund error:', e); }
 }
 

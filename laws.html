@@ -1127,13 +1127,19 @@ function countBillableArticles(articles) {
 async function chargeArticleAP() {
     const billableCount = countBillableArticles(draftArticles);
     if (billableCount >= FREE_ARTICLE_LIMIT) {
-        const apResult = await deductAP(_supabase, currentFaction.id, 1);
-        if (!apResult.success) {
-            alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
+        try {
+            const apResult = await deductAP(_supabase, currentFaction.id, 1);
+            if (!apResult.success) {
+                alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
+                return false;
+            }
+            currentFaction.action_points = apResult.newAp;
+            sessionStorage.removeItem('nationhood_state');
+        } catch (e) {
+            console.error('chargeArticleAP error:', e);
+            alert('Failed to deduct AP. Please try again.');
             return false;
         }
-        currentFaction.action_points = apResult.newAp;
-        sessionStorage.removeItem('nationhood_state');
         return true; // paid
     }
     return true; // free
@@ -1155,7 +1161,8 @@ function isArticlePaid(index) {
 /** Refund 1 AP for a paid article removal. */
 async function refundArticleAP() {
     try {
-        await _supabase.rpc('accumulate_ap', { p_faction_id: currentFaction.id, p_gain: 1, p_max_ap: GAME_CONFIG.MAX_AP || 20 });
+        const { error } = await _supabase.rpc('accumulate_ap', { p_faction_id: currentFaction.id, p_gain: 1, p_max_ap: GAME_CONFIG.MAX_AP || 20 });
+        if (error) { console.error('AP refund RPC error:', error); return; }
         currentFaction.action_points = (currentFaction.action_points || 0) + 1;
         sessionStorage.removeItem('nationhood_state');
     } catch (e) { console.error('AP refund error:', e); }
