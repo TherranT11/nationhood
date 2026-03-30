@@ -1475,3 +1475,114 @@
         text-align: center;
     }
 }
+
+/* ═══════════════════════════════════════
+   PUBLICATION SWITCHER
+   ═══════════════════════════════════════ */
+.nws-pub-switcher {
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 2px;
+    background: rgba(255,255,255,0.05);
+    color: inherit;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+}
+.nws-pub-switcher option {
+    background: #1a1a17;
+    color: #e8e4d9;
+}
+
+/* ═══════════════════════════════════════
+   THE CONTINENTAL — Masthead
+   Deep navy institutional design
+   ═══════════════════════════════════════ */
+.nws-top-ribbon--continental {
+    background: #0c1220;
+    color: #8a9cc0;
+    border-bottom-color: rgba(255,255,255,0.06);
+}
+
+.nws-continental-masthead {
+    background: #0c1220;
+    color: #fff;
+    padding: 0;
+}
+.nws-continental-masthead-top {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 10px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.nws-continental-edition {
+    font-family: 'Noto Sans', var(--font-ui, sans-serif);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.5);
+}
+.nws-continental-masthead-main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px 20px 20px;
+    display: flex;
+    flex-direction: column;
+}
+.nws-continental-title {
+    font-family: 'Outfit', var(--font-display, sans-serif);
+    font-size: 44px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: #fff;
+    margin: 0;
+}
+.nws-continental-subtitle {
+    font-family: 'Outfit', var(--font-display, sans-serif);
+    font-weight: 300;
+    opacity: 0.5;
+    font-size: 14px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-top: 4px;
+}
+
+/* Continental nav override */
+.nws-pub-continental .nws-nav {
+    background: #fff;
+    border-bottom: 2px solid #1a1918;
+}
+.nws-pub-continental .nws-nav-item {
+    font-family: 'Outfit', var(--font-display, sans-serif);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #5a5750;
+}
+.nws-pub-continental .nws-nav-item.active {
+    color: #1a1918;
+    border-bottom-color: #c23a22;
+}
+.nws-pub-continental .nws-nav-item:hover {
+    color: #1a1918;
+}
+
+/* Continental ticker override */
+.nws-pub-continental .nws-breaking-bar {
+    background: #1a1918;
+}
+.nws-pub-continental .nws-breaking-label {
+    background: #c23a22;
+}
+
+@media (max-width: 640px) {
+    .nws-continental-title { font-size: 28px; }
+}

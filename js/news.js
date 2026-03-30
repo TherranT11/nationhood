@@ -1,4 +1,4 @@
-// js/news.js — The Cruceran newspaper page
+// js/news.js — The Cruceran & The Continental newspaper pages
 
 import { tickToDate } from './utils.js';
 import { nudgeApproval } from './game/electorate.js';
@@ -14,6 +14,38 @@ let _archiveBackContext = null; // navigation context for article reader back bu
 let _editingArticleId = null; // null = create mode, UUID string = edit mode
 let _removeExistingImage = false; // flag: user wants to drop the current image on edit
 let _isAutocracyNation = false; // detected during init for reward display
+let _publication = 'cruceran'; // 'cruceran' or 'continental'
+
+// Nation-to-publication mapping (data-driven for future expansion)
+const PUBLICATION_CONFIG = {
+    cruceran: {
+        key: 'cruceran',
+        name: 'The Cruceran',
+        tagline: 'Truth in the service of the people',
+        nations: ['Avelia', 'Palvera', 'San Estrella', 'Montequilla', 'Melizea', 'Sangreza'],
+        style: 'cruceran' // CSS class prefix
+    },
+    continental: {
+        key: 'continental',
+        name: 'The Continental',
+        tagline: 'Where Ideas Converge',
+        nations: ['Calveth'],
+        style: 'continental'
+    }
+};
+
+function getPublicationForNation(nationName) {
+    for (const [key, cfg] of Object.entries(PUBLICATION_CONFIG)) {
+        if (cfg.nations.some(n => n.toLowerCase() === (nationName || '').toLowerCase())) return key;
+    }
+    return 'cruceran'; // fallback
+}
+
+function canWriteToPublication(pubKey, nationName) {
+    const cfg = PUBLICATION_CONFIG[pubKey];
+    if (!cfg) return false;
+    return cfg.nations.some(n => n.toLowerCase() === (nationName || '').toLowerCase());
+}
 
 // Season key for quarterly issue grouping
 // Spring: Feb(1), Mar(2), Apr(3)  Summer: May(4), Jun(5), Jul(6)
@@ -49,20 +81,41 @@ export async function initNewspaper(supabase, state) {
     const root = document.getElementById('newspaper-root');
     if (!root) return;
 
-    const gameDate = state.shard?.current_date || '[Month], [Year]';
+    // Set default publication based on player's nation
+    _publication = getPublicationForNation(state.nation?.name);
 
-    root.innerHTML = `<div class="newspaper-container">
+    const gameDate = state.shard?.current_date || '[Month], [Year]';
+    const pubCfg = PUBLICATION_CONFIG[_publication];
+    const canWrite = canWriteToPublication(_publication, state.nation?.name);
+
+    // Publication switcher options
+    const pubSwitcher = Object.entries(PUBLICATION_CONFIG).map(([key, cfg]) =>
+        `<option value="${key}" ${key === _publication ? 'selected' : ''}>${cfg.name}</option>`
+    ).join('');
+
+    root.innerHTML = `<div class="newspaper-container nws-pub-${_publication}">
 
         <!-- TOP RIBBON -->
-        <div class="nws-top-ribbon">
+        <div class="nws-top-ribbon${_publication === 'continental' ? ' nws-top-ribbon--continental' : ''}">
             <div class="nws-top-ribbon-inner">
                 <span>${gameDate}</span>
-                <span class="nws-edition">The Cruceran &mdash; Continental Edition</span>
-                <button class="nws-write-btn" id="nws-write-article-btn">Write Article</button>
+                <select class="nws-pub-switcher" id="nws-pub-switcher">${pubSwitcher}</select>
+                ${canWrite ? '<button class="nws-write-btn" id="nws-write-article-btn">Write Article</button>' : ''}
             </div>
         </div>
 
-        <!-- MASTHEAD -->
+        ${_publication === 'continental' ? `
+        <!-- CONTINENTAL MASTHEAD -->
+        <div class="nws-continental-masthead">
+            <div class="nws-continental-masthead-top">
+                <span class="nws-continental-edition">Continental Edition</span>
+            </div>
+            <div class="nws-continental-masthead-main">
+                <h1 class="nws-continental-title">The Continental</h1>
+                <span class="nws-continental-subtitle">Independent Journalism for Meridia</span>
+            </div>
+        </div>` : `
+        <!-- CRUCERAN MASTHEAD -->
         <div class="nws-masthead">
             <div class="nws-masthead-top">
                 <div class="nws-masthead-meta">
@@ -78,7 +131,7 @@ export async function initNewspaper(supabase, state) {
             <hr class="nws-masthead-rule">
             <div class="nws-rule-ornament">&mdash; &#10022; &mdash;</div>
             <div class="nws-masthead-tagline">&ldquo;Truth in the service of the people&rdquo;</div>
-        </div>
+        </div>`}
 
         <!-- NAV -->
         <nav class="nws-nav">
@@ -351,6 +404,15 @@ export async function initNewspaper(supabase, state) {
     bindArchivesNav(root);
     bindCategoryNav(root);
 
+    // Publication switcher
+    const pubSwitcherEl = document.getElementById('nws-pub-switcher');
+    if (pubSwitcherEl) {
+        pubSwitcherEl.addEventListener('change', () => {
+            _publication = pubSwitcherEl.value;
+            initNewspaper(_supabase, _state); // full re-render with new publication
+        });
+    }
+
     // Update reward badge text based on government type
     const rewardBadge = document.getElementById('nws-reward-badge');
     if (rewardBadge) {
@@ -599,7 +661,8 @@ function bindSubmitHandler() {
                         category: category,
                         image_url: imageUrl,
                         status: 'published',
-                        published_tick: shard?.current_tick || 0
+                        published_tick: shard?.current_tick || 0,
+                        publication: _publication
                     });
 
                 if (error) throw error;
@@ -997,12 +1060,21 @@ async function loadAndDisplayArticles() {
     try {
         const nationIds = await getShardNationIds();
 
-        const { data: articles, error } = await _supabase
+        // Filter by publication — articles without the column default to 'cruceran'
+        let query = _supabase
             .from('player_articles')
             .select('*')
             .in('nation_id', nationIds)
             .eq('status', 'published')
             .order('created_at', { ascending: false });
+        // Once the publication column exists, filter by it
+        if (_publication !== 'cruceran') {
+            query = query.eq('publication', _publication);
+        } else {
+            // Include articles with no publication set (legacy) or explicitly 'cruceran'
+            query = query.or('publication.eq.cruceran,publication.is.null');
+        }
+        const { data: articles, error } = await query;
 
         if (error) {
             console.error('[News] Failed to load articles:', error);
