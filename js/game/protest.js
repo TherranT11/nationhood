@@ -1006,6 +1006,17 @@ export async function callOffProtest(supabase, factionId, protestId, currentTick
 // ==================== ARTICLE DISPATCH HELPER ====================
 
 const PROTEST_HEADLINE_POOLS = {
+    protest_fizzle: [
+        'Protest Falls Flat — Organisers Lose Credibility',
+        'Attempted Protest Fizzles as Turnout Disappoints',
+        'Opposition Protest Fails to Materialise',
+    ],
+    protest_resolved: [
+        'Protest Rocks the Capital',
+        'Mass Demonstration Pressures Government',
+        'Protest Movement Gains Traction',
+        'Citizens Take to the Streets in Large Numbers',
+    ],
     protest_epo_resolved: [
         'Government Crackdown Ends Protest Crisis',
         'Enforce Public Order Succeeds: Protest Dispersed by Authorities',
@@ -1702,6 +1713,19 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
             roll_breakdown: { ...breakdown, joint_bonus: jointBonus, endorsements: endorsementCount },
             effects_applied: appliedEffects,
         }).eq('id', protestId);
+
+        // Fire event + article for Tier 1-5 outcomes
+        const tierLabel = getTierLabel(tier);
+        const headline = tier <= 2
+            ? pickHeadline('protest_fizzle')
+            : pickHeadline('protest_resolved');
+        const lede = tier <= 2
+            ? `A protest organised in ${nationStats.name || 'the nation'} fizzled at ${tierLabel}. The organisers lost credibility.`
+            : `A ${tierLabel} protest rocked ${nationStats.name || 'the nation'}. Government approval took a hit.`;
+        dispatchProtestArticle(supabase, nationId, tier <= 2 ? 'protest_fizzle' : 'protest_resolved', headline, lede, tier <= 2 ? 1 : 2, currentTick, protestId);
+        fireProtestEvent(supabase, nationId, tier <= 2 ? 'protest:fizzle' : 'protest:resolved', currentTick, {
+            protest_id: protestId, tier, tier_label: tierLabel
+        });
     } else {
         // Crisis tiers: update scores but keep status as crisis_active
         await supabase.from('protest_log').update({
