@@ -14952,8 +14952,13 @@ async function sendIPOChat() {
         }).select();
 
         if (error) {
-            console.error('[IPO Chat] Send error:', error.message);
+            console.error('[IPO Chat] Send error:', error.message, error.code, error.details);
             input.value = text; // restore on failure
+            alert('Message failed to send: ' + error.message);
+        } else if (!data || data.length === 0) {
+            console.error('[IPO Chat] Send returned no data — RLS may have blocked the insert');
+            input.value = text;
+            alert('Message may not have been saved. Please try again.');
         } else {
             // Optimistic UI update — show the message immediately rather than
             // waiting for the realtime subscription (which requires the table
