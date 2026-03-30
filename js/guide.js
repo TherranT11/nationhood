@@ -1322,6 +1322,157 @@ const guideContent = {
 </table>
 <p><em>Tip: If bilateral trade talks are already open with a nation, some actions cost 1 AP less.</em></p>
 </div></details>
+
+<details><summary>Trade Agreements Overview</summary><div>
+<p>Trade agreements are negotiated between two nations (or enacted unilaterally) through the <strong>Minister of Trade</strong>. There are 6 types:</p>
+
+<table>
+<tr><th>Type</th><th>Abbr.</th><th>Bilateral?</th><th>Description</th></tr>
+<tr><td><strong>Free Trade Agreement</strong></td><td>FTA</td><td>Yes</td><td>Eliminates all tariffs between two nations. You can carve out sector exemptions.</td></tr>
+<tr><td><strong>Preferential Tariff</strong></td><td>PTA</td><td>Yes</td><td>Reduces tariffs on specific sectors. Each side can negotiate different reduction percentages.</td></tr>
+<tr><td><strong>Resource Supply Contract</strong></td><td>RSC</td><td>Yes</td><td>Guaranteed purchase commitment for raw resources (Fuel, Minerals, or Food). Sets price terms and optional breach penalties.</td></tr>
+<tr><td><strong>Export Subsidy</strong></td><td>ES</td><td>No</td><td>Unilateral &mdash; subsidize your own exporters (5-30%) to boost competitiveness. Costs your treasury.</td></tr>
+<tr><td><strong>Economic Aid</strong></td><td>AID</td><td>Yes</td><td>Financial assistance from donor to recipient. Can attach conditions (governance, economic, or social benchmarks).</td></tr>
+<tr><td><strong>Retaliatory Tariff</strong></td><td>RT</td><td>No</td><td>Unilateral &mdash; impose a surcharge (5-50%) on imports from a specific nation. Damages relations.</td></tr>
+</table>
+
+<h3>Credit Rating Requirements</h3>
+<p>Your nation needs a minimum credit rating to propose certain agreements:</p>
+<ul>
+<li><strong>FTA</strong> &mdash; Credit &ge; 25</li>
+<li><strong>PTA</strong> &mdash; Credit &ge; 10</li>
+<li><strong>RSC</strong> &mdash; Credit &ge; 15</li>
+<li><strong>Aid (as donor)</strong> &mdash; Credit &ge; 20</li>
+<li><strong>Export Subsidy / Retaliatory Tariff</strong> &mdash; No requirement</li>
+</ul>
+
+<h3>Tradeable Sectors</h3>
+<p>Six sectors can appear in trade agreements:</p>
+<ol>
+<li>Fuel &amp; Energy</li>
+<li>Minerals &amp; Raw Materials</li>
+<li>Food &amp; Agriculture</li>
+<li>Manufactured Goods</li>
+<li>Technology &amp; Electronics</li>
+<li>Arms &amp; Military Equipment</li>
+</ol>
+<p><em>Tourism and Services &amp; Finance exist as export sectors in the economy but cannot be included in trade agreements.</em></p>
+</div></details>
+
+<details><summary>Trade Negotiation Lifecycle</summary><div>
+<p>Bilateral trade agreements (FTA, PTA, RSC, Aid) follow this lifecycle:</p>
+
+<ol>
+<li><strong>Propose</strong> (2 AP) &mdash; The MoT, FM, or Ambassador opens a negotiation with a target nation. Choose the agreement type.</li>
+<li><strong>Counterpart Joins</strong> &mdash; The other nation's MoT, FM, or Ambassador must join the negotiation. If nobody joins within the time limit, talks expire.</li>
+<li><strong>Draft Articles</strong> &mdash; Both sides add articles (duration, sector terms, conditions). Either side can add or modify articles.</li>
+<li><strong>Close Negotiations</strong> &mdash; When both sides are satisfied, either party can close the negotiation.</li>
+<li><strong>Ratification</strong> &mdash; A ratification bill is created in <em>both</em> parliaments. Each legislature votes for 6 ticks.</li>
+<li><strong>Activation</strong> &mdash; If both parliaments pass the bill, the agreement becomes active. If either rejects it, the agreement fails.</li>
+</ol>
+
+<h3>Timing</h3>
+<ul>
+<li>Negotiations expire after <strong>4 ticks</strong> by default.</li>
+<li>Negotiations can be extended up to <strong>3 times</strong> (+12 ticks each, max ~40 ticks total).</li>
+<li>Ratification voting lasts <strong>6 ticks</strong>.</li>
+</ul>
+
+<h3>Unilateral Actions</h3>
+<p><strong>Export Subsidies</strong> and <strong>Retaliatory Tariffs</strong> skip the negotiation phase. The MoT drafts articles and they take effect immediately (no parliamentary ratification needed).</p>
+
+<h3>Agreement Duration</h3>
+<p>Every agreement requires a Duration article:</p>
+<ul>
+<li><strong>Permanent</strong> &mdash; lasts until one side withdraws (with notice period).</li>
+<li><strong>Fixed term</strong> &mdash; 8 to 48 ticks depending on type. Can optionally auto-renew.</li>
+<li><strong>Withdrawal notice</strong> &mdash; 1 to 6 ticks advance notice required to withdraw early.</li>
+</ul>
+</div></details>
+
+<details><summary>Minor Diplomatic Initiatives</summary><div>
+<p>Minor initiatives are <strong>Tier 1</strong> proposals drafted by an <strong>Ambassador</strong> (2 AP). They bundle one or more articles and are sent to the target nation. The target's Ambassador, FM, or HoG can accept directly &mdash; no parliamentary vote needed.</p>
+
+<h3>Article Types</h3>
+
+<h4>Visa Agreement</h4>
+<p>Establishes visa-free travel between nations. Configurable options:</p>
+<ul>
+<li><strong>Duration:</strong> 30, 90, or 180 days</li>
+<li><strong>Scope:</strong> Tourism Only, Tourism + Business, or All Purposes</li>
+<li><strong>Direction:</strong> Reciprocal, One-way (Our Citizens), or One-way (Their Citizens)</li>
+<li><strong>Excludes:</strong> Can carve out Work Permits, Residency, or Diplomatic Staff</li>
+</ul>
+<p><em>Effects:</em> Improves relations (+6 base), generates tourism revenue, increases international reputation. Broader scope and longer duration amplify effects but may increase immigration and polarization.</p>
+
+<h4>Cultural Exchange</h4>
+<p>Soft power programme (Artist Exchange, Museum Exhibits, Film Festival, etc.):</p>
+<ul>
+<li><strong>Duration:</strong> 1 Year, 2 Years, or Permanent (with ongoing cost)</li>
+<li><strong>Funding:</strong> 50/50, 60/40 We Pay More, or 60/40 They Pay More</li>
+</ul>
+<p><em>Effects:</em> Improves relations (+4 base), boosts international reputation and soft power.</p>
+
+<h4>Student Exchange</h4>
+<p>University exchange programme:</p>
+<ul>
+<li><strong>Seats:</strong> 50&ndash;500 students (diminishing returns above 200)</li>
+<li><strong>Level:</strong> Undergraduate, Graduate, or Both</li>
+<li><strong>Duration:</strong> 1 Semester (6 ticks), Full Year (12), or Full Degree (36+)</li>
+<li><strong>Field:</strong> Sciences, Engineering, Medicine, Humanities, Law, or Economics</li>
+<li><strong>Funding:</strong> Host Pays, Split, or Sender Pays</li>
+</ul>
+<p><em>Effects:</em> Improves relations (+3 base), boosts higher education. Graduate + Sciences/Engineering fields grant a bonus to Technology.</p>
+
+<h4>Joint Statement</h4>
+<p>A public or private declaration between two nations. Purely diplomatic &mdash; no mechanical stat effects, but can signal alignment:</p>
+<ul>
+<li><strong>Visibility:</strong> Public (visible to all) or Private (only signatories see it)</li>
+</ul>
+</div></details>
+
+<details><summary>Major Diplomatic Initiatives</summary><div>
+<p>Major initiatives are <strong>Tier 3</strong> proposals drafted by the <strong>Foreign Minister</strong> (2 AP). They require <strong>bilateral parliamentary ratification</strong> &mdash; both nations' legislatures must pass the agreement within 6 ticks.</p>
+
+<p><em>If a Major initiative fails ratification, you must wait <strong>8 ticks</strong> before re-proposing the same type.</em></p>
+
+<h3>Article Types</h3>
+
+<h4>Open Borders Agreement</h4>
+<p>Freedom of movement between nations. The most impactful treaty type:</p>
+<ul>
+<li><strong>Scope:</strong> Full Freedom (entry + work + residency + settlement), Work &amp; Residency Only, or Labor Mobility Only</li>
+<li><strong>Direction:</strong> Reciprocal or One-way</li>
+<li><strong>Worker Protections:</strong> Enhanced (minimum wage, anti-exploitation, pension portability), Standard, or None</li>
+<li><strong>Transition:</strong> Immediate (unrest spike), 6-Tick Phased, or 12-Tick Gradual</li>
+</ul>
+<p><em>Effects:</em> Large relations boost (+8 base), GDP growth, labor force participation. Also increases immigration, civil unrest, polarization, and cost of living. Enhanced protections cost more but reduce exploitation.</p>
+<p><strong>Sovereignty cost:</strong> Full Open Borders blocks domestic IMMIGRATION and LABOR policy changes. Work/Labor Mobility blocks LABOR policies.</p>
+
+<h4>Mutual Extradition Treaty</h4>
+<p>Criminal extradition agreement:</p>
+<ul>
+<li><strong>Scope:</strong> Serious Crimes Only, All Criminal Offenses, or Political Offenses Included</li>
+<li><strong>Dual Criminality:</strong> Required (must be a crime in both nations) or Waived</li>
+<li><strong>Appeal Process:</strong> Full Judicial Review, Expedited Review, or None</li>
+<li><strong>Exceptions:</strong> Death Penalty Cases, Military Offenses, Financial Crimes</li>
+</ul>
+<p><em>Effects:</em> Improves relations (+6 base), reduces crime and corruption. Including political offenses increases repression risk.</p>
+<p><strong>Sovereignty cost:</strong> Including Political Offenses blocks domestic GOVERNANCE policy changes.</p>
+
+<h4>Bilateral Environmental Accord</h4>
+<p>Environmental commitments with real enforcement:</p>
+<ul>
+<li><strong>Emission Targets:</strong> Modest (&minus;5%), Moderate (&minus;15%), or Ambitious (&minus;25%)</li>
+<li><strong>Renewable Energy Targets:</strong> 25%, 40%, or 60% minimum</li>
+<li><strong>Pollution Standards:</strong> Advisory, Binding, or Strict</li>
+<li><strong>Conservation:</strong> Forest, Marine, Wetland, Biodiversity (pick any combination)</li>
+<li><strong>Review Interval:</strong> 6, 12, or 24 ticks</li>
+<li><strong>Penalty for Non-Compliance:</strong> Warning, Financial, or Sanctions</li>
+</ul>
+<p><em>Effects:</em> Improves relations (+5 base), boosts environmental index and international reputation. Stricter targets are costlier but more effective.</p>
+<p><strong>Sovereignty cost:</strong> Strict/Binding pollution standards block domestic ENERGY policy changes.</p>
+</div></details>
 `
     }
 };
