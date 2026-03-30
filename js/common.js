@@ -388,7 +388,8 @@ export function renderTopBar(activeTab) {
                 </div>
             </div>
             <div class="top-bar-right">
-                <a href="how-to.html" class="guide-btn" style="text-decoration:none;">HOW TO</a>
+                <button class="guide-btn" id="guide-btn" title="Page Guide" style="display:none;"></button>
+                ${activeTab === 'home' ? '<a href="how-to.html" class="guide-btn" style="text-decoration:none;">HOW TO</a>' : ''}
                 <div class="faction-switcher" id="faction-switcher">
                     <span class="party-badge" id="party-badge" onclick="toggleFactionDropdown()" style="cursor:pointer;">--</span>
                     <div class="faction-dropdown" id="faction-dropdown"></div>
@@ -811,8 +812,7 @@ export function updateTopBarInfo(faction, shard, nation) {
     const apEl = document.getElementById('topbar-ap');
     if (apEl && faction) {
         const ap = faction.action_points ?? 0;
-        apEl.innerHTML = '<span class="topbar-ap__count" onclick="toggleApLedger(event)" style="cursor:pointer;">' + ap + ' AP</span>'
-            + '<div class="ap-ledger-dropdown" id="ap-ledger-dropdown"></div>';
+        renderApDisplay(apEl, ap);
     }
     
     const nationFlag = document.getElementById('nation-flag');
@@ -895,10 +895,7 @@ export async function refreshAP(factionId) {
 
         // Update topbar — preserve the AP ledger dropdown
         const apEl = document.getElementById('topbar-ap');
-        if (apEl) {
-            apEl.innerHTML = '<span class="topbar-ap__count" onclick="toggleApLedger(event)" style="cursor:pointer;">' + ap + ' AP</span>'
-                + '<div class="ap-ledger-dropdown" id="ap-ledger-dropdown"></div>';
-        }
+        if (apEl) renderApDisplay(apEl, ap);
 
         // Sync session cache so page navigations show correct AP
         try {
@@ -915,6 +912,11 @@ export async function refreshAP(factionId) {
 
         return ap;
     } catch (e) { console.warn('[refreshAP] Failed:', e); }
+}
+
+function renderApDisplay(el, ap) {
+    el.innerHTML = '<span class="topbar-ap__count" onclick="toggleApLedger(event)" style="cursor:pointer;">' + ap + ' AP</span>'
+        + '<div class="ap-ledger-dropdown" id="ap-ledger-dropdown"></div>';
 }
 
 // ===== AP LEDGER DROPDOWN =====
