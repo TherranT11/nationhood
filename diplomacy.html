@@ -8096,15 +8096,25 @@ async function acceptProposal(proposalId) {
         return;
     }
 
-    // Authorization: caller must be target nation's ambassador to proposer, FM, HoG, or MoT (trade only)
+    // Authorization: caller must be from a nation involved in this proposal with an appropriate role
     await refreshRoles();
-    const isTargetNation = proposal.target_nation_id === currentNation.id;
-    const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
-    // MoT can accept trade agreements and proposals with trade articles
     const pd0 = proposal.proposal_data || {};
+    const isTargetNation = proposal.target_nation_id === currentNation.id;
+    const isProposingNation = proposal.proposing_nation_id === currentNation.id;
+    // Proposer can accept when reviewing a counter-proposal (status=revised, revised by the other side)
+    const revisedByOtherSide = proposal.status === 'revised' &&
+        (pd0.revised_by_nation_id ? pd0.revised_by_nation_id !== currentNation.id : isProposingNation);
+    const isInvolvedNation = isTargetNation || (isProposingNation && revisedByOtherSide);
+    if (!isInvolvedNation) {
+        alert('You are not authorized to accept this proposal.');
+        return;
+    }
+    // Role check: ambassador to the other party, FM, HoG, or MoT (trade only)
+    const otherNationId = isTargetNation ? proposal.proposing_nation_id : proposal.target_nation_id;
+    const isAmbToOther = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === otherNationId);
     const isTradeLike = proposal.proposal_type === 'trade_agreement' || pd0.agreement_type;
     const isMoTForTrade = isTradeLike && diplomaticRoles.isMoT;
-    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !isMoTForTrade)) {
+    if (!isAmbToOther && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !isMoTForTrade) {
         alert('You are not authorized to accept this proposal.');
         return;
     }
@@ -8260,12 +8270,20 @@ async function rejectProposal(proposalId) {
         return;
     }
 
-    // Authorization: caller must be target nation's ambassador to proposer, FM, HoG, or MoT (for trade)
+    // Authorization: caller must be from a nation involved in this proposal with an appropriate role
     await refreshRoles();
     const isTargetNation = proposal.target_nation_id === currentNation.id;
-    const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
+    const isProposingNation = proposal.proposing_nation_id === currentNation.id;
+    // Proposer can reject when reviewing a counter-proposal (status=revised, revised by the other side)
+    const isInvolvedNation = isTargetNation || (isProposingNation && proposal.status === 'revised');
+    if (!isInvolvedNation) {
+        alert('You are not authorized to reject this proposal.');
+        return;
+    }
+    const otherNationId = isTargetNation ? proposal.proposing_nation_id : proposal.target_nation_id;
+    const isAmbToOther = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === otherNationId);
     const isMoTForTrade = proposal.proposal_type === 'trade_agreement' && diplomaticRoles.isMoT;
-    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !isMoTForTrade)) {
+    if (!isAmbToOther && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !isMoTForTrade) {
         alert('You are not authorized to reject this proposal.');
         return;
     }
@@ -8316,11 +8334,21 @@ async function strikeArticles(proposalId) {
 
     if (!proposal) { alert('Could not load proposal.'); return; }
 
-    // Authorization: caller must be target nation's ambassador to proposer, or FM/HoG
+    // Authorization: caller must be from a nation involved in this proposal with an appropriate role
     await refreshRoles();
     const isTargetNation = proposal.target_nation_id === currentNation.id;
-    const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
-    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG)) {
+    const isProposingNation = proposal.proposing_nation_id === currentNation.id;
+    const isInvolvedNation = isTargetNation || (isProposingNation && proposal.status === 'revised');
+    if (!isInvolvedNation) {
+        alert('You are not authorized to revise this proposal.');
+        return;
+    }
+    const otherNationId = isTargetNation ? proposal.proposing_nation_id : proposal.target_nation_id;
+    const isAmbToOther = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === otherNationId);
+    const pd0 = proposal.proposal_data || {};
+    const isTradeLike = proposal.proposal_type === 'trade_agreement' || pd0.agreement_type;
+    const isMoTForTrade = isTradeLike && diplomaticRoles.isMoT;
+    if (!isAmbToOther && !diplomaticRoles.isFM && !diplomaticRoles.isHoG && !isMoTForTrade) {
         alert('You are not authorized to revise this proposal.');
         return;
     }
