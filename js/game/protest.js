@@ -1088,14 +1088,13 @@ export async function executePublicAddress(supabase, factionId, nationId, protes
         return { success: false, error: 'Public Address is only available during Tier 6/7 crises.' };
     }
 
-    // ── 2. Check faction is governing ──
+    // ── 2. Check faction is PM/President (lead party only) ──
     const coalition = await fetchActiveCoalition(supabase, nationId);
-    const coalitionIds = new Set(coalition?.party_ids || []);
     const { data: nationRow } = await supabase
         .from('nations').select('ruling_faction_id').eq('id', nationId).single();
-    const isGoverning = coalitionIds.has(factionId) || nationRow?.ruling_faction_id === factionId;
-    if (!isGoverning) {
-        return { success: false, error: 'Only governing parties can issue a Public Address.' };
+    const isLeadParty = coalition?.lead_party_id === factionId || nationRow?.ruling_faction_id === factionId;
+    if (!isLeadParty) {
+        return { success: false, error: 'Only the Prime Minister or President can issue a Public Address.' };
     }
 
     // ── 3. Cooldown check ──
@@ -1514,26 +1513,25 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
     let tier = getTurnoutTier(turnoutScore);
     tier = checkEscalationPath(tier, turnoutScore, historyForEscalation, currentTick);
 
-    // Gate Tier 6/7 based on nation conditions
+    // Gate Tier 6/7 based on active crisis count + 50% chance roll.
+    // T6 requires 1+ active crisis. T7 requires 3+ active crises.
     if (tier >= 6) {
         const { data: activeCrises } = await supabase
             .from('active_crises')
             .select('id')
             .eq('nation_id', nationId);
         const crisisCount = (activeCrises || []).length;
-        const stability = Number(nationStats.stability ?? 50);
-        const polarization = Number(nationStats.polarization ?? 0);
 
-        // Tier 7: requires 2+ crises AND (stability < 30 OR polarization > 80)
         if (tier >= 7) {
-            if (crisisCount < 2 || (stability >= 30 && polarization <= 80)) {
-                tier = 6;
+            // T7: needs 3+ crises AND 50% chance
+            if (crisisCount < 3 || Math.random() >= 0.5) {
+                tier = 6; // downgrade to T6 check
             }
         }
-        // Tier 6: requires 1+ crisis AND (stability < 50 OR polarization > 80)
         if (tier >= 6) {
-            if (crisisCount < 1 || (stability >= 50 && polarization <= 80)) {
-                tier = 5;
+            // T6: needs 1+ crisis AND 50% chance
+            if (crisisCount < 1 || Math.random() >= 0.5) {
+                tier = 5; // downgrade to T5
             }
         }
     }
@@ -1597,7 +1595,10 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
     let crisisCreated = false;
     if (effects.isCrisis) {
         const crisisId = tier === 6 ? PROTEST_CONFIG.TIER6_CRISIS_ID : PROTEST_CONFIG.TIER7_CRISIS_ID;
-        let duration = tier === 6 ? PROTEST_CONFIG.TIER6_DURATION : PROTEST_CONFIG.TIER7_DURATION;
+        // T6 fizzles after 1d6 ticks, T7 after 1d12 ticks
+        let duration = tier === 6
+            ? (1 + Math.floor(Math.random() * 6))    // 1d6: 1-6 ticks
+            : (1 + Math.floor(Math.random() * 12));   // 1d12: 1-12 ticks
 
         // Leader trait: Crisis Manager (-2 ticks) / Panic Under Pressure (+2 ticks)
         // Applied to the ruling faction's leader (the one enduring the crisis)

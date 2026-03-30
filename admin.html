@@ -2869,18 +2869,22 @@ window.deleteScConnection = deleteScConnection;
 // ==================== STAT AUDIT TAB ====================
 
 async function initStatAudit() {
+    const nSel = document.getElementById('sa-nation-select');
+    const sSel = document.getElementById('sa-stat-select');
+    if (!nSel || !sSel) return; // Panel not loaded yet
+
     // Populate nation dropdown
     const { data: nats } = await _supabase.from('nations').select('id, name').order('name');
-    const nSel = document.getElementById('sa-nation-select');
     nSel.innerHTML = (nats || []).map(n => `<option value="${n.id}">${n.name}</option>`).join('');
 
     // Populate stat dropdown from NATION_STAT_COLUMNS
-    const sSel = document.getElementById('sa-stat-select');
     sSel.innerHTML = NATION_STAT_COLUMNS
         .map(s => `<option value="${s}"${s === 'education_accessibility' ? ' selected' : ''}>${formatStatName(s)}</option>`)
         .join('');
 }
-initStatAudit();
+// Wait for admin panel to load before populating dropdowns
+if (document.getElementById('sa-nation-select')) initStatAudit();
+else document.addEventListener('admin-panel-loaded', initStatAudit);
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 

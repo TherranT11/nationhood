@@ -101,16 +101,15 @@ initPage('economy', async function(state) {
 
 // ==================== PREVIOUS TICK DATA ====================
 async function loadPreviousTickData(nationId) {
+    // Load current tick first so the cache key is correct
+    var res = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    if (!res.data) return;
+    currentTick = res.data.current_tick;
+
     var cacheKey = 'prev_tick_econ_' + nationId + '_t' + currentTick;
     var cached = qCache(cacheKey);
     if (cached) { previousTickData = cached; return; }
 
-    var res = await _supabase.from('shard').select('current_tick, current_date').eq('name', 'Alpha Shard').single();
-    if (!res.data) return;
-
-    currentTick = res.data.current_tick;
-    if (res.data.current_date) {
-    }
     var previousTick = currentTick - 1;
     if (previousTick < 0) return;
 
@@ -1005,7 +1004,7 @@ function renderOverviewTab(nation) {
     h += '<div class="econ-cards-row econ-cards-4">';
 
     var gdpGrowth = Number(nation.gdp_growth) || 50;
-    var growthPct = ((gdpGrowth - 50) / 50) * 1;
+    var growthPct = (gdpGrowth - 50) / 50;
     var growthDisplay = (growthPct >= 0 ? '+' : '') + growthPct.toFixed(2) + '%';
     var gdpGrowthSub = getTrendArrow('gdp_growth', gdpGrowth, false);
     if (tradeData && tradeData.summary) {
@@ -1613,16 +1612,16 @@ function renderBudgetTab(nation) {
     // --- Summary bar: 3 cards ---
     h += '<div class="bv2-summary-bar">';
     h += '<div class="bv2-card">';
-    h += '<div class="bv2-card-label" style="color:#5cb85c;">REVENUE</div>';
+    h += '<div class="bv2-card-label" style="color:var(--green);">REVENUE</div>';
     h += '<div class="bv2-card-value">' + formatBudgetCurrency(budget.grossRevenue) + '</div>';
     h += '</div>';
     h += '<div class="bv2-card">';
-    h += '<div class="bv2-card-label" style="color:#d9534f;">EXPENDITURES</div>';
+    h += '<div class="bv2-card-label" style="color:var(--red);">EXPENDITURES</div>';
     h += '<div class="bv2-card-value">' + formatBudgetCurrency(totalExpenditure) + '</div>';
     h += '</div>';
     h += '<div class="bv2-card">';
-    h += '<div class="bv2-card-label" style="color:' + (isDeficit ? '#d9534f' : '#5cb85c') + ';">' + (isDeficit ? 'DEFICIT' : 'SURPLUS') + '</div>';
-    h += '<div class="bv2-card-value" style="color:' + (isDeficit ? '#d9534f' : '#5cb85c') + ';">' + balSign + formatBudgetCurrency(balance) + '</div>';
+    h += '<div class="bv2-card-label" style="color:' + (isDeficit ? 'var(--red)' : 'var(--green)') + ';">' + (isDeficit ? 'DEFICIT' : 'SURPLUS') + '</div>';
+    h += '<div class="bv2-card-value" style="color:' + (isDeficit ? 'var(--red)' : 'var(--green)') + ';">' + balSign + formatBudgetCurrency(balance) + '</div>';
     h += '</div>';
     h += '</div>';
 
@@ -1636,8 +1635,8 @@ function renderBudgetTab(nation) {
     // LEFT: Revenues
     h += '<div class="bv2-col">';
     h += '<div class="bv2-col-header">';
-    h += '<span class="bv2-col-title" style="color:#5cb85c;">REVENUES</span>';
-    h += '<span class="bv2-col-total" style="color:#5cb85c;">Total: ' + formatBudgetCurrency(budget.grossRevenue) + ' / yr</span>';
+    h += '<span class="bv2-col-title" style="color:var(--green);">REVENUES</span>';
+    h += '<span class="bv2-col-total" style="color:var(--green);">Total: ' + formatBudgetCurrency(budget.grossRevenue) + ' / yr</span>';
     h += '</div>';
 
     h += bv2RevenueRow('INCOME TAX', Math.round(Number(nation.income_tax || 0)) + '% rate · Income bracket', budget.incomeRevenue);
@@ -1660,8 +1659,8 @@ function renderBudgetTab(nation) {
     // RIGHT: Expenditures
     h += '<div class="bv2-col">';
     h += '<div class="bv2-col-header">';
-    h += '<span class="bv2-col-title" style="color:#d9534f;">EXPENDITURES &mdash; MINISTRY COSTS</span>';
-    h += '<span class="bv2-col-total" style="color:#d9534f;">Total: ' + formatBudgetCurrency(totalExpenditure) + ' / yr</span>';
+    h += '<span class="bv2-col-title" style="color:var(--red);">EXPENDITURES &mdash; MINISTRY COSTS</span>';
+    h += '<span class="bv2-col-total" style="color:var(--red);">Total: ' + formatBudgetCurrency(totalExpenditure) + ' / yr</span>';
     h += '</div>';
 
     // Sort ministries by cost descending
@@ -1696,7 +1695,7 @@ function renderBudgetTab(nation) {
     h += '</div>'; // .bv2-breakdown
 
     // --- Net balance box ---
-    var netColor = isDeficit ? '#d9534f' : '#5cb85c';
+    var netColor = isDeficit ? 'var(--red)' : 'var(--green)';
     var netIcon = isDeficit ? '&#9660;' : '&#9650;'; // Down arrow for deficit, up for surplus
     var netLabel = isDeficit ? 'DEFICIT' : 'SURPLUS';
     h += '<div class="bv2-net-box" style="border-color:' + netColor + ';">';

@@ -601,6 +601,14 @@ const MINISTRY_ACTIONS = {
                 desc: 'Fund the repair, resurfacing, and upkeep of existing road and highway networks nationally.',
                 apCosts: [2, 3, 5, 7],
                 oneTimeCostPerMillion: 6_000_000,
+                // Dynamic cost: road-heavy nations (high physical_infrastructure, low rail_network) pay more
+                dynamicCostFn: function(pop) {
+                    const physInfra = Number(currentNation?.physical_infrastructure || 50);
+                    const rail = Number(currentNation?.rail_network || 50);
+                    const differential = Math.max(0, physInfra - rail);
+                    const scalingFactor = 1 + (differential / 100);
+                    return Math.round((pop / 1_000_000) * 6_000_000 * scalingFactor);
+                },
                 delay: 1,
                 duration: 8,
                 decayTicks: 4,
@@ -796,8 +804,10 @@ window.cancelMinistryAction = cancelMinistryAction;
 
 // ==================== SHARED MINISTRY COST HELPER ====================
 
-// One-time cost calculation for any ministry action or direction
+// One-time cost calculation for any ministry action or direction.
+// Uses dynamicCostFn if defined (e.g. Road Maintenance scales with physical_infrastructure vs rail_network).
 function calculateOneTimeCost(actionOrDirection, population) {
+    if (actionOrDirection.dynamicCostFn) return actionOrDirection.dynamicCostFn(population);
     const costPerMillion = actionOrDirection.oneTimeCostPerMillion || 0;
     return Math.round((population / 1_000_000) * costPerMillion);
 }
@@ -6054,7 +6064,8 @@ function renderProtestCrisisCard() {
     const paCooldownRemaining = p.public_address_last_tick != null
         ? Math.max(0, PROTEST_CONFIG.PUBLIC_ADDRESS_COOLDOWN - (currentTick - p.public_address_last_tick))
         : 0;
-    const paDisabled = !isGoverning || ap < PROTEST_CONFIG.PUBLIC_ADDRESS_AP || paCooldownRemaining > 0;
+    // Only PM/President can issue a Public Address
+    const paDisabled = !isLeadParty || ap < PROTEST_CONFIG.PUBLIC_ADDRESS_AP || paCooldownRemaining > 0;
     const paLabel = paCooldownRemaining > 0
         ? `PUBLIC ADDRESS (${paCooldownRemaining} TICK CD)`
         : 'PUBLIC ADDRESS';
