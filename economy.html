@@ -377,10 +377,12 @@ async function loadTradeData(nationId) {
             total: Math.round(totalAffinity * 10) / 10
         };
 
-        // Attach to existing trade partners
-        if (partners[nid]) {
-            partners[nid].affinityBreakdown = breakdown;
+        // Attach to existing trade partners, or create a zero-volume entry
+        // so all nations appear in the Trading Partners grid
+        if (!partners[nid]) {
+            partners[nid] = { name: nationNames[nid] || 'Unknown', exportsTo: {}, importsFrom: {}, totalExports: 0, totalImports: 0, affinity: 0 };
         }
+        partners[nid].affinityBreakdown = breakdown;
 
         // Collect all affinities for diagnostics
         allAffinities.push({ partnerId: nid, name: nationNames[nid] || 'Unknown', breakdown: breakdown });
