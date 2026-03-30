@@ -3372,8 +3372,8 @@ function getIdeologyChipClass(ideologyTag, factionIdeology) {
     if (!mapping) return 'neutral';
     const score = factionIdeology[mapping.axisKey] || 0;
     const alignment = score * mapping.direction;
-    if (alignment > 10) return 'aligned';
-    if (alignment < -10) return 'opposed';
+    if (alignment >= 20) return 'aligned';
+    if (alignment <= -20) return 'opposed';
     return 'neutral';
 }
 
