@@ -493,8 +493,8 @@ async function loadGroupChats() {
     _groupChats = chats.map(chat => {
         const lastRead = lastReadMap[chat.id];
         const lastMsg = latestByChat[chat.id];
-        // Unread = messages after last_read_at (approximate — real count in Phase 8)
-        const hasUnread = lastMsg && lastRead && new Date(lastMsg.created_at) > new Date(lastRead);
+        // Unread if: there are messages AND (never read OR last message is newer than last read)
+        const hasUnread = lastMsg && (!lastRead || new Date(lastMsg.created_at) > new Date(lastRead));
         return {
             chat,
             lastMessage: lastMsg || null,
@@ -1393,21 +1393,22 @@ async function calculateUnread() {
     if (!_msgFaction?.id) return;
 
     try {
-        // Count total DM conversations (distinct partners)
+        // Count DM conversations with unread messages (received by us, not yet read)
         const { data: dms } = await _supabase
             .from('direct_messages')
-            .select('sender_id, receiver_id')
-            .or(`sender_id.eq.${_msgFaction.id},receiver_id.eq.${_msgFaction.id}`)
+            .select('sender_id')
+            .eq('receiver_id', _msgFaction.id)
+            .is('read_at', null)
             .limit(200);
 
         const dmPartners = new Set();
         for (const dm of (dms || [])) {
-            const otherId = dm.sender_id === _msgFaction.id ? dm.receiver_id : dm.sender_id;
-            dmPartners.add(otherId);
+            dmPartners.add(dm.sender_id);
         }
 
-        // Total = DM conversations + group chats
-        _totalUnread = dmPartners.size + _groupChats.length;
+        // Total = unread DM conversations + group chats with unread messages
+        const unreadGroupCount = _groupChats.filter(g => g.unreadCount > 0).length;
+        _totalUnread = dmPartners.size + unreadGroupCount;
     } catch (_) {
         // Non-critical
     }
