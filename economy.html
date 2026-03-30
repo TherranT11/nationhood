@@ -850,16 +850,18 @@ function renderOverviewTab(nation) {
         // Global modifiers row
         var tariffVal = Number(nation.tariffs) || 0;
         var tariffDampener = 1 - (tariffVal / 200);
+        var tariffReduction = ((1 - tariffDampener) * 100).toFixed(0);
         var currencyVal = Number(nation.currency_strength) || 50;
         var currencyMod = currencyVal / 50;
         var stabilityVal = Number(nation.stability) || 50;
         var stabilityMod = Math.min(1.0, stabilityVal / 40);
+        var gdpScale = (Number(nation.gdp) || 0) / 100000000000;
 
         h += '<div class="trade-diag-modifiers">';
         h += '<div class="trade-diag-mod">';
         h += '<span class="trade-diag-label">Tariff Rate</span>';
-        h += '<span class="trade-diag-value" style="color:' + (tariffVal > 50 ? 'var(--red, #d9534f)' : tariffVal > 25 ? 'var(--accent, #ffcc00)' : 'var(--green, #5cb85c)') + '">' + tariffVal + '%</span>';
-        h += '<span class="trade-diag-effect">Import dampening: ' + (tariffDampener * 100).toFixed(0) + '%</span>';
+        h += '<span class="trade-diag-value" style="color:' + (tariffVal > 50 ? 'var(--red, #d9534f)' : tariffVal > 25 ? 'var(--accent, #ffcc00)' : 'var(--green, #5cb85c)') + '">' + tariffVal.toFixed(1) + '%</span>';
+        h += '<span class="trade-diag-effect">Tariff reduces imports by ' + tariffReduction + '%</span>';
         h += '</div>';
         h += '<div class="trade-diag-mod">';
         h += '<span class="trade-diag-label">Currency Strength</span>';
@@ -870,6 +872,11 @@ function renderOverviewTab(nation) {
         h += '<span class="trade-diag-label">Stability</span>';
         h += '<span class="trade-diag-value" style="color:' + (stabilityVal < 25 ? 'var(--red, #d9534f)' : stabilityVal < 40 ? 'var(--accent, #ffcc00)' : 'var(--green, #5cb85c)') + '">' + stabilityVal.toFixed(0) + '/100</span>';
         h += '<span class="trade-diag-effect">Export modifier: ' + stabilityMod.toFixed(2) + 'x</span>';
+        h += '</div>';
+        h += '<div class="trade-diag-mod">';
+        h += '<span class="trade-diag-label">GDP Scale</span>';
+        h += '<span class="trade-diag-value" style="color:' + (gdpScale >= 1.0 ? 'var(--green, #5cb85c)' : gdpScale >= 0.5 ? 'var(--accent, #ffcc00)' : 'var(--red, #d9534f)') + '">' + gdpScale.toFixed(2) + 'x</span>';
+        h += '<span class="trade-diag-effect">vs $100B baseline</span>';
         h += '</div>';
         h += '</div>';
 
@@ -887,13 +894,18 @@ function renderOverviewTab(nation) {
                 var _impDem = Number(_f.import_demand) || 0;
                 var _impVol = Number(_f.import_volume) || 0;
                 var _capCls = _expCap > 0 ? 'surplus' : 'muted';
-                var _demCls = _impDem > 0 ? 'deficit' : 'muted';
+                var _isExportOnly = _s.export_only;
                 h += '<tr>';
                 h += '<td>' + escapeHtml(_s.label) + '</td>';
                 h += '<td class="' + _capCls + '">' + formatBudgetCurrency(_expCap) + '</td>';
                 h += '<td class="' + (_expVol > 0 ? 'surplus' : 'muted') + '">' + formatBudgetCurrency(_expVol) + '</td>';
-                h += '<td class="' + _demCls + '">' + formatBudgetCurrency(_impDem) + '</td>';
-                h += '<td class="' + (_impVol > 0 ? 'deficit' : 'muted') + '">' + formatBudgetCurrency(_impVol) + '</td>';
+                if (_isExportOnly) {
+                    h += '<td class="muted" style="font-style:italic;font-size:0.8em;">Export Only</td>';
+                    h += '<td class="muted" style="font-style:italic;font-size:0.8em;">Export Only</td>';
+                } else {
+                    h += '<td class="' + (_impDem > 0 ? 'deficit' : 'muted') + '">' + formatBudgetCurrency(_impDem) + '</td>';
+                    h += '<td class="' + (_impVol > 0 ? 'deficit' : 'muted') + '">' + formatBudgetCurrency(_impVol) + '</td>';
+                }
                 h += '</tr>';
             }
             h += '</tbody></table>';
@@ -918,9 +930,9 @@ function renderOverviewTab(nation) {
             }
             h += '</div>';
 
-            // Show top affinities with breakdown
+            // Show all partners with breakdown, sorted by affinity
             affinityDetails.sort(function(a, b) { return b.breakdown.total - a.breakdown.total; });
-            var showCount = Math.min(5, affinityDetails.length);
+            var showCount = affinityDetails.length;
             if (showCount > 0) {
                 h += '<div class="trade-diag-affinity-list">';
                 for (var _aj = 0; _aj < showCount; _aj++) {
