@@ -1,4 +1,4 @@
-// js/news.js — The Cruceran newspaper page
+// js/news.js — The Cruceran & The Continental newspaper pages
 
 import { tickToDate } from './utils.js';
 import { nudgeApproval } from './game/electorate.js';
@@ -14,6 +14,38 @@ let _archiveBackContext = null; // navigation context for article reader back bu
 let _editingArticleId = null; // null = create mode, UUID string = edit mode
 let _removeExistingImage = false; // flag: user wants to drop the current image on edit
 let _isAutocracyNation = false; // detected during init for reward display
+let _publication = 'cruceran'; // 'cruceran' or 'continental'
+
+// Nation-to-publication mapping (data-driven for future expansion)
+const PUBLICATION_CONFIG = {
+    cruceran: {
+        key: 'cruceran',
+        name: 'The Cruceran',
+        tagline: 'Truth in the service of the people',
+        nations: ['Avelia', 'Palvera', 'San Estrella', 'Montequilla', 'Melizea', 'Sangreza'],
+        style: 'cruceran' // CSS class prefix
+    },
+    continental: {
+        key: 'continental',
+        name: 'The Continental',
+        tagline: 'Where Ideas Converge',
+        nations: ['Calveth'],
+        style: 'continental'
+    }
+};
+
+function getPublicationForNation(nationName) {
+    for (const [key, cfg] of Object.entries(PUBLICATION_CONFIG)) {
+        if (cfg.nations.some(n => n.toLowerCase() === (nationName || '').toLowerCase())) return key;
+    }
+    return 'cruceran'; // fallback
+}
+
+function canWriteToPublication(pubKey, nationName) {
+    const cfg = PUBLICATION_CONFIG[pubKey];
+    if (!cfg) return false;
+    return cfg.nations.some(n => n.toLowerCase() === (nationName || '').toLowerCase());
+}
 
 // Season key for quarterly issue grouping
 // Spring: Feb(1), Mar(2), Apr(3)  Summer: May(4), Jun(5), Jul(6)
@@ -49,20 +81,41 @@ export async function initNewspaper(supabase, state) {
     const root = document.getElementById('newspaper-root');
     if (!root) return;
 
-    const gameDate = state.shard?.current_date || '[Month], [Year]';
+    // Set default publication based on player's nation
+    _publication = getPublicationForNation(state.nation?.name);
 
-    root.innerHTML = `<div class="newspaper-container">
+    const gameDate = state.shard?.current_date || '[Month], [Year]';
+    const pubCfg = PUBLICATION_CONFIG[_publication];
+    const canWrite = canWriteToPublication(_publication, state.nation?.name);
+
+    // Publication switcher options
+    const pubSwitcher = Object.entries(PUBLICATION_CONFIG).map(([key, cfg]) =>
+        `<option value="${key}" ${key === _publication ? 'selected' : ''}>${cfg.name}</option>`
+    ).join('');
+
+    root.innerHTML = `<div class="newspaper-container nws-pub-${_publication}">
 
         <!-- TOP RIBBON -->
-        <div class="nws-top-ribbon">
+        <div class="nws-top-ribbon${_publication === 'continental' ? ' nws-top-ribbon--continental' : ''}">
             <div class="nws-top-ribbon-inner">
                 <span>${gameDate}</span>
-                <span class="nws-edition">The Cruceran &mdash; Continental Edition</span>
-                <button class="nws-write-btn" id="nws-write-article-btn">Write Article</button>
+                <select class="nws-pub-switcher" id="nws-pub-switcher">${pubSwitcher}</select>
+                ${canWrite ? '<button class="nws-write-btn" id="nws-write-article-btn">Write Article</button>' : ''}
             </div>
         </div>
 
-        <!-- MASTHEAD -->
+        ${_publication === 'continental' ? `
+        <!-- CONTINENTAL MASTHEAD -->
+        <div class="nws-continental-masthead">
+            <div class="nws-continental-masthead-top">
+                <span class="nws-continental-edition">Continental Edition</span>
+            </div>
+            <div class="nws-continental-masthead-main">
+                <h1 class="nws-continental-title">The Continental</h1>
+                <span class="nws-continental-subtitle">Independent Journalism for Meridia</span>
+            </div>
+        </div>` : `
+        <!-- CRUCERAN MASTHEAD -->
         <div class="nws-masthead">
             <div class="nws-masthead-top">
                 <div class="nws-masthead-meta">
@@ -78,7 +131,7 @@ export async function initNewspaper(supabase, state) {
             <hr class="nws-masthead-rule">
             <div class="nws-rule-ornament">&mdash; &#10022; &mdash;</div>
             <div class="nws-masthead-tagline">&ldquo;Truth in the service of the people&rdquo;</div>
-        </div>
+        </div>`}
 
         <!-- NAV -->
         <nav class="nws-nav">
@@ -113,7 +166,7 @@ export async function initNewspaper(supabase, state) {
         </div>
 
         <!-- MAIN CONTENT -->
-        <div class="nws-main-content">
+        <div class="nws-main-content" id="nws-main-content">
 
             <!-- LEAD SECTION (A1) -->
             <div class="nws-lead-section" id="nws-lead-section">
@@ -350,6 +403,15 @@ export async function initNewspaper(supabase, state) {
     bindArticleReader(root);
     bindArchivesNav(root);
     bindCategoryNav(root);
+
+    // Publication switcher
+    const pubSwitcherEl = document.getElementById('nws-pub-switcher');
+    if (pubSwitcherEl) {
+        pubSwitcherEl.addEventListener('change', () => {
+            _publication = pubSwitcherEl.value;
+            initNewspaper(_supabase, _state); // full re-render with new publication
+        });
+    }
 
     // Update reward badge text based on government type
     const rewardBadge = document.getElementById('nws-reward-badge');
@@ -599,7 +661,8 @@ function bindSubmitHandler() {
                         category: category,
                         image_url: imageUrl,
                         status: 'published',
-                        published_tick: shard?.current_tick || 0
+                        published_tick: shard?.current_tick || 0,
+                        publication: _publication
                     });
 
                 if (error) throw error;
@@ -997,12 +1060,21 @@ async function loadAndDisplayArticles() {
     try {
         const nationIds = await getShardNationIds();
 
-        const { data: articles, error } = await _supabase
+        // Filter by publication — articles without the column default to 'cruceran'
+        let query = _supabase
             .from('player_articles')
             .select('*')
             .in('nation_id', nationIds)
             .eq('status', 'published')
             .order('created_at', { ascending: false });
+        // Once the publication column exists, filter by it
+        if (_publication !== 'cruceran') {
+            query = query.eq('publication', _publication);
+        } else {
+            // Include articles with no publication set (legacy) or explicitly 'cruceran'
+            query = query.or('publication.eq.cruceran,publication.is.null');
+        }
+        const { data: articles, error } = await query;
 
         if (error) {
             console.error('[News] Failed to load articles:', error);
@@ -1097,14 +1169,18 @@ async function loadAndDisplayArticles() {
             .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
             .slice(0, 5);
 
-        // Populate lead section
-        if (lead) populateLeadSection(lead, sidebar);
-        // Populate secondary grid
-        populateSecondaryGrid(secondary);
-        // Populate opinion strip (up to 4 opinion articles)
-        populateOpinionStrip(opinionArticles.slice(0, 4));
-        // Populate briefs
-        populateBriefs(briefs);
+        if (_publication === 'continental') {
+            renderContinentalLayout(lead, sidebar, secondary, opinionArticles.slice(0, 4), briefs);
+        } else {
+            // Populate lead section
+            if (lead) populateLeadSection(lead, sidebar);
+            // Populate secondary grid
+            populateSecondaryGrid(secondary);
+            // Populate opinion strip (up to 4 opinion articles)
+            populateOpinionStrip(opinionArticles.slice(0, 4));
+            // Populate briefs
+            populateBriefs(briefs);
+        }
     } catch (err) {
         console.error('[News] Error loading articles:', err);
     }
@@ -1266,6 +1342,161 @@ function populateOpinionStrip(articles) {
     }).join('');
 
     grid.innerHTML = html;
+}
+
+// === THE CONTINENTAL LAYOUT ===
+
+function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
+    const content = document.getElementById('nws-main-content') || document.querySelector('.nws-main-content');
+    if (!content) return;
+
+    const esc = (s) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const deck = (a) => esc((a.body || '').replace(/\n+/g, ' ').substring(0, 200)) + ((a.body || '').length > 200 ? '...' : '');
+    const shortDeck = (a) => esc((a.body || '').replace(/\n+/g, ' ').substring(0, 120)) + ((a.body || '').length > 120 ? '...' : '');
+    const cat = (a) => esc(categoryLabel(a.category));
+    const date = _state?.shard?.current_date || '—';
+    const imgCls = { politics: '--politics', economy: '--economy', social: '--social', international: '--intl', entertainment: '--culture', science: '--science' };
+
+    let h = '';
+
+    // ── HERO (lead story) ──
+    if (lead) {
+        const heroImg = lead.image_url
+            ? `<img src="${esc(lead.image_url)}" alt="" style="width:100%;height:100%;object-fit:cover;">`
+            : '';
+        h += `<div class="ct-hero" data-article-id="${lead.id}">
+            <div class="ct-hero__image">${heroImg}</div>
+            <div class="ct-hero__content">
+                <div class="ct-hero__section">${cat(lead)}</div>
+                <h1 class="ct-hero__headline">${esc(lead.headline)}</h1>
+                <p class="ct-hero__lede">${deck(lead)}</p>
+                <div class="ct-hero__meta">
+                    <span class="ct-hero__author">${esc(lead.author_name)}</span>
+                    <span>&middot;</span>
+                    <span>${date}</span>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    // ── TOP STORIES GRID ──
+    if (cards.length > 0) {
+        h += `<div class="ct-section-divider">
+            <span class="ct-section-divider__label">Top Stories</span>
+            <div class="ct-section-divider__line"></div>
+        </div>`;
+        h += '<div class="ct-story-grid">';
+        for (const a of cards) {
+            const cls = imgCls[a.category] || '';
+            const cardImg = a.image_url
+                ? `<img src="${esc(a.image_url)}" alt="" style="width:100%;height:100%;object-fit:cover;">`
+                : '';
+            h += `<div class="ct-card" data-article-id="${a.id}">
+                <div class="ct-card__image ct-card__image${cls}">${cardImg}
+                    <span class="ct-card__image-label">${cat(a)}</span>
+                </div>
+                <div class="ct-card__body">
+                    <div class="ct-card__section">${cat(a)}</div>
+                    <h2 class="ct-card__headline">${esc(a.headline)}</h2>
+                    <p class="ct-card__summary">${shortDeck(a)}</p>
+                    <div class="ct-card__meta">
+                        <span class="ct-card__author">${esc(a.author_name)}</span>
+                        <span>&middot;</span>
+                        <span>${date}</span>
+                    </div>
+                </div>
+            </div>`;
+        }
+        h += '</div>';
+    }
+
+    // ── CONTINENTAL ANALYSIS (dark band) ──
+    if (secondary.length > 0) {
+        h += `</div><div class="ct-analysis-band"><div class="ct-analysis-band__inner">
+            <div class="ct-analysis-band__header">
+                <span class="ct-analysis-band__badge">Continental Analysis</span>
+                <span class="ct-analysis-band__title">In-depth reporting from across Meridia</span>
+            </div>
+            <div class="ct-analysis-band__grid">`;
+        for (const a of secondary) {
+            h += `<div class="ct-analysis-story" data-article-id="${a.id}">
+                <div class="ct-analysis-story__section">${cat(a)}</div>
+                <h2 class="ct-analysis-story__headline">${esc(a.headline)}</h2>
+                <p class="ct-analysis-story__summary">${shortDeck(a)}</p>
+                <div class="ct-analysis-story__meta"><strong>${esc(a.author_name)}</strong> &middot; ${date}</div>
+            </div>`;
+        }
+        h += `</div></div></div><div class="nws-main-content">`;
+    }
+
+    // ── ANALYSIS & OPINION + SIDEBAR ──
+    if (opinions.length > 0 || briefs.length > 0) {
+        h += `<div class="ct-section-divider">
+            <span class="ct-section-divider__label">Analysis &amp; Opinion</span>
+            <div class="ct-section-divider__line"></div>
+        </div>`;
+        h += '<div class="ct-two-col">';
+
+        // Left: numbered opinion/analysis items
+        h += '<div class="ct-analysis-list">';
+        for (let i = 0; i < opinions.length; i++) {
+            const a = opinions[i];
+            h += `<div class="ct-analysis-item" data-article-id="${a.id}">
+                <div class="ct-analysis-item__number">${String(i + 1).padStart(2, '0')}</div>
+                <div class="ct-analysis-item__content">
+                    <div class="ct-analysis-item__section">${cat(a)}</div>
+                    <h3 class="ct-analysis-item__headline">${esc(a.headline)}</h3>
+                    <p class="ct-analysis-item__summary">${shortDeck(a)}</p>
+                    <div class="ct-analysis-item__meta"><strong>${esc(a.author_name)}</strong> &middot; ${date}</div>
+                </div>
+            </div>`;
+        }
+        h += '</div>';
+
+        // Right: sidebar briefs
+        h += '<div class="ct-sidebar">';
+        h += '<div class="ct-sidebar__section"><div class="ct-sidebar__section-title">Also in This Edition</div>';
+        for (const a of briefs) {
+            h += `<div class="ct-sidebar-brief" data-article-id="${a.id}">
+                <div class="ct-sidebar-brief__section">${cat(a)}</div>
+                <div class="ct-sidebar-brief__headline">${esc(a.headline)}</div>
+            </div>`;
+        }
+        h += '</div></div>';
+
+        h += '</div>';
+    }
+
+    // ── FOOTER ──
+    h += `<div class="ct-footer">
+        <div class="ct-footer__inner">
+            <div class="ct-footer__brand">
+                <div class="ct-footer__title">The Continental</div>
+                <div class="ct-footer__tagline">Independent journalism for Meridia.<br>Where Ideas Converge.</div>
+            </div>
+            <div>
+                <div class="ct-footer__col-title">Sections</div>
+                <span class="ct-footer__link">Politics</span>
+                <span class="ct-footer__link">Economy</span>
+                <span class="ct-footer__link">International</span>
+                <span class="ct-footer__link">Society</span>
+                <span class="ct-footer__link">Culture</span>
+            </div>
+        </div>
+    </div>`;
+
+    content.innerHTML = h;
+
+    // Bind click handlers for article reader on all Continental articles
+    content.querySelectorAll('[data-article-id]').forEach(el => {
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', (e) => {
+            if (e.target.closest('.nws-edit-btn, .nws-delete-btn')) return;
+            const id = el.dataset.articleId;
+            const article = _articles.find(a => String(a.id) === String(id));
+            if (article) renderArticleView(document.getElementById('newspaper-root'), article);
+        });
+    });
 }
 
 // === CATEGORY NAV ===

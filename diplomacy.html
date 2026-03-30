@@ -525,7 +525,7 @@ async function renderWorldNations() {
     }
 
     try {
-        const [nationsRes, factionsRes, crisesRes, relationsRes, ambassadorsRes, theirAmbassadorsRes, ceasefireRes] = await Promise.all([
+        const [nationsRes, factionsRes, crisesRes, relationsRes, ambassadorsRes, theirAmbassadorsRes, ceasefireRes, hogRes, coalitionsRes] = await Promise.all([
             _supabase.from('nations').select('*').order('name'),
             _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, seats, nation_id, party_color, ideology_value_1, ideology_value_2, party_logo, custom_logo_url').eq('faction_type', 'party'),
             _supabase.from('active_crises').select('nation_id, crisis_id, crisis_templates(name)'),
@@ -537,7 +537,11 @@ async function renderWorldNations() {
                 .eq('target_nation_id', currentNation.id).eq('is_active', true).eq('status', 'active'),
             _supabase.from('diplomatic_proposals').select('proposing_nation_id, target_nation_id')
                 .eq('proposal_type', 'ceasefire').eq('status', 'active')
-                .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id)
+                .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id),
+            // PM names from head_of_government
+            _supabase.from('head_of_government').select('nation_id, first_name, last_name, faction_id').eq('active', true),
+            // Coalition data for gov/opposition split
+            _supabase.from('government_formations').select('nation_id, party_ids, lead_party_id').in('status', ['formed', 'caretaker'])
         ]);
 
         if (nationsRes.error) {
@@ -573,6 +577,17 @@ async function renderWorldNations() {
 
         const ourAmbSet = new Set(ourAmbs.map(a => a.target_nation_id));
         const theirAmbSet = new Set(theirAmbs.map(a => a.nation_id));
+
+        // Index PM names by nation
+        const hogByNation = {};
+        for (const h of (hogRes.data || [])) {
+            hogByNation[h.nation_id] = h;
+        }
+        // Index coalitions by nation
+        const coalitionByNation = {};
+        for (const c of (coalitionsRes.data || [])) {
+            coalitionByNation[c.nation_id] = c;
+        }
 
         // Build ceasefire set: nation IDs that have an active ceasefire with us
         const ceasefireNations = new Set();
@@ -629,12 +644,12 @@ async function renderWorldNations() {
             const rpAbbr = rulingParty?.abbreviation || '';
             const rpBadge = rpAbbr ? ' <span style="display:inline-block;background:' + rpColor + ';color:#fff;padding:1px 6px;border-radius:2px;font-size:0.6rem;font-weight:700;margin-left:6px;">' + escapeHtml(rpAbbr) + '</span>' : '';
 
-            // For parliamentary/monarchy: find PM from lead coalition party
-            let pmName = '';
+            // PM name from head_of_government table
+            const hog = hogByNation[nation.id];
+            let pmName = hog ? ((hog.first_name || '') + ' ' + (hog.last_name || '')).trim() : '';
             let pmPartyBadge = '';
             if (!isPres && !isAuto) {
-                // PM is typically the lead party's leader — we don't have HOG data here, use ruling faction
-                const pmParty = rulingParty || (nFactions.length > 0 ? nFactions[0] : null);
+                const pmParty = hog ? nFactions.find(p => p.id === hog.faction_id) : (rulingParty || nFactions[0]);
                 if (pmParty) {
                     const pmC = pmParty.party_color || '#666';
                     const pmA = pmParty.abbreviation || '';
@@ -642,6 +657,11 @@ async function renderWorldNations() {
                     pmPartyBadge = ' <span style="display:inline-flex;align-items:center;gap:4px;margin-left:6px;">' + pmLogo + (pmA ? '<span style="display:inline-block;background:' + pmC + ';color:#fff;padding:1px 6px;border-radius:2px;font-size:0.6rem;font-weight:700;">' + escapeHtml(pmA) + '</span>' : '') + '</span>';
                 }
             }
+
+            // Coalition party IDs for gov/opposition split
+            const coalition = coalitionByNation[nation.id];
+            const coalitionIds = new Set(coalition?.party_ids || []);
+            if (nation.ruling_faction_id) coalitionIds.add(nation.ruling_faction_id);
 
             // Stats
             const pop = nation.population ? formatNumber(nation.population) : '—';
@@ -667,8 +687,11 @@ async function renderWorldNations() {
                 return '<span class="wn-seat-legend-item"><span class="wn-seat-legend-dot" style="background:' + color + ';"></span>' + escapeHtml(p.abbreviation || '?') + ' ' + p.seats + '</span>';
             }).join('');
 
-            // Party rows
-            const partyRows = nFactions.map((p, i) => {
+            // Party rows — split into government and opposition
+            const govFactions = nFactions.filter(p => coalitionIds.has(p.id));
+            const oppFactions = nFactions.filter(p => !coalitionIds.has(p.id));
+
+            function renderPartyRow(p, i) {
                 const color = p.party_color || WN_FALLBACK_COLORS[i % WN_FALLBACK_COLORS.length];
                 const ideoLabel = wnGetIdeologyLabel(p);
                 return '<div class="wn-party-row">' +
@@ -678,7 +701,17 @@ async function renderWorldNations() {
                     (ideoLabel ? '<span class="wn-party-row__ideo">' + wnColorizeIdeology(ideoLabel) + '</span>' : '') +
                     '<span class="wn-party-row__seats">' + (p.seats || 0) + '</span>' +
                 '</div>';
-            }).join('');
+            }
+
+            let partyRows = '';
+            if (govFactions.length > 0 && oppFactions.length > 0) {
+                partyRows += '<div class="wn-party-group-label" style="color:var(--green);font-size:0.6rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin:6px 0 2px;font-family:var(--font-mono);">Governing Coalition</div>';
+                partyRows += govFactions.map(renderPartyRow).join('');
+                partyRows += '<div class="wn-party-group-label" style="color:var(--red);font-size:0.6rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin:10px 0 2px;font-family:var(--font-mono);">Opposition</div>';
+                partyRows += oppFactions.map(renderPartyRow).join('');
+            } else {
+                partyRows = nFactions.map(renderPartyRow).join('');
+            }
 
             // Crisis rows
             const crisisRows = nCrises.length > 0
@@ -696,8 +729,8 @@ async function renderWorldNations() {
                 '<div class="wn-card__body">' +
                     // Leader row(s): name + party badge inline
                     (hosName ? '<div class="wn-stat-row"><span class="wn-stat-row__label">' + escapeHtml(hosTitle) + '</span><span class="wn-stat-row__value">' + escapeHtml(hosName) + rpBadge + '</span></div>' : '') +
-                    // Constitutional monarchy: also show PM row
-                    (isMonarchy ? '<div class="wn-stat-row"><span class="wn-stat-row__label">PM</span><span class="wn-stat-row__value">' + escapeHtml((rulingParty?.faction_name || '—')) + pmPartyBadge + '</span></div>' : '') +
+                    // Show PM row for parliamentary and monarchy systems
+                    (!isPres && !isAuto ? '<div class="wn-stat-row"><span class="wn-stat-row__label">PM</span><span class="wn-stat-row__value">' + escapeHtml(pmName || '—') + pmPartyBadge + '</span></div>' : '') +
                     '<div class="wn-stat-row"><span class="wn-stat-row__label">Population</span><span class="wn-stat-row__value">' + pop + '</span></div>' +
                     '<div class="wn-stat-row"><span class="wn-stat-row__label">GDP</span><span class="wn-stat-row__value">' + gdp + '</span></div>' +
                     '<div class="wn-stat-row"><span class="wn-stat-row__label">Unemployment</span><span class="wn-stat-row__value">' + unemp + '</span></div>' +

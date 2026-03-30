@@ -1475,3 +1475,352 @@
         text-align: center;
     }
 }
+
+/* ═══════════════════════════════════════
+   PUBLICATION SWITCHER
+   ═══════════════════════════════════════ */
+.nws-pub-switcher {
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 2px;
+    background: rgba(255,255,255,0.05);
+    color: inherit;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+}
+.nws-pub-switcher option {
+    background: #1a1a17;
+    color: #e8e4d9;
+}
+
+/* ═══════════════════════════════════════
+   THE CONTINENTAL — Masthead
+   Deep navy institutional design
+   ═══════════════════════════════════════ */
+.nws-top-ribbon--continental {
+    background: #0c1220;
+    color: #8a9cc0;
+    border-bottom-color: rgba(255,255,255,0.06);
+}
+
+.nws-continental-masthead {
+    background: #0c1220;
+    color: #fff;
+    padding: 0;
+}
+.nws-continental-masthead-top {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 10px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.nws-continental-edition {
+    font-family: 'Noto Sans', var(--font-ui, sans-serif);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.5);
+}
+.nws-continental-masthead-main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px 20px 20px;
+    display: flex;
+    flex-direction: column;
+}
+.nws-continental-title {
+    font-family: 'Outfit', var(--font-display, sans-serif);
+    font-size: 44px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: #fff;
+    margin: 0;
+}
+.nws-continental-subtitle {
+    font-family: 'Outfit', var(--font-display, sans-serif);
+    font-weight: 300;
+    opacity: 0.5;
+    font-size: 14px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-top: 4px;
+}
+
+/* Continental nav override */
+.nws-pub-continental .nws-nav {
+    background: #fff;
+    border-bottom: 2px solid #1a1918;
+}
+.nws-pub-continental .nws-nav-item {
+    font-family: 'Outfit', var(--font-display, sans-serif);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #5a5750;
+}
+.nws-pub-continental .nws-nav-item.active {
+    color: #1a1918;
+    border-bottom-color: #c23a22;
+}
+.nws-pub-continental .nws-nav-item:hover {
+    color: #1a1918;
+}
+
+/* Continental ticker override */
+.nws-pub-continental .nws-breaking-bar {
+    background: #1a1918;
+}
+.nws-pub-continental .nws-breaking-label {
+    background: #c23a22;
+}
+
+@media (max-width: 640px) {
+    .nws-continental-title { font-size: 28px; }
+}
+
+/* ═══════════════════════════════════════
+   THE CONTINENTAL — Article Layout
+   ═══════════════════════════════════════ */
+
+/* Hero */
+.ct-hero {
+    display: grid; grid-template-columns: 1fr 480px; gap: 0;
+    margin: 32px 0; background: #fff; border: 1px solid #edecea;
+}
+.ct-hero__image {
+    width: 100%; min-height: 420px;
+    background: linear-gradient(135deg, #0c1220 0%, #162038 40%, #1e2d4a 100%);
+    position: relative; overflow: hidden;
+}
+.ct-hero__image img { width: 100%; height: 100%; object-fit: cover; }
+.ct-hero__content {
+    padding: 36px 40px; display: flex; flex-direction: column; justify-content: center;
+}
+.ct-hero__section {
+    font-family: 'Outfit', sans-serif; font-size: 11px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase; color: #c23a22; margin-bottom: 12px;
+}
+.ct-hero__headline {
+    font-family: 'Outfit', sans-serif; font-size: 34px; font-weight: 800;
+    line-height: 1.15; letter-spacing: -0.02em; color: #1a1918; margin-bottom: 16px;
+}
+.ct-hero__lede {
+    font-family: 'Source Serif 4', Georgia, serif; font-size: 17px;
+    line-height: 1.6; color: #5a5750; margin-bottom: 20px; font-style: italic;
+}
+.ct-hero__meta {
+    font-family: 'Noto Sans', sans-serif; font-size: 12px; color: #9e9b95;
+    display: flex; align-items: center; gap: 8px;
+}
+.ct-hero__author { font-weight: 600; color: #5a5750; }
+
+/* Section Divider */
+.ct-section-divider {
+    display: flex; align-items: center; gap: 16px; margin: 36px 0 24px;
+}
+.ct-section-divider__label {
+    font-family: 'Outfit', sans-serif; font-size: 12px; font-weight: 800;
+    letter-spacing: 0.14em; text-transform: uppercase; color: #1a1918; flex-shrink: 0;
+}
+.ct-section-divider__line { flex: 1; height: 1px; background: #1a1918; }
+
+/* Story Grid */
+.ct-story-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 36px;
+}
+.ct-card {
+    background: #fff; border: 1px solid #edecea; display: flex;
+    flex-direction: column; transition: border-color 0.2s; cursor: pointer;
+}
+.ct-card:hover { border-color: #d8d6d2; }
+.ct-card__image {
+    width: 100%; height: 180px; position: relative; overflow: hidden;
+}
+.ct-card__image--politics { background: linear-gradient(135deg, #2c3e50, #34495e); }
+.ct-card__image--economy { background: linear-gradient(135deg, #1a3a2a, #2d5a3d); }
+.ct-card__image--social { background: linear-gradient(135deg, #3e2723, #5d4037); }
+.ct-card__image--intl { background: linear-gradient(135deg, #1a237e, #283593); }
+.ct-card__image--culture { background: linear-gradient(135deg, #4a0e4e, #6a1b6d); }
+.ct-card__image--science { background: linear-gradient(135deg, #004d40, #00695c); }
+.ct-card__image img { width: 100%; height: 100%; object-fit: cover; }
+.ct-card__image-label {
+    position: absolute; bottom: 0; left: 0;
+    font-family: 'Outfit', sans-serif; font-size: 9px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase; color: #fff;
+    background: rgba(0,0,0,0.5); padding: 4px 12px; backdrop-filter: blur(4px);
+}
+.ct-card__body { padding: 20px; flex: 1; display: flex; flex-direction: column; }
+.ct-card__section {
+    font-family: 'Outfit', sans-serif; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase; color: #c23a22; margin-bottom: 8px;
+}
+.ct-card__headline {
+    font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700;
+    line-height: 1.25; color: #1a1918; margin-bottom: 10px;
+}
+.ct-card__summary {
+    font-family: 'Source Serif 4', Georgia, serif; font-size: 14.5px;
+    line-height: 1.55; color: #5a5750; margin-bottom: 16px; flex: 1;
+}
+.ct-card__meta {
+    font-family: 'Noto Sans', sans-serif; font-size: 11px; color: #9e9b95;
+    display: flex; align-items: center; gap: 8px;
+    padding-top: 12px; border-top: 1px solid #edecea;
+}
+.ct-card__author { font-weight: 600; color: #5a5750; }
+
+/* Continental Analysis Band (dark) */
+.ct-analysis-band {
+    background: #0c1220; padding: 40px 0; margin: 0;
+    position: relative;
+}
+.ct-analysis-band::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0;
+    height: 3px; background: #c23a22;
+}
+.ct-analysis-band__inner {
+    max-width: 1100px; margin: 0 auto; padding: 0 24px;
+}
+.ct-analysis-band__header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 28px;
+}
+.ct-analysis-band__badge {
+    font-family: 'Outfit', sans-serif; font-size: 10px; font-weight: 800;
+    letter-spacing: 0.14em; text-transform: uppercase; color: #c23a22;
+    display: flex; align-items: center; gap: 10px;
+}
+.ct-analysis-band__badge::before {
+    content: ''; width: 20px; height: 2px; background: #c23a22;
+}
+.ct-analysis-band__title {
+    font-family: 'Outfit', sans-serif; font-size: 10px; font-weight: 500;
+    letter-spacing: 0.08em; text-transform: uppercase; color: #8a9cc0;
+}
+.ct-analysis-band__grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 40px;
+}
+.ct-analysis-story { cursor: pointer; }
+.ct-analysis-story__section {
+    font-family: 'Outfit', sans-serif; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase; color: #c23a22; margin-bottom: 8px;
+}
+.ct-analysis-story__headline {
+    font-family: 'Outfit', sans-serif; font-size: 24px; font-weight: 800;
+    line-height: 1.2; color: #fff; margin-bottom: 12px; letter-spacing: -0.01em;
+}
+.ct-analysis-story__summary {
+    font-family: 'Source Serif 4', Georgia, serif; font-size: 15px;
+    line-height: 1.55; color: #8a9cc0; margin-bottom: 12px;
+}
+.ct-analysis-story__meta {
+    font-family: 'Noto Sans', sans-serif; font-size: 11px; color: rgba(138,156,192,0.6);
+}
+.ct-analysis-story__meta strong { color: #8a9cc0; }
+
+/* Two-Column (Analysis + Sidebar) */
+.ct-two-col {
+    display: grid; grid-template-columns: 1fr 340px; gap: 32px; margin-bottom: 48px;
+}
+.ct-analysis-list { display: flex; flex-direction: column; }
+.ct-analysis-item {
+    display: grid; grid-template-columns: 80px 1fr; gap: 20px;
+    padding: 20px 0; border-bottom: 1px solid #edecea; cursor: pointer;
+}
+.ct-analysis-item:first-child { padding-top: 0; }
+.ct-analysis-item__number {
+    font-family: 'Outfit', sans-serif; font-size: 56px; font-weight: 900;
+    line-height: 1; color: #edecea; text-align: center;
+}
+.ct-analysis-item__section {
+    font-family: 'Outfit', sans-serif; font-size: 9px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase; color: #c23a22; margin-bottom: 4px;
+}
+.ct-analysis-item__headline {
+    font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700;
+    line-height: 1.25; color: #1a1918; margin-bottom: 6px;
+}
+.ct-analysis-item__summary {
+    font-family: 'Source Serif 4', Georgia, serif; font-size: 14px;
+    line-height: 1.5; color: #5a5750; margin-bottom: 8px;
+}
+.ct-analysis-item__meta {
+    font-family: 'Noto Sans', sans-serif; font-size: 11px; color: #9e9b95;
+}
+.ct-analysis-item__meta strong { color: #5a5750; }
+
+/* Sidebar */
+.ct-sidebar {
+    border-left: 2px solid #1a1918; padding-left: 24px;
+}
+.ct-sidebar__section { margin-bottom: 28px; }
+.ct-sidebar__section-title {
+    font-family: 'Outfit', sans-serif; font-size: 11px; font-weight: 800;
+    letter-spacing: 0.12em; text-transform: uppercase; color: #1a1918;
+    padding-bottom: 10px; border-bottom: 1px solid #1a1918; margin-bottom: 16px;
+}
+.ct-sidebar-brief {
+    padding: 10px 0; border-bottom: 1px solid #edecea; cursor: pointer;
+}
+.ct-sidebar-brief:last-child { border-bottom: none; }
+.ct-sidebar-brief__section {
+    font-family: 'Outfit', sans-serif; font-size: 9px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase; color: #9e9b95; margin-bottom: 3px;
+}
+.ct-sidebar-brief__headline {
+    font-family: 'Outfit', sans-serif; font-size: 14px; font-weight: 600;
+    line-height: 1.3; color: #1a1918;
+}
+
+/* Footer */
+.ct-footer {
+    background: #1a1918; color: rgba(255,255,255,0.4);
+    margin-top: 48px; padding: 40px 24px;
+}
+.ct-footer__inner {
+    max-width: 1100px; margin: 0 auto;
+    display: grid; grid-template-columns: 2fr 1fr; gap: 40px;
+}
+.ct-footer__title {
+    font-family: 'Outfit', sans-serif; font-size: 22px; font-weight: 800;
+    color: #fff; margin-bottom: 8px;
+}
+.ct-footer__tagline {
+    font-family: 'Source Serif 4', Georgia, serif; font-size: 13px;
+    font-style: italic; color: rgba(255,255,255,0.35); line-height: 1.5;
+}
+.ct-footer__col-title {
+    font-family: 'Outfit', sans-serif; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: rgba(255,255,255,0.5); margin-bottom: 14px;
+}
+.ct-footer__link {
+    display: block; font-family: 'Noto Sans', sans-serif; font-size: 12px;
+    color: rgba(255,255,255,0.35); padding: 3px 0;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .ct-hero { grid-template-columns: 1fr; }
+    .ct-hero__image { min-height: 280px; }
+    .ct-story-grid { grid-template-columns: repeat(2, 1fr); }
+    .ct-two-col { grid-template-columns: 1fr; }
+    .ct-sidebar { border-left: none; border-top: 2px solid #1a1918; padding-left: 0; padding-top: 24px; }
+    .ct-analysis-band__grid { grid-template-columns: 1fr; }
+    .ct-footer__inner { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+    .ct-story-grid { grid-template-columns: 1fr; }
+    .ct-hero__headline { font-size: 26px; }
+    .ct-hero__content { padding: 24px; }
+    .ct-analysis-story__headline { font-size: 20px; }
+}
