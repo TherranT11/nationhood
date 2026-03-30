@@ -3454,15 +3454,30 @@ function renderTakeStanceConfig(nation) {
 
     // Intensity selector (if side selected)
     if (_caStanceSide) {
+        const ax = IDEOLOGY_AXES.find(a => a.key === _caStanceAxis);
+        const sideLabel = _caStanceSide === 'left' ? (ax?.leftLabel ?? 'Left') : (ax?.rightLabel ?? 'Right');
+        const sideColor = _caStanceSide === 'left' ? (ax?.leftColor ?? '#ccc') : (ax?.rightColor ?? '#ccc');
         html += `<div class="ca-subtitle" style="margin-top:12px">Intensity</div><div style="display:flex;gap:6px">`;
         for (const [key, cfg] of Object.entries(STANCE_CONFIG.INTENSITY)) {
             const isSel = _caStanceIntensity === key;
             html += `<div class="ca-option-chip${isSel ? ' selected' : ''}" data-stance-int-val="${key}" style="flex:1;text-align:center;padding:6px 4px;${isSel ? 'border-color:#38bdf8;color:var(--dtext-0);background:rgba(56,189,248,0.06)' : ''}">
                 <div style="font-weight:600;font-size:11px">${key}</div>
                 <div style="font-size:9px;color:var(--dtext-3);margin-top:2px">Str ${cfg.strength} · -${cfg.decay_rate}/t</div>
+                <div style="font-size:9px;color:${sideColor};margin-top:1px;font-weight:600">+${cfg.ideology_shift} ${sideLabel}</div>
             </div>`;
         }
         html += `</div>`;
+
+        // Preview summary when intensity is selected
+        if (_caStanceIntensity) {
+            const selCfg = STANCE_CONFIG.INTENSITY[_caStanceIntensity];
+            const issueDef = ISSUE_DEFS[_caStanceIssue];
+            html += `<div style="margin-top:10px;padding:8px 10px;background:rgba(56,189,248,0.04);border:1px solid rgba(56,189,248,0.15);border-radius:3px;font-family:var(--dfont-mono);font-size:10px;">
+                <div style="color:var(--dtext-1);font-weight:600;margin-bottom:4px">${_caStanceIntensity.toUpperCase()} ${sideLabel.toUpperCase()} on ${issueDef?.label || ''}</div>
+                <div style="color:${sideColor};font-weight:700">Ideology: +${selCfg.ideology_shift} ${sideLabel}</div>
+                <div style="color:var(--dtext-3);margin-top:2px">Strength: ${selCfg.strength} · Decay: -${selCfg.decay_rate}/tick · Visibility: +${STANCE_CONFIG.VISIBILITY_BOOST}</div>
+            </div>`;
+        }
     }
 
     return html;
@@ -5905,15 +5920,30 @@ function _openTakeStanceModal(faction, nation, currentTick, issueStateMap, exist
         // Intensity selector (only if side selected)
         let intensityHtml = '';
         if (selectedSide) {
+            const sAx = IDEOLOGY_AXES.find(a => a.key === selectedAxis);
+            const sSideLabel = selectedSide === 'left' ? (sAx?.leftLabel ?? 'Left') : (sAx?.rightLabel ?? 'Right');
+            const sSideColor = selectedSide === 'left' ? (sAx?.leftColor ?? '#ccc') : (sAx?.rightColor ?? '#ccc');
             intensityHtml = `<div class="sm-section-label" style="margin-top:14px;">Intensity</div><div class="sm-intensity-list">`;
             for (const [key, cfg] of Object.entries(STANCE_CONFIG.INTENSITY)) {
                 const sel = key === selectedIntensity;
                 intensityHtml += `<div class="sm-int-opt${sel ? ' sm-int-opt--selected' : ''}" data-sm-intensity="${key}">
                     <span class="sm-int-name">${key}</span>
                     <span class="sm-int-meta">Strength ${cfg.strength} · Decay ${cfg.decay_rate}/tick</span>
+                    <span class="sm-int-meta" style="color:${sSideColor};font-weight:600">+${cfg.ideology_shift} ${sSideLabel}</span>
                 </div>`;
             }
             intensityHtml += '</div>';
+
+            // Preview summary when intensity is selected
+            if (selectedIntensity) {
+                const selCfg = STANCE_CONFIG.INTENSITY[selectedIntensity];
+                const issueDef2 = ISSUE_DEFS[selectedIssue];
+                intensityHtml += `<div style="margin-top:10px;padding:8px 10px;background:rgba(56,189,248,0.04);border:1px solid rgba(56,189,248,0.15);border-radius:3px;font-family:var(--dfont-mono);font-size:10px;">
+                    <div style="color:var(--dtext-1);font-weight:600;margin-bottom:3px">${selectedIntensity.toUpperCase()} ${sSideLabel.toUpperCase()} on ${issueDef2?.label || ''}</div>
+                    <div style="color:${sSideColor};font-weight:700">Ideology: +${selCfg.ideology_shift} ${sSideLabel}</div>
+                    <div style="color:var(--dtext-3);margin-top:2px">Strength: ${selCfg.strength} · Decay: -${selCfg.decay_rate}/tick · Visibility: +${STANCE_CONFIG.VISIBILITY_BOOST}</div>
+                </div>`;
+            }
         }
 
         area.innerHTML = axisHtml + sideHtml + intensityHtml;
