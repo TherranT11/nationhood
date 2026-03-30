@@ -3375,17 +3375,32 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             legitimacy: Math.max(0, (nation?.legitimacy ?? 50) - 3)
         }).eq('id', bill.nation_id);
 
+        // Governing parties: +1 approval/tick × 10 ticks = +10 total
+        // Opposition parties: -1 approval/tick × 10 ticks = -10 total
+        const { data: coalition } = await supabase.from('government_formations')
+            .select('party_ids').eq('nation_id', bill.nation_id).eq('status', 'active').maybeSingle();
+        const govPartyIds = coalition?.party_ids || [];
+        const { data: allParties } = await supabase.from('factions')
+            .select('id').eq('nation_id', bill.nation_id).eq('faction_type', 'party');
+        for (const party of (allParties || [])) {
+            const isGov = govPartyIds.includes(party.id);
+            const delta = isGov ? 10 : -10; // +1/tick × 10 ticks or -1/tick × 10 ticks
+            await nudgeApproval(supabase, party.id, bill.nation_id, delta, { source: 'state_media_control' });
+        }
+
+        // Government approval: +2/tick × 5 ticks = +10 total
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, 10, 'state_media_control');
+
         await supabase.from('event_log').insert({
             nation_id: bill.nation_id,
             event_name: 'FOUNDATIONAL_LAW_PASSED',
             trigger_key: 'state_media_control',
             description_used: 'The State Media Control Act has passed. Government now controls national media. Press freedom is permanently capped at 40.',
             category: 'POLITICAL',
-            effects_applied: { law: 'state_media_control', press_freedom_cap: 40, legitimacy: -3 },
+            effects_applied: { law: 'state_media_control', press_freedom_cap: 40, legitimacy: -3, gov_parties_approval: 10, opp_parties_approval: -10, gov_approval: 10 },
             fired_at_tick: currentTick
         });
 
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
         console.log(`[enactFoundationalBill] State Media Control Act enacted for nation ${bill.nation_id}`);
         return true;
     }

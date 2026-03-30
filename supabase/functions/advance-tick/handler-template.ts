@@ -1103,6 +1103,18 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             .eq('faction_type', 'party');
 
         if (factions && factions.length > 0) {
+        // Guard: skip AP if already distributed this tick (prevents double AP on retry/overlap)
+        const { data: existingLedger } = await supabase
+            .from('ap_ledger')
+            .select('id')
+            .eq('faction_id', factions[0].id)
+            .eq('tick', newTick)
+            .eq('reason', 'tick_gain')
+            .limit(1);
+        if (existingLedger && existingLedger.length > 0) {
+            console.warn(`[advanceTick] AP already distributed for nation ${nation.name} tick ${newTick} — skipping`);
+            continue;
+        }
         // Autocracy V5: +5 AP per tick, capped at 20. No coalition bonus.
         if (isAutocracy(nation)) {
             for (const faction of factions) {
@@ -1110,7 +1122,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 if (result.success) {
                     console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+5, autocracy)`);
                     apDistributed++;
-                    await supabase.from('ap_ledger').insert({ faction_id: faction.id, tick: newTick, delta: 5, reason: 'tick_gain', detail: 'Base AP per tick' }).then(() => {});
+                    await supabase.from('ap_ledger').insert({ faction_id: faction.id, tick: newTick, delta: 5, reason: 'tick_gain', detail: 'Base AP per tick' }).then(() => {}, () => {/* ignore duplicate */});
                 } else {
                     console.error(`[advanceTick] Autocracy AP FAILED for faction ${faction.id}: ${result.error}`);
                     apFailed++;

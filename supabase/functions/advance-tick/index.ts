@@ -9263,17 +9263,32 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             legitimacy: Math.max(0, (nation?.legitimacy ?? 50) - 3)
         }).eq('id', bill.nation_id);
 
+        // Governing parties: +1 approval/tick × 10 ticks = +10 total
+        // Opposition parties: -1 approval/tick × 10 ticks = -10 total
+        const { data: coalition } = await supabase.from('government_formations')
+            .select('party_ids').eq('nation_id', bill.nation_id).eq('status', 'active').maybeSingle();
+        const govPartyIds = coalition?.party_ids || [];
+        const { data: allParties } = await supabase.from('factions')
+            .select('id').eq('nation_id', bill.nation_id).eq('faction_type', 'party');
+        for (const party of (allParties || [])) {
+            const isGov = govPartyIds.includes(party.id);
+            const delta = isGov ? 10 : -10;
+            await nudgeApproval(supabase, party.id, bill.nation_id, delta, { source: 'state_media_control' });
+        }
+
+        // Government approval: +2/tick × 5 ticks = +10 total
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, 10, 'state_media_control');
+
         await supabase.from('event_log').insert({
             nation_id: bill.nation_id,
             event_name: 'FOUNDATIONAL_LAW_PASSED',
             trigger_key: 'state_media_control',
             description_used: 'The State Media Control Act has passed. Government now controls national media. Press freedom is permanently capped at 40.',
             category: 'POLITICAL',
-            effects_applied: { law: 'state_media_control', press_freedom_cap: 40, legitimacy: -3 },
+            effects_applied: { law: 'state_media_control', press_freedom_cap: 40, legitimacy: -3, gov_parties_approval: 10, opp_parties_approval: -10, gov_approval: 10 },
             fired_at_tick: currentTick
         });
 
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
         console.log(`[enactFoundationalBill] State Media Control Act enacted for nation ${bill.nation_id}`);
         return true;
     }
@@ -10892,6 +10907,7 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
             await supabase.from('elections').insert({
                 nation_id: nation.id,
                 election_tick: currentTick + 1,
+                election_type: 'parliamentary',
                 status: 'scheduled'
             });
             console.log(`  Scheduled snap election for tick ${currentTick + 1}`);
@@ -10998,6 +11014,31 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
         await createAdministration(supabase, nation.id, nation, coalitionObj, allParties || [], currentTick, null, null);
     } catch (adminErr) {
         console.warn(`EMERGENCY MINORITY: Administration creation failed for ${nation.name}:`, adminErr.message);
+    }
+
+    // Appoint party leader as PM in head_of_government (was missing — no PM would appear)
+    try {
+        const { data: pmFaction } = await supabase.from('factions')
+            .select('leader_first_name, leader_last_name, leader_age')
+            .eq('id', largestParty.id).single();
+        if (pmFaction?.leader_first_name) {
+            await supabase.from('head_of_government')
+                .update({ active: false })
+                .eq('nation_id', nation.id)
+                .eq('active', true);
+            await supabase.from('head_of_government').insert({
+                nation_id: nation.id,
+                faction_id: largestParty.id,
+                first_name: pmFaction.leader_first_name,
+                last_name: pmFaction.leader_last_name,
+                age: pmFaction.leader_age,
+                appointed_tick: currentTick,
+                active: true
+            });
+            console.log(`  PM appointed: ${pmFaction.leader_first_name} ${pmFaction.leader_last_name}`);
+        }
+    } catch (pmErr) {
+        console.warn(`EMERGENCY MINORITY: PM appointment failed for ${nation.name}:`, pmErr.message);
     }
 
     // Log event
@@ -25845,8 +25886,25 @@ async function processGovernmentCollapseCheck(supabase, nation, currentTick) {
     const govApproval = Number(nation.gov_approval ?? 50);
     if (govApproval > 5) return null;
 
+    // Skip if elections are already scheduled (PM called early elections, or snap already pending)
+    const { data: pendingElections } = await supabase.from('elections')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .limit(1);
+    if (pendingElections && pendingElections.length > 0) {
+        console.log(`[GovCollapse] ${nation.name}: skipping — elections already scheduled`);
+        return null;
+    }
+
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     if (!coalition || !coalition.party_ids || coalition.party_ids.length === 0) return null;
+
+    // Skip if coalition is already caretaker (dissolution already happened)
+    if (coalition.status === 'caretaker') {
+        console.log(`[GovCollapse] ${nation.name}: skipping — already caretaker government`);
+        return null;
+    }
 
     const coalitionIds = new Set(coalition.party_ids);
 
@@ -30148,6 +30206,18 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             .eq('faction_type', 'party');
 
         if (factions && factions.length > 0) {
+        // Guard: skip AP if already distributed this tick (prevents double AP on retry/overlap)
+        const { data: existingLedger } = await supabase
+            .from('ap_ledger')
+            .select('id')
+            .eq('faction_id', factions[0].id)
+            .eq('tick', newTick)
+            .eq('reason', 'tick_gain')
+            .limit(1);
+        if (existingLedger && existingLedger.length > 0) {
+            console.warn(`[advanceTick] AP already distributed for nation ${nation.name} tick ${newTick} — skipping`);
+            continue;
+        }
         // Autocracy V5: +5 AP per tick, capped at 20. No coalition bonus.
         if (isAutocracy(nation)) {
             for (const faction of factions) {
@@ -30155,7 +30225,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 if (result.success) {
                     console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+5, autocracy)`);
                     apDistributed++;
-                    await supabase.from('ap_ledger').insert({ faction_id: faction.id, tick: newTick, delta: 5, reason: 'tick_gain', detail: 'Base AP per tick' }).then(() => {});
+                    await supabase.from('ap_ledger').insert({ faction_id: faction.id, tick: newTick, delta: 5, reason: 'tick_gain', detail: 'Base AP per tick' }).then(() => {}, () => {});
                 } else {
                     console.error(`[advanceTick] Autocracy AP FAILED for faction ${faction.id}: ${result.error}`);
                     apFailed++;
@@ -30186,7 +30256,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 const parts = ['Base +5'];
                 if (isInGovernment) parts.push('Coalition +2');
                 if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) parts.push('Family successor -1');
-                await supabase.from('ap_ledger').insert({ faction_id: faction.id, tick: newTick, delta: apGain, reason: 'tick_gain', detail: parts.join(', ') }).then(() => {});
+                await supabase.from('ap_ledger').insert({ faction_id: faction.id, tick: newTick, delta: apGain, reason: 'tick_gain', detail: parts.join(', ') }).then(() => {}, () => {});
             } else {
                 console.error(`[advanceTick] AP accumulation FAILED for faction ${faction.id}: ${result.error}`);
                 apFailed++;

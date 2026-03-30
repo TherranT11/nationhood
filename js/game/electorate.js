@@ -2259,11 +2259,11 @@ export const STANCE_CONFIG = {
     COOLDOWN_WINDOW: 3,        // ticks between stances
     MAX_STANCES: 5,            // max concurrent stances per faction
 
-    // Intensity → strength & decay
+    // Intensity → strength, decay & ideology shift
     INTENSITY: {
-        centrist:  { strength: 60,  decay_rate: 2 },
-        moderate:  { strength: 80,  decay_rate: 4 },
-        radical:   { strength: 100, decay_rate: 8 },
+        centrist:  { strength: 60,  decay_rate: 2, ideology_shift: 2 },
+        moderate:  { strength: 80,  decay_rate: 4, ideology_shift: 4 },
+        radical:   { strength: 100, decay_rate: 8, ideology_shift: 7 },
     },
 
     // Visibility boost when taking a stance
@@ -2399,6 +2399,24 @@ export async function executeTakeStance(supabase, factionId, nationId, issueId, 
         return { success: false, message: 'Database error creating stance' };
     }
 
+    // ── Shift faction ideology on the chosen axis ──
+    let ideologyShiftApplied = 0;
+    if (intensityConfig.ideology_shift && ideo) {
+        const currentVal = Number(ideo[axis] || 0);
+        // left = negative direction, right = positive direction
+        const direction = side === 'left' ? -1 : 1;
+        const rawShift = intensityConfig.ideology_shift * direction;
+        const newVal = Math.max(-100, Math.min(100, currentVal + rawShift));
+        ideologyShiftApplied = newVal - currentVal;
+        if (ideologyShiftApplied !== 0) {
+            const { error: ideoErr } = await supabase.from('faction_ideology').update({ [axis]: newVal }).eq('faction_id', factionId);
+            if (ideoErr) {
+                console.error('[Electorate] faction_ideology update failed:', ideoErr.message);
+                ideologyShiftApplied = 0; // don't report a shift that didn't persist
+            }
+        }
+    }
+
     // ── Boost visibility ──
     await boostVisibility(supabase, factionId, nationId, STANCE_CONFIG.VISIBILITY_BOOST);
 
@@ -2417,6 +2435,7 @@ export async function executeTakeStance(supabase, factionId, nationId, issueId, 
             side,
             intensity,
             strength: intensityConfig.strength,
+            ideologyShift: ideologyShiftApplied,
             isPioneer,
             ideologicallyConsistent,
             refreshed: alreadyHasStance,
@@ -2441,6 +2460,7 @@ export async function executeTakeStance(supabase, factionId, nationId, issueId, 
 
     const effects = [];
     effects.push({ label: 'Stance', value: `${intensity} ${sideLabel}` });
+    if (ideologyShiftApplied !== 0) effects.push({ label: 'Ideology', value: `${ideologyShiftApplied > 0 ? '+' : ''}${ideologyShiftApplied} ${sideLabel}` });
     if (isPioneer) effects.push({ label: 'Pioneer bonus', value: '+5 appeal' });
     if (!ideologicallyConsistent) effects.push({ label: 'Inconsistent', value: '-5 appeal' });
     effects.push({ label: 'Visibility', value: `+${STANCE_CONFIG.VISIBILITY_BOOST}` });
