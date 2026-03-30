@@ -1312,6 +1312,53 @@ body {
             border-color: #ccc;
         }
 
+        /* Light mode: fix borders and direction selector containers */
+        body.light-mode {
+            --border-0:    rgba(0,0,0,0.10);
+            --border-hair: rgba(0,0,0,0.06);
+        }
+        body.light-mode .direction-selector-panel {
+            background: #f5f5f5;
+            border-color: rgba(0,0,0,0.12);
+        }
+        body.light-mode .direction-selector-panel .direction-label {
+            color: #777;
+        }
+        body.light-mode .direction-option {
+            border-color: rgba(0,0,0,0.10);
+            color: #555;
+        }
+        body.light-mode .direction-option:hover {
+            border-color: rgba(0,0,0,0.25);
+        }
+        body.light-mode .direction-option.selected {
+            background: rgba(21,101,192,0.08);
+            border-color: rgba(21,101,192,0.3);
+            color: #1565c0;
+        }
+        body.light-mode .chat-msg-bubble {
+            background: #eee;
+            border: 1px solid rgba(0,0,0,0.06);
+        }
+        body.light-mode .chat-msg.mine .chat-msg-bubble {
+            background: rgba(46,125,50,0.08);
+            border: 1px solid rgba(46,125,50,0.2);
+        }
+        body.light-mode .chat-input-row input {
+            background: #fff;
+            border-color: rgba(0,0,0,0.12);
+        }
+        body.light-mode .chat-send-btn {
+            background: #fff;
+            border-color: rgba(0,0,0,0.12);
+            color: #555;
+        }
+        body.light-mode .coming-soon-btn {
+            background: #e8e8e8;
+            border-color: rgba(0,0,0,0.10);
+            color: #999;
+        }
+
         /* ===== GOVERNMENT FORMATION (moved from elections.css) ===== */
         .formation-header-box {
             background: var(--bg-card);
