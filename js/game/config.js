@@ -12,6 +12,7 @@ export const GAME_CONFIG = {
     QUORUM_THRESHOLD: 0.5,           // 50% of seats must participate (yes+no+abstain) for quorum
     COMMITTEE_EXPIRY_TICKS: 6,
     DRAFT_BILL_AP_COST: 2,
+    FREE_BILL_ARTICLES: 3,         // First N non-text articles are free; each additional costs 1 AP
     VETO_APPROVAL_COST: 3,
     NO_CONFIDENCE_AP_COST: 5,
     NO_CONFIDENCE_VOTING_TICKS: 6,

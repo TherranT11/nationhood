@@ -1114,6 +1114,70 @@ async function rescindLaw(activeLawId, policyName, policyId) {
 
 // ==================== DRAFT MODAL ====================
 
+const FREE_ARTICLE_LIMIT = GAME_CONFIG.FREE_BILL_ARTICLES || 3;
+
+/** Count non-text draft articles (these are the ones that count toward the free limit). */
+function countBillableArticles(articles) {
+    return articles.filter(a => !a.isText).length;
+}
+
+/** Check if adding a non-text article would exceed the free limit and charge 1 AP if so.
+ *  Returns true if the article can be added, false if insufficient AP. */
+async function chargeArticleAP() {
+    const billableCount = countBillableArticles(draftArticles);
+    if (billableCount >= FREE_ARTICLE_LIMIT) {
+        const apResult = await deductAP(_supabase, currentFaction.id, 1);
+        if (!apResult.success) {
+            alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
+            return false;
+        }
+        currentFaction.action_points = apResult.newAp;
+        sessionStorage.removeItem('nationhood_state');
+        return true; // paid
+    }
+    return true; // free
+}
+
+/** Returns true if the article at the given index was a paid article (beyond the free limit). */
+function isArticlePaid(index) {
+    // Count how many non-text articles come before this one (in original insertion order)
+    let billableIndex = 0;
+    for (let i = 0; i < draftArticles.length; i++) {
+        if (!draftArticles[i].isText) {
+            if (i === index) return billableIndex >= FREE_ARTICLE_LIMIT;
+            billableIndex++;
+        }
+    }
+    return false;
+}
+
+/** Refund 1 AP for a paid article removal. */
+async function refundArticleAP() {
+    try {
+        await _supabase.rpc('accumulate_ap', { p_faction_id: currentFaction.id, p_gain: 1, p_max_ap: GAME_CONFIG.MAX_AP || 20 });
+        currentFaction.action_points = (currentFaction.action_points || 0) + 1;
+        sessionStorage.removeItem('nationhood_state');
+    } catch (e) { console.error('AP refund error:', e); }
+}
+
+/** Update the submit button text to show total AP cost. */
+function updateSubmitButtonCost() {
+    const btn = document.getElementById('submit-bill-btn');
+    if (!btn) return;
+    const billableCount = countBillableArticles(draftArticles);
+    const extraArticles = Math.max(0, billableCount - FREE_ARTICLE_LIMIT);
+    let baseCost = GAME_CONFIG.DRAFT_BILL_AP_COST;
+    if (currentFaction) {
+        if ((currentFaction.leader_positive_traits || []).includes('policy_wonk')) baseCost -= 1;
+        if ((currentFaction.leader_negative_traits || []).includes('micromanager')) baseCost += 1;
+        baseCost = Math.max(1, baseCost);
+    }
+    const totalPaid = extraArticles; // already paid per-article
+    const termBill = lawsIsAutocracy ? 'Decree' : 'Bill';
+    const costLabel = baseCost + ' AP' + (totalPaid > 0 ? ' (+' + totalPaid + ' AP paid for extra articles)' : '');
+    btn.textContent = `Submit ${termBill} to Committee — ${costLabel}`;
+}
+
 function openDraftModal() {
     draftArticles = []; selectedPolicy = null;
     if (lawsIsAutocracy) {
@@ -1122,15 +1186,14 @@ function openDraftModal() {
         document.getElementById('draft-modal-title').textContent = 'Draft New Decree';
         document.getElementById('bill-name-label').textContent = 'Name Your Decree';
         document.getElementById('bill-name-input').placeholder = 'e.g., Decree on National Resource Management';
-        document.getElementById('submit-bill-btn').textContent = `Submit Decree to Committee — ${GAME_CONFIG.DRAFT_BILL_AP_COST} AP`;
     } else {
         document.getElementById('draft-modal-content').classList.remove('autocracy-modal');
         document.getElementById('draft-modal-title').classList.remove('autocracy-title');
         document.getElementById('draft-modal-title').textContent = 'Draft New Bill';
         document.getElementById('bill-name-label').textContent = 'Name Your Bill';
         document.getElementById('bill-name-input').placeholder = 'e.g., The Religious Harmony Act';
-        document.getElementById('submit-bill-btn').textContent = `Submit to Committee — ${GAME_CONFIG.DRAFT_BILL_AP_COST} AP`;
     }
+    updateSubmitButtonCost();
     document.getElementById('article-preamble').textContent =
         `This ${lawsIsAutocracy ? 'decree' : 'bill'}, put forth in the ${lawsIsAutocracy ? 'regime' : 'legislature'} of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to enact the following provisions.`;
     populateSectorDropdown('sector-select');
@@ -1397,7 +1460,7 @@ function onInstSliderChange(instId) {
     if (badge) { badge.textContent = fl.label; badge.style.color = fl.color; }
 }
 
-function addFundingArticle() {
+async function addFundingArticle() {
     const key = document.getElementById('funding-ministry-select').value;
     if (!key) return;
     const label = FUNDING_MINISTRY_LABELS[key] || key;
@@ -1445,6 +1508,10 @@ function addFundingArticle() {
         return;
     }
 
+    // Charge 1 AP if beyond free article limit
+    const canAdd = await chargeArticleAP();
+    if (!canAdd) return;
+
     draftArticles.push({
         articleNumber: draftArticles.length + 2,
         isFunding: true,
@@ -1459,6 +1526,7 @@ function addFundingArticle() {
     renderDraftArticles();
     hideFundingArticleForm();
     if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
+    updateSubmitButtonCost();
 }
 
 function addTextArticle() {
@@ -1475,6 +1543,7 @@ function addTextArticle() {
     renderDraftArticles();
     hideTextArticleForm();
     if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
+    updateSubmitButtonCost();
 }
 
 let _currentSectorPolicies = [];
@@ -1801,7 +1870,7 @@ function selectPolicyOption(policyId, buttonId) {
     document.getElementById(buttonId).disabled = false;
 }
 
-function selectRepealPolicy(policyId) {
+async function selectRepealPolicy(policyId) {
     const policy = allPolicies.find(p => p.id === policyId);
     if (!policy) return;
     // Find the active law for this policy
@@ -1812,6 +1881,9 @@ function selectRepealPolicy(policyId) {
         alert('A repeal article for this law is already in the draft.');
         return;
     }
+    // Charge 1 AP if beyond free article limit
+    const canAdd = await chargeArticleAP();
+    if (!canAdd) return;
     draftArticles.push({
         articleNumber: draftArticles.length + 2,
         policy: policy,
@@ -1826,9 +1898,10 @@ function selectRepealPolicy(policyId) {
         document.getElementById('bill-name-section').style.display = 'block';
         document.getElementById('submit-bill-btn').disabled = false;
     }
+    updateSubmitButtonCost();
 }
 
-function addArticle() {
+async function addArticle() {
     const sector = document.getElementById('sector-select').value;
 
     // Foundational article (Electoral Makeup or HoS Title)
@@ -2053,9 +2126,13 @@ function addArticle() {
     }
 
     if (!selectedPolicy) return;
+    // Charge 1 AP if beyond free article limit
+    const canAdd = await chargeArticleAP();
+    if (!canAdd) return;
     draftArticles.push({ articleNumber: draftArticles.length + 2, policy: selectedPolicy, isOpposed: selectedPolicy.isOpposed || false });
     renderDraftArticles(); hideAddArticleForm(); selectedPolicy = null;
     if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
+    updateSubmitButtonCost();
 }
 
 function renderDraftArticles() {
@@ -2085,7 +2162,11 @@ function renderDraftArticles() {
         }
     }
 
+    // Track billable article index for cost display
+    let _billableIdx = 0;
     container.innerHTML = draftArticles.map((art, index) => {
+        const _isPaid = !art.isText && ((() => { const idx = _billableIdx; _billableIdx++; return idx >= FREE_ARTICLE_LIMIT; })());
+        const _costBadge = _isPaid ? ' <span class="ap-cost" style="font-size:0.7rem;color:var(--amber);font-weight:600;">1 AP</span>' : '';
         if (art.isFoundational) {
             if (art.foundationalSubtype === 'hos_title') {
                 return `<div class="draft-article-card" style="border-left:3px solid var(--purple);">
@@ -2205,7 +2286,7 @@ function renderDraftArticles() {
                 `<div style="margin-top:2px;font-size:0.8rem;color:var(--text-primary);font-weight:600;">Ongoing: ${ongoingText}</div>`;
             return `<div class="draft-article-card" style="border-left:3px solid ${borderColor};">
                 <div class="draft-article-info">
-                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:${borderColor};">Funding</span></div>
+                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:${borderColor};">Funding</span>${_costBadge}</div>
                     <div class="draft-article-name">${escapeHtml(fd.ministry_label)} Ministry Funding</div>
                     <div class="draft-article-meta">${summaryParts.map(s => escapeHtml(s)).join('<br>')}</div>
                     ${budgetImpact}
@@ -2241,7 +2322,7 @@ function renderDraftArticles() {
             }
             return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
                 <div class="draft-article-info">
-                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">REPEAL</span></div>
+                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">REPEAL</span>${_costBadge}</div>
                     <div class="draft-article-name">${escapeHtml(p.policy_name)} ${ideoHTML} <span class="opposed-badge" style="background:var(--red);color:#fff;">REPEAL</span></div>
                     <div class="draft-article-meta">${escapeHtml(p.description || '')}</div>
                     ${reversalHTML}
@@ -2257,17 +2338,22 @@ function renderDraftArticles() {
         }).join(' ');
         const opposedBadge = art.isOpposed ? ' <span class="opposed-badge">⚠ Opposed</span>' : '';
         const borderColor = art.isOpposed ? 'border-left:3px solid var(--red);' : '';
-        return `<div class="draft-article-card" style="${borderColor}"><div class="draft-article-info"><div class="draft-article-num">Article ${art.articleNumber}</div><div class="draft-article-name">${art.policy.policy_name} ${ideoHTML}${opposedBadge}</div><div class="draft-article-meta">${art.policy.description || ''}</div></div><button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button></div>`;
+        return `<div class="draft-article-card" style="${borderColor}"><div class="draft-article-info"><div class="draft-article-num">Article ${art.articleNumber}${_costBadge}</div><div class="draft-article-name">${art.policy.policy_name} ${ideoHTML}${opposedBadge}</div><div class="draft-article-meta">${art.policy.description || ''}</div></div><button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button></div>`;
     }).join('') + penaltySummary;
 }
 
-function removeArticle(index) {
+async function removeArticle(index) {
+    const art = draftArticles[index];
+    const wasPaid = !art.isText && isArticlePaid(index);
     draftArticles.splice(index, 1);
     draftArticles.forEach((art, i) => { art.articleNumber = i + 2; });
+    // Refund 1 AP if this was a paid article (beyond the free limit)
+    if (wasPaid) await refundArticleAP();
     renderDraftArticles();
     // Re-show add buttons (they may have been hidden for foundational bills)
     _showAllArticleButtons();
     if (draftArticles.length === 0) { document.getElementById('bill-name-section').style.display = 'none'; document.getElementById('submit-bill-btn').disabled = true; }
+    updateSubmitButtonCost();
 }
 
 async function submitToCommittee() {
