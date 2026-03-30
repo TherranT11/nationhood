@@ -1030,9 +1030,9 @@ export const STATE_VISIT_AGENDA_ITEMS = [
     {
         key: 'bilateral_talks', day: 2, slot: 'Evening',
         title: 'Private Bilateral Talks',
-        desc: 'Closed-door meeting between senior officials. No press, no public record. Can discuss sensitive topics and build trust for future negotiations. The content remains private.',
+        desc: 'Closed-door meeting between senior officials. No press, no public record. Opens diplomatic channels — all other actions with this nation cost 1 less AP this tick.',
         effects: { relations: 5 },
-        tags: ['Trust Threshold', 'Enables Initiatives'], costs: {}, risks: {}
+        tags: ['Trust Threshold', 'Enables Initiatives', 'Diplomatic Discount'], costs: {}, risks: {}
     },
     {
         key: 'military_review', day: 3, slot: 'Morning',

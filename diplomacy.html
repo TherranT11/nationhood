@@ -8761,7 +8761,8 @@ function renderStateVisitHTML(body) {
             effectTags += `<span class="sv-effect-tag sv-effect-tag--positive">${label} +${val}</span>`;
         }
         for (const tag of item.tags) {
-            effectTags += `<span class="sv-effect-tag sv-effect-tag--info">${escapeHtml(tag)}</span>`;
+            const tagClass = tag === 'Diplomatic Discount' ? 'sv-effect-tag--discount' : 'sv-effect-tag--info';
+            effectTags += `<span class="sv-effect-tag ${tagClass}">${escapeHtml(tag)}</span>`;
         }
         if (item.costs.debt) {
             effectTags += `<span class="sv-effect-tag sv-effect-tag--cost">+$${(item.costs.debt / 1000000).toFixed(1)}M Debt</span>`;
@@ -9322,7 +9323,8 @@ async function acceptStateVisit(proposalId) {
             relation_boost: relBoost,
             autocracy_result: autocracyResult,
             triggered_risks: triggeredRisks,
-            bonuses: bonusSummary
+            bonuses: bonusSummary,
+            bilateral_talks_discount: agenda.includes('bilateral_talks')
         },
         ap_cost: apCost,
         applied_at_tick: currentTick,
@@ -9931,9 +9933,34 @@ window.selectDraftTarget = selectDraftTarget;
 // ══════════════════════════════════════════════════════
 // DIPLOMATIC ACTIONS BOX
 // ══════════════════════════════════════════════════════
+// Check if a bilateral_talks state visit was completed with the target nation this tick
+// Returns true if the visiting nation gets -1 AP on diplomatic actions this tick
+async function hasBilateralTalksDiscount(targetNationId) {
+    if (!currentNation?.id || !targetNationId) return false;
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shard?.current_tick || 0;
+        const { data: logs } = await _supabase
+            .from('diplomatic_action_log')
+            .select('action_data')
+            .eq('nation_id', currentNation.id)
+            .eq('target_nation_id', targetNationId)
+            .eq('action_type', 'state_visit')
+            .eq('applied_at_tick', tick)
+            .limit(1);
+        return (logs || []).some(l => l.action_data?.bilateral_talks_discount);
+    } catch (_) { return false; }
+}
+
 async function renderActionsBox() {
     const body = document.getElementById('actions-body');
     if (!body) return;
+
+    // Check for bilateral talks AP discount with the selected target nation
+    let _btDiscount = false;
+    if (activeDraftTarget) {
+        _btDiscount = await hasBilateralTalksDiscount(activeDraftTarget.id);
+    }
 
     // Fetch unread message count for the Send Message badge (role-gated)
     if (currentNation && currentFaction && diplomaticRoles) {
@@ -9966,12 +9993,27 @@ async function renderActionsBox() {
 
     let html = '';
 
+    // Show bilateral talks discount banner if active
+    if (_btDiscount) {
+        html += `<div style="background:var(--teal-faint);border:1px solid var(--teal-border);border-radius:4px;padding:6px 10px;margin-bottom:8px;font-family:var(--font-mono);font-size:9.5px;color:var(--teal);line-height:1.4;">
+            🤝 <strong>Bilateral Talks Active</strong> — All diplomatic actions with this nation cost <strong>-1 AP</strong> this tick.
+        </div>`;
+    }
+
     // Helper: render a single action item (enabled or disabled)
     function actionHtml(a, enabled, role) {
         const isDisabled = !enabled || a.comingSoon;
         const disabledClass = isDisabled ? ' action-disabled' : '';
-        const onclick = !isDisabled ? `onclick="selectDraftAction('${a.key}','${escapeHtml(a.label)}',${a.ap},'${a.type}','${role}')"` : '';
-        const costLabel = a.ap > 0 ? a.ap + ' AP' : 'Free';
+        // Bilateral talks discount: -1 AP on non-state-visit actions (state visit has its own cost calc)
+        const discounted = _btDiscount && a.ap > 0 && a.key !== 'state_visit';
+        const effectiveAp = discounted ? Math.max(0, a.ap - 1) : a.ap;
+        const onclick = !isDisabled ? `onclick="selectDraftAction('${a.key}','${escapeHtml(a.label)}',${effectiveAp},'${a.type}','${role}')"` : '';
+        let costLabel;
+        if (discounted && a.ap > 0) {
+            costLabel = `<s style="opacity:0.5">${a.ap}</s> ${effectiveAp} AP <span style="color:var(--teal);font-size:9px;">🤝</span>`;
+        } else {
+            costLabel = a.ap > 0 ? a.ap + ' AP' : 'Free';
+        }
         const badgeHtml = a.badge ? '<span class="action-badge">' + a.badge + '</span>' : '';
         return `<div class="action-item${disabledClass}" data-action="${a.key}" ${onclick}>
                 <span class="action-name">${a.label}${badgeHtml}</span>
