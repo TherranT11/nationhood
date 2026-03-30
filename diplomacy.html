@@ -14893,19 +14893,27 @@ async function sendIPOChat() {
     input.disabled = true;
 
     try {
-        const { error } = await _supabase.from('ipo_chat').insert({
+        const { data, error } = await _supabase.from('ipo_chat').insert({
             org_id: ipoSelectedOrgId,
             faction_id: currentFaction.id,
             is_system: false,
             message_text: text,
             tick_posted: shardTick
-        });
+        }).select();
 
         if (error) {
             console.error('[IPO Chat] Send error:', error.message);
             input.value = text; // restore on failure
+        } else {
+            // Optimistic UI update — show the message immediately rather than
+            // waiting for the realtime subscription (which requires the table
+            // to be in the supabase_realtime publication).
+            const inserted = data?.[0];
+            if (inserted && !ipoChatMessages.find(m => m.id === inserted.id)) {
+                ipoChatMessages.push(inserted);
+                renderIPOChatMessages();
+            }
         }
-        // Message will appear via realtime subscription
     } catch (e) {
         console.error('[IPO Chat] Send exception:', e);
         input.value = text;
