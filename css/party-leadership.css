@@ -594,3 +594,145 @@ body {
 .pl-breakdown-math .op { color: var(--text-dim); }
 .pl-breakdown-math .raw { color: var(--text-secondary); }
 .pl-breakdown-math .final { font-weight: 800; }
+
+/* ═══════════════════════════════════════
+   Mobile / Narrow Viewport
+   ═══════════════════════════════════════ */
+@media (max-width: 700px) {
+    .pl-container {
+        height: auto;
+        min-height: calc(100vh - 80px);
+    }
+
+    /* Stack panels vertically */
+    .pl-body {
+        flex-direction: column;
+    }
+
+    /* Candidate list becomes horizontal scrollable row */
+    .pl-list {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border-0);
+        padding: 0;
+        overflow-y: visible;
+        overflow-x: auto;
+        display: flex;
+        flex-direction: row;
+        flex-shrink: 0;
+        max-height: none;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .pl-list-row {
+        min-width: 160px;
+        max-width: 200px;
+        flex-shrink: 0;
+        border-bottom: none;
+        border-right: 1px solid var(--border-hair);
+        border-left: none;
+        padding: 8px 12px;
+    }
+
+    .pl-list-row.active {
+        border-left: none;
+        border-bottom: 3px solid var(--blue);
+    }
+
+    .pl-list-name {
+        max-width: 140px;
+        font-size: 11px;
+    }
+
+    .pl-refresh-wrap {
+        min-width: 120px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-top: none;
+        border-left: 1px solid var(--border-main);
+        padding: 8px;
+    }
+
+    .pl-refresh-btn {
+        font-size: 8px;
+        padding: 4px 8px;
+    }
+
+    .pl-refresh-note {
+        display: none;
+    }
+
+    /* Detail panel fills remaining space */
+    .pl-detail {
+        padding: 12px 14px;
+        overflow-y: visible;
+    }
+
+    .pl-detail-empty {
+        min-height: 120px;
+        height: auto;
+    }
+
+    /* Header stacks on narrow */
+    .pl-header {
+        flex-wrap: wrap;
+        height: auto;
+        padding: 8px 12px;
+        gap: 6px;
+    }
+
+    .pl-header-left {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .pl-header-title {
+        font-size: 13px;
+    }
+
+    .pl-header-right {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    /* Identity block stacks */
+    .pl-identity {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .pl-avatar {
+        width: 40px;
+        height: 40px;
+        font-size: 14px;
+    }
+
+    .pl-detail-name {
+        font-size: 15px;
+    }
+
+    /* Trait cards compact */
+    .pl-trait-top {
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+    .pl-trait-name {
+        font-size: 10px;
+    }
+
+    .pl-cost-box {
+        padding: 6px 10px;
+    }
+
+    .pl-cost-number {
+        font-size: 16px;
+    }
+
+    /* Breakdown math wraps */
+    .pl-breakdown-math {
+        font-size: 9px;
+        word-break: break-word;
+    }
+}
