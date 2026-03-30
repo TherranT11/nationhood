@@ -237,6 +237,22 @@ let editingArticleId = null;
 let sponsorSelectedPolicy = null;
 let selectedRepealLaw = null; // Active law selected for repeal article
 const SPECIAL_BILL_TYPES = ['no_confidence', 'confirmation', 'minister_confirmation', 'veto_override', 'repeal', 'impeachment_motion', 'impeachment_conviction'];
+const FREE_ARTICLE_LIMIT = GAME_CONFIG.FREE_BILL_ARTICLES || 3;
+
+/** Count non-text articles in a bill. Text articles have no policy_id, no funding_data, no effect_data. */
+function countNonTextArticles(articles) {
+    return (articles || []).filter(a => a.policy_id || a.funding_data || a.effect_data).length;
+}
+
+let _billArticleLock = false; // Prevents double-fire on async article operations
+
+/** Refund 1 AP to a faction (used when removing paid articles). */
+async function refundArticleAP_bill(factionId) {
+    try {
+        const { error } = await _supabase.rpc('accumulate_ap', { p_faction_id: factionId, p_gain: 1, p_max_ap: GAME_CONFIG.MAX_AP || 20 });
+        if (error) console.error('AP refund RPC error:', error);
+    } catch (e) { console.error('AP refund error:', e); }
+}
 
 const urlParams = new URLSearchParams(window.location.search);
 const billId = urlParams.get('id');
@@ -704,6 +720,25 @@ function renderArticles() {
     const isSponsor = bill.proposed_by === currentFaction?.id;
     const isCommittee = bill.status === 'committee';
     const canEditArticles = isSponsor && isCommittee && !SPECIAL_BILL_TYPES.includes(bill.bill_type);
+    /** Generate remove button HTML for an article — sponsor can remove own articles, conditional support requester can remove theirs. Returns just the button or empty string. */
+    function articleRemoveBtn(art) {
+        if (!isCommittee || SPECIAL_BILL_TYPES.includes(bill.bill_type)) return '';
+        const artOwnedBySponsor = !art.added_by || art.added_by === bill.proposed_by;
+        // Sponsor: can remove articles they own (not conditional support articles)
+        if (isSponsor && artOwnedBySponsor) {
+            return '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>';
+        }
+        // Conditional support requester: can remove their own article
+        if (currentFaction && art.added_by === currentFaction.id && !artOwnedBySponsor) {
+            return '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Withdraw</button>';
+        }
+        return '';
+    }
+    /** Wrap remove button in actions div. */
+    function articleActionsDiv(art) {
+        const btn = articleRemoveBtn(art);
+        return btn ? '<div class="article-sponsor-actions">' + btn + '</div>' : '';
+    }
 
     // Render sponsor article toolbar (Add Article buttons above articles)
     document.querySelector('.sponsor-article-toolbar')?.remove();
@@ -1117,9 +1152,7 @@ function renderArticles() {
                 const hasDecrease = changes.some(i => i.proposed_pct < i.current_pct);
                 const borderColor = hasDecrease ? 'var(--red)' : hasIncrease ? 'var(--green)' : 'var(--blue)';
                 const tagLabel = hasDecrease && !hasIncrease ? 'DEFUND' : hasIncrease && !hasDecrease ? 'FUND' : 'FUNDING';
-                const fundingActions = canEditArticles ? '<div class="article-sponsor-actions">' +
-                    '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
-                '</div>' : '';
+                const fundingActions = articleActionsDiv(art);
                 const ongoingCost = calculateFundingOngoingCost(fd);
                 const upfrontCost = calculateFundingUpfrontCost(fd);
                 totalOngoing += ongoingCost;
@@ -1154,10 +1187,15 @@ function renderArticles() {
             if (!p) {
                 // Text-only article
                 const hasEffectData = !!art.effect_data;
-                const textActions = canEditArticles ? '<div class="article-sponsor-actions">' +
-                    (hasEffectData ? '' : '<button class="article-action-btn edit" onclick="openEditArticleModal(\'' + art.id + '\')">Edit</button>') +
-                    '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
-                '</div>' : '';
+                let textActions = '';
+                const canEditText = canEditArticles && !hasEffectData;
+                const _removeBtn = articleRemoveBtn(art);
+                if (canEditText || _removeBtn) {
+                    textActions = '<div class="article-sponsor-actions">' +
+                        (canEditText ? '<button class="article-action-btn edit" onclick="openEditArticleModal(\'' + art.id + '\')">Edit</button>' : '') +
+                        _removeBtn +
+                    '</div>';
+                }
                 return '<div class="article" style="border-left:3px solid var(--blue);">' +
                     '<div class="article-number">Article ' + art.article_number + ' <span style="color:var(--blue);font-size:0.7rem;">TEXT</span></div>' +
                     '<div class="article-title">' + (art.article_title || 'Untitled Provision') + '</div>' +
@@ -1202,9 +1240,7 @@ function renderArticles() {
                     : onCost < 0 ? formatCurrency(onCost).replace(/^[+-]/, '-$') + '/mo lost revenue'
                     : '$0/mo';
 
-                const repealActions = canEditArticles ? '<div class="article-sponsor-actions">' +
-                    '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
-                '</div>' : '';
+                const repealActions = articleActionsDiv(art);
 
                 return '<div class="article" style="border-left:3px solid var(--orange);">' +
                     '<div class="article-number">Article ' + art.article_number + ' <span style="background:var(--orange);color:#000;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;">REPEAL</span></div>' +
@@ -1247,9 +1283,7 @@ function renderArticles() {
             const upCost = scalePolicyCost(p.upfront_cost || 0, p.upfront_scaling_stat, currentNation);
             const onCost = scalePolicyCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, currentNation);
 
-            const policyActions = canEditArticles ? '<div class="article-sponsor-actions">' +
-                '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
-            '</div>' : '';
+            const policyActions = articleActionsDiv(art);
 
             const pTypeBadge = p.policy_type === 'structural' ? '<span class="policy-type-badge structural">Structural</span>'
                 : p.policy_type === 'lever' ? '<span class="policy-type-badge lever">Lever</span>' : '';
@@ -2445,7 +2479,7 @@ async function submitAmendment() {
     if (mySupport?.locked) { alert('Your support is locked — a strike deal was accepted.'); return; }
     if ((currentBill.struck_policy_ids || []).includes(selectedAmendmentPolicy.id)) { alert('This policy was struck from the bill and cannot be re-added.'); return; }
     try {
-        // Conditional support costs 1 AP
+        // Conditional support always costs 1 AP
         const apResult = await deductAP(_supabase, currentFaction.id, 1);
         if (!apResult.success) { alert(apResult.error || 'Insufficient AP (need 1).'); return; }
 
@@ -2546,7 +2580,7 @@ async function submitTextAmendment() {
     const body = document.getElementById('text-amendment-body').value.trim();
     if (!body) { alert('Please enter article text.'); return; }
     try {
-        // Conditional support costs 1 AP
+        // Conditional support always costs 1 AP
         const apResult = await deductAP(_supabase, currentFaction.id, 1);
         if (!apResult.success) { alert(apResult.error || 'Insufficient AP (need 1).'); return; }
 
@@ -2668,10 +2702,22 @@ async function cleanupOrphanedConditionalSupport() {
 }
 
 async function rescindArticle(articleId) {
-    if (!currentFaction || currentBill.proposed_by !== currentFaction.id) return;
+    if (_billArticleLock) return;
+    if (!currentFaction) return;
     if (currentBill.status !== 'committee') return;
 
     const targetArt = (currentBill.bill_articles || []).find(a => a.id === articleId);
+    if (!targetArt) return;
+
+    // Block: sponsor cannot remove articles added via conditional support (added_by !== sponsor)
+    const isSponsor = currentBill.proposed_by === currentFaction.id;
+    const isArticleOwner = targetArt.added_by === currentFaction.id;
+    if (!isSponsor && !isArticleOwner) return; // only sponsor or article owner can remove
+    if (isSponsor && targetArt.added_by && targetArt.added_by !== currentFaction.id) {
+        alert('This article was added via conditional support. Only the faction that requested it can remove it.');
+        return;
+    }
+
     const artLabel = targetArt?.policies?.policy_name || targetArt?.article_title || 'this article';
     const articleCount = (currentBill.bill_articles || []).length;
 
@@ -2681,12 +2727,26 @@ async function rescindArticle(articleId) {
         if (!confirm(`Remove "${artLabel}" from the bill? This cannot be undone.`)) return;
     }
 
+    _billArticleLock = true;
     try {
         await _supabase.from('bill_articles').delete().eq('id', articleId);
         await renumberArticles(billId);
         await cleanupOrphanedConditionalSupport();
+
+        // Refund 1 AP if this was a non-text article and the bill had more than FREE_ARTICLE_LIMIT non-text articles
+        const isTextArticle = !targetArt.policy_id && !targetArt.funding_data && !targetArt.effect_data;
+        if (!isTextArticle) {
+            const nonTextCountBefore = countNonTextArticles(currentBill.bill_articles);
+            if (nonTextCountBefore > FREE_ARTICLE_LIMIT) {
+                // Refund to whoever paid: sponsor's own articles → sponsor, conditional support → the requester
+                const refundTo = targetArt.added_by || currentFaction.id;
+                await refundArticleAP_bill(refundTo);
+            }
+        }
+
         await loadBillData();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
+    finally { _billArticleLock = false; }
 }
 
 // ==================== EDIT TEXT ARTICLE ====================
@@ -2844,34 +2904,57 @@ function selectRepealLaw(lawId) {
 }
 
 async function submitSponsorAddArticle() {
+    if (_billArticleLock) return;
     if ((!sponsorSelectedPolicy && !selectedRepealLaw) || !currentFaction) return;
     if (sponsorSelectedPolicy && (currentBill.struck_policy_ids || []).includes(sponsorSelectedPolicy.id)) {
         alert('This policy was struck from the bill and cannot be re-added.'); return;
     }
+    _billArticleLock = true;
+    let paidArticleAP = false;
     try {
+        // Check if this article would exceed the free limit
+        const nonTextCount = countNonTextArticles(currentBill.bill_articles);
+        if (nonTextCount >= FREE_ARTICLE_LIMIT) {
+            const apResult = await deductAP(_supabase, currentFaction.id, 1);
+            if (!apResult.success) {
+                alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
+                return;
+            }
+            currentFaction.action_points = apResult.newAp;
+            paidArticleAP = true;
+        }
+
         const { data: existingArticles } = await _supabase.from('bill_articles')
             .select('article_number').eq('bill_id', billId)
             .order('article_number', { ascending: false }).limit(1);
         const nextNum = (existingArticles?.[0]?.article_number || 1) + 1;
 
+        let insertErr;
         if (selectedRepealLaw) {
-            // Repeal article — references the active law to be repealed
-            await _supabase.from('bill_articles').insert({
+            const { error } = await _supabase.from('bill_articles').insert({
                 bill_id: billId,
                 policy_id: selectedRepealLaw.policy_id,
                 article_number: nextNum,
                 added_by: currentFaction.id,
                 repeal_active_law_id: selectedRepealLaw.id
             });
+            insertErr = error;
         } else {
-            await _supabase.from('bill_articles').insert({
+            const { error } = await _supabase.from('bill_articles').insert({
                 bill_id: billId, policy_id: sponsorSelectedPolicy.id,
                 article_number: nextNum, added_by: currentFaction.id
             });
+            insertErr = error;
+        }
+        if (insertErr) {
+            // Refund AP if the insert failed after deduction
+            if (paidArticleAP) await refundArticleAP_bill(currentFaction.id);
+            throw insertErr;
         }
         closeSponsorAddModal();
         await loadBillData();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
+    finally { _billArticleLock = false; }
 }
 
 // Sponsor Add Text Article
