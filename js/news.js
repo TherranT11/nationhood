@@ -103,7 +103,7 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-top-ribbon-inner">
                 <span>${gameDate}</span>
                 <select class="nws-pub-switcher" id="nws-pub-switcher">${pubSwitcher}</select>
-                ${canWrite ? '<button class="nws-write-btn" id="nws-write-article-btn">Write Article</button>' : '<span></span>'}
+                ${canWrite ? '<span><button class="nws-write-btn" id="nws-write-article-btn">Write Article</button></span>' : '<span></span>'}
             </div>
         </div>
 
@@ -115,7 +115,7 @@ export async function initNewspaper(supabase, state) {
             </div>
             <div class="nws-continental-masthead-main">
                 <h1 class="nws-continental-title">The Continental</h1>
-                <span class="nws-continental-subtitle">Independent Journalism for Meridia</span>
+                <span class="nws-continental-subtitle">Independent Journalism for Meridian</span>
             </div>
         </div>` : `
         <!-- CRUCERAN MASTHEAD -->
@@ -1436,7 +1436,7 @@ function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
         h += `</div><div class="ct-analysis-band"><div class="ct-analysis-band__inner">
             <div class="ct-analysis-band__header">
                 <span class="ct-analysis-band__badge">Continental Analysis</span>
-                <span class="ct-analysis-band__title">In-depth reporting from across Meridia</span>
+                <span class="ct-analysis-band__title">In-depth reporting from across Meridian</span>
             </div>
             <div class="ct-analysis-band__grid">`;
         for (const a of secondary) {
@@ -1493,7 +1493,7 @@ function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
         <div class="ct-footer__inner">
             <div class="ct-footer__brand">
                 <div class="ct-footer__title">The Continental</div>
-                <div class="ct-footer__tagline">Independent journalism for Meridia.<br>Where Ideas Converge.</div>
+                <div class="ct-footer__tagline">Independent journalism for Meridian.<br>Where Ideas Converge.</div>
             </div>
             <div>
                 <div class="ct-footer__col-title">Sections</div>
