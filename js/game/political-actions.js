@@ -2710,8 +2710,25 @@ export async function processGovernmentCollapseCheck(supabase, nation, currentTi
     const govApproval = Number(nation.gov_approval ?? 50);
     if (govApproval > 5) return null;
 
+    // Skip if elections are already scheduled (PM called early elections, or snap already pending)
+    const { data: pendingElections } = await supabase.from('elections')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .limit(1);
+    if (pendingElections && pendingElections.length > 0) {
+        console.log(`[GovCollapse] ${nation.name}: skipping — elections already scheduled`);
+        return null;
+    }
+
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     if (!coalition || !coalition.party_ids || coalition.party_ids.length === 0) return null;
+
+    // Skip if coalition is already caretaker (dissolution already happened)
+    if (coalition.status === 'caretaker') {
+        console.log(`[GovCollapse] ${nation.name}: skipping — already caretaker government`);
+        return null;
+    }
 
     const coalitionIds = new Set(coalition.party_ids);
 
