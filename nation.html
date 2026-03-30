@@ -1133,11 +1133,11 @@ function renderFeaturedInflation(nation) {
 
     // Scale items
     var scaleItems = [
-        { label: 'Minimal', range: '<0.25%', active: rate < 0.25 },
-        { label: 'Low', range: '0.25-1%', active: rate >= 0.25 && rate < 1 },
-        { label: 'Moderate', range: '1-3%', active: rate >= 1 && rate < 3 },
-        { label: 'High', range: '3-8%', active: rate >= 3 && rate < 8 },
-        { label: 'Hyper', range: '8%+', active: rate >= 8 }
+        { label: 'Deflation', range: '<0%', active: rate < 0 },
+        { label: 'Low', range: '0-1%', active: rate >= 0 && rate < 1 },
+        { label: 'Stable', range: '1-3%', active: rate >= 1 && rate < 3 },
+        { label: 'High', range: '3-6%', active: rate >= 3 && rate < 6 },
+        { label: 'Hyper', range: '6%+', active: rate >= 6 }
     ];
 
     // Sparkline — for inflation, invert visually: down line = good
