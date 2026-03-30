@@ -234,106 +234,99 @@ export function calculateImportDemand(nation, sector, opts) {
     var cfg = TRADE_CONFIG;
     var gdp = Number(nation.gdp) || 0;
     var gdpModifier = gdp / cfg.BASELINE_GDP;
-
-    // Normalize stats from 0-100 codebase scale to 0-20 spec scale
+    var popNorm = (Number(nation.population) || 1) / 5000000;
     var SN = 5;   // stat normalizer: divide 0-100 stats by 5
-    var PN = 5000000;  // population normalizer: raw pop / 5M ≈ 0-20 equivalent
 
-    var rawDemand = 0;
+    // Domestic production covers a FRACTION of demand (60-70%), never 100%.
+    // Even nations with strong domestic industries import for variety,
+    // specialization, quality, and competitive pricing.
+    var grossDemand = 0;
+    var domesticCoverage = 0;  // 0.0–0.7: how much domestic production offsets
 
     // ── FUEL & ENERGY ──
-    // Two-component demand model:
-    // 1. Deficiency: import what you can't produce domestically (threshold 20)
-    // 2. Industrial baseline: manufacturing, urbanization, cost of living,
-    //    and poor rail networks all drive fuel consumption regardless of reserves
+    // Demand: population + manufacturing + urbanization + transport needs.
+    // Domestic offset: oil/gas + energy generation (max 70%).
     if (sector.key === 'fuel_energy') {
-        var oilGas = (Number(nation.oil_and_gas) || 0) / SN;
-        var energyGen = (Number(nation.energy_generation) || 0) / SN;
-        var domesticEnergy = (oilGas + energyGen) / 2;
-        var deficiency = Math.max(0, 20 - domesticEnergy);
-
-        // Industrial/urban energy consumption baseline
         var manufNorm = (Number(nation.manufacturing_output) || 0) / SN;
         var urbanNorm = (Number(nation.urbanization) || 0) / SN;
         var colNorm = (Number(nation.cost_of_living) || 0) / SN;
         var railNorm = (Number(nation.rail_network) || 0) / SN;
-        // Low rail → more fuel for transport (inverted: 20 - rail score)
-        var transportFuelNeed = Math.max(0, 12 - railNorm);
-        // Industrial demand: factories + cities + high living standards + poor transit
-        // Offset by domestic energy — nations that produce enough fuel domestically
-        // don't need to import for industrial use either
-        var grossIndustrialDemand = (manufNorm * 0.3 + urbanNorm * 0.2 + colNorm * 0.15 + transportFuelNeed * 0.15);
-        var industrialDemand = Math.max(0, grossIndustrialDemand - domesticEnergy * 0.5);
+        var transportNeed = Math.max(0, 12 - railNorm) * 0.15;
+        grossDemand = (popNorm * 2 + manufNorm * 0.3 + urbanNorm * 0.2 + colNorm * 0.15 + transportNeed) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
 
-        rawDemand = (deficiency + industrialDemand) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+        var oilGas = (Number(nation.oil_and_gas) || 0) / 100;
+        var energyGen = (Number(nation.energy_generation) || 0) / 100;
+        domesticCoverage = Math.min(0.70, (oilGas + energyGen) / 2);
     }
 
     // ── MINERALS & RAW MATERIALS ──
-    // Import if you lack domestic minerals but have manufacturing that needs inputs.
-    // Manufacturing creates demand for raw material imports.
+    // Demand: manufacturing needs + infrastructure development + technology production.
+    // Domestic offset: rare_minerals (max 65%).
     else if (sector.key === 'minerals') {
-        var minerals = (Number(nation.rare_minerals) || 0) / SN;
         var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
-        var deficiency = Math.max(0, 12 - minerals);
-        rawDemand = deficiency * (manufScore / 10) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+        var infraScore = (Number(nation.physical_infrastructure) || 0) / SN;
+        var techScore = (Number(nation.digital_infrastructure) || 0) / SN;
+        grossDemand = (manufScore * 0.4 + infraScore * 0.15 + techScore * 0.1) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+
+        var minerals = (Number(nation.rare_minerals) || 0) / 100;
+        domesticCoverage = Math.min(0.65, minerals * 0.8);
     }
 
     // ── FOOD & AGRICULTURE ──
-    // Everyone needs food. Import based on what you can't grow domestically.
-    // Uses population as scaling factor (not GDP) — even poor nations need to eat.
-    // arable_land is treated as 0–1 (not divided by SN) so it stays proportional
-    // to popNorm. At land=0.5 and popNorm=1 the nation is roughly self-sufficient.
+    // Demand: population-driven (everyone eats). Scales with standard of living
+    // (wealthier populations consume more varied/imported food).
+    // Uses population scaling, NOT GDP — even poor nations need food.
+    // Domestic offset: arable_land (max 70%).
     else if (sector.key === 'food_agriculture') {
+        var sol = (Number(nation.standard_of_living) || 50) / 100;
+        grossDemand = popNorm * (1 + sol * 0.5) * cfg.BASE_TRADE_MULTIPLIER * 0.8;
+
         var arableLand = (Number(nation.arable_land) || 0) / 100;
-        var popNorm = (Number(nation.population) || 1) / PN;
-        var sufficiency = arableLand / Math.max(0.1, popNorm * 0.5);
-        var deficit = Math.max(0, 1 - sufficiency);
-        rawDemand = deficit * popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.8;
+        domesticCoverage = Math.min(0.70, arableLand / Math.max(0.2, popNorm * 0.3));
     }
 
     // ── MANUFACTURED GOODS ──
-    // Import what you can't make. Consumer demand (population × standard of living)
-    // minus domestic production capacity.
+    // Demand: population × standard of living (consumer purchasing power).
+    // Domestic offset: manufacturing_output (max 60% — even industrial nations
+    // import cars, electronics, clothing from abroad).
     else if (sector.key === 'manufactured_goods') {
-        var popNorm = (Number(nation.population) || 1) / PN;
         var sol = (Number(nation.standard_of_living) || 50) / SN;
-        var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
-        var consumerDemand = popNorm * (sol / 10);
-        var domesticManuf = manufScore / 10;
-        var deficit = Math.max(0, consumerDemand - domesticManuf);
-        rawDemand = deficit * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
+        grossDemand = popNorm * (sol / 8) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.7;
+
+        var manufScore = (Number(nation.manufacturing_output) || 0) / 100;
+        domesticCoverage = Math.min(0.60, manufScore * 0.7);
     }
 
     // ── TECHNOLOGY & ELECTRONICS ──
-    // Digital infrastructure needs minus domestic tech production.
+    // Demand: standard of living (wealthy populations buy tech) + digital
+    // infrastructure needs + population base.
+    // Domestic offset: higher_education + digital_infrastructure (max 60%).
     else if (sector.key === 'technology') {
-        var popNorm = (Number(nation.population) || 1) / PN;
+        var sol = (Number(nation.standard_of_living) || 50) / SN;
         var digi = (Number(nation.digital_infrastructure) || 0) / SN;
-        var edu = Number(nation.higher_education) || 0;
-        var techScore = ((Number(nation.digital_infrastructure) || 0) + edu) / 2 / SN;
-        var techDemand = popNorm * (digi / 10) * 0.5;
-        var domesticTech = techScore / 10;
-        var deficit = Math.max(0, techDemand - domesticTech);
-        rawDemand = deficit * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.5;
+        grossDemand = popNorm * ((sol + digi) / 16) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
+
+        var edu = (Number(nation.higher_education) || 0) / 100;
+        var digiProd = (Number(nation.digital_infrastructure) || 0) / 100;
+        domesticCoverage = Math.min(0.60, (edu + digiProd) / 2 * 0.7);
     }
 
     // ── ARMS & MILITARY EQUIPMENT ──
-    // Driven by defense spending minus domestic arms production.
-    // 15% of defense budget goes to equipment purchases.
-    // Nations with domestic arms industries import less (only 40% of that 15%).
+    // Demand: defense budget + instability premium (unstable nations arm up).
+    // Domestic offset: nations with arms exports cover 60% internally.
     else if (sector.key === 'arms') {
         var defenseBudget = (opts && opts.defense_budget) || 0;
-        var domesticArms = (opts && opts.has_arms_exports) ? 0.6 : 0;
-        rawDemand = defenseBudget * 0.15 * (1 - domesticArms);
+        var stability = Number(nation.stability) || 50;
+        var instabilityPremium = Math.max(0, (50 - stability) / 50) * 0.3;
+        grossDemand = defenseBudget * (0.15 + instabilityPremium);
+
+        domesticCoverage = (opts && opts.has_arms_exports) ? 0.60 : 0;
     }
 
-    // ── Minimum import floor ──
-    // No nation is 100% self-sufficient. Even when domestic production exceeds
-    // demand, nations still import for variety, quality, and specialization.
-    // Floor = 5% of what a baseline economy would import in this sector.
-    var popNormFloor = (Number(nation.population) || 1) / 5000000;
-    var minImport = popNormFloor * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.05;
-    if (rawDemand < minImport) rawDemand = minImport;
+    // Apply domestic coverage: domestic production offsets demand but never fully
+    var rawDemand = grossDemand * (1 - domesticCoverage);
+
+    if (rawDemand <= 0) return 0;
 
     // ── Currency strength on imports ──
     // Weak currency makes imports MORE expensive → you can afford LESS.
