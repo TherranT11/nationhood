@@ -6072,7 +6072,7 @@ function renderProtestCrisisCard() {
     // Public Address button
     actionsHtml += `<div class="protest-crisis-btn${paDisabled ? ' disabled' : ''}" onclick="${paDisabled ? '' : `protestCrisisAction('public_address')`}">
         <span>${paLabel}</span>
-        <span>${paCostLabel}</span>
+        <span>${paCostLabel} <span class="protest-crisis-btn__note">call for calm — reduces unrest</span></span>
     </div>`;
 
     // EPO button
@@ -6112,6 +6112,10 @@ async function protestCrisisAction(actionType) {
 
     try {
         if (actionType === 'public_address') {
+            if (!confirm('Issue a Public Address on the protest?\n\nThe government calls for calm and dialogue.\n• Civil Unrest reduced by 1 this tick\n• Ruling party gains +1 moderate approval\n• 3-tick cooldown before next address\n\nProceed?')) {
+                _protestCrisisActionLock = false;
+                return;
+            }
             result = await executePublicAddress(_supabase, currentFaction.id, currentNation.id, protestId, currentTick);
         } else if (actionType === 'epo') {
             if (!confirm('Enforce Public Order on the protest?\n\n33% chance the crisis ends. 66% chance it escalates to The Big One (Tier 7).\n\nProceed?')) {
