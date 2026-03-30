@@ -1088,14 +1088,13 @@ export async function executePublicAddress(supabase, factionId, nationId, protes
         return { success: false, error: 'Public Address is only available during Tier 6/7 crises.' };
     }
 
-    // ── 2. Check faction is governing ──
+    // ── 2. Check faction is PM/President (lead party only) ──
     const coalition = await fetchActiveCoalition(supabase, nationId);
-    const coalitionIds = new Set(coalition?.party_ids || []);
     const { data: nationRow } = await supabase
         .from('nations').select('ruling_faction_id').eq('id', nationId).single();
-    const isGoverning = coalitionIds.has(factionId) || nationRow?.ruling_faction_id === factionId;
-    if (!isGoverning) {
-        return { success: false, error: 'Only governing parties can issue a Public Address.' };
+    const isLeadParty = coalition?.lead_party_id === factionId || nationRow?.ruling_faction_id === factionId;
+    if (!isLeadParty) {
+        return { success: false, error: 'Only the Prime Minister or President can issue a Public Address.' };
     }
 
     // ── 3. Cooldown check ──

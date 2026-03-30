@@ -6064,7 +6064,8 @@ function renderProtestCrisisCard() {
     const paCooldownRemaining = p.public_address_last_tick != null
         ? Math.max(0, PROTEST_CONFIG.PUBLIC_ADDRESS_COOLDOWN - (currentTick - p.public_address_last_tick))
         : 0;
-    const paDisabled = !isGoverning || ap < PROTEST_CONFIG.PUBLIC_ADDRESS_AP || paCooldownRemaining > 0;
+    // Only PM/President can issue a Public Address
+    const paDisabled = !isLeadParty || ap < PROTEST_CONFIG.PUBLIC_ADDRESS_AP || paCooldownRemaining > 0;
     const paLabel = paCooldownRemaining > 0
         ? `PUBLIC ADDRESS (${paCooldownRemaining} TICK CD)`
         : 'PUBLIC ADDRESS';
