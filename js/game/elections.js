@@ -1228,6 +1228,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
             await supabase.from('elections').insert({
                 nation_id: nation.id,
                 election_tick: currentTick + 1,
+                election_type: 'parliamentary',
                 status: 'scheduled'
             });
             console.log(`  Scheduled snap election for tick ${currentTick + 1}`);
@@ -1334,6 +1335,31 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
         await createAdministration(supabase, nation.id, nation, coalitionObj, allParties || [], currentTick, null, null);
     } catch (adminErr) {
         console.warn(`EMERGENCY MINORITY: Administration creation failed for ${nation.name}:`, adminErr.message);
+    }
+
+    // Appoint party leader as PM in head_of_government (was missing — no PM would appear)
+    try {
+        const { data: pmFaction } = await supabase.from('factions')
+            .select('leader_first_name, leader_last_name, leader_age')
+            .eq('id', largestParty.id).single();
+        if (pmFaction?.leader_first_name) {
+            await supabase.from('head_of_government')
+                .update({ active: false })
+                .eq('nation_id', nation.id)
+                .eq('active', true);
+            await supabase.from('head_of_government').insert({
+                nation_id: nation.id,
+                faction_id: largestParty.id,
+                first_name: pmFaction.leader_first_name,
+                last_name: pmFaction.leader_last_name,
+                age: pmFaction.leader_age,
+                appointed_tick: currentTick,
+                active: true
+            });
+            console.log(`  PM appointed: ${pmFaction.leader_first_name} ${pmFaction.leader_last_name}`);
+        }
+    } catch (pmErr) {
+        console.warn(`EMERGENCY MINORITY: PM appointment failed for ${nation.name}:`, pmErr.message);
     }
 
     // Log event
