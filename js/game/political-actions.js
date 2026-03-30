@@ -3354,6 +3354,50 @@ export async function processCrises(supabase, nation, currentTick) {
             }
         }
 
+        // Protest crisis fizzle: T6/T7 crises auto-resolve when their
+        // duration expires (1d6 ticks for T6, 1d12 for T7).
+        if (!allEndConditionsMet && (template.id === PROTEST_CONFIG.TIER6_CRISIS_ID || template.id === PROTEST_CONFIG.TIER7_CRISIS_ID)) {
+            try {
+                const { data: protestRow } = await supabase.from('protest_log')
+                    .select('id, crisis_started_tick, crisis_duration, faction_id')
+                    .eq('nation_id', nation.id)
+                    .eq('status', 'crisis_active')
+                    .order('crisis_started_tick', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (protestRow && protestRow.crisis_started_tick != null && protestRow.crisis_duration != null) {
+                    const ticksElapsed = currentTick - protestRow.crisis_started_tick;
+                    if (ticksElapsed >= protestRow.crisis_duration) {
+                        allEndConditionsMet = true;
+                        // Mark protest as fizzled
+                        await supabase.from('protest_log').update({
+                            status: 'resolved',
+                            tick_resolved: currentTick,
+                        }).eq('id', protestRow.id);
+                        // Clear lockouts
+                        if (protestRow.faction_id) {
+                            await supabase.from('factions')
+                                .update({ action_lockout_until_tick: null })
+                                .eq('id', protestRow.faction_id);
+                        }
+                        const tierLabel = template.id === PROTEST_CONFIG.TIER7_CRISIS_ID ? 'Tier 7' : 'Tier 6';
+                        console.log(`[processCrises] Protest ${tierLabel} crisis fizzled in ${nation.name} after ${ticksElapsed} ticks`);
+                        // Fire world-visible fizzle event
+                        await supabase.from('event_log').insert({
+                            nation_id: nation.id,
+                            event_name: `Protest Crisis Fizzles`,
+                            trigger_key: 'protest:crisis_fizzled',
+                            description_chosen: `The ${tierLabel} protest crisis in ${nation.name} has fizzled out after ${ticksElapsed} ticks. Stability returning.`,
+                            category: 'protest',
+                            fired_at_tick: currentTick
+                        });
+                    }
+                }
+            } catch (fizzleErr) {
+                console.warn('[processCrises] Protest fizzle check failed (non-fatal):', fizzleErr);
+            }
+        }
+
         if (allEndConditionsMet) {
             // Deactivate the crisis (effects already applied this final tick)
             await supabase.from('active_crises').delete().eq('id', activeRecord.id);

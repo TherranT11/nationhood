@@ -22849,26 +22849,25 @@ async function resolveProtest(supabase, protest, nationStats, currentTick) {
     let tier = getTurnoutTier(turnoutScore);
     tier = checkEscalationPath(tier, turnoutScore, historyForEscalation, currentTick);
 
-    // Gate Tier 6/7 based on nation conditions
+    // Gate Tier 6/7 based on active crisis count + 50% chance roll.
+    // T6 requires 1+ active crisis. T7 requires 3+ active crises.
     if (tier >= 6) {
         const { data: activeCrises } = await supabase
             .from('active_crises')
             .select('id')
             .eq('nation_id', nationId);
         const crisisCount = (activeCrises || []).length;
-        const stability = Number(nationStats.stability ?? 50);
-        const polarization = Number(nationStats.polarization ?? 0);
 
-        // Tier 7: requires 2+ crises AND (stability < 30 OR polarization > 80)
         if (tier >= 7) {
-            if (crisisCount < 2 || (stability >= 30 && polarization <= 80)) {
-                tier = 6;
+            // T7: needs 3+ crises AND 50% chance
+            if (crisisCount < 3 || Math.random() >= 0.5) {
+                tier = 6; // downgrade to T6 check
             }
         }
-        // Tier 6: requires 1+ crisis AND (stability < 50 OR polarization > 80)
         if (tier >= 6) {
-            if (crisisCount < 1 || (stability >= 50 && polarization <= 80)) {
-                tier = 5;
+            // T6: needs 1+ crisis AND 50% chance
+            if (crisisCount < 1 || Math.random() >= 0.5) {
+                tier = 5; // downgrade to T5
             }
         }
     }
@@ -22932,7 +22931,10 @@ async function resolveProtest(supabase, protest, nationStats, currentTick) {
     let crisisCreated = false;
     if (effects.isCrisis) {
         const crisisId = tier === 6 ? PROTEST_CONFIG.TIER6_CRISIS_ID : PROTEST_CONFIG.TIER7_CRISIS_ID;
-        let duration = tier === 6 ? PROTEST_CONFIG.TIER6_DURATION : PROTEST_CONFIG.TIER7_DURATION;
+        // T6 fizzles after 1d6 ticks, T7 after 1d12 ticks
+        let duration = tier === 6
+            ? (1 + Math.floor(Math.random() * 6))    // 1d6: 1-6 ticks
+            : (1 + Math.floor(Math.random() * 12));   // 1d12: 1-12 ticks
 
         // Leader trait: Crisis Manager (-2 ticks) / Panic Under Pressure (+2 ticks)
         // Applied to the ruling faction's leader (the one enduring the crisis)
@@ -26419,6 +26421,50 @@ async function processCrises(supabase, nation, currentTick) {
                     allEndConditionsMet = false;
                     break;
                 }
+            }
+        }
+
+        // Protest crisis fizzle: T6/T7 crises auto-resolve when their
+        // duration expires (1d6 ticks for T6, 1d12 for T7).
+        if (!allEndConditionsMet && (template.id === PROTEST_CONFIG.TIER6_CRISIS_ID || template.id === PROTEST_CONFIG.TIER7_CRISIS_ID)) {
+            try {
+                const { data: protestRow } = await supabase.from('protest_log')
+                    .select('id, crisis_started_tick, crisis_duration, faction_id')
+                    .eq('nation_id', nation.id)
+                    .eq('status', 'crisis_active')
+                    .order('crisis_started_tick', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (protestRow && protestRow.crisis_started_tick != null && protestRow.crisis_duration != null) {
+                    const ticksElapsed = currentTick - protestRow.crisis_started_tick;
+                    if (ticksElapsed >= protestRow.crisis_duration) {
+                        allEndConditionsMet = true;
+                        // Mark protest as fizzled
+                        await supabase.from('protest_log').update({
+                            status: 'resolved',
+                            tick_resolved: currentTick,
+                        }).eq('id', protestRow.id);
+                        // Clear lockouts
+                        if (protestRow.faction_id) {
+                            await supabase.from('factions')
+                                .update({ action_lockout_until_tick: null })
+                                .eq('id', protestRow.faction_id);
+                        }
+                        const tierLabel = template.id === PROTEST_CONFIG.TIER7_CRISIS_ID ? 'Tier 7' : 'Tier 6';
+                        console.log(`[processCrises] Protest ${tierLabel} crisis fizzled in ${nation.name} after ${ticksElapsed} ticks`);
+                        // Fire world-visible fizzle event
+                        await supabase.from('event_log').insert({
+                            nation_id: nation.id,
+                            event_name: `Protest Crisis Fizzles`,
+                            trigger_key: 'protest:crisis_fizzled',
+                            description_chosen: `The ${tierLabel} protest crisis in ${nation.name} has fizzled out after ${ticksElapsed} ticks. Stability returning.`,
+                            category: 'protest',
+                            fired_at_tick: currentTick
+                        });
+                    }
+                }
+            } catch (fizzleErr) {
+                console.warn('[processCrises] Protest fizzle check failed (non-fatal):', fizzleErr);
             }
         }
 
