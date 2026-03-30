@@ -493,8 +493,8 @@ async function loadGroupChats() {
     _groupChats = chats.map(chat => {
         const lastRead = lastReadMap[chat.id];
         const lastMsg = latestByChat[chat.id];
-        // Unread = messages after last_read_at (approximate — real count in Phase 8)
-        const hasUnread = lastMsg && lastRead && new Date(lastMsg.created_at) > new Date(lastRead);
+        // Unread if: there are messages AND (never read OR last message is newer than last read)
+        const hasUnread = lastMsg && (!lastRead || new Date(lastMsg.created_at) > new Date(lastRead));
         return {
             chat,
             lastMessage: lastMsg || null,
