@@ -47,8 +47,6 @@ export async function repealActiveLaw({
             if (freshLaw) {
                 console.log(`[repealActiveLaw] Stale UUID ${targetLawId} — resolved via policy_id ${policyId} to active_law ${freshLaw.id}`);
                 targetLaw = freshLaw;
-                // Update targetLawId so FK cleanup and delete use the correct UUID
-                // (variable is reassigned below via the rest of the function)
             }
         }
         if (!targetLaw) {
