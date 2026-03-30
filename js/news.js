@@ -15,6 +15,7 @@ let _editingArticleId = null; // null = create mode, UUID string = edit mode
 let _removeExistingImage = false; // flag: user wants to drop the current image on edit
 let _isAutocracyNation = false; // detected during init for reward display
 let _publication = 'cruceran'; // 'cruceran' or 'continental'
+let _publicationSetByUser = false; // true when user manually switched via dropdown
 
 // Nation-to-publication mapping (data-driven for future expansion)
 const PUBLICATION_CONFIG = {
@@ -81,8 +82,11 @@ export async function initNewspaper(supabase, state) {
     const root = document.getElementById('newspaper-root');
     if (!root) return;
 
-    // Set default publication based on player's nation
-    _publication = getPublicationForNation(state.nation?.name);
+    // Set default publication on first load only — on re-init from the
+    // publication switcher, _publication is already set to the user's choice.
+    if (!_publicationSetByUser) {
+        _publication = getPublicationForNation(state.nation?.name);
+    }
 
     const gameDate = state.shard?.current_date || '[Month], [Year]';
     const canWrite = canWriteToPublication(_publication, state.nation?.name);
@@ -406,9 +410,16 @@ export async function initNewspaper(supabase, state) {
     // Publication switcher
     const pubSwitcherEl = document.getElementById('nws-pub-switcher');
     if (pubSwitcherEl) {
-        pubSwitcherEl.addEventListener('change', () => {
-            _publication = pubSwitcherEl.value;
-            initNewspaper(_supabase, _state); // full re-render with new publication
+        pubSwitcherEl.addEventListener('change', async () => {
+            const newPub = pubSwitcherEl.value;
+            if (newPub === _publication) return;
+            _publication = newPub;
+            _publicationSetByUser = true;
+            try {
+                await initNewspaper(_supabase, _state);
+            } catch (e) {
+                console.error('[News] Publication switch failed:', e);
+            }
         });
     }
 
