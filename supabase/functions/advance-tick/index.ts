@@ -7078,6 +7078,10 @@ async function resolveExpiredVotes(supabase, nationId) {
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
             } else {
                 await failBill(supabase, bill);
+                // Also fail the original vetoed bill — it can never pass now
+                if (bill.original_bill_id) {
+                    await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.original_bill_id);
+                }
                 await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
             }
@@ -7856,6 +7860,38 @@ async function resolveExpiredVotes(supabase, nationId) {
         }
         results.push({ billId: bill.id, billName: bill.bill_name, result: 'error', error: String(billErr) });
       }
+    }
+
+    // ── Cleanup orphaned vetoed bills ──
+    // If a vetoed bill has no pending override vote (the override was already
+    // resolved or was never created), fail the vetoed bill so its policies
+    // are freed for reuse. Runs every tick as a safety net.
+    try {
+        const { data: orphanedVetoes } = await supabase
+            .from('bills')
+            .select('id')
+            .eq('nation_id', nationId)
+            .eq('status', 'vetoed');
+
+        for (const vb of (orphanedVetoes || [])) {
+            const { data: pendingOverride } = await supabase
+                .from('bills')
+                .select('id')
+                .eq('original_bill_id', vb.id)
+                .eq('bill_type', 'veto_override')
+                .in('status', ['floor', 'committee'])
+                .limit(1)
+                .maybeSingle();
+
+            if (!pendingOverride) {
+                await supabase.from('bills')
+                    .update({ status: 'failed', passed_tick: currentTick })
+                    .eq('id', vb.id);
+                console.log(`[resolveExpiredVotes] Orphaned vetoed bill ${vb.id} marked as failed`);
+            }
+        }
+    } catch (orphanErr) {
+        console.warn('[resolveExpiredVotes] Orphan veto cleanup failed (non-fatal):', orphanErr);
     }
 
     return results;
