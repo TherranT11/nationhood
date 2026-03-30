@@ -2409,7 +2409,11 @@ export async function executeTakeStance(supabase, factionId, nationId, issueId, 
         const newVal = Math.max(-100, Math.min(100, currentVal + rawShift));
         ideologyShiftApplied = newVal - currentVal;
         if (ideologyShiftApplied !== 0) {
-            await supabase.from('faction_ideology').update({ [axis]: newVal }).eq('faction_id', factionId);
+            const { error: ideoErr } = await supabase.from('faction_ideology').update({ [axis]: newVal }).eq('faction_id', factionId);
+            if (ideoErr) {
+                console.error('[Electorate] faction_ideology update failed:', ideoErr.message);
+                ideologyShiftApplied = 0; // don't report a shift that didn't persist
+            }
         }
     }
 
