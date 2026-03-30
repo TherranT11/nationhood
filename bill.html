@@ -2910,6 +2910,7 @@ async function submitSponsorAddArticle() {
         alert('This policy was struck from the bill and cannot be re-added.'); return;
     }
     _billArticleLock = true;
+    let paidArticleAP = false;
     try {
         // Check if this article would exceed the free limit
         const nonTextCount = countNonTextArticles(currentBill.bill_articles);
@@ -2919,6 +2920,8 @@ async function submitSponsorAddArticle() {
                 alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
                 return;
             }
+            currentFaction.action_points = apResult.newAp;
+            paidArticleAP = true;
         }
 
         const { data: existingArticles } = await _supabase.from('bill_articles')
@@ -2926,19 +2929,27 @@ async function submitSponsorAddArticle() {
             .order('article_number', { ascending: false }).limit(1);
         const nextNum = (existingArticles?.[0]?.article_number || 1) + 1;
 
+        let insertErr;
         if (selectedRepealLaw) {
-            await _supabase.from('bill_articles').insert({
+            const { error } = await _supabase.from('bill_articles').insert({
                 bill_id: billId,
                 policy_id: selectedRepealLaw.policy_id,
                 article_number: nextNum,
                 added_by: currentFaction.id,
                 repeal_active_law_id: selectedRepealLaw.id
             });
+            insertErr = error;
         } else {
-            await _supabase.from('bill_articles').insert({
+            const { error } = await _supabase.from('bill_articles').insert({
                 bill_id: billId, policy_id: sponsorSelectedPolicy.id,
                 article_number: nextNum, added_by: currentFaction.id
             });
+            insertErr = error;
+        }
+        if (insertErr) {
+            // Refund AP if the insert failed after deduction
+            if (paidArticleAP) await refundArticleAP_bill(currentFaction.id);
+            throw insertErr;
         }
         closeSponsorAddModal();
         await loadBillData();
