@@ -3744,6 +3744,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
     }
 
     // HoG actions
+    const _isIsolationist = currentFaction && (currentFaction.leader_negative_traits || []).includes('isolationist');
     if (roles.isHoG) {
         actions += `
             <div class="action-card" style="margin-bottom:10px;">
@@ -3753,7 +3754,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
                 <p class="action-desc">As Head of Government, you may authorize major diplomatic decisions.</p>
                 <button class="action-btn" disabled>Declare War (Coming Soon)</button>
                 <button class="action-btn" style="margin-top:8px;" disabled>Propose Alliance (Coming Soon)</button>
-                <button class="action-btn state-visit-btn" style="margin-top:8px;" onclick="selectDraftAction('state_visit','State Visit',${DIPLOMACY_CONFIG.STATE_VISIT_AP},'hog','hog')">State Visit (${DIPLOMACY_CONFIG.STATE_VISIT_AP} AP)</button>
+                <button class="action-btn state-visit-btn" style="margin-top:8px;" ${_isIsolationist ? 'disabled title="Blocked by Isolationist trait"' : `onclick="selectDraftAction('state_visit','State Visit',${DIPLOMACY_CONFIG.STATE_VISIT_AP},'hog','hog')"`}>State Visit (${DIPLOMACY_CONFIG.STATE_VISIT_AP} AP)${_isIsolationist ? ' <span style="color:var(--red);font-size:0.7rem;"> — Blocked (Isolationist)</span>' : ''}</button>
             </div>
         `;
     }

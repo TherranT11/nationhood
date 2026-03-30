@@ -2071,6 +2071,13 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         return `
             <div class="administration-box">
                 <div class="administration-header"><div><div class="administration-title">${escapeHtml(adminLast)} Administration</div><div class="administration-subtitle">${(() => { if (coalition.status === 'caretaker') return 'Caretaker Government'; if (coalition.formation_type === 'emergency_minority') return 'Emergency Minority Government'; const govSeats = coalition.party_ids.reduce((s, id) => s + (allPartySeats[id] || 0), 0); const totalSeats = Object.values(allPartySeats).reduce((s, v) => s + v, 0); const isMajority = totalSeats > 0 && govSeats >= Math.ceil(totalSeats / 2); const isCoalition = coalition.party_ids.length > 1; if (isCoalition) return isMajority ? 'Majority Coalition Government' : 'Minority Coalition Government'; return isMajority ? 'Majority Government' : 'Minority Government'; })()}</div></div>${approvalHTML}</div>
+                ${governmentApproval <= 5 ? `<div style="background:var(--red-faint);border:1px solid var(--red-border);padding:10px 14px;margin:0 -1px;display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:1.2rem;">⚠</span>
+                    <div>
+                        <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.06em;">Government on the Verge of Collapse</div>
+                        <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px;">Approval at ${governmentApproval}%. Coalition parties losing -5 approval per tick. ${governmentApproval <= 0 ? 'Snap elections will be called.' : 'At 0%, the government will dissolve and snap elections will be called.'}</div>
+                    </div>
+                </div>` : ''}
                 <div class="administration-content">
                     <div class="admin-leaders-column">
                         <div class="admin-section">
