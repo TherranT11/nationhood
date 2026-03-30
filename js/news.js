@@ -85,7 +85,6 @@ export async function initNewspaper(supabase, state) {
     _publication = getPublicationForNation(state.nation?.name);
 
     const gameDate = state.shard?.current_date || '[Month], [Year]';
-    const pubCfg = PUBLICATION_CONFIG[_publication];
     const canWrite = canWriteToPublication(_publication, state.nation?.name);
 
     // Publication switcher options
@@ -1358,6 +1357,17 @@ function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
     const imgCls = { politics: '--politics', economy: '--economy', social: '--social', international: '--intl', entertainment: '--culture', science: '--science' };
 
     let h = '';
+
+    // Empty state
+    if (!lead && cards.length === 0 && secondary.length === 0 && opinions.length === 0 && briefs.length === 0) {
+        h += '<div style="text-align:center;padding:60px 20px;color:#9e9b95;font-family:Outfit,sans-serif;">';
+        h += '<div style="font-size:2rem;margin-bottom:12px;opacity:0.3;">📰</div>';
+        h += '<div style="font-size:1rem;font-weight:600;">No articles yet</div>';
+        h += '<div style="font-size:0.85rem;margin-top:6px;">Be the first to write for The Continental.</div>';
+        h += '</div>';
+        content.innerHTML = h;
+        return;
+    }
 
     // ── HERO (lead story) ──
     if (lead) {

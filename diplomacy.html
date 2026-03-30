@@ -578,6 +578,9 @@ async function renderWorldNations() {
         const ourAmbSet = new Set(ourAmbs.map(a => a.target_nation_id));
         const theirAmbSet = new Set(theirAmbs.map(a => a.nation_id));
 
+        if (hogRes.error) console.warn('World Nations: head_of_government query error:', hogRes.error);
+        if (coalitionsRes.error) console.warn('World Nations: coalitions query error:', coalitionsRes.error);
+
         // Index PM names by nation
         const hogByNation = {};
         for (const h of (hogRes.data || [])) {
