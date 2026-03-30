@@ -2320,7 +2320,16 @@ function renderTradeExplanation(nation, sectorKey, sector, flow) {
         }
     } else {
         var score = getSectorScore(nation, sector);
-        if (score > 0) {
+        if (score > (sector.export_threshold || 0)) {
+            // Score is above threshold but capacity is still 0 — sector-specific gate
+            if (sector.key === 'tourism' && (Number(nation.stability) || 0) <= 25) {
+                exportReasons.push('Tourism requires stability above 25 (currently ' + Math.round(Number(nation.stability) || 0) + ')');
+            } else if (sector.key === 'arms') {
+                exportReasons.push('Arms exports require defense spending above 8% of budget');
+            } else {
+                exportReasons.push('Score of ' + Math.round(score) + ' is above threshold but capacity is blocked by other factors');
+            }
+        } else if (score > 0) {
             exportReasons.push('Score of ' + Math.round(score) + ' is below the export threshold of ' + sector.export_threshold);
         } else {
             exportReasons.push('No domestic production in this sector');

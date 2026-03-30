@@ -106,18 +106,31 @@ export async function repealActiveLaw({
         }
     }
 
-    // Verify cleanup worked by checking if any references remain
-    const { data: remainingRefs } = await supabase
+    // Verify cleanup worked by checking if any references remain (bills + articles)
+    const { data: remainingBillRefs } = await supabase
         .from('bills')
-        .select('id, repeal_active_law_id')
+        .select('id')
         .eq('repeal_active_law_id', resolvedLawId);
-    if (remainingRefs && remainingRefs.length > 0) {
-        console.error(`[repealActiveLaw] FK cleanup failed — ${remainingRefs.length} bills still reference active_law ${resolvedLawId}: ${JSON.stringify(remainingRefs)}`);
+    if (remainingBillRefs && remainingBillRefs.length > 0) {
+        console.error(`[repealActiveLaw] FK cleanup failed — ${remainingBillRefs.length} bills still reference active_law ${resolvedLawId}`);
         return {
             success: false,
             reason: 'clear_bill_references_failed',
             targetLawId: resolvedLawId,
-            error: `${remainingRefs.length} bills still reference this active_law after cleanup`,
+            error: `${remainingBillRefs.length} bills still reference this active_law after cleanup`,
+        };
+    }
+    const { data: remainingArtRefs } = await supabase
+        .from('bill_articles')
+        .select('id')
+        .eq('repeal_active_law_id', resolvedLawId);
+    if (remainingArtRefs && remainingArtRefs.length > 0) {
+        console.error(`[repealActiveLaw] FK cleanup failed — ${remainingArtRefs.length} bill_articles still reference active_law ${resolvedLawId}`);
+        return {
+            success: false,
+            reason: 'clear_article_references_failed',
+            targetLawId: resolvedLawId,
+            error: `${remainingArtRefs.length} bill_articles still reference this active_law after cleanup`,
         };
     }
 

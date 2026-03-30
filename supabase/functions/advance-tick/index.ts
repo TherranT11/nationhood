@@ -1304,7 +1304,69 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
-    // ── Simultaneous proportional distribution ──
+    // ── Export-only sector pass (Tourism, Services & Finance) ──
+    // These sectors don't have bilateral importers — revenue comes from world
+    // demand (tourists visiting, foreign businesses using services). We calculate
+    // revenue based on export capacity weighted by average world affinity toward
+    // the exporting nation, then distribute proportionally across trading partners.
+    for (var si = 0; si < sectors.length; si++) {
+        var eoSector = sectors[si];
+        if (!eoSector.export_only) continue;
+
+        for (var ei = 0; ei < nationCount; ei++) {
+            var eoExporter = nationList[ei];
+            var eoExpCap = nationFlows[eoExporter.id][eoSector.key].exportCapacity;
+            if (eoExpCap <= 0) continue;
+
+            // Calculate world demand: sum of (other nation GDP × affinity) / baseline
+            var worldDemandScore = 0;
+            var partnerContributions = [];
+            for (var ii = 0; ii < nationCount; ii++) {
+                if (ii === ei) continue;
+                var eoImporter = nationList[ii];
+
+                var eoPairFlags = flagsMap[eoExporter.id + '|' + eoImporter.id];
+                if (eoPairFlags && eoPairFlags.has_embargo) continue;
+
+                var eoAff = affinityMap[eoImporter.id + '|' + eoExporter.id] || 0;
+                if (eoAff <= 0) continue;
+
+                var eoPartnerGdp = Number(eoImporter.gdp) || 0;
+                var contribution = (eoPartnerGdp / TRADE_CONFIG.BASELINE_GDP) * eoAff;
+                worldDemandScore += contribution;
+                partnerContributions.push({
+                    nationId: eoImporter.id,
+                    contribution: contribution,
+                    affinity: eoAff
+                });
+            }
+
+            if (worldDemandScore <= 0 || partnerContributions.length === 0) continue;
+
+            var avgContribution = worldDemandScore / partnerContributions.length;
+            var worldDemandFactor = Math.min(1.0, avgContribution / 50);
+            var eoRevenue = Math.round(eoExpCap * worldDemandFactor);
+            if (eoRevenue <= 0) continue;
+
+            actualExports[eoExporter.id][eoSector.key] += eoRevenue;
+
+            for (var ci = 0; ci < partnerContributions.length; ci++) {
+                var pc = partnerContributions[ci];
+                var partnerShare = Math.round(eoRevenue * (pc.contribution / worldDemandScore));
+                if (partnerShare <= 0) continue;
+                partnerRows.push({
+                    tick: currentTick,
+                    exporter_nation_id: eoExporter.id,
+                    importer_nation_id: pc.nationId,
+                    sector: eoSector.key,
+                    trade_volume: partnerShare,
+                    affinity_score: pc.affinity
+                });
+            }
+        }
+    }
+
+    // ── Simultaneous proportional distribution (goods sectors only) ──
     // Instead of iterating exporters sequentially (which lets the first exporter
     // saturate all demand), we collect ALL bilateral (exporter→importer) pairs per
     // sector and allocate simultaneously using a gravity-model weight:
@@ -1314,6 +1376,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 
     for (var si = 0; si < sectors.length; si++) {
         var sector = sectors[si];
+        if (sector.export_only) continue; // Already handled above
         var priceMod = priceModifiers[sector.key];
         var priceDampener = 1 / Math.sqrt(priceMod);
 
@@ -5760,18 +5823,31 @@ async function repealActiveLaw({
         }
     }
 
-    // Verify cleanup worked by checking if any references remain
-    const { data: remainingRefs } = await supabase
+    // Verify cleanup worked by checking if any references remain (bills + articles)
+    const { data: remainingBillRefs } = await supabase
         .from('bills')
-        .select('id, repeal_active_law_id')
+        .select('id')
         .eq('repeal_active_law_id', resolvedLawId);
-    if (remainingRefs && remainingRefs.length > 0) {
-        console.error(`[repealActiveLaw] FK cleanup failed — ${remainingRefs.length} bills still reference active_law ${resolvedLawId}: ${JSON.stringify(remainingRefs)}`);
+    if (remainingBillRefs && remainingBillRefs.length > 0) {
+        console.error(`[repealActiveLaw] FK cleanup failed — ${remainingBillRefs.length} bills still reference active_law ${resolvedLawId}`);
         return {
             success: false,
             reason: 'clear_bill_references_failed',
             targetLawId: resolvedLawId,
-            error: `${remainingRefs.length} bills still reference this active_law after cleanup`,
+            error: `${remainingBillRefs.length} bills still reference this active_law after cleanup`,
+        };
+    }
+    const { data: remainingArtRefs } = await supabase
+        .from('bill_articles')
+        .select('id')
+        .eq('repeal_active_law_id', resolvedLawId);
+    if (remainingArtRefs && remainingArtRefs.length > 0) {
+        console.error(`[repealActiveLaw] FK cleanup failed — ${remainingArtRefs.length} bill_articles still reference active_law ${resolvedLawId}`);
+        return {
+            success: false,
+            reason: 'clear_article_references_failed',
+            targetLawId: resolvedLawId,
+            error: `${remainingArtRefs.length} bill_articles still reference this active_law after cleanup`,
         };
     }
 
@@ -8658,20 +8734,9 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
 
     if (reversalEffects.length === 0) return;
 
-    // Clear FK references to any existing row before upserting the reversal.
-    const { data: existingLaw } = await supabase.from('active_laws')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('policy_id', policy.id)
-        .maybeSingle();
-
-    if (existingLaw) {
-        await supabase.from('bills').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingLaw.id);
-        await supabase.from('bill_articles').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingLaw.id);
-    }
-
-    // Upsert instead of delete+insert to avoid duplicate key errors from race
-    // conditions, stale snapshots, or partially-completed previous ticks.
+    // FK references are already cleared by repealActiveLaw() before calling this.
+    // For the opposed-policy auto-reversal path, the original active_law row is
+    // replaced by upsert so no FK cleanup is needed there either.
     const { error: reversalInsertError } = await supabase.from('active_laws')
         .upsert({
             nation_id: nation.id,
