@@ -388,8 +388,7 @@ export function renderTopBar(activeTab) {
                 </div>
             </div>
             <div class="top-bar-right">
-                <button class="guide-btn" id="guide-btn" title="Page Guide" style="display:none;"></button>
-                ${activeTab === 'home' ? '<button class="guide-btn" id="welcome-guide-btn" onclick="toggleWelcomeGuide()" title="Welcome Guide">? Guide</button>' : ''}
+                <a href="how-to.html" class="guide-btn" style="text-decoration:none;">HOW TO</a>
                 <div class="faction-switcher" id="faction-switcher">
                     <span class="party-badge" id="party-badge" onclick="toggleFactionDropdown()" style="cursor:pointer;">--</span>
                     <div class="faction-dropdown" id="faction-dropdown"></div>
@@ -894,9 +893,12 @@ export async function refreshAP(factionId) {
         if (error || !data) return;
         const ap = data.action_points ?? 0;
 
-        // Update topbar
+        // Update topbar — preserve the AP ledger dropdown
         const apEl = document.getElementById('topbar-ap');
-        if (apEl) apEl.innerHTML = '<span class="topbar-ap__count">' + ap + ' AP</span>';
+        if (apEl) {
+            apEl.innerHTML = '<span class="topbar-ap__count" onclick="toggleApLedger(event)" style="cursor:pointer;">' + ap + ' AP</span>'
+                + '<div class="ap-ledger-dropdown" id="ap-ledger-dropdown"></div>';
+        }
 
         // Sync session cache so page navigations show correct AP
         try {

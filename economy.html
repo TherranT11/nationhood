@@ -633,14 +633,9 @@ async function submitTaxBill(nation) {
         var direction = newRate > oldRate ? 'increase' : 'decrease';
         var delta = gdp * ((newRate - oldRate) / 100) * cfg.gdpMultiplier * collectionRate;
         var rateDiff = newRate - oldRate;
-        var impactLine;
-        if (key === 'corporate_tax') {
-            var blocEff = rateDiff > 0 ? -3 : 2;
-            impactLine = '  Impact: ' + (blocEff >= 0 ? '+' : '') + blocEff + '% Business Owners bloc momentum (proposing party)';
-        } else {
-            var approvalImpact = rateDiff > 0 ? rateDiff * -2 : Math.abs(rateDiff) * 1;
-            impactLine = '  Approval impact: ' + (approvalImpact >= 0 ? '+' : '') + approvalImpact + '%';
-        }
+        // All tax types: increases hurt approval, cuts boost it
+        var approvalImpact = rateDiff > 0 ? rateDiff * -2 : Math.abs(rateDiff) * 1;
+        var impactLine = '  Government approval: ' + (approvalImpact >= 0 ? '+' : '') + approvalImpact + ' (decays over time)';
         summaryLines.push(
             cfg.name + ': ' + oldRate + '% → ' + newRate + '% (' + direction + ')\n' +
             '  Revenue: ' + (delta >= 0 ? '+' : '') + formatBudgetCurrency(delta) + '/yr\n' +
@@ -712,13 +707,8 @@ async function submitTaxBill(nation) {
             var artDelta = gdp * ((artNew - artOld) / 100) * artCfg.gdpMultiplier * collectionRate;
             var artRateDiff = artNew - artOld;
             var artApprovalText;
-            if (artKey === 'corporate_tax') {
-                var blocEff = artRateDiff > 0 ? -3 : 2;
-                artApprovalText = (blocEff >= 0 ? '+' : '') + blocEff + '% Business Owners voter bloc momentum (proposing party)';
-            } else {
-                var artApproval = artRateDiff > 0 ? artRateDiff * -2 : Math.abs(artRateDiff) * 1;
-                artApprovalText = (artApproval >= 0 ? '+' : '') + artApproval + '% approval';
-            }
+            var artApproval = artRateDiff > 0 ? artRateDiff * -2 : Math.abs(artRateDiff) * 1;
+            artApprovalText = (artApproval >= 0 ? '+' : '') + artApproval + ' government approval (decays over time)';
 
             articles.push({
                 bill_id: bill.id,
