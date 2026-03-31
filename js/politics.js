@@ -4630,7 +4630,9 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
         } else if (sel.id === 'press_conference') {
             // Press Conference: base -2 to +2 visibility, +1 if opposition, +2 if gov with approval >= 40
             const { deductAP } = await import('./game/config.js');
-            const apResult = await deductAP(_supabase, f.id, 2);
+            const { getTraitAPModifier } = await import('./game/party-leadership.js');
+            const pressCost = Math.max(1, 2 + getTraitAPModifier('press_conference', f, tick));
+            const apResult = await deductAP(_supabase, f.id, pressCost);
             if (!apResult.success) { result = { success: false, error: apResult.error || 'Insufficient AP' }; }
             else {
                 const { boostVisibility } = await import('./game/electorate.js');
@@ -4660,8 +4662,9 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
             }
         } else if (sel.id === 'outreach') {
             // Community Outreach: +3 platform appeal, escalating cost (base 3 + escalation)
-            const outreachCost = 3 + (_caOutreachEscalation || 0);
             const { deductAP: _deductAP2 } = await import('./game/config.js');
+            const { getTraitAPModifier: _getTraitMod2 } = await import('./game/party-leadership.js');
+            const outreachCost = Math.max(1, 3 + (_caOutreachEscalation || 0) + _getTraitMod2('outreach', f, tick));
             const apResult = await _deductAP2(_supabase, f.id, outreachCost);
             if (!apResult.success) { result = { success: false, error: apResult.error || 'Insufficient AP' }; }
             else {
