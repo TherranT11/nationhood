@@ -2710,14 +2710,16 @@ export async function processGovernmentCollapseCheck(supabase, nation, currentTi
     const govApproval = Number(nation.gov_approval ?? 50);
     if (govApproval > 5) return null;
 
-    // Skip if elections are already scheduled (PM called early elections, or snap already pending)
+    // Skip if a near-term election is already scheduled (PM called early elections, or snap already pending).
+    // Only skip for elections within 5 ticks — far-future regular elections should not prevent collapse.
     const { data: pendingElections } = await supabase.from('elections')
         .select('id')
         .eq('nation_id', nation.id)
         .eq('status', 'scheduled')
+        .lte('election_tick', currentTick + 5)
         .limit(1);
     if (pendingElections && pendingElections.length > 0) {
-        console.log(`[GovCollapse] ${nation.name}: skipping — elections already scheduled`);
+        console.log(`[GovCollapse] ${nation.name}: skipping — near-term elections already scheduled`);
         return null;
     }
 
@@ -2749,6 +2751,12 @@ export async function processGovernmentCollapseCheck(supabase, nation, currentTi
             .update({ status: 'frozen' })
             .eq('nation_id', nation.id)
             .in('status', ['committee', 'floor']);
+
+        // Cancel any far-future scheduled elections before scheduling snap
+        await supabase.from('elections')
+            .delete()
+            .eq('nation_id', nation.id)
+            .eq('status', 'scheduled');
 
         // Schedule snap election
         const snapTick = currentTick + FORMATION_DEADLINE_TICKS;

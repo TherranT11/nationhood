@@ -1056,25 +1056,42 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
     // Check for active coalition
     const coalition = await fetchActiveCoalition(supabase, nation.id);
 
-    // Safety net: detect stale caretaker government with overdue election
+    // Safety net: caretaker governments must ALWAYS have an election within 2 ticks.
+    // Detect overdue elections, far-future elections, or missing elections and fix them.
     if (coalition && coalition.status === 'caretaker') {
-        const { data: overdueElection } = await supabase
+        const { data: scheduledElection } = await supabase
             .from('elections')
             .select('id, election_tick')
             .eq('nation_id', nation.id)
             .eq('status', 'scheduled')
-            .lte('election_tick', currentTick)
+            .eq('election_type', 'parliamentary')
             .order('election_tick', { ascending: true })
             .limit(1)
             .maybeSingle();
 
-        if (overdueElection) {
-            const overdueBy = currentTick - overdueElection.election_tick;
-            if (overdueBy >= 2) {
+        if (!scheduledElection) {
+            // No election at all — schedule one immediately
+            await supabase.from('elections').insert({
+                nation_id: nation.id,
+                election_tick: currentTick + 1,
+                status: 'scheduled',
+                election_type: 'parliamentary'
+            });
+            console.log(`Safety net: caretaker ${nation.name} had NO scheduled election — created one at tick ${currentTick + 1}`);
+        } else {
+            const ticksUntil = scheduledElection.election_tick - currentTick;
+            if (ticksUntil > GAME_CONFIG.EARLY_ELECTION_TICKS) {
+                // Election is too far in the future (e.g. regular term election, not a snap)
                 await supabase.from('elections')
                     .update({ election_tick: currentTick + 1 })
-                    .eq('id', overdueElection.id);
-                console.log(`Safety net: rescheduled stale caretaker election ${overdueElection.id} to tick ${currentTick + 1} (was overdue by ${overdueBy} ticks)`);
+                    .eq('id', scheduledElection.id);
+                console.log(`Safety net: caretaker ${nation.name} election was ${ticksUntil} ticks away — rescheduled to tick ${currentTick + 1}`);
+            } else if (ticksUntil < -1) {
+                // Overdue by more than 1 tick — reschedule to next tick
+                await supabase.from('elections')
+                    .update({ election_tick: currentTick + 1 })
+                    .eq('id', scheduledElection.id);
+                console.log(`Safety net: caretaker ${nation.name} election was overdue by ${-ticksUntil} ticks — rescheduled to tick ${currentTick + 1}`);
             }
         }
         return null; // Caretaker is a valid government state
@@ -1775,9 +1792,11 @@ export async function processElections(supabase, nation, currentTick) {
         // Regular periodic elections must proceed — they dissolve the government.
         // finalize_government_formation() also cancels snap elections within 5 ticks
         // when a government forms, so this is a belt-and-suspenders guard.
+        // IMPORTANT: Caretaker governments must ALWAYS have their elections proceed —
+        // they exist specifically because an election was called.
         if (electionType === 'parliamentary') {
             const existingGov = await fetchActiveCoalition(supabase, nation.id);
-            if (existingGov && (existingGov.status === 'formed' || existingGov.status === 'caretaker')) {
+            if (existingGov && existingGov.status === 'formed') {
                 const { data: lastCompleted } = await supabase
                     .from('elections')
                     .select('election_tick')
@@ -1800,6 +1819,9 @@ export async function processElections(supabase, nation, currentTick) {
                 }
                 // Regular periodic election — proceed, will dissolve government after
                 console.log(`Regular periodic election for ${nation.name} — proceeding despite active government (${ticksSinceLast} ticks since last)`);
+            }
+            if (existingGov && existingGov.status === 'caretaker') {
+                console.log(`Caretaker election proceeding for ${nation.name} — caretaker elections must always fire`);
             }
         }
 
