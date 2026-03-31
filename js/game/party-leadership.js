@@ -129,7 +129,7 @@ export function getTraitAPModifier(actionType, faction, currentTick) {
     let mod = 0;
 
     // efficient_operator: All campaign actions cost -1 AP
-    if (pos.includes('efficient_operator') && ['rally', 'outreach', 'attack', 'promise'].includes(actionType)) {
+    if (pos.includes('efficient_operator') && ['rally', 'outreach', 'attack', 'promise', 'press_conference'].includes(actionType)) {
         mod -= 1;
     }
 
