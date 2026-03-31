@@ -16386,7 +16386,7 @@ function renderVoteMetaSummary(vote) {
                     const preview = escapeHtml(meta.statement_text.substring(0, 120));
                     text = `<div class="ipo-statement-text">
                         <span class="ipo-statement-preview">"${preview}…"</span>
-                        <span class="ipo-statement-full" style="display:none">"${escaped}"</span>
+                        <span class="ipo-statement-full">"${escaped}"</span>
                         <button class="ipo-statement-toggle" onclick="this.parentElement.classList.toggle('expanded'); this.textContent = this.parentElement.classList.contains('expanded') ? 'Show less' : 'Read more'">Read more</button>
                     </div>`;
                 } else {
