@@ -8805,9 +8805,9 @@ function renderStateVisitHTML(body) {
     const atMax = st.agenda.length >= maxAgenda;
 
     function agendaItemHTML(item, isSelected) {
-        const disabled = item.requires === 'pending_treaty' && !ctx.hasPendingTreaty && !isSelected;
+        const disabled = (item.requires === 'pending_treaty' && !ctx.hasPendingTreaty && !isSelected) || (!isSelected && atMax);
         const cls = disabled ? ' sv-agenda-item--disabled' : '';
-        const opacity = !isSelected ? ' style="opacity:0.55;"' : '';
+        const opacity = !isSelected ? ` style="opacity:${atMax ? '0.3' : '0.55'};"` : '';
         let effectTags = '';
         for (const [stat, val] of Object.entries(item.effects)) {
             const label = stat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -8844,6 +8844,9 @@ function renderStateVisitHTML(body) {
     if (availableItems.length > 0) {
         availableHTML = `<div class="sv-rule" style="margin:6px 0;"></div>
             <div style="padding:4px 0 2px;font-family:var(--font-mono);font-size:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);">Available</div>`;
+        if (atMax) {
+            availableHTML += `<div style="padding:4px 8px;margin-bottom:6px;font-family:var(--font-mono);font-size:9px;color:var(--amber);background:rgba(176,154,91,0.06);border:1px solid rgba(176,154,91,0.15);border-radius:2px;">Agenda full (${maxAgenda}/${maxAgenda}). Remove an item or switch to a longer duration to add more.</div>`;
+        }
         availableHTML += availableItems.map(i => agendaItemHTML(i, false)).join('');
     }
 
