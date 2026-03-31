@@ -4240,9 +4240,7 @@ const MOMENTUM_SOURCE_LABELS = {
     'attack:received:effective': 'Hit by effective attack',
     'attack:received:glancing': 'Hit by glancing attack',
     'attack:received:mutual': 'Caught in mutual exchange',
-    'bill:passed:sponsor': 'Bill passed (sponsor)',
     'bill:passed:yes': 'Bill passed (voted YES)',
-    'bill:failed:sponsor': 'Bill failed (sponsor)',
     'bill:failed:yes': 'Bill failed (voted YES)',
     'bill:failed:no': 'Bill failed (voted NO)',
     'bill:no_vote': 'No-vote penalty',
@@ -6222,26 +6220,18 @@ async function applyBillMomentum(supabase, bill, passed, nationId) {
     const sponsorId = bill.proposed_by;
 
     if (passed) {
-        // Sponsor: +1 per article
-        if (sponsorId) {
-            await adjustFactionMomentum(supabase, sponsorId, nationId, articleCount * 1, { source: 'bill:passed:sponsor' });
-        }
         // YES voters: +2 per article
         for (const s of support) {
             const stance = s.stance === 'accept' ? 'yes' : s.stance;
-            if (stance === 'yes' && s.faction_id !== sponsorId) {
+            if (stance === 'yes') {
                 await adjustFactionMomentum(supabase, s.faction_id, nationId, articleCount * 2, { source: 'bill:passed:yes' });
             }
         }
     } else {
-        // Sponsor: -1 per article
-        if (sponsorId) {
-            await adjustFactionMomentum(supabase, sponsorId, nationId, articleCount * -1, { source: 'bill:failed:sponsor' });
-        }
         // YES voters: -2 per article
         for (const s of support) {
             const stance = s.stance === 'accept' ? 'yes' : s.stance;
-            if (stance === 'yes' && s.faction_id !== sponsorId) {
+            if (stance === 'yes') {
                 await adjustFactionMomentum(supabase, s.faction_id, nationId, articleCount * -2, { source: 'bill:failed:yes' });
             }
         }
