@@ -6390,8 +6390,7 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
 const IDEOLOGY_DECAY_DEAD_ZONE = 10; // no decay within ±10 of center
 /**
  * Per-tick ideology decay toward center (0).
- * Integer arithmetic to match INTEGER columns in faction_ideology.
- *   ±11–74 → 1/tick, ±75–100 → 2/tick
+ *   ±11–49 → 0.5/tick, ±50–100 → 1/tick
  * Dead zone: scores within ±10 don't decay.
  */
 async function processIdeologyDecay(supabase, nationId, currentTick) {
@@ -6407,7 +6406,7 @@ async function processIdeologyDecay(supabase, nationId, currentTick) {
             const score = ideo[axis.key] || 0;
             if (Math.abs(score) <= IDEOLOGY_DECAY_DEAD_ZONE) continue;
 
-            const absDecay = Math.max(1, Math.round(Math.abs(score) / 50));
+            const absDecay = Math.abs(score) >= 50 ? 1 : 0.5;
             const newScore = score > 0
                 ? Math.max(0, score - absDecay)
                 : Math.min(0, score + absDecay);
