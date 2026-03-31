@@ -2680,45 +2680,45 @@ let _caTopIssueStats = null; // Stats from top 7 issues by salience (for Make Pr
 
 // Campaign actions organized by category
 const CA_ACTION_CATEGORIES = [
+    { key: 'momentum', label: 'MOMENTUM', color: '#f97316' },
     { key: 'approval', label: 'APPROVAL', color: '#4ade80' },
     { key: 'alignment', label: 'ALIGNMENT', color: '#a78bfa' },
     { key: 'appeal', label: 'APPEAL', color: '#38bdf8' },
-    { key: 'visibility', label: 'VISIBILITY', color: '#f97316' },
     { key: 'tools', label: 'TOOLS', color: '#6b7280' },
 ];
 
 const CA_ACTIONS = [
+    // MOMENTUM
+    { id: 'rally', name: 'Hold a Rally', ap: RALLY_CONFIG.AP_COST, color: '#f97316', icon: '★',
+      category: 'momentum', affects: 'Momentum',
+      desc: 'Rally your supporters in a public show of strength. Random outcome that directly affects your Momentum score. A rousing success builds momentum; a gaffe costs it.' },
+    { id: 'press_conference', name: 'Press Conference', ap: 2, color: '#fbbf24', icon: '🎤',
+      category: 'momentum', affects: 'Momentum',
+      desc: 'Hold a press conference to make a public statement. Base roll: -2 to +2 Momentum. Opposition parties get +1 bonus. High-approval governing parties get +2 bonus.' },
     // APPROVAL
     { id: 'attack', name: 'Campaign Attack', ap: ATTACK_CONFIG.AP_COST, color: '#ef4444', icon: '✦',
       category: 'approval', affects: 'Approval',
-      desc: 'Target a rival party\'s record or leadership. More effective when backed by evidence. Risky — a poorly aimed attack can damage your own momentum.' },
+      desc: 'Target a rival party\'s record or leadership. Lowers their approval and can hurt their momentum. More effective with evidence — but a weak attack backfires on you.' },
     { id: 'promise', name: 'Make a Promise', ap: MAKE_PROMISE_CONFIG.AP_COST, color: '#a78bfa', icon: '◆',
       category: 'approval', affects: 'Approval',
-      desc: 'Publicly commit to improving a national stat or resolving a crisis. Gives an immediate approval boost, but you\'ll face penalties if you fail to deliver after entering government.' },
+      desc: 'Publicly commit to improving a national stat or resolving a crisis. Gives an immediate approval boost, but you\'ll face governance penalties if you fail to deliver.' },
     // ALIGNMENT
     { id: 'fund_think_tank', name: 'Fund Think Tank', ap: IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST, color: '#14b8a6', icon: '🏛',
       category: 'alignment', affects: 'Ideology',
-      desc: 'Fund an ideological think tank to gradually shift the electorate\'s beliefs on a chosen axis. Expensive long-term investment: 8 AP upfront + 1 AP/tick for 50 ticks.' },
+      desc: 'Fund a think tank to gradually shift the electorate\'s ideology on a chosen axis. Long-term investment: 8 AP upfront + 1 AP/tick for 50 ticks. Improves your Ideology pillar score.' },
     { id: 'grassroots_movement', name: 'Grassroots Movement', ap: IDEO_SHIFT_CONFIG.GRASSROOTS.AP_COST, color: '#10b981', icon: '🌱',
-      category: 'alignment', affects: 'Ideology',
-      desc: 'Build a slow-burning grassroots campaign to shift public ideology over time. Cheap to start but runs for 100 ticks. Gradually drifts opinion and builds momentum.' },
+      category: 'alignment', affects: 'Ideology + Momentum',
+      desc: 'Launch a grassroots campaign to shift public ideology and build momentum. Runs for 100 ticks. Drifts electorate opinion toward your position and grants +1 Momentum periodically.' },
     { id: 'pivot', name: 'Ideological Pivot', ap: 1, color: '#f59e0b', icon: '⟳',
       category: 'alignment', affects: 'Alignment',
       desc: 'Shift your party\'s position on a chosen ideological axis. Costs escalate with each pivot (+1 AP per use, resets after 20 ticks). Reversing your current lean costs extra AP.' },
     // APPEAL
     { id: 'take_stance', name: 'Take a Stance', ap: STANCE_CONFIG.AP_COST, color: '#38bdf8', icon: '⚑',
-      category: 'appeal', affects: 'Appeal',
-      desc: 'Declare your party\'s official position on a national issue. Builds platform appeal with aligned voters. Stances lose strength each tick — reinforce them before they fade.' },
+      category: 'appeal', affects: 'Appeal + Ideology',
+      desc: 'Declare your party\'s official position on a national issue. Builds platform appeal with aligned voters and shifts your ideology. Stances decay each tick — reinforce before they fade.' },
     { id: 'outreach', name: 'Community Outreach', ap: 3, color: '#60a5fa', icon: '🤝',
       category: 'appeal', affects: 'Appeal',
-      desc: 'Engage directly with communities. +3 platform appeal. Cost starts at 3 AP and increases by 1 each time you use it. Decays back down by 1 each tick you don\'t use it.' },
-    // VISIBILITY
-    { id: 'rally', name: 'Hold a Rally', ap: RALLY_CONFIG.AP_COST, color: '#f97316', icon: '★',
-      category: 'visibility', affects: 'Visibility',
-      desc: 'Rally your supporters in a public show of strength. Outcomes range from rousing success to embarrassing gaffe — results are random and generate headlines.' },
-    { id: 'press_conference', name: 'Press Conference', ap: 2, color: '#fbbf24', icon: '🎤',
-      category: 'visibility', affects: 'Visibility',
-      desc: 'Hold a press conference to make a public statement. Base roll: -2 to +2 Momentum. Opposition parties get +1 bonus. Parties with approval above 40 get +1 bonus.' },
+      desc: 'Engage directly with communities through town halls and local events. +3 Platform Appeal. Cost starts at 3 AP and escalates by +1 each use. Decays by 1 each tick you don\'t use it.' },
     // TOOLS
     { id: 'poll_now', name: 'Poll Now', ap: 1, color: '#22d3ee', icon: '📊',
       category: 'tools', affects: 'Informational',
@@ -3009,13 +3009,13 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
 function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost) {
     const allActions = [...CA_ACTIONS];
 
-    // Add protest action for opposition only (under visibility category)
+    // Add protest action for opposition only (under momentum category)
     if (!_caIsGoverning) {
         allActions.push({
             id: 'protest', name: 'Organise a Protest', ap: protestApCost || 2,
             color: '#d9534f', icon: '!',
-            category: 'visibility', affects: 'Visibility',
-            desc: 'Mobilize citizens against the government. Turnout is probabilistic — a strong showing forces a crisis, but a fizzle hands the ruling party a free headline.',
+            category: 'momentum', affects: 'Momentum',
+            desc: 'Mobilize citizens against the government. A strong turnout forces a crisis and builds your momentum, but a fizzle hands the ruling party a free headline.',
         });
     }
 
@@ -3100,7 +3100,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             const bgStyle = isSel ? `background:${act.color}08;` : '';
             const borderStyle = isSel ? `border-color:${act.color}33;` : '';
             const nameColor = isSel ? act.color : 'var(--dtext-0)';
-            const affectsColor = act.affects === 'Visibility' ? '#f97316' : act.affects === 'Enthusiasm' ? '#f97316' : act.affects === 'Approval' ? '#4ade80' : act.affects === 'Appeal' ? '#38bdf8' : act.affects === 'Ideology' ? '#a78bfa' : '#6b7280';
+            const affectsColor = act.affects === 'Momentum' ? '#f97316' : act.affects === 'Approval' ? '#4ade80' : act.affects === 'Appeal' ? '#38bdf8' : act.affects.includes('Ideology') ? '#a78bfa' : act.affects === 'Alignment' ? '#f59e0b' : '#6b7280';
             const usedLabel = usedThisTick ? `${act.name} already used this turn` : '';
             const statusBadge = usedThisTick
                 ? `<span class="ca-used-badge">USED</span>`
@@ -3395,7 +3395,7 @@ function renderActionConfig(sel, otherParties, factionIdeo, nation, ap, tick) {
 // ── RALLY CONFIG ──
 
 function renderRallyConfig() {
-    return `<div class="ca-info-box">Hold a rally to energize your base. Random outcome — can boost or backfire.</div>`;
+    return `<div class="ca-info-box">Hold a rally to energize your base. Random outcome that directly affects your Momentum — can boost or backfire.</div>`;
 }
 
 // ── TAKE STANCE CONFIG ──
