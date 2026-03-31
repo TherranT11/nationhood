@@ -225,13 +225,13 @@ const TRADE_TYPE_ICONS = {
 
 // Flag URLs (shared across all rendering functions)
 const FLAG_URLS = {
-    'Melizea': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Melizea.png',
-    'Avelia': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Avelia1.png',
-    'Sangreza': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/sangreza.png',
-    'Montequilla': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Montequilla.png',
-    'San Estrella': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/sanestrella.png',
-    'Palvera': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Palvera.png',
-    'Calveth': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Calveth.png'
+    'Melizea': 'assets/flags/Melizea.png',
+    'Avelia': 'assets/flags/Avelia1.png',
+    'Sangreza': 'assets/flags/sangreza.png',
+    'Montequilla': 'assets/flags/Montequilla.png',
+    'San Estrella': 'assets/flags/sanestrella.png',
+    'Palvera': 'assets/flags/Palvera.png',
+    'Calveth': 'assets/flags/Calveth.png'
 };
 
 // Nation info page URL builder
@@ -8772,10 +8772,11 @@ async function renderStateVisitDraftPanel(body, statusEl) {
     const ambName = hasAmbassador ? ((ambassador.ambassador_first_name || '') + ' ' + (ambassador.ambassador_last_name || '')).trim() : null;
     const hasPendingTreaty = pendingTreatyRes.data && pendingTreatyRes.data.length > 0;
 
-    // Check embassy status — visitor's embassy in host (embassy_status_a = natA's embassy in natB)
-    const isNationA = currentNation.id < targetNationId;
-    const embassyField = isNationA ? 'embassy_status_a' : 'embassy_status_b';
-    const embassyOpen = relation?.[embassyField] === 'open';
+    // Embassy status: derived from ambassador presence (same logic as nation cards)
+    // Both nations need an active ambassador to the other for the embassy to be "open"
+    const { data: theirAmb } = await _supabase.from('ambassadors')
+        .select('id').eq('nation_id', targetNationId).eq('target_nation_id', currentNation.id).eq('is_active', true).maybeSingle();
+    const embassyOpen = hasAmbassador && theirAmb != null;
     const noConflict = relation?.relation_type !== 'war';
 
     svContext = { targetNation, currentTick, relScore, hasTradeAgreement, isFirstVisit, hasAmbassador, ambName, embassyOpen, noConflict, cooldownActive, cooldownTicks, alreadyPending, hasPendingTreaty };
@@ -8805,9 +8806,9 @@ function renderStateVisitHTML(body) {
     const atMax = st.agenda.length >= maxAgenda;
 
     function agendaItemHTML(item, isSelected) {
-        const disabled = item.requires === 'pending_treaty' && !ctx.hasPendingTreaty && !isSelected;
+        const disabled = (item.requires === 'pending_treaty' && !ctx.hasPendingTreaty && !isSelected) || (!isSelected && atMax);
         const cls = disabled ? ' sv-agenda-item--disabled' : '';
-        const opacity = !isSelected ? ' style="opacity:0.55;"' : '';
+        const opacity = !isSelected ? ` style="opacity:${atMax ? '0.3' : '0.55'};"` : '';
         let effectTags = '';
         for (const [stat, val] of Object.entries(item.effects)) {
             const label = stat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -8844,6 +8845,9 @@ function renderStateVisitHTML(body) {
     if (availableItems.length > 0) {
         availableHTML = `<div class="sv-rule" style="margin:6px 0;"></div>
             <div style="padding:4px 0 2px;font-family:var(--font-mono);font-size:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);">Available</div>`;
+        if (atMax) {
+            availableHTML += `<div style="padding:4px 8px;margin-bottom:6px;font-family:var(--font-mono);font-size:9px;color:var(--amber);background:rgba(176,154,91,0.06);border:1px solid rgba(176,154,91,0.15);border-radius:2px;">Agenda full (${maxAgenda}/${maxAgenda}). Remove an item or switch to a longer duration to add more.</div>`;
+        }
         availableHTML += availableItems.map(i => agendaItemHTML(i, false)).join('');
     }
 
@@ -8867,7 +8871,7 @@ function renderStateVisitHTML(body) {
 
     // Prereqs
     const prereqs = [
-        { ok: ctx.embassyOpen, text: 'Embassy open in ' + escapeHtml(ctx.targetNation.name) },
+        { ok: ctx.embassyOpen, text: ctx.embassyOpen ? 'Embassy open in ' + escapeHtml(ctx.targetNation.name) : 'No mutual embassy with ' + escapeHtml(ctx.targetNation.name) },
         { ok: ctx.hasAmbassador, text: ctx.hasAmbassador ? 'Ambassador posted (' + escapeHtml(ctx.ambName) + ')' : 'No ambassador posted' },
         { ok: ctx.relScore >= -50, text: 'Relations: ' + (ctx.relScore >= 0 ? 'Friendly' : 'Strained') + ' (' + (ctx.relScore >= 0 ? '+' : '') + ctx.relScore + ')' },
         { ok: ctx.noConflict, text: ctx.noConflict ? 'No active conflict' : 'Active conflict!' },
@@ -16386,7 +16390,7 @@ function renderVoteMetaSummary(vote) {
                     const preview = escapeHtml(meta.statement_text.substring(0, 120));
                     text = `<div class="ipo-statement-text">
                         <span class="ipo-statement-preview">"${preview}…"</span>
-                        <span class="ipo-statement-full" style="display:none">"${escaped}"</span>
+                        <span class="ipo-statement-full">"${escaped}"</span>
                         <button class="ipo-statement-toggle" onclick="this.parentElement.classList.toggle('expanded'); this.textContent = this.parentElement.classList.contains('expanded') ? 'Show less' : 'Read more'">Read more</button>
                     </div>`;
                 } else {

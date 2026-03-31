@@ -10,7 +10,7 @@ import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { statDirectionSign, NATION_STAT_COLUMNS } from './game/stats.js';
 import { formatStatName } from './game/political-actions.js';
 import { calculateIdeologyZones, bimodalAxisAlignment } from './game/electorate.js';
-import { getElectabilityTier } from './game/party-leadership.js';
+import { getElectabilityTier, getTraitAPModifier } from './game/party-leadership.js';
 import { AUTOCRACY_ACTIONS, dispatchAutocracyAction, getEscalatingCost, checkCooldown } from './game/autocracy-actions.js';
 
 // Lightweight toast notification (replaces alert() calls)
@@ -2801,7 +2801,16 @@ function caGetCost() {
         return cost;
     }
     if (_caSelected === 'poll_now') return _caPollTier; // 1 or 3 AP based on tier
-    if (_caSelected === 'outreach') return 3 + (_caOutreachEscalation || 0); // Base 3 + escalation
+    if (_caSelected === 'outreach') {
+        const _f = _currentFaction;
+        const _t = _currentShard?.current_tick || 0;
+        return Math.max(1, 3 + (_caOutreachEscalation || 0) + (_f ? getTraitAPModifier('outreach', _f, _t) : 0));
+    }
+    if (_caSelected === 'press_conference') {
+        const _f2 = _currentFaction;
+        const _t2 = _currentShard?.current_tick || 0;
+        return Math.max(1, 2 + (_f2 ? getTraitAPModifier('press_conference', _f2, _t2) : 0));
+    }
     const act = CA_ACTIONS.find(a => a.id === _caSelected);
     if (!act) return 0;
     // Campaign Attack cost scales with current polarization
@@ -3076,7 +3085,11 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
                 continue;
             }
 
-            const displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'outreach' ? (3 + (_caOutreachEscalation || 0)) : act.ap;
+            let displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'outreach' ? (3 + (_caOutreachEscalation || 0)) : act.id === 'press_conference' ? 2 : act.ap;
+            // Apply leader trait modifiers to displayed cost
+            if (['outreach', 'press_conference'].includes(act.id) && f.leader_positive_traits) {
+                displayCost = Math.max(1, displayCost + getTraitAPModifier(act.id, f, tick));
+            }
             const dbActionType = act.id === 'promise' ? 'make_promise' : act.id;
             const cdRemaining = _caCooldowns[dbActionType] || 0;
             const onCooldown = cdRemaining > 0;
@@ -4619,8 +4632,11 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
             result = await executeGrassrootsMovement(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
         } else if (sel.id === 'press_conference') {
             // Press Conference: base -2 to +2 momentum, +1 if opposition, +2 if gov with approval >= 40
-            const apResult = await _supabase.rpc('accumulate_ap', { p_faction_id: f.id, p_gain: -2, p_max_ap: 99 });
-            if (apResult.error) { result = { success: false, error: apResult.error.message }; }
+            const { deductAP } = await import('./game/config.js');
+            const { getTraitAPModifier: _getTraitModPC } = await import('./game/party-leadership.js');
+            const pressCost = Math.max(1, 2 + _getTraitModPC('press_conference', f, tick));
+            const apResult = await deductAP(_supabase, f.id, pressCost);
+            if (!apResult.success) { result = { success: false, error: apResult.error || 'Insufficient AP' }; }
             else {
                 let baseRoll = Math.floor(Math.random() * 5) - 2; // -2 to +2
                 if (!_caIsGoverning) baseRoll += 1; // opposition bonus
@@ -4630,18 +4646,20 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
                 if (momErr) console.warn('[PressConference] Momentum RPC failed:', momErr.message);
                 await _supabase.from('campaign_actions').insert({
                     party_id: f.id, nation_id: n.id, action_type: 'press_conference',
-                    ap_cost: 2, tick_performed: tick, result: { momentumDelta: baseRoll }
+                    ap_cost: pressCost, tick_performed: tick, result: { momentumDelta: baseRoll }
                 });
                 const sign = baseRoll >= 0 ? '+' : '';
-                result = { success: true, newAp: apResult.data, headline: 'Press Conference',
+                result = { success: true, newAp: apResult.newAp, headline: 'Press Conference',
                     effects: [{ label: 'Press Coverage', value: `${sign}${baseRoll}` }],
                     outcomeName: `Press conference — ${sign}${baseRoll} momentum` };
             }
         } else if (sel.id === 'outreach') {
             // Community Outreach: +3 platform appeal, escalating cost (base 3 + escalation)
-            const outreachCost = 3 + (_caOutreachEscalation || 0);
-            const apResult = await _supabase.rpc('accumulate_ap', { p_faction_id: f.id, p_gain: -outreachCost, p_max_ap: 99 });
-            if (apResult.error) { result = { success: false, error: apResult.error.message }; }
+            const { deductAP: _deductAP2 } = await import('./game/config.js');
+            const { getTraitAPModifier: _getTraitMod2 } = await import('./game/party-leadership.js');
+            const outreachCost = Math.max(1, 3 + (_caOutreachEscalation || 0) + _getTraitMod2('outreach', f, tick));
+            const apResult = await _deductAP2(_supabase, f.id, outreachCost);
+            if (!apResult.success) { result = { success: false, error: apResult.error || 'Insufficient AP' }; }
             else {
                 const { data: standing } = await _supabase.from('faction_electoral_standing')
                     .select('id, platform_appeal').eq('faction_id', f.id).eq('nation_id', n.id).maybeSingle();
@@ -4653,7 +4671,7 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
                     party_id: f.id, nation_id: n.id, action_type: 'outreach',
                     ap_cost: outreachCost, tick_performed: tick, result: { appealBoost: 3 }
                 });
-                result = { success: true, newAp: apResult.data, headline: 'Community Outreach',
+                result = { success: true, newAp: apResult.newAp, headline: 'Community Outreach',
                     effects: [{ label: 'Appeal', value: '+3' }],
                     outcomeName: 'Community outreach — +3 platform appeal' };
             }

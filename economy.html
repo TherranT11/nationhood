@@ -361,7 +361,7 @@ async function loadTradeData(nationId) {
         }
         var tradeBonus = hasFTA ? 25 : hasRSC ? 20 : hasPTA ? 15 : 0;
         var diplomaticBonus = relScore * 0.3;
-        var proximityBonus = (prox / 100) * 20;
+        var proximityBonus = ((100 - prox) / 100) * 20;
         var embargoPenalty = hasEmbargo ? -40 : 0;
         var totalAffinity = Math.max(0, Math.min(100, 50 + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus));
         var breakdown = {

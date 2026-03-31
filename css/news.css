@@ -196,8 +196,20 @@
     padding: 4px 14px;
     white-space: nowrap;
     flex-shrink: 0;
-    align-self: center;
-    margin-right: 16px;
+    margin-right: 0;
+    position: relative;
+    z-index: 2;
+}
+/* Fade mask: prevents ticker text from overlapping the BREAKING label */
+.nws-breaking-bar::after {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0;
+    left: 0;
+    width: 110px;
+    background: linear-gradient(to right, var(--nws-red) 70%, transparent);
+    z-index: 1;
+    pointer-events: none;
 }
 
 .nws-ticker-scroll {
@@ -1027,6 +1039,35 @@
     border: 1px solid var(--nws-rule);
 }
 
+/* International post checkbox */
+.nws-intl-check {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(200,166,78,0.06);
+    border: 1px solid rgba(200,166,78,0.2);
+    border-radius: 4px;
+}
+.nws-intl-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: var(--nws-ink-3, #5a5750);
+    cursor: pointer;
+    line-height: 1.4;
+}
+.nws-intl-label input[type="checkbox"] {
+    margin-top: 2px;
+    accent-color: #c8a64e;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+.nws-intl-label strong {
+    color: var(--nws-ink, #1a1918);
+}
+
 .nws-submit-btn {
     width: 100%;
     font-family: 'Inter', sans-serif;
@@ -1586,6 +1627,9 @@
 }
 .nws-pub-continental .nws-breaking-label {
     background: #c23a22;
+}
+.nws-pub-continental .nws-breaking-bar::after {
+    background: linear-gradient(to right, #1a1918 70%, transparent);
 }
 
 @media (max-width: 640px) {

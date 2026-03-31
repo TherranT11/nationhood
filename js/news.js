@@ -389,6 +389,13 @@ export async function initNewspaper(supabase, state) {
                         <div class="nws-char-count" id="nws-char-count">0 / 12000</div>
                     </div>
 
+                    <div class="nws-form-group nws-intl-check">
+                        <label class="nws-intl-label">
+                            <input type="checkbox" id="nws-intl-checkbox">
+                            <strong>Post Internationally</strong>: This will show up across all news sites. Cost 1 AP. +1 Additional Visibility.
+                        </label>
+                    </div>
+
                     <button class="nws-submit-btn" id="nws-submit-btn">Publish Article</button>
                 </div>
             </div>
@@ -438,8 +445,8 @@ export async function initNewspaper(supabase, state) {
     loadAndRenderVLN();
 }
 
-/** Award +2 visibility to a democratic faction for writing a long article */
-async function _applyArticleVisibilityReward(factionId, nationId) {
+/** Award visibility to a democratic faction for writing an article */
+async function _applyArticleVisibilityReward(factionId, nationId, amount = 2) {
     // No-op: visibility column repurposed for momentum (3-pillar election system).
     return;
 }
@@ -601,6 +608,7 @@ function bindSubmitHandler() {
         const body = document.getElementById('nws-article-body').value.trim();
         const fileInput = document.getElementById('nws-article-image');
         const file = fileInput.files[0] || null;
+        const isInternational = document.getElementById('nws-intl-checkbox')?.checked || false;
 
         // Validation
         if (!title) return showFormError('Please enter a headline.');
@@ -644,6 +652,19 @@ function bindSubmitHandler() {
                 showFormSuccess('Article updated!');
             } else {
                 // ── CREATE MODE ──
+
+                // International post costs 1 AP
+                if (isInternational) {
+                    const apCost = 1;
+                    const { deductAP } = await import('./game/config.js');
+                    const apResult = await deductAP(_supabase, faction.id, apCost);
+                    if (!apResult.success) {
+                        showFormError('Not enough AP for international post (need 1 AP).');
+                        return;
+                    }
+                    faction.action_points = apResult.newAp;
+                }
+
                 let imageUrl = null;
                 if (file) {
                     imageUrl = await uploadArticleImage(nation.id, file);
@@ -661,12 +682,13 @@ function bindSubmitHandler() {
                         image_url: imageUrl,
                         status: 'published',
                         published_tick: shard?.current_tick || 0,
-                        publication: _publication
+                        publication: isInternational ? 'international' : _publication
                     });
 
                 if (error) throw error;
 
                 let successMsg = 'Article published!';
+                const intlBonusVis = isInternational ? 1 : 0;
                 if (_isAutocracyNation) {
                     // Autocracy: +1 Backing for any article >= 4000 chars
                     const backingReward = body.length >= 4000 ? 1 : 0;
@@ -676,13 +698,18 @@ function bindSubmitHandler() {
                     } else {
                         successMsg = `Article published! (${body.length}/4000 chars — no backing reward)`;
                     }
+                    if (intlBonusVis > 0) successMsg += ' +1 Visibility (International).';
                 } else {
                     // Democracy: +2 Visibility, +1 Approval, +1 Enthusiasm for any article >= 4000 chars
+                    const visBoost = body.length >= 4000 ? 2 + intlBonusVis : intlBonusVis;
                     if (body.length >= 4000) {
-                        _applyArticleVisibilityReward(faction.id, nation.id).catch(err => console.error('[News] Visibility reward failed:', err));
+                        _applyArticleVisibilityReward(faction.id, nation.id, visBoost).catch(err => console.error('[News] Visibility reward failed:', err));
                         _applyArticleApprovalReward(faction.id, nation.id).catch(err => console.error('[News] Approval reward failed:', err));
                         _applyArticleEnthusiasmReward(nation.id).catch(err => console.error('[News] Enthusiasm reward failed:', err));
-                        successMsg = 'Article published! +2 Visibility, +1 Approval, +1 Enthusiasm.';
+                        successMsg = `Article published! +${visBoost} Visibility, +1 Approval, +1 Enthusiasm.`;
+                    } else if (intlBonusVis > 0) {
+                        _applyArticleVisibilityReward(faction.id, nation.id, intlBonusVis).catch(err => console.error('[News] Intl visibility reward failed:', err));
+                        successMsg = `Article published! +${intlBonusVis} Visibility (International).`;
                     } else {
                         successMsg = `Article published! (${body.length}/4000 chars — no reward)`;
                     }
@@ -793,6 +820,8 @@ function resetModalToCreateMode() {
     if (header) header.textContent = 'Write Article';
     const submitBtn = document.getElementById('nws-submit-btn');
     if (submitBtn) submitBtn.textContent = 'Publish Article';
+    const intlCheck = document.getElementById('nws-intl-checkbox');
+    if (intlCheck) { intlCheck.checked = false; intlCheck.closest('.nws-intl-check').style.display = ''; }
 }
 
 function openEditModal(article) {
@@ -845,6 +874,9 @@ function openEditModal(article) {
     if (header) header.textContent = 'Edit Article';
     const submitBtn = document.getElementById('nws-submit-btn');
     if (submitBtn) submitBtn.textContent = 'Update Article';
+    // Hide international checkbox in edit mode (can't change after publishing)
+    const intlCheck = document.getElementById('nws-intl-checkbox');
+    if (intlCheck) { intlCheck.checked = false; intlCheck.closest('.nws-intl-check').style.display = 'none'; }
 
     document.getElementById('nws-modal-overlay').classList.add('active');
 }
@@ -1066,12 +1098,12 @@ async function loadAndDisplayArticles() {
             .in('nation_id', nationIds)
             .eq('status', 'published')
             .order('created_at', { ascending: false });
-        // Once the publication column exists, filter by it
+        // Filter by publication — international articles show on all sites
         if (_publication !== 'cruceran') {
-            query = query.eq('publication', _publication);
+            query = query.or(`publication.eq.${_publication},publication.eq.international`);
         } else {
-            // Include articles with no publication set (legacy) or explicitly 'cruceran'
-            query = query.or('publication.eq.cruceran,publication.is.null');
+            // Include articles with no publication set (legacy), explicitly 'cruceran', or international
+            query = query.or('publication.eq.cruceran,publication.is.null,publication.eq.international');
         }
         const { data: articles, error } = await query;
 

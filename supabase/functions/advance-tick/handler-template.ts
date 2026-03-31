@@ -1098,7 +1098,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
       try {
         const { data: factions } = await supabase
             .from('factions')
-            .select('id, faction_type')
+            .select('id, faction_type, leader_positive_traits, leader_negative_traits')
             .eq('nation_id', nation.id)
             .eq('faction_type', 'party');
 
@@ -1141,6 +1141,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             let apGain = 5;
             if (isInGovernment) apGain += 2;
 
+            // Leader trait: tireless_campaigner → +1 AP per tick
+            const posTraits = faction.leader_positive_traits || [];
+            const negTraits = faction.leader_negative_traits || [];
+            if (posTraits.includes('tireless_campaigner')) apGain += 1;
+            // Leader trait: indecisive → -1 AP per tick
+            if (negTraits.includes('indecisive')) apGain = Math.max(1, apGain - 1);
+
             // Family member successor penalty: ruling faction loses 1 AP/tick
             if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) {
                 apGain = Math.max(1, apGain - 1);
@@ -1152,6 +1159,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 apDistributed++;
                 const parts = ['Base +5'];
                 if (isInGovernment) parts.push('Coalition +2');
+                if (posTraits.includes('tireless_campaigner')) parts.push('Tireless Campaigner +1');
+                if (negTraits.includes('indecisive')) parts.push('Indecisive -1');
                 if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) parts.push('Family successor -1');
                 await supabase.from('ap_ledger').insert({ faction_id: faction.id, tick: newTick, delta: apGain, reason: 'tick_gain', detail: parts.join(', ') }).then(() => {});
             } else {
