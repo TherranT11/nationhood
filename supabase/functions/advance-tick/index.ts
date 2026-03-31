@@ -750,10 +750,10 @@ function calculateTradeAffinity(nationA, nationB, relation, opts) {
     // Active embargo/sanctions between these two nations: major penalty
     var embargoPenalty = (opts && opts.has_embargo) ? -40 : 0;
 
-    // Geographic proximity: continuous bonus scaled from proximity 0-100.
-    // Bordering (100) → +20, same region (50) → +10, distant (20) → +4.
+    // Geographic proximity: continuous bonus scaled from distance 0-100.
+    // Bordering (0) → +20, same region (50) → +10, distant (80) → +4.
     var proximity = (opts && opts.proximity != null) ? Number(opts.proximity) : 50;
-    var proximityBonus = (proximity / 100) * 20;
+    var proximityBonus = ((100 - proximity) / 100) * 20;
 
     // Autocracy penalty: other nations are less willing to trade with autocratic regimes
     var autocracyPenalty = 0;

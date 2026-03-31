@@ -130,7 +130,7 @@ const guideContent = {
 <li>Base: 50</li>
 <li>Diplomatic bonus: relation_score &times; 0.3</li>
 <li>Trade agreement: FTA (+25), RSC (+20), PTA (+15)</li>
-<li>Proximity: (proximity/100) &times; 20</li>
+<li>Proximity: ((100 &minus; distance) / 100) &times; 20 &mdash; 0 = bordering, 100 = far</li>
 <li>Embargo: &minus;40</li>
 </ul>
 <p class="guide-tip">Trade agreements significantly boost trade volume. An FTA gives +25 affinity.</p>
