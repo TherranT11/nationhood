@@ -2536,7 +2536,20 @@ async function respondToAmendment(reqId, response) {
                 // Clean up orphaned conditional supporters whose strike amendments were cascade-deleted
                 await cleanupOrphanedConditionalSupport();
             } else {
-                // Add amendment — existing logic
+                // Add amendment — charge sponsor 1 AP if beyond free article limit
+                const nonTextCount = countNonTextArticles(currentBill.bill_articles);
+                const isTextAmendment = !req.policy_id;
+                if (!isTextAmendment && nonTextCount >= FREE_ARTICLE_LIMIT) {
+                    const apResult = await deductAP(_supabase, currentFaction.id, 1);
+                    if (!apResult.success) {
+                        // Revert acceptance — put amendment back to pending
+                        await _supabase.from('bill_amendment_requests').update({ status: 'pending' }).eq('id', reqId);
+                        await _supabase.from('bill_support').update({ stance: 'conditional', locked: false }).eq('bill_id', billId).eq('faction_id', req.faction_id);
+                        alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
+                        return;
+                    }
+                    currentFaction.action_points = apResult.newAp;
+                }
                 const maxArt = Math.max(...(currentBill.bill_articles || []).map(a => a.article_number), 1);
                 if (req.policy_id) {
                     await _supabase.from('bill_articles').insert({ bill_id: billId, policy_id: req.policy_id, article_number: maxArt + 1, added_by: req.faction_id });
