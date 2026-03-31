@@ -2,43 +2,43 @@
 -- Proximity Scale Inversion: 0 = bordering, 100 = far away
 -- Previously: 100 = bordering, 0 = far. This migration inverts all values.
 -- Formula: new_value = 100 - old_value
--- Also adds Calveth's proximity to all other nations.
+-- Also sets Calveth's distances to all other nations.
 -- ══════════════════════════════════════════════════════════════════════
 
 -- Step 1: Invert ALL existing proximity values (100 - current)
 UPDATE diplomatic_relations
 SET proximity = 100 - COALESCE(proximity, 50);
 
--- Step 2: Set Calveth's distances to all nations
--- (You may adjust these values — 0 = bordering, 80 = far, 50 = moderate)
+-- Step 2: Set Calveth distances (island nation, far northeast — overseas from everyone)
+-- Scale: 0 = bordering, 100 = far away
 
--- Calveth borders: Avelia (0 = bordering)
-UPDATE diplomatic_relations SET proximity = 0
-WHERE nation_a_id = LEAST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'avelia'))
-  AND nation_b_id = GREATEST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'avelia'));
-
--- Calveth borders: Sangreza (0 = bordering)
-UPDATE diplomatic_relations SET proximity = 0
-WHERE nation_a_id = LEAST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'sangreza'))
-  AND nation_b_id = GREATEST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'sangreza'));
-
--- Calveth moderate distance: Montequilla (40)
-UPDATE diplomatic_relations SET proximity = 40
-WHERE nation_a_id = LEAST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'montequilla'))
-  AND nation_b_id = GREATEST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'montequilla'));
-
--- Calveth moderate distance: San Estrella (50)
-UPDATE diplomatic_relations SET proximity = 50
+-- San Estrella (72) — closest mainland, northeast coast faces Calveth
+UPDATE diplomatic_relations SET proximity = 72
 WHERE nation_a_id = LEAST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'san estrella'))
   AND nation_b_id = GREATEST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'san estrella'));
 
--- Calveth far: Melizea (70)
-UPDATE diplomatic_relations SET proximity = 70
+-- Avelia (75) — northeastern mainland, slightly further inland
+UPDATE diplomatic_relations SET proximity = 75
+WHERE nation_a_id = LEAST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'avelia'))
+  AND nation_b_id = GREATEST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'avelia'));
+
+-- Montequilla (78) — central mainland
+UPDATE diplomatic_relations SET proximity = 78
+WHERE nation_a_id = LEAST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'montequilla'))
+  AND nation_b_id = GREATEST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'montequilla'));
+
+-- Melizea (80) — western mainland
+UPDATE diplomatic_relations SET proximity = 80
 WHERE nation_a_id = LEAST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'melizea'))
   AND nation_b_id = GREATEST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'melizea'));
 
--- Calveth far: Palvera (80)
-UPDATE diplomatic_relations SET proximity = 80
+-- Sangreza (82) — southern mainland, long ocean route
+UPDATE diplomatic_relations SET proximity = 82
+WHERE nation_a_id = LEAST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'sangreza'))
+  AND nation_b_id = GREATEST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'sangreza'));
+
+-- Palvera (85) — far southwest, opposite corner of the map
+UPDATE diplomatic_relations SET proximity = 85
 WHERE nation_a_id = LEAST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'palvera'))
   AND nation_b_id = GREATEST((SELECT id FROM nations WHERE LOWER(name) = 'calveth'), (SELECT id FROM nations WHERE LOWER(name) = 'palvera'));
 
