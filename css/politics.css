@@ -5249,6 +5249,132 @@ body.light-mode .vt-issue-row--missing { background: rgba(217,131,48,0.06); }
     margin-top: auto;
 }
 
+/* ── Ideology box (wide) ── */
+
+.elec-box--wide {
+    width: 760px;
+}
+
+.elec-ideo-avg {
+    margin-left: auto;
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    color: var(--dtext-2);
+}
+
+.elec-ideo-axis {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--dborder-hair);
+}
+
+.elec-ideo-axis:last-child {
+    border-bottom: none;
+}
+
+.elec-ideo-axis-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.elec-ideo-axis-name {
+    font-family: var(--dfont-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--dtext-1);
+}
+
+.elec-ideo-salience {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-3);
+}
+
+/* Mini distribution bar */
+.elec-ideo-bar-wrap {
+    margin-bottom: 4px;
+}
+
+.elec-ideo-bar-track {
+    position: relative;
+    height: 14px;
+    background: var(--dbg-3);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.elec-ideo-var-band {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    background: rgba(100, 180, 255, 0.15);
+    border-radius: 2px;
+}
+
+.elec-ideo-mean-marker {
+    position: absolute;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.5);
+    transform: translateX(-1px);
+}
+
+.elec-ideo-player-marker {
+    position: absolute;
+    top: 2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--dteal);
+    border: 2px solid var(--dbg-2);
+    transform: translateX(-5px);
+}
+
+.elec-ideo-bar-labels {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    color: var(--dtext-3);
+    margin-top: 2px;
+}
+
+.elec-ideo-details {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    color: var(--dtext-2);
+    margin-top: 2px;
+}
+
+.elec-ideo-position strong {
+    color: var(--dtext-1);
+}
+
+.elec-ideo-capture strong {
+    font-weight: 700;
+}
+
+.elec-ideo-voters {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-3);
+    margin-top: 2px;
+}
+
+.elec-ideo-voters strong {
+    color: var(--dtext-2);
+}
+
+/* Purple dot for ideology box */
+.pol-box-dot--purple {
+    background: #a78bfa;
+}
+
 /* Light mode */
 body.light-mode .elec-box { background: #fafaf8; border-color: rgba(0,0,0,0.08); }
 
@@ -5256,4 +5382,5 @@ body.light-mode .elec-box { background: #fafaf8; border-color: rgba(0,0,0,0.08);
 @media (max-width: 860px) {
     .elec-row { flex-direction: column; align-items: center; }
     .elec-box { width: 100%; max-width: 380px; }
+    .elec-box--wide { max-width: 100%; }
 }

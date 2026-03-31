@@ -9,7 +9,7 @@ import { isAutocracy, isGovernmentPresidential, getGovDisplayLabel } from './gam
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { statDirectionSign, NATION_STAT_COLUMNS } from './game/stats.js';
 import { formatStatName } from './game/political-actions.js';
-import { calculateIdeologyZones } from './game/electorate.js';
+import { calculateIdeologyZones, bimodalAxisAlignment } from './game/electorate.js';
 import { getElectabilityTier } from './game/party-leadership.js';
 import { AUTOCRACY_ACTIONS, dispatchAutocracyAction, getEscalatingCost, checkCooldown } from './game/autocracy-actions.js';
 
@@ -547,7 +547,7 @@ async function renderPartyTab(f, nation, data) {
             // Lazy-load Elections tab on first click
             if (target === 'elections' && !electionsLoaded) {
                 electionsLoaded = true;
-                renderElectionsTab(nation, administration, coalition, f, allParties, currentTick, role, nextElection);
+                renderElectionsTab(nation, administration, coalition, f, allParties, allPartyIdeologies, currentTick, role, nextElection);
             }
         });
     });
@@ -6980,7 +6980,7 @@ function hexToRgba(hex, alpha) {
 
 // ==================== ELECTIONS TAB ====================
 
-function renderElectionsTab(nation, administration, coalition, faction, allParties, currentTick, role, nextElection) {
+async function renderElectionsTab(nation, administration, coalition, faction, allParties, allPartyIdeologies, currentTick, role, nextElection) {
     const container = document.getElementById('elections-container');
     if (!container) return;
 
@@ -7208,6 +7208,152 @@ function renderElectionsTab(nation, administration, coalition, faction, allParti
         </div>
     </div>`;
 
+    // --- Ideology Box (760px) ---
+    // Fetch electorate profile for ideology distribution
+    const { data: elecProfile } = await _supabase
+        .from('electorate_profile')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .maybeSingle();
+
+    // Build ideology lookup
+    const ideoMap = {};
+    for (const row of (allPartyIdeologies || [])) {
+        ideoMap[row.faction_id] = row;
+    }
+    const playerIdeo = ideoMap[faction.id] || {};
+
+    // Compute zone variance (same formula as Electorate tab)
+    const nationPolarization = Number(nation.polarization ?? 50);
+    const nationStability = Number(nation.stability ?? 50);
+    const nationDiversity = Number(nation.ethnic_diversity ?? 50);
+    const spreadScore = Math.min(100, Math.max(0,
+        nationPolarization * 0.9 +
+        (100 - nationStability) * 0.07 +
+        nationDiversity * 0.03
+    ));
+    const zoneVariance = 5 + (spreadScore / 100) * 40;
+
+    let ideologyRowsHtml = '';
+    let totalCapture = 0;
+
+    if (elecProfile) {
+        for (const ax of ES_AXES) {
+            const rawScore = Number(playerIdeo[ax.key] ?? 0);
+            const normPos = (rawScore + 100) / 2; // -100..+100 → 0..100
+            const eMean = Number(elecProfile['ideo_mean_' + ax.key] ?? 50);
+            const eVar = zoneVariance;
+
+            // Get zone info
+            const { zones, zoneForPos } = calculateIdeologyZones(eMean, eVar);
+            const playerZoneId = zoneForPos(normPos);
+
+            // Map zone ID to readable label
+            const zoneSide = playerZoneId.includes('left') ? ax.leftLabel : playerZoneId.includes('right') ? ax.rightLabel : '';
+            const zoneType = playerZoneId === 'centrist' ? 'Centrist' : playerZoneId.includes('moderate') ? 'Moderate' : 'Radical';
+            const playerZoneLabel = playerZoneId === 'centrist' ? 'Centrist' : `${zoneType} ${zoneSide}`;
+
+            // Voter capture via bimodal alignment
+            const capture = bimodalAxisAlignment(normPos, eMean, eVar);
+            const capturePct = (capture * 100).toFixed(1);
+            totalCapture += capture;
+
+            // Find where most voters are (largest zone by width, excluding centrist ties)
+            const sortedZones = [...zones].sort((a, b) => b.width - a.width);
+            const biggestZone = sortedZones[0];
+            const bigZoneSide = biggestZone.id.includes('left') ? ax.leftLabel : biggestZone.id.includes('right') ? ax.rightLabel : '';
+            const bigZoneType = biggestZone.id === 'centrist' ? 'Centrist' : biggestZone.id.includes('moderate') ? 'Moderate' : 'Radical';
+            const voterConcentration = biggestZone.id === 'centrist' ? 'Centrist' : `${bigZoneType} ${bigZoneSide}`;
+
+            // Capture color
+            const capColor = capture >= 0.6 ? 'var(--dgreen)' : capture >= 0.3 ? 'var(--damber)' : 'var(--dred)';
+
+            // Salience
+            const salience = Number(elecProfile['salience_' + ax.key] ?? 0.2);
+            const saliencePct = (salience * 100).toFixed(0);
+
+            // Mini distribution bar: show electorate mean + variance band + player position
+            const varLeft = Math.max(0, eMean - eVar);
+            const varWidth = Math.min(100, eMean + eVar) - varLeft;
+
+            ideologyRowsHtml += `
+            <div class="elec-ideo-axis">
+                <div class="elec-ideo-axis-header">
+                    <span class="elec-ideo-axis-name">${escapeHtml(ax.leftLabel)} / ${escapeHtml(ax.rightLabel)}</span>
+                    <span class="elec-ideo-salience">Salience: ${saliencePct}%</span>
+                </div>
+                <div class="elec-ideo-bar-wrap">
+                    <div class="elec-ideo-bar-track">
+                        <div class="elec-ideo-var-band" style="left:${varLeft}%;width:${varWidth}%"></div>
+                        <div class="elec-ideo-mean-marker" style="left:${eMean}%"></div>
+                        <div class="elec-ideo-player-marker" style="left:${normPos}%"></div>
+                    </div>
+                    <div class="elec-ideo-bar-labels">
+                        <span>${escapeHtml(ax.leftLabel)}</span>
+                        <span>${escapeHtml(ax.rightLabel)}</span>
+                    </div>
+                </div>
+                <div class="elec-ideo-details">
+                    <span class="elec-ideo-position">Your Position: <strong>${escapeHtml(playerZoneLabel)}</strong></span>
+                    <span class="elec-ideo-capture" style="color:${capColor}">Voter Capture: <strong>${capturePct}%</strong></span>
+                </div>
+                <div class="elec-ideo-voters">Most voters are <strong>${escapeHtml(voterConcentration)}</strong></div>
+            </div>`;
+        }
+    }
+
+    const avgCapture = elecProfile ? (totalCapture / ES_AXES.length * 100).toFixed(1) : '—';
+    const avgCapColor = totalCapture / ES_AXES.length >= 0.6 ? 'var(--dgreen)' : totalCapture / ES_AXES.length >= 0.3 ? 'var(--damber)' : 'var(--dred)';
+
+    const ideologyBox = `
+    <div class="elec-box elec-box--wide">
+        <div class="elec-box-header">
+            <div class="pol-box-dot pol-box-dot--purple"></div>
+            <span class="elec-box-title">Ideology</span>
+            <span class="elec-ideo-avg">Avg. Capture: <strong style="color:${avgCapColor}">${avgCapture}%</strong></span>
+        </div>
+        <div class="elec-box-body">
+            ${elecProfile ? ideologyRowsHtml : '<div style="color:var(--dtext-3);font-size:11px;padding:10px">No electorate data available.</div>'}
+        </div>
+    </div>`;
+
+    // --- What Is Ideology Box ---
+    const whatIsIdeologyBox = `
+    <div class="elec-box">
+        <div class="elec-box-header">
+            <div class="pol-box-dot pol-box-dot--amber"></div>
+            <span class="elec-box-title">What Is Ideology?</span>
+        </div>
+        <div class="elec-box-body elec-explainer">
+            <p><strong>Ideology</strong> measures how well your party's positions align with what voters actually want. It accounts for 30% of election outcomes.</p>
+            <p>The electorate sits on 5 ideological axes. Voters are distributed across each axis — clustered at the center in stable nations, or split into polarized camps in divided ones.</p>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">Voter Capture:</div>
+                <p>Your <strong>voter capture</strong> on each axis is the percentage of voters near your position. Higher capture means more votes. If you're in a zone where few voters sit, your capture is low — even if your position is "correct."</p>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">Spatial Competition:</div>
+                <p>Other parties compete for the same voters. Two parties in the same zone split that zone's voters between them. Finding an uncontested ideological space can be more valuable than crowding the center.</p>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">How to shift your position:</div>
+                <ul>
+                    <li><strong>Voting on bills</strong> — YES votes shift you toward the bill's ideological direction. NO votes shift you the opposite way.</li>
+                    <li><strong>Take Stance</strong> — Declare a position on a salient issue to shift directly on the relevant axis.</li>
+                    <li><strong>Fund Think Tank / Ideological Pivot</strong> — Targeted ideology actions for larger shifts.</li>
+                </ul>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">Salience:</div>
+                <p>Not all axes matter equally. <strong>Salience</strong> reflects how much voters care about each axis right now, driven by national issues. High-salience axes count more toward your ideology score.</p>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">The Electorate Moves:</div>
+                <p>The electorate's position shifts over time based on national conditions. A stable, prosperous nation clusters near the center. A polarized, unstable nation splits into radical camps. Standing still doesn't guarantee alignment — the voters may move away from you.</p>
+            </div>
+        </div>
+    </div>`;
+
     container.innerHTML = `
     <div class="elec-page">
         <div class="elec-row">
@@ -7215,6 +7361,10 @@ function renderElectionsTab(nation, administration, coalition, faction, allParti
             ${whatIsBox}
             ${momentumBox}
             ${whatIsMomentumBox}
+        </div>
+        <div class="elec-row" style="margin-top:20px">
+            ${ideologyBox}
+            ${whatIsIdeologyBox}
         </div>
     </div>`;
 }
