@@ -4218,24 +4218,10 @@ function snapshotNationStats(nation) {
     return snapshot;
 }
 
-// ────────── momentum ──────────
-
-/**
- * momentum.js — Electorate engine helpers for party_approval, credibility, and gov_approval_events.
- * Originally housed the legacy momentum system; now provides shared helpers used across game modules.
- */
-
-// ── Constants (must match advance-tick CFG) ──
-const APPROVAL_MIN = 10;
-const APPROVAL_MAX = 90;
-const DEFAULT_PARTY_APPROVAL = 25;
-const CREDIBILITY_MIN = 0.5;
-const CREDIBILITY_MAX = 1.5;
+// ────────── 3-Pillar Election System: Momentum ──────────
 
 function round2(v) { return Math.round(v * 100) / 100; }
 function round3(v) { return Math.round(v * 1000) / 1000; }
-
-// ── 3-Pillar Election System: Momentum helpers ──
 
 /**
  * Adjust a faction's momentum score (0-100) on the factions table.
@@ -4269,9 +4255,6 @@ async function adjustFactionMomentum(supabase, factionId, nationId, delta, opts)
     if (error) console.error('[Momentum] update failed:', error.message);
 }
 
-// Legacy stubs — kept for any callers not yet converted (both are no-ops)
-async function adjustMomentum(supabase, factionId, nationId, source, delta, reason) { return; }
-async function adjustMomentumAll(supabase, nationId, source, delta, reason) { return; }
 /**
  * Apply a one-time event modifier to the government approval event modifier.
  * The modifier decays 10% per tick, so transient shocks fade naturally.
@@ -6167,8 +6150,6 @@ async function applyBlocPreferenceOnPassage(supabase, bill, nationId) {
  * @param {string} nationId
  */
 async function applyNoVotePenalty(supabase, bill, nationId) {
-    const VISIBILITY_PENALTY = -5; // legacy, unused
-
     // 1. Get all party factions in this nation
     const { data: allFactions } = await supabase
         .from('factions')
@@ -6189,35 +6170,16 @@ async function applyNoVotePenalty(supabase, bill, nationId) {
     const nonVoters = allFactions.filter(f => !votedFactionIds.has(f.id));
     if (nonVoters.length === 0) return [];
 
-    // 4. Apply penalties to each non-voter
+    // 4. Apply momentum penalty to each non-voter
     const penalized = [];
     for (const faction of nonVoters) {
-        // -1d3 party_approval
-        const approvalLoss = -(1 + Math.floor(Math.random() * 3));
-        await adjustFactionMomentum(supabase, faction.id, nationId, approvalLoss, { source: 'bill:no_vote' });
-
-        // -5 visibility
-        const { data: standing } = await supabase
-            .from('faction_electoral_standing')
-            .select('id, visibility')
-            .eq('faction_id', faction.id)
-            .eq('nation_id', nationId)
-            .maybeSingle();
-        if (standing) {
-            const newVis = Math.max(0, (Number(standing.visibility) || 0) + VISIBILITY_PENALTY);
-            await supabase.from('faction_electoral_standing')
-                .update({ visibility: newVis })
-                .eq('id', standing.id);
-        }
-
-        // -5 credibility
+        const momentumLoss = -(1 + Math.floor(Math.random() * 3)); // -1d3
+        await adjustFactionMomentum(supabase, faction.id, nationId, momentumLoss, { source: 'bill:no_vote' });
 
         penalized.push({
             factionId: faction.id,
             factionName: faction.faction_name,
-            approvalLoss,
-            visibilityLoss: VISIBILITY_PENALTY,
-            credibilityLoss: VISIBILITY_PENALTY,
+            momentumLoss,
         });
     }
 
@@ -7917,7 +7879,7 @@ async function resolveExpiredVotes(supabase, nationId) {
         try {
             const penalized = await applyNoVotePenalty(supabase, bill, bill.nation_id);
             if (penalized.length > 0) {
-                const names = penalized.map(p => `${p.factionName} (${p.approvalLoss} approval, ${p.visibilityLoss} vis, ${p.credibilityLoss} cred)`).join(', ');
+                const names = penalized.map(p => `${p.factionName} (${p.momentumLoss} momentum)`).join(', ');
                 console.log(`[resolveExpiredVotes] No-vote penalty on "${bill.bill_name}": ${names}`);
                 try {
                     await supabase.rpc('fire_system_event', {
@@ -11397,9 +11359,10 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
 
     // Reset momentum to 0 for all parties after election (3-pillar system)
     for (const r of seatResults) {
-        await supabase.from('factions')
+        const { error: momErr } = await supabase.from('factions')
             .update({ momentum: 0 })
             .eq('id', r.party_id);
+        if (momErr) console.error(`[Election] Failed to reset momentum for faction ${r.party_id}:`, momErr.message);
     }
 
     // Dissolve legislature — fail all pending bills (new parliament must re-propose)
@@ -14507,10 +14470,11 @@ async function tickElectionPillars(supabase, nation, currentTick) {
             const decayed = round2(oldMom * 0.92); // 8% decay
             const newMom = decayed < 0.5 ? 0 : decayed; // floor to 0 at tiny values
             if (newMom !== oldMom) {
-                await supabase.from('factions')
+                const { error: decayErr } = await supabase.from('factions')
                     .update({ momentum: newMom })
                     .eq('id', f.id);
-                f.momentum = newMom; // update local copy
+                if (decayErr) console.error(`[ElectionPillars] Momentum decay failed for ${f.id}:`, decayErr.message);
+                else f.momentum = newMom; // update local copy only on success
             }
         }
     }
@@ -14534,18 +14498,20 @@ async function tickElectionPillars(supabase, nation, currentTick) {
             const start = Number(statsAtStart[key] ?? 0);
             const current = Number(nation[key] ?? 0);
             if (start === 0 && current === 0) continue;
-            // Normalized delta: positive means improvement
+            // Absolute change, signed by whether improvement or not
             const rawDelta = (current - start) * sign;
-            // Scale to prevent huge stats from dominating
-            const scale = Math.max(1, Math.abs(start));
-            totalDelta += (rawDelta / scale) * 100;
+            // Per-stat contribution clamped to ±10 to prevent any single stat from dominating.
+            // Stats are 0-100 scale, so a ±10 point swing is significant.
+            const contribution = clamp(rawDelta, -10, 10);
+            totalDelta += contribution;
             statCount++;
         }
 
         if (statCount === 0) return 50;
-        let avgDelta = totalDelta / statCount;
-
-        // Clamp raw delta to ±50 range, then shift to 0-100
+        // Average contribution across all tracked stats, then scale to ±50
+        // With ~55 stats, a uniform +5 improvement across all would give avgDelta = 5,
+        // scaled to 5 * (50/10) = 25 → govScore of 75. A perfect +10 across all = 50 → 100.
+        let avgDelta = (totalDelta / statCount) * (50 / 10);
         avgDelta = clamp(avgDelta, -50, 50);
         let govScore = 50 + avgDelta; // 0-100
 
@@ -14581,7 +14547,7 @@ async function tickElectionPillars(supabase, nation, currentTick) {
     if (missingFactions.length > 0) {
         // Create minimal standing rows for missing factions
         for (const f of missingFactions) {
-            const { data: newRow } = await supabase
+            const { data: newRow, error: upsertErr } = await supabase
                 .from('faction_electoral_standing')
                 .upsert({
                     faction_id: f.id,
@@ -14592,7 +14558,9 @@ async function tickElectionPillars(supabase, nation, currentTick) {
                 }, { onConflict: 'faction_id,nation_id' })
                 .select('id, faction_id, nation_id')
                 .single();
-            if (newRow) {
+            if (upsertErr) {
+                console.error(`[ElectionPillars] Failed to upsert standing for faction ${f.id}:`, upsertErr.message);
+            } else if (newRow) {
                 standingMap[newRow.faction_id] = newRow;
             }
         }
@@ -14613,10 +14581,12 @@ async function tickElectionPillars(supabase, nation, currentTick) {
             id: standing.id,
             faction_id: f.id,
             nation_id: nation.id,
-            // Store pillar values for diagnostics
+            // Store pillar values for diagnostics (repurposed columns)
             ideological_alignment: ideology,
-            party_approval: round2(governance), // reuse column for governance score
-            visibility: round2(momentum), // reuse column for momentum display
+            party_approval: round2(governance), // repurposed: was party approval, now governance score
+            visibility: round2(momentum), // repurposed: was visibility, now momentum
+            // NOTE: computeRealizedVoteShares reads u.visibility for turnout bonus.
+            // This is intentional — momentum > 50 gives a small turnout uplift (+0.002/pt).
             raw_appeal: round2(electionScore),
             last_updated_tick: currentTick,
         });
@@ -16683,19 +16653,7 @@ async function executeIdeologicalPivot(supabase, factionId, nationId, targetAxis
         .eq('id', factionId);
     if (pivotErr) console.error('[Pivot] pivot tracking update failed:', pivotErr.message);
 
-    // Apply credibility penalty
-    if (credPenalty > 0) {
-        const { data: standing } = await supabase.from('faction_electoral_standing')
-            .select('id, credibility_modifier')
-            .eq('faction_id', factionId).eq('nation_id', nationId).maybeSingle();
-        if (standing) {
-            const newCred = Math.max(0.1, (Number(standing.credibility_modifier) || 1.0) - credPenalty * 0.01);
-            const { error: credErr } = await supabase.from('faction_electoral_standing')
-                .update({ credibility_modifier: newCred })
-                .eq('id', standing.id);
-            if (credErr) console.error('[Pivot] credibility update failed:', credErr.message);
-        }
-    }
+    // Credibility system removed (3-pillar election system). Pivot cost is AP only.
 
     // Build result
     const axisDef = IDEOLOGY_AXES.find(a => a.key === targetAxis);
@@ -24121,7 +24079,7 @@ const MAKE_PROMISE_CONFIG = {
     DEADLINE_BASE: 6,                  // base ticks added to roll (range: 7-30)
     MAX_ACTIVE_PROMISES: 5,            // limit active promises per faction
 
-    // ── Electorate engine effects (party_approval + credibility_modifier) ──
+    // ── Electorate engine effects (momentum) ──
     APPROVAL_ON_PROMISE: 2,            // immediate +party_approval when promise is made
     PENALTY_PER_TICK_MIN: 0.5,         // -0.5 to -1.5 party_approval/tick while governing & unfulfilled
     PENALTY_PER_TICK_MAX: 1.5,
