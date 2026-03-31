@@ -9,7 +9,7 @@ import { isAutocracy, isGovernmentPresidential, getGovDisplayLabel } from './gam
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { statDirectionSign } from './game/stats.js';
 import { calculateIdeologyZones } from './game/electorate.js';
-import { getElectabilityTier } from './game/party-leadership.js';
+import { getElectabilityTier, getTraitAPModifier } from './game/party-leadership.js';
 import { AUTOCRACY_ACTIONS, dispatchAutocracyAction, getEscalatingCost, checkCooldown } from './game/autocracy-actions.js';
 
 // Lightweight toast notification (replaces alert() calls)
@@ -2810,7 +2810,16 @@ function caGetCost() {
         return cost;
     }
     if (_caSelected === 'poll_now') return _caPollTier; // 1 or 3 AP based on tier
-    if (_caSelected === 'outreach') return 3 + (_caOutreachEscalation || 0); // Base 3 + escalation
+    if (_caSelected === 'outreach') {
+        const _f = _currentFaction;
+        const _t = _currentShard?.current_tick || 0;
+        return Math.max(1, 3 + (_caOutreachEscalation || 0) + (_f ? getTraitAPModifier('outreach', _f, _t) : 0));
+    }
+    if (_caSelected === 'press_conference') {
+        const _f2 = _currentFaction;
+        const _t2 = _currentShard?.current_tick || 0;
+        return Math.max(1, 2 + (_f2 ? getTraitAPModifier('press_conference', _f2, _t2) : 0));
+    }
     const act = CA_ACTIONS.find(a => a.id === _caSelected);
     if (!act) return 0;
     // Campaign Attack cost scales with current polarization
@@ -3085,7 +3094,11 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
                 continue;
             }
 
-            const displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'outreach' ? (3 + (_caOutreachEscalation || 0)) : act.ap;
+            let displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'outreach' ? (3 + (_caOutreachEscalation || 0)) : act.id === 'press_conference' ? 2 : act.ap;
+            // Apply leader trait modifiers to displayed cost
+            if (['outreach', 'press_conference'].includes(act.id) && f.leader_positive_traits) {
+                displayCost = Math.max(1, displayCost + getTraitAPModifier(act.id, f, tick));
+            }
             const dbActionType = act.id === 'promise' ? 'make_promise' : act.id;
             const cdRemaining = _caCooldowns[dbActionType] || 0;
             const onCooldown = cdRemaining > 0;
