@@ -466,7 +466,7 @@ async function renderPartyTab(f, nation, data) {
         </div>
     </div>`;
 
-    const electionsTabBtn = isAutoNation ? '' : '<button class="pol-page-tab" data-page-tab="elections">Elections</button>';
+    const electionsTabBtn = isAutoNation ? '' : '<button class="pol-page-tab" data-page-tab="elections">Your Party</button>';
     const electionsContent = isAutoNation ? '' : `
     <div class="pol-page-content" data-page-content="elections">
         <div id="elections-container" style="min-height:300px;">
@@ -479,8 +479,8 @@ async function renderPartyTab(f, nation, data) {
         <button class="pol-page-tab active" data-page-tab="politics">Politics</button>
         <button class="pol-page-tab" data-page-tab="actions">Actions</button>
         ${electorateTabBtn}
-        ${otherPartiesTabBtn}
         ${electionsTabBtn}
+        ${otherPartiesTabBtn}
     </div>
     <div class="pol-page-content active" data-page-content="politics">
     ${politicsTabContent}
@@ -491,8 +491,8 @@ async function renderPartyTab(f, nation, data) {
         </div>
     </div>
     ${electorateContent}
-    ${otherPartiesContent}
-    ${electionsContent}`;
+    ${electionsContent}
+    ${otherPartiesContent}`;
 
     document.getElementById('content-area').innerHTML = html;
 
