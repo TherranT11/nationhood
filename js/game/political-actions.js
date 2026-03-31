@@ -460,7 +460,7 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
     // ── 8. Deduct AP + track last_action_tick ──
     // KNOWN ISSUE: AP deducted after effects applied. Early check (step 1) prevents common case.
     // Atomic RPC prevents DB over-spending. Race condition is acceptable for alpha.
-    const apResult = await deductAP(supabase, factionId, effectiveRallyCost);
+    const apResult = await deductAP(supabase, factionId, effectiveRallyCost, { reason: 'rally', detail: 'Hold a Rally', tick: currentTick });
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Rally] last_action_tick update failed:', error.message); });
 
     // ── 9. Log ──
@@ -661,7 +661,7 @@ export async function executeOutreach(supabase, factionId, nationId, blocId, cur
     const effects = [];
 
     // ── 9. Deduct AP + track last_action_tick ──
-    const apResult = await deductAP(supabase, factionId, effectiveOutreachCost);
+    const apResult = await deductAP(supabase, factionId, effectiveOutreachCost, { reason: 'outreach', detail: 'Community Outreach', tick: currentTick });
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Outreach] last_action_tick update failed:', error.message); });
 
     // ── 10. Log ──
@@ -1107,7 +1107,7 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
     }
 
     // ── 8. Deduct AP + track last_action_tick ──
-    const apResult = await deductAP(supabase, factionId, effectiveAttackCost);
+    const apResult = await deductAP(supabase, factionId, effectiveAttackCost, { reason: 'attack', detail: 'Campaign Attack', tick: currentTick });
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Attack] last_action_tick update failed:', error.message); });
 
     // ── 9. Generate headline ──
@@ -1358,7 +1358,7 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
     // ── 7. Deduct AP if needed + track last_action_tick ──
     let newAp = faction.action_points || 0;
     if (effectivePromiseCost > 0) {
-        const apResult = await deductAP(supabase, factionId, effectivePromiseCost);
+        const apResult = await deductAP(supabase, factionId, effectivePromiseCost, { reason: 'promise', detail: 'Make a Promise', tick: currentTick });
         newAp = apResult.newAp ?? (newAp - effectivePromiseCost);
     }
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Promise] last_action_tick update failed:', error.message); });

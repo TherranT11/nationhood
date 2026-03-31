@@ -4635,7 +4635,7 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
             const { deductAP } = await import('./game/config.js');
             const { getTraitAPModifier: _getTraitModPC } = await import('./game/party-leadership.js');
             const pressCost = Math.max(1, 2 + _getTraitModPC('press_conference', f, tick));
-            const apResult = await deductAP(_supabase, f.id, pressCost);
+            const apResult = await deductAP(_supabase, f.id, pressCost, { reason: 'press_conference', detail: 'Press Conference', tick });
             if (!apResult.success) { result = { success: false, error: apResult.error || 'Insufficient AP' }; }
             else {
                 let baseRoll = Math.floor(Math.random() * 5) - 2; // -2 to +2
@@ -4658,7 +4658,7 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
             const { deductAP: _deductAP2 } = await import('./game/config.js');
             const { getTraitAPModifier: _getTraitMod2 } = await import('./game/party-leadership.js');
             const outreachCost = Math.max(1, 3 + (_caOutreachEscalation || 0) + _getTraitMod2('outreach', f, tick));
-            const apResult = await _deductAP2(_supabase, f.id, outreachCost);
+            const apResult = await _deductAP2(_supabase, f.id, outreachCost, { reason: 'outreach', detail: 'Community Outreach', tick });
             if (!apResult.success) { result = { success: false, error: apResult.error || 'Insufficient AP' }; }
             else {
                 const { data: standing } = await _supabase.from('faction_electoral_standing')
