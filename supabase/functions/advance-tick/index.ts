@@ -29816,6 +29816,299 @@ async function applyIncidentStatEffects(supabase, nationA, nationB, effects) {
 }
 
 
+// ==================== PHASE 4: TICK EVENTS & INACTION ====================
+
+/**
+ * Process all active incidents: fire random tick events and check inaction.
+ * Called once per tick from advanceTick(), after trigger checks.
+ */
+async function processActiveIncidents(supabase, nationList, currentTick) {
+    const results = { tickEvents: [], inactionPenalties: [] };
+
+    const { data: activeIncidents } = await supabase
+        .from('incidents')
+        .select('*')
+        .in('status', ['active']);  // NOT 'mediating' — mediating incidents skip tick events
+
+    if (!activeIncidents || activeIncidents.length === 0) return results;
+
+    // Build nation lookup
+    const nationMap = {};
+    for (const n of nationList) nationMap[n.id] = n;
+
+    for (const incident of activeIncidents) {
+        try {
+            // Fire random tick event
+            const tickResult = await processIncidentTickEvent(supabase, incident, nationMap, currentTick);
+            if (tickResult) results.tickEvents.push(tickResult);
+
+            // Check inaction for both sides
+            const inactionResult = await processIncidentInaction(supabase, incident, nationMap, currentTick);
+            if (inactionResult) results.inactionPenalties.push(...inactionResult);
+        } catch (err) {
+            console.error(`[Incidents] Error processing incident ${incident.id}:`, err);
+        }
+    }
+
+    return results;
+}
+
+
+// ==================== RANDOM TICK EVENTS ====================
+
+/**
+ * Select and fire one random tick event for an active incident.
+ *
+ * Weighting by combined leverage:
+ *   0-5:   70% low, 25% moderate, 5% high
+ *   6-10:  30% low, 50% moderate, 20% high
+ *   11-15: 10% low, 40% moderate, 50% high
+ *   16+:   5% low, 25% moderate, 70% high
+ *
+ * Events that already fired in this incident are excluded (no repeats).
+ */
+async function processIncidentTickEvent(supabase, incident, nationMap, currentTick) {
+    const combined = (incident.leverage_a || 0) + (incident.leverage_b || 0);
+
+    // Determine category weights
+    let weights;
+    if (combined <= 5)       weights = { low: 70, moderate: 25, high: 5 };
+    else if (combined <= 10) weights = { low: 30, moderate: 50, high: 20 };
+    else if (combined <= 15) weights = { low: 10, moderate: 40, high: 50 };
+    else                     weights = { low: 5,  moderate: 25, high: 70 };
+
+    // If either side has 5+ ticks inaction, high-intensity pool always available
+    if (incident.inaction_a_ticks >= 5 || incident.inaction_b_ticks >= 5) {
+        weights = { low: 5, moderate: 25, high: 70 };
+    }
+
+    // Get already-fired event keys for this incident (no repeats)
+    const { data: firedEvents } = await supabase
+        .from('incident_events')
+        .select('event_key')
+        .eq('incident_id', incident.id)
+        .not('event_key', 'is', null);
+    const firedKeys = new Set((firedEvents || []).map(e => e.event_key));
+
+    // Load available tick events from pool
+    const { data: allEvents } = await supabase
+        .from('incident_event_pool')
+        .select('*')
+        .eq('incident_type', incident.incident_type)
+        .in('category', ['low', 'moderate', 'high']);
+
+    if (!allEvents || allEvents.length === 0) return null;
+
+    // Filter out already-fired events
+    const available = allEvents.filter(e => !firedKeys.has(e.event_key));
+    if (available.length === 0) {
+        console.log(`[Incidents] ${incident.id}: All tick events exhausted for ${incident.incident_type}`);
+        return null;
+    }
+
+    // Group by category
+    const pools = { low: [], moderate: [], high: [] };
+    for (const e of available) {
+        if (pools[e.category]) pools[e.category].push(e);
+    }
+
+    // Weighted random category selection
+    const selected = selectFromWeightedPools(pools, weights);
+    if (!selected) return null;
+
+    // Resolve nation names
+    const nationA = nationMap[incident.nation_a_id];
+    const nationB = nationMap[incident.nation_b_id];
+    if (!nationA || !nationB) return null;
+
+    // Substitute placeholders
+    const eventText = selected.event_text_template
+        .replace(/\{nation_a\}/g, nationA.name)
+        .replace(/\{nation_b\}/g, nationB.name);
+
+    const shiftA = selected.leverage_shift_a || 0;
+    const shiftB = selected.leverage_shift_b || 0;
+
+    // Update incident leverage
+    const newLevA = Math.max(0, (incident.leverage_a || 0) + shiftA);
+    const newLevB = Math.max(0, (incident.leverage_b || 0) + shiftB);
+
+    await supabase
+        .from('incidents')
+        .update({ leverage_a: newLevA, leverage_b: newLevB })
+        .eq('id', incident.id);
+
+    // Insert timeline event
+    await supabase.from('incident_events').insert({
+        incident_id: incident.id,
+        tick: currentTick,
+        event_type: 'random_tick',
+        event_key: selected.event_key,
+        leverage_shift_a: shiftA,
+        leverage_shift_b: shiftB,
+        event_text: eventText,
+        event_source_label: selected.source_label_template || null,
+        stat_effects: selected.stat_effects_template,
+        metadata: selected.metadata_template,
+        visibility: 'both'
+    });
+
+    // Apply stat effects if present
+    if (selected.stat_effects_template) {
+        await applyIncidentStatEffects(supabase, nationA, nationB, selected.stat_effects_template);
+    }
+
+    // Handle special metadata (e.g., war_risk_pct from TICK_30)
+    if (selected.metadata_template?.war_risk_pct) {
+        const currentRisk = incident.war_risk_pct || 0;
+        const newRisk = Math.max(currentRisk, selected.metadata_template.war_risk_pct);
+        await supabase
+            .from('incidents')
+            .update({ war_risk_pct: newRisk })
+            .eq('id', incident.id);
+    }
+
+    console.log(`[Incidents] ${incident.id}: Tick event ${selected.event_key} (${selected.category}). Leverage: ${newLevA}-${newLevB}`);
+
+    return {
+        incidentId: incident.id,
+        eventKey: selected.event_key,
+        category: selected.category,
+        leverageA: newLevA,
+        leverageB: newLevB,
+        shiftA,
+        shiftB
+    };
+}
+
+/**
+ * Pick one event from weighted category pools.
+ * If the chosen category is empty, fall back to adjacent categories.
+ */
+function selectFromWeightedPools(pools, weights) {
+    const totalWeight = weights.low + weights.moderate + weights.high;
+    let roll = Math.random() * totalWeight;
+
+    // Determine primary category
+    let primaryCategory;
+    if (roll < weights.low) primaryCategory = 'low';
+    else if (roll < weights.low + weights.moderate) primaryCategory = 'moderate';
+    else primaryCategory = 'high';
+
+    // Try primary, then adjacent fallbacks
+    const fallbackOrder = {
+        low: ['low', 'moderate', 'high'],
+        moderate: ['moderate', 'low', 'high'],
+        high: ['high', 'moderate', 'low']
+    };
+
+    for (const cat of fallbackOrder[primaryCategory]) {
+        if (pools[cat] && pools[cat].length > 0) {
+            return pools[cat][Math.floor(Math.random() * pools[cat].length)];
+        }
+    }
+
+    return null;
+}
+
+
+// ==================== INACTION CHECK ====================
+
+/**
+ * Check and penalize nations that haven't taken actions.
+ *
+ * Inaction counter increments each tick if no non-Wait action was taken.
+ * At 3 ticks: Democracy Gov_Approval -1, Autocracy Coup +1
+ * At 5+ ticks: additional Democracy Gov_Approval -2, Autocracy Coup +2
+ */
+async function processIncidentInaction(supabase, incident, nationMap, currentTick) {
+    const penalties = [];
+
+    // Check if any non-Wait actions were taken THIS tick by each nation
+    const { data: actionsThisTick } = await supabase
+        .from('incident_actions_taken')
+        .select('nation_id, action_key')
+        .eq('incident_id', incident.id)
+        .eq('tick', currentTick);
+
+    const nationAActed = (actionsThisTick || []).some(
+        a => a.nation_id === incident.nation_a_id && a.action_key !== 'wait'
+    );
+    const nationBActed = (actionsThisTick || []).some(
+        a => a.nation_id === incident.nation_b_id && a.action_key !== 'wait'
+    );
+
+    // Update inaction counters
+    const newInactionA = nationAActed ? 0 : (incident.inaction_a_ticks || 0) + 1;
+    const newInactionB = nationBActed ? 0 : (incident.inaction_b_ticks || 0) + 1;
+
+    await supabase
+        .from('incidents')
+        .update({ inaction_a_ticks: newInactionA, inaction_b_ticks: newInactionB })
+        .eq('id', incident.id);
+
+    // Apply penalties
+    const nationA = nationMap[incident.nation_a_id];
+    const nationB = nationMap[incident.nation_b_id];
+
+    for (const { nation, inactionTicks, side } of [
+        { nation: nationA, inactionTicks: newInactionA, side: 'a' },
+        { nation: nationB, inactionTicks: newInactionB, side: 'b' }
+    ]) {
+        if (!nation || inactionTicks < 3) continue;
+
+        const isAuto = isAutocracy(nation);
+        let penaltyAmount = 0;
+        let penaltyStat = isAuto ? 'coup_risk' : 'gov_approval';
+        let penaltyDir = isAuto ? 1 : -1; // coup goes up, approval goes down
+
+        if (inactionTicks >= 5) {
+            penaltyAmount = 3; // -1 base + -2 additional
+        } else if (inactionTicks >= 3) {
+            penaltyAmount = 1;
+        }
+
+        if (penaltyAmount > 0) {
+            const delta = penaltyAmount * penaltyDir;
+            const currentVal = Number(nation[penaltyStat] ?? (isAuto ? 0 : 50));
+            const newVal = Math.max(0, Math.min(100, currentVal + delta));
+            await supabase
+                .from('nations')
+                .update({ [penaltyStat]: newVal })
+                .eq('id', nation.id);
+
+            // Insert inaction event in timeline
+            const crisisName = formatCrisisName(incident.incident_type);
+            const eventText = `${nation.name}'s government has not acted on the ${crisisName} in ${inactionTicks} ticks. ${isAuto ? 'Regime stability declining.' : 'Public confidence is declining.'}`;
+
+            await supabase.from('incident_events').insert({
+                incident_id: incident.id,
+                tick: currentTick,
+                event_type: 'inaction_penalty',
+                source_nation_id: nation.id,
+                leverage_shift_a: 0,
+                leverage_shift_b: 0,
+                event_text: eventText,
+                visibility: side === 'a' ? 'nation_a' : 'nation_b'
+            });
+
+            penalties.push({
+                incidentId: incident.id,
+                nationId: nation.id,
+                nationName: nation.name,
+                inactionTicks,
+                stat: penaltyStat,
+                delta
+            });
+
+            console.log(`[Incidents] Inaction penalty: ${nation.name} (${inactionTicks} ticks) → ${penaltyStat} ${delta > 0 ? '+' : ''}${delta}`);
+        }
+    }
+
+    return penalties.length > 0 ? penalties : null;
+}
+
+
 
 // ===== END GAME LOGIC =====
 
@@ -32434,6 +32727,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         if (incidentResults.length > 0) {
             summary.incidents = incidentResults;
             console.log(`[advanceTick] Incidents: ${incidentResults.length} new incident(s) triggered`);
+        }
+
+        // Process active incidents: tick events + inaction penalties
+        const activeResults = await processActiveIncidents(supabase, nationList, newTick);
+        if (activeResults.tickEvents.length > 0 || activeResults.inactionPenalties.length > 0) {
+            summary.incidentTickEvents = activeResults.tickEvents;
+            summary.incidentInaction = activeResults.inactionPenalties;
+            console.log(`[advanceTick] Incidents: ${activeResults.tickEvents.length} tick event(s), ${activeResults.inactionPenalties.length} inaction penalty(ies)`);
         }
     } catch (incidentErr) {
         console.error('[advanceTick] Incident processing failed (non-fatal):', incidentErr);

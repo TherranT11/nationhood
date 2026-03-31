@@ -2674,6 +2674,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.incidents = incidentResults;
             console.log(`[advanceTick] Incidents: ${incidentResults.length} new incident(s) triggered`);
         }
+
+        // Process active incidents: tick events + inaction penalties
+        const activeResults = await processActiveIncidents(supabase, nationList, newTick);
+        if (activeResults.tickEvents.length > 0 || activeResults.inactionPenalties.length > 0) {
+            summary.incidentTickEvents = activeResults.tickEvents;
+            summary.incidentInaction = activeResults.inactionPenalties;
+            console.log(`[advanceTick] Incidents: ${activeResults.tickEvents.length} tick event(s), ${activeResults.inactionPenalties.length} inaction penalty(ies)`);
+        }
     } catch (incidentErr) {
         console.error('[advanceTick] Incident processing failed (non-fatal):', incidentErr);
     }
