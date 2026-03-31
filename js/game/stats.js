@@ -165,7 +165,7 @@ export function normalizeNationStatKey(statKey) {
 export const STATS_HIGHER_IS_BETTER = [
     'gdp_growth', 'currency_strength', 'foreign_investment', 'credit',
     'labor_force_participation', 'minimum_wage', 'union_strength',
-    'population_growth', 'eligible_voters', 'ethnic_diversity',
+    'population_growth', 'ethnic_diversity',
     'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan',
     'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
     'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation', 'renewable_energy_percentage',
