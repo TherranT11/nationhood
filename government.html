@@ -5214,7 +5214,7 @@ async function confirmCurriculum() {
 async function loadCurriculumDriftState() {
     if (!currentNation) return;
     try {
-        const { data } = await _supabase
+        const { data, error: driftErr } = await _supabase
             .from('curriculum_drift')
             .select('*')
             .eq('nation_id', currentNation.id)
@@ -5222,6 +5222,7 @@ async function loadCurriculumDriftState() {
             .order('set_at_tick', { ascending: false })
             .limit(1)
             .maybeSingle();
+        if (driftErr) { _activeCurriculumDrift = null; return; } // table may not exist yet
         _activeCurriculumDrift = data || null;
 
         // Set cooldown from most recent curriculum action

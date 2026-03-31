@@ -1360,10 +1360,11 @@ async function ensureNationChat(nationId, nationName) {
 
     if (!chatId) return;
 
-    // Ensure we're a member
-    await _supabase
+    // Ensure we're a member (best-effort — silently skip RLS failures for admin/spectator views)
+    const { error: joinErr } = await _supabase
         .from('group_chat_members')
         .upsert({ chat_id: chatId, faction_id: _msgFaction.id }, { onConflict: 'chat_id,faction_id' });
+    if (joinErr) return; // RLS rejected — likely admin without faction ownership
 
     // Sync all parties in this nation as members (best-effort, silently skip RLS failures)
     try {
@@ -1426,10 +1427,11 @@ async function ensureIPOChat(orgId, orgName) {
 
     if (!chatId) return;
 
-    // Ensure we're a member
-    await _supabase
+    // Ensure we're a member (best-effort — silently skip RLS failures for admin/spectator views)
+    const { error: joinErr } = await _supabase
         .from('group_chat_members')
         .upsert({ chat_id: chatId, faction_id: _msgFaction.id }, { onConflict: 'chat_id,faction_id' });
+    if (joinErr) return; // RLS rejected — likely admin without faction ownership
 
     // Sync all active IPO members into the group chat (best-effort, only if we created the chat)
     try {
