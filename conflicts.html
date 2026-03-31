@@ -138,6 +138,7 @@ let currentFaction = null;
 let currentNation = null;
 let currentTick = 0;
 let selectedIncidentId = null;
+let currentSubTab = 'incidents'; // 'incidents' (internal chat + actions) or 'conflicts' (public chat, no actions)
 let allIncidents = [];
 
 // ==================== INIT ====================
@@ -154,7 +155,11 @@ initPage('conflicts', async (state) => {
         tab.addEventListener('click', () => {
             document.querySelectorAll('.subtab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
-            // Future: toggle between incidents and conflicts views
+            currentSubTab = tab.dataset.tab;
+            if (selectedIncidentId) {
+                const incident = allIncidents.find(i => i.id === selectedIncidentId);
+                if (incident) refreshChatAndActions(incident);
+            }
         });
     });
 
@@ -336,35 +341,17 @@ async function selectIncident(incidentId) {
     // Load timeline
     await loadTimeline(incidentId, incident);
 
-    // Actions panel
-    if (isInvolved && incident.status !== 'resolved') {
-        document.getElementById('actions-panel').style.display = '';
-        renderActionsPanel(incident);
-    } else {
-        document.getElementById('actions-panel').style.display = '';
-        const header = document.getElementById('actions-header');
-        const list = document.getElementById('actions-list');
-        if (incident.status === 'resolved') {
-            header.innerHTML = '<span class="actions-observer">This incident has been resolved.</span>';
-        } else {
-            header.innerHTML = '<span class="actions-observer">You do not have a crisis role.</span>';
-        }
-        list.innerHTML = '';
-    }
-
-    // Chat column
-    if (isInvolved && incident.status !== 'resolved') {
-        document.getElementById('chat-column').style.display = '';
-        await loadChat(incidentId);
-    } else {
-        document.getElementById('chat-column').style.display = 'none';
-    }
+    // Actions + chat depend on sub-tab
+    await refreshChatAndActions(incident);
 }
 
 
 // ==================== LEVERAGE TRACK ====================
 
 function renderLeverageTrack(incident) {
+    const track = document.getElementById('leverage-track');
+    track.classList.toggle('leverage-track--resolved', incident.status === 'resolved');
+
     const nameA = incident.nation_a?.name || 'A';
     const nameB = incident.nation_b?.name || 'B';
     const levA = incident.leverage_a || 0;
@@ -425,6 +412,7 @@ function renderIncidentHeader(incident) {
         <span class="meta-tag">Tick ${incident.started_tick}</span>
         <span class="meta-tag">${ticksElapsed} tick${ticksElapsed !== 1 ? 's' : ''} elapsed</span>
         ${statusBadge}
+        ${renderResolutionBanner(incident)}
     `;
 }
 
@@ -480,6 +468,44 @@ function renderTimelineEvent(event, incident) {
             <div class="timeline-event-text">${event.event_text}</div>
             ${event.event_source_label ? `<div class="timeline-source">${event.event_source_label}</div>` : ''}
         </div>`;
+}
+
+
+// ==================== SUB-TAB ROUTING ====================
+
+async function refreshChatAndActions(incident) {
+    const isInvolved = incident.nation_a_id === currentNation.id || incident.nation_b_id === currentNation.id;
+    const actionsPanel = document.getElementById('actions-panel');
+    const chatColumn = document.getElementById('chat-column');
+    const chatTitle = chatColumn.querySelector('.chat-title');
+
+    if (currentSubTab === 'incidents') {
+        // INCIDENTS TAB: internal chat + actions panel
+        if (isInvolved && incident.status !== 'resolved') {
+            actionsPanel.style.display = '';
+            await renderActionsPanel(incident);
+            chatColumn.style.display = '';
+            chatTitle.textContent = 'Crisis Chat';
+            await loadChat(incident.id);
+        } else {
+            actionsPanel.style.display = '';
+            const header = document.getElementById('actions-header');
+            const list = document.getElementById('actions-list');
+            if (incident.status === 'resolved') {
+                header.innerHTML = '<span class="actions-observer">This incident has been resolved.</span>';
+            } else {
+                header.innerHTML = '<span class="actions-observer">You do not have a crisis role.</span>';
+            }
+            list.innerHTML = '';
+            chatColumn.style.display = 'none';
+        }
+    } else {
+        // CONFLICTS TAB: public Situation Room chat, no actions panel
+        actionsPanel.style.display = 'none';
+        chatColumn.style.display = '';
+        chatTitle.textContent = 'Situation Room';
+        await loadPublicChat(incident.id, incident);
+    }
 }
 
 
@@ -923,22 +949,7 @@ async function refreshIncidentView(incidentId) {
     renderLeverageTrack(fresh);
     renderIncidentHeader(fresh);
     await loadTimeline(incidentId, fresh);
-
-    const isInvolved = fresh.nation_a_id === currentNation.id || fresh.nation_b_id === currentNation.id;
-    if (isInvolved && fresh.status !== 'resolved') {
-        await renderActionsPanel(fresh);
-    } else {
-        const header = document.getElementById('actions-header');
-        const list = document.getElementById('actions-list');
-        header.innerHTML = fresh.status === 'resolved'
-            ? '<span class="actions-observer">This incident has been resolved.</span>'
-            : '<span class="actions-observer">You do not have a crisis role.</span>';
-        list.innerHTML = '';
-    }
-
-    if (isInvolved && fresh.status !== 'resolved') {
-        await loadChat(incidentId);
-    }
+    await refreshChatAndActions(fresh);
 }
 
 
@@ -1122,7 +1133,245 @@ function cleanupChat() {
         _supabase.removeChannel(_chatChannel);
         _chatChannel = null;
     }
+    if (_publicChatChannel) {
+        _supabase.removeChannel(_publicChatChannel);
+        _publicChatChannel = null;
+    }
     _chatIncidentId = null;
+}
+
+
+// ==================== PUBLIC SITUATION ROOM CHAT ====================
+
+let _publicChatChannel = null;
+
+/**
+ * Determine public chat role. Involved nations: HoG, FM, MoD.
+ * Third-party nations: FM or Ambassador.
+ */
+async function determinePublicChatRole(incident) {
+    if (!currentFaction || !currentNation) return null;
+    const isInvolved = incident.nation_a_id === currentNation.id || incident.nation_b_id === currentNation.id;
+
+    // Check HoG
+    const { data: hog } = await _supabase
+        .from('head_of_government')
+        .select('faction_id')
+        .eq('nation_id', currentNation.id)
+        .eq('active', true)
+        .maybeSingle();
+    if (hog && hog.faction_id === currentFaction.id) return 'HoG';
+
+    // Check FM, MoD, Ambassador
+    const { data: ministries } = await _supabase
+        .from('ministries')
+        .select('ministry_key, party_id')
+        .eq('nation_id', currentNation.id)
+        .eq('is_active', true)
+        .in('ministry_key', ['foreign', 'defense']);
+
+    for (const m of (ministries || [])) {
+        if (m.party_id !== currentFaction.id) continue;
+        if (m.ministry_key === 'foreign') return 'FM';
+        if (m.ministry_key === 'defense' && isInvolved) return 'MoD';
+    }
+
+    // Third-party: check if ambassador to either involved nation
+    if (!isInvolved) {
+        const { data: ambassadors } = await _supabase
+            .from('ambassadors')
+            .select('target_nation_id')
+            .eq('nation_id', currentNation.id)
+            .eq('faction_id', currentFaction.id)
+            .eq('is_active', true)
+            .in('target_nation_id', [incident.nation_a_id, incident.nation_b_id]);
+        if (ambassadors && ambassadors.length > 0) return 'Ambassador';
+    }
+
+    return null;
+}
+
+async function loadPublicChat(incidentId, incident) {
+    const publicRole = await determinePublicChatRole(incident);
+    const container = document.getElementById('chat-messages');
+    const inputArea = document.getElementById('chat-input-area');
+    const input = container.parentElement.querySelector('.chat-input') || document.getElementById('chat-input');
+    const participantsEl = document.getElementById('chat-participants');
+
+    participantsEl.textContent = 'All nations';
+
+    // Load public messages (all nations can read)
+    const { data: messages } = await _supabase
+        .from('incident_chat_messages')
+        .select('*, nation:nations!incident_chat_messages_nation_id_fkey(name)')
+        .eq('incident_id', incidentId)
+        .eq('chat_context', 'public')
+        .order('created_at', { ascending: true });
+
+    renderPublicChatMessages(messages || []);
+
+    // Input area
+    if (publicRole) {
+        inputArea.style.display = '';
+        const newInput = document.querySelector('#chat-input-area input');
+        if (newInput) newInput.placeholder = `Type as ${currentNation.name} (${publicRole})...`;
+
+        // Wire send
+        const sendBtn = document.getElementById('chat-send');
+        const newSend = sendBtn.cloneNode(true);
+        sendBtn.replaceWith(newSend);
+        newSend.addEventListener('click', () => sendPublicChatMessage(incidentId, publicRole));
+
+        const inputEl = document.querySelector('#chat-input-area input');
+        if (inputEl) {
+            const freshInput = inputEl.cloneNode(true);
+            inputEl.replaceWith(freshInput);
+            freshInput.placeholder = `Type as ${currentNation.name} (${publicRole})...`;
+            freshInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendPublicChatMessage(incidentId, publicRole);
+                }
+            });
+        }
+    } else {
+        inputArea.style.display = 'none';
+        if (messages && messages.length === 0) {
+            container.innerHTML = '<div class="chat-empty">No public messages yet. Diplomatic representatives may post here.</div>';
+        }
+    }
+
+    // Real-time for public chat
+    setupPublicChatRealtime(incidentId);
+}
+
+function renderPublicChatMessages(messages) {
+    const container = document.getElementById('chat-messages');
+    if (messages.length === 0) {
+        container.innerHTML = '<div class="chat-empty">No public messages yet.</div>';
+        return;
+    }
+    container.innerHTML = messages.map(m => renderPublicChatMessage(m)).join('');
+    container.scrollTop = container.scrollHeight;
+}
+
+function renderPublicChatMessage(msg) {
+    const nationName = msg.nation?.name || 'Unknown';
+    if (msg.is_system) {
+        return `<div class="chat-message chat-message--system">${escapeHtml(msg.message_text)}</div>`;
+    }
+    return `
+        <div class="chat-message">
+            <span class="chat-nation-badge">${escapeHtml(nationName)}</span>
+            <span class="chat-role-badge">${escapeHtml(msg.sender_role)}</span>
+            <span class="chat-text">${escapeHtml(msg.message_text)}</span>
+        </div>`;
+}
+
+function setupPublicChatRealtime(incidentId) {
+    if (_publicChatChannel) {
+        _supabase.removeChannel(_publicChatChannel);
+        _publicChatChannel = null;
+    }
+
+    _publicChatChannel = _supabase
+        .channel('incident-public-chat-' + incidentId)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'incident_chat_messages',
+            filter: `incident_id=eq.${incidentId}`,
+        }, (payload) => {
+            const msg = payload.new;
+            if (msg.chat_context !== 'public') return;
+            // Need to fetch nation name for display
+            appendPublicChatMessage(msg);
+        })
+        .subscribe();
+}
+
+async function appendPublicChatMessage(msg) {
+    // Fetch nation name
+    const { data: nation } = await _supabase
+        .from('nations')
+        .select('name')
+        .eq('id', msg.nation_id)
+        .single();
+    msg.nation = nation;
+
+    const container = document.getElementById('chat-messages');
+    const empty = container.querySelector('.chat-empty');
+    if (empty) empty.remove();
+
+    const div = document.createElement('div');
+    div.innerHTML = renderPublicChatMessage(msg);
+    container.appendChild(div.firstElementChild);
+    container.scrollTop = container.scrollHeight;
+}
+
+async function sendPublicChatMessage(incidentId, role) {
+    if (!role) return;
+    const input = document.querySelector('#chat-input-area input') || document.getElementById('chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+
+    await _supabase.from('incident_chat_messages').insert({
+        incident_id: incidentId,
+        nation_id: currentNation.id,
+        sender_role: role,
+        message_text: text,
+        tick: currentTick,
+        is_system: false,
+        chat_context: 'public'
+    });
+}
+
+
+// ==================== RESOLUTION DISPLAY ====================
+
+function renderResolutionBanner(incident) {
+    if (incident.status !== 'resolved') return '';
+    const nameA = incident.nation_a?.name || 'A';
+    const nameB = incident.nation_b?.name || 'B';
+    const type = incident.resolution_type || 'unknown';
+
+    let title = 'RESOLVED';
+    let detail = '';
+    switch (type) {
+        case 'forced_a':
+            title = `RESOLVED — ${nameA} Prevails`;
+            detail = `${nameB} could not withstand the pressure. Forced resolution at leverage 10.`;
+            break;
+        case 'forced_b':
+            title = `RESOLVED — ${nameB} Prevails`;
+            detail = `${nameA} could not withstand the pressure. Forced resolution at leverage 10.`;
+            break;
+        case 'concession_a':
+            title = `RESOLVED — ${nameA} Concedes`;
+            detail = `${nameA} accepted the situation. ${nameB}'s position upheld.`;
+            break;
+        case 'concession_b':
+            title = `RESOLVED — ${nameB} Concedes`;
+            detail = `${nameB} backed down. ${nameA}'s position upheld.`;
+            break;
+        case 'mediation':
+            title = 'RESOLVED — Mediation Compromise';
+            detail = 'Both nations agreed to third-party mediation. Compromise reached.';
+            break;
+        case 'decay':
+            title = 'RESOLVED — Natural De-escalation';
+            detail = 'Tensions faded without formal resolution.';
+            break;
+        default:
+            detail = `Resolution type: ${type}`;
+    }
+
+    return `
+        <div class="resolution-banner">
+            <div class="resolution-title">${title}</div>
+            <div class="resolution-detail">${detail}</div>
+        </div>`;
 }
 
 
