@@ -16568,7 +16568,6 @@ async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick
                     profileUpdates[col] = newVal;
                     profile[col] = newVal;
                 }
-            }
             } else {
                 // Phase 2 (ticks 5–9): momentum boost — 1d3 (1–3) per tick
                 const momRoll = 1 + Math.floor(Math.random() * 3); // 1, 2, or 3
