@@ -4223,10 +4223,45 @@ function snapshotNationStats(nation) {
 function round2(v) { return Math.round(v * 100) / 100; }
 function round3(v) { return Math.round(v * 1000) / 1000; }
 
+// Source tag → player-visible label for the momentum event log.
+const MOMENTUM_SOURCE_LABELS = {
+    'rally:rousing': 'Rousing rally',
+    'rally:solid': 'Solid rally',
+    'rally:low': 'Low-energy rally',
+    'rally:gaffe': 'Rally gaffe',
+    'rally:divisive': 'Divisive rally',
+    'rally:counter': 'Counter-rally',
+    'attack:self:devastating': 'Devastating attack',
+    'attack:self:effective': 'Effective attack',
+    'attack:self:glancing': 'Glancing attack',
+    'attack:self:backfire': 'Attack backfired',
+    'attack:self:mutual': 'Mutual exchange',
+    'attack:received:devastating': 'Hit by devastating attack',
+    'attack:received:effective': 'Hit by effective attack',
+    'attack:received:glancing': 'Hit by glancing attack',
+    'attack:received:mutual': 'Caught in mutual exchange',
+    'bill:passed:sponsor': 'Bill passed (sponsor)',
+    'bill:passed:yes': 'Bill passed (voted YES)',
+    'bill:failed:sponsor': 'Bill failed (sponsor)',
+    'bill:failed:yes': 'Bill failed (voted YES)',
+    'bill:failed:no': 'Bill failed (voted NO)',
+    'bill:no_vote': 'No-vote penalty',
+    'bill:passed': 'Bill enacted',
+    'promise:made': 'Promise made',
+    'promise:kept': 'Promise kept',
+    'promise:broken': 'Promise broken',
+    'promise:unfulfilled_penalty': 'Unfulfilled promise',
+    'protest:organiser': 'Protest backfire',
+    'protest:organiser:visibility': 'Protest exposure',
+    'campaign:incumbent': 'Incumbency bonus',
+    'purge:decay': 'Purge effect decay',
+    'impeachment:convicted': 'Impeached',
+};
+
 /**
  * Adjust a faction's momentum score (0-100) on the factions table.
- * Momentum is campaign energy — it decays 8%/tick and resets to 0 after elections.
- * Replaces the old nudgeApproval / party_approval system.
+ * Uses atomic RPC to prevent race conditions on concurrent writes.
+ * Appends to momentum_log for player-visible event history.
  *
  * @param {object} supabase
  * @param {string} factionId
@@ -4239,20 +4274,43 @@ async function adjustFactionMomentum(supabase, factionId, nationId, delta, opts)
     if (!delta || delta === 0) return;
     const source = opts?.source ?? 'unknown';
 
-    const { data: faction } = await supabase
-        .from('factions')
-        .select('id, momentum')
-        .eq('id', factionId)
-        .maybeSingle();
-    if (!faction) return;
+    // Atomic momentum update via RPC (prevents read-modify-write race conditions)
+    const { data: newMomentum, error: rpcErr } = await supabase.rpc('adjust_momentum', {
+        p_faction_id: factionId,
+        p_delta: delta,
+    });
 
-    const old = Number(faction.momentum ?? 0);
-    const newMomentum = round2(clamp(old + delta, 0, 100));
+    if (rpcErr) {
+        console.error('[Momentum] RPC failed:', rpcErr.message);
+        return;
+    }
+    if (newMomentum === -1) return; // faction not found
 
-    const { error } = await supabase.from('factions')
-        .update({ momentum: newMomentum })
-        .eq('id', factionId);
-    if (error) console.error('[Momentum] update failed:', error.message);
+    // Append to momentum_log (non-blocking, best-effort)
+    try {
+        const label = MOMENTUM_SOURCE_LABELS[source] || source.replace(/[:_]/g, ' ');
+        const { data: faction } = await supabase
+            .from('factions')
+            .select('momentum_log')
+            .eq('id', factionId)
+            .maybeSingle();
+        const log = Array.isArray(faction?.momentum_log) ? faction.momentum_log : [];
+        // Prepend new entry, cap at 50
+        // Fetch current tick from shard (same pattern as adjustGovernmentApprovalEvent)
+        let tick = 0;
+        try {
+            const { data: shard } = await supabase
+                .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            tick = shard?.current_tick || 0;
+        } catch (_) { /* non-fatal */ }
+        log.unshift({ label, delta: round2(delta), tick });
+        if (log.length > 50) log.length = 50;
+        await supabase.from('factions')
+            .update({ momentum_log: log })
+            .eq('id', factionId);
+    } catch (e) {
+        // Non-fatal: log append failure doesn't affect gameplay
+    }
 }
 
 /**
@@ -11424,12 +11482,17 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
             .eq('id', r.party_id);
     }
 
-    // Reset momentum to 0 for all parties after election (3-pillar system)
-    for (const r of seatResults) {
+    // Reset momentum + momentum_log for ALL active parties in the nation (not just seat winners)
+    const { data: allNationFactions } = await supabase.from('factions')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party')
+        .is('abandoned_at', null);
+    for (const f of (allNationFactions || [])) {
         const { error: momErr } = await supabase.from('factions')
-            .update({ momentum: 0 })
-            .eq('id', r.party_id);
-        if (momErr) console.error(`[Election] Failed to reset momentum for faction ${r.party_id}:`, momErr.message);
+            .update({ momentum: 0, momentum_log: [] })
+            .eq('id', f.id);
+        if (momErr) console.error(`[Election] Failed to reset momentum for faction ${f.id}:`, momErr.message);
     }
 
     // Dissolve legislature — fail all pending bills (new parliament must re-propose)

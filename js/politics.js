@@ -44,7 +44,7 @@ initPage('politics', async (state) => {
     // Fetch total seats from all parties
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name, custom_logo_url, party_logo, party_description, momentum')
+        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name, custom_logo_url, party_logo, party_description, momentum, momentum_log')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -2718,7 +2718,7 @@ const CA_ACTIONS = [
       desc: 'Rally your supporters in a public show of strength. Outcomes range from rousing success to embarrassing gaffe — results are random and generate headlines.' },
     { id: 'press_conference', name: 'Press Conference', ap: 2, color: '#fbbf24', icon: '🎤',
       category: 'visibility', affects: 'Visibility',
-      desc: 'Hold a press conference to make a public statement. Base roll: -2 to +2 Visibility. Opposition parties get +1 bonus. Parties with approval above 40 get +1 bonus.' },
+      desc: 'Hold a press conference to make a public statement. Base roll: -2 to +2 Momentum. Opposition parties get +1 bonus. Parties with approval above 40 get +1 bonus.' },
     // TOOLS
     { id: 'poll_now', name: 'Poll Now', ap: 1, color: '#22d3ee', icon: '📊',
       category: 'tools', affects: 'Informational',
@@ -3374,7 +3374,7 @@ function renderActionConfig(sel, otherParties, factionIdeo, nation, ap, tick) {
     if (sel.id === 'media_campaign') return renderMediaCampaignConfig();
     if (sel.id === 'grassroots_movement') return renderGrassrootsConfig();
     if (sel.id === 'pivot') return renderPivotConfig(nation);
-    if (sel.id === 'press_conference') return `<div class="ca-info-box">Hold a press conference to make a public statement. Result depends on your position and approval.<br><br><strong>Base roll:</strong> -2 to +2 Visibility<br><strong>Opposition bonus:</strong> +1<br><strong>Government bonus:</strong> +2 (if gov approval ≥ 40)</div>`;
+    if (sel.id === 'press_conference') return `<div class="ca-info-box">Hold a press conference to make a public statement. Result depends on your position and approval.<br><br><strong>Base roll:</strong> -2 to +2 Momentum<br><strong>Opposition bonus:</strong> +1<br><strong>Government bonus:</strong> +2 (if gov approval ≥ 40)</div>`;
     if (sel.id === 'outreach') return `<div class="ca-info-box">Engage directly with communities through town halls, door-knocking, and local events.<br><br><strong>Effect:</strong> +3 Platform Appeal</div>`;
     return '';
 }
@@ -4618,22 +4618,23 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
         } else if (sel.id === 'grassroots_movement') {
             result = await executeGrassrootsMovement(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
         } else if (sel.id === 'press_conference') {
-            // Press Conference: base -2 to +2 visibility, +1 if opposition, +2 if gov with approval >= 40
+            // Press Conference: base -2 to +2 momentum, +1 if opposition, +2 if gov with approval >= 40
             const apResult = await _supabase.rpc('accumulate_ap', { p_faction_id: f.id, p_gain: -2, p_max_ap: 99 });
             if (apResult.error) { result = { success: false, error: apResult.error.message }; }
             else {
                 let baseRoll = Math.floor(Math.random() * 5) - 2; // -2 to +2
                 if (!_caIsGoverning) baseRoll += 1; // opposition bonus
                 else if ((n.gov_approval || 0) >= 40) baseRoll += 2; // government with decent approval
-                // Visibility writes removed — column repurposed for momentum (3-pillar system).
+                // Give momentum via atomic RPC (3-pillar system)
+                await _supabase.rpc('adjust_momentum', { p_faction_id: f.id, p_delta: baseRoll });
                 await _supabase.from('campaign_actions').insert({
                     party_id: f.id, nation_id: n.id, action_type: 'press_conference',
-                    ap_cost: 2, tick_performed: tick, result: { visBoost: baseRoll }
+                    ap_cost: 2, tick_performed: tick, result: { momentumDelta: baseRoll }
                 });
                 const sign = baseRoll >= 0 ? '+' : '';
                 result = { success: true, newAp: apResult.data, headline: 'Press Conference',
                     effects: [{ label: 'Press Coverage', value: `${sign}${baseRoll}` }],
-                    outcomeName: `Press conference — ${sign}${baseRoll} visibility` };
+                    outcomeName: `Press conference — ${sign}${baseRoll} momentum` };
             }
         } else if (sel.id === 'outreach') {
             // Community Outreach: +3 platform appeal, escalating cost (base 3 + escalation)
