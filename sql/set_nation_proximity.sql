@@ -1,6 +1,7 @@
 -- Set geographic proximity values for all nation pairs.
--- Scale: 0 = distant, 100 = bordering/neighboring.
--- Proximity >= 80 grants +10 trade affinity bonus.
+-- Scale: 0 = bordering, 100 = far away. Lower = closer.
+-- NOTE: This file uses the OLD scale (100=close). Run the inversion migration
+-- (20260331_proximity_inversion_calveth.sql) to convert to the new scale.
 
 -- Bordering nations (100)
 UPDATE diplomatic_relations SET proximity = 100
