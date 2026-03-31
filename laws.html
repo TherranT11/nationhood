@@ -1133,7 +1133,7 @@ async function rescindLaw(activeLawId, policyName, policyId) {
 
 // ==================== DRAFT MODAL ====================
 
-const FREE_ARTICLE_LIMIT = GAME_CONFIG.FREE_BILL_ARTICLES || 3;
+const FREE_ARTICLE_LIMIT = GAME_CONFIG.FREE_BILL_ARTICLES || 4;
 let _draftArticleLock = false; // Prevents double-fire on async article add/remove
 
 /** Count non-text draft articles (these are the ones that count toward the free limit). */
