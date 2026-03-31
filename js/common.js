@@ -429,6 +429,7 @@ export function renderNavTabs(activeTab) {
         { id: 'laws', label: 'Bills', href: 'laws.html' },
         { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
         { id: 'news', label: 'News', href: 'news.html' },
+        { id: 'conflicts', label: 'Conflicts', href: 'conflicts.html' },
         { id: 'economy', label: 'Economy', href: 'economy.html' },
         { id: 'wiki', label: 'Wiki', href: 'wiki.html' }
     ];
@@ -450,6 +451,9 @@ export function renderNavTabs(activeTab) {
         }
         if (tab.id === 'diplomacy') {
             badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>';
+        }
+        if (tab.id === 'conflicts') {
+            badgeHtml = '<span class="nav-badge nav-badge--crimson" id="conflicts-badge" style="display:none;"></span>';
         }
         return `
             <a href="${href}"

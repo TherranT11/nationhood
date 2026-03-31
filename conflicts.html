@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nationhood — Conflicts</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Shared Styles -->
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/conflicts.css">
+</head>
+<body>
+
+<!-- ===== TOP BAR (rendered by common.js) ===== -->
+<div id="top-bar"></div>
+
+<!-- ===== SUB-TABS ===== -->
+<div class="conflicts-subtabs">
+    <button class="subtab active" data-tab="incidents" id="subtab-incidents">Incidents <span class="subtab-badge" id="incidents-count-badge"></span></button>
+    <button class="subtab" data-tab="conflicts" id="subtab-conflicts">Conflicts <span class="subtab-badge" id="conflicts-count-badge"></span></button>
+</div>
+
+<!-- ===== MAIN 3-COLUMN LAYOUT ===== -->
+<div class="conflicts-layout" id="conflicts-layout">
+
+    <!-- LEFT SIDEBAR (240px) -->
+    <div class="conflicts-sidebar" id="sidebar">
+        <div class="sidebar-section" id="sidebar-your">
+            <div class="sidebar-section-header">Your Incidents</div>
+            <div class="sidebar-list" id="sidebar-your-list"></div>
+        </div>
+        <div class="sidebar-section" id="sidebar-international">
+            <div class="sidebar-section-header">International Incidents</div>
+            <div class="sidebar-list" id="sidebar-international-list"></div>
+        </div>
+        <div class="sidebar-section sidebar-section--collapsed" id="sidebar-resolved">
+            <div class="sidebar-section-header sidebar-section-header--toggle" id="sidebar-resolved-toggle">
+                Resolved <span class="sidebar-toggle-icon">&#9656;</span>
+            </div>
+            <div class="sidebar-list" id="sidebar-resolved-list" style="display:none;"></div>
+        </div>
+    </div>
+
+    <!-- CENTER COLUMN (flex) -->
+    <div class="conflicts-center" id="center">
+        <!-- Empty state (shown when no incident selected) -->
+        <div class="conflicts-empty" id="empty-state">
+            <div class="empty-icon">&#9876;</div>
+            <div class="empty-title">No Incident Selected</div>
+            <div class="empty-subtitle" id="empty-subtitle">Select an incident from the sidebar to view details.</div>
+        </div>
+
+        <!-- Incident detail (hidden until selected) -->
+        <div class="conflicts-detail" id="detail" style="display:none;">
+            <!-- Leverage Track -->
+            <div class="leverage-track" id="leverage-track">
+                <div class="leverage-header">
+                    <span class="leverage-nation leverage-nation--a" id="lev-nation-a"></span>
+                    <span class="leverage-label">LEVERAGE</span>
+                    <span class="leverage-nation leverage-nation--b" id="lev-nation-b"></span>
+                </div>
+                <div class="leverage-bar-container">
+                    <div class="leverage-bar">
+                        <div class="leverage-fill leverage-fill--a" id="lev-fill-a"></div>
+                        <div class="leverage-fill leverage-fill--b" id="lev-fill-b"></div>
+                        <div class="leverage-marker" id="lev-marker"></div>
+                        <div class="leverage-threshold" style="left:25%"><span>5</span></div>
+                        <div class="leverage-threshold" style="left:40%"><span>8</span></div>
+                        <div class="leverage-threshold" style="left:50%"></div>
+                        <div class="leverage-threshold" style="right:40%"><span>8</span></div>
+                        <div class="leverage-threshold" style="right:25%"><span>5</span></div>
+                    </div>
+                </div>
+                <div class="leverage-status" id="lev-status"></div>
+            </div>
+
+            <!-- Incident Header -->
+            <div class="incident-header" id="incident-header">
+                <div class="incident-title" id="incident-title"></div>
+                <div class="incident-meta" id="incident-meta"></div>
+            </div>
+
+            <!-- Timeline -->
+            <div class="incident-timeline" id="timeline"></div>
+
+            <!-- Actions Panel (bottom) -->
+            <div class="incident-actions" id="actions-panel">
+                <div class="actions-header" id="actions-header"></div>
+                <div class="actions-list" id="actions-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT COLUMN: CHAT (300px) -->
+    <div class="conflicts-chat" id="chat-column" style="display:none;">
+        <div class="chat-header">
+            <span class="chat-title">Crisis Chat</span>
+            <span class="chat-participants" id="chat-participants"></span>
+        </div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input-area" id="chat-input-area">
+            <input type="text" class="chat-input" id="chat-input" placeholder="Type as HoG..." />
+            <button class="chat-send" id="chat-send">Send</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== GLOBAL EMPTY STATE (no incidents at all) ===== -->
+<div class="conflicts-global-empty" id="global-empty" style="display:none;">
+    <div class="empty-icon">&#9876;</div>
+    <div class="empty-title">No Active Incidents</div>
+    <div class="empty-subtitle">The continent is at peace — for now. Incidents will appear here when diplomatic crises emerge between nations.</div>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage } from './js/common.js';
+
+let currentFaction = null;
+let currentNation = null;
+let currentTick = 0;
+let selectedIncidentId = null;
+let allIncidents = [];
+
+// ==================== INIT ====================
+
+initPage('conflicts', async (state) => {
+    currentFaction = state.faction;
+    currentNation = state.nation;
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    currentTick = shard?.current_tick || 0;
+
+    // Sub-tab switching
+    document.querySelectorAll('.subtab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.subtab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            // Future: toggle between incidents and conflicts views
+        });
+    });
+
+    // Resolved section toggle
+    const resolvedToggle = document.getElementById('sidebar-resolved-toggle');
+    resolvedToggle?.addEventListener('click', () => {
+        const list = document.getElementById('sidebar-resolved-list');
+        const icon = resolvedToggle.querySelector('.sidebar-toggle-icon');
+        if (list.style.display === 'none') {
+            list.style.display = '';
+            icon.innerHTML = '&#9662;';
+        } else {
+            list.style.display = 'none';
+            icon.innerHTML = '&#9656;';
+        }
+    });
+
+    await loadIncidents();
+});
+
+
+// ==================== LOAD INCIDENTS ====================
+
+async function loadIncidents() {
+    const [yourResult, intlResult, resolvedResult] = await Promise.allSettled([
+        _supabase.from('incidents')
+            .select('*, nation_a:nations!incidents_nation_a_id_fkey(id, name), nation_b:nations!incidents_nation_b_id_fkey(id, name)')
+            .or(`nation_a_id.eq.${currentNation.id},nation_b_id.eq.${currentNation.id}`)
+            .in('status', ['active', 'mediating'])
+            .order('leverage_a', { ascending: false }),
+        _supabase.from('incidents')
+            .select('*, nation_a:nations!incidents_nation_a_id_fkey(id, name), nation_b:nations!incidents_nation_b_id_fkey(id, name)')
+            .not('nation_a_id', 'eq', currentNation.id)
+            .not('nation_b_id', 'eq', currentNation.id)
+            .in('status', ['active', 'mediating'])
+            .order('started_tick', { ascending: false }),
+        _supabase.from('incidents')
+            .select('*, nation_a:nations!incidents_nation_a_id_fkey(id, name), nation_b:nations!incidents_nation_b_id_fkey(id, name)')
+            .eq('status', 'resolved')
+            .gte('resolved_tick', currentTick - 10)
+            .order('resolved_tick', { ascending: false })
+    ]);
+
+    const yours = yourResult.status === 'fulfilled' ? (yourResult.value.data || []) : [];
+    const intl = intlResult.status === 'fulfilled' ? (intlResult.value.data || []) : [];
+    const resolved = resolvedResult.status === 'fulfilled' ? (resolvedResult.value.data || []) : [];
+
+    allIncidents = [...yours, ...intl, ...resolved];
+
+    // Update badge counts
+    const incidentsBadge = document.getElementById('incidents-count-badge');
+    if (yours.length > 0) {
+        incidentsBadge.textContent = yours.length;
+        incidentsBadge.style.display = '';
+    } else {
+        incidentsBadge.style.display = 'none';
+    }
+
+    // Render sidebar
+    renderSidebar(yours, intl, resolved);
+
+    // Show global empty if nothing at all
+    const totalActive = yours.length + intl.length;
+    if (totalActive === 0 && resolved.length === 0) {
+        document.getElementById('conflicts-layout').style.display = 'none';
+        document.getElementById('global-empty').style.display = '';
+    } else {
+        document.getElementById('conflicts-layout').style.display = '';
+        document.getElementById('global-empty').style.display = 'none';
+
+        // Auto-select first incident
+        if (yours.length > 0) {
+            selectIncident(yours[0].id);
+        } else if (intl.length > 0) {
+            selectIncident(intl[0].id);
+        } else if (resolved.length > 0) {
+            selectIncident(resolved[0].id);
+        }
+    }
+}
+
+
+// ==================== SIDEBAR RENDERING ====================
+
+function renderSidebar(yours, intl, resolved) {
+    const yourList = document.getElementById('sidebar-your-list');
+    const intlList = document.getElementById('sidebar-international-list');
+    const resolvedList = document.getElementById('sidebar-resolved-list');
+
+    yourList.innerHTML = yours.length === 0
+        ? '<div class="sidebar-empty">No active incidents involving your nation.</div>'
+        : yours.map(i => renderSidebarItem(i, false)).join('');
+
+    intlList.innerHTML = intl.length === 0
+        ? '<div class="sidebar-empty">No international incidents.</div>'
+        : intl.map(i => renderSidebarItem(i, true)).join('');
+
+    resolvedList.innerHTML = resolved.length === 0
+        ? '<div class="sidebar-empty">No recent resolutions.</div>'
+        : resolved.map(i => renderSidebarItem(i, false, true)).join('');
+
+    // Click handlers
+    document.querySelectorAll('.sidebar-item').forEach(el => {
+        el.addEventListener('click', () => selectIncident(el.dataset.incidentId));
+    });
+}
+
+function renderSidebarItem(incident, dimmed, isResolved) {
+    const combined = (incident.leverage_a || 0) + (incident.leverage_b || 0);
+    const status = incident.status;
+
+    let severityClass, severityLabel;
+    if (isResolved) {
+        severityClass = 'severity--resolved';
+        severityLabel = 'Resolved';
+    } else if (combined >= 14) {
+        severityClass = 'severity--critical';
+        severityLabel = 'Critical';
+    } else if (combined >= 8) {
+        severityClass = 'severity--high';
+        severityLabel = 'High';
+    } else if (combined >= 4) {
+        severityClass = 'severity--moderate';
+        severityLabel = 'Moderate';
+    } else {
+        severityClass = 'severity--low';
+        severityLabel = 'Low';
+    }
+    if (status === 'mediating') severityLabel = 'Mediating';
+
+    const nameA = incident.nation_a?.name || 'Unknown';
+    const nameB = incident.nation_b?.name || 'Unknown';
+    const crisisLabel = formatCrisisLabel(incident.incident_type);
+
+    return `
+        <div class="sidebar-item ${dimmed ? 'sidebar-item--dimmed' : ''} ${selectedIncidentId === incident.id ? 'sidebar-item--active' : ''}"
+             data-incident-id="${incident.id}">
+            <div class="sidebar-item-top">
+                <span class="severity-dot ${severityClass}"></span>
+                <span class="sidebar-item-name">${nameA} ${crisisLabel}</span>
+            </div>
+            <div class="sidebar-item-bottom">
+                <span class="sidebar-item-parties">${nameA} vs ${nameB}</span>
+                <span class="sidebar-item-leverage">Lev. ${incident.leverage_a || 0}-${incident.leverage_b || 0}</span>
+            </div>
+            <div class="sidebar-item-status">${severityLabel}</div>
+        </div>`;
+}
+
+
+// ==================== INCIDENT SELECTION ====================
+
+async function selectIncident(incidentId) {
+    selectedIncidentId = incidentId;
+    const incident = allIncidents.find(i => i.id === incidentId);
+    if (!incident) return;
+
+    // Highlight in sidebar
+    document.querySelectorAll('.sidebar-item').forEach(el => {
+        el.classList.toggle('sidebar-item--active', el.dataset.incidentId === incidentId);
+    });
+
+    // Show detail, hide empty state
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('detail').style.display = '';
+
+    // Determine if observer
+    const isInvolved = incident.nation_a_id === currentNation.id || incident.nation_b_id === currentNation.id;
+
+    // Render leverage track
+    renderLeverageTrack(incident);
+
+    // Render header
+    renderIncidentHeader(incident);
+
+    // Load timeline
+    await loadTimeline(incidentId, incident);
+
+    // Actions panel
+    if (isInvolved && incident.status !== 'resolved') {
+        document.getElementById('actions-panel').style.display = '';
+        renderActionsPanel(incident);
+    } else {
+        document.getElementById('actions-panel').style.display = '';
+        const header = document.getElementById('actions-header');
+        const list = document.getElementById('actions-list');
+        if (incident.status === 'resolved') {
+            header.innerHTML = '<span class="actions-observer">This incident has been resolved.</span>';
+        } else {
+            header.innerHTML = '<span class="actions-observer">You do not have a crisis role.</span>';
+        }
+        list.innerHTML = '';
+    }
+
+    // Chat column
+    if (isInvolved && incident.status !== 'resolved') {
+        document.getElementById('chat-column').style.display = '';
+        await loadChat(incidentId);
+    } else {
+        document.getElementById('chat-column').style.display = 'none';
+    }
+}
+
+
+// ==================== LEVERAGE TRACK ====================
+
+function renderLeverageTrack(incident) {
+    const nameA = incident.nation_a?.name || 'A';
+    const nameB = incident.nation_b?.name || 'B';
+    const levA = incident.leverage_a || 0;
+    const levB = incident.leverage_b || 0;
+
+    document.getElementById('lev-nation-a').textContent = `${nameA}: ${levA}`;
+    document.getElementById('lev-nation-b').textContent = `${nameB}: ${levB}`;
+
+    const fillA = document.getElementById('lev-fill-a');
+    const fillB = document.getElementById('lev-fill-b');
+    const marker = document.getElementById('lev-marker');
+
+    fillA.style.width = `${(levA / 10) * 50}%`;
+    fillB.style.width = `${(levB / 10) * 50}%`;
+
+    const markerPos = 50 + ((levB - levA) / 20 * 100);
+    marker.style.left = `${markerPos}%`;
+
+    // Status text
+    const statusEl = document.getElementById('lev-status');
+    if (incident.status === 'mediating') {
+        statusEl.innerHTML = '<span class="lev-status--mediating">MEDIATION ACTIVE — Leverage frozen</span>';
+    } else if (incident.status === 'resolved') {
+        statusEl.innerHTML = '<span class="lev-status--resolved">RESOLVED</span>';
+    } else if (levA >= 8 || levB >= 8) {
+        statusEl.innerHTML = '<span class="lev-status--critical">CRITICAL — Forced resolution imminent</span>';
+    } else if (levA >= 5 || levB >= 5) {
+        statusEl.innerHTML = '<span class="lev-status--high">ESCALATING — Threshold events active</span>';
+    } else {
+        statusEl.innerHTML = '<span class="lev-status--normal">Active</span>';
+    }
+}
+
+
+// ==================== INCIDENT HEADER ====================
+
+function renderIncidentHeader(incident) {
+    const nameA = incident.nation_a?.name || 'A';
+    const nameB = incident.nation_b?.name || 'B';
+    const crisisName = formatCrisisLabel(incident.incident_type);
+    const ticksElapsed = currentTick - incident.started_tick;
+
+    document.getElementById('incident-title').textContent = `${nameA}-${nameB} ${crisisName}`;
+
+    let statusBadge = '';
+    if (incident.status === 'resolved') {
+        statusBadge = '<span class="status-badge status-badge--resolved">Resolved</span>';
+    } else if (incident.status === 'mediating') {
+        statusBadge = '<span class="status-badge status-badge--mediating">Mediating</span>';
+    } else if ((incident.leverage_a || 0) >= 8 || (incident.leverage_b || 0) >= 8) {
+        statusBadge = '<span class="status-badge status-badge--critical">Critical</span>';
+    } else {
+        statusBadge = '<span class="status-badge status-badge--active">Active</span>';
+    }
+
+    document.getElementById('incident-meta').innerHTML = `
+        <span class="meta-tag">${crisisName}</span>
+        <span class="meta-tag">Tick ${incident.started_tick}</span>
+        <span class="meta-tag">${ticksElapsed} tick${ticksElapsed !== 1 ? 's' : ''} elapsed</span>
+        ${statusBadge}
+    `;
+}
+
+
+// ==================== TIMELINE ====================
+
+async function loadTimeline(incidentId, incident) {
+    const { data: events } = await _supabase
+        .from('incident_events')
+        .select('*')
+        .eq('incident_id', incidentId)
+        .order('tick', { ascending: false })
+        .order('created_at', { ascending: false });
+
+    const timeline = document.getElementById('timeline');
+    if (!events || events.length === 0) {
+        timeline.innerHTML = '<div class="timeline-empty">No events yet.</div>';
+        return;
+    }
+
+    timeline.innerHTML = events.map(e => renderTimelineEvent(e, incident)).join('');
+}
+
+function renderTimelineEvent(event, incident) {
+    const nameA = incident.nation_a?.name || 'A';
+    const nameB = incident.nation_b?.name || 'B';
+
+    // Leverage badge
+    const shiftA = event.leverage_shift_a || 0;
+    const shiftB = event.leverage_shift_b || 0;
+    let levBadge = '';
+    if (shiftA > 0) levBadge = `<span class="lev-badge lev-badge--a">${nameA} +${shiftA}</span>`;
+    else if (shiftB > 0) levBadge = `<span class="lev-badge lev-badge--b">${nameB} +${shiftB}</span>`;
+    else if (shiftA === 0 && shiftB === 0 && event.event_type === 'random_tick') levBadge = '<span class="lev-badge lev-badge--neutral">No shift</span>';
+
+    // Left border style for actions
+    let borderClass = '';
+    if (event.is_action) {
+        if (event.action_style === 'hostile') borderClass = 'timeline-event--hostile';
+        else if (event.action_style === 'peaceful') borderClass = 'timeline-event--peaceful';
+        else if (event.action_style === 'pressure') borderClass = 'timeline-event--pressure';
+    }
+    if (event.event_type === 'escalation_threshold') borderClass = 'timeline-event--escalation';
+    if (event.event_type === 'resolution') borderClass = 'timeline-event--resolution';
+    if (event.event_type === 'mediation_result') borderClass = 'timeline-event--mediation';
+
+    return `
+        <div class="timeline-event ${borderClass}">
+            <div class="timeline-event-header">
+                <span class="timeline-tick">Tick ${event.tick}</span>
+                ${levBadge}
+            </div>
+            <div class="timeline-event-text">${event.event_text}</div>
+            ${event.event_source_label ? `<div class="timeline-source">${event.event_source_label}</div>` : ''}
+        </div>`;
+}
+
+
+// ==================== ACTIONS PANEL (stub — full in Phase 8) ====================
+
+function renderActionsPanel(incident) {
+    const isA = incident.nation_a_id === currentNation.id;
+    const role = isA ? incident.nation_a_role : incident.nation_b_role;
+    const header = document.getElementById('actions-header');
+    header.innerHTML = `
+        <span>Your Actions — ${currentNation.name} (${role})</span>
+        <span class="actions-leverage">Leverage: ${incident.leverage_a || 0} vs ${incident.leverage_b || 0}</span>
+    `;
+    // Actions list rendered in Phase 8
+    document.getElementById('actions-list').innerHTML = '<div class="actions-placeholder">Actions panel coming in next phase.</div>';
+}
+
+
+// ==================== CHAT (stub — full in Phase 9) ====================
+
+async function loadChat(incidentId) {
+    const { data: messages } = await _supabase
+        .from('incident_chat_messages')
+        .select('*')
+        .eq('incident_id', incidentId)
+        .eq('nation_id', currentNation.id)
+        .eq('chat_context', 'internal')
+        .order('created_at', { ascending: true });
+
+    const container = document.getElementById('chat-messages');
+    if (!messages || messages.length === 0) {
+        container.innerHTML = '<div class="chat-empty">No messages yet.</div>';
+        return;
+    }
+
+    container.innerHTML = messages.map(m => `
+        <div class="chat-message ${m.is_system ? 'chat-message--system' : ''}">
+            ${m.is_system ? '' : `<span class="chat-role-badge">${m.sender_role}</span>`}
+            <span class="chat-text">${m.message_text}</span>
+        </div>
+    `).join('');
+
+    container.scrollTop = container.scrollHeight;
+}
+
+
+// ==================== HELPERS ====================
+
+function formatCrisisLabel(type) {
+    switch (type) {
+        case 'fishing_dispute': return 'Fishing Dispute';
+        case 'border_incursion': return 'Border Incursion';
+        case 'dam_water': return 'Water Crisis';
+        case 'trade_war': return 'Trade War';
+        case 'spy_arrest': return 'Spy Arrest';
+        default: return type;
+    }
+}
+
+</script>
+</body>
+</html>
