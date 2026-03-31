@@ -531,7 +531,7 @@ async function renderPartyTab(f, nation, data) {
             // Lazy-load Elections tab on first click
             if (target === 'elections' && !electionsLoaded) {
                 electionsLoaded = true;
-                renderElectionsTab(nation, administration, coalition, f, allParties, allPartyIdeologies, currentTick, role, nextElection);
+                renderElectionsTab(nation, administration, coalition, f, allParties, allPartyIdeologies, currentTick, role, nextElection, caucusFactions, mySeats);
             }
         });
     });
@@ -6396,7 +6396,7 @@ function hexToRgba(hex, alpha) {
 
 // ==================== ELECTIONS TAB ====================
 
-async function renderElectionsTab(nation, administration, coalition, faction, allParties, allPartyIdeologies, currentTick, role, nextElection) {
+async function renderElectionsTab(nation, administration, coalition, faction, allParties, allPartyIdeologies, currentTick, role, nextElection, caucusFactions, mySeats) {
     const container = document.getElementById('elections-container');
     if (!container) return;
 
@@ -6820,6 +6820,75 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
         </div>
     </div>`;
 
+    // --- Caucus Box ---
+    const CAUCUS_AXIS_LABELS = {
+        liberty_equality: 'Liberty / Equality',
+        tradition_progress: 'Tradition / Progress',
+        security_freedom: 'Security / Freedom',
+        globalism_nationalism: 'Globalism / Nationalism',
+        individualism_collectivism: 'Individualism / Collectivism',
+    };
+    const partySeats = mySeats || 0;
+    const totalSeatsAll = (allParties || []).reduce((s, p) => s + (p.seats || 0), 0);
+    const seatPct = totalSeatsAll > 0 ? partySeats / totalSeatsAll : 0;
+    const activeCaucuses = (caucusFactions || []).filter(c => c.is_active !== false);
+    let caucusRowsHtml = '';
+    if (activeCaucuses.length === 0) {
+        const pctDisplay = (seatPct * 100).toFixed(0);
+        caucusRowsHtml = `<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:16px 4px;text-align:center">
+            No active caucuses.<br>Caucuses form when your party holds <strong>50%+</strong> of parliamentary seats.<br>
+            <span style="margin-top:6px;display:inline-block">You currently hold <strong>${partySeats}</strong> / ${totalSeatsAll} seats (${pctDisplay}%).</span>
+        </div>`;
+    } else {
+        const totalCaucusSeats = activeCaucuses.reduce((s, c) => s + Math.round(partySeats * c.seat_share), 0);
+        for (const cf of activeCaucuses) {
+            const caucusSeats = Math.round(partySeats * cf.seat_share);
+            const relPct = Number(cf.relationship_score ?? 50);
+            const relColor = relPct >= 60 ? 'var(--dgreen)' : relPct >= 30 ? 'var(--damber)' : 'var(--dred)';
+            const wingLabel = cf.wing_end === 'left' ? '◂' : '▸';
+            const volatileBadge = relPct < 30 ? '<span style="font-family:var(--dfont-mono);font-size:9px;color:var(--dred);font-weight:700;letter-spacing:0.5px;margin-left:4px">VOLATILE</span>' : '';
+            caucusRowsHtml += `
+            <div style="padding:8px 0;border-bottom:1px solid var(--dborder-1)">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                        <div style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0)">${escapeHtml(cf.name)}</div>
+                        <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:2px">${wingLabel} ${CAUCUS_AXIS_LABELS[cf.dominant_axis] || cf.dominant_axis}</div>
+                    </div>
+                    <div style="text-align:right">
+                        <div style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:var(--dtext-0)">${caucusSeats} seat${caucusSeats !== 1 ? 's' : ''}</div>
+                        <div style="display:flex;align-items:center;gap:5px;margin-top:3px">
+                            <div style="width:50px;height:5px;background:var(--dborder-1);border-radius:3px;overflow:hidden">
+                                <div style="width:${relPct}%;height:100%;background:${relColor};border-radius:3px;transition:width 0.3s"></div>
+                            </div>
+                            <span style="font-family:var(--dfont-mono);font-size:10px;color:${relColor}">${relPct}</span>
+                            ${volatileBadge}
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        }
+        caucusRowsHtml = `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-2);margin-bottom:6px;display:flex;justify-content:space-between">
+            <span>${activeCaucuses.length} active caucus${activeCaucuses.length !== 1 ? 'es' : ''}</span>
+            <span>${totalCaucusSeats} / ${partySeats} seats</span>
+        </div>` + caucusRowsHtml;
+    }
+
+    const caucusBox = `
+    <div class="elec-box">
+        <div class="elec-box-header">
+            <div class="pol-box-dot pol-box-dot--teal"></div>
+            <span class="elec-box-title">Internal Caucuses</span>
+        </div>
+        <div class="elec-box-body">
+            <div style="font-family:var(--dfont-ui);font-size:11px;color:var(--dtext-2);margin-bottom:8px">
+                Internal factions within your party. Low relationship scores mean caucus members may defect on ideologically opposed bills.
+            </div>
+            <div style="overflow-y:auto;max-height:340px">
+                ${caucusRowsHtml}
+            </div>
+        </div>
+    </div>`;
+
     container.innerHTML = `
     <div class="elec-page">
         <div class="elec-row">
@@ -6831,6 +6900,7 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
         <div class="elec-row" style="margin-top:20px">
             ${ideologyBox}
             ${whatIsIdeologyBox}
+            ${caucusBox}
         </div>
     </div>`;
 
