@@ -219,7 +219,7 @@ async function deductAP(supabase, factionId, cost, ledger?) {
             delta: -cost,
             reason: ledger.reason,
             detail: ledger.detail || null,
-        }).then(() => {}, () => {});
+        }).then(() => {}, (e) => console.warn('[deductAP] ledger insert failed:', e));
     }
     return { success: true, newAp: data };
 }
@@ -16334,7 +16334,7 @@ async function cancelIdeologyAction(supabase, factionId, nationId, actionId, cur
  */
 async function executeMediaCampaign(supabase, factionId, nationId, targetAxis, targetDirection, currentTick) {
     const cfg = IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN;
-    const _mcLedger = { reason: 'media_campaign', detail: 'Media Campaign (upfront)', tick: currentTick };
+    const mcLedger = { reason: 'media_campaign', detail: 'Media Campaign (upfront)', tick: currentTick };
 
     if (!AXIS_KEYS.includes(targetAxis)) {
         return { success: false, message: `Unknown axis: ${targetAxis}` };
@@ -16356,7 +16356,7 @@ async function executeMediaCampaign(supabase, factionId, nationId, targetAxis, t
         return { success: false, message: 'You already have an active media campaign.' };
     }
 
-    const apResult = await deductAP(supabase, factionId, cfg.AP_COST, _mcLedger);
+    const apResult = await deductAP(supabase, factionId, cfg.AP_COST, mcLedger);
     if (!apResult.success) {
         return { success: false, message: apResult.error || 'Insufficient AP' };
     }
@@ -19509,7 +19509,7 @@ registerAutocracyAction('execute_leader', {
         const { data: t } = await supabase.from('faction_pillar_state').select('is_strongman, arrested_leader')
             .eq('faction_id', extra.targetFactionId).eq('nation_id', nation.id).single();
         if (!t) return 'Target not found';
-        if (t.is_strongman) return 'Cannot execute your own leader';
+        if (t.is_strongman) return 'Cannot execute a strongman';
         if (!t.arrested_leader) return 'Target leader is not arrested';
         return null;
     },

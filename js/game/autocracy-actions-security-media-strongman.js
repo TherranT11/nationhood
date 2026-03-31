@@ -498,7 +498,7 @@ registerAutocracyAction('execute_leader', {
         const { data: t } = await supabase.from('faction_pillar_state').select('is_strongman, arrested_leader')
             .eq('faction_id', extra.targetFactionId).eq('nation_id', nation.id).single();
         if (!t) return 'Target not found';
-        if (t.is_strongman) return 'Cannot execute your own leader';
+        if (t.is_strongman) return 'Cannot execute a strongman';
         if (!t.arrested_leader) return 'Target leader is not arrested';
         return null;
     },
