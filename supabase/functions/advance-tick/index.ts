@@ -6222,9 +6222,9 @@ async function applyBillMomentum(supabase, bill, passed, nationId) {
     const sponsorId = bill.proposed_by;
 
     if (passed) {
-        // Sponsor: +3 per article
+        // Sponsor: +1 per article
         if (sponsorId) {
-            await adjustFactionMomentum(supabase, sponsorId, nationId, articleCount * 3, { source: 'bill:passed:sponsor' });
+            await adjustFactionMomentum(supabase, sponsorId, nationId, articleCount * 1, { source: 'bill:passed:sponsor' });
         }
         // YES voters: +2 per article
         for (const s of support) {
@@ -6234,9 +6234,9 @@ async function applyBillMomentum(supabase, bill, passed, nationId) {
             }
         }
     } else {
-        // Sponsor: -3 per article
+        // Sponsor: -1 per article
         if (sponsorId) {
-            await adjustFactionMomentum(supabase, sponsorId, nationId, articleCount * -3, { source: 'bill:failed:sponsor' });
+            await adjustFactionMomentum(supabase, sponsorId, nationId, articleCount * -1, { source: 'bill:failed:sponsor' });
         }
         // YES voters: -2 per article
         for (const s of support) {
