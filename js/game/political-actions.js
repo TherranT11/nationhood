@@ -2707,6 +2707,7 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
  */
 export async function processGovernmentCollapseCheck(supabase, nation, currentTick) {
     if (isAutocracy(nation)) return null;
+    if (isPresidentialRepublic(nation)) return null;
     const govApproval = Number(nation.gov_approval ?? 50);
     if (govApproval > 5) return null;
 
