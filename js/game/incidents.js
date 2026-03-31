@@ -981,6 +981,18 @@ async function processIncidentEscalation(supabase, incident, nationMap, currentT
                 });
             }
 
+            // Event log for escalation (both nations + world)
+            for (const nId of [incident.nation_a_id, incident.nation_b_id]) {
+                await supabase.from('event_log').insert({
+                    nation_id: nId,
+                    event_name: `${formatCrisisName(incident.incident_type)} Escalation`,
+                    trigger_key: `incident_escalation_${threshold}`,
+                    description_chosen: eventText,
+                    category: 'crisis',
+                    fired_at_tick: currentTick
+                });
+            }
+
             console.log(`[Incidents] Escalation: ${incident.id} side=${side} threshold=${threshold} event=${selected.event_key}`);
             results.push({ incidentId: incident.id, side, threshold, eventKey: selected.event_key });
         }
@@ -1295,6 +1307,18 @@ async function processIncidentBlowback(supabase, incident, nationMap, currentTic
         metadata: { excess, winner: winner.name, loser: loser.name },
         visibility: 'both'
     });
+
+    // Event log for blowback (both nations + world)
+    for (const nId of [incident.nation_a_id, incident.nation_b_id]) {
+        await supabase.from('event_log').insert({
+            nation_id: nId,
+            event_name: `${crisisName} — International Backlash`,
+            trigger_key: 'incident_blowback',
+            description_chosen: eventText,
+            category: 'crisis',
+            fired_at_tick: currentTick
+        });
+    }
 
     console.log(`[Incidents] Blowback: ${incident.id} ${winner.name} excess=${excess}`);
     return { incidentId: incident.id, winner: winner.name, excess, repPenalty: winnerRepPenalty };

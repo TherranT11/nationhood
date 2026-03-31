@@ -741,3 +741,23 @@
     border-color: var(--crimson-border);
 }
 .modal-btn--danger:hover { background: var(--crimson); color: var(--bg-1); }
+
+/* ── SIDEBAR PULSE (new event notification) ── */
+
+.sidebar-item--pulse {
+    animation: sidebar-pulse 1.5s ease-out;
+}
+@keyframes sidebar-pulse {
+    0% { background: rgba(166,93,93,0.2); }
+    100% { background: transparent; }
+}
+
+/* ── NEW TIMELINE EVENT FLASH ── */
+
+.timeline-event--new {
+    animation: event-flash 2s ease-out;
+}
+@keyframes event-flash {
+    0% { background: rgba(200,196,184,0.12); }
+    100% { background: var(--bg-2); }
+}

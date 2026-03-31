@@ -631,6 +631,30 @@ async function updateDiplomacyBadge(faction, nation, roles) {
 }
 
 
+// ===== CONFLICTS BADGE (active incidents involving your nation) =====
+
+async function updateConflictsBadge(faction, nation) {
+    const badge = document.getElementById('conflicts-badge');
+    if (!badge || !faction || !nation) return;
+    try {
+        const { count } = await _supabase
+            .from('incidents')
+            .select('id', { count: 'exact', head: true })
+            .in('status', ['active', 'mediating'])
+            .or(`nation_a_id.eq.${nation.id},nation_b_id.eq.${nation.id}`);
+
+        if (count && count > 0) {
+            badge.textContent = count;
+            badge.style.display = '';
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch (e) {
+        console.error('Error updating conflicts badge:', e);
+    }
+}
+
+
 // ===== IPO INVITE BADGE (pending org invitations) =====
 
 async function updateIPOInviteBadge(faction, roles) {
@@ -1201,6 +1225,10 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
         updateDiplomacyBadge(state.faction, state.nation, diploRoles);
     }
     updateIPOInviteBadge(state.faction, diploRoles);
+    // Update conflicts badge (active incidents involving your nation)
+    if (activeTab !== 'conflicts') {
+        updateConflictsBadge(state.faction, state.nation);
+    }
 
     // Inject messaging bubble on all pages
     initMessaging(state.faction, state.nation, state.shard);
