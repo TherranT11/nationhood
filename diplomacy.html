@@ -8772,10 +8772,11 @@ async function renderStateVisitDraftPanel(body, statusEl) {
     const ambName = hasAmbassador ? ((ambassador.ambassador_first_name || '') + ' ' + (ambassador.ambassador_last_name || '')).trim() : null;
     const hasPendingTreaty = pendingTreatyRes.data && pendingTreatyRes.data.length > 0;
 
-    // Check embassy status — visitor's embassy in host (embassy_status_a = natA's embassy in natB)
-    const isNationA = currentNation.id < targetNationId;
-    const embassyField = isNationA ? 'embassy_status_a' : 'embassy_status_b';
-    const embassyOpen = relation?.[embassyField] === 'open';
+    // Embassy status: derived from ambassador presence (same logic as nation cards)
+    // Both nations need an active ambassador to the other for the embassy to be "open"
+    const { data: theirAmb } = await _supabase.from('ambassadors')
+        .select('id').eq('nation_id', targetNationId).eq('target_nation_id', currentNation.id).eq('is_active', true).maybeSingle();
+    const embassyOpen = hasAmbassador && theirAmb != null;
     const noConflict = relation?.relation_type !== 'war';
 
     svContext = { targetNation, currentTick, relScore, hasTradeAgreement, isFirstVisit, hasAmbassador, ambName, embassyOpen, noConflict, cooldownActive, cooldownTicks, alreadyPending, hasPendingTreaty };
@@ -8870,7 +8871,7 @@ function renderStateVisitHTML(body) {
 
     // Prereqs
     const prereqs = [
-        { ok: ctx.embassyOpen, text: 'Embassy open in ' + escapeHtml(ctx.targetNation.name) },
+        { ok: ctx.embassyOpen, text: ctx.embassyOpen ? 'Embassy open in ' + escapeHtml(ctx.targetNation.name) : 'No mutual embassy with ' + escapeHtml(ctx.targetNation.name) },
         { ok: ctx.hasAmbassador, text: ctx.hasAmbassador ? 'Ambassador posted (' + escapeHtml(ctx.ambName) + ')' : 'No ambassador posted' },
         { ok: ctx.relScore >= -50, text: 'Relations: ' + (ctx.relScore >= 0 ? 'Friendly' : 'Strained') + ' (' + (ctx.relScore >= 0 ? '+' : '') + ctx.relScore + ')' },
         { ok: ctx.noConflict, text: ctx.noConflict ? 'No active conflict' : 'Active conflict!' },
