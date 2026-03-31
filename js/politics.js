@@ -4629,8 +4629,9 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
             result = await executeGrassrootsMovement(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
         } else if (sel.id === 'press_conference') {
             // Press Conference: base -2 to +2 visibility, +1 if opposition, +2 if gov with approval >= 40
-            const apResult = await _supabase.rpc('accumulate_ap', { p_faction_id: f.id, p_gain: -2, p_max_ap: 99 });
-            if (apResult.error) { result = { success: false, error: apResult.error.message }; }
+            const { deductAP } = await import('./game/config.js');
+            const apResult = await deductAP(_supabase, f.id, 2);
+            if (!apResult.success) { result = { success: false, error: apResult.error || 'Insufficient AP' }; }
             else {
                 const { boostVisibility } = await import('./game/electorate.js');
                 let baseRoll = Math.floor(Math.random() * 5) - 2; // -2 to +2
@@ -4653,15 +4654,16 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
                     ap_cost: 2, tick_performed: tick, result: { visBoost: baseRoll }
                 });
                 const sign = baseRoll >= 0 ? '+' : '';
-                result = { success: true, newAp: apResult.data, headline: 'Press Conference',
+                result = { success: true, newAp: apResult.newAp, headline: 'Press Conference',
                     effects: [{ label: 'Visibility', value: `${sign}${baseRoll}` }],
                     outcomeName: `Press conference — ${sign}${baseRoll} visibility` };
             }
         } else if (sel.id === 'outreach') {
             // Community Outreach: +3 platform appeal, escalating cost (base 3 + escalation)
             const outreachCost = 3 + (_caOutreachEscalation || 0);
-            const apResult = await _supabase.rpc('accumulate_ap', { p_faction_id: f.id, p_gain: -outreachCost, p_max_ap: 99 });
-            if (apResult.error) { result = { success: false, error: apResult.error.message }; }
+            const { deductAP: _deductAP2 } = await import('./game/config.js');
+            const apResult = await _deductAP2(_supabase, f.id, outreachCost);
+            if (!apResult.success) { result = { success: false, error: apResult.error || 'Insufficient AP' }; }
             else {
                 const { data: standing } = await _supabase.from('faction_electoral_standing')
                     .select('id, platform_appeal').eq('faction_id', f.id).eq('nation_id', n.id).maybeSingle();
@@ -4673,7 +4675,7 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
                     party_id: f.id, nation_id: n.id, action_type: 'outreach',
                     ap_cost: outreachCost, tick_performed: tick, result: { appealBoost: 3 }
                 });
-                result = { success: true, newAp: apResult.data, headline: 'Community Outreach',
+                result = { success: true, newAp: apResult.newAp, headline: 'Community Outreach',
                     effects: [{ label: 'Appeal', value: '+3' }],
                     outcomeName: 'Community outreach — +3 platform appeal' };
             }
