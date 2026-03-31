@@ -138,7 +138,7 @@ async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
     const ticksToElection = upcomingElection.election_tick - currentTick;
     console.log(`Campaign bonuses for incumbent ${president.first_name} ${president.last_name} in ${nation.name} (${ticksToElection} ticks to election)`);
 
-    await nudgeApproval(supabase, president.faction_id, nation.id, 1);
+    await adjustFactionMomentum(supabase, president.faction_id, nation.id, 1);
 
     const { data: nationStats } = await supabase
         .from('nations')
@@ -375,7 +375,7 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
         if (!result || !result.decay_ticks_remaining || result.decay_ticks_remaining <= 0) continue;
 
         const decayRate = result.decay_rate || 1;
-        await nudgeApproval(supabase, action.party_id, nationId, -round2(decayRate * 0.3));
+        await adjustFactionMomentum(supabase, action.party_id, nationId, -round2(decayRate * 0.3));
 
         const newRemaining = result.decay_ticks_remaining - 1;
         await supabase.from('campaign_actions')
@@ -1631,8 +1631,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     }).eq('id', proc.president_id);
 
                     // President's party takes massive approval & credibility hit
-                    await nudgeApproval(supabase, president.faction_id, nation.id, -5);
-                    await adjustCredibility(supabase, president.faction_id, nation.id, -0.2, 24, currentTick);
+                    await adjustFactionMomentum(supabase, president.faction_id, nation.id, -5);
 
                     // Stability -3, international_reputation -3
                     const newStab = Math.max(0, Math.round(Number(nation.stability || 50) - 3));
