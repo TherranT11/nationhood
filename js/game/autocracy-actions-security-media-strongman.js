@@ -387,8 +387,9 @@ registerAutocracyAction('arrest_leader', {
     isStrongmanExclusive: true,
     mutualExclusions: [],
     async validate(supabase, ctx) {
-        const { nation, extra } = ctx;
+        const { nation, factionState, extra } = ctx;
         if (!extra?.targetFactionId) return 'Must specify targetFactionId';
+        if (extra.targetFactionId === factionState.faction_id) return 'Cannot arrest your own leader';
         const { data: t } = await supabase.from('faction_pillar_state').select('is_strongman, arrested_leader')
             .eq('faction_id', extra.targetFactionId).eq('nation_id', nation.id).single();
         if (!t) return 'Target not found';
@@ -399,6 +400,7 @@ registerAutocracyAction('arrest_leader', {
     async execute(supabase, ctx) {
         const { nation, factionState, extra, currentTick } = ctx;
         const targetFactionId = extra?.targetFactionId;
+        if (targetFactionId === factionState.faction_id) return { success: false, error: 'Cannot arrest your own leader' };
 
         // Load target (already validated)
         const { data: targetFps } = await supabase.from('faction_pillar_state')
@@ -490,17 +492,20 @@ registerAutocracyAction('execute_leader', {
     isStrongmanExclusive: true,
     mutualExclusions: [],
     async validate(supabase, ctx) {
-        const { nation, extra } = ctx;
+        const { nation, factionState, extra } = ctx;
         if (!extra?.targetFactionId) return 'Must specify targetFactionId';
-        const { data: t } = await supabase.from('faction_pillar_state').select('arrested_leader')
+        if (extra.targetFactionId === factionState.faction_id) return 'Cannot execute your own leader';
+        const { data: t } = await supabase.from('faction_pillar_state').select('is_strongman, arrested_leader')
             .eq('faction_id', extra.targetFactionId).eq('nation_id', nation.id).single();
         if (!t) return 'Target not found';
+        if (t.is_strongman) return 'Cannot execute your own leader';
         if (!t.arrested_leader) return 'Target leader is not arrested';
         return null;
     },
     async execute(supabase, ctx) {
         const { nation, factionState, extra, currentTick } = ctx;
         const targetFactionId = extra?.targetFactionId;
+        if (targetFactionId === factionState.faction_id) return { success: false, error: 'Cannot execute your own leader' };
 
         // Load target (already validated)
         const { data: targetFps } = await supabase.from('faction_pillar_state')
