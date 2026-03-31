@@ -4596,12 +4596,15 @@ body.light-mode .pol-blocs-box {
 
 .elec-page {
     padding: 16px 24px;
+    max-width: 1400px;
+    margin: 0 auto;
 }
 
 .elec-row {
     display: flex;
     gap: 20px;
     flex-wrap: wrap;
+    justify-content: center;
 }
 
 .elec-box {
@@ -4950,18 +4953,43 @@ body.light-mode .pol-blocs-box {
 
 .elec-ideo-bar-track {
     position: relative;
-    height: 14px;
-    background: var(--dbg-3);
+    height: 36px;
+    background: var(--dbg-0);
+    border: 1px solid var(--dborder-hair);
     border-radius: 3px;
-    overflow: hidden;
+    overflow: visible;
+}
+
+.elec-ideo-zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.elec-ideo-zone-label {
+    position: absolute;
+    bottom: -16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--dfont-mono);
+    font-size: 7px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
 }
 
 .elec-ideo-var-band {
     position: absolute;
     top: 0;
-    height: 100%;
-    background: rgba(100, 180, 255, 0.15);
+    bottom: 0;
     border-radius: 2px;
+    pointer-events: none;
+    background: rgba(255,255,255,0.045);
+    border: 1px solid rgba(255,255,255,0.08);
+    z-index: 1;
+    overflow: visible;
 }
 
 .elec-ideo-mean-marker {
@@ -4971,25 +4999,30 @@ body.light-mode .pol-blocs-box {
     height: 100%;
     background: rgba(255, 255, 255, 0.5);
     transform: translateX(-1px);
+    z-index: 4;
 }
 
 .elec-ideo-player-marker {
     position: absolute;
-    top: 2px;
-    width: 10px;
-    height: 10px;
+    top: 50%;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     background: var(--dteal);
     border: 2px solid var(--dbg-2);
-    transform: translateX(-5px);
+    transform: translate(-50%, -50%);
+    z-index: 5;
 }
 
 .elec-ideo-bar-labels {
     display: flex;
     justify-content: space-between;
     font-family: var(--dfont-mono);
-    font-size: 9px;
-    color: var(--dtext-3);
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dtxt-dim);
     margin-top: 2px;
 }
 
