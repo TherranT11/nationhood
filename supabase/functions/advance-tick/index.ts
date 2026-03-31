@@ -10808,7 +10808,7 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
             .select('id, election_tick')
             .eq('nation_id', nation.id)
             .eq('status', 'scheduled')
-            .eq('election_type', 'parliamentary')
+            .or('election_type.is.null,election_type.eq.parliamentary')
             .order('election_tick', { ascending: true })
             .limit(1)
             .maybeSingle();
@@ -10824,18 +10824,12 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
             console.log(`Safety net: caretaker ${nation.name} had NO scheduled election — created one at tick ${currentTick + 1}`);
         } else {
             const ticksUntil = scheduledElection.election_tick - currentTick;
-            if (ticksUntil > GAME_CONFIG.EARLY_ELECTION_TICKS) {
-                // Election is too far in the future (e.g. regular term election, not a snap)
+            if (ticksUntil > GAME_CONFIG.EARLY_ELECTION_TICKS || ticksUntil < -1) {
+                // Election is either too far in the future or overdue — reschedule to next tick
                 await supabase.from('elections')
                     .update({ election_tick: currentTick + 1 })
                     .eq('id', scheduledElection.id);
-                console.log(`Safety net: caretaker ${nation.name} election was ${ticksUntil} ticks away — rescheduled to tick ${currentTick + 1}`);
-            } else if (ticksUntil < -1) {
-                // Overdue by more than 1 tick — reschedule to next tick
-                await supabase.from('elections')
-                    .update({ election_tick: currentTick + 1 })
-                    .eq('id', scheduledElection.id);
-                console.log(`Safety net: caretaker ${nation.name} election was overdue by ${-ticksUntil} ticks — rescheduled to tick ${currentTick + 1}`);
+                console.log(`Safety net: caretaker ${nation.name} election was ${ticksUntil > 0 ? ticksUntil + ' ticks away' : Math.abs(ticksUntil) + ' ticks overdue'} — rescheduled to tick ${currentTick + 1}`);
             }
         }
         return null; // Caretaker is a valid government state
@@ -26015,11 +26009,13 @@ async function processGovernmentCollapseCheck(supabase, nation, currentTick) {
             .eq('nation_id', nation.id)
             .in('status', ['committee', 'floor']);
 
-        // Cancel any far-future scheduled elections before scheduling snap
+        // Cancel any far-future scheduled parliamentary elections before scheduling snap
+        // (preserve presidential elections — president stays in office through collapse)
         await supabase.from('elections')
             .delete()
             .eq('nation_id', nation.id)
-            .eq('status', 'scheduled');
+            .eq('status', 'scheduled')
+            .or('election_type.is.null,election_type.eq.parliamentary');
 
         // Schedule snap election
         const snapTick = currentTick + FORMATION_DEADLINE_TICKS;

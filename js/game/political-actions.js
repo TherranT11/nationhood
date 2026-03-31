@@ -2752,11 +2752,13 @@ export async function processGovernmentCollapseCheck(supabase, nation, currentTi
             .eq('nation_id', nation.id)
             .in('status', ['committee', 'floor']);
 
-        // Cancel any far-future scheduled elections before scheduling snap
+        // Cancel any far-future scheduled parliamentary elections before scheduling snap
+        // (preserve presidential elections — president stays in office through collapse)
         await supabase.from('elections')
             .delete()
             .eq('nation_id', nation.id)
-            .eq('status', 'scheduled');
+            .eq('status', 'scheduled')
+            .or('election_type.is.null,election_type.eq.parliamentary');
 
         // Schedule snap election
         const snapTick = currentTick + FORMATION_DEADLINE_TICKS;
