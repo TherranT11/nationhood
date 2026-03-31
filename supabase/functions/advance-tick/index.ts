@@ -15563,20 +15563,7 @@ function getDiminishingMultiplier(currentCount) {
     return CFG.CAMPAIGN_ACTION_FLOOR;
 }
 
-/**
- * Boost a faction's visibility after a campaign action (Rally, Outreach, etc.)
- * Applies diminishing returns when multiple actions are taken in the same tick.
- *
- * @param {object} supabase
- * @param {string} factionId
- * @param {string} nationId
- * @param {number} boost - Positive visibility increment (e.g., 5-15)
- */
-async function boostVisibility(supabase, factionId, nationId, boost) {
-    // Legacy no-op: visibility column is now overwritten by tickElectionPillars with momentum.
-    // Campaign actions should use adjustFactionMomentum() instead.
-    return;
-}
+// boostVisibility removed — visibility column repurposed for momentum (3-pillar election system).
 
 
 /**
@@ -15625,8 +15612,6 @@ const STANCE_CONFIG = {
         radical:   { strength: 100, decay_rate: 8 },
     },
 
-    // Visibility boost when taking a stance
-    VISIBILITY_BOOST: 4,
 };
 
 /**
@@ -15758,9 +15743,6 @@ async function executeTakeStance(supabase, factionId, nationId, issueId, axis, s
         return { success: false, message: 'Database error creating stance' };
     }
 
-    // ── Boost visibility ──
-    await boostVisibility(supabase, factionId, nationId, STANCE_CONFIG.VISIBILITY_BOOST);
-
     // ── Log to campaign_actions ──
     const { error: insErr } = await supabase.from('campaign_actions').insert({
         party_id: factionId,
@@ -15802,7 +15784,6 @@ async function executeTakeStance(supabase, factionId, nationId, issueId, axis, s
     effects.push({ label: 'Stance', value: `${intensity} ${sideLabel}` });
     if (isPioneer) effects.push({ label: 'Pioneer bonus', value: '+5 appeal' });
     if (!ideologicallyConsistent) effects.push({ label: 'Inconsistent', value: '-5 appeal' });
-    effects.push({ label: 'Visibility', value: `+${STANCE_CONFIG.VISIBILITY_BOOST}` });
     effects.push({ label: 'Enthusiasm', value: `+${enthusiasmRoll}` });
 
     return {
@@ -15868,10 +15849,6 @@ async function onRally(supabase, factionId, nationId, outcomeId, currentTick) {
  * @param {number} currentTick
  */
 async function onOutreach(supabase, factionId, nationId, alignmentScore, diminishedEffect, currentTick) {
-    // Visibility boost scales with alignment
-    const visBoost = Math.max(3, Math.round(diminishedEffect * 1.5));
-    await boostVisibility(supabase, factionId, nationId, visBoost);
-
     // Approval nudge: small positive based on alignment
     const approvalNudge = round2(Math.max(0.5, diminishedEffect * 0.3));
     await adjustFactionMomentum(supabase, factionId, nationId, approvalNudge, { source: 'outreach:approval' });
@@ -15969,7 +15946,6 @@ async function logActivity(supabase, factionId, nationId, actionType, actionLabe
 const POLL_CONFIG = {
     AP_COST: 2,
     COOLDOWN_WINDOW: 0,   // no cooldown
-    VISIBILITY_BOOST: 0,
 };
 
 /**
@@ -16032,11 +16008,6 @@ async function executePollNow(supabase, factionId, nationId, currentTick, pollTi
         if (updErr) console.error('[Electorate] Poll snapshot failed for', s.faction_id, ':', updErr.message);
     }
 
-    // ── Visibility + logs ──
-    if (POLL_CONFIG.VISIBILITY_BOOST > 0) {
-        await boostVisibility(supabase, factionId, nationId, POLL_CONFIG.VISIBILITY_BOOST);
-    }
-
     const pollMargin = pollTier === 3 ? 3 : 5;
     const { error: insErr } = await supabase.from('campaign_actions').insert({
         party_id: factionId, nation_id: nationId,
@@ -16055,9 +16026,6 @@ async function executePollNow(supabase, factionId, nationId, currentTick, pollTi
         { label: 'Vote share', value: `${voteSharePct}%` },
         { label: 'Approval', value: `${round2(standing.party_approval || 50)}` },
     ];
-    if (POLL_CONFIG.VISIBILITY_BOOST > 0) {
-        pollEffects.push({ label: 'Visibility', value: `+${POLL_CONFIG.VISIBILITY_BOOST}` });
-    }
     return {
         success: true,
         message: `Poll complete — you're polling at ${voteSharePct}%`,
@@ -16080,7 +16048,6 @@ const IDEO_SHIFT_CONFIG = {
         DRIFT_MIN: 0.1,         // 1d3: random 0.1, 0.2, or 0.3 per tick
         DRIFT_MAX: 0.3,
         DURATION: 50,           // runs for 50 ticks then auto-completes
-        VISIBILITY_BOOST: 0,    // behind the scenes — no visibility
     },
     MEDIA_CAMPAIGN: {
         AP_COST: 6,
@@ -16155,8 +16122,6 @@ async function executeFundThinkTank(supabase, factionId, nationId, targetAxis, t
         console.error('[Electorate] Think tank insert failed:', error.message);
         return { success: false, message: 'Database error creating think tank' };
     }
-
-    await boostVisibility(supabase, factionId, nationId, cfg.VISIBILITY_BOOST);
 
     const { error: insErr } = await supabase.from('campaign_actions').insert({
         party_id: factionId, nation_id: nationId,
@@ -16350,7 +16315,6 @@ async function executeMediaCampaign(supabase, factionId, nationId, targetAxis, t
             { label: 'Axis', value: `${axisDef?.leftLabel} ↔ ${axisDef?.rightLabel}` },
             { label: 'Effect', value: dirLabel },
             { label: 'Variance', value: `1d5 (${cfg.VARIANCE_MIN}–${cfg.VARIANCE_MAX})/tick for ${cfg.DURATION} ticks` },
-            { label: 'Visibility', value: `1d3 (${cfg.VISIBILITY_MIN}–${cfg.VISIBILITY_MAX})/tick for ${cfg.VISIBILITY_TICKS} ticks` },
         ],
         newAp: apResult.newAp,
     };
@@ -16425,7 +16389,6 @@ async function executeGrassrootsMovement(supabase, factionId, nationId, targetAx
             { label: 'Direction', value: sideLabel },
             { label: 'Drift', value: `1d2 (${cfg.DRIFT_MIN}–${cfg.DRIFT_MAX})/tick for ${cfg.DURATION} ticks` },
             { label: 'Ongoing', value: `${cfg.TICK_AP_COST} AP/tick` },
-            { label: 'Visibility', value: `+1 every ${cfg.VISIBILITY_INTERVAL} ticks` },
         ],
         newAp: apResult.newAp,
     };
@@ -16523,11 +16486,8 @@ async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick
                     profileUpdates[col] = newVal;
                     profile[col] = newVal;
                 }
-            } else if (ticksActive < mcCfg.DURATION + mcCfg.VISIBILITY_TICKS) {
-                // Phase 2 (ticks 5–9): visibility boost — 1d2 (1–2)
-                const visRoll = [1, 2][Math.floor(Math.random() * 2)];
-                await boostVisibility(supabase, act.faction_id, nationId, visRoll);
             }
+            // Phase 2 visibility boost removed — visibility column repurposed for momentum.
         } else if (act.action_type === 'grassroots_movement') {
             const grCfg = IDEO_SHIFT_CONFIG.GRASSROOTS;
             // 1 AP per tick cost — suspend if faction can't afford it
@@ -16545,10 +16505,7 @@ async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick
                 profileUpdates[col] = newVal;
                 profile[col] = newVal;
             }
-            // +1 visibility every 10 ticks
-            if (ticksActive > 0 && ticksActive % grCfg.VISIBILITY_INTERVAL === 0) {
-                await boostVisibility(supabase, act.faction_id, nationId, 1);
-            }
+            // Periodic visibility boost removed — visibility column repurposed for momentum.
             // Track cumulative drift for cancel revert
             const grPrevTotal = Number(act.band_shift_total || 0);
             toUpdate.push({ id: act.id, last_active_tick: currentTick, band_shift_total: round2(grPrevTotal + grActualDrift) });
@@ -22800,20 +22757,9 @@ async function resolveProtest(supabase, protest, nationStats, currentTick) {
 
     // Backfire penalties on the organising party (Tier 1-2)
     if (effects.organiserVisibility < 0 || effects.organiserApproval < 0 || effects.organiserEnthusiasm < 0) {
-        // Visibility: direct update (boostVisibility only handles positive)
+        // Visibility → momentum (visibility column repurposed for 3-pillar system)
         if (effects.organiserVisibility < 0) {
-            const { data: standing } = await supabase
-                .from('faction_electoral_standing')
-                .select('id, visibility')
-                .eq('faction_id', factionId)
-                .eq('nation_id', nationId)
-                .maybeSingle();
-            if (standing) {
-                const newVis = Math.max(0, (Number(standing.visibility) || 0) + effects.organiserVisibility);
-                await supabase.from('faction_electoral_standing')
-                    .update({ visibility: newVis })
-                    .eq('id', standing.id);
-            }
+            await adjustFactionMomentum(supabase, factionId, nationId, effects.organiserVisibility, { source: 'protest:organiser:visibility' });
             appliedEffects.push({ stat: 'organiser_visibility', delta: effects.organiserVisibility });
         }
         // Party approval
@@ -24059,18 +24005,16 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
     // ── 7. Apply effects via electorate engine ──
     const effects = [];
 
-    // Target party: approval hit + credibility damage
+    // Target party: momentum hit
     if (targetDelta !== 0) {
         const approvalDelta = _round2(targetDelta * 0.3);
-        const credDelta = _round3(targetDelta * 0.01);
         await _nudgeApproval(supabase, targetFactionId, nationId, approvalDelta, 'attack');
         effects.push({ label: targetFaction.faction_name, value: targetDelta });
     }
 
-    // Self: credibility change (attacks can backfire or boost credibility)
+    // Self: momentum change (attacks can backfire or boost)
     if (selfDelta !== 0) {
-        const selfLabel = selfDelta > 0 ? 'Your party (credibility gain)' : 'Your party (credibility loss)';
-        const selfCredDelta = _round3(selfDelta * 0.01);
+        const selfLabel = selfDelta > 0 ? 'Your party (momentum gain)' : 'Your party (momentum loss)';
         effects.push({ label: selfLabel, value: selfDelta });
     }
 
@@ -24152,14 +24096,10 @@ const MAKE_PROMISE_CONFIG = {
     PENALTY_PER_TICK_MAX: 1.5,
 
     // Promise kept rewards
-    KEPT_APPROVAL: 2,                  // +party_approval when promise fulfilled
-    KEPT_CREDIBILITY: 0.07,            // +credibility_modifier when promise fulfilled
+    KEPT_APPROVAL: 2,                  // +momentum when promise fulfilled
 
     // Promise broken penalties
-    BROKEN_APPROVAL: -2,               // -party_approval when promise broken
-    BROKEN_CREDIBILITY: -0.10,         // -credibility_modifier when promise broken
-    BROKEN_CREDIBILITY_SUSPEND: 12,    // suspend credibility recovery for N ticks after breaking
-    BROKEN_NERVOUS_CREDIBILITY: -0.03, // -credibility per other active promise when one breaks
+    BROKEN_APPROVAL: -2,               // -momentum when promise broken
 };
 
 /**
@@ -24827,8 +24767,6 @@ async function processPromiseTick(supabase, nation, currentTick) {
 
 // ── Rounding helpers (mirrors advance-tick) ──
 function _round2(v) { return Math.round(v * 100) / 100; }
-function _round3(v) { return Math.round(v * 1000) / 1000; }
-
 /**
  * Adjust a faction's momentum. Local helper (wraps adjustFactionMomentum).
  */
@@ -24844,10 +24782,9 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
     const cfg = MAKE_PROMISE_CONFIG;
 
     if (resolution === 'fulfilled') {
-        // ── REWARDS via electorate engine (party_approval + credibility) ──
-        const keptSource = `promise:kept:${promise.demand_text || 'Unknown'}`;
+        // ── REWARDS: momentum boost for keeping promise ──
         await _nudgeApproval(supabase, promise.party_id, promise.nation_id, cfg.KEPT_APPROVAL, 'promise:kept');
-        console.log(`[Promise] Fulfilled: +${cfg.KEPT_APPROVAL} approval, +${cfg.KEPT_CREDIBILITY} credibility for ${promise.party_id}`);
+        console.log(`[Promise] Fulfilled: +${cfg.KEPT_APPROVAL} momentum for ${promise.party_id}`);
 
         // Mark promise as fulfilled
         await supabase.from('fundraiser_promises')
@@ -24855,23 +24792,9 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
             .eq('id', promise.id);
 
     } else if (resolution === 'broken') {
-        // ── PENALTIES via electorate engine (party_approval + credibility) ──
-        const brokenSource = `promise:broken:${promise.demand_text || 'Unknown'}`;
+        // ── PENALTIES: momentum hit for breaking promise ──
         await _nudgeApproval(supabase, promise.party_id, promise.nation_id, cfg.BROKEN_APPROVAL, 'promise:broken');
-        console.log(`[Promise] Broken: ${cfg.BROKEN_APPROVAL} approval, ${cfg.BROKEN_CREDIBILITY} credibility for ${promise.party_id}`);
-
-        // Nervous effect: other active promises compound credibility damage
-        const { data: otherPromises } = await supabase
-            .from('fundraiser_promises')
-            .select('id')
-            .eq('party_id', promise.party_id)
-            .eq('status', 'active')
-            .neq('id', promise.id);
-
-        if (otherPromises && otherPromises.length > 0) {
-            const nervousDelta = cfg.BROKEN_NERVOUS_CREDIBILITY * otherPromises.length;
-            console.log(`[Promise] Nervous effect: ${nervousDelta} credibility (${otherPromises.length} other active promises)`);
-        }
+        console.log(`[Promise] Broken: ${cfg.BROKEN_APPROVAL} momentum for ${promise.party_id}`);
 
         // Mark promise as broken
         await supabase.from('fundraiser_promises')
