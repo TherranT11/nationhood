@@ -117,6 +117,18 @@
     <div class="empty-subtitle">The continent is at peace — for now. Incidents will appear here when diplomatic crises emerge between nations.</div>
 </div>
 
+<!-- ===== ACTION CONFIRMATION MODAL ===== -->
+<div class="modal-overlay" id="action-modal" style="display:none;">
+    <div class="modal-box">
+        <div class="modal-header" id="modal-header"></div>
+        <div class="modal-body" id="modal-body"></div>
+        <div class="modal-footer">
+            <button class="modal-btn modal-btn--cancel" id="modal-cancel">Cancel</button>
+            <button class="modal-btn modal-btn--confirm" id="modal-confirm">Execute</button>
+        </div>
+    </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
@@ -467,18 +479,462 @@ function renderTimelineEvent(event, incident) {
 }
 
 
-// ==================== ACTIONS PANEL (stub — full in Phase 8) ====================
+// ==================== ACTIONS PANEL ====================
 
-function renderActionsPanel(incident) {
+let actionExecuting = false; // debounce lock
+
+async function renderActionsPanel(incident) {
     const isA = incident.nation_a_id === currentNation.id;
     const role = isA ? incident.nation_a_role : incident.nation_b_role;
+    const govType = isA ? incident.nation_a_gov_type : incident.nation_b_gov_type;
+    const ap = currentFaction?.action_points || 0;
+
     const header = document.getElementById('actions-header');
     header.innerHTML = `
         <span>Your Actions — ${currentNation.name} (${role})</span>
-        <span class="actions-leverage">Leverage: ${incident.leverage_a || 0} vs ${incident.leverage_b || 0}</span>
+        <span class="actions-leverage">AP: ${ap} | Leverage: ${incident.leverage_a || 0} vs ${incident.leverage_b || 0}</span>
     `;
-    // Actions list rendered in Phase 8
-    document.getElementById('actions-list').innerHTML = '<div class="actions-placeholder">Actions panel coming in next phase.</div>';
+
+    // Count active incidents for stretched-thin penalty
+    const { count: activeCount } = await _supabase
+        .from('incidents')
+        .select('id', { count: 'exact', head: true })
+        .in('status', ['active', 'mediating'])
+        .or(`nation_a_id.eq.${currentNation.id},nation_b_id.eq.${currentNation.id}`);
+    const stretchedThin = (activeCount || 0) >= 2;
+
+    // Load available actions for this role + gov type
+    const { data: actions } = await _supabase
+        .from('incident_actions_available')
+        .select('*')
+        .eq('incident_type', incident.incident_type)
+        .eq('nation_role', role)
+        .eq('gov_type', govType);
+
+    // Load taken actions for this incident + nation
+    const { data: taken } = await _supabase
+        .from('incident_actions_taken')
+        .select('action_key, cooldown_until_tick, tick')
+        .eq('incident_id', incident.id)
+        .eq('nation_id', currentNation.id);
+
+    const takenMap = {};
+    for (const t of (taken || [])) {
+        if (!takenMap[t.action_key]) takenMap[t.action_key] = [];
+        takenMap[t.action_key].push(t);
+    }
+
+    const list = document.getElementById('actions-list');
+    if (!actions || actions.length === 0) {
+        list.innerHTML = '<div class="actions-placeholder">No actions available.</div>';
+        return;
+    }
+
+    // Sort by escalation color
+    const colorOrder = { escalate: 1, pressure: 2, diplomatic: 3, concede: 4, wait: 5 };
+    actions.sort((a, b) => (colorOrder[a.escalation_color] || 9) - (colorOrder[b.escalation_color] || 9));
+
+    list.innerHTML = actions.map(action => {
+        const history = takenMap[action.action_key] || [];
+        const state = getActionState(action, history, ap, stretchedThin, incident);
+        return renderActionRow(action, state, stretchedThin);
+    }).join('');
+
+    // Click handlers
+    list.querySelectorAll('.action-row[data-available="true"]').forEach(el => {
+        el.addEventListener('click', () => {
+            const actionKey = el.dataset.actionKey;
+            const action = actions.find(a => a.action_key === actionKey);
+            if (action) showActionModal(action, incident, stretchedThin);
+        });
+    });
+}
+
+function getActionState(action, history, ap, stretchedThin, incident) {
+    // One-time and already used
+    if (action.is_one_time && history.length > 0) return { state: 'used', label: 'Already used' };
+
+    // Cooldown check
+    if (action.cooldown_ticks > 0 && history.length > 0) {
+        const latest = history.reduce((a, b) => a.tick > b.tick ? a : b);
+        const cdUntil = latest.cooldown_until_tick || (latest.tick + action.cooldown_ticks);
+        if (currentTick < cdUntil) return { state: 'cooldown', label: `Available in ${cdUntil - currentTick} tick${cdUntil - currentTick !== 1 ? 's' : ''}` };
+    }
+
+    // Prerequisite
+    if (action.requires_action_key) {
+        const prereqTaken = history.some(h => h.action_key === action.requires_action_key);
+        if (!prereqTaken) return { state: 'locked', label: `Requires: ${action.requires_action_key}` };
+    }
+
+    // Mediation locked (hostile actions during mediation)
+    if (incident.status === 'mediating' && (action.escalation_color === 'escalate' || action.escalation_color === 'pressure')) {
+        return { state: 'mediation_locked', label: 'Mediation active' };
+    }
+
+    // AP check
+    const totalCost = action.ap_cost + (stretchedThin && action.ap_cost > 0 ? 1 : 0);
+    if (totalCost > ap) return { state: 'insufficient_ap', label: `Need ${totalCost} AP` };
+
+    return { state: 'available', label: null };
+}
+
+function renderActionRow(action, stateInfo, stretchedThin) {
+    const available = stateInfo.state === 'available';
+    const colorClass = {
+        escalate: 'action-icon--esc',
+        pressure: 'action-icon--prs',
+        diplomatic: 'action-icon--dip',
+        concede: 'action-icon--con',
+        wait: 'action-icon--wait'
+    }[action.escalation_color] || '';
+
+    const apDisplay = action.ap_cost === 0 ? 'Free'
+        : stretchedThin && action.ap_cost > 0 ? `${action.ap_cost}+1 AP`
+        : `${action.ap_cost} AP`;
+
+    const levDisplay = action.leverage_min === action.leverage_max
+        ? (action.leverage_min === 0 ? '' : `+${action.leverage_min}`)
+        : `+${action.leverage_min} to +${action.leverage_max}`;
+
+    return `
+        <div class="action-row ${available ? '' : 'action-row--disabled'}"
+             data-action-key="${action.action_key}" data-available="${available}">
+            <div class="action-icon ${colorClass}"></div>
+            <div class="action-info">
+                <div class="action-name">${action.action_name}</div>
+                <div class="action-detail">${apDisplay}${levDisplay ? ' | Lev. ' + levDisplay : ''}</div>
+                ${stateInfo.label ? `<div class="action-state">${stateInfo.label}</div>` : ''}
+            </div>
+            <div class="action-role-badge">${action.required_role}</div>
+        </div>`;
+}
+
+
+// ==================== ACTION EXECUTION ====================
+
+function showActionModal(action, incident, stretchedThin) {
+    if (actionExecuting) return;
+    const modal = document.getElementById('action-modal');
+    const header = document.getElementById('modal-header');
+    const body = document.getElementById('modal-body');
+    const confirmBtn = document.getElementById('modal-confirm');
+
+    const totalCost = action.ap_cost + (stretchedThin && action.ap_cost > 0 ? 1 : 0);
+    const ap = currentFaction?.action_points || 0;
+    const isA = incident.nation_a_id === currentNation.id;
+
+    // Concede gets a serious modal
+    const isConcede = action.action_key === 'concede';
+    const isMediation = action.effects_template?.mediation === true;
+
+    header.innerHTML = `<span class="modal-action-name">${action.action_name}</span>`;
+
+    let bodyHtml = `<div class="modal-description">${action.action_description}</div>`;
+    bodyHtml += `<div class="modal-stats">`;
+    bodyHtml += `<div class="modal-stat-row"><span>AP Cost:</span><span>${totalCost}${stretchedThin && action.ap_cost > 0 ? ' <em>(+1 multiple crises)</em>' : ''}</span></div>`;
+    bodyHtml += `<div class="modal-stat-row"><span>Your AP:</span><span>${ap}</span></div>`;
+    if (action.leverage_min > 0 || action.leverage_max > 0) {
+        bodyHtml += `<div class="modal-stat-row"><span>Leverage:</span><span>+${action.leverage_min} to +${action.leverage_max}</span></div>`;
+    }
+    bodyHtml += `<div class="modal-stat-row"><span>Required Role:</span><span>${action.required_role}</span></div>`;
+    if (action.risk_description) {
+        bodyHtml += `<div class="modal-risk">${action.risk_description}</div>`;
+    }
+    if (action.backfire_chance) {
+        bodyHtml += `<div class="modal-risk">Backfire chance: ${Math.round(action.backfire_chance * 100)}%</div>`;
+    }
+    bodyHtml += `</div>`;
+
+    if (isConcede) {
+        const oppLev = isA ? (incident.leverage_b || 0) : (incident.leverage_a || 0);
+        const govType = isA ? incident.nation_a_gov_type : incident.nation_b_gov_type;
+        const isAuto = govType === 'autocracy';
+        const cost = isAuto ? Math.round(oppLev * 1.5) : oppLev;
+        const costLabel = isAuto ? `Regime Health: -${cost}` : `Gov Approval: -${cost}`;
+        bodyHtml += `<div class="modal-warning">This resolves the crisis in your opponent's favor.<br>${costLabel}</div>`;
+        confirmBtn.textContent = 'Concede — Cannot Be Undone';
+        confirmBtn.className = 'modal-btn modal-btn--danger';
+    } else if (isMediation) {
+        bodyHtml += `<div class="modal-info">Your proposal is hidden until the tick resolves. If the opponent also proposes, mediation begins. If they don't, you lose 2 leverage.</div>`;
+        confirmBtn.textContent = 'Propose Mediation';
+        confirmBtn.className = 'modal-btn modal-btn--confirm';
+    } else {
+        confirmBtn.textContent = 'Execute';
+        confirmBtn.className = 'modal-btn modal-btn--confirm';
+    }
+
+    body.innerHTML = bodyHtml;
+    modal.style.display = '';
+
+    // Wire buttons (replace listeners to avoid stacking)
+    const newCancel = document.getElementById('modal-cancel').cloneNode(true);
+    document.getElementById('modal-cancel').replaceWith(newCancel);
+    newCancel.addEventListener('click', () => { modal.style.display = 'none'; });
+
+    const newConfirm = confirmBtn.cloneNode(true);
+    confirmBtn.replaceWith(newConfirm);
+    newConfirm.addEventListener('click', async () => {
+        modal.style.display = 'none';
+        await executeAction(action, incident, stretchedThin);
+    });
+}
+
+async function executeAction(action, incident, stretchedThin) {
+    if (actionExecuting) return;
+    actionExecuting = true;
+
+    try {
+        const isA = incident.nation_a_id === currentNation.id;
+        const totalCost = action.ap_cost + (stretchedThin && action.ap_cost > 0 ? 1 : 0);
+        const isMediation = action.effects_template?.mediation === true;
+        const isConcede = action.action_key === 'concede';
+
+        // 1. Deduct AP (if cost > 0)
+        if (totalCost > 0) {
+            const { data: freshFaction } = await _supabase
+                .from('factions')
+                .select('action_points')
+                .eq('id', currentFaction.id)
+                .single();
+            if ((freshFaction?.action_points || 0) < totalCost) {
+                alert('Insufficient AP.');
+                return;
+            }
+            const deductResult = await _supabase.rpc('deduct_ap', {
+                p_faction_id: currentFaction.id,
+                p_cost: totalCost
+            });
+            if (deductResult.error || deductResult.data < 0) {
+                alert('Failed to deduct AP.');
+                return;
+            }
+            currentFaction.action_points = deductResult.data;
+        }
+
+        // 2. Handle mediation (hidden proposal — no leverage roll)
+        if (isMediation) {
+            const side = isA ? 'nation_a_proposed' : 'nation_b_proposed';
+            // Upsert mediation row for this tick
+            const { data: existing } = await _supabase
+                .from('incident_mediation')
+                .select('id')
+                .eq('incident_id', incident.id)
+                .eq('tick', currentTick)
+                .maybeSingle();
+
+            if (existing) {
+                await _supabase.from('incident_mediation')
+                    .update({ [side]: true })
+                    .eq('id', existing.id);
+            } else {
+                await _supabase.from('incident_mediation')
+                    .insert({ incident_id: incident.id, tick: currentTick, [side]: true });
+            }
+
+            // Insert actions_taken for inaction tracking
+            await _supabase.from('incident_actions_taken').insert({
+                incident_id: incident.id,
+                nation_id: currentNation.id,
+                action_key: action.action_key,
+                tick: currentTick,
+                ap_spent: totalCost,
+                leverage_rolled: 0,
+                effects_applied: { mediation_proposed: true }
+            });
+
+            // System chat (only visible to your nation)
+            await _supabase.from('incident_chat_messages').insert({
+                incident_id: incident.id,
+                nation_id: currentNation.id,
+                sender_role: 'system',
+                message_text: 'Mediation proposed. Awaiting opponent response at tick resolution.',
+                tick: currentTick,
+                is_system: true,
+                chat_context: 'internal'
+            });
+
+            await refreshIncidentView(incident.id);
+            return;
+        }
+
+        // 3. Handle concede (immediate resolution)
+        if (isConcede) {
+            const resType = isA ? 'concession_a' : 'concession_b';
+            const oppLev = isA ? (incident.leverage_b || 0) : (incident.leverage_a || 0);
+            const govType = isA ? incident.nation_a_gov_type : incident.nation_b_gov_type;
+            const isAuto = govType === 'autocracy';
+            const cost = isAuto ? Math.round(oppLev * 1.5) : oppLev;
+
+            // Resolve incident
+            await _supabase.from('incidents').update({
+                status: 'resolved',
+                resolved_tick: currentTick,
+                resolution_type: resType
+            }).eq('id', incident.id);
+
+            // Apply stat cost
+            const statKey = isAuto ? 'regime_health' : 'gov_approval';
+            const currentVal = Number(currentNation[statKey] ?? 50);
+            await _supabase.from('nations').update({
+                [statKey]: Math.max(0, currentVal - cost)
+            }).eq('id', currentNation.id);
+
+            // Insert actions_taken
+            await _supabase.from('incident_actions_taken').insert({
+                incident_id: incident.id,
+                nation_id: currentNation.id,
+                action_key: 'concede',
+                tick: currentTick,
+                ap_spent: 0,
+                leverage_rolled: 0,
+                effects_applied: { resolution_type: resType, cost, stat: statKey }
+            });
+
+            // Timeline event
+            const nameA = incident.nation_a?.name || 'A';
+            const nameB = incident.nation_b?.name || 'B';
+            const conceder = isA ? nameA : nameB;
+            await _supabase.from('incident_events').insert({
+                incident_id: incident.id,
+                tick: currentTick,
+                event_type: 'resolution',
+                event_text: `${conceder} concedes. Crisis resolved.`,
+                is_action: true,
+                action_style: 'peaceful',
+                source_nation_id: currentNation.id,
+                visibility: 'both'
+            });
+
+            await refreshIncidentView(incident.id);
+            return;
+        }
+
+        // 4. Standard action: roll leverage
+        const levMin = action.leverage_min || 0;
+        const levMax = action.leverage_max || 0;
+        let leverageRolled = levMin + Math.floor(Math.random() * (levMax - levMin + 1));
+
+        // Backfire check
+        let backfired = false;
+        if (action.backfire_chance && Math.random() < action.backfire_chance) {
+            backfired = true;
+            leverageRolled = 0;
+        }
+
+        // Update leverage
+        const levField = isA ? 'leverage_a' : 'leverage_b';
+        const currentLev = isA ? (incident.leverage_a || 0) : (incident.leverage_b || 0);
+        const newLev = currentLev + leverageRolled;
+
+        await _supabase.from('incidents')
+            .update({ [levField]: newLev })
+            .eq('id', incident.id);
+
+        // Reset inaction counter
+        const inactionField = isA ? 'inaction_a_ticks' : 'inaction_b_ticks';
+        await _supabase.from('incidents')
+            .update({ [inactionField]: 0 })
+            .eq('id', incident.id);
+
+        // Insert actions_taken
+        const cooldownUntil = action.cooldown_ticks > 0 ? currentTick + action.cooldown_ticks : null;
+        await _supabase.from('incident_actions_taken').insert({
+            incident_id: incident.id,
+            nation_id: currentNation.id,
+            action_key: action.action_key,
+            tick: currentTick,
+            ap_spent: totalCost,
+            leverage_rolled: leverageRolled,
+            backfired,
+            effects_applied: backfired ? (action.backfire_effects || {}) : (action.effects_template || {}),
+            cooldown_until_tick: cooldownUntil
+        });
+
+        // Determine action style from escalation_color
+        const styleMap = { escalate: 'hostile', pressure: 'pressure', diplomatic: 'peaceful', concede: 'peaceful', wait: 'neutral' };
+
+        // Insert timeline event
+        const eventText = backfired
+            ? `BACKFIRE: ${currentNation.name} attempted ${action.action_name} — it failed.`
+            : `${currentNation.name}: ${action.action_name}. Leverage +${leverageRolled}.`;
+
+        await _supabase.from('incident_events').insert({
+            incident_id: incident.id,
+            tick: currentTick,
+            event_type: 'player_action',
+            event_key: action.action_key,
+            source_nation_id: currentNation.id,
+            source_role: action.required_role,
+            leverage_shift_a: isA ? leverageRolled : 0,
+            leverage_shift_b: isA ? 0 : leverageRolled,
+            event_text: eventText,
+            is_action: true,
+            action_style: styleMap[action.escalation_color] || 'neutral',
+            stat_effects: backfired ? action.backfire_effects : action.effects_template,
+            visibility: 'both'
+        });
+
+        // System chat
+        await _supabase.from('incident_chat_messages').insert({
+            incident_id: incident.id,
+            nation_id: currentNation.id,
+            sender_role: 'system',
+            message_text: backfired
+                ? `${action.required_role} attempted ${action.action_name} — BACKFIRE.`
+                : `${action.required_role} executed ${action.action_name}. Leverage +${leverageRolled}.`,
+            tick: currentTick,
+            is_system: true,
+            chat_context: 'internal'
+        });
+
+        await refreshIncidentView(incident.id);
+
+    } finally {
+        actionExecuting = false;
+    }
+}
+
+async function refreshIncidentView(incidentId) {
+    // Reload fresh incident data + re-render
+    const { data: fresh } = await _supabase
+        .from('incidents')
+        .select('*, nation_a:nations!incidents_nation_a_id_fkey(id, name), nation_b:nations!incidents_nation_b_id_fkey(id, name)')
+        .eq('id', incidentId)
+        .single();
+    if (!fresh) return;
+
+    // Refresh faction AP
+    const { data: freshFaction } = await _supabase
+        .from('factions')
+        .select('action_points')
+        .eq('id', currentFaction.id)
+        .single();
+    if (freshFaction) currentFaction.action_points = freshFaction.action_points;
+
+    // Update the incident in allIncidents
+    const idx = allIncidents.findIndex(i => i.id === incidentId);
+    if (idx >= 0) allIncidents[idx] = fresh;
+
+    renderLeverageTrack(fresh);
+    renderIncidentHeader(fresh);
+    await loadTimeline(incidentId, fresh);
+
+    const isInvolved = fresh.nation_a_id === currentNation.id || fresh.nation_b_id === currentNation.id;
+    if (isInvolved && fresh.status !== 'resolved') {
+        await renderActionsPanel(fresh);
+    } else {
+        const header = document.getElementById('actions-header');
+        const list = document.getElementById('actions-list');
+        header.innerHTML = fresh.status === 'resolved'
+            ? '<span class="actions-observer">This incident has been resolved.</span>'
+            : '<span class="actions-observer">You do not have a crisis role.</span>';
+        list.innerHTML = '';
+    }
+
+    if (isInvolved && fresh.status !== 'resolved') {
+        await loadChat(incidentId);
+    }
 }
 
 
