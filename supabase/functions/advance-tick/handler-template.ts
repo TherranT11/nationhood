@@ -2665,6 +2665,19 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] IPO processing failed (non-fatal):', ipoErr);
     }
 
+    // ══════════════════════════════════════════════════════════════════
+    // 4c. INCIDENTS — global trigger check (runs once per tick, not per-nation)
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const incidentResults = await processIncidentTriggers(supabase, nationList, newTick);
+        if (incidentResults.length > 0) {
+            summary.incidents = incidentResults;
+            console.log(`[advanceTick] Incidents: ${incidentResults.length} new incident(s) triggered`);
+        }
+    } catch (incidentErr) {
+        console.error('[advanceTick] Incident processing failed (non-fatal):', incidentErr);
+    }
+
     // 5. Commit shard tick/date AFTER all nation processing completes.
     // This is the last step — if the function timed out earlier, the tick
     // number stays unchanged and the cron will re-process on the next run.
