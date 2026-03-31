@@ -44,7 +44,7 @@ export var TRADE_SECTORS = [
         label: 'Food & Agriculture',
         export_only: false,
         export_stat: 'arable_land',
-        export_threshold: 20
+        export_threshold: 10
     },
     {
         key: 'manufactured_goods',

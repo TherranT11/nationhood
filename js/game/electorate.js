@@ -2877,7 +2877,7 @@ export async function cancelIdeologyAction(supabase, factionId, nationId, action
  */
 export async function executeMediaCampaign(supabase, factionId, nationId, targetAxis, targetDirection, currentTick) {
     const cfg = IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN;
-    const _mcLedger = { reason: 'media_campaign', detail: 'Media Campaign (upfront)', tick: currentTick };
+    const mcLedger = { reason: 'media_campaign', detail: 'Media Campaign (upfront)', tick: currentTick };
 
     if (!AXIS_KEYS.includes(targetAxis)) {
         return { success: false, message: `Unknown axis: ${targetAxis}` };
@@ -2899,7 +2899,7 @@ export async function executeMediaCampaign(supabase, factionId, nationId, target
         return { success: false, message: 'You already have an active media campaign.' };
     }
 
-    const apResult = await deductAP(supabase, factionId, cfg.AP_COST, _mcLedger);
+    const apResult = await deductAP(supabase, factionId, cfg.AP_COST, mcLedger);
     if (!apResult.success) {
         return { success: false, message: apResult.error || 'Insufficient AP' };
     }

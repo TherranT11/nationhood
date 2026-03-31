@@ -1,7 +1,6 @@
 // js/news.js — The Cruceran & The Continental newspaper pages
 
 import { tickToDate } from './utils.js';
-import { nudgeApproval } from './game/electorate.js';
 
 // Module-level references set during init
 let _supabase = null;
@@ -339,7 +338,7 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-modal">
                 <div class="nws-modal-header">
                     <h3>Write Article</h3>
-                    <span class="nws-ap-badge" id="nws-reward-badge">+2 Vis, +1 Approval, +1 Enthusiasm (4000+)</span>
+                    <span class="nws-ap-badge" id="nws-reward-badge">+5 Momentum (8000+)</span>
                 </div>
                 <button class="nws-modal-close" id="nws-modal-close">&times;</button>
                 <div class="nws-modal-body">
@@ -392,7 +391,7 @@ export async function initNewspaper(supabase, state) {
                     <div class="nws-form-group nws-intl-check">
                         <label class="nws-intl-label">
                             <input type="checkbox" id="nws-intl-checkbox">
-                            <strong>Post Internationally</strong>: This will show up across all news sites. Cost 1 AP. +1 Additional Visibility.
+                            <strong>Post Internationally</strong>: This will show up across all news sites. Cost 1 AP.
                         </label>
                     </div>
 
@@ -435,7 +434,7 @@ export async function initNewspaper(supabase, state) {
     if (rewardBadge) {
         rewardBadge.textContent = _isAutocracyNation
             ? '+1 Backing (4000+)'
-            : '+2 Vis, +1 Approval, +1 Enthusiasm (4000+)';
+            : '+5 Momentum (8000+)';
     }
 
     // === LOAD & DISPLAY ARTICLES ===
@@ -443,33 +442,6 @@ export async function initNewspaper(supabase, state) {
 
     // === VOLBAL LIGUE NATIONALE ===
     loadAndRenderVLN();
-}
-
-/** Award visibility to a democratic faction for writing an article */
-async function _applyArticleVisibilityReward(factionId, nationId, amount = 2) {
-    // No-op: visibility column repurposed for momentum (3-pillar election system).
-    return;
-}
-
-/** Award +1 party approval to a democratic faction for writing a long article */
-async function _applyArticleApprovalReward(factionId, nationId) {
-    await nudgeApproval(_supabase, factionId, nationId, 1, { source: 'article:published' });
-}
-
-/** Award +1 enthusiasm to the nation's electorate for a published article */
-async function _applyArticleEnthusiasmReward(nationId) {
-    const { data: profile } = await _supabase
-        .from('electorate_profile')
-        .select('id, enthusiasm')
-        .eq('nation_id', nationId)
-        .maybeSingle();
-    if (!profile) return;
-    const current = Number(profile.enthusiasm ?? 50);
-    const newVal = Math.min(90, current + 1);
-    await _supabase
-        .from('electorate_profile')
-        .update({ enthusiasm: newVal })
-        .eq('id', profile.id);
 }
 
 /** Award backing to an autocracy faction for writing an article */
@@ -539,11 +511,11 @@ function bindModalEvents() {
             if (_isAutocracyNation) {
                 tag = len >= 4000 ? ' · +1 Backing' : ` · ${4000 - len} more for +1 Backing`;
             } else {
-                tag = len >= 4000 ? ' · +2 Visibility' : ` · ${4000 - len} more for +2 Visibility`;
+                tag = len >= 8000 ? ' · +5 Momentum' : ` · ${8000 - len} more for +5 Momentum`;
             }
             charCount.textContent = `${len} / 12000${tag}`;
             charCount.classList.toggle('nws-near-limit', len >= 11500);
-            charCount.classList.toggle('nws-ap-qualified', len >= 4000 && len < 11500);
+            charCount.classList.toggle('nws-ap-qualified', _isAutocracyNation ? (len >= 4000 && len < 11500) : (len >= 8000 && len < 11500));
         });
     }
 
@@ -688,7 +660,6 @@ function bindSubmitHandler() {
                 if (error) throw error;
 
                 let successMsg = 'Article published!';
-                const intlBonusVis = isInternational ? 1 : 0;
                 if (_isAutocracyNation) {
                     // Autocracy: +1 Backing for any article >= 4000 chars
                     const backingReward = body.length >= 4000 ? 1 : 0;
@@ -698,20 +669,14 @@ function bindSubmitHandler() {
                     } else {
                         successMsg = `Article published! (${body.length}/4000 chars — no backing reward)`;
                     }
-                    if (intlBonusVis > 0) successMsg += ' +1 Visibility (International).';
                 } else {
-                    // Democracy: +2 Visibility, +1 Approval, +1 Enthusiasm for any article >= 4000 chars
-                    const visBoost = body.length >= 4000 ? 2 + intlBonusVis : intlBonusVis;
-                    if (body.length >= 4000) {
-                        _applyArticleVisibilityReward(faction.id, nation.id, visBoost).catch(err => console.error('[News] Visibility reward failed:', err));
-                        _applyArticleApprovalReward(faction.id, nation.id).catch(err => console.error('[News] Approval reward failed:', err));
-                        _applyArticleEnthusiasmReward(nation.id).catch(err => console.error('[News] Enthusiasm reward failed:', err));
-                        successMsg = `Article published! +${visBoost} Visibility, +1 Approval, +1 Enthusiasm.`;
-                    } else if (intlBonusVis > 0) {
-                        _applyArticleVisibilityReward(faction.id, nation.id, intlBonusVis).catch(err => console.error('[News] Intl visibility reward failed:', err));
-                        successMsg = `Article published! +${intlBonusVis} Visibility (International).`;
+                    // Democracy: +5 Momentum for any article >= 8000 chars
+                    if (body.length >= 8000) {
+                        _supabase.rpc('adjust_momentum', { p_faction_id: faction.id, p_delta: 5 })
+                            .then(({ error: momErr }) => { if (momErr) console.error('[News] Momentum reward failed:', momErr); });
+                        successMsg = `Article published! +5 Momentum.`;
                     } else {
-                        successMsg = `Article published! (${body.length}/4000 chars — no reward)`;
+                        successMsg = `Article published! (${body.length}/8000 chars — no momentum reward)`;
                     }
                 }
                 showFormSuccess(successMsg);
@@ -841,13 +806,12 @@ function openEditModal(article) {
         if (_isAutocracyNation) {
             tag = bodyLen >= 4000 ? ' · +1 Backing' : ` · ${4000 - bodyLen} more for +1 Backing`;
         } else {
-            if (bodyLen >= 8000) tag = ' · +2 Enthusiasm';
-            else if (bodyLen >= 4000) tag = ` · +1 Enthusiasm · ${8000 - bodyLen} more for +2`;
-            else tag = ` · ${4000 - bodyLen} more for enthusiasm`;
+            if (bodyLen >= 8000) tag = ' · +5 Momentum';
+            else tag = ` · ${8000 - bodyLen} more for +5 Momentum`;
         }
         charCount.textContent = `${bodyLen} / 12000${tag}`;
         charCount.classList.toggle('nws-near-limit', bodyLen >= 11500);
-        charCount.classList.toggle('nws-ap-qualified', bodyLen >= 4000 && bodyLen < 11500);
+        charCount.classList.toggle('nws-ap-qualified', _isAutocracyNation ? (bodyLen >= 4000 && bodyLen < 11500) : (bodyLen >= 8000 && bodyLen < 11500));
     }
 
     // Image state
@@ -1841,7 +1805,6 @@ function buildBriefsHtml(articles) {
         </div>
     `).join('');
 }
-
 
 // ==================== VOLBAL LIGUE NATIONALE ====================
 

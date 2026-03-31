@@ -5819,7 +5819,7 @@ function ministryActionDeselect(actionId) {
 // after AP changes (avoids full page re-render)
 function refreshMinistryActionStates(ministryKey) {
     // Custom-layout ministries manage their own state
-    if (ministryKey === 'defense' || ministryKey === 'healthcare') return;
+    if (ministryKey === 'defense' || ministryKey === 'healthcare' || ministryKey === 'education') return;
     const config = MINISTRY_ACTIONS[ministryKey];
     if (!config?.actions) return;
     const ap = currentFaction?.action_points || 0;

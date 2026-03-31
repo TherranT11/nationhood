@@ -219,7 +219,7 @@ async function deductAP(supabase, factionId, cost, ledger?) {
             delta: -cost,
             reason: ledger.reason,
             detail: ledger.detail || null,
-        }).then(() => {}, () => {});
+        }).then(() => {}, (e) => console.warn('[deductAP] ledger insert failed:', e));
     }
     return { success: true, newAp: data };
 }
@@ -394,7 +394,7 @@ var TRADE_SECTORS = [
         label: 'Food & Agriculture',
         export_only: false,
         export_stat: 'arable_land',
-        export_threshold: 20
+        export_threshold: 10
     },
     {
         key: 'manufactured_goods',
@@ -16334,7 +16334,7 @@ async function cancelIdeologyAction(supabase, factionId, nationId, actionId, cur
  */
 async function executeMediaCampaign(supabase, factionId, nationId, targetAxis, targetDirection, currentTick) {
     const cfg = IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN;
-    const _mcLedger = { reason: 'media_campaign', detail: 'Media Campaign (upfront)', tick: currentTick };
+    const mcLedger = { reason: 'media_campaign', detail: 'Media Campaign (upfront)', tick: currentTick };
 
     if (!AXIS_KEYS.includes(targetAxis)) {
         return { success: false, message: `Unknown axis: ${targetAxis}` };
@@ -16356,7 +16356,7 @@ async function executeMediaCampaign(supabase, factionId, nationId, targetAxis, t
         return { success: false, message: 'You already have an active media campaign.' };
     }
 
-    const apResult = await deductAP(supabase, factionId, cfg.AP_COST, _mcLedger);
+    const apResult = await deductAP(supabase, factionId, cfg.AP_COST, mcLedger);
     if (!apResult.success) {
         return { success: false, message: apResult.error || 'Insufficient AP' };
     }
@@ -19398,8 +19398,9 @@ registerAutocracyAction('arrest_leader', {
     isStrongmanExclusive: true,
     mutualExclusions: [],
     async validate(supabase, ctx) {
-        const { nation, extra } = ctx;
+        const { nation, factionState, extra } = ctx;
         if (!extra?.targetFactionId) return 'Must specify targetFactionId';
+        if (extra.targetFactionId === factionState.faction_id) return 'Cannot arrest your own leader';
         const { data: t } = await supabase.from('faction_pillar_state').select('is_strongman, arrested_leader')
             .eq('faction_id', extra.targetFactionId).eq('nation_id', nation.id).single();
         if (!t) return 'Target not found';
@@ -19410,6 +19411,7 @@ registerAutocracyAction('arrest_leader', {
     async execute(supabase, ctx) {
         const { nation, factionState, extra, currentTick } = ctx;
         const targetFactionId = extra?.targetFactionId;
+        if (targetFactionId === factionState.faction_id) return { success: false, error: 'Cannot arrest your own leader' };
 
         // Load target (already validated)
         const { data: targetFps } = await supabase.from('faction_pillar_state')
@@ -19501,17 +19503,20 @@ registerAutocracyAction('execute_leader', {
     isStrongmanExclusive: true,
     mutualExclusions: [],
     async validate(supabase, ctx) {
-        const { nation, extra } = ctx;
+        const { nation, factionState, extra } = ctx;
         if (!extra?.targetFactionId) return 'Must specify targetFactionId';
-        const { data: t } = await supabase.from('faction_pillar_state').select('arrested_leader')
+        if (extra.targetFactionId === factionState.faction_id) return 'Cannot execute your own leader';
+        const { data: t } = await supabase.from('faction_pillar_state').select('is_strongman, arrested_leader')
             .eq('faction_id', extra.targetFactionId).eq('nation_id', nation.id).single();
         if (!t) return 'Target not found';
+        if (t.is_strongman) return 'Cannot execute a strongman';
         if (!t.arrested_leader) return 'Target leader is not arrested';
         return null;
     },
     async execute(supabase, ctx) {
         const { nation, factionState, extra, currentTick } = ctx;
         const targetFactionId = extra?.targetFactionId;
+        if (targetFactionId === factionState.faction_id) return { success: false, error: 'Cannot execute your own leader' };
 
         // Load target (already validated)
         const { data: targetFps } = await supabase.from('faction_pillar_state')
