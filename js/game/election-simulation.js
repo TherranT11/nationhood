@@ -313,7 +313,7 @@ export async function runElectionPreview(supabase, nationId) {
     const factionIds = factions.map(f => f.id);
     const { data: standings } = await supabase
         .from('faction_electoral_standing')
-        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval, visibility, raw_appeal')
+        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval')
         .eq('nation_id', nationId)
         .in('faction_id', factionIds);
 

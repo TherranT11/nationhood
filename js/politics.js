@@ -1195,7 +1195,7 @@ function importanceColor(pct) {
 
 // Ideology box removed — replaced by stance summary container in pol-row-2
 
-function renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, playerFactionId) {
+function renderForecastBox(allParties, totalSeats, currentTick, nextElection, _unused, playerFactionId) {
     const FORECAST_START = 12;
     const MARGIN_START = 12;
     const INACTIVITY_EXCLUSION = 12;
@@ -1230,15 +1230,6 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
             </div>`;
     }
 
-    // Compute per-party momentum (average across blocs)
-    const momMap = {};
-    const momCount = {};
-    for (const row of (blocApprovals || [])) {
-        const fid = row.faction_id;
-        momMap[fid] = (momMap[fid] || 0) + Number(row.momentum || 0);
-        momCount[fid] = (momCount[fid] || 0) + 1;
-    }
-
     const seatMargin = Math.max(1, MARGIN_START - (FORECAST_START - ticksLeft));
 
     // Build party forecast data (exclude inactive parties — they won't participate in the election)
@@ -1254,8 +1245,7 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
     const parties = eligibleParties.map(p => {
         const voteShare = Number(p.national_vote_share || 0);
         const estSeats = Math.round((voteShare / 100) * totalSeats);
-        const avgMom = momCount[p.id] ? Math.round(momMap[p.id] / momCount[p.id]) : 0;
-        return { ...p, estSeats, momentum: avgMom };
+        return { ...p, estSeats, momentum: Number(p.momentum ?? 0) };
     }).sort((a, b) => b.estSeats - a.estSeats);
 
     // Confidence
@@ -6155,17 +6145,13 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
     const rivalIds = rivals.map(p => p.id);
     const { data: rivalStandings } = rivalIds.length > 0
         ? await _supabase.from('faction_electoral_standing')
-            .select('faction_id, party_approval, credibility_modifier')
+            .select('faction_id, party_approval')
             .in('faction_id', rivalIds)
         : { data: [] };
 
     const approvalMap = {};
-    const credibilityMap = {};
     for (const row of (rivalStandings || [])) {
         approvalMap[row.faction_id] = Math.round(row.party_approval ?? 40);
-        const credMod = Number(row.credibility_modifier ?? 1.0);
-        // Map 0.5–1.0 → 0–100 (same formula as player's own credibility card)
-        credibilityMap[row.faction_id] = Math.round(Math.max(0, Math.min(100, (credMod - 0.5) * 200)));
     }
 
     // Fetch leader data for each rival (factions table has leader columns)
@@ -6191,7 +6177,6 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
             : 'Vacant';
         const leaderAge = fd.leader_age || null;
         const approval = approvalMap[p.id] ?? 40;
-        const credibility = credibilityMap[p.id] ?? 0;
         const voteShare = Number(p.national_vote_share || 0);
 
         let status = 'opposition';
@@ -6215,7 +6200,6 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
             totalSeats,
             voteShare,
             approval,
-            credibility,
             ideology: {
                 security_freedom: ideo.security_freedom ?? 0,
                 tradition_progress: ideo.tradition_progress ?? 0,
@@ -6351,9 +6335,6 @@ function renderPartyCard(party, nation) {
     // Stances — rival stance display not yet implemented
     const stancesHtml = '<div style="color:var(--dtxt-dim);font-size:10px;font-style:italic;padding:8px 0;">Rival stance tracking coming soon.</div>';
     const stanceInsight = '';
-
-    // Credibility color (0-100 scale where 100 = healthy neutral)
-    const credColor = party.credibility >= 80 ? 'var(--dgreen)' : party.credibility >= 50 ? 'var(--damber)' : 'var(--dred)';
 
     return `
     <div class="op-card" style="background:linear-gradient(135deg, ${cGlow} 0%, var(--dbg-2) 40%);border-color:${cBorder}">
