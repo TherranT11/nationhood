@@ -6185,8 +6185,8 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const platformAppeal = Math.round(Number(playerStanding.platform_appeal ?? 0));
     const alignScore = Math.max(0, Math.min(100, Math.round(Number(playerStanding.ideological_alignment ?? 50))));
     const credModifier = Number(playerStanding.credibility_modifier ?? 1.0);
-    // Canonical formula: (cred - 0.5) * 100 maps 0.5→0, 1.0→50, 1.5→100
-    const credScore = Math.max(0, Math.min(100, Math.round((credModifier - 0.5) * 100)));
+    // Canonical formula: (cred - 0.5) * 200 maps 0.5→0, 1.0→100, 1.5→200 (clamped 0-100)
+    const credScore = Math.max(0, Math.min(100, Math.round((credModifier - 0.5) * 200)));
     const contestedShare = Number(playerStanding.contested_vote_share ?? 0);
     const realizedShare = Number(playerStanding.realized_vote_share ?? 0);
     const turnout = Number(playerStanding.turnout_rate ?? 0.65);
@@ -6197,7 +6197,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
     const prevApproval = playerStanding.prev_party_approval != null ? Number(playerStanding.prev_party_approval) : null;
     const prevVisibility = playerStanding.prev_visibility != null ? Math.round(Number(playerStanding.prev_visibility)) : null;
     const prevCredMod = playerStanding.prev_credibility_modifier != null ? Number(playerStanding.prev_credibility_modifier) : null;
-    const prevCredScore = prevCredMod != null ? Math.max(0, Math.min(100, Math.round((prevCredMod - 0.5) * 100))) : null;
+    const prevCredScore = prevCredMod != null ? Math.max(0, Math.min(100, Math.round((prevCredMod - 0.5) * 200))) : null;
 
     // Determine if player is in government
     const coalitionIds = govFormRes.data?.party_ids || [];
@@ -6518,7 +6518,7 @@ async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeolo
             const apr = Math.round(Number(s.polled_party_approval ?? s.party_approval ?? 0));
             const vi = Math.round(Number(s.polled_visibility ?? s.visibility ?? 0));
             const polledCred = Number(s.polled_credibility ?? s.credibility_modifier ?? 1);
-            const cr = Math.max(0, Math.min(100, Math.round((polledCred - 0.5) * 100)));
+            const cr = Math.max(0, Math.min(100, Math.round((polledCred - 0.5) * 200)));
             const to = ((Number(s.turnout_rate ?? 0.65)) * 100).toFixed(0);
             const rowCls = isYou ? 'vt-comp-row--you' : '';
             compRowsHtml += `
