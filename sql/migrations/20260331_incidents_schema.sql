@@ -476,7 +476,7 @@ CREATE POLICY incident_chat_select ON incident_chat_messages
         chat_context = 'public'
         OR nation_id IN (
             SELECT f.nation_id FROM factions f
-            WHERE f.user_id = auth.uid()
+            WHERE f.id = auth.uid() OR f.linked_user_id = auth.uid()
         )
     );
 
@@ -486,7 +486,7 @@ CREATE POLICY incident_chat_insert ON incident_chat_messages
     WITH CHECK (
         nation_id IN (
             SELECT f.nation_id FROM factions f
-            WHERE f.user_id = auth.uid()
+            WHERE f.id = auth.uid() OR f.linked_user_id = auth.uid()
         )
     );
 
