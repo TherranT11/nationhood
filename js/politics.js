@@ -4626,7 +4626,8 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
                 if (!_caIsGoverning) baseRoll += 1; // opposition bonus
                 else if ((n.gov_approval || 0) >= 40) baseRoll += 2; // government with decent approval
                 // Give momentum via atomic RPC (3-pillar system)
-                await _supabase.rpc('adjust_momentum', { p_faction_id: f.id, p_delta: baseRoll });
+                const { error: momErr } = await _supabase.rpc('adjust_momentum', { p_faction_id: f.id, p_delta: baseRoll });
+                if (momErr) console.warn('[PressConference] Momentum RPC failed:', momErr.message);
                 await _supabase.from('campaign_actions').insert({
                     party_id: f.id, nation_id: n.id, action_type: 'press_conference',
                     ap_cost: 2, tick_performed: tick, result: { momentumDelta: baseRoll }
@@ -6521,7 +6522,7 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
     </div>`;
 
     // --- Momentum Box ---
-    // momentum column added to factions table; momentum_log not yet implemented (reads as []).
+    // Momentum score (0-100) from factions table, decays 8%/tick, reset after elections.
     const momentum = Number(faction.momentum ?? 0);
     const momentumDecayRate = 0.08;
     const decayPerTick = (momentum * momentumDecayRate).toFixed(1);

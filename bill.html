@@ -209,7 +209,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, adjustCredibility, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination, advanceBillEmergency, EO_CONFIG, executeWhipCaucus } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination, advanceBillEmergency, EO_CONFIG, executeWhipCaucus } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 /** Scale a policy cost by its scaling stat (e.g., population). */
 function scalePolicyCost(baseCost, scalingStat, nation) {
@@ -2276,7 +2276,8 @@ async function enactDecree() {
                     return calculateBillDynamicPenalty(sponsorIdeology, [art]) < 0;
                 }).length;
                 if (opposedCount > 0) {
-                    await _supabase.rpc('adjust_momentum', { p_faction_id: currentBill.proposed_by, p_delta: -opposedCount });
+                    const { error: momErr } = await _supabase.rpc('adjust_momentum', { p_faction_id: currentBill.proposed_by, p_delta: -opposedCount });
+                    if (momErr) console.warn('[enactDecree] Momentum penalty failed:', momErr.message);
                 }
             }
         }
@@ -2336,8 +2337,9 @@ async function sendToFloor() {
                 return calculateBillDynamicPenalty(factionIdeology, [art]) < 0;
             }).length;
             if (opposedCount > 0) {
-                await _supabase.rpc('adjust_momentum', { p_faction_id: currentBill.proposed_by, p_delta: -opposedCount });
-                penaltyMsg = `\n\n⚠ Ideology penalty: -${opposedCount} momentum (${opposedCount} article${opposedCount !== 1 ? 's' : ''} conflict${opposedCount === 1 ? 's' : ''} with your values)`;
+                const { error: momErr } = await _supabase.rpc('adjust_momentum', { p_faction_id: currentBill.proposed_by, p_delta: -opposedCount });
+                if (momErr) console.warn('[sendToFloor] Momentum penalty failed:', momErr.message);
+                else penaltyMsg = `\n\n⚠ Ideology penalty: -${opposedCount} momentum (${opposedCount} article${opposedCount !== 1 ? 's' : ''} conflict${opposedCount === 1 ? 's' : ''} with your values)`;
             }
         }
 

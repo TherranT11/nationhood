@@ -11485,11 +11485,12 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
     }
 
     // Reset momentum + momentum_log for ALL active parties in the nation (not just seat winners)
-    const { data: allNationFactions } = await supabase.from('factions')
+    const { data: allNationFactions, error: factionQueryErr } = await supabase.from('factions')
         .select('id')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party')
         .is('abandoned_at', null);
+    if (factionQueryErr) console.error('[Election] Failed to fetch factions for momentum reset:', factionQueryErr.message);
     for (const f of (allNationFactions || [])) {
         const { error: momErr } = await supabase.from('factions')
             .update({ momentum: 0, momentum_log: [] })
@@ -16555,7 +16556,7 @@ async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick
             } else {
                 // Phase 2 (ticks 5–9): momentum boost — 1d3 (1–3) per tick
                 const momRoll = 1 + Math.floor(Math.random() * 3); // 1, 2, or 3
-                await adjustFactionMomentum(supabase, act.faction_id, nation.id, momRoll, { source: 'media_campaign:momentum' });
+                await adjustFactionMomentum(supabase, act.faction_id, nationId, momRoll, { source: 'media_campaign:momentum' });
             }
         } else if (act.action_type === 'grassroots_movement') {
             const grCfg = IDEO_SHIFT_CONFIG.GRASSROOTS;
@@ -16576,7 +16577,7 @@ async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick
             }
             // Periodic momentum boost: +1 every VISIBILITY_INTERVAL ticks
             if (ticksActive > 0 && ticksActive % grCfg.VISIBILITY_INTERVAL === 0) {
-                await adjustFactionMomentum(supabase, act.faction_id, nation.id, 1, { source: 'grassroots:momentum' });
+                await adjustFactionMomentum(supabase, act.faction_id, nationId, 1, { source: 'grassroots:momentum' });
             }
             // Track cumulative drift for cancel revert
             const grPrevTotal = Number(act.band_shift_total || 0);
