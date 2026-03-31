@@ -2275,23 +2275,6 @@ async function enactDecree() {
         const { error } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
         if (error) throw error;
 
-        // Apply momentum penalty for opposed ideology articles (-1 per opposed article)
-        if (currentBill.proposed_by) {
-            let sponsorIdeology = await loadFactionIdeology(_supabase, currentBill.proposed_by);
-            if (sponsorIdeology?._error) sponsorIdeology = null;
-            if (sponsorIdeology) {
-                const opposedCount = (currentBill.bill_articles || []).filter(art => {
-                    const p = art.policies || art;
-                    if (!p) return false;
-                    return calculateBillDynamicPenalty(sponsorIdeology, [art]) < 0;
-                }).length;
-                if (opposedCount > 0) {
-                    const { error: momErr } = await _supabase.rpc('adjust_momentum', { p_faction_id: currentBill.proposed_by, p_delta: -opposedCount });
-                    if (momErr) console.warn('[enactDecree] Momentum penalty failed:', momErr.message);
-                }
-            }
-        }
-
         // Calculate caucus dispositions via server-side RPC (RLS blocks client writes)
         try {
             const { error: caucusErr } = await _supabase.rpc('calculate_caucus_dispositions', { p_bill_id: billId });
@@ -2338,28 +2321,13 @@ async function sendToFloor() {
         const { error } = await _supabase.from('bills').update(updateFields).eq('id', billId);
         if (error) throw error;
 
-        // Apply momentum penalty for opposed ideology articles (-1 per opposed article)
-        let penaltyMsg = '';
-        if (factionIdeology && currentBill.proposed_by) {
-            const opposedCount = (currentBill.bill_articles || []).filter(art => {
-                const p = art.policies || art;
-                if (!p) return false;
-                return calculateBillDynamicPenalty(factionIdeology, [art]) < 0;
-            }).length;
-            if (opposedCount > 0) {
-                const { error: momErr } = await _supabase.rpc('adjust_momentum', { p_faction_id: currentBill.proposed_by, p_delta: -opposedCount });
-                if (momErr) console.warn('[sendToFloor] Momentum penalty failed:', momErr.message);
-                else penaltyMsg = `\n\n⚠ Ideology penalty: -${opposedCount} momentum (${opposedCount} article${opposedCount !== 1 ? 's' : ''} conflict${opposedCount === 1 ? 's' : ''} with your values)`;
-            }
-        }
-
         // Calculate caucus dispositions via server-side RPC (RLS blocks client writes)
         try {
             const { error: caucusErr } = await _supabase.rpc('calculate_caucus_dispositions', { p_bill_id: billId });
             if (caucusErr) console.warn('[sendToFloor] Caucus RPC error (non-fatal):', caucusErr.message);
         } catch (e) { /* non-fatal */ }
 
-        alert('Bill sent to the floor!' + penaltyMsg);
+        alert('Bill sent to the floor!');
         window.location.reload();
     } catch (e) {
         console.error(e);
