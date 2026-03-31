@@ -2,7 +2,6 @@
 
 import { tickToDate } from './utils.js';
 
-
 // Module-level references set during init
 let _supabase = null;
 let _state = null;
@@ -445,7 +444,6 @@ export async function initNewspaper(supabase, state) {
     loadAndRenderVLN();
 }
 
-
 /** Award backing to an autocracy faction for writing an article */
 async function _applyArticleBackingReward(factionId) {
     const { data: fps } = await _supabase
@@ -808,13 +806,12 @@ function openEditModal(article) {
         if (_isAutocracyNation) {
             tag = bodyLen >= 4000 ? ' · +1 Backing' : ` · ${4000 - bodyLen} more for +1 Backing`;
         } else {
-            if (bodyLen >= 8000) tag = ' · +2 Enthusiasm';
-            else if (bodyLen >= 4000) tag = ` · +1 Enthusiasm · ${8000 - bodyLen} more for +2`;
-            else tag = ` · ${4000 - bodyLen} more for enthusiasm`;
+            if (bodyLen >= 8000) tag = ' · +5 Momentum';
+            else tag = ` · ${8000 - bodyLen} more for +5 Momentum`;
         }
         charCount.textContent = `${bodyLen} / 12000${tag}`;
         charCount.classList.toggle('nws-near-limit', bodyLen >= 11500);
-        charCount.classList.toggle('nws-ap-qualified', bodyLen >= 4000 && bodyLen < 11500);
+        charCount.classList.toggle('nws-ap-qualified', _isAutocracyNation ? (bodyLen >= 4000 && bodyLen < 11500) : (bodyLen >= 8000 && bodyLen < 11500));
     }
 
     // Image state
@@ -1808,7 +1805,6 @@ function buildBriefsHtml(articles) {
         </div>
     `).join('');
 }
-
 
 // ==================== VOLBAL LIGUE NATIONALE ====================
 
