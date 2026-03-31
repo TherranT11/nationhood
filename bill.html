@@ -2494,7 +2494,9 @@ async function submitAmendment() {
 }
 
 async function respondToAmendment(reqId, response) {
+    if (_billArticleLock) return;
     if (!currentFaction || currentBill.proposed_by !== currentFaction.id) return;
+    _billArticleLock = true;
     try {
         const req = amendmentRequests.find(r => r.id === reqId);
         if (!req) {
@@ -2503,13 +2505,30 @@ async function respondToAmendment(reqId, response) {
             alert('Amendment request not found. The page has been refreshed.');
             return;
         }
-        await _supabase.from('bill_amendment_requests').update({ status: response }).eq('id', reqId);
         if (response === 'accepted') {
+            // Pre-check: charge sponsor 1 AP if adding a non-text article beyond the free limit
+            const isStrike = req.request_type === 'strike' && req.target_article_id;
+            if (!isStrike) {
+                const nonTextCount = countNonTextArticles(currentBill.bill_articles);
+                const isTextAmendment = !req.policy_id;
+                if (!isTextAmendment && nonTextCount >= FREE_ARTICLE_LIMIT) {
+                    const apResult = await deductAP(_supabase, currentFaction.id, 1);
+                    if (!apResult.success) {
+                        alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
+                        return;
+                    }
+                    currentFaction.action_points = apResult.newAp;
+                }
+            }
+
+            // AP secured — now commit the acceptance
+            await _supabase.from('bill_amendment_requests').update({ status: 'accepted' }).eq('id', reqId);
+
             // Convert conditional vote to locked accept FIRST (before article deletion
             // cascade-deletes the amendment request and orphan cleanup removes the vote)
             await _supabase.rpc('convert_conditional_vote', { p_bill_id: billId, p_faction_id: req.faction_id, p_seat_count: allPartySeats[req.faction_id] || 0 });
 
-            if (req.request_type === 'strike' && req.target_article_id) {
+            if (isStrike) {
                 // Strike accepted — record the struck policy so it can't be re-added
                 const targetArticle = (currentBill.bill_articles || []).find(a => a.id === req.target_article_id);
                 if (targetArticle?.policy_id) {
@@ -2536,20 +2555,7 @@ async function respondToAmendment(reqId, response) {
                 // Clean up orphaned conditional supporters whose strike amendments were cascade-deleted
                 await cleanupOrphanedConditionalSupport();
             } else {
-                // Add amendment — charge sponsor 1 AP if beyond free article limit
-                const nonTextCount = countNonTextArticles(currentBill.bill_articles);
-                const isTextAmendment = !req.policy_id;
-                if (!isTextAmendment && nonTextCount >= FREE_ARTICLE_LIMIT) {
-                    const apResult = await deductAP(_supabase, currentFaction.id, 1);
-                    if (!apResult.success) {
-                        // Revert acceptance — put amendment back to pending
-                        await _supabase.from('bill_amendment_requests').update({ status: 'pending' }).eq('id', reqId);
-                        await _supabase.from('bill_support').update({ stance: 'conditional', locked: false }).eq('bill_id', billId).eq('faction_id', req.faction_id);
-                        alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
-                        return;
-                    }
-                    currentFaction.action_points = apResult.newAp;
-                }
+                // Add amendment — AP already deducted above if needed
                 const maxArt = Math.max(...(currentBill.bill_articles || []).map(a => a.article_number), 1);
                 if (req.policy_id) {
                     await _supabase.from('bill_articles').insert({ bill_id: billId, policy_id: req.policy_id, article_number: maxArt + 1, added_by: req.faction_id });
@@ -2558,11 +2564,13 @@ async function respondToAmendment(reqId, response) {
                 }
             }
         } else if (response === 'rejected' && req) {
+            await _supabase.from('bill_amendment_requests').update({ status: 'rejected' }).eq('id', reqId);
             // Amendment rejected — remove conditional support, reset to no stance
             await _supabase.from('bill_support').delete().eq('bill_id', billId).eq('faction_id', req.faction_id).eq('stance', 'conditional');
         }
         await loadBillData();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
+    finally { _billArticleLock = false; }
 }
 
 // ==================== WITHDRAW CONDITIONAL SUPPORT ====================
