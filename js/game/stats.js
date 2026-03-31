@@ -655,8 +655,8 @@ export const MINISTER_APPROVAL_CONFIG = {
     // Foreign Minister: -0.25 approval/tick per nation without an outgoing ambassador
     MISSING_AMBASSADOR_PENALTY: -0.25,
 
-    // Government approval: -3 per vacant ministry seat
-    VACANCY_PENALTY: -3,
+    // Government approval: -0.1 per vacant ministry per tick
+    VACANCY_PENALTY: -0.1,
 
     // Government approval floor: even the worst government retains some support
     APPROVAL_FLOOR: 15,

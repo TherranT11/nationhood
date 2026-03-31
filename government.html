@@ -6058,15 +6058,15 @@ function renderProtestCrisisCard() {
     const isTier7 = p.tier === 7;
     const tierLabel = isTier7 ? 'NATIONWIDE PROTEST' : 'HISTORIC PROTEST';
     const ticksElapsed = currentTick - (p.crisis_started_tick || currentTick);
-    const duration = p.crisis_duration || (isTier7 ? PROTEST_CONFIG.TIER7_DURATION : PROTEST_CONFIG.TIER6_DURATION);
+    const duration = p.crisis_duration || 6;
     const ticksRemaining = Math.max(0, duration - ticksElapsed);
 
     // Per-tick effects display
     let effectsHtml = '';
     if (isTier7) {
-        effectsHtml = '<span style="color:#d9534f;">GOV −3</span><span style="color:#d9534f;">UNREST +3</span><span style="color:#d9534f;">GDP −0.2</span><span style="color:#d9534f;">INVEST −2</span><span style="color:#d9534f;">VIOLENCE +1</span>';
+        effectsHtml = '<span style="color:#d9534f;">GOV −0.5</span><span style="color:#d9534f;">UNREST +2</span><span style="color:#d9534f;">GDP −0.3</span><span style="color:#d9534f;">INVEST −1</span><span style="color:#d9534f;">VIOLENCE +1</span>';
     } else {
-        effectsHtml = '<span style="color:#d9534f;">GOV −2</span><span style="color:#d9534f;">UNREST +2</span><span style="color:#d9534f;">HAPPY −1</span>';
+        effectsHtml = '<span style="color:#d9534f;">GOV −0.25</span><span style="color:#d9534f;">UNREST +1</span><span style="color:#d9534f;">GDP −0.15</span><span style="color:#d9534f;">INVEST −0.5</span><span style="color:#d9534f;">VIOLENCE +0.5</span>';
         if (ticksElapsed > 3) {
             effectsHtml += '<span style="color:#d9534f;">VIOLENCE +1</span>';
         }

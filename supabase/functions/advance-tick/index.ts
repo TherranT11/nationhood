@@ -4191,8 +4191,8 @@ const MINISTER_APPROVAL_CONFIG = {
     // Foreign Minister: -0.25 approval/tick per nation without an outgoing ambassador
     MISSING_AMBASSADOR_PENALTY: -0.25,
 
-    // Government approval: -3 per vacant ministry seat
-    VACANCY_PENALTY: -3,
+    // Government approval: -0.1 per vacant ministry per tick
+    VACANCY_PENALTY: -0.1,
 
     // Government approval floor: even the worst government retains some support
     APPROVAL_FLOOR: 15,
@@ -21530,21 +21530,19 @@ const PROTEST_CONFIG = {
     FATIGUE_LOOKBACK_TICKS: 6,
     FATIGUE_PENALTY_PER_PROTEST: 10,
 
-    // Tier 6 crisis
-    TIER6_DURATION: 6,
-    TIER6_GOV_APPROVAL_PER_TICK: -2,
-    TIER6_CIVIL_UNREST_PER_TICK: 2,
-    TIER6_HAPPINESS_PER_TICK: -1,
-    TIER6_POLITICAL_VIOLENCE_AFTER_TICK: 3, // starts after tick 3
-    TIER6_POLITICAL_VIOLENCE_PER_TICK: 1,
+    // Tier 6 crisis (half of Tier 7 values)
+    TIER6_GOV_APPROVAL_PER_TICK: -0.25,
+    TIER6_CIVIL_UNREST_PER_TICK: 1,
+    TIER6_GDP_GROWTH_PER_TICK: -0.15,
+    TIER6_FOREIGN_INVESTMENT_PER_TICK: -0.5,
+    TIER6_POLITICAL_VIOLENCE_PER_TICK: 0.5,
     TIER6_ENFORCE_SUCCESS_CHANCE: 0.33,
 
     // Tier 7 crisis
-    TIER7_DURATION: 7,
-    TIER7_GOV_APPROVAL_PER_TICK: -3,
-    TIER7_CIVIL_UNREST_PER_TICK: 3,
-    TIER7_GDP_GROWTH_PER_TICK: -0.2,
-    TIER7_FOREIGN_INVESTMENT_PER_TICK: -2,
+    TIER7_GOV_APPROVAL_PER_TICK: -0.5,
+    TIER7_CIVIL_UNREST_PER_TICK: 2,
+    TIER7_GDP_GROWTH_PER_TICK: -0.3,
+    TIER7_FOREIGN_INVESTMENT_PER_TICK: -1,
     TIER7_POLITICAL_VIOLENCE_PER_TICK: 1,
     TIER7_DEMAND_WINDOW_TICKS: 6,
     TIER7_DEMAND_MIN_MAGNITUDE: 6,
@@ -21974,14 +21972,10 @@ function computeTier6CrisisEffects(ticksActive, publicAddressThisTick) {
     const effects = {
         gov_approval: PROTEST_CONFIG.TIER6_GOV_APPROVAL_PER_TICK,
         civil_unrest: PROTEST_CONFIG.TIER6_CIVIL_UNREST_PER_TICK,
-        happiness: PROTEST_CONFIG.TIER6_HAPPINESS_PER_TICK,
-        political_violence: 0,
+        gdp_growth: PROTEST_CONFIG.TIER6_GDP_GROWTH_PER_TICK,
+        foreign_investment: PROTEST_CONFIG.TIER6_FOREIGN_INVESTMENT_PER_TICK,
+        political_violence: PROTEST_CONFIG.TIER6_POLITICAL_VIOLENCE_PER_TICK,
     };
-
-    // Political violence starts after tick 3
-    if (ticksActive > PROTEST_CONFIG.TIER6_POLITICAL_VIOLENCE_AFTER_TICK) {
-        effects.political_violence = PROTEST_CONFIG.TIER6_POLITICAL_VIOLENCE_PER_TICK;
-    }
 
     // Public Address reduces civil unrest accumulation by 1 that tick
     if (publicAddressThisTick) {
@@ -22832,7 +22826,7 @@ async function executeEPOOnCrisis(supabase, factionId, nationId, protestId, curr
         await protestUpdate(supabase, protestId, {
             tier: 7,
             crisis_started_tick: currentTick,
-            crisis_duration: PROTEST_CONFIG.TIER7_DURATION,
+            crisis_duration: 1 + Math.floor(Math.random() * 12), // 1d12
             tier7_demand: demand,
             effects_applied: [
                 ...(protest.effects_applied || []),
