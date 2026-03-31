@@ -213,22 +213,8 @@ export async function applyNoVotePenalty(supabase, bill, nationId) {
         const approvalLoss = -(1 + Math.floor(Math.random() * 3));
         await nudgeApproval(supabase, faction.id, nationId, approvalLoss, { source: 'bill:no_vote' });
 
-        // -5 visibility
-        const { data: standing } = await supabase
-            .from('faction_electoral_standing')
-            .select('id, visibility')
-            .eq('faction_id', faction.id)
-            .eq('nation_id', nationId)
-            .maybeSingle();
-        if (standing) {
-            const newVis = Math.max(0, (Number(standing.visibility) || 0) + VISIBILITY_PENALTY);
-            await supabase.from('faction_electoral_standing')
-                .update({ visibility: newVis })
-                .eq('id', standing.id);
-        }
-
-        // -5 credibility
-        await adjustCredibility(supabase, faction.id, nationId, CREDIBILITY_PENALTY);
+        // Visibility and credibility writes removed — 3-pillar election system.
+        // No-vote penalty is handled server-side via adjustFactionMomentum.
 
         penalized.push({
             factionId: faction.id,
@@ -331,11 +317,13 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
         }
         if (tags.length === 0) continue;
 
-        // Build YES voter set (normalize committee stances)
+        // Build YES and NO voter sets (normalize committee stances)
         const yesVoters = new Set();
+        const noVoters = new Set();
         for (const s of (bill.bill_support || [])) {
             const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
             if (stance === 'yes') yesVoters.add(s.faction_id);
+            else if (stance === 'no') noVoters.add(s.faction_id);
         }
         // Sponsor always counts as YES
         if (bill.proposed_by) yesVoters.add(bill.proposed_by);
@@ -362,6 +350,11 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
             // +4 for voting YES (all YES voters including sponsor)
             for (const factionId of yesVoters) {
                 addShift(factionId, mapping.axisKey, 4 * mapping.direction * diminish);
+            }
+
+            // -4 for voting NO (opposite direction)
+            for (const factionId of noVoters) {
+                addShift(factionId, mapping.axisKey, -4 * mapping.direction * diminish);
             }
         }
     }
@@ -426,8 +419,7 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
 const IDEOLOGY_DECAY_DEAD_ZONE = 10; // no decay within ±10 of center
 /**
  * Per-tick ideology decay toward center (0).
- * Integer arithmetic to match INTEGER columns in faction_ideology.
- *   ±11–74 → 1/tick, ±75–100 → 2/tick
+ *   ±11–49 → 0.5/tick, ±50–100 → 1/tick
  * Dead zone: scores within ±10 don't decay.
  */
 export async function processIdeologyDecay(supabase, nationId, currentTick) {
@@ -443,7 +435,7 @@ export async function processIdeologyDecay(supabase, nationId, currentTick) {
             const score = ideo[axis.key] || 0;
             if (Math.abs(score) <= IDEOLOGY_DECAY_DEAD_ZONE) continue;
 
-            const absDecay = Math.max(1, Math.round(Math.abs(score) / 50));
+            const absDecay = Math.abs(score) >= 50 ? 1 : 0.5;
             const newScore = score > 0
                 ? Math.max(0, score - absDecay)
                 : Math.min(0, score + absDecay);

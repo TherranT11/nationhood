@@ -209,7 +209,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, adjustCredibility, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination, advanceBillEmergency, EO_CONFIG, executeWhipCaucus } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination, advanceBillEmergency, EO_CONFIG, executeWhipCaucus } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 /** Scale a policy cost by its scaling stat (e.g., population). */
 function scalePolicyCost(baseCost, scalingStat, nation) {
@@ -2190,6 +2190,20 @@ async function castVote(vote) {
         }
     }
 
+    // Vote locking: YES/NO can only change to Abstain, not flip to the opposite.
+    // This prevents strategic vote-flipping that games the momentum system.
+    const existingStance = mySupport?.stance;
+    if (existingStance && existingStance !== vote) {
+        const normExisting = existingStance === 'accept' ? 'yes' : existingStance === 'reject' ? 'no' : existingStance;
+        const normNew = vote === 'accept' ? 'yes' : vote === 'reject' ? 'no' : vote;
+        if ((normExisting === 'yes' || normExisting === 'no') && normNew !== 'abstain') {
+            alert(`You have already voted ${normExisting.toUpperCase()}. You can only change your vote to ABSTAIN.`);
+            _castingVote = false;
+            document.querySelectorAll('.vote-btn').forEach(b => b.disabled = false);
+            return;
+        }
+    }
+
     try {
         const { error } = await _supabase.from('bill_support').upsert({
             bill_id: billId, faction_id: currentFaction.id,
@@ -2251,7 +2265,7 @@ async function enactDecree() {
         const { error } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
         if (error) throw error;
 
-        // Apply credibility penalty for opposed ideology articles (-3% per opposed article)
+        // Apply momentum penalty for opposed ideology articles (-1 per opposed article)
         if (currentBill.proposed_by) {
             let sponsorIdeology = await loadFactionIdeology(_supabase, currentBill.proposed_by);
             if (sponsorIdeology?._error) sponsorIdeology = null;
@@ -2262,8 +2276,8 @@ async function enactDecree() {
                     return calculateBillDynamicPenalty(sponsorIdeology, [art]) < 0;
                 }).length;
                 if (opposedCount > 0) {
-                    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-                    await adjustCredibility(_supabase, currentBill.proposed_by, currentNation.id, -(opposedCount * 0.03), 0, shard?.current_tick || 0, { source: 'legislation:ideology_conflict' });
+                    const { error: momErr } = await _supabase.rpc('adjust_momentum', { p_faction_id: currentBill.proposed_by, p_delta: -opposedCount });
+                    if (momErr) console.warn('[enactDecree] Momentum penalty failed:', momErr.message);
                 }
             }
         }
@@ -2314,7 +2328,7 @@ async function sendToFloor() {
         const { error } = await _supabase.from('bills').update(updateFields).eq('id', billId);
         if (error) throw error;
 
-        // Apply credibility penalty for opposed ideology articles (-3% per opposed article)
+        // Apply momentum penalty for opposed ideology articles (-1 per opposed article)
         let penaltyMsg = '';
         if (factionIdeology && currentBill.proposed_by) {
             const opposedCount = (currentBill.bill_articles || []).filter(art => {
@@ -2323,10 +2337,9 @@ async function sendToFloor() {
                 return calculateBillDynamicPenalty(factionIdeology, [art]) < 0;
             }).length;
             if (opposedCount > 0) {
-                const credDelta = -(opposedCount * 0.03);
-                const { data: _shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-                await adjustCredibility(_supabase, currentBill.proposed_by, currentNation.id, credDelta, 0, _shard?.current_tick || 0, { source: 'legislation:ideology_conflict' });
-                penaltyMsg = `\n\n⚠ Ideology penalty: -${(opposedCount * 6)} credibility (${opposedCount} article${opposedCount !== 1 ? 's' : ''} conflict${opposedCount === 1 ? 's' : ''} with your values)`;
+                const { error: momErr } = await _supabase.rpc('adjust_momentum', { p_faction_id: currentBill.proposed_by, p_delta: -opposedCount });
+                if (momErr) console.warn('[sendToFloor] Momentum penalty failed:', momErr.message);
+                else penaltyMsg = `\n\n⚠ Ideology penalty: -${opposedCount} momentum (${opposedCount} article${opposedCount !== 1 ? 's' : ''} conflict${opposedCount === 1 ? 's' : ''} with your values)`;
             }
         }
 
@@ -2494,7 +2507,9 @@ async function submitAmendment() {
 }
 
 async function respondToAmendment(reqId, response) {
+    if (_billArticleLock) return;
     if (!currentFaction || currentBill.proposed_by !== currentFaction.id) return;
+    _billArticleLock = true;
     try {
         const req = amendmentRequests.find(r => r.id === reqId);
         if (!req) {
@@ -2503,13 +2518,30 @@ async function respondToAmendment(reqId, response) {
             alert('Amendment request not found. The page has been refreshed.');
             return;
         }
-        await _supabase.from('bill_amendment_requests').update({ status: response }).eq('id', reqId);
         if (response === 'accepted') {
+            // Pre-check: charge sponsor 1 AP if adding a non-text article beyond the free limit
+            const isStrike = req.request_type === 'strike' && req.target_article_id;
+            if (!isStrike) {
+                const nonTextCount = countNonTextArticles(currentBill.bill_articles);
+                const isTextAmendment = !req.policy_id;
+                if (!isTextAmendment && nonTextCount >= FREE_ARTICLE_LIMIT) {
+                    const apResult = await deductAP(_supabase, currentFaction.id, 1);
+                    if (!apResult.success) {
+                        alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
+                        return;
+                    }
+                    currentFaction.action_points = apResult.newAp;
+                }
+            }
+
+            // AP secured — now commit the acceptance
+            await _supabase.from('bill_amendment_requests').update({ status: 'accepted' }).eq('id', reqId);
+
             // Convert conditional vote to locked accept FIRST (before article deletion
             // cascade-deletes the amendment request and orphan cleanup removes the vote)
             await _supabase.rpc('convert_conditional_vote', { p_bill_id: billId, p_faction_id: req.faction_id, p_seat_count: allPartySeats[req.faction_id] || 0 });
 
-            if (req.request_type === 'strike' && req.target_article_id) {
+            if (isStrike) {
                 // Strike accepted — record the struck policy so it can't be re-added
                 const targetArticle = (currentBill.bill_articles || []).find(a => a.id === req.target_article_id);
                 if (targetArticle?.policy_id) {
@@ -2536,20 +2568,7 @@ async function respondToAmendment(reqId, response) {
                 // Clean up orphaned conditional supporters whose strike amendments were cascade-deleted
                 await cleanupOrphanedConditionalSupport();
             } else {
-                // Add amendment — charge sponsor 1 AP if beyond free article limit
-                const nonTextCount = countNonTextArticles(currentBill.bill_articles);
-                const isTextAmendment = !req.policy_id;
-                if (!isTextAmendment && nonTextCount >= FREE_ARTICLE_LIMIT) {
-                    const apResult = await deductAP(_supabase, currentFaction.id, 1);
-                    if (!apResult.success) {
-                        // Revert acceptance — put amendment back to pending
-                        await _supabase.from('bill_amendment_requests').update({ status: 'pending' }).eq('id', reqId);
-                        await _supabase.from('bill_support').update({ stance: 'conditional', locked: false }).eq('bill_id', billId).eq('faction_id', req.faction_id);
-                        alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
-                        return;
-                    }
-                    currentFaction.action_points = apResult.newAp;
-                }
+                // Add amendment — AP already deducted above if needed
                 const maxArt = Math.max(...(currentBill.bill_articles || []).map(a => a.article_number), 1);
                 if (req.policy_id) {
                     await _supabase.from('bill_articles').insert({ bill_id: billId, policy_id: req.policy_id, article_number: maxArt + 1, added_by: req.faction_id });
@@ -2558,11 +2577,13 @@ async function respondToAmendment(reqId, response) {
                 }
             }
         } else if (response === 'rejected' && req) {
+            await _supabase.from('bill_amendment_requests').update({ status: 'rejected' }).eq('id', reqId);
             // Amendment rejected — remove conditional support, reset to no stance
             await _supabase.from('bill_support').delete().eq('bill_id', billId).eq('faction_id', req.faction_id).eq('stance', 'conditional');
         }
         await loadBillData();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
+    finally { _billArticleLock = false; }
 }
 
 // ==================== WITHDRAW CONDITIONAL SUPPORT ====================

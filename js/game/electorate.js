@@ -2088,32 +2088,9 @@ function getDiminishingMultiplier(currentCount) {
  * @param {number} boost - Positive visibility increment (e.g., 5-15)
  */
 export async function boostVisibility(supabase, factionId, nationId, boost) {
-    if (!boost) return;
-
-    const { data: standing } = await supabase
-        .from('faction_electoral_standing')
-        .select('id, visibility, campaign_actions_this_tick')
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId)
-        .maybeSingle();
-    if (!standing) return;
-
-    const actionCount = Number(standing.campaign_actions_this_tick ?? 0);
-    // Diminishing returns only apply to positive boosts; penalties hit at full force
-    const effectiveBoost = boost > 0
-        ? round2(boost * getDiminishingMultiplier(actionCount))
-        : boost;
-
-    const old = Number(standing.visibility ?? CFG.DEFAULT_VISIBILITY);
-    const newVis = round2(clamp(old + effectiveBoost, 0, 100));
-
-    const { error: visErr } = await supabase.from('faction_electoral_standing')
-        .update({
-            visibility: newVis,
-            campaign_actions_this_tick: actionCount + 1,
-        })
-        .eq('id', standing.id);
-    if (visErr) console.error('[Electorate] visibility update failed:', visErr.message);
+    // No-op: visibility column repurposed for momentum (3-pillar election system).
+    // Server-side tickElectionPillars overwrites visibility with momentum each tick.
+    return;
 }
 
 /**
@@ -2129,45 +2106,10 @@ export async function boostVisibility(supabase, factionId, nationId, boost) {
  * @param {string} [opts.source='unknown'] - Audit tag for the party_approval_log (e.g., 'rally', 'crisis:Recession')
  */
 export async function nudgeApproval(supabase, factionId, nationId, delta, opts) {
-    if (!delta || delta === 0) return;
-    const campaign = opts?.campaign ?? false;
-    const source = opts?.source ?? 'unknown';
-
-    const { data: standing } = await supabase
-        .from('faction_electoral_standing')
-        .select('id, party_approval, campaign_actions_this_tick')
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId)
-        .maybeSingle();
-    if (!standing) return;
-
-    const actionCount = Number(standing.campaign_actions_this_tick ?? 0);
-    const multiplier = campaign ? getDiminishingMultiplier(actionCount) : 1;
-    const effectiveDelta = round2(delta * multiplier);
-
-    const old = Number(standing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);
-    const newApproval = round2(clamp(old + effectiveDelta, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX));
-
-    const updateFields = { party_approval: newApproval };
-    if (campaign) updateFields.campaign_actions_this_tick = actionCount + 1;
-
-    const { error: appErr } = await supabase.from('faction_electoral_standing')
-        .update(updateFields)
-        .eq('id', standing.id);
-    if (appErr) console.error('[Electorate] approval update failed:', appErr.message);
-
-    // Audit log (non-fatal)
-    try {
-        const { data: shard } = await supabase
-            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        await supabase.from('party_approval_log').insert({
-            faction_id: factionId,
-            nation_id: nationId,
-            amount: effectiveDelta,
-            source,
-            tick: shard?.current_tick || 0
-        });
-    } catch (e) { /* non-blocking */ }
+    // No-op: party_approval column repurposed for governance score (3-pillar election system).
+    // Server-side tickElectionPillars overwrites party_approval with governance score each tick.
+    // All momentum effects are handled server-side via adjustFactionMomentum().
+    return;
 }
 
 /**
@@ -2207,44 +2149,9 @@ export async function nudgeEnthusiasm(supabase, nationId, delta) {
  * @param {number} [currentTick=0] - Current tick (needed for suspend calculation)
  */
 export async function adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0, opts = {}) {
-    if (!delta && !suspendRecoveryTicks) return;
-
-    const { data: standing } = await supabase
-        .from('faction_electoral_standing')
-        .select('id, credibility_modifier, credibility_recovery_suspended_until')
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId)
-        .maybeSingle();
-    if (!standing) return;
-
-    const old = Number(standing.credibility_modifier ?? 1.0);
-    const newCred = round3(clamp(old + (delta || 0), CFG.CREDIBILITY_MIN, CFG.CREDIBILITY_MAX));
-
-    const updateObj = { credibility_modifier: newCred };
-    if (suspendRecoveryTicks > 0) {
-        const suspendUntil = currentTick + suspendRecoveryTicks;
-        const currentSuspend = Number(standing.credibility_recovery_suspended_until ?? 0);
-        updateObj.credibility_recovery_suspended_until = Math.max(currentSuspend, suspendUntil);
-    }
-
-    const { error: credErr } = await supabase.from('faction_electoral_standing')
-        .update(updateObj)
-        .eq('id', standing.id);
-    if (credErr) console.error('[Electorate] credibility update failed:', credErr.message);
-
-    // Audit log (non-fatal)
-    if (delta && opts.source) {
-        const tick = currentTick || opts.tick || 0;
-        supabase.from('credibility_log').insert({
-            faction_id: factionId,
-            nation_id: nationId,
-            amount: delta,
-            source: opts.source,
-            tick,
-        }).then(({ error: logErr }) => {
-            if (logErr) console.warn('[Electorate] credibility_log insert failed:', logErr.message);
-        });
-    }
+    // No-op: credibility system removed (3-pillar election system).
+    // Election outcomes now driven by governance (40%), momentum (30%), ideology (30%).
+    return;
 }
 
 // ============================================================================
@@ -3403,19 +3310,7 @@ export async function executeIdeologicalPivot(supabase, factionId, nationId, tar
         .eq('id', factionId);
     if (pivotErr) console.error('[Pivot] pivot tracking update failed:', pivotErr.message);
 
-    // Apply credibility penalty
-    if (credPenalty > 0) {
-        const { data: standing } = await supabase.from('faction_electoral_standing')
-            .select('id, credibility_modifier')
-            .eq('faction_id', factionId).eq('nation_id', nationId).maybeSingle();
-        if (standing) {
-            const newCred = Math.max(0.1, (Number(standing.credibility_modifier) || 1.0) - credPenalty * 0.01);
-            const { error: credErr } = await supabase.from('faction_electoral_standing')
-                .update({ credibility_modifier: newCred })
-                .eq('id', standing.id);
-            if (credErr) console.error('[Pivot] credibility update failed:', credErr.message);
-        }
-    }
+    // Credibility penalty removed — 3-pillar election system. Pivot cost is AP only.
 
     // Build result
     const axisDef = IDEOLOGY_AXES.find(a => a.key === targetAxis);

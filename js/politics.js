@@ -7,8 +7,9 @@ import { tickToDate } from './utils.js';
 import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, RALLY_CONFIG, executeRally, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, switchPartyEndorsement, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, suspendIdeologyAction, continueIdeologyAction, cancelIdeologyAction, executeIdeologicalPivot, PIVOT_CONFIG } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
-import { statDirectionSign } from './game/stats.js';
-import { calculateIdeologyZones } from './game/electorate.js';
+import { statDirectionSign, NATION_STAT_COLUMNS } from './game/stats.js';
+import { formatStatName } from './game/political-actions.js';
+import { calculateIdeologyZones, bimodalAxisAlignment } from './game/electorate.js';
 import { getElectabilityTier, getTraitAPModifier } from './game/party-leadership.js';
 import { AUTOCRACY_ACTIONS, dispatchAutocracyAction, getEscalatingCost, checkCooldown } from './game/autocracy-actions.js';
 
@@ -43,7 +44,7 @@ initPage('politics', async (state) => {
     // Fetch total seats from all parties
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name, custom_logo_url, party_logo, party_description')
+        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name, custom_logo_url, party_logo, party_description, momentum, momentum_log')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -187,7 +188,7 @@ initPage('politics', async (state) => {
     // Fetch current administration
     const { data: administration } = await _supabase
         .from('administrations')
-        .select('id, admin_name, government_type, started_at_tick, president_name, president_party_id, president_party_name')
+        .select('id, admin_name, government_type, started_at_tick, president_name, president_party_id, president_party_name, stats_at_start')
         .eq('nation_id', nation.id)
         .is('ended_at_tick', null)
         .order('started_at_tick', { ascending: false })
@@ -465,11 +466,11 @@ async function renderPartyTab(f, nation, data) {
         </div>
     </div>`;
 
-    const votersTabBtn = isAutoNation ? '' : '<button class="pol-page-tab" data-page-tab="voters">Voters</button>';
-    const votersContent = isAutoNation ? '' : `
-    <div class="pol-page-content" data-page-content="voters">
-        <div id="voters-container" class="vc-page" style="min-height:300px;">
-            <div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;">Loading vote composition...</div>
+    const electionsTabBtn = isAutoNation ? '' : '<button class="pol-page-tab" data-page-tab="elections">Elections</button>';
+    const electionsContent = isAutoNation ? '' : `
+    <div class="pol-page-content" data-page-content="elections">
+        <div id="elections-container" style="min-height:300px;">
+            <div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;">Loading election data...</div>
         </div>
     </div>`;
 
@@ -479,7 +480,7 @@ async function renderPartyTab(f, nation, data) {
         <button class="pol-page-tab" data-page-tab="actions">Actions</button>
         ${electorateTabBtn}
         ${otherPartiesTabBtn}
-        ${votersTabBtn}
+        ${electionsTabBtn}
     </div>
     <div class="pol-page-content active" data-page-content="politics">
     ${politicsTabContent}
@@ -491,15 +492,15 @@ async function renderPartyTab(f, nation, data) {
     </div>
     ${electorateContent}
     ${otherPartiesContent}
-    ${votersContent}`;
+    ${electionsContent}`;
 
     document.getElementById('content-area').innerHTML = html;
 
-    // Wire up page-level sub-tabs (Politics / Actions / Electorate / Other Parties / Voters)
+    // Wire up page-level sub-tabs (Politics / Actions / Electorate / Other Parties / Elections)
     let actionsLoaded = false;
     let otherPartiesLoaded = false;
     let electorateSpreadLoaded = false;
-    let votersLoaded = false;
+    let electionsLoaded = false;
     document.querySelectorAll('.pol-page-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             document.querySelectorAll('.pol-page-tab').forEach(t => t.classList.remove('active'));
@@ -527,10 +528,10 @@ async function renderPartyTab(f, nation, data) {
                 otherPartiesLoaded = true;
                 renderOtherPartiesTab(f, nation, allParties, allPartyIdeologies, coalition, totalSeats, currentTick);
             }
-            // Lazy-load Voters tab on first click
-            if (target === 'voters' && !votersLoaded) {
-                votersLoaded = true;
-                renderVotersTab(f, nation, allParties, allPartyIdeologies, currentTick, voteSharePct, totalSeats, mySeats);
+            // Lazy-load Elections tab on first click
+            if (target === 'elections' && !electionsLoaded) {
+                electionsLoaded = true;
+                renderElectionsTab(nation, administration, coalition, f, allParties, allPartyIdeologies, currentTick, role, nextElection);
             }
         });
     });
@@ -1194,7 +1195,7 @@ function importanceColor(pct) {
 
 // Ideology box removed — replaced by stance summary container in pol-row-2
 
-function renderForecastBox(allParties, totalSeats, currentTick, nextElection, blocApprovals, playerFactionId) {
+function renderForecastBox(allParties, totalSeats, currentTick, nextElection, _unused, playerFactionId) {
     const FORECAST_START = 12;
     const MARGIN_START = 12;
     const INACTIVITY_EXCLUSION = 12;
@@ -1229,15 +1230,6 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
             </div>`;
     }
 
-    // Compute per-party momentum (average across blocs)
-    const momMap = {};
-    const momCount = {};
-    for (const row of (blocApprovals || [])) {
-        const fid = row.faction_id;
-        momMap[fid] = (momMap[fid] || 0) + Number(row.momentum || 0);
-        momCount[fid] = (momCount[fid] || 0) + 1;
-    }
-
     const seatMargin = Math.max(1, MARGIN_START - (FORECAST_START - ticksLeft));
 
     // Build party forecast data (exclude inactive parties — they won't participate in the election)
@@ -1253,8 +1245,7 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, bl
     const parties = eligibleParties.map(p => {
         const voteShare = Number(p.national_vote_share || 0);
         const estSeats = Math.round((voteShare / 100) * totalSeats);
-        const avgMom = momCount[p.id] ? Math.round(momMap[p.id] / momCount[p.id]) : 0;
-        return { ...p, estSeats, momentum: avgMom };
+        return { ...p, estSeats, momentum: Number(p.momentum ?? 0) };
     }).sort((a, b) => b.estSeats - a.estSeats);
 
     // Confidence
@@ -2700,7 +2691,7 @@ const CA_ACTIONS = [
     // APPROVAL
     { id: 'attack', name: 'Campaign Attack', ap: ATTACK_CONFIG.AP_COST, color: '#ef4444', icon: '✦',
       category: 'approval', affects: 'Approval',
-      desc: 'Target a rival party\'s record or leadership. More effective when backed by evidence. Risky — a poorly aimed attack can damage your own credibility.' },
+      desc: 'Target a rival party\'s record or leadership. More effective when backed by evidence. Risky — a poorly aimed attack can damage your own momentum.' },
     { id: 'promise', name: 'Make a Promise', ap: MAKE_PROMISE_CONFIG.AP_COST, color: '#a78bfa', icon: '◆',
       category: 'approval', affects: 'Approval',
       desc: 'Publicly commit to improving a national stat or resolving a crisis. Gives an immediate approval boost, but you\'ll face penalties if you fail to deliver after entering government.' },
@@ -2710,10 +2701,10 @@ const CA_ACTIONS = [
       desc: 'Fund an ideological think tank to gradually shift the electorate\'s beliefs on a chosen axis. Expensive long-term investment: 8 AP upfront + 1 AP/tick for 50 ticks.' },
     { id: 'grassroots_movement', name: 'Grassroots Movement', ap: IDEO_SHIFT_CONFIG.GRASSROOTS.AP_COST, color: '#10b981', icon: '🌱',
       category: 'alignment', affects: 'Ideology',
-      desc: 'Build a slow-burning grassroots campaign to shift public ideology over time. Cheap to start but runs for 100 ticks. Gradually drifts opinion and builds visibility.' },
+      desc: 'Build a slow-burning grassroots campaign to shift public ideology over time. Cheap to start but runs for 100 ticks. Gradually drifts opinion and builds momentum.' },
     { id: 'pivot', name: 'Ideological Pivot', ap: 1, color: '#f59e0b', icon: '⟳',
       category: 'alignment', affects: 'Alignment',
-      desc: 'Shift your party\'s position on a chosen ideological axis. Costs escalate with each pivot (+1 AP per use, resets after 20 ticks). Reversing your current lean costs extra AP and credibility.' },
+      desc: 'Shift your party\'s position on a chosen ideological axis. Costs escalate with each pivot (+1 AP per use, resets after 20 ticks). Reversing your current lean costs extra AP.' },
     // APPEAL
     { id: 'take_stance', name: 'Take a Stance', ap: STANCE_CONFIG.AP_COST, color: '#38bdf8', icon: '⚑',
       category: 'appeal', affects: 'Appeal',
@@ -2727,7 +2718,7 @@ const CA_ACTIONS = [
       desc: 'Rally your supporters in a public show of strength. Outcomes range from rousing success to embarrassing gaffe — results are random and generate headlines.' },
     { id: 'press_conference', name: 'Press Conference', ap: 2, color: '#fbbf24', icon: '🎤',
       category: 'visibility', affects: 'Visibility',
-      desc: 'Hold a press conference to make a public statement. Base roll: -2 to +2 Visibility. Opposition parties get +1 bonus. Parties with approval above 40 get +1 bonus.' },
+      desc: 'Hold a press conference to make a public statement. Base roll: -2 to +2 Momentum. Opposition parties get +1 bonus. Parties with approval above 40 get +1 bonus.' },
     // TOOLS
     { id: 'poll_now', name: 'Poll Now', ap: 1, color: '#22d3ee', icon: '📊',
       category: 'tools', affects: 'Informational',
@@ -3396,7 +3387,7 @@ function renderActionConfig(sel, otherParties, factionIdeo, nation, ap, tick) {
     if (sel.id === 'media_campaign') return renderMediaCampaignConfig();
     if (sel.id === 'grassroots_movement') return renderGrassrootsConfig();
     if (sel.id === 'pivot') return renderPivotConfig(nation);
-    if (sel.id === 'press_conference') return `<div class="ca-info-box">Hold a press conference to make a public statement. Result depends on your position and approval.<br><br><strong>Base roll:</strong> -2 to +2 Visibility<br><strong>Opposition bonus:</strong> +1<br><strong>Government bonus:</strong> +2 (if gov approval ≥ 40)</div>`;
+    if (sel.id === 'press_conference') return `<div class="ca-info-box">Hold a press conference to make a public statement. Result depends on your position and approval.<br><br><strong>Base roll:</strong> -2 to +2 Momentum<br><strong>Opposition bonus:</strong> +1<br><strong>Government bonus:</strong> +2 (if gov approval ≥ 40)</div>`;
     if (sel.id === 'outreach') return `<div class="ca-info-box">Engage directly with communities through town halls, door-knocking, and local events.<br><br><strong>Effect:</strong> +3 Platform Appeal</div>`;
     return '';
 }
@@ -3488,7 +3479,7 @@ function renderTakeStanceConfig(nation) {
             html += `<div style="margin-top:10px;padding:8px 10px;background:rgba(56,189,248,0.04);border:1px solid rgba(56,189,248,0.15);border-radius:3px;font-family:var(--dfont-mono);font-size:10px;">
                 <div style="color:var(--dtext-1);font-weight:600;margin-bottom:4px">${_caStanceIntensity.toUpperCase()} ${sideLabel.toUpperCase()} on ${issueDef?.label || ''}</div>
                 <div style="color:${sideColor};font-weight:700">Ideology: +${selCfg.ideology_shift} ${sideLabel}</div>
-                <div style="color:var(--dtext-3);margin-top:2px">Strength: ${selCfg.strength} · Decay: -${selCfg.decay_rate}/tick · Visibility: +${STANCE_CONFIG.VISIBILITY_BOOST}</div>
+                <div style="color:var(--dtext-3);margin-top:2px">Strength: ${selCfg.strength} · Decay: -${selCfg.decay_rate}/tick</div>
             </div>`;
         }
     }
@@ -3533,7 +3524,7 @@ function renderThinkTankConfig() {
 
 function renderMediaCampaignConfig() {
     const mc = IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN;
-    let html = `<div class="ca-info-box">Launch a media campaign to expand or narrow electorate ideological variance on a chosen axis. Phase 1: 1d5 (0.1–0.5) variance shift/tick for ${mc.DURATION} ticks. Phase 2: 1d3 (1–3) visibility/tick for ${mc.VISIBILITY_TICKS} ticks.</div>`;
+    let html = `<div class="ca-info-box">Launch a media campaign to expand or narrow electorate ideological variance on a chosen axis. Phase 1: 1d5 (0.1–0.5) variance shift/tick for ${mc.DURATION} ticks. Phase 2: 1d3 (1–3) momentum/tick for ${mc.VISIBILITY_TICKS} ticks.</div>`;
     html += renderAxisSelector();
     if (_caTargetAxis) {
         html += `<div class="ca-subtitle" style="margin-top:12px">Variance direction</div>`;
@@ -3546,7 +3537,7 @@ function renderMediaCampaignConfig() {
 
 function renderGrassrootsConfig() {
     const gr = IDEO_SHIFT_CONFIG.GRASSROOTS;
-    let html = `<div class="ca-info-box">Launch a grassroots movement to slowly shift the electorate on a chosen axis. ${gr.AP_COST} AP upfront + ${gr.TICK_AP_COST} AP/tick for ${gr.DURATION} ticks. Drift: 1d2 (${gr.DRIFT_MIN}–${gr.DRIFT_MAX})/tick. +1 visibility every ${gr.VISIBILITY_INTERVAL} ticks.</div>`;
+    let html = `<div class="ca-info-box">Launch a grassroots movement to slowly shift the electorate on a chosen axis. ${gr.AP_COST} AP upfront + ${gr.TICK_AP_COST} AP/tick for ${gr.DURATION} ticks. Drift: 1d2 (${gr.DRIFT_MIN}–${gr.DRIFT_MAX})/tick. +1 momentum every ${gr.VISIBILITY_INTERVAL} ticks.</div>`;
     html += renderAxisSelector();
     if (_caTargetAxis) {
         const axisDef = IDEOLOGY_AXES.find(a => a.key === _caTargetAxis);
@@ -3570,7 +3561,7 @@ function renderPivotConfig(nation) {
     const cooldownRemaining = Math.max(0, PIVOT_CONFIG.COOLDOWN - (tick - lastPivot));
     const onCooldown = lastPivot > 0 && cooldownRemaining > 0;
 
-    let html = `<div class="ca-info-box">Shift your party's ideological position. Each pivot costs +1 AP more than the last (resets after ${PIVOT_CONFIG.ESCALATION_RESET} ticks of no pivots). Reversing direction costs extra AP and credibility. Hold steady 20+ ticks for a conviction bonus.</div>`;
+    let html = `<div class="ca-info-box">Shift your party's ideological position. Each pivot costs +1 AP more than the last (resets after ${PIVOT_CONFIG.ESCALATION_RESET} ticks of no pivots). Reversing direction costs extra AP. Hold steady 20+ ticks for a conviction bonus.</div>`;
 
     if (onCooldown) {
         html += `<div style="font-family:var(--dfont-mono);font-size:11px;color:var(--damber);padding:6px 0">Cooldown: ${cooldownRemaining} tick${cooldownRemaining !== 1 ? 's' : ''} remaining</div>`;
@@ -3593,8 +3584,7 @@ function renderPivotConfig(nation) {
                 const shiftSign = _caTargetDirection === 'right' ? 1 : -1;
                 const isReversal = (currentPos > 0 && shiftSign < 0) || (currentPos < 0 && shiftSign > 0);
                 if (isReversal) {
-                    const credPenalty = PIVOT_CONFIG.REVERSE_CRED_BASE + Math.abs(currentPos) * PIVOT_CONFIG.REVERSE_CRED_SCALE;
-                    html += `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dred);padding:6px 0;border-top:1px solid var(--dborder-1);margin-top:8px">⚠ Reversal: +${PIVOT_CONFIG.REVERSE_AP_EXTRA} AP extra, −${credPenalty.toFixed(1)} credibility</div>`;
+                    html += `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dred);padding:6px 0;border-top:1px solid var(--dborder-1);margin-top:8px">⚠ Reversal: +${PIVOT_CONFIG.REVERSE_AP_EXTRA} AP extra</div>`;
                 }
             }
         }
@@ -3738,10 +3728,10 @@ function renderPromiseConfig(nation) {
                     </div>
                     ${isSel ? `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:4px">Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks (starts after next election) · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE} approval</span></div>
                     <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:3px;display:flex;gap:12px;flex-wrap:wrap">
-                        <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${Math.round(MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY * 100)} credibility</span>
+                        <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} momentum</span>
                     </div>
                     <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;display:flex;gap:12px;flex-wrap:wrap">
-                        <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${Math.round(MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY * 100)} credibility</span>
+                        <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} momentum</span>
                     </div>
                     <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;color:var(--dtext-3)">Countdown deferred until in government · <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick while unfulfilled</span></div>
                     <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;color:var(--dtext-3)">If in opposition after election: <span style="color:#94a3b8">promise extinguishes — no penalty</span></div>` : ''}
@@ -3757,10 +3747,10 @@ function renderPromiseConfig(nation) {
             Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks (starts after next election) · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE} approval</span>
         </div>
         <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:3px;padding:0 2px">
-            <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${Math.round(MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY * 100)} credibility</span>
+            <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} momentum</span>
         </div>
         <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px">
-            <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${Math.round(MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY * 100)} credibility</span>
+            <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} momentum</span>
         </div>
         <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px;color:var(--dtext-3)">Countdown deferred until in government · <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick while unfulfilled</span></div>
         <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px;color:var(--dtext-3)">If in opposition after election: <span style="color:#94a3b8">promise extinguishes — no penalty</span></div>`;
@@ -4191,8 +4181,8 @@ function renderActionResult(result) {
     if (result.promiseType) {
         html += `<div style="border-top:1px solid var(--dborder-1);margin-top:8px;padding-top:8px">
             <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-bottom:4px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">Consequences</div>
-            <div style="font-family:var(--dfont-mono);font-size:10px;color:#4ade80">Kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} approval, +${Math.round(MAKE_PROMISE_CONFIG.KEPT_CREDIBILITY * 100)} credibility</div>
-            <div style="font-family:var(--dfont-mono);font-size:10px;color:#ef4444;margin-top:2px">Broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} approval, ${Math.round(MAKE_PROMISE_CONFIG.BROKEN_CREDIBILITY * 100)} credibility</div>
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:#4ade80">Kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} momentum</div>
+            <div style="font-family:var(--dfont-mono);font-size:10px;color:#ef4444;margin-top:2px">Broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} momentum</div>
             <div style="font-family:var(--dfont-mono);font-size:10px;color:#f97316;margin-top:2px">While unfulfilled: −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick</div>
             <div style="font-family:var(--dfont-mono);font-size:10px;color:#94a3b8;margin-top:2px">Countdown starts after next election · Opposition = extinguished</div>
         </div>`;
@@ -4641,37 +4631,27 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
         } else if (sel.id === 'grassroots_movement') {
             result = await executeGrassrootsMovement(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
         } else if (sel.id === 'press_conference') {
-            // Press Conference: base -2 to +2 visibility, +1 if opposition, +2 if gov with approval >= 40
+            // Press Conference: base -2 to +2 momentum, +1 if opposition, +2 if gov with approval >= 40
             const { deductAP } = await import('./game/config.js');
-            const { getTraitAPModifier } = await import('./game/party-leadership.js');
-            const pressCost = Math.max(1, 2 + getTraitAPModifier('press_conference', f, tick));
+            const { getTraitAPModifier: _getTraitModPC } = await import('./game/party-leadership.js');
+            const pressCost = Math.max(1, 2 + _getTraitModPC('press_conference', f, tick));
             const apResult = await deductAP(_supabase, f.id, pressCost);
             if (!apResult.success) { result = { success: false, error: apResult.error || 'Insufficient AP' }; }
             else {
-                const { boostVisibility } = await import('./game/electorate.js');
                 let baseRoll = Math.floor(Math.random() * 5) - 2; // -2 to +2
                 if (!_caIsGoverning) baseRoll += 1; // opposition bonus
                 else if ((n.gov_approval || 0) >= 40) baseRoll += 2; // government with decent approval
-                // Positive = boost visibility, negative = reduce visibility
-                if (baseRoll > 0) {
-                    await boostVisibility(_supabase, f.id, n.id, baseRoll);
-                } else if (baseRoll < 0) {
-                    const { data: visStanding } = await _supabase.from('faction_electoral_standing')
-                        .select('id, visibility').eq('faction_id', f.id).eq('nation_id', n.id).maybeSingle();
-                    if (visStanding) {
-                        await _supabase.from('faction_electoral_standing').update({
-                            visibility: Math.max(0, (Number(visStanding.visibility) || 0) + baseRoll)
-                        }).eq('id', visStanding.id);
-                    }
-                }
+                // Give momentum via atomic RPC (3-pillar system)
+                const { error: momErr } = await _supabase.rpc('adjust_momentum', { p_faction_id: f.id, p_delta: baseRoll });
+                if (momErr) console.warn('[PressConference] Momentum RPC failed:', momErr.message);
                 await _supabase.from('campaign_actions').insert({
                     party_id: f.id, nation_id: n.id, action_type: 'press_conference',
-                    ap_cost: 2, tick_performed: tick, result: { visBoost: baseRoll }
+                    ap_cost: pressCost, tick_performed: tick, result: { momentumDelta: baseRoll }
                 });
                 const sign = baseRoll >= 0 ? '+' : '';
                 result = { success: true, newAp: apResult.newAp, headline: 'Press Conference',
-                    effects: [{ label: 'Visibility', value: `${sign}${baseRoll}` }],
-                    outcomeName: `Press conference — ${sign}${baseRoll} visibility` };
+                    effects: [{ label: 'Press Coverage', value: `${sign}${baseRoll}` }],
+                    outcomeName: `Press conference — ${sign}${baseRoll} momentum` };
             }
         } else if (sel.id === 'outreach') {
             // Community Outreach: +3 platform appeal, escalating cost (base 3 + escalation)
@@ -5959,7 +5939,7 @@ function _openTakeStanceModal(faction, nation, currentTick, issueStateMap, exist
                 intensityHtml += `<div style="margin-top:10px;padding:8px 10px;background:rgba(56,189,248,0.04);border:1px solid rgba(56,189,248,0.15);border-radius:3px;font-family:var(--dfont-mono);font-size:10px;">
                     <div style="color:var(--dtext-1);font-weight:600;margin-bottom:3px">${selectedIntensity.toUpperCase()} ${sSideLabel.toUpperCase()} on ${issueDef2?.label || ''}</div>
                     <div style="color:${sSideColor};font-weight:700">Ideology: +${selCfg.ideology_shift} ${sSideLabel}</div>
-                    <div style="color:var(--dtext-3);margin-top:2px">Strength: ${selCfg.strength} · Decay: -${selCfg.decay_rate}/tick · Visibility: +${STANCE_CONFIG.VISIBILITY_BOOST}</div>
+                    <div style="color:var(--dtext-3);margin-top:2px">Strength: ${selCfg.strength} · Decay: -${selCfg.decay_rate}/tick</div>
                 </div>`;
             }
         }
@@ -6132,562 +6112,10 @@ async function _renderStanceSummaryStrip(factionId, nationId) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   VOTERS (VOTE COMPOSITION) TAB
+   VOTERS TAB — REMOVED (replaced by Elections tab with 3-pillar system)
    ═══════════════════════════════════════════════════════════════════ */
-
-// Three-pillar colors
-
-async function renderVotersTab(playerFaction, nation, allParties, allPartyIdeologies, currentTick, voteSharePct, totalSeats, mySeats) {
-    const container = document.getElementById('voters-container');
-    if (!container) return;
-
-    try {
-
-    const partyName = playerFaction.faction_name || 'Unknown Party';
-
-    // Fetch standing (full fields), logs, campaigns, government formation, all standings, and stances in parallel
-    const [standingRes, partyLogRes, credLogRes, activeCampaignsRes, govFormRes, allStandingsRes, stancesRes] = await Promise.all([
-        _supabase.from('faction_electoral_standing')
-            .select('faction_id, party_approval, credibility_modifier, ideological_alignment, visibility, platform_appeal, realized_vote_share, contested_vote_share, turnout_rate, last_polled_tick, polled_party_approval, polled_alignment, polled_platform_appeal, polled_visibility, polled_credibility, polled_vote_share, prev_ideological_alignment, prev_platform_appeal, prev_party_approval, prev_visibility, prev_credibility_modifier')
-            .eq('nation_id', nation.id)
-            .eq('faction_id', playerFaction.id)
-            .maybeSingle(),
-        _supabase.from('party_approval_log')
-            .select('amount, source, tick')
-            .eq('nation_id', nation.id)
-            .eq('faction_id', playerFaction.id)
-            .order('tick', { ascending: false })
-            .limit(20),
-        _supabase.from('credibility_log')
-            .select('amount, source, tick')
-            .eq('nation_id', nation.id)
-            .eq('faction_id', playerFaction.id)
-            .order('tick', { ascending: false })
-            .limit(20),
-        _supabase.from('ideology_shift_actions')
-            .select('action_type, target_axis, target_direction, created_tick, status')
-            .eq('faction_id', playerFaction.id)
-            .eq('nation_id', nation.id)
-            .in('status', ['active', 'paused']),
-        _supabase.from('government_formations')
-            .select('lead_party_id, party_ids')
-            .eq('nation_id', nation.id)
-            .in('status', ['formed', 'caretaker'])
-            .order('formed_at', { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-        // All party standings for comparison table (polled columns for poll-based display)
-        _supabase.from('faction_electoral_standing')
-            .select('faction_id, party_approval, credibility_modifier, ideological_alignment, visibility, platform_appeal, raw_appeal, realized_vote_share, contested_vote_share, turnout_rate, last_polled_tick, polled_party_approval, polled_alignment, polled_platform_appeal, polled_visibility, polled_credibility, polled_vote_share')
-            .eq('nation_id', nation.id),
-        // Player's stances for issue landscape
-        _supabase.from('faction_issue_stance')
-            .select('issue_id, axis, side, intensity, strength')
-            .eq('faction_id', playerFaction.id),
-    ]);
-
-    const playerStanding = standingRes.data;
-    if (!playerStanding) {
-        container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:20px;text-align:center;">Electorate standing not yet computed. Advance a tick to generate data.</div>';
-        return;
-    }
-
-    // ── Extract all five factor scores ──
-    // Five factor cards show LIVE values (updated every tick by the electorate engine).
-    // The Electoral Standing comparison table shows POLLED snapshots (from last poll).
-    // These are intentionally different — cards = current, table = last-polled.
-    const approval = Math.round(Number(playerStanding.party_approval ?? 25));
-    const visibility = Math.round(Number(playerStanding.visibility ?? 0));
-    const platformAppeal = Math.round(Number(playerStanding.platform_appeal ?? 0));
-    const alignScore = Math.max(0, Math.min(100, Math.round(Number(playerStanding.ideological_alignment ?? 50))));
-    const credModifier = Number(playerStanding.credibility_modifier ?? 1.0);
-    // Canonical formula: (cred - 0.5) * 200 maps 0.5→0, 1.0→100, 1.5→200 (clamped 0-100)
-    const credScore = Math.max(0, Math.min(100, Math.round((credModifier - 0.5) * 200)));
-    const contestedShare = Number(playerStanding.contested_vote_share ?? 0);
-    const realizedShare = Number(playerStanding.realized_vote_share ?? 0);
-    const turnout = Number(playerStanding.turnout_rate ?? 0.65);
-
-    // ── Previous-tick values for delta arrows ──
-    const prevAlignment = playerStanding.prev_ideological_alignment != null ? Math.max(0, Math.min(100, Math.round(Number(playerStanding.prev_ideological_alignment)))) : null;
-    const prevAppeal = playerStanding.prev_platform_appeal != null ? Math.round(Number(playerStanding.prev_platform_appeal)) : null;
-    const prevApproval = playerStanding.prev_party_approval != null ? Number(playerStanding.prev_party_approval) : null;
-    const prevVisibility = playerStanding.prev_visibility != null ? Math.round(Number(playerStanding.prev_visibility)) : null;
-    const prevCredMod = playerStanding.prev_credibility_modifier != null ? Number(playerStanding.prev_credibility_modifier) : null;
-    const prevCredScore = prevCredMod != null ? Math.max(0, Math.min(100, Math.round((prevCredMod - 0.5) * 200))) : null;
-
-    // Determine if player is in government
-    const coalitionIds = govFormRes.data?.party_ids || [];
-    const leadPartyId = govFormRes.data?.lead_party_id || null;
-    const isGoverning = coalitionIds.includes(playerFaction.id) || leadPartyId === playerFaction.id || playerFaction.id === nation.ruling_faction_id;
-
-    // ── Compute dynamic weights (same formula as electorate engine) ──
-    const pol = Math.max(0, Math.min(100, Number(nation.polarization ?? 50)));
-    const stab = Math.max(0, Math.min(100, Number(nation.stability ?? 50)));
-    const chaosIndex = ((pol / 100) + (1 - stab / 100)) / 2;
-    const credWeight = 0.35 - chaosIndex * (0.35 - 0.05);
-    const otherBaseSum = 0.25 + 0.20 + 0.20 + 0.15;
-    const otherScale = (1 - credWeight) / otherBaseSum;
-    const weights = {
-        alignment: 0.25 * otherScale,
-        appeal: 0.20 * otherScale,
-        approval: 0.20 * otherScale,
-        visibility: 0.15 * otherScale,
-        credibility: credWeight
-    };
-
-    // Build modifiers list from party_approval_log (per-party events)
-    const partyLog = partyLogRes.data || [];
-    const credLog = credLogRes.data || [];
-    const activeCampaigns = activeCampaignsRes.data || [];
-    const allStandings = allStandingsRes.data || [];
-    const playerStances = stancesRes.data || [];
-    const stanceMap = Object.fromEntries(playerStances.map(s => [s.issue_id, s]));
-
-    // ══════════════════════════════════════════════════════════════
-    //  HELPER FUNCTIONS
-    // ══════════════════════════════════════════════════════════════
-
-    // Human-readable labels for party_approval_log sources
-    const _approvalSourceLabels = {
-        'bill:passed': 'Bill Passed',
-        'bill:failed': 'Bill Failed',
-        'bill:promise_fulfilled': 'Promise Fulfilled',
-        'bill:promise_broken': 'Promise Broken',
-        'bill:veto': 'Bill Vetoed',
-        'rally': 'Rally',
-        'rally:approval_hit': 'Rally',
-        'outreach': 'Outreach',
-        'outreach:approval': 'Outreach',
-        'attack': 'Attack Ad',
-        'attack:received': 'Attacked',
-        'promise:made': 'Promise Made',
-        'promise:kept': 'Promise Kept',
-        'promise:broken': 'Promise Broken',
-        'promise:expired': 'Promise Expired',
-        'promise:unfulfilled_penalty': 'Unfulfilled Promise',
-        'protest:organiser': 'Protest Organised',
-        'executive_order:price_controls': 'Price Controls',
-        'executive_order:national_emergency': 'National Emergency',
-        'executive_order:censure': 'Censured',
-        'executive_order:censure_martyr': 'Censure Backlash',
-        'election:no_confidence_called': 'Called No Confidence',
-        'election:no_confidence_failed': 'No Confidence Failed',
-        'election:presidential_won': 'Won Presidential Election',
-        'election:presidential_lost': 'Lost Presidential Election',
-        'election:formation_timeout': 'Formation Timeout',
-        'impeachment:failed': 'Impeachment Failed',
-        'impeachment:survived': 'Survived Impeachment',
-        'crisis:sovereign_default': 'Sovereign Default',
-        'article:published': 'News Article',
-        'ipo:hold_rally': 'IO Rally',
-        'ipo:rally_all': 'IO Rally (All Members)',
-    };
-    function _formatSource(source) {
-        if (_approvalSourceLabels[source]) return _approvalSourceLabels[source];
-        if (source.startsWith('crisis:cascade:')) return 'Crisis Fallout';
-        if (source.startsWith('crisis:resolved:')) return 'Crisis Resolved: ' + source.slice('crisis:resolved:'.length).replace(/_/g, ' ');
-        if (source.startsWith('crisis:')) return 'Crisis: ' + source.slice('crisis:'.length).replace(/_/g, ' ');
-        if (source.startsWith('protest:')) return 'Protests';
-        if (source.startsWith('bill:')) return 'Legislation';
-        if (source.startsWith('election:')) return 'Election';
-        if (source.startsWith('executive_order:')) return 'Executive Order';
-        return source.replace(/_/g, ' ').replace(/:/g, ' — ');
-    }
-
-    // Credibility source labels
-    const _credSourceLabels = {
-        'attack:received': 'Attacked',
-        'attack:self': 'Attack Backfire',
-        'impeachment:passed': 'Impeached',
-        'impeachment:motion_failed': 'Impeachment Failed',
-        'impeachment:motion_failed:vindicated': 'Vindicated',
-        'impeachment:survived': 'Survived Impeachment',
-        'impeachment:survived:accuser': 'Failed Accusation',
-        'bill:term_limit': 'Term Limit Bill',
-        'no_confidence:passed': 'No Confidence Passed',
-        'no_confidence:failed': 'No Confidence Failed',
-        'no_confidence:failed:vindicated': 'Vindicated (No Confidence)',
-        'executive_order:censure': 'Censured',
-        'impeachment:convicted': 'Convicted & Removed',
-        'sovereign_default': 'Sovereign Default',
-        'resign_pm': 'PM Resignation',
-    };
-    function _formatCredSource(source) {
-        if (_credSourceLabels[source]) return _credSourceLabels[source];
-        if (source.startsWith('promise:kept:')) return `Promise Kept (${source.slice('promise:kept:'.length)})`;
-        if (source.startsWith('promise:broken:')) return `Promise Broken (${source.slice('promise:broken:'.length)})`;
-        if (source.startsWith('promise:nervous:')) return `Promise Nervous (${source.slice('promise:nervous:'.length)})`;
-        if (source.startsWith('promise:')) return 'Promise';
-        if (source.startsWith('attack:')) return 'Attack';
-        return source.replace(/_/g, ' ').replace(/:/g, ' — ');
-    }
-
-    // Score color helper
-    function _scoreColor(val) {
-        if (val >= 60) return '#5cb85c';
-        if (val >= 40) return '#c8a44e';
-        if (val >= 25) return '#d98030';
-        return '#d9534f';
-    }
-
-    // Tier helper
-    function _scoreTier(val) {
-        if (val >= 75) return { label: 'Excellent', color: '#5cb85c' };
-        if (val >= 55) return { label: 'Good', color: '#6baf6b' };
-        if (val >= 40) return { label: 'Average', color: '#c8a44e' };
-        if (val >= 25) return { label: 'Poor', color: '#d98030' };
-        return { label: 'Critical', color: '#d9534f' };
-    }
-
-    // ══════════════════════════════════════════════════════════════
-    //  SECTION A — FIVE FACTOR DASHBOARD
-    // ══════════════════════════════════════════════════════════════
-
-    // Governing status label
-    const statusLabel = isGoverning
-        ? (playerFaction.id === leadPartyId ? 'GOVERNING — LEAD' : 'GOVERNING — COALITION')
-        : 'OPPOSITION';
-    const statusColor = isGoverning ? '#5cb85c' : '#d98030';
-
-    // Factor card builder
-    function _deltaArrow(current, prev) {
-        if (prev == null || prev === current) return '';
-        const delta = Math.round(current) - Math.round(prev);
-        if (delta === 0) return '';
-        const color = delta > 0 ? '#4ade80' : '#ef4444';
-        const arrow = delta > 0 ? '▲' : '▼';
-        return `<span style="font-family:var(--dfont-mono);font-size:9px;color:${color};margin-left:4px;" title="Change since last tick">${arrow}${Math.abs(delta)}</span>`;
-    }
-
-    function _factorCard(label, score, weight, barColor, tierLabel, tierColor, detailHtml, hintHtml, prevScore) {
-        const wPct = Math.round(weight * 100);
-        const deltaHtml = _deltaArrow(score, prevScore);
-        return `
-        <div class="vt-factor-card">
-            <div class="vt-factor-header">
-                <span class="vt-factor-label">${label}</span>
-                <span class="vt-factor-weight" style="color:${barColor}">${wPct}%</span>
-            </div>
-            <div class="vt-factor-score-row">
-                <span class="vt-factor-score" style="color:${barColor}">${typeof score === 'number' ? Math.round(score) : score}</span>
-                <span class="vt-factor-max">/ 100</span>${deltaHtml}
-                <span class="vt-factor-tier" style="color:${tierColor}">${escapeHtml(tierLabel)}</span>
-            </div>
-            <div class="vt-factor-bar"><div class="vt-factor-bar-fill" style="width:${Math.min(100, Math.max(0, score))}%;background:${barColor}"></div></div>
-            <div class="vt-factor-detail">${detailHtml}</div>
-            ${hintHtml ? `<div class="vt-factor-hint">${hintHtml}</div>` : ''}
-        </div>`;
-    }
-
-    // Compute contributions for waterfall
-    const alignContrib = (alignScore * weights.alignment);
-    const appealContrib = (platformAppeal * weights.appeal);
-    const approvalContrib = (approval * weights.approval);
-    const visContrib = (visibility * weights.visibility);
-    const credContrib = (credScore * weights.credibility);
-
-    // ── Card 1: Ideological Alignment ──
-    const alignTier = _scoreTier(alignScore);
-    const alignDetail = `<span class="vt-detail-line">Passive — shifts with electorate ideology</span>`;
-    const alignHint = activeCampaigns.length > 0
-        ? `${activeCampaigns.length} active campaign${activeCampaigns.length > 1 ? 's' : ''} shifting alignment`
-        : 'Use Think Tanks, Grassroots, or Media Campaigns to shift';
-    const alignCard = _factorCard('Ideological Alignment', alignScore, weights.alignment,
-        '#7ec8c0', alignTier.label, alignTier.color, alignDetail, alignHint, prevAlignment);
-
-    // ── Card 2: Platform Appeal ──
-    const appealTier = _scoreTier(platformAppeal);
-    const stanceCount = playerStances.length;
-    const appealDetail = `<span class="vt-detail-line">${stanceCount} stance${stanceCount !== 1 ? 's' : ''} taken</span>`;
-    const appealHint = 'Take stances on high-salience issues to increase';
-    const appealCard = _factorCard('Platform Appeal', platformAppeal, weights.appeal,
-        '#c8a44e', appealTier.label, appealTier.color, appealDetail, appealHint, prevAppeal);
-
-    // ── Card 3: Party Approval ──
-    const approvalTier = _scoreTier(approval);
-    const govLabel = isGoverning ? 'Governing' : 'Opposition';
-    const govApproval = Number(nation.gov_approval ?? 50);
-    const approvalDetail = `<span class="vt-detail-line">${govLabel}${isGoverning ? ' · Gov approval ' + Math.round(govApproval) + '%' : ''}</span>`;
-    const approvalHint = isGoverning ? 'Improve governance to raise approval' : 'Campaign and fulfill promises';
-    const approvalCard = _factorCard('Party Approval', approval, weights.approval,
-        '#7ec87e', approvalTier.label, approvalTier.color, approvalDetail, approvalHint, prevApproval);
-
-    // ── Card 4: Visibility ──
-    const visTier = _scoreTier(visibility);
-    const visDecayPct = ((1 - 0.985) * 100).toFixed(1);
-    const visFloor = isGoverning ? 25 : 10;
-    const visDetail = `<span class="vt-detail-line">Decaying ${visDecayPct}%/tick · Floor: ${visFloor}</span>`;
-    const visHint = 'Hold rallies, outreach, or take stances to boost';
-    const visCard = _factorCard('Visibility', visibility, weights.visibility,
-        '#5b9bd5', visTier.label, visTier.color, visDetail, visHint, prevVisibility);
-
-    // ── Card 5: Credibility ──
-    const credTier = _scoreTier(credScore);
-    const credWeightPct = Math.round(credWeight * 100);
-    const credDetail = `<span class="vt-detail-line">${credModifier.toFixed(2)}x multiplier · Weight: ${credWeightPct}% (dynamic)</span>`;
-    const credHint = credScore >= 95 ? 'Fully healthy — maintain by avoiding scandals' : 'Recovers toward 100 each tick';
-    const credCard = _factorCard('Credibility', credScore, weights.credibility,
-        '#9b7ec8', credTier.label, credTier.color, credDetail, credHint, prevCredScore);
-
-    // ══════════════════════════════════════════════════════════════
-    //  SECTION B — VOTE SHARE WATERFALL
-    // ══════════════════════════════════════════════════════════════
-
-    const waterfallRows = [
-        { label: 'Alignment', score: alignScore, weight: weights.alignment, contrib: alignContrib, color: '#7ec8c0' },
-        { label: 'Appeal', score: platformAppeal, weight: weights.appeal, contrib: appealContrib, color: '#c8a44e' },
-        { label: 'Approval', score: approval, weight: weights.approval, contrib: approvalContrib, color: '#7ec87e' },
-        { label: 'Visibility', score: visibility, weight: weights.visibility, contrib: visContrib, color: '#5b9bd5' },
-        { label: 'Credibility', score: credScore, weight: weights.credibility, contrib: credContrib, color: '#9b7ec8' },
-    ];
-    const rawTotal = waterfallRows.reduce((s, r) => s + r.contrib, 0);
-
-    let waterfallHtml = waterfallRows.map(r => `
-        <div class="vt-wf-row">
-            <span class="vt-wf-label">${r.label}</span>
-            <span class="vt-wf-calc">${Math.round(r.score)} × ${(r.weight * 100).toFixed(0)}%</span>
-            <span class="vt-wf-eq">=</span>
-            <span class="vt-wf-val" style="color:${r.color}">${r.contrib.toFixed(1)}</span>
-        </div>`).join('');
-
-    waterfallHtml += `
-        <div class="vt-wf-divider"></div>
-        <div class="vt-wf-row vt-wf-row--total">
-            <span class="vt-wf-label">Raw Appeal</span>
-            <span class="vt-wf-calc"></span>
-            <span class="vt-wf-eq"></span>
-            <span class="vt-wf-val" style="color:var(--dtext-0)">${rawTotal.toFixed(1)}</span>
-        </div>
-        <div class="vt-wf-row">
-            <span class="vt-wf-label">Contested Share</span>
-            <span class="vt-wf-calc">softmax</span>
-            <span class="vt-wf-eq">→</span>
-            <span class="vt-wf-val" style="color:var(--dtext-1)">${(contestedShare * 100).toFixed(1)}%</span>
-        </div>
-        <div class="vt-wf-row">
-            <span class="vt-wf-label">Turnout</span>
-            <span class="vt-wf-calc">×${(turnout * 100).toFixed(0)}%</span>
-            <span class="vt-wf-eq">→</span>
-            <span class="vt-wf-val" style="color:${_scoreColor(realizedShare * 100)}">${(realizedShare * 100).toFixed(1)}%</span>
-        </div>`;
-
-    const voteLeftPct = Math.max(0, (contestedShare - realizedShare) * 100);
-
-    // ══════════════════════════════════════════════════════════════
-    //  SECTION C — ISSUE LANDSCAPE (with Your Stance column)
-    // ══════════════════════════════════════════════════════════════
-
-    // Build issue rows from ISSUE_DEFS (the actual issue IDs stances use)
-    let issueRowsHtml = '';
-    const issueDefs = typeof ISSUE_DEFS !== 'undefined' ? ISSUE_DEFS : {};
-    const issueKeys = Object.keys(issueDefs);
-
-    if (issueKeys.length > 0) {
-        for (const issueId of issueKeys) {
-            const def = issueDefs[issueId];
-            const stance = stanceMap[issueId];
-            const hasStance = !!stance;
-            const sideLabel = stance ? (stance.side === 'left' ? 'Left' : 'Right') : '';
-            const stanceLabel = hasStance ? escapeHtml(`${(stance.intensity || '?').charAt(0).toUpperCase() + (stance.intensity || '').slice(1)} ${sideLabel}`) : '<span style="color:var(--dtext-3)">No stance</span>';
-            const strength = hasStance ? Math.round(Number(stance.strength ?? 100)) + '%' : '—';
-            const rowCls = !hasStance ? 'vt-issue-row--missing' : '';
-            issueRowsHtml += `
-                <tr class="vt-issue-row ${rowCls}">
-                    <td class="vt-issue-name">${escapeHtml(def.label || issueId)}</td>
-                    <td class="vt-issue-stance">${stanceLabel}</td>
-                    <td class="vt-issue-str">${strength}</td>
-                </tr>`;
-        }
-    } else {
-        issueRowsHtml = '<tr><td colspan="3" style="text-align:center;color:var(--dtext-3);padding:12px">Issue data not available</td></tr>';
-    }
-
-    // ══════════════════════════════════════════════════════════════
-    //  SECTION D — ALL-PARTY COMPARISON TABLE (polled data + ±3% margin)
-    // ══════════════════════════════════════════════════════════════
-
-    const partyMap = Object.fromEntries(allParties.map(p => [p.id, p]));
-    const lastPolledTick = playerStanding.last_polled_tick || null;
-    const hasPolled = lastPolledTick && lastPolledTick > 0;
-    const isStale = hasPolled && lastPolledTick < currentTick; // Polled data is from a previous tick
-    const pollDateStr = hasPolled ? tickToDate(lastPolledTick) : 'Never';
-    // Determine margin from the most recent poll's campaign_actions result
-    // Default to 5% (cheapest poll); will be overridden if we find the last poll's tier
-    let POLL_MARGIN = 5;
-
-    // Use polled values if available, otherwise show "No poll data"
-    let compRowsHtml = '';
-    if (hasPolled) {
-        const sortedStandings = [...allStandings]
-            .sort((a, b) => (Number(b.polled_vote_share) || Number(b.realized_vote_share) || 0) - (Number(a.polled_vote_share) || Number(a.realized_vote_share) || 0));
-
-        for (const s of sortedStandings) {
-            const p = partyMap[s.faction_id];
-            if (!p) continue;
-            const isYou = s.faction_id === playerFaction.id;
-            const pColor = p.party_color || '#666';
-            const pName = p.abbreviation || p.faction_name || '?';
-            // Use polled values (from last poll snapshot)
-            const vs = ((Number(s.polled_vote_share ?? s.realized_vote_share) || 0) * 100).toFixed(1);
-            const al = Math.round(Number(s.polled_alignment ?? s.ideological_alignment ?? 0));
-            const ap = Math.round(Number(s.polled_platform_appeal ?? s.platform_appeal ?? 0));
-            const apr = Math.round(Number(s.polled_party_approval ?? s.party_approval ?? 0));
-            const vi = Math.round(Number(s.polled_visibility ?? s.visibility ?? 0));
-            const polledCred = Number(s.polled_credibility ?? s.credibility_modifier ?? 1);
-            const cr = Math.max(0, Math.min(100, Math.round((polledCred - 0.5) * 200)));
-            const to = ((Number(s.turnout_rate ?? 0.65)) * 100).toFixed(0);
-            const rowCls = isYou ? 'vt-comp-row--you' : '';
-            compRowsHtml += `
-                <tr class="vt-comp-row ${rowCls}">
-                    <td class="vt-comp-party"><span class="vt-comp-dot" style="background:${pColor}"></span>${escapeHtml(pName)}${isYou ? ' <span class="vt-comp-you">(YOU)</span>' : ''}</td>
-                    <td class="vt-comp-val vt-comp-val--vote">${vs}%</td>
-                    <td class="vt-comp-val" style="color:${_scoreColor(al)}">${al}</td>
-                    <td class="vt-comp-val" style="color:${_scoreColor(ap)}">${ap}</td>
-                    <td class="vt-comp-val" style="color:${_scoreColor(apr)}">${apr}</td>
-                    <td class="vt-comp-val" style="color:${_scoreColor(vi)}">${vi}</td>
-                    <td class="vt-comp-val" style="color:${_scoreColor(cr)}">${cr}</td>
-                    <td class="vt-comp-val">${to}%</td>
-                </tr>`;
-        }
-    } else {
-        compRowsHtml = '<tr><td colspan="8" class="vt-comp-empty">No poll data — run a poll to see party standings</td></tr>';
-    }
-
-    // ══════════════════════════════════════════════════════════════
-    //  SECTION E — APPROVAL & CREDIBILITY LOGS (expandable)
-    // ══════════════════════════════════════════════════════════════
-
-    let modifiersHtml = '';
-    for (const entry of partyLog.slice(0, 15)) {
-        const amt = Number(entry.amount);
-        const sign = amt >= 0 ? '+' : '';
-        const color = amt >= 0 ? '#5cb85c' : '#d9534f';
-        const label = _formatSource(entry.source);
-        const date = tickToDate(entry.tick);
-        modifiersHtml += `
-            <div class="vt-log-row">
-                <span class="vt-log-label">${escapeHtml(label)}</span>
-                <span class="vt-log-date">${escapeHtml(date)}</span>
-                <span class="vt-log-amt" style="color:${color}">${sign}${amt}</span>
-            </div>`;
-    }
-    if (partyLog.length === 0) modifiersHtml = '<div class="vt-log-empty">No recorded modifiers yet.</div>';
-
-    let credModifiersHtml = '';
-    for (const entry of credLog.slice(0, 15)) {
-        const amt = Number(entry.amount);
-        const sign = amt >= 0 ? '+' : '';
-        const color = amt >= 0 ? '#5cb85c' : '#d9534f';
-        const label = _formatCredSource(entry.source);
-        credModifiersHtml += `
-            <div class="vt-log-row">
-                <span class="vt-log-label">${escapeHtml(label)}</span>
-                <span class="vt-log-date">${escapeHtml(tickToDate(entry.tick))}</span>
-                <span class="vt-log-amt" style="color:${color}">${sign}${amt.toFixed(2)}</span>
-            </div>`;
-    }
-    if (credLog.length === 0) credModifiersHtml = '<div class="vt-log-empty">No recorded changes yet.</div>';
-
-    // ══════════════════════════════════════════════════════════════
-    //  RENDER
-    // ══════════════════════════════════════════════════════════════
-
-    container.innerHTML = `
-    <div class="vt-root">
-        <!-- Party header -->
-        <div class="vt-header">
-            <span class="vt-header-name">${escapeHtml(partyName)}</span>
-            <span class="vt-header-status" style="color:${statusColor}">${statusLabel}</span>
-            <span class="vt-header-vote" style="color:${_scoreColor(realizedShare * 100)}">${(realizedShare * 100).toFixed(1)}% vote share</span>
-            <span class="vt-header-seats">${mySeats} / ${totalSeats} seats</span>
-        </div>
-
-        <!-- Five Factor Dashboard -->
-        <div class="vt-factors">
-            ${alignCard}${appealCard}${approvalCard}${visCard}${credCard}
-        </div>
-
-        <!-- Vote Share Waterfall -->
-        <div class="vt-section">
-            <div class="vt-sec-header">VOTE SHARE BREAKDOWN</div>
-            <div class="vt-waterfall">
-                ${waterfallHtml}
-                ${voteLeftPct > 0.5 ? `<div class="vt-wf-note">Vote left on table: ${voteLeftPct.toFixed(1)}% (low turnout)</div>` : ''}
-            </div>
-        </div>
-
-        <!-- Two-column: Issue Landscape + Logs -->
-        <div class="vt-two-col">
-            <!-- Issue Landscape -->
-            <div class="vt-section vt-section--issues">
-                <div class="vt-sec-header">ISSUE LANDSCAPE</div>
-                <table class="vt-issue-table">
-                    <thead><tr>
-                        <th>Issue Category</th><th>Your Stance</th><th>Strength</th>
-                    </tr></thead>
-                    <tbody>${issueRowsHtml}</tbody>
-                </table>
-            </div>
-
-            <!-- Approval & Credibility Logs -->
-            <div class="vt-section vt-section--logs">
-                <div class="vt-sec-header">APPROVAL LOG</div>
-                <div class="vt-log-scroll">${modifiersHtml}</div>
-                <div class="vt-sec-header" style="margin-top:12px">CREDIBILITY LOG</div>
-                <div class="vt-log-scroll">${credModifiersHtml}</div>
-            </div>
-        </div>
-
-        <!-- All-Party Comparison (polled) -->
-        <div class="vt-section" ${isStale ? 'style="opacity:0.5;"' : ''}>
-            <div class="vt-comp-header-row">
-                <div class="vt-sec-header" style="margin-bottom:0">CURRENT ELECTORAL STANDING</div>
-                <div class="vt-poll-meta">
-                    ${isStale
-                        ? '<span style="font-family:var(--dfont-mono);font-size:9px;color:var(--damber);font-style:italic;">Run a poll to get latest results.</span>'
-                        : `<span class="vt-poll-date">Last Poll Run — <strong>${escapeHtml(pollDateStr)}</strong></span>`}
-                    <span class="vt-poll-margin">±${POLL_MARGIN}%</span>
-                </div>
-            </div>
-            <div class="vt-comp-scroll">
-                <table class="vt-comp-table" id="vt-comp-table">
-                    <thead><tr>
-                        <th>Party</th><th>Vote %</th><th>Align</th><th>Appeal</th><th>Approval</th><th>Vis</th><th>Cred</th><th>Turnout</th>
-                    </tr></thead>
-                    <tbody>${compRowsHtml}</tbody>
-                </table>
-            </div>
-        </div>
-    </div>`;
-
-    // Wire sortable comparison table headers
-    setTimeout(() => {
-        const table = document.getElementById('vt-comp-table');
-        if (!table) return;
-        table.querySelectorAll('thead th').forEach((th, colIdx) => {
-            th.style.cursor = 'pointer';
-            th.addEventListener('click', () => {
-                const tbody = table.querySelector('tbody');
-                const rows = Array.from(tbody.querySelectorAll('tr'));
-                const isNumeric = colIdx > 0;
-                rows.sort((a, b) => {
-                    const aVal = a.children[colIdx]?.textContent?.replace('%', '').trim() || '';
-                    const bVal = b.children[colIdx]?.textContent?.replace('%', '').trim() || '';
-                    if (isNumeric) return (parseFloat(bVal) || 0) - (parseFloat(aVal) || 0);
-                    return aVal.localeCompare(bVal);
-                });
-                rows.forEach(r => tbody.appendChild(r));
-            });
-        });
-    }, 0);
-
-    } catch (e) {
-        console.error('[Voters Tab] Render error:', e);
-        container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:20px;text-align:center;">Failed to load voter data. Please refresh.</div>';
-    }
-}
-
-
+/* DELETED: renderVotersTab — 5-pillar system (alignment, appeal, approval, visibility, credibility)
+   replaced by 3-pillar Elections tab (governance, momentum, ideology) */
 /* ═══════════════════════════════════════════════════════════════════
    OTHER PARTIES TAB — Rival party intelligence cards
    ═══════════════════════════════════════════════════════════════════ */
@@ -6724,17 +6152,13 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
     const rivalIds = rivals.map(p => p.id);
     const { data: rivalStandings } = rivalIds.length > 0
         ? await _supabase.from('faction_electoral_standing')
-            .select('faction_id, party_approval, credibility_modifier')
+            .select('faction_id, party_approval')
             .in('faction_id', rivalIds)
         : { data: [] };
 
     const approvalMap = {};
-    const credibilityMap = {};
     for (const row of (rivalStandings || [])) {
         approvalMap[row.faction_id] = Math.round(row.party_approval ?? 40);
-        const credMod = Number(row.credibility_modifier ?? 1.0);
-        // Map 0.5–1.0 → 0–100 (same formula as player's own credibility card)
-        credibilityMap[row.faction_id] = Math.round(Math.max(0, Math.min(100, (credMod - 0.5) * 200)));
     }
 
     // Fetch leader data for each rival (factions table has leader columns)
@@ -6760,7 +6184,6 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
             : 'Vacant';
         const leaderAge = fd.leader_age || null;
         const approval = approvalMap[p.id] ?? 40;
-        const credibility = credibilityMap[p.id] ?? 0;
         const voteShare = Number(p.national_vote_share || 0);
 
         let status = 'opposition';
@@ -6784,7 +6207,6 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
             totalSeats,
             voteShare,
             approval,
-            credibility,
             ideology: {
                 security_freedom: ideo.security_freedom ?? 0,
                 tradition_progress: ideo.tradition_progress ?? 0,
@@ -6921,9 +6343,6 @@ function renderPartyCard(party, nation) {
     const stancesHtml = '<div style="color:var(--dtxt-dim);font-size:10px;font-style:italic;padding:8px 0;">Rival stance tracking coming soon.</div>';
     const stanceInsight = '';
 
-    // Credibility color (0-100 scale where 100 = healthy neutral)
-    const credColor = party.credibility >= 80 ? 'var(--dgreen)' : party.credibility >= 50 ? 'var(--damber)' : 'var(--dred)';
-
     return `
     <div class="op-card" style="background:linear-gradient(135deg, ${cGlow} 0%, var(--dbg-2) 40%);border-color:${cBorder}">
         <div class="op-card-hdr" style="border-bottom-color:${cBorder}">
@@ -6946,12 +6365,8 @@ function renderPartyCard(party, nation) {
                     <span class="op-sr-val" style="color:${c}">${party.seats} <span style="color:var(--dtext-3);font-size:9px;font-weight:400">/ ${party.totalSeats}</span></span>
                 </div>
                 <div class="op-stat-row">
-                    <span class="op-sr-label">Approval</span>
+                    <span class="op-sr-label">Governance</span>
                     <span class="op-sr-val" style="color:${apColor}">${party.approval}%</span>
-                </div>
-                <div class="op-stat-row">
-                    <span class="op-sr-label">Credibility</span>
-                    <span class="op-sr-val" style="color:${credColor}">${party.credibility}%</span>
                 </div>
                 <div class="op-rule"></div>
                 <div class="op-sec-label">Ideology Axes</div>
@@ -6977,5 +6392,405 @@ function hexToRgba(hex, alpha) {
     const g = parseInt(h.substring(2, 4), 16) || 0;
     const b = parseInt(h.substring(4, 6), 16) || 0;
     return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ==================== ELECTIONS TAB ====================
+
+async function renderElectionsTab(nation, administration, coalition, faction, allParties, allPartyIdeologies, currentTick, role, nextElection) {
+    const container = document.getElementById('elections-container');
+    if (!container) return;
+
+    try {
+
+    const statsAtStart = administration?.stats_at_start;
+    const ticksInPower = currentTick - (administration?.started_at_tick || currentTick);
+    const isGoverning = role === 'Lead — Governing' || role === 'Governing Coalition';
+
+    // --- Compute governance score ---
+    let statDeltas = [];
+    let governanceScore = 0;
+    let scoredCount = 0;
+
+    if (statsAtStart) {
+        for (const key of NATION_STAT_COLUMNS) {
+            const dir = statDirectionSign(key);
+            if (dir === 0) continue; // skip neutral stats (taxes, population, etc.)
+            const start = Number(statsAtStart[key] ?? 0);
+            const now = Number(nation[key] ?? 0);
+            const raw = now - start;
+            if (raw === 0) continue;
+            const signed = raw * dir; // positive = improvement
+            statDeltas.push({ key, start, now, raw, signed, dir });
+            governanceScore += signed;
+            scoredCount++;
+        }
+        if (scoredCount > 0) governanceScore = governanceScore / scoredCount;
+    }
+
+    // Apply incumbency decay: positive score × 0.95^(terms) every 12 ticks
+    const decayCycles = Math.floor(ticksInPower / 12);
+    const incumbencyMultiplier = governanceScore > 0 ? Math.pow(0.95, decayCycles) : 1;
+    const displayScore = governanceScore * incumbencyMultiplier;
+
+    // Sort deltas: biggest improvements first, then biggest declines
+    statDeltas.sort((a, b) => b.signed - a.signed);
+
+    // Score color
+    const scoreColor = displayScore > 2 ? 'var(--dgreen)' : displayScore > 0 ? 'var(--damber)' : displayScore > -2 ? 'var(--damber)' : 'var(--dred)';
+    const scoreSign = displayScore > 0 ? '+' : '';
+
+    // Opposition gets inverse
+    const effectiveScore = isGoverning ? displayScore : -displayScore;
+    const effectiveColor = effectiveScore > 2 ? 'var(--dgreen)' : effectiveScore > 0 ? 'var(--damber)' : effectiveScore > -2 ? 'var(--damber)' : 'var(--dred)';
+    const effectiveSign = effectiveScore > 0 ? '+' : '';
+
+    // --- Build stat delta rows ---
+    const deltaRowsHtml = statDeltas.map(d => {
+        const color = d.signed > 0 ? 'var(--dgreen)' : 'var(--dred)';
+        const arrow = d.signed > 0 ? '▲' : '▼';
+        const label = formatStatName(d.key);
+        return `<div class="elec-stat-row">
+            <span class="elec-stat-name">${escapeHtml(label)}</span>
+            <span class="elec-stat-start">${d.start.toFixed(1)}</span>
+            <span class="elec-stat-arrow" style="color:${color}">${arrow}</span>
+            <span class="elec-stat-now">${d.now.toFixed(1)}</span>
+            <span class="elec-stat-delta" style="color:${color}">${d.raw > 0 ? '+' : ''}${d.raw.toFixed(1)}</span>
+        </div>`;
+    }).join('');
+
+    const noDataMsg = !statsAtStart
+        ? '<div style="color:var(--dtext-3);font-size:11px;padding:10px">No administration data available.</div>'
+        : statDeltas.length === 0
+            ? '<div style="color:var(--dtext-3);font-size:11px;padding:10px">No stat changes recorded yet.</div>'
+            : '';
+
+    // Incumbency decay note
+    const decayNote = decayCycles > 0 && governanceScore > 0
+        ? `<div class="elec-decay-note">Incumbency decay: ${((1 - incumbencyMultiplier) * 100).toFixed(1)}% reduction (${decayCycles} cycle${decayCycles > 1 ? 's' : ''})</div>`
+        : '';
+
+    // --- Governance Box ---
+    const governanceBox = `
+    <div class="elec-box">
+        <div class="elec-box-header">
+            <div class="pol-box-dot pol-box-dot--teal"></div>
+            <span class="elec-box-title">Governance</span>
+        </div>
+        <div class="elec-box-body">
+            <div class="elec-score-row">
+                <div class="elec-score-block">
+                    <div class="elec-score-label">${isGoverning ? 'Gov. Score' : 'National Score'}</div>
+                    <div class="elec-score-value" style="color:${scoreColor}">${scoreSign}${displayScore.toFixed(2)}</div>
+                </div>
+                ${!isGoverning ? `<div class="elec-score-block">
+                    <div class="elec-score-label">Your Impact (Opposition)</div>
+                    <div class="elec-score-value" style="color:${effectiveColor}">${effectiveSign}${effectiveScore.toFixed(2)}</div>
+                </div>` : ''}
+            </div>
+            ${decayNote}
+            <div class="elec-admin-info">
+                <span>${escapeHtml(administration?.admin_name || 'Government')}</span>
+                <span class="elec-ticks">${ticksInPower} tick${ticksInPower !== 1 ? 's' : ''} in power</span>
+            </div>
+            <div class="elec-stat-header">
+                <span class="elec-stat-name">Stat</span>
+                <span class="elec-stat-start">Start</span>
+                <span class="elec-stat-arrow"></span>
+                <span class="elec-stat-now">Now</span>
+                <span class="elec-stat-delta">Delta</span>
+            </div>
+            <div class="elec-stat-list">
+                ${noDataMsg || deltaRowsHtml}
+            </div>
+        </div>
+    </div>`;
+
+    // --- What Is Governance Box ---
+    const whatIsBox = `
+    <div class="elec-box">
+        <div class="elec-box-header">
+            <div class="pol-box-dot pol-box-dot--amber"></div>
+            <span class="elec-box-title">What Is Governance?</span>
+        </div>
+        <div class="elec-box-body elec-explainer">
+            <p><strong>Governance</strong> measures how the nation's stats have changed since the current administration took power. It is the single largest factor in elections.</p>
+            <p>Every nation stat is snapshotted at inauguration. Each tick, the average improvement (or decline) across all directional stats produces a <strong>governance score</strong>.</p>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">If you are Governing:</div>
+                <ul>
+                    <li>Your governance score directly reflects national performance under your watch.</li>
+                    <li>Pass bills that move stats in the right direction — raise the stats voters want higher, lower the ones they want lower.</li>
+                    <li>Appoint strong ministers — vacant ministries and poor performance drag stats down.</li>
+                    <li>Beware incumbency decay: positive scores erode 5% every 12 ticks. Fresh wins matter more than old ones.</li>
+                </ul>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">If you are Opposition:</div>
+                <ul>
+                    <li>You receive the <em>inverse</em> of the governance score. Bad governance helps your election chances.</li>
+                    <li>Vote against harmful legislation to protect the nation — and your reputation.</li>
+                    <li>Build your case through ideology and momentum to maximize seat gains when elections come.</li>
+                </ul>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">Stat Direction:</div>
+                <p>Stats like GDP Growth, Happiness, and Stability are "higher is better." Stats like Unemployment, Crime Rate, and Pollution are "lower is better." Neutral stats (taxes, population) are excluded.</p>
+            </div>
+        </div>
+    </div>`;
+
+    // --- Momentum Box ---
+    // Momentum score (0-100) from factions table, decays 8%/tick, reset after elections.
+    const momentum = Number(faction.momentum ?? 0);
+    const momentumDecayRate = 0.08;
+    const decayPerTick = (momentum * momentumDecayRate).toFixed(1);
+    const momColor = momentum >= 60 ? 'var(--dgreen)' : momentum >= 30 ? 'var(--damber)' : 'var(--dred)';
+    const momBarWidth = Math.min(100, Math.max(0, momentum));
+
+    // Next election countdown
+    const electionTick = nextElection?.election_tick || 0;
+    const ticksUntilElection = electionTick > currentTick ? electionTick - currentTick : null;
+
+    // Momentum event log — read from faction.momentum_log if available (array of { label, delta, tick })
+    const momentumLog = Array.isArray(faction.momentum_log) ? faction.momentum_log : [];
+    const logRowsHtml = momentumLog.length > 0
+        ? momentumLog.slice(0, 30).map(entry => {
+            const ticksAgo = currentTick - (entry.tick || 0);
+            const color = entry.delta > 0 ? 'var(--dgreen)' : 'var(--dred)';
+            const sign = entry.delta > 0 ? '+' : '';
+            return `<div class="elec-mom-log-row">
+                <span class="elec-mom-log-label">${escapeHtml(entry.label || 'Event')}</span>
+                <span class="elec-mom-log-delta" style="color:${color}">${sign}${entry.delta}</span>
+                <span class="elec-mom-log-ago">${ticksAgo}t ago</span>
+            </div>`;
+        }).join('')
+        : '<div style="color:var(--dtext-3);font-size:11px;padding:10px">No momentum events yet.</div>';
+
+    const momentumBox = `
+    <div class="elec-box">
+        <div class="elec-box-header">
+            <div class="pol-box-dot pol-box-dot--teal"></div>
+            <span class="elec-box-title">Momentum</span>
+        </div>
+        <div class="elec-box-body elec-mom-body">
+            <div class="elec-mom-score-row">
+                <div class="elec-mom-score">
+                    <span class="elec-mom-value" style="color:${momColor}">${Math.round(momentum)}</span>
+                    <span class="elec-mom-max">/ 100</span>
+                </div>
+            </div>
+            <div class="elec-mom-bar-wrap">
+                <div class="elec-mom-bar" style="width:${momBarWidth}%;background:${momColor}"></div>
+            </div>
+            <div class="elec-mom-decay">Decays 8%/tick — currently losing ${decayPerTick}/tick</div>
+            <div class="elec-mom-log-header">Recent Activity</div>
+            <div class="elec-mom-log">
+                ${logRowsHtml}
+            </div>
+            ${ticksUntilElection ? `<div class="elec-mom-election">Next election in ${ticksUntilElection} tick${ticksUntilElection !== 1 ? 's' : ''}</div>` : ''}
+        </div>
+    </div>`;
+
+    // --- What Is Momentum Box ---
+    const whatIsMomentumBox = `
+    <div class="elec-box">
+        <div class="elec-box-header">
+            <div class="pol-box-dot pol-box-dot--amber"></div>
+            <span class="elec-box-title">What Is Momentum?</span>
+        </div>
+        <div class="elec-box-body elec-explainer">
+            <p><strong>Momentum</strong> measures your party's political energy — how active, visible, and engaged you are with the electorate. It accounts for 30% of election outcomes.</p>
+            <p>Momentum is a score from 0 to 100 that <strong>decays 8% per tick</strong>. If you stop acting, it fades. Sustained activity keeps it high. It resets to 0 after every election.</p>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">Legislation:</div>
+                <ul>
+                    <li><strong>Bill passes:</strong> Sponsor gets +3 per policy article. YES voters get +2 per article.</li>
+                    <li><strong>Bill fails:</strong> Sponsor loses -3 per article. YES voters lose -2 per article. NO voters gain +2 per article.</li>
+                    <li>Text-only articles do not count. Abstaining gives nothing.</li>
+                </ul>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">Campaign Actions:</div>
+                <ul>
+                    <li><strong>Rally</strong> (1 AP) — Moderate, reliable momentum gain.</li>
+                    <li>Other campaign actions like stances, public addresses, and media campaigns also contribute.</li>
+                </ul>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">The Tradeoff:</div>
+                <p>You only get 5 AP per tick. Every AP spent campaigning is an AP not spent on bills. Governing parties must balance legislation (which builds Governance) with campaigning (which builds Momentum). Opposition can focus on campaigning but depends on government failure for Governance.</p>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">Vote Locking:</div>
+                <p>Once you vote YES or NO on a bill, you cannot flip to the opposite — only change to Abstain. Choose carefully.</p>
+            </div>
+        </div>
+    </div>`;
+
+    // --- Ideology Box (760px) ---
+    // Fetch electorate profile for ideology distribution
+    const { data: elecProfile, error: elecProfileErr } = await _supabase
+        .from('electorate_profile')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .maybeSingle();
+    if (elecProfileErr) console.error('[Elections] electorate_profile fetch failed:', elecProfileErr);
+
+    // Build ideology lookup
+    const ideoMap = {};
+    for (const row of (allPartyIdeologies || [])) {
+        ideoMap[row.faction_id] = row;
+    }
+    const playerIdeo = ideoMap[faction.id] || {};
+
+    // Compute zone variance (same formula as Electorate tab)
+    const nationPolarization = Number(nation.polarization ?? 50);
+    const nationStability = Number(nation.stability ?? 50);
+    const nationDiversity = Number(nation.ethnic_diversity ?? 50);
+    const spreadScore = Math.min(100, Math.max(0,
+        nationPolarization * 0.9 +
+        (100 - nationStability) * 0.07 +
+        nationDiversity * 0.03
+    ));
+    const zoneVariance = 5 + (spreadScore / 100) * 40;
+
+    let ideologyRowsHtml = '';
+    let totalCapture = 0;
+
+    if (elecProfile) {
+        for (const ax of ES_AXES) {
+            const rawScore = Number(playerIdeo[ax.key] ?? 0);
+            const normPos = (rawScore + 100) / 2; // -100..+100 → 0..100
+            const eMean = Number(elecProfile['ideo_mean_' + ax.key] ?? 50);
+            const eVar = zoneVariance;
+
+            // Get zone info
+            const { zones, zoneForPos } = calculateIdeologyZones(eMean, eVar);
+            const playerZoneId = zoneForPos(normPos);
+
+            // Map zone ID to readable label
+            const zoneSide = playerZoneId.includes('left') ? ax.leftLabel : playerZoneId.includes('right') ? ax.rightLabel : '';
+            const zoneType = playerZoneId === 'centrist' ? 'Centrist' : playerZoneId.includes('moderate') ? 'Moderate' : 'Radical';
+            const playerZoneLabel = playerZoneId === 'centrist' ? 'Centrist' : `${zoneType} ${zoneSide}`;
+
+            // Voter capture via bimodal alignment
+            const capture = bimodalAxisAlignment(normPos, eMean, eVar);
+            const capturePct = (capture * 100).toFixed(1);
+            totalCapture += capture;
+
+            // Find where most voters are (largest zone by width, excluding centrist ties)
+            const sortedZones = [...zones].sort((a, b) => b.width - a.width);
+            const biggestZone = sortedZones[0];
+            const bigZoneSide = biggestZone.id.includes('left') ? ax.leftLabel : biggestZone.id.includes('right') ? ax.rightLabel : '';
+            const bigZoneType = biggestZone.id === 'centrist' ? 'Centrist' : biggestZone.id.includes('moderate') ? 'Moderate' : 'Radical';
+            const voterConcentration = biggestZone.id === 'centrist' ? 'Centrist' : `${bigZoneType} ${bigZoneSide}`;
+
+            // Capture color
+            const capColor = capture >= 0.6 ? 'var(--dgreen)' : capture >= 0.3 ? 'var(--damber)' : 'var(--dred)';
+
+            // Salience
+            const salience = Number(elecProfile['salience_' + ax.key] ?? 0.2);
+            const saliencePct = (salience * 100).toFixed(0);
+
+            // Mini distribution bar: show electorate mean + variance band + player position
+            const varLeft = Math.max(0, eMean - eVar);
+            const varWidth = Math.min(100, eMean + eVar) - varLeft;
+
+            ideologyRowsHtml += `
+            <div class="elec-ideo-axis">
+                <div class="elec-ideo-axis-header">
+                    <span class="elec-ideo-axis-name">${escapeHtml(ax.leftLabel)} / ${escapeHtml(ax.rightLabel)}</span>
+                    <span class="elec-ideo-salience">Salience: ${saliencePct}%</span>
+                </div>
+                <div class="elec-ideo-bar-wrap">
+                    <div class="elec-ideo-bar-track">
+                        <div class="elec-ideo-var-band" style="left:${varLeft}%;width:${varWidth}%"></div>
+                        <div class="elec-ideo-mean-marker" style="left:${eMean}%"></div>
+                        <div class="elec-ideo-player-marker" style="left:${normPos}%"></div>
+                    </div>
+                    <div class="elec-ideo-bar-labels">
+                        <span>${escapeHtml(ax.leftLabel)}</span>
+                        <span>${escapeHtml(ax.rightLabel)}</span>
+                    </div>
+                </div>
+                <div class="elec-ideo-details">
+                    <span class="elec-ideo-position">Your Position: <strong>${escapeHtml(playerZoneLabel)}</strong></span>
+                    <span class="elec-ideo-capture" style="color:${capColor}">Voter Capture: <strong>${capturePct}%</strong></span>
+                </div>
+                <div class="elec-ideo-voters">Most voters are <strong>${escapeHtml(voterConcentration)}</strong></div>
+            </div>`;
+        }
+    }
+
+    const avgCapture = elecProfile ? (totalCapture / ES_AXES.length * 100).toFixed(1) : '—';
+    const avgCapColor = totalCapture / ES_AXES.length >= 0.6 ? 'var(--dgreen)' : totalCapture / ES_AXES.length >= 0.3 ? 'var(--damber)' : 'var(--dred)';
+
+    const ideologyBox = `
+    <div class="elec-box elec-box--wide">
+        <div class="elec-box-header">
+            <div class="pol-box-dot pol-box-dot--purple"></div>
+            <span class="elec-box-title">Ideology</span>
+            <span class="elec-ideo-avg">Avg. Capture: <strong style="color:${avgCapColor}">${avgCapture}%</strong></span>
+        </div>
+        <div class="elec-box-body">
+            ${elecProfile ? ideologyRowsHtml : '<div style="color:var(--dtext-3);font-size:11px;padding:10px">No electorate data available.</div>'}
+        </div>
+    </div>`;
+
+    // --- What Is Ideology Box ---
+    const whatIsIdeologyBox = `
+    <div class="elec-box">
+        <div class="elec-box-header">
+            <div class="pol-box-dot pol-box-dot--amber"></div>
+            <span class="elec-box-title">What Is Ideology?</span>
+        </div>
+        <div class="elec-box-body elec-explainer">
+            <p><strong>Ideology</strong> measures how well your party's positions align with what voters actually want. It accounts for 30% of election outcomes.</p>
+            <p>The electorate sits on 5 ideological axes. Voters are distributed across each axis — clustered at the center in stable nations, or split into polarized camps in divided ones.</p>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">Voter Capture:</div>
+                <p>Your <strong>voter capture</strong> on each axis is the percentage of voters near your position. Higher capture means more votes. If you're in a zone where few voters sit, your capture is low — even if your position is "correct."</p>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">Spatial Competition:</div>
+                <p>Other parties compete for the same voters. Two parties in the same zone split that zone's voters between them. Finding an uncontested ideological space can be more valuable than crowding the center.</p>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">How to shift your position:</div>
+                <ul>
+                    <li><strong>Voting on bills</strong> — YES votes shift you toward the bill's ideological direction. NO votes shift you the opposite way.</li>
+                    <li><strong>Take Stance</strong> — Declare a position on a salient issue to shift directly on the relevant axis.</li>
+                    <li><strong>Fund Think Tank / Ideological Pivot</strong> — Targeted ideology actions for larger shifts.</li>
+                </ul>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">Salience:</div>
+                <p>Not all axes matter equally. <strong>Salience</strong> reflects how much voters care about each axis right now, driven by national issues. High-salience axes count more toward your ideology score.</p>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">The Electorate Moves:</div>
+                <p>The electorate's position shifts over time based on national conditions. A stable, prosperous nation clusters near the center. A polarized, unstable nation splits into radical camps. Standing still doesn't guarantee alignment — the voters may move away from you.</p>
+            </div>
+        </div>
+    </div>`;
+
+    container.innerHTML = `
+    <div class="elec-page">
+        <div class="elec-row">
+            ${governanceBox}
+            ${whatIsBox}
+            ${momentumBox}
+            ${whatIsMomentumBox}
+        </div>
+        <div class="elec-row" style="margin-top:20px">
+            ${ideologyBox}
+            ${whatIsIdeologyBox}
+        </div>
+    </div>`;
+
+    } catch (e) {
+        console.error('[Elections Tab] Render error:', e);
+        container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:20px;text-align:center;">Failed to load election data. Please refresh.</div>';
+    }
 }
 

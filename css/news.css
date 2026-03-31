@@ -181,6 +181,8 @@
     overflow: hidden;
     display: flex;
     align-items: center;
+    flex-shrink: 0;
+    max-height: 36px;
 }
 
 .nws-breaking-label {

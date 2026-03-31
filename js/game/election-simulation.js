@@ -308,11 +308,12 @@ export async function runElectionPreview(supabase, nationId) {
     });
     if (!factions || factions.length === 0) throw new Error('No eligible parties found for this nation');
 
-    // 3. Load electoral standings from Three Pillars electorate engine
+    // 3. Load electoral standings from 3-pillar election engine
+    // Columns repurposed: party_approval → governance score, visibility → momentum, raw_appeal → election score
     const factionIds = factions.map(f => f.id);
     const { data: standings } = await supabase
         .from('faction_electoral_standing')
-        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval, visibility, raw_appeal')
+        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval')
         .eq('nation_id', nationId)
         .in('faction_id', factionIds);
 
@@ -365,7 +366,7 @@ export async function runElectionPreview(supabase, nationId) {
         return {
             party_id: f.id,
             party_name: f.faction_name,
-            approval: Math.round(Number(s?.party_approval || 0)),
+            governance: Math.round(Number(s?.party_approval || 0)), // repurposed: was approval, now governance score
             votes: tally[f.id] || 0,
             vote_percentage: totalVotesCast > 0
                 ? Math.round(((tally[f.id] || 0) / totalVotesCast) * 10000) / 100
@@ -486,6 +487,7 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
     for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
 
     // 4. Load electoral standings for each candidate's faction
+    // party_approval column repurposed: now stores governance score (3-pillar system)
     const { data: standings } = await supabase
         .from('faction_electoral_standing')
         .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval')

@@ -1862,41 +1862,9 @@ async function _nudgeApproval(supabase, factionId, nationId, delta, source) {
  * Adjust a faction's credibility_modifier in faction_electoral_standing.
  * Local helper for promise resolution (mirrors adjustCredibility in advance-tick).
  */
-async function _adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0, opts = {}) {
-    if (!delta && !suspendRecoveryTicks) return;
-    const { data: standing } = await supabase
-        .from('faction_electoral_standing')
-        .select('id, credibility_modifier, credibility_recovery_suspended_until')
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId)
-        .maybeSingle();
-    if (!standing) return;
-    const old = Number(standing.credibility_modifier ?? 1.0);
-    const newCred = Math.round(Math.min(1.5, Math.max(0.5, old + (delta || 0))) * 1000) / 1000;
-    const updateObj = { credibility_modifier: newCred };
-    if (suspendRecoveryTicks > 0) {
-        const suspendUntil = currentTick + suspendRecoveryTicks;
-        const currentSuspend = Number(standing.credibility_recovery_suspended_until ?? 0);
-        updateObj.credibility_recovery_suspended_until = Math.max(currentSuspend, suspendUntil);
-    }
-    await supabase.from('faction_electoral_standing')
-        .update(updateObj)
-        .eq('id', standing.id);
-
-    // Audit log (non-fatal)
-    if (delta && opts.source) {
-        const tick = currentTick || opts.tick || 0;
-        supabase.from('credibility_log').insert({
-            faction_id: factionId,
-            nation_id: nationId,
-            amount: delta,
-            source: opts.source,
-            tick,
-        }).then(({ error: logErr }) => {
-            if (logErr) console.warn('[PoliticalActions] credibility_log insert failed:', logErr.message);
-        });
-    }
-}
+// No-op: credibility_modifier column repurposed for momentum (3-pillar election system).
+// Server-side advance-tick is authoritative; client-side writes are dead.
+async function _adjustCredibility() { return; }
 
 /**
  * Apply rewards or penalties when a promise is resolved.

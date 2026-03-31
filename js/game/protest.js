@@ -1568,20 +1568,8 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
 
     // Backfire penalties on the organising party (Tier 1-2)
     if (effects.organiserVisibility < 0 || effects.organiserApproval < 0 || effects.organiserEnthusiasm < 0) {
-        // Visibility: direct update (boostVisibility only handles positive)
+        // Visibility write removed — column repurposed for momentum (3-pillar system).
         if (effects.organiserVisibility < 0) {
-            const { data: standing } = await supabase
-                .from('faction_electoral_standing')
-                .select('id, visibility')
-                .eq('faction_id', factionId)
-                .eq('nation_id', nationId)
-                .maybeSingle();
-            if (standing) {
-                const newVis = Math.max(0, (Number(standing.visibility) || 0) + effects.organiserVisibility);
-                await supabase.from('faction_electoral_standing')
-                    .update({ visibility: newVis })
-                    .eq('id', standing.id);
-            }
             appliedEffects.push({ stat: 'organiser_visibility', delta: effects.organiserVisibility });
         }
         // Party approval
