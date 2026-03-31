@@ -6404,7 +6404,7 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
 
     const statsAtStart = administration?.stats_at_start;
     const ticksInPower = currentTick - (administration?.started_at_tick || currentTick);
-    const isGoverning = role === 'Lead — Governing' || role === 'Governing Coalition';
+    const isGoverning = role.includes('Governing') || role.includes('Lead') || role === 'Strongman';
 
     // --- Compute governance score ---
     let statDeltas = [];
