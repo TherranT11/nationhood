@@ -2682,6 +2682,22 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.incidentInaction = activeResults.inactionPenalties;
             console.log(`[advanceTick] Incidents: ${activeResults.tickEvents.length} tick event(s), ${activeResults.inactionPenalties.length} inaction penalty(ies)`);
         }
+
+        // Process escalation, mediation, blowback, and resolution
+        const resolutionResults = await processIncidentResolutionPhase(supabase, nationList, newTick);
+        if (resolutionResults.escalations.length > 0) {
+            summary.incidentEscalations = resolutionResults.escalations;
+        }
+        if (resolutionResults.mediations.length > 0) {
+            summary.incidentMediations = resolutionResults.mediations;
+        }
+        if (resolutionResults.blowbacks.length > 0) {
+            summary.incidentBlowbacks = resolutionResults.blowbacks;
+        }
+        if (resolutionResults.resolutions.length > 0) {
+            summary.incidentResolutions = resolutionResults.resolutions;
+            console.log(`[advanceTick] Incidents: ${resolutionResults.resolutions.length} resolved`);
+        }
     } catch (incidentErr) {
         console.error('[advanceTick] Incident processing failed (non-fatal):', incidentErr);
     }

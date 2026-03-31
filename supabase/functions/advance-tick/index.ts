@@ -30109,6 +30109,647 @@ async function processIncidentInaction(supabase, incident, nationMap, currentTic
 }
 
 
+// ==================== PHASE 5: ESCALATION, MEDIATION, BLOWBACK, RESOLUTION ====================
+
+/**
+ * Process escalation thresholds, mediation, blowback, and resolution for all active incidents.
+ * Called once per tick from advanceTick(), after tick events.
+ */
+async function processIncidentResolutionPhase(supabase, nationList, currentTick) {
+    const results = { escalations: [], mediations: [], blowbacks: [], resolutions: [] };
+
+    const { data: incidents } = await supabase
+        .from('incidents')
+        .select('*')
+        .in('status', ['active', 'mediating']);
+
+    if (!incidents || incidents.length === 0) return results;
+
+    const nationMap = {};
+    for (const n of nationList) nationMap[n.id] = n;
+
+    for (const incident of incidents) {
+        try {
+            // Step 1: Escalation thresholds (active only, not mediating)
+            if (incident.status === 'active') {
+                const escResults = await processIncidentEscalation(supabase, incident, nationMap, currentTick);
+                if (escResults.length > 0) results.escalations.push(...escResults);
+            }
+
+            // Step 2: Mediation resolution
+            const medResult = await processIncidentMediation(supabase, incident, nationMap, currentTick);
+            if (medResult) results.mediations.push(medResult);
+
+            // Step 3: Blowback check
+            const blowbackResult = await processIncidentBlowback(supabase, incident, nationMap, currentTick);
+            if (blowbackResult) results.blowbacks.push(blowbackResult);
+
+            // Step 4: Resolution check (reload incident — leverage may have changed)
+            const { data: freshIncident } = await supabase
+                .from('incidents')
+                .select('*')
+                .eq('id', incident.id)
+                .single();
+            if (freshIncident && freshIncident.status !== 'resolved') {
+                const resResult = await processIncidentResolution(supabase, freshIncident, nationMap, currentTick);
+                if (resResult) results.resolutions.push(resResult);
+            }
+        } catch (err) {
+            console.error(`[Incidents] Resolution phase error for ${incident.id}:`, err);
+        }
+    }
+
+    return results;
+}
+
+
+// ==================== ESCALATION THRESHOLDS ====================
+
+/**
+ * Check leverage against thresholds 5 and 8 for both sides.
+ * Roll one escalation event from the pool. Log to escalation_log.
+ * Leverage 10 is handled by resolution, not here.
+ */
+async function processIncidentEscalation(supabase, incident, nationMap, currentTick) {
+    const results = [];
+    const thresholds = [5, 8];
+
+    for (const side of ['a', 'b']) {
+        const leverage = side === 'a' ? incident.leverage_a : incident.leverage_b;
+
+        for (const threshold of thresholds) {
+            if (leverage < threshold) continue;
+
+            // Check if this threshold already fired
+            const { data: existing } = await supabase
+                .from('incident_escalation_log')
+                .select('id')
+                .eq('incident_id', incident.id)
+                .eq('threshold', threshold)
+                .eq('nation_side', side)
+                .maybeSingle();
+
+            if (existing) continue;
+
+            // Roll escalation event from pool
+            const category = `escalation_${side}${threshold}`;
+            const { data: events } = await supabase
+                .from('incident_event_pool')
+                .select('*')
+                .eq('incident_type', incident.incident_type)
+                .eq('category', category);
+
+            if (!events || events.length === 0) continue;
+
+            const selected = events[Math.floor(Math.random() * events.length)];
+            const nationA = nationMap[incident.nation_a_id];
+            const nationB = nationMap[incident.nation_b_id];
+            if (!nationA || !nationB) continue;
+
+            const eventText = selected.event_text_template
+                .replace(/\{nation_a\}/g, nationA.name)
+                .replace(/\{nation_b\}/g, nationB.name);
+
+            // Log to escalation_log
+            await supabase.from('incident_escalation_log').insert({
+                incident_id: incident.id,
+                threshold,
+                nation_side: side,
+                event_key: selected.event_key,
+                tick: currentTick,
+                effects_applied: selected.stat_effects_template || {}
+            });
+
+            // Insert timeline event
+            await supabase.from('incident_events').insert({
+                incident_id: incident.id,
+                tick: currentTick,
+                event_type: 'escalation_threshold',
+                event_key: selected.event_key,
+                leverage_shift_a: selected.leverage_shift_a || 0,
+                leverage_shift_b: selected.leverage_shift_b || 0,
+                event_text: `ESCALATION (Leverage ${threshold}): ${eventText}`,
+                event_source_label: `Threshold ${threshold} — ${side === 'a' ? nationA.name : nationB.name}`,
+                stat_effects: selected.stat_effects_template,
+                metadata: selected.metadata_template,
+                visibility: 'both'
+            });
+
+            // Apply stat effects
+            if (selected.stat_effects_template) {
+                await applyIncidentStatEffects(supabase, nationA, nationB, selected.stat_effects_template);
+            }
+
+            // Insert system chat message
+            for (const nation of [nationA, nationB]) {
+                await supabase.from('incident_chat_messages').insert({
+                    incident_id: incident.id,
+                    nation_id: nation.id,
+                    sender_role: 'system',
+                    message_text: `THRESHOLD: Leverage ${threshold} crossed (${side === 'a' ? nationA.name : nationB.name}). Escalation event fired.`,
+                    tick: currentTick,
+                    is_system: true,
+                    chat_context: 'internal'
+                });
+            }
+
+            console.log(`[Incidents] Escalation: ${incident.id} side=${side} threshold=${threshold} event=${selected.event_key}`);
+            results.push({ incidentId: incident.id, side, threshold, eventKey: selected.event_key });
+        }
+    }
+
+    return results;
+}
+
+
+// ==================== MEDIATION ====================
+
+/**
+ * Process the prisoner's dilemma mediation check.
+ *
+ * At tick resolution, check incident_mediation for this tick:
+ *   BOTH proposed → enter mediation (4-tick freeze) or resolve if mediation_end_tick reached
+ *   A only → A loses 2 leverage, B gains 1
+ *   B only → B loses 2 leverage, A gains 1
+ *   Neither → no effect
+ *
+ * Also handles mediation completion (mediation_end_tick reached).
+ */
+async function processIncidentMediation(supabase, incident, nationMap, currentTick) {
+    const nationA = nationMap[incident.nation_a_id];
+    const nationB = nationMap[incident.nation_b_id];
+    if (!nationA || !nationB) return null;
+
+    // Handle mediation completion (status = 'mediating', end tick reached)
+    if (incident.status === 'mediating' && incident.mediation_end_tick && currentTick >= incident.mediation_end_tick) {
+        return await completeMediationResolution(supabase, incident, nationA, nationB, currentTick);
+    }
+
+    // Check for new mediation proposals this tick (only for active incidents)
+    if (incident.status !== 'active') return null;
+
+    const { data: mediation } = await supabase
+        .from('incident_mediation')
+        .select('*')
+        .eq('incident_id', incident.id)
+        .eq('tick', currentTick)
+        .maybeSingle();
+
+    if (!mediation) return null;
+    if (mediation.outcome) return null; // already processed
+
+    const aProposed = mediation.nation_a_proposed;
+    const bProposed = mediation.nation_b_proposed;
+    let outcome, eventText;
+    const updates = {};
+
+    if (aProposed && bProposed) {
+        // BOTH PROPOSED — enter mediation
+        outcome = 'both_proposed';
+        eventText = `Both ${nationA.name} and ${nationB.name} agree to mediation. Leverage frozen for 4 ticks.`;
+
+        await supabase
+            .from('incidents')
+            .update({
+                status: 'mediating',
+                mediation_active: true,
+                mediation_start_tick: currentTick,
+                mediation_end_tick: currentTick + 4
+            })
+            .eq('id', incident.id);
+
+        // World event
+        await supabase.from('event_log').insert({
+            nation_id: nationA.id,
+            event_name: 'Mediation Accepted',
+            trigger_key: 'incident_mediation_accepted',
+            description_chosen: `${nationA.name} and ${nationB.name} enter mediation over ${formatCrisisName(incident.incident_type)}.`,
+            category: 'crisis',
+            fired_at_tick: currentTick
+        });
+
+    } else if (aProposed && !bProposed) {
+        // A ONLY — A penalized
+        outcome = 'a_only';
+        const aIsAuto = isAutocracy(nationA);
+        const levA = Math.max(0, (incident.leverage_a || 0) - 2);
+        const levB = (incident.leverage_b || 0) + 1;
+        eventText = `${nationA.name} proposes mediation. ${nationB.name} refuses.`;
+
+        await supabase.from('incidents')
+            .update({ leverage_a: levA, leverage_b: levB })
+            .eq('id', incident.id);
+
+        // Reputation bump for proposer
+        await applyIncidentStatEffects(supabase, nationA, nationB, { Intl_Reputation_a: 0.5 });
+        // Extra autocracy penalty
+        if (aIsAuto) {
+            await applyIncidentStatEffects(supabase, nationA, nationB, { Regime_Health_a: -1 });
+        }
+
+    } else if (!aProposed && bProposed) {
+        // B ONLY — B penalized
+        outcome = 'b_only';
+        const bIsAuto = isAutocracy(nationB);
+        const levA = (incident.leverage_a || 0) + 1;
+        const levB = Math.max(0, (incident.leverage_b || 0) - 2);
+        eventText = `${nationB.name} proposes mediation. ${nationA.name} refuses.`;
+
+        await supabase.from('incidents')
+            .update({ leverage_a: levA, leverage_b: levB })
+            .eq('id', incident.id);
+
+        await applyIncidentStatEffects(supabase, nationA, nationB, { Intl_Reputation_b: 0.5 });
+        if (bIsAuto) {
+            await applyIncidentStatEffects(supabase, nationA, nationB, { Regime_Health_b: -1 });
+        }
+
+    } else {
+        // NEITHER — silent, no event
+        outcome = 'neither';
+        await supabase.from('incident_mediation')
+            .update({ outcome })
+            .eq('id', mediation.id);
+        return null;
+    }
+
+    // Update mediation record
+    await supabase.from('incident_mediation')
+        .update({ outcome })
+        .eq('id', mediation.id);
+
+    // Insert timeline event
+    if (eventText) {
+        await supabase.from('incident_events').insert({
+            incident_id: incident.id,
+            tick: currentTick,
+            event_type: outcome === 'both_proposed' ? 'mediation_result' : 'mediation_proposal',
+            event_text: eventText,
+            visibility: 'both'
+        });
+    }
+
+    console.log(`[Incidents] Mediation: ${incident.id} outcome=${outcome}`);
+    return { incidentId: incident.id, outcome };
+}
+
+/**
+ * Complete a mediation that has reached its end tick.
+ * Formula: compromise = MAX(leverage_a, leverage_b) / 2, then +/- 1d3
+ */
+async function completeMediationResolution(supabase, incident, nationA, nationB, currentTick) {
+    const winningLeverage = Math.max(incident.leverage_a || 0, incident.leverage_b || 0);
+    const compromise = Math.floor(winningLeverage / 2);
+    const roll1d3 = Math.floor(Math.random() * 3) - 1; // -1, 0, or +1
+    const finalPosition = compromise + roll1d3;
+
+    // Determine which side had higher leverage
+    const aWinning = (incident.leverage_a || 0) >= (incident.leverage_b || 0);
+    const finalLevA = aWinning ? Math.max(0, finalPosition) : 0;
+    const finalLevB = aWinning ? 0 : Math.max(0, finalPosition);
+
+    // Resolve the incident
+    await supabase.from('incidents').update({
+        status: 'resolved',
+        resolved_tick: currentTick,
+        resolution_type: 'mediation',
+        leverage_a: finalLevA,
+        leverage_b: finalLevB,
+        mediation_active: false
+    }).eq('id', incident.id);
+
+    // Update mediation record
+    await supabase.from('incident_mediation')
+        .update({
+            mediation_roll: roll1d3,
+            compromise_position: finalPosition,
+            resolved: true
+        })
+        .eq('incident_id', incident.id)
+        .eq('tick', incident.mediation_start_tick);
+
+    // Apply resolution effects
+    await applyIncidentStatEffects(supabase, nationA, nationB, {
+        Relations: 5,
+        Intl_Reputation_a: 1,
+        Intl_Reputation_b: 1
+    });
+
+    const crisisName = formatCrisisName(incident.incident_type);
+    const eventText = `Mediation complete. ${crisisName} resolved through compromise. Final position: ${aWinning ? nationA.name : nationB.name} +${finalPosition}.`;
+
+    // Timeline event
+    await supabase.from('incident_events').insert({
+        incident_id: incident.id,
+        tick: currentTick,
+        event_type: 'resolution',
+        event_text: eventText,
+        leverage_shift_a: finalLevA - (incident.leverage_a || 0),
+        leverage_shift_b: finalLevB - (incident.leverage_b || 0),
+        visibility: 'both'
+    });
+
+    // System chat
+    for (const nation of [nationA, nationB]) {
+        await supabase.from('incident_chat_messages').insert({
+            incident_id: incident.id,
+            nation_id: nation.id,
+            sender_role: 'system',
+            message_text: `CRISIS RESOLVED: Mediation compromise. Final leverage: ${finalLevA}-${finalLevB}.`,
+            tick: currentTick,
+            is_system: true,
+            chat_context: 'internal'
+        });
+    }
+
+    // Event log
+    await supabase.from('event_log').insert({
+        nation_id: nationA.id,
+        event_name: `${crisisName} Resolved`,
+        trigger_key: 'incident_resolved_mediation',
+        description_chosen: eventText,
+        category: 'crisis',
+        fired_at_tick: currentTick
+    });
+    await supabase.from('event_log').insert({
+        nation_id: nationB.id,
+        event_name: `${crisisName} Resolved`,
+        trigger_key: 'incident_resolved_mediation',
+        description_chosen: eventText,
+        category: 'crisis',
+        fired_at_tick: currentTick
+    });
+
+    console.log(`[Incidents] Mediation resolved: ${incident.id}. Compromise=${compromise}, roll=${roll1d3}, final=${finalPosition}`);
+    return { incidentId: incident.id, type: 'mediation', finalPosition, roll: roll1d3 };
+}
+
+
+// ==================== BLOWBACK ====================
+
+/**
+ * If leverage exceeds 10, cap at 10 and apply blowback penalties.
+ * Per excess point: winner Int'l_Rep -1, Relations -2 with all others.
+ * Loser: Int'l_Rep +0.5, Relations +1 with all others.
+ */
+async function processIncidentBlowback(supabase, incident, nationMap, currentTick) {
+    const levA = incident.leverage_a || 0;
+    const levB = incident.leverage_b || 0;
+
+    if (levA <= 10 && levB <= 10) return null;
+
+    const nationA = nationMap[incident.nation_a_id];
+    const nationB = nationMap[incident.nation_b_id];
+    if (!nationA || !nationB) return null;
+
+    let excess = 0;
+    let winner, loser, winnerSide;
+
+    if (levA > 10) {
+        excess = levA - 10;
+        winner = nationA;
+        loser = nationB;
+        winnerSide = 'a';
+        await supabase.from('incidents').update({ leverage_a: 10 }).eq('id', incident.id);
+    } else if (levB > 10) {
+        excess = levB - 10;
+        winner = nationB;
+        loser = nationA;
+        winnerSide = 'b';
+        await supabase.from('incidents').update({ leverage_b: 10 }).eq('id', incident.id);
+    }
+
+    if (excess <= 0) return null;
+
+    // Winner penalties
+    const winnerRepPenalty = -1 * excess;
+    const winnerRelPenalty = -2 * excess;
+    // Loser sympathy
+    const loserRepBonus = 0.5 * excess;
+    const loserRelBonus = 1 * excess;
+
+    // Apply Int'l_Reputation
+    const winnerRep = Math.max(0, Number(winner.intl_reputation ?? 50) + winnerRepPenalty);
+    const loserRep = Math.min(100, Number(loser.intl_reputation ?? 50) + loserRepBonus);
+    await supabase.from('nations').update({ intl_reputation: winnerRep }).eq('id', winner.id);
+    await supabase.from('nations').update({ intl_reputation: loserRep }).eq('id', loser.id);
+
+    // Apply Relations penalties/bonuses with non-involved nations
+    const nonInvolved = Object.values(nationMap).filter(
+        n => n.id !== nationA.id && n.id !== nationB.id
+    );
+    for (const other of nonInvolved) {
+        // Winner relations penalty
+        const wA = winner.id < other.id ? winner.id : other.id;
+        const wB = winner.id < other.id ? other.id : winner.id;
+        await supabase.rpc('nudge_relation_score', {
+            p_nation_a_id: wA, p_nation_b_id: wB, p_delta: winnerRelPenalty
+        }).then(() => {}, () => {
+            // Fallback: skip if RPC doesn't exist
+        });
+
+        // Loser relations bonus
+        const lA = loser.id < other.id ? loser.id : other.id;
+        const lB = loser.id < other.id ? other.id : loser.id;
+        await supabase.rpc('nudge_relation_score', {
+            p_nation_a_id: lA, p_nation_b_id: lB, p_delta: loserRelBonus
+        }).then(() => {}, () => {});
+    }
+
+    const crisisName = formatCrisisName(incident.incident_type);
+    const eventText = `${winner.name} faces international backlash for aggressive handling of ${crisisName}. ${excess} point(s) excess leverage. Reputation: ${winnerRepPenalty}, Relations: ${winnerRelPenalty} with all nations.`;
+
+    await supabase.from('incident_events').insert({
+        incident_id: incident.id,
+        tick: currentTick,
+        event_type: 'blowback',
+        event_text: eventText,
+        metadata: { excess, winner: winner.name, loser: loser.name },
+        visibility: 'both'
+    });
+
+    console.log(`[Incidents] Blowback: ${incident.id} ${winner.name} excess=${excess}`);
+    return { incidentId: incident.id, winner: winner.name, excess, repPenalty: winnerRepPenalty };
+}
+
+
+// ==================== RESOLUTION CHECK ====================
+
+/**
+ * Check all resolution conditions:
+ *   1. Leverage >= 10 → forced resolution
+ *   2. Natural decay (fishing: 20 ticks with |lev_a - lev_b| <= 2)
+ *
+ * Concession is handled by the action execution flow (Phase 8), not here.
+ * Mediation completion is handled by processIncidentMediation above.
+ */
+async function processIncidentResolution(supabase, incident, nationMap, currentTick) {
+    if (incident.status !== 'active') return null;
+
+    const nationA = nationMap[incident.nation_a_id];
+    const nationB = nationMap[incident.nation_b_id];
+    if (!nationA || !nationB) return null;
+
+    const levA = incident.leverage_a || 0;
+    const levB = incident.leverage_b || 0;
+
+    // 1. Forced resolution at leverage 10
+    if (levA >= 10) {
+        return await resolveIncident(supabase, incident, nationA, nationB, currentTick, 'forced_a', levA, levB);
+    }
+    if (levB >= 10) {
+        return await resolveIncident(supabase, incident, nationA, nationB, currentTick, 'forced_b', levA, levB);
+    }
+
+    // 2. Natural decay check
+    const ticksActive = currentTick - incident.started_tick;
+    const levDiff = Math.abs(levA - levB);
+
+    const decayConfig = {
+        fishing_dispute: { ticks: 20, maxDiff: 2 },
+        border_incursion: { ticks: 15, maxDiff: 1 },
+        trade_war: { ticks: 20, maxDiff: 2 },
+        spy_arrest: { ticks: 15, maxDiff: 2 },
+        dam_water: null // never decays
+    };
+
+    const decay = decayConfig[incident.incident_type];
+    if (decay && ticksActive >= decay.ticks && levDiff <= decay.maxDiff) {
+        return await resolveIncident(supabase, incident, nationA, nationB, currentTick, 'decay', levA, levB);
+    }
+
+    return null;
+}
+
+/**
+ * Resolve an incident with the given resolution type.
+ * Applies stat effects based on who won and by how much.
+ */
+async function resolveIncident(supabase, incident, nationA, nationB, currentTick, resolutionType, levA, levB) {
+    const crisisName = formatCrisisName(incident.incident_type);
+    let eventText = '';
+    const statEffects = {};
+
+    if (resolutionType === 'forced_a') {
+        // Nation A wins by leverage 10
+        eventText = `${crisisName} resolved — ${nationA.name} prevails. ${nationB.name} faces severe consequences.`;
+        Object.assign(statEffects, {
+            Intl_Reputation_b: -4,
+            Stability_b: -3,
+            Intl_Reputation_a: 2,
+            Relations: 5
+        });
+        // Gov_Approval / Regime_Health cost for loser
+        if (isAutocracy(nationB)) {
+            statEffects.Regime_Health_b = -15;
+        } else {
+            statEffects.Gov_Approval_b = -10;
+        }
+        // Winner bonus
+        if (isAutocracy(nationA)) {
+            statEffects.Regime_Health_a = 5;
+        } else {
+            statEffects.Gov_Approval_a = 3;
+        }
+
+    } else if (resolutionType === 'forced_b') {
+        // Nation B wins by leverage 10
+        eventText = `${crisisName} resolved — ${nationB.name} prevails. ${nationA.name} faces severe consequences.`;
+        Object.assign(statEffects, {
+            Intl_Reputation_a: -3,
+            Stability_a: -3,
+            Intl_Reputation_b: 1,
+            Relations: 3
+        });
+        if (isAutocracy(nationA)) {
+            statEffects.Regime_Health_a = -15;
+        } else {
+            statEffects.Gov_Approval_a = -10;
+        }
+        if (isAutocracy(nationB)) {
+            statEffects.Regime_Health_b = 5;
+        } else {
+            statEffects.Gov_Approval_b = 4;
+        }
+
+    } else if (resolutionType === 'decay') {
+        eventText = `${crisisName} fades without formal resolution. Tensions ease. Crew quietly released.`;
+        Object.assign(statEffects, { Relations: 2 });
+
+    } else if (resolutionType === 'concession_a') {
+        // A concedes — B wins
+        const cost = levB;
+        eventText = `${nationA.name} concedes the ${crisisName}. ${nationB.name}'s position upheld.`;
+        statEffects.Relations = 3;
+        statEffects.Intl_Reputation_a = -1;
+        if (isAutocracy(nationA)) {
+            statEffects.Regime_Health_a = -(Math.round(cost * 1.5));
+        } else {
+            statEffects.Gov_Approval_a = -cost;
+        }
+
+    } else if (resolutionType === 'concession_b') {
+        const cost = levA;
+        eventText = `${nationB.name} concedes the ${crisisName}. ${nationA.name}'s position upheld.`;
+        statEffects.Relations = 3;
+        statEffects.Intl_Reputation_b = -1;
+        if (isAutocracy(nationB)) {
+            statEffects.Regime_Health_b = -(Math.round(cost * 1.5));
+        } else {
+            statEffects.Gov_Approval_b = -cost;
+        }
+    }
+
+    // Update incident
+    await supabase.from('incidents').update({
+        status: 'resolved',
+        resolved_tick: currentTick,
+        resolution_type: resolutionType
+    }).eq('id', incident.id);
+
+    // Apply stat effects
+    await applyIncidentStatEffects(supabase, nationA, nationB, statEffects);
+
+    // Timeline event
+    await supabase.from('incident_events').insert({
+        incident_id: incident.id,
+        tick: currentTick,
+        event_type: 'resolution',
+        event_text: eventText,
+        metadata: { resolution_type: resolutionType, leverage_a: levA, leverage_b: levB },
+        visibility: 'both'
+    });
+
+    // System chat for both nations
+    for (const nation of [nationA, nationB]) {
+        await supabase.from('incident_chat_messages').insert({
+            incident_id: incident.id,
+            nation_id: nation.id,
+            sender_role: 'system',
+            message_text: `CRISIS RESOLVED: ${eventText}`,
+            tick: currentTick,
+            is_system: true,
+            chat_context: 'internal'
+        });
+    }
+
+    // Event log for both + world
+    for (const nation of [nationA, nationB]) {
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: `${crisisName} Resolved`,
+            trigger_key: `incident_resolved_${resolutionType}`,
+            description_chosen: eventText,
+            category: 'crisis',
+            fired_at_tick: currentTick
+        });
+    }
+
+    console.log(`[Incidents] RESOLVED: ${incident.id} type=${resolutionType} leverage=${levA}-${levB}`);
+    return { incidentId: incident.id, resolutionType, leverageA: levA, leverageB: levB };
+}
+
+
 
 // ===== END GAME LOGIC =====
 
@@ -32735,6 +33376,22 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.incidentTickEvents = activeResults.tickEvents;
             summary.incidentInaction = activeResults.inactionPenalties;
             console.log(`[advanceTick] Incidents: ${activeResults.tickEvents.length} tick event(s), ${activeResults.inactionPenalties.length} inaction penalty(ies)`);
+        }
+
+        // Process escalation, mediation, blowback, and resolution
+        const resolutionResults = await processIncidentResolutionPhase(supabase, nationList, newTick);
+        if (resolutionResults.escalations.length > 0) {
+            summary.incidentEscalations = resolutionResults.escalations;
+        }
+        if (resolutionResults.mediations.length > 0) {
+            summary.incidentMediations = resolutionResults.mediations;
+        }
+        if (resolutionResults.blowbacks.length > 0) {
+            summary.incidentBlowbacks = resolutionResults.blowbacks;
+        }
+        if (resolutionResults.resolutions.length > 0) {
+            summary.incidentResolutions = resolutionResults.resolutions;
+            console.log(`[advanceTick] Incidents: ${resolutionResults.resolutions.length} resolved`);
         }
     } catch (incidentErr) {
         console.error('[advanceTick] Incident processing failed (non-fatal):', incidentErr);
