@@ -29280,14 +29280,6 @@ function formatDebtToGDP(ratio) {
 
 // ==================== CONSTANTS ====================
 
-const INCIDENT_TYPES = {
-    FISHING_DISPUTE: 'fishing_dispute',
-    BORDER_INCURSION: 'border_incursion',
-    DAM_WATER: 'dam_water',
-    TRADE_WAR: 'trade_war',
-    SPY_ARREST: 'spy_arrest'
-};
-
 const INCIDENT_CONFIG = {
     fishing_dispute: {
         base_chance: 0.4,
@@ -29354,7 +29346,6 @@ const INCIDENT_CONFIG = {
 
 const GLOBAL_INCIDENT_CAP = 12;
 const PER_NATION_INCIDENT_CAP = 3;
-const COOLDOWN_TICKS = 18;
 
 // ==================== TRIGGER CHECK ====================
 
@@ -29776,13 +29767,18 @@ async function applyIncidentStatEffects(supabase, nationA, nationB, effects) {
                 p_nation_a_id: aId,
                 p_nation_b_id: bId,
                 p_delta: value
-            }).then(() => {}, (err) => {
+            }).then(() => {}, async () => {
                 // Fallback: direct update if RPC doesn't exist
-                supabase.from('diplomatic_relations')
-                    .update({ relation_score: Math.max(0, Math.min(100, (0) + value)) })
+                const { data: rel } = await supabase.from('diplomatic_relations')
+                    .select('relation_score')
                     .eq('nation_a_id', aId)
                     .eq('nation_b_id', bId)
-                    .then(() => {}, () => {});
+                    .maybeSingle();
+                const current = rel?.relation_score ?? 30;
+                await supabase.from('diplomatic_relations')
+                    .update({ relation_score: Math.max(0, Math.min(100, current + value)) })
+                    .eq('nation_a_id', aId)
+                    .eq('nation_b_id', bId);
             });
             continue;
         }
@@ -30313,7 +30309,6 @@ async function processIncidentMediation(supabase, incident, nationMap, currentTi
     const aProposed = mediation.nation_a_proposed;
     const bProposed = mediation.nation_b_proposed;
     let outcome, eventText;
-    const updates = {};
 
     if (aProposed && bProposed) {
         // BOTH PROPOSED — enter mediation
