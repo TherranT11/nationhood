@@ -6416,6 +6416,8 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
     const container = document.getElementById('elections-container');
     if (!container) return;
 
+    try {
+
     const statsAtStart = administration?.stats_at_start;
     const ticksInPower = currentTick - (administration?.started_at_tick || currentTick);
     const isGoverning = role === 'Lead — Governing' || role === 'Governing Coalition';
@@ -6554,6 +6556,8 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
     </div>`;
 
     // --- Momentum Box ---
+    // NOTE: faction.momentum and faction.momentum_log columns do not exist yet.
+    // These will read as 0 and [] until the backend momentum system is implemented.
     const momentum = Number(faction.momentum ?? 0);
     const momentumDecayRate = 0.08;
     const decayPerTick = (momentum * momentumDecayRate).toFixed(1);
@@ -6642,11 +6646,12 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
 
     // --- Ideology Box (760px) ---
     // Fetch electorate profile for ideology distribution
-    const { data: elecProfile } = await _supabase
+    const { data: elecProfile, error: elecProfileErr } = await _supabase
         .from('electorate_profile')
         .select('*')
         .eq('nation_id', nation.id)
         .maybeSingle();
+    if (elecProfileErr) console.error('[Elections] electorate_profile fetch failed:', elecProfileErr);
 
     // Build ideology lookup
     const ideoMap = {};
@@ -6799,5 +6804,10 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
             ${whatIsIdeologyBox}
         </div>
     </div>`;
+
+    } catch (e) {
+        console.error('[Elections Tab] Render error:', e);
+        container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:20px;text-align:center;">Failed to load election data. Please refresh.</div>';
+    }
 }
 
