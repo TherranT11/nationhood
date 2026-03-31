@@ -331,11 +331,13 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
         }
         if (tags.length === 0) continue;
 
-        // Build YES voter set (normalize committee stances)
+        // Build YES and NO voter sets (normalize committee stances)
         const yesVoters = new Set();
+        const noVoters = new Set();
         for (const s of (bill.bill_support || [])) {
             const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
             if (stance === 'yes') yesVoters.add(s.faction_id);
+            else if (stance === 'no') noVoters.add(s.faction_id);
         }
         // Sponsor always counts as YES
         if (bill.proposed_by) yesVoters.add(bill.proposed_by);
@@ -362,6 +364,11 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
             // +4 for voting YES (all YES voters including sponsor)
             for (const factionId of yesVoters) {
                 addShift(factionId, mapping.axisKey, 4 * mapping.direction * diminish);
+            }
+
+            // -4 for voting NO (opposite direction)
+            for (const factionId of noVoters) {
+                addShift(factionId, mapping.axisKey, -4 * mapping.direction * diminish);
             }
         }
     }
