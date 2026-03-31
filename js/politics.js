@@ -6692,9 +6692,50 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
             const salience = Number(elecProfile['salience_' + ax.key] ?? 0.2);
             const saliencePct = (salience * 100).toFixed(0);
 
-            // Mini distribution bar: show electorate mean + variance band + player position
+            // Zone overlays (identical to Electorate tab)
             const varLeft = Math.max(0, eMean - eVar);
-            const varWidth = Math.min(100, eMean + eVar) - varLeft;
+            const varRight = Math.min(100, eMean + eVar);
+            const varWidth = varRight - varLeft;
+
+            const zoneColors = {
+                'radical-left':   'rgba(239,68,68,0.10)',
+                'moderate-left':  'rgba(251,191,36,0.07)',
+                'centrist':       'rgba(74,222,128,0.08)',
+                'moderate-right': 'rgba(251,191,36,0.07)',
+                'radical-right':  'rgba(239,68,68,0.10)',
+            };
+            const zoneBorders = {
+                'radical-left':   'rgba(239,68,68,0.25)',
+                'moderate-left':  'rgba(251,191,36,0.18)',
+                'centrist':       'rgba(74,222,128,0.22)',
+                'moderate-right': 'rgba(251,191,36,0.18)',
+                'radical-right':  'rgba(239,68,68,0.25)',
+            };
+            const zoneLabelColors = {
+                'radical-left':   'rgba(239,68,68,0.50)',
+                'moderate-left':  'rgba(251,191,36,0.45)',
+                'centrist':       'rgba(74,222,128,0.50)',
+                'moderate-right': 'rgba(251,191,36,0.45)',
+                'radical-right':  'rgba(239,68,68,0.50)',
+            };
+
+            let zonesHtml = '';
+            for (const z of zones) {
+                if (z.width < 1) continue;
+                const zLeft = Math.max(z.left, varLeft);
+                const zRight = Math.min(z.left + z.width, varRight);
+                if (zRight <= zLeft) continue;
+                const relLeft = ((zLeft - varLeft) / varWidth) * 100;
+                const relWidth = ((zRight - zLeft) / varWidth) * 100;
+                const showLabel = relWidth > 8;
+                zonesHtml += `<div class="elec-ideo-zone" style="left:${relLeft}%;width:${relWidth}%;background:${zoneColors[z.id]};border-left:1px solid ${zoneBorders[z.id]};border-right:1px solid ${zoneBorders[z.id]}">
+                    ${showLabel ? `<span class="elec-ideo-zone-label" style="color:${zoneLabelColors[z.id]}">${z.label}</span>` : ''}
+                </div>`;
+            }
+
+            // Player marker position within variance band
+            const playerRelPos = varWidth > 0 ? ((normPos - varLeft) / varWidth) * 100 : 50;
+            const meanRelPos = varWidth > 0 ? ((eMean - varLeft) / varWidth) * 100 : 50;
 
             ideologyRowsHtml += `
             <div class="elec-ideo-axis">
@@ -6703,14 +6744,19 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
                     <span class="elec-ideo-salience">Salience: ${saliencePct}%</span>
                 </div>
                 <div class="elec-ideo-bar-wrap">
-                    <div class="elec-ideo-bar-track">
-                        <div class="elec-ideo-var-band" style="left:${varLeft}%;width:${varWidth}%"></div>
-                        <div class="elec-ideo-mean-marker" style="left:${eMean}%"></div>
-                        <div class="elec-ideo-player-marker" style="left:${normPos}%"></div>
-                    </div>
                     <div class="elec-ideo-bar-labels">
                         <span>${escapeHtml(ax.leftLabel)}</span>
                         <span>${escapeHtml(ax.rightLabel)}</span>
+                    </div>
+                    <div class="elec-ideo-bar-track">
+                        <div class="elec-ideo-var-band" style="left:${varLeft}%;width:${varWidth}%">
+                            ${zonesHtml}
+                            <div class="elec-ideo-mean-marker" style="left:${meanRelPos}%"></div>
+                            <div class="elec-ideo-player-marker" style="left:${playerRelPos}%"></div>
+                        </div>
+                    </div>
+                    <div class="elec-ideo-bar-labels" style="margin-bottom:12px">
+                        <span></span>
                     </div>
                 </div>
                 <div class="elec-ideo-details">
