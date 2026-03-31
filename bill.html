@@ -2326,7 +2326,7 @@ async function sendToFloor() {
                 const credDelta = -(opposedCount * 0.03);
                 const { data: _shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
                 await adjustCredibility(_supabase, currentBill.proposed_by, currentNation.id, credDelta, 0, _shard?.current_tick || 0, { source: 'legislation:ideology_conflict' });
-                penaltyMsg = `\n\n⚠ Ideology penalty: -${(opposedCount * 3)}% credibility (${opposedCount} article${opposedCount !== 1 ? 's' : ''} conflict${opposedCount === 1 ? 's' : ''} with your values)`;
+                penaltyMsg = `\n\n⚠ Ideology penalty: -${(opposedCount * 6)} credibility (${opposedCount} article${opposedCount !== 1 ? 's' : ''} conflict${opposedCount === 1 ? 's' : ''} with your values)`;
             }
         }
 
