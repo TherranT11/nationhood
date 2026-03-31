@@ -5133,6 +5133,122 @@ body.light-mode .vt-issue-row--missing { background: rgba(217,131,48,0.06); }
     margin-bottom: 4px;
 }
 
+/* ── Momentum box ── */
+
+.elec-mom-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.elec-mom-score-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.elec-mom-score {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.elec-mom-value {
+    font-family: var(--dfont-mono);
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.elec-mom-max {
+    font-family: var(--dfont-mono);
+    font-size: 13px;
+    color: var(--dtext-3);
+}
+
+.elec-mom-bar-wrap {
+    width: 100%;
+    height: 6px;
+    background: var(--dbg-3);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.elec-mom-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+
+.elec-mom-decay {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--dtext-3);
+    margin-bottom: 10px;
+}
+
+.elec-mom-log-header {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--dtext-3);
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--dborder-hair);
+    margin-bottom: 2px;
+}
+
+.elec-mom-log {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.elec-mom-log-row {
+    display: grid;
+    grid-template-columns: 1fr 44px 40px;
+    gap: 4px;
+    padding: 3px 0;
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    color: var(--dtext-2);
+    border-bottom: 1px solid var(--dborder-hair);
+}
+
+.elec-mom-log-row:last-child {
+    border-bottom: none;
+}
+
+.elec-mom-log-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.elec-mom-log-delta {
+    text-align: right;
+    font-weight: 600;
+}
+
+.elec-mom-log-ago {
+    text-align: right;
+    color: var(--dtext-3);
+    font-size: 10px;
+}
+
+.elec-mom-election {
+    flex-shrink: 0;
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    color: var(--dtext-2);
+    text-align: center;
+    padding: 8px 0 2px;
+    border-top: 1px solid var(--dborder-hair);
+    margin-top: auto;
+}
+
 /* Light mode */
 body.light-mode .elec-box { background: #fafaf8; border-color: rgba(0,0,0,0.08); }
 

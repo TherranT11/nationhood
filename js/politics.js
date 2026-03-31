@@ -547,7 +547,7 @@ async function renderPartyTab(f, nation, data) {
             // Lazy-load Elections tab on first click
             if (target === 'elections' && !electionsLoaded) {
                 electionsLoaded = true;
-                renderElectionsTab(nation, administration, coalition, f, allParties, currentTick, role);
+                renderElectionsTab(nation, administration, coalition, f, allParties, currentTick, role, nextElection);
             }
         });
     });
@@ -6980,7 +6980,7 @@ function hexToRgba(hex, alpha) {
 
 // ==================== ELECTIONS TAB ====================
 
-function renderElectionsTab(nation, administration, coalition, faction, allParties, currentTick, role) {
+function renderElectionsTab(nation, administration, coalition, faction, allParties, currentTick, role, nextElection) {
     const container = document.getElementById('elections-container');
     if (!container) return;
 
@@ -7121,11 +7121,100 @@ function renderElectionsTab(nation, administration, coalition, faction, allParti
         </div>
     </div>`;
 
+    // --- Momentum Box ---
+    const momentum = Number(faction.momentum ?? 0);
+    const momentumDecayRate = 0.08;
+    const decayPerTick = (momentum * momentumDecayRate).toFixed(1);
+    const momColor = momentum >= 60 ? 'var(--dgreen)' : momentum >= 30 ? 'var(--damber)' : 'var(--dred)';
+    const momBarWidth = Math.min(100, Math.max(0, momentum));
+
+    // Next election countdown
+    const electionTick = nextElection?.election_tick || 0;
+    const ticksUntilElection = electionTick > currentTick ? electionTick - currentTick : null;
+
+    // Momentum event log — read from faction.momentum_log if available (array of { label, delta, tick })
+    const momentumLog = Array.isArray(faction.momentum_log) ? faction.momentum_log : [];
+    const logRowsHtml = momentumLog.length > 0
+        ? momentumLog.slice(0, 30).map(entry => {
+            const ticksAgo = currentTick - (entry.tick || 0);
+            const color = entry.delta > 0 ? 'var(--dgreen)' : 'var(--dred)';
+            const sign = entry.delta > 0 ? '+' : '';
+            return `<div class="elec-mom-log-row">
+                <span class="elec-mom-log-label">${escapeHtml(entry.label || 'Event')}</span>
+                <span class="elec-mom-log-delta" style="color:${color}">${sign}${entry.delta}</span>
+                <span class="elec-mom-log-ago">${ticksAgo}t ago</span>
+            </div>`;
+        }).join('')
+        : '<div style="color:var(--dtext-3);font-size:11px;padding:10px">No momentum events yet.</div>';
+
+    const momentumBox = `
+    <div class="elec-box">
+        <div class="elec-box-header">
+            <div class="pol-box-dot pol-box-dot--teal"></div>
+            <span class="elec-box-title">Momentum</span>
+        </div>
+        <div class="elec-box-body elec-mom-body">
+            <div class="elec-mom-score-row">
+                <div class="elec-mom-score">
+                    <span class="elec-mom-value" style="color:${momColor}">${Math.round(momentum)}</span>
+                    <span class="elec-mom-max">/ 100</span>
+                </div>
+            </div>
+            <div class="elec-mom-bar-wrap">
+                <div class="elec-mom-bar" style="width:${momBarWidth}%;background:${momColor}"></div>
+            </div>
+            <div class="elec-mom-decay">Decays 8%/tick — currently losing ${decayPerTick}/tick</div>
+            <div class="elec-mom-log-header">Recent Activity</div>
+            <div class="elec-mom-log">
+                ${logRowsHtml}
+            </div>
+            ${ticksUntilElection ? `<div class="elec-mom-election">Next election in ${ticksUntilElection} tick${ticksUntilElection !== 1 ? 's' : ''}</div>` : ''}
+        </div>
+    </div>`;
+
+    // --- What Is Momentum Box ---
+    const whatIsMomentumBox = `
+    <div class="elec-box">
+        <div class="elec-box-header">
+            <div class="pol-box-dot pol-box-dot--amber"></div>
+            <span class="elec-box-title">What Is Momentum?</span>
+        </div>
+        <div class="elec-box-body elec-explainer">
+            <p><strong>Momentum</strong> measures your party's political energy — how active, visible, and engaged you are with the electorate. It accounts for 30% of election outcomes.</p>
+            <p>Momentum is a score from 0 to 100 that <strong>decays 8% per tick</strong>. If you stop acting, it fades. Sustained activity keeps it high. It resets to 0 after every election.</p>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">Legislation:</div>
+                <ul>
+                    <li><strong>Bill passes:</strong> Sponsor gets +3 per policy article. YES voters get +2 per article.</li>
+                    <li><strong>Bill fails:</strong> Sponsor loses -3 per article. YES voters lose -2 per article. NO voters gain +2 per article.</li>
+                    <li>Text-only articles do not count. Abstaining gives nothing.</li>
+                </ul>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">Campaign Actions:</div>
+                <ul>
+                    <li><strong>Rally</strong> (1 AP) — Moderate, reliable momentum gain.</li>
+                    <li>Other campaign actions like stances, public addresses, and media campaigns also contribute.</li>
+                </ul>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">The Tradeoff:</div>
+                <p>You only get 5 AP per tick. Every AP spent campaigning is an AP not spent on bills. Governing parties must balance legislation (which builds Governance) with campaigning (which builds Momentum). Opposition can focus on campaigning but depends on government failure for Governance.</p>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">Vote Locking:</div>
+                <p>Once you vote YES or NO on a bill, you cannot flip to the opposite — only change to Abstain. Choose carefully.</p>
+            </div>
+        </div>
+    </div>`;
+
     container.innerHTML = `
     <div class="elec-page">
         <div class="elec-row">
             ${governanceBox}
             ${whatIsBox}
+            ${momentumBox}
+            ${whatIsMomentumBox}
         </div>
     </div>`;
 }
