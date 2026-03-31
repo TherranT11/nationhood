@@ -4623,22 +4623,10 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
             const apResult = await _supabase.rpc('accumulate_ap', { p_faction_id: f.id, p_gain: -2, p_max_ap: 99 });
             if (apResult.error) { result = { success: false, error: apResult.error.message }; }
             else {
-                const { boostVisibility } = await import('./game/electorate.js');
                 let baseRoll = Math.floor(Math.random() * 5) - 2; // -2 to +2
                 if (!_caIsGoverning) baseRoll += 1; // opposition bonus
                 else if ((n.gov_approval || 0) >= 40) baseRoll += 2; // government with decent approval
-                // Positive = boost visibility, negative = reduce visibility
-                if (baseRoll > 0) {
-                    await boostVisibility(_supabase, f.id, n.id, baseRoll);
-                } else if (baseRoll < 0) {
-                    const { data: visStanding } = await _supabase.from('faction_electoral_standing')
-                        .select('id, visibility').eq('faction_id', f.id).eq('nation_id', n.id).maybeSingle();
-                    if (visStanding) {
-                        await _supabase.from('faction_electoral_standing').update({
-                            visibility: Math.max(0, (Number(visStanding.visibility) || 0) + baseRoll)
-                        }).eq('id', visStanding.id);
-                    }
-                }
+                // Visibility writes removed — column repurposed for momentum (3-pillar system).
                 await _supabase.from('campaign_actions').insert({
                     party_id: f.id, nation_id: n.id, action_type: 'press_conference',
                     ap_cost: 2, tick_performed: tick, result: { visBoost: baseRoll }

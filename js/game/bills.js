@@ -213,22 +213,8 @@ export async function applyNoVotePenalty(supabase, bill, nationId) {
         const approvalLoss = -(1 + Math.floor(Math.random() * 3));
         await nudgeApproval(supabase, faction.id, nationId, approvalLoss, { source: 'bill:no_vote' });
 
-        // -5 visibility
-        const { data: standing } = await supabase
-            .from('faction_electoral_standing')
-            .select('id, visibility')
-            .eq('faction_id', faction.id)
-            .eq('nation_id', nationId)
-            .maybeSingle();
-        if (standing) {
-            const newVis = Math.max(0, (Number(standing.visibility) || 0) + VISIBILITY_PENALTY);
-            await supabase.from('faction_electoral_standing')
-                .update({ visibility: newVis })
-                .eq('id', standing.id);
-        }
-
-        // -5 credibility
-        await adjustCredibility(supabase, faction.id, nationId, CREDIBILITY_PENALTY);
+        // Visibility and credibility writes removed — 3-pillar election system.
+        // No-vote penalty is handled server-side via adjustFactionMomentum.
 
         penalized.push({
             factionId: faction.id,

@@ -440,19 +440,8 @@ export async function initNewspaper(supabase, state) {
 
 /** Award +2 visibility to a democratic faction for writing a long article */
 async function _applyArticleVisibilityReward(factionId, nationId) {
-    const { data: standing } = await _supabase
-        .from('faction_electoral_standing')
-        .select('visibility')
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId)
-        .maybeSingle();
-    const current = Number(standing?.visibility ?? 0);
-    const newVal = Math.min(100, current + 2);
-    await _supabase
-        .from('faction_electoral_standing')
-        .update({ visibility: newVal })
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId);
+    // No-op: visibility column repurposed for momentum (3-pillar election system).
+    return;
 }
 
 /** Award +1 party approval to a democratic faction for writing a long article */
