@@ -4596,19 +4596,21 @@ body.light-mode .pol-blocs-box {
 
 .elec-page {
     padding: 16px 24px;
-    max-width: 1400px;
+    max-width: 1500px;
     margin: 0 auto;
 }
 
 .elec-row {
     display: flex;
-    gap: 20px;
+    gap: 16px;
     flex-wrap: wrap;
     justify-content: center;
 }
 
 .elec-box {
-    width: 380px;
+    flex: 1 1 0;
+    min-width: 260px;
+    max-width: 360px;
     height: 450px;
     background: var(--dbg-2);
     border: 1px solid var(--dborder-1);
@@ -4907,7 +4909,9 @@ body.light-mode .pol-blocs-box {
 /* ── Ideology box (wide) ── */
 
 .elec-box--wide {
-    width: 760px;
+    flex: 2 1 0;
+    max-width: 740px;
+    min-width: 400px;
 }
 
 .elec-ideo-avg {
@@ -5066,6 +5070,6 @@ body.light-mode .elec-box { background: #fafaf8; border-color: rgba(0,0,0,0.08);
 /* Responsive */
 @media (max-width: 860px) {
     .elec-row { flex-direction: column; align-items: center; }
-    .elec-box { width: 100%; max-width: 380px; }
+    .elec-box { width: 100%; max-width: 380px; min-width: unset; }
     .elec-box--wide { max-width: 100%; }
 }
