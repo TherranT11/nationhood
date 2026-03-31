@@ -183,6 +183,7 @@
     align-items: center;
     flex-shrink: 0;
     max-height: 36px;
+    position: relative;
 }
 
 .nws-breaking-label {
