@@ -2265,7 +2265,7 @@ async function enactDecree() {
         const { error } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
         if (error) throw error;
 
-        // Apply credibility penalty for opposed ideology articles (-3% per opposed article)
+        // Apply momentum penalty for opposed ideology articles (-1 per opposed article)
         if (currentBill.proposed_by) {
             let sponsorIdeology = await loadFactionIdeology(_supabase, currentBill.proposed_by);
             if (sponsorIdeology?._error) sponsorIdeology = null;
@@ -2276,8 +2276,7 @@ async function enactDecree() {
                     return calculateBillDynamicPenalty(sponsorIdeology, [art]) < 0;
                 }).length;
                 if (opposedCount > 0) {
-                    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-                    await adjustCredibility(_supabase, currentBill.proposed_by, currentNation.id, -(opposedCount * 0.03), 0, shard?.current_tick || 0, { source: 'legislation:ideology_conflict' });
+                    await _supabase.rpc('adjust_momentum', { p_faction_id: currentBill.proposed_by, p_delta: -opposedCount });
                 }
             }
         }
@@ -2328,7 +2327,7 @@ async function sendToFloor() {
         const { error } = await _supabase.from('bills').update(updateFields).eq('id', billId);
         if (error) throw error;
 
-        // Apply credibility penalty for opposed ideology articles (-3% per opposed article)
+        // Apply momentum penalty for opposed ideology articles (-1 per opposed article)
         let penaltyMsg = '';
         if (factionIdeology && currentBill.proposed_by) {
             const opposedCount = (currentBill.bill_articles || []).filter(art => {
@@ -2337,10 +2336,8 @@ async function sendToFloor() {
                 return calculateBillDynamicPenalty(factionIdeology, [art]) < 0;
             }).length;
             if (opposedCount > 0) {
-                const credDelta = -(opposedCount * 0.03);
-                const { data: _shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-                await adjustCredibility(_supabase, currentBill.proposed_by, currentNation.id, credDelta, 0, _shard?.current_tick || 0, { source: 'legislation:ideology_conflict' });
-                penaltyMsg = `\n\n⚠ Ideology penalty: -${(opposedCount * 3)}% credibility (${opposedCount} article${opposedCount !== 1 ? 's' : ''} conflict${opposedCount === 1 ? 's' : ''} with your values)`;
+                await _supabase.rpc('adjust_momentum', { p_faction_id: currentBill.proposed_by, p_delta: -opposedCount });
+                penaltyMsg = `\n\n⚠ Ideology penalty: -${opposedCount} momentum (${opposedCount} article${opposedCount !== 1 ? 's' : ''} conflict${opposedCount === 1 ? 's' : ''} with your values)`;
             }
         }
 

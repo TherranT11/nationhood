@@ -1862,7 +1862,11 @@ async function _nudgeApproval(supabase, factionId, nationId, delta, source) {
  * Adjust a faction's credibility_modifier in faction_electoral_standing.
  * Local helper for promise resolution (mirrors adjustCredibility in advance-tick).
  */
+// No-op: credibility_modifier column repurposed for momentum (3-pillar election system).
+// Server-side advance-tick is authoritative; client-side writes are dead.
 async function _adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0, opts = {}) {
+    return; // no-op
+    /* Original code removed — was writing to credibility_modifier which is now overwritten every tick.
     if (!delta && !suspendRecoveryTicks) return;
     const { data: standing } = await supabase
         .from('faction_electoral_standing')
@@ -1882,8 +1886,6 @@ async function _adjustCredibility(supabase, factionId, nationId, delta, suspendR
     await supabase.from('faction_electoral_standing')
         .update(updateObj)
         .eq('id', standing.id);
-
-    // Audit log (non-fatal)
     if (delta && opts.source) {
         const tick = currentTick || opts.tick || 0;
         supabase.from('credibility_log').insert({
@@ -1896,6 +1898,7 @@ async function _adjustCredibility(supabase, factionId, nationId, delta, suspendR
             if (logErr) console.warn('[PoliticalActions] credibility_log insert failed:', logErr.message);
         });
     }
+    */
 }
 
 /**

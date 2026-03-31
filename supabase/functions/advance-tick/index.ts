@@ -4253,6 +4253,8 @@ const MOMENTUM_SOURCE_LABELS = {
     'promise:unfulfilled_penalty': 'Unfulfilled promise',
     'protest:organiser': 'Protest backfire',
     'protest:organiser:visibility': 'Protest exposure',
+    'media_campaign:momentum': 'Media campaign',
+    'grassroots:momentum': 'Grassroots movement',
     'campaign:incumbent': 'Incumbency bonus',
     'purge:decay': 'Purge effect decay',
     'impeachment:convicted': 'Impeached',
@@ -15866,7 +15868,7 @@ async function executeTakeStance(supabase, factionId, nationId, issueId, axis, s
 /**
  * Hook called after executeRally() to update electorate tables.
  *
- * Rally boosts visibility. Outcome quality determines boost size.
+ * Rally boosts momentum. Outcome quality determines boost size.
  * Rousing = big boost, gaffe/counter = no boost (or penalty).
  *
  * @param {object} supabase
@@ -16550,7 +16552,11 @@ async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick
                     profile[col] = newVal;
                 }
             }
-            // Phase 2 visibility boost removed — visibility column repurposed for momentum.
+            } else {
+                // Phase 2 (ticks 5–9): momentum boost — 1d3 (1–3) per tick
+                const momRoll = 1 + Math.floor(Math.random() * 3); // 1, 2, or 3
+                await adjustFactionMomentum(supabase, act.faction_id, nation.id, momRoll, { source: 'media_campaign:momentum' });
+            }
         } else if (act.action_type === 'grassroots_movement') {
             const grCfg = IDEO_SHIFT_CONFIG.GRASSROOTS;
             // 1 AP per tick cost — suspend if faction can't afford it
@@ -16568,7 +16574,10 @@ async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick
                 profileUpdates[col] = newVal;
                 profile[col] = newVal;
             }
-            // Periodic visibility boost removed — visibility column repurposed for momentum.
+            // Periodic momentum boost: +1 every VISIBILITY_INTERVAL ticks
+            if (ticksActive > 0 && ticksActive % grCfg.VISIBILITY_INTERVAL === 0) {
+                await adjustFactionMomentum(supabase, act.faction_id, nation.id, 1, { source: 'grassroots:momentum' });
+            }
             // Track cumulative drift for cancel revert
             const grPrevTotal = Number(act.band_shift_total || 0);
             toUpdate.push({ id: act.id, last_active_tick: currentTick, band_shift_total: round2(grPrevTotal + grActualDrift) });
@@ -28986,7 +28995,7 @@ async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
     const ticksToElection = upcomingElection.election_tick - currentTick;
     console.log(`Campaign bonuses for incumbent ${president.first_name} ${president.last_name} in ${nation.name} (${ticksToElection} ticks to election)`);
 
-    await adjustFactionMomentum(supabase, president.faction_id, nation.id, 1);
+    await adjustFactionMomentum(supabase, president.faction_id, nation.id, 1, { source: 'campaign:incumbent' });
 
     const { data: nationStats } = await supabase
         .from('nations')
@@ -29223,7 +29232,7 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
         if (!result || !result.decay_ticks_remaining || result.decay_ticks_remaining <= 0) continue;
 
         const decayRate = result.decay_rate || 1;
-        await adjustFactionMomentum(supabase, action.party_id, nationId, -round2(decayRate * 0.3));
+        await adjustFactionMomentum(supabase, action.party_id, nationId, -round2(decayRate * 0.3), { source: 'purge:decay' });
 
         const newRemaining = result.decay_ticks_remaining - 1;
         await supabase.from('campaign_actions')
@@ -30478,8 +30487,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         removal_reason: 'impeached'
                     }).eq('id', proc.president_id);
 
-                    // President's party takes massive approval & credibility hit
-                    await adjustFactionMomentum(supabase, president.faction_id, nation.id, -5);
+                    // President's party takes massive momentum hit
+                    await adjustFactionMomentum(supabase, president.faction_id, nation.id, -5, { source: 'impeachment:convicted' });
 
                     // Stability -3, international_reputation -3
                     const newStab = Math.max(0, Math.round(Number(nation.stability || 50) - 3));
