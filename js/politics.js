@@ -7,7 +7,8 @@ import { tickToDate } from './utils.js';
 import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, RALLY_CONFIG, executeRally, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, switchPartyEndorsement, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, suspendIdeologyAction, continueIdeologyAction, cancelIdeologyAction, executeIdeologicalPivot, PIVOT_CONFIG } from './game-common.js';
 import { isAutocracy, isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
-import { statDirectionSign } from './game/stats.js';
+import { statDirectionSign, NATION_STAT_COLUMNS } from './game/stats.js';
+import { formatStatName } from './game/political-actions.js';
 import { calculateIdeologyZones } from './game/electorate.js';
 import { getElectabilityTier } from './game/party-leadership.js';
 import { AUTOCRACY_ACTIONS, dispatchAutocracyAction, getEscalatingCost, checkCooldown } from './game/autocracy-actions.js';
@@ -187,7 +188,7 @@ initPage('politics', async (state) => {
     // Fetch current administration
     const { data: administration } = await _supabase
         .from('administrations')
-        .select('id, admin_name, government_type, started_at_tick, president_name, president_party_id, president_party_name')
+        .select('id, admin_name, government_type, started_at_tick, president_name, president_party_id, president_party_name, stats_at_start')
         .eq('nation_id', nation.id)
         .is('ended_at_tick', null)
         .order('started_at_tick', { ascending: false })
@@ -473,6 +474,14 @@ async function renderPartyTab(f, nation, data) {
         </div>
     </div>`;
 
+    const electionsTabBtn = isAutoNation ? '' : '<button class="pol-page-tab" data-page-tab="elections">Elections</button>';
+    const electionsContent = isAutoNation ? '' : `
+    <div class="pol-page-content" data-page-content="elections">
+        <div id="elections-container" style="min-height:300px;">
+            <div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;">Loading election data...</div>
+        </div>
+    </div>`;
+
     const html = `
     <div class="pol-page-tabs">
         <button class="pol-page-tab active" data-page-tab="politics">Politics</button>
@@ -480,6 +489,7 @@ async function renderPartyTab(f, nation, data) {
         ${electorateTabBtn}
         ${otherPartiesTabBtn}
         ${votersTabBtn}
+        ${electionsTabBtn}
     </div>
     <div class="pol-page-content active" data-page-content="politics">
     ${politicsTabContent}
@@ -491,7 +501,8 @@ async function renderPartyTab(f, nation, data) {
     </div>
     ${electorateContent}
     ${otherPartiesContent}
-    ${votersContent}`;
+    ${votersContent}
+    ${electionsContent}`;
 
     document.getElementById('content-area').innerHTML = html;
 
@@ -500,6 +511,7 @@ async function renderPartyTab(f, nation, data) {
     let otherPartiesLoaded = false;
     let electorateSpreadLoaded = false;
     let votersLoaded = false;
+    let electionsLoaded = false;
     document.querySelectorAll('.pol-page-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             document.querySelectorAll('.pol-page-tab').forEach(t => t.classList.remove('active'));
@@ -531,6 +543,11 @@ async function renderPartyTab(f, nation, data) {
             if (target === 'voters' && !votersLoaded) {
                 votersLoaded = true;
                 renderVotersTab(f, nation, allParties, allPartyIdeologies, currentTick, voteSharePct, totalSeats, mySeats);
+            }
+            // Lazy-load Elections tab on first click
+            if (target === 'elections' && !electionsLoaded) {
+                electionsLoaded = true;
+                renderElectionsTab(nation, administration, coalition, f, allParties, currentTick, role);
             }
         });
     });
@@ -6959,5 +6976,157 @@ function hexToRgba(hex, alpha) {
     const g = parseInt(h.substring(2, 4), 16) || 0;
     const b = parseInt(h.substring(4, 6), 16) || 0;
     return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ==================== ELECTIONS TAB ====================
+
+function renderElectionsTab(nation, administration, coalition, faction, allParties, currentTick, role) {
+    const container = document.getElementById('elections-container');
+    if (!container) return;
+
+    const statsAtStart = administration?.stats_at_start;
+    const ticksInPower = currentTick - (administration?.started_at_tick || currentTick);
+    const isGoverning = role === 'Lead — Governing' || role === 'Governing Coalition';
+
+    // --- Compute governance score ---
+    let statDeltas = [];
+    let governanceScore = 0;
+    let scoredCount = 0;
+
+    if (statsAtStart) {
+        for (const key of NATION_STAT_COLUMNS) {
+            const dir = statDirectionSign(key);
+            if (dir === 0) continue; // skip neutral stats (taxes, population, etc.)
+            const start = Number(statsAtStart[key] ?? 0);
+            const now = Number(nation[key] ?? 0);
+            const raw = now - start;
+            if (raw === 0) continue;
+            const signed = raw * dir; // positive = improvement
+            statDeltas.push({ key, start, now, raw, signed, dir });
+            governanceScore += signed;
+            scoredCount++;
+        }
+        if (scoredCount > 0) governanceScore = governanceScore / scoredCount;
+    }
+
+    // Apply incumbency decay: positive score × 0.95^(terms) every 12 ticks
+    const decayCycles = Math.floor(ticksInPower / 12);
+    const incumbencyMultiplier = governanceScore > 0 ? Math.pow(0.95, decayCycles) : 1;
+    const displayScore = governanceScore * incumbencyMultiplier;
+
+    // Sort deltas: biggest improvements first, then biggest declines
+    statDeltas.sort((a, b) => b.signed - a.signed);
+
+    // Score color
+    const scoreColor = displayScore > 2 ? 'var(--dgreen)' : displayScore > 0 ? 'var(--damber)' : displayScore > -2 ? 'var(--damber)' : 'var(--dred)';
+    const scoreSign = displayScore > 0 ? '+' : '';
+
+    // Opposition gets inverse
+    const effectiveScore = isGoverning ? displayScore : -displayScore;
+    const effectiveColor = effectiveScore > 2 ? 'var(--dgreen)' : effectiveScore > 0 ? 'var(--damber)' : effectiveScore > -2 ? 'var(--damber)' : 'var(--dred)';
+    const effectiveSign = effectiveScore > 0 ? '+' : '';
+
+    // --- Build stat delta rows ---
+    const deltaRowsHtml = statDeltas.map(d => {
+        const color = d.signed > 0 ? 'var(--dgreen)' : 'var(--dred)';
+        const arrow = d.signed > 0 ? '▲' : '▼';
+        const label = formatStatName(d.key);
+        return `<div class="elec-stat-row">
+            <span class="elec-stat-name">${escapeHtml(label)}</span>
+            <span class="elec-stat-start">${d.start.toFixed(1)}</span>
+            <span class="elec-stat-arrow" style="color:${color}">${arrow}</span>
+            <span class="elec-stat-now">${d.now.toFixed(1)}</span>
+            <span class="elec-stat-delta" style="color:${color}">${d.raw > 0 ? '+' : ''}${d.raw.toFixed(1)}</span>
+        </div>`;
+    }).join('');
+
+    const noDataMsg = !statsAtStart
+        ? '<div style="color:var(--dtext-3);font-size:11px;padding:10px">No administration data available.</div>'
+        : statDeltas.length === 0
+            ? '<div style="color:var(--dtext-3);font-size:11px;padding:10px">No stat changes recorded yet.</div>'
+            : '';
+
+    // Incumbency decay note
+    const decayNote = decayCycles > 0 && governanceScore > 0
+        ? `<div class="elec-decay-note">Incumbency decay: ${((1 - incumbencyMultiplier) * 100).toFixed(1)}% reduction (${decayCycles} cycle${decayCycles > 1 ? 's' : ''})</div>`
+        : '';
+
+    // --- Governance Box ---
+    const governanceBox = `
+    <div class="elec-box">
+        <div class="elec-box-header">
+            <div class="pol-box-dot pol-box-dot--teal"></div>
+            <span class="elec-box-title">Governance</span>
+        </div>
+        <div class="elec-box-body">
+            <div class="elec-score-row">
+                <div class="elec-score-block">
+                    <div class="elec-score-label">${isGoverning ? 'Gov. Score' : 'National Score'}</div>
+                    <div class="elec-score-value" style="color:${scoreColor}">${scoreSign}${displayScore.toFixed(2)}</div>
+                </div>
+                ${!isGoverning ? `<div class="elec-score-block">
+                    <div class="elec-score-label">Your Impact (Opposition)</div>
+                    <div class="elec-score-value" style="color:${effectiveColor}">${effectiveSign}${effectiveScore.toFixed(2)}</div>
+                </div>` : ''}
+            </div>
+            ${decayNote}
+            <div class="elec-admin-info">
+                <span>${escapeHtml(administration?.admin_name || 'Government')}</span>
+                <span class="elec-ticks">${ticksInPower} tick${ticksInPower !== 1 ? 's' : ''} in power</span>
+            </div>
+            <div class="elec-stat-header">
+                <span class="elec-stat-name">Stat</span>
+                <span class="elec-stat-start">Start</span>
+                <span class="elec-stat-arrow"></span>
+                <span class="elec-stat-now">Now</span>
+                <span class="elec-stat-delta">Delta</span>
+            </div>
+            <div class="elec-stat-list">
+                ${noDataMsg || deltaRowsHtml}
+            </div>
+        </div>
+    </div>`;
+
+    // --- What Is Governance Box ---
+    const whatIsBox = `
+    <div class="elec-box">
+        <div class="elec-box-header">
+            <div class="pol-box-dot pol-box-dot--amber"></div>
+            <span class="elec-box-title">What Is Governance?</span>
+        </div>
+        <div class="elec-box-body elec-explainer">
+            <p><strong>Governance</strong> measures how the nation's stats have changed since the current administration took power. It is the single largest factor in elections.</p>
+            <p>Every nation stat is snapshotted at inauguration. Each tick, the average improvement (or decline) across all directional stats produces a <strong>governance score</strong>.</p>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">If you are Governing:</div>
+                <ul>
+                    <li>Your governance score directly reflects national performance under your watch.</li>
+                    <li>Pass bills that move stats in the right direction — raise the stats voters want higher, lower the ones they want lower.</li>
+                    <li>Appoint strong ministers — vacant ministries and poor performance drag stats down.</li>
+                    <li>Beware incumbency decay: positive scores erode 5% every 12 ticks. Fresh wins matter more than old ones.</li>
+                </ul>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">If you are Opposition:</div>
+                <ul>
+                    <li>You receive the <em>inverse</em> of the governance score. Bad governance helps your election chances.</li>
+                    <li>Vote against harmful legislation to protect the nation — and your reputation.</li>
+                    <li>Build your case through ideology and momentum to maximize seat gains when elections come.</li>
+                </ul>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">Stat Direction:</div>
+                <p>Stats like GDP Growth, Happiness, and Stability are "higher is better." Stats like Unemployment, Crime Rate, and Pollution are "lower is better." Neutral stats (taxes, population) are excluded.</p>
+            </div>
+        </div>
+    </div>`;
+
+    container.innerHTML = `
+    <div class="elec-page">
+        <div class="elec-row">
+            ${governanceBox}
+            ${whatIsBox}
+        </div>
+    </div>`;
 }
 

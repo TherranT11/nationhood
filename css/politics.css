@@ -4937,3 +4937,207 @@ body.light-mode .vt-issue-row--missing { background: rgba(217,131,48,0.06); }
     .vt-header { flex-wrap: wrap; }
     .vt-wf-row { grid-template-columns: 80px 80px 16px 50px; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   ELECTIONS TAB
+   ══════════════════════════════════════════════════════════════ */
+
+.elec-page {
+    padding: 16px 24px;
+}
+
+.elec-row {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.elec-box {
+    width: 380px;
+    height: 450px;
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-1);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.elec-box-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--dborder-hair);
+    flex-shrink: 0;
+}
+
+.elec-box-title {
+    font-family: var(--dfont-mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--dtext-1);
+}
+
+.elec-box-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+}
+
+/* Governance score */
+.elec-score-row {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 10px;
+}
+
+.elec-score-block {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.elec-score-label {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--dtext-3);
+}
+
+.elec-score-value {
+    font-family: var(--dfont-mono);
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.elec-decay-note {
+    font-family: var(--dfont-mono);
+    font-size: 10px;
+    color: var(--damber);
+    margin-bottom: 8px;
+}
+
+.elec-admin-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    color: var(--dtext-2);
+    padding: 6px 0;
+    border-bottom: 1px solid var(--dborder-hair);
+    margin-bottom: 6px;
+}
+
+.elec-ticks {
+    color: var(--dtext-3);
+    font-size: 10px;
+}
+
+/* Stat delta table */
+.elec-stat-header {
+    display: grid;
+    grid-template-columns: 1fr 44px 16px 44px 50px;
+    gap: 4px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--dborder-hair);
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dtext-3);
+}
+
+.elec-stat-list {
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.elec-stat-row {
+    display: grid;
+    grid-template-columns: 1fr 44px 16px 44px 50px;
+    gap: 4px;
+    padding: 3px 0;
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    color: var(--dtext-2);
+    border-bottom: 1px solid var(--dborder-hair);
+}
+
+.elec-stat-row:last-child {
+    border-bottom: none;
+}
+
+.elec-stat-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.elec-stat-start,
+.elec-stat-now {
+    text-align: right;
+    color: var(--dtext-3);
+}
+
+.elec-stat-arrow {
+    text-align: center;
+    font-size: 9px;
+}
+
+.elec-stat-delta {
+    text-align: right;
+    font-weight: 600;
+}
+
+/* What is Governance explainer */
+.elec-explainer {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--dtext-2);
+}
+
+.elec-explainer p {
+    margin: 0 0 8px;
+}
+
+.elec-explainer strong {
+    color: var(--dtext-1);
+}
+
+.elec-explainer-section {
+    margin: 10px 0;
+}
+
+.elec-explainer-heading {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--dtext-1);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.elec-explainer ul {
+    margin: 0;
+    padding-left: 16px;
+}
+
+.elec-explainer li {
+    margin-bottom: 4px;
+}
+
+/* Light mode */
+body.light-mode .elec-box { background: #fafaf8; border-color: rgba(0,0,0,0.08); }
+
+/* Responsive */
+@media (max-width: 860px) {
+    .elec-row { flex-direction: column; align-items: center; }
+    .elec-box { width: 100%; max-width: 380px; }
+}
