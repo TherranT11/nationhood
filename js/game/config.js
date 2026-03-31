@@ -144,7 +144,7 @@ export const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 5 — general 
  * race conditions.  On insufficient AP it returns -(current_ap + 1) so the
  * caller always has the real server-side balance (single source of truth).
  */
-export async function deductAP(supabase, factionId, cost) {
+export async function deductAP(supabase, factionId, cost, ledger) {
     const { data, error } = await supabase.rpc('deduct_ap', {
         p_faction_id: factionId,
         p_cost: cost
@@ -156,6 +156,16 @@ export async function deductAP(supabase, factionId, cost) {
     if (data < 0) {
         const currentAp = -(data) - 1;
         return { success: false, error: 'Insufficient AP', currentAp };
+    }
+    // Log to AP ledger if reason provided
+    if (ledger?.reason) {
+        supabase.from('ap_ledger').insert({
+            faction_id: factionId,
+            tick: ledger.tick || 0,
+            delta: -cost,
+            reason: ledger.reason,
+            detail: ledger.detail || null,
+        }).then(() => {}, (e) => console.warn('[deductAP] ledger insert failed:', e));
     }
     return { success: true, newAp: data };
 }

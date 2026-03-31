@@ -198,7 +198,7 @@ const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 5 — general snap cy
  * race conditions.  On insufficient AP it returns -(current_ap + 1) so the
  * caller always has the real server-side balance (single source of truth).
  */
-async function deductAP(supabase, factionId, cost) {
+async function deductAP(supabase, factionId, cost, ledger?) {
     const { data, error } = await supabase.rpc('deduct_ap', {
         p_faction_id: factionId,
         p_cost: cost
@@ -210,6 +210,16 @@ async function deductAP(supabase, factionId, cost) {
     if (data < 0) {
         const currentAp = -(data) - 1;
         return { success: false, error: 'Insufficient AP', currentAp };
+    }
+    // Log to AP ledger if reason provided
+    if (ledger?.reason) {
+        await supabase.from('ap_ledger').insert({
+            faction_id: factionId,
+            tick: ledger.tick || 0,
+            delta: -cost,
+            reason: ledger.reason,
+            detail: ledger.detail || null,
+        }).then(() => {}, () => {});
     }
     return { success: true, newAp: data };
 }
@@ -15737,7 +15747,7 @@ async function executeTakeStance(supabase, factionId, nationId, issueId, axis, s
     }
 
     // ── Deduct AP ──
-    const apResult = await deductAP(supabase, factionId, STANCE_CONFIG.AP_COST);
+    const apResult = await deductAP(supabase, factionId, STANCE_CONFIG.AP_COST, { reason: 'take_stance', detail: 'Take a Stance', tick: currentTick });
     if (!apResult.success) {
         return { success: false, message: apResult.error || 'Insufficient AP' };
     }
@@ -16042,7 +16052,7 @@ async function executePollNow(supabase, factionId, nationId, currentTick, pollTi
 
     // ── Deduct AP (tiered: 1 AP = ±5%, 3 AP = ±3%) ──
     const apCost = pollTier === 3 ? 3 : 1;
-    const apResult = await deductAP(supabase, factionId, apCost);
+    const apResult = await deductAP(supabase, factionId, apCost, { reason: 'poll', detail: `Poll Now (±${pollTier === 3 ? '3' : '5'}%)`, tick: currentTick });
     if (!apResult.success) {
         return { success: false, message: apResult.error || 'Insufficient AP' };
     }
@@ -16174,7 +16184,7 @@ async function executeFundThinkTank(supabase, factionId, nationId, targetAxis, t
     }
 
     // ── Deduct AP ──
-    const apResult = await deductAP(supabase, factionId, cfg.AP_COST);
+    const apResult = await deductAP(supabase, factionId, cfg.AP_COST, { reason: 'think_tank', detail: 'Fund Think Tank (upfront)', tick: currentTick });
     if (!apResult.success) {
         return { success: false, message: apResult.error || 'Insufficient AP' };
     }
@@ -16234,7 +16244,7 @@ async function suspendIdeologyAction(supabase, factionId, actionId, currentTick)
     if (action.action_type !== 'think_tank' && action.action_type !== 'grassroots_movement')
         return { success: false, message: 'Only Think Tanks and Grassroots Movements can be suspended.' };
 
-    const apResult = await deductAP(supabase, factionId, 1);
+    const apResult = await deductAP(supabase, factionId, 1, { reason: 'suspend_action', detail: `Suspend ${action.action_type}`, tick: currentTick });
     if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP' };
 
     await supabase.from('ideology_shift_actions')
@@ -16254,7 +16264,7 @@ async function continueIdeologyAction(supabase, factionId, actionId, currentTick
     if (!action) return { success: false, message: 'Action not found.' };
     if (action.status !== 'paused' && action.status !== 'suspended') return { success: false, message: 'Action is not paused.' };
 
-    const apResult = await deductAP(supabase, factionId, 1);
+    const apResult = await deductAP(supabase, factionId, 1, { reason: 'resume_action', detail: `Resume ${action.action_type}`, tick: currentTick });
     if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP' };
 
     await supabase.from('ideology_shift_actions')
@@ -16278,7 +16288,7 @@ async function cancelIdeologyAction(supabase, factionId, nationId, actionId, cur
     if (action.action_type !== 'think_tank' && action.action_type !== 'grassroots_movement')
         return { success: false, message: 'Only Think Tanks and Grassroots Movements can be cancelled.' };
 
-    const apResult = await deductAP(supabase, factionId, 2);
+    const apResult = await deductAP(supabase, factionId, 2, { reason: 'cancel_action', detail: `Cancel ${action.action_type}`, tick: currentTick });
     if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP (need 2)' };
 
     // Revert 75% of cumulative drift
@@ -16324,6 +16334,7 @@ async function cancelIdeologyAction(supabase, factionId, nationId, actionId, cur
  */
 async function executeMediaCampaign(supabase, factionId, nationId, targetAxis, targetDirection, currentTick) {
     const cfg = IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN;
+    const _mcLedger = { reason: 'media_campaign', detail: 'Media Campaign (upfront)', tick: currentTick };
 
     if (!AXIS_KEYS.includes(targetAxis)) {
         return { success: false, message: `Unknown axis: ${targetAxis}` };
@@ -16345,7 +16356,7 @@ async function executeMediaCampaign(supabase, factionId, nationId, targetAxis, t
         return { success: false, message: 'You already have an active media campaign.' };
     }
 
-    const apResult = await deductAP(supabase, factionId, cfg.AP_COST);
+    const apResult = await deductAP(supabase, factionId, cfg.AP_COST, _mcLedger);
     if (!apResult.success) {
         return { success: false, message: apResult.error || 'Insufficient AP' };
     }
@@ -16420,7 +16431,7 @@ async function executeGrassrootsMovement(supabase, factionId, nationId, targetAx
         return { success: false, message: 'You already have a grassroots movement running (or paused). Cancel it first to start a new one.' };
     }
 
-    const apResult = await deductAP(supabase, factionId, cfg.AP_COST);
+    const apResult = await deductAP(supabase, factionId, cfg.AP_COST, { reason: 'grassroots', detail: 'Grassroots Movement (upfront)', tick: currentTick });
     if (!apResult.success) {
         return { success: false, message: apResult.error || 'Insufficient AP' };
     }
@@ -16526,7 +16537,7 @@ async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick
 
         if (act.action_type === 'think_tank') {
             // 1 AP per tick cost — suspend if faction can't afford it
-            const apResult = await deductAP(supabase, act.faction_id, IDEO_SHIFT_CONFIG.THINK_TANK.TICK_AP_COST);
+            const apResult = await deductAP(supabase, act.faction_id, IDEO_SHIFT_CONFIG.THINK_TANK.TICK_AP_COST, { reason: 'think_tank_tick', detail: 'Think Tank (per-tick)', tick: currentTick });
             if (!apResult?.success) { toSuspendAP.push(act.id); continue; }
             // 1d3 drift: randomly 0.1, 0.2, or 0.3
             const col = 'ideo_mean_' + act.target_axis;
@@ -16566,7 +16577,7 @@ async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick
         } else if (act.action_type === 'grassroots_movement') {
             const grCfg = IDEO_SHIFT_CONFIG.GRASSROOTS;
             // 1 AP per tick cost — suspend if faction can't afford it
-            const grApResult = await deductAP(supabase, act.faction_id, grCfg.TICK_AP_COST);
+            const grApResult = await deductAP(supabase, act.faction_id, grCfg.TICK_AP_COST, { reason: 'grassroots_tick', detail: 'Grassroots Movement (per-tick)', tick: currentTick });
             if (!grApResult?.success) { toSuspendAP.push(act.id); continue; }
             // 1d2 drift: randomly 0.1 or 0.2
             const col = 'ideo_mean_' + act.target_axis;
@@ -16733,7 +16744,7 @@ async function executeIdeologicalPivot(supabase, factionId, nationId, targetAxis
     }
 
     // Deduct AP
-    const apResult = await deductAP(supabase, factionId, apCost);
+    const apResult = await deductAP(supabase, factionId, apCost, { reason: 'pivot', detail: 'Ideological Pivot', tick: currentTick });
     if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP' };
 
     // Update ideology — error means AP lost but position unchanged (logged, not fatal)
@@ -18107,7 +18118,7 @@ async function dispatchAutocracyAction(supabase, params) {
     }
 
     // ── Deduct AP ───────────────────────────────────────────────────────
-    const apResult = await deductAP(supabase, factionId, apCost);
+    const apResult = await deductAP(supabase, factionId, apCost, { reason: actionType, detail: actionDef.name || actionType, tick: currentTick });
     if (!apResult.success) {
         return { success: false, error: apResult.error || 'Insufficient AP', currentAp: apResult.currentAp };
     }
@@ -23468,7 +23479,7 @@ async function executeRally(supabase, factionId, nationId, blocId, currentTick) 
     // ── 8. Deduct AP + track last_action_tick ──
     // KNOWN ISSUE: AP deducted after effects applied. Early check (step 1) prevents common case.
     // Atomic RPC prevents DB over-spending. Race condition is acceptable for alpha.
-    const apResult = await deductAP(supabase, factionId, effectiveRallyCost);
+    const apResult = await deductAP(supabase, factionId, effectiveRallyCost, { reason: 'rally', detail: 'Hold a Rally', tick: currentTick });
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Rally] last_action_tick update failed:', error.message); });
 
     // ── 9. Log ──
@@ -23666,7 +23677,7 @@ async function executeOutreach(supabase, factionId, nationId, blocId, currentTic
     const effects = [];
 
     // ── 9. Deduct AP + track last_action_tick ──
-    const apResult = await deductAP(supabase, factionId, effectiveOutreachCost);
+    const apResult = await deductAP(supabase, factionId, effectiveOutreachCost, { reason: 'outreach', detail: 'Community Outreach', tick: currentTick });
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Outreach] last_action_tick update failed:', error.message); });
 
     // ── 10. Log ──
@@ -24108,7 +24119,7 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
     }
 
     // ── 8. Deduct AP + track last_action_tick ──
-    const apResult = await deductAP(supabase, factionId, effectiveAttackCost);
+    const apResult = await deductAP(supabase, factionId, effectiveAttackCost, { reason: 'attack', detail: 'Campaign Attack', tick: currentTick });
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Attack] last_action_tick update failed:', error.message); });
 
     // ── 9. Generate headline ──
@@ -24355,7 +24366,7 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
     // ── 7. Deduct AP if needed + track last_action_tick ──
     let newAp = faction.action_points || 0;
     if (effectivePromiseCost > 0) {
-        const apResult = await deductAP(supabase, factionId, effectivePromiseCost);
+        const apResult = await deductAP(supabase, factionId, effectivePromiseCost, { reason: 'promise', detail: 'Make a Promise', tick: currentTick });
         newAp = apResult.newAp ?? (newAp - effectivePromiseCost);
     }
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Promise] last_action_tick update failed:', error.message); });
