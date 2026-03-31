@@ -6137,6 +6137,65 @@ async function applyBlocPreferenceOnPassage(supabase, bill, nationId) {
 }
 
 
+// ==================== PER-ARTICLE BILL MOMENTUM ====================
+
+/**
+ * Apply per-article momentum to factions after a bill is resolved.
+ *
+ * Bill PASSED:  sponsor +3/article, YES voters +2/article
+ * Bill FAILED:  sponsor -3/article, YES voters -2/article, NO voters +2/article
+ *
+ * Text articles (no mechanical effect) are excluded from the count.
+ *
+ * @param {object} supabase
+ * @param {object} bill - Full bill row with bill_articles and bill_support
+ * @param {boolean} passed - Whether the bill passed
+ * @param {string} nationId
+ */
+async function applyBillMomentum(supabase, bill, passed, nationId) {
+    const articles = bill.bill_articles || [];
+    // Count non-text articles only
+    const articleCount = articles.filter(a => a.article_key !== 'text_article').length;
+    if (articleCount === 0) return;
+
+    const support = bill.bill_support || [];
+    const sponsorId = bill.proposed_by;
+
+    if (passed) {
+        // Sponsor: +3 per article
+        if (sponsorId) {
+            await adjustFactionMomentum(supabase, sponsorId, nationId, articleCount * 3, { source: 'bill:passed:sponsor' });
+        }
+        // YES voters: +2 per article
+        for (const s of support) {
+            const stance = s.stance === 'accept' ? 'yes' : s.stance;
+            if (stance === 'yes' && s.faction_id !== sponsorId) {
+                await adjustFactionMomentum(supabase, s.faction_id, nationId, articleCount * 2, { source: 'bill:passed:yes' });
+            }
+        }
+    } else {
+        // Sponsor: -3 per article
+        if (sponsorId) {
+            await adjustFactionMomentum(supabase, sponsorId, nationId, articleCount * -3, { source: 'bill:failed:sponsor' });
+        }
+        // YES voters: -2 per article
+        for (const s of support) {
+            const stance = s.stance === 'accept' ? 'yes' : s.stance;
+            if (stance === 'yes' && s.faction_id !== sponsorId) {
+                await adjustFactionMomentum(supabase, s.faction_id, nationId, articleCount * -2, { source: 'bill:failed:yes' });
+            }
+        }
+        // NO voters: +2 per article (vindicated for opposing)
+        for (const s of support) {
+            const stance = s.stance === 'reject' ? 'no' : s.stance;
+            if (stance === 'no') {
+                await adjustFactionMomentum(supabase, s.faction_id, nationId, articleCount * 2, { source: 'bill:failed:no' });
+            }
+        }
+    }
+}
+
+
 // ==================== NO-VOTE PENALTY ====================
 
 /**
@@ -7873,6 +7932,14 @@ async function resolveExpiredVotes(supabase, nationId) {
         } catch (persistCheckErr) {
             console.error('[resolveExpiredVotes] Persistence guard tripped:', persistCheckErr);
             throw persistCheckErr;
+        }
+
+        // ── Per-article momentum: reward/penalize based on bill outcome ──
+        try {
+            const billPassed = results[results.length - 1]?.result === 'passed' || results[results.length - 1]?.result === 'president_desk';
+            await applyBillMomentum(supabase, bill, billPassed, bill.nation_id);
+        } catch (momErr) {
+            console.error(`[resolveExpiredVotes] Bill momentum failed for bill ${bill.id}:`, momErr.message);
         }
 
         // ── No-vote penalty: punish factions that didn't cast any vote ──

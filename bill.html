@@ -2190,6 +2190,20 @@ async function castVote(vote) {
         }
     }
 
+    // Vote locking: YES/NO can only change to Abstain, not flip to the opposite.
+    // This prevents strategic vote-flipping that games the momentum system.
+    const existingStance = mySupport?.stance;
+    if (existingStance && existingStance !== vote) {
+        const normExisting = existingStance === 'accept' ? 'yes' : existingStance === 'reject' ? 'no' : existingStance;
+        const normNew = vote === 'accept' ? 'yes' : vote === 'reject' ? 'no' : vote;
+        if ((normExisting === 'yes' || normExisting === 'no') && normNew !== 'abstain') {
+            alert(`You have already voted ${normExisting.toUpperCase()}. You can only change your vote to ABSTAIN.`);
+            _castingVote = false;
+            document.querySelectorAll('.vote-btn').forEach(b => b.disabled = false);
+            return;
+        }
+    }
+
     try {
         const { error } = await _supabase.from('bill_support').upsert({
             bill_id: billId, faction_id: currentFaction.id,

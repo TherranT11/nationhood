@@ -44,7 +44,7 @@ initPage('politics', async (state) => {
     // Fetch total seats from all parties
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name, custom_logo_url, party_logo, party_description')
+        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name, custom_logo_url, party_logo, party_description, momentum')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -6377,12 +6377,8 @@ function renderPartyCard(party, nation) {
                     <span class="op-sr-val" style="color:${c}">${party.seats} <span style="color:var(--dtext-3);font-size:9px;font-weight:400">/ ${party.totalSeats}</span></span>
                 </div>
                 <div class="op-stat-row">
-                    <span class="op-sr-label">Approval</span>
+                    <span class="op-sr-label">Governance</span>
                     <span class="op-sr-val" style="color:${apColor}">${party.approval}%</span>
-                </div>
-                <div class="op-stat-row">
-                    <span class="op-sr-label">Credibility</span>
-                    <span class="op-sr-val" style="color:${credColor}">${party.credibility}%</span>
                 </div>
                 <div class="op-rule"></div>
                 <div class="op-sec-label">Ideology Axes</div>
@@ -6556,8 +6552,7 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
     </div>`;
 
     // --- Momentum Box ---
-    // NOTE: faction.momentum and faction.momentum_log columns do not exist yet.
-    // These will read as 0 and [] until the backend momentum system is implemented.
+    // momentum column added to factions table; momentum_log not yet implemented (reads as []).
     const momentum = Number(faction.momentum ?? 0);
     const momentumDecayRate = 0.08;
     const decayPerTick = (momentum * momentumDecayRate).toFixed(1);
