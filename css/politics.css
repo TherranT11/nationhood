@@ -4595,21 +4595,19 @@ body.light-mode .pol-blocs-box {
    ══════════════════════════════════════════════════════════════ */
 
 .elec-page {
-    padding: 16px 24px;
-    max-width: 1500px;
+    padding: 16px 12px;
     margin: 0 auto;
 }
 
 .elec-row {
     display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
+    gap: 12px;
     justify-content: center;
 }
 
 .elec-box {
     flex: 1 1 0;
-    min-width: 260px;
+    min-width: 0;
     max-width: 360px;
     height: 450px;
     background: var(--dbg-2);
@@ -5069,7 +5067,7 @@ body.light-mode .elec-box { background: #fafaf8; border-color: rgba(0,0,0,0.08);
 
 /* Responsive */
 @media (max-width: 860px) {
-    .elec-row { flex-direction: column; align-items: center; }
-    .elec-box { width: 100%; max-width: 380px; min-width: unset; }
+    .elec-row { flex-wrap: wrap; }
+    .elec-box { flex: 1 1 280px; max-width: 380px; }
     .elec-box--wide { max-width: 100%; }
 }
