@@ -14072,19 +14072,12 @@ const ELECTORATE_CONFIG = {
     DEFAULT_VISIBILITY: 0,
     DEFAULT_CREDIBILITY: 1.0,  // 50% credibility score (formula: (modifier - 0.5) * 100)
 
-    // ── Phase 2B: Per-tick pillar weights (5 pillars) ──
-    // Base weights (sum to 1.0). Credibility weight is dynamic — it shifts
-    // based on polarization/stability, borrowing from the other four pillars.
-    PILLAR_WEIGHT_ALIGNMENT: 0.25,  // ideological alignment
-    PILLAR_WEIGHT_APPEAL: 0.20,     // platform appeal (stances, issue ownership)
-    PILLAR_WEIGHT_APPROVAL: 0.20,   // party approval (governance record)
-    PILLAR_WEIGHT_VISIBILITY: 0.15, // visibility (campaigning, media presence)
-    PILLAR_WEIGHT_CREDIBILITY: 0.20, // credibility (base weight — actual is dynamic)
-    // Dynamic credibility range: scales from CRED_MIN_WEIGHT at max chaos to
-    // CRED_MAX_WEIGHT at max stability. The difference is redistributed
-    // proportionally among the other four pillars.
-    CRED_MIN_WEIGHT: 0.05,         // credibility weight at 100 polarization / 0 stability
-    CRED_MAX_WEIGHT: 0.35,         // credibility weight at 0 polarization / 100 stability
+    // ── 3-pillar election weights (sum to 1.0) ──
+    // Old 5-pillar weights removed. New system: Governance 35%, Momentum 25%, Ideology 30%, Gov Approval 10%.
+    PILLAR_WEIGHT_GOVERNANCE: 0.35,
+    PILLAR_WEIGHT_MOMENTUM: 0.25,
+    PILLAR_WEIGHT_IDEOLOGY: 0.30,
+    PILLAR_WEIGHT_GOV_APPROVAL: 0.10,
 
     // ── Alignment tick config ──
     ALIGNMENT_DRIFT_SPEED: 2,       // max points per tick toward target alignment
@@ -14110,10 +14103,8 @@ const ELECTORATE_CONFIG = {
     VISIBILITY_GOV_FLOOR: 25,        // governing parties stay more visible
     VISIBILITY_INACTIVITY_THRESHOLD: 3, // ticks without action before approval drift kicks in
 
-    // ── Credibility config ──
-    CREDIBILITY_MIN: 0.5,
-    CREDIBILITY_MAX: 1.5,
-    CREDIBILITY_RECOVERY_RATE: 0.01,  // per tick toward 1.0
+    // ── Credibility config (REMOVED — 3-pillar election system) ──
+    // CREDIBILITY_MIN, CREDIBILITY_MAX, CREDIBILITY_RECOVERY_RATE removed.
 
     // ── Vote share config ──
     SOFTMAX_TEMPERATURE: 12,          // softmax k (higher = more uniform distribution)
@@ -14142,7 +14133,7 @@ const ELECTORATE_CONFIG = {
     APPEAL_PIONEER_BONUS: 5,               // bonus for being the first faction on an issue
     APPEAL_CONSISTENCY_BONUS: 3,           // bonus for ideologically consistent stances
     APPEAL_INCONSISTENCY_PENALTY: 5,       // penalty for inconsistent stances
-    APPEAL_DRIFT_SPEED: 1.5,               // max platform_appeal change per tick
+    // APPEAL_DRIFT_SPEED removed (old 5-pillar system)
     APPEAL_MIN: 10,
     APPEAL_MAX: 90,
 
@@ -14698,19 +14689,15 @@ async function tickElectionPillars(supabase, nation, currentTick) {
 }
 
 // ============================================================================
-// GENESIS: seedFactionElectoralStanding (LEGACY — kept for initial seeding)
+// GENESIS: seedFactionElectoralStanding (3-pillar system)
 // ============================================================================
 
 /**
  * Seed faction_electoral_standing rows for all active factions in a nation.
  *
- * Initial values:
- *   - ideological_alignment: computed from faction ideology vs electorate profile
- *   - platform_appeal: 0 (must build via issue stances)
- *   - party_approval: derived from existing gov_approval for governing factions,
- *     25 for new/opposition parties
- *   - visibility: 0 (must earn via campaign actions)
- *   - credibility: 1.0 (clean slate)
+ * Initial raw_appeal uses the 3-pillar formula:
+ *   governance(50) * 0.35 + momentum(0) * 0.25 + ideology * 0.30 + govApprovalPillar * 0.10
+ * where govApprovalPillar = clamp(50 + (gov_approval - 35) * (50/65), 0, 100).
  *
  * @param {object} supabase - Supabase client
  * @param {object} nation   - Full nation row
@@ -14795,30 +14782,20 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
         });
     }
 
-    // Compute initial raw_appeal and vote shares so elections running before
-    // the first tickElectorate don't see NULL contested_vote_share (= 0 votes).
+    // Compute initial raw_appeal using 3-pillar formula so elections running
+    // before the first tick don't see NULL contested_vote_share (= 0 votes).
     // We must include ALL existing standings in the softmax so the new party
     // doesn't get 100% contested_vote_share from being computed in isolation.
-    const stability = clamp(Number(nation.stability ?? 50) || 50, 0, 100);
-    const polarization = clamp(Number(nation.polarization ?? 50) || 50, 0, 100);
-    const chaosIndex = clamp(((polarization / 100) + (1 - stability / 100)) / 2, 0, 1);
-    const credWeight = CFG.CRED_MAX_WEIGHT - chaosIndex * (CFG.CRED_MAX_WEIGHT - CFG.CRED_MIN_WEIGHT);
-    const otherBaseSum = CFG.PILLAR_WEIGHT_ALIGNMENT + CFG.PILLAR_WEIGHT_APPEAL +
-                         CFG.PILLAR_WEIGHT_APPROVAL + CFG.PILLAR_WEIGHT_VISIBILITY;
-    const otherScale = (1 - credWeight) / otherBaseSum;
-    const wAlign = CFG.PILLAR_WEIGHT_ALIGNMENT * otherScale;
-    const wAppeal = CFG.PILLAR_WEIGHT_APPEAL * otherScale;
-    const wApproval = CFG.PILLAR_WEIGHT_APPROVAL * otherScale;
-    const wVisibility = CFG.PILLAR_WEIGHT_VISIBILITY * otherScale;
+    // 3-pillar genesis: governance(50) * 0.35 + momentum(0) * 0.25 + ideology * 0.30 + govApprovalPillar * 0.10
+    const govApprovalPillar = clamp(50 + (govApproval - 35) * (50 / 65), 0, 100);
 
     for (const r of rows) {
-        const credibilityScore = clamp((r.credibility_modifier - 0.5) * 100, 0, 100);
+        const ideology = r.ideological_alignment; // from computeTickAlignment
         r.raw_appeal = round2(
-            r.ideological_alignment * wAlign +
-            r.platform_appeal * wAppeal +
-            r.party_approval * wApproval +
-            (r.visibility || 0) * wVisibility +
-            credibilityScore * credWeight
+            50 * 0.35 +       // governance: neutral at genesis
+            0 * 0.25 +        // momentum: 0 at genesis
+            ideology * 0.30 + // ideology from spatial alignment
+            govApprovalPillar * 0.10
         );
     }
 
@@ -15623,8 +15600,8 @@ async function nudgeEnthusiasm(supabase, nationId, delta) {
  * @param {number} [currentTick=0] - Current tick (needed for suspend calculation)
  */
 async function adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0, opts = {}) {
-    // No-op: credibility system removed (3-pillar election system).
-    // Election outcomes now driven by governance (40%), momentum (30%), ideology (30%).
+    // No-op: credibility system removed — 3-pillar election system
+    // (Governance 35%, Momentum 25%, Ideology 30%, Gov Approval 10%).
     return;
 }
 
@@ -16082,10 +16059,10 @@ async function executePollNow(supabase, factionId, nationId, currentTick, pollTi
             .update({
                 last_polled_tick: currentTick,
                 polled_alignment: s.ideological_alignment,
-                polled_platform_appeal: s.platform_appeal,
+                polled_platform_appeal: null,  // removed — 3-pillar election system
                 polled_party_approval: s.party_approval,
                 polled_visibility: s.visibility,
-                polled_credibility: s.credibility_modifier,
+                polled_credibility: null,      // removed — 3-pillar election system
                 polled_vote_share: s.realized_vote_share,
                 polled_alignment_contribution: s.alignment_contribution,
                 polled_appeal_contribution: s.appeal_contribution,
