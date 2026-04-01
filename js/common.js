@@ -352,12 +352,50 @@ export async function loadGameState(requireFaction = true) {
     }
 
     setCachedState(user, faction, nation, shard);
+
+    // Check if player's party was disbanded by Party Registration Act
+    checkRegistrationActDisbanded(faction);
+
     return { user, faction, nation, shard };
 }
 
 export async function refreshGameState() {
     sessionStorage.removeItem(STATE_KEY);
     return await loadGameState();
+}
+
+// ===== PARTY REGISTRATION ACT POPUP =====
+// Shows a persistent modal if the player's party was disbanded by the Political Party
+// Registration Act. Persists across page loads until [OK] is clicked, then never again.
+export async function checkRegistrationActDisbanded(faction) {
+    if (!faction) return;
+    if (!faction.registration_act_disbanded) return;
+    if (faction.registration_act_dismissed) return;
+
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;';
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:#1a1a16;border:2px solid #c55;border-radius:8px;padding:32px 40px;max-width:520px;text-align:center;font-family:"IBM Plex Sans",sans-serif;';
+    modal.innerHTML = `
+        <div style="font-size:1.4rem;font-weight:bold;color:#c55;margin-bottom:16px;">⚠️ Party Has Been Disbanded</div>
+        <div style="font-size:1rem;color:#c55;font-weight:600;margin-bottom:12px;">Political Party Registration Act</div>
+        <div style="font-size:0.9rem;color:#e8e4dc;line-height:1.6;margin-bottom:24px;">
+            Due to this controversial bill, your party did not meet the required threshold to hold seats in the legislature.
+            Your party continues to exist as a political force in the nation and you should continue to fight and campaign to regain seats in the next election.
+        </div>
+        <button id="registration-act-ok-btn" style="padding:10px 40px;font-family:'JetBrains Mono',monospace;font-size:0.85rem;font-weight:bold;letter-spacing:2px;background:#c55;color:#000;border:none;cursor:pointer;">OK</button>
+    `;
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    document.getElementById('registration-act-ok-btn').addEventListener('click', async () => {
+        overlay.remove();
+        // Mark as dismissed so it never shows again
+        try {
+            await _supabase.from('factions').update({ registration_act_dismissed: true }).eq('id', faction.id);
+        } catch (e) { console.warn('Failed to dismiss registration act popup:', e); }
+    });
 }
 
 
