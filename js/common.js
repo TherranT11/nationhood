@@ -453,7 +453,7 @@ export function renderNavTabs(activeTab) {
             badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>';
         }
         if (tab.id === 'conflicts') {
-            badgeHtml = '<span class="nav-badge nav-badge--crimson" id="conflicts-badge" style="display:none;"></span>';
+            badgeHtml = '<span class="nav-badge nav-badge--amber" id="conflicts-badge" style="display:none;"></span>';
         }
         return `
             <a href="${href}"
@@ -631,23 +631,80 @@ async function updateDiplomacyBadge(faction, nation, roles) {
 }
 
 
-// ===== CONFLICTS BADGE (active incidents involving your nation) =====
+// ===== CONFLICTS BADGE + GLOBAL INCIDENT NOTIFICATION =====
+
+const FISHING_DISPUTE_NOTIFICATIONS = [
+    '{nationA} seized a {nationB} fishing vessel in disputed waters. Crew detained, catch confiscated.',
+    '{nationA} coast guard intercepted {nationB} fishermen operating in contested maritime territory.',
+    'A maritime dispute has erupted after {nationA} enforced exclusion zone claims against {nationB} vessels.'
+];
+
+function getIncidentNotificationText(incident) {
+    const nameA = incident.nation_a?.name || incident._nameA || 'Unknown';
+    const nameB = incident.nation_b?.name || incident._nameB || 'Unknown';
+    if (incident.incident_type === 'fishing_dispute') {
+        const template = FISHING_DISPUTE_NOTIFICATIONS[Math.floor(Math.random() * FISHING_DISPUTE_NOTIFICATIONS.length)];
+        // Nation A role is aggrieved (vessel seized), Nation B is enforcer (seized it)
+        // So the enforcer (B) acts against the aggrieved (A)
+        return template.replace(/\{nationA\}/g, nameB).replace(/\{nationB\}/g, nameA);
+    }
+    return `A ${incident.incident_type.replace(/_/g, ' ')} incident has been triggered between ${nameA} and ${nameB}.`;
+}
+
+function showConflictNotification(text) {
+    const existing = document.getElementById('conflict-notification');
+    if (existing) existing.remove();
+    const el = document.createElement('div');
+    el.id = 'conflict-notification';
+    el.style.cssText = 'position:fixed;top:48px;left:50%;transform:translateX(-50%);z-index:9999;padding:10px 20px;border-radius:3px;font-size:11px;font-family:var(--font-sans,sans-serif);max-width:560px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.4);background:rgba(176,154,91,0.12);color:#b09a5b;border:1px solid rgba(176,154,91,0.3);transition:opacity 0.4s;';
+    el.textContent = text;
+    document.body.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 400); }, 6000);
+}
 
 async function updateConflictsBadge(faction, nation) {
     const badge = document.getElementById('conflicts-badge');
     if (!badge || !faction || !nation) return;
     try {
+        // Count ALL active incidents globally (not just yours) for the amber badge
         const { count } = await _supabase
             .from('incidents')
             .select('id', { count: 'exact', head: true })
-            .in('status', ['active', 'mediating'])
-            .or(`nation_a_id.eq.${nation.id},nation_b_id.eq.${nation.id}`);
+            .in('status', ['active', 'mediating']);
 
         if (count && count > 0) {
             badge.textContent = count;
             badge.style.display = '';
         } else {
             badge.style.display = 'none';
+        }
+
+        // Check for NEW incidents since last visit (notification toast)
+        const lastSeenKey = 'nationhood_last_seen_incident_tick';
+        const lastSeenTick = parseInt(localStorage.getItem(lastSeenKey) || '0', 10);
+
+        const { data: newIncidents } = await _supabase
+            .from('incidents')
+            .select('incident_type, nation_a_id, nation_b_id, started_tick, nation_a:nations!incidents_nation_a_id_fkey(name), nation_b:nations!incidents_nation_b_id_fkey(name)')
+            .gt('started_tick', lastSeenTick)
+            .in('status', ['active', 'mediating'])
+            .order('started_tick', { ascending: false })
+            .limit(1);
+
+        if (newIncidents && newIncidents.length > 0) {
+            const incident = newIncidents[0];
+            const text = getIncidentNotificationText(incident);
+            showConflictNotification(text);
+        }
+
+        // Update last seen tick to current shard tick
+        const { data: shard } = await _supabase
+            .from('shard')
+            .select('current_tick')
+            .eq('name', 'Alpha Shard')
+            .single();
+        if (shard?.current_tick) {
+            localStorage.setItem(lastSeenKey, String(shard.current_tick));
         }
     } catch (e) {
         console.error('Error updating conflicts badge:', e);
