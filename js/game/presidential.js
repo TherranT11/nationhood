@@ -7,7 +7,7 @@ import { GAME_CONFIG, getPresidentialTermLimit } from './config.js';
 import { isParliamentaryDemocracy, isPresidentialRepublic } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { enactBill, failBill } from './bills.js';
-import { PM_TRAIT_KEYS, getWeightedIdeologies, weightedRandomPick, autoAppointPartyLeaderAsPM } from './political-actions.js';
+import { getWeightedIdeologies, weightedRandomPick, autoAppointPartyLeaderAsPM } from './political-actions.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { fireBillEvent } from './event-helpers.js';
@@ -34,7 +34,7 @@ export async function registerPartyLeaderAsCandidate(supabase, nationId, faction
     // Load faction with leader data
     const { data: faction, error: factionErr } = await supabase
         .from('factions')
-        .select('id, faction_name, leader_first_name, leader_last_name, leader_age')
+        .select('id, faction_name, leader_first_name, leader_last_name, leader_age, leader_positive_traits')
         .eq('id', factionId)
         .single();
     if (factionErr || !faction) throw new Error('Faction not found');
@@ -51,8 +51,10 @@ export async function registerPartyLeaderAsCandidate(supabase, nationId, faction
     const ideologyPick = weightedRandomPick(weightedIdeologies);
     const ideology = ideologyPick.item;
 
-    // Pick a trait from the PM trait pool (used for president trait effects)
-    const traitKey = PM_TRAIT_KEYS[Math.floor(Math.random() * PM_TRAIT_KEYS.length)];
+    // Use the leader's first positive trait
+    const traitKey = (faction.leader_positive_traits && faction.leader_positive_traits.length > 0)
+        ? faction.leader_positive_traits[0]
+        : null;
 
     // Clear any existing presidential candidates for this faction
     const { error: delErr } = await supabase.from('pm_candidates').delete()
@@ -451,7 +453,7 @@ export async function triggerPresidentialCandidateSelection(supabase, nation, cu
                     ideology: incumbentPresident.ideology || 'PROGRESS',
                     ideology_axis: ideologyAxis,
                     ideology_direction: ideologyDirection,
-                    trait_key: incumbentPresident.trait || PM_TRAIT_KEYS[0],
+                    trait_key: incumbentPresident.trait || null,
                     created_at_tick: currentTick,
                     candidate_type: 'presidential',
                     selected: true
@@ -594,7 +596,7 @@ export async function autoSelectPresidentialCandidates(supabase, nation, current
                     first_name: incumbentPresident.first_name, last_name: incumbentPresident.last_name,
                     age: incumbentPresident.age, ideology: incumbentPresident.ideology || 'PROGRESS',
                     ideology_axis: ideologyAxis, ideology_direction: ideologyDirection,
-                    trait_key: incumbentPresident.trait || PM_TRAIT_KEYS[0],
+                    trait_key: incumbentPresident.trait || null,
                     created_at_tick: currentTick, candidate_type: 'presidential', selected: true
                 });
                 if (insErr) console.error(`[autoSelect] Error creating incumbent candidate:`, insErr);

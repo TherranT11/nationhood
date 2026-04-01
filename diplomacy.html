@@ -88,7 +88,7 @@ import { initPage, formatNumber } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate, fmtBudgetCurrency } from './js/utils.js';
 import { getPartyLogoHTML } from './js/party-icons.js';
-import { isGovernmentAutocracy, isGovernmentPresidential, getGovDisplayLabel, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkCreditForTradeAgreement, TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume } from './js/game-common.js';
+import { isGovernmentPresidential, getGovDisplayLabel, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkCreditForTradeAgreement, TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume } from './js/game-common.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -330,9 +330,7 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
     if (!faction || !nation) return roles;
 
     // Head of Government
-    if (isGovernmentAutocracy(nation)) {
-        roles.isHoG = nation.ruling_faction_id === faction.id;
-    } else if (isGovernmentPresidential(nation)) {
+    if (isGovernmentPresidential(nation)) {
         // Presidential: president's faction is stored as lead_party_id in virtual coalition
         roles.isHoG = coalition?.lead_party_id === faction.id;
     } else {
@@ -348,7 +346,7 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
     // Minister of Trade: check coalition allocation first, then fall back to ministries table
     roles.isMoT = alloc.trade === faction.id;
 
-    // In autocracies, ministers are stored in the ministries table, not coalition allocations
+    // Fall back to ministries table if coalition allocations don't have the role
     if (!roles.isFM || !roles.isMoT) {
         const { data: ministryEntries } = await _supabase
             .from('ministries')
@@ -420,10 +418,8 @@ async function refreshRoles() {
     return diplomaticRoles;
 }
 
-/** Can this faction accept/reject incoming state visits?
- *  Autocracy: ruling faction (HoG). Democracy/Presidential: Foreign Minister. */
+/** Can this faction accept/reject incoming state visits? Foreign Minister role required. */
 function canHandleStateVisit() {
-    if (isGovernmentAutocracy(currentNation)) return diplomaticRoles.isHoG;
     return diplomaticRoles.isFM;
 }
 
@@ -487,13 +483,11 @@ const WN_IDEOLOGY_COLORS = {
 };
 
 function wnGetGovClass(nation) {
-    if (nation.government_type === 'Autocracy') return 'wn-card__gov--autocracy';
     if (nation.government_type === 'Presidential') return 'wn-card__gov--presidential';
     if (nation.hos_election_method === 'hereditary') return 'wn-card__gov--monarchy';
     return 'wn-card__gov--parliamentary';
 }
 function wnGetGovLabel(nation) {
-    if (nation.government_type === 'Autocracy') return 'AUTOCRACY';
     if (nation.government_type === 'Presidential') return 'PRESIDENTIAL';
     if (nation.hos_election_method === 'hereditary') return 'CONSTITUTIONAL MONARCHY';
     return 'PARLIAMENTARY';
@@ -635,11 +629,10 @@ async function renderWorldNations() {
             const flagUrl = nation.flag_url || FLAG_URLS[nation.name] || '';
             const isMonarchy = nation.hos_election_method === 'hereditary';
             const isPres = nation.government_type === 'Presidential';
-            const isAuto = nation.government_type === 'Autocracy';
 
             // Head of state
             const hosName = ((nation.head_of_state_first_name || '') + ' ' + (nation.head_of_state_last_name || '')).trim();
-            const hosTitle = nation.head_of_state_title || (isAuto ? 'Ruler' : isPres ? 'President' : isMonarchy ? 'Monarch' : 'PM');
+            const hosTitle = nation.head_of_state_title || (isPres ? 'President' : isMonarchy ? 'Monarch' : 'PM');
 
             // Find ruling party for leader badge
             const rulingParty = nation.ruling_faction_id ? nFactions.find(p => p.id === nation.ruling_faction_id) : null;
@@ -651,7 +644,7 @@ async function renderWorldNations() {
             const hog = hogByNation[nation.id];
             let pmName = hog ? ((hog.first_name || '') + ' ' + (hog.last_name || '')).trim() : '';
             let pmPartyBadge = '';
-            if (!isPres && !isAuto) {
+            if (!isPres) {
                 const pmParty = hog ? nFactions.find(p => p.id === hog.faction_id) : (rulingParty || nFactions[0]);
                 if (pmParty) {
                     const pmC = pmParty.party_color || '#666';
@@ -733,7 +726,7 @@ async function renderWorldNations() {
                     // Leader row(s): name + party badge inline
                     (hosName ? '<div class="wn-stat-row"><span class="wn-stat-row__label">' + escapeHtml(hosTitle) + '</span><span class="wn-stat-row__value">' + escapeHtml(hosName) + rpBadge + '</span></div>' : '') +
                     // Show PM row for parliamentary and monarchy systems
-                    (!isPres && !isAuto ? '<div class="wn-stat-row"><span class="wn-stat-row__label">PM</span><span class="wn-stat-row__value">' + escapeHtml(pmName || '—') + pmPartyBadge + '</span></div>' : '') +
+                    (!isPres ? '<div class="wn-stat-row"><span class="wn-stat-row__label">PM</span><span class="wn-stat-row__value">' + escapeHtml(pmName || '—') + pmPartyBadge + '</span></div>' : '') +
                     '<div class="wn-stat-row"><span class="wn-stat-row__label">Population</span><span class="wn-stat-row__value">' + pop + '</span></div>' +
                     '<div class="wn-stat-row"><span class="wn-stat-row__label">GDP</span><span class="wn-stat-row__value">' + gdp + '</span></div>' +
                     '<div class="wn-stat-row"><span class="wn-stat-row__label">Unemployment</span><span class="wn-stat-row__value">' + unemp + '</span></div>' +
@@ -813,7 +806,7 @@ async function renderDiploHeader() {
 
     const roleBadges = [];
     if (diplomaticRoles.isHoG) {
-        const hogLabel = isGovernmentAutocracy(currentNation) ? 'Head of Government' : isGovernmentPresidential(currentNation) ? 'President' : 'Prime Minister';
+        const hogLabel = isGovernmentPresidential(currentNation) ? 'President' : 'Prime Minister';
         roleBadges.push('<span class="diplo-role-badge role-hog">' + hogLabel + '</span>');
     }
     if (diplomaticRoles.isFM)  roleBadges.push('<span class="diplo-role-badge role-fm">Foreign Minister</span>');
@@ -2307,13 +2300,10 @@ function renderStateVisitInboxCard(p, pd) {
     if (pd.is_first) {
         benefitsHTML += '<br><br><span style="color:#FFD700;">★ First-ever visit — bonus stability!</span>';
     }
-    if (pd.is_target_autocracy) {
-        benefitsHTML += '<br><span style="color:#f97316;">Autocracy domestic risk: 1D12 dice roll on visitor\'s gov approval</span>';
-    }
     benefitsHTML += '</div>';
 
     let actionsHTML = '';
-    const svRole = isGovernmentAutocracy(currentNation) ? 'Ruling Faction' : 'Foreign Minister';
+    const svRole = 'Foreign Minister';
     if (needsOurAction && !expired && canHandleStateVisit()) {
         actionsHTML = `
             <div class="inbox-card-actions">
@@ -5881,10 +5871,9 @@ async function viewActiveAgreement(agreementId) {
         }
 
         // Special flags
-        if (pd.is_first || pd.is_target_autocracy) {
+        if (pd.is_first) {
             html += '<div class="sv-summary-section">';
-            if (pd.is_first) html += '<div style="color:#FFD700;font-size:11px;margin-bottom:4px;">&#9733; First-ever visit between these nations — bonus stability!</div>';
-            if (pd.is_target_autocracy) html += '<div style="color:#f97316;font-size:11px;">&#9888; Autocracy domestic risk: 1D12 dice roll on visitor\'s gov approval</div>';
+            html += '<div style="color:#FFD700;font-size:11px;margin-bottom:4px;">&#9733; First-ever visit between these nations — bonus stability!</div>';
             html += '</div>';
         }
     }
@@ -9108,7 +9097,7 @@ async function submitStateVisit() {
                 unlocks: computed.unlocks,
                 ap_cost: computed.totalAp,
                 is_first: ctx.isFirstVisit,
-                is_target_autocracy: isGovernmentAutocracy(ctx.targetNation),
+                is_target_autocracy: false,
                 relation_score: ctx.relScore
             },
             fm_review_expires_tick: ctx.currentTick + DIPLOMACY_CONFIG.STATE_VISIT_ACCEPT_WINDOW,
@@ -9170,12 +9159,11 @@ async function acceptStateVisit(proposalId) {
     if (fetchErr || !proposal) { _svAcceptLock[proposalId] = false; alert('Could not load proposal.'); return; }
     if (proposal.proposal_type !== 'state_visit') { _svAcceptLock[proposalId] = false; alert('Not a state visit proposal.'); return; }
 
-    // Authorization: FM in democracies, ruling faction in autocracies
+    // Authorization: FM handles state visits
     await refreshRoles();
     if (proposal.target_nation_id !== currentNation.id || !canHandleStateVisit()) {
         _svAcceptLock[proposalId] = false;
-        const roleLabel = isGovernmentAutocracy(currentNation) ? 'ruling faction' : 'Foreign Minister';
-        alert('Only the ' + roleLabel + ' of the visited nation can accept a State Visit.');
+        alert('Only the Foreign Minister of the visited nation can accept a State Visit.');
         return;
     }
 
@@ -9217,8 +9205,6 @@ async function acceptStateVisit(proposalId) {
     const relScore = relRes.data?.relation_score ?? 30;
     const hasTradeAgreement = tradeRes.data && tradeRes.data.length > 0;
     const isFirstVisit = !pastRes.data || pastRes.data.length === 0;
-    const isTargetAutocracy = isGovernmentAutocracy(hostNation);
-    const isVisitorAutocracy = isGovernmentAutocracy(visitorNation);
 
     // ── Read computed effects from proposal data (new data-driven approach) ──
     // Fall back to old hardcoded values if proposal was created before the rich draft panel
@@ -9286,30 +9272,6 @@ async function acceptStateVisit(proposalId) {
         visitorUpdates.stability = Math.min(100, (visitorUpdates.stability ?? Math.round(Number(visitorNation.stability || 0))) + firstStab);
         hostUpdates.stability = Math.min(100, (hostUpdates.stability ?? Math.round(Number(hostNation.stability || 0))) + firstStab);
         bonusSummary.push('+' + firstStab + ' Stability (first visit)');
-    }
-
-    // ── Autocracy approval dice roll ──
-    const acDie = DIPLOMACY_CONFIG.STATE_VISIT_AUTOCRACY_DIE;
-    const acThreshold = DIPLOMACY_CONFIG.STATE_VISIT_AUTOCRACY_THRESHOLD;
-    const acChange = DIPLOMACY_CONFIG.STATE_VISIT_AUTOCRACY_CHANGE;
-    let autocracyResult = null;
-    if (isTargetAutocracy) {
-        const roll = Math.floor(Math.random() * acDie) + 1;
-        const approvalChange = roll <= acThreshold ? -acChange : acChange;
-        visitorUpdates.gov_approval = Math.max(0, Math.min(100, Math.round(Number(visitorNation.gov_approval ?? 40) + approvalChange)));
-        autocracyResult = { roll, change: approvalChange };
-        bonusSummary.push('Autocracy dice: rolled ' + roll + ' → ' + (approvalChange > 0 ? '+' : '') + approvalChange + ' Gov Approval (visitor)');
-    }
-    if (isVisitorAutocracy) {
-        const roll = Math.floor(Math.random() * acDie) + 1;
-        const approvalChange = roll <= acThreshold ? -acChange : acChange;
-        hostUpdates.gov_approval = Math.max(0, Math.min(100, Math.round(Number(hostNation.gov_approval ?? 40) + approvalChange)));
-        if (!autocracyResult) autocracyResult = {};
-        autocracyResult.host_roll = roll;
-        autocracyResult.host_change = approvalChange;
-        bonusSummary.push('Autocracy dice (host): rolled ' + roll + ' → ' + (approvalChange > 0 ? '+' : '') + approvalChange + ' Gov Approval (host)');
-
-        // (Regime health cost removed — Phase 0)
     }
 
     // ── Track debt for logging (actual budget cost applied via addEmbassyCost below) ──
@@ -9382,7 +9344,7 @@ async function acceptStateVisit(proposalId) {
             is_first: isFirstVisit,
             has_trade_agreement: hasTradeAgreement,
             relation_boost: relBoost,
-            autocracy_result: autocracyResult,
+            autocracy_result: null,
             triggered_risks: triggeredRisks,
             bonuses: bonusSummary,
             bilateral_talks_discount: agenda.includes('bilateral_talks')
@@ -9494,12 +9456,11 @@ async function declineStateVisit(proposalId) {
         return;
     }
 
-    // Authorization: FM in democracies, ruling faction in autocracies
+    // Authorization: FM handles state visits
     await refreshRoles();
     if (!canHandleStateVisit()) {
         _svDeclineLock[proposalId] = false;
-        const roleLabel = isGovernmentAutocracy(currentNation) ? 'ruling faction' : 'Foreign Minister';
-        alert('Only the ' + roleLabel + ' can decline a State Visit.');
+        alert('Only the Foreign Minister can decline a State Visit.');
         return;
     }
 
@@ -10585,13 +10546,9 @@ function renderStateVisitNegDetail(p, pd, needsOurAction) {
     if (pd.is_first) {
         html += '<div style="margin-top:8px;color:#FFD700;font-size:11px;">★ First-ever visit between these nations — bonus stability!</div>';
     }
-    if (pd.is_target_autocracy) {
-        html += '<div style="margin-top:4px;color:#f97316;font-size:11px;">⚠ Autocracy domestic risk: 1D12 dice roll on visitor\'s gov approval</div>';
-    }
-
-    // Action buttons — FM in democracies, ruling faction in autocracies
+    // Action buttons — FM handles state visits
     html += '<div class="detail-actions" style="margin-top:10px;">';
-    const detailSvRole = isGovernmentAutocracy(currentNation) ? 'Ruling Faction' : 'Foreign Minister';
+    const detailSvRole = 'Foreign Minister';
     if (needsOurAction && !expired && canHandleStateVisit()) {
         html += '<button class="detail-btn" onclick="acceptStateVisit(\'' + p.id + '\')">Accept Visit</button>';
         html += '<button class="detail-btn" onclick="declineStateVisit(\'' + p.id + '\')">Decline</button>';
@@ -13502,8 +13459,7 @@ async function executeAppointAmbassador() {
 
         // Check caretaker
         const coalition = await fetchActiveCoalition(_supabase, currentNation.id);
-        const isAutocracy = isGovernmentAutocracy(currentNation);
-        if (!isAutocracy && coalition?.status === 'caretaker') {
+        if (coalition?.status === 'caretaker') {
             alert('Appointments are suspended during caretaker government.');
             return;
         }
@@ -13525,24 +13481,9 @@ async function executeAppointAmbassador() {
             .single();
         const currentTick = shard?.current_tick || 0;
 
-        // 7. Autocracy vs Democracy
+        // 7. Create confirmation bill
         let confirmationBillId = null;
-        if (isAutocracy) {
-            const { error: ambError } = await _supabase
-                .from('ambassadors')
-                .insert({
-                    nation_id: currentNation.id,
-                    target_nation_id: appointTargetNation.id,
-                    faction_id: candidate.partyId,
-                    ambassador_first_name: candidate.firstName,
-                    ambassador_last_name: candidate.lastName,
-                    ambassador_age: candidate.age,
-                    status: 'active',
-                    is_active: true,
-                    appointed_at_tick: currentTick
-                });
-            if (ambError) throw ambError;
-        } else {
+        {
             const billName = 'Confirmation of ' + candidate.firstName + ' ' + candidate.lastName + ' as Ambassador to ' + appointTargetNation.name;
             const preamble = 'This motion, filed by the ' + currentFaction.faction_name + ', confirms the appointment of ' + candidate.firstName + ' ' + candidate.lastName + ' (' + candidate.partyName + ') as Ambassador to ' + appointTargetNation.name + '. A simple majority (51%) is required for confirmation.';
 
@@ -13572,7 +13513,7 @@ async function executeAppointAmbassador() {
                 .from('factions')
                 .select('id, faction_name')
                 .eq('nation_id', currentNation.id);
-            const seatData = await loadSeats(_supabase, currentNation.id, false, parties || [], currentFaction.id);
+            const seatData = await loadSeats(_supabase, currentNation.id, parties || [], currentFaction.id);
             const mySeats = seatData.allPartySeats[currentFaction.id] || 0;
 
             if (mySeats > 0) {
@@ -13590,10 +13531,8 @@ async function executeAppointAmbassador() {
         await adjustMomentumAll(_supabase, currentNation.id, candidate.partyId, 1, 'diplomacy:ambassador_selected');
 
         // 9. Alert result
-        const msg = isAutocracy
-            ? candidate.firstName + ' ' + candidate.lastName + ' has been appointed Ambassador to ' + appointTargetNation.name + '!'
-            : candidate.firstName + ' ' + candidate.lastName + ' has been nominated as Ambassador to ' + appointTargetNation.name + '.\nA confirmation vote has been filed in Parliament.';
-        alert('Ambassador ' + (isAutocracy ? 'Appointed' : 'Nominated') + '\n\n' + msg + '\n\n+1 Momentum to ' + candidate.partyName + '\nCost: ' + APPOINT_AMBASSADOR_AP + ' AP');
+        const msg = candidate.firstName + ' ' + candidate.lastName + ' has been nominated as Ambassador to ' + appointTargetNation.name + '.\nA confirmation vote has been filed in Parliament.';
+        alert('Ambassador Nominated\n\n' + msg + '\n\n+1 Momentum to ' + candidate.partyName + '\nCost: ' + APPOINT_AMBASSADOR_AP + ' AP');
 
         // 10. Reset state
         appointTargetNation = null;
@@ -14301,21 +14240,8 @@ async function previewExistingOrg(orgId) {
             .limit(1)
             .maybeSingle();
 
-        // Check if this is a non-strongman autocratic faction (can't join IPOs)
-        let isNonStrongmanAutocrat = false;
-        try {
-            const { data: myPillar } = await _supabase
-                .from('faction_pillar_state')
-                .select('faction_id, is_strongman')
-                .eq('faction_id', currentFaction.id)
-                .maybeSingle();
-            if (myPillar && !myPillar.is_strongman) isNonStrongmanAutocrat = true;
-        } catch (e) { /* non-fatal */ }
-
         let joinButton = '';
-        if (isNonStrongmanAutocrat) {
-            joinButton = '<div style="font-size:10px;color:var(--dtext-3);font-style:italic;">Only the strongman faction can represent your regime in international organisations.</div>';
-        } else if (pendingVote) {
+        if (pendingVote) {
             joinButton = '<button class="ipo-btn" disabled style="opacity:0.5;">Request Pending...</button>';
         } else {
             joinButton = `<button class="ipo-btn ipo-btn--create-large" onclick="requestToJoinOrg('${orgId}')">Request to Join</button>`;
@@ -14342,17 +14268,6 @@ async function requestToJoinOrg(orgId) {
     _ipoActionLock = true;
 
     try {
-        // Block non-strongman autocratic factions from joining
-        const { data: myPillar } = await _supabase
-            .from('faction_pillar_state')
-            .select('faction_id, is_strongman')
-            .eq('faction_id', currentFaction.id)
-            .maybeSingle();
-        if (myPillar && !myPillar.is_strongman) {
-            alert('Only the strongman faction can represent your regime in international organisations.');
-            return;
-        }
-
         const { data: org } = await _supabase
             .from('international_orgs')
             .select('id, name, charter, president_id')
@@ -15076,20 +14991,7 @@ async function openIPOInviteModal() {
         .order('faction_name');
     if (facErr) console.error('[IPO Invite] Factions query error:', facErr.message);
 
-    // Filter out non-strongman autocratic factions (only strongman can represent an autocracy)
-    const allFactionsList0 = allFactions || [];
-    let autocraticStrongmanIds = new Set();
-    let autocraticNonStrongmanIds = new Set();
-    try {
-        const { data: pillarStates } = await _supabase
-            .from('faction_pillar_state')
-            .select('faction_id, is_strongman');
-        for (const ps of (pillarStates || [])) {
-            if (ps.is_strongman) autocraticStrongmanIds.add(ps.faction_id);
-            else autocraticNonStrongmanIds.add(ps.faction_id);
-        }
-    } catch (e) { /* non-fatal */ }
-    const allFactionsList = allFactionsList0.filter(f => !autocraticNonStrongmanIds.has(f.id));
+    const allFactionsList = allFactions || [];
     const nationIds = [...new Set(allFactionsList.map(f => f.nation_id).filter(Boolean))];
     const nationMap = {};
     if (nationIds.length > 0) {
@@ -15612,28 +15514,7 @@ async function acceptIPOInvite(inviteId) {
             alert('Your application has been submitted. The organisation will vote on your membership.');
         } else {
             // Direct admission (president decides, or observer role)
-            // Check if this is a strongman — if so, admit all pillar factions
             let factionsToAdmit = [{ id: currentFaction.id, name: currentFaction.faction_name }];
-            try {
-                const { data: pillarState } = await _supabase
-                    .from('faction_pillar_state')
-                    .select('faction_id, is_strongman')
-                    .eq('faction_id', currentFaction.id)
-                    .eq('is_strongman', true)
-                    .maybeSingle();
-                if (pillarState) {
-                    const { data: allPillarFactions } = await _supabase
-                        .from('faction_pillar_state')
-                        .select('faction_id, factions:faction_id ( faction_name )')
-                        .eq('nation_id', currentNation.id);
-                    if (allPillarFactions && allPillarFactions.length > 0) {
-                        factionsToAdmit = allPillarFactions.map(pf => ({
-                            id: pf.faction_id,
-                            name: pf.factions?.faction_name || 'Unknown'
-                        }));
-                    }
-                }
-            } catch (e) { console.error('[IPO] Autocracy direct admission check failed:', e.message); }
 
             for (const f of factionsToAdmit) {
                 const chatColor = await assignIPOChatColor(invite.org_id);
@@ -17008,36 +16889,7 @@ async function applyVoteEffects(vote, org) {
             const admitRole = meta.requested_role || 'member';
             const chatColor = await assignIPOChatColor(ipoSelectedOrgId);
 
-            // Check if target is an autocratic strongman — if so, admit all factions of that autocracy
             let factionsToAdmit = [{ id: meta.target_faction_id, name: meta.target_faction_name }];
-            try {
-                const { data: pillarState } = await _supabase
-                    .from('faction_pillar_state')
-                    .select('faction_id, is_strongman')
-                    .eq('faction_id', meta.target_faction_id)
-                    .eq('is_strongman', true)
-                    .maybeSingle();
-                if (pillarState) {
-                    // This is a strongman — find the nation and all its autocratic factions
-                    const { data: strongmanFaction } = await _supabase
-                        .from('factions')
-                        .select('nation_id')
-                        .eq('id', meta.target_faction_id)
-                        .single();
-                    if (strongmanFaction) {
-                        const { data: allPillarFactions } = await _supabase
-                            .from('faction_pillar_state')
-                            .select('faction_id, factions:faction_id ( faction_name )')
-                            .eq('nation_id', strongmanFaction.nation_id);
-                        if (allPillarFactions && allPillarFactions.length > 0) {
-                            factionsToAdmit = allPillarFactions.map(pf => ({
-                                id: pf.faction_id,
-                                name: pf.factions?.faction_name || 'Unknown'
-                            }));
-                        }
-                    }
-                }
-            } catch (e) { console.error('[IPO] Autocracy admission check failed:', e.message); }
 
             for (const f of factionsToAdmit) {
                 const color = await assignIPOChatColor(ipoSelectedOrgId);
@@ -17050,9 +16902,7 @@ async function applyVoteEffects(vote, org) {
                 });
             }
 
-            const admitMsg = factionsToAdmit.length > 1
-                ? `${meta.target_faction_name || 'An autocratic regime'} and its ${factionsToAdmit.length - 1} faction(s) have been admitted.`
-                : `${meta.target_faction_name || 'A new party'} has been admitted as ${admitRole === 'observer' ? 'an observer' : 'a member'}.`;
+            const admitMsg = `${meta.target_faction_name || 'A new party'} has been admitted as ${admitRole === 'observer' ? 'an observer' : 'a member'}.`;
             await _supabase.from('ipo_chat').insert({
                 org_id: ipoSelectedOrgId,
                 faction_id: null,

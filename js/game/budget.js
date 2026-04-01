@@ -9,7 +9,7 @@ import { adjustGovernmentApprovalEvent, nudgeApproval, adjustCredibility } from 
 import { fetchActiveCoalition } from './government-structure.js';
 import { SOVEREIGN_DEFAULT_CRISIS_ID, SOVEREIGN_DEBT_CRISIS_ID, ECONOMIC_COLLAPSE_CRISIS_ID } from './sovereign-default.js';
 import { MINISTER_APPROVAL_CONFIG } from './stats.js';
-import { isPresidentialRepublic, isAutocracy } from './government-types.js';
+import { isPresidentialRepublic } from './government-types.js';
 import { fireBilateralEvent } from './event-helpers.js';
 
 // ==================== NATIONAL BUDGET CALCULATION ====================

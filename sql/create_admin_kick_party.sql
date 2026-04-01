@@ -128,20 +128,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- ---- 4. Ruling faction succession (autocracy) ----
-    IF v_nation.ruling_faction_id = p_faction_id THEN
-        UPDATE nations SET ruling_faction_id = (
-            SELECT f2.id FROM factions f2
-            WHERE f2.nation_id = p_nation_id
-              AND f2.faction_type = 'party'
-              AND f2.id != p_faction_id
-            ORDER BY f2.loyalty DESC NULLS LAST
-            LIMIT 1
-        ) WHERE id = p_nation_id;
-        result := result || jsonb_build_object('ruling_faction_transferred', true);
-    END IF;
-
-    -- ---- 5. Vacate ministries held by this faction ----
+    -- ---- 4. Vacate ministries held by this faction ----
     UPDATE ministries
     SET party_id = NULL,
         minister_first_name = NULL,
@@ -153,7 +140,7 @@ BEGIN
     GET DIAGNOSTICS cnt = ROW_COUNT;
     IF cnt > 0 THEN result := result || jsonb_build_object('ministries_vacated', cnt); END IF;
 
-    -- ---- 6. Remove from coalition formations ----
+    -- ---- 5. Remove from coalition formations ----
     UPDATE government_formations
     SET party_ids = array_remove(party_ids, p_faction_id)
     WHERE nation_id = p_nation_id
@@ -162,12 +149,12 @@ BEGIN
     GET DIAGNOSTICS cnt = ROW_COUNT;
     IF cnt > 0 THEN result := result || jsonb_build_object('coalitions_updated', cnt); END IF;
 
-    -- ---- 6b. Dissolve active coalitions led by kicked party ----
+    -- ---- 5b. Dissolve active coalitions led by kicked party ----
     DELETE FROM active_coalitions WHERE lead_party_id = p_faction_id;
     GET DIAGNOSTICS cnt = ROW_COUNT;
     IF cnt > 0 THEN result := result || jsonb_build_object('active_coalitions_dissolved', cnt); END IF;
 
-    -- ---- 6c. Remove pending coalition proposals ----
+    -- ---- 5c. Remove pending coalition proposals ----
     BEGIN
         EXECUTE format('DELETE FROM coalition_proposals WHERE faction_id = %L', p_faction_id);
         GET DIAGNOSTICS cnt = ROW_COUNT;
@@ -175,7 +162,7 @@ BEGIN
     EXCEPTION WHEN undefined_table OR undefined_column THEN NULL;
     END;
 
-    -- ---- 7. Fail open bills proposed by this faction ----
+    -- ---- 6. Fail open bills proposed by this faction ----
     UPDATE bills SET status = 'failed'
     WHERE nation_id = p_nation_id
       AND proposed_by = p_faction_id
@@ -183,7 +170,7 @@ BEGIN
     GET DIAGNOSTICS cnt = ROW_COUNT;
     IF cnt > 0 THEN result := result || jsonb_build_object('bills_failed', cnt); END IF;
 
-    -- ---- 8. Core disband — null nation_id, reset stats ----
+    -- ---- 7. Core disband — null nation_id, reset stats ----
     UPDATE factions SET
         nation_id = NULL,
         abandoned_at = now(),
@@ -193,7 +180,7 @@ BEGIN
     WHERE id = p_faction_id;
     result := result || jsonb_build_object('faction_disbanded', true);
 
-    -- ---- 9. Clean up child records ----
+    -- ---- 8. Clean up child records ----
     DELETE FROM faction_ideology WHERE faction_id = p_faction_id;
     GET DIAGNOSTICS cnt = ROW_COUNT;
     IF cnt > 0 THEN result := result || jsonb_build_object('faction_ideology', cnt); END IF;

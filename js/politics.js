@@ -5,13 +5,12 @@ import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } f
 import { tickToDate } from './utils.js';
 
 import { fetchActiveCoalition, loadSeats, isPresidentialRepublic, initGameConfigForNation, RALLY_CONFIG, executeRally, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, disbandParty, getNationNames, IDEOLOGY_AXES, PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress, switchPartyEndorsement, executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, suspendIdeologyAction, continueIdeologyAction, cancelIdeologyAction, executeIdeologicalPivot, PIVOT_CONFIG } from './game-common.js';
-import { isAutocracy, isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
+import { isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { statDirectionSign, NATION_STAT_COLUMNS } from './game/stats.js';
 import { formatStatName } from './game/political-actions.js';
 import { calculateIdeologyZones, bimodalAxisAlignment } from './game/electorate.js';
 import { getElectabilityTier, getTraitAPModifier } from './game/party-leadership.js';
-import { AUTOCRACY_ACTIONS, dispatchAutocracyAction, getEscalatingCost, checkCooldown } from './game/autocracy-actions.js';
 
 // Lightweight toast notification (replaces alert() calls)
 function _showToast(msg, isError = true) {
@@ -34,7 +33,7 @@ initPage('politics', async (state) => {
         return;
     }
 
-    // Initialize game config for this nation (needed for autocracy action costs)
+    // Initialize game config for this nation
     await initGameConfigForNation(_supabase, nation.id);
 
     // Fetch full faction data (state.faction has SELECT * so should be complete)
@@ -58,7 +57,7 @@ initPage('politics', async (state) => {
         : { data: [] };
 
     // Normalise seat counts from election results (single source of truth)
-    const { currentSeats } = await loadSeats(_supabase, nation.id, isAutocracy(nation), allParties || [], f.id);
+    const { currentSeats } = await loadSeats(_supabase, nation.id, allParties || [], f.id);
 
     const totalSeats = (allParties || []).reduce((sum, p) => sum + (p.seats || 0), 0);
     const mySeats = currentSeats;
@@ -102,28 +101,9 @@ initPage('politics', async (state) => {
 
     // Fetch coalition to determine governing/opposition
     const coalition = await fetchActiveCoalition(_supabase, nation.id);
-    const isAutoNation = isAutocracy(nation);
     let role = 'Opposition';
-    if (isAutoNation && nation.ruling_faction_id === f.id) {
-        role = 'Strongman';
-    } else if (coalition && coalition.party_ids && coalition.party_ids.includes(f.id)) {
+    if (coalition && coalition.party_ids && coalition.party_ids.includes(f.id)) {
         role = coalition.lead_party_id === f.id ? 'Lead — Governing' : 'Governing Coalition';
-    }
-
-    // V5 Autocracy data
-    let pillarStates = [];
-    let autocracyTracker = null;
-    let autocracyActionLog = [];
-    if (isAutoNation) {
-        const [fpsRes, trackerRes, logRes] = await Promise.all([
-            _supabase.from('faction_pillar_state').select('*').eq('nation_id', nation.id),
-            _supabase.from('autocracy_tracker').select('*').eq('nation_id', nation.id).maybeSingle(),
-            _supabase.from('autocracy_action_log').select('tick, action_type, faction_id, details')
-                .eq('nation_id', nation.id).order('created_at', { ascending: false }).limit(10),
-        ]);
-        pillarStates = fpsRes.data || [];
-        autocracyTracker = trackerRes.data;
-        autocracyActionLog = logRes.data || [];
     }
 
     // Fetch active crises
@@ -153,8 +133,7 @@ initPage('politics', async (state) => {
 
     // Fallback: if no scheduled election in DB, project from term length
     // (mirrors dashboard projection logic so both pages stay consistent)
-    // Skip for autocracies — they have no elections by design.
-    if (!nextElection && !isAutocracy(nation)) {
+    if (!nextElection) {
         const termTicks = Number(nation.parliamentary_term_ticks) || 24;
         nextElection = { election_tick: currentTick + termTicks, election_type: 'parliamentary' };
     }
@@ -248,7 +227,6 @@ initPage('politics', async (state) => {
         lastElectionDate,
         seatDelta,
         role,
-        isAutoNation,
         coalition,
         currentTick,
         officerNames,
@@ -264,9 +242,6 @@ initPage('politics', async (state) => {
         administration,
         caucusFactions,
         currentEndorsement,
-        pillarStates,
-        autocracyTracker,
-        autocracyActionLog,
         issueStateMapInit,
     });
 });
@@ -301,12 +276,11 @@ function generateOfficerNames(factionId, nationName = '') {
 async function renderPartyTab(f, nation, data) {
     const {
         shard, totalSeats, mySeats, voteSharePct, lastElectionDate,
-        seatDelta, role, isAutoNation, officerNames, allParties, allPartyIdeologies, coalition, activeCrises, currentTick,
+        seatDelta, role, officerNames, allParties, allPartyIdeologies, coalition, activeCrises, currentTick,
         nextElection, prevApproval,
         lastParliamentary, lastPresidential, scheduledElections,
         president, administration,
         caucusFactions, currentEndorsement,
-        pillarStates, autocracyTracker, autocracyActionLog,
         issueStateMapInit,
     } = data;
     const faction = f; // alias for compatibility with sub-renderers
@@ -316,7 +290,7 @@ async function renderPartyTab(f, nation, data) {
     const founded = tickToDate(f.founded_tick);
 
     // Role badge
-    const isGov = role.includes('Governing') || role.includes('Lead') || role === 'Strongman';
+    const isGov = role.includes('Governing') || role.includes('Lead');
     const roleLabel = role.includes('Lead') ? 'Governing' : role;
     const roleCls = role === 'Strongman' ? 'pol-role-strongman' : isGov ? 'pol-role-gov' : 'pol-role-opp';
 
@@ -344,17 +318,12 @@ async function renderPartyTab(f, nation, data) {
         </div>`;
     }
 
-    // Leader — for autocracy strongman, use head of state as party leader
+    // Leader
     let leaderName, leaderAge;
-    if (isAutoNation && nation.ruling_faction_id === f.id && nation.head_of_state_first_name && nation.head_of_state_last_name) {
-        leaderName = nation.head_of_state_first_name + ' ' + nation.head_of_state_last_name;
-        leaderAge = nation.head_of_state_age ? `(${nation.head_of_state_age})` : '';
-    } else {
-        leaderName = f.leader_first_name && f.leader_last_name
-            ? f.leader_first_name + ' ' + f.leader_last_name
-            : 'Vacant';
-        leaderAge = f.leader_age ? `(${f.leader_age})` : '';
-    }
+    leaderName = f.leader_first_name && f.leader_last_name
+        ? f.leader_first_name + ' ' + f.leader_last_name
+        : 'Vacant';
+    leaderAge = f.leader_age ? `(${f.leader_age})` : '';
     // Leader's personal ideology (stored when appointed via Party Leadership), fall back to faction ideology
     const leaderIdeoValue = f.leader_ideology || ideo1;
     const leaderIdeo = leaderIdeoValue
@@ -373,18 +342,8 @@ async function renderPartyTab(f, nation, data) {
         deltaHtml = `<span class="pol-stat-delta ${cls}">${sign}${seatDelta}</span>`;
     }
 
-    // ── Build politics tab content based on government type ──
-    let politicsTabContent;
-    if (isAutoNation) {
-        politicsTabContent = renderAutocracyPoliticsContent(f, nation, {
-            totalSeats, mySeats, voteSharePct, lastElectionDate,
-            currentTick, allParties, coalition, activeCrises,
-            logoSvg, roleCls, roleLabel, leaderName, leaderAge, leaderIdeo,
-            officerNames, ideo1, ideo2, deltaHtml, ideoTag,
-            pillarStates, autocracyTracker, autocracyActionLog,
-        });
-    } else {
-        politicsTabContent = `
+    // ── Build politics tab content ──
+    const politicsTabContent = `
     <div class="pol-page">
         <div class="pol-section-label">Politics</div>
 
@@ -458,26 +417,25 @@ async function renderPartyTab(f, nation, data) {
             <div style="font-size:0.65rem;color:var(--dtext-3);margin-top:4px">Permanently disband your party and leave the game.</div>
         </div>
     </div>`;
-    }
 
-    const electorateTabBtn = isAutoNation ? '' : '<button class="pol-page-tab" data-page-tab="electorate-spread">Electorate</button>';
-    const electorateContent = isAutoNation ? '' : `
+    const electorateTabBtn = '<button class="pol-page-tab" data-page-tab="electorate-spread">Electorate</button>';
+    const electorateContent = `
     <div class="pol-page-content" data-page-content="electorate-spread">
         <div id="electorate-spread-container" class="es-page" style="min-height:300px;">
             <div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;">Loading electorate data...</div>
         </div>
     </div>`;
 
-    const otherPartiesTabBtn = isAutoNation ? '' : '<button class="pol-page-tab" data-page-tab="other-parties">Other Parties</button>';
-    const otherPartiesContent = isAutoNation ? '' : `
+    const otherPartiesTabBtn = '<button class="pol-page-tab" data-page-tab="other-parties">Other Parties</button>';
+    const otherPartiesContent = `
     <div class="pol-page-content" data-page-content="other-parties">
         <div id="other-parties-container" class="op-page" style="min-height:300px;">
             <div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;">Loading rival parties...</div>
         </div>
     </div>`;
 
-    const electionsTabBtn = isAutoNation ? '' : '<button class="pol-page-tab" data-page-tab="elections">Your Party</button>';
-    const electionsContent = isAutoNation ? '' : `
+    const electionsTabBtn = '<button class="pol-page-tab" data-page-tab="elections">Your Party</button>';
+    const electionsContent = `
     <div class="pol-page-content" data-page-content="elections">
         <div id="elections-container" style="min-height:300px;">
             <div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;">Loading election data...</div>
@@ -522,11 +480,7 @@ async function renderPartyTab(f, nation, data) {
             // Lazy-load Actions tab on first click
             if (target === 'actions' && !actionsLoaded) {
                 actionsLoaded = true;
-                if (isAutoNation) {
-                    renderAutocracyActionsTab(nation, f, shard, pillarStates, autocracyTracker, allParties);
-                } else {
-                    renderDemocracyActions(nation, f, shard, allParties);
-                }
+                renderDemocracyActions(nation, f, shard, allParties);
             }
             // Lazy-load Electorate Spread tab on first click
             if (target === 'electorate-spread' && !electorateSpreadLoaded) {
@@ -546,23 +500,19 @@ async function renderPartyTab(f, nation, data) {
         });
     });
 
-    if (!isAutoNation) {
-        // Lock all panels to fixed 450px height (desktop only)
-        if (window.innerWidth > 860) {
-            document.querySelectorAll('.pol-admin-box, .pol-party-card, .pol-parliament-box, .pol-forecast-box, .pol-coalition-box, .pol-mood-box, .pol-ideology-box, .pol-identity-box, .pol-election-box, .pol-blocs-box').forEach(el => {
-                el.style.height = '450px';
-            });
-        }
-        initEditIdentityBox(f);
-        initElectionResultsBox();
-        initBlocAlignment();
+    // Lock all panels to fixed 450px height (desktop only)
+    if (window.innerWidth > 860) {
+        document.querySelectorAll('.pol-admin-box, .pol-party-card, .pol-parliament-box, .pol-forecast-box, .pol-coalition-box, .pol-mood-box, .pol-ideology-box, .pol-identity-box, .pol-election-box, .pol-blocs-box').forEach(el => {
+            el.style.height = '450px';
+        });
     }
+    initEditIdentityBox(f);
+    initElectionResultsBox();
+    initBlocAlignment();
     // Load stance summary into the stance container
-    if (!isAutoNation) {
-        _renderStanceSummaryStrip(f.id, nation.id);
-        // Load party events into the GovCard
-        _loadGovCardPartyEvents(nation.id, f.id);
-    }
+    _renderStanceSummaryStrip(f.id, nation.id);
+    // Load party events into the GovCard
+    _loadGovCardPartyEvents(nation.id, f.id);
 
     // Disband Party handler
     const disbandBtn = document.getElementById('pol-disband-party-btn');
@@ -708,329 +658,6 @@ async function _loadGovCardPartyEvents(nationId, playerFactionId) {
     feedEl.innerHTML = html;
 }
 
-// ═══════════════════════════════════════════════════════════
-// COMBINED REGIME CARD — Regime info + Support estimate
-// ═══════════════════════════════════════════════════════════
-function getRegimeSupportLabel(value) {
-    if (value <= 20) return { label: 'Regime', color: '#5cb85c' };
-    if (value <= 40) return { label: 'Regime', color: '#5b9bd5' };
-    if (value <= 60) return { label: 'Contested', color: '#c8a64e' };
-    if (value <= 80) return { label: 'Opposition', color: '#d48a3c' };
-    return { label: 'Opposition', color: '#d9534f' };
-}
-
-function renderCombinedRegimeCard(hosTitle, hosName, hosAge, rulingId, allParties, isStrongman, trackerColor, trackerWord, autocracyTracker, currentTick) {
-    const pubValue = autocracyTracker?.public_tracker_value ?? 30;
-    const lastTick = autocracyTracker?.public_tracker_last_tick;
-    const { label, color } = getRegimeSupportLabel(pubValue);
-    const lastUpdated = lastTick != null ? tickToDate(lastTick) : '—';
-    const regimePct = 100 - pubValue;
-    const oppositionPct = pubValue;
-
-    return `
-    <div class="pol-party-card" style="border-left:3px solid var(--damber);width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
-        <!-- Regime Info -->
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--damber);margin-bottom:8px;font-weight:700">AUTOCRACY — ${escapeHtml(hosTitle)}</div>
-        <div style="font-size:14px;color:var(--dtext-1);font-weight:700">${escapeHtml(hosName)} <span style="font-size:11px;color:var(--dtext-3)">(${hosAge})</span></div>
-        <div style="font-size:10px;color:var(--dtext-3);margin-top:4px">Ruling faction: ${escapeHtml((allParties || []).find(p => p.id === rulingId)?.faction_name || 'None')}</div>
-        ${isStrongman ? `<div style="margin-top:10px;padding:6px 10px;background:${trackerColor}11;border:1px solid ${trackerColor}33;border-radius:2px;text-align:center">
-            <div style="font-size:9px;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px">Regime Stability</div>
-            <div style="font-size:16px;color:${trackerColor};font-weight:800;font-family:var(--dfont-mono);letter-spacing:2px;margin-top:2px">${trackerWord}</div>
-        </div>` : ''}
-
-        <!-- Divider -->
-        <hr style="border:none;border-top:1px solid var(--dborder-0);margin:14px 0">
-
-        <!-- Regime Support Estimate -->
-        <div style="flex:1">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-                <div style="font-size:11px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:1px">Regime Support</div>
-                <div style="font-size:10px;color:var(--dtext-3)">Estimate</div>
-            </div>
-            <div style="font-size:10px;color:var(--dtext-3);margin-bottom:10px;font-style:italic">Public perception of regime strength.</div>
-
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                <div style="font-size:20px;font-weight:800;color:${color};font-family:var(--dfont-mono)">${pubValue}+</div>
-                <div style="font-size:13px;font-weight:700;color:${color};text-transform:uppercase">${label}</div>
-            </div>
-
-            <div style="display:flex;height:10px;border-radius:3px;overflow:hidden;background:var(--dbg-3);margin-bottom:8px">
-                <div style="width:${regimePct}%;background:#5cb85c;opacity:0.7;transition:width 0.5s"></div>
-                <div style="width:${oppositionPct}%;background:#d9534f;opacity:0.7;transition:width 0.5s"></div>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--dtext-3);margin-bottom:10px">
-                <span>Regime</span>
-                <span>Opposition</span>
-            </div>
-
-            <div style="font-size:10px;color:var(--dtext-3)">Last Updated: <span style="color:var(--dtext-1)">${lastUpdated}</span></div>
-        </div>
-    </div>`;
-}
-
-// ═══════════════════════════════════════════════════════════
-// AUTOCRACY EVENTS — recent action feed (mode hidden)
-// ═══════════════════════════════════════════════════════════
-const ACTION_DISPLAY_NAMES = {
-    deploy: 'Deploy', stand_down: 'Stand Down', military_exercises: 'Military Exercises',
-    rally: 'Rally', agitate: 'Agitate', party_congress: 'Party Congress',
-    patronage: 'Patronage', capital_flight: 'Capital Flight', bribe: 'Bribe',
-    surveillance: 'Surveillance', blackmail: 'Blackmail', disappear: 'Disappear',
-    broadcast: 'Broadcast', smear: 'Smear', blackout: 'Blackout',
-    arrest_leader: 'Arrest Leader', execute_leader: 'Execute Leader', release_leader: 'Release Leader',
-    favor: 'Favor', coup_attempt: 'Coup Attempt', declare_putsch: 'Declare Putsch',
-    emergency_decree: 'Emergency Decree', appeal_security: 'Appeal to Security',
-    putsch_do_nothing: 'Do Nothing', security_putsch_response: 'Security Response',
-    silent_coup: 'Silent Coup', silent_coup_vote: 'Silent Coup Vote',
-    appoint_successor: 'Appoint Successor', revoke_successor: 'Revoke Successor',
-    claim_wildcard: 'Claim Wildcard', select_pillar: 'Select Pillar',
-};
-
-const LEADER_TARGET_ACTIONS = new Set(['arrest_leader', 'execute_leader', 'release_leader']);
-
-function renderAutocracyEventsBox(actionLog, allParties, pillarStates, currentTick) {
-    let eventsHtml = '';
-    if (actionLog.length === 0) {
-        eventsHtml = '<div style="padding:12px 0;text-align:center;color:var(--dtext-3);font-size:11px">No recent events.</div>';
-    } else {
-        for (const entry of actionLog) {
-            const faction = (allParties || []).find(p => p.id === entry.faction_id);
-            const fName = faction?.faction_name || 'Unknown';
-            const fColor = faction?.party_color || '#888';
-            // Strip _buff/_debuff suffixes and look up display name from base action
-            const baseActionType = entry.action_type.replace(/_(buff|debuff)$/, '');
-            const actionName = ACTION_DISPLAY_NAMES[entry.action_type] || ACTION_DISPLAY_NAMES[baseActionType] || baseActionType;
-            const date = tickToDate(entry.tick);
-
-            // For arrest/execute/release, show the target leader and faction
-            let targetInfo = '';
-            if (LEADER_TARGET_ACTIONS.has(entry.action_type) && entry.details?.targetFactionId) {
-                const targetParty = (allParties || []).find(p => p.id === entry.details.targetFactionId);
-                // Prefer logged name (survives execution), then current party leader, then pillar state
-                const targetLeaderName = entry.details.target_leader_name
-                    || (targetParty?.leader_first_name && targetParty?.leader_last_name
-                        ? `${targetParty.leader_first_name} ${targetParty.leader_last_name}` : null)
-                    || pillarStates.find(ps => ps.faction_id === entry.details.targetFactionId)?.leader_name
-                    || 'Unknown';
-                const targetFactionName = entry.details.target_faction_name || targetParty?.faction_name || 'Unknown';
-                targetInfo = `<div style="font-size:10px;color:var(--dtext-2);margin-top:1px">${escapeHtml(targetLeaderName)} of ${escapeHtml(targetFactionName)}</div>`;
-            }
-
-            eventsHtml += `
-            <div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--dborder-0)">
-                <div style="width:6px;height:6px;border-radius:50%;background:${fColor};margin-top:4px;flex-shrink:0"></div>
-                <div style="flex:1;min-width:0">
-                    <div style="font-size:11px;color:var(--dtext-1)"><span style="font-weight:600">${escapeHtml(fName)}</span> used <span style="color:var(--damber);font-weight:600">${escapeHtml(actionName)}</span></div>
-                    ${targetInfo}
-                    <div style="font-size:9px;color:var(--dtext-3)">${date}</div>
-                </div>
-            </div>`;
-        }
-    }
-
-    return `
-    <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
-        <div style="font-size:11px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Autocracy Events</div>
-        <div style="flex:1;overflow-y:auto">
-            ${eventsHtml}
-        </div>
-    </div>`;
-}
-
-// ═══════════════════════════════════════════════════════════
-// AUTOCRACY POLITICS TAB — Regime display for autocracy players
-// ═══════════════════════════════════════════════════════════
-function renderAutocracyPoliticsContent(f, nation, opts) {
-    const n = nation;
-    const {
-        totalSeats, mySeats, currentTick, allParties, coalition, activeCrises,
-        logoSvg, roleCls, roleLabel, leaderName, leaderAge, leaderIdeo,
-        officerNames, ideoTag, ideo1, ideo2, deltaHtml, voteSharePct, lastElectionDate,
-        pillarStates, autocracyTracker, autocracyActionLog,
-    } = opts;
-
-    const rulingId = n.ruling_faction_id;
-    const isStrongman = f.id === rulingId;
-
-    const hosName = `${n.head_of_state_first_name || '?'} ${n.head_of_state_last_name || '?'}`;
-    const hosAge = n.head_of_state_age || '?';
-    const hosTitle = n.head_of_state_title || 'Strongman';
-
-    // ── Tracker word (Strongman only) ──
-    const trackerValue = autocracyTracker?.tracker_value ?? 30;
-    const trackerWord = getTrackerWordLabel(trackerValue);
-    const trackerColor = trackerWord === 'IRON' ? '#5cb85c' : trackerWord === 'FIRM' ? '#5b9bd5' :
-        trackerWord === 'RESTLESS' ? '#c8a64e' : trackerWord === 'VOLATILE' ? '#d48a3c' : '#d9534f';
-
-    // ── Five Pillars display ──
-    const PILLAR_LABELS = { military: 'Military', party: 'Party', oligarchs: 'Oligarchs', media: 'Media', security: 'Security' };
-    const PILLAR_COLORS = { military: '#5b9bd5', party: '#c8a64e', oligarchs: '#5cb85c', media: '#d48a3c', security: '#d9534f' };
-    const wildcardPillar = autocracyTracker?.wildcard_pillar;
-    const wildcardBacking = autocracyTracker?.wildcard_backing ?? 0;
-
-    // My faction's pillar state
-    const myFps = pillarStates.find(ps => ps.faction_id === f.id);
-    const myPillar = myFps?.pillar || '?';
-
-    // Build pillar bars for all 5 pillars
-    let pillarBarsHtml = '';
-    const allPillars = ['military', 'party', 'oligarchs', 'media', 'security'];
-    for (const pillar of allPillars) {
-        const isWildcard = pillar === wildcardPillar;
-        const fps = pillarStates.find(ps => ps.pillar === pillar);
-        const backing = isWildcard ? wildcardBacking : (fps ? Number(fps.backing) : 0);
-        const pct = Math.round((backing / 20) * 100);
-        const color = PILLAR_COLORS[pillar];
-        const label = PILLAR_LABELS[pillar];
-        const isMine = fps?.faction_id === f.id;
-        const factionName = fps ? (allParties || []).find(p => p.id === fps.faction_id)?.faction_name : null;
-        const ownerLabel = isWildcard ? 'WILDCARD' : (factionName ? escapeHtml(factionName) : '—');
-        const highlight = isMine ? `border-left:2px solid ${color};` : '';
-
-        pillarBarsHtml += `
-        <div style="display:flex;align-items:center;gap:8px;padding:4px 6px;${highlight}">
-            <div style="width:70px;font-size:10px;color:${color};font-weight:600;text-transform:uppercase;letter-spacing:0.5px">${label}</div>
-            <div style="flex:1;height:14px;background:var(--dbg-3);border-radius:2px;position:relative;overflow:hidden">
-                <div style="width:${pct}%;height:100%;background:${color};opacity:${isWildcard ? 0.4 : 0.7};border-radius:2px;transition:width 0.3s"></div>
-            </div>
-            <div style="width:30px;text-align:right;font-size:11px;color:var(--dtext-1);font-family:var(--dfont-mono)">${backing.toFixed(1)}</div>
-            <div style="width:80px;font-size:9px;color:${isWildcard ? '#d9534f' : 'var(--dtext-3)'};text-align:right;font-style:${isWildcard ? 'italic' : 'normal'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ownerLabel}</div>
-        </div>`;
-    }
-
-    // ── Faction cards ──
-    let factionCardsHtml = '';
-    for (const fps of pillarStates) {
-        const party = (allParties || []).find(p => p.id === fps.faction_id);
-        const pName = party?.faction_name || 'Unknown';
-        const pColor = party?.party_color || '#888';
-        const pillar = fps.pillar;
-        const pLabel = PILLAR_LABELS[pillar] || pillar;
-        const pColorPillar = PILLAR_COLORS[pillar] || '#888';
-        const backing = Number(fps.backing).toFixed(1);
-        const lName = (party?.leader_first_name && party?.leader_last_name)
-            ? `${party.leader_first_name} ${party.leader_last_name}`
-            : (fps.leader_name || '—');
-        const lAge = fps.leader_age || '?';
-        const isMe = fps.faction_id === f.id;
-        const isSM = fps.is_strongman;
-        const ministerCount = fps.minister_count || 0;
-        const isPM = fps.is_prime_minister;
-
-        factionCardsHtml += `
-        <div style="background:var(--dbg-2);border:1px solid ${isMe ? pColorPillar + '44' : 'var(--dborder-0)'};border-radius:3px;padding:10px 12px;${isMe ? 'border-left:3px solid ' + pColorPillar + ';' : ''}">
-            <div style="display:flex;justify-content:space-between;align-items:center">
-                <div style="display:flex;align-items:center;gap:6px">
-                    <div style="width:8px;height:8px;border-radius:50%;background:${pColor}"></div>
-                    <span style="font-size:12px;color:var(--dtext-0);font-weight:600">${escapeHtml(pName)}</span>
-                    ${isSM ? '<span style="font-size:9px;background:#d9534f22;color:#d9534f;padding:1px 5px;border-radius:2px;font-weight:700">STRONGMAN</span>' : ''}
-                    ${isPM ? '<span style="font-size:9px;background:#5b9bd522;color:#5b9bd5;padding:1px 5px;border-radius:2px;font-weight:700">PM</span>' : ''}
-                </div>
-                <span style="font-size:10px;color:${pColorPillar};font-weight:600;text-transform:uppercase">${pLabel}</span>
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:6px;font-size:11px">
-                <div><span style="color:var(--dtext-3)">Backing</span> <span style="color:var(--dtext-1);font-weight:600;font-family:var(--dfont-mono)">${backing}</span></div>
-                <div><span style="color:var(--dtext-3)">Leader</span> <span style="color:var(--dtext-1)">${escapeHtml(lName)}</span> <span style="color:var(--dtext-3)">(${lAge})</span>${fps.arrested_leader ? ' <span style="color:#d9534f;font-weight:700">[ARRESTED]</span>' : ''}</div>
-                ${ministerCount > 0 ? `<div><span style="color:var(--dtext-3)">Ministers</span> <span style="color:var(--dtext-1)">${ministerCount}</span></div>` : ''}
-            </div>
-            ${fps.arrested_leader ? '<div style="font-size:9px;color:#d9534f;margin-top:4px;font-weight:600">LEADER ARRESTED</div>' : ''}
-        </div>`;
-    }
-    if (pillarStates.length === 0) {
-        factionCardsHtml = '<div style="padding:16px;text-align:center;color:var(--dtext-3);font-size:12px">No factions have claimed pillars yet.</div>';
-    }
-
-    // ── Revolution warning ──
-    let revolutionBanner = '';
-    if (n.revolution_started_tick != null) {
-        const elapsed = currentTick - n.revolution_started_tick;
-        const remaining = (n.revolution_duration || 0) - elapsed;
-        revolutionBanner = `
-        <div style="background:#d9534f11;border:1px solid #d9534f33;border-radius:3px;padding:12px 16px;margin-bottom:16px">
-            <div style="font-size:11px;font-weight:700;color:#d9534f;text-transform:uppercase;letter-spacing:1px">DEMOCRATIC REVOLUTION IN PROGRESS</div>
-            <div style="font-size:12px;color:var(--dtext-1);margin-top:4px">${remaining > 0 ? remaining + ' tick' + (remaining !== 1 ? 's' : '') + ' until the regime falls' : 'Revolution imminent'}</div>
-            <div style="font-size:10px;color:var(--dtext-3);margin-top:2px">Per tick: stability -1, civil unrest +1, international reputation -1</div>
-        </div>`;
-    }
-
-    return `
-    <div class="pol-page">
-        <div class="pol-section-label">Politics</div>
-        ${revolutionBanner}
-        <div class="pol-columns">
-
-        <!-- Left Column: Combined Regime Card + Regime Support -->
-        ${renderCombinedRegimeCard(hosTitle, hosName, hosAge, rulingId, allParties, isStrongman, trackerColor, trackerWord, autocracyTracker, currentTick)}
-
-        <!-- Your Party Card -->
-        <div class="pol-party-card" style="width:380px;height:450px;min-width:300px">
-            <div class="pol-header">
-                <div class="pol-logo">${logoSvg}</div>
-                <div class="pol-header-info">
-                    <div class="pol-party-name">${escapeHtml(f.faction_name)} <span style="color:var(--dtext-3);font-size:11px;font-weight:400;font-style:italic;margin-left:4px;">${getGovDisplayLabel(nation)}</span></div>
-                    <div class="pol-meta-row">
-                        <span class="pol-role-badge ${roleCls}">${escapeHtml(roleLabel.toUpperCase())}</span>
-                        <span style="font-size:10px;color:${PILLAR_COLORS[myPillar] || 'var(--dtext-3)'};font-weight:600;text-transform:uppercase">${escapeHtml(PILLAR_LABELS[myPillar] || myPillar)} Pillar</span>
-                    </div>
-                </div>
-            </div>
-            <div class="pol-ideo-row">${ideoTag(ideo1)}${ideoTag(ideo2)}</div>
-            <hr class="pol-divider">
-            <div class="pol-leader-section">
-                <span class="pol-sub-label">Leader</span>
-                <div class="pol-leader-name">${escapeHtml(leaderName)} <span class="pol-leader-age">${leaderAge}</span></div>
-                ${leaderIdeo}
-            </div>
-            <div class="pol-stats-row">
-                <div class="pol-stat"><div class="pol-stat-val">${mySeats}<span class="pol-stat-of">/${totalSeats}</span></div><div class="pol-stat-label">Seats ${deltaHtml}</div></div>
-                <div class="pol-stat"><div class="pol-stat-val">${voteSharePct}%</div><div class="pol-stat-label">Vote Share</div></div>
-                ${myFps ? `<div class="pol-stat"><div class="pol-stat-val" style="color:${PILLAR_COLORS[myPillar]}">${Number(myFps.backing).toFixed(1)}</div><div class="pol-stat-label">Backing</div></div>` : ''}
-            </div>
-        </div>
-
-        <!-- Autocracy Events -->
-        ${renderAutocracyEventsBox(autocracyActionLog, allParties, pillarStates, currentTick)}
-
-        <!-- Five Pillars -->
-        <div class="pol-party-card" style="width:380px;height:450px;min-width:300px;display:flex;flex-direction:column">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-                <div style="font-size:11px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:1px">Five Pillars of Power</div>
-                <div style="font-size:10px;color:var(--dtext-3)">Scale: 0–20</div>
-            </div>
-            <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
-                ${pillarBarsHtml}
-            </div>
-        </div>
-
-        </div>
-
-        <!-- Faction Cards -->
-        <div style="margin-top:16px">
-            <div style="font-size:11px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Factions</div>
-            <div style="display:flex;flex-direction:column;gap:6px">
-                ${factionCardsHtml}
-            </div>
-        </div>
-
-        <div class="pol-row-4" style="margin-top:24px;text-align:center">
-            <button class="pol-disband-btn" id="pol-disband-party-btn" style="background:transparent;color:#d9534f;border:1px solid #d9534f;padding:8px 20px;border-radius:4px;cursor:pointer;font-size:0.75rem;opacity:0.6;transition:opacity 0.2s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">Disband Party</button>
-            <div style="font-size:0.65rem;color:var(--dtext-3);margin-top:4px">Permanently disband your party and leave the game.</div>
-        </div>
-
-    </div>`;
-}
-
-/**
- * Map tracker value to word label.
- */
-function getTrackerWordLabel(trackerValue) {
-    if (trackerValue <= 20) return 'IRON';
-    if (trackerValue <= 40) return 'FIRM';
-    if (trackerValue <= 60) return 'RESTLESS';
-    if (trackerValue <= 80) return 'VOLATILE';
-    return 'CRITICAL';
-}
-
 function miniLogo(color, acronym, name) {
     const c = color || '#888';
     const abbr = acronym || (name ? name.substring(0, 2).toUpperCase() : '??');
@@ -1046,7 +673,6 @@ function hogTitle(govType, nation) {
     const g = govType.toLowerCase();
     if (g === 'democracy' || g.includes('parliament')) return 'PM';
     if (g.includes('president')) return 'President';
-    if (g === 'autocracy' || g.includes('dictator') || g.includes('authorit')) return 'Strongman';
     return 'Head of Gov.';
 }
 
@@ -1094,17 +720,9 @@ function renderParliamentBox(allParties, coalition, nation, playerFactionId) {
     const parties = allParties || [];
     const totalSeats = parties.reduce((sum, p) => sum + (p.seats || 0), 0);
     const majority = Math.ceil(totalSeats / 2);
-    const isAuto = isAutocracy(nation);
-
-    // For autocracies without a coalition, use ruling_faction_id to split governing/opposition
     let coalitionIds, leadPartyId;
-    if (isAuto && !coalition && nation.ruling_faction_id) {
-        coalitionIds = new Set([nation.ruling_faction_id]);
-        leadPartyId = nation.ruling_faction_id;
-    } else {
-        coalitionIds = new Set(coalition?.party_ids || []);
-        leadPartyId = coalition?.lead_party_id || null;
-    }
+    coalitionIds = new Set(coalition?.party_ids || []);
+    leadPartyId = coalition?.lead_party_id || null;
 
     // Split into governing and opposition
     const governing = parties.filter(p => coalitionIds.has(p.id));
@@ -1178,7 +796,7 @@ function renderParliamentBox(allParties, coalition, nation, playerFactionId) {
             </div>
 
             <div class="pol-section-header">
-                <span class="pol-section-title">${isAuto ? 'Ruling Party' : 'Governing Coalition'}</span>
+                <span class="pol-section-title">Governing Coalition</span>
                 <span class="pol-section-seats">${govSeats} seats</span>
             </div>
             ${govRowsHtml}
@@ -1432,12 +1050,11 @@ function renderNationalMoodBox(nation, activeCrises, currentTick, issueStateMap)
 
 function renderGovCard(nation, coalition, allParties, currentTick, prevApproval, president, administration) {
     const isPres = isPresidentialRepublic(nation);
-    const isAuto = isAutocracy(nation);
     const parties = allParties || [];
     const approval = Math.round(Number(nation.gov_approval ?? 40));
     const ac = approval >= 50 ? 'var(--dgreen)' : approval >= 35 ? 'var(--damber)' : 'var(--dred)';
     const adminName = administration?.admin_name || 'Government';
-    const govTypeLabel = isAuto ? 'Autocracy' : isPres ? 'Presidential' : nation?.hos_election_method === 'hereditary' ? 'Constitutional Monarchy' : 'Parliamentary';
+    const govTypeLabel = isPres ? 'Presidential' : nation?.hos_election_method === 'hereditary' ? 'Constitutional Monarchy' : 'Parliamentary';
 
     // Coalition info
     const coalitionIds = new Set(coalition?.party_ids || []);
@@ -1473,7 +1090,7 @@ function renderGovCard(nation, coalition, allParties, currentTick, prevApproval,
             </div>
           </div>
         </div>`;
-    } else if (!isPres && !isAuto && coalition) {
+    } else if (!isPres && coalition) {
         const leadParty = parties.find(p => p.id === coalition.lead_party_id);
         const pmColor = leadParty?.party_color || '#888';
         const pmName = leadParty?.faction_name || 'Unknown';
@@ -1488,25 +1105,6 @@ function renderGovCard(nation, coalition, allParties, currentTick, prevApproval,
             <div style="display:flex;align-items:center;gap:5px;margin-top:3px">
               <div style="width:7px;height:7px;border-radius:2px;background:${pmColor}"></div>
               <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:500;color:${pmColor}">${escapeHtml(pmAbbr)}</span>
-            </div>
-          </div>
-        </div>`;
-    } else if (isAuto) {
-        const hosName = (nation.head_of_state_first_name && nation.head_of_state_last_name)
-            ? nation.head_of_state_first_name + ' ' + nation.head_of_state_last_name : 'Unknown';
-        const ini = initials(nation.head_of_state_first_name, nation.head_of_state_last_name);
-        const rulingParty = nation.ruling_faction_id ? parties.find(p => p.id === nation.ruling_faction_id) : null;
-        const rpColor = rulingParty?.party_color || '#c8a64e';
-        const rpAbbr = rulingParty?.abbreviation || (rulingParty?.faction_name || '??').substring(0, 3).toUpperCase();
-        leader1Html = `
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px">
-          <div style="width:32px;height:32px;border-radius:4px;background:var(--dbg-4);border:1px solid var(--dborder-0);display:flex;align-items:center;justify-content:center;font-family:var(--dfont-mono);font-size:10px;font-weight:600;color:var(--dtext-2);flex-shrink:0">${escapeHtml(ini)}</div>
-          <div>
-            <div style="font-family:var(--dfont-ui);font-size:14px;font-weight:600;color:var(--dtext-0)">${escapeHtml(hosName)}</div>
-            <div style="font-family:var(--dfont-ui);font-size:11px;color:var(--dtext-2);margin-top:1px">Generalísimo${nation.head_of_state_age ? ' &middot; Age ' + nation.head_of_state_age : ''}</div>
-            <div style="display:flex;align-items:center;gap:5px;margin-top:3px">
-              <div style="width:7px;height:7px;border-radius:2px;background:${rpColor}"></div>
-              <span style="font-family:var(--dfont-mono);font-size:10px;font-weight:500;color:${rpColor}">${escapeHtml(rpAbbr)}</span>
             </div>
           </div>
         </div>`;
@@ -1526,7 +1124,7 @@ function renderGovCard(nation, coalition, allParties, currentTick, prevApproval,
             <div style="font-family:var(--dfont-ui);font-size:11px;color:var(--dtext-2);margin-top:1px">Vice President</div>
           </div>
         </div>`;
-    } else if (!isPres && !isAuto && hosFirst && hosLast) {
+    } else if (!isPres && hosFirst && hosLast) {
         const ini = initials(hosFirst, hosLast);
         leader2Html = `
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px">
@@ -4734,521 +4332,6 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// STRONGMAN ACTION PANELS
-// ═══════════════════════════════════════════════════════════════════
-
-// (Successor, Purge, Redistribute panels removed — Phase 0)
-
-
-
-
-// ═══════════════════════════════════════════════════════════════════
-// AUTOCRACY ACTIONS TAB RENDERER
-// ═══════════════════════════════════════════════════════════════════
-// ── Autocracy action metadata (client-side labels/descriptions) ──────────────
-
-const AUTO_ACTION_META = {
-    // Military
-    deploy:              { label: 'Deploy', desc: 'Deploy forces. +Backing, moves tracker.', icon: '⚔', color: '#5b9bd5' },
-    stand_down:          { label: 'Stand Down', desc: 'Stand down military. Always FOR YOURSELF.', icon: '◇', color: '#5b9bd5' },
-    military_exercises:  { label: 'Military Exercises', desc: 'Display military strength. +Stability, +Backing.', icon: '★', color: '#5b9bd5' },
-    // Party
-    rally:               { label: 'Rally', desc: 'Rally the base. +Backing.', icon: '◎', color: '#c8a64e' },
-    agitate:             { label: 'Agitate', desc: 'Stir up unrest. Regime mode at half power.', icon: '!', color: '#c8a64e' },
-    party_congress:      { label: 'Party Congress', desc: 'Hold congress. Strongman may attend or refuse.', icon: '⊞', color: '#c8a64e' },
-    // Oligarchs
-    patronage:           { label: 'Patronage', desc: 'Patronage network. +Backing via wealth.', icon: '$', color: '#5cb85c' },
-    capital_flight:      { label: 'Capital Flight', desc: 'Move capital abroad. Regime mode at half power.', icon: '→', color: '#5cb85c' },
-    bribe:               { label: 'Bribe', desc: 'Bribe a faction. Visible only to recipient.', icon: '◆', color: '#5cb85c' },
-    // Media
-    broadcast:           { label: 'Broadcast', desc: 'Broadcast propaganda. +Backing.', icon: '◈', color: '#d48a3c' },
-    smear:               { label: 'Smear', desc: 'Smear a rival faction. -Target Backing.', icon: '✗', color: '#d48a3c' },
-    blackout:            { label: 'Blackout', desc: 'Media blackout. Suppresses target faction.', icon: '▬', color: '#d48a3c' },
-    // Security
-    surveillance:        { label: 'Surveillance', desc: 'Spy on a faction. Reveals Backing/AP/last action.', icon: '◉', color: '#d9534f' },
-    blackmail:           { label: 'Blackmail', desc: 'Blackmail a faction leader. -Target Backing.', icon: '✉', color: '#d9534f' },
-    disappear:           { label: 'Disappear', desc: 'Disappear a faction leader. Extreme action.', icon: '✕', color: '#d9534f' },
-    // Strongman exclusives
-    arrest_leader:       { label: 'Arrest Leader', desc: 'Arrest a faction leader. Leader is detained.', icon: '⛓', color: '#d9534f' },
-    execute_leader:      { label: 'Execute Leader', desc: 'Execute arrested leader. Permanent removal.', icon: '☠', color: '#d9534f' },
-    release_leader:      { label: 'Release Leader', desc: 'Release arrested leader. May restore stability.', icon: '↩', color: '#5b9bd5' },
-    favor:               { label: 'Favor', desc: 'Grant a favor. +Target Backing, +Loyalty.', icon: '♔', color: '#c8a64e' },
-    emergency_decree:    { label: 'Emergency Decree', desc: 'Issue decree. Immediate stat effects.', icon: '⚡', color: '#d48a3c' },
-    appoint_successor:   { label: 'Appoint Successor', desc: 'Designate succession heir.', icon: '→', color: '#c8a64e' },
-    revoke_successor:    { label: 'Revoke Successor', desc: 'Remove designated successor.', icon: '✗', color: '#d9534f' },
-    // Coups
-    coup_attempt:        { label: 'Coup Attempt', desc: 'Attempt a coup. High risk, high reward.', icon: '⚡', color: '#d9534f' },
-    declare_putsch:      { label: 'Declare Putsch', desc: 'Declare martial law. Military-only.', icon: '⛊', color: '#5b9bd5' },
-    appeal_security:     { label: 'Appeal to Security', desc: 'Strongman appeals to Security Services during putsch.', icon: '◎', color: '#d9534f' },
-    security_putsch_response: { label: 'Respond to Putsch', desc: 'Security Services responds to Strongman appeal.', icon: '◉', color: '#d9534f' },
-    putsch_do_nothing:   { label: 'Ignore Putsch', desc: 'Strongman chooses not to respond to putsch.', icon: '—', color: '#888' },
-    silent_coup:         { label: 'Silent Coup', desc: 'Security Services power play. Multi-phase.', icon: '◉', color: '#d9534f' },
-    silent_coup_vote:    { label: 'Vote on Silent Coup', desc: 'Cast your vote on the silent coup.', icon: '✓', color: '#d9534f' },
-    // Wildcard / Pillar selection
-    claim_wildcard:      { label: 'Claim Wildcard', desc: 'Claim wildcard pillar with new leader.', icon: '?', color: '#888' },
-    select_pillar:       { label: 'Select Pillar', desc: 'Choose your pillar (one-time).', icon: '◆', color: '#d48a3c' },
-};
-
-// Actions grouped by pillar for display
-const AUTO_ACTION_GROUPS = {
-    military: ['deploy', 'stand_down', 'military_exercises'],
-    party: ['rally', 'agitate', 'party_congress'],
-    oligarchs: ['patronage', 'capital_flight', 'bribe'],
-    media: ['broadcast', 'smear', 'blackout'],
-    security: ['surveillance', 'blackmail', 'disappear'],
-    strongman: ['arrest_leader', 'execute_leader', 'release_leader', 'favor', 'emergency_decree', 'appoint_successor', 'revoke_successor'],
-    coups: ['coup_attempt', 'declare_putsch', 'appeal_security', 'security_putsch_response', 'putsch_do_nothing', 'silent_coup'],
-    special: ['claim_wildcard', 'silent_coup_vote', 'select_pillar'],
-};
-
-let _autoSelectedAction = null;
-let _autoActionMode = 'regime';
-let _autoActionTarget = null;
-let _autoNation = null;
-let _autoFaction = null;
-let _autoShard = null;
-let _autoAllParties = [];
-
-async function renderAutocracyActionsTab(nation, faction, shard, pillarStates, autocracyTracker, allParties) {
-    const container = document.getElementById('actions-container');
-    if (!container) return;
-
-    _autoNation = nation;
-    _autoFaction = faction;
-    _autoShard = shard;
-    _autoAllParties = allParties;
-
-    const tick = shard?.current_tick || 0;
-    const f = faction;
-    const n = nation;
-
-    // Refresh faction AP
-    const { data: freshF } = await _supabase.from('factions')
-        .select('action_points').eq('id', f.id).maybeSingle();
-    if (freshF) f.action_points = freshF.action_points;
-    const ap = f.action_points ?? 0;
-
-    // Load my pillar state
-    const myFps = pillarStates.find(ps => ps.faction_id === f.id);
-    const myPillar = myFps?.pillar;
-    const isStrongman = myFps?.is_strongman;
-
-    // Determine available actions for this faction
-    const availableActions = [];
-
-    // 1. Own pillar actions
-    if (myPillar && AUTO_ACTION_GROUPS[myPillar]) {
-        for (const actionKey of AUTO_ACTION_GROUPS[myPillar]) {
-            if (AUTOCRACY_ACTIONS[actionKey]) availableActions.push(actionKey);
-        }
-    }
-
-    // 2. Strongman exclusives
-    if (isStrongman) {
-        for (const actionKey of AUTO_ACTION_GROUPS.strongman) {
-            if (AUTOCRACY_ACTIONS[actionKey]) availableActions.push(actionKey);
-        }
-    }
-
-    // 3. Coup actions (available to all non-strongman, or strongman for putsch response)
-    if (!isStrongman) {
-        if (AUTOCRACY_ACTIONS['coup_attempt']) availableActions.push('coup_attempt');
-    }
-    if (myPillar === 'military') {
-        if (AUTOCRACY_ACTIONS['declare_putsch']) availableActions.push('declare_putsch');
-    }
-    if (myPillar === 'security') {
-        if (AUTOCRACY_ACTIONS['silent_coup']) availableActions.push('silent_coup');
-    }
-
-    // 4. Silent coup vote (if there's an active vote phase and I'm not security)
-    const { data: activeOffer } = await _supabase.from('silent_coup_offers')
-        .select('id').eq('nation_id', n.id).eq('to_faction_id', f.id).eq('voided', false).is('accepted', null)
-        .limit(1).maybeSingle();
-    if (activeOffer && AUTOCRACY_ACTIONS['silent_coup_vote']) {
-        availableActions.push('silent_coup_vote');
-    }
-
-    // 5. Claim wildcard (if no leader)
-    const leaderExecuted = myFps && !myFps.leader_name;
-    if (leaderExecuted && AUTOCRACY_ACTIONS['claim_wildcard']) {
-        availableActions.push('claim_wildcard');
-    }
-
-    // Build action list HTML
-    const pillarConfirmed = myFps?.pillar_confirmed;
-    let listHtml = `<div style="font-size:10px;color:var(--dtext-3);margin-bottom:12px">
-        AP: <span style="color:var(--dtext-0);font-weight:700;font-family:var(--dfont-mono)">${ap}</span>
-        &nbsp;|&nbsp; Pillar: <span style="color:var(--dtext-0);font-weight:600">${myPillar ? myPillar.charAt(0).toUpperCase() + myPillar.slice(1) : '—'}</span>
-        ${leaderExecuted ? '&nbsp;<span style="color:#d9534f;font-size:9px;font-weight:600">(NO LEADER)</span>' : ''}
-        ${!leaderExecuted && !pillarConfirmed && myFps ? '&nbsp;<span style="color:#d48a3c;font-size:9px">(auto-assigned)</span>' : ''}
-        ${isStrongman ? '&nbsp;|&nbsp; <span style="color:#d9534f;font-weight:700">STRONGMAN</span>' : ''}
-    </div>`;
-
-    // Leader executed banner — prompt to claim wildcard pillar
-    if (leaderExecuted) {
-        const wildcardPillar = autocracyTracker?.wildcard_pillar;
-        const wildcardBacking = autocracyTracker?.wildcard_backing ?? 0;
-        const PILLAR_LABELS = { military: 'Military', party: 'The Party', oligarchs: 'Oligarchs', media: 'Media', security: 'Security' };
-        const wildcardLabel = wildcardPillar ? (PILLAR_LABELS[wildcardPillar] || wildcardPillar) : null;
-
-        listHtml += `
-        <div style="background:#d9534f11;border:1px solid #d9534f44;border-radius:4px;padding:12px;margin-bottom:12px">
-            <div style="font-size:11px;font-weight:700;color:#d9534f;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">LEADER EXECUTED</div>
-            <div style="font-size:11px;color:var(--dtext-2);margin-bottom:10px">Your faction leader has been eliminated. You must claim a new pillar to appoint a successor and resume operations.</div>
-            ${wildcardPillar ? `
-                <div style="display:flex;align-items:center;gap:10px;background:var(--dbg-3);border:1px solid var(--dborder-1);border-radius:3px;padding:10px;margin-bottom:10px">
-                    <div style="flex:1">
-                        <div style="font-size:10px;color:var(--dtext-3);text-transform:uppercase;letter-spacing:0.5px">Available Wildcard Pillar</div>
-                        <div style="font-size:14px;color:var(--dtext-0);font-weight:700;margin-top:2px">${escapeHtml(wildcardLabel)}</div>
-                        <div style="font-size:10px;color:var(--dtext-3);margin-top:2px">Backing: ${wildcardBacking}</div>
-                    </div>
-                    <button id="claim-wildcard-btn" style="padding:8px 16px;background:#d9534f22;border:1px solid #d9534f66;color:#d9534f;border-radius:3px;cursor:pointer;font-size:12px;font-weight:700;white-space:nowrap">Claim Pillar</button>
-                </div>
-            ` : `
-                <div style="font-size:11px;color:var(--dtext-3);font-style:italic">No wildcard pillar is currently available to claim.</div>
-            `}
-            <div id="claim-wildcard-result" style="font-size:11px"></div>
-        </div>`;
-    }
-
-    // Pillar selection banner (shown when pillar not yet confirmed)
-    if (myFps && !pillarConfirmed && !leaderExecuted) {
-        const PILLAR_INFO = {
-            military: { label: 'Military', icon: '⚔', color: '#5b9bd5', desc: 'Deploy forces, military exercises, stand down' },
-            party: { label: 'The Party', icon: '◎', color: '#c8a64e', desc: 'Rallies, agitation, party congress' },
-            oligarchs: { label: 'Oligarchs', icon: '$', color: '#5cb85c', desc: 'Patronage, capital flight, bribery' },
-            media: { label: 'Media', icon: '◈', color: '#d48a3c', desc: 'Broadcasts, smear campaigns, blackouts' },
-            security: { label: 'Security', icon: '◉', color: '#d9534f', desc: 'Surveillance, blackmail, disappearances' },
-        };
-        // Find which pillars are already claimed by other factions
-        const confirmedPillars = new Set((pillarStates || [])
-            .filter(fps => fps.pillar && fps.faction_id !== f.id)
-            .map(fps => fps.pillar));
-
-        let pillarPickerHtml = `
-        <div style="background:#d48a3c11;border:1px solid #d48a3c44;border-radius:4px;padding:12px;margin-bottom:12px">
-            <div style="font-size:11px;font-weight:700;color:#d48a3c;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">SELECT YOUR PILLAR</div>
-            <div style="font-size:11px;color:var(--dtext-2);margin-bottom:10px">Your pillar was auto-assigned. Choose the one you want. Confirmed pillars cannot be taken.</div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px">`;
-
-        for (const [key, info] of Object.entries(PILLAR_INFO)) {
-            const isMine = key === myPillar;
-            const isLocked = confirmedPillars.has(key);
-            const borderCol = isMine ? info.color : isLocked ? 'var(--dborder-0)' : info.color + '66';
-            const bg = isMine ? info.color + '15' : 'transparent';
-            const op = isLocked ? '0.35' : '1';
-            const cursor = isLocked ? 'default' : 'pointer';
-            pillarPickerHtml += `
-            <div class="pillar-pick-btn" data-pillar="${key}" data-locked="${isLocked}" style="flex:1;min-width:120px;border:2px solid ${borderCol};border-radius:4px;padding:10px;text-align:center;cursor:${cursor};opacity:${op};background:${bg};transition:all 0.15s">
-                <div style="font-size:16px;color:${info.color}">${info.icon}</div>
-                <div style="font-size:11px;font-weight:700;color:var(--dtext-0);margin-top:2px">${info.label}</div>
-                <div style="font-size:9px;color:var(--dtext-3);margin-top:2px">${info.desc}</div>
-                ${isMine ? '<div style="font-size:8px;color:#d48a3c;margin-top:4px;font-weight:600">CURRENT</div>' : ''}
-                ${isLocked ? '<div style="font-size:8px;color:var(--dtext-3);margin-top:4px">CLAIMED</div>' : ''}
-            </div>`;
-        }
-
-        pillarPickerHtml += `</div>
-            <div id="pillar-pick-result" style="margin-top:8px;font-size:11px"></div>
-        </div>`;
-        listHtml += pillarPickerHtml;
-    }
-
-    if (availableActions.length === 0 && (pillarConfirmed || !myFps)) {
-        listHtml += '<div style="padding:20px;text-align:center;color:var(--dtext-3);font-size:12px">No actions available.</div>';
-    }
-
-    for (const actionKey of availableActions) {
-        const def = AUTOCRACY_ACTIONS[actionKey];
-        const meta = AUTO_ACTION_META[actionKey] || { label: actionKey, desc: '', icon: '?', color: '#888' };
-        const cost = myFps ? getEscalatingCost(myFps, def) : def.baseCost;
-        const cd = myFps ? checkCooldown(myFps, def, tick) : { onCooldown: false, remainingTicks: 0 };
-        const canAfford = ap >= cost;
-        const isSelected = _autoSelectedAction === actionKey;
-        const disabled = cd.onCooldown || !canAfford;
-
-        const borderColor = isSelected ? meta.color : disabled ? 'var(--dborder-0)' : meta.color + '44';
-        const bgColor = isSelected ? meta.color + '0a' : 'transparent';
-        const opacity = disabled ? '0.45' : '1';
-
-        let costLabel = `${cost} AP`;
-        if (cd.onCooldown) costLabel = `${cd.remainingTicks} CD`;
-
-        listHtml += `
-        <div class="auto-action-item" data-action="${actionKey}" data-disabled="${disabled}" style="background:${bgColor};border:1px solid ${borderColor};border-radius:3px;padding:8px 10px;margin-bottom:4px;cursor:${disabled ? 'default' : 'pointer'};opacity:${opacity};transition:all 0.15s">
-            <div style="display:flex;justify-content:space-between;align-items:center">
-                <div style="display:flex;align-items:center;gap:6px">
-                    <span style="font-size:13px;color:${meta.color};width:18px;text-align:center">${meta.icon}</span>
-                    <span style="font-size:12px;color:var(--dtext-0);font-weight:${isSelected ? '700' : '500'}">${meta.label}</span>
-                    ${def.hasDualMode ? '<span style="font-size:8px;color:var(--dtext-3);background:var(--dbg-3);padding:1px 4px;border-radius:2px">DUAL</span>' : ''}
-                </div>
-                <span style="font-size:10px;color:${cd.onCooldown ? '#d9534f' : canAfford ? 'var(--dtext-2)' : '#d9534f'};font-family:var(--dfont-mono)">${costLabel}</span>
-            </div>
-            <div style="font-size:9px;color:var(--dtext-3);margin-top:2px;padding-left:24px">${meta.desc}</div>
-        </div>`;
-    }
-
-    // Detail panel (right side)
-    let detailHtml = '<div id="auto-action-detail" style="padding:24px;text-align:center;color:var(--dtext-3);font-size:12px">Select an action to see details.</div>';
-
-    container.innerHTML = `
-    <div class="auto-actions-wrap" style="display:flex;gap:16px;min-height:400px">
-        <div id="auto-action-list" style="width:320px;min-width:0;flex-shrink:1">
-            ${listHtml}
-        </div>
-        <div style="flex:1;min-width:0;background:var(--dbg-2);border:1px solid var(--dborder-0);border-radius:3px;padding:16px;overflow-y:auto">
-            ${detailHtml}
-        </div>
-    </div>
-    <style>.auto-actions-wrap{flex-wrap:wrap}@media(max-width:700px){.auto-actions-wrap{flex-direction:column}.auto-actions-wrap>#auto-action-list{width:100%}}</style>`;
-
-    // Wire up click handlers
-    container.querySelectorAll('.auto-action-item').forEach(el => {
-        el.addEventListener('click', () => {
-            if (el.getAttribute('data-disabled') === 'true') return;
-            const actionKey = el.getAttribute('data-action');
-            _autoSelectedAction = actionKey;
-            _autoActionMode = 'regime'; // reset mode on action switch
-            _autoActionTarget = null;   // reset target on action switch
-            renderAutoActionDetail(actionKey, ap, tick, myFps, isStrongman, pillarStates);
-            // Highlight selected
-            container.querySelectorAll('.auto-action-item').forEach(e => {
-                e.style.background = 'transparent';
-                e.style.borderColor = 'var(--dborder-0)';
-            });
-            const meta = AUTO_ACTION_META[actionKey] || { color: '#888' };
-            el.style.background = meta.color + '0a';
-            el.style.borderColor = meta.color;
-        });
-    });
-
-    // Wire up pillar picker buttons
-    container.querySelectorAll('.pillar-pick-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            if (btn.getAttribute('data-locked') === 'true') return;
-            const pillar = btn.getAttribute('data-pillar');
-            const resultDiv = document.getElementById('pillar-pick-result');
-
-            // Confirm selection
-            btn.style.opacity = '0.5';
-            btn.style.pointerEvents = 'none';
-
-            try {
-                const result = await dispatchAutocracyAction(_supabase, {
-                    factionId: _autoFaction.id,
-                    nationId: _autoNation.id,
-                    actionType: 'select_pillar',
-                    mode: 'self',
-                    currentTick: tick,
-                    extra: { pillar },
-                });
-
-                if (result.success) {
-                    if (resultDiv) resultDiv.innerHTML = `<div style="color:#5cb85c;font-weight:600">Pillar confirmed: ${escapeHtml(pillar)}</div>`;
-                    // Refresh the whole tab
-                    try {
-                        const { data: refreshedFps } = await _supabase.from('faction_pillar_state').select('*').eq('nation_id', _autoNation.id);
-                        const { data: refreshedTracker } = await _supabase.from('autocracy_tracker').select('*').eq('nation_id', _autoNation.id).maybeSingle();
-                        await renderAutocracyActionsTab(_autoNation, _autoFaction, _autoShard, refreshedFps || [], refreshedTracker, _autoAllParties);
-                    } catch (e) { console.warn('[PillarPick] Refresh failed:', e); }
-                } else {
-                    if (resultDiv) resultDiv.innerHTML = `<div style="color:#d9534f">${escapeHtml(result.error || 'Selection failed')}</div>`;
-                    btn.style.opacity = '1';
-                    btn.style.pointerEvents = 'auto';
-                }
-            } catch (err) {
-                if (resultDiv) resultDiv.innerHTML = `<div style="color:#d9534f">${escapeHtml(err.message)}</div>`;
-                btn.style.opacity = '1';
-                btn.style.pointerEvents = 'auto';
-            }
-        });
-    });
-
-    // Wire up claim wildcard banner button
-    const claimBtn = container.querySelector('#claim-wildcard-btn');
-    if (claimBtn) {
-        claimBtn.addEventListener('click', async () => {
-            claimBtn.disabled = true;
-            claimBtn.textContent = 'Claiming...';
-            const resultDiv = document.getElementById('claim-wildcard-result');
-            try {
-                const result = await dispatchAutocracyAction(_supabase, {
-                    factionId: _autoFaction.id,
-                    nationId: _autoNation.id,
-                    actionType: 'claim_wildcard',
-                    mode: 'self',
-                    currentTick: tick,
-                    extra: {},
-                });
-                if (result.success) {
-                    const effects = result.result?.effects || {};
-                    if (resultDiv) resultDiv.innerHTML = `<div style="color:#5cb85c;font-weight:600">Claimed ${escapeHtml(effects.claimed_pillar || 'pillar')}. New leader: ${escapeHtml(effects.new_leader || 'Unknown')}</div>`;
-                    // Refresh the tab
-                    try {
-                        const { data: refreshedFps } = await _supabase.from('faction_pillar_state').select('*').eq('nation_id', _autoNation.id);
-                        const { data: refreshedTracker } = await _supabase.from('autocracy_tracker').select('*').eq('nation_id', _autoNation.id).maybeSingle();
-                        await renderAutocracyActionsTab(_autoNation, _autoFaction, _autoShard, refreshedFps || [], refreshedTracker, _autoAllParties);
-                    } catch (e) { console.warn('[ClaimWildcard] Refresh failed:', e); }
-                } else {
-                    if (resultDiv) resultDiv.innerHTML = `<div style="color:#d9534f">${escapeHtml(result.error || 'Claim failed')}</div>`;
-                    claimBtn.disabled = false;
-                    claimBtn.textContent = 'Claim Pillar';
-                }
-            } catch (err) {
-                if (resultDiv) resultDiv.innerHTML = `<div style="color:#d9534f">${escapeHtml(err.message)}</div>`;
-                claimBtn.disabled = false;
-                claimBtn.textContent = 'Claim Pillar';
-            }
-        });
-    }
-}
-
-function renderAutoActionDetail(actionKey, ap, tick, myFps, isStrongman, pillarStates) {
-    const detail = document.getElementById('auto-action-detail');
-    if (!detail) return;
-
-    const def = AUTOCRACY_ACTIONS[actionKey];
-    const meta = AUTO_ACTION_META[actionKey] || { label: actionKey, desc: '', icon: '?', color: '#888' };
-    const cost = myFps ? getEscalatingCost(myFps, def) : def.baseCost;
-    const cd = myFps ? checkCooldown(myFps, def, tick) : { onCooldown: false, remainingTicks: 0 };
-    const canAfford = ap >= cost && !cd.onCooldown;
-
-    // Mode toggle for dual-mode actions
-    let modeHtml = '';
-    if (def.hasDualMode) {
-        modeHtml = `
-        <div style="display:flex;gap:8px;margin:12px 0">
-            <button class="auto-mode-btn" data-mode="regime" style="flex:1;padding:6px;border:1px solid ${_autoActionMode === 'regime' ? '#5b9bd5' : 'var(--dborder-1)'};background:${_autoActionMode === 'regime' ? '#5b9bd511' : 'transparent'};color:${_autoActionMode === 'regime' ? '#5b9bd5' : 'var(--dtext-2)'};border-radius:3px;cursor:pointer;font-size:11px;font-weight:600">FOR REGIME</button>
-            <button class="auto-mode-btn" data-mode="self" style="flex:1;padding:6px;border:1px solid ${_autoActionMode === 'self' ? '#d9534f' : 'var(--dborder-1)'};background:${_autoActionMode === 'self' ? '#d9534f11' : 'transparent'};color:${_autoActionMode === 'self' ? '#d9534f' : 'var(--dtext-2)'};border-radius:3px;cursor:pointer;font-size:11px;font-weight:600">FOR YOURSELF</button>
-        </div>
-        <div style="font-size:9px;color:var(--dtext-3);margin-bottom:8px">
-            ${_autoActionMode === 'regime' ? 'Regime mode: tracker decreases (more stable)' : 'Self mode: tracker increases (less stable)'}
-            ${def.halfPowerForRegime && _autoActionMode === 'regime' ? ' — Half power in regime mode' : ''}
-        </div>`;
-    }
-
-    // Target selector for actions that need a target faction
-    const needsTarget = ['smear', 'blackout', 'surveillance', 'blackmail', 'disappear', 'bribe', 'arrest_leader', 'execute_leader', 'release_leader', 'favor', 'appoint_successor'].includes(actionKey);
-    let targetHtml = '';
-    if (needsTarget) {
-        // execute_leader and release_leader can target own faction (arrested figurehead leader)
-        const includeSelf = ['execute_leader', 'release_leader'].includes(actionKey);
-        const otherFactions = pillarStates.filter(ps => includeSelf || ps.faction_id !== _autoFaction.id);
-        let targetOptions = '';
-        for (const fps of otherFactions) {
-            const party = (_autoAllParties || []).find(p => p.id === fps.faction_id);
-            const pName = party?.faction_name || 'Unknown';
-            const sel = _autoActionTarget === fps.faction_id ? 'selected' : '';
-            targetOptions += `<option value="${fps.faction_id}" ${sel}>${escapeHtml(pName)} (${escapeHtml(fps.pillar || '?')})</option>`;
-        }
-        targetHtml = `
-        <div style="margin:8px 0">
-            <label style="font-size:10px;color:var(--dtext-3);display:block;margin-bottom:4px">Target Faction</label>
-            <select id="auto-target-select" style="width:100%;padding:6px;background:var(--dbg-3);border:1px solid var(--dborder-1);color:var(--dtext-1);border-radius:3px;font-size:12px">
-                <option value="">— Select target —</option>
-                ${targetOptions}
-            </select>
-        </div>`;
-    }
-
-    // Execute button
-    const execDisabled = !canAfford || (needsTarget && !_autoActionTarget);
-    const execLabel = cd.onCooldown ? `Cooldown (${cd.remainingTicks} ticks)` : !canAfford ? `Need ${cost} AP` : `Execute — ${cost} AP`;
-
-    detail.innerHTML = `
-    <div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-            <span style="font-size:20px;color:${meta.color}">${meta.icon}</span>
-            <span style="font-size:16px;color:var(--dtext-0);font-weight:700">${meta.label}</span>
-        </div>
-        <div style="font-size:12px;color:var(--dtext-2);margin-bottom:12px">${meta.desc}</div>
-        <div style="display:flex;gap:16px;font-size:10px;color:var(--dtext-3);margin-bottom:12px">
-            <div>Cost: <span style="color:var(--dtext-1);font-weight:600">${cost} AP</span></div>
-            <div>Pillar: <span style="color:var(--dtext-1)">${def.pillar || 'any'}</span></div>
-            ${def.cooldownTicks ? `<div>Cooldown: <span style="color:var(--dtext-1)">${def.cooldownTicks} ticks</span></div>` : ''}
-            ${def.escalationSteps ? `<div>Escalation: <span style="color:var(--dtext-1)">${def.escalationSteps.join(' → ')}</span></div>` : ''}
-        </div>
-        ${modeHtml}
-        ${targetHtml}
-        <button id="auto-exec-btn" style="width:100%;padding:10px;background:${execDisabled ? 'var(--dbg-3)' : meta.color + '22'};border:1px solid ${execDisabled ? 'var(--dborder-1)' : meta.color + '66'};color:${execDisabled ? 'var(--dtext-3)' : meta.color};border-radius:3px;cursor:${execDisabled ? 'not-allowed' : 'pointer'};font-size:12px;font-weight:700;margin-top:12px" ${execDisabled ? 'disabled' : ''}>
-            ${execLabel}
-        </button>
-        <div id="auto-exec-result" style="margin-top:12px;font-size:11px"></div>
-    </div>`;
-
-    // Wire mode buttons
-    detail.querySelectorAll('.auto-mode-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            _autoActionMode = btn.getAttribute('data-mode');
-            renderAutoActionDetail(actionKey, ap, tick, myFps, isStrongman, pillarStates);
-        });
-    });
-
-    // Wire target select
-    const targetSelect = document.getElementById('auto-target-select');
-    if (targetSelect) {
-        targetSelect.addEventListener('change', () => {
-            _autoActionTarget = targetSelect.value || null;
-            renderAutoActionDetail(actionKey, ap, tick, myFps, isStrongman, pillarStates);
-        });
-    }
-
-    // Wire execute button
-    const execBtn = document.getElementById('auto-exec-btn');
-    if (execBtn && !execDisabled) {
-        execBtn.addEventListener('click', async () => {
-            execBtn.disabled = true;
-            execBtn.textContent = 'Executing...';
-            try {
-                const extra = {};
-                if (_autoActionTarget) {
-                    if (actionKey === 'appoint_successor') {
-                        extra.successorFactionId = _autoActionTarget;
-                    } else {
-                        extra.targetFactionId = _autoActionTarget;
-                    }
-                }
-
-                const result = await dispatchAutocracyAction(_supabase, {
-                    factionId: _autoFaction.id,
-                    nationId: _autoNation.id,
-                    actionType: actionKey,
-                    mode: def.hasDualMode ? _autoActionMode : 'self',
-                    currentTick: tick,
-                    extra,
-                });
-
-                const resultDiv = document.getElementById('auto-exec-result');
-                if (result.success) {
-                    if (resultDiv) {
-                        const effectsText = result.result ? escapeHtml(JSON.stringify(result.result.effects || result.result, null, 0)) : '';
-                        resultDiv.innerHTML = `<div style="color:#5cb85c;font-weight:600">Action executed successfully.</div>
-                            ${effectsText ? `<div style="color:var(--dtext-2);margin-top:4px">${effectsText}</div>` : ''}`;
-                    }
-                    // Refresh the tab
-                    try {
-                        const { data: refreshedFps } = await _supabase.from('faction_pillar_state').select('*').eq('nation_id', _autoNation.id);
-                        const { data: refreshedTracker } = await _supabase.from('autocracy_tracker').select('*').eq('nation_id', _autoNation.id).maybeSingle();
-                        await renderAutocracyActionsTab(_autoNation, _autoFaction, _autoShard, refreshedFps || [], refreshedTracker, _autoAllParties);
-                    } catch (refreshErr) {
-                        console.warn('[AutoActions] Refresh after action failed:', refreshErr);
-                    }
-                } else {
-                    if (resultDiv) resultDiv.innerHTML = `<div style="color:#d9534f;font-weight:600">${escapeHtml(result.error || 'Action failed')}</div>`;
-                    execBtn.disabled = false;
-                    execBtn.textContent = execLabel;
-                }
-            } catch (err) {
-                const resultDiv = document.getElementById('auto-exec-result');
-                if (resultDiv) resultDiv.innerHTML = `<div style="color:#d9534f">${escapeHtml(err.message)}</div>`;
-                execBtn.disabled = false;
-                execBtn.textContent = execLabel;
-            }
-        });
-    }
-}
 
 /* ═══════════════════════════════════════════════════════════════════
    ELECTORATE IDEOLOGY SPREAD TAB
@@ -6616,9 +5699,10 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
             <div class="elec-explainer-section">
                 <div class="elec-explainer-heading">Legislation:</div>
                 <ul>
+                    <li><strong>Sponsoring a bill:</strong> +3 momentum for the sponsoring party.</li>
                     <li><strong>Bill passes:</strong> YES voters get +2 momentum per policy article.</li>
                     <li><strong>Bill fails:</strong> YES voters lose -2 per article. NO voters gain +2 per article.</li>
-                    <li>Sponsoring a bill does not directly affect momentum. Text-only articles do not count. Abstaining gives nothing.</li>
+                    <li>Text-only articles do not count. Abstaining gives nothing.</li>
                 </ul>
             </div>
             <div class="elec-explainer-section">

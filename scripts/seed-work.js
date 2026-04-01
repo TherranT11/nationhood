@@ -118,7 +118,7 @@ async function main() {
             cost_of_living: 42, manufacturing_output: 55, service_output: 58, housing_affordability: 52
         },
         {
-            name: 'Sangreza', government_type: 'Autocracy', total_seats: 120, max_parties: 8,
+            name: 'Sangreza', government_type: 'Democracy', total_seats: 120, max_parties: 8,
             capital: 'San Marcos', shard_id: shardId, population: 12500000, eligible_voters: 8125000,
             gdp: 528000000000, debt: 40000000000, stability: 65, legitimacy: 70, corruption: 25,
             gdp_growth: 48, inflation: 38, unemployment: 32, happiness: 55, civil_unrest: 22,

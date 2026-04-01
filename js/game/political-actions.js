@@ -4,14 +4,14 @@
  */
 
 import { deductAP, GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './config.js';
-import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic } from './government-types.js';
+import { CANONICAL_GOVERNMENT_TYPES, isPresidentialRepublic } from './government-types.js';
 import { RAW_SCALING_DIVISORS, STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
 import { IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, loadFactionIdeology } from './ideology.js';
 import { MINISTER_APPROVAL_CONFIG, ISSUE_CATEGORY_STATS, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, STAT_TO_MINISTRY, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, statDirectionSign, buildFundingPctMap, getInstFundingPct } from './stats.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { closeAdministration, createAdministration, dissolveCoalition } from './elections.js';
-import { getTraitAPModifier, applyRallyTraitModifiers, getTraitApprovalMultiplier, getEffectiveBlocDisposition } from './party-leadership.js';
+import { getTraitAPModifier, applyRallyTraitModifiers, getTraitApprovalMultiplier, getEffectiveBlocDisposition, POSITIVE_TRAITS } from './party-leadership.js';
 import { onRally, onOutreach, onAttack, nudgeEnthusiasm, nudgeApproval, ELECTORATE_CONFIG as E_CFG } from './electorate.js';
 
 const _PA_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -131,6 +131,18 @@ export async function processStatDecay(supabase, nation, statInstitutionMap, pol
                 institutionModified: instDecay !== null
             });
         }
+    }
+
+    // Enforce foundational law caps on stats
+    // Judicial Appointment Politicization Act: cap judicial_independence at 30
+    if (nation.judicial_appointment_politicization) {
+        const ji = nationUpdates.judicial_independence ?? Number(nation.judicial_independence ?? 50);
+        if (ji > 30) nationUpdates.judicial_independence = 30;
+    }
+    // State Media Control Act: cap press_freedom at 40
+    if (nation.state_media_control) {
+        const pf = nationUpdates.press_freedom ?? Number(nation.press_freedom ?? 50);
+        if (pf > 40) nationUpdates.press_freedom = 40;
     }
 
     if (Object.keys(nationUpdates).length > 0) {
@@ -1167,20 +1179,20 @@ export const MAKE_PROMISE_CONFIG = {
     DEADLINE_BASE: 6,                  // base ticks added to roll (range: 7-30)
     MAX_ACTIVE_PROMISES: 5,            // limit active promises per faction
 
-    // ── Electorate engine effects (party_approval + credibility_modifier) ──
+    // ── Electorate engine effects (party_approval only — credibility removed, 3-pillar system) ──
     APPROVAL_ON_PROMISE: 2,            // immediate +party_approval when promise is made
     PENALTY_PER_TICK_MIN: 0.5,         // -0.5 to -1.5 party_approval/tick while governing & unfulfilled
     PENALTY_PER_TICK_MAX: 1.5,
 
     // Promise kept rewards
     KEPT_APPROVAL: 2,                  // +party_approval when promise fulfilled
-    KEPT_CREDIBILITY: 0.07,            // +credibility_modifier when promise fulfilled
+    KEPT_CREDIBILITY: 0.07,            // no-op: credibility removed (3-pillar election system)
 
     // Promise broken penalties
     BROKEN_APPROVAL: -2,               // -party_approval when promise broken
-    BROKEN_CREDIBILITY: -0.10,         // -credibility_modifier when promise broken
-    BROKEN_CREDIBILITY_SUSPEND: 12,    // suspend credibility recovery for N ticks after breaking
-    BROKEN_NERVOUS_CREDIBILITY: -0.03, // -credibility per other active promise when one breaks
+    BROKEN_CREDIBILITY: -0.10,         // no-op: credibility removed (3-pillar election system)
+    BROKEN_CREDIBILITY_SUSPEND: 12,    // no-op: credibility removed (3-pillar election system)
+    BROKEN_NERVOUS_CREDIBILITY: -0.03, // no-op: credibility removed (3-pillar election system)
 };
 
 /**
@@ -1934,27 +1946,7 @@ export async function rebalanceVacantSeats(supabase, nation) {
 
     if (error || !factions || factions.length === 0) return null;
 
-    // Autocracies: equal seat allocation — every faction gets the same share
-    if (isAutocracy(nation)) {
-        const perParty = Math.floor(totalSeats / factions.length);
-        let remainder = totalSeats - perParty * factions.length;
-        const updates = [];
-        for (const f of factions) {
-            const newSeats = perParty + (remainder > 0 ? 1 : 0);
-            if (remainder > 0) remainder--;
-            if (newSeats !== (f.seats || 0)) {
-                updates.push({ id: f.id, name: f.faction_name, oldSeats: f.seats || 0, newSeats });
-                await supabase.from('factions').update({ seats: newSeats }).eq('id', f.id);
-            }
-        }
-        if (updates.length > 0) {
-            console.log(`[rebalanceVacantSeats] ${nation.name} (autocracy): Equal seats:`,
-                updates.map(u => `${u.name}: ${u.oldSeats}→${u.newSeats}`).join(', '));
-        }
-        return updates.length > 0 ? { nation: nation.name, vacantSeats: 0, updates } : null;
-    }
-
-    // Democracies: proportional redistribution of vacant seats
+    // Proportional redistribution of vacant seats
     const currentSum = factions.reduce((s, f) => s + (f.seats || 0), 0);
     const vacantSeats = totalSeats - currentSum;
 
@@ -2674,7 +2666,6 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
  * Returns { collapsed, penalized } or null if no government or not in danger zone.
  */
 export async function processGovernmentCollapseCheck(supabase, nation, currentTick) {
-    if (isAutocracy(nation)) return null;
     if (isPresidentialRepublic(nation)) return null;
     const govApproval = Number(nation.gov_approval ?? 50);
     if (govApproval > 5) return null;
@@ -3540,412 +3531,13 @@ export async function processCrises(supabase, nation, currentTick) {
 }
 
 
-// ==================== DEMOCRATIC REVOLUTION ====================
-
-/**
- * Process democratic revolution for autocracies.
- * Triggers when: stability < 20, civil_unrest > 50 (Autocracy only).
- * Random 13-22 tick duration. Per-tick: stability -1, civil_unrest +1, intl_reputation -1.
- * Avertable if ANY trigger condition breaks. Fires regime change if duration expires.
- */
-export async function processRevolution(supabase, nation, currentTick) {
-    // Only autocracies can have democratic revolutions
-    if (!isAutocracy(nation)) {
-        if (nation.revolution_started_tick != null) {
-            await supabase.from('nations').update({ revolution_started_tick: null, revolution_duration: null }).eq('id', nation.id);
-            nation.revolution_started_tick = null;
-            nation.revolution_duration = null;
-        }
-        return null;
-    }
-
-    // Check trigger conditions
-    const conditionsMet =
-        Number(nation.stability) < 20 &&
-        Number(nation.civil_unrest) > 50;
-
-    const crisisActive = nation.revolution_started_tick != null;
-
-    // Conditions NOT met — avert if active
-    if (!conditionsMet) {
-        if (crisisActive) {
-            await supabase.from('nations').update({ revolution_started_tick: null, revolution_duration: null }).eq('id', nation.id);
-            nation.revolution_started_tick = null;
-            nation.revolution_duration = null;
-
-            await supabase.from('event_log').insert({
-                nation_id: nation.id,
-                event_name: 'REVOLUTION_AVERTED',
-                trigger_key: 'crisis_ended',
-                description_used: 'The revolutionary movement has lost momentum. The regime has stabilized — for now.',
-                category: 'crisis',
-                effects_applied: [],
-                fired_at_tick: currentTick
-            });
-            console.log(`[Revolution] AVERTED for ${nation.name} at tick ${currentTick}`);
-        }
-        return null;
-    }
-
-    // --- Conditions ARE met ---
-
-    // START new crisis (no per-tick effects on the starting tick)
-    if (!crisisActive) {
-        const duration = Math.floor(Math.random() * 10) + 13; // 13-22 ticks
-        await supabase.from('nations').update({
-            revolution_started_tick: currentTick,
-            revolution_duration: duration
-        }).eq('id', nation.id);
-        nation.revolution_started_tick = currentTick;
-        nation.revolution_duration = duration;
-
-        await supabase.from('event_log').insert({
-            nation_id: nation.id,
-            event_name: 'REVOLUTION_WARNING',
-            trigger_key: 'crisis_started',
-            description_used: 'Pro-democracy demonstrations have erupted across multiple cities. Opposition groups are calling for free elections. The regime must act to restore order — or face revolution.',
-            category: 'crisis',
-            effects_applied: [],
-            fired_at_tick: currentTick
-        });
-        console.log(`[Revolution] WARNING — crisis started for ${nation.name}, duration ${duration} ticks`);
-        return { phase: 'warning', nation: nation.name, tick: currentTick, duration };
-    }
-
-    // Apply per-tick effects (stability -1, civil_unrest +1, intl_reputation -1)
-    const newStability = Math.max(0, Math.round((Number(nation.stability) - 1) * 10) / 10);
-    const newUnrest = Math.min(100, Math.round((Number(nation.civil_unrest) + 1) * 10) / 10);
-    const newReputation = Math.max(0, Math.round((Number(nation.international_reputation) - 1) * 10) / 10);
-
-    await supabase.from('nations').update({
-        stability: newStability,
-        civil_unrest: newUnrest,
-        international_reputation: newReputation
-    }).eq('id', nation.id);
-    Object.assign(nation, { stability: newStability, civil_unrest: newUnrest, international_reputation: newReputation });
-
-    // ONGOING crisis — check if duration expired
-    const ticksElapsed = currentTick - nation.revolution_started_tick;
-    const duration = Number(nation.revolution_duration);
-
-    if (ticksElapsed < duration) {
-        // Not yet expired — log escalation
-        const remaining = duration - ticksElapsed;
-        await supabase.from('event_log').insert({
-            nation_id: nation.id,
-            event_name: 'REVOLUTION_ESCALATION',
-            description_used: `The revolutionary movement grows stronger. General strikes have paralyzed the capital. International observers are calling for dialogue. ${remaining} tick${remaining !== 1 ? 's' : ''} remain before the regime falls.`,
-            category: 'crisis',
-            effects_applied: [
-                { stat: 'stability', change: -1, target: 'nation' },
-                { stat: 'civil_unrest', change: 1, target: 'nation' },
-                { stat: 'international_reputation', change: -1, target: 'nation' }
-            ],
-            fired_at_tick: currentTick
-        });
-        console.log(`[Revolution] ESCALATION — ${nation.name}, ${remaining} ticks remaining`);
-        return { phase: 'escalation', nation: nation.name, tick: currentTick, remaining };
-    }
-
-    // === REVOLUTION FIRES ===
-    console.log(`[Revolution] REVOLUTION FIRES for ${nation.name} at tick ${currentTick}`);
-
-    // 1. Pick new government type randomly
-    const newGovType = Math.random() < 0.5 ? CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY : CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC;
-    const govLabel = newGovType === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC ? 'Presidential Democracy' : 'Parliamentary Democracy';
-
-    // 2. Close current administration and dissolve government/ministries
-    try {
-        const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-        await closeAdministration(supabase, nation.id, nation, 'revolution', currentTick, shardData?.current_date || '', null);
-    } catch (err) {
-        console.warn('[Revolution] Could not close administration:', err);
-    }
-    try {
-        await dissolveCoalition(supabase, nation.id);
-    } catch (err) {
-        console.warn('[Revolution] Could not dissolve coalition:', err);
-    }
-
-    // 3. Update nation stats
-    const newFreedomIndex = Math.min(100, Math.round((Number(nation.freedom_index) + 15) * 10) / 10);
-    const newIntlRep = Math.min(100, Math.round((Number(nation.international_reputation) + 5) * 10) / 10);
-    const nationUpdates = {
-        government_type: newGovType,
-        ruling_faction_id: null,
-        stability: 30,
-        freedom_index: newFreedomIndex,
-        civil_unrest: 40,
-        international_reputation: newIntlRep,
-        revolution_started_tick: null,
-        revolution_duration: null,
-        authoritarianism_seize_available_tick: null
-    };
-    await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
-    Object.assign(nation, nationUpdates);
-
-    // 3b. Clear all active crises — revolution resets the political landscape
-    await supabase.from('active_crises').delete().eq('nation_id', nation.id);
-
-    // 3c. V5 Autocracy cleanup — remove all autocracy-specific state
-    // Use allSettled so each cleanup runs even if others fail (Supabase client
-    // returns { error } rather than throwing, but guard against both patterns)
-    const cleanupResults = await Promise.allSettled([
-        supabase.from('faction_pillar_state').delete().eq('nation_id', nation.id),
-        supabase.from('autocracy_tracker').delete().eq('nation_id', nation.id),
-        supabase.from('putsch_state').delete().eq('nation_id', nation.id),
-        supabase.from('vulnerability_window').delete().eq('nation_id', nation.id),
-        supabase.from('pyrrhic_window').delete().eq('nation_id', nation.id),
-        supabase.from('silent_coup_offers').delete().eq('nation_id', nation.id),
-        supabase.from('silent_coup_votes').delete().eq('nation_id', nation.id),
-        supabase.from('nations').update({ designated_successor_faction_id: null }).eq('id', nation.id),
-    ]);
-    const cleanupFailures = cleanupResults.filter(r => r.status === 'rejected' || r.value?.error);
-    if (cleanupFailures.length > 0) {
-        console.warn(`[Revolution] V5 cleanup: ${cleanupFailures.length} of ${cleanupResults.length} failed (non-fatal)`);
-    }
-
-    // 4. (Electorate system handles approval now)
-
-    // 4b. Reset all faction loyalty to 50 and flag for rebuild
-    await supabase.from('factions')
-        .update({ loyalty: 50, needs_rebuild: true })
-        .eq('nation_id', nation.id)
-        .eq('faction_type', 'party');
-
-    // 5. Freeze all active bills — government has fallen
-    await supabase.from('bills')
-        .update({ status: 'frozen' })
-        .eq('nation_id', nation.id)
-        .in('status', ['committee', 'floor']);
-
-    // 6. Schedule emergency election in 3 ticks
-    await supabase.from('elections').delete()
-        .eq('nation_id', nation.id).eq('status', 'scheduled');
-
-    const electionType = newGovType === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC ? 'presidential' : 'parliamentary';
-    const { error: electionErr } = await supabase.from('elections').insert({
-        nation_id: nation.id,
-        election_tick: currentTick + 3,
-        status: 'scheduled',
-        election_type: electionType
-    });
-    if (electionErr) {
-        console.error('[Revolution] Election insert failed, retrying:', electionErr);
-        await supabase.from('elections').insert({
-            nation_id: nation.id,
-            election_tick: currentTick + 3,
-            status: 'scheduled',
-            election_type: electionType
-        });
-    }
-
-    // 7. Log the revolution event
-    await supabase.from('event_log').insert({
-        nation_id: nation.id,
-        event_name: 'DEMOCRATIC_REVOLUTION',
-        trigger_key: 'crisis_ended',
-        description_used: `The people have risen. The autocratic regime has fallen. A ${govLabel} has been established — emergency elections will determine the first freely elected government.`,
-        category: 'crisis',
-        effects_applied: [
-            { stat: 'government_type', change: `Autocracy → ${govLabel}`, target: 'nation' },
-            { stat: 'stability', change: '→ 30', target: 'nation' },
-            { stat: 'freedom_index', change: '+15', target: 'nation' },
-            { stat: 'civil_unrest', change: '→ 40', target: 'nation' },
-            { stat: 'international_reputation', change: '+5', target: 'nation' }
-        ],
-        fired_at_tick: currentTick
-    });
-
-    console.log(`[Revolution] COMPLETE — ${nation.name} is now a ${govLabel}. Emergency ${electionType} election at tick ${currentTick + 3}`);
-    return { phase: 'revolution', nation: nation.name, tick: currentTick, newGovType: govLabel, electionTick: currentTick + 3 };
-}
-
-
-// ==================== SEIZE AUTOCRATIC POWER ====================
-
-/**
- * Convert a democracy to an autocracy when the Rise of Authoritarianism crisis
- * has been active 18+ ticks and the ruling party chooses to seize power.
- *
- * Steps:
- *   1. Validate: nation must be a democracy with seize available and a ruling faction
- *   2. Close administration and dissolve coalition
- *   3. Change government_type to Autocracy
- *   4. Adjust nation stats (freedom drops, stability resets)
- *   5. Clear the authoritarianism crisis and seize flag
- *   6. Initialize autocracy_tracker and faction_pillar_state
- *   7. Freeze active bills
- *   8. Log event
- */
-export async function seizeAutocraticPower(supabase, nationId, callerFactionId) {
-    // 1. Load & validate
-    const { data: nation } = await supabase.from('nations')
-        .select('*')
-        .eq('id', nationId)
-        .single();
-
-    if (!nation) throw new Error('Nation not found');
-    if (isAutocracy(nation)) throw new Error('Nation is already an autocracy');
-    if (!nation.authoritarianism_seize_available_tick) throw new Error('Seize power is not available');
-    if (!nation.ruling_faction_id) throw new Error('No ruling faction — cannot seize power');
-    if (callerFactionId !== nation.ruling_faction_id) throw new Error('Only the ruling party can seize power');
-
-    const { data: shard, error: shardErr } = await supabase.from('shard').select('current_tick, current_date').eq('name', 'Alpha Shard').single();
-    if (shardErr || !shard) throw new Error('Failed to load shard data: ' + (shardErr?.message || 'no shard'));
-    const currentTick = shard.current_tick;
-
-    // Load factions
-    const { data: allParties } = await supabase.from('factions')
-        .select('id, faction_name, seats')
-        .eq('nation_id', nationId)
-        .eq('faction_type', 'party')
-        .order('seats', { ascending: false });
-
-    const rulingFaction = allParties?.find(f => f.id === nation.ruling_faction_id);
-    if (!rulingFaction) throw new Error('Ruling faction not found');
-
-    console.log(`[SeizePower] ${rulingFaction.faction_name} seizing autocratic power in ${nation.name}`);
-
-    // 2. Close administration and dissolve coalition
-    try {
-        await closeAdministration(supabase, nationId, nation, 'authoritarian_seizure', currentTick, shard?.current_date || '', null);
-    } catch (err) {
-        console.warn('[SeizePower] Could not close administration:', err);
-    }
-    try {
-        await dissolveCoalition(supabase, nationId);
-    } catch (err) {
-        console.warn('[SeizePower] Could not dissolve coalition:', err);
-    }
-
-    // 3. Change government type + reset stats
-    const nationUpdates = {
-        government_type: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
-        ruling_faction_id: nation.ruling_faction_id,
-        authoritarianism_seize_available_tick: null,
-        stability: 40,
-        freedom_index: Math.max(5, Math.round((Number(nation.freedom_index) - 10) * 10) / 10),
-        press_freedom: Math.max(5, Math.round((Number(nation.press_freedom) - 10) * 10) / 10),
-        judicial_independence: Math.max(5, Math.round((Number(nation.judicial_independence) - 15) * 10) / 10),
-        civil_unrest: Math.min(100, Math.round((Number(nation.civil_unrest) + 10) * 10) / 10),
-    };
-    const { error: nationUpdateErr } = await supabase.from('nations').update(nationUpdates).eq('id', nationId);
-    if (nationUpdateErr) throw new Error('Failed to update nation to Autocracy: ' + nationUpdateErr.message);
-
-    // 4. Clear active crises — the seizure ends the crisis cycle
-    await supabase.from('active_crises').delete().eq('nation_id', nationId);
-
-    // 5. Cancel any scheduled elections
-    await supabase.from('elections').delete()
-        .eq('nation_id', nationId).eq('status', 'scheduled');
-
-    // 6. Freeze active bills
-    await supabase.from('bills')
-        .update({ status: 'frozen' })
-        .eq('nation_id', nationId)
-        .in('status', ['committee', 'floor']);
-
-    // 7. Initialize autocracy_tracker
-    const { error: trackerErr } = await supabase.from('autocracy_tracker').upsert({
-        nation_id: nationId,
-        tracker_value: 0,
-        last_updated_tick: currentTick,
-        wildcard_backing: 20,
-        public_tracker_value: 30,
-        public_tracker_last_tick: currentTick
-    }, { onConflict: 'nation_id' });
-    if (trackerErr) console.error('[SeizePower] autocracy_tracker init failed:', trackerErr.message);
-
-    // 8. Initialize faction_pillar_state
-    const PILLARS = ['military', 'party', 'oligarchs', 'media', 'security'];
-    const factionLimit = Math.min(4, (allParties || []).length);
-
-    // Ruling faction first (strongman), then others by seats
-    const orderedFactions = [rulingFaction, ...(allParties || []).filter(f => f.id !== rulingFaction.id)].slice(0, factionLimit);
-
-    // Generate actual names for pillar leaders using nation name pool
-    const { firstNames, lastNames } = getNationNames(nation.name);
-
-    for (let i = 0; i < orderedFactions.length; i++) {
-        const faction = orderedFactions[i];
-        const deathAge = 75 + Math.floor(Math.random() * 11);
-        const startAge = 55 + Math.floor(Math.random() * 15);
-        const leaderFirst = firstNames[Math.floor(Math.random() * firstNames.length)];
-        const leaderLast = lastNames[Math.floor(Math.random() * lastNames.length)];
-        const leaderName = leaderFirst + ' ' + leaderLast;
-
-        await supabase.from('faction_pillar_state').upsert({
-            faction_id: faction.id,
-            nation_id: nationId,
-            pillar: PILLARS[i],
-            is_strongman: (i === 0),
-            backing: 20.00,
-            leader_name: leaderName,
-            leader_age: startAge,
-            leader_birth_tick: currentTick - (startAge * 12),
-            death_age: deathAge,
-            longevity_ticks: (i === 0) ? 12 : 0,
-            arrested_leader: false,
-            minister_count: 0,
-            is_prime_minister: false
-        }, { onConflict: 'faction_id' });
-
-        // For the strongman (i === 0), also set nation HoS and faction leader fields
-        if (i === 0) {
-            await supabase.from('nations').update({
-                head_of_state_first_name: leaderFirst,
-                head_of_state_last_name: leaderLast,
-                head_of_state_age: startAge,
-            }).eq('id', nationId);
-            await supabase.from('factions').update({
-                leader_first_name: leaderFirst,
-                leader_last_name: leaderLast,
-                leader_age: startAge,
-            }).eq('id', faction.id);
-        }
-    }
-
-    // Set wildcard pillar (5th unassigned pillar)
-    const assignedPillars = PILLARS.slice(0, factionLimit);
-    const wildcardPillar = PILLARS.find(p => !assignedPillars.includes(p)) || 'security';
-    await supabase.from('autocracy_tracker')
-        .update({ wildcard_pillar: wildcardPillar })
-        .eq('nation_id', nationId);
-
-    // 9. Log event
-    await supabase.from('event_log').insert({
-        nation_id: nationId,
-        event_name: 'AUTHORITARIAN_SEIZURE',
-        trigger_key: 'government_type_changed',
-        description_used: `${rulingFaction.faction_name} has seized absolute power in ${nation.name}. Democratic institutions have been dissolved. The nation is now an autocracy under single-party rule.`,
-        category: 'crisis',
-        effects_applied: [
-            { stat: 'government_type', change: `${nation.government_type} → Autocracy`, target: 'nation' },
-            { stat: 'stability', change: '→ 40', target: 'nation' },
-            { stat: 'freedom_index', change: '-10', target: 'nation' },
-            { stat: 'press_freedom', change: '-10', target: 'nation' },
-            { stat: 'judicial_independence', change: '-15', target: 'nation' }
-        ],
-        fired_at_tick: currentTick
-    });
-
-    console.log(`[SeizePower] COMPLETE — ${nation.name} is now an Autocracy under ${rulingFaction.faction_name}`);
-    return {
-        success: true,
-        nation: nation.name,
-        rulingParty: rulingFaction.faction_name,
-        newGovernmentType: 'Autocracy'
-    };
-}
-
-
 // ==================== UTILITY FORMATTERS ====================
+// (Democratic revolution and seize-autocratic-power systems removed — autocracy scrapped)
 
+export function _removedProcessRevolution() { return null; }
 export function formatStatName(stat) {
     return stat.charAt(0).toUpperCase() + stat.slice(1).replace(/_/g, ' ');
 }
-
 export function formatMinorSector(key) {
     return key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
@@ -4058,11 +3650,7 @@ export const IDEOLOGY_OPTIONS = [
     { tag: 'COLLECTIVISM',    axisKey: 'individualism_collectivism',   direction: 1 }
 ];
 
-export const PM_TRAIT_KEYS = [
-    'dealmaker', 'showman', 'ideologue', 'economist', 'reformer',
-    'iron_will', 'popular_champion', 'militarist', 'diplomat',
-    'media_darling', 'hardliner', 'technocrat', 'survivor', 'firebrand'
-];
+// PM_TRAIT_KEYS removed — PM/President trait now comes from party leader's first positive trait
 
 
 export function getWeightedIdeologies(factionIdeology) {
@@ -4117,7 +3705,7 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
     // Load faction with leader data (including leader_ideology as single source of truth)
     const { data: faction, error: factionErr } = await supabase
         .from('factions')
-        .select('id, faction_name, leader_first_name, leader_last_name, leader_age, leader_ideology')
+        .select('id, faction_name, leader_first_name, leader_last_name, leader_age, leader_ideology, leader_positive_traits')
         .eq('id', factionId)
         .single();
     if (factionErr || !faction) throw new Error('Faction not found');
@@ -4142,8 +3730,10 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
         ideology = weightedRandomPick(weightedIdeologies).item;
     }
 
-    // Pick a random trait
-    const traitKey = PM_TRAIT_KEYS[Math.floor(Math.random() * PM_TRAIT_KEYS.length)];
+    // Use the leader's first positive trait (from party leadership system)
+    const traitKey = (faction.leader_positive_traits && faction.leader_positive_traits.length > 0)
+        ? faction.leader_positive_traits[0]
+        : null;
 
     const leaderAge = faction.leader_age || (35 + Math.floor(Math.random() * 16));
 
@@ -4220,14 +3810,8 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
         await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
     }
 
-    // Apply trait effects
-    const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', traitKey).single();
-    if (trait?.effects?.on_appoint_stability && nationForBaseline) {
-        const newStability = Math.max(0, Math.min(100, (nationForBaseline.stability || 50) + trait.effects.on_appoint_stability));
-        await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
-    }
-
     // Fire system event
+    const traitDef = traitKey ? POSITIVE_TRAITS.find(t => t.key === traitKey) : null;
     try {
         await supabase.rpc('fire_system_event', {
             p_trigger_key: 'pm_appointed',
@@ -4237,7 +3821,7 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
                 nation: nationForBaseline?.name || '',
                 pm_name: pmFullName,
                 party: faction.faction_name,
-                trait: trait?.trait_name || traitKey
+                trait: traitDef?.name || traitKey || 'None'
             }
         });
     } catch (e) { console.warn('PM appointed event fire failed (non-blocking):', e); }
@@ -4247,7 +3831,10 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
 }
 
 export async function processPMTraitEffects(supabase, nation, currentTick) {
-    let effects, factionId;
+    // Old leader_traits effect system removed — PM/President trait is now purely display
+    // (shows the party leader's first positive trait from the candidate trait system).
+    // Future: implement mechanical effects from POSITIVE_TRAITS if desired.
+    return;
 
     if (isPresidentialRepublic(nation)) {
         // For presidential systems, use the active president's trait
@@ -4472,75 +4059,12 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         throw new Error(`Disband is on cooldown for ${remaining} more tick${remaining !== 1 ? 's' : ''}.`);
     }
 
-    // 2. Fetch nation for autocracy/ruling checks + seat redistribution
+    // 2. Fetch nation for ruling checks + seat redistribution
     const { data: nation } = await supabase
         .from('nations')
-        .select('id, name, ruling_faction_id, government_type, total_seats, designated_successor_faction_id')
+        .select('id, name, ruling_faction_id, government_type, total_seats')
         .eq('id', nationId)
         .single();
-
-    // 2b. Autocracy ruling faction succession — transfer power to next most loyal faction
-    if (isAutocracy(nation) && nation.ruling_faction_id === factionId) {
-        const { data: otherFactions } = await supabase
-            .from('factions')
-            .select('id, loyalty')
-            .eq('nation_id', nationId)
-            .eq('faction_type', 'party')
-            .neq('id', factionId)
-            .order('loyalty', { ascending: false })
-            .limit(1);
-
-        const successor = otherFactions?.[0];
-        if (successor) {
-            await supabase.from('nations')
-                .update({ ruling_faction_id: successor.id })
-                .eq('id', nationId);
-        } else {
-            // No other factions — clear ruling faction
-            await supabase.from('nations')
-                .update({ ruling_faction_id: null })
-                .eq('id', nationId);
-        }
-    }
-
-    // 2c. Autocracy: clean up departing faction's steward and pillar (ruling or non-ruling)
-    if (isAutocracy(nation)) {
-        await supabase.from('stewards')
-            .update({ is_alive: false })
-            .eq('nation_id', nationId)
-            .eq('faction_id', factionId);
-        await supabase.from('regime_pillars')
-            .update({ steward_faction_id: null })
-            .eq('nation_id', nationId)
-            .eq('steward_faction_id', factionId);
-
-        // 2d. V5 Autocracy: transfer departing faction's pillar to wildcard, then clean up
-        const { data: departingPillar } = await supabase
-            .from('faction_pillar_state')
-            .select('pillar')
-            .eq('faction_id', factionId)
-            .eq('nation_id', nationId)
-            .maybeSingle();
-
-        if (departingPillar?.pillar) {
-            // Move departing faction's pillar into the wildcard slot with backing reset to 20
-            await supabase.from('autocracy_tracker').update({
-                wildcard_pillar: departingPillar.pillar,
-                wildcard_backing: 20,
-                wildcard_neglect_ticks: 0,
-            }).eq('nation_id', nationId);
-        }
-
-        await Promise.allSettled([
-            supabase.from('faction_pillar_state').delete().eq('faction_id', factionId).eq('nation_id', nationId),
-            supabase.from('silent_coup_offers').delete().eq('to_faction_id', factionId).eq('nation_id', nationId),
-            supabase.from('silent_coup_votes').delete().eq('faction_id', factionId).eq('nation_id', nationId),
-        ]);
-        // If this faction was designated successor, clear it
-        if (nation.designated_successor_faction_id === factionId) {
-            await supabase.from('nations').update({ designated_successor_faction_id: null }).eq('id', nationId);
-        }
-    }
 
     // 3. PM check — if this faction is the active PM, resign first
     const { data: hog } = await supabase
@@ -4646,19 +4170,7 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
 
     // 6. Immediately redistribute vacated seats to remaining parties
     if (nation && vacatedSeats > 0) {
-        if (isAutocracy(nation)) {
-            // Autocracy: give all vacated seats to ruling faction
-            const rulingId = nation.ruling_faction_id;
-            if (rulingId && rulingId !== factionId) {
-                const { data: ruler } = await supabase
-                    .from('factions').select('seats').eq('id', rulingId).single();
-                await supabase.from('factions')
-                    .update({ seats: (ruler?.seats || 0) + vacatedSeats })
-                    .eq('id', rulingId);
-            }
-        } else {
-            await rebalanceVacantSeats(supabase, nation);
-        }
+        await rebalanceVacantSeats(supabase, nation);
     }
 
     // 6b. Nullify FK references that would block future hard-deletes of the faction

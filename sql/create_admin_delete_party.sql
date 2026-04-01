@@ -19,9 +19,6 @@ DECLARE
     v_label TEXT;
     v_rec RECORD;
     v_has_user BOOLEAN;
-    v_was_strongman BOOLEAN := false;
-    v_strongman_nation_id UUID;
-    v_new_strongman_id UUID;
     deletes TEXT[][] := ARRAY[
         -- [label, sql]  —  use %s as placeholder for the faction UUID
         ARRAY['nations.ruling_faction_id',    $$UPDATE nations SET ruling_faction_id = NULL WHERE ruling_faction_id = '%s'$$],
@@ -82,12 +79,6 @@ DECLARE
         ARRAY['ipo_chat',                     $$DELETE FROM ipo_chat WHERE faction_id = '%s'$$],
         ARRAY['ipo_votes(proposed_by)',        $$DELETE FROM ipo_votes WHERE proposed_by = '%s'$$],
         ARRAY['ipo_organisations.president_id', $$UPDATE ipo_organisations SET president_id = NULL WHERE president_id = '%s'$$],
-        -- Autocracy tables
-        ARRAY['faction_pillar_state',          $$DELETE FROM faction_pillar_state WHERE faction_id = '%s'$$],
-        ARRAY['autocracy_action_log',          $$DELETE FROM autocracy_action_log WHERE faction_id = '%s'$$],
-        ARRAY['silent_coup_offers',            $$DELETE FROM silent_coup_offers WHERE from_faction_id = '%s' OR to_faction_id = '%s'$$],
-        ARRAY['silent_coup_votes',             $$DELETE FROM silent_coup_votes WHERE faction_id = '%s'$$],
-        ARRAY['putsch_state',                  $$DELETE FROM putsch_state WHERE military_faction_id = '%s'$$],
         -- Electoral / standing
         ARRAY['faction_electoral_standing',     $$DELETE FROM faction_electoral_standing WHERE faction_id = '%s'$$],
         ARRAY['faction_issue_stance',          $$DELETE FROM faction_issue_stance WHERE faction_id = '%s'$$],
@@ -116,13 +107,6 @@ BEGIN
         END IF;
     END IF;
 
-    -- Check if this faction is a strongman before we delete its pillar state
-    SELECT fps.is_strongman, fps.nation_id
-    INTO v_was_strongman, v_strongman_nation_id
-    FROM faction_pillar_state fps
-    WHERE fps.faction_id = p_faction_id
-      AND fps.is_strongman = true;
-
     FOR i IN 1..array_length(deletes, 1)
     LOOP
         v_label := deletes[i][1];
@@ -140,30 +124,6 @@ BEGIN
     DELETE FROM factions WHERE id = p_faction_id;
     GET DIAGNOSTICS cnt = ROW_COUNT;
     result := result || jsonb_build_object('factions', cnt);
-
-    -- If the deleted faction was the strongman, reassign to highest-backing remaining faction
-    IF v_was_strongman AND v_strongman_nation_id IS NOT NULL THEN
-        SELECT fps.id INTO v_new_strongman_id
-        FROM faction_pillar_state fps
-        WHERE fps.nation_id = v_strongman_nation_id
-        ORDER BY fps.backing DESC, random()
-        LIMIT 1;
-
-        IF v_new_strongman_id IS NOT NULL THEN
-            UPDATE faction_pillar_state
-            SET is_strongman = true, updated_at = NOW()
-            WHERE id = v_new_strongman_id;
-
-            -- Update nation's ruling_faction_id
-            UPDATE nations
-            SET ruling_faction_id = (
-                SELECT faction_id FROM faction_pillar_state WHERE id = v_new_strongman_id
-            )
-            WHERE id = v_strongman_nation_id;
-
-            result := result || jsonb_build_object('strongman_reassigned', v_new_strongman_id);
-        END IF;
-    END IF;
 
     RETURN result;
 END;
