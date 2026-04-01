@@ -5235,6 +5235,7 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
 
     // Filter out player's own party
     const rivals = (allParties || []).filter(p => p.id !== playerFaction.id);
+    const rivalIds = rivals.map(p => p.id);
     if (rivals.length === 0) {
         container.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:20px;text-align:center;">No rival parties found.</div>';
         return;
