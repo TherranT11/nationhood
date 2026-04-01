@@ -4249,14 +4249,17 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
                 let baseRoll = Math.floor(Math.random() * 5) - 2; // -2 to +2
                 if (!_caIsGoverning) baseRoll += 1; // opposition bonus
                 else if ((n.gov_approval || 0) >= 40) baseRoll += 2; // government with decent approval
-                // Give momentum via atomic RPC (3-pillar system)
-                const { error: momErr } = await _supabase.rpc('adjust_momentum', { p_faction_id: f.id, p_delta: baseRoll });
+                // Give momentum via atomic RPC (3-pillar system) — label+tick for log
+                const sign = baseRoll >= 0 ? '+' : '';
+                const { error: momErr } = await _supabase.rpc('adjust_momentum', {
+                    p_faction_id: f.id, p_delta: baseRoll,
+                    p_label: `Press Conference (${sign}${baseRoll})`, p_tick: tick
+                });
                 if (momErr) console.warn('[PressConference] Momentum RPC failed:', momErr.message);
                 await _supabase.from('campaign_actions').insert({
                     party_id: f.id, nation_id: n.id, action_type: 'press_conference',
                     ap_cost: pressCost, tick_performed: tick, result: { momentumDelta: baseRoll }
                 });
-                const sign = baseRoll >= 0 ? '+' : '';
                 result = { success: true, newAp: apResult.newAp, headline: 'Press Conference',
                     effects: [{ label: 'Press Coverage', value: `${sign}${baseRoll}` }],
                     outcomeName: `Press conference — ${sign}${baseRoll} momentum` };
