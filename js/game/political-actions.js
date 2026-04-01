@@ -11,7 +11,7 @@ import { MINISTER_APPROVAL_CONFIG, ISSUE_CATEGORY_STATS, MINISTRY_TO_STATS, NATI
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { closeAdministration, createAdministration, dissolveCoalition } from './elections.js';
-import { getTraitAPModifier, applyRallyTraitModifiers, getTraitApprovalMultiplier, getEffectiveBlocDisposition } from './party-leadership.js';
+import { getTraitAPModifier, applyRallyTraitModifiers, getTraitApprovalMultiplier, getEffectiveBlocDisposition, POSITIVE_TRAITS } from './party-leadership.js';
 import { onRally, onOutreach, onAttack, nudgeEnthusiasm, nudgeApproval, ELECTORATE_CONFIG as E_CFG } from './electorate.js';
 
 const _PA_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -3650,11 +3650,7 @@ export const IDEOLOGY_OPTIONS = [
     { tag: 'COLLECTIVISM',    axisKey: 'individualism_collectivism',   direction: 1 }
 ];
 
-export const PM_TRAIT_KEYS = [
-    'dealmaker', 'showman', 'ideologue', 'economist', 'reformer',
-    'iron_will', 'popular_champion', 'militarist', 'diplomat',
-    'media_darling', 'hardliner', 'technocrat', 'survivor', 'firebrand'
-];
+// PM_TRAIT_KEYS removed — PM/President trait now comes from party leader's first positive trait
 
 
 export function getWeightedIdeologies(factionIdeology) {
@@ -3709,7 +3705,7 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
     // Load faction with leader data (including leader_ideology as single source of truth)
     const { data: faction, error: factionErr } = await supabase
         .from('factions')
-        .select('id, faction_name, leader_first_name, leader_last_name, leader_age, leader_ideology')
+        .select('id, faction_name, leader_first_name, leader_last_name, leader_age, leader_ideology, leader_positive_traits')
         .eq('id', factionId)
         .single();
     if (factionErr || !faction) throw new Error('Faction not found');
@@ -3734,8 +3730,10 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
         ideology = weightedRandomPick(weightedIdeologies).item;
     }
 
-    // Pick a random trait
-    const traitKey = PM_TRAIT_KEYS[Math.floor(Math.random() * PM_TRAIT_KEYS.length)];
+    // Use the leader's first positive trait (from party leadership system)
+    const traitKey = (faction.leader_positive_traits && faction.leader_positive_traits.length > 0)
+        ? faction.leader_positive_traits[0]
+        : null;
 
     const leaderAge = faction.leader_age || (35 + Math.floor(Math.random() * 16));
 
@@ -3812,14 +3810,8 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
         await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
     }
 
-    // Apply trait effects
-    const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', traitKey).single();
-    if (trait?.effects?.on_appoint_stability && nationForBaseline) {
-        const newStability = Math.max(0, Math.min(100, (nationForBaseline.stability || 50) + trait.effects.on_appoint_stability));
-        await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
-    }
-
     // Fire system event
+    const traitDef = traitKey ? POSITIVE_TRAITS.find(t => t.key === traitKey) : null;
     try {
         await supabase.rpc('fire_system_event', {
             p_trigger_key: 'pm_appointed',
@@ -3829,7 +3821,7 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
                 nation: nationForBaseline?.name || '',
                 pm_name: pmFullName,
                 party: faction.faction_name,
-                trait: trait?.trait_name || traitKey
+                trait: traitDef?.name || traitKey || 'None'
             }
         });
     } catch (e) { console.warn('PM appointed event fire failed (non-blocking):', e); }
@@ -3839,7 +3831,10 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
 }
 
 export async function processPMTraitEffects(supabase, nation, currentTick) {
-    let effects, factionId;
+    // Old leader_traits effect system removed — PM/President trait is now purely display
+    // (shows the party leader's first positive trait from the candidate trait system).
+    // Future: implement mechanical effects from POSITIVE_TRAITS if desired.
+    return;
 
     if (isPresidentialRepublic(nation)) {
         // For presidential systems, use the active president's trait

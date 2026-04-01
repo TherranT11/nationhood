@@ -30,7 +30,6 @@ import {
     getElectabilityTier, getAPCostColor, getAPCostLabel,
     generateLeadershipCandidates
 } from './js/game/party-leadership.js';
-import { PM_TRAIT_KEYS } from './js/game/political-actions.js';
 import { isPresidentialRepublic } from './js/game/government-types.js';
 
 let currentNation = null;
@@ -520,7 +519,9 @@ window._appointLeader = async function() {
         const isRulingParty = currentNation.ruling_faction_id === currentFaction.id;
         const isParliamentary = !isPresidentialRepublic(currentNation);
         if (isRulingParty && isParliamentary) {
-            const newTraitKey = PM_TRAIT_KEYS[Math.floor(Math.random() * PM_TRAIT_KEYS.length)];
+            const newTraitKey = (candidate.positiveTraits && candidate.positiveTraits.length > 0)
+                ? candidate.positiveTraits[0]
+                : null;
             const leaderAge = candidate.age || (35 + Math.floor(Math.random() * 16));
             const pmFullName = `${candidate.firstName} ${candidate.lastName}`;
 
@@ -559,15 +560,6 @@ window._appointLeader = async function() {
                 .eq('nation_id', currentNation.id)
                 .is('ended_at_tick', null);
             if (admErr) console.warn('Failed to update administration (non-blocking):', admErr.message);
-
-            // Apply trait on_appoint_stability effect (matches autoAppointPartyLeaderAsPM)
-            try {
-                const { data: trait } = await _supabase.from('leader_traits').select('effects').eq('trait_key', newTraitKey).single();
-                if (trait?.effects?.on_appoint_stability) {
-                    const newStability = Math.max(0, Math.min(100, (currentNation.stability || 50) + trait.effects.on_appoint_stability));
-                    await _supabase.from('nations').update({ stability: newStability }).eq('id', currentNation.id);
-                }
-            } catch (e) { console.warn('PM trait stability effect failed (non-blocking):', e); }
 
             // Fire pm_appointed system event so other players see the PM change
             try {
