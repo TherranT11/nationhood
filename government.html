@@ -1274,7 +1274,7 @@ async function renderGovernmentPage() {
         }
 
         // Seat loading via game-common.js
-        const seatData = await loadSeats(_supabase, currentNation.id, false, allParties, currentFaction?.id);
+        const seatData = await loadSeats(_supabase, currentNation.id, allParties, currentFaction?.id);
         allPartySeats = seatData.allPartySeats;
 
         // Detect president's party for Presidential systems
@@ -6690,7 +6690,7 @@ async function fileNoConfidence() {
         currentFaction.action_points = apResult.newAp;
 
         // Auto-cast the filer's own vote as YES
-        const seatData = await loadSeats(_supabase, currentNation.id, false, allParties, currentFaction.id);
+        const seatData = await loadSeats(_supabase, currentNation.id, allParties, currentFaction.id);
         const mySeats = seatData.allPartySeats[currentFaction.id] || 0;
         await _supabase.from('bill_support').upsert({
             bill_id: bill.id,
@@ -7645,7 +7645,7 @@ async function fileImpeachment() {
         }
 
         // Auto-cast the filer's own vote as YES
-        const seatData = await loadSeats(_supabase, currentNation.id, false, allParties, currentFaction.id);
+        const seatData = await loadSeats(_supabase, currentNation.id, allParties, currentFaction.id);
         const mySeats = seatData.allPartySeats[currentFaction.id] || 0;
         await _supabase.from('bill_support').upsert({
             bill_id: bill.id,
