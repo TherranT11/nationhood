@@ -206,7 +206,8 @@ export async function dispatchAutocracyAction(supabase, params) {
     }
 
     // ── Check arrested ──────────────────────────────────────────────────
-    if (factionState.arrested_leader && !actionDef.isStrongmanExclusive) {
+    // Strongman faction is never blocked — the strongman is the power, not the figurehead leader
+    if (factionState.arrested_leader && !actionDef.isStrongmanExclusive && !factionState.is_strongman) {
         return { success: false, error: 'Your leader is arrested and cannot act' };
     }
 

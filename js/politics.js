@@ -5133,7 +5133,9 @@ function renderAutoActionDetail(actionKey, ap, tick, myFps, isStrongman, pillarS
     const needsTarget = ['smear', 'blackout', 'surveillance', 'blackmail', 'disappear', 'bribe', 'arrest_leader', 'execute_leader', 'release_leader', 'favor', 'appoint_successor'].includes(actionKey);
     let targetHtml = '';
     if (needsTarget) {
-        const otherFactions = pillarStates.filter(ps => ps.faction_id !== _autoFaction.id);
+        // execute_leader and release_leader can target own faction (arrested figurehead leader)
+        const includeSelf = ['execute_leader', 'release_leader'].includes(actionKey);
+        const otherFactions = pillarStates.filter(ps => includeSelf || ps.faction_id !== _autoFaction.id);
         let targetOptions = '';
         for (const fps of otherFactions) {
             const party = (_autoAllParties || []).find(p => p.id === fps.faction_id);
