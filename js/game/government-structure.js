@@ -3,12 +3,12 @@
  * Extracted from game-common.js
  */
 
-import { isAutocracy, isPresidentialRepublic } from './government-types.js';
+import { isPresidentialRepublic } from './government-types.js';
 import { IDEOLOGY_OPPOSITES } from './ideology.js';
 
 // ==================== SEAT LOADING ====================
 
-export async function loadSeats(supabase, nationId, isAutocracy, allParties, currentFactionId) {
+export async function loadSeats(supabase, nationId, allParties, currentFactionId) {
     const allPartySeats = {};
 
     // factions.seats is the canonical source of truth — use it directly
@@ -116,7 +116,7 @@ export async function fetchActiveCoalition(supabase, nationId) {
         return result;
     }
 
-    // === PARLIAMENTARY DEMOCRACY / AUTOCRACY: existing logic ===
+    // === PARLIAMENTARY DEMOCRACY: existing logic ===
 
     // Helper: if status looks active but frozen bills exist, it's actually caretaker
     async function inferCaretakerStatus(result) {
@@ -193,7 +193,7 @@ export async function fetchActiveCoalition(supabase, nationId) {
 
 // ==================== POLICY COMPATIBILITY ====================
 
-export function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy, excludePolicyIds = [], activePolicyIds = null) {
+export function getCompatiblePolicies(sector, allPolicies, faction, excludePolicyIds = [], activePolicyIds = null) {
     const ideo1 = (faction?.ideology_value_1 || '').toUpperCase();
     const ideo2 = (faction?.ideology_value_2 || '').toUpperCase();
     const factionIdeos = [ideo1, ideo2].filter(Boolean);

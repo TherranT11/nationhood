@@ -707,7 +707,7 @@ export async function checkEarlyMajority(supabase, nationId) {
     if (error || !activeBills || activeBills.length === 0) return [];
 
     // Use the actual sum of faction seats as the voting denominator, not
-    // total_seats.  In autocracies (and after seat changes) the nation's
+    // total_seats.  After seat changes the nation's
     // total_seats can exceed the seats actually held by factions — those
     // vacant/unaligned seats can never vote, so including them would inflate
     // the "undeclared" count and break quorum & math-lock checks.
@@ -855,7 +855,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
     const results = [];
 
     // Compute the actual sum of faction-held seats — only these can vote.
-    // In autocracies (and after seat changes) total_seats can exceed the
+    // After seat changes total_seats can exceed the
     // seats held by factions; including vacant/unaligned seats inflates
     // quorum and makes bills impossible to pass.
     const { data: factionRowsForResolve } = await supabase
@@ -2982,8 +2982,6 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         // Get current nation data for comparison (BEFORE update)
         const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
         const oldEffectiveLimit = getPresidentialTermLimit(nation); // null = no limits, number = limit
-        const isAutocratic = nation?.government_type?.toLowerCase().includes('autocra');
-
         // Update nation's presidential_term_limit
         const { error: nationErr } = await supabase.from('nations').update({
             presidential_term_limit: newTermLimit
@@ -3004,7 +3002,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         // Apply mechanical effects
         if (newTermLimit === 0) {
             // Removing term limits
-            let legitimacyPenalty = isAutocratic ? 10 : 6;
+            let legitimacyPenalty = 6;
             const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - legitimacyPenalty);
             const newUnrest = Math.min(100, (nation?.civil_unrest || 0) + 4);
             const updates = {
@@ -3114,55 +3112,13 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 5);
             const statUpdate = { stability: newStability, legitimacy: newLegitimacy };
 
-            // If the nation is an autocracy, transition to parliamentary democracy
-            const wasAutocracy = nation?.government_type?.toLowerCase().includes('autocra');
-            if (wasAutocracy) {
-                statUpdate.government_type = 'Democracy';
-                statUpdate.ruling_faction_id = null;
-                statUpdate.designated_successor_faction_id = null;
-                statUpdate.revolution_started_tick = null;
-                statUpdate.revolution_duration = null;
-                statUpdate.authoritarianism_seize_available_tick = null;
-
-                // Clean up autocracy-specific state
-                await Promise.allSettled([
-                    supabase.from('faction_pillar_state').delete().eq('nation_id', bill.nation_id),
-                    supabase.from('autocracy_tracker').delete().eq('nation_id', bill.nation_id),
-                    supabase.from('putsch_state').delete().eq('nation_id', bill.nation_id),
-                    supabase.from('vulnerability_window').delete().eq('nation_id', bill.nation_id),
-                    supabase.from('pyrrhic_window').delete().eq('nation_id', bill.nation_id),
-                    supabase.from('silent_coup_offers').delete().eq('nation_id', bill.nation_id),
-                    supabase.from('silent_coup_votes').delete().eq('nation_id', bill.nation_id),
-                ]);
-
-                // Freeze all active bills
-                await supabase.from('bills')
-                    .update({ status: 'frozen' })
-                    .eq('nation_id', bill.nation_id)
-                    .in('status', ['committee', 'floor']);
-
-                // Schedule parliamentary election 48 ticks from now
-                await supabase.from('elections').delete()
-                    .eq('nation_id', bill.nation_id).eq('status', 'scheduled');
-                const { error: electionErr } = await supabase.from('elections').insert({
-                    nation_id: bill.nation_id,
-                    election_tick: currentTick + 48,
-                    status: 'scheduled',
-                    election_type: 'parliamentary'
-                });
-                if (electionErr) console.error('[enactFoundationalBill] Failed to schedule post-monarchy election:', electionErr.message);
-
-                console.log(`[enactFoundationalBill] Autocracy → Parliamentary Democracy (constitutional monarchy), election at tick ${currentTick + 48}`);
-            }
-
             const { error: statErr } = await supabase.from('nations').update(statUpdate).eq('id', bill.nation_id);
             if (statErr) console.error(`[enactFoundationalBill] Hereditary stat update failed:`, statErr.message);
-            else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, legitimacy -5${wasAutocracy ? ', gov type → Democracy' : ''}`);
+            else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, legitimacy -5`);
         } else if (newMethod === 'direct_vote') {
             // Direct vote: legitimacy +3, political_engagement +3, polarization +2
             // AND transition Parliamentary → Presidential
-            const isAutoNation = nation?.government_type?.toLowerCase().includes('autocra');
-            const wasParliamentary = !isAutoNation && !nation?.government_type?.toLowerCase().includes('president');
+            const wasParliamentary = !nation?.government_type?.toLowerCase().includes('president');
             const statUpdate = {
                 legitimacy: Math.min(100, (nation?.legitimacy || 50) + 3),
                 political_engagement: Math.min(100, (nation?.political_engagement || 50) + 3),

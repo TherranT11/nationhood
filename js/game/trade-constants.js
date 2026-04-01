@@ -4,7 +4,6 @@
  */
 
 import { calculateNationalBudget } from './budget.js';
-import { isAutocracy } from './government-types.js';
 
 // ==================== TRADE SYSTEM CONSTANTS ====================
 
@@ -380,7 +379,6 @@ export function calculatePriceModifier(totalSupply, totalDemand) {
  *   trade_agreement       +15 to +25 depending on agreement type
  *   embargo_penalty       -40 if active embargo/sanctions between nations
  *   proximity_bonus       +10 if same region (future)
- *   autocracy_penalty     -10 per autocratic nation in the pair
  *   fdi_bonus             avg foreign_investment → -15 to +15 (high FDI = attractive market)
  *   reputation_bonus      avg int'l reputation   → -10 to +10 (good standing = trustworthy partner)
  *
@@ -415,11 +413,6 @@ export function calculateTradeAffinity(nationA, nationB, relation, opts) {
     var proximity = (opts && opts.proximity != null) ? Number(opts.proximity) : 50;
     var proximityBonus = ((100 - proximity) / 100) * 20;
 
-    // Autocracy penalty: other nations are less willing to trade with autocratic regimes
-    var autocracyPenalty = 0;
-    if (isAutocracy(nationA)) autocracyPenalty -= 10;
-    if (isAutocracy(nationB)) autocracyPenalty -= 10;
-
     // Foreign investment: high-FDI nations are integrated into global capital flows
     // Average of both nations' FDI: 50 (neutral) = +0, 80 = +9, 20 = -9
     var fdiA = Number(nationA.foreign_investment ?? 50);
@@ -448,7 +441,7 @@ export function calculateTradeAffinity(nationA, nationB, relation, opts) {
     }
     var creditBonus = bestCredit > 50 ? ((bestCredit - 50) / 50) * 10 : 0;
 
-    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + autocracyPenalty + fdiBonus + reputationBonus + creditPenalty + creditBonus;
+    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + fdiBonus + reputationBonus + creditPenalty + creditBonus;
     return Math.round(Math.max(0, affinity));
 }
 

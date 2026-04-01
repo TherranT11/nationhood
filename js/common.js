@@ -786,11 +786,6 @@ export function updateTopBarInfo(faction, shard, nation) {
             nationFlag.onerror = () => { nationFlag.style.display = 'none'; };
         }
 
-        // Rename tabs for autocracies
-        if (nation.government_type === 'Autocracy') {
-            const electionsTab = document.querySelector('.nav-tab[data-tab="elections"]');
-            if (electionsTab) electionsTab.textContent = 'Regime';
-        }
     } else {
         if (nationName) nationName.textContent = 'No Nation';
     }

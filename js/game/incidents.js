@@ -4,7 +4,7 @@
  */
 
 import { GAME_CONFIG } from './config.js';
-import { isAutocracy, getCanonicalGovernmentType } from './government-types.js';
+import { getCanonicalGovernmentType } from './government-types.js';
 
 // ==================== CONSTANTS ====================
 
@@ -13,9 +13,8 @@ const INCIDENT_CONFIG = {
         base_chance: 0.4,
         required_border: 'maritime',
         required_proximity: 100,        // 100 = bordering
-        requires_autocracy: false,
         roles: { a: 'aggrieved', b: 'enforcer' },
-        aggressor_role: 'enforcer',     // autocracy gets this role
+        aggressor_role: 'enforcer',
         immediate_effects: { Relations: -5, Civil_Unrest_a: 1, Intl_Reputation_b: -0.5 },
         trigger_modifiers: [
             { stat: 'relation_score', op: 'lt', value: 40, multiplier: 1.5, nation: 'pair' },
@@ -32,7 +31,6 @@ const INCIDENT_CONFIG = {
         base_chance: 0.15,
         required_border: 'land',
         required_proximity: 100,
-        requires_autocracy: true,       // at least one must be autocracy (invader)
         roles: { a: 'invader', b: 'defender' },
         aggressor_role: 'invader',
         starting_leverage_a: 2,
@@ -55,7 +53,6 @@ const INCIDENT_CONFIG = {
         base_chance: 0.1,
         required_border: 'river',
         required_proximity: 100,
-        requires_autocracy: false,
         roles: { a: 'upstream', b: 'downstream' },
         aggressor_role: 'upstream',
         immediate_effects: { Relations: -8, Stability_b: -2 },
@@ -65,7 +62,6 @@ const INCIDENT_CONFIG = {
         base_chance: 0,                 // action-triggered only (50% on retaliatory tariff)
         required_border: null,          // no border requirement
         required_proximity: null,       // any distance (0-100)
-        requires_autocracy: false,
         roles: { a: 'initiator', b: 'retaliator' },
         aggressor_role: 'initiator'
     }
@@ -87,7 +83,7 @@ const PER_NATION_INCIDENT_CAP = 3;
  *   3. Roll base trigger chance
  *   4. If triggered: pick random nation (1d7), find valid partner
  *   5. Check per-nation cap (3), per-pair-per-type uniqueness
- *   6. Assign roles (autocracy → aggressor)
+ *   6. Assign roles
  *   7. Create incident with start event
  */
 export async function processIncidentTriggers(supabase, nationList, currentTick) {
@@ -171,9 +167,6 @@ export async function processIncidentTriggers(supabase, nationList, currentTick)
 
             // Check nation A cap
             if ((nationIncidentCounts[nationA.id] || 0) >= PER_NATION_INCIDENT_CAP) continue;
-
-            // Incursion requires nation A to be autocracy
-            if (config.requires_autocracy && !isAutocracy(nationA)) continue;
 
             // Find a valid partner
             const partners = nationList.filter(n => n.id !== nationA.id);
@@ -272,41 +265,14 @@ export async function processIncidentTriggers(supabase, nationList, currentTick)
 // ==================== ROLE ASSIGNMENT ====================
 
 /**
- * Assign roles based on government type and crisis rules.
- * If one nation is autocracy, they get the aggressor role.
- * If both same type, nation A keeps its role (random assignment from shuffle).
+ * Assign roles based on crisis rules.
+ * Nation A keeps its role (random assignment from shuffle).
  */
 function assignRoles(config, nationA, nationB) {
-    const aIsAutocracy = isAutocracy(nationA);
-    const bIsAutocracy = isAutocracy(nationB);
-
     let assignedA = nationA;
     let assignedB = nationB;
     let roleA = config.roles.a;
     let roleB = config.roles.b;
-
-    // If one is autocracy, they get the aggressor role
-    if (aIsAutocracy && !bIsAutocracy) {
-        // A is autocracy — assign A as aggressor
-        if (config.aggressor_role === config.roles.b) {
-            // Swap: autocracy needs role B (aggressor)
-            assignedA = nationB;
-            assignedB = nationA;
-            roleA = config.roles.a;
-            roleB = config.roles.b;
-        }
-        // else A already has the aggressor role
-    } else if (!aIsAutocracy && bIsAutocracy) {
-        // B is autocracy — assign B as aggressor
-        if (config.aggressor_role === config.roles.a) {
-            // Swap: autocracy needs role A (aggressor)
-            assignedA = nationB;
-            assignedB = nationA;
-            roleA = config.roles.a;
-            roleB = config.roles.b;
-        }
-    }
-    // Both same type: keep random assignment from shuffle
 
     return { roleA, roleB, assignedA, assignedB };
 }
@@ -318,8 +284,8 @@ function assignRoles(config, nationA, nationB) {
  * Create a new incident with start event, stat effects, and system messages.
  */
 async function createIncident(supabase, { type, config, nationA, nationB, roleA, roleB, currentTick, relation }) {
-    const govTypeA = getCanonicalGovernmentType(nationA) === 'Autocracy' ? 'autocracy' : 'democracy';
-    const govTypeB = getCanonicalGovernmentType(nationB) === 'Autocracy' ? 'autocracy' : 'democracy';
+    const govTypeA = 'democracy';
+    const govTypeB = 'democracy';
 
     // Roll start event (1d5)
     const { data: startEvents } = await supabase
@@ -781,10 +747,9 @@ async function processIncidentInaction(supabase, incident, nationMap, currentTic
     ]) {
         if (!nation || inactionTicks < 3) continue;
 
-        const isAuto = isAutocracy(nation);
         let penaltyAmount = 0;
-        let penaltyStat = isAuto ? 'coup_risk' : 'gov_approval';
-        let penaltyDir = isAuto ? 1 : -1; // coup goes up, approval goes down
+        let penaltyStat = 'gov_approval';
+        let penaltyDir = -1; // approval goes down
 
         if (inactionTicks >= 5) {
             penaltyAmount = 3; // -1 base + -2 additional
@@ -794,7 +759,7 @@ async function processIncidentInaction(supabase, incident, nationMap, currentTic
 
         if (penaltyAmount > 0) {
             const delta = penaltyAmount * penaltyDir;
-            const currentVal = Number(nation[penaltyStat] ?? (isAuto ? 0 : 50));
+            const currentVal = Number(nation[penaltyStat] ?? 50);
             const newVal = Math.max(0, Math.min(100, currentVal + delta));
             await supabase
                 .from('nations')
@@ -803,7 +768,7 @@ async function processIncidentInaction(supabase, incident, nationMap, currentTic
 
             // Insert inaction event in timeline
             const crisisName = formatCrisisName(incident.incident_type);
-            const eventText = `${nation.name}'s government has not acted on the ${crisisName} in ${inactionTicks} ticks. ${isAuto ? 'Regime stability declining.' : 'Public confidence is declining.'}`;
+            const eventText = `${nation.name}'s government has not acted on the ${crisisName} in ${inactionTicks} ticks. Public confidence is declining.`;
 
             await supabase.from('incident_events').insert({
                 incident_id: incident.id,
@@ -1066,7 +1031,6 @@ async function processIncidentMediation(supabase, incident, nationMap, currentTi
     } else if (aProposed && !bProposed) {
         // A ONLY — A penalized
         outcome = 'a_only';
-        const aIsAuto = isAutocracy(nationA);
         const levA = Math.max(0, (incident.leverage_a || 0) - 2);
         const levB = (incident.leverage_b || 0) + 1;
         eventText = `${nationA.name} proposes mediation. ${nationB.name} refuses.`;
@@ -1077,15 +1041,10 @@ async function processIncidentMediation(supabase, incident, nationMap, currentTi
 
         // Reputation bump for proposer
         await applyIncidentStatEffects(supabase, nationA, nationB, { Intl_Reputation_a: 0.5 });
-        // Extra autocracy penalty
-        if (aIsAuto) {
-            await applyIncidentStatEffects(supabase, nationA, nationB, { Regime_Health_a: -1 });
-        }
 
     } else if (!aProposed && bProposed) {
         // B ONLY — B penalized
         outcome = 'b_only';
-        const bIsAuto = isAutocracy(nationB);
         const levA = (incident.leverage_a || 0) + 1;
         const levB = Math.max(0, (incident.leverage_b || 0) - 2);
         eventText = `${nationB.name} proposes mediation. ${nationA.name} refuses.`;
@@ -1095,9 +1054,6 @@ async function processIncidentMediation(supabase, incident, nationMap, currentTi
             .eq('id', incident.id);
 
         await applyIncidentStatEffects(supabase, nationA, nationB, { Intl_Reputation_b: 0.5 });
-        if (bIsAuto) {
-            await applyIncidentStatEffects(supabase, nationA, nationB, { Regime_Health_b: -1 });
-        }
 
     } else {
         // NEITHER — silent, no event
@@ -1386,18 +1342,10 @@ async function resolveIncident(supabase, incident, nationA, nationB, currentTick
             Intl_Reputation_a: 2,
             Relations: 5
         });
-        // Gov_Approval / Regime_Health cost for loser
-        if (isAutocracy(nationB)) {
-            statEffects.Regime_Health_b = -15;
-        } else {
-            statEffects.Gov_Approval_b = -10;
-        }
+        // Gov_Approval cost for loser
+        statEffects.Gov_Approval_b = -10;
         // Winner bonus
-        if (isAutocracy(nationA)) {
-            statEffects.Regime_Health_a = 5;
-        } else {
-            statEffects.Gov_Approval_a = 3;
-        }
+        statEffects.Gov_Approval_a = 3;
 
     } else if (resolutionType === 'forced_b') {
         // Nation B wins by leverage 10
@@ -1408,16 +1356,8 @@ async function resolveIncident(supabase, incident, nationA, nationB, currentTick
             Intl_Reputation_b: 1,
             Relations: 3
         });
-        if (isAutocracy(nationA)) {
-            statEffects.Regime_Health_a = -15;
-        } else {
-            statEffects.Gov_Approval_a = -10;
-        }
-        if (isAutocracy(nationB)) {
-            statEffects.Regime_Health_b = 5;
-        } else {
-            statEffects.Gov_Approval_b = 4;
-        }
+        statEffects.Gov_Approval_a = -10;
+        statEffects.Gov_Approval_b = 4;
 
     } else if (resolutionType === 'decay') {
         eventText = `${crisisName} fades without formal resolution. Tensions ease. Crew quietly released.`;
@@ -1429,22 +1369,14 @@ async function resolveIncident(supabase, incident, nationA, nationB, currentTick
         eventText = `${nationA.name} concedes the ${crisisName}. ${nationB.name}'s position upheld.`;
         statEffects.Relations = 3;
         statEffects.Intl_Reputation_a = -1;
-        if (isAutocracy(nationA)) {
-            statEffects.Regime_Health_a = -(Math.round(cost * 1.5));
-        } else {
-            statEffects.Gov_Approval_a = -cost;
-        }
+        statEffects.Gov_Approval_a = -cost;
 
     } else if (resolutionType === 'concession_b') {
         const cost = levA;
         eventText = `${nationB.name} concedes the ${crisisName}. ${nationA.name}'s position upheld.`;
         statEffects.Relations = 3;
         statEffects.Intl_Reputation_b = -1;
-        if (isAutocracy(nationB)) {
-            statEffects.Regime_Health_b = -(Math.round(cost * 1.5));
-        } else {
-            statEffects.Gov_Approval_b = -cost;
-        }
+        statEffects.Gov_Approval_b = -cost;
     }
 
     // Update incident
