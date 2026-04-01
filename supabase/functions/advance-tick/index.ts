@@ -7333,9 +7333,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                                                 agreement_type: 'economic_aid',
                                                 agreement_name: pd.name || 'Economic Aid',
                                                 articles: pd.articles || [],
-                                                status: 'active',
-                                                signed_tick: currentTick,
-                                                diplomatic_proposal_id: proposal.id
+                                                status: 'active'
                                             }).select('id').single();
                                             if (agErr) console.error('[bilateral] Failed to create trade_agreements for aid:', agErr.message);
                                             else agreementId = newAg?.id;
