@@ -1591,23 +1591,48 @@ function renderRatificationBill() {
 
     document.getElementById('bill-articles').innerHTML = html;
 
-    // Update fiscal totals — compute ongoing aid cost from aid_terms articles
-    let ongoingAid = 0;
-    const allArticles = rd.kind === 'diplomatic' ? ((rd.proposal?.proposal_data || {}).articles || []) : (rd.neg?.draft_articles || []);
-    for (const art of allArticles) {
-        if (art.type === 'aid_terms') {
-            const d = (art.data && typeof art.data === 'object') ? art.data : art;
-            const amt = Number(d.annual_amount || 0);
-            const isOurDonation = d.donor_nation_id === currentNation?.id;
-            ongoingAid += isOurDonation ? amt : -amt; // positive = cost, negative = revenue
+    // Update fiscal totals for ratification bills
+    // For economic_aid: the aid_terms article has annual_amount field
+    // Recipient nation gets this as ongoing relief (revenue)
+    let ongoingMonthly = 0;
+    if (rd.kind === 'diplomatic' && rd.proposal) {
+        const pdArt = (rd.proposal.proposal_data?.articles || []);
+        for (const art of pdArt) {
+            if (art.type === 'aid_terms' && art.data) {
+                const annualAmt = Number(art.data.annual_amount || 0);
+                if (annualAmt > 0) {
+                    // Determine if we are the donor or recipient
+                    const donorIsA = art.data.donor_nation_id === rd.nationA?.id;
+                    const weAreRecipient = donorIsA ? !rd.isNationA : rd.isNationA;
+                    // Recipient gets relief (negative cost = revenue), donor pays (positive cost)
+                    ongoingMonthly = weAreRecipient ? -(annualAmt / 12) : (annualAmt / 12);
+                }
+            }
         }
     }
-    const monthlyAidM = (ongoingAid / 12) / 1e6; // convert raw dollars to $M for formatCurrency
-    document.getElementById('total-upfront').textContent = formatCurrency(totalFiscal);
-    document.getElementById('total-upfront').className = 'total-value' + (totalFiscal < 0 ? ' revenue' : '');
-    const aidStr = monthlyAidM === 0 ? '$0M/mo' : formatCurrency(monthlyAidM) + '/mo';
-    document.getElementById('total-ongoing').textContent = aidStr;
-    document.getElementById('total-ongoing').className = 'total-value' + (monthlyAid < 0 ? ' revenue' : '');
+
+    const upEl = document.getElementById('total-upfront');
+    upEl.textContent = totalFiscal !== 0 ? formatCurrency(Math.abs(totalFiscal)) : '$0';
+    upEl.style.color = totalFiscal < 0 ? 'var(--red)' : totalFiscal > 0 ? 'var(--green)' : '';
+    document.getElementById('total-upfront-label').textContent = totalFiscal > 0 ? 'Total Upfront Revenue' : 'Total Upfront Cost';
+
+    const onEl = document.getElementById('total-ongoing');
+    const onLabel = document.getElementById('total-ongoing-label');
+    if (ongoingMonthly < 0) {
+        // Relief/revenue for recipient
+        onEl.textContent = `${formatCurrency(Math.abs(ongoingMonthly))} / mo (${formatCurrency(Math.abs(ongoingMonthly) * 12)} / yr)`;
+        onEl.style.color = 'var(--green)';
+        onLabel.textContent = 'Total Ongoing Relief';
+    } else if (ongoingMonthly > 0) {
+        // Cost for donor
+        onEl.textContent = `${formatCurrency(ongoingMonthly)} / mo (${formatCurrency(ongoingMonthly * 12)} / yr)`;
+        onEl.style.color = 'var(--red)';
+        onLabel.textContent = 'Total Ongoing Cost';
+    } else {
+        onEl.textContent = '$0/mo';
+        onEl.style.color = '';
+        onLabel.textContent = 'Total Ongoing Cost';
+    }
 }
 
 // ==================== IDEOLOGY AWARENESS (PHASE 4) ====================
