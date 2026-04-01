@@ -6318,156 +6318,6 @@ async function confirmAppointment() {
     }
 }
 
-// ==================== CLAIM POWER (Autocracy — No Ruler) ====================
-
-async function claimPower() {
-    if (!currentFaction || !currentNation) return;
-    if (!isAutocracy) return;
-
-    // Race condition guard: re-check that no one claimed power in the meantime
-    const { data: freshNation } = await _supabase
-        .from('nations')
-        .select('ruling_faction_id')
-        .eq('id', currentNation.id)
-        .single();
-
-    if (freshNation?.ruling_faction_id) {
-        alert('Another faction has already claimed power. Refreshing...');
-        await renderGovernmentPage();
-        return;
-    }
-
-    if (!confirm(
-        'SEIZE POWER?\n\n' +
-        'As the first faction to act, you will claim uncontested control of the government.\n\n' +
-        'You will become the Ruling Faction and receive:\n' +
-        '- Control of the Head of State\n' +
-        '- A Prime Minister from your faction\n' +
-        '- All cabinet ministries staffed with your appointees\n' +
-        '- Loyalty set to 80\n\n' +
-        'Cost: 0 AP\n\nProceed?'
-    )) return;
-
-    const btn = document.getElementById('claim-power-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'SEIZING POWER...'; }
-
-    try {
-        const { data: shard } = await _supabase
-            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const tick = shard?.current_tick || 0;
-
-        // 1. Set this faction as the ruling faction
-        await _supabase.from('nations')
-            .update({ ruling_faction_id: currentFaction.id })
-            .eq('id', currentNation.id);
-
-        // 2. Set faction loyalty to 80
-        await _supabase.from('factions')
-            .update({ loyalty: 80 })
-            .eq('id', currentFaction.id);
-
-        // 3. Generate and insert ministry rows for all positions
-        const ministryInserts = MINISTRY_KEYS_CABINET.map(key => ({
-            nation_id: currentNation.id,
-            ministry_key: key,
-            ministry_name: MINISTRY_NAMES[key] || key,
-            party_id: currentFaction.id,
-            minister_first_name: FIRST_NAMES_POOL[Math.floor(Math.random() * FIRST_NAMES_POOL.length)],
-            minister_last_name: LAST_NAMES_POOL[Math.floor(Math.random() * LAST_NAMES_POOL.length)],
-            minister_age: 35 + Math.floor(Math.random() * 31),
-            is_active: true
-        }));
-
-        const { error: ministryError } = await _supabase
-            .from('ministries').insert(ministryInserts);
-        if (ministryError) throw ministryError;
-
-        // 4. Create head_of_government record for the PM
-        const pmInsert = ministryInserts.find(m => m.ministry_key === 'prime_minister');
-        if (pmInsert) {
-            await _supabase.from('head_of_government')
-                .update({ active: false })
-                .eq('nation_id', currentNation.id)
-                .eq('active', true);
-
-            await _supabase.from('head_of_government').upsert({
-                nation_id: currentNation.id,
-                faction_id: currentFaction.id,
-                first_name: pmInsert.minister_first_name,
-                last_name: pmInsert.minister_last_name,
-                age: pmInsert.minister_age,
-                ideology: currentFaction.leader_ideology || null,
-                active: true
-            }, { onConflict: 'nation_id' });
-        }
-
-        // 5. Log to campaign_actions
-        await _supabase.from('campaign_actions').insert({
-            party_id: currentFaction.id,
-            nation_id: currentNation.id,
-            action_type: 'claim_power',
-            tick_performed: tick,
-            result: {
-                faction_name: currentFaction.faction_name,
-                ministries_assigned: MINISTRY_KEYS_CABINET.length,
-                pm_name: pmInsert ? `${pmInsert.minister_first_name} ${pmInsert.minister_last_name}` : null
-            }
-        });
-
-        // 6. Create initial administration record (non-blocking)
-        try {
-            const hosName = (currentNation.head_of_state_first_name && currentNation.head_of_state_last_name)
-                ? `${currentNation.head_of_state_first_name} ${currentNation.head_of_state_last_name}`
-                : null;
-            const adminName = pmInsert
-                ? `${pmInsert.minister_last_name} Administration`
-                : `${currentNation.head_of_state_last_name || currentFaction.faction_name} Administration`;
-
-            await _supabase.from('administrations').insert({
-                nation_id: currentNation.id,
-                admin_name: adminName,
-                head_of_state: hosName,
-                prime_minister: pmInsert ? `${pmInsert.minister_first_name} ${pmInsert.minister_last_name}` : null,
-                pm_party_name: currentFaction.faction_name,
-                pm_party_id: currentFaction.id,
-                coalition_parties: [{ party_id: currentFaction.id, party_name: currentFaction.faction_name, seats: currentFaction.seats || 0 }],
-                total_seats: currentFaction.seats || 0,
-                government_type: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
-                started_at_tick: tick,
-                started_at_date: tickToDate(tick),
-                approval_at_start: 50,
-                head_of_state_title: currentNation.head_of_state_title || null
-            });
-        } catch (adminErr) {
-            console.warn('Administration record creation failed (non-blocking):', adminErr);
-        }
-
-        // 7. Update local state
-        currentFaction.loyalty = 80;
-        currentNation.ruling_faction_id = currentFaction.id;
-        rulingFactionId = currentFaction.id;
-        isRulingFaction = true;
-
-        // 8. Clear cache and re-render
-        sessionStorage.removeItem('nationhood_state');
-        qCacheBust('coalition_');
-
-        alert(
-            'POWER SEIZED!\n\n' +
-            `${currentFaction.faction_name} now controls the government.\n\n` +
-            `Prime Minister: ${pmInsert?.minister_first_name} ${pmInsert?.minister_last_name}\n` +
-            `All ${MINISTRY_KEYS_CABINET.length} cabinet positions filled.`
-        );
-
-        await renderGovernmentPage();
-
-    } catch (error) {
-        console.error('Claim power error:', error);
-        alert('Error claiming power: ' + error.message);
-        if (btn) { btn.disabled = false; btn.textContent = 'Seize Power'; }
-    }
-}
-
 // ==================== PURGE MINISTER ====================
 
 async function purgeMinister(ministryKey) {
@@ -6669,7 +6519,7 @@ async function denyRequest(requestId) {
 // ==================== VOTE OF NO CONFIDENCE ====================
 
 function renderNoConfidenceButton(coalition) {
-    if (!currentFaction || isAutocracy || isPresidential) return '';
+    if (!currentFaction || isPresidential) return '';
 
     // Only opposition parties can file (not in coalition)
     const isInCoalition = coalition.party_ids.includes(currentFaction.id);
@@ -6863,8 +6713,8 @@ async function fileNoConfidence() {
 // ==================== IMPEACH PRESIDENT ====================
 
 function renderImpeachmentButton() {
-    // Only presidential systems, only non-autocracy, only if we have a faction
-    if (!currentFaction || isAutocracy || !isPresidential) return '';
+    // Only presidential systems, only if we have a faction
+    if (!currentFaction || !isPresidential) return '';
     if (!presidentData) return '';
 
     // President's own party cannot file impeachment

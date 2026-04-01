@@ -4332,21 +4332,12 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// STRONGMAN ACTION PANELS
-// ═══════════════════════════════════════════════════════════════════
-
-// (Successor, Purge, Redistribute panels removed — Phase 0)
+// (Autocracy action panels removed)
 
 
 
 
-// ═══════════════════════════════════════════════════════════════════
-// AUTOCRACY ACTIONS TAB RENDERER
-// ═══════════════════════════════════════════════════════════════════
-// ── Autocracy action metadata (client-side labels/descriptions) ──────────────
-
-const AUTO_ACTION_META = {
+/* ═══════════════════════════════════════════════════════════════════
     // Military
     deploy:              { label: 'Deploy', desc: 'Deploy forces. +Backing, moves tracker.', icon: '⚔', color: '#5b9bd5' },
     stand_down:          { label: 'Stand Down', desc: 'Stand down military. Always FOR YOURSELF.', icon: '◇', color: '#5b9bd5' },
