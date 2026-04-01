@@ -61,6 +61,11 @@ DELETE FROM ambassadors WHERE faction_id IN (
 DELETE FROM diplomatic_messages WHERE from_faction_id IN (
     SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
 );
+UPDATE bills SET diplomatic_proposal_id = NULL WHERE diplomatic_proposal_id IN (
+    SELECT id FROM diplomatic_proposals WHERE proposed_by_faction_id IN (
+        SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
+    )
+);
 DELETE FROM diplomatic_proposals WHERE proposed_by_faction_id IN (
     SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
 );
