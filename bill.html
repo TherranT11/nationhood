@@ -646,8 +646,12 @@ function renderBill() {
 }
     }
 
-    // Emergency bill advance button (presidential only, during active emergency)
-    if (isPresidential && isPresidentParty && (isCommittee || isFloor)) {
+    // Emergency bill advance button (head of government's party, during active emergency)
+    const isHeadOfGovParty = isPresidential
+        ? isPresidentParty
+        : (coalitionLeadPartyId && currentFaction?.id === coalitionLeadPartyId);
+    const hasEmergencyPower = isPresidential || currentNation?.emergency_powers_act;
+    if (isHeadOfGovParty && hasEmergencyPower && (isCommittee || isFloor) && !isAutocracy) {
         renderEmergencyAdvanceButton(bill);
     }
 
@@ -2281,7 +2285,7 @@ async function renderEmergencyAdvanceButton(bill) {
         if (!emergency) return;
 
         const usedThisTick = emergency.payload?.last_advance_tick === currentShardTick;
-        const advanceTo = bill.status === 'committee' ? 'floor' : "president's desk";
+        const advanceTo = bill.status === 'committee' ? 'floor' : (isPresidential ? "president's desk" : 'enactment');
 
         const banner = document.createElement('div');
         banner.style.cssText = 'background:var(--red-faint);border:1px solid var(--red-border);border-radius:3px;padding:12px 16px;margin:12px 0;display:flex;justify-content:space-between;align-items:center;';
@@ -2302,8 +2306,13 @@ async function renderEmergencyAdvanceButton(bill) {
 }
 window.renderEmergencyAdvanceButton = renderEmergencyAdvanceButton;
 
+let _emergencyAdvanceLock = false;
 async function handleEmergencyAdvance(billId) {
+    if (_emergencyAdvanceLock) return;
     if (!confirm('Use emergency powers to advance this bill?\n\nThis costs -6 government approval and bypasses normal procedure.')) return;
+    _emergencyAdvanceLock = true;
+    const btn = document.querySelector('.emergency-advance-btn');
+    if (btn) btn.disabled = true;
     try {
         const result = await advanceBillEmergency(_supabase, currentNation.id, currentFaction.id, billId);
         if (!result.success) {
@@ -2314,6 +2323,9 @@ async function handleEmergencyAdvance(billId) {
         window.location.reload();
     } catch (e) {
         alert('Error: ' + e.message);
+    } finally {
+        _emergencyAdvanceLock = false;
+        if (btn) btn.disabled = false;
     }
 }
 window.handleEmergencyAdvance = handleEmergencyAdvance;
