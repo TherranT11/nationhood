@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nationhood — Conflicts</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Shared Styles -->
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/conflicts.css">
+</head>
+<body>
+
+<!-- ===== TOP BAR (rendered by common.js) ===== -->
+<div id="top-bar"></div>
+
+<!-- ===== SUB-TABS ===== -->
+<div class="conflicts-subtabs">
+    <button class="subtab active" data-tab="incidents" id="subtab-incidents">Incidents <span class="subtab-badge" id="incidents-count-badge"></span></button>
+    <button class="subtab" data-tab="conflicts" id="subtab-conflicts">Conflicts <span class="subtab-badge" id="conflicts-count-badge"></span></button>
+</div>
+
+<!-- ===== MAIN 3-COLUMN LAYOUT ===== -->
+<div class="conflicts-layout" id="conflicts-layout" style="display:none;">
+
+    <!-- LEFT SIDEBAR (240px) -->
+    <div class="conflicts-sidebar" id="sidebar">
+        <div class="sidebar-section" id="sidebar-your">
+            <div class="sidebar-section-header">Your Incidents</div>
+            <div class="sidebar-list" id="sidebar-your-list"></div>
+        </div>
+        <div class="sidebar-section" id="sidebar-international">
+            <div class="sidebar-section-header">International Incidents</div>
+            <div class="sidebar-list" id="sidebar-international-list"></div>
+        </div>
+        <div class="sidebar-section sidebar-section--collapsed" id="sidebar-resolved">
+            <div class="sidebar-section-header sidebar-section-header--toggle" id="sidebar-resolved-toggle">
+                Resolved <span class="sidebar-toggle-icon">&#9656;</span>
+            </div>
+            <div class="sidebar-list" id="sidebar-resolved-list" style="display:none;"></div>
+        </div>
+    </div>
+
+    <!-- CENTER COLUMN (flex) -->
+    <div class="conflicts-center" id="center">
+        <!-- Empty state (shown when no incident selected) -->
+        <div class="conflicts-empty" id="empty-state">
+            <div class="empty-icon">&#9876;</div>
+            <div class="empty-title">No Incident Selected</div>
+            <div class="empty-subtitle" id="empty-subtitle">Select an incident from the sidebar to view details.</div>
+        </div>
+
+        <!-- Incident detail (hidden until selected) -->
+        <div class="conflicts-detail" id="detail" style="display:none;">
+            <!-- Leverage Track -->
+            <div class="leverage-track" id="leverage-track">
+                <div class="leverage-header">
+                    <span class="leverage-nation leverage-nation--a" id="lev-nation-a"></span>
+                    <span class="leverage-label">LEVERAGE</span>
+                    <span class="leverage-nation leverage-nation--b" id="lev-nation-b"></span>
+                </div>
+                <div class="leverage-bar-container">
+                    <div class="leverage-bar">
+                        <div class="leverage-fill leverage-fill--a" id="lev-fill-a"></div>
+                        <div class="leverage-fill leverage-fill--b" id="lev-fill-b"></div>
+                        <div class="leverage-marker" id="lev-marker"></div>
+                        <div class="leverage-threshold" style="left:25%"><span>5</span></div>
+                        <div class="leverage-threshold" style="left:40%"><span>8</span></div>
+                        <div class="leverage-threshold" style="left:50%"></div>
+                        <div class="leverage-threshold" style="right:40%"><span>8</span></div>
+                        <div class="leverage-threshold" style="right:25%"><span>5</span></div>
+                    </div>
+                </div>
+                <div class="leverage-status" id="lev-status"></div>
+            </div>
+
+            <!-- Incident Header -->
+            <div class="incident-header" id="incident-header">
+                <div class="incident-title" id="incident-title"></div>
+                <div class="incident-meta" id="incident-meta"></div>
+            </div>
+
+            <!-- Timeline -->
+            <div class="incident-timeline" id="timeline"></div>
+
+            <!-- Actions Panel (bottom) -->
+            <div class="incident-actions" id="actions-panel">
+                <div class="actions-header" id="actions-header"></div>
+                <div class="actions-list" id="actions-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT COLUMN: CHAT (300px) -->
+    <div class="conflicts-chat" id="chat-column" style="display:none;">
+        <div class="chat-header">
+            <span class="chat-title">Crisis Chat</span>
+            <span class="chat-participants" id="chat-participants"></span>
+        </div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input-area" id="chat-input-area">
+            <input type="text" class="chat-input" id="chat-input" placeholder="Type as HoG..." />
+            <button class="chat-send" id="chat-send">Send</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== GLOBAL EMPTY STATE (no incidents at all) ===== -->
+<div class="conflicts-global-empty" id="global-empty" style="display:none;">
+    <div class="empty-icon">&#9876;</div>
+    <div class="empty-title">No Active Incidents</div>
+    <div class="empty-subtitle">The continent is at peace — for now. Incidents will appear here when diplomatic crises emerge between nations.</div>
+</div>
+
+<!-- ===== ACTION CONFIRMATION MODAL ===== -->
+<div class="modal-overlay" id="action-modal" style="display:none;">
+    <div class="modal-box">
+        <div class="modal-header" id="modal-header"></div>
+        <div class="modal-body" id="modal-body"></div>
+        <div class="modal-footer">
+            <button class="modal-btn modal-btn--cancel" id="modal-cancel">Cancel</button>
+            <button class="modal-btn modal-btn--confirm" id="modal-confirm">Execute</button>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage } from './js/common.js';
+import { escapeHtml } from './js/utils.js';
+
+let currentFaction = null;
+let currentNation = null;
+let currentTick = 0;
+let selectedIncidentId = null;
+let currentSubTab = 'incidents'; // 'incidents' (internal chat + actions) or 'conflicts' (public chat, no actions)
+let allIncidents = [];
+
+// ==================== INIT ====================
+
+initPage('conflicts', async (state) => {
+    currentFaction = state.faction;
+    currentNation = state.nation;
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    currentTick = shard?.current_tick || 0;
+
+    // Sub-tab switching
+    document.querySelectorAll('.subtab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.subtab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            currentSubTab = tab.dataset.tab;
+            if (selectedIncidentId) {
+                const incident = allIncidents.find(i => i.id === selectedIncidentId);
+                if (incident) refreshChatAndActions(incident);
+            }
+        });
+    });
+
+    // Resolved section toggle
+    const resolvedToggle = document.getElementById('sidebar-resolved-toggle');
+    resolvedToggle?.addEventListener('click', () => {
+        const list = document.getElementById('sidebar-resolved-list');
+        const icon = resolvedToggle.querySelector('.sidebar-toggle-icon');
+        if (list.style.display === 'none') {
+            list.style.display = '';
+            icon.innerHTML = '&#9662;';
+        } else {
+            list.style.display = 'none';
+            icon.innerHTML = '&#9656;';
+        }
+    });
+
+    await loadIncidents();
+});
+
+
+// ==================== LOAD INCIDENTS ====================
+
+async function loadIncidents() {
+    const [yourResult, intlResult, resolvedResult] = await Promise.allSettled([
+        _supabase.from('incidents')
+            .select('*, nation_a:nations!incidents_nation_a_id_fkey(id, name), nation_b:nations!incidents_nation_b_id_fkey(id, name)')
+            .or(`nation_a_id.eq.${currentNation.id},nation_b_id.eq.${currentNation.id}`)
+            .in('status', ['active', 'mediating'])
+            .order('leverage_a', { ascending: false }),
+        _supabase.from('incidents')
+            .select('*, nation_a:nations!incidents_nation_a_id_fkey(id, name), nation_b:nations!incidents_nation_b_id_fkey(id, name)')
+            .not('nation_a_id', 'eq', currentNation.id)
+            .not('nation_b_id', 'eq', currentNation.id)
+            .in('status', ['active', 'mediating'])
+            .order('started_tick', { ascending: false }),
+        _supabase.from('incidents')
+            .select('*, nation_a:nations!incidents_nation_a_id_fkey(id, name), nation_b:nations!incidents_nation_b_id_fkey(id, name)')
+            .eq('status', 'resolved')
+            .gte('resolved_tick', currentTick - 10)
+            .order('resolved_tick', { ascending: false })
+    ]);
+
+    const yours = yourResult.status === 'fulfilled' ? (yourResult.value.data || []) : [];
+    const intl = intlResult.status === 'fulfilled' ? (intlResult.value.data || []) : [];
+    const resolved = resolvedResult.status === 'fulfilled' ? (resolvedResult.value.data || []) : [];
+
+    allIncidents = [...yours, ...intl, ...resolved];
+
+    // Update badge counts
+    const incidentsBadge = document.getElementById('incidents-count-badge');
+    if (yours.length > 0) {
+        incidentsBadge.textContent = yours.length;
+        incidentsBadge.style.display = '';
+    } else {
+        incidentsBadge.style.display = 'none';
+    }
+
+    // Render sidebar
+    renderSidebar(yours, intl, resolved);
+
+    // Show global empty if nothing at all
+    const totalActive = yours.length + intl.length;
+    if (totalActive === 0 && resolved.length === 0) {
+        document.getElementById('conflicts-layout').style.display = 'none';
+        document.getElementById('global-empty').style.display = '';
+    } else {
+        document.getElementById('conflicts-layout').style.display = '';
+        document.getElementById('global-empty').style.display = 'none';
+
+        // Auto-select first incident
+        if (yours.length > 0) {
+            selectIncident(yours[0].id);
+        } else if (intl.length > 0) {
+            selectIncident(intl[0].id);
+        } else if (resolved.length > 0) {
+            selectIncident(resolved[0].id);
+        }
+    }
+}
+
+
+// ==================== SIDEBAR RENDERING ====================
+
+function renderSidebar(yours, intl, resolved) {
+    const yourList = document.getElementById('sidebar-your-list');
+    const intlList = document.getElementById('sidebar-international-list');
+    const resolvedList = document.getElementById('sidebar-resolved-list');
+
+    yourList.innerHTML = yours.length === 0
+        ? '<div class="sidebar-empty">No active incidents involving your nation.</div>'
+        : yours.map(i => renderSidebarItem(i, false)).join('');
+
+    intlList.innerHTML = intl.length === 0
+        ? '<div class="sidebar-empty">No international incidents.</div>'
+        : intl.map(i => renderSidebarItem(i, true)).join('');
+
+    resolvedList.innerHTML = resolved.length === 0
+        ? '<div class="sidebar-empty">No recent resolutions.</div>'
+        : resolved.map(i => renderSidebarItem(i, false, true)).join('');
+
+    // Click handlers
+    document.querySelectorAll('.sidebar-item').forEach(el => {
+        el.addEventListener('click', () => selectIncident(el.dataset.incidentId));
+    });
+}
+
+function renderSidebarItem(incident, dimmed, isResolved) {
+    const combined = (incident.leverage_a || 0) + (incident.leverage_b || 0);
+    const status = incident.status;
+
+    let severityClass, severityLabel;
+    if (isResolved) {
+        severityClass = 'severity--resolved';
+        severityLabel = 'Resolved';
+    } else if (combined >= 14) {
+        severityClass = 'severity--critical';
+        severityLabel = 'Critical';
+    } else if (combined >= 8) {
+        severityClass = 'severity--high';
+        severityLabel = 'High';
+    } else if (combined >= 4) {
+        severityClass = 'severity--moderate';
+        severityLabel = 'Moderate';
+    } else {
+        severityClass = 'severity--low';
+        severityLabel = 'Low';
+    }
+    if (status === 'mediating') severityLabel = 'Mediating';
+
+    const nameA = incident.nation_a?.name || 'Unknown';
+    const nameB = incident.nation_b?.name || 'Unknown';
+    const crisisLabel = formatCrisisLabel(incident.incident_type);
+
+    return `
+        <div class="sidebar-item ${dimmed ? 'sidebar-item--dimmed' : ''} ${selectedIncidentId === incident.id ? 'sidebar-item--active' : ''}"
+             data-incident-id="${incident.id}">
+            <div class="sidebar-item-top">
+                <span class="severity-dot ${severityClass}"></span>
+                <span class="sidebar-item-name">${nameA} ${crisisLabel}</span>
+            </div>
+            <div class="sidebar-item-bottom">
+                <span class="sidebar-item-parties">${nameA} vs ${nameB}</span>
+                <span class="sidebar-item-leverage">Lev. ${incident.leverage_a || 0}-${incident.leverage_b || 0}</span>
+            </div>
+            <div class="sidebar-item-status">${severityLabel}</div>
+        </div>`;
+}
+
+
+// ==================== INCIDENT SELECTION ====================
+
+async function selectIncident(incidentId) {
+    selectedIncidentId = incidentId;
+    const incident = allIncidents.find(i => i.id === incidentId);
+    if (!incident) return;
+
+    // Clean up previous chat subscription
+    cleanupChat();
+
+    // Highlight in sidebar
+    document.querySelectorAll('.sidebar-item').forEach(el => {
+        el.classList.toggle('sidebar-item--active', el.dataset.incidentId === incidentId);
+    });
+
+    // Show detail, hide empty state
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('detail').style.display = '';
+
+    // Determine if observer
+    const isInvolved = incident.nation_a_id === currentNation.id || incident.nation_b_id === currentNation.id;
+
+    // Render leverage track
+    renderLeverageTrack(incident);
+
+    // Render header
+    renderIncidentHeader(incident);
+
+    // Load timeline
+    await loadTimeline(incidentId, incident);
+
+    // Actions + chat depend on sub-tab
+    await refreshChatAndActions(incident);
+}
+
+
+// ==================== LEVERAGE TRACK ====================
+
+function renderLeverageTrack(incident) {
+    const track = document.getElementById('leverage-track');
+    track.classList.toggle('leverage-track--resolved', incident.status === 'resolved');
+
+    const nameA = incident.nation_a?.name || 'A';
+    const nameB = incident.nation_b?.name || 'B';
+    const levA = incident.leverage_a || 0;
+    const levB = incident.leverage_b || 0;
+
+    document.getElementById('lev-nation-a').textContent = `${nameA}: ${levA}`;
+    document.getElementById('lev-nation-b').textContent = `${nameB}: ${levB}`;
+
+    const fillA = document.getElementById('lev-fill-a');
+    const fillB = document.getElementById('lev-fill-b');
+    const marker = document.getElementById('lev-marker');
+
+    fillA.style.width = `${(levA / 10) * 50}%`;
+    fillB.style.width = `${(levB / 10) * 50}%`;
+
+    const markerPos = 50 + ((levB - levA) / 20 * 100);
+    marker.style.left = `${markerPos}%`;
+
+    // Status text
+    const statusEl = document.getElementById('lev-status');
+    if (incident.status === 'mediating') {
+        statusEl.innerHTML = '<span class="lev-status--mediating">MEDIATION ACTIVE — Leverage frozen</span>';
+    } else if (incident.status === 'resolved') {
+        statusEl.innerHTML = '<span class="lev-status--resolved">RESOLVED</span>';
+    } else if (levA >= 8 || levB >= 8) {
+        statusEl.innerHTML = '<span class="lev-status--critical">CRITICAL — Forced resolution imminent</span>';
+    } else if (levA >= 5 || levB >= 5) {
+        statusEl.innerHTML = '<span class="lev-status--high">ESCALATING — Threshold events active</span>';
+    } else {
+        statusEl.innerHTML = '<span class="lev-status--normal">Active</span>';
+    }
+}
+
+
+// ==================== INCIDENT HEADER ====================
+
+function renderIncidentHeader(incident) {
+    const nameA = incident.nation_a?.name || 'A';
+    const nameB = incident.nation_b?.name || 'B';
+    const crisisName = formatCrisisLabel(incident.incident_type);
+    const ticksElapsed = currentTick - incident.started_tick;
+
+    document.getElementById('incident-title').textContent = `${nameA}-${nameB} ${crisisName}`;
+
+    let statusBadge = '';
+    if (incident.status === 'resolved') {
+        statusBadge = '<span class="status-badge status-badge--resolved">Resolved</span>';
+    } else if (incident.status === 'mediating') {
+        statusBadge = '<span class="status-badge status-badge--mediating">Mediating</span>';
+    } else if ((incident.leverage_a || 0) >= 8 || (incident.leverage_b || 0) >= 8) {
+        statusBadge = '<span class="status-badge status-badge--critical">Critical</span>';
+    } else {
+        statusBadge = '<span class="status-badge status-badge--active">Active</span>';
+    }
+
+    document.getElementById('incident-meta').innerHTML = `
+        <span class="meta-tag">${crisisName}</span>
+        <span class="meta-tag">Tick ${incident.started_tick}</span>
+        <span class="meta-tag">${ticksElapsed} tick${ticksElapsed !== 1 ? 's' : ''} elapsed</span>
+        ${statusBadge}
+        ${renderResolutionBanner(incident)}
+    `;
+}
+
+
+// ==================== TIMELINE ====================
+
+async function loadTimeline(incidentId, incident) {
+    const { data: events } = await _supabase
+        .from('incident_events')
+        .select('*')
+        .eq('incident_id', incidentId)
+        .order('tick', { ascending: false })
+        .order('created_at', { ascending: false });
+
+    const timeline = document.getElementById('timeline');
+    if (!events || events.length === 0) {
+        timeline.innerHTML = '<div class="timeline-empty">No events yet.</div>';
+        return;
+    }
+
+    timeline.innerHTML = events.map(e => renderTimelineEvent(e, incident)).join('');
+}
+
+function renderTimelineEvent(event, incident) {
+    const nameA = incident.nation_a?.name || 'A';
+    const nameB = incident.nation_b?.name || 'B';
+
+    // Leverage badge
+    const shiftA = event.leverage_shift_a || 0;
+    const shiftB = event.leverage_shift_b || 0;
+    let levBadge = '';
+    if (shiftA > 0) levBadge = `<span class="lev-badge lev-badge--a">${nameA} +${shiftA}</span>`;
+    else if (shiftB > 0) levBadge = `<span class="lev-badge lev-badge--b">${nameB} +${shiftB}</span>`;
+    else if (shiftA === 0 && shiftB === 0 && event.event_type === 'random_tick') levBadge = '<span class="lev-badge lev-badge--neutral">No shift</span>';
+
+    // Left border style for actions
+    let borderClass = '';
+    if (event.is_action) {
+        if (event.action_style === 'hostile') borderClass = 'timeline-event--hostile';
+        else if (event.action_style === 'peaceful') borderClass = 'timeline-event--peaceful';
+        else if (event.action_style === 'pressure') borderClass = 'timeline-event--pressure';
+    }
+    if (event.event_type === 'escalation_threshold') borderClass = 'timeline-event--escalation';
+    if (event.event_type === 'resolution') borderClass = 'timeline-event--resolution';
+    if (event.event_type === 'mediation_result') borderClass = 'timeline-event--mediation';
+
+    return `
+        <div class="timeline-event ${borderClass}">
+            <div class="timeline-event-header">
+                <span class="timeline-tick">Tick ${event.tick}</span>
+                ${levBadge}
+            </div>
+            <div class="timeline-event-text">${event.event_text}</div>
+            ${event.event_source_label ? `<div class="timeline-source">${event.event_source_label}</div>` : ''}
+        </div>`;
+}
+
+
+// ==================== SUB-TAB ROUTING ====================
+
+async function refreshChatAndActions(incident) {
+    const isInvolved = incident.nation_a_id === currentNation.id || incident.nation_b_id === currentNation.id;
+    const actionsPanel = document.getElementById('actions-panel');
+    const chatColumn = document.getElementById('chat-column');
+    const chatTitle = chatColumn.querySelector('.chat-title');
+
+    if (currentSubTab === 'incidents') {
+        // INCIDENTS TAB: internal chat + actions panel
+        if (isInvolved && incident.status !== 'resolved') {
+            actionsPanel.style.display = '';
+            await renderActionsPanel(incident);
+            chatColumn.style.display = '';
+            chatTitle.textContent = 'Crisis Chat';
+            await loadChat(incident.id);
+        } else {
+            actionsPanel.style.display = '';
+            const header = document.getElementById('actions-header');
+            const list = document.getElementById('actions-list');
+            if (incident.status === 'resolved') {
+                header.innerHTML = '<span class="actions-observer">This incident has been resolved.</span>';
+            } else {
+                header.innerHTML = '<span class="actions-observer">You do not have a crisis role.</span>';
+            }
+            list.innerHTML = '';
+            chatColumn.style.display = 'none';
+        }
+    } else {
+        // CONFLICTS TAB: public Situation Room chat, no actions panel
+        actionsPanel.style.display = 'none';
+        chatColumn.style.display = '';
+        chatTitle.textContent = 'Situation Room';
+        await loadPublicChat(incident.id, incident);
+    }
+}
+
+
+// ==================== ACTIONS PANEL ====================
+
+let actionExecuting = false; // debounce lock
+
+async function renderActionsPanel(incident) {
+    const isA = incident.nation_a_id === currentNation.id;
+    const role = isA ? incident.nation_a_role : incident.nation_b_role;
+    const govType = isA ? incident.nation_a_gov_type : incident.nation_b_gov_type;
+    const ap = currentFaction?.action_points || 0;
+
+    const header = document.getElementById('actions-header');
+    header.innerHTML = `
+        <span>Your Actions — ${currentNation.name} (${role})</span>
+        <span class="actions-leverage">AP: ${ap} | Leverage: ${incident.leverage_a || 0} vs ${incident.leverage_b || 0}</span>
+    `;
+
+    // Count active incidents for stretched-thin penalty
+    const { count: activeCount } = await _supabase
+        .from('incidents')
+        .select('id', { count: 'exact', head: true })
+        .in('status', ['active', 'mediating'])
+        .or(`nation_a_id.eq.${currentNation.id},nation_b_id.eq.${currentNation.id}`);
+    const stretchedThin = (activeCount || 0) >= 2;
+
+    // Load available actions for this role + gov type
+    const { data: actions } = await _supabase
+        .from('incident_actions_available')
+        .select('*')
+        .eq('incident_type', incident.incident_type)
+        .eq('nation_role', role)
+        .eq('gov_type', govType);
+
+    // Load taken actions for this incident + nation
+    const { data: taken } = await _supabase
+        .from('incident_actions_taken')
+        .select('action_key, cooldown_until_tick, tick')
+        .eq('incident_id', incident.id)
+        .eq('nation_id', currentNation.id);
+
+    const takenMap = {};
+    for (const t of (taken || [])) {
+        if (!takenMap[t.action_key]) takenMap[t.action_key] = [];
+        takenMap[t.action_key].push(t);
+    }
+
+    const list = document.getElementById('actions-list');
+    if (!actions || actions.length === 0) {
+        list.innerHTML = '<div class="actions-placeholder">No actions available.</div>';
+        return;
+    }
+
+    // Sort by escalation color
+    const colorOrder = { escalate: 1, pressure: 2, diplomatic: 3, concede: 4, wait: 5 };
+    actions.sort((a, b) => (colorOrder[a.escalation_color] || 9) - (colorOrder[b.escalation_color] || 9));
+
+    list.innerHTML = actions.map(action => {
+        const history = takenMap[action.action_key] || [];
+        const state = getActionState(action, history, ap, stretchedThin, incident);
+        return renderActionRow(action, state, stretchedThin);
+    }).join('');
+
+    // Click handlers
+    list.querySelectorAll('.action-row[data-available="true"]').forEach(el => {
+        el.addEventListener('click', () => {
+            const actionKey = el.dataset.actionKey;
+            const action = actions.find(a => a.action_key === actionKey);
+            if (action) showActionModal(action, incident, stretchedThin);
+        });
+    });
+}
+
+function getActionState(action, history, ap, stretchedThin, incident) {
+    // One-time and already used
+    if (action.is_one_time && history.length > 0) return { state: 'used', label: 'Already used' };
+
+    // Cooldown check
+    if (action.cooldown_ticks > 0 && history.length > 0) {
+        const latest = history.reduce((a, b) => a.tick > b.tick ? a : b);
+        const cdUntil = latest.cooldown_until_tick || (latest.tick + action.cooldown_ticks);
+        if (currentTick < cdUntil) return { state: 'cooldown', label: `Available in ${cdUntil - currentTick} tick${cdUntil - currentTick !== 1 ? 's' : ''}` };
+    }
+
+    // Prerequisite
+    if (action.requires_action_key) {
+        const prereqTaken = history.some(h => h.action_key === action.requires_action_key);
+        if (!prereqTaken) return { state: 'locked', label: `Requires: ${action.requires_action_key}` };
+    }
+
+    // Mediation locked (hostile actions during mediation)
+    if (incident.status === 'mediating' && (action.escalation_color === 'escalate' || action.escalation_color === 'pressure')) {
+        return { state: 'mediation_locked', label: 'Mediation active' };
+    }
+
+    // AP check
+    const totalCost = action.ap_cost + (stretchedThin && action.ap_cost > 0 ? 1 : 0);
+    if (totalCost > ap) return { state: 'insufficient_ap', label: `Need ${totalCost} AP` };
+
+    return { state: 'available', label: null };
+}
+
+function renderActionRow(action, stateInfo, stretchedThin) {
+    const available = stateInfo.state === 'available';
+    const colorClass = {
+        escalate: 'action-icon--esc',
+        pressure: 'action-icon--prs',
+        diplomatic: 'action-icon--dip',
+        concede: 'action-icon--con',
+        wait: 'action-icon--wait'
+    }[action.escalation_color] || '';
+
+    const apDisplay = action.ap_cost === 0 ? 'Free'
+        : stretchedThin && action.ap_cost > 0 ? `${action.ap_cost}+1 AP`
+        : `${action.ap_cost} AP`;
+
+    const levDisplay = action.leverage_min === action.leverage_max
+        ? (action.leverage_min === 0 ? '' : `+${action.leverage_min}`)
+        : `+${action.leverage_min} to +${action.leverage_max}`;
+
+    return `
+        <div class="action-row ${available ? '' : 'action-row--disabled'}"
+             data-action-key="${action.action_key}" data-available="${available}">
+            <div class="action-icon ${colorClass}"></div>
+            <div class="action-info">
+                <div class="action-name">${action.action_name}</div>
+                <div class="action-detail">${apDisplay}${levDisplay ? ' | Lev. ' + levDisplay : ''}</div>
+                ${stateInfo.label ? `<div class="action-state">${stateInfo.label}</div>` : ''}
+            </div>
+            <div class="action-role-badge">${action.required_role}</div>
+        </div>`;
+}
+
+
+// ==================== ACTION EXECUTION ====================
+
+function showActionModal(action, incident, stretchedThin) {
+    if (actionExecuting) return;
+    const modal = document.getElementById('action-modal');
+    const header = document.getElementById('modal-header');
+    const body = document.getElementById('modal-body');
+    const confirmBtn = document.getElementById('modal-confirm');
+
+    const totalCost = action.ap_cost + (stretchedThin && action.ap_cost > 0 ? 1 : 0);
+    const ap = currentFaction?.action_points || 0;
+    const isA = incident.nation_a_id === currentNation.id;
+
+    // Concede gets a serious modal
+    const isConcede = action.action_key === 'concede';
+    const isMediation = action.effects_template?.mediation === true;
+
+    header.innerHTML = `<span class="modal-action-name">${action.action_name}</span>`;
+
+    let bodyHtml = `<div class="modal-description">${action.action_description}</div>`;
+    bodyHtml += `<div class="modal-stats">`;
+    bodyHtml += `<div class="modal-stat-row"><span>AP Cost:</span><span>${totalCost}${stretchedThin && action.ap_cost > 0 ? ' <em>(+1 multiple crises)</em>' : ''}</span></div>`;
+    bodyHtml += `<div class="modal-stat-row"><span>Your AP:</span><span>${ap}</span></div>`;
+    if (action.leverage_min > 0 || action.leverage_max > 0) {
+        bodyHtml += `<div class="modal-stat-row"><span>Leverage:</span><span>+${action.leverage_min} to +${action.leverage_max}</span></div>`;
+    }
+    bodyHtml += `<div class="modal-stat-row"><span>Required Role:</span><span>${action.required_role}</span></div>`;
+    if (action.risk_description) {
+        bodyHtml += `<div class="modal-risk">${action.risk_description}</div>`;
+    }
+    if (action.backfire_chance) {
+        bodyHtml += `<div class="modal-risk">Backfire chance: ${Math.round(action.backfire_chance * 100)}%</div>`;
+    }
+    bodyHtml += `</div>`;
+
+    if (isConcede) {
+        const oppLev = isA ? (incident.leverage_b || 0) : (incident.leverage_a || 0);
+        const govType = isA ? incident.nation_a_gov_type : incident.nation_b_gov_type;
+        const isAuto = govType === 'autocracy';
+        const cost = isAuto ? Math.round(oppLev * 1.5) : oppLev;
+        const costLabel = isAuto ? `Regime Health: -${cost}` : `Gov Approval: -${cost}`;
+        bodyHtml += `<div class="modal-warning">This resolves the crisis in your opponent's favor.<br>${costLabel}</div>`;
+        confirmBtn.textContent = 'Concede — Cannot Be Undone';
+        confirmBtn.className = 'modal-btn modal-btn--danger';
+    } else if (isMediation) {
+        bodyHtml += `<div class="modal-info">Your proposal is hidden until the tick resolves. If the opponent also proposes, mediation begins. If they don't, you lose 2 leverage.</div>`;
+        confirmBtn.textContent = 'Propose Mediation';
+        confirmBtn.className = 'modal-btn modal-btn--confirm';
+    } else {
+        confirmBtn.textContent = 'Execute';
+        confirmBtn.className = 'modal-btn modal-btn--confirm';
+    }
+
+    body.innerHTML = bodyHtml;
+    modal.style.display = '';
+
+    // Wire buttons (replace listeners to avoid stacking)
+    const newCancel = document.getElementById('modal-cancel').cloneNode(true);
+    document.getElementById('modal-cancel').replaceWith(newCancel);
+    newCancel.addEventListener('click', () => { modal.style.display = 'none'; });
+
+    const newConfirm = confirmBtn.cloneNode(true);
+    confirmBtn.replaceWith(newConfirm);
+    newConfirm.addEventListener('click', async () => {
+        modal.style.display = 'none';
+        await executeAction(action, incident, stretchedThin);
+    });
+}
+
+async function executeAction(action, incident, stretchedThin) {
+    if (actionExecuting) return;
+    actionExecuting = true;
+
+    try {
+        const isA = incident.nation_a_id === currentNation.id;
+        const totalCost = action.ap_cost + (stretchedThin && action.ap_cost > 0 ? 1 : 0);
+        const isMediation = action.effects_template?.mediation === true;
+        const isConcede = action.action_key === 'concede';
+
+        // 1. Deduct AP (if cost > 0)
+        if (totalCost > 0) {
+            const { data: freshFaction } = await _supabase
+                .from('factions')
+                .select('action_points')
+                .eq('id', currentFaction.id)
+                .single();
+            if ((freshFaction?.action_points || 0) < totalCost) {
+                alert('Insufficient AP.');
+                return;
+            }
+            const deductResult = await _supabase.rpc('deduct_ap', {
+                p_faction_id: currentFaction.id,
+                p_cost: totalCost
+            });
+            if (deductResult.error || deductResult.data < 0) {
+                alert('Failed to deduct AP.');
+                return;
+            }
+            currentFaction.action_points = deductResult.data;
+        }
+
+        // 2. Handle mediation (hidden proposal — no leverage roll)
+        if (isMediation) {
+            const side = isA ? 'nation_a_proposed' : 'nation_b_proposed';
+            // Upsert mediation row for this tick
+            const { data: existing } = await _supabase
+                .from('incident_mediation')
+                .select('id')
+                .eq('incident_id', incident.id)
+                .eq('tick', currentTick)
+                .maybeSingle();
+
+            if (existing) {
+                await _supabase.from('incident_mediation')
+                    .update({ [side]: true })
+                    .eq('id', existing.id);
+            } else {
+                await _supabase.from('incident_mediation')
+                    .insert({ incident_id: incident.id, tick: currentTick, [side]: true });
+            }
+
+            // Insert actions_taken for inaction tracking
+            await _supabase.from('incident_actions_taken').insert({
+                incident_id: incident.id,
+                nation_id: currentNation.id,
+                action_key: action.action_key,
+                tick: currentTick,
+                ap_spent: totalCost,
+                leverage_rolled: 0,
+                effects_applied: { mediation_proposed: true }
+            });
+
+            // System chat (only visible to your nation)
+            await _supabase.from('incident_chat_messages').insert({
+                incident_id: incident.id,
+                nation_id: currentNation.id,
+                sender_role: 'system',
+                message_text: 'Mediation proposed. Awaiting opponent response at tick resolution.',
+                tick: currentTick,
+                is_system: true,
+                chat_context: 'internal'
+            });
+
+            await refreshIncidentView(incident.id);
+            return;
+        }
+
+        // 3. Handle concede (immediate resolution)
+        if (isConcede) {
+            const resType = isA ? 'concession_a' : 'concession_b';
+            const oppLev = isA ? (incident.leverage_b || 0) : (incident.leverage_a || 0);
+            const govType = isA ? incident.nation_a_gov_type : incident.nation_b_gov_type;
+            const isAuto = govType === 'autocracy';
+            const cost = isAuto ? Math.round(oppLev * 1.5) : oppLev;
+
+            // Resolve incident
+            await _supabase.from('incidents').update({
+                status: 'resolved',
+                resolved_tick: currentTick,
+                resolution_type: resType
+            }).eq('id', incident.id);
+
+            // Apply stat cost
+            const statKey = isAuto ? 'regime_health' : 'gov_approval';
+            const currentVal = Number(currentNation[statKey] ?? 50);
+            await _supabase.from('nations').update({
+                [statKey]: Math.max(0, currentVal - cost)
+            }).eq('id', currentNation.id);
+
+            // Insert actions_taken
+            await _supabase.from('incident_actions_taken').insert({
+                incident_id: incident.id,
+                nation_id: currentNation.id,
+                action_key: 'concede',
+                tick: currentTick,
+                ap_spent: 0,
+                leverage_rolled: 0,
+                effects_applied: { resolution_type: resType, cost, stat: statKey }
+            });
+
+            // Timeline event
+            const nameA = incident.nation_a?.name || 'A';
+            const nameB = incident.nation_b?.name || 'B';
+            const conceder = isA ? nameA : nameB;
+            await _supabase.from('incident_events').insert({
+                incident_id: incident.id,
+                tick: currentTick,
+                event_type: 'resolution',
+                event_text: `${conceder} concedes. Crisis resolved.`,
+                is_action: true,
+                action_style: 'peaceful',
+                source_nation_id: currentNation.id,
+                visibility: 'both'
+            });
+
+            await refreshIncidentView(incident.id);
+            return;
+        }
+
+        // 4. Standard action: roll leverage
+        const levMin = action.leverage_min || 0;
+        const levMax = action.leverage_max || 0;
+        let leverageRolled = levMin + Math.floor(Math.random() * (levMax - levMin + 1));
+
+        // Backfire check
+        let backfired = false;
+        if (action.backfire_chance && Math.random() < action.backfire_chance) {
+            backfired = true;
+            leverageRolled = 0;
+        }
+
+        // Update leverage
+        const levField = isA ? 'leverage_a' : 'leverage_b';
+        const currentLev = isA ? (incident.leverage_a || 0) : (incident.leverage_b || 0);
+        const newLev = currentLev + leverageRolled;
+
+        await _supabase.from('incidents')
+            .update({ [levField]: newLev })
+            .eq('id', incident.id);
+
+        // Reset inaction counter
+        const inactionField = isA ? 'inaction_a_ticks' : 'inaction_b_ticks';
+        await _supabase.from('incidents')
+            .update({ [inactionField]: 0 })
+            .eq('id', incident.id);
+
+        // Insert actions_taken
+        const cooldownUntil = action.cooldown_ticks > 0 ? currentTick + action.cooldown_ticks : null;
+        await _supabase.from('incident_actions_taken').insert({
+            incident_id: incident.id,
+            nation_id: currentNation.id,
+            action_key: action.action_key,
+            tick: currentTick,
+            ap_spent: totalCost,
+            leverage_rolled: leverageRolled,
+            backfired,
+            effects_applied: backfired ? (action.backfire_effects || {}) : (action.effects_template || {}),
+            cooldown_until_tick: cooldownUntil
+        });
+
+        // Determine action style from escalation_color
+        const styleMap = { escalate: 'hostile', pressure: 'pressure', diplomatic: 'peaceful', concede: 'peaceful', wait: 'neutral' };
+
+        // Insert timeline event
+        const eventText = backfired
+            ? `BACKFIRE: ${currentNation.name} attempted ${action.action_name} — it failed.`
+            : `${currentNation.name}: ${action.action_name}. Leverage +${leverageRolled}.`;
+
+        await _supabase.from('incident_events').insert({
+            incident_id: incident.id,
+            tick: currentTick,
+            event_type: 'player_action',
+            event_key: action.action_key,
+            source_nation_id: currentNation.id,
+            source_role: action.required_role,
+            leverage_shift_a: isA ? leverageRolled : 0,
+            leverage_shift_b: isA ? 0 : leverageRolled,
+            event_text: eventText,
+            is_action: true,
+            action_style: styleMap[action.escalation_color] || 'neutral',
+            stat_effects: backfired ? action.backfire_effects : action.effects_template,
+            visibility: 'both'
+        });
+
+        // System chat
+        await _supabase.from('incident_chat_messages').insert({
+            incident_id: incident.id,
+            nation_id: currentNation.id,
+            sender_role: 'system',
+            message_text: backfired
+                ? `${action.required_role} attempted ${action.action_name} — BACKFIRE.`
+                : `${action.required_role} executed ${action.action_name}. Leverage +${leverageRolled}.`,
+            tick: currentTick,
+            is_system: true,
+            chat_context: 'internal'
+        });
+
+        await refreshIncidentView(incident.id);
+
+    } finally {
+        actionExecuting = false;
+    }
+}
+
+async function refreshIncidentView(incidentId) {
+    // Reload fresh incident data + re-render
+    const { data: fresh } = await _supabase
+        .from('incidents')
+        .select('*, nation_a:nations!incidents_nation_a_id_fkey(id, name), nation_b:nations!incidents_nation_b_id_fkey(id, name)')
+        .eq('id', incidentId)
+        .single();
+    if (!fresh) return;
+
+    // Refresh faction AP
+    const { data: freshFaction } = await _supabase
+        .from('factions')
+        .select('action_points')
+        .eq('id', currentFaction.id)
+        .single();
+    if (freshFaction) currentFaction.action_points = freshFaction.action_points;
+
+    // Update the incident in allIncidents
+    const idx = allIncidents.findIndex(i => i.id === incidentId);
+    if (idx >= 0) allIncidents[idx] = fresh;
+
+    renderLeverageTrack(fresh);
+    renderIncidentHeader(fresh);
+    await loadTimeline(incidentId, fresh);
+    await refreshChatAndActions(fresh);
+}
+
+
+// ==================== CRISIS CHAT ====================
+
+let _chatChannel = null;
+let _chatIncidentId = null;
+let _crisisRole = null; // 'HoG', 'FM', 'MoD', or null (no access)
+
+/**
+ * Determine the player's crisis role: HoG, FM, or MoD.
+ * Returns the role string or null if they don't hold one.
+ */
+async function determineCrisisRole() {
+    if (!currentFaction || !currentNation) return null;
+
+    // Check HoG
+    const { data: hog } = await _supabase
+        .from('head_of_government')
+        .select('faction_id')
+        .eq('nation_id', currentNation.id)
+        .eq('active', true)
+        .maybeSingle();
+    if (hog && hog.faction_id === currentFaction.id) return 'HoG';
+
+    // Check FM and MoD via ministries
+    const { data: ministries } = await _supabase
+        .from('ministries')
+        .select('ministry_key, party_id')
+        .eq('nation_id', currentNation.id)
+        .eq('is_active', true)
+        .in('ministry_key', ['foreign', 'defense']);
+
+    for (const m of (ministries || [])) {
+        if (m.party_id === currentFaction.id) {
+            if (m.ministry_key === 'foreign') return 'FM';
+            if (m.ministry_key === 'defense') return 'MoD';
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Load chat messages and set up real-time subscription.
+ */
+async function loadChat(incidentId) {
+    _crisisRole = await determineCrisisRole();
+
+    const container = document.getElementById('chat-messages');
+    const inputArea = document.getElementById('chat-input-area');
+    const input = document.getElementById('chat-input');
+    const participantsEl = document.getElementById('chat-participants');
+
+    // Show participants
+    participantsEl.textContent = 'HoG, FM, MoD';
+
+    // No crisis role → read-only with message
+    if (!_crisisRole) {
+        inputArea.style.display = 'none';
+        container.innerHTML = '<div class="chat-empty">You do not have access to crisis communications.<br>Only HoG, FM, and MoD can participate.</div>';
+        return;
+    }
+
+    inputArea.style.display = '';
+    input.placeholder = `Type as ${_crisisRole}...`;
+
+    // Load existing messages
+    const { data: messages } = await _supabase
+        .from('incident_chat_messages')
+        .select('*')
+        .eq('incident_id', incidentId)
+        .eq('nation_id', currentNation.id)
+        .eq('chat_context', 'internal')
+        .order('created_at', { ascending: true });
+
+    renderChatMessages(messages || []);
+
+    // Set up real-time subscription
+    setupChatRealtime(incidentId);
+
+    // Wire send button and enter key
+    const sendBtn = document.getElementById('chat-send');
+    const newSend = sendBtn.cloneNode(true);
+    sendBtn.replaceWith(newSend);
+    newSend.addEventListener('click', () => sendChatMessage(incidentId));
+
+    const newInput = input.cloneNode(true);
+    input.replaceWith(newInput);
+    newInput.placeholder = `Type as ${_crisisRole}...`;
+    newInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendChatMessage(incidentId);
+        }
+    });
+}
+
+function renderChatMessages(messages) {
+    const container = document.getElementById('chat-messages');
+    if (messages.length === 0) {
+        container.innerHTML = '<div class="chat-empty">No messages yet.</div>';
+        return;
+    }
+
+    container.innerHTML = messages.map(m => renderChatMessage(m)).join('');
+    container.scrollTop = container.scrollHeight;
+}
+
+function renderChatMessage(msg) {
+    if (msg.is_system) {
+        return `<div class="chat-message chat-message--system">${escapeHtml(msg.message_text)}</div>`;
+    }
+    return `
+        <div class="chat-message">
+            <span class="chat-role-badge">${escapeHtml(msg.sender_role)}</span>
+            <span class="chat-text">${escapeHtml(msg.message_text)}</span>
+        </div>`;
+}
+
+function setupChatRealtime(incidentId) {
+    // Clean up previous subscription
+    if (_chatChannel) {
+        _supabase.removeChannel(_chatChannel);
+        _chatChannel = null;
+    }
+    _chatIncidentId = incidentId;
+
+    _chatChannel = _supabase
+        .channel('incident-chat-' + incidentId + '-' + currentNation.id)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'incident_chat_messages',
+            filter: `incident_id=eq.${incidentId}`,
+        }, (payload) => {
+            const msg = payload.new;
+            // Only show internal messages for our nation
+            if (msg.chat_context === 'internal' && msg.nation_id !== currentNation.id) return;
+            if (msg.chat_context === 'internal' && msg.nation_id === currentNation.id) {
+                appendChatMessage(msg);
+            }
+        })
+        .subscribe();
+}
+
+function appendChatMessage(msg) {
+    const container = document.getElementById('chat-messages');
+    // Remove empty placeholder if present
+    const empty = container.querySelector('.chat-empty');
+    if (empty) empty.remove();
+
+    const div = document.createElement('div');
+    div.innerHTML = renderChatMessage(msg);
+    container.appendChild(div.firstElementChild);
+    container.scrollTop = container.scrollHeight;
+}
+
+async function sendChatMessage(incidentId) {
+    if (!_crisisRole) return;
+
+    const input = document.querySelector('#chat-input-area input') || document.getElementById('chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+
+    input.value = '';
+
+    await _supabase.from('incident_chat_messages').insert({
+        incident_id: incidentId,
+        nation_id: currentNation.id,
+        sender_role: _crisisRole,
+        message_text: text,
+        tick: currentTick,
+        is_system: false,
+        chat_context: 'internal'
+    });
+}
+
+function cleanupChat() {
+    if (_chatChannel) {
+        _supabase.removeChannel(_chatChannel);
+        _chatChannel = null;
+    }
+    if (_publicChatChannel) {
+        _supabase.removeChannel(_publicChatChannel);
+        _publicChatChannel = null;
+    }
+    _chatIncidentId = null;
+}
+
+
+// ==================== PUBLIC SITUATION ROOM CHAT ====================
+
+let _publicChatChannel = null;
+
+/**
+ * Determine public chat role. Involved nations: HoG, FM, MoD.
+ * Third-party nations: FM or Ambassador.
+ */
+async function determinePublicChatRole(incident) {
+    if (!currentFaction || !currentNation) return null;
+    const isInvolved = incident.nation_a_id === currentNation.id || incident.nation_b_id === currentNation.id;
+
+    // Check HoG
+    const { data: hog } = await _supabase
+        .from('head_of_government')
+        .select('faction_id')
+        .eq('nation_id', currentNation.id)
+        .eq('active', true)
+        .maybeSingle();
+    if (hog && hog.faction_id === currentFaction.id) return 'HoG';
+
+    // Check FM, MoD, Ambassador
+    const { data: ministries } = await _supabase
+        .from('ministries')
+        .select('ministry_key, party_id')
+        .eq('nation_id', currentNation.id)
+        .eq('is_active', true)
+        .in('ministry_key', ['foreign', 'defense']);
+
+    for (const m of (ministries || [])) {
+        if (m.party_id !== currentFaction.id) continue;
+        if (m.ministry_key === 'foreign') return 'FM';
+        if (m.ministry_key === 'defense' && isInvolved) return 'MoD';
+    }
+
+    // Third-party: check if ambassador to either involved nation
+    if (!isInvolved) {
+        const { data: ambassadors } = await _supabase
+            .from('ambassadors')
+            .select('target_nation_id')
+            .eq('nation_id', currentNation.id)
+            .eq('faction_id', currentFaction.id)
+            .eq('is_active', true)
+            .in('target_nation_id', [incident.nation_a_id, incident.nation_b_id]);
+        if (ambassadors && ambassadors.length > 0) return 'Ambassador';
+    }
+
+    return null;
+}
+
+async function loadPublicChat(incidentId, incident) {
+    const publicRole = await determinePublicChatRole(incident);
+    const container = document.getElementById('chat-messages');
+    const inputArea = document.getElementById('chat-input-area');
+    const input = container.parentElement.querySelector('.chat-input') || document.getElementById('chat-input');
+    const participantsEl = document.getElementById('chat-participants');
+
+    participantsEl.textContent = 'All nations';
+
+    // Load public messages (all nations can read)
+    const { data: messages } = await _supabase
+        .from('incident_chat_messages')
+        .select('*, nation:nations!incident_chat_messages_nation_id_fkey(name)')
+        .eq('incident_id', incidentId)
+        .eq('chat_context', 'public')
+        .order('created_at', { ascending: true });
+
+    renderPublicChatMessages(messages || []);
+
+    // Input area
+    if (publicRole) {
+        inputArea.style.display = '';
+        const newInput = document.querySelector('#chat-input-area input');
+        if (newInput) newInput.placeholder = `Type as ${currentNation.name} (${publicRole})...`;
+
+        // Wire send
+        const sendBtn = document.getElementById('chat-send');
+        const newSend = sendBtn.cloneNode(true);
+        sendBtn.replaceWith(newSend);
+        newSend.addEventListener('click', () => sendPublicChatMessage(incidentId, publicRole));
+
+        const inputEl = document.querySelector('#chat-input-area input');
+        if (inputEl) {
+            const freshInput = inputEl.cloneNode(true);
+            inputEl.replaceWith(freshInput);
+            freshInput.placeholder = `Type as ${currentNation.name} (${publicRole})...`;
+            freshInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendPublicChatMessage(incidentId, publicRole);
+                }
+            });
+        }
+    } else {
+        inputArea.style.display = 'none';
+        if (messages && messages.length === 0) {
+            container.innerHTML = '<div class="chat-empty">No public messages yet. Diplomatic representatives may post here.</div>';
+        }
+    }
+
+    // Real-time for public chat
+    setupPublicChatRealtime(incidentId);
+}
+
+function renderPublicChatMessages(messages) {
+    const container = document.getElementById('chat-messages');
+    if (messages.length === 0) {
+        container.innerHTML = '<div class="chat-empty">No public messages yet.</div>';
+        return;
+    }
+    container.innerHTML = messages.map(m => renderPublicChatMessage(m)).join('');
+    container.scrollTop = container.scrollHeight;
+}
+
+function renderPublicChatMessage(msg) {
+    const nationName = msg.nation?.name || 'Unknown';
+    if (msg.is_system) {
+        return `<div class="chat-message chat-message--system">${escapeHtml(msg.message_text)}</div>`;
+    }
+    return `
+        <div class="chat-message">
+            <span class="chat-nation-badge">${escapeHtml(nationName)}</span>
+            <span class="chat-role-badge">${escapeHtml(msg.sender_role)}</span>
+            <span class="chat-text">${escapeHtml(msg.message_text)}</span>
+        </div>`;
+}
+
+function setupPublicChatRealtime(incidentId) {
+    if (_publicChatChannel) {
+        _supabase.removeChannel(_publicChatChannel);
+        _publicChatChannel = null;
+    }
+
+    _publicChatChannel = _supabase
+        .channel('incident-public-chat-' + incidentId)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'incident_chat_messages',
+            filter: `incident_id=eq.${incidentId}`,
+        }, (payload) => {
+            const msg = payload.new;
+            if (msg.chat_context !== 'public') return;
+            // Need to fetch nation name for display
+            appendPublicChatMessage(msg);
+        })
+        .subscribe();
+}
+
+async function appendPublicChatMessage(msg) {
+    // Fetch nation name
+    const { data: nation } = await _supabase
+        .from('nations')
+        .select('name')
+        .eq('id', msg.nation_id)
+        .single();
+    msg.nation = nation;
+
+    const container = document.getElementById('chat-messages');
+    const empty = container.querySelector('.chat-empty');
+    if (empty) empty.remove();
+
+    const div = document.createElement('div');
+    div.innerHTML = renderPublicChatMessage(msg);
+    container.appendChild(div.firstElementChild);
+    container.scrollTop = container.scrollHeight;
+}
+
+async function sendPublicChatMessage(incidentId, role) {
+    if (!role) return;
+    const input = document.querySelector('#chat-input-area input') || document.getElementById('chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+
+    await _supabase.from('incident_chat_messages').insert({
+        incident_id: incidentId,
+        nation_id: currentNation.id,
+        sender_role: role,
+        message_text: text,
+        tick: currentTick,
+        is_system: false,
+        chat_context: 'public'
+    });
+}
+
+
+// ==================== RESOLUTION DISPLAY ====================
+
+function renderResolutionBanner(incident) {
+    if (incident.status !== 'resolved') return '';
+    const nameA = incident.nation_a?.name || 'A';
+    const nameB = incident.nation_b?.name || 'B';
+    const type = incident.resolution_type || 'unknown';
+
+    let title = 'RESOLVED';
+    let detail = '';
+    switch (type) {
+        case 'forced_a':
+            title = `RESOLVED — ${nameA} Prevails`;
+            detail = `${nameB} could not withstand the pressure. Forced resolution at leverage 10.`;
+            break;
+        case 'forced_b':
+            title = `RESOLVED — ${nameB} Prevails`;
+            detail = `${nameA} could not withstand the pressure. Forced resolution at leverage 10.`;
+            break;
+        case 'concession_a':
+            title = `RESOLVED — ${nameA} Concedes`;
+            detail = `${nameA} accepted the situation. ${nameB}'s position upheld.`;
+            break;
+        case 'concession_b':
+            title = `RESOLVED — ${nameB} Concedes`;
+            detail = `${nameB} backed down. ${nameA}'s position upheld.`;
+            break;
+        case 'mediation':
+            title = 'RESOLVED — Mediation Compromise';
+            detail = 'Both nations agreed to third-party mediation. Compromise reached.';
+            break;
+        case 'decay':
+            title = 'RESOLVED — Natural De-escalation';
+            detail = 'Tensions faded without formal resolution.';
+            break;
+        default:
+            detail = `Resolution type: ${type}`;
+    }
+
+    return `
+        <div class="resolution-banner">
+            <div class="resolution-title">${title}</div>
+            <div class="resolution-detail">${detail}</div>
+        </div>`;
+}
+
+
+// ==================== HELPERS ====================
+
+function formatCrisisLabel(type) {
+    switch (type) {
+        case 'fishing_dispute': return 'Fishing Dispute';
+        case 'border_incursion': return 'Border Incursion';
+        case 'dam_water': return 'Water Crisis';
+        case 'trade_war': return 'Trade War';
+        case 'spy_arrest': return 'Spy Arrest';
+        default: return type;
+    }
+}
+
+</script>
+</body>
+</html>
