@@ -53,15 +53,6 @@ WHERE government_type = 'Autocracy';
 --    may not have ON DELETE CASCADE.
 -- ─────────────────────────────────────────────────────────────────────────────
 
--- Clear faction_id on player profiles that belonged to Sangreza factions
-UPDATE profiles
-SET faction_id = NULL
-WHERE faction_id IN (
-    SELECT f.id FROM factions f
-    JOIN nations n ON f.nation_id = n.id
-    WHERE n.name = 'Sangreza'
-);
-
 -- Clean up non-CASCADE foreign key references to Sangreza factions before deletion.
 -- These tables have FK constraints that would block DELETE FROM factions.
 DELETE FROM ambassadors WHERE faction_id IN (
