@@ -22119,6 +22119,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
         if (!bid) continue;
 
         // Per-tick cost deduction from corp cash
+        // Known limitation: corps can complete projects even with 0 cash (no bankruptcy system yet)
         const perTickCost = Math.round((bid.estimated_cost || 0) / totalTicks);
         if (perTickCost > 0) {
             const { data: corp } = await supabase
@@ -22136,49 +22137,13 @@ async function processActiveProjects(supabase, nationId, currentTick) {
 
         // Check if project is complete
         if (ticksElapsed >= totalTicks) {
-            // Project complete — move to completed status
-            await supabase.from('construction_contracts')
-                .update({ status: 'completed', completed_at_tick: currentTick })
-                .eq('id', contract.id);
-
-            // Pay the corporation: bid_price goes to corp_cash_reserves
             const payment = bid.bid_price || 0;
-            if (payment > 0) {
-                const { data: corpPay } = await supabase
-                    .from('factions')
-                    .select('corp_cash_reserves')
-                    .eq('id', bid.faction_id)
-                    .single();
-                if (corpPay) {
-                    const newCash = Number(corpPay.corp_cash_reserves || 0) + payment;
-                    await supabase.from('factions')
-                        .update({ corp_cash_reserves: newCash })
-                        .eq('id', bid.faction_id);
-                }
-            }
-
-            // Check if this was a mega project — set cooldown
-            const { data: contractFull } = await supabase
-                .from('construction_contracts')
-                .select('sector')
-                .eq('id', contract.id)
-                .single();
-            if (contractFull?.sector === 'mega_project') {
-                await supabase.from('mega_project_cooldowns')
-                    .upsert({
-                        nation_id: nationId,
-                        last_completed_tick: currentTick,
-                        cooldown_until_tick: currentTick + 360
-                    }, { onConflict: 'nation_id' });
-            }
 
             // ── Phase 8: Generate inspection report & delivery record ──
             const baseQuality = bid.estimated_quality || 65;
-            // Add randomness: ±10 points from estimated quality
             const qualityVariance = Math.floor(Math.random() * 21) - 10;
             const qualityScore = Math.max(0, Math.min(100, baseQuality + qualityVariance));
 
-            // Determine result from quality
             let deliveryResult = 'PASS';
             let repChange = 2;
             let qualityBonus = 0;
@@ -22191,12 +22156,9 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             const actualPayment = payment + qualityBonus - penalties;
             const estCost = bid.estimated_cost || 0;
             const netProfit = actualPayment - estCost;
-
-            // Timeline assessment
             const actualTicks = ticksElapsed;
             const onTime = actualTicks <= totalTicks;
 
-            // Generate inspection scores per category (randomized around base quality)
             const inspCat = (base) => {
                 const score = Math.max(0, Math.min(100, base + Math.floor(Math.random() * 15) - 7));
                 const issues = [];
@@ -22211,14 +22173,13 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                 permits: { passed: true, issues: [] },
             };
 
-            // Build materials used from bid grades
             const bidGrades = bid.material_grades || {};
             const materialsUsed = Object.entries(bidGrades).map(([key, grade]) => {
                 const impactMap = { HIGH: 'positive', STANDARD: 'neutral', LOW: 'negative' };
                 return { name: key.replace(/_/g, ' '), grade, impact: impactMap[grade] || 'neutral' };
             });
 
-            // Insert delivery record
+            // Insert delivery record FIRST — if this fails, project stays in_progress and retries next tick
             const { error: delErr } = await supabase.from('construction_deliveries').insert({
                 contract_id: contract.id,
                 faction_id: bid.faction_id,
@@ -22239,7 +22200,46 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                 on_time: onTime,
                 delivered_at_tick: currentTick,
             });
-            if (delErr) console.error(`[Projects] Failed to create delivery record:`, delErr.message);
+
+            if (delErr) {
+                // Delivery record failed — do NOT mark completed, will retry next tick
+                console.error(`[Projects] Failed to create delivery record for ${contract.name} — project stays in_progress:`, delErr.message);
+                continue;
+            }
+
+            // Delivery succeeded — now mark contract completed and pay corporation
+            await supabase.from('construction_contracts')
+                .update({ status: 'completed', completed_at_tick: currentTick })
+                .eq('id', contract.id);
+
+            if (actualPayment > 0) {
+                const { data: corpPay } = await supabase
+                    .from('factions')
+                    .select('corp_cash_reserves')
+                    .eq('id', bid.faction_id)
+                    .single();
+                if (corpPay) {
+                    const newCash = Number(corpPay.corp_cash_reserves || 0) + actualPayment;
+                    await supabase.from('factions')
+                        .update({ corp_cash_reserves: newCash })
+                        .eq('id', bid.faction_id);
+                }
+            }
+
+            // Check if this was a mega project — set cooldown
+            const { data: contractFull } = await supabase
+                .from('construction_contracts')
+                .select('sector')
+                .eq('id', contract.id)
+                .single();
+            if (contractFull?.sector === 'mega_project') {
+                await supabase.from('mega_project_cooldowns')
+                    .upsert({
+                        nation_id: nationId,
+                        last_completed_tick: currentTick,
+                        cooldown_until_tick: currentTick + 360
+                    }, { onConflict: 'nation_id' });
+            }
 
             results.push({
                 contract: contract.name,
