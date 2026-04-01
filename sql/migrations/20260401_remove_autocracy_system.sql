@@ -88,6 +88,10 @@ UPDATE wiki_pages SET locked_by = NULL WHERE locked_by IN (
     SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
 );
 
+DELETE FROM ipo_members WHERE faction_id IN (
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
+);
+
 -- Delete all factions in Sangreza
 DELETE FROM factions
 WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza');
