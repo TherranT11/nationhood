@@ -2273,7 +2273,7 @@ async function retractBill() {
 async function renderEmergencyAdvanceButton(bill) {
     // Check for active national emergency
     try {
-        const { data: emergency } = await _supabase
+        const { data: emergency, error: eoErr } = await _supabase
             .from('executive_orders')
             .select('id, payload, issued_tick')
             .eq('nation_id', currentNation.id)
@@ -2282,7 +2282,7 @@ async function renderEmergencyAdvanceButton(bill) {
             .eq('is_active', true)
             .maybeSingle();
 
-        if (!emergency) return;
+        if (eoErr || !emergency) return;
 
         const usedThisTick = emergency.payload?.last_advance_tick === currentShardTick;
         const advanceTo = bill.status === 'committee' ? 'floor' : (isPresidential ? "president's desk" : 'enactment');
