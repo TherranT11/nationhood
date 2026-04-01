@@ -9448,6 +9448,53 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
         return true;
     }
 
+    // ── Political Party Registration Act subtype ──
+    if (bill.proposed_party_registration_threshold) {
+        const threshold = Number(bill.proposed_party_registration_threshold);
+        if (![5, 10, 15].includes(threshold)) {
+            console.error(`[enactFoundationalBill] Invalid party registration threshold: ${threshold}`);
+            await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
+            return false;
+        }
+
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
+
+        const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 4);
+        const newPolarization = Math.min(100, (nation?.polarization ?? 0) + 5);
+        const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 3);
+
+        const { error: nationErr } = await supabase.from('nations').update({
+            party_registration_threshold: threshold,
+            legitimacy: newLegitimacy,
+            polarization: newPolarization,
+            freedom_index: newFreedom
+        }).eq('id', bill.nation_id);
+        if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for party registration act:`, nationErr.message);
+
+        await supabase.from('event_log').insert({
+            nation_id: bill.nation_id,
+            event_name: 'FOUNDATIONAL_LAW_PASSED',
+            trigger_key: 'party_registration_act',
+            description_used: `The Political Party Registration Act has passed. Parties holding less than ${threshold}% of legislative seats will have their seats reallocated after elections. Affected parties cannot sponsor bills, vote, or hold ministries.`,
+            category: 'POLITICAL',
+            effects_applied: {
+                law: 'party_registration_act',
+                threshold_pct: threshold,
+                legitimacy: -4,
+                polarization: 5,
+                freedom_index: -3
+            },
+            fired_at_tick: currentTick
+        });
+
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+        console.log(`[enactFoundationalBill] Political Party Registration Act enacted for nation ${bill.nation_id} (threshold: ${threshold}%)`);
+        return true;
+    }
+
     // ── Electoral Makeup subtype ──
     // Validate proposed_seats BEFORE marking the bill as passed
     let newTotalSeats = bill.proposed_seats;
@@ -18421,7 +18468,7 @@ async function runElectionPreview(supabase, nationId) {
     // 1. Load nation
     const { data: nation } = await supabase
         .from('nations')
-        .select('id, name, total_seats, eligible_voters, electoral_commission_reform, ruling_faction_id')
+        .select('id, name, total_seats, eligible_voters, electoral_commission_reform, ruling_faction_id, party_registration_threshold')
         .eq('id', nationId)
         .single();
     if (!nation) throw new Error('Nation not found');
@@ -18538,6 +18585,37 @@ async function runElectionPreview(supabase, nationId) {
                     console.log(`[Election] Electoral Commission Reform: ${transferred} seats transferred to coalition (${(bonusPct * 100).toFixed(1)}% bonus)`);
                 }
             }
+        }
+    }
+
+    // 5c. Political Party Registration Act: reallocate seats from parties below threshold
+    const regThreshold = Number(nation.party_registration_threshold || 0);
+    const disbandedPartyIds = [];
+    if (regThreshold > 0) {
+        const minSeats = Math.ceil(totalSeats * regThreshold / 100);
+        const belowThreshold = Object.entries(seats).filter(([id, s]) => s > 0 && s < minSeats);
+        if (belowThreshold.length > 0) {
+            let seatsFreed = 0;
+            for (const [id, s] of belowThreshold) {
+                seatsFreed += s;
+                seats[id] = 0;
+                disbandedPartyIds.push(id);
+            }
+            const survivors = Object.entries(seats).filter(([id, s]) => s > 0);
+            const totalSurvivorSeats = survivors.reduce((sum, [, s]) => sum + s, 0);
+            let distributed = 0;
+            for (let i = 0; i < survivors.length; i++) {
+                const [id, s] = survivors[i];
+                const share = totalSurvivorSeats > 0 ? s / totalSurvivorSeats : 1 / survivors.length;
+                const gain = (i === survivors.length - 1) ? (seatsFreed - distributed) : Math.round(seatsFreed * share);
+                seats[id] += gain;
+                distributed += gain;
+            }
+            // Mark disbanded parties in the database so the client can show the popup
+            for (const pid of disbandedPartyIds) {
+                await supabase.from('factions').update({ registration_act_disbanded: true }).eq('id', pid);
+            }
+            console.log(`[Election] Party Registration Act: ${belowThreshold.length} parties below ${regThreshold}% threshold (${minSeats} seats), ${seatsFreed} seats reallocated`);
         }
     }
 

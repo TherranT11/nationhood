@@ -408,6 +408,34 @@ export async function runElectionPreview(supabase, nationId) {
         }
     }
 
+    // 5c. Political Party Registration Act: reallocate seats from parties below threshold
+    const regThreshold = Number(nation.party_registration_threshold || 0);
+    const disbandedPartyIds = [];
+    if (regThreshold > 0) {
+        const minSeats = Math.ceil(totalSeats * regThreshold / 100);
+        const belowThreshold = Object.entries(seats).filter(([id, s]) => s > 0 && s < minSeats);
+        if (belowThreshold.length > 0) {
+            let seatsFreed = 0;
+            for (const [id, s] of belowThreshold) {
+                seatsFreed += s;
+                seats[id] = 0;
+                disbandedPartyIds.push(id);
+            }
+            // Redistribute freed seats proportionally to surviving parties
+            const survivors = Object.entries(seats).filter(([id, s]) => s > 0);
+            const totalSurvivorSeats = survivors.reduce((sum, [, s]) => sum + s, 0);
+            let distributed = 0;
+            for (let i = 0; i < survivors.length; i++) {
+                const [id, s] = survivors[i];
+                const share = totalSurvivorSeats > 0 ? s / totalSurvivorSeats : 1 / survivors.length;
+                const gain = (i === survivors.length - 1) ? (seatsFreed - distributed) : Math.round(seatsFreed * share);
+                seats[id] += gain;
+                distributed += gain;
+            }
+            console.log(`[Election] Party Registration Act: ${belowThreshold.length} parties below ${regThreshold}% threshold (${minSeats} seats), ${seatsFreed} seats reallocated`);
+        }
+    }
+
     // 6. Build friendly results
     const partyResults = factions.map(f => {
         const s = standingMap[f.id];
@@ -437,7 +465,8 @@ export async function runElectionPreview(supabase, nationId) {
             : 0,
         results: partyResults,
         bloc_details: [],
-        partyNames
+        partyNames,
+        disbandedPartyIds
     };
 }
 

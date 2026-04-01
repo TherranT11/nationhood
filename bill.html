@@ -971,6 +971,67 @@ function renderArticles() {
                         'Head of government may declare national emergencies and bypass legislative votes.' +
                     '</div>' +
                 '</div>';
+        } else if (bill.proposed_judicial_appointment_politicization) {
+            const isPres = isPresidentialRepublic(currentNation);
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--red);">' +
+                    '<div class="article-number" style="color:var(--red);">FOUNDATIONAL LAW — AUTHORITARIAN</div>' +
+                    '<div class="article-title">Judicial Appointment Politicization Act</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill grants the ruling coalition direct control over judicial appointments.') + '</div>' +
+                '</div>' +
+                '<div class="repeal-notice" style="border-color:var(--red);background:rgba(239,68,68,0.05);">' +
+                    '<div class="repeal-notice-icon">⚖️</div>' +
+                    '<div class="repeal-notice-text" style="color:var(--red);">Ruling coalition appoints judges directly</div>' +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        'Requires <strong style="color:var(--red);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                        'If passed: judicial independence capped at 30, legitimacy −5, freedom index −3.<br>' +
+                        (isPres ? 'Impeachment conviction threshold rises from 67% to 75%.' : 'No confidence threshold rises from 50%+1 to 60%.') +
+                    '</div>' +
+                '</div>';
+        } else if (bill.proposed_electoral_commission_reform) {
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--red);">' +
+                    '<div class="article-number" style="color:var(--red);">FOUNDATIONAL LAW — AUTHORITARIAN</div>' +
+                    '<div class="article-title">Electoral Commission Reform Act</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill places the election commission under ruling coalition control.') + '</div>' +
+                '</div>' +
+                '<div class="repeal-notice" style="border-color:var(--red);background:rgba(239,68,68,0.05);">' +
+                    '<div class="repeal-notice-icon">🗳️</div>' +
+                    '<div class="repeal-notice-text" style="color:var(--red);">Ruling coalition controls the election commission</div>' +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        'Requires <strong style="color:var(--red);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                        'If passed: governing parties receive 5-10% seat bonus in elections. Legitimacy −5, polarization +3.' +
+                    '</div>' +
+                '</div>';
+        } else if (bill.proposed_party_registration_threshold) {
+            const thresholdPct = Number(bill.proposed_party_registration_threshold);
+            const minSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * thresholdPct / 100);
+            const isCommittee = bill.status === 'committee';
+            const isBillSponsor = bill.proposed_by === currentFaction?.id;
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--red);">' +
+                    '<div class="article-number" style="color:var(--red);">FOUNDATIONAL LAW — AUTHORITARIAN</div>' +
+                    '<div class="article-title">Political Party Registration Act</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill raises the threshold for parties to hold seats in the legislature.') + '</div>' +
+                '</div>' +
+                '<div class="repeal-notice" style="border-color:var(--red);background:rgba(239,68,68,0.05);">' +
+                    '<div class="repeal-notice-icon">🚫</div>' +
+                    '<div class="repeal-notice-text" style="color:var(--red);">Seat threshold: parties below ' + thresholdPct + '% (&lt;' + minSeats + ' seats) will be removed</div>' +
+                    (isCommittee && isBillSponsor ? `
+                    <div style="margin:12px 0;display:flex;gap:8px;justify-content:center;">
+                        <button class="sponsor-btn ${thresholdPct === 5 ? 'send-floor' : ''}" style="padding:6px 16px;font-size:0.8rem;" onclick="setPartyRegistrationThreshold(5)" ${thresholdPct === 5 ? 'disabled' : ''}>&lt;5%</button>
+                        <button class="sponsor-btn ${thresholdPct === 10 ? 'send-floor' : ''}" style="padding:6px 16px;font-size:0.8rem;" onclick="setPartyRegistrationThreshold(10)" ${thresholdPct === 10 ? 'disabled' : ''}>&lt;10%</button>
+                        <button class="sponsor-btn ${thresholdPct === 15 ? 'send-floor' : ''}" style="padding:6px 16px;font-size:0.8rem;" onclick="setPartyRegistrationThreshold(15)" ${thresholdPct === 15 ? 'disabled' : ''}>&lt;15%</button>
+                    </div>
+                    <div style="font-size:0.7rem;color:var(--text-dim);text-align:center;">Select threshold before sending to floor. Cannot be changed after.</div>
+                    ` : '') +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        'Requires <strong style="color:var(--red);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                        'If passed: parties below ' + thresholdPct + '% of seats have seats reallocated after elections.<br>' +
+                        'Affected parties cannot sponsor bills, vote, or hold ministries.<br>' +
+                        'Legitimacy −4, polarization +5, freedom index −3.' +
+                    '</div>' +
+                '</div>';
         } else {
             // Electoral Makeup subtype (default)
             const currentSeatsDisplay = GAME_CONFIG.TOTAL_SEATS;
@@ -3062,6 +3123,19 @@ document.getElementById('chat-input')?.addEventListener('keypress', (e) => {
 });
 
 // Expose functions for HTML onclick/onchange handlers
+async function setPartyRegistrationThreshold(pct) {
+    if (![5, 10, 15].includes(pct)) return;
+    const bill = currentBill;
+    if (!bill || bill.status !== 'committee') return;
+    const { error } = await _supabase.from('bills')
+        .update({ proposed_party_registration_threshold: pct })
+        .eq('id', bill.id);
+    if (error) { alert('Failed to update threshold: ' + error.message); return; }
+    currentBill.proposed_party_registration_threshold = pct;
+    renderBill();
+}
+window.setPartyRegistrationThreshold = setPartyRegistrationThreshold;
+
 window.castVote = castVote;
 window.sendComment = sendComment;
 window.openAmendmentModal = openAmendmentModal;

@@ -3463,6 +3463,53 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         return true;
     }
 
+    // ── Political Party Registration Act subtype ──
+    if (bill.proposed_party_registration_threshold) {
+        const threshold = Number(bill.proposed_party_registration_threshold);
+        if (![5, 10, 15].includes(threshold)) {
+            console.error(`[enactFoundationalBill] Invalid party registration threshold: ${threshold}`);
+            await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
+            return false;
+        }
+
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
+
+        const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 4);
+        const newPolarization = Math.min(100, (nation?.polarization ?? 0) + 5);
+        const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 3);
+
+        const { error: nationErr } = await supabase.from('nations').update({
+            party_registration_threshold: threshold,
+            legitimacy: newLegitimacy,
+            polarization: newPolarization,
+            freedom_index: newFreedom
+        }).eq('id', bill.nation_id);
+        if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for party registration act:`, nationErr.message);
+
+        await supabase.from('event_log').insert({
+            nation_id: bill.nation_id,
+            event_name: 'FOUNDATIONAL_LAW_PASSED',
+            trigger_key: 'party_registration_act',
+            description_used: `The Political Party Registration Act has passed. Parties holding less than ${threshold}% of legislative seats will have their seats reallocated after elections. Affected parties cannot sponsor bills, vote, or hold ministries.`,
+            category: 'POLITICAL',
+            effects_applied: {
+                law: 'party_registration_act',
+                threshold_pct: threshold,
+                legitimacy: -4,
+                polarization: 5,
+                freedom_index: -3
+            },
+            fired_at_tick: currentTick
+        });
+
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+        console.log(`[enactFoundationalBill] Political Party Registration Act enacted for nation ${bill.nation_id} (threshold: ${threshold}%)`);
+        return true;
+    }
+
     // ── Electoral Makeup subtype ──
     // Validate proposed_seats BEFORE marking the bill as passed
     let newTotalSeats = bill.proposed_seats;
