@@ -199,7 +199,7 @@ const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 5 — general snap cy
  * race conditions.  On insufficient AP it returns -(current_ap + 1) so the
  * caller always has the real server-side balance (single source of truth).
  */
-async function deductAP(supabase, factionId, cost) {
+async function deductAP(supabase, factionId, cost, ledger) {
     const { data, error } = await supabase.rpc('deduct_ap', {
         p_faction_id: factionId,
         p_cost: cost
@@ -211,6 +211,16 @@ async function deductAP(supabase, factionId, cost) {
     if (data < 0) {
         const currentAp = -(data) - 1;
         return { success: false, error: 'Insufficient AP', currentAp };
+    }
+    // Log to AP ledger if reason provided
+    if (ledger?.reason) {
+        supabase.from('ap_ledger').insert({
+            faction_id: factionId,
+            tick: ledger.tick || 0,
+            delta: -cost,
+            reason: ledger.reason,
+            detail: ledger.detail || null,
+        }).then(() => {}, (e) => console.warn('[deductAP] ledger insert failed:', e));
     }
     return { success: true, newAp: data };
 }
@@ -385,7 +395,7 @@ var TRADE_SECTORS = [
         label: 'Food & Agriculture',
         export_only: false,
         export_stat: 'arable_land',
-        export_threshold: 20
+        export_threshold: 10
     },
     {
         key: 'manufactured_goods',
@@ -751,10 +761,10 @@ function calculateTradeAffinity(nationA, nationB, relation, opts) {
     // Active embargo/sanctions between these two nations: major penalty
     var embargoPenalty = (opts && opts.has_embargo) ? -40 : 0;
 
-    // Geographic proximity: continuous bonus scaled from proximity 0-100.
-    // Bordering (100) → +20, same region (50) → +10, distant (20) → +4.
+    // Geographic proximity: continuous bonus scaled from distance 0-100.
+    // Bordering (0) → +20, same region (50) → +10, distant (80) → +4.
     var proximity = (opts && opts.proximity != null) ? Number(opts.proximity) : 50;
-    var proximityBonus = (proximity / 100) * 20;
+    var proximityBonus = ((100 - proximity) / 100) * 20;
 
     // Autocracy penalty: other nations are less willing to trade with autocratic regimes
     var autocracyPenalty = 0;
@@ -1004,9 +1014,11 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     // Fetch previous tick's price modifiers for smoothing
     var prevTick = currentTick - 1;
     if (prevTick > 0) {
+        // Fetch one nation's rows — price_modifier is identical across nations per sector
         var { data: prevFlows } = await supabase.from('trade_flows')
             .select('sector, price_modifier')
             .eq('tick', prevTick)
+            .eq('nation_id', nationList[0].id)
             .limit(sectors.length);
         if (prevFlows) {
             for (var i = 0; i < prevFlows.length; i++) {
@@ -1474,13 +1486,14 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             // Allocate each pair: min of (exporter's share, importer's share)
             for (var pi = 0; pi < pairs.length; pi++) {
                 var p = pairs[pi];
-                if (p.weight <= 0) { p.volume = 0; continue; }
+                if (p.weight <= 0) continue; // preserve prior-pass volume for exhausted pairs
 
                 // Share of this exporter's capacity going to this importer
                 var expShare = (expBudget[p.expId] || 0) * (p.weight / (expWeightSum[p.expId] || 1));
                 // Share of this importer's demand filled by this exporter
                 var impShare = (impBudget[p.impId] || 0) * (p.weight / (impWeightSum[p.impId] || 1));
-                p.volume = Math.round(Math.min(expShare, impShare));
+                // Accumulate across passes: pass 0 sets base, pass 1+ adds remaining
+                p.volume += Math.round(Math.min(expShare, impShare));
             }
 
             // Update budgets: subtract allocated volumes, zero out fully-allocated pairs
@@ -3707,7 +3720,7 @@ function normalizeNationStatKey(statKey) {
 const STATS_HIGHER_IS_BETTER = [
     'gdp_growth', 'currency_strength', 'foreign_investment', 'credit',
     'labor_force_participation', 'minimum_wage', 'union_strength',
-    'population_growth', 'eligible_voters', 'ethnic_diversity',
+    'population_growth', 'ethnic_diversity',
     'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan',
     'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
     'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation', 'renewable_energy_percentage',
@@ -4197,8 +4210,8 @@ const MINISTER_APPROVAL_CONFIG = {
     // Foreign Minister: -0.25 approval/tick per nation without an outgoing ambassador
     MISSING_AMBASSADOR_PENALTY: -0.25,
 
-    // Government approval: -3 per vacant ministry seat
-    VACANCY_PENALTY: -3,
+    // Government approval: -0.1 per vacant ministry per tick
+    VACANCY_PENALTY: -0.1,
 
     // Government approval floor: even the worst government retains some support
     APPROVAL_FLOOR: 15,
@@ -6183,22 +6196,8 @@ async function applyNoVotePenalty(supabase, bill, nationId) {
         const approvalLoss = -(1 + Math.floor(Math.random() * 3));
         await nudgeApproval(supabase, faction.id, nationId, approvalLoss, { source: 'bill:no_vote' });
 
-        // -5 visibility
-        const { data: standing } = await supabase
-            .from('faction_electoral_standing')
-            .select('id, visibility')
-            .eq('faction_id', faction.id)
-            .eq('nation_id', nationId)
-            .maybeSingle();
-        if (standing) {
-            const newVis = Math.max(0, (Number(standing.visibility) || 0) + VISIBILITY_PENALTY);
-            await supabase.from('faction_electoral_standing')
-                .update({ visibility: newVis })
-                .eq('id', standing.id);
-        }
-
-        // -5 credibility
-        await adjustCredibility(supabase, faction.id, nationId, CREDIBILITY_PENALTY);
+        // Visibility and credibility writes removed — 3-pillar election system.
+        // No-vote penalty is handled server-side via adjustFactionMomentum.
 
         penalized.push({
             factionId: faction.id,
@@ -6301,11 +6300,13 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
         }
         if (tags.length === 0) continue;
 
-        // Build YES voter set (normalize committee stances)
+        // Build YES and NO voter sets (normalize committee stances)
         const yesVoters = new Set();
+        const noVoters = new Set();
         for (const s of (bill.bill_support || [])) {
             const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
             if (stance === 'yes') yesVoters.add(s.faction_id);
+            else if (stance === 'no') noVoters.add(s.faction_id);
         }
         // Sponsor always counts as YES
         if (bill.proposed_by) yesVoters.add(bill.proposed_by);
@@ -6332,6 +6333,11 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
             // +4 for voting YES (all YES voters including sponsor)
             for (const factionId of yesVoters) {
                 addShift(factionId, mapping.axisKey, 4 * mapping.direction * diminish);
+            }
+
+            // -4 for voting NO (opposite direction)
+            for (const factionId of noVoters) {
+                addShift(factionId, mapping.axisKey, -4 * mapping.direction * diminish);
             }
         }
     }
@@ -6396,8 +6402,7 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
 const IDEOLOGY_DECAY_DEAD_ZONE = 10; // no decay within ±10 of center
 /**
  * Per-tick ideology decay toward center (0).
- * Integer arithmetic to match INTEGER columns in faction_ideology.
- *   ±11–74 → 1/tick, ±75–100 → 2/tick
+ *   ±11–49 → 0.5/tick, ±50–100 → 1/tick
  * Dead zone: scores within ±10 don't decay.
  */
 async function processIdeologyDecay(supabase, nationId, currentTick) {
@@ -6413,7 +6418,7 @@ async function processIdeologyDecay(supabase, nationId, currentTick) {
             const score = ideo[axis.key] || 0;
             if (Math.abs(score) <= IDEOLOGY_DECAY_DEAD_ZONE) continue;
 
-            const absDecay = Math.max(1, Math.round(Math.abs(score) / 50));
+            const absDecay = Math.abs(score) >= 50 ? 1 : 0.5;
             const newScore = score > 0
                 ? Math.max(0, score - absDecay)
                 : Math.min(0, score + absDecay);
@@ -11694,11 +11699,11 @@ async function processElections(supabase, nation, currentTick) {
             } catch (e) { /* non-blocking */ }
         }
 
-        // Dissolve legislature — fail all pending bills (new parliament must re-propose)
+        // Dissolve legislature — fail all pending and frozen bills (new parliament must re-propose)
         const { data: dissolvedBills } = await supabase.from('bills')
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
-            .in('status', ['committee', 'floor'])
+            .in('status', ['committee', 'floor', 'frozen'])
             .select('id, nation_id, bill_type, ambassador_id, ministry_key');
 
         await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
@@ -13848,7 +13853,7 @@ function calculateIdeologyZones(mean, variance) {
     const polarization = Math.min(100, Math.max(0, (variance - 5) / 35 * 100));
 
     // Centrist zone centered at 50, width shrinks with polarization
-    const centristHalf = Math.max(5, 15 - polarization * 0.10);
+    const centristHalf = Math.max(3, 7 - polarization * 0.04);
     const centristLeft = 50 - centristHalf;
     const centristRight = 50 + centristHalf;
 
@@ -15686,32 +15691,9 @@ function getDiminishingMultiplier(currentCount) {
  * @param {number} boost - Positive visibility increment (e.g., 5-15)
  */
 async function boostVisibility(supabase, factionId, nationId, boost) {
-    if (!boost) return;
-
-    const { data: standing } = await supabase
-        .from('faction_electoral_standing')
-        .select('id, visibility, campaign_actions_this_tick')
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId)
-        .maybeSingle();
-    if (!standing) return;
-
-    const actionCount = Number(standing.campaign_actions_this_tick ?? 0);
-    // Diminishing returns only apply to positive boosts; penalties hit at full force
-    const effectiveBoost = boost > 0
-        ? round2(boost * getDiminishingMultiplier(actionCount))
-        : boost;
-
-    const old = Number(standing.visibility ?? CFG.DEFAULT_VISIBILITY);
-    const newVis = round2(clamp(old + effectiveBoost, 0, 100));
-
-    const { error: visErr } = await supabase.from('faction_electoral_standing')
-        .update({
-            visibility: newVis,
-            campaign_actions_this_tick: actionCount + 1,
-        })
-        .eq('id', standing.id);
-    if (visErr) console.error('[Electorate] visibility update failed:', visErr.message);
+    // No-op: visibility column repurposed for momentum (3-pillar election system).
+    // Server-side tickElectionPillars overwrites visibility with momentum each tick.
+    return;
 }
 
 /**
@@ -15727,45 +15709,10 @@ async function boostVisibility(supabase, factionId, nationId, boost) {
  * @param {string} [opts.source='unknown'] - Audit tag for the party_approval_log (e.g., 'rally', 'crisis:Recession')
  */
 async function nudgeApproval(supabase, factionId, nationId, delta, opts) {
-    if (!delta || delta === 0) return;
-    const campaign = opts?.campaign ?? false;
-    const source = opts?.source ?? 'unknown';
-
-    const { data: standing } = await supabase
-        .from('faction_electoral_standing')
-        .select('id, party_approval, campaign_actions_this_tick')
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId)
-        .maybeSingle();
-    if (!standing) return;
-
-    const actionCount = Number(standing.campaign_actions_this_tick ?? 0);
-    const multiplier = campaign ? getDiminishingMultiplier(actionCount) : 1;
-    const effectiveDelta = round2(delta * multiplier);
-
-    const old = Number(standing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);
-    const newApproval = round2(clamp(old + effectiveDelta, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX));
-
-    const updateFields = { party_approval: newApproval };
-    if (campaign) updateFields.campaign_actions_this_tick = actionCount + 1;
-
-    const { error: appErr } = await supabase.from('faction_electoral_standing')
-        .update(updateFields)
-        .eq('id', standing.id);
-    if (appErr) console.error('[Electorate] approval update failed:', appErr.message);
-
-    // Audit log (non-fatal)
-    try {
-        const { data: shard } = await supabase
-            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        await supabase.from('party_approval_log').insert({
-            faction_id: factionId,
-            nation_id: nationId,
-            amount: effectiveDelta,
-            source,
-            tick: shard?.current_tick || 0
-        });
-    } catch (e) { /* non-blocking */ }
+    // No-op: party_approval column repurposed for governance score (3-pillar election system).
+    // Server-side tickElectionPillars overwrites party_approval with governance score each tick.
+    // All momentum effects are handled server-side via adjustFactionMomentum().
+    return;
 }
 
 /**
@@ -15805,44 +15752,9 @@ async function nudgeEnthusiasm(supabase, nationId, delta) {
  * @param {number} [currentTick=0] - Current tick (needed for suspend calculation)
  */
 async function adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0, opts = {}) {
-    if (!delta && !suspendRecoveryTicks) return;
-
-    const { data: standing } = await supabase
-        .from('faction_electoral_standing')
-        .select('id, credibility_modifier, credibility_recovery_suspended_until')
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId)
-        .maybeSingle();
-    if (!standing) return;
-
-    const old = Number(standing.credibility_modifier ?? 1.0);
-    const newCred = round3(clamp(old + (delta || 0), CFG.CREDIBILITY_MIN, CFG.CREDIBILITY_MAX));
-
-    const updateObj = { credibility_modifier: newCred };
-    if (suspendRecoveryTicks > 0) {
-        const suspendUntil = currentTick + suspendRecoveryTicks;
-        const currentSuspend = Number(standing.credibility_recovery_suspended_until ?? 0);
-        updateObj.credibility_recovery_suspended_until = Math.max(currentSuspend, suspendUntil);
-    }
-
-    const { error: credErr } = await supabase.from('faction_electoral_standing')
-        .update(updateObj)
-        .eq('id', standing.id);
-    if (credErr) console.error('[Electorate] credibility update failed:', credErr.message);
-
-    // Audit log (non-fatal)
-    if (delta && opts.source) {
-        const tick = currentTick || opts.tick || 0;
-        supabase.from('credibility_log').insert({
-            faction_id: factionId,
-            nation_id: nationId,
-            amount: delta,
-            source: opts.source,
-            tick,
-        }).then(({ error: logErr }) => {
-            if (logErr) console.warn('[Electorate] credibility_log insert failed:', logErr.message);
-        });
-    }
+    // No-op: credibility system removed (3-pillar election system).
+    // Election outcomes now driven by governance (40%), momentum (30%), ideology (30%).
+    return;
 }
 
 // ============================================================================
@@ -15919,7 +15831,7 @@ async function executeTakeStance(supabase, factionId, nationId, issueId, axis, s
     }
 
     // ── Deduct AP ──
-    const apResult = await deductAP(supabase, factionId, STANCE_CONFIG.AP_COST);
+    const apResult = await deductAP(supabase, factionId, STANCE_CONFIG.AP_COST, { reason: 'take_stance', detail: 'Take a Stance', tick: currentTick });
     if (!apResult.success) {
         return { success: false, message: apResult.error || 'Insufficient AP' };
     }
@@ -16275,7 +16187,7 @@ async function executePollNow(supabase, factionId, nationId, currentTick, pollTi
 
     // ── Deduct AP (tiered: 1 AP = ±5%, 3 AP = ±3%) ──
     const apCost = pollTier === 3 ? 3 : 1;
-    const apResult = await deductAP(supabase, factionId, apCost);
+    const apResult = await deductAP(supabase, factionId, apCost, { reason: 'poll', detail: `Poll Now (±${pollTier === 3 ? '3' : '5'}%)`, tick: currentTick });
     if (!apResult.success) {
         return { success: false, message: apResult.error || 'Insufficient AP' };
     }
@@ -16416,7 +16328,7 @@ async function executeFundThinkTank(supabase, factionId, nationId, targetAxis, t
     }
 
     // ── Deduct AP ──
-    const apResult = await deductAP(supabase, factionId, cfg.AP_COST);
+    const apResult = await deductAP(supabase, factionId, cfg.AP_COST, { reason: 'think_tank', detail: 'Fund Think Tank (upfront)', tick: currentTick });
     if (!apResult.success) {
         return { success: false, message: apResult.error || 'Insufficient AP' };
     }
@@ -16478,7 +16390,7 @@ async function suspendIdeologyAction(supabase, factionId, actionId, currentTick)
     if (action.action_type !== 'think_tank' && action.action_type !== 'grassroots_movement')
         return { success: false, message: 'Only Think Tanks and Grassroots Movements can be suspended.' };
 
-    const apResult = await deductAP(supabase, factionId, 1);
+    const apResult = await deductAP(supabase, factionId, 1, { reason: 'suspend_action', detail: `Suspend ${action.action_type}`, tick: currentTick });
     if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP' };
 
     await supabase.from('ideology_shift_actions')
@@ -16498,7 +16410,7 @@ async function continueIdeologyAction(supabase, factionId, actionId, currentTick
     if (!action) return { success: false, message: 'Action not found.' };
     if (action.status !== 'paused' && action.status !== 'suspended') return { success: false, message: 'Action is not paused.' };
 
-    const apResult = await deductAP(supabase, factionId, 1);
+    const apResult = await deductAP(supabase, factionId, 1, { reason: 'resume_action', detail: `Resume ${action.action_type}`, tick: currentTick });
     if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP' };
 
     await supabase.from('ideology_shift_actions')
@@ -16522,7 +16434,7 @@ async function cancelIdeologyAction(supabase, factionId, nationId, actionId, cur
     if (action.action_type !== 'think_tank' && action.action_type !== 'grassroots_movement')
         return { success: false, message: 'Only Think Tanks and Grassroots Movements can be cancelled.' };
 
-    const apResult = await deductAP(supabase, factionId, 2);
+    const apResult = await deductAP(supabase, factionId, 2, { reason: 'cancel_action', detail: `Cancel ${action.action_type}`, tick: currentTick });
     if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP (need 2)' };
 
     // Revert 75% of cumulative drift
@@ -16568,6 +16480,7 @@ async function cancelIdeologyAction(supabase, factionId, nationId, actionId, cur
  */
 async function executeMediaCampaign(supabase, factionId, nationId, targetAxis, targetDirection, currentTick) {
     const cfg = IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN;
+    const mcLedger = { reason: 'media_campaign', detail: 'Media Campaign (upfront)', tick: currentTick };
 
     if (!AXIS_KEYS.includes(targetAxis)) {
         return { success: false, message: `Unknown axis: ${targetAxis}` };
@@ -16589,7 +16502,7 @@ async function executeMediaCampaign(supabase, factionId, nationId, targetAxis, t
         return { success: false, message: 'You already have an active media campaign.' };
     }
 
-    const apResult = await deductAP(supabase, factionId, cfg.AP_COST);
+    const apResult = await deductAP(supabase, factionId, cfg.AP_COST, mcLedger);
     if (!apResult.success) {
         return { success: false, message: apResult.error || 'Insufficient AP' };
     }
@@ -16665,7 +16578,7 @@ async function executeGrassrootsMovement(supabase, factionId, nationId, targetAx
         return { success: false, message: 'You already have a grassroots movement running (or paused). Cancel it first to start a new one.' };
     }
 
-    const apResult = await deductAP(supabase, factionId, cfg.AP_COST);
+    const apResult = await deductAP(supabase, factionId, cfg.AP_COST, { reason: 'grassroots', detail: 'Grassroots Movement (upfront)', tick: currentTick });
     if (!apResult.success) {
         return { success: false, message: apResult.error || 'Insufficient AP' };
     }
@@ -16772,7 +16685,7 @@ async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick
 
         if (act.action_type === 'think_tank') {
             // 1 AP per tick cost — suspend if faction can't afford it
-            const apResult = await deductAP(supabase, act.faction_id, IDEO_SHIFT_CONFIG.THINK_TANK.TICK_AP_COST);
+            const apResult = await deductAP(supabase, act.faction_id, IDEO_SHIFT_CONFIG.THINK_TANK.TICK_AP_COST, { reason: 'think_tank_tick', detail: 'Think Tank (per-tick)', tick: currentTick });
             if (!apResult?.success) { toSuspendAP.push(act.id); continue; }
             // 1d3 drift: randomly 0.1, 0.2, or 0.3
             const col = 'ideo_mean_' + act.target_axis;
@@ -16812,7 +16725,7 @@ async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick
         } else if (act.action_type === 'grassroots_movement') {
             const grCfg = IDEO_SHIFT_CONFIG.GRASSROOTS;
             // 1 AP per tick cost — suspend if faction can't afford it
-            const grApResult = await deductAP(supabase, act.faction_id, grCfg.TICK_AP_COST);
+            const grApResult = await deductAP(supabase, act.faction_id, grCfg.TICK_AP_COST, { reason: 'grassroots_tick', detail: 'Grassroots Movement (per-tick)', tick: currentTick });
             if (!grApResult?.success) { toSuspendAP.push(act.id); continue; }
             // 1d2 drift: randomly 0.1 or 0.2
             const col = 'ideo_mean_' + act.target_axis;
@@ -16979,7 +16892,7 @@ async function executeIdeologicalPivot(supabase, factionId, nationId, targetAxis
     }
 
     // Deduct AP
-    const apResult = await deductAP(supabase, factionId, apCost);
+    const apResult = await deductAP(supabase, factionId, apCost, { reason: 'pivot', detail: 'Ideological Pivot', tick: currentTick });
     if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP' };
 
     // Update ideology — error means AP lost but position unchanged (logged, not fatal)
@@ -17001,19 +16914,7 @@ async function executeIdeologicalPivot(supabase, factionId, nationId, targetAxis
         .eq('id', factionId);
     if (pivotErr) console.error('[Pivot] pivot tracking update failed:', pivotErr.message);
 
-    // Apply credibility penalty
-    if (credPenalty > 0) {
-        const { data: standing } = await supabase.from('faction_electoral_standing')
-            .select('id, credibility_modifier')
-            .eq('faction_id', factionId).eq('nation_id', nationId).maybeSingle();
-        if (standing) {
-            const newCred = Math.max(0.1, (Number(standing.credibility_modifier) || 1.0) - credPenalty * 0.01);
-            const { error: credErr } = await supabase.from('faction_electoral_standing')
-                .update({ credibility_modifier: newCred })
-                .eq('id', standing.id);
-            if (credErr) console.error('[Pivot] credibility update failed:', credErr.message);
-        }
-    }
+    // Credibility penalty removed — 3-pillar election system. Pivot cost is AP only.
 
     // Build result
     const axisDef = IDEOLOGY_AXES.find(a => a.key === targetAxis);
@@ -19645,8 +19546,9 @@ registerAutocracyAction('arrest_leader', {
     isStrongmanExclusive: true,
     mutualExclusions: [],
     async validate(supabase, ctx) {
-        const { nation, extra } = ctx;
+        const { nation, factionState, extra } = ctx;
         if (!extra?.targetFactionId) return 'Must specify targetFactionId';
+        if (extra.targetFactionId === factionState.faction_id) return 'Cannot arrest your own leader';
         const { data: t } = await supabase.from('faction_pillar_state').select('is_strongman, arrested_leader')
             .eq('faction_id', extra.targetFactionId).eq('nation_id', nation.id).single();
         if (!t) return 'Target not found';
@@ -19657,6 +19559,7 @@ registerAutocracyAction('arrest_leader', {
     async execute(supabase, ctx) {
         const { nation, factionState, extra, currentTick } = ctx;
         const targetFactionId = extra?.targetFactionId;
+        if (targetFactionId === factionState.faction_id) return { success: false, error: 'Cannot arrest your own leader' };
 
         // Load target (already validated)
         const { data: targetFps } = await supabase.from('faction_pillar_state')
@@ -19748,17 +19651,20 @@ registerAutocracyAction('execute_leader', {
     isStrongmanExclusive: true,
     mutualExclusions: [],
     async validate(supabase, ctx) {
-        const { nation, extra } = ctx;
+        const { nation, factionState, extra } = ctx;
         if (!extra?.targetFactionId) return 'Must specify targetFactionId';
-        const { data: t } = await supabase.from('faction_pillar_state').select('arrested_leader')
+        if (extra.targetFactionId === factionState.faction_id) return 'Cannot execute your own leader';
+        const { data: t } = await supabase.from('faction_pillar_state').select('is_strongman, arrested_leader')
             .eq('faction_id', extra.targetFactionId).eq('nation_id', nation.id).single();
         if (!t) return 'Target not found';
+        if (t.is_strongman) return 'Cannot execute a strongman';
         if (!t.arrested_leader) return 'Target leader is not arrested';
         return null;
     },
     async execute(supabase, ctx) {
         const { nation, factionState, extra, currentTick } = ctx;
         const targetFactionId = extra?.targetFactionId;
+        if (targetFactionId === factionState.faction_id) return { success: false, error: 'Cannot execute your own leader' };
 
         // Load target (already validated)
         const { data: targetFps } = await supabase.from('faction_pillar_state')
@@ -21572,21 +21478,19 @@ const PROTEST_CONFIG = {
     FATIGUE_LOOKBACK_TICKS: 6,
     FATIGUE_PENALTY_PER_PROTEST: 10,
 
-    // Tier 6 crisis
-    TIER6_DURATION: 6,
-    TIER6_GOV_APPROVAL_PER_TICK: -2,
-    TIER6_CIVIL_UNREST_PER_TICK: 2,
-    TIER6_HAPPINESS_PER_TICK: -1,
-    TIER6_POLITICAL_VIOLENCE_AFTER_TICK: 3, // starts after tick 3
-    TIER6_POLITICAL_VIOLENCE_PER_TICK: 1,
+    // Tier 6 crisis (half of Tier 7 values)
+    TIER6_GOV_APPROVAL_PER_TICK: -0.25,
+    TIER6_CIVIL_UNREST_PER_TICK: 1,
+    TIER6_GDP_GROWTH_PER_TICK: -0.15,
+    TIER6_FOREIGN_INVESTMENT_PER_TICK: -0.5,
+    TIER6_POLITICAL_VIOLENCE_PER_TICK: 0.5,
     TIER6_ENFORCE_SUCCESS_CHANCE: 0.33,
 
     // Tier 7 crisis
-    TIER7_DURATION: 7,
-    TIER7_GOV_APPROVAL_PER_TICK: -3,
-    TIER7_CIVIL_UNREST_PER_TICK: 3,
-    TIER7_GDP_GROWTH_PER_TICK: -0.2,
-    TIER7_FOREIGN_INVESTMENT_PER_TICK: -2,
+    TIER7_GOV_APPROVAL_PER_TICK: -0.5,
+    TIER7_CIVIL_UNREST_PER_TICK: 2,
+    TIER7_GDP_GROWTH_PER_TICK: -0.3,
+    TIER7_FOREIGN_INVESTMENT_PER_TICK: -1,
     TIER7_POLITICAL_VIOLENCE_PER_TICK: 1,
     TIER7_DEMAND_WINDOW_TICKS: 6,
     TIER7_DEMAND_MIN_MAGNITUDE: 6,
@@ -22016,14 +21920,10 @@ function computeTier6CrisisEffects(ticksActive, publicAddressThisTick) {
     const effects = {
         gov_approval: PROTEST_CONFIG.TIER6_GOV_APPROVAL_PER_TICK,
         civil_unrest: PROTEST_CONFIG.TIER6_CIVIL_UNREST_PER_TICK,
-        happiness: PROTEST_CONFIG.TIER6_HAPPINESS_PER_TICK,
-        political_violence: 0,
+        gdp_growth: PROTEST_CONFIG.TIER6_GDP_GROWTH_PER_TICK,
+        foreign_investment: PROTEST_CONFIG.TIER6_FOREIGN_INVESTMENT_PER_TICK,
+        political_violence: PROTEST_CONFIG.TIER6_POLITICAL_VIOLENCE_PER_TICK,
     };
-
-    // Political violence starts after tick 3
-    if (ticksActive > PROTEST_CONFIG.TIER6_POLITICAL_VIOLENCE_AFTER_TICK) {
-        effects.political_violence = PROTEST_CONFIG.TIER6_POLITICAL_VIOLENCE_PER_TICK;
-    }
 
     // Public Address reduces civil unrest accumulation by 1 that tick
     if (publicAddressThisTick) {
@@ -22874,7 +22774,7 @@ async function executeEPOOnCrisis(supabase, factionId, nationId, protestId, curr
         await protestUpdate(supabase, protestId, {
             tier: 7,
             crisis_started_tick: currentTick,
-            crisis_duration: PROTEST_CONFIG.TIER7_DURATION,
+            crisis_duration: 1 + Math.floor(Math.random() * 12), // 1d12
             tier7_demand: demand,
             effects_applied: [
                 ...(protest.effects_applied || []),
@@ -23099,20 +22999,8 @@ async function resolveProtest(supabase, protest, nationStats, currentTick) {
 
     // Backfire penalties on the organising party (Tier 1-2)
     if (effects.organiserVisibility < 0 || effects.organiserApproval < 0 || effects.organiserEnthusiasm < 0) {
-        // Visibility: direct update (boostVisibility only handles positive)
+        // Visibility write removed — column repurposed for momentum (3-pillar system).
         if (effects.organiserVisibility < 0) {
-            const { data: standing } = await supabase
-                .from('faction_electoral_standing')
-                .select('id, visibility')
-                .eq('faction_id', factionId)
-                .eq('nation_id', nationId)
-                .maybeSingle();
-            if (standing) {
-                const newVis = Math.max(0, (Number(standing.visibility) || 0) + effects.organiserVisibility);
-                await supabase.from('faction_electoral_standing')
-                    .update({ visibility: newVis })
-                    .eq('id', standing.id);
-            }
             appliedEffects.push({ stat: 'organiser_visibility', delta: effects.organiserVisibility });
         }
         // Party approval
@@ -23743,7 +23631,7 @@ async function executeRally(supabase, factionId, nationId, blocId, currentTick) 
     // ── 8. Deduct AP + track last_action_tick ──
     // KNOWN ISSUE: AP deducted after effects applied. Early check (step 1) prevents common case.
     // Atomic RPC prevents DB over-spending. Race condition is acceptable for alpha.
-    const apResult = await deductAP(supabase, factionId, effectiveRallyCost);
+    const apResult = await deductAP(supabase, factionId, effectiveRallyCost, { reason: 'rally', detail: 'Hold a Rally', tick: currentTick });
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Rally] last_action_tick update failed:', error.message); });
 
     // ── 9. Log ──
@@ -23944,7 +23832,7 @@ async function executeOutreach(supabase, factionId, nationId, blocId, currentTic
     const effects = [];
 
     // ── 9. Deduct AP + track last_action_tick ──
-    const apResult = await deductAP(supabase, factionId, effectiveOutreachCost);
+    const apResult = await deductAP(supabase, factionId, effectiveOutreachCost, { reason: 'outreach', detail: 'Community Outreach', tick: currentTick });
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Outreach] last_action_tick update failed:', error.message); });
 
     // ── 10. Log ──
@@ -24390,7 +24278,7 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
     }
 
     // ── 8. Deduct AP + track last_action_tick ──
-    const apResult = await deductAP(supabase, factionId, effectiveAttackCost);
+    const apResult = await deductAP(supabase, factionId, effectiveAttackCost, { reason: 'attack', detail: 'Campaign Attack', tick: currentTick });
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Attack] last_action_tick update failed:', error.message); });
 
     // ── 9. Generate headline ──
@@ -24641,7 +24529,7 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
     // ── 7. Deduct AP if needed + track last_action_tick ──
     let newAp = faction.action_points || 0;
     if (effectivePromiseCost > 0) {
-        const apResult = await deductAP(supabase, factionId, effectivePromiseCost);
+        const apResult = await deductAP(supabase, factionId, effectivePromiseCost, { reason: 'promise', detail: 'Make a Promise', tick: currentTick });
         newAp = apResult.newAp ?? (newAp - effectivePromiseCost);
     }
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Promise] last_action_tick update failed:', error.message); });
@@ -25145,41 +25033,9 @@ async function _nudgeApproval(supabase, factionId, nationId, delta, source) {
  * Adjust a faction's credibility_modifier in faction_electoral_standing.
  * Local helper for promise resolution (mirrors adjustCredibility in advance-tick).
  */
-async function _adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0, opts = {}) {
-    if (!delta && !suspendRecoveryTicks) return;
-    const { data: standing } = await supabase
-        .from('faction_electoral_standing')
-        .select('id, credibility_modifier, credibility_recovery_suspended_until')
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId)
-        .maybeSingle();
-    if (!standing) return;
-    const old = Number(standing.credibility_modifier ?? 1.0);
-    const newCred = Math.round(Math.min(1.5, Math.max(0.5, old + (delta || 0))) * 1000) / 1000;
-    const updateObj = { credibility_modifier: newCred };
-    if (suspendRecoveryTicks > 0) {
-        const suspendUntil = currentTick + suspendRecoveryTicks;
-        const currentSuspend = Number(standing.credibility_recovery_suspended_until ?? 0);
-        updateObj.credibility_recovery_suspended_until = Math.max(currentSuspend, suspendUntil);
-    }
-    await supabase.from('faction_electoral_standing')
-        .update(updateObj)
-        .eq('id', standing.id);
-
-    // Audit log (non-fatal)
-    if (delta && opts.source) {
-        const tick = currentTick || opts.tick || 0;
-        supabase.from('credibility_log').insert({
-            faction_id: factionId,
-            nation_id: nationId,
-            amount: delta,
-            source: opts.source,
-            tick,
-        }).then(({ error: logErr }) => {
-            if (logErr) console.warn('[PoliticalActions] credibility_log insert failed:', logErr.message);
-        });
-    }
-}
+// No-op: credibility_modifier column repurposed for momentum (3-pillar election system).
+// Server-side advance-tick is authoritative; client-side writes are dead.
+async function _adjustCredibility() { return; }
 
 /**
  * Apply rewards or penalties when a promise is resolved.
@@ -25990,6 +25846,7 @@ async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
  */
 async function processGovernmentCollapseCheck(supabase, nation, currentTick) {
     if (isAutocracy(nation)) return null;
+    if (isPresidentialRepublic(nation)) return null;
     const govApproval = Number(nation.gov_approval ?? 50);
     if (govApproval > 5) return null;
 
@@ -28357,11 +28214,12 @@ async function runElectionPreview(supabase, nationId) {
     });
     if (!factions || factions.length === 0) throw new Error('No eligible parties found for this nation');
 
-    // 3. Load electoral standings from Three Pillars electorate engine
+    // 3. Load electoral standings from 3-pillar election engine
+    // Columns repurposed: party_approval → governance score, visibility → momentum, raw_appeal → election score
     const factionIds = factions.map(f => f.id);
     const { data: standings } = await supabase
         .from('faction_electoral_standing')
-        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval, visibility, raw_appeal')
+        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval')
         .eq('nation_id', nationId)
         .in('faction_id', factionIds);
 
@@ -28414,7 +28272,7 @@ async function runElectionPreview(supabase, nationId) {
         return {
             party_id: f.id,
             party_name: f.faction_name,
-            approval: Math.round(Number(s?.party_approval || 0)),
+            governance: Math.round(Number(s?.party_approval || 0)), // repurposed: was approval, now governance score
             votes: tally[f.id] || 0,
             vote_percentage: totalVotesCast > 0
                 ? Math.round(((tally[f.id] || 0) / totalVotesCast) * 10000) / 100
@@ -28535,6 +28393,7 @@ async function runPresidentialElectionPreview(supabase, nationId) {
     for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
 
     // 4. Load electoral standings for each candidate's faction
+    // party_approval column repurposed: now stores governance score (3-pillar system)
     const { data: standings } = await supabase
         .from('faction_electoral_standing')
         .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval')
@@ -30851,7 +30710,7 @@ async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
     const ticksToElection = upcomingElection.election_tick - currentTick;
     console.log(`Campaign bonuses for incumbent ${president.first_name} ${president.last_name} in ${nation.name} (${ticksToElection} ticks to election)`);
 
-    await nudgeApproval(supabase, president.faction_id, nation.id, 1);
+    await adjustFactionMomentum(supabase, president.faction_id, nation.id, 1, { source: 'campaign:incumbent' });
 
     const { data: nationStats } = await supabase
         .from('nations')
@@ -31088,7 +30947,7 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
         if (!result || !result.decay_ticks_remaining || result.decay_ticks_remaining <= 0) continue;
 
         const decayRate = result.decay_rate || 1;
-        await nudgeApproval(supabase, action.party_id, nationId, -round2(decayRate * 0.3));
+        await adjustFactionMomentum(supabase, action.party_id, nationId, -round2(decayRate * 0.3), { source: 'purge:decay' });
 
         const newRemaining = result.decay_ticks_remaining - 1;
         await supabase.from('campaign_actions')
@@ -32352,9 +32211,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         removal_reason: 'impeached'
                     }).eq('id', proc.president_id);
 
-                    // President's party takes massive approval & credibility hit
-                    await nudgeApproval(supabase, president.faction_id, nation.id, -5);
-                    await adjustCredibility(supabase, president.faction_id, nation.id, -0.2, 24, currentTick);
+                    // President's party takes massive momentum hit
+                    await adjustFactionMomentum(supabase, president.faction_id, nation.id, -5, { source: 'impeachment:convicted' });
 
                     // Stability -3, international_reputation -3
                     const newStab = Math.max(0, Math.round(Number(nation.stability || 50) - 3));
