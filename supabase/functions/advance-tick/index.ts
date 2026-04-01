@@ -7305,6 +7305,59 @@ async function resolveExpiredVotes(supabase, nationId) {
                                     });
                                 }
                             } catch (newsErr) { console.error('News event error:', newsErr); }
+
+                            // For economic aid proposals, create the aid_agreement_state row
+                            // so getActiveAidForNation() finds it and aid money flows each tick
+                            if (pd.agreement_type === 'economic_aid') {
+                                const aidTermsArt = activeArticles.find(a => a.type === 'aid_terms');
+                                if (aidTermsArt && aidTermsArt.data) {
+                                    const donorId = aidTermsArt.data.donor_nation_id;
+                                    const nA = proposal.proposing_nation_id;
+                                    const nB = proposal.target_nation_id;
+                                    if (donorId === nA || donorId === nB) {
+                                        const recipientId = donorId === nA ? nB : nA;
+                                        const annualAmount = Number(aidTermsArt.data.annual_amount || 0);
+
+                                        // Need an agreement_id — check if a trade_agreements row exists or create one
+                                        const { data: existingAgreement } = await supabase.from('trade_agreements')
+                                            .select('id')
+                                            .eq('diplomatic_proposal_id', proposal.id)
+                                            .maybeSingle();
+
+                                        let agreementId = existingAgreement?.id;
+                                        if (!agreementId) {
+                                            // Create a trade_agreements row to link the aid state to
+                                            const { data: newAg, error: agErr } = await supabase.from('trade_agreements').insert({
+                                                nation_a_id: nA < nB ? nA : nB,
+                                                nation_b_id: nA < nB ? nB : nA,
+                                                agreement_type: 'economic_aid',
+                                                agreement_name: pd.name || 'Economic Aid',
+                                                articles: pd.articles || [],
+                                                status: 'active',
+                                                signed_tick: currentTick,
+                                                diplomatic_proposal_id: proposal.id
+                                            }).select('id').single();
+                                            if (agErr) console.error('[bilateral] Failed to create trade_agreements for aid:', agErr.message);
+                                            else agreementId = newAg?.id;
+                                        }
+
+                                        if (agreementId) {
+                                            const { error: aidStateErr } = await supabase.from('aid_agreement_state').insert({
+                                                agreement_id: agreementId,
+                                                donor_nation_id: donorId,
+                                                recipient_nation_id: recipientId,
+                                                current_annual_amount: annualAmount,
+                                                original_annual_amount: annualAmount,
+                                                next_review_tick: currentTick + (DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL || 12),
+                                                condition_failures: {}
+                                            });
+                                            if (aidStateErr) console.error('[bilateral] Failed to create aid_agreement_state:', aidStateErr.message);
+                                            else console.log(`[bilateral] Economic aid activated: donor=${donorId}, recipient=${recipientId}, amount=$${(annualAmount/1e9).toFixed(2)}B/yr`);
+                                        }
+                                    }
+                                }
+                            }
+
                         } else {
                             // Only one side ratified so far — wait for the other
                             await supabase.from('diplomatic_proposals')
