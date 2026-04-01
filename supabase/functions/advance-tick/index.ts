@@ -22075,6 +22075,117 @@ const CC_REQUIREMENTS = {
 function ccRand(min, max) { return min + Math.floor(Math.random() * (max - min + 1)); }
 function ccPick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
+// ── Project Execution (Phase 7) ──
+// Each tick: advance in_progress projects, deduct costs, complete when done.
+async function processActiveProjects(supabase, nationId, currentTick) {
+    // 1. Move newly awarded contracts to in_progress
+    const { data: newlyAwarded } = await supabase
+        .from('construction_contracts')
+        .select('id, name, awarded_to_faction, awarded_at_tick')
+        .eq('nation_id', nationId)
+        .eq('status', 'awarded');
+
+    for (const contract of (newlyAwarded || [])) {
+        await supabase.from('construction_contracts')
+            .update({ status: 'in_progress' })
+            .eq('id', contract.id);
+        console.log(`[Projects] ${contract.name}: awarded → in_progress`);
+    }
+
+    // 2. Process in_progress contracts
+    const { data: activeContracts } = await supabase
+        .from('construction_contracts')
+        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick')
+        .eq('nation_id', nationId)
+        .eq('status', 'in_progress');
+
+    if (!activeContracts || activeContracts.length === 0) return [];
+
+    const results = [];
+
+    for (const contract of activeContracts) {
+        const awardedTick = contract.awarded_at_tick || currentTick;
+        const ticksElapsed = currentTick - awardedTick;
+        const totalTicks = contract.timeline_ticks || 8;
+
+        // Load the winning bid for cost calculations
+        const { data: bid } = await supabase
+            .from('contract_bids')
+            .select('estimated_cost, bid_price, estimated_quality, faction_id')
+            .eq('contract_id', contract.id)
+            .eq('status', 'won')
+            .maybeSingle();
+
+        if (!bid) continue;
+
+        // Per-tick cost deduction from corp cash
+        const perTickCost = Math.round((bid.estimated_cost || 0) / totalTicks);
+        if (perTickCost > 0) {
+            const { data: corp } = await supabase
+                .from('factions')
+                .select('corp_cash_reserves')
+                .eq('id', bid.faction_id)
+                .single();
+            if (corp) {
+                const newCash = Math.max(0, Number(corp.corp_cash_reserves || 0) - perTickCost);
+                await supabase.from('factions')
+                    .update({ corp_cash_reserves: newCash })
+                    .eq('id', bid.faction_id);
+            }
+        }
+
+        // Check if project is complete
+        if (ticksElapsed >= totalTicks) {
+            // Project complete — move to completed status
+            await supabase.from('construction_contracts')
+                .update({ status: 'completed', completed_at_tick: currentTick })
+                .eq('id', contract.id);
+
+            // Pay the corporation: bid_price goes to corp_cash_reserves
+            const payment = bid.bid_price || 0;
+            if (payment > 0) {
+                const { data: corpPay } = await supabase
+                    .from('factions')
+                    .select('corp_cash_reserves')
+                    .eq('id', bid.faction_id)
+                    .single();
+                if (corpPay) {
+                    const newCash = Number(corpPay.corp_cash_reserves || 0) + payment;
+                    await supabase.from('factions')
+                        .update({ corp_cash_reserves: newCash })
+                        .eq('id', bid.faction_id);
+                }
+            }
+
+            // Check if this was a mega project — set cooldown
+            const { data: contractFull } = await supabase
+                .from('construction_contracts')
+                .select('sector')
+                .eq('id', contract.id)
+                .single();
+            if (contractFull?.sector === 'mega_project') {
+                await supabase.from('mega_project_cooldowns')
+                    .upsert({
+                        nation_id: nationId,
+                        last_completed_tick: currentTick,
+                        cooldown_until_tick: currentTick + 360
+                    }, { onConflict: 'nation_id' });
+            }
+
+            results.push({
+                contract: contract.name,
+                result: 'completed',
+                payment,
+                quality: bid.estimated_quality,
+            });
+
+            console.log(`[Projects] ${contract.name}: COMPLETED. Payment: $${(payment / 1e6).toFixed(1)}M to faction ${bid.faction_id}`);
+        }
+    }
+
+    return results;
+}
+
 async function generateConstructionContracts(supabase, nation, currentTick) {
     // Only generate every 3 ticks
     if (currentTick % 3 !== 0) return [];
@@ -23176,20 +23287,30 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Corp income failed for ${nation.name} (non-fatal):`, corpErr);
         }
 
-        // Construction contract generation + bid resolution
+        // Construction: project execution + contract generation + bid resolution
         try {
+            // Phase 7: advance in-progress projects, deduct costs, complete when done
+            const projectResults = await processActiveProjects(supabase, nation.id, newTick);
+            if (projectResults.length > 0) {
+                summary.projectCompletions = summary.projectCompletions || [];
+                summary.projectCompletions.push({ nation: nation.name, completions: projectResults });
+            }
+
+            // Phase 2: generate new contracts
             const genResults = await generateConstructionContracts(supabase, nation, newTick);
             if (genResults.length > 0) {
                 summary.contractGeneration = summary.contractGeneration || [];
                 summary.contractGeneration.push({ nation: nation.name, contracts: genResults });
             }
+
+            // Phase 2: resolve expired bids (cheapest wins)
             const bidResults = await resolveExpiredBids(supabase, nation.id, newTick);
             if (bidResults.length > 0) {
                 summary.contractBids = summary.contractBids || [];
                 summary.contractBids.push({ nation: nation.name, results: bidResults });
             }
         } catch (contractErr) {
-            console.error(`[advanceTick] Contract generation/bid resolution failed for ${nation.name} (non-fatal):`, contractErr);
+            console.error(`[advanceTick] Construction system failed for ${nation.name} (non-fatal):`, contractErr);
         }
 
         // ── Leader aging (every January — tick % 12 === 0) ──
