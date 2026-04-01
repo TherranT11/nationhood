@@ -136,7 +136,7 @@ export function calculateDynamicOppositionPenalty(factionIdeology, policyIdeolog
     return -Math.round(basePenalty * penaltyScale * 10) / 10;
 }
 
-export function calculateBillDynamicPenalty(factionIdeology, articles, basePenalty = 2) {
+export function calculateBillDynamicPenalty(factionIdeology, articles, basePenalty = 2, isRepealBill = false) {
     let totalPenalty = 0;
 
     for (const art of articles) {
@@ -147,8 +147,14 @@ export function calculateBillDynamicPenalty(factionIdeology, articles, basePenal
             ? p.ideologies.map(i => i.toUpperCase())
             : (p.ideology ? [p.ideology.toUpperCase()] : []);
 
+        // Repealing a policy inverts the ideology effect:
+        // repealing an opposed policy is a BONUS, repealing an aligned policy is a PENALTY
+        const artIsRepeal = isRepealBill || !!art.repeal_active_law_id;
+
         for (const tag of ideos) {
-            totalPenalty += calculateDynamicOppositionPenalty(factionIdeology, tag, basePenalty);
+            const penalty = calculateDynamicOppositionPenalty(factionIdeology, tag, basePenalty);
+            // Invert for repeals: penalty becomes bonus, bonus becomes penalty
+            totalPenalty += artIsRepeal ? -penalty : penalty;
         }
     }
 

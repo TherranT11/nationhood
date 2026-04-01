@@ -1719,7 +1719,7 @@ function renderIdeologyWarning() {
     }
 
     // Also compute dynamic penalty for context
-    const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, articles);
+    const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, articles, 2, isRepeal);
 
     let bannerClass, icon, mainText, detailText;
 
@@ -1737,7 +1737,7 @@ function renderIdeologyWarning() {
         bannerClass = 'aligned';
         icon = '✅';
         mainText = isRepeal ? 'Repealing this law aligns with your party\'s values' : 'This bill aligns with your party\'s values';
-        detailText = `${totalAligned} article${totalAligned > 1 ? 's' : ''} match your ideological position.`;
+        detailText = `${totalAligned} article${totalAligned > 1 ? 's' : ''} match your ideological position.` + (dynamicPenalty > 0 ? ` Estimated approval bonus: +${dynamicPenalty.toFixed(1)}.` : '');
     } else {
         return; // All neutral — no banner needed
     }
