@@ -462,12 +462,12 @@ function calculateFundingUpfrontCost(fd) {
 
 function formatFundingImpact(ongoingCost) {
     const prefix = ongoingCost > 0 ? '+' : '';
-    return `<span class="cost-value">${prefix}${formatCurrency(ongoingCost).replace(/^\+/, '')}/mo</span>`;
+    return `<span class="cost-value">${prefix}${formatCurrency(ongoingCost)}/mo</span>`;
 }
 
 function formatFundingUpfront(upfrontCost) {
     const prefix = upfrontCost > 0 ? '+' : '';
-    return `<span class="cost-value">${prefix}${formatCurrency(upfrontCost).replace(/^\+/, '')}</span>`;
+    return `<span class="cost-value">${prefix}${formatCurrency(upfrontCost)}</span>`;
 }
 
 function renderBill() {
@@ -2974,7 +2974,7 @@ function formatCurrency(amt) {
 // Standardized cost display: Cost in RED, Relief in GREEN, with /mo and /yr
 function formatBillCost(monthlyAmt, label) {
     // monthlyAmt > 0 = costs money, monthlyAmt < 0 = saves money
-    if (monthlyAmt === 0) return '';
+    if (!monthlyAmt || isNaN(monthlyAmt)) return '';
     const abs = Math.abs(monthlyAmt);
     const monthly = formatCurrency(abs);
     const yearly = formatCurrency(abs * 12);
