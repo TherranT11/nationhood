@@ -645,8 +645,8 @@ export const MINISTER_APPROVAL_CONFIG = {
     // Baseline decay: approval always erodes by this amount per tick unless stats improve
     BASELINE_DECAY: -0.5,
 
-    // New minister starts at 40% approval
-    NEW_MINISTER_APPROVAL: 40,
+    // New minister starts at 50% approval (clean slate on appointment)
+    NEW_MINISTER_APPROVAL: 50,
 
     // Firing a minister costs 1 AP and gives +3 to the event modifier
     FIRE_MINISTER_AP_COST: 1,
