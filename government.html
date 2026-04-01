@@ -3270,33 +3270,7 @@ function buildMgmtButtons(key, ministry, govContext) {
     const disabledStyle = 'style="opacity:0.4;cursor:not-allowed;"';
     let btns = '';
 
-    if (govContext.type === 'autocracy') {
-        if (govContext.isRuling) {
-            if (isFilled) {
-                if (noAP) {
-                    btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--purge" ${disabledStyle} title="Need 1 AP">PURGE<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
-                } else {
-                    btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--purge" onclick="event.stopPropagation();purgeMinister('${key}')">PURGE<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
-                }
-            } else {
-                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--assign" onclick="event.stopPropagation();openAssignModal('${key}')">ASSIGN</div>`;
-            }
-        } else if (govContext.isMyMinistry) {
-            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--resign" onclick="event.stopPropagation();resignMinistry('${key}')">RESIGN MINISTRY</div>`;
-        } else {
-            const totalMyRequests = ministryRequests.filter(r => r.faction_id === currentFaction?.id).length;
-            if (govContext.myRequest) {
-                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--unrequest" onclick="event.stopPropagation();unrequestMinistry('${govContext.myRequest.id}')">UNREQUEST<span class="ministry-card__mgmt-ap">0 AP</span></div>`;
-            } else {
-                const canRequest = totalMyRequests < 2 && ap >= 1;
-                if (canRequest) {
-                    btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--request" onclick="event.stopPropagation();requestMinistry('${key}')">REQUEST<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
-                } else {
-                    btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--request" ${disabledStyle} title="${totalMyRequests >= 2 ? 'Max 2 requests' : 'Need 1 AP'}">REQUEST<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
-                }
-            }
-        }
-    } else if (govContext.type === 'parliamentary') {
+    if (govContext.type === 'parliamentary') {
         if (govContext.isMyMinistry && !govContext.isCaretaker) {
             btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--resign" onclick="event.stopPropagation();resignMinistry('${key}')">RESIGN</div>`;
         }
