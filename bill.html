@@ -2397,8 +2397,13 @@ async function renderEmergencyAdvanceButton(bill) {
 }
 window.renderEmergencyAdvanceButton = renderEmergencyAdvanceButton;
 
+let _emergencyAdvanceLock = false;
 async function handleEmergencyAdvance(billId) {
+    if (_emergencyAdvanceLock) return;
     if (!confirm('Use emergency powers to advance this bill?\n\nThis costs -6 government approval and bypasses normal procedure.')) return;
+    _emergencyAdvanceLock = true;
+    const btn = document.querySelector('.emergency-advance-btn');
+    if (btn) btn.disabled = true;
     try {
         const result = await advanceBillEmergency(_supabase, currentNation.id, currentFaction.id, billId);
         if (!result.success) {
@@ -2409,6 +2414,9 @@ async function handleEmergencyAdvance(billId) {
         window.location.reload();
     } catch (e) {
         alert('Error: ' + e.message);
+    } finally {
+        _emergencyAdvanceLock = false;
+        if (btn) btn.disabled = false;
     }
 }
 window.handleEmergencyAdvance = handleEmergencyAdvance;

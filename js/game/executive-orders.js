@@ -859,9 +859,10 @@ export async function advanceBillEmergency(supabase, nationId, factionId, billId
         bills_advanced_this_emergency: (emergency.payload.bills_advanced_this_emergency || 0) + 1,
         last_advance_tick: currentTick
     };
-    await supabase.from('executive_orders')
+    const { error: payloadErr } = await supabase.from('executive_orders')
         .update({ payload: newPayload })
         .eq('id', emergency.id);
+    if (payloadErr) console.error(`[EmergencyAdvance] Failed to update emergency payload:`, payloadErr.message);
 
     // -6 gov approval (forcing bills is politically costly)
     await adjustGovernmentApprovalEvent(supabase, nationId, EO_CONFIG.EMERGENCY_ADVANCE_APPROVAL_COST, 'executive_order:emergency_bill_advance');
