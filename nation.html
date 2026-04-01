@@ -299,7 +299,7 @@ async function loadPreviousTickData(nationId) {
     const currentTick = await getShardTick();
     if (!currentTick) return;
     const previousTick = currentTick - 1;
-    if (previousTick < 0) { console.warn('[loadPreviousTickData] current_tick is', shard.current_tick, '— no previous tick yet'); return; }
+    if (previousTick < 0) { console.warn('[loadPreviousTickData] current_tick is', currentTick, '— no previous tick yet'); return; }
 
     // Use .limit(1) instead of .maybeSingle() — maybeSingle sends an Accept header
     // that causes PostgREST to return HTTP 406 when 0 rows match, which logs a
@@ -324,8 +324,8 @@ async function loadPreviousTickData(nationId) {
         '— falling back to most recent snapshot (max age:', MAX_FALLBACK_AGE, 'ticks).');
     const { data: fallbackRows } = await _supabase.from('nations_history')
         .select('*').eq('nation_id', nationId)
-        .gte('tick', shard.current_tick - MAX_FALLBACK_AGE - 1)
-        .lt('tick', shard.current_tick)
+        .gte('tick', currentTick - MAX_FALLBACK_AGE - 1)
+        .lt('tick', currentTick)
         .order('tick', { ascending: false }).limit(1);
     if (fallbackRows && fallbackRows.length > 0) {
         previousTickData = fallbackRows[0];
