@@ -7305,6 +7305,57 @@ async function resolveExpiredVotes(supabase, nationId) {
                                     });
                                 }
                             } catch (newsErr) { console.error('News event error:', newsErr); }
+
+                            // For economic aid proposals, create the aid_agreement_state row
+                            // so getActiveAidForNation() finds it and aid money flows each tick
+                            if (pd.agreement_type === 'economic_aid') {
+                                const aidTermsArt = activeArticles.find(a => a.type === 'aid_terms');
+                                if (aidTermsArt && aidTermsArt.data) {
+                                    const donorId = aidTermsArt.data.donor_nation_id;
+                                    const nA = proposal.proposing_nation_id;
+                                    const nB = proposal.target_nation_id;
+                                    if (donorId === nA || donorId === nB) {
+                                        const recipientId = donorId === nA ? nB : nA;
+                                        const annualAmount = Number(aidTermsArt.data.annual_amount || 0);
+
+                                        // Need an agreement_id — check if a trade_agreements row exists or create one
+                                        const { data: existingAgreement } = await supabase.from('trade_agreements')
+                                            .select('id')
+                                            .eq('diplomatic_proposal_id', proposal.id)
+                                            .maybeSingle();
+
+                                        let agreementId = existingAgreement?.id;
+                                        if (!agreementId) {
+                                            // Create a trade_agreements row to link the aid state to
+                                            const { data: newAg, error: agErr } = await supabase.from('trade_agreements').insert({
+                                                nation_a_id: nA < nB ? nA : nB,
+                                                nation_b_id: nA < nB ? nB : nA,
+                                                agreement_type: 'economic_aid',
+                                                agreement_name: pd.name || 'Economic Aid',
+                                                articles: pd.articles || [],
+                                                status: 'active'
+                                            }).select('id').single();
+                                            if (agErr) console.error('[bilateral] Failed to create trade_agreements for aid:', agErr.message);
+                                            else agreementId = newAg?.id;
+                                        }
+
+                                        if (agreementId) {
+                                            const { error: aidStateErr } = await supabase.from('aid_agreement_state').insert({
+                                                agreement_id: agreementId,
+                                                donor_nation_id: donorId,
+                                                recipient_nation_id: recipientId,
+                                                current_annual_amount: annualAmount,
+                                                original_annual_amount: annualAmount,
+                                                next_review_tick: currentTick + (DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL || 12),
+                                                condition_failures: {}
+                                            });
+                                            if (aidStateErr) console.error('[bilateral] Failed to create aid_agreement_state:', aidStateErr.message);
+                                            else console.log(`[bilateral] Economic aid activated: donor=${donorId}, recipient=${recipientId}, amount=$${(annualAmount/1e9).toFixed(2)}B/yr`);
+                                        }
+                                    }
+                                }
+                            }
+
                         } else {
                             // Only one side ratified so far — wait for the other
                             await supabase.from('diplomatic_proposals')
@@ -22807,6 +22858,50 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (retireErr) {
             console.error(`[advanceTick] Ambassador retirements failed for ${nation.name} (non-fatal):`, retireErr);
+        }
+
+        // Corporation monthly income: Net Profit / 12 added to corp_cash_reserves each tick
+        try {
+            const { data: corpFactions } = await supabase
+                .from('factions')
+                .select('id, corp_cash_reserves')
+                .eq('nation_id', nation.id)
+                .eq('faction_type', 'corporation');
+            if (corpFactions && corpFactions.length > 0) {
+                const ns = (key) => Number(nation[key] ?? 50);
+
+                // Revenue: same formula as corp-dashboard.html renderFinances
+                const BASE_RATE = 50_000_000;
+                const gdpFactor     = 1 + (ns('gdp_growth') - 50) / 100 * 0.4;
+                const urbanFactor   = 1 + (ns('urbanization') - 50) / 100 * 0.3;
+                const popFactor     = 1 + (ns('population_growth') - 50) / 100 * 0.2;
+                const solFactor     = 1 + (ns('standard_of_living') - 50) / 100 * 0.15;
+                const infraFactor   = 1 + (50 - ns('physical_infrastructure')) / 100 * 0.1;
+                const inflFactor    = 1 - Math.max(0, ns('inflation') - 50) / 100 * 0.1;
+                const intFactor     = 1 - Math.max(0, ns('interest_rates') - 50) / 100 * 0.1;
+                const multiplier = gdpFactor * urbanFactor * popFactor * solFactor * infraFactor * inflFactor * intFactor;
+                const monthlyMarketRev = Math.round(Math.round(BASE_RATE * multiplier) / 12);
+
+                // Wages: same formula as corp-dashboard.html renderWorkforce
+                const TOTAL_WORKFORCE = 3000;
+                const CONSTRUCTION_SECTOR_MULT = 0.20;
+                const baseAnnualWage = 8000 + (ns('minimum_wage') / 100) * 32000;
+                const generalWages = Math.round(TOTAL_WORKFORCE * 0.75) * baseAnnualWage * 1.00 * CONSTRUCTION_SECTOR_MULT;
+                const skilledWages = Math.round(TOTAL_WORKFORCE * 0.20) * baseAnnualWage * 1.50 * CONSTRUCTION_SECTOR_MULT;
+                const innovativeWages = (TOTAL_WORKFORCE - Math.round(TOTAL_WORKFORCE * 0.75) - Math.round(TOTAL_WORKFORCE * 0.20)) * baseAnnualWage * 2.75 * CONSTRUCTION_SECTOR_MULT;
+                const monthlyWages = Math.round((generalWages + skilledWages + innovativeWages) / 12);
+
+                const monthlyIncome = monthlyMarketRev - monthlyWages;
+
+                for (const corp of corpFactions) {
+                    const currentCash = Number(corp.corp_cash_reserves || 0);
+                    const newCash = Math.max(0, currentCash + monthlyIncome);
+                    await supabase.from('factions')
+                        .update({ corp_cash_reserves: newCash })
+                        .eq('id', corp.id);
+                }
+                console.log(`[advanceTick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}, wages=${monthlyWages}, net=${monthlyIncome}`);
+            }
         }
 
         // ── Leader aging (every January — tick % 12 === 0) ──

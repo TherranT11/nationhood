@@ -5307,7 +5307,7 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
         }
 
         const isGov = status.startsWith('governing');
-        const govScore = Math.round(isGov ? nationalGovScore : -nationalGovScore);
+        const govScore = Number((isGov ? nationalGovScore : -nationalGovScore).toFixed(1));
 
         return {
             id: p.id,
@@ -5600,11 +5600,11 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
             <div class="elec-score-row">
                 <div class="elec-score-block">
                     <div class="elec-score-label">${isGoverning ? 'Gov. Score' : 'National Score'}</div>
-                    <div class="elec-score-value" style="color:${scoreColor}">${scoreSign}${Math.round(displayScore)}</div>
+                    <div class="elec-score-value" style="color:${scoreColor}">${scoreSign}${displayScore.toFixed(1)}</div>
                 </div>
                 ${!isGoverning ? `<div class="elec-score-block">
                     <div class="elec-score-label">Your Impact (Opposition)</div>
-                    <div class="elec-score-value" style="color:${effectiveColor}">${effectiveSign}${Math.round(effectiveScore)}</div>
+                    <div class="elec-score-value" style="color:${effectiveColor}">${effectiveSign}${effectiveScore.toFixed(1)}</div>
                 </div>` : ''}
             </div>
             ${decayNote}
