@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nationhood — Diplomacy</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Supabase SDK -->
+
+    <!-- Shared Styles -->
+  <script type="module" crossorigin src="/assets/diplomacy-6nK6UKeo.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-BedtaFOo.js">
+  <link rel="modulepreload" crossorigin href="/assets/guide-RrxJIDYT.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-structure-DKbbGMPO.js">
+  <link rel="modulepreload" crossorigin href="/assets/stats-Cp9T3CP_.js">
+  <link rel="modulepreload" crossorigin href="/assets/autocracy-silent-coup-vxZQTTX4.js">
+  <link rel="stylesheet" crossorigin href="/assets/dashboard-DwcD1jvW.css">
+  <link rel="stylesheet" crossorigin href="/assets/diplomacy-D9HNmRE1.css">
+</head>
+<body>
+
+<!-- ===== TOP BAR (rendered by common.js) ===== -->
+<div id="top-bar"></div>
+
+<!-- ===== CONTENT AREA ===== -->
+<div id="content-area">
+    <div class="page-header" id="diplo-header"></div>
+    <div class="dashboard">
+        <!-- ═══ ROW 1: Three equal columns ═══ -->
+        <div class="row">
+            <!-- Foreign Relations -->
+            <div class="box box--third box--h450" id="box-relations">
+                <div class="box-header">
+                    <div class="box-dot box-dot--teal"></div>
+                    <span class="box-label">Foreign Relations</span>
+                    <div class="box-header-right"><span class="badge badge--dim" id="relations-count"></span></div>
+                </div>
+                <div class="box-body" id="relations-body"></div>
+            </div>
+            <!-- Diplomatic Actions -->
+            <div class="box box--third box--h450" id="box-actions">
+                <div class="box-header">
+                    <div class="box-dot box-dot--blue"></div>
+                    <span class="box-label">Diplomatic Actions</span>
+                </div>
+                <div class="box-body" id="actions-body"></div>
+            </div>
+            <!-- Agreements -->
+            <div class="box box--third box--h450" id="box-negotiations">
+                <div class="box-header">
+                    <div class="box-dot box-dot--amber"></div>
+                    <span class="box-label">Agreements</span>
+                    <div class="box-header-right"><span class="badge badge--amber neg-unseen-badge" id="negotiations-unseen"></span><span class="badge badge--dim" id="negotiations-count"></span></div>
+                </div>
+                <div class="box-body" id="negotiations-body"></div>
+            </div>
+        </div>
+        <!-- ═══ ROW 2: Full-width Draft ═══ -->
+        <div class="row">
+            <!-- Draft Initiative (full width) -->
+            <div class="box box--full box--h480" id="box-draft">
+                <div class="box-header">
+                    <div class="box-dot box-dot--teal"></div>
+                    <span class="box-label">Draft Initiative</span>
+                    <div class="box-header-right"><span class="badge badge--teal" id="draft-status"></span></div>
+                </div>
+                <div class="box-body" id="draft-body" style="display:flex;flex-direction:column;"></div>
+            </div>
+        </div>
+    </div>
+    <!-- ═══ World Nations View (hidden by default) ═══ -->
+    <div id="world-nations-view" class="wn-grid wn-grid--hidden"></div>
+
+    <!-- ═══ International Party Organisations View (hidden by default) ═══ -->
+    <div id="ipo-view" class="ipo-view ipo-view--hidden"></div>
+
+    <!-- ═══ IPO Creation Modal ═══ -->
+    <div class="modal-overlay" id="ipo-create-modal">
+        <div class="ipo-modal-content" id="ipo-create-modal-inner"></div>
+    </div>
+</div>
+
+<!-- Shared Scripts -->
+
+<!-- Page-Specific Script -->
+
+</body>
+</html>

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Government | Nationhood Alpha</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+  <script type="module" crossorigin src="/assets/government-CxMcHwOX.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-BedtaFOo.js">
+  <link rel="modulepreload" crossorigin href="/assets/guide-RrxJIDYT.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-structure-DKbbGMPO.js">
+  <link rel="modulepreload" crossorigin href="/assets/stats-Cp9T3CP_.js">
+  <link rel="modulepreload" crossorigin href="/assets/autocracy-silent-coup-vxZQTTX4.js">
+  <link rel="modulepreload" crossorigin href="/assets/executive-orders-CpgJHxS-.js">
+  <link rel="modulepreload" crossorigin href="/assets/protest-B06Bz2EW.js">
+  <link rel="modulepreload" crossorigin href="/assets/party-icons-CJ7uQoDE.js">
+  <link rel="stylesheet" crossorigin href="/assets/government-DJNeC0Qx.css">
+  <link rel="stylesheet" crossorigin href="/assets/dashboard-DwcD1jvW.css">
+</head>
+<body>
+
+<div id="top-bar"></div>
+
+<div id="content-area">
+    <div class="loading-container">
+        <div class="loading-spinner"></div>
+        <div>Loading government data...</div>
+    </div>
+</div>
+
+<!-- Assign Minister Modal -->
+<div class="modal-overlay" id="assign-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title" id="assign-modal-title">Assign Minister</div>
+            <button class="modal-close" onclick="closeAssignModal()">&times;</button>
+        </div>
+        <div class="modal-subtitle">Select a candidate to appoint to this ministry.</div>
+        <div id="assign-candidates"></div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeAssignModal()">Cancel</button>
+            <button class="btn-submit" id="assign-confirm-btn" disabled onclick="handleConfirmMinister()">Appoint Minister</button>
+        </div>
+    </div>
+</div>
+
+<!-- Executive Order Modal -->
+<div class="modal-overlay" id="eo-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title">Executive Order</div>
+            <button class="modal-close" onclick="closeEOModal()">&times;</button>
+        </div>
+        <div id="eo-order-list"></div>
+        <div id="eo-confirm-panel" class="eo-confirm-panel"></div>
+        <div class="modal-footer" id="eo-modal-footer">
+            <button class="btn-cancel" onclick="closeEOModal()">Cancel</button>
+            <button class="eo-btn-confirm" id="eo-confirm-btn" disabled onclick="confirmExecutiveOrder()" style="display:none;">Issue Order</button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nationhood | Policy Builder</title>
+  <script type="module" crossorigin src="/assets/policyadmin-BCWJBwho.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
+  <link rel="stylesheet" crossorigin href="/assets/policyadmin-DC2qTpUn.css">
+  <link rel="stylesheet" crossorigin href="/assets/dashboard-DwcD1jvW.css">
+</head>
+<body>
+
+<div id="auth-screen" class="auth-screen">
+    <h1>⚙️ Policy Builder</h1>
+    <input type="password" id="auth-pw" placeholder="Admin Password" onkeydown="if(event.key==='Enter')checkAuth()">
+    <button onclick="checkAuth()">Enter</button>
+</div>
+
+<div id="app" class="hidden">
+    <div id="top-bar">
+        <div class="top-bar-row1">
+            <div class="top-bar-left">
+                <div class="nation-badge"><span class="nation-name">Admin</span></div>
+                <div class="tick-info"><div class="tick-item"><div class="tick-label">Tool</div><div class="tick-value">Policy Builder</div></div></div>
+            </div>
+            <div class="top-bar-right">
+                <a href="admin.html" class="party-badge" style="text-decoration:none;">← Admin Panel</a>
+            </div>
+        </div>
+        <nav class="nav-tabs">
+            <a href="admin.html" class="nav-tab">Admin</a>
+            <a href="policyadmin.html" class="nav-tab active">Policies</a>
+        </nav>
+    </div>
+
+    <div id="content-area">
+        <div class="panel-padding">
+            <div id="status-bar" class="status-bar"></div>
+            <div class="section-header">Policy Administration</div>
+
+            <div class="sub-tabs">
+                <button class="sub-tab active" onclick="switchView('list')">📋 All Policies</button>
+                <button class="sub-tab" onclick="switchView('builder')">➕ Create Policy</button>
+            </div>
+
+            <!-- ============ LIST VIEW ============ -->
+            <div class="view-panel active" id="view-list">
+                <div class="filter-bar">
+                    <input type="text" id="search-input" placeholder="Search policies..." oninput="filterPolicies()">
+                    <select id="filter-sector" onchange="filterPolicies()"><option value="">All Sectors</option></select>
+                    <select id="filter-ideology" onchange="filterPolicies()"><option value="">All Ideologies</option></select>
+                    <span class="policy-count" id="policy-count">— policies</span>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="policy-table">
+                        <thead>
+                            <tr>
+                                <th>Policy Name</th>
+                                <th>Sector / Law</th>
+                                <th>Stat Effects</th>
+                                <th>Ideologies</th>
+                                <th>Costs</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="policy-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ============ BUILDER VIEW ============ -->
+            <div class="view-panel" id="view-builder">
+
+                <!-- Section 1: Identity -->
+                <div class="builder-section">
+                    <div class="builder-section-title">📝 1. Policy Identity</div>
+                    <div class="form-field">
+                        <label>Policy Name</label>
+                        <input type="text" id="b-name" placeholder="e.g. Vocational-Technical Tracking">
+                    </div>
+                    <div class="form-field">
+                        <label>Description</label>
+                        <textarea id="b-desc" placeholder="At age 14, students are sorted into trade-based education..."></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Sector</label>
+                            <select id="b-sector" onchange="populateLawCategories(); onSectorOrLawChange()">
+                                <option value="">-- Select --</option>
+                                <option value="ECONOMICS">💰 Economics</option>
+                                <option value="LABOR">👷 Labor</option>
+                                <option value="EDUCATION">📚 Education</option>
+                                <option value="ENERGY">⚡ Energy</option>
+                                <option value="SOCIAL">🏥 Social</option>
+                                <option value="MILITARY">🛡️ Military & Security</option>
+                                <option value="GOVERNANCE">🏛️ Governance</option>
+                                <option value="IMMIGRATION">🌍 Immigration</option>
+                                <option value="INTERNATIONAL">🌐 International</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label>Law Category</label>
+                            <select id="b-law-category-select" onchange="onLawCategorySelect()">
+                                <option value="">-- Select sector first --</option>
+                            </select>
+                            <div id="new-category-wrapper" style="display:none;margin-top:8px;">
+                                <label style="display:block;font-size:0.72rem;color:#ffcc00;margin-bottom:4px;">NEW CATEGORY NAME</label>
+                                <input type="text" id="b-law-category-new" placeholder="e.g. Secondary Education" oninput="onSectorOrLawChange()">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+    <div class="form-field">
+        <label>Policy Type</label>
+        <select id="b-policy-type">
+            <option value="structural">🏗️ Structural — Activate once, stays on, rescind to remove</option>
+            <option value="lever">🔄 Lever — Toggle on/off, pays upfront each activation</option>
+        </select>
+    </div>
+    <div class="form-field">
+        <label>Fiscal Category</label>
+        <select id="b-fiscal-category">
+            <option value="">-- None (no budget impact) --</option>
+            <option value="Interior">🏛️ Interior</option>
+            <option value="Labor">👷 Labor</option>
+            <option value="Healthcare">🏥 Healthcare</option>
+            <option value="Education">📚 Education</option>
+            <option value="Transportation">🚄 Transportation</option>
+            <option value="Justice">⚖️ Justice</option>
+            <option value="Foreign Ministry">🌐 Foreign Ministry</option>
+            <option value="Finance">💰 Finance</option>
+            <option value="Defense">🛡️ Defense</option>
+            <option value="Energy">⚡ Energy</option>
+        </select>
+    </div>
+</div>
+                </div>
+
+                <!-- Section 2: Ideologies -->
+                <div class="builder-section">
+                    <div class="builder-section-title">🗳️ 2. Ideologies (select 1–3)</div>
+                    <div class="ideology-chips" id="ideology-chips"></div>
+                    <div style="color:#888; font-size:0.8rem; margin-top:10px;">
+                        Selected: <strong style="color:#ffcc00;" id="ideo-count">0</strong> / 3 —
+                        <span id="ideo-list" style="color:#bb86fc;">None</span>
+                    </div>
+                </div>
+
+                <!-- Section 3: Starting Status -->
+                <div class="builder-section">
+                    <div class="builder-section-title">🌍 3. Starting Status</div>
+                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
+                        Which nations have this policy active at game start?
+                        <span style="color:#d48a3c;">Active = ongoing cost runs, stat effects do NOT fire (stats are pre-set).</span>
+                    </p>
+                    <div class="nation-checks" id="nation-checks">Loading nations...</div>
+                </div>
+
+                <!-- Section 4: Costs -->
+                <div class="builder-section">
+                    <div class="builder-section-title">💰 4. Costs</div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+                        <div class="form-field">
+                            <label>Upfront Base Cost ($M)</label>
+                            <input type="number" id="b-upfront" value="0" min="0" step="1" oninput="updateCostPreview()">
+                        </div>
+                        <div class="form-field">
+                            <label>Upfront Scaling Stat (or None)</label>
+                            <select id="b-upfront-scaling" onchange="updateCostPreview()">
+                                <option value="">None (flat cost)</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label>Ongoing Base Cost ($M/tick)</label>
+                            <input type="number" id="b-ongoing-base" value="0" min="0" step="0.1" oninput="updateCostPreview()">
+                        </div>
+                        <div class="form-field">
+                            <label>Ongoing Scaling Stat (or None)</label>
+                            <select id="b-scaling-stat" onchange="updateCostPreview()">
+                                <option value="">None (flat cost)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="formula-preview" id="cost-preview" style="display:none;"></div>
+                </div>
+
+                <!-- Section 5: Stat Effects -->
+                <div class="builder-section">
+                    <div class="builder-section-title">📊 5. Stat Effects (up to 10)</div>
+                    <div id="stat-effects-container"></div>
+                    <button class="add-btn" id="add-effect-btn" onclick="addStatEffect()">+ Add Stat Effect</button>
+                    <div class="effect-preview" id="effect-preview" style="display:none;"></div>
+                </div>
+
+                <!-- Section 6: Opposed Policies -->
+                <div class="builder-section">
+                    <div class="builder-section-title">⚔️ 6. Opposed Policies (up to 3, same law category)</div>
+                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
+                        Policies that cannot coexist. Activating this policy will auto-rescind any opposed active policy.
+                    </p>
+                    <div id="opposed-container"></div>
+                    <button class="add-btn" id="add-opposed-btn" onclick="addOpposedSlot()">+ Add Opposed Policy</button>
+                    <div id="opposed-note" style="color:#666; font-size:0.8rem; margin-top:8px; display:none;">
+                        Select a sector and law category first to see available policies.
+                    </div>
+                </div>
+
+                <!-- Submit -->
+                <!-- Section 7: Prerequisite -->
+<div class="builder-section">
+    <div class="builder-section-title">🔗 7. Prerequisite Policy</div>
+    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
+        Does this policy require another policy to be active first?
+        <span style="color:#5b9bd5;">e.g., Central Bank policies require "Establish Central Bank"</span>
+    </p>
+    <div class="prereq-toggle">
+        <input type="checkbox" id="b-has-prereq" onchange="togglePrereq()">
+        <label for="b-has-prereq">This policy requires a prerequisite law</label>
+    </div>
+    <div class="prereq-select-area" id="prereq-select-area" style="display:none;">
+        <div class="form-field">
+            <label>Select Prerequisite Policy</label>
+            <select class="form-field select" id="b-prereq-policy" style="width:100%;padding:10px 14px;background:#252525;border:1px solid #333;border-radius:5px;color:#e0e0e0;font-size:0.9rem;">
+                <option value="">-- Select policy --</option>
+            </select>
+        </div>
+        <div id="prereq-preview" style="display:none; margin-top:10px;"></div>
+    </div>
+</div>
+                <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:10px; margin-bottom:40px;">
+                    <button class="btn-dim" onclick="resetBuilder()">Clear Form</button>
+                    <button class="btn-gold" id="submit-btn" onclick="savePolicy()">✅ Create Policy</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

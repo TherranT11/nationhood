@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nationhood | Join the Chronicle</title>
+    
+  <script type="module" crossorigin src="/assets/signup-oPUYLTiY.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="stylesheet" crossorigin href="/assets/signup-D26cJRIm.css">
+</head>
+<body>
+
+<div class="signup-card">
+    <!-- Signup Form -->
+    <div id="signup-state">
+        <h2>Establish Faction</h2>
+        
+        <div class="info-note">
+            <strong style="color: #5cb85c;">Welcome to Alpha Shard!</strong><br>
+            You'll choose your nation after creating your account.
+        </div>
+        
+        <form id="signup-form">
+            <div class="input-group">
+                <label>Email Address</label>
+                <input type="email" id="email" placeholder="commander@example.com" required>
+            </div>
+            
+            <div class="input-group">
+                <label>Password</label>
+                <input type="password" id="password" minlength="6" required>
+            </div>
+            
+            <div class="input-group">
+                <label>Choose Your Faction Path</label>
+                <div class="faction-types">
+                    <!-- Political Party - Available -->
+                    <div class="faction-option available selected" data-type="party">
+                        <div class="faction-title">Political Party</div>
+                        <div class="faction-desc">Shape laws, influence policy, and guide your nation's future through political power.</div>
+                    </div>
+                    
+                    <!-- Corporation - Coming Soon -->
+                    <div class="faction-option disabled" data-type="corp">
+                        <span class="coming-soon">Coming Soon</span>
+                        <div class="faction-title">Corporation</div>
+                        <div class="faction-desc">Control wealth, trade, and economic power to influence the nation.</div>
+                    </div>
+                    
+                    <!-- Military Branch - Coming Soon -->
+                    <div class="faction-option disabled" data-type="military">
+                        <span class="coming-soon">Coming Soon</span>
+                        <div class="faction-title">Military Branch</div>
+                        <div class="faction-desc">Command forces, ensure security, and project strength for your nation.</div>
+                    </div>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn-join" id="submit-btn">CREATE FACTION</button>
+            <div id="error-message" class="error"></div>
+        </form>
+        
+        <div class="login-link">
+            Already have a faction? <a href="login.html">Log In</a>
+        </div>
+    </div>
+
+    <!-- Email Confirmation State -->
+    <div class="confirm-box" id="confirm-state">
+        <div class="confirm-icon">📧</div>
+        <div class="confirm-title">Confirm Your Email</div>
+        <div class="confirm-desc">
+            We sent a confirmation link to<br>
+            <span class="confirm-email" id="confirm-email-display"></span>
+        </div>
+        <div class="confirm-desc" style="margin-top: 12px;">
+            Click the link in the email to activate your faction, then log in.
+        </div>
+        <div class="confirm-note">Check your spam folder if you don't see it within a few minutes.</div>
+        <div class="login-link" style="margin-top: 24px;">
+            <a href="login.html">← Go to Login</a>
+        </div>
+    </div>
+</div>
+
+
+</body>
+</html>

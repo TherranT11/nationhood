@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Home | Nationhood Alpha</title>
+
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+
+<style>
+  #content-area {
+    margin: 16px 20px;
+    padding: 20px 20px 20px 0;
+    overflow-x: auto !important;
+  }
+  .dash-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    max-width: 1580px;
+  }
+
+  /* ── Dashboard Cards — sharp corners, panel bg ── */
+  .dash-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-main);
+    border-radius: 0;
+    overflow: hidden;
+    min-width: 0;
+  }
+  .dash-card-tall {
+    height: 520px;
+  }
+  #world-map-card {
+    grid-column: 1 / span 3;
+    grid-row: 2;
+  }
+  #crises-card {
+    grid-column: 4;
+    grid-row: 2;
+  }
+
+  /* Card Header — v5: mono, 0.72rem, 600, centered, uppercase */
+  .dash-card-header {
+    background: var(--bg-card);
+    padding: 10px 20px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-secondary);
+    text-align: center;
+    border-bottom: 1px solid var(--border-light);
+  }
+
+  /* ── Tabbed card header ── */
+  .dash-card-tabs {
+    display: flex;
+    gap: 0;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-light);
+  }
+  .dash-card-tab {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 10px 18px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .dash-card-tab:hover { color: var(--text-secondary); }
+  .dash-card-tab.active {
+    color: var(--text-bright);
+    border-bottom-color: var(--text-bright);
+  }
+  .dash-tab-pane { display: none; }
+  .dash-tab-pane.active { display: block; }
+
+  /* ── Events tab bar ── */
+  .events-tab-bar {
+    display: flex;
+    gap: 2px;
+  }
+  .events-tab-btn {
+    background: transparent;
+    border: 1px solid var(--border-light);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .events-tab-btn:first-child { border-radius: 3px 0 0 3px; }
+  .events-tab-btn:last-child  { border-radius: 0 3px 3px 0; }
+  .events-tab-btn.active {
+    background: var(--text-primary);
+    color: var(--bg-page);
+    border-color: var(--text-primary);
+  }
+  .events-tab-btn:hover:not(.active) {
+    background: rgba(255,255,255,0.05);
+  }
+
+  /* ── Events list — event rows with left border accent ── */
+  .dash-events-scroll {
+    overflow-y: auto;
+    padding: 0 14px 14px;
+    flex: 1;
+  }
+  .dash-event-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 7px 6px;
+    border-bottom: 1px solid var(--border-light);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+  }
+  .dash-event-date {
+    color: var(--text-dim);
+    min-width: 70px;
+    flex-shrink: 0;
+    font-weight: 500;
+  }
+  .dash-event-icon {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+  }
+  .dash-event-text {
+    color: var(--text-primary);
+    font-family: var(--font-ui);
+    font-size: 0.82rem;
+    flex: 1;
+    line-height: 1.4;
+  }
+  .dash-event-category {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1px solid;
+  }
+  .dash-card-body {
+    padding: 6px 20px 20px;
+  }
+
+  /* ── World event date + nation column ── */
+  .dash-event-date-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+
+  /* ── World event nation badge ── */
+  .world-event-nation-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    border: 1px solid;
+    vertical-align: middle;
+  }
+  .world-event-nation-badge img {
+    width: 14px;
+    height: 10px;
+    object-fit: cover;
+    border-radius: 1px;
+  }
+
+  /* ── Nation identity — serif name, serif motto ── */
+  .nation-identity {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 24px;
+  }
+  .nation-flag-box {
+    width: 80px;
+    height: 56px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-main);
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .nation-flag-box img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  .nation-flag-box .abbr-fallback {
+    font-family: var(--font-mono);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+  }
+  .nation-identity h2 {
+    font-family: var(--font-serif);
+    font-size: 1.35rem;
+    font-weight: 600;
+    color: var(--text-bright);
+  }
+  .nation-identity .motto {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+  }
+
+  /* ── Nation stat rows — v5 stat row pattern ── */
+  .nation-stats-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .nation-stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 4px;
+    border-top: 1px solid var(--border-light);
+  }
+  .nation-stat-row:last-child {
+    padding-bottom: 0;
+  }
+  .nation-stat-row .label {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .nation-stat-row .value {
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-bright);
+    text-align: right;
+  }
+
+  /* ── Government Card ── */
+  .gov-admin-name {
+    font-family: var(--font-ui);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    margin-bottom: 6px;
+  }
+  .gov-badges {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .gov-badge {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 3px 8px;
+    border-radius: 3px;
+    border: 1px solid;
+  }
+  .gov-leader-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  /* Avatar — v5: initials, 32x32, bg-card, mono, dim */
+  .gov-initials {
+    width: 32px;
+    height: 32px;
+    border-radius: 2px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-main);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .gov-leader-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-bright);
+  }
+  .gov-leader-meta {
+    font-family: var(--font-ui);
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    margin-top: 1px;
+  }
+  .gov-leader-party {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 3px;
+  }
+  .gov-party-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .gov-party-label {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .gov-section-title {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .gov-divider {
+    height: 1px;
+    background: var(--border-light);
+    margin: 10px 0;
+  }
+  /* Seat bar — v5: NO border-radius, square ends */
+  .gov-seat-bar {
+    display: flex;
+    height: 6px;
+    gap: 2px;
+    background: var(--bg-hover);
+    margin-bottom: 6px;
+    /* NO border-radius — square ends always */
+  }
+  .gov-seat-segment {
+    height: 100%;
+  }
+  .gov-coalition-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+  }
+  .gov-coalition-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-bright);
+    flex: 1;
+  }
+  .gov-coalition-seats {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+  .gov-seats-combined {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    text-align: right;
+    margin-top: 2px;
+  }
+  /* Approval display — v5: 1.6rem, 800 weight */
+  .gov-approval-big {
+    font-family: var(--font-mono);
+    font-size: 1.6rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .gov-footer {
+    background: var(--bg-card);
+    border-top: 1px solid var(--border-light);
+    margin: 0;
+    padding: 8px 20px 8px 24px;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .gov-footer-label {
+    text-transform: uppercase;
+  }
+  .gov-footer-detail {
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+
+  /* ── Elections Card — v5: left border accent, bg-card ── */
+  .election-item {
+    border-left: 3px solid var(--text-dim);
+    background: var(--bg-card);
+    padding: 8px 14px;
+    margin-bottom: 12px;
+  }
+  .election-item.midterm      { border-left-color: var(--amber); }
+  .election-item.presidential { border-left-color: var(--red); }
+  .election-item.parliamentary { border-left-color: var(--blue); }
+  /* Urgent elections — within 5 ticks */
+  .election-item.urgent {
+    border-left-color: var(--amber);
+    background: var(--amber-faint);
+    border: 1px solid var(--amber-border);
+    border-left: 3px solid var(--amber);
+    animation: deadline-pulse 2s ease-in-out infinite;
+  }
+  .election-item-type {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .election-item-date {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 500;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .elections-suspended {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--red);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 20px 0;
+  }
+
+  /* ── Active Crises Card — v5: left border, red triad ── */
+  .crises-scroll {
+    overflow-y: auto;
+    padding: 0 14px 14px;
+    flex: 1;
+  }
+  .crisis-item {
+    border-left: 3px solid var(--red);
+    padding: 8px 10px;
+    margin-bottom: 12px;
+    background: var(--red-faint);
+    border-radius: 0 2px 2px 0;
+    border: 1px solid var(--border-main);
+    border-left: 3px solid var(--red);
+  }
+  .crisis-item-name {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--red);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .crisis-item-since {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .crisis-item-desc {
+    font-family: var(--font-ui);
+    font-size: 0.82rem;
+    color: var(--text-primary);
+    margin-top: 6px;
+    line-height: 1.45;
+  }
+  .crisis-item-effects {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    margin-top: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+  }
+  .crisis-effect-up   { color: var(--green); }
+  .crisis-effect-down { color: var(--red); }
+  .crisis-item-solution {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-light);
+  }
+  .crisis-item-solution strong {
+    color: var(--text-bright);
+    font-weight: 700;
+  }
+  .crises-empty {
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    text-align: center;
+    padding: 30px 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  /* ── Mobile responsive ── */
+  @media (max-width: 1200px) {
+    .dash-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    #world-map-card {
+      grid-column: span 2 !important;
+    }
+    #crises-card {
+      grid-column: span 2 !important;
+      grid-row: auto !important;
+    }
+  }
+
+  @media (max-width: 768px) {
+    #content-area {
+      margin: 8px 10px;
+      padding: 10px 0;
+    }
+    .dash-grid {
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+    .dash-card-tall {
+      height: auto;
+      max-height: 480px;
+    }
+    #events-card.dash-card-tall {
+      max-height: 400px;
+    }
+    #world-map-card {
+      grid-column: span 1 !important;
+    }
+    #crises-card {
+      grid-column: span 1 !important;
+    }
+    .dash-card-header {
+      padding: 8px 14px;
+      font-size: 0.68rem;
+    }
+    .dash-card-body {
+      padding: 6px 14px 14px;
+    }
+    .nation-identity h2 {
+      font-size: 1.15rem;
+    }
+    .nation-identity .motto {
+      font-size: 0.8rem;
+    }
+    .nation-stat-row {
+      padding: 5px 4px;
+    }
+    .gov-admin-name {
+      font-size: 0.95rem;
+    }
+    .gov-badges {
+      flex-wrap: wrap;
+    }
+    .election-item {
+      padding: 6px 10px;
+      margin-bottom: 8px;
+    }
+    .dash-event-row {
+      font-size: 0.62rem;
+    }
+    .dash-event-date {
+      min-width: 55px;
+    }
+    .dash-event-category {
+      display: none;
+    }
+  }
+
+  @media (max-width: 480px) {
+    #content-area {
+      margin: 4px 6px;
+      padding: 6px 0;
+    }
+    .dash-grid {
+      gap: 10px;
+    }
+    .nation-flag-box {
+      width: 64px;
+      height: 44px;
+    }
+  }
+</style>
+  <script type="module" crossorigin src="/assets/dashboard-CiGUiRh-.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-BedtaFOo.js">
+  <link rel="modulepreload" crossorigin href="/assets/guide-RrxJIDYT.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-structure-DKbbGMPO.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
+  <link rel="stylesheet" crossorigin href="/assets/dashboard-DwcD1jvW.css">
+  <link rel="stylesheet" crossorigin href="/assets/map-BepPJbC3.css">
+</head>
+
+<body>
+
+<!-- Top bar rendered by common.js -->
+<div id="top-bar"></div>
+
+<div id="content-area">
+  <div class="dash-grid">
+
+    <!-- ── Row 1: Nation, Government, Elections, Events ── -->
+    <div class="dash-card dash-card-tall" id="nation-card">
+      <div class="dash-card-header">NATION</div>
+      <div class="dash-card-body">
+        <div class="nation-identity">
+          <div class="nation-flag-box" id="nation-flag-box">
+            <span class="abbr-fallback" id="nation-abbr"></span>
+          </div>
+          <h2 id="nation-name"></h2>
+          <div class="motto" id="nation-motto"></div>
+        </div>
+        <div class="nation-stats-list" id="nation-stats-list"></div>
+      </div>
+    </div>
+
+    <div class="dash-card dash-card-tall" id="gov-card">
+      <div class="dash-card-header">GOVERNMENT</div>
+      <div class="dash-card-body" id="gov-card-body">
+        <div style="display:flex;align-items:center;justify-content:center;height:340px;color:var(--text-secondary);font-size:0.85rem;">Loading government&hellip;</div>
+      </div>
+    </div>
+
+    <div class="dash-card dash-card-tall" id="elections-card">
+      <div class="dash-card-header">ELECTIONS</div>
+      <div class="dash-card-body" id="elections-card-body"></div>
+    </div>
+
+    <div class="dash-card dash-card-tall" id="events-card" style="display:flex;flex-direction:column;">
+      <div class="dash-card-header" style="display:flex;align-items:center;gap:0;">
+        <span style="margin-right:auto;">EVENTS</span>
+        <div class="events-tab-bar" id="events-tab-bar">
+          <button class="events-tab-btn active" data-tab="nation" onclick="switchEventsTab('nation')">Nation</button>
+          <button class="events-tab-btn" data-tab="world" onclick="switchEventsTab('world')">World</button>
+        </div>
+      </div>
+      <div class="dash-events-scroll" id="dash-events-list"></div>
+    </div>
+
+    <!-- ── Row 2: World Map (spans 3 columns) + Active Crises ── -->
+    <div class="dash-card" id="world-map-card">
+      <div class="dash-card-header">WORLD MAP</div>
+      <div class="dash-card-body" id="world-map-body" style="padding:0; overflow:hidden;">
+        <img src="/assets/World%20Map%20Crucera3-CpK3Av9Y.svg" alt="World Map" style="width:100%; height:auto; object-fit:contain; display:block;">
+      </div>
+    </div>
+
+    <div class="dash-card dash-card-tall" id="crises-card" style="display:flex;flex-direction:column;">
+      <div class="dash-card-header">ACTIVE CRISES</div>
+      <div class="crises-scroll" id="crises-card-body">
+        <div class="crises-empty">Loading&hellip;</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+</body>
+</html>
