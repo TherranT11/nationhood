@@ -8075,11 +8075,12 @@ async function resolveStuckFloorBills(supabase, nationId) {
 
     const { data: nation } = await supabase
         .from('nations')
-        .select('name, government_type, total_seats')
+        .select('name, government_type, total_seats, judicial_appointment_politicization')
         .eq('id', nationId)
         .single();
     const nominalTotalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
     const totalSeats = Math.min(nominalTotalSeats, Math.max(factionSeatSum, 1));
+    const nationFlags = { judicial_appointment_politicization: !!nation?.judicial_appointment_politicization };
 
     const specialTypes = new Set(['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'ambassador_confirmation']);
     const results = [];
@@ -9338,18 +9339,20 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
     if (bill.proposed_judicial_appointment_politicization) {
         const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
 
-        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
         const cappedJudicial = Math.min(Number(nation?.judicial_independence ?? 50), 30);
         const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
         const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 3);
 
-        await supabase.from('nations').update({
+        const { error: nationErr } = await supabase.from('nations').update({
             judicial_appointment_politicization: true,
             judicial_independence: cappedJudicial,
             legitimacy: newLegitimacy,
             freedom_index: newFreedom
         }).eq('id', bill.nation_id);
+        if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for judicial politicization:`, nationErr.message);
 
         const isPres = isPresidentialRepublic(nation);
         const mechanicDesc = isPres

@@ -618,22 +618,26 @@ export function evaluateBillVote(bill, totalSeats, nationFlags = {}) {
  * @param {object} bill - Bill row with votes_for, votes_against, votes_abstain, bill_type, quorum_failures
  * @param {number} totalSeats - Total parliamentary seats
  */
-export function resolveBillVote(bill, totalSeats) {
+export function resolveBillVote(bill, totalSeats, nationFlags = {}) {
     const forSeats = bill.votes_for || 0;
     const againstSeats = bill.votes_against || 0;
     const abstainSeats = bill.votes_abstain || 0;
     const participating = forSeats + againstSeats + abstainSeats;
     const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
+    const judicialPoliticized = !!nationFlags.judicial_appointment_politicization;
 
-    // Foundational / default_resolution / veto_override / impeachment_conviction: 67% absolute supermajority
+    // Foundational / default_resolution / veto_override / impeachment_conviction: supermajority
     if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
-        const threshold = Math.ceil(totalSeats * 2 / 3);
+        const ratio = (bill.bill_type === 'impeachment_conviction' && judicialPoliticized) ? 0.75 : (2 / 3);
+        const threshold = Math.ceil(totalSeats * ratio);
         return forSeats >= threshold ? 'passed' : 'failed';
     }
 
-    // No-confidence / impeachment_motion: 50%+1 absolute majority
+    // No-confidence / impeachment_motion: absolute majority
     if (bill.bill_type === 'no_confidence' || bill.bill_type === 'impeachment_motion') {
-        const threshold = Math.floor(totalSeats / 2) + 1;
+        const threshold = (bill.bill_type === 'no_confidence' && judicialPoliticized)
+            ? Math.ceil(totalSeats * 0.6)
+            : Math.floor(totalSeats / 2) + 1;
         return forSeats >= threshold ? 'passed' : 'failed';
     }
 
@@ -3381,18 +3385,20 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
     if (bill.proposed_judicial_appointment_politicization) {
         const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
 
-        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
         const cappedJudicial = Math.min(Number(nation?.judicial_independence ?? 50), 30);
         const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
         const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 3);
 
-        await supabase.from('nations').update({
+        const { error: nationErr } = await supabase.from('nations').update({
             judicial_appointment_politicization: true,
             judicial_independence: cappedJudicial,
             legitimacy: newLegitimacy,
             freedom_index: newFreedom
         }).eq('id', bill.nation_id);
+        if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for judicial politicization:`, nationErr.message);
 
         const isPres = isPresidentialRepublic(nation);
         const mechanicDesc = isPres
