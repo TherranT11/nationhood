@@ -1605,7 +1605,9 @@ function renderRatificationBill() {
                     const donorIsA = art.data.donor_nation_id === rd.nationA?.id;
                     const weAreRecipient = donorIsA ? !rd.isNationA : rd.isNationA;
                     // Recipient gets relief (negative cost = revenue), donor pays (positive cost)
-                    ongoingMonthly = weAreRecipient ? -(annualAmt / 12) : (annualAmt / 12);
+                    // Convert raw dollars to $M for formatCurrency
+                    const monthlyM = (annualAmt / 12) / 1e6;
+                    ongoingMonthly = weAreRecipient ? -monthlyM : monthlyM;
                 }
             }
         }
