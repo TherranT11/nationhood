@@ -12,27 +12,27 @@ export const POSITIVE_TRAITS = [
     { key: 'efficient_operator', name: 'Efficient Operator', cost: 3.5, category: 'AP', effect: 'All campaign actions cost -1 AP (minimum 1).' },
     { key: 'quick_study', name: 'Quick Study', cost: 1.5, category: 'AP', effect: 'First action each tick costs -1 AP (minimum 1).' },
     { key: 'delegation', name: 'Delegation', cost: 1.0, category: 'AP', effect: 'Outreach and Rally actions cost -1 AP each.' },
-    // Electoral & Visibility
-    { key: 'born_leader', name: 'Born Leader', cost: 3.5, category: 'Electoral', effect: '+3 Visibility per tick. Credibility recovers 50% faster.' },
-    { key: 'comeback_kid', name: 'Comeback Kid', cost: 3.5, category: 'Electoral', effect: 'After losing an election: +5 Party Approval and +10 Visibility bounce.' },
-    { key: 'crowd_pleaser', name: 'Crowd Pleaser', cost: 1.5, category: 'Electoral', effect: 'Rally actions give +2 bonus Visibility. Approval gains from rallies +30%.' },
-    { key: 'telegenic', name: 'Telegenic', cost: 1.5, category: 'Electoral', effect: '+30% Approval gains from all campaign actions. +2 Visibility per tick.' },
+    // Electoral & Momentum
+    { key: 'born_leader', name: 'Born Leader', cost: 3.5, category: 'Electoral', effect: '+3 Momentum per tick. Governance score recovers 50% faster.' },
+    { key: 'comeback_kid', name: 'Comeback Kid', cost: 3.5, category: 'Electoral', effect: 'After losing an election: +5 Governance and +10 Momentum bounce.' },
+    { key: 'crowd_pleaser', name: 'Crowd Pleaser', cost: 1.5, category: 'Electoral', effect: 'Rally actions give +2 bonus Momentum. Momentum gains from rallies +30%.' },
+    { key: 'telegenic', name: 'Telegenic', cost: 1.5, category: 'Electoral', effect: '+30% Momentum gains from all campaign actions. +2 Momentum per tick.' },
     // Legislative & Parliamentary
     { key: 'arm_twister', name: 'Arm Twister', cost: 1.5, category: 'Legislative', effect: 'Whip effectiveness +20%. Party members vote with leadership 15% more often.' },
-    { key: 'deal_maker', name: 'Deal Maker', cost: 1.5, category: 'Legislative', effect: '+5 Platform Appeal while in a coalition. Formation deadline extended by 3 ticks when lead party.' },
-    { key: 'policy_wonk', name: 'Policy Wonk', cost: 1.0, category: 'Legislative', effect: 'Bills you sponsor cost -1 AP to draft. Each enacted bill gives +3 Platform Appeal.' },
+    { key: 'deal_maker', name: 'Deal Maker', cost: 1.5, category: 'Legislative', effect: '+5 Governance while in a coalition. Formation deadline extended by 3 ticks when lead party.' },
+    { key: 'policy_wonk', name: 'Policy Wonk', cost: 1.0, category: 'Legislative', effect: 'Bills you sponsor cost -1 AP to draft. Each enacted bill gives +3 Governance.' },
     { key: 'constitutional_scholar', name: 'Constitutional Scholar', cost: 1.0, category: 'Legislative', effect: 'Impeachment and no-confidence attempts against your leader cost opponents +3 AP.' },
     // Governance
     { key: 'cabinet_builder', name: 'Cabinet Builder', cost: 3.5, category: 'Governance', effect: 'Your party gets +2 ministry slots in any coalition. Ministers you appoint start with +10 approval.' },
     { key: 'executive_authority', name: 'Executive Authority', cost: 4.0, category: 'Governance', effect: 'Pres: Executive Orders cost -2 AP. PM: Governor-General actions cost -1 AP.' },
     { key: 'crisis_manager', name: 'Crisis Manager', cost: 1.5, category: 'Governance', effect: 'Stability loss during crises halved. Crisis duration -2 ticks.' },
-    { key: 'economic_steward', name: 'Economic Steward', cost: 1.5, category: 'Governance', effect: 'GDP growth +0.5% while governing. Budget surplus generates +3 approval per tick.' },
+    { key: 'economic_steward', name: 'Economic Steward', cost: 1.5, category: 'Governance', effect: 'GDP growth +0.5% while governing. Budget surplus generates +3 Governance per tick.' },
     // Diplomatic
     { key: 'statesman', name: 'Statesman', cost: 3.5, category: 'Diplomatic', effect: 'State visits cost -2 AP and grant double relations boost.' },
     { key: 'international_presence', name: 'International Presence', cost: 1.0, category: 'Diplomatic', effect: 'International reputation +5 while leader. Foreign leaders accept diplomatic proposals 1 tick faster.' },
     // Voter Blocs
     { key: 'populist_touch', name: 'Populist Touch', cost: 3.5, category: 'Voter Blocs', effect: 'SKEPTICAL blocs are treated as SWING for all action targeting.' },
-    { key: 'base_energizer', name: 'Base Energizer', cost: 1.5, category: 'Voter Blocs', effect: 'BASE bloc approval decay halved. +1 Visibility per tick.' },
+    { key: 'base_energizer', name: 'Base Energizer', cost: 1.5, category: 'Voter Blocs', effect: 'BASE bloc approval decay halved. +1 Momentum per tick.' },
 ];
 
 // ═══════════════════════════════════════
@@ -45,10 +45,10 @@ export const NEGATIVE_TRAITS = [
     { key: 'slow_to_act', name: 'Slow to Act', relief: 1.0, category: 'AP', effect: 'First action each tick costs +1 AP.' },
     { key: 'high_maintenance', name: 'High Maintenance', relief: 0.5, category: 'AP', effect: 'Outreach and Rally actions cost +1 AP each.' },
     // Electoral
-    { key: 'unelectable', name: 'Unelectable', relief: 1.5, category: 'Electoral', effect: '-2 Visibility per tick. Credibility recovers 50% slower.' },
-    { key: 'sore_loser', name: 'Sore Loser', relief: 1.5, category: 'Electoral', effect: 'After losing an election: -5 Party Approval and -10 Visibility.' },
-    { key: 'gaffe_prone', name: 'Gaffe Prone', relief: 1.0, category: 'Electoral', effect: '20% chance per tick of a gaffe: -2 Credibility and -3 Visibility.' },
-    { key: 'wooden_speaker', name: 'Wooden Speaker', relief: 1.0, category: 'Electoral', effect: '-30% Approval gains from campaign actions. -2 Visibility per tick.' },
+    { key: 'unelectable', name: 'Unelectable', relief: 1.5, category: 'Electoral', effect: '-2 Momentum per tick. Governance score recovers 50% slower.' },
+    { key: 'sore_loser', name: 'Sore Loser', relief: 1.5, category: 'Electoral', effect: 'After losing an election: -5 Governance and -10 Momentum.' },
+    { key: 'gaffe_prone', name: 'Gaffe Prone', relief: 1.0, category: 'Electoral', effect: '20% chance per tick of a gaffe: -2 Governance and -3 Momentum.' },
+    { key: 'wooden_speaker', name: 'Wooden Speaker', relief: 1.0, category: 'Electoral', effect: '-30% Momentum gains from campaign actions. -1 Momentum per tick.' },
     // Legislative
     { key: 'poor_whip', name: 'Poor Whip', relief: 1.0, category: 'Legislative', effect: 'Whip effectiveness -20%. Party members break ranks 15% more often.' },
     { key: 'stubborn_negotiator', name: 'Stubborn Negotiator', relief: 1.0, category: 'Legislative', effect: 'Coalition negotiations take +3 ticks. Partners demand 1 additional ministry.' },
@@ -58,13 +58,13 @@ export const NEGATIVE_TRAITS = [
     { key: 'cabinet_hog', name: 'Cabinet Hog', relief: 1.5, category: 'Governance', effect: 'Your party MUST take at least 4 ministries in any coalition. Refusing collapses the government.' },
     { key: 'overreach', name: 'Overreach', relief: 2.0, category: 'Governance', effect: 'Pres: Executive Orders cost +2 AP. PM: All governance actions cost +1 AP.' },
     { key: 'panic_under_pressure', name: 'Panic Under Pressure', relief: 1.0, category: 'Governance', effect: 'Stability loss during crises doubled. Crisis duration +2 ticks.' },
-    { key: 'economically_illiterate', name: 'Economically Illiterate', relief: 1.0, category: 'Governance', effect: 'GDP growth -0.3% while governing. Budget deficits cause double approval loss.' },
+    { key: 'economically_illiterate', name: 'Economically Illiterate', relief: 1.0, category: 'Governance', effect: 'GDP growth -0.3% while governing. Budget deficits cause double Governance loss.' },
     // Diplomatic
     { key: 'isolationist', name: 'Isolationist', relief: 1.5, category: 'Diplomatic', effect: 'Cannot initiate state visits. Relations decay +50% faster with all nations.' },
     { key: 'international_pariah', name: 'International Pariah', relief: 0.5, category: 'Diplomatic', effect: 'International reputation -5 while leader. Foreign proposals take +1 tick to process.' },
     // Voter Blocs
     { key: 'elitist', name: 'Elitist', relief: 1.5, category: 'Voter Blocs', effect: 'SKEPTICAL blocs are treated as HOSTILE for all action targeting.' },
-    { key: 'divisive_figure', name: 'Divisive Figure', relief: 1.0, category: 'Voter Blocs', effect: 'Outreach actions cost +1 AP. Outreach approval gains with non-BASE blocs halved.' },
+    { key: 'divisive_figure', name: 'Divisive Figure', relief: 1.0, category: 'Voter Blocs', effect: 'Outreach actions cost +1 AP. Outreach momentum gains with non-BASE blocs halved.' },
 ];
 
 // ═══════════════════════════════════════
