@@ -1083,11 +1083,15 @@ async function renderRevolutionBannerGov() {
 
 // ==================== PARLIAMENTARY EMERGENCY (requires Emergency Powers Act) ====================
 
-function renderParliamentaryEmergency() {
+function renderParliamentaryEmergency(activeHOG) {
     if (!currentNation || isPresidential) return '';
     if (!currentNation.emergency_powers_act) return '';
     // Only the ruling faction (PM's party) can declare
-    const isRuling = currentFaction && currentNation.ruling_faction_id && currentFaction.id === currentNation.ruling_faction_id;
+    const isRuling = currentFaction && (
+        (currentNation.ruling_faction_id && currentFaction.id === currentNation.ruling_faction_id) ||
+        (activeHOG?.factions?.id === currentFaction.id) ||
+        (activeHOG?.faction_id === currentFaction.id)
+    );
     if (!isRuling) return '';
 
     // Check if emergency is already active
@@ -1416,7 +1420,7 @@ async function renderGovernmentPage() {
         const revolutionBannerHtml = await renderRevolutionBannerGov();
         const administrationBoxHtml = await renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress, allPartySeats);
         const protestCrisisCardHtml = renderProtestCrisisCard();
-        const parliamentaryEmergencyHtml = renderParliamentaryEmergency();
+        const parliamentaryEmergencyHtml = renderParliamentaryEmergency(activeHOG);
 
         document.getElementById('content-area').innerHTML = `
             <div class="panel-padding">
