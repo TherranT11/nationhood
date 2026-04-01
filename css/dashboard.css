@@ -572,6 +572,7 @@ body.light-mode .guide-btn:hover { background: rgba(184,150,10,0.18); }
     text-align: center; padding: 0 3px;
 }
 .nav-badge--crimson { background: #a65d5d; }
+.nav-badge--amber { background: #b09a5b; }
 /* ===== MAIN CONTENT AREA ===== */
 #content-area { flex: 1; overflow-y: auto; overflow-x: hidden; }
 
