@@ -41,7 +41,6 @@ DO $$ DECLARE _nid UUID; _fids UUID[]; BEGIN
   DELETE FROM ministries WHERE party_id = ANY(_fids);
   UPDATE presidents SET faction_id = NULL WHERE faction_id = ANY(_fids);
   DELETE FROM donor_trust WHERE party_id = ANY(_fids);
-  UPDATE faction_coalitions SET proposed_by_faction_id = NULL WHERE proposed_by_faction_id = ANY(_fids);
   UPDATE administrations SET pm_party_id = NULL WHERE pm_party_id = ANY(_fids);
   DELETE FROM election_candidates WHERE faction_id = ANY(_fids);
   DELETE FROM presidential_candidates WHERE faction_id = ANY(_fids);
