@@ -3149,13 +3149,17 @@ document.getElementById('chat-input')?.addEventListener('keypress', (e) => {
 });
 
 // Expose functions for HTML onclick/onchange handlers
+let _thresholdLock = false;
 async function setPartyRegistrationThreshold(pct) {
+    if (_thresholdLock) return;
     if (![5, 10, 15].includes(pct)) return;
     const bill = currentBill;
     if (!bill || bill.status !== 'committee') return;
+    _thresholdLock = true;
     const { error } = await _supabase.from('bills')
         .update({ proposed_party_registration_threshold: pct })
         .eq('id', bill.id);
+    _thresholdLock = false;
     if (error) { alert('Failed to update threshold: ' + error.message); return; }
     currentBill.proposed_party_registration_threshold = pct;
     renderBill();
@@ -3163,12 +3167,15 @@ async function setPartyRegistrationThreshold(pct) {
 window.setPartyRegistrationThreshold = setPartyRegistrationThreshold;
 
 async function setQuorumOverride(pct) {
+    if (_thresholdLock) return;
     if (![25, 30, 40].includes(pct)) return;
     const bill = currentBill;
     if (!bill || bill.status !== 'committee') return;
+    _thresholdLock = true;
     const { error } = await _supabase.from('bills')
         .update({ proposed_legislative_quorum_override: pct })
         .eq('id', bill.id);
+    _thresholdLock = false;
     if (error) { alert('Failed to update quorum: ' + error.message); return; }
     currentBill.proposed_legislative_quorum_override = pct;
     renderBill();
