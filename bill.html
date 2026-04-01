@@ -651,7 +651,7 @@ function renderBill() {
         ? isPresidentParty
         : (coalitionLeadPartyId && currentFaction?.id === coalitionLeadPartyId);
     const hasEmergencyPower = isPresidential || currentNation?.emergency_powers_act;
-    if (isHeadOfGovParty && hasEmergencyPower && (isCommittee || isFloor) && !isAutocracy) {
+    if (isHeadOfGovParty && hasEmergencyPower && (isCommittee || isFloor)) {
         renderEmergencyAdvanceButton(bill);
     }
 
