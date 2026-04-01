@@ -20,50 +20,66 @@ SET government_type                      = 'Democracy',
 WHERE government_type = 'Autocracy';
 
 -- 2. DISBAND SANGREZA FACTIONS
-CREATE TEMP TABLE _sz_factions AS
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza');
+--    Comprehensive FK cleanup from admin_delete_party + all known FK tables.
+--    Each table wrapped in its own DO block so missing tables don't block others.
 
--- Diplomacy tables
-DELETE FROM ambassadors WHERE faction_id IN (SELECT id FROM _sz_factions);
-DELETE FROM diplomatic_messages WHERE from_faction_id IN (SELECT id FROM _sz_factions);
-DELETE FROM diplomatic_action_log WHERE faction_id IN (SELECT id FROM _sz_factions);
-UPDATE bills SET diplomatic_proposal_id = NULL
-    WHERE diplomatic_proposal_id IN (
-        SELECT id FROM diplomatic_proposals WHERE proposed_by_faction_id IN (SELECT id FROM _sz_factions)
-    );
-DELETE FROM diplomatic_proposals WHERE proposed_by_faction_id IN (SELECT id FROM _sz_factions);
-
--- Government tables
-DELETE FROM impeachment_proceedings WHERE initiated_by_faction_id IN (SELECT id FROM _sz_factions);
-DELETE FROM ministries WHERE party_id IN (SELECT id FROM _sz_factions);
-UPDATE presidents SET faction_id = NULL WHERE faction_id IN (SELECT id FROM _sz_factions);
-
--- IPO tables (inline subquery — temp tables not reliable inside DO exception blocks)
-DO $$ DECLARE _nid UUID; BEGIN
+DO $$ DECLARE _nid UUID; _fids UUID[]; BEGIN
   SELECT id INTO _nid FROM nations WHERE name = 'Sangreza';
-  DELETE FROM ipo_votes WHERE proposed_by IN (SELECT id FROM factions WHERE nation_id = _nid);
-  DELETE FROM ipo_amendment_history WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-  DELETE FROM ipo_actions WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-  DELETE FROM ipo_actions WHERE target_faction_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-  DELETE FROM ipo_ballots WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-  DELETE FROM ipo_chat WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-  DELETE FROM ipo_invitations WHERE target_faction_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-  DELETE FROM ipo_members WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-  UPDATE international_orgs SET founding_party_id = NULL WHERE founding_party_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-  UPDATE international_orgs SET president_id = NULL WHERE president_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-EXCEPTION WHEN undefined_table OR undefined_column THEN NULL;
+  SELECT array_agg(id) INTO _fids FROM factions WHERE nation_id = _nid;
+  IF _fids IS NULL THEN RETURN; END IF;
+
+  -- Diplomacy
+  DELETE FROM ambassadors WHERE faction_id = ANY(_fids);
+  DELETE FROM diplomatic_messages WHERE from_faction_id = ANY(_fids);
+  DELETE FROM diplomatic_action_log WHERE faction_id = ANY(_fids);
+  UPDATE bills SET diplomatic_proposal_id = NULL
+    WHERE diplomatic_proposal_id IN (SELECT id FROM diplomatic_proposals WHERE proposed_by_faction_id = ANY(_fids));
+  DELETE FROM diplomatic_proposals WHERE proposed_by_faction_id = ANY(_fids);
+
+  -- Government
+  DELETE FROM impeachment_proceedings WHERE initiated_by_faction_id = ANY(_fids);
+  DELETE FROM ministries WHERE party_id = ANY(_fids);
+  UPDATE presidents SET faction_id = NULL WHERE faction_id = ANY(_fids);
+  DELETE FROM donor_trust WHERE party_id = ANY(_fids);
+  UPDATE faction_coalitions SET proposed_by_faction_id = NULL WHERE proposed_by_faction_id = ANY(_fids);
+  UPDATE administrations SET pm_party_id = NULL WHERE pm_party_id = ANY(_fids);
+  DELETE FROM election_candidates WHERE faction_id = ANY(_fids);
+  DELETE FROM presidential_candidates WHERE faction_id = ANY(_fids);
+  UPDATE protests SET faction_id = NULL WHERE faction_id = ANY(_fids);
+  UPDATE protest_log SET faction_id = NULL WHERE faction_id = ANY(_fids);
+  UPDATE event_log SET faction_id = NULL WHERE faction_id = ANY(_fids);
+
+  -- Electoral / standing
+  DELETE FROM faction_electoral_standing WHERE faction_id = ANY(_fids);
+  DELETE FROM faction_issue_stance WHERE faction_id = ANY(_fids);
+  DELETE FROM ideology_shift_actions WHERE faction_id = ANY(_fids);
+  DELETE FROM party_approval_log WHERE faction_id = ANY(_fids);
+  DELETE FROM credibility_log WHERE faction_id = ANY(_fids);
+
+  -- Wiki
+  UPDATE wiki_pages SET created_by = NULL WHERE created_by = ANY(_fids);
+  UPDATE wiki_pages SET updated_by = NULL WHERE updated_by = ANY(_fids);
+  UPDATE wiki_pages SET locked_by = NULL WHERE locked_by = ANY(_fids);
 END $$;
 
--- Wiki
-UPDATE wiki_pages SET created_by = NULL WHERE created_by IN (SELECT id FROM _sz_factions);
-UPDATE wiki_pages SET updated_by = NULL WHERE updated_by IN (SELECT id FROM _sz_factions);
-UPDATE wiki_pages SET locked_by = NULL WHERE locked_by IN (SELECT id FROM _sz_factions);
+-- IPO tables — separate DO blocks (some tables may not exist)
+DO $$ DECLARE _fids UUID[]; BEGIN SELECT array_agg(id) INTO _fids FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza'); IF _fids IS NULL THEN RETURN; END IF; DELETE FROM ipo_votes WHERE proposed_by = ANY(_fids); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ DECLARE _fids UUID[]; BEGIN SELECT array_agg(id) INTO _fids FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza'); IF _fids IS NULL THEN RETURN; END IF; DELETE FROM ipo_action_log WHERE faction_id = ANY(_fids); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ DECLARE _fids UUID[]; BEGIN SELECT array_agg(id) INTO _fids FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza'); IF _fids IS NULL THEN RETURN; END IF; DELETE FROM ipo_amendment_history WHERE faction_id = ANY(_fids); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ DECLARE _fids UUID[]; BEGIN SELECT array_agg(id) INTO _fids FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza'); IF _fids IS NULL THEN RETURN; END IF; DELETE FROM ipo_actions WHERE faction_id = ANY(_fids); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ DECLARE _fids UUID[]; BEGIN SELECT array_agg(id) INTO _fids FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza'); IF _fids IS NULL THEN RETURN; END IF; DELETE FROM ipo_actions WHERE target_faction_id = ANY(_fids); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ DECLARE _fids UUID[]; BEGIN SELECT array_agg(id) INTO _fids FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza'); IF _fids IS NULL THEN RETURN; END IF; DELETE FROM ipo_ballots WHERE faction_id = ANY(_fids); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ DECLARE _fids UUID[]; BEGIN SELECT array_agg(id) INTO _fids FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza'); IF _fids IS NULL THEN RETURN; END IF; DELETE FROM ipo_chat WHERE faction_id = ANY(_fids); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ DECLARE _fids UUID[]; BEGIN SELECT array_agg(id) INTO _fids FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza'); IF _fids IS NULL THEN RETURN; END IF; DELETE FROM ipo_invitations WHERE target_faction_id = ANY(_fids); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ DECLARE _fids UUID[]; BEGIN SELECT array_agg(id) INTO _fids FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza'); IF _fids IS NULL THEN RETURN; END IF; DELETE FROM ipo_invitations WHERE invited_by_faction_id = ANY(_fids); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ DECLARE _fids UUID[]; BEGIN SELECT array_agg(id) INTO _fids FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza'); IF _fids IS NULL THEN RETURN; END IF; DELETE FROM ipo_members WHERE faction_id = ANY(_fids); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ DECLARE _fids UUID[]; BEGIN SELECT array_agg(id) INTO _fids FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza'); IF _fids IS NULL THEN RETURN; END IF; UPDATE ipo_organisations SET president_id = NULL WHERE president_id = ANY(_fids); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ DECLARE _fids UUID[]; BEGIN SELECT array_agg(id) INTO _fids FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza'); IF _fids IS NULL THEN RETURN; END IF; UPDATE international_orgs SET founding_party_id = NULL WHERE founding_party_id = ANY(_fids); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ DECLARE _fids UUID[]; BEGIN SELECT array_agg(id) INTO _fids FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza'); IF _fids IS NULL THEN RETURN; END IF; UPDATE international_orgs SET president_id = NULL WHERE president_id = ANY(_fids); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
 
 -- Delete all factions
 DELETE FROM factions
 WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza');
-
-DROP TABLE _sz_factions;
 
 -- 3. DROP AUTOCRACY-SPECIFIC TABLES
 DROP TABLE IF EXISTS pyrrhic_window CASCADE;
