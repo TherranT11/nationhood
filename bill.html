@@ -1587,7 +1587,7 @@ function renderRatificationBill() {
     document.getElementById('total-upfront').className = 'total-value' + (totalFiscal < 0 ? ' revenue' : '');
     const aidStr = monthlyAidM === 0 ? '$0M/mo' : formatCurrency(monthlyAidM) + '/mo';
     document.getElementById('total-ongoing').textContent = aidStr;
-    document.getElementById('total-ongoing').className = 'total-value' + (monthlyAid < 0 ? ' revenue' : '');
+    document.getElementById('total-ongoing').className = 'total-value' + (monthlyAidM < 0 ? ' revenue' : '');
 }
 
 // ==================== IDEOLOGY AWARENESS (PHASE 4) ====================
