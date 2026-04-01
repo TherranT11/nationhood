@@ -27,11 +27,11 @@
             <div class="bill-articles" id="bill-articles"></div>
             <div class="bill-totals" id="bill-totals">
                 <div class="total-item">
-                    <div class="total-label">Total Upfront Cost</div>
+                    <div class="total-label" id="total-upfront-label">Total Upfront Cost</div>
                     <div class="total-value" id="total-upfront">$0</div>
                 </div>
                 <div class="total-item">
-                    <div class="total-label">Total Ongoing Cost</div>
+                    <div class="total-label" id="total-ongoing-label">Total Ongoing Cost</div>
                     <div class="total-value" id="total-ongoing">$0/mo</div>
                 </div>
             </div>
@@ -1224,9 +1224,9 @@ function renderArticles() {
                     effectsHTML = '<span class="' + cls + '">' + revDir + ' ' + p.target_stat + '</span>';
                 }
 
-                const savingsDisplay = onCost > 0 ? '+' + formatCurrency(onCost).replace(/^[+-]/, '$') + '/mo saved'
-                    : onCost < 0 ? formatCurrency(onCost).replace(/^[+-]/, '-$') + '/mo lost revenue'
-                    : '$0/mo';
+                const savingsDisplay = onCost > 0 ? formatBillCost(-onCost, 'Relief')
+                    : onCost < 0 ? formatBillCost(-onCost, 'Lost Revenue')
+                    : '';
 
                 const repealActions = articleActionsDiv(art);
 
@@ -1235,9 +1235,7 @@ function renderArticles() {
                     '<div class="article-title">Repeal: ' + (p.policy_name || '') + ' ' + ideoHTML + '</div>' +
                     '<div class="article-description">This article repeals the active policy "' + (p.policy_name || '') + '", reversing its effects.</div>' +
                     (effectsHTML ? '<div class="article-stat-effect">Reverses: ' + effectsHTML + '</div>' : '') +
-                    '<div class="article-costs">' +
-                        '<div class="cost-item"><span class="cost-label">Ongoing Savings:</span> <span class="cost-value" style="color:var(--green);font-weight:bold;">' + savingsDisplay + '</span></div>' +
-                    '</div>' +
+                    (savingsDisplay ? '<div class="article-costs"><div class="cost-item">' + savingsDisplay + '</div></div>' : '') +
                     '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
                     repealActions +
                 '</div>';
@@ -1283,18 +1281,40 @@ function renderArticles() {
                 '<div class="article-description">' + (p.description || '') + '</div>' +
                 (effectsHTML ? '<div class="article-stat-effect">Effect: ' + effectsHTML + '</div>' : '') +
                 '<div class="article-costs">' +
-                    '<div class="cost-item"><span class="cost-label">Upfront:</span> <span class="cost-value ' + (upCost < 0 ? 'negative' : '') + '">' + formatCurrency(-upCost) + '</span></div>' +
-                    '<div class="cost-item"><span class="cost-label">Ongoing:</span> <span class="cost-value ' + (onCost < 0 ? 'negative' : '') + '">' + formatCurrency(-onCost) + '/mo</span></div>' +
+                    (upCost > 0 ? '<div class="cost-item">' + formatBillCost(upCost, 'Upfront Cost') + '</div>' : '') +
+                    (onCost > 0 ? '<div class="cost-item">' + formatBillCost(onCost, 'Cost') + '</div>' : '') +
+                    (onCost < 0 ? '<div class="cost-item">' + formatBillCost(onCost, 'Relief') + '</div>' : '') +
                 '</div>' +
                 '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
                 policyActions +
             '</div>';
         }).join('')}`;
     document.getElementById('bill-articles').innerHTML = html;
-    document.getElementById('total-upfront').textContent = formatCurrency(-totalUpfront);
-    document.getElementById('total-upfront').className = `total-value ${totalUpfront < 0 ? 'revenue' : ''}`;
-    document.getElementById('total-ongoing').textContent = `${formatCurrency(-totalOngoing)}/mo`;
-    document.getElementById('total-ongoing').className = `total-value ${totalOngoing < 0 ? 'revenue' : ''}`;
+    // Footer totals: Cost in red, Relief in green
+    const upEl = document.getElementById('total-upfront');
+    const onEl = document.getElementById('total-ongoing');
+    if (totalUpfront > 0) {
+        upEl.textContent = formatCurrency(totalUpfront);
+        upEl.style.color = 'var(--red)';
+    } else if (totalUpfront < 0) {
+        upEl.textContent = formatCurrency(Math.abs(totalUpfront));
+        upEl.style.color = 'var(--green)';
+    } else {
+        upEl.textContent = '$0';
+        upEl.style.color = '';
+    }
+    document.getElementById('total-upfront-label').textContent = totalUpfront < 0 ? 'Total Upfront Relief' : 'Total Upfront Cost';
+    if (totalOngoing > 0) {
+        onEl.textContent = `${formatCurrency(totalOngoing)} / mo (${formatCurrency(totalOngoing * 12)} / yr)`;
+        onEl.style.color = 'var(--red)';
+    } else if (totalOngoing < 0) {
+        onEl.textContent = `${formatCurrency(Math.abs(totalOngoing))} / mo (${formatCurrency(Math.abs(totalOngoing) * 12)} / yr)`;
+        onEl.style.color = 'var(--green)';
+    } else {
+        onEl.textContent = '$0/mo';
+        onEl.style.color = '';
+    }
+    document.getElementById('total-ongoing-label').textContent = totalOngoing < 0 ? 'Total Ongoing Relief' : 'Total Ongoing Cost';
 }
 
 
@@ -2746,7 +2766,7 @@ function onSponsorAddSectorChange() {
             sectorActiveLaws.map(law => {
                 const p = law.policies;
                 const onCost = p.ongoing_cost_per_tick || p.ongoing_base_cost || 0;
-                const costLabel = onCost !== 0 ? ` <span style="color:${onCost > 0 ? 'var(--green)' : 'var(--red)'};font-weight:bold;">+${formatCurrency(onCost).replace(/^[+-]/, '')}/mo saved</span>` : '';
+                const costLabel = onCost > 0 ? ` <span style="color:var(--green);font-weight:bold;">Relief: ${formatCurrency(onCost)} / mo</span>` : '';
                 const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
                 const ideoHTML = ideos.map(i => {
                     const colorClass = getIdeologyChipClass(i, factionIdeology);
@@ -2946,9 +2966,25 @@ function setupRealtimeComments() {
 function formatCurrency(amt) {
     // Defensive note: amt must be in millions of dollars ($M); function formats >=1000 as $B.
     if (amt === 0) return '$0';
-    const abs = Math.abs(amt), sign = amt < 0 ? '-' : '+';
-    if (abs >= 1000) return `${sign}$${(abs / 1000) % 1 === 0 ? (abs / 1000).toFixed(0) : (abs / 1000).toFixed(1)}B`;
-    return `${sign}$${Math.round(abs)}M`;
+    const abs = Math.abs(amt);
+    if (abs >= 1000) return `$${abs % 1000 === 0 ? (abs / 1000).toFixed(0) : (abs / 1000).toFixed(1)}B`;
+    return `$${Math.round(abs)}M`;
+}
+
+// Standardized cost display: Cost in RED, Relief in GREEN, with /mo and /yr
+function formatBillCost(monthlyAmt, label) {
+    // monthlyAmt > 0 = costs money, monthlyAmt < 0 = saves money
+    if (monthlyAmt === 0) return '';
+    const abs = Math.abs(monthlyAmt);
+    const monthly = formatCurrency(abs);
+    const yearly = formatCurrency(abs * 12);
+    if (monthlyAmt > 0) {
+        // COST — red
+        return `<span class="cost-value" style="color:var(--red);font-weight:bold;">${label || 'Cost'}: ${monthly} / mo (${yearly} / yr)</span>`;
+    } else {
+        // RELIEF — green
+        return `<span class="cost-value" style="color:var(--green);font-weight:bold;">${label || 'Relief'}: ${monthly} / mo (${yearly} / yr)</span>`;
+    }
 }
 
 document.getElementById('chat-input')?.addEventListener('keypress', (e) => {
