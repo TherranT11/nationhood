@@ -11753,31 +11753,7 @@ async function processElections(supabase, nation, currentTick) {
     }
 
     // === SCHEDULE NEXT ELECTIONS ===
-    if (isPresidential) {
-        await scheduleNextPresidentialElections(supabase, nation, currentTick);
-    } else {
-        const { data: futureElection } = await supabase
-            .from('elections')
-            .select('id')
-            .eq('nation_id', nation.id)
-            .eq('status', 'scheduled')
-            .gt('election_tick', currentTick)
-            .limit(1)
-            .maybeSingle();
-
-        if (!futureElection) {
-            const frequency = nation.election_frequency || 48;
-            const nextTick = currentTick + frequency;
-
-            await supabase.from('elections').insert({
-                nation_id: nation.id,
-                election_tick: nextTick,
-                status: 'scheduled'
-            });
-
-            console.log(`Scheduled next election for ${nation.name} at tick ${nextTick}`);
-        }
-    }
+    await ensureElectionsScheduled(supabase, nation, currentTick);
 
     return results;
 }
@@ -12227,7 +12203,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
 
     // Proactively schedule next elections (instead of relying on processPresidentialTermEnd safety net)
     try {
-        await scheduleNextPresidentialElections(supabase, nation, currentTick);
+        await ensureElectionsScheduled(supabase, nation, currentTick);
     } catch (e) { console.warn('Could not schedule next presidential elections:', e); }
 }
 
@@ -12441,11 +12417,11 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
 }
 
 /**
- * Schedule next presidential + parliamentary elections independently.
- * Presidential every getPresidentialTermTicks(nation), parliamentary every getParliamentaryTermTicks(nation).
+ * Ensure future elections are scheduled for a nation.
+ * Always schedules parliamentary. Presidential systems also get presidential elections.
  */
-async function scheduleNextPresidentialElections(supabase, nation, currentTick) {
-    // Check for future parliamentary election
+async function ensureElectionsScheduled(supabase, nation, currentTick) {
+    // Always ensure a parliamentary election is scheduled
     const { data: futureParl } = await supabase
         .from('elections')
         .select('id')
@@ -12457,36 +12433,38 @@ async function scheduleNextPresidentialElections(supabase, nation, currentTick) 
         .maybeSingle();
 
     if (!futureParl) {
-        const nextParl = currentTick + getParliamentaryTermTicks(nation);
-        await supabase.from('elections').insert({
+        const { error: parlErr } = await supabase.from('elections').insert({
             nation_id: nation.id,
-            election_tick: nextParl,
+            election_tick: currentTick + getParliamentaryTermTicks(nation),
             election_type: 'parliamentary',
             status: 'scheduled'
         });
-        console.log(`Scheduled next parliamentary election for ${nation.name} at tick ${nextParl}`);
+        if (parlErr) console.error(`Failed to schedule parliamentary election for ${nation.name}:`, parlErr.message);
+        else console.log(`Scheduled next parliamentary election for ${nation.name}`);
     }
 
-    // Check for future presidential election
-    const { data: futurePres } = await supabase
-        .from('elections')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('status', 'scheduled')
-        .eq('election_type', 'presidential')
-        .gt('election_tick', currentTick)
-        .limit(1)
-        .maybeSingle();
+    // Presidential systems also need presidential elections
+    if (isPresidentialRepublic(nation)) {
+        const { data: futurePres } = await supabase
+            .from('elections')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('status', 'scheduled')
+            .eq('election_type', 'presidential')
+            .gt('election_tick', currentTick)
+            .limit(1)
+            .maybeSingle();
 
-    if (!futurePres) {
-        const nextPres = currentTick + getPresidentialTermTicks(nation);
-        await supabase.from('elections').insert({
-            nation_id: nation.id,
-            election_tick: nextPres,
-            election_type: 'presidential',
-            status: 'scheduled'
-        });
-        console.log(`Scheduled next presidential election for ${nation.name} at tick ${nextPres}`);
+        if (!futurePres) {
+            const { error: presErr } = await supabase.from('elections').insert({
+                nation_id: nation.id,
+                election_tick: currentTick + getPresidentialTermTicks(nation),
+                election_type: 'presidential',
+                status: 'scheduled'
+            });
+            if (presErr) console.error(`Failed to schedule presidential election for ${nation.name}:`, presErr.message);
+            else console.log(`Scheduled next presidential election for ${nation.name}`);
+        }
     }
 }
 
@@ -14319,7 +14297,289 @@ function computeIssueSalience(nation, statKeys) {
 }
 
 // ============================================================================
-// GENESIS: seedFactionElectoralStanding
+// 3-PILLAR ELECTION ENGINE: tickElectionPillars
+// ============================================================================
+
+/**
+ * New 3-pillar election engine. Runs every tick for each democratic nation.
+ * Replaces the old 5-pillar tickElectorate system.
+ *
+ * Pillars:
+ *   1. Governance (40%) — stat deltas since inauguration
+ *   2. Momentum  (30%) — campaign energy, decays 8%/tick
+ *   3. Ideology  (30%) — spatial voter capture
+ *
+ * Output: contested_vote_share (softmax) and turnout_rate → realized_vote_share
+ * Written to faction_electoral_standing for election-simulation.js consumption.
+ */
+async function tickElectionPillars(supabase, nation, currentTick) {
+    if (isAutocracy(nation)) return;
+
+    // ── 1. Load all active parties ──
+    const { data: allFactions } = await supabase
+        .from('factions')
+        .select('id, seats, last_seen_tick, founded_tick, faction_type, abandoned_at, momentum')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party')
+        .is('abandoned_at', null);
+    if (!allFactions || allFactions.length === 0) return;
+
+    const factionIds = allFactions.map(f => f.id);
+    const inactiveFactions = allFactions.filter(f => {
+        if (f.last_seen_tick != null) return (currentTick - f.last_seen_tick) >= CFG.INACTIVITY_EXCLUSION_TICKS;
+        return (currentTick - (f.founded_tick || 0)) >= CFG.INACTIVITY_EXCLUSION_TICKS;
+    });
+
+    // ── 2. Load coalition info ──
+    const coalition = await fetchActiveCoalition(supabase, nation.id);
+    const coalitionPartyIds = new Set(coalition?.party_ids || []);
+    const leadPartyId = coalition?.lead_party_id || null;
+
+    // ── 3. Load electorate profile (for ideology pillar) ──
+    const { data: profile } = await supabase
+        .from('electorate_profile')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .maybeSingle();
+    if (!profile) {
+        console.warn(`[ElectionPillars] No electorate_profile for ${nation.name}, skipping`);
+        return;
+    }
+
+    // ── 4. Load faction ideologies ──
+    const { data: ideologies } = await supabase
+        .from('faction_ideology')
+        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+        .in('faction_id', factionIds);
+    const ideoMap = {};
+    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
+
+    // ── 5. Load active administration for governance scoring ──
+    const { data: administration } = await supabase
+        .from('administrations')
+        .select('id, lead_party_id, party_ids, stats_at_start, started_tick')
+        .eq('nation_id', nation.id)
+        .eq('status', 'active')
+        .order('started_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    const statsAtStart = administration?.stats_at_start || {};
+    const adminPartyIds = new Set(administration?.party_ids || []);
+    if (administration?.lead_party_id) adminPartyIds.add(administration.lead_party_id);
+    const adminTicks = administration ? (currentTick - (administration.started_tick || 0)) : 0;
+
+    // ── 6. Compute issue salience + electorate profile drift (still needed for ideology) ──
+    const { data: issueStates } = await supabase
+        .from('issue_state')
+        .select('*')
+        .eq('nation_id', nation.id);
+    const updatedIssueStates = await tickIssueSalience(supabase, nation, issueStates || [], currentTick);
+
+    // Electorate profile drift (enthusiasm, ideology means/vars)
+    const { data: scheduledElections } = await supabase
+        .from('elections')
+        .select('election_tick')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .order('election_tick', { ascending: true })
+        .limit(1);
+    const nextElectionTick = scheduledElections?.[0]?.election_tick ?? null;
+    const { data: activeCrises } = await supabase
+        .from('national_crises')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('status', 'active');
+    const inactiveCount = inactiveFactions.length;
+    const enthusiasmContext = { nextElectionTick, crisisCount: activeCrises?.length ?? 0, inactiveCount };
+    const updatedProfile = await tickElectorateProfile(supabase, nation, profile, currentTick, enthusiasmContext);
+    const activeProfile = updatedProfile || profile;
+
+    // ── 7. Compute spatial alignments (ideology pillar) ──
+    const axisSalienceWeights = computeAxisSalienceWeights(updatedIssueStates);
+    const spatialAlignments = computeSpatialAlignments(ideoMap, activeProfile, axisSalienceWeights);
+
+    // ── 8. Stance decay (still affects ideology via stances → issue ownership) ──
+    const { data: allStances } = await supabase
+        .from('faction_issue_stance')
+        .select('*')
+        .in('faction_id', factionIds)
+        .eq('nation_id', nation.id);
+    await tickStanceDecay(supabase, allStances || [], currentTick);
+
+    // ── 9. Ideology shift actions (think tank, media, grassroots) ──
+    await tickIdeologyShiftActions(supabase, nation.id, activeProfile, currentTick);
+
+    // ── 10. Decay momentum 8% per tick for all factions ──
+    for (const f of allFactions) {
+        const oldMom = Number(f.momentum ?? 0);
+        if (oldMom > 0) {
+            const decayed = round2(oldMom * 0.92); // 8% decay
+            const newMom = decayed < 0.5 ? 0 : decayed; // floor to 0 at tiny values
+            if (newMom !== oldMom) {
+                const { error: decayErr } = await supabase.from('factions')
+                    .update({ momentum: newMom })
+                    .eq('id', f.id);
+                if (decayErr) console.error(`[ElectionPillars] Momentum decay failed for ${f.id}:`, decayErr.message);
+                else f.momentum = newMom; // update local copy only on success
+            }
+        }
+    }
+
+    // ── 11. Compute governance score for each faction ──
+    // Governance: compare stats_at_start (inauguration snapshot) to current nation stats.
+    // Incumbents get scored on actual performance; opposition gets inverse.
+    // Incumbency decay: positive governance scores decay 5% every 12 ticks.
+    function computeGovernanceScore(factionId) {
+        const isIncumbent = adminPartyIds.has(factionId);
+        if (Object.keys(statsAtStart).length === 0) {
+            // No administration data — neutral score
+            return 50;
+        }
+
+        let totalDelta = 0;
+        let statCount = 0;
+        for (const key of NATION_STAT_COLUMNS) {
+            const sign = statDirectionSign(key);
+            if (sign === 0) continue;
+            const start = Number(statsAtStart[key] ?? 0);
+            const current = Number(nation[key] ?? 0);
+            if (start === 0 && current === 0) continue;
+            // Absolute change, signed by whether improvement or not
+            const rawDelta = (current - start) * sign;
+            // Per-stat contribution clamped to ±10 to prevent any single stat from dominating.
+            // Stats are 0-100 scale, so a ±10 point swing is significant.
+            const contribution = clamp(rawDelta, -10, 10);
+            totalDelta += contribution;
+            statCount++;
+        }
+
+        if (statCount === 0) return 50;
+        // Average contribution across all tracked stats, then scale to ±50
+        // With ~55 stats, a uniform +5 improvement across all would give avgDelta = 5,
+        // scaled to 5 * (50/10) = 25 → govScore of 75. A perfect +10 across all = 50 → 100.
+        let avgDelta = (totalDelta / statCount) * (50 / 10);
+        avgDelta = clamp(avgDelta, -50, 50);
+        let govScore = 50 + avgDelta; // 0-100
+
+        // Incumbency decay: positive scores decay 5% every 12 ticks
+        if (isIncumbent && govScore > 50 && adminTicks > 0) {
+            const decayCycles = Math.floor(adminTicks / 12);
+            if (decayCycles > 0) {
+                const excess = govScore - 50;
+                govScore = 50 + excess * Math.pow(0.95, decayCycles);
+            }
+        }
+
+        // Opposition gets inverse of governance score
+        if (!isIncumbent) {
+            govScore = 100 - govScore;
+        }
+
+        return round2(clamp(govScore, 0, 100));
+    }
+
+    // ── 12. Build election scores per faction ──
+    const updates = [];
+    let { data: standings } = await supabase
+        .from('faction_electoral_standing')
+        .select('id, faction_id, nation_id')
+        .in('faction_id', factionIds)
+        .eq('nation_id', nation.id);
+
+    // Ensure all factions have a standing row
+    const standingMap = {};
+    for (const s of (standings || [])) standingMap[s.faction_id] = s;
+    const missingFactions = allFactions.filter(f => !standingMap[f.id]);
+    if (missingFactions.length > 0) {
+        // Create minimal standing rows for missing factions
+        for (const f of missingFactions) {
+            const { data: newRow, error: upsertErr } = await supabase
+                .from('faction_electoral_standing')
+                .upsert({
+                    faction_id: f.id,
+                    nation_id: nation.id,
+                    contested_vote_share: 0,
+                    turnout_rate: 0.65,
+                    last_updated_tick: currentTick,
+                }, { onConflict: 'faction_id,nation_id' })
+                .select('id, faction_id, nation_id')
+                .single();
+            if (upsertErr) {
+                console.error(`[ElectionPillars] Failed to upsert standing for faction ${f.id}:`, upsertErr.message);
+            } else if (newRow) {
+                standingMap[newRow.faction_id] = newRow;
+            }
+        }
+    }
+
+    for (const f of allFactions) {
+        const standing = standingMap[f.id];
+        if (!standing) continue;
+
+        const governance = computeGovernanceScore(f.id);
+        const momentum = Number(f.momentum ?? 0);
+        const ideology = Number(spatialAlignments[f.id] ?? 50);
+
+        // Weighted election score (all pillars 0-100)
+        const electionScore = governance * 0.4 + momentum * 0.3 + ideology * 0.3;
+
+        updates.push({
+            id: standing.id,
+            faction_id: f.id,
+            nation_id: nation.id,
+            // Store pillar values for diagnostics (repurposed columns)
+            ideological_alignment: ideology,
+            party_approval: round2(governance), // repurposed: was party approval, now governance score
+            visibility: round2(momentum), // repurposed: was visibility, now momentum
+            // NOTE: computeRealizedVoteShares reads u.visibility for turnout bonus.
+            // This is intentional — momentum > 50 gives a small turnout uplift (+0.002/pt).
+            raw_appeal: round2(electionScore),
+            last_updated_tick: currentTick,
+        });
+    }
+
+    // ── 13. Softmax → contested_vote_share ──
+    computeContestedVoteShares(updates);
+
+    // ── 14. Turnout → realized_vote_share ──
+    // Simplified: momentum acts as per-faction turnout modifier (replaces visibility)
+    computeRealizedVoteShares(updates, activeProfile, nation);
+
+    // ── 15. Batch-write standings ──
+    let failCount = 0;
+    for (const u of updates) {
+        const { error } = await supabase
+            .from('faction_electoral_standing')
+            .update({
+                ideological_alignment: u.ideological_alignment,
+                party_approval: u.party_approval,
+                visibility: u.visibility,
+                raw_appeal: u.raw_appeal,
+                contested_vote_share: u.contested_vote_share,
+                base_vote_share: u.base_vote_share,
+                realized_vote_share: u.realized_vote_share,
+                turnout_rate: u.turnout_rate,
+                last_updated_tick: u.last_updated_tick,
+            })
+            .eq('id', u.id);
+        if (error) {
+            console.error(`[ElectionPillars] Failed to update standing for faction ${u.faction_id}:`, error.message);
+            failCount++;
+        }
+    }
+    if (failCount > 0) {
+        console.error(`[ElectionPillars] ${failCount}/${updates.length} standing updates failed for ${nation.name}`);
+    }
+
+    // ── 16. Write national_vote_share to factions table ──
+    await updateNationalVoteShare(supabase, updates, inactiveFactions, nation);
+
+    console.log(`[ElectionPillars] Tick ${currentTick}: updated ${updates.length} standings for ${nation.name} (3-pillar system)`);
+}
+
+// ============================================================================
+// GENESIS: seedFactionElectoralStanding (LEGACY — kept for initial seeding)
 // ============================================================================
 
 /**
