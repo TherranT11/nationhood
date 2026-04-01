@@ -249,7 +249,7 @@ export function calculateIdeologyZones(mean, variance) {
     const polarization = Math.min(100, Math.max(0, (variance - 5) / 35 * 100));
 
     // Centrist zone centered at 50, width shrinks with polarization
-    const centristHalf = Math.max(5, 15 - polarization * 0.10);
+    const centristHalf = Math.max(3, 7 - polarization * 0.04);
     const centristLeft = 50 - centristHalf;
     const centristRight = 50 + centristHalf;
 

@@ -320,9 +320,19 @@ async function renderPartyTab(f, nation, data) {
     const roleLabel = role.includes('Lead') ? 'Governing' : role;
     const roleCls = role === 'Strongman' ? 'pol-role-strongman' : isGov ? 'pol-role-gov' : 'pol-role-opp';
 
-    // Ideology tags
-    const ideo1 = f.ideology_value_1 || null;
-    const ideo2 = f.ideology_value_2 || null;
+    // Ideology tags — dynamically computed from current axis scores (top 2 most extreme)
+    const myIdeo = (allPartyIdeologies || []).find(r => r.faction_id === f.id);
+    let ideo1 = null, ideo2 = null;
+    if (myIdeo) {
+        const ranked = IDEOLOGY_AXES
+            .map(ax => ({ ax, score: myIdeo[ax.key] ?? 0 }))
+            .sort((a, b) => Math.abs(b.score) - Math.abs(a.score));
+        if (ranked.length > 0 && ranked[0].score !== 0) ideo1 = ranked[0].score < 0 ? ranked[0].ax.left : ranked[0].ax.right;
+        if (ranked.length > 1 && ranked[1].score !== 0) ideo2 = ranked[1].score < 0 ? ranked[1].ax.left : ranked[1].ax.right;
+    }
+    // Fallback to declared ideologies if no scores available
+    if (!ideo1) ideo1 = f.ideology_value_1 || null;
+    if (!ideo2) ideo2 = f.ideology_value_2 || null;
 
     function ideoTag(val) {
         if (!val) return '';
