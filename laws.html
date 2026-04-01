@@ -1739,6 +1739,12 @@ function renderFoundationalOptions() {
             <div class="policy-option-desc">${currentNation.party_registration_threshold > 0
                 ? 'Already enacted — parties below ' + currentNation.party_registration_threshold + '% of seats are removed after elections.'
                 : 'Raises barriers for party representation. Choose a threshold (5%, 10%, or 15%) — parties below that percentage of seats have their seats reallocated after elections. Affected parties cannot sponsor bills, vote, or hold ministries. Legitimacy -4, polarization +5, freedom index -3. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'legislative_quorum_reform' ? ' selected' : ''}" style="${selectedFoundationalType === 'legislative_quorum_reform' ? 'border-color:var(--red);' : ''}${currentNation.legislative_quorum_override > 0 ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('legislative_quorum_reform')" data-foundational-type="legislative_quorum_reform">
+            <div class="policy-option-name">📋 Legislative Quorum Reform Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.legislative_quorum_override > 0
+                ? 'Already enacted — quorum requirement lowered to ' + currentNation.legislative_quorum_override + '%.'
+                : 'Lowers the quorum requirement for standard bills from 50%. Choose a new threshold (40%, 30%, or 25%). The ruling coalition can pass legislation with fewer participants. Legitimacy -3, freedom index -2. Requires 2/3 supermajority (' + required + ' seats).'}</div>
         </div>`;
     selectedFoundationalType = null;
     selectedPolicy = null;
@@ -2760,6 +2766,8 @@ async function submitToCommittee() {
                 billInsert.proposed_electoral_commission_reform = true;
             } else if (fArt.foundationalSubtype === 'party_registration_act') {
                 billInsert.proposed_party_registration_threshold = 10; // default 10%, can be changed in committee
+            } else if (fArt.foundationalSubtype === 'legislative_quorum_reform') {
+                billInsert.proposed_legislative_quorum_override = 30; // default 30%, can be changed in committee
             } else {
                 billInsert.proposed_seats = fArt.proposedSeats;
             }

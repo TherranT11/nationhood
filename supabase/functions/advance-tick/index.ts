@@ -6515,7 +6515,8 @@ function evaluateBillVote(bill, totalSeats, nationFlags = {}) {
     const abstainSeats = bill.votes_abstain || 0;
     const participating = forSeats + againstSeats + abstainSeats;
     const undeclaredSeats = totalSeats - participating;
-    const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
+    const quorumPct = (nationFlags.legislative_quorum_override > 0) ? (nationFlags.legislative_quorum_override / 100) : GAME_CONFIG.QUORUM_THRESHOLD;
+    const quorumThreshold = Math.ceil(totalSeats * quorumPct);
     const judicialPoliticized = !!nationFlags.judicial_appointment_politicization;
 
     // ── Foundational / default_resolution / veto_override / impeachment_conviction: supermajority, no quorum ──
@@ -6588,7 +6589,8 @@ function resolveBillVote(bill, totalSeats, nationFlags = {}) {
     const againstSeats = bill.votes_against || 0;
     const abstainSeats = bill.votes_abstain || 0;
     const participating = forSeats + againstSeats + abstainSeats;
-    const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
+    const quorumPct = (nationFlags.legislative_quorum_override > 0) ? (nationFlags.legislative_quorum_override / 100) : GAME_CONFIG.QUORUM_THRESHOLD;
+    const quorumThreshold = Math.ceil(totalSeats * quorumPct);
     const judicialPoliticized = !!nationFlags.judicial_appointment_politicization;
 
     // Foundational / default_resolution / veto_override / impeachment_conviction: supermajority
@@ -6696,7 +6698,9 @@ async function checkEarlyMajority(supabase, nationId) {
     const factionSeatSum = (factionRows || []).reduce((sum, f) => sum + (f.seats || 0), 0);
     const effectiveTotalSeats = Math.min(GAME_CONFIG.TOTAL_SEATS, Math.max(factionSeatSum, 1));
 
-    const quorumSeats = Math.ceil(effectiveTotalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
+    const { data: nqData } = await supabase.from('nations').select('legislative_quorum_override').eq('id', nationId).single();
+    const emQPct = (nqData?.legislative_quorum_override > 0) ? (nqData.legislative_quorum_override / 100) : GAME_CONFIG.QUORUM_THRESHOLD;
+    const quorumSeats = Math.ceil(effectiveTotalSeats * emQPct);
     const results = [];
 
     // Check for emergency minority government penalty (once per nation per tick)
@@ -6846,12 +6850,13 @@ async function resolveExpiredVotes(supabase, nationId) {
       try {
         const { data: nation } = await supabase
             .from('nations')
-            .select('name, government_type, total_seats, judicial_appointment_politicization')
+            .select('name, government_type, total_seats, judicial_appointment_politicization, legislative_quorum_override')
             .eq('id', bill.nation_id)
             .single();
         const nominalTotalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
         const totalSeats = Math.min(nominalTotalSeats, Math.max(resolveFactionSeatSum, 1));
-        const nationFlags = { judicial_appointment_politicization: !!nation?.judicial_appointment_politicization };
+        const nationFlags = { judicial_appointment_politicization: !!nation?.judicial_appointment_politicization, legislative_quorum_override: nation?.legislative_quorum_override || 0 };
+        const effectiveQuorumPct = nationFlags.legislative_quorum_override > 0 ? (nationFlags.legislative_quorum_override / 100) : GAME_CONFIG.QUORUM_THRESHOLD;
         let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
 
         (bill.bill_support || []).forEach(s => {
@@ -6921,7 +6926,7 @@ async function resolveExpiredVotes(supabase, nationId) {
             }).eq('id', bill.id);
 
             // Notify all party leaders about quorum failure
-            const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
+            const quorumThreshold = Math.ceil(totalSeats * effectiveQuorumPct);
             const participating = votesFor + votesAgainst + votesAbstain;
             try {
                 await supabase.rpc('fire_system_event', {
@@ -6947,7 +6952,7 @@ async function resolveExpiredVotes(supabase, nationId) {
             await failBill(supabase, bill, currentTick);
             await syncFailedMinisterConfirmationBill(supabase, bill);
             await syncFailedAmbassadorConfirmationBill(supabase, bill);
-            const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
+            const quorumThreshold = Math.ceil(totalSeats * effectiveQuorumPct);
             const participating = votesFor + votesAgainst + votesAbstain;
             await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, extra: { reason: `quorum not met after two attempts (${participating}/${quorumThreshold} participating)` } });
             console.log(`[resolveExpiredVotes] ${bill.bill_name}: quorum failed twice (${participating}/${quorumThreshold}), bill dies`);
@@ -8089,12 +8094,12 @@ async function resolveStuckFloorBills(supabase, nationId) {
 
     const { data: nation } = await supabase
         .from('nations')
-        .select('name, government_type, total_seats, judicial_appointment_politicization')
+        .select('name, government_type, total_seats, judicial_appointment_politicization, legislative_quorum_override')
         .eq('id', nationId)
         .single();
     const nominalTotalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
     const totalSeats = Math.min(nominalTotalSeats, Math.max(factionSeatSum, 1));
-    const nationFlags = { judicial_appointment_politicization: !!nation?.judicial_appointment_politicization };
+    const nationFlags = { judicial_appointment_politicization: !!nation?.judicial_appointment_politicization, legislative_quorum_override: nation?.legislative_quorum_override || 0 };
 
     const specialTypes = new Set(['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'ambassador_confirmation']);
     const results = [];
@@ -9492,6 +9497,42 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
         await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
         console.log(`[enactFoundationalBill] Political Party Registration Act enacted for nation ${bill.nation_id} (threshold: ${threshold}%)`);
+        return true;
+    }
+
+    // ── Legislative Quorum Reform Act subtype ──
+    if (bill.proposed_legislative_quorum_override) {
+        const quorumPctVal = Number(bill.proposed_legislative_quorum_override);
+        if (![25, 30, 40].includes(quorumPctVal)) {
+            console.error(`[enactFoundationalBill] Invalid quorum override: ${quorumPctVal}`);
+            await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
+            return false;
+        }
+
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
+
+        const { error: nationErr } = await supabase.from('nations').update({
+            legislative_quorum_override: quorumPctVal,
+            legitimacy: Math.max(0, (nation?.legitimacy ?? 50) - 3),
+            freedom_index: Math.max(0, (nation?.freedom_index ?? 50) - 2)
+        }).eq('id', bill.nation_id);
+        if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for quorum reform:`, nationErr.message);
+
+        await supabase.from('event_log').insert({
+            nation_id: bill.nation_id,
+            event_name: 'FOUNDATIONAL_LAW_PASSED',
+            trigger_key: 'legislative_quorum_reform',
+            description_used: `The Legislative Quorum Reform Act has passed. The quorum requirement for standard bills has been lowered from 50% to ${quorumPctVal}%. The ruling coalition can now pass legislation with fewer participants.`,
+            category: 'POLITICAL',
+            effects_applied: { law: 'legislative_quorum_reform', quorum_pct: quorumPctVal, legitimacy: -3, freedom_index: -2 },
+            fired_at_tick: currentTick
+        });
+
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+        console.log(`[enactFoundationalBill] Legislative Quorum Reform Act enacted for nation ${bill.nation_id} (quorum: ${quorumPctVal}%)`);
         return true;
     }
 
