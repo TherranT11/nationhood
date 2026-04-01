@@ -14,9 +14,10 @@
 
 import { GAME_CONFIG, deductAP } from './config.js';
 import { MINISTER_APPROVAL_CONFIG } from './stats.js';
-import { isGovernmentPresidential } from './government-types.js';
+import { isGovernmentPresidential, isPresidentialRepublic } from './government-types.js';
 import { adjustGovernmentApprovalEvent, nudgeApproval, adjustCredibility } from './momentum.js';
 import { getNationNames } from './political-actions.js';
+import { enactBill } from './bills.js';
 import { getTraitAPModifier } from './party-leadership.js';
 
 // ─── Executive Order Config Constants ───
@@ -789,10 +790,20 @@ export async function advanceBillEmergency(supabase, nationId, factionId, billId
         return { success: false, error: 'Emergency bill advancement already used this tick.' };
     }
 
-    // Load bill
+    // Load nation to determine government type
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('id, government_type')
+        .eq('id', nationId)
+        .single();
+    if (!nation) return { success: false, error: 'Nation not found.' };
+
+    const isPresidential = isPresidentialRepublic(nation);
+
+    // Load bill (include articles+policies for parliamentary enactment path)
     const { data: bill } = await supabase
         .from('bills')
-        .select('id, status, bill_name, nation_id, proposed_by')
+        .select('id, status, bill_name, bill_type, nation_id, proposed_by, bill_articles(*, policies(*))')
         .eq('id', billId)
         .eq('nation_id', nationId)
         .maybeSingle();
@@ -805,36 +816,41 @@ export async function advanceBillEmergency(supabase, nationId, factionId, billId
         return { success: false, error: 'Bill must be in committee or floor stage.' };
     }
 
-    let updateFields = {};
     let advancedTo = '';
 
     if (bill.status === 'committee') {
-        // committee → floor
-        updateFields = {
+        // committee → floor (all government types)
+        const { error: billErr } = await supabase.from('bills').update({
             status: 'floor',
             floor_tick: currentTick,
             voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS
-        };
+        }).eq('id', billId);
+        if (billErr) return { success: false, error: billErr.message };
         advancedTo = 'floor';
-    } else if (bill.status === 'floor') {
-        // floor → president_desk (in presidential systems, bills go to president desk)
-        updateFields = {
-            status: 'president_desk',
-            passed_tick: currentTick,
-            president_desk_deadline: currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS
-        };
-        advancedTo = 'president_desk';
-    }
 
-    const { error: billErr } = await supabase.from('bills').update(updateFields).eq('id', billId);
-    if (billErr) return { success: false, error: billErr.message };
-
-    // Calculate caucus dispositions via server-side RPC (this runs client-side, RLS blocks direct writes)
-    if (advancedTo === 'floor') {
+        // Calculate caucus dispositions
         try {
             const { error: caucusErr } = await supabase.rpc('calculate_caucus_dispositions', { p_bill_id: billId });
             if (caucusErr) console.warn(`[EmergencyAdvance] Caucus RPC error for ${billId} (non-fatal):`, caucusErr.message);
         } catch (e) { /* non-fatal */ }
+
+    } else if (bill.status === 'floor' && isPresidential) {
+        // floor → president's desk (presidential systems)
+        const { error: billErr } = await supabase.from('bills').update({
+            status: 'president_desk',
+            passed_tick: currentTick,
+            president_desk_deadline: currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS
+        }).eq('id', billId);
+        if (billErr) return { success: false, error: billErr.message };
+        advancedTo = 'president_desk';
+
+    } else if (bill.status === 'floor') {
+        // floor → enacted (parliamentary systems — no president's desk)
+        const enactment = await enactBill(supabase, bill, currentTick);
+        if (!enactment?.success) {
+            return { success: false, error: enactment?.error || 'Enactment failed.' };
+        }
+        advancedTo = 'enacted';
     }
 
     // Update emergency payload
