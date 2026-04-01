@@ -1727,6 +1727,12 @@ function renderFoundationalOptions() {
             <div class="policy-option-desc">${currentNation.judicial_appointment_politicization
                 ? 'Already enacted — the ruling coalition appoints judges directly.'
                 : 'The ruling coalition appoints judges directly. Judicial independence permanently capped at 30. Legitimacy -5, freedom index -3. ' + (isPresidential ? 'Impeachment conviction threshold rises from 67% to 75%.' : 'No confidence threshold rises from 50%+1 to 60%.') + ' Requires 2/3 supermajority (' + required + ' seats).'}</div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'electoral_commission_reform' ? ' selected' : ''}" style="${selectedFoundationalType === 'electoral_commission_reform' ? 'border-color:var(--red);' : ''}${currentNation.electoral_commission_reform ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('electoral_commission_reform')" data-foundational-type="electoral_commission_reform">
+            <div class="policy-option-name">🗳️ Electoral Commission Reform Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.electoral_commission_reform
+                ? 'Already enacted — the ruling coalition controls the election commission.'
+                : 'The ruling coalition controls the election commission. In parliamentary elections, governing parties receive a random 5-10% seat bonus drawn proportionally from opposition parties. Legitimacy -5, polarization +3. Requires 2/3 supermajority (' + required + ' seats).'}</div>
         </div>`;
     selectedFoundationalType = null;
     selectedPolicy = null;
@@ -2744,6 +2750,8 @@ async function submitToCommittee() {
                 billInsert.proposed_emergency_powers_act = true;
             } else if (fArt.foundationalSubtype === 'judicial_appointment_politicization') {
                 billInsert.proposed_judicial_appointment_politicization = true;
+            } else if (fArt.foundationalSubtype === 'electoral_commission_reform') {
+                billInsert.proposed_electoral_commission_reform = true;
             } else {
                 billInsert.proposed_seats = fArt.proposedSeats;
             }

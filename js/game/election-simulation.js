@@ -283,7 +283,7 @@ export async function runElectionPreview(supabase, nationId) {
     // 1. Load nation
     const { data: nation } = await supabase
         .from('nations')
-        .select('id, name, total_seats, eligible_voters')
+        .select('id, name, total_seats, eligible_voters, electoral_commission_reform, ruling_faction_id')
         .eq('id', nationId)
         .single();
     if (!nation) throw new Error('Nation not found');
@@ -359,6 +359,54 @@ export async function runElectionPreview(supabase, nationId) {
 
     // 5. Allocate seats
     const seats = allocateSeatsByVotes(tally, totalSeats);
+
+    // 5b. Electoral Commission Reform: ruling coalition gets +5-10% seat bonus
+    if (nation.electoral_commission_reform) {
+        // Load active coalition to identify governing parties
+        const { data: coalition } = await supabase
+            .from('government_formations')
+            .select('party_ids')
+            .eq('nation_id', nationId)
+            .in('status', ['formed', 'caretaker'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        const coalitionIds = new Set(coalition?.party_ids || []);
+        if (coalitionIds.size > 0) {
+            // Random bonus: 5-10% of total seats
+            const bonusPct = 0.05 + Math.random() * 0.05;
+            const bonusSeats = Math.round(totalSeats * bonusPct);
+            if (bonusSeats > 0) {
+                // Collect opposition parties and their current seats
+                const oppositionIds = Object.keys(seats).filter(id => !coalitionIds.has(id) && seats[id] > 0);
+                const totalOppSeats = oppositionIds.reduce((s, id) => s + seats[id], 0);
+                if (totalOppSeats > 0) {
+                    // Subtract proportionally from opposition
+                    let seatsToTransfer = Math.min(bonusSeats, totalOppSeats);
+                    let transferred = 0;
+                    for (const id of oppositionIds) {
+                        const share = seats[id] / totalOppSeats;
+                        const loss = Math.round(seatsToTransfer * share);
+                        const actualLoss = Math.min(loss, seats[id]); // can't go below 0
+                        seats[id] -= actualLoss;
+                        transferred += actualLoss;
+                    }
+                    // Add transferred seats to coalition parties proportionally
+                    const coalitionArr = [...coalitionIds].filter(id => seats[id] !== undefined);
+                    const totalCoalSeats = coalitionArr.reduce((s, id) => s + (seats[id] || 0), 0);
+                    let distributed = 0;
+                    for (let i = 0; i < coalitionArr.length; i++) {
+                        const id = coalitionArr[i];
+                        const share = totalCoalSeats > 0 ? (seats[id] || 0) / totalCoalSeats : 1 / coalitionArr.length;
+                        const gain = (i === coalitionArr.length - 1) ? (transferred - distributed) : Math.round(transferred * share);
+                        seats[id] = (seats[id] || 0) + gain;
+                        distributed += gain;
+                    }
+                    console.log(`[Election] Electoral Commission Reform: ${transferred} seats transferred to coalition (${(bonusPct * 100).toFixed(1)}% bonus)`);
+                }
+            }
+        }
+    }
 
     // 6. Build friendly results
     const partyResults = factions.map(f => {

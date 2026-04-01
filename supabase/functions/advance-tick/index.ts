@@ -9411,6 +9411,43 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
         return true;
     }
 
+    // ── Electoral Commission Reform Act subtype ──
+    if (bill.proposed_electoral_commission_reform) {
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
+
+        const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
+        const newPolarization = Math.min(100, (nation?.polarization ?? 0) + 3);
+
+        const { error: nationErr } = await supabase.from('nations').update({
+            electoral_commission_reform: true,
+            legitimacy: newLegitimacy,
+            polarization: newPolarization
+        }).eq('id', bill.nation_id);
+        if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for electoral commission reform:`, nationErr.message);
+
+        await supabase.from('event_log').insert({
+            nation_id: bill.nation_id,
+            event_name: 'FOUNDATIONAL_LAW_PASSED',
+            trigger_key: 'electoral_commission_reform',
+            description_used: 'The Electoral Commission Reform Act has passed. The ruling coalition now controls the election commission. Parliamentary elections are tilted in favor of the governing parties — opposition parties face an administrative disadvantage in seat allocation.',
+            category: 'POLITICAL',
+            effects_applied: {
+                law: 'electoral_commission_reform',
+                legitimacy: -5,
+                polarization: 3,
+                seat_bonus: '5-10% random per election'
+            },
+            fired_at_tick: currentTick
+        });
+
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+        console.log(`[enactFoundationalBill] Electoral Commission Reform Act enacted for nation ${bill.nation_id}`);
+        return true;
+    }
+
     // ── Electoral Makeup subtype ──
     // Validate proposed_seats BEFORE marking the bill as passed
     let newTotalSeats = bill.proposed_seats;
@@ -18384,7 +18421,7 @@ async function runElectionPreview(supabase, nationId) {
     // 1. Load nation
     const { data: nation } = await supabase
         .from('nations')
-        .select('id, name, total_seats, eligible_voters')
+        .select('id, name, total_seats, eligible_voters, electoral_commission_reform, ruling_faction_id')
         .eq('id', nationId)
         .single();
     if (!nation) throw new Error('Nation not found');
@@ -18460,6 +18497,49 @@ async function runElectionPreview(supabase, nationId) {
 
     // 5. Allocate seats
     const seats = allocateSeatsByVotes(tally, totalSeats);
+
+    // 5b. Electoral Commission Reform: ruling coalition gets +5-10% seat bonus
+    if (nation.electoral_commission_reform) {
+        const { data: coalition } = await supabase
+            .from('government_formations')
+            .select('party_ids')
+            .eq('nation_id', nationId)
+            .in('status', ['formed', 'caretaker'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        const coalitionIds = new Set(coalition?.party_ids || []);
+        if (coalitionIds.size > 0) {
+            const bonusPct = 0.05 + Math.random() * 0.05; // 5-10%
+            const bonusSeats = Math.round(totalSeats * bonusPct);
+            if (bonusSeats > 0) {
+                const oppositionIds = Object.keys(seats).filter(id => !coalitionIds.has(id) && seats[id] > 0);
+                const totalOppSeats = oppositionIds.reduce((s, id) => s + seats[id], 0);
+                if (totalOppSeats > 0) {
+                    let seatsToTransfer = Math.min(bonusSeats, totalOppSeats);
+                    let transferred = 0;
+                    for (const id of oppositionIds) {
+                        const share = seats[id] / totalOppSeats;
+                        const loss = Math.round(seatsToTransfer * share);
+                        const actualLoss = Math.min(loss, seats[id]);
+                        seats[id] -= actualLoss;
+                        transferred += actualLoss;
+                    }
+                    const coalitionArr = [...coalitionIds].filter(id => seats[id] !== undefined);
+                    const totalCoalSeats = coalitionArr.reduce((s, id) => s + (seats[id] || 0), 0);
+                    let distributed = 0;
+                    for (let i = 0; i < coalitionArr.length; i++) {
+                        const id = coalitionArr[i];
+                        const share = totalCoalSeats > 0 ? (seats[id] || 0) / totalCoalSeats : 1 / coalitionArr.length;
+                        const gain = (i === coalitionArr.length - 1) ? (transferred - distributed) : Math.round(transferred * share);
+                        seats[id] = (seats[id] || 0) + gain;
+                        distributed += gain;
+                    }
+                    console.log(`[Election] Electoral Commission Reform: ${transferred} seats transferred to coalition (${(bonusPct * 100).toFixed(1)}% bonus)`);
+                }
+            }
+        }
+    }
 
     // 6. Build friendly results
     const partyResults = factions.map(f => {
