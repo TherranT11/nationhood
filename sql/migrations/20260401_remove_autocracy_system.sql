@@ -20,50 +20,69 @@ SET government_type                      = 'Democracy',
 WHERE government_type = 'Autocracy';
 
 -- 2. DISBAND SANGREZA FACTIONS
-CREATE TEMP TABLE _sz_factions AS
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza');
+--    Comprehensive FK cleanup from admin_delete_party + all known FK tables.
+--    Each table wrapped in its own DO block so missing tables don't block others.
 
--- Diplomacy tables
-DELETE FROM ambassadors WHERE faction_id IN (SELECT id FROM _sz_factions);
-DELETE FROM diplomatic_messages WHERE from_faction_id IN (SELECT id FROM _sz_factions);
-DELETE FROM diplomatic_action_log WHERE faction_id IN (SELECT id FROM _sz_factions);
-UPDATE bills SET diplomatic_proposal_id = NULL
-    WHERE diplomatic_proposal_id IN (
-        SELECT id FROM diplomatic_proposals WHERE proposed_by_faction_id IN (SELECT id FROM _sz_factions)
-    );
-DELETE FROM diplomatic_proposals WHERE proposed_by_faction_id IN (SELECT id FROM _sz_factions);
-
--- Government tables
-DELETE FROM impeachment_proceedings WHERE initiated_by_faction_id IN (SELECT id FROM _sz_factions);
-DELETE FROM ministries WHERE party_id IN (SELECT id FROM _sz_factions);
-UPDATE presidents SET faction_id = NULL WHERE faction_id IN (SELECT id FROM _sz_factions);
-
--- IPO tables (inline subquery — temp tables not reliable inside DO exception blocks)
-DO $$ DECLARE _nid UUID; BEGIN
+-- Every statement wrapped safely — missing tables/columns never block others
+DO $$ DECLARE
+  _nid UUID;
+  _stmts TEXT[] := ARRAY[
+    $$DELETE FROM ambassadors WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM diplomatic_messages WHERE from_faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM diplomatic_action_log WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$UPDATE bills SET diplomatic_proposal_id = NULL WHERE diplomatic_proposal_id IN (SELECT id FROM diplomatic_proposals WHERE proposed_by_faction_id IN (SELECT id FROM factions WHERE nation_id = '%s'))$$,
+    $$DELETE FROM diplomatic_proposals WHERE proposed_by_faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM impeachment_proceedings WHERE initiated_by_faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM ministries WHERE party_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$UPDATE presidents SET faction_id = NULL WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM donor_trust WHERE party_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$UPDATE administrations SET pm_party_id = NULL WHERE pm_party_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM election_candidates WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM presidential_candidates WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$UPDATE protests SET faction_id = NULL WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$UPDATE protest_log SET faction_id = NULL WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$UPDATE event_log SET faction_id = NULL WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM faction_electoral_standing WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM faction_issue_stance WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM ideology_shift_actions WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM party_approval_log WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM credibility_log WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$UPDATE wiki_pages SET created_by = NULL WHERE created_by IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$UPDATE wiki_pages SET updated_by = NULL WHERE updated_by IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$UPDATE wiki_pages SET locked_by = NULL WHERE locked_by IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM ipo_votes WHERE proposed_by IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM ipo_action_log WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM ipo_amendment_history WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM ipo_actions WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM ipo_actions WHERE target_faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM ipo_ballots WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM ipo_chat WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM ipo_invitations WHERE target_faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM ipo_invitations WHERE invited_by_faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM ipo_members WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$UPDATE ipo_organisations SET president_id = NULL WHERE president_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$UPDATE international_orgs SET founding_party_id = NULL WHERE founding_party_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$UPDATE international_orgs SET president_id = NULL WHERE president_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM pm_candidates WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM active_laws WHERE proposed_by IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM bill_support WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = '%s')$$,
+    $$DELETE FROM bill_articles WHERE added_by IN (SELECT id FROM factions WHERE nation_id = '%s')$$
+  ];
+  _sql TEXT;
+BEGIN
   SELECT id INTO _nid FROM nations WHERE name = 'Sangreza';
-  DELETE FROM ipo_votes WHERE proposed_by IN (SELECT id FROM factions WHERE nation_id = _nid);
-  DELETE FROM ipo_amendment_history WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-  DELETE FROM ipo_actions WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-  DELETE FROM ipo_actions WHERE target_faction_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-  DELETE FROM ipo_ballots WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-  DELETE FROM ipo_chat WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-  DELETE FROM ipo_invitations WHERE target_faction_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-  DELETE FROM ipo_members WHERE faction_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-  UPDATE international_orgs SET founding_party_id = NULL WHERE founding_party_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-  UPDATE international_orgs SET president_id = NULL WHERE president_id IN (SELECT id FROM factions WHERE nation_id = _nid);
-EXCEPTION WHEN undefined_table OR undefined_column THEN NULL;
+  FOREACH _sql IN ARRAY _stmts LOOP
+    BEGIN
+      EXECUTE format(_sql, _nid);
+    EXCEPTION WHEN undefined_table OR undefined_column THEN
+      -- table/column doesn't exist, skip
+    END;
+  END LOOP;
 END $$;
-
--- Wiki
-UPDATE wiki_pages SET created_by = NULL WHERE created_by IN (SELECT id FROM _sz_factions);
-UPDATE wiki_pages SET updated_by = NULL WHERE updated_by IN (SELECT id FROM _sz_factions);
-UPDATE wiki_pages SET locked_by = NULL WHERE locked_by IN (SELECT id FROM _sz_factions);
 
 -- Delete all factions
 DELETE FROM factions
 WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza');
-
-DROP TABLE _sz_factions;
 
 -- 3. DROP AUTOCRACY-SPECIFIC TABLES
 DROP TABLE IF EXISTS pyrrhic_window CASCADE;
