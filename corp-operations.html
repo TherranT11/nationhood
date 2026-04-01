@@ -2286,7 +2286,7 @@ body.light-mode .dl-empty__text { color: #1a1a17; }
       </div>
       <div class="bid-footer__actions">
         <button class="bid-btn bid-btn--cancel" onclick="closeBidModal()">CANCEL</button>
-        <button class="bid-btn bid-btn--submit" id="bid-submit-btn" disabled>SUBMIT BID</button>
+        <button class="bid-btn bid-btn--submit" id="bid-submit-btn" disabled onclick="submitBid()">SUBMIT BID</button>
       </div>
     </div>
   </div>
@@ -2304,6 +2304,7 @@ let faction = null;
 let nationStats = null;
 let shard = null;
 let contracts = [];
+let playerBids = {}; // { contractId: bidData }
 let activeProjects = [];
 let warehouseData = {};  // { materialKey: { LOW: {qty,value}, STD: {qty,value}, HIGH: {qty,value} } }
 let whExpandedRow = -1;  // index of expanded material row, -1 = none
@@ -2481,9 +2482,12 @@ function renderContracts() {
                         <div class="oc-stat__value ${specCls}">${specLbl}</div>
                     </div>
                     <div class="oc-eligibility">
-                        <span class="oc-eligible-badge ${qualified ? 'yes' : 'no'}">${qualified ? 'ELIGIBLE' : 'LOCKED'}</span>
+                        ${playerBids[c.id]
+                            ? `<span class="oc-eligible-badge yes" style="background:var(--green-faint);border-color:var(--green-border);color:var(--green);">BID: ${fmtBudget(playerBids[c.id].bid_price)}</span>`
+                            : `<span class="oc-eligible-badge ${qualified ? 'yes' : 'no'}">${qualified ? 'ELIGIBLE' : 'LOCKED'}</span>`
+                        }
                     </div>
-                    ${qualified ? `<button class="bid-btn bid-btn--submit" style="padding:3px 10px;font-size:8px;margin-left:auto;" onclick="event.stopPropagation();openBidModal(contracts.find(x=>x.id==='${c.id}'))">VIEW</button>` : ''}
+                    ${qualified ? `<button class="bid-btn bid-btn--submit" style="padding:3px 10px;font-size:8px;margin-left:auto;" onclick="event.stopPropagation();openBidModal(contracts.find(x=>x.id==='${c.id}'))">${playerBids[c.id] ? 'EDIT' : 'VIEW'}</button>` : ''}
                 </div>
                 ${c.description ? `<div style="font-size:9px;color:var(--text-dim);padding:4px 0 0;font-style:italic;">${escapeHtml(c.description)}</div>` : ''}
             </div>`;
@@ -2969,6 +2973,107 @@ window.setBidGrade = setBidGrade;
 window.setBidLabor = setBidLabor;
 window.setBidMarkup = setBidMarkup;
 
+let _bidSubmitting = false;
+async function submitBid() {
+    if (!bidState || !faction || _bidSubmitting) return;
+    const s = bidState;
+    const contract = s.contract;
+
+    // Calculate final values
+    let materialsCost = 0;
+    const materialGrades = {};
+    for (const m of s.materials) {
+        materialsCost += Math.round(m.qty * m.basePrice * GRADE_COSTS[m.grade]);
+        materialGrades[m.key] = m.grade;
+    }
+    const laborCost = Math.round(s.laborCount * s.laborRate * s.estimatedTicks);
+    const equipMaint = Math.round(s.equipment.filter(e => e.owned).length * 12000 * s.estimatedTicks);
+    const totalCost = materialsCost + laborCost + equipMaint + s.overhead;
+    const markupAmt = Math.round(totalCost * s.markupPct / 100);
+    const bidPrice = totalCost + markupAmt;
+    const avgQuality = Math.round(s.materials.reduce((sum, m) => sum + GRADE_QUALITY[m.grade], 0) / (s.materials.length || 1));
+
+    if (bidPrice > s.budgetCeiling) {
+        alert('Bid exceeds budget ceiling. Lower your costs or markup.');
+        return;
+    }
+
+    const btn = document.getElementById('bid-submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'SUBMITTING...';
+    _bidSubmitting = true;
+
+    try {
+        // Get current tick
+        const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shardData?.current_tick || 0;
+
+        // Check if player already bid on this contract
+        const { data: existingBid } = await _supabase
+            .from('contract_bids')
+            .select('id')
+            .eq('contract_id', contract.id)
+            .eq('faction_id', faction.id)
+            .maybeSingle();
+
+        if (existingBid) {
+            // Update existing bid
+            const { error } = await _supabase
+                .from('contract_bids')
+                .update({
+                    bid_price: bidPrice,
+                    material_grades: materialGrades,
+                    labor_count: s.laborCount,
+                    markup_pct: s.markupPct,
+                    estimated_cost: totalCost,
+                    estimated_quality: avgQuality,
+                    submitted_at_tick: currentTick,
+                })
+                .eq('id', existingBid.id);
+            if (error) throw error;
+        } else {
+            // Insert new bid
+            const { error } = await _supabase
+                .from('contract_bids')
+                .insert({
+                    contract_id: contract.id,
+                    faction_id: faction.id,
+                    bid_price: bidPrice,
+                    material_grades: materialGrades,
+                    labor_count: s.laborCount,
+                    markup_pct: s.markupPct,
+                    estimated_cost: totalCost,
+                    estimated_quality: avgQuality,
+                    status: 'pending',
+                    submitted_at_tick: currentTick,
+                });
+            if (error) throw error;
+        }
+
+        // Success — close modal and show confirmation
+        closeBidModal();
+        // Brief visual feedback
+        const countEl = document.getElementById('oc-count');
+        if (countEl) {
+            const origText = countEl.textContent;
+            countEl.textContent = '✓ BID SUBMITTED';
+            countEl.style.color = 'var(--green)';
+            setTimeout(() => { countEl.textContent = origText; countEl.style.color = ''; }, 2000);
+        }
+        // Reload contracts to reflect any status changes
+        await loadContracts();
+
+    } catch (err) {
+        console.error('Bid submission failed:', err);
+        alert('Failed to submit bid: ' + (err.message || 'Unknown error'));
+        btn.disabled = false;
+        btn.textContent = 'SUBMIT BID';
+    } finally {
+        _bidSubmitting = false;
+    }
+}
+window.submitBid = submitBid;
+
 function detailRow(label, value, color) {
     const colorStyle = color ? ` style="color:${color}"` : '';
     return `<div class="cd-detail-row">
@@ -3130,8 +3235,7 @@ async function placeBid() {
 async function loadContracts() {
     if (!faction || !faction.nation_id) return;
 
-    // Load open contracts from all nations (corps can see cross-nation opportunities)
-    // but primarily their home nation
+    // Load open contracts from all nations
     const { data, error } = await _supabase
         .from('construction_contracts')
         .select('*')
@@ -3143,6 +3247,20 @@ async function loadContracts() {
         contracts = [];
     } else {
         contracts = data || [];
+    }
+
+    // Load player's existing bids on open contracts
+    playerBids = {};
+    if (faction && contracts.length > 0) {
+        const contractIds = contracts.map(c => c.id);
+        const { data: bids } = await _supabase
+            .from('contract_bids')
+            .select('contract_id, bid_price, estimated_quality, status')
+            .eq('faction_id', faction.id)
+            .in('contract_id', contractIds);
+        for (const b of (bids || [])) {
+            playerBids[b.contract_id] = b;
+        }
     }
 
     renderContracts();
