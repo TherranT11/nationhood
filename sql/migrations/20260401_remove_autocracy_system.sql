@@ -2,104 +2,77 @@
 -- Migration: Remove Autocracy System
 -- Date: 2026-04-01
 --
--- The autocracy government type is being completely removed from the game.
--- Sangreza (the only autocracy nation) is converted to a Parliamentary Democracy.
---
--- This migration:
---   1. Clears autocracy-specific columns on the nations table for Sangreza
---   2. Converts Sangreza's government_type from 'Autocracy' to 'Democracy'
---   3. Removes all factions in Sangreza (the NPC seed factions: Ruling Junta,
---      Reform Movement, Traditionalist Guard) — players will create new parties
---   4. Clears faction_id on any player profiles that were in Sangreza factions
---   5. Drops all autocracy-specific tables
---   6. Drops autocracy RPC functions
---   7. Schedules a parliamentary election for Sangreza so new parties can form
+-- Converts Sangreza from Autocracy to Parliamentary Democracy.
+-- Disbands all factions and schedules a fresh election.
+-- Drops all autocracy-specific tables, functions, and columns.
 -- ════════════════════════════════════════════════════════════════════════════════
 
 BEGIN;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 1. CONVERT MELIZEA: Autocracy → Parliamentary Democracy
---    Clear all autocracy-specific columns on the nations row.
+-- 1. CONVERT: Autocracy → Parliamentary Democracy
 -- ─────────────────────────────────────────────────────────────────────────────
 
 UPDATE nations
-SET government_type                   = 'Democracy',
-    ruling_faction_id                 = NULL,
-    designated_successor_faction_id   = NULL,
-    revolution_started_tick           = NULL,
-    revolution_duration               = NULL,
+SET government_type                      = 'Democracy',
+    ruling_faction_id                    = NULL,
+    designated_successor_faction_id      = NULL,
+    revolution_started_tick              = NULL,
+    revolution_duration                  = NULL,
     authoritarianism_seize_available_tick = NULL
 WHERE government_type = 'Autocracy';
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 2. DISBAND MELIZEA FACTIONS
---    Remove all factions in the former autocracy nation. The entire political
---    structure is being reset — players will need to create new parties.
---
---    Many tables have ON DELETE CASCADE for faction_id, so deleting factions
---    will automatically clean up:
---      - faction_pillar_state (autocracy table, also being dropped below)
---      - coup_attempt_log, silent_coup_offers, silent_coup_votes, etc.
---      - forum_threads, forum_replies (faction_id CASCADE)
---      - admin_chat (faction_id CASCADE)
---      - stewards (faction_id CASCADE)
---      - faction_bloc_approval, ideology_history, etc.
---
---    For tables with ON DELETE SET NULL (e.g. civic_posts, contracts),
---    the faction_id will simply become NULL, which is acceptable.
---
---    We must first NULL out profile references since profiles.faction_id
---    may not have ON DELETE CASCADE.
+-- 2. DISBAND SANGREZA FACTIONS
+--    Clean up ALL non-CASCADE foreign key references before deletion.
+--    Tables with ON DELETE CASCADE are handled automatically.
 -- ─────────────────────────────────────────────────────────────────────────────
 
--- Clean up non-CASCADE foreign key references to Sangreza factions before deletion.
--- These tables have FK constraints that would block DELETE FROM factions.
-DELETE FROM ambassadors WHERE faction_id IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
-);
-DELETE FROM diplomatic_messages WHERE from_faction_id IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
-);
-UPDATE bills SET diplomatic_proposal_id = NULL WHERE diplomatic_proposal_id IN (
-    SELECT id FROM diplomatic_proposals WHERE proposed_by_faction_id IN (
-        SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
-    )
-);
-DELETE FROM diplomatic_proposals WHERE proposed_by_faction_id IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
-);
-DELETE FROM diplomatic_action_log WHERE faction_id IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
-);
-DELETE FROM impeachment_proceedings WHERE initiated_by_faction_id IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
-);
-UPDATE presidents SET faction_id = NULL WHERE faction_id IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
-);
-UPDATE wiki_pages SET created_by = NULL WHERE created_by IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
-);
-UPDATE wiki_pages SET updated_by = NULL WHERE updated_by IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
-);
-UPDATE wiki_pages SET locked_by = NULL WHERE locked_by IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
-);
+-- Helper: collect Sangreza faction IDs
+CREATE TEMP TABLE _sz_factions AS
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza');
 
-DELETE FROM ipo_members WHERE faction_id IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
-);
+-- Diplomacy tables (no CASCADE)
+DELETE FROM ambassadors WHERE faction_id IN (SELECT id FROM _sz_factions);
+DELETE FROM diplomatic_messages WHERE from_faction_id IN (SELECT id FROM _sz_factions);
+DELETE FROM diplomatic_action_log WHERE faction_id IN (SELECT id FROM _sz_factions);
+UPDATE bills SET diplomatic_proposal_id = NULL
+    WHERE diplomatic_proposal_id IN (
+        SELECT id FROM diplomatic_proposals WHERE proposed_by_faction_id IN (SELECT id FROM _sz_factions)
+    );
+DELETE FROM diplomatic_proposals WHERE proposed_by_faction_id IN (SELECT id FROM _sz_factions);
+
+-- Government tables (no CASCADE)
+DELETE FROM impeachment_proceedings WHERE initiated_by_faction_id IN (SELECT id FROM _sz_factions);
+DELETE FROM ministries WHERE party_id IN (SELECT id FROM _sz_factions);
+UPDATE presidents SET faction_id = NULL WHERE faction_id IN (SELECT id FROM _sz_factions);
+
+-- IPO tables (no CASCADE)
+DELETE FROM ipo_fund_transactions WHERE faction_id IN (SELECT id FROM _sz_factions);
+DELETE FROM ipo_solidarity_requests WHERE requesting_faction_id IN (SELECT id FROM _sz_factions);
+DELETE FROM ipo_solidarity_requests WHERE target_faction_id IN (SELECT id FROM _sz_factions);
+DELETE FROM ipo_policy_proposals WHERE proposed_by IN (SELECT id FROM _sz_factions);
+DELETE FROM ipo_vote_log WHERE faction_id IN (SELECT id FROM _sz_factions);
+DELETE FROM ipo_invitations WHERE invited_by IN (SELECT id FROM _sz_factions);
+DELETE FROM ipo_invitations WHERE target_faction_id IN (SELECT id FROM _sz_factions);
+DELETE FROM ipo_chat_messages WHERE faction_id IN (SELECT id FROM _sz_factions);
+DELETE FROM ipo_members WHERE faction_id IN (SELECT id FROM _sz_factions);
+UPDATE international_orgs SET founding_party_id = NULL WHERE founding_party_id IN (SELECT id FROM _sz_factions);
+UPDATE international_orgs SET president_id = NULL WHERE president_id IN (SELECT id FROM _sz_factions);
+
+-- Wiki (no CASCADE)
+UPDATE wiki_pages SET created_by = NULL WHERE created_by IN (SELECT id FROM _sz_factions);
+UPDATE wiki_pages SET updated_by = NULL WHERE updated_by IN (SELECT id FROM _sz_factions);
+UPDATE wiki_pages SET locked_by = NULL WHERE locked_by IN (SELECT id FROM _sz_factions);
 
 -- Delete all factions in Sangreza
 DELETE FROM factions
 WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza');
 
+DROP TABLE _sz_factions;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 3. DROP AUTOCRACY-SPECIFIC TABLES
---    These tables were created in 20260320_autocracy_v5_phase1_schema.sql
---    and are no longer needed.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 DROP TABLE IF EXISTS pyrrhic_window CASCADE;
@@ -114,8 +87,6 @@ DROP TABLE IF EXISTS autocracy_tracker CASCADE;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 4. DROP AUTOCRACY RPC FUNCTIONS
---    These were created in the phase 1 schema migration and are only used
---    by the autocracy system.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 DROP FUNCTION IF EXISTS get_tracker_word(UUID);
@@ -124,8 +95,6 @@ DROP FUNCTION IF EXISTS get_power_delta(INTEGER);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 5. DROP AUTOCRACY-SPECIFIC COLUMNS FROM NATIONS TABLE
---    These columns were added for the autocracy system and are no longer
---    needed by any government type.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 ALTER TABLE nations DROP COLUMN IF EXISTS designated_successor_faction_id;
@@ -134,10 +103,7 @@ ALTER TABLE nations DROP COLUMN IF EXISTS revolution_duration;
 ALTER TABLE nations DROP COLUMN IF EXISTS authoritarianism_seize_available_tick;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 6. SCHEDULE PARLIAMENTARY ELECTION FOR MELIZEA
---    With all factions disbanded, Sangreza needs a fresh election so players
---    can create new parties and compete democratically.
---    Scheduled 5 ticks from the current shard tick to give players time.
+-- 6. SCHEDULE PARLIAMENTARY ELECTION FOR SANGREZA
 -- ─────────────────────────────────────────────────────────────────────────────
 
 INSERT INTO elections (nation_id, election_tick, election_type, status)
