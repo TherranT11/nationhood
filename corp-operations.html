@@ -4738,10 +4738,51 @@ function renderDeliveries() {
     list.innerHTML = html;
 }
 
-function loadDeliveries() {
-    // Empty for now — no completed deliveries exist in game yet.
-    // Future: fetch from Supabase and populate dlDeliveries
-    dlDeliveries = [];
+async function loadDeliveries() {
+    if (!faction) { dlDeliveries = []; renderDeliveries(); return; }
+
+    const { data, error } = await _supabase
+        .from('construction_deliveries')
+        .select('*, construction_contracts(name, sector, issuer_name, issuer_type, timeline_ticks)')
+        .eq('faction_id', faction.id)
+        .order('delivered_at_tick', { ascending: false })
+        .limit(20);
+
+    if (error) {
+        console.warn('Failed to load deliveries:', error.message);
+        dlDeliveries = [];
+    } else {
+        // Map to the format renderDeliveries expects
+        dlDeliveries = (data || []).map(d => {
+            const cc = d.construction_contracts || {};
+            return {
+                id: d.contract_id,
+                name: cc.name || 'Project',
+                type: cc.issuer_type || 'GOVERNMENT',
+                issuer: cc.issuer_name || 'Government',
+                delivered: 'Tick ' + (d.delivered_at_tick || 0),
+                result: d.result,
+                quality_score: d.quality_score,
+                rep_change: d.rep_change,
+                financials: {
+                    contract_value: d.contract_value || 0,
+                    bonus: d.quality_bonus || 0,
+                    penalty: d.penalties || 0,
+                    payment: d.payment_received || 0,
+                    total_cost: d.total_cost || 0,
+                },
+                inspection: d.inspection || {},
+                materials_used: d.materials_used || [],
+                timeline: {
+                    expected: d.timeline_expected || 0,
+                    actual: d.timeline_actual || 0,
+                    on_time: d.on_time,
+                    early: d.timeline_actual < d.timeline_expected,
+                },
+            };
+        });
+    }
+
     renderDeliveries();
 }
 

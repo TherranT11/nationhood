@@ -22172,14 +22172,85 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                     }, { onConflict: 'nation_id' });
             }
 
-            results.push({
-                contract: contract.name,
-                result: 'completed',
-                payment,
-                quality: bid.estimated_quality,
+            // ── Phase 8: Generate inspection report & delivery record ──
+            const baseQuality = bid.estimated_quality || 65;
+            // Add randomness: ±10 points from estimated quality
+            const qualityVariance = Math.floor(Math.random() * 21) - 10;
+            const qualityScore = Math.max(0, Math.min(100, baseQuality + qualityVariance));
+
+            // Determine result from quality
+            let deliveryResult = 'PASS';
+            let repChange = 2;
+            let qualityBonus = 0;
+            let penalties = 0;
+            if (qualityScore >= 85) { deliveryResult = 'DISTINCTION'; repChange = 5; qualityBonus = Math.round(payment * 0.15); }
+            else if (qualityScore >= 60) { deliveryResult = 'PASS'; repChange = 2; }
+            else if (qualityScore >= 40) { deliveryResult = 'CONDITIONAL'; repChange = 0; penalties = Math.round(payment * 0.20); }
+            else { deliveryResult = 'FAIL'; repChange = -3; penalties = Math.round(payment * 0.40); }
+
+            const actualPayment = payment + qualityBonus - penalties;
+            const estCost = bid.estimated_cost || 0;
+            const netProfit = actualPayment - estCost;
+
+            // Timeline assessment
+            const actualTicks = ticksElapsed;
+            const onTime = actualTicks <= totalTicks;
+
+            // Generate inspection scores per category (randomized around base quality)
+            const inspCat = (base) => {
+                const score = Math.max(0, Math.min(100, base + Math.floor(Math.random() * 15) - 7));
+                const issues = [];
+                if (score < 50) issues.push('Below acceptable standards — remediation required');
+                else if (score < 65) issues.push('Minor deficiency noted — within tolerance');
+                return { score, issues };
+            };
+            const inspection = {
+                materials: inspCat(baseQuality),
+                structural: inspCat(baseQuality - 3),
+                systems: inspCat(baseQuality - 5),
+                permits: { passed: true, issues: [] },
+            };
+
+            // Build materials used from bid grades
+            const bidGrades = bid.material_grades || {};
+            const materialsUsed = Object.entries(bidGrades).map(([key, grade]) => {
+                const impactMap = { HIGH: 'positive', STANDARD: 'neutral', LOW: 'negative' };
+                return { name: key.replace(/_/g, ' '), grade, impact: impactMap[grade] || 'neutral' };
             });
 
-            console.log(`[Projects] ${contract.name}: COMPLETED. Payment: $${(payment / 1e6).toFixed(1)}M to faction ${bid.faction_id}`);
+            // Insert delivery record
+            const { error: delErr } = await supabase.from('construction_deliveries').insert({
+                contract_id: contract.id,
+                faction_id: bid.faction_id,
+                nation_id: nationId,
+                result: deliveryResult,
+                quality_score: qualityScore,
+                rep_change: repChange,
+                inspection,
+                materials_used: materialsUsed,
+                contract_value: payment,
+                quality_bonus: qualityBonus,
+                penalties,
+                payment_received: actualPayment,
+                total_cost: estCost,
+                net_profit: netProfit,
+                timeline_expected: totalTicks,
+                timeline_actual: actualTicks,
+                on_time: onTime,
+                delivered_at_tick: currentTick,
+            });
+            if (delErr) console.error(`[Projects] Failed to create delivery record:`, delErr.message);
+
+            results.push({
+                contract: contract.name,
+                result: deliveryResult,
+                payment: actualPayment,
+                quality: qualityScore,
+                repChange,
+                netProfit,
+            });
+
+            console.log(`[Projects] ${contract.name}: ${deliveryResult} (quality=${qualityScore}, net=${netProfit > 0 ? '+' : ''}$${(netProfit / 1e6).toFixed(1)}M, rep=${repChange > 0 ? '+' : ''}${repChange})`);
         }
     }
 
