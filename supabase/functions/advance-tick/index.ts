@@ -19333,7 +19333,6 @@ const INCIDENT_CONFIG = {
         base_chance: 0.4,
         required_border: 'maritime',
         required_proximity: 100,        // 100 = bordering
-        requires_autocracy: false,
         roles: { a: 'aggrieved', b: 'enforcer' },
         aggressor_role: 'enforcer',
         immediate_effects: { Relations: -5, Civil_Unrest_a: 1, Intl_Reputation_b: -0.5 },
@@ -19348,34 +19347,11 @@ const INCIDENT_CONFIG = {
             { stat: 'relation_score', op: 'gt', value: 65, multiplier: 0.2, nation: 'pair' }
         ]
     },
-    border_incursion: {
-        base_chance: 0.15,
-        required_border: 'land',
-        required_proximity: 100,
-        requires_autocracy: true,       // never fires (autocracy system removed)
-        roles: { a: 'invader', b: 'defender' },
-        aggressor_role: 'invader',
-        starting_leverage_a: 2,
-        immediate_effects: { Relations: -12, Stability_b: -4, Civil_Unrest_b: 3, Military_Readiness_b: 2, Intl_Reputation_a: -2, Military_Readiness_both: 1 },
-        crisis_fields: { occupation_depth_km: 12, war_risk_pct: 0 },
-        trigger_modifiers: [
-            { stat: 'relation_score', op: 'lt', value: 25, multiplier: 3.0, nation: 'pair' },
-            { stat: 'gov_approval', op: 'lt', value: 30, multiplier: 2.5, nation: 'a' },
-            { stat: 'military_readiness', op: 'gt', value: 70, multiplier: 1.5, nation: 'a' },
-            { stat: 'stability', op: 'lt', value: 30, multiplier: 1.5, nation: 'b' },
-            { stat: 'military_readiness', op: 'lt', value: 40, multiplier: 2.0, nation: 'b' }
-        ],
-        suppress_modifiers: [
-            { stat: 'relation_score', op: 'gt', value: 55, multiplier: 0.1, nation: 'pair' },
-            { condition: 'non_aggression_pact', multiplier: 0.2 },
-            { stat: 'military_readiness', op: 'lt', value: 50, multiplier: 0.3, nation: 'a' }
-        ]
-    },
+    // border_incursion removed — required autocracy system which has been scrapped
     dam_water: {
         base_chance: 0.1,
         required_border: 'river',
         required_proximity: 100,
-        requires_autocracy: false,
         roles: { a: 'upstream', b: 'downstream' },
         aggressor_role: 'upstream',
         immediate_effects: { Relations: -8, Stability_b: -2 },
@@ -19385,7 +19361,6 @@ const INCIDENT_CONFIG = {
         base_chance: 0,                 // action-triggered only (50% on retaliatory tariff)
         required_border: null,          // no border requirement
         required_proximity: null,       // any distance (0-100)
-        requires_autocracy: false,
         roles: { a: 'initiator', b: 'retaliator' },
         aggressor_role: 'initiator'
     }
@@ -19491,9 +19466,6 @@ async function processIncidentTriggers(supabase, nationList, currentTick) {
 
             // Check nation A cap
             if ((nationIncidentCounts[nationA.id] || 0) >= PER_NATION_INCIDENT_CAP) continue;
-
-            // Skip incidents that required autocracy (system removed)
-            if (config.requires_autocracy) continue;
 
             // Find a valid partner
             const partners = nationList.filter(n => n.id !== nationA.id);
