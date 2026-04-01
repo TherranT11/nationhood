@@ -4187,6 +4187,8 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         supabase.from('election_candidates').delete().eq('faction_id', factionId),
         supabase.from('presidential_candidates').delete().eq('faction_id', factionId),
         supabase.from('protests').update({ faction_id: null }).eq('faction_id', factionId),
+        // Clear IPO founder status — prevents new faction with same UUID from inheriting veto
+        supabase.from('international_orgs').update({ founding_party_id: null }).eq('founding_party_id', factionId),
     ]);
     for (const r of fkResults) {
         if (r.status === 'rejected') console.warn('disbandParty: FK cleanup error:', r.reason);
