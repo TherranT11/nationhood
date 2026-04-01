@@ -1647,11 +1647,11 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
             .eq('id', r.party_id);
     }
 
-    // Dissolve legislature — fail all pending bills (new parliament must re-propose)
+    // Dissolve legislature — fail all pending and frozen bills (new parliament must re-propose)
     const { data: dissolvedBills } = await supabase.from('bills')
         .update({ status: 'failed' })
         .eq('nation_id', nation.id)
-        .in('status', ['committee', 'floor'])
+        .in('status', ['committee', 'floor', 'frozen'])
         .select('id, nation_id, bill_type, ambassador_id, ministry_key');
     await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
     await syncMinistriesForFailedConfirmationBills(supabase, dissolvedBills);

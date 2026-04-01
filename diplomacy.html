@@ -9048,7 +9048,11 @@ async function submitStateVisit() {
     if (ctx.cooldownActive) { _svSubmitLock = false; alert('You recently visited ' + ctx.targetNation.name + '. Cooldown: ' + ctx.cooldownTicks + ' tick(s) remaining.'); return; }
     if (ctx.alreadyPending) { _svSubmitLock = false; alert('A State Visit invitation to ' + ctx.targetNation.name + ' is already pending.'); return; }
 
-    const apResult = await deductAP(_supabase, currentFaction.id, computed.totalAp);
+    const apResult = await deductAP(_supabase, currentFaction.id, computed.totalAp, {
+        reason: 'state_visit',
+        detail: `State Visit to ${ctx.targetNation.name} (${svState.visitType}, ${svState.duration})`,
+        tick: ctx.currentTick
+    });
     if (!apResult.success) {
         _svSubmitLock = false;
         if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;

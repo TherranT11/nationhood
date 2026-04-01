@@ -2203,8 +2203,9 @@ async function sendToFloor() {
     if (!currentFaction || currentBill.proposed_by !== currentFaction.id) return;
     if (isNoGovernment) { alert('Legislature is suspended. A new government must be formed before bills can advance.'); return; }
 
-    // Require at least one article for non-repeal/non-ratification bills
-    if (currentBill.bill_type !== 'repeal' && currentBill.bill_type !== 'ratification'
+    // Require at least one article for standard bills (foundational/repeal/ratification are self-contained)
+    const selfContained = ['repeal', 'ratification', 'foundational'];
+    if (!selfContained.includes(currentBill.bill_type)
         && (!currentBill.bill_articles || currentBill.bill_articles.filter(a => a.policy_id || a.effect_data || a.repeal_active_law_id || a.funding_data || a.article_text).length === 0)) {
         alert('This bill has no articles. Add at least one article before sending to the floor.');
         return;
