@@ -1751,6 +1751,7 @@ body.light-mode .dl-empty__text { color: #1a1a17; }
       </div>
     </div>
     <div class="top-bar-right">
+      <span class="topbar-cash" id="topbar-cash" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;color:var(--gold);padding:3px 8px;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.2);">CASH: --</span>
       <div class="faction-switcher" id="faction-switcher" style="position:relative;">
         <span class="corp-name-badge" id="corp-name-badge" onclick="toggleCorpDropdown()" style="cursor:pointer;">--</span>
         <div class="corp-faction-dropdown" id="corp-faction-dropdown"></div>
@@ -1930,6 +1931,20 @@ body.light-mode .dl-empty__text { color: #1a1a17; }
       </div>
     </div>
 
+    <!-- Equipment Inventory card -->
+    <div class="eq-card">
+      <div class="eq-card__header">
+        <div class="eq-card__header-left">
+          <div class="eq-card__dot"></div>
+          <span class="eq-card__label">Equipment</span>
+        </div>
+        <span class="eq-card__count" id="eq-count">0 UNITS</span>
+      </div>
+      <div class="eq-summary" id="eq-summary"></div>
+      <div class="eq-list" id="eq-list"></div>
+      <div class="eq-card__footer" id="eq-footer"></div>
+    </div>
+
     <!-- Equipment Market card -->
     <div class="em-card">
       <div class="em-card__header">
@@ -2008,20 +2023,6 @@ body.light-mode .dl-empty__text { color: #1a1a17; }
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- Equipment Inventory card -->
-    <div class="eq-card">
-      <div class="eq-card__header">
-        <div class="eq-card__header-left">
-          <div class="eq-card__dot"></div>
-          <span class="eq-card__label">Equipment</span>
-        </div>
-        <span class="eq-card__count" id="eq-count">0 UNITS</span>
-      </div>
-      <div class="eq-summary" id="eq-summary"></div>
-      <div class="eq-list" id="eq-list"></div>
-      <div class="eq-card__footer" id="eq-footer"></div>
     </div>
 
     <!-- Deliveries card -->
@@ -4313,7 +4314,14 @@ async function init() {
 
     // Top bar — right
     document.getElementById('corp-name-badge').textContent =
-        (faction.faction_name || 'Corp') + (ticker ? ' [' + ticker + ']' : '') + ' ▾';
+        (ticker ? '[' + ticker + ']' : (faction.faction_name || 'Corp')) + ' ▾';
+    // Cash display next to abbreviation
+    const cashEl = document.getElementById('topbar-cash');
+    if (cashEl) {
+        const cash = Number(faction.corp_cash_reserves ?? 0);
+        const cashStr = cash >= 1e9 ? '$' + (cash / 1e9).toFixed(1) + 'B' : cash >= 1e6 ? '$' + (cash / 1e6).toFixed(1) + 'M' : '$' + Math.round(cash / 1000) + 'k';
+        cashEl.textContent = 'CASH: ' + cashStr;
+    }
     const ap = faction.action_points ?? 0;
     document.getElementById('topbar-ap').innerHTML =
         '<span class="topbar-ap__count">' + ap + ' AP</span>';
