@@ -539,18 +539,23 @@ export function getRequiredSeats(billType, votesAgainst) {
  *
  * @param {object} bill - Bill with votes_for, votes_against, votes_abstain, bill_type
  * @param {number} totalSeats - Total parliamentary seats (from nation)
+ * @param {object} [nationFlags] - Optional nation flags affecting thresholds
+ * @param {boolean} [nationFlags.judicial_appointment_politicization] - If true, raises impeachment conviction to 75% and no confidence to 60%
  */
-export function evaluateBillVote(bill, totalSeats) {
+export function evaluateBillVote(bill, totalSeats, nationFlags = {}) {
     const forSeats = bill.votes_for || 0;
     const againstSeats = bill.votes_against || 0;
     const abstainSeats = bill.votes_abstain || 0;
     const participating = forSeats + againstSeats + abstainSeats;
     const undeclaredSeats = totalSeats - participating;
     const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
+    const judicialPoliticized = !!nationFlags.judicial_appointment_politicization;
 
-    // ── Foundational / default_resolution / veto_override / impeachment_conviction: 67% absolute supermajority, no quorum ──
+    // ── Foundational / default_resolution / veto_override / impeachment_conviction: supermajority, no quorum ──
     if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
-        const threshold = Math.ceil(totalSeats * 2 / 3);
+        // Impeachment conviction: 75% if courts are captured, otherwise 67%
+        const ratio = (bill.bill_type === 'impeachment_conviction' && judicialPoliticized) ? 0.75 : (2 / 3);
+        const threshold = Math.ceil(totalSeats * ratio);
         if (forSeats >= threshold) {
             return { status: 'will_pass', reason: 'supermajority_reached', thresholdNeeded: threshold, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
         }
@@ -560,9 +565,12 @@ export function evaluateBillVote(bill, totalSeats) {
         return { status: 'pending', reason: 'supermajority_in_progress', thresholdNeeded: threshold, neededFor: threshold - forSeats, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
     }
 
-    // ── Impeachment motion / confidence: 50%+1 absolute majority, no quorum ──
+    // ── Impeachment motion / no confidence: absolute majority, no quorum ──
     if (bill.bill_type === 'impeachment_motion' || bill.bill_type === 'no_confidence') {
-        const threshold = Math.floor(totalSeats / 2) + 1;
+        // No confidence: 60% if courts are captured, otherwise 50%+1
+        const threshold = (bill.bill_type === 'no_confidence' && judicialPoliticized)
+            ? Math.ceil(totalSeats * 0.6)
+            : Math.floor(totalSeats / 2) + 1;
         if (forSeats >= threshold) {
             return { status: 'will_pass', reason: 'absolute_majority_reached', thresholdNeeded: threshold, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
         }
@@ -610,22 +618,26 @@ export function evaluateBillVote(bill, totalSeats) {
  * @param {object} bill - Bill row with votes_for, votes_against, votes_abstain, bill_type, quorum_failures
  * @param {number} totalSeats - Total parliamentary seats
  */
-export function resolveBillVote(bill, totalSeats) {
+export function resolveBillVote(bill, totalSeats, nationFlags = {}) {
     const forSeats = bill.votes_for || 0;
     const againstSeats = bill.votes_against || 0;
     const abstainSeats = bill.votes_abstain || 0;
     const participating = forSeats + againstSeats + abstainSeats;
     const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
+    const judicialPoliticized = !!nationFlags.judicial_appointment_politicization;
 
-    // Foundational / default_resolution / veto_override / impeachment_conviction: 67% absolute supermajority
+    // Foundational / default_resolution / veto_override / impeachment_conviction: supermajority
     if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
-        const threshold = Math.ceil(totalSeats * 2 / 3);
+        const ratio = (bill.bill_type === 'impeachment_conviction' && judicialPoliticized) ? 0.75 : (2 / 3);
+        const threshold = Math.ceil(totalSeats * ratio);
         return forSeats >= threshold ? 'passed' : 'failed';
     }
 
-    // No-confidence / impeachment_motion: 50%+1 absolute majority
+    // No-confidence / impeachment_motion: absolute majority
     if (bill.bill_type === 'no_confidence' || bill.bill_type === 'impeachment_motion') {
-        const threshold = Math.floor(totalSeats / 2) + 1;
+        const threshold = (bill.bill_type === 'no_confidence' && judicialPoliticized)
+            ? Math.ceil(totalSeats * 0.6)
+            : Math.floor(totalSeats / 2) + 1;
         return forSeats >= threshold ? 'passed' : 'failed';
     }
 
@@ -3366,6 +3378,51 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
         await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
         console.log(`[enactFoundationalBill] Emergency Powers Act enacted for nation ${bill.nation_id}`);
+        return true;
+    }
+
+    // ── Judicial Appointment Politicization Act subtype ──
+    if (bill.proposed_judicial_appointment_politicization) {
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
+
+        const cappedJudicial = Math.min(Number(nation?.judicial_independence ?? 50), 30);
+        const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
+        const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 3);
+
+        const { error: nationErr } = await supabase.from('nations').update({
+            judicial_appointment_politicization: true,
+            judicial_independence: cappedJudicial,
+            legitimacy: newLegitimacy,
+            freedom_index: newFreedom
+        }).eq('id', bill.nation_id);
+        if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for judicial politicization:`, nationErr.message);
+
+        const isPres = isPresidentialRepublic(nation);
+        const mechanicDesc = isPres
+            ? 'Impeachment conviction now requires 75% (up from 67%). The courts no longer serve as a check on executive power.'
+            : 'Votes of no confidence now require 60% (up from 50%+1). The ruling coalition is shielded from parliamentary removal.';
+
+        await supabase.from('event_log').insert({
+            nation_id: bill.nation_id,
+            event_name: 'FOUNDATIONAL_LAW_PASSED',
+            trigger_key: 'judicial_appointment_politicization',
+            description_used: `The Judicial Appointment Politicization Act has passed. The ruling coalition now appoints judges directly. Judicial independence is permanently capped at 30. ${mechanicDesc}`,
+            category: 'POLITICAL',
+            effects_applied: {
+                law: 'judicial_appointment_politicization',
+                judicial_independence_cap: 30,
+                legitimacy: -5,
+                freedom_index: -3,
+                threshold_change: isPres ? 'impeachment_conviction 67%→75%' : 'no_confidence 50%+1→60%'
+            },
+            fired_at_tick: currentTick
+        });
+
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+        console.log(`[enactFoundationalBill] Judicial Appointment Politicization Act enacted for nation ${bill.nation_id}`);
         return true;
     }
 
