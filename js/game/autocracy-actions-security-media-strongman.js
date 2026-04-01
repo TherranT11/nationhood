@@ -537,10 +537,6 @@ registerAutocracyAction('execute_leader', {
         }
 
         // Make the arrested leader's pillar the new wildcard
-        const oldWildcard = (await supabase.from('autocracy_tracker')
-            .select('wildcard_pillar, wildcard_backing')
-            .eq('nation_id', nation.id).single()).data;
-
         await supabase.from('autocracy_tracker').update({
             wildcard_pillar: targetFps.pillar,
             wildcard_backing: Number(targetFps.backing),
