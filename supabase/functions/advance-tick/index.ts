@@ -21185,32 +21185,6 @@ async function processWritingRewards(supabase, nationId, currentTick) {
     return rewards;
 }
 
-/**
- * Process lingering approval decay from minister purges.
- */
-async function processPurgeDecay(supabase, nationId, currentTick) {
-    const { data: purgeActions } = await supabase
-        .from('campaign_actions')
-        .select('id, party_id, result')
-        .eq('nation_id', nationId)
-        .eq('action_type', 'purge_minister');
-
-    if (!purgeActions || purgeActions.length === 0) return;
-
-    for (const action of purgeActions) {
-        const result = action.result;
-        if (!result || !result.decay_ticks_remaining || result.decay_ticks_remaining <= 0) continue;
-
-        const decayRate = result.decay_rate || 1;
-        await adjustFactionMomentum(supabase, action.party_id, nationId, -round2(decayRate * 0.3), { source: 'purge:decay' });
-
-        const newRemaining = result.decay_ticks_remaining - 1;
-        await supabase.from('campaign_actions')
-            .update({ result: { ...result, decay_ticks_remaining: newRemaining } })
-            .eq('id', action.id);
-    }
-}
-
 // ==================== SOVEREIGN DEFAULT — TICK-ONLY HELPERS ====================
 
 /**
@@ -21885,7 +21859,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     const failedFactionIds = new Set();
 
     // Accumulate AP for party factions each tick:
-    // base 5 AP, +2 if in government coalition or strongman. Capped at MAX_AP (20).
+    // base 5 AP, +2 if in government coalition. Capped at MAX_AP (20).
     // Uses atomic RPC to prevent race conditions with concurrent player deductions.
     // Skip AP accumulation in reprocess mode — AP was already granted on the original tick.
     let apDistributed = 0;
@@ -22711,40 +22685,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Ambassador retirements failed for ${nation.name} (non-fatal):`, retireErr);
         }
 
-        // ── Succession helper: updates HOS, syncs nation object, logs action ──
-        // Random replacement for head of state succession.
-        async function handleStrongmanSuccession(
-            supabase: any, nation: any, hosName: string, hosAge: number, newTick: number
-        ) {
-            const FIRST = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
-            const LAST = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
-            const newFirst = FIRST[Math.floor(Math.random() * FIRST.length)];
-            const newLast = LAST[Math.floor(Math.random() * LAST.length)];
-            const newAge = 45 + Math.floor(Math.random() * 16);
-            const newName = `${newFirst} ${newLast}`;
-
-            await supabase.from('nations').update({
-                head_of_state_first_name: newFirst, head_of_state_last_name: newLast,
-                head_of_state_age: newAge,
-                successor_cooldown_end_tick: null, successor_is_family_member: false,
-            }).eq('id', nation.id);
-            nation.head_of_state_first_name = newFirst;
-            nation.head_of_state_last_name = newLast;
-            nation.head_of_state_age = newAge;
-
-            await supabase.from('campaign_actions').insert({
-                party_id: nation.ruling_faction_id, nation_id: nation.id,
-                action_type: 'strongman_death', tick_performed: newTick,
-                result: { deceased_name: hosName, deceased_age: hosAge,
-                    successor_name: newName, successor_age: newAge, cause: 'natural_causes' },
-            });
-            return { type: 'strongman_death', deceased: hosName, deceasedAge: hosAge,
-                successor: newName, successorAge: newAge };
-        }
-
         // ── Leader aging (every January — tick % 12 === 0) ──
-        // All party leaders and the strongman age 1 year.
-        // The strongman also rolls health checks starting at age 70.
+        // All party leaders age 1 year.
         if (newTick % 12 === 0) {
             try {
                 console.log(`[LeaderAging] ${nation.name}: tick=${newTick} (January — aging leaders)`);
