@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Select Nation | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0: #0e0e0c;
+  --bg-1: #1a1a1a;
+  --bg-2: #1a1a17;
+  --bg-3: #252525;
+  --bg-4: #24241f;
+  --bg-5: #2c2c26;
+  --bg-hover: #282822;
+  --text-bright: #f0efe6;
+  --text-primary: #c4c2b8;
+  --text-secondary: #888;
+  --text-muted: #666;
+  --text-dim: #4a4940;
+  --text-ghost: #333229;
+  --border-hair: rgba(255,255,255,0.04);
+  --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08);
+  --border-2: rgba(255,255,255,0.12);
+  --green: #5cb85c;
+  --green-faint: rgba(92,184,92,0.08);
+  --green-border: rgba(92,184,92,0.18);
+  --red: #d9534f;
+  --red-faint: rgba(217,83,79,0.08);
+  --red-border: rgba(217,83,79,0.18);
+  --amber: #c8a64e;
+  --amber-faint: rgba(200,166,78,0.08);
+  --amber-border: rgba(200,166,78,0.18);
+  --blue: #5b9bd5;
+  --blue-faint: rgba(91,155,213,0.08);
+  --blue-border: rgba(91,155,213,0.18);
+  --purple: #8b7ec8;
+  --purple-faint: rgba(139,126,200,0.08);
+  --purple-border: rgba(139,126,200,0.18);
+  --teal: #5aafa5;
+  --teal-faint: rgba(90,175,165,0.08);
+  --teal-border: rgba(90,175,165,0.18);
+  --orange: #d48a3c;
+  --orange-faint: rgba(212,138,60,0.08);
+  --orange-border: rgba(212,138,60,0.18);
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+  --font-serif: 'IBM Plex Serif', Georgia, serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.page-header {
+  text-align: center;
+  padding: 48px 20px 16px;
+  max-width: 900px;
+}
+.page-header h1 {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.page-header .title {
+  font-family: var(--font-ui);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: 6px;
+}
+.page-header .subtitle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* Nation cards grid */
+.nations-grid {
+  width: 100%;
+  max-width: 900px;
+  padding: 0 16px 48px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 12px;
+}
+
+.nation-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.nation-card:hover {
+  border-color: var(--border-2);
+}
+.nation-card.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Card header */
+.nation-card__header {
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--border-hair);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nation-card__flag {
+  width: 36px;
+  height: 24px;
+  object-fit: cover;
+  border: 1px solid var(--border-0);
+}
+.nation-card__name {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-bright);
+  flex: 1;
+}
+.nation-card__gov-type {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.gov-democracy {
+  background: var(--green-faint);
+  color: var(--green);
+  border: 1px solid var(--green-border);
+}
+.gov-autocracy {
+  background: var(--red-faint);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+}
+.gov-presidential {
+  background: var(--blue-faint);
+  color: var(--blue);
+  border: 1px solid var(--blue-border);
+}
+
+/* Card body */
+.nation-card__body {
+  padding: 10px 12px;
+}
+
+/* Stat row */
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+.stat-row__label {
+  color: var(--text-secondary);
+}
+.stat-row__value {
+  font-weight: 600;
+}
+
+/* Seat bar */
+.seat-bar {
+  margin: 8px 0;
+}
+.seat-bar__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.seat-bar__track {
+  display: flex;
+  height: 6px;
+  gap: 2px;
+  overflow: hidden;
+}
+.seat-bar__segment {
+  height: 100%;
+}
+.seat-bar__empty {
+  flex: 1;
+  height: 100%;
+  background: var(--bg-5);
+}
+.seat-bar__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.seat-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-secondary);
+}
+.seat-legend-dot {
+  width: 6px;
+  height: 6px;
+}
+
+/* Party list inside card */
+.party-list {
+  margin-top: 8px;
+}
+.party-list__header {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--border-hair);
+}
+.party-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-hair);
+}
+.party-row:last-child {
+  border-bottom: none;
+}
+.party-row__dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+}
+.party-row__name {
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+.party-row__abbr {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 4px;
+  color: var(--text-muted);
+  background: var(--bg-4);
+  border: 1px solid var(--border-0);
+}
+.party-row__ideo {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--text-dim);
+}
+.party-row__seats {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 30px;
+  text-align: right;
+}
+
+/* Crisis section */
+.crisis-section {
+  margin-top: 8px;
+}
+.crisis-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+.crisis-pip {
+  width: 3px;
+  height: 14px;
+  background: var(--red);
+  flex-shrink: 0;
+}
+.crisis-name {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--red);
+}
+.no-crisis {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  padding: 2px 0;
+  font-style: italic;
+}
+
+/* Card footer */
+.nation-card__footer {
+  background: var(--bg-3);
+  border-top: 1px solid var(--border-hair);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.nation-card__footer:hover {
+  background: var(--bg-4);
+}
+.join-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.join-arrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.nation-card:hover .join-label {
+  color: var(--green);
+}
+.nation-card:hover .join-arrow {
+  color: var(--green);
+}
+.nation-card.disabled .nation-card__footer {
+  cursor: default;
+}
+.nation-card.disabled:hover .nation-card__footer {
+  background: var(--bg-3);
+}
+.nation-card.disabled:hover .join-label,
+.nation-card.disabled:hover .join-arrow {
+  color: var(--text-dim);
+}
+
+/* Confirm modal */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.active {
+  display: flex;
+}
+.modal {
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  max-width: 400px;
+  width: 90%;
+}
+.modal__header {
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--border-hair);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.modal__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--amber);
+}
+.modal__title {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.modal__body {
+  padding: 14px;
+}
+.modal__text {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+.modal__nation-name {
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: 4px;
+}
+.modal__gov-badge {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  display: inline-block;
+  margin-bottom: 12px;
+}
+.modal__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.modal__btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border: 1px solid var(--border-0);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.modal__btn--cancel {
+  background: var(--bg-3);
+  color: var(--text-muted);
+}
+.modal__btn--cancel:hover {
+  background: var(--bg-4);
+  color: var(--text-secondary);
+}
+.modal__btn--confirm {
+  background: var(--green-faint);
+  color: var(--green);
+  border-color: var(--green-border);
+}
+.modal__btn--confirm:hover {
+  background: rgba(92,184,92,0.14);
+}
+
+.loading-msg {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 80px 20px;
+}
+
+.error-msg {
+  width: 100%;
+  max-width: 900px;
+  padding: 0 16px;
+  margin-bottom: 12px;
+}
+.error-msg__inner {
+  background: var(--red-faint);
+  border: 1px solid var(--red-border);
+  border-left: 3px solid var(--red);
+  color: var(--red);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 8px 12px;
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .nations-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+  <script type="module" crossorigin src="/assets/select-nation-XKDFI2ai.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
+</head>
+<body>
+
+<div id="loading" class="loading-msg">LOADING NATIONS...</div>
+
+<div id="page-content" style="display:none; width:100%; flex-direction:column; align-items:center;">
+  <div class="page-header">
+    <h1>Nationhood</h1>
+    <div class="title">Choose Your Nation</div>
+    <div class="subtitle">Select a nation to join. Each nation has its own government type, parties, and crises. Your path forward depends on the nation's government.</div>
+  </div>
+
+  <div class="error-msg"><div class="error-msg__inner" id="error-message"></div></div>
+
+  <div class="nations-grid" id="nations-grid"></div>
+</div>
+
+<!-- Confirm Modal -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal__header">
+      <div class="modal__dot"></div>
+      <span class="modal__title">Confirm Nation</span>
+    </div>
+    <div class="modal__body">
+      <div class="modal__text">You are about to join:</div>
+      <div class="modal__nation-name" id="modal-nation-name"></div>
+      <div id="modal-gov-badge" class="modal__gov-badge"></div>
+      <div class="modal__text" id="modal-flow-hint" style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono);"></div>
+      <div class="modal__actions">
+        <button class="modal__btn modal__btn--cancel" onclick="closeModal()">CANCEL</button>
+        <button class="modal__btn modal__btn--confirm" id="modal-confirm-btn" onclick="confirmNation()">CONTINUE</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

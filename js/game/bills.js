@@ -1144,7 +1144,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                             const { data: activeGovFormation } = await supabase.from('government_formations')
                                 .select('id, ministry_assignments')
                                 .eq('nation_id', bill.nation_id)
-                                .in('status', ['formed', 'caretaker'])
+                                .in('status', ['formed', 'active', 'caretaker'])
                                 .order('formed_at', { ascending: false })
                                 .limit(1)
                                 .maybeSingle();

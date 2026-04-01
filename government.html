@@ -6234,7 +6234,7 @@ async function confirmAssign() {
                 const { data: activeGovFormation } = await _supabase.from('government_formations')
                     .select('id, ministry_assignments')
                     .eq('nation_id', currentNation.id)
-                    .in('status', ['formed', 'caretaker'])
+                    .in('status', ['formed', 'active', 'caretaker'])
                     .order('formed_at', { ascending: false })
                     .limit(1)
                     .maybeSingle();

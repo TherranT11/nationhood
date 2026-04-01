@@ -618,7 +618,7 @@ export async function processParliamentaryPMTimeout(supabase, nation, currentTic
     if (!isParliamentaryDemocracy(nation)) return;
 
     const coalition = await fetchActiveCoalition(supabase, nation.id);
-    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'caretaker')) return;
+    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'active' && coalition.status !== 'caretaker')) return;
 
     const { data: existingHOG } = await supabase
         .from('head_of_government')

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wiki Pages | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <script type="module" crossorigin src="/assets/wiki-list-Cv0wRzPd.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
+  <link rel="modulepreload" crossorigin href="/assets/wiki-DVwzCJo1.js">
+  <link rel="stylesheet" crossorigin href="/assets/wiki-SZyD6fOv.css">
+  <link rel="stylesheet" crossorigin href="/assets/dashboard-DwcD1jvW.css">
+</head>
+<body>
+<div id="top-bar"></div>
+
+<div class="wiki-container" id="wiki-root">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:40vh;">
+    <div class="loading-container">
+      <div class="loading-spinner"></div>
+      <div style="color:var(--text-secondary)">Loading pages...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Wiki defaults to light mode — apply immediately to prevent flash
+(function() {
+    const saved = localStorage.getItem('nationhood_theme');
+    if (saved !== 'dark') {
+        document.body.classList.add('light-mode');
+    }
+})();
+</script>
+</body>
+</html>

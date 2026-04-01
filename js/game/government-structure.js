@@ -137,7 +137,7 @@ export async function fetchActiveCoalition(supabase, nationId) {
         .from('government_formations')
         .select('*')
         .eq('nation_id', nationId)
-        .in('status', ['formed', 'caretaker'])
+        .in('status', ['formed', 'active', 'caretaker'])
         .order('formed_at', { ascending: false })
         .limit(1)
         .maybeSingle();
