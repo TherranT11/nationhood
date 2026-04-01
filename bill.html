@@ -1032,6 +1032,49 @@ function renderArticles() {
                         'Legitimacy −4, polarization +5, freedom index −3.' +
                     '</div>' +
                 '</div>';
+        } else if (bill.proposed_legislative_quorum_override) {
+            const quorumVal = Number(bill.proposed_legislative_quorum_override);
+            const isCommittee = bill.status === 'committee';
+            const isBillSponsor = bill.proposed_by === currentFaction?.id;
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--red);">' +
+                    '<div class="article-number" style="color:var(--red);">FOUNDATIONAL LAW — AUTHORITARIAN</div>' +
+                    '<div class="article-title">Legislative Quorum Reform Act</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill lowers the quorum requirement for standard bills.') + '</div>' +
+                '</div>' +
+                '<div class="repeal-notice" style="border-color:var(--red);background:rgba(239,68,68,0.05);">' +
+                    '<div class="repeal-notice-icon">📋</div>' +
+                    '<div class="repeal-notice-text" style="color:var(--red);">Quorum lowered from 50% to ' + quorumVal + '%</div>' +
+                    (isCommittee && isBillSponsor ? `
+                    <div style="margin:12px 0;display:flex;gap:8px;justify-content:center;">
+                        <button class="sponsor-btn ${quorumVal === 40 ? 'send-floor' : ''}" style="padding:6px 16px;font-size:0.8rem;" onclick="setQuorumOverride(40)" ${quorumVal === 40 ? 'disabled' : ''}>40%</button>
+                        <button class="sponsor-btn ${quorumVal === 30 ? 'send-floor' : ''}" style="padding:6px 16px;font-size:0.8rem;" onclick="setQuorumOverride(30)" ${quorumVal === 30 ? 'disabled' : ''}>30%</button>
+                        <button class="sponsor-btn ${quorumVal === 25 ? 'send-floor' : ''}" style="padding:6px 16px;font-size:0.8rem;" onclick="setQuorumOverride(25)" ${quorumVal === 25 ? 'disabled' : ''}>25%</button>
+                    </div>
+                    <div style="font-size:0.7rem;color:var(--text-dim);text-align:center;">Select quorum before sending to floor. Cannot be changed after.</div>
+                    ` : '') +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        'Requires <strong style="color:var(--red);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                        'If passed: standard bill quorum drops from 50% to ' + quorumVal + '%. Legitimacy −3, freedom index −2.' +
+                    '</div>' +
+                '</div>';
+        } else if (bill.proposed_constitutional_amendment_streamlining) {
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--red);">' +
+                    '<div class="article-number" style="color:var(--red);">FOUNDATIONAL LAW — AUTHORITARIAN</div>' +
+                    '<div class="article-title">Constitutional Amendment Streamlining</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill lowers the threshold required to pass constitutional changes.') + '</div>' +
+                '</div>' +
+                '<div class="repeal-notice" style="border-color:var(--red);background:rgba(239,68,68,0.05);">' +
+                    '<div class="repeal-notice-icon">📜</div>' +
+                    '<div class="repeal-notice-text" style="color:var(--red);">Foundational bill threshold lowered from 67% to 55%</div>' +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        '<strong style="color:var(--red);">This bill itself requires the full two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                        'Once enacted, all future foundational bills only need 55% (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * 0.55) + ' seats).<br>' +
+                        'Legitimacy −8, polarization +5, freedom index −5.<br>' +
+                        '<strong>The constitution becomes far easier to rewrite.</strong>' +
+                    '</div>' +
+                '</div>';
         } else {
             // Electoral Makeup subtype (default)
             const currentSeatsDisplay = GAME_CONFIG.TOTAL_SEATS;
@@ -3123,18 +3166,38 @@ document.getElementById('chat-input')?.addEventListener('keypress', (e) => {
 });
 
 // Expose functions for HTML onclick/onchange handlers
+let _thresholdLock = false;
 async function setPartyRegistrationThreshold(pct) {
+    if (_thresholdLock) return;
     if (![5, 10, 15].includes(pct)) return;
     const bill = currentBill;
     if (!bill || bill.status !== 'committee') return;
+    _thresholdLock = true;
     const { error } = await _supabase.from('bills')
         .update({ proposed_party_registration_threshold: pct })
         .eq('id', bill.id);
+    _thresholdLock = false;
     if (error) { alert('Failed to update threshold: ' + error.message); return; }
     currentBill.proposed_party_registration_threshold = pct;
     renderBill();
 }
 window.setPartyRegistrationThreshold = setPartyRegistrationThreshold;
+
+async function setQuorumOverride(pct) {
+    if (_thresholdLock) return;
+    if (![25, 30, 40].includes(pct)) return;
+    const bill = currentBill;
+    if (!bill || bill.status !== 'committee') return;
+    _thresholdLock = true;
+    const { error } = await _supabase.from('bills')
+        .update({ proposed_legislative_quorum_override: pct })
+        .eq('id', bill.id);
+    _thresholdLock = false;
+    if (error) { alert('Failed to update quorum: ' + error.message); return; }
+    currentBill.proposed_legislative_quorum_override = pct;
+    renderBill();
+}
+window.setQuorumOverride = setQuorumOverride;
 
 window.castVote = castVote;
 window.sendComment = sendComment;
