@@ -4,7 +4,7 @@
  */
 
 import { FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, GAME_CONFIG, SNAP_COOLDOWN_GAP, getPresidentialTermTicks, getPresidentialTermLimit, getParliamentaryTermTicks } from './config.js';
-import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isAutocracy, isPresidentialRepublic } from './government-types.js';
+import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isPresidentialRepublic } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { snapshotNationStats } from './stats.js';
 import { nudgeApproval, adjustCredibility, adjustGovernmentApprovalEvent, round2 } from './momentum.js';
@@ -1023,7 +1023,6 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
  */
 export async function processGovernmentVacancy(supabase, nation, currentTick) {
     // Only applies to parliamentary democracies
-    if (isAutocracy(nation)) return null;
     if (isPresidentialRepublic(nation)) return null;
 
     // Check for active coalition
@@ -1584,11 +1583,11 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
             .eq('id', r.party_id);
     }
 
-    // Dissolve legislature — fail all pending bills (new parliament must re-propose)
+    // Dissolve legislature — fail all pending and frozen bills (new parliament must re-propose)
     const { data: dissolvedBills } = await supabase.from('bills')
         .update({ status: 'failed' })
         .eq('nation_id', nation.id)
-        .in('status', ['committee', 'floor'])
+        .in('status', ['committee', 'floor', 'frozen'])
         .select('id, nation_id, bill_type, ambassador_id, ministry_key');
     await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
     await syncMinistriesForFailedConfirmationBills(supabase, dissolvedBills);
@@ -1691,8 +1690,6 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
 }
 
 export async function processElections(supabase, nation, currentTick) {
-    if (isAutocracy(nation)) return [];
-
     const isPresidential = isPresidentialRepublic(nation);
     const results = [];
 
@@ -1854,11 +1851,11 @@ export async function processElections(supabase, nation, currentTick) {
             } catch (e) { /* non-blocking */ }
         }
 
-        // Dissolve legislature — fail all pending bills (new parliament must re-propose)
+        // Dissolve legislature — fail all pending and frozen bills (new parliament must re-propose)
         const { data: dissolvedBills } = await supabase.from('bills')
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
-            .in('status', ['committee', 'floor'])
+            .in('status', ['committee', 'floor', 'frozen'])
             .select('id, nation_id, bill_type, ambassador_id, ministry_key');
 
         await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
@@ -1982,31 +1979,7 @@ export async function processElections(supabase, nation, currentTick) {
     }
 
     // === SCHEDULE NEXT ELECTIONS ===
-    if (isPresidential) {
-        await scheduleNextPresidentialElections(supabase, nation, currentTick);
-    } else {
-        const { data: futureElection } = await supabase
-            .from('elections')
-            .select('id')
-            .eq('nation_id', nation.id)
-            .eq('status', 'scheduled')
-            .gt('election_tick', currentTick)
-            .limit(1)
-            .maybeSingle();
-
-        if (!futureElection) {
-            const frequency = nation.election_frequency || 48;
-            const nextTick = currentTick + frequency;
-
-            await supabase.from('elections').insert({
-                nation_id: nation.id,
-                election_tick: nextTick,
-                status: 'scheduled'
-            });
-
-            console.log(`Scheduled next election for ${nation.name} at tick ${nextTick}`);
-        }
-    }
+    await ensureElectionsScheduled(supabase, nation, currentTick);
 
     return results;
 }
@@ -2415,7 +2388,7 @@ export async function processPresidentialElectionResult(supabase, nation, comple
 
     // Proactively schedule next elections (instead of relying on processPresidentialTermEnd safety net)
     try {
-        await scheduleNextPresidentialElections(supabase, nation, currentTick);
+        await ensureElectionsScheduled(supabase, nation, currentTick);
     } catch (e) { console.warn('Could not schedule next presidential elections:', e); }
 }
 
@@ -2438,8 +2411,7 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
     const { data: nationForTerm, error: nationTermErr } = await supabase.from('nations').select('presidential_term_ticks, presidential_term_limit').eq('id', nationId).single();
     if (nationTermErr) console.error(`[inauguratePresident] Failed to fetch nation term data:`, nationTermErr.message);
 
-    // Look up trait data for trait_upside / trait_downside
-    const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', candidate.trait_key).maybeSingle();
+    // Trait is now resolved from POSITIVE_TRAITS at display time (leader_traits table removed)
 
     // Determine terms_served: if re-elected (same person), increment; otherwise start at 1
     let termsServed = 1;
@@ -2484,16 +2456,7 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         }
     }
 
-    // Apply trait effects (same logic as PM)
-    if (trait?.effects) {
-        if (trait.effects.on_appoint_stability) {
-            const { data: nationRow } = await supabase.from('nations').select('stability').eq('id', nationId).single();
-            if (nationRow) {
-                const newStability = Math.max(0, Math.min(100, (nationRow.stability || 50) + trait.effects.on_appoint_stability));
-                await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
-            }
-        }
-    }
+    // Old leader_traits effect system removed — trait is display-only now
 
     // ── Presidential transition: clean slate for new administration ──
 
@@ -2631,11 +2594,11 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
 }
 
 /**
- * Schedule next presidential + parliamentary elections independently.
- * Presidential every getPresidentialTermTicks(nation), parliamentary every getParliamentaryTermTicks(nation).
+ * Ensure future elections are scheduled for a nation.
+ * Always schedules parliamentary. Presidential systems also get presidential elections.
  */
-export async function scheduleNextPresidentialElections(supabase, nation, currentTick) {
-    // Check for future parliamentary election
+export async function ensureElectionsScheduled(supabase, nation, currentTick) {
+    // Always ensure a parliamentary election is scheduled
     const { data: futureParl } = await supabase
         .from('elections')
         .select('id')
@@ -2647,35 +2610,37 @@ export async function scheduleNextPresidentialElections(supabase, nation, curren
         .maybeSingle();
 
     if (!futureParl) {
-        const nextParl = currentTick + getParliamentaryTermTicks(nation);
-        await supabase.from('elections').insert({
+        const { error: parlErr } = await supabase.from('elections').insert({
             nation_id: nation.id,
-            election_tick: nextParl,
+            election_tick: currentTick + getParliamentaryTermTicks(nation),
             election_type: 'parliamentary',
             status: 'scheduled'
         });
-        console.log(`Scheduled next parliamentary election for ${nation.name} at tick ${nextParl}`);
+        if (parlErr) console.error(`Failed to schedule parliamentary election for ${nation.name}:`, parlErr.message);
+        else console.log(`Scheduled next parliamentary election for ${nation.name}`);
     }
 
-    // Check for future presidential election
-    const { data: futurePres } = await supabase
-        .from('elections')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('status', 'scheduled')
-        .eq('election_type', 'presidential')
-        .gt('election_tick', currentTick)
-        .limit(1)
-        .maybeSingle();
+    // Presidential systems also need presidential elections
+    if (isPresidentialRepublic(nation)) {
+        const { data: futurePres } = await supabase
+            .from('elections')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('status', 'scheduled')
+            .eq('election_type', 'presidential')
+            .gt('election_tick', currentTick)
+            .limit(1)
+            .maybeSingle();
 
-    if (!futurePres) {
-        const nextPres = currentTick + getPresidentialTermTicks(nation);
-        await supabase.from('elections').insert({
-            nation_id: nation.id,
-            election_tick: nextPres,
-            election_type: 'presidential',
-            status: 'scheduled'
-        });
-        console.log(`Scheduled next presidential election for ${nation.name} at tick ${nextPres}`);
+        if (!futurePres) {
+            const { error: presErr } = await supabase.from('elections').insert({
+                nation_id: nation.id,
+                election_tick: currentTick + getPresidentialTermTicks(nation),
+                election_type: 'presidential',
+                status: 'scheduled'
+            });
+            if (presErr) console.error(`Failed to schedule presidential election for ${nation.name}:`, presErr.message);
+            else console.log(`Scheduled next presidential election for ${nation.name}`);
+        }
     }
 }
