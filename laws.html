@@ -2786,6 +2786,20 @@ async function submitToCommittee() {
             }
         }
 
+        // +3 Momentum for sponsoring a bill
+        try {
+            const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            const tick = shard?.current_tick || 0;
+            const { data: fac } = await _supabase.from('factions').select('momentum, momentum_log').eq('id', currentFaction.id).single();
+            if (fac) {
+                const newMom = Math.min(100, Math.max(0, (fac.momentum || 0) + 3));
+                const log = Array.isArray(fac.momentum_log) ? [...fac.momentum_log] : [];
+                log.unshift({ label: 'Bill sponsored: ' + (billInsert.bill_name || 'Bill') + ' (+3)', delta: 3, tick });
+                if (log.length > 50) log.length = 50;
+                await _supabase.from('factions').update({ momentum: newMom, momentum_log: log }).eq('id', currentFaction.id);
+            }
+        } catch (momErr) { console.warn('Momentum +3 for sponsorship failed:', momErr.message); }
+
         closeModal(); await loadLawsData(); renderLawsPage();
         alert(`"${billName}" submitted to committee!${isFoundationalBill ? '\n\nYou need at least one co-sponsor to send it to the floor.' : ''}`);
     } catch (error) {

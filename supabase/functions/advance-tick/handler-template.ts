@@ -1909,11 +1909,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Gov collapse check failed for ${nation.name} (non-fatal):`, collapseErr);
         }
 
-        // Electorate engine
+        // 3-pillar election engine (Governance + Momentum + Ideology + Gov Approval)
         try {
-            await tickElectorate(supabase, nation, newTick);
+            await tickElectionPillars(supabase, nation, newTick);
         } catch (electorateErr) {
-            console.error(`[advanceTick] Electorate engine failed for ${nation.name} (non-fatal):`, electorateErr);
+            console.error(`[advanceTick] Election pillar engine failed for ${nation.name} (non-fatal):`, electorateErr);
         }
 
         // (Autocracy action systems removed — Phase 0. Actions will be added in Phase 4+.)
@@ -2381,9 +2381,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     }
 
                     if (totalCollected > 0) {
+                        const newBalance = (org.solidarity_fund_balance || 0) + totalCollected;
                         await supabase.from('international_orgs')
-                            .update({ solidarity_fund_balance: (org.solidarity_fund_balance || 0) + totalCollected })
+                            .update({ solidarity_fund_balance: newBalance })
                             .eq('id', org.id);
+                        // Update local copy so HQ cost (section 4) reads the post-collection balance
+                        org.solidarity_fund_balance = newBalance;
 
                         await supabase.from('ipo_chat').insert({
                             org_id: org.id, faction_id: null, is_system: true,

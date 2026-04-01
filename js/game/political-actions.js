@@ -1179,20 +1179,20 @@ export const MAKE_PROMISE_CONFIG = {
     DEADLINE_BASE: 6,                  // base ticks added to roll (range: 7-30)
     MAX_ACTIVE_PROMISES: 5,            // limit active promises per faction
 
-    // ── Electorate engine effects (party_approval + credibility_modifier) ──
+    // ── Electorate engine effects (party_approval only — credibility removed, 3-pillar system) ──
     APPROVAL_ON_PROMISE: 2,            // immediate +party_approval when promise is made
     PENALTY_PER_TICK_MIN: 0.5,         // -0.5 to -1.5 party_approval/tick while governing & unfulfilled
     PENALTY_PER_TICK_MAX: 1.5,
 
     // Promise kept rewards
     KEPT_APPROVAL: 2,                  // +party_approval when promise fulfilled
-    KEPT_CREDIBILITY: 0.07,            // +credibility_modifier when promise fulfilled
+    KEPT_CREDIBILITY: 0.07,            // no-op: credibility removed (3-pillar election system)
 
     // Promise broken penalties
     BROKEN_APPROVAL: -2,               // -party_approval when promise broken
-    BROKEN_CREDIBILITY: -0.10,         // -credibility_modifier when promise broken
-    BROKEN_CREDIBILITY_SUSPEND: 12,    // suspend credibility recovery for N ticks after breaking
-    BROKEN_NERVOUS_CREDIBILITY: -0.03, // -credibility per other active promise when one breaks
+    BROKEN_CREDIBILITY: -0.10,         // no-op: credibility removed (3-pillar election system)
+    BROKEN_CREDIBILITY_SUSPEND: 12,    // no-op: credibility removed (3-pillar election system)
+    BROKEN_NERVOUS_CREDIBILITY: -0.03, // no-op: credibility removed (3-pillar election system)
 };
 
 /**
