@@ -1377,6 +1377,15 @@ function renderTradeArticleDescription(art, rd) {
             return 'Exports in <strong>' + escapeHtml(sectorLabel(d.sector)) + '</strong> shall receive a <strong>' + (d.subsidy_pct || 0) + '%</strong> government subsidy.';
         case 'funding_source':
             return 'Subsidy funded from the <strong>' + (d.source === 'ministry_budget' ? 'Ministry Budget' : 'General Treasury') + '</strong>.';
+        case 'aid_terms': {
+            const aidPerYear = d.aid_per_year || d.amount || 0;
+            const donorName = d.direction === 'we_donate' ? drafterName : counterpartyName;
+            const recipientName = d.direction === 'we_donate' ? counterpartyName : drafterName;
+            const capPct = d.gdp_cap_pct || 10;
+            return donorName + ' shall provide <strong>' + formatCurrency(aidPerYear) + '/year</strong> in economic aid to ' + recipientName + '. Aid is capped at <strong>' + capPct + '%</strong> of the donor\'s GDP.';
+        }
+        case 'aid_condition':
+            return 'Recipient must maintain: <strong>' + escapeHtml(d.condition || d.text || 'specified governance benchmarks') + '</strong>.';
         case 'text_article':
             return (d.title ? '<strong>' + escapeHtml(d.title) + ':</strong> ' : '') + escapeHtml(d.body || '');
         default:
