@@ -1363,6 +1363,25 @@ function renderTradeArticleDescription(art, rd) {
             return 'Exports in <strong>' + escapeHtml(sectorLabel(d.sector)) + '</strong> shall receive a <strong>' + (d.subsidy_pct || 0) + '%</strong> government subsidy.';
         case 'funding_source':
             return 'Subsidy funded from the <strong>' + (d.source === 'ministry_budget' ? 'Ministry Budget' : 'General Treasury') + '</strong>.';
+        case 'aid_terms': {
+            const amt = Number(d.annual_amount || 0);
+            const amtStr = amt >= 1e9 ? '$' + (amt / 1e9).toFixed(1).replace(/\.0$/, '') + 'B' : '$' + (amt / 1e6).toFixed(0) + 'M';
+            const donorIsA = d.donor_nation_id === rd.nationA?.id;
+            const donorName = donorIsA ? nationAName : nationBName;
+            const recipientName = donorIsA ? nationBName : nationAName;
+            let text = donorName + ' shall provide <strong>' + amtStr + '/year</strong> in economic aid to ' + recipientName + '.';
+            if (d.gdp_cap_pct) text += ' Aid is capped at <strong>' + d.gdp_cap_pct + '%</strong> of the donor\'s GDP.';
+            return text;
+        }
+        case 'aid_condition': {
+            const statLabel = (d.stat_key || '').replace(/_/g, ' ');
+            const opLabel = d.operator === 'gte' ? 'at or above' : d.operator === 'lte' ? 'at or below' : d.operator || '?';
+            let text = 'Recipient must maintain <strong>' + escapeHtml(statLabel) + '</strong> ' + opLabel + ' <strong>' + (d.threshold || 0) + '</strong>.';
+            if (d.on_failure === 'suspend') text += ' Aid is <strong>suspended</strong> if the condition is not met.';
+            else if (d.on_failure === 'terminate') text += ' Agreement <strong>terminates</strong> if the condition is not met.';
+            if (d.grace_periods) text += ' Grace period: <strong>' + d.grace_periods + ' tick(s)</strong>.';
+            return text;
+        }
         case 'text_article':
             return (d.title ? '<strong>' + escapeHtml(d.title) + ':</strong> ' : '') + escapeHtml(d.body || '');
         default:
@@ -1552,12 +1571,23 @@ function renderRatificationBill() {
 
     document.getElementById('bill-articles').innerHTML = html;
 
-    // Update fiscal totals
-    const ongoingCost = 0; // ratification bills don't have ongoing costs on the bill itself
+    // Update fiscal totals — compute ongoing aid cost from aid_terms articles
+    let ongoingAid = 0;
+    const allArticles = rd.kind === 'diplomatic' ? ((rd.proposal?.proposal_data || {}).articles || []) : (rd.neg?.draft_articles || []);
+    for (const art of allArticles) {
+        if (art.type === 'aid_terms') {
+            const d = (art.data && typeof art.data === 'object') ? art.data : art;
+            const amt = Number(d.annual_amount || 0);
+            const isOurDonation = d.donor_nation_id === currentNation?.id;
+            ongoingAid += isOurDonation ? amt : -amt; // positive = cost, negative = revenue
+        }
+    }
+    const monthlyAidM = (ongoingAid / 12) / 1e6; // convert raw dollars to $M for formatCurrency
     document.getElementById('total-upfront').textContent = formatCurrency(totalFiscal);
     document.getElementById('total-upfront').className = 'total-value' + (totalFiscal < 0 ? ' revenue' : '');
-    document.getElementById('total-ongoing').textContent = '$0M/mo';
-    document.getElementById('total-ongoing').className = 'total-value';
+    const aidStr = monthlyAidM === 0 ? '$0M/mo' : formatCurrency(monthlyAidM) + '/mo';
+    document.getElementById('total-ongoing').textContent = aidStr;
+    document.getElementById('total-ongoing').className = 'total-value' + (monthlyAid < 0 ? ' revenue' : '');
 }
 
 // ==================== IDEOLOGY AWARENESS (PHASE 4) ====================
