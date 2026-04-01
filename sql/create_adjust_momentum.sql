@@ -3,6 +3,9 @@
 -- This prevents race conditions when multiple momentum changes happen concurrently.
 -- Run this in Supabase SQL editor.
 
+-- Drop the old 2-param overload so the new 4-param version is the sole match
+DROP FUNCTION IF EXISTS adjust_momentum(UUID, NUMERIC);
+
 CREATE OR REPLACE FUNCTION adjust_momentum(
     p_faction_id UUID,
     p_delta NUMERIC,
@@ -28,8 +31,8 @@ BEGIN
         RETURN -1;
     END IF;
 
-    -- Append to momentum_log if label provided (cap at 50 entries)
-    IF p_label IS NOT NULL THEN
+    -- Append to momentum_log if label provided and delta is nonzero (cap at 50 entries)
+    IF p_label IS NOT NULL AND p_delta != 0 THEN
         SELECT COALESCE(momentum_log, '[]'::jsonb) INTO v_log FROM factions WHERE id = p_faction_id;
         v_log := jsonb_build_object('label', p_label, 'delta', p_delta, 'tick', COALESCE(p_tick, 0)) || v_log;
         IF jsonb_array_length(v_log) > 50 THEN
