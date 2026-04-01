@@ -1745,6 +1745,12 @@ function renderFoundationalOptions() {
             <div class="policy-option-desc">${currentNation.legislative_quorum_override > 0
                 ? 'Already enacted — quorum requirement lowered to ' + currentNation.legislative_quorum_override + '%.'
                 : 'Lowers the quorum requirement for standard bills from 50%. Choose a new threshold (40%, 30%, or 25%). The ruling coalition can pass legislation with fewer participants. Legitimacy -3, freedom index -2. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'constitutional_amendment_streamlining' ? ' selected' : ''}" style="${selectedFoundationalType === 'constitutional_amendment_streamlining' ? 'border-color:var(--red);' : ''}${currentNation.constitutional_amendment_streamlining ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('constitutional_amendment_streamlining')" data-foundational-type="constitutional_amendment_streamlining">
+            <div class="policy-option-name">📜 Constitutional Amendment Streamlining <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.constitutional_amendment_streamlining
+                ? 'Already enacted — foundational bills now require only 55% to pass.'
+                : 'Lowers the supermajority threshold for all future foundational bills from 67% to 55%. This law itself requires the full 67% to pass. Once enacted, the constitution becomes far easier to rewrite. Legitimacy -8, polarization +5, freedom index -5. Requires 2/3 supermajority (' + required + ' seats).'}</div>
         </div>`;
     selectedFoundationalType = null;
     selectedPolicy = null;
@@ -2768,6 +2774,8 @@ async function submitToCommittee() {
                 billInsert.proposed_party_registration_threshold = 10; // default 10%, can be changed in committee
             } else if (fArt.foundationalSubtype === 'legislative_quorum_reform') {
                 billInsert.proposed_legislative_quorum_override = 30; // default 30%, can be changed in committee
+            } else if (fArt.foundationalSubtype === 'constitutional_amendment_streamlining') {
+                billInsert.proposed_constitutional_amendment_streamlining = true;
             } else {
                 billInsert.proposed_seats = fArt.proposedSeats;
             }
