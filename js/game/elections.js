@@ -2752,13 +2752,14 @@ export async function ensureElectionsScheduled(supabase, nation, currentTick) {
         .maybeSingle();
 
     if (!futureParl) {
-        await supabase.from('elections').insert({
+        const { error: parlErr } = await supabase.from('elections').insert({
             nation_id: nation.id,
             election_tick: currentTick + getParliamentaryTermTicks(nation),
             election_type: 'parliamentary',
             status: 'scheduled'
         });
-        console.log(`Scheduled next parliamentary election for ${nation.name}`);
+        if (parlErr) console.error(`Failed to schedule parliamentary election for ${nation.name}:`, parlErr.message);
+        else console.log(`Scheduled next parliamentary election for ${nation.name}`);
     }
 
     // Presidential systems also need presidential elections
@@ -2774,13 +2775,14 @@ export async function ensureElectionsScheduled(supabase, nation, currentTick) {
             .maybeSingle();
 
         if (!futurePres) {
-            await supabase.from('elections').insert({
+            const { error: presErr } = await supabase.from('elections').insert({
                 nation_id: nation.id,
                 election_tick: currentTick + getPresidentialTermTicks(nation),
                 election_type: 'presidential',
                 status: 'scheduled'
             });
-            console.log(`Scheduled next presidential election for ${nation.name}`);
+            if (presErr) console.error(`Failed to schedule presidential election for ${nation.name}:`, presErr.message);
+            else console.log(`Scheduled next presidential election for ${nation.name}`);
         }
     }
 }

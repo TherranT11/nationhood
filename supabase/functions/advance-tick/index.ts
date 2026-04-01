@@ -12616,13 +12616,14 @@ async function ensureElectionsScheduled(supabase, nation, currentTick) {
         .maybeSingle();
 
     if (!futureParl) {
-        await supabase.from('elections').insert({
+        const { error: parlErr } = await supabase.from('elections').insert({
             nation_id: nation.id,
             election_tick: currentTick + getParliamentaryTermTicks(nation),
             election_type: 'parliamentary',
             status: 'scheduled'
         });
-        console.log(`Scheduled next parliamentary election for ${nation.name}`);
+        if (parlErr) console.error(`Failed to schedule parliamentary election for ${nation.name}:`, parlErr.message);
+        else console.log(`Scheduled next parliamentary election for ${nation.name}`);
     }
 
     // Presidential systems also need presidential elections
@@ -12638,13 +12639,14 @@ async function ensureElectionsScheduled(supabase, nation, currentTick) {
             .maybeSingle();
 
         if (!futurePres) {
-            await supabase.from('elections').insert({
+            const { error: presErr } = await supabase.from('elections').insert({
                 nation_id: nation.id,
                 election_tick: currentTick + getPresidentialTermTicks(nation),
                 election_type: 'presidential',
                 status: 'scheduled'
             });
-            console.log(`Scheduled next presidential election for ${nation.name}`);
+            if (presErr) console.error(`Failed to schedule presidential election for ${nation.name}:`, presErr.message);
+            else console.log(`Scheduled next presidential election for ${nation.name}`);
         }
     }
 }
@@ -19528,10 +19530,6 @@ registerAutocracyAction('execute_leader', {
         }
 
         // Make the arrested leader's pillar the new wildcard
-        const oldWildcard = (await supabase.from('autocracy_tracker')
-            .select('wildcard_pillar, wildcard_backing')
-            .eq('nation_id', nation.id).single()).data;
-
         await supabase.from('autocracy_tracker').update({
             wildcard_pillar: targetFps.pillar,
             wildcard_backing: Number(targetFps.backing),
