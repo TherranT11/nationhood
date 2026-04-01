@@ -22902,6 +22902,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 }
                 console.log(`[advanceTick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}, wages=${monthlyWages}, net=${monthlyIncome}`);
             }
+        } catch (corpErr) {
+            console.error(`[advanceTick] Corp income failed for ${nation.name} (non-fatal):`, corpErr);
         }
 
         // ── Leader aging (every January — tick % 12 === 0) ──
