@@ -38,40 +38,24 @@ DELETE FROM impeachment_proceedings WHERE initiated_by_faction_id IN (SELECT id 
 DELETE FROM ministries WHERE party_id IN (SELECT id FROM _sz_factions);
 UPDATE presidents SET faction_id = NULL WHERE faction_id IN (SELECT id FROM _sz_factions);
 
--- IPO tables (some may not exist yet — use DO blocks)
-DO $$ BEGIN
-  DELETE FROM ipo_fund_transactions WHERE faction_id IN (SELECT id FROM _sz_factions);
-EXCEPTION WHEN undefined_table THEN NULL; END $$;
-DO $$ BEGIN
-  DELETE FROM ipo_solidarity_requests WHERE requesting_faction_id IN (SELECT id FROM _sz_factions);
-EXCEPTION WHEN undefined_table THEN NULL; END $$;
-DO $$ BEGIN
-  DELETE FROM ipo_solidarity_requests WHERE target_faction_id IN (SELECT id FROM _sz_factions);
-EXCEPTION WHEN undefined_table THEN NULL; END $$;
-DO $$ BEGIN
-  DELETE FROM ipo_policy_proposals WHERE proposed_by IN (SELECT id FROM _sz_factions);
-EXCEPTION WHEN undefined_table THEN NULL; END $$;
-DO $$ BEGIN
-  DELETE FROM ipo_vote_log WHERE faction_id IN (SELECT id FROM _sz_factions);
-EXCEPTION WHEN undefined_table THEN NULL; END $$;
-DO $$ BEGIN
-  DELETE FROM ipo_invitations WHERE invited_by IN (SELECT id FROM _sz_factions);
-EXCEPTION WHEN undefined_table THEN NULL; END $$;
-DO $$ BEGIN
-  DELETE FROM ipo_invitations WHERE target_faction_id IN (SELECT id FROM _sz_factions);
-EXCEPTION WHEN undefined_table THEN NULL; END $$;
-DO $$ BEGIN
-  DELETE FROM ipo_chat_messages WHERE faction_id IN (SELECT id FROM _sz_factions);
-EXCEPTION WHEN undefined_table THEN NULL; END $$;
-DO $$ BEGIN
-  DELETE FROM ipo_members WHERE faction_id IN (SELECT id FROM _sz_factions);
-EXCEPTION WHEN undefined_table THEN NULL; END $$;
-DO $$ BEGIN
-  UPDATE international_orgs SET founding_party_id = NULL WHERE founding_party_id IN (SELECT id FROM _sz_factions);
-EXCEPTION WHEN undefined_table THEN NULL; END $$;
-DO $$ BEGIN
-  UPDATE international_orgs SET president_id = NULL WHERE president_id IN (SELECT id FROM _sz_factions);
-EXCEPTION WHEN undefined_table THEN NULL; END $$;
+-- IPO tables (use DO blocks — some tables may not exist yet)
+DO $$ BEGIN DELETE FROM ipo_votes WHERE proposed_by IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ BEGIN DELETE FROM ipo_amendment_history WHERE faction_id IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ BEGIN DELETE FROM ipo_actions WHERE faction_id IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ BEGIN DELETE FROM ipo_actions WHERE target_faction_id IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ BEGIN DELETE FROM ipo_ballots WHERE faction_id IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ BEGIN DELETE FROM ipo_fund_transactions WHERE faction_id IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ BEGIN DELETE FROM ipo_solidarity_requests WHERE requesting_faction_id IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ BEGIN DELETE FROM ipo_solidarity_requests WHERE target_faction_id IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ BEGIN DELETE FROM ipo_policy_proposals WHERE proposed_by IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ BEGIN DELETE FROM ipo_vote_log WHERE faction_id IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ BEGIN DELETE FROM ipo_invitations WHERE invited_by_faction_id IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ BEGIN DELETE FROM ipo_invitations WHERE target_faction_id IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ BEGIN DELETE FROM ipo_chat WHERE faction_id IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ BEGIN DELETE FROM ipo_chat_messages WHERE faction_id IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ BEGIN DELETE FROM ipo_members WHERE faction_id IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ BEGIN UPDATE international_orgs SET founding_party_id = NULL WHERE founding_party_id IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
+DO $$ BEGIN UPDATE international_orgs SET president_id = NULL WHERE president_id IN (SELECT id FROM _sz_factions); EXCEPTION WHEN undefined_table OR undefined_column THEN NULL; END $$;
 
 -- Wiki
 UPDATE wiki_pages SET created_by = NULL WHERE created_by IN (SELECT id FROM _sz_factions);
