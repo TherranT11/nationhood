@@ -106,32 +106,22 @@ export async function repealActiveLaw({
         }
     }
 
-    // Verify cleanup worked by checking if any references remain (bills + articles)
+    // Verify cleanup — warn but don't abort. The delete below will fail on FK
+    // constraint if references truly can't be cleared (RLS may block UPDATE but
+    // the CASCADE or service-role delete may still succeed).
     const { data: remainingBillRefs } = await supabase
         .from('bills')
         .select('id')
         .eq('repeal_active_law_id', resolvedLawId);
     if (remainingBillRefs && remainingBillRefs.length > 0) {
-        console.error(`[repealActiveLaw] FK cleanup failed — ${remainingBillRefs.length} bills still reference active_law ${resolvedLawId}`);
-        return {
-            success: false,
-            reason: 'clear_bill_references_failed',
-            targetLawId: resolvedLawId,
-            error: `${remainingBillRefs.length} bills still reference this active_law after cleanup`,
-        };
+        console.warn(`[repealActiveLaw] ${remainingBillRefs.length} bills still reference active_law ${resolvedLawId} after cleanup — attempting delete anyway`);
     }
     const { data: remainingArtRefs } = await supabase
         .from('bill_articles')
         .select('id')
         .eq('repeal_active_law_id', resolvedLawId);
     if (remainingArtRefs && remainingArtRefs.length > 0) {
-        console.error(`[repealActiveLaw] FK cleanup failed — ${remainingArtRefs.length} bill_articles still reference active_law ${resolvedLawId}`);
-        return {
-            success: false,
-            reason: 'clear_article_references_failed',
-            targetLawId: resolvedLawId,
-            error: `${remainingArtRefs.length} bill_articles still reference this active_law after cleanup`,
-        };
+        console.warn(`[repealActiveLaw] ${remainingArtRefs.length} bill_articles still reference active_law ${resolvedLawId} after cleanup — attempting delete anyway`);
     }
 
     // Delete target law, then create reversal

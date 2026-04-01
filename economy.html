@@ -142,7 +142,8 @@ async function loadExpenditureData(nationId, nation) {
 
     var res = await _supabase.from('active_laws')
         .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat, policy_type)')
-        .eq('nation_id', nationId);
+        .eq('nation_id', nationId)
+        .eq('is_reversal', false);
 
     var yearStartTick = Math.floor(currentTick / GAME_CONFIG.TICKS_PER_YEAR) * GAME_CONFIG.TICKS_PER_YEAR;
     var inflationMult = getInflationMultiplier(nation.inflation);
