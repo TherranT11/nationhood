@@ -3,17 +3,17 @@
 -- Date: 2026-04-01
 --
 -- The autocracy government type is being completely removed from the game.
--- Melizea (the only autocracy nation) is converted to a Parliamentary Democracy.
+-- Sangreza (the only autocracy nation) is converted to a Parliamentary Democracy.
 --
 -- This migration:
---   1. Clears autocracy-specific columns on the nations table for Melizea
---   2. Converts Melizea's government_type from 'Autocracy' to 'Democracy'
---   3. Removes all factions in Melizea (the NPC seed factions: Ruling Junta,
+--   1. Clears autocracy-specific columns on the nations table for Sangreza
+--   2. Converts Sangreza's government_type from 'Autocracy' to 'Democracy'
+--   3. Removes all factions in Sangreza (the NPC seed factions: Ruling Junta,
 --      Reform Movement, Traditionalist Guard) — players will create new parties
---   4. Clears faction_id on any player profiles that were in Melizea factions
+--   4. Clears faction_id on any player profiles that were in Sangreza factions
 --   5. Drops all autocracy-specific tables
 --   6. Drops autocracy RPC functions
---   7. Schedules a parliamentary election for Melizea so new parties can form
+--   7. Schedules a parliamentary election for Sangreza so new parties can form
 -- ════════════════════════════════════════════════════════════════════════════════
 
 BEGIN;
@@ -53,51 +53,51 @@ WHERE government_type = 'Autocracy';
 --    may not have ON DELETE CASCADE.
 -- ─────────────────────────────────────────────────────────────────────────────
 
--- Clear faction_id on player profiles that belonged to Melizea factions
+-- Clear faction_id on player profiles that belonged to Sangreza factions
 UPDATE profiles
 SET faction_id = NULL
 WHERE faction_id IN (
     SELECT f.id FROM factions f
     JOIN nations n ON f.nation_id = n.id
-    WHERE n.name = 'Melizea'
+    WHERE n.name = 'Sangreza'
 );
 
--- Clean up non-CASCADE foreign key references to Melizea factions before deletion.
+-- Clean up non-CASCADE foreign key references to Sangreza factions before deletion.
 -- These tables have FK constraints that would block DELETE FROM factions.
 DELETE FROM ambassadors WHERE faction_id IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
 );
 DELETE FROM diplomatic_messages WHERE from_faction_id IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
 );
 DELETE FROM diplomatic_proposals WHERE proposed_by_faction_id IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
 );
 DELETE FROM diplomatic_action_log WHERE faction_id IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
 );
 DELETE FROM faction_coalitions WHERE proposed_by_faction_id IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
 );
 DELETE FROM impeachment_proceedings WHERE initiated_by_faction_id IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
 );
 UPDATE presidents SET faction_id = NULL WHERE faction_id IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
 );
 UPDATE wiki_pages SET created_by = NULL WHERE created_by IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
 );
 UPDATE wiki_pages SET updated_by = NULL WHERE updated_by IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
 );
 UPDATE wiki_pages SET locked_by = NULL WHERE locked_by IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
 );
 
--- Delete all factions in Melizea
+-- Delete all factions in Sangreza
 DELETE FROM factions
-WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea');
+WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza');
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 3. DROP AUTOCRACY-SPECIFIC TABLES
@@ -138,7 +138,7 @@ ALTER TABLE nations DROP COLUMN IF EXISTS authoritarianism_seize_available_tick;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 6. SCHEDULE PARLIAMENTARY ELECTION FOR MELIZEA
---    With all factions disbanded, Melizea needs a fresh election so players
+--    With all factions disbanded, Sangreza needs a fresh election so players
 --    can create new parties and compete democratically.
 --    Scheduled 5 ticks from the current shard tick to give players time.
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -151,6 +151,6 @@ SELECT
     'scheduled'
 FROM nations n
 JOIN shard s ON s.id = n.shard_id
-WHERE n.name = 'Melizea';
+WHERE n.name = 'Sangreza';
 
 COMMIT;
