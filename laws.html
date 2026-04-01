@@ -1112,18 +1112,43 @@ async function refundArticleAP() {
     } catch (e) { console.error('AP refund error:', e); }
 }
 
+/** Compute the base AP cost for submitting a bill, including all leader trait modifiers.
+ *  Shared by the display label and the actual submit path to prevent mismatches. */
+function computeBillApCost() {
+    let cost = GAME_CONFIG.DRAFT_BILL_AP_COST;
+    if (currentFaction) {
+        if ((currentFaction.leader_positive_traits || []).includes('policy_wonk')) cost -= 1;
+        if ((currentFaction.leader_negative_traits || []).includes('micromanager')) cost += 1;
+        // single_issue: Bills outside leader's ideology axis cost +2 AP
+        if ((currentFaction.leader_negative_traits || []).includes('single_issue') && currentFaction.leader_ideology) {
+            const leaderIdeo = currentFaction.leader_ideology.toUpperCase();
+            const IDEO_AXIS_MAP = {
+                'LIBERTY': 'liberty_equality', 'EQUALITY': 'liberty_equality',
+                'TRADITION': 'tradition_progress', 'PROGRESS': 'tradition_progress',
+                'SECURITY': 'security_freedom', 'FREEDOM': 'security_freedom',
+                'GLOBALISM': 'globalism_nationalism', 'NATIONALISM': 'globalism_nationalism',
+                'INDIVIDUALISM': 'individualism_collectivism', 'COLLECTIVISM': 'individualism_collectivism',
+            };
+            const leaderAxis = IDEO_AXIS_MAP[leaderIdeo];
+            const articleIdeos = draftArticles.flatMap(a => {
+                const ideologies = a.ideologies || (a.ideology ? [a.ideology] : []);
+                return ideologies.map(i => i.toUpperCase());
+            });
+            const matchesAxis = articleIdeos.some(i => IDEO_AXIS_MAP[i] === leaderAxis);
+            if (!matchesAxis && articleIdeos.length > 0) cost += 2;
+        }
+        cost = Math.max(1, cost);
+    }
+    return cost;
+}
+
 /** Update the submit button text to show total AP cost. */
 function updateSubmitButtonCost() {
     const btn = document.getElementById('submit-bill-btn');
     if (!btn) return;
     const billableCount = countBillableArticles(draftArticles);
     const extraArticles = Math.max(0, billableCount - FREE_ARTICLE_LIMIT);
-    let baseCost = GAME_CONFIG.DRAFT_BILL_AP_COST;
-    if (currentFaction) {
-        if ((currentFaction.leader_positive_traits || []).includes('policy_wonk')) baseCost -= 1;
-        if ((currentFaction.leader_negative_traits || []).includes('micromanager')) baseCost += 1;
-        baseCost = Math.max(1, baseCost);
-    }
+    const baseCost = computeBillApCost();
     const totalPaid = extraArticles; // already paid per-article
     const termBill = 'Bill';
     const costLabel = baseCost + ' AP' + (totalPaid > 0 ? ' (+' + totalPaid + ' AP paid for extra articles)' : '');
@@ -2654,35 +2679,8 @@ async function submitToCommittee() {
         }
     }
 
-    // Compute effective bill AP cost with leader trait modifiers
-    let billApCost = GAME_CONFIG.DRAFT_BILL_AP_COST;
-    if (currentFaction) {
-        // policy_wonk: Draft bill costs -1 AP
-        if ((currentFaction.leader_positive_traits || []).includes('policy_wonk')) billApCost -= 1;
-        // micromanager: All actions cost +1 AP
-        if ((currentFaction.leader_negative_traits || []).includes('micromanager')) billApCost += 1;
-        // single_issue: Bills outside leader's ideology axis cost +2 AP
-        if ((currentFaction.leader_negative_traits || []).includes('single_issue') && currentFaction.leader_ideology) {
-            const leaderIdeo = currentFaction.leader_ideology.toUpperCase();
-            // Map ideology to axis
-            const IDEO_AXIS_MAP = {
-                'LIBERTY': 'liberty_equality', 'EQUALITY': 'liberty_equality',
-                'TRADITION': 'tradition_progress', 'PROGRESS': 'tradition_progress',
-                'SECURITY': 'security_freedom', 'FREEDOM': 'security_freedom',
-                'GLOBALISM': 'globalism_nationalism', 'NATIONALISM': 'globalism_nationalism',
-                'INDIVIDUALISM': 'individualism_collectivism', 'COLLECTIVISM': 'individualism_collectivism',
-            };
-            const leaderAxis = IDEO_AXIS_MAP[leaderIdeo];
-            // Check if any draft article ideology matches the leader's axis
-            const articleIdeos = draftArticles.flatMap(a => {
-                const ideologies = a.ideologies || (a.ideology ? [a.ideology] : []);
-                return ideologies.map(i => i.toUpperCase());
-            });
-            const matchesAxis = articleIdeos.some(i => IDEO_AXIS_MAP[i] === leaderAxis);
-            if (!matchesAxis && articleIdeos.length > 0) billApCost += 2;
-        }
-        billApCost = Math.max(1, billApCost);
-    }
+    // Compute effective bill AP cost with leader trait modifiers (shared with display label)
+    const billApCost = computeBillApCost();
 
     // Atomic AP deduction — prevents race conditions and double-spend
     const apResult = await deductAP(_supabase, currentFaction.id, billApCost);
@@ -2786,18 +2784,14 @@ async function submitToCommittee() {
             }
         }
 
-        // +3 Momentum for sponsoring a bill
+        // +3 Momentum for sponsoring a bill (atomic RPC with log)
         try {
             const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-            const tick = shard?.current_tick || 0;
-            const { data: fac } = await _supabase.from('factions').select('momentum, momentum_log').eq('id', currentFaction.id).single();
-            if (fac) {
-                const newMom = Math.min(100, Math.max(0, (fac.momentum || 0) + 3));
-                const log = Array.isArray(fac.momentum_log) ? [...fac.momentum_log] : [];
-                log.unshift({ label: 'Bill sponsored: ' + (billInsert.bill_name || 'Bill') + ' (+3)', delta: 3, tick });
-                if (log.length > 50) log.length = 50;
-                await _supabase.from('factions').update({ momentum: newMom, momentum_log: log }).eq('id', currentFaction.id);
-            }
+            const { error: momErr } = await _supabase.rpc('adjust_momentum', {
+                p_faction_id: currentFaction.id, p_delta: 3,
+                p_label: 'Bill sponsored: ' + (billInsert.bill_name || 'Bill'), p_tick: shard?.current_tick || 0
+            });
+            if (momErr) console.warn('Momentum +3 for sponsorship RPC failed:', momErr.message);
         } catch (momErr) { console.warn('Momentum +3 for sponsorship failed:', momErr.message); }
 
         closeModal(); await loadLawsData(); renderLawsPage();

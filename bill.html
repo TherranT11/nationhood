@@ -632,7 +632,9 @@ function renderBill() {
     const hasMajority = sponsorSeats >= GAME_CONFIG.MAJORITY_SEATS;
     const hasCosponsor = (bill.bill_support || []).some(s => s.faction_id !== bill.proposed_by && s.stance === 'accept');
     const isFoundational = bill.bill_type === 'foundational';
-    let canSendToFloor = !isNoGovernment && (isFoundational ? hasCosponsor : (hasMajority || hasCosponsor));
+    // Ratification and procedural bills can always be sent to floor by the sponsor
+    const isAutoFloor = ['ratification', 'no_confidence', 'impeachment_motion', 'veto_override', 'impeachment_conviction', 'minister_confirmation', 'confirmation'].includes(bill.bill_type);
+    let canSendToFloor = !isNoGovernment && (isAutoFloor ? true : isFoundational ? hasCosponsor : (hasMajority || hasCosponsor));
 
     const disabledAttr = canSendToFloor ? '' : 'disabled';
     const reason = isNoGovernment
@@ -646,8 +648,12 @@ function renderBill() {
 }
     }
 
-    // Emergency bill advance button (presidential only, during active emergency)
-    if (isPresidential && isPresidentParty && (isCommittee || isFloor)) {
+    // Emergency bill advance button (head of government's party, during active emergency)
+    const isHeadOfGovParty = isPresidential
+        ? isPresidentParty
+        : (coalitionLeadPartyId && currentFaction?.id === coalitionLeadPartyId);
+    const hasEmergencyPower = isPresidential || currentNation?.emergency_powers_act;
+    if (isHeadOfGovParty && hasEmergencyPower && (isCommittee || isFloor)) {
         renderEmergencyAdvanceButton(bill);
     }
 
@@ -1378,14 +1384,24 @@ function renderTradeArticleDescription(art, rd) {
         case 'funding_source':
             return 'Subsidy funded from the <strong>' + (d.source === 'ministry_budget' ? 'Ministry Budget' : 'General Treasury') + '</strong>.';
         case 'aid_terms': {
-            const aidPerYear = d.aid_per_year || d.amount || 0;
-            const donorName = d.direction === 'we_donate' ? drafterName : counterpartyName;
-            const recipientName = d.direction === 'we_donate' ? counterpartyName : drafterName;
-            const capPct = d.gdp_cap_pct || 10;
-            return donorName + ' shall provide <strong>' + formatCurrency(aidPerYear) + '/year</strong> in economic aid to ' + recipientName + '. Aid is capped at <strong>' + capPct + '%</strong> of the donor\'s GDP.';
+            const amt = Number(d.annual_amount || 0);
+            const amtStr = amt >= 1e9 ? '$' + (amt / 1e9).toFixed(1).replace(/\.0$/, '') + 'B' : '$' + (amt / 1e6).toFixed(0) + 'M';
+            const donorIsA = d.donor_nation_id === rd.nationA?.id;
+            const donorName = donorIsA ? nationAName : nationBName;
+            const recipientName = donorIsA ? nationBName : nationAName;
+            let text = donorName + ' shall provide <strong>' + amtStr + '/year</strong> in economic aid to ' + recipientName + '.';
+            if (d.gdp_cap_pct) text += ' Aid is capped at <strong>' + d.gdp_cap_pct + '%</strong> of the donor\'s GDP.';
+            return text;
         }
-        case 'aid_condition':
-            return 'Recipient must maintain: <strong>' + escapeHtml(d.condition || d.text || 'specified governance benchmarks') + '</strong>.';
+        case 'aid_condition': {
+            const statLabel = (d.stat_key || '').replace(/_/g, ' ');
+            const opLabel = d.operator === 'gte' ? 'at or above' : d.operator === 'lte' ? 'at or below' : d.operator || '?';
+            let text = 'Recipient must maintain <strong>' + escapeHtml(statLabel) + '</strong> ' + opLabel + ' <strong>' + (d.threshold || 0) + '</strong>.';
+            if (d.on_failure === 'suspend') text += ' Aid is <strong>suspended</strong> if the condition is not met.';
+            else if (d.on_failure === 'terminate') text += ' Agreement <strong>terminates</strong> if the condition is not met.';
+            if (d.grace_periods) text += ' Grace period: <strong>' + d.grace_periods + ' tick(s)</strong>.';
+            return text;
+        }
         case 'text_article':
             return (d.title ? '<strong>' + escapeHtml(d.title) + ':</strong> ' : '') + escapeHtml(d.body || '');
         default:
@@ -1575,12 +1591,23 @@ function renderRatificationBill() {
 
     document.getElementById('bill-articles').innerHTML = html;
 
-    // Update fiscal totals
-    const ongoingCost = 0; // ratification bills don't have ongoing costs on the bill itself
+    // Update fiscal totals — compute ongoing aid cost from aid_terms articles
+    let ongoingAid = 0;
+    const allArticles = rd.kind === 'diplomatic' ? ((rd.proposal?.proposal_data || {}).articles || []) : (rd.neg?.draft_articles || []);
+    for (const art of allArticles) {
+        if (art.type === 'aid_terms') {
+            const d = (art.data && typeof art.data === 'object') ? art.data : art;
+            const amt = Number(d.annual_amount || 0);
+            const isOurDonation = d.donor_nation_id === currentNation?.id;
+            ongoingAid += isOurDonation ? amt : -amt; // positive = cost, negative = revenue
+        }
+    }
+    const monthlyAidM = (ongoingAid / 12) / 1e6; // convert raw dollars to $M for formatCurrency
     document.getElementById('total-upfront').textContent = formatCurrency(totalFiscal);
     document.getElementById('total-upfront').className = 'total-value' + (totalFiscal < 0 ? ' revenue' : '');
-    document.getElementById('total-ongoing').textContent = '$0M/mo';
-    document.getElementById('total-ongoing').className = 'total-value';
+    const aidStr = monthlyAidM === 0 ? '$0M/mo' : formatCurrency(monthlyAidM) + '/mo';
+    document.getElementById('total-ongoing').textContent = aidStr;
+    document.getElementById('total-ongoing').className = 'total-value' + (monthlyAid < 0 ? ' revenue' : '');
 }
 
 // ==================== IDEOLOGY AWARENESS (PHASE 4) ====================
@@ -2298,7 +2325,7 @@ async function retractBill() {
 async function renderEmergencyAdvanceButton(bill) {
     // Check for active national emergency
     try {
-        const { data: emergency } = await _supabase
+        const { data: emergency, error: eoErr } = await _supabase
             .from('executive_orders')
             .select('id, payload, issued_tick')
             .eq('nation_id', currentNation.id)
@@ -2307,10 +2334,10 @@ async function renderEmergencyAdvanceButton(bill) {
             .eq('is_active', true)
             .maybeSingle();
 
-        if (!emergency) return;
+        if (eoErr || !emergency) return;
 
         const usedThisTick = emergency.payload?.last_advance_tick === currentShardTick;
-        const advanceTo = bill.status === 'committee' ? 'floor' : "president's desk";
+        const advanceTo = bill.status === 'committee' ? 'floor' : (isPresidential ? "president's desk" : 'enactment');
 
         const banner = document.createElement('div');
         banner.style.cssText = 'background:var(--red-faint);border:1px solid var(--red-border);border-radius:3px;padding:12px 16px;margin:12px 0;display:flex;justify-content:space-between;align-items:center;';
@@ -2331,8 +2358,13 @@ async function renderEmergencyAdvanceButton(bill) {
 }
 window.renderEmergencyAdvanceButton = renderEmergencyAdvanceButton;
 
+let _emergencyAdvanceLock = false;
 async function handleEmergencyAdvance(billId) {
+    if (_emergencyAdvanceLock) return;
     if (!confirm('Use emergency powers to advance this bill?\n\nThis costs -6 government approval and bypasses normal procedure.')) return;
+    _emergencyAdvanceLock = true;
+    const btn = document.querySelector('.emergency-advance-btn');
+    if (btn) btn.disabled = true;
     try {
         const result = await advanceBillEmergency(_supabase, currentNation.id, currentFaction.id, billId);
         if (!result.success) {
@@ -2343,6 +2375,9 @@ async function handleEmergencyAdvance(billId) {
         window.location.reload();
     } catch (e) {
         alert('Error: ' + e.message);
+    } finally {
+        _emergencyAdvanceLock = false;
+        if (btn) btn.disabled = false;
     }
 }
 window.handleEmergencyAdvance = handleEmergencyAdvance;

@@ -627,7 +627,7 @@ function bindSubmitHandler() {
                 {
                     // +5 Momentum for any article >= 8000 chars
                     if (body.length >= 8000) {
-                        _supabase.rpc('adjust_momentum', { p_faction_id: faction.id, p_delta: 5 })
+                        _supabase.rpc('adjust_momentum', { p_faction_id: faction.id, p_delta: 5, p_label: 'News article published (+5)', p_tick: shard?.current_tick || 0 })
                             .then(({ error: momErr }) => { if (momErr) console.error('[News] Momentum reward failed:', momErr); });
                         successMsg = `Article published! +5 Momentum.`;
                     } else {

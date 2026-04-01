@@ -785,7 +785,7 @@ export function updateTopBarInfo(faction, shard, nation) {
     const badge = document.getElementById('party-badge');
     if (badge) {
         if (faction && faction.nation_id) {
-            badge.textContent = faction.faction_name + ' [' + (faction.abbreviation || '—') + '] ▾';
+            badge.textContent = (faction.abbreviation || faction.faction_name) + ' ▾';
         } else {
             badge.textContent = '[No Faction] ▾';
         }

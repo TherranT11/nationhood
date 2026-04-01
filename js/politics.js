@@ -4249,14 +4249,17 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
                 let baseRoll = Math.floor(Math.random() * 5) - 2; // -2 to +2
                 if (!_caIsGoverning) baseRoll += 1; // opposition bonus
                 else if ((n.gov_approval || 0) >= 40) baseRoll += 2; // government with decent approval
-                // Give momentum via atomic RPC (3-pillar system)
-                const { error: momErr } = await _supabase.rpc('adjust_momentum', { p_faction_id: f.id, p_delta: baseRoll });
+                // Give momentum via atomic RPC (3-pillar system) — label+tick for log
+                const sign = baseRoll >= 0 ? '+' : '';
+                const { error: momErr } = await _supabase.rpc('adjust_momentum', {
+                    p_faction_id: f.id, p_delta: baseRoll,
+                    p_label: `Press Conference (${sign}${baseRoll})`, p_tick: tick
+                });
                 if (momErr) console.warn('[PressConference] Momentum RPC failed:', momErr.message);
                 await _supabase.from('campaign_actions').insert({
                     party_id: f.id, nation_id: n.id, action_type: 'press_conference',
                     ap_cost: pressCost, tick_performed: tick, result: { momentumDelta: baseRoll }
                 });
-                const sign = baseRoll >= 0 ? '+' : '';
                 result = { success: true, newAp: apResult.newAp, headline: 'Press Conference',
                     effects: [{ label: 'Press Coverage', value: `${sign}${baseRoll}` }],
                     outcomeName: `Press conference — ${sign}${baseRoll} momentum` };
@@ -5243,17 +5246,34 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
         ideoMap[row.faction_id] = row;
     }
 
-    // Approval data from faction_electoral_standing
-    const rivalIds = rivals.map(p => p.id);
-    const { data: rivalStandings } = rivalIds.length > 0
-        ? await _supabase.from('faction_electoral_standing')
-            .select('faction_id, party_approval')
-            .in('faction_id', rivalIds)
-        : { data: [] };
+    // Compute national governance score from current administration stats
+    const { data: administration } = await _supabase
+        .from('administrations')
+        .select('stats_at_start, started_at_tick')
+        .eq('nation_id', nation.id)
+        .is('ended_at_tick', null)
+        .order('started_at_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-    const approvalMap = {};
-    for (const row of (rivalStandings || [])) {
-        approvalMap[row.faction_id] = Math.round(row.party_approval ?? 40);
+    let nationalGovScore = 0;
+    if (administration?.stats_at_start) {
+        let sum = 0, count = 0;
+        for (const key of NATION_STAT_COLUMNS) {
+            const dir = statDirectionSign(key);
+            if (dir === 0) continue;
+            const start = Number(administration.stats_at_start[key] ?? 0);
+            const now = Number(nation[key] ?? 0);
+            const raw = now - start;
+            if (raw === 0) continue;
+            sum += raw * dir;
+            count++;
+        }
+        if (count > 0) nationalGovScore = sum / count;
+        // Incumbency decay
+        const ticksInPower = currentTick - (administration.started_at_tick || currentTick);
+        const decayCycles = Math.floor(ticksInPower / 12);
+        if (nationalGovScore > 0) nationalGovScore *= Math.pow(0.95, decayCycles);
     }
 
     // Fetch leader data for each rival (factions table has leader columns)
@@ -5278,13 +5298,15 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
             ? fd.leader_first_name + ' ' + fd.leader_last_name
             : 'Vacant';
         const leaderAge = fd.leader_age || null;
-        const approval = approvalMap[p.id] ?? 40;
         const voteShare = Number(p.national_vote_share || 0);
 
         let status = 'opposition';
         if (coalitionPartyIds.includes(p.id)) {
             status = p.id === coalitionLeadId ? 'governing_head' : 'governing_junior';
         }
+
+        const isGov = status.startsWith('governing');
+        const govScore = Math.round(isGov ? nationalGovScore : -nationalGovScore);
 
         return {
             id: p.id,
@@ -5301,7 +5323,7 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
             seats: p.seats || 0,
             totalSeats,
             voteShare,
-            approval,
+            govScore,
             ideology: {
                 security_freedom: ideo.security_freedom ?? 0,
                 tradition_progress: ideo.tradition_progress ?? 0,
@@ -5318,7 +5340,7 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
     const sortFns = {
         seats:      (a, b) => b.seats - a.seats,
         vote_share: (a, b) => b.voteShare - a.voteShare,
-        approval:   (a, b) => b.approval - a.approval,
+        approval:   (a, b) => b.govScore - a.govScore,
         alignment:  (a, b) => {
             const aStrength = Object.values(a.ideology).reduce((s, v) => s + Math.abs(v), 0);
             const bStrength = Object.values(b.ideology).reduce((s, v) => s + Math.abs(v), 0);
@@ -5388,7 +5410,9 @@ function renderPartyCard(party, nation) {
         : '';
 
     // Approval color
-    const apColor = party.approval > 50 ? 'var(--dgreen)' : party.approval >= 35 ? 'var(--damber)' : 'var(--dred)';
+    const apColor = party.govScore > 2 ? 'var(--dgreen)' : party.govScore > 0 ? 'var(--damber)' : party.govScore > -2 ? 'var(--damber)' : 'var(--dred)';
+    const govSign = party.govScore > 0 ? '+' : '';
+    const govOppLabel = party.status.startsWith('governing') ? 'GOV' : 'OPP';
 
     // Ideology axes HTML
     let axesHtml = '';
@@ -5460,8 +5484,8 @@ function renderPartyCard(party, nation) {
                     <span class="op-sr-val" style="color:${c}">${party.seats} <span style="color:var(--dtext-3);font-size:9px;font-weight:400">/ ${party.totalSeats}</span></span>
                 </div>
                 <div class="op-stat-row">
-                    <span class="op-sr-label">Governance</span>
-                    <span class="op-sr-val" style="color:${apColor}">${party.approval}%</span>
+                    <span class="op-sr-label">Governance <span style="font-size:8px;color:var(--dtext-3)">${govOppLabel}</span></span>
+                    <span class="op-sr-val" style="color:${apColor}">${govSign}${party.govScore}</span>
                 </div>
                 <div class="op-rule"></div>
                 <div class="op-sec-label">Ideology Axes</div>
@@ -5575,11 +5599,11 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
             <div class="elec-score-row">
                 <div class="elec-score-block">
                     <div class="elec-score-label">${isGoverning ? 'Gov. Score' : 'National Score'}</div>
-                    <div class="elec-score-value" style="color:${scoreColor}">${scoreSign}${displayScore.toFixed(2)}</div>
+                    <div class="elec-score-value" style="color:${scoreColor}">${scoreSign}${Math.round(displayScore)}</div>
                 </div>
                 ${!isGoverning ? `<div class="elec-score-block">
                     <div class="elec-score-label">Your Impact (Opposition)</div>
-                    <div class="elec-score-value" style="color:${effectiveColor}">${effectiveSign}${effectiveScore.toFixed(2)}</div>
+                    <div class="elec-score-value" style="color:${effectiveColor}">${effectiveSign}${Math.round(effectiveScore)}</div>
                 </div>` : ''}
             </div>
             ${decayNote}
