@@ -1604,8 +1604,7 @@ function renderRatificationBill() {
                     // Determine if we are the donor or recipient
                     const donorIsA = art.data.donor_nation_id === rd.nationA?.id;
                     const weAreRecipient = donorIsA ? !rd.isNationA : rd.isNationA;
-                    // Recipient gets relief (negative cost = revenue), donor pays (positive cost)
-                    // Convert raw dollars to $M for formatCurrency
+                    // Convert raw dollars to $M for formatCurrency, then sign for recipient/donor
                     const monthlyM = (annualAmt / 12) / 1e6;
                     ongoingMonthly = weAreRecipient ? -monthlyM : monthlyM;
                 }
