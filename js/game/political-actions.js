@@ -466,8 +466,15 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
         targetDelta = Math.round(targetDelta * mult);
     }
 
-    // ── 7. Apply effects (legacy bloc-approval writes removed; electorate hook handles approval now) ──
+    // ── 7. Apply momentum from rally outcome ──
     const effects = [];
+    const momSign = targetDelta >= 0 ? '+' : '';
+    const { error: momErr } = await supabase.rpc('adjust_momentum', {
+        p_faction_id: factionId, p_delta: targetDelta,
+        p_label: `Rally: ${outcome.name} (${momSign}${targetDelta})`, p_tick: currentTick
+    });
+    if (momErr) console.warn('[Rally] Momentum RPC failed:', momErr.message);
+    effects.push({ stat: 'Momentum', value: targetDelta });
 
     // ── 8. Deduct AP + track last_action_tick ──
     // KNOWN ISSUE: AP deducted after effects applied. Early check (step 1) prevents common case.
