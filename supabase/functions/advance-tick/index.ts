@@ -4234,16 +4234,30 @@ const CREDIBILITY_MAX = 1.5;
 function round2(v) { return Math.round(v * 100) / 100; }
 function round3(v) { return Math.round(v * 1000) / 1000; }
 
-// ── Legacy stubs (kept for any remaining callers — both are no-ops) ──
+// ── Momentum adjustment with log entry ──
 
-async function adjustMomentum(supabase, factionId, nationId, source, delta, reason) {
-    // Legacy momentum system removed — electorate engine handles vote share now
-    return;
-}
+async function adjustMomentumWithLog(supabase, factionId, delta, label, currentTick) {
+    if (!factionId || delta === 0) return;
+    try {
+        // Atomic momentum update
+        const { data: faction } = await supabase
+            .from('factions')
+            .select('momentum, momentum_log')
+            .eq('id', factionId)
+            .single();
+        if (!faction) return;
 
-async function adjustMomentumAll(supabase, nationId, source, delta, reason) {
-    // Legacy momentum system removed — electorate engine handles vote share now
-    return;
+        const newMomentum = Math.max(0, Math.min(100, round2((faction.momentum || 0) + delta)));
+        const log = Array.isArray(faction.momentum_log) ? faction.momentum_log : [];
+        log.unshift({ label, delta, tick: currentTick });
+        if (log.length > 50) log.length = 50; // cap at 50 entries
+
+        await supabase.from('factions')
+            .update({ momentum: newMomentum, momentum_log: log })
+            .eq('id', factionId);
+    } catch (e) {
+        console.warn(`[adjustMomentumWithLog] Failed for faction ${factionId}:`, e.message);
+    }
 }
 
 // nudgeApproval and adjustCredibility are now defined in electorate.js
@@ -6930,7 +6944,7 @@ async function resolveExpiredVotes(supabase, nationId) {
 
         // Handle second quorum failure: bill dies
         if (resolution === 'failed_no_quorum') {
-            await failBill(supabase, bill);
+            await failBill(supabase, bill, currentTick);
             await syncFailedMinisterConfirmationBill(supabase, bill);
             await syncFailedAmbassadorConfirmationBill(supabase, bill);
             const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
@@ -6950,7 +6964,7 @@ async function resolveExpiredVotes(supabase, nationId) {
             if (passed) {
                 await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
             } else {
-                await failBill(supabase, bill);
+                await failBill(supabase, bill, currentTick);
             }
             await resolveNoConfidence(supabase, bill, passed, votesFor, votesAgainst, currentTick);
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'no_confidence', earlyResolution: bill.early_resolution_status || null });
@@ -6965,7 +6979,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                     // enactFoundationalBill already marked it 'failed' internally
                     console.warn(`[resolveExpiredVotes] Foundational bill ${bill.id} had enough votes but enactment failed (invalid proposed_seats).`);
                 } else {
-                    await failBill(supabase, bill);
+                    await failBill(supabase, bill, currentTick);
                 }
             }
             await fireBillEvent(supabase, enacted ? 'bill_passed' : 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
@@ -6986,7 +7000,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                     }
                 }
             } else {
-                await failBill(supabase, bill);
+                await failBill(supabase, bill, currentTick);
                 if (typeof handleFailedDefaultResolution === 'function') {
                     try {
                         await handleFailedDefaultResolution(supabase, bill, currentTick);
@@ -7018,7 +7032,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 }).eq('id', bill.ambassador_id);
                 await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
             } else {
-                await failBill(supabase, bill);
+                await failBill(supabase, bill, currentTick);
                 // Reject the ambassador
                 await supabase.from('ambassadors').update({
                     status: 'rejected',
@@ -7113,7 +7127,7 @@ async function resolveExpiredVotes(supabase, nationId) {
 
                 await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
             } else {
-                await failBill(supabase, bill);
+                await failBill(supabase, bill, currentTick);
 
                 // Clear pending nominee after failed confirmation
                 if (ministry?.pending_minister) {
@@ -7145,7 +7159,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
             } else {
-                await failBill(supabase, bill);
+                await failBill(supabase, bill, currentTick);
                 // Also fail the original vetoed bill — it can never pass now
                 if (bill.original_bill_id) {
                     await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.original_bill_id);
@@ -7343,7 +7357,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
             } else {
-                await failBill(supabase, bill);
+                await failBill(supabase, bill, currentTick);
                 // Load proposal to check if bilateral
                 const { data: failedProposal } = await supabase.from('diplomatic_proposals')
                     .select('proposal_tier, proposing_bill_id, target_bill_id, proposal_data, proposing_nation_id, target_nation_id')
@@ -7512,7 +7526,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'trade_ratification', earlyResolution: bill.early_resolution_status || null });
             } else {
-                await failBill(supabase, bill);
+                await failBill(supabase, bill, currentTick);
                 // Mark negotiation as ratification_failed
                 await supabase.from('trade_negotiations')
                     .update({ status: 'ratification_failed' })
@@ -7589,7 +7603,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'retaliatory_tariff', earlyResolution: bill.early_resolution_status || null });
             } else {
-                await failBill(supabase, bill);
+                await failBill(supabase, bill, currentTick);
                 await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'retaliatory_tariff', earlyResolution: bill.early_resolution_status || null });
             }
@@ -7654,7 +7668,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'impose_embargo', earlyResolution: bill.early_resolution_status || null });
             } else {
-                await failBill(supabase, bill);
+                await failBill(supabase, bill, currentTick);
                 await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'impose_embargo', earlyResolution: bill.early_resolution_status || null });
             }
@@ -7713,7 +7727,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                     });
                 } catch (e) { /* non-blocking */ }
             } else {
-                await failBill(supabase, bill);
+                await failBill(supabase, bill, currentTick);
 
                 // Motion failed — apply cooldown
                 await supabase.from('impeachment_proceedings').update({
@@ -7777,7 +7791,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                     resolved_at_tick: currentTick
                 }).eq('id', bill.impeachment_id);
             } else {
-                await failBill(supabase, bill);
+                await failBill(supabase, bill, currentTick);
                 // Acquitted — president restored, long cooldown
                 await supabase.from('impeachment_proceedings').update({
                     phase: 'resolved',
@@ -7863,7 +7877,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 }
             }
         } else {
-            await failBill(supabase, bill);
+            await failBill(supabase, bill, currentTick);
             await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
         }
@@ -8089,7 +8103,7 @@ async function resolveStuckFloorBills(supabase, nationId) {
       try {
         if (specialTypes.has(bill.bill_type)) {
             console.warn(`[resolveStuckFloorBills] Skipping special bill type "${bill.bill_type}" for bill ${bill.id} "${bill.bill_name}" — needs resolveExpiredVotes`);
-            await failBill(supabase, bill);
+            await failBill(supabase, bill, currentTick);
             await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor: 0, votesAgainst: 0, extra: { reason: `safety net: special type ${bill.bill_type} could not be resolved normally` } });
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_safety_net', billType: bill.bill_type });
         } else {
@@ -8134,7 +8148,7 @@ async function resolveStuckFloorBills(supabase, nationId) {
         }
 
         if (resolution === 'failed_no_quorum') {
-            await failBill(supabase, bill);
+            await failBill(supabase, bill, currentTick);
             await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, extra: { reason: 'quorum not met (safety net)' } });
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_no_quorum' });
             continue;
@@ -8174,7 +8188,7 @@ async function resolveStuckFloorBills(supabase, nationId) {
                 }
             }
         } else {
-            await failBill(supabase, bill);
+            await failBill(supabase, bill, currentTick);
             await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed' });
         }
@@ -8675,6 +8689,23 @@ async function enactBill(supabase, bill, currentTick) {
 
     // Legislative activity: boost gov_approval_events
     await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+
+    // Momentum: YES voters get +2 per policy article, NO voters get nothing on passage
+    try {
+        const policyArticles = (bill.bill_articles || []).filter(a => a?.policy_id);
+        const articleCount = Math.max(1, policyArticles.length);
+        const yesGain = articleCount * 2;
+        const billLabel = bill.bill_name || 'Bill';
+        for (const s of (bill.bill_support || [])) {
+            const stance = s.stance === 'accept' ? 'yes' : s.stance;
+            if (stance === 'yes') {
+                await adjustMomentumWithLog(supabase, s.faction_id, yesGain,
+                    `Bill passed: ${billLabel} (+${yesGain})`, currentTick);
+            }
+        }
+    } catch (momErr) {
+        console.warn('[enactBill] Momentum adjustment failed (non-fatal):', momErr.message);
+    }
 
     console.log('[enactBill] stage=terminal_result result=success', logContext);
     return { success: true };
@@ -9518,12 +9549,34 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
     return true;
 }
 
-async function failBill(supabase, bill) {
+async function failBill(supabase, bill, currentTick) {
     const { error } = await supabase.from('bills').update({
         status: 'failed'
     }).eq('id', bill.id);
     if (error) {
         console.error(`[failBill] Failed to mark bill ${bill.id} as failed:`, error.message);
+    }
+
+    // Momentum: YES voters lose -2 per article, NO voters gain +2 per article
+    if (currentTick && bill.bill_support) {
+        try {
+            const policyArticles = (bill.bill_articles || []).filter(a => a?.policy_id);
+            const articleCount = Math.max(1, policyArticles.length);
+            const delta = articleCount * 2;
+            const billLabel = bill.bill_name || 'Bill';
+            for (const s of (bill.bill_support || [])) {
+                const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+                if (stance === 'yes') {
+                    await adjustMomentumWithLog(supabase, s.faction_id, -delta,
+                        `Bill failed: ${billLabel} (-${delta})`, currentTick);
+                } else if (stance === 'no') {
+                    await adjustMomentumWithLog(supabase, s.faction_id, delta,
+                        `Bill failed: ${billLabel} (+${delta})`, currentTick);
+                }
+            }
+        } catch (momErr) {
+            console.warn('[failBill] Momentum adjustment failed (non-fatal):', momErr.message);
+        }
     }
 }
 
@@ -13185,7 +13238,7 @@ async function rejectOwnNomination(supabase, billId, nomineePartyId) {
     }
 
     // 1. Fail the bill immediately
-    await failBill(supabase, bill);
+    await failBill(supabase, bill, currentTick);
 
     // 2. Clear pending nomination
     await supabase.from('ministries').update({
