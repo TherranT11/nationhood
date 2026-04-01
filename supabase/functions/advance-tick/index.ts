@@ -13207,57 +13207,8 @@ async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
 
 // ==================== NOMINEE SELF-REJECTION ====================
 
-/**
- * Called when the nominated party votes NO on their own minister confirmation bill.
- * Immediately ends the vote as failed, applies -2 gov approval to the president,
- * and clears the pending nominee.
- *
- * @param {object} supabase
- * @param {string} billId - The minister_confirmation bill
- * @param {string} nomineePartyId - The faction that is the nominee (and voted NO)
- */
-async function rejectOwnNomination(supabase, billId, nomineePartyId) {
-    const { data: bill } = await supabase.from('bills')
-        .select('id, bill_name, bill_type, nation_id, ministry_key, status, proposed_by')
-        .eq('id', billId).single();
-    if (!bill || bill.bill_type !== 'minister_confirmation' || bill.status !== 'floor') {
-        throw new Error('Bill is not an active minister confirmation vote');
-    }
+// rejectOwnNomination removed — dead code, never called
 
-    const mKey = bill.ministry_key;
-    if (!mKey) throw new Error('No ministry_key on confirmation bill');
-
-    // Validate the nominee is actually the pending nominee for this ministry
-    const { data: ministry } = await supabase.from('ministries')
-        .select('id, pending_minister')
-        .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
-        .maybeSingle();
-
-    if (!ministry?.pending_minister || ministry.pending_minister.party_id !== nomineePartyId) {
-        throw new Error('Your party is not the nominee for this confirmation');
-    }
-
-    // 1. Fail the bill immediately
-    await failBill(supabase, bill, currentTick);
-
-    // 2. Clear pending nomination
-    await supabase.from('ministries').update({
-        confirmation_status: 'rejected',
-        pending_minister: null
-    }).eq('id', ministry.id);
-
-    // 3. Apply -2 government approval event (penalty to the president)
-    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, -2, 'minister:nominee_self_rejected');
-
-    // 4. Fire system event
-    try {
-        const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        await fireBillEvent(supabase, 'bill_failed', bill, { currentTick: shard?.current_tick || 0, votesFor: 0, votesAgainst: 0, votesAbstain: 0, sponsor: 'President', billNameOverride: bill.bill_name + ' (Nominee declined)' });
-    } catch (e) { /* non-blocking */ }
-
-    console.log(`Nominee self-rejection: party ${nomineePartyId} declined nomination for ${mKey} (bill ${billId}). -2 gov approval applied.`);
-    return { rejected: true, ministryKey: mKey };
-}
 
 // Tick lock and tick mutation are intentionally Edge Function only.
 

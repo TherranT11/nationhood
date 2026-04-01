@@ -1909,11 +1909,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Gov collapse check failed for ${nation.name} (non-fatal):`, collapseErr);
         }
 
-        // Electorate engine
+        // 3-pillar election engine (Governance + Momentum + Ideology + Gov Approval)
         try {
-            await tickElectorate(supabase, nation, newTick);
+            await tickElectionPillars(supabase, nation, newTick);
         } catch (electorateErr) {
-            console.error(`[advanceTick] Electorate engine failed for ${nation.name} (non-fatal):`, electorateErr);
+            console.error(`[advanceTick] Election pillar engine failed for ${nation.name} (non-fatal):`, electorateErr);
         }
 
         // (Autocracy action systems removed — Phase 0. Actions will be added in Phase 4+.)
