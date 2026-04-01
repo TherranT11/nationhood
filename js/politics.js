@@ -57,7 +57,7 @@ initPage('politics', async (state) => {
         : { data: [] };
 
     // Normalise seat counts from election results (single source of truth)
-    const { currentSeats } = await loadSeats(_supabase, nation.id, false, allParties || [], f.id);
+    const { currentSeats } = await loadSeats(_supabase, nation.id, allParties || [], f.id);
 
     const totalSeats = (allParties || []).reduce((sum, p) => sum + (p.seats || 0), 0);
     const mySeats = currentSeats;

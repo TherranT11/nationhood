@@ -401,7 +401,7 @@ async function confirmAmbassador() {
                 .from('factions')
                 .select('id, faction_name')
                 .eq('nation_id', currentNation.id);
-            const seatData = await loadSeats(_supabase, currentNation.id, false, parties || [], currentFaction.id);
+            const seatData = await loadSeats(_supabase, currentNation.id, parties || [], currentFaction.id);
             const mySeats = seatData.allPartySeats[currentFaction.id] || 0;
 
             if (mySeats > 0) {

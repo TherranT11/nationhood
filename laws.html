@@ -225,7 +225,7 @@ const FALLBACK_COLORS = ['var(--red)','var(--green)','var(--blue)','var(--orange
 
 function _getCompatiblePolicies(sector) {
     const _activePolicyIds = new Set(activeLaws.filter(al => !al.is_reversal).map(al => al.policy_id));
-    return getCompatiblePolicies(sector, allPolicies, currentFaction, false, draftArticles.map(a => a.policy?.id).filter(Boolean), _activePolicyIds);
+    return getCompatiblePolicies(sector, allPolicies, currentFaction, draftArticles.map(a => a.policy?.id).filter(Boolean), _activePolicyIds);
 }
 
 initPage('laws', async (state) => {
@@ -305,7 +305,7 @@ async function loadLawsData() {
 
         const { data: parties } = await _supabase.from('factions').select('id, faction_name, seats, action_points, abbreviation, party_color').eq('nation_id', nid).eq('faction_type', 'party');
         allParties = parties || [];
-        const seatData = await loadSeats(_supabase, nid, false, allParties, currentFaction?.id);
+        const seatData = await loadSeats(_supabase, nid, allParties, currentFaction?.id);
         allPartySeats = seatData.allPartySeats; currentSeats = seatData.currentSeats;
 
         // Refresh current faction AP from fresh DB data
