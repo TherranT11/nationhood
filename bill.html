@@ -523,7 +523,7 @@ function renderBill() {
     if (isFloor && bill.voting_ends_tick && !bill.early_resolution_status) {
         document.getElementById('bill-voting-ends').style.display = 'block';
         // If vote outcome is math-locked, show "Resolves next tick" instead of the original deadline
-        const evalForDeadline = evaluateBillVote(bill, GAME_CONFIG.TOTAL_SEATS);
+        const evalForDeadline = evaluateBillVote(bill, GAME_CONFIG.TOTAL_SEATS, currentNation);
         if (evalForDeadline.status === 'will_pass' || evalForDeadline.status === 'will_fail') {
             const votingEndsEl = document.getElementById('bill-voting-ends');
             const willPass = evalForDeadline.status === 'will_pass';
@@ -1758,7 +1758,7 @@ async function renderSidebar() {
         // Use the new evaluateBillVote for authoritative status
         const evalResult = evaluateBillVote({
             votes_for: f, votes_against: a, votes_abstain: ab, bill_type: bill.bill_type
-        }, totalSeats);
+        }, totalSeats, currentNation);
 
         // ── Determine if this is an absolute-threshold bill (no quorum, fixed target) ──
         const isAbsoluteThreshold = bill.bill_type === 'foundational' || bill.bill_type === 'veto_override'

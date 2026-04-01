@@ -133,6 +133,18 @@ export async function processStatDecay(supabase, nation, statInstitutionMap, pol
         }
     }
 
+    // Enforce foundational law caps on stats
+    // Judicial Appointment Politicization Act: cap judicial_independence at 30
+    if (nation.judicial_appointment_politicization) {
+        const ji = nationUpdates.judicial_independence ?? Number(nation.judicial_independence ?? 50);
+        if (ji > 30) nationUpdates.judicial_independence = 30;
+    }
+    // State Media Control Act: cap press_freedom at 40
+    if (nation.state_media_control) {
+        const pf = nationUpdates.press_freedom ?? Number(nation.press_freedom ?? 50);
+        if (pf > 40) nationUpdates.press_freedom = 40;
+    }
+
     if (Object.keys(nationUpdates).length > 0) {
         const { error } = await supabase
             .from('nations')

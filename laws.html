@@ -687,7 +687,7 @@ function renderFloorBill(bill, isVetoed) {
                     : (function() {
                         var fss = Object.values(allPartySeats).reduce(function(s,v){return s+(v||0);},0);
                         var ets = Math.min(GAME_CONFIG.TOTAL_SEATS, Math.max(fss, 1));
-                        var ev = evaluateBillVote({ votes_for: bill.votes_for || 0, votes_against: bill.votes_against || 0, votes_abstain: bill.votes_abstain || 0, bill_type: bill.bill_type }, ets);
+                        var ev = evaluateBillVote({ votes_for: bill.votes_for || 0, votes_against: bill.votes_against || 0, votes_abstain: bill.votes_abstain || 0, bill_type: bill.bill_type }, ets, currentNation);
                         var statusText, statusStyle;
                         if (ev.status === 'will_pass') { statusText = 'WILL PASS — Resolves Next Tick'; statusStyle = 'background:var(--green);border-color:var(--green);color:#fff;'; }
                         else if (ev.status === 'will_fail') { statusText = 'WILL FAIL — Resolves Next Tick'; statusStyle = 'background:var(--red);border-color:var(--red);color:#fff;'; }
@@ -1696,6 +1696,12 @@ function renderFoundationalOptions() {
             <div class="policy-option-desc">${currentNation.emergency_powers_act
                 ? 'Already enacted — the head of government may declare national emergencies.'
                 : 'Grants the head of government power to declare national emergencies, bypassing legislative votes. While active: stability -1/tick, freedom index -0.5/tick, judicial independence -0.5/tick. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'judicial_appointment_politicization' ? ' selected' : ''}" style="${selectedFoundationalType === 'judicial_appointment_politicization' ? 'border-color:var(--red);' : ''}${currentNation.judicial_appointment_politicization ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('judicial_appointment_politicization')" data-foundational-type="judicial_appointment_politicization">
+            <div class="policy-option-name">⚖️ Judicial Appointment Politicization Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.judicial_appointment_politicization
+                ? 'Already enacted — the ruling coalition appoints judges directly.'
+                : 'The ruling coalition appoints judges directly. Judicial independence permanently capped at 30. Legitimacy -5, freedom index -3. ' + (isPresidential ? 'Impeachment conviction threshold rises from 67% to 75%.' : 'No confidence threshold rises from 50%+1 to 60%.') + ' Requires 2/3 supermajority (' + required + ' seats).'}</div>
         </div>`;
     selectedFoundationalType = null;
     selectedPolicy = null;
@@ -2738,6 +2744,8 @@ async function submitToCommittee() {
                 billInsert.proposed_state_media_control = true;
             } else if (fArt.foundationalSubtype === 'emergency_powers') {
                 billInsert.proposed_emergency_powers_act = true;
+            } else if (fArt.foundationalSubtype === 'judicial_appointment_politicization') {
+                billInsert.proposed_judicial_appointment_politicization = true;
             } else {
                 billInsert.proposed_seats = fArt.proposedSeats;
             }
