@@ -632,7 +632,9 @@ function renderBill() {
     const hasMajority = sponsorSeats >= GAME_CONFIG.MAJORITY_SEATS;
     const hasCosponsor = (bill.bill_support || []).some(s => s.faction_id !== bill.proposed_by && s.stance === 'accept');
     const isFoundational = bill.bill_type === 'foundational';
-    let canSendToFloor = !isNoGovernment && (isFoundational ? hasCosponsor : (hasMajority || hasCosponsor));
+    // Ratification and procedural bills can always be sent to floor by the sponsor
+    const isAutoFloor = ['ratification', 'no_confidence', 'impeachment_motion', 'veto_override', 'impeachment_conviction', 'minister_confirmation', 'confirmation'].includes(bill.bill_type);
+    let canSendToFloor = !isNoGovernment && (isAutoFloor ? true : isFoundational ? hasCosponsor : (hasMajority || hasCosponsor));
 
     const disabledAttr = canSendToFloor ? '' : 'disabled';
     const reason = isNoGovernment
