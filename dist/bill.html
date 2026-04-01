@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bill Details | Nationhood Alpha</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script type="module" crossorigin src="/assets/bill-DEE8i0pY.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-BedtaFOo.js">
+  <link rel="modulepreload" crossorigin href="/assets/guide-RrxJIDYT.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-structure-DKbbGMPO.js">
+  <link rel="modulepreload" crossorigin href="/assets/stats-Cp9T3CP_.js">
+  <link rel="modulepreload" crossorigin href="/assets/autocracy-silent-coup-vxZQTTX4.js">
+  <link rel="modulepreload" crossorigin href="/assets/budget-BlQh3kYF.js">
+  <link rel="modulepreload" crossorigin href="/assets/executive-orders-CpgJHxS-.js">
+  <link rel="stylesheet" crossorigin href="/assets/bill-hhRwZVMD.css">
+  <link rel="stylesheet" crossorigin href="/assets/dashboard-DwcD1jvW.css">
+</head>
+<body style="overflow-y: auto !important;">
+<div id="top-bar"></div>
+<div class="bill-page" id="bill-page" style="display: none;">
+    <div class="bill-main-wrapper">
+        <a href="laws.html" class="back-link">← Back to Laws</a>
+        <div class="bill-main">
+            <div class="bill-header" id="bill-header">
+                <div class="bill-status" id="bill-status">LOADING</div>
+                <div class="bill-title" id="bill-title">Loading...</div>
+                <div class="bill-sponsor" id="bill-sponsor">Proposed by ...</div>
+                <div class="bill-voting-ends" id="bill-voting-ends" style="display: none;">
+                    Voting ends: <strong id="voting-ends-date">—</strong>
+                </div>
+            </div>
+            <div class="bill-articles" id="bill-articles"></div>
+            <div class="bill-totals" id="bill-totals">
+                <div class="total-item">
+                    <div class="total-label">Total Upfront Cost</div>
+                    <div class="total-value" id="total-upfront">$0</div>
+                </div>
+                <div class="total-item">
+                    <div class="total-label">Total Ongoing Cost</div>
+                    <div class="total-value" id="total-ongoing">$0/mo</div>
+                </div>
+            </div>
+            <div id="ideology-warning-container"></div>
+            <div class="sponsor-actions" id="sponsor-actions" style="display: none;"></div>
+        </div>
+        <div class="vote-status-badge" id="vote-status-badge" style="display:none;"></div>
+    </div>
+    <div class="bill-sidebar">
+        <div id="sidebar-top"></div>
+        <div class="chat-container">
+            <div class="chat-header"><div class="chat-title">💬 Bill Discussion</div></div>
+            <div class="chat-messages" id="chat-messages">
+                <div class="chat-empty">No comments yet. Be the first to speak!</div>
+            </div>
+            <div class="chat-input-area">
+                <div class="chat-input-wrapper">
+                    <textarea class="chat-input" id="chat-input" placeholder="Share your thoughts..." rows="2"></textarea>
+                    <button class="chat-send-btn" onclick="sendComment()">Send</button>
+                </div>
+            </div>
+        </div>
+        <div class="voting-section" id="voting-section" style="display: none;">
+            <div class="voting-title">Cast Your Vote</div>
+            <div class="voting-buttons">
+                <button class="vote-btn yes" onclick="castVote('yes')">✓ Vote Yes</button>
+                <button class="vote-btn no" onclick="castVote('no')">✗ Vote No</button>
+                <button class="vote-btn abstain" onclick="castVote('abstain')">— Abstain</button>
+            </div>
+            <div class="current-vote" id="current-vote" style="display: none;">
+                <div class="current-vote-label">Your current vote:</div>
+                <div class="current-vote-value" id="current-vote-value">—</div>
+            </div>
+        </div>
+    </div>
+</div>
+<div id="loading-state" class="loading-container">
+    <div class="loading-spinner"></div>
+    <div>Loading bill...</div>
+</div>
+<div class="modal-overlay" id="amendment-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title">Propose Conditional Support</div>
+            <button class="modal-close" onclick="closeAmendmentModal()">&times;</button>
+        </div>
+        <p style="color: var(--text-primary); margin-bottom: 16px; font-size: 0.9rem;">Select a policy you want added to this bill. Your support will be conditional on the sponsor accepting your amendment.</p>
+        <div class="form-group">
+            <label class="form-label">Select Sector</label>
+            <select class="form-select" id="amendment-sector" onchange="onAmendmentSectorChange()">
+                <option value="">-- Choose a sector --</option>
+            </select>
+        </div>
+        <div class="form-group" id="amendment-policy-group" style="display: none;">
+            <label class="form-label">Select Policy</label>
+            <div id="amendment-policies"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeAmendmentModal()">Cancel</button>
+            <button class="btn-submit" id="submit-amendment-btn" disabled onclick="submitAmendment()">Propose Conditional Support</button>
+        </div>
+    </div>
+</div>
+
+<!-- Text Amendment Modal -->
+<div class="modal-overlay" id="text-amendment-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title">Propose Text Amendment</div>
+            <button class="modal-close" onclick="closeTextAmendmentModal()">&times;</button>
+        </div>
+        <p style="color: var(--text-primary); margin-bottom: 16px; font-size: 0.9rem;">Write a freeform text article to propose adding to this bill. Your support will be conditional on the sponsor accepting it.</p>
+        <div class="form-group">
+            <label class="form-label">Article Title</label>
+            <input type="text" class="form-input" id="text-amendment-title" placeholder="e.g., Transitional Provisions">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Article Text</label>
+            <textarea class="text-article-input" id="text-amendment-body" placeholder="Write the full text of this article..."></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeTextAmendmentModal()">Cancel</button>
+            <button class="btn-submit" onclick="submitTextAmendment()">Propose Text Amendment</button>
+        </div>
+    </div>
+</div>
+
+<!-- Strike Article Modal -->
+<div class="modal-overlay" id="strike-amendment-modal">
+    <div class="modal-content" style="border-color: var(--orange);">
+        <div class="modal-header">
+            <div class="modal-title" style="color: var(--orange);">Request Article Removal</div>
+            <button class="modal-close" onclick="closeStrikeAmendmentModal()">&times;</button>
+        </div>
+        <p style="color: var(--text-primary); margin-bottom: 16px; font-size: 0.9rem;">Select an article you want removed from this bill. Your support will be conditional on the sponsor removing it.</p>
+        <div id="strike-article-list"></div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeStrikeAmendmentModal()">Cancel</button>
+            <button class="btn-submit" id="submit-strike-btn" disabled onclick="submitStrikeAmendment()" style="background: var(--orange);">Request Removal</button>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Text Article Modal -->
+<div class="modal-overlay" id="edit-article-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title">Edit Text Article</div>
+            <button class="modal-close" onclick="closeEditArticleModal()">&times;</button>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Article Title</label>
+            <input type="text" class="form-input" id="edit-article-title" placeholder="e.g., Transitional Provisions">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Article Text</label>
+            <textarea class="text-article-input" id="edit-article-body" placeholder="Write the full text of this article..."></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeEditArticleModal()">Cancel</button>
+            <button class="btn-submit" onclick="submitEditArticle()">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<!-- Sponsor Add Policy Article Modal -->
+<div class="modal-overlay" id="sponsor-add-article-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title">Add Article to Bill</div>
+            <button class="modal-close" onclick="closeSponsorAddModal()">&times;</button>
+        </div>
+        <p style="color: var(--text-primary); margin-bottom: 16px; font-size: 0.9rem;">Select a policy to add as a new article to your bill.</p>
+        <div class="form-group">
+            <label class="form-label">Select Sector</label>
+            <select class="form-select" id="sponsor-add-sector" onchange="onSponsorAddSectorChange()">
+                <option value="">-- Choose a sector --</option>
+            </select>
+        </div>
+        <div class="form-group" id="sponsor-add-policy-group" style="display: none;">
+            <label class="form-label">Select Policy</label>
+            <div id="sponsor-add-policies"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeSponsorAddModal()">Cancel</button>
+            <button class="btn-submit" id="sponsor-add-btn" disabled onclick="submitSponsorAddArticle()">Add Article</button>
+        </div>
+    </div>
+</div>
+
+<!-- Sponsor Add Text Article Modal -->
+<div class="modal-overlay" id="sponsor-add-text-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title">Add Text Article</div>
+            <button class="modal-close" onclick="closeSponsorAddTextModal()">&times;</button>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Article Title</label>
+            <input type="text" class="form-input" id="sponsor-text-title" placeholder="e.g., Transitional Provisions">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Article Text</label>
+            <textarea class="text-article-input" id="sponsor-text-body" placeholder="Write the full text of this article..."></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeSponsorAddTextModal()">Cancel</button>
+            <button class="btn-submit" onclick="submitSponsorAddTextArticle()">Add Article</button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

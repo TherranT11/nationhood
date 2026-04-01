@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bills | Nationhood Alpha</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script type="module" crossorigin src="/assets/laws-Bw8JfJlM.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-BedtaFOo.js">
+  <link rel="modulepreload" crossorigin href="/assets/guide-RrxJIDYT.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-structure-DKbbGMPO.js">
+  <link rel="modulepreload" crossorigin href="/assets/stats-Cp9T3CP_.js">
+  <link rel="modulepreload" crossorigin href="/assets/autocracy-silent-coup-vxZQTTX4.js">
+  <link rel="modulepreload" crossorigin href="/assets/budget-BlQh3kYF.js">
+  <link rel="modulepreload" crossorigin href="/assets/sovereign-default-DRjRiSGP.js">
+  <link rel="stylesheet" crossorigin href="/assets/laws-DKGoqldg.css">
+  <link rel="stylesheet" crossorigin href="/assets/dashboard-DwcD1jvW.css">
+</head>
+<body>
+<div id="top-bar"></div>
+<div id="content-area">
+    <div class="loading-container"><div class="loading-spinner"></div><div>Loading bills...</div></div>
+</div>
+
+<!-- Draft Bill Modal -->
+<div class="modal-overlay" id="draft-modal">
+    <div class="modal-content" id="draft-modal-content">
+        <div class="modal-header">
+            <div class="modal-title" id="draft-modal-title">Draft New Bill</div>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="bill-article">
+            <div class="article-label">Article I. Preamble</div>
+            <div class="article-text" id="article-preamble">This bill seeks to enact the following provisions.</div>
+        </div>
+        <div class="draft-articles" id="draft-articles"></div>
+        <div class="add-article-section" id="add-article-section" onclick="showAddArticleForm()">
+            <span class="add-article-btn-text">+ Add Article</span>
+        </div>
+        <div class="add-text-article-section" id="add-text-article-section" onclick="showTextArticleForm()">
+            <span class="add-text-article-btn-text">+ Add Text Article</span>
+        </div>
+        <div class="add-text-article-section" id="add-funding-article-section" onclick="showFundingArticleForm()">
+            <span class="add-text-article-btn-text">+ Funding Article</span>
+        </div>
+        <div id="add-article-form" style="display:none;">
+            <div class="form-group">
+                <label class="form-label">Select Sector</label>
+                <select class="form-select" id="sector-select" onchange="onSectorChange()">
+                    <option value="">-- Choose a sector --</option>
+                </select>
+            </div>
+            <div class="form-group" id="stat-filter-group" style="display:none;">
+                <label class="form-label">Filter by Stat <span style="font-weight:normal;color:var(--text-secondary);">(optional)</span></label>
+                <select class="form-select" id="stat-filter-select" onchange="onStatFilterChange()">
+                    <option value="">-- All policies --</option>
+                </select>
+            </div>
+            <div class="ideology-hint" id="ideology-hint" style="display:none;">
+                Your party's ideology: <strong id="party-ideologies"></strong>
+            </div>
+            <div class="form-group" id="policy-group" style="display:none;">
+                <label class="form-label">Select Policy</label>
+                <div class="policy-options" id="policy-options"></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="btn-cancel" onclick="hideAddArticleForm()">Cancel</button>
+                <button class="btn-add" id="add-article-btn" disabled onclick="addArticle()">Add to Bill</button>
+            </div>
+        </div>
+        <div id="add-text-article-form" style="display:none;">
+            <div class="form-group">
+                <label class="form-label">Article Title</label>
+                <input type="text" class="form-input" id="text-article-title" placeholder="e.g., Transitional Provisions">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Article Text</label>
+                <textarea class="text-article-input" id="text-article-body" placeholder="Write the full text of this article..."></textarea>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="btn-cancel" onclick="hideTextArticleForm()">Cancel</button>
+                <button class="btn-add" onclick="addTextArticle()">Add to Bill</button>
+            </div>
+        </div>
+        <div id="add-funding-article-form" style="display:none;">
+            <div class="form-group">
+                <label class="form-label">Select Ministry</label>
+                <select class="form-select" id="funding-ministry-select" onchange="onFundingMinistryChange()">
+                    <option value="">-- Choose a ministry --</option>
+                </select>
+            </div>
+            <div id="funding-controls" style="display:none;">
+                <div id="funding-institutions"></div>
+                <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border-main);">
+                    <label class="form-label">Discretionary Funds ($M)</label>
+                    <div id="funding-discretionary-balance" style="font-size:0.7rem;margin-bottom:6px;"></div>
+                    <input type="number" class="form-input" id="funding-discretionary" min="-50000" max="50000" value="0" placeholder="0">
+                    <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:4px;">Positive = allocate funds (adds to debt). Negative = withdraw surplus funds (reduces debt).</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="btn-cancel" onclick="hideFundingArticleForm()">Cancel</button>
+                <button class="btn-add" id="add-funding-btn" disabled onclick="addFundingArticle()">Add to Bill</button>
+            </div>
+        </div>
+        <div class="bill-name-section" id="bill-name-section" style="display:none;">
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" id="bill-name-label">Name Your Bill</label>
+                <input type="text" class="form-input" id="bill-name-input" placeholder="e.g., The Religious Harmony Act">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+            <button class="btn-submit" id="submit-bill-btn" disabled onclick="submitToCommittee()">Submit to Committee — 2 AP</button>
+        </div>
+    </div>
+</div>
+
+<!-- Committee Add Article Modal -->
+<div class="modal-overlay" id="committee-add-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title" id="committee-modal-title">Add Article to Bill</div>
+            <button class="modal-close" onclick="closeCommitteeAddModal()">&times;</button>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Select Sector</label>
+            <select class="form-select" id="committee-sector-select" onchange="onCommitteeSectorChange()">
+                <option value="">-- Choose a sector --</option>
+            </select>
+        </div>
+        <div class="form-group" id="committee-stat-filter-group" style="display:none;">
+            <label class="form-label">Filter by Stat <span style="font-weight:normal;color:var(--text-secondary);">(optional)</span></label>
+            <select class="form-select" id="committee-stat-filter-select" onchange="onCommitteeStatFilterChange()">
+                <option value="">-- All policies --</option>
+            </select>
+        </div>
+        <div class="ideology-hint" id="committee-ideology-hint" style="display:none;">
+            Your party's ideology: <strong id="committee-party-ideologies"></strong>
+        </div>
+        <div class="form-group" id="committee-policy-group" style="display:none;">
+            <label class="form-label">Select Policy</label>
+            <div class="policy-options" id="committee-policy-options"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeCommitteeAddModal()">Cancel</button>
+            <button class="btn-add" id="committee-add-btn" disabled onclick="submitCommitteeArticle()">Add Article</button>
+        </div>
+    </div>
+</div>
+
+<!-- Default Resolution Modal -->
+<div class="modal-overlay" id="default-resolution-modal">
+    <div class="modal-content" style="max-width:640px;">
+        <div class="modal-header">
+            <div class="modal-title">Sovereign Default Resolution</div>
+            <button class="modal-close" onclick="closeDefaultModal()">&times;</button>
+        </div>
+        <div id="default-modal-body">
+            <div class="default-intro">
+                <p>Filing a Default Resolution signals to international markets that your nation may not honour its debts. This is an extreme measure with severe consequences.</p>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Default Type</label>
+                <select class="form-select" id="default-type-select" onchange="onDefaultTypeChange()">
+                    <option value="full">Full Default (eliminate all debt)</option>
+                    <option value="partial_restructuring">Partial Restructuring (negotiate repayment)</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="repayment-rate-group" style="display:none;">
+                <label class="form-label">Repayment Rate: <span id="repayment-rate-label">50%</span></label>
+                <input type="range" id="repayment-rate-slider" min="30" max="70" value="50" step="5" oninput="onRepaymentRateChange()" style="width:100%;">
+                <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-secondary);"><span>30% (more relief)</span><span>70% (less penalty)</span></div>
+            </div>
+
+            <div id="austerity-section">
+                <label class="form-label">Austerity Commitments <span style="color:var(--text-secondary);font-weight:normal;">(optional — reduces international penalties)</span></label>
+                <div id="austerity-commitments-list"></div>
+                <button class="btn-add" id="add-austerity-btn" onclick="addAusterityRow()" style="margin-top:8px;font-size:0.75rem;">+ Add Spending Cut</button>
+            </div>
+
+            <div id="default-consequence-preview" style="margin-top:16px;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeDefaultModal()">Cancel</button>
+            <button class="btn-submit default-submit-btn" id="submit-default-btn" onclick="submitDefaultResolution()">
+                File Default Resolution — <span id="default-ap-cost">6</span> AP
+            </button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

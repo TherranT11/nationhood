@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nationhood — Trade Agreement Draft</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /* Page-level layout only — all component styles are in diplomacy.css */
+  body {
+    background: var(--bg-1);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    justify-content: center;
+    padding: 32px 24px;
+  }
+  .page-wrap {
+    display: flex;
+    gap: 12px;
+    max-width: 1060px;
+    width: 100%;
+    align-items: flex-start;
+  }
+  @media (max-width: 1080px) {
+    .page-wrap { flex-direction: column; }
+  }
+</style>
+  <link rel="stylesheet" crossorigin href="/assets/diplomacy-D9HNmRE1.css">
+</head>
+<body>
+<div class="page-wrap">
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- MAIN PANEL — Trade Agreement Draft               -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="box box--double">
+    <div class="box-header">
+      <div class="box-dot box-dot--teal"></div>
+      <span class="box-label">Draft Trade Agreement</span>
+      <div class="box-header-right">
+        <span class="badge badge--teal">Drafting</span>
+      </div>
+    </div>
+
+    <!-- Top Fields -->
+    <div class="draft-header">
+      <div class="draft-field">
+        <div class="draft-field-label">Action</div>
+        <div class="draft-field-input">
+          Trade Agreement
+          <span class="select-caret">Minister of Trade / 2 AP</span>
+        </div>
+      </div>
+      <div class="draft-field">
+        <div class="draft-field-label">Partner</div>
+        <div class="draft-field-input">
+          Island Federation of Palvera
+          <span class="select-caret">&#9662; Change</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Agreement Type Selector -->
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border-hair);">
+      <div style="font-family:var(--font-mono);font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:8px;">Agreement Type</div>
+      <div class="type-card-grid">
+        <div class="type-card selected" onclick="selectType(this)">
+          <div class="type-card-short">FTA</div>
+          <div class="type-card-title">Free Trade Agreement</div>
+          <div class="type-card-effects">
+            <span class="trade-type-tag bilateral">Bilateral</span>
+          </div>
+        </div>
+        <div class="type-card" onclick="selectType(this)">
+          <div class="type-card-short">PTA</div>
+          <div class="type-card-title">Preferential Tariff</div>
+          <div class="type-card-effects">
+            <span class="trade-type-tag bilateral">Bilateral</span>
+          </div>
+        </div>
+        <div class="type-card" onclick="selectType(this)">
+          <div class="type-card-short">RSC</div>
+          <div class="type-card-title">Resource Supply</div>
+          <div class="type-card-effects">
+            <span class="trade-type-tag bilateral">Bilateral</span>
+          </div>
+        </div>
+        <div class="type-card" onclick="selectType(this)">
+          <div class="type-card-short">ES</div>
+          <div class="type-card-title">Export Subsidy</div>
+          <div class="type-card-effects">
+            <span class="trade-type-tag unilateral">Unilateral</span>
+          </div>
+        </div>
+        <div class="type-card" onclick="selectType(this)">
+          <div class="type-card-short">AID</div>
+          <div class="type-card-title">Economic Aid</div>
+          <div class="type-card-effects">
+            <span class="trade-type-tag bilateral">Bilateral</span>
+          </div>
+        </div>
+        <div class="type-card" onclick="selectType(this)">
+          <div class="type-card-short">RT</div>
+          <div class="type-card-title">Retaliatory Tariff</div>
+          <div class="type-card-effects">
+            <span class="trade-type-tag unilateral">Unilateral</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Articles -->
+    <div class="draft-articles" style="max-height:520px;">
+
+      <!-- ── ART. I — Duration (Required) ── -->
+      <div class="draft-article">
+        <div class="draft-article-type">
+          <span>Art. I &nbsp; <span style="color:var(--teal);">Duration</span> &nbsp; <span class="badge badge--teal" style="font-size:7px;">Required</span></span>
+        </div>
+        <div class="draft-article-title">Agreement Term</div>
+        <div class="config-grid">
+          <div class="config-row">
+            <span class="config-label">Type</span>
+            <div class="toggle-group">
+              <span class="toggle-opt selected">Fixed Term</span>
+              <span class="toggle-opt">Permanent</span>
+            </div>
+          </div>
+          <div class="config-row">
+            <span class="config-label">Length</span>
+            <div class="range-display">
+              <div class="range-track">
+                <div class="range-fill" style="width:50%;"></div>
+                <div class="range-thumb" style="left:calc(50% - 5px);"></div>
+              </div>
+              <span class="range-value">24 ticks</span>
+            </div>
+            <span class="config-note">Range: 8–48 ticks</span>
+          </div>
+          <div class="config-row">
+            <span class="config-label">Auto-Renew</span>
+            <div class="toggle-group">
+              <span class="toggle-opt selected">Yes</span>
+              <span class="toggle-opt">No</span>
+            </div>
+          </div>
+          <div class="config-row">
+            <span class="config-label">Withdrawal</span>
+            <div class="toggle-group">
+              <span class="toggle-opt">1 Tick</span>
+              <span class="toggle-opt selected">3 Ticks</span>
+              <span class="toggle-opt">6 Ticks</span>
+            </div>
+            <span class="config-note">Notice period</span>
+          </div>
+        </div>
+        <div class="draft-article-body" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border-hair);">24-tick fixed term with automatic renewal. Either party may withdraw with 3 ticks notice.</div>
+      </div>
+
+      <!-- ── ART. II — Sector Exemption #1 ── -->
+      <div class="draft-article">
+        <div class="draft-article-type">
+          <span>Art. II &nbsp; <span style="color:var(--teal);">Sector Exemption</span> &nbsp; <span class="badge badge--dim" style="font-size:7px;">Optional / FTA Only</span></span>
+          <span class="draft-article-remove">Remove</span>
+        </div>
+        <div class="draft-article-title">Arms & Military Equipment Exemption</div>
+        <div class="config-grid">
+          <div class="config-row">
+            <span class="config-label">Sector</span>
+            <div class="draft-field-input" style="padding:4px 10px;font-size:11.5px;flex:unset;min-width:200px;">
+              Arms & Military Equipment
+              <span class="select-caret">&#9662;</span>
+            </div>
+          </div>
+        </div>
+        <div class="draft-article-body" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border-hair);">Arms & Military Equipment is excluded from free trade provisions. Existing tariff and licensing requirements remain in effect for this sector.</div>
+      </div>
+
+      <!-- ── ART. III — Sector Exemption #2 ── -->
+      <div class="draft-article">
+        <div class="draft-article-type">
+          <span>Art. III &nbsp; <span style="color:var(--teal);">Sector Exemption</span> &nbsp; <span class="badge badge--dim" style="font-size:7px;">Optional / FTA Only</span></span>
+          <span class="draft-article-remove">Remove</span>
+        </div>
+        <div class="draft-article-title">Fuel & Energy Exemption</div>
+        <div class="config-grid">
+          <div class="config-row">
+            <span class="config-label">Sector</span>
+            <div class="draft-field-input" style="padding:4px 10px;font-size:11.5px;flex:unset;min-width:200px;">
+              Fuel & Energy
+              <span class="select-caret">&#9662;</span>
+            </div>
+          </div>
+        </div>
+        <div class="draft-article-body" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border-hair);">Fuel & Energy is excluded from free trade provisions. Protects domestic energy production from unrestricted competition.</div>
+      </div>
+
+      <!-- ── ART. IV — Text Article ── -->
+      <div class="draft-article">
+        <div class="draft-article-type">
+          <span>Art. IV &nbsp; <span style="color:var(--teal);">Text Article</span> &nbsp; <span class="badge badge--dim" style="font-size:7px;">Optional / No Mechanical Effect</span></span>
+          <span class="draft-article-remove">Remove</span>
+        </div>
+        <div class="draft-article-title">Preamble & Shared Objectives</div>
+        <div class="config-grid">
+          <div class="config-row" style="align-items:flex-start;">
+            <span class="config-label" style="margin-top:4px;">Content</span>
+            <div style="flex:1;background:var(--bg-4);border:1px solid var(--border-subtle);padding:6px 10px;font-family:var(--font-sans);font-size:11px;color:var(--text-muted);line-height:1.5;min-height:48px;">
+              The Republic of Valdoria and the Island Federation of Palvera, desiring to strengthen economic ties and promote mutual prosperity through the reduction of trade barriers, hereby establish this Free Trade Agreement.
+            </div>
+          </div>
+        </div>
+        <div class="draft-article-body" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border-hair);">Free-text article. No gameplay effect — purely for roleplay and diplomatic framing.</div>
+      </div>
+
+    </div>
+
+    <!-- Article selector -->
+    <div class="trade-add-article-bar" style="padding:8px 14px;border-top:1px solid var(--border-hair);background:var(--bg-3);">
+      <select style="flex:1;font-size:0.75rem;padding:5px 8px;background:var(--bg-1);color:var(--text-primary);border:1px solid var(--border-hair);border-radius:3px;font-family:var(--font-sans);">
+        <option>Select article type...</option>
+      </select>
+      <button class="btn btn--dim" style="padding:5px 10px;">Add</button>
+    </div>
+
+    <!-- Action bar -->
+    <div class="action-bar">
+      <span class="action-bar-info">4 articles / FTA / Bilateral</span>
+      <div class="action-bar-spacer"></div>
+      <button class="btn btn--dim">Cancel</button>
+      <button class="btn btn--primary">Propose Agreement (2 AP)</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- SIDEBAR — Agreement Summary                     -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="box box--single">
+    <div class="box-header">
+      <div class="box-dot box-dot--blue"></div>
+      <span class="box-label">Agreement Summary</span>
+    </div>
+    <div class="summary-body">
+      <!-- Agreement info -->
+      <div class="summary-section">
+        <div class="summary-section-label">Agreement Details</div>
+        <div class="stat-row">
+          <span class="stat-label">Type</span>
+          <span class="stat-value" style="color:var(--teal);">Free Trade Agreement</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Structure</span>
+          <span class="stat-value stat-value--info">Bilateral</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Ratification</span>
+          <span class="stat-value stat-value--cost">Parliament (6 ticks)</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Duration</span>
+          <span class="stat-value stat-value--neutral">24 ticks / auto-renew</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Withdrawal Notice</span>
+          <span class="stat-value stat-value--neutral">3 ticks</span>
+        </div>
+      </div>
+
+      <!-- Sector coverage -->
+      <div class="summary-section">
+        <div class="summary-section-label">Sector Coverage</div>
+        <div class="sector-bar">
+          <span class="sector-bar-name">Manufactured Goods</span>
+          <div class="sector-bar-track"><div class="sector-bar-fill" style="width:100%;background:var(--green);"></div></div>
+          <span class="sector-bar-label" style="color:var(--green);">Free</span>
+        </div>
+        <div class="sector-bar">
+          <span class="sector-bar-name">Technology & Electronics</span>
+          <div class="sector-bar-track"><div class="sector-bar-fill" style="width:100%;background:var(--green);"></div></div>
+          <span class="sector-bar-label" style="color:var(--green);">Free</span>
+        </div>
+        <div class="sector-bar">
+          <span class="sector-bar-name">Food & Agriculture</span>
+          <div class="sector-bar-track"><div class="sector-bar-fill" style="width:100%;background:var(--green);"></div></div>
+          <span class="sector-bar-label" style="color:var(--green);">Free</span>
+        </div>
+        <div class="sector-bar">
+          <span class="sector-bar-name">Minerals & Raw Materials</span>
+          <div class="sector-bar-track"><div class="sector-bar-fill" style="width:100%;background:var(--green);"></div></div>
+          <span class="sector-bar-label" style="color:var(--green);">Free</span>
+        </div>
+        <div class="sector-bar">
+          <span class="sector-bar-name">Fuel & Energy</span>
+          <div class="sector-bar-track"><div class="sector-bar-fill" style="width:100%;background:var(--amber);"></div></div>
+          <span class="sector-bar-label" style="color:var(--amber);">Exempt</span>
+        </div>
+        <div class="sector-bar">
+          <span class="sector-bar-name">Arms & Military Equip.</span>
+          <div class="sector-bar-track"><div class="sector-bar-fill" style="width:100%;background:var(--amber);"></div></div>
+          <span class="sector-bar-label" style="color:var(--amber);">Exempt</span>
+        </div>
+        <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-faint);margin-top:6px;text-transform:uppercase;letter-spacing:0.06em;">4 of 6 sectors covered</div>
+      </div>
+
+      <!-- Projected effects -->
+      <div class="summary-section">
+        <div class="summary-section-label">Projected Effects (if ratified)</div>
+        <div class="stat-row">
+          <span class="stat-label">Trade Balance</span>
+          <span class="stat-value stat-value--positive">+4</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">GDP Growth</span>
+          <span class="stat-value stat-value--positive">+2</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Relations with Palvera</span>
+          <span class="stat-value stat-value--positive">+6</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Int'l Reputation</span>
+          <span class="stat-value stat-value--positive">+1</span>
+        </div>
+      </div>
+
+      <!-- Costs -->
+      <div class="summary-section">
+        <div class="summary-section-label">AP Costs</div>
+        <div class="stat-row">
+          <span class="stat-label">Propose</span>
+          <span class="stat-value stat-value--cost">2 AP</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Partner Acceptance</span>
+          <span class="stat-value stat-value--neutral">1 AP (theirs)</span>
+        </div>
+      </div>
+
+      <!-- Negotiation flow -->
+      <div class="summary-section">
+        <div class="summary-section-label">Negotiation Flow</div>
+        <div class="info-item">
+          <span class="info-dot info-dot--teal"></span>
+          Propose to Palvera's MoT, FM, or Ambassador
+        </div>
+        <div class="info-item">
+          <span class="info-dot info-dot--amber"></span>
+          Partner accepts, counters, or rejects
+        </div>
+        <div class="info-item">
+          <span class="info-dot info-dot--dim"></span>
+          Both MoTs must join within 4 ticks
+        </div>
+        <div class="info-item">
+          <span class="info-dot info-dot--dim"></span>
+          Collaborative article editing during negotiation
+        </div>
+        <div class="info-item">
+          <span class="info-dot info-dot--green"></span>
+          Ratification bill in both parliaments (6 ticks)
+        </div>
+        <div class="info-item">
+          <span class="info-dot info-dot--green"></span>
+          If passed: agreement becomes active
+        </div>
+      </div>
+
+      <!-- Risks -->
+      <div class="summary-section">
+        <div class="summary-section-label">Considerations</div>
+        <div class="info-item">
+          <span class="info-dot info-dot--amber"></span>
+          Domestic producers face increased competition in covered sectors
+        </div>
+        <div class="info-item">
+          <span class="info-dot info-dot--amber"></span>
+          Parliament may reject if trade balance is already negative
+        </div>
+        <div class="info-item">
+          <span class="info-dot info-dot--red"></span>
+          Existing embargoes with other nations may conflict
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function selectType(el) {
+    document.querySelectorAll('.type-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+  }
+</script>
+</body>
+</html>
