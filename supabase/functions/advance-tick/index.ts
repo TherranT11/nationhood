@@ -11936,31 +11936,7 @@ async function processElections(supabase, nation, currentTick) {
     }
 
     // === SCHEDULE NEXT ELECTIONS ===
-    if (isPresidential) {
-        await scheduleNextPresidentialElections(supabase, nation, currentTick);
-    } else {
-        const { data: futureElection } = await supabase
-            .from('elections')
-            .select('id')
-            .eq('nation_id', nation.id)
-            .eq('status', 'scheduled')
-            .gt('election_tick', currentTick)
-            .limit(1)
-            .maybeSingle();
-
-        if (!futureElection) {
-            const frequency = nation.election_frequency || 48;
-            const nextTick = currentTick + frequency;
-
-            await supabase.from('elections').insert({
-                nation_id: nation.id,
-                election_tick: nextTick,
-                status: 'scheduled'
-            });
-
-            console.log(`Scheduled next election for ${nation.name} at tick ${nextTick}`);
-        }
-    }
+    await ensureElectionsScheduled(supabase, nation, currentTick);
 
     return results;
 }
@@ -12410,7 +12386,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
 
     // Proactively schedule next elections (instead of relying on processPresidentialTermEnd safety net)
     try {
-        await scheduleNextPresidentialElections(supabase, nation, currentTick);
+        await ensureElectionsScheduled(supabase, nation, currentTick);
     } catch (e) { console.warn('Could not schedule next presidential elections:', e); }
 }
 
@@ -12624,11 +12600,11 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
 }
 
 /**
- * Schedule next presidential + parliamentary elections independently.
- * Presidential every getPresidentialTermTicks(nation), parliamentary every getParliamentaryTermTicks(nation).
+ * Ensure future elections are scheduled for a nation.
+ * Always schedules parliamentary. Presidential systems also get presidential elections.
  */
-async function scheduleNextPresidentialElections(supabase, nation, currentTick) {
-    // Check for future parliamentary election
+async function ensureElectionsScheduled(supabase, nation, currentTick) {
+    // Always ensure a parliamentary election is scheduled
     const { data: futureParl } = await supabase
         .from('elections')
         .select('id')
@@ -12640,36 +12616,36 @@ async function scheduleNextPresidentialElections(supabase, nation, currentTick) 
         .maybeSingle();
 
     if (!futureParl) {
-        const nextParl = currentTick + getParliamentaryTermTicks(nation);
         await supabase.from('elections').insert({
             nation_id: nation.id,
-            election_tick: nextParl,
+            election_tick: currentTick + getParliamentaryTermTicks(nation),
             election_type: 'parliamentary',
             status: 'scheduled'
         });
-        console.log(`Scheduled next parliamentary election for ${nation.name} at tick ${nextParl}`);
+        console.log(`Scheduled next parliamentary election for ${nation.name}`);
     }
 
-    // Check for future presidential election
-    const { data: futurePres } = await supabase
-        .from('elections')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('status', 'scheduled')
-        .eq('election_type', 'presidential')
-        .gt('election_tick', currentTick)
-        .limit(1)
-        .maybeSingle();
+    // Presidential systems also need presidential elections
+    if (isPresidentialRepublic(nation)) {
+        const { data: futurePres } = await supabase
+            .from('elections')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('status', 'scheduled')
+            .eq('election_type', 'presidential')
+            .gt('election_tick', currentTick)
+            .limit(1)
+            .maybeSingle();
 
-    if (!futurePres) {
-        const nextPres = currentTick + getPresidentialTermTicks(nation);
-        await supabase.from('elections').insert({
-            nation_id: nation.id,
-            election_tick: nextPres,
-            election_type: 'presidential',
-            status: 'scheduled'
-        });
-        console.log(`Scheduled next presidential election for ${nation.name} at tick ${nextPres}`);
+        if (!futurePres) {
+            await supabase.from('elections').insert({
+                nation_id: nation.id,
+                election_tick: currentTick + getPresidentialTermTicks(nation),
+                election_type: 'presidential',
+                status: 'scheduled'
+            });
+            console.log(`Scheduled next presidential election for ${nation.name}`);
+        }
     }
 }
 
@@ -14583,7 +14559,7 @@ async function tickElectionPillars(supabase, nation, currentTick) {
 
     // Electorate profile drift (enthusiasm, ideology means/vars)
     const { data: scheduledElections } = await supabase
-        .from('scheduled_elections')
+        .from('elections')
         .select('election_tick')
         .eq('nation_id', nation.id)
         .eq('status', 'scheduled')
