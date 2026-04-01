@@ -871,28 +871,7 @@ async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
 
             const admitRole = meta.requested_role || 'member';
 
-            // Check if target is an autocratic strongman — admit all factions of that autocracy
-            let factionsToAdmit = [{ id: meta.target_faction_id, name: meta.target_faction_name }];
-            try {
-                const { data: pillarState } = await supabase
-                    .from('faction_pillar_state')
-                    .select('faction_id, is_strongman, nation_id')
-                    .eq('faction_id', meta.target_faction_id)
-                    .eq('is_strongman', true)
-                    .maybeSingle();
-                if (pillarState) {
-                    const { data: allPillarFactions } = await supabase
-                        .from('faction_pillar_state')
-                        .select('faction_id, factions:faction_id ( faction_name )')
-                        .eq('nation_id', pillarState.nation_id);
-                    if (allPillarFactions && allPillarFactions.length > 0) {
-                        factionsToAdmit = allPillarFactions.map(pf => ({
-                            id: pf.faction_id,
-                            name: pf.factions?.faction_name || 'Unknown'
-                        }));
-                    }
-                }
-            } catch (e) { console.error('[IPO] Autocracy admission check failed:', e.message); }
+            const factionsToAdmit = [{ id: meta.target_faction_id, name: meta.target_faction_name }];
 
             // Assign chat colors and insert members
             const { data: existingMembers } = await supabase
@@ -1954,17 +1933,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (freshNation) Object.assign(nation, freshNation);
 
-        // Democratic revolution (autocracy only)
-        try {
-            const revolutionResult = await processRevolution(supabase, nation, newTick);
-            if (revolutionResult) {
-                summary.revolutions = summary.revolutions || [];
-                summary.revolutions.push(revolutionResult);
-            }
-        } catch (revErr) {
-            console.error(`[advanceTick] Revolution processing failed for ${nation.name} (non-fatal):`, revErr);
-        }
-
         // Random events
         try {
             const eventResults = await processEvents(supabase, nation, newTick);
@@ -2390,25 +2358,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     const contribution = resources.solidarityFund.contributionPerQuarter || 1;
                     let totalCollected = 0;
 
-                    // Identify autocratic non-strongman factions (they don't contribute — only strongman pays for the whole regime)
-                    const memberFactionIds = fullMembers.map(m => m.faction_id);
-                    let autocraticNonStrongmanIds = new Set();
-                    if (memberFactionIds.length > 0) {
-                        try {
-                            const { data: pillarStates } = await supabase
-                                .from('faction_pillar_state')
-                                .select('faction_id, is_strongman')
-                                .in('faction_id', memberFactionIds);
-                            for (const ps of (pillarStates || [])) {
-                                if (!ps.is_strongman) autocraticNonStrongmanIds.add(ps.faction_id);
-                            }
-                        } catch (e) { /* non-fatal */ }
-                    }
-
                     for (const m of fullMembers) {
-                        // Skip non-strongman autocratic factions (strongman pays for the whole regime)
-                        if (autocraticNonStrongmanIds.has(m.faction_id)) continue;
-
                         // Deduct AP from faction
                         const { data: deducted } = await supabase.rpc('deduct_ap', {
                             p_faction_id: m.faction_id,

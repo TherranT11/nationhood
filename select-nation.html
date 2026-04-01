@@ -148,11 +148,6 @@ body {
   color: var(--green);
   border: 1px solid var(--green-border);
 }
-.gov-autocracy {
-  background: var(--red-faint);
-  color: var(--red);
-  border: 1px solid var(--red-border);
-}
 .gov-presidential {
   background: var(--blue-faint);
   color: var(--blue);
@@ -771,7 +766,6 @@ async function loadNations() {
 }
 
 function getGovTypeClass(govType) {
-  if (govType === 'Autocracy') return 'gov-autocracy';
   if (govType === 'Presidential') return 'gov-presidential';
   return 'gov-democracy';
 }
@@ -779,7 +773,6 @@ function getGovTypeClass(govType) {
 function getGovTypeLabel(govTypeOrNation) {
   const govType = typeof govTypeOrNation === 'string' ? govTypeOrNation : govTypeOrNation?.government_type;
   const hosMethod = typeof govTypeOrNation === 'object' ? govTypeOrNation?.hos_election_method : null;
-  if (govType === 'Autocracy') return 'AUTOCRACY';
   if (govType === 'Presidential') return 'PRESIDENTIAL';
   if (hosMethod === 'hereditary') return 'CONSTITUTIONAL MONARCHY';
   return 'PARLIAMENTARY';
@@ -942,11 +935,7 @@ function selectNation(nationId) {
   govBadge.textContent = govLabel;
 
   const hint = document.getElementById('modal-flow-hint');
-  if (nation.government_type === 'Autocracy') {
-    hint.textContent = 'You will choose your ideology and faction name next.';
-  } else {
-    hint.textContent = 'You will choose your ideology, then name and customize your party.';
-  }
+  hint.textContent = 'You will choose your ideology, then name and customize your party.';
 
   // Show/hide alpha code input
   const alphaSection = document.getElementById('alpha-code-section');
@@ -1043,11 +1032,7 @@ async function confirmNation() {
   }));
 
   // Route based on government type
-  if (nation.government_type === 'Autocracy') {
-    window.location.href = 'autocracy-setup.html';
-  } else {
-    window.location.href = 'faction-select.html';
-  }
+  window.location.href = 'faction-select.html';
 }
 
 init();

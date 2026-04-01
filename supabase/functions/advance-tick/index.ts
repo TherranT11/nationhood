@@ -18221,14 +18221,8 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
     await supabase.from('campaign_actions').delete().eq('party_id', factionId).neq('action_type', 'party_disbanded');
     await supabase.from('faction_coalitions').delete().eq('faction_a_id', factionId);
     await supabase.from('faction_coalitions').delete().eq('faction_b_id', factionId);
-    await supabase.from('loyalty_demands').delete().eq('strongman_faction_id', factionId);
-    await supabase.from('loyalty_demands').delete().eq('target_faction_id', factionId);
-
     return { result: 'disbanded' };
 }
-
-
-// (Appoint successor, Dynasty actions, Coup/Regime health systems removed — Phase 0)
 
 // ────────── election-simulation ──────────
 

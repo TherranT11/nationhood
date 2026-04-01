@@ -483,13 +483,11 @@ const WN_IDEOLOGY_COLORS = {
 };
 
 function wnGetGovClass(nation) {
-    if (nation.government_type === 'Autocracy') return 'wn-card__gov--autocracy';
     if (nation.government_type === 'Presidential') return 'wn-card__gov--presidential';
     if (nation.hos_election_method === 'hereditary') return 'wn-card__gov--monarchy';
     return 'wn-card__gov--parliamentary';
 }
 function wnGetGovLabel(nation) {
-    if (nation.government_type === 'Autocracy') return 'AUTOCRACY';
     if (nation.government_type === 'Presidential') return 'PRESIDENTIAL';
     if (nation.hos_election_method === 'hereditary') return 'CONSTITUTIONAL MONARCHY';
     return 'PARLIAMENTARY';
@@ -728,7 +726,7 @@ async function renderWorldNations() {
                     // Leader row(s): name + party badge inline
                     (hosName ? '<div class="wn-stat-row"><span class="wn-stat-row__label">' + escapeHtml(hosTitle) + '</span><span class="wn-stat-row__value">' + escapeHtml(hosName) + rpBadge + '</span></div>' : '') +
                     // Show PM row for parliamentary and monarchy systems
-                    (!isPres && !isAuto ? '<div class="wn-stat-row"><span class="wn-stat-row__label">PM</span><span class="wn-stat-row__value">' + escapeHtml(pmName || '—') + pmPartyBadge + '</span></div>' : '') +
+                    (!isPres ? '<div class="wn-stat-row"><span class="wn-stat-row__label">PM</span><span class="wn-stat-row__value">' + escapeHtml(pmName || '—') + pmPartyBadge + '</span></div>' : '') +
                     '<div class="wn-stat-row"><span class="wn-stat-row__label">Population</span><span class="wn-stat-row__value">' + pop + '</span></div>' +
                     '<div class="wn-stat-row"><span class="wn-stat-row__label">GDP</span><span class="wn-stat-row__value">' + gdp + '</span></div>' +
                     '<div class="wn-stat-row"><span class="wn-stat-row__label">Unemployment</span><span class="wn-stat-row__value">' + unemp + '</span></div>' +
