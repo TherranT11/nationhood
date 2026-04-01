@@ -56,7 +56,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest, nudgeApproval, getNationNames } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest, nudgeApproval, getNationNames, POSITIVE_TRAITS } from './js/game-common.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
 (function () {
@@ -1195,7 +1195,7 @@ async function renderGovernmentPage() {
         // Fetch active Head of Government with trait and party name
         const { data: activeHOG } = await _supabase
             .from('head_of_government')
-            .select('*, factions(id, faction_name, abbreviation, leader_ideology), leader_traits(*)')
+            .select('*, factions(id, faction_name, abbreviation, leader_ideology, leader_positive_traits)')
             .eq('nation_id', currentNation.id)
             .eq('active', true)
             .maybeSingle();
@@ -1292,11 +1292,7 @@ async function renderGovernmentPage() {
             presidentData = activePresident || null;
             presidentFactionId = activePresident?.faction_id || null;
             isPresidentParty = (presidentFactionId && currentFaction?.id === presidentFactionId);
-            // Fetch trait data for the president
-            if (presidentData?.trait) {
-                const { data: traitData } = await _supabase.from('leader_traits').select('trait_name, upside, downside').eq('trait_key', presidentData.trait).single();
-                if (traitData) presidentData._traitData = traitData;
-            }
+            // President trait now resolved from POSITIVE_TRAITS at render time
         }
 
         // Government approval
@@ -1662,18 +1658,17 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
             }
         }
 
-        // Fetch president's trait info (already cached or inline)
+        // Show president's trait from the party leadership trait system
         let traitHTML = '';
-        if (presidentData._traitData) {
-            const t = presidentData._traitData;
+        const presTrait = presidentData?.trait ? POSITIVE_TRAITS.find(t => t.key === presidentData.trait) : null;
+        if (presTrait) {
+            const catColors = { 'AP': '#c8a832', 'Electoral': '#a3b07e', 'Legislative': '#5b9bd5', 'Governance': '#c88444', 'Diplomatic': '#5aafa5', 'Voter Blocs': '#b07ea3' };
+            const cc = catColors[presTrait.category] || 'var(--accent)';
             traitHTML = `
                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
                     ${presidentData.ideology ? `<div class="pres-ideology-bar" style="background:${ideologyBg(presidentData.ideology)};">${escapeHtml(presidentData.ideology)}</div>` : ''}
-                    <div class="pres-trait-name">&#x1F3F7; ${escapeHtml(t.trait_name || presidentData.trait)}</div>
-                    <ul class="pres-trait-effects">
-                        ${t.upside ? `<li class="pres-trait-up">${escapeHtml(t.upside)}</li>` : ''}
-                        ${t.downside ? `<li class="pres-trait-down">${escapeHtml(t.downside)}</li>` : ''}
-                    </ul>
+                    <div class="pres-trait-name">&#x1F3F7; ${escapeHtml(presTrait.name)} <span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:${cc}22;color:${cc};border:1px solid ${cc}44;margin-left:4px;">${presTrait.category.toUpperCase()}</span></div>
+                    <div style="font-size:0.75rem;color:var(--green);margin-top:4px;">▲ ${escapeHtml(presTrait.effect)}</div>
                 </div>`;
         }
 
@@ -1785,9 +1780,15 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                             ${activeHOG ? `
                                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
                                     <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(activeHOG._resolvedIdeology)};color:white;margin-bottom:6px;">${activeHOG._resolvedIdeology || 'Unknown'}</div>
-                                    <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${activeHOG.leader_traits?.trait_name || activeHOG.trait_key}</div>
-                                    <div style="font-size:0.75rem;color:var(--green);margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
-                                    <div style="font-size:0.75rem;color:var(--red);">▼ ${activeHOG.leader_traits?.downside || ''}</div>
+                                    ${(() => {
+                                        const tk = activeHOG.trait_key;
+                                        const traitDef = tk ? POSITIVE_TRAITS.find(t => t.key === tk) : null;
+                                        if (!traitDef) return '';
+                                        const catColors = { 'AP': '#c8a832', 'Electoral': '#a3b07e', 'Legislative': '#5b9bd5', 'Governance': '#c88444', 'Diplomatic': '#5aafa5', 'Voter Blocs': '#b07ea3' };
+                                        const cc = catColors[traitDef.category] || 'var(--accent)';
+                                        return `<div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${escapeHtml(traitDef.name)} <span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:${cc}22;color:${cc};border:1px solid ${cc}44;margin-left:4px;">${traitDef.category.toUpperCase()}</span></div>
+                                            <div style="font-size:0.75rem;color:var(--green);margin-bottom:2px;">▲ ${escapeHtml(traitDef.effect)}</div>`;
+                                    })()}
                                 </div>
                                 ${activeHOG.faction_id === currentFaction?.id && coalition.status !== 'caretaker' ? `
                                     <button class="ministry-btn purge" style="margin-top:10px;" onclick="resignPMAction()">📋 Resign as PM</button>

@@ -430,6 +430,8 @@ async function loadStatEffectSources(nationId, nation) {
 }
 
 async function loadLeaderTraitEffects(nationId, nation) {
+    // Old leader_traits effect system removed — trait is display-only now
+    return null;
     try {
         if (isPresidentialRepublic(nation)) {
             var res = await _supabase.from('presidents')

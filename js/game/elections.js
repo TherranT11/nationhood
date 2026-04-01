@@ -2536,8 +2536,7 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
     const { data: nationForTerm, error: nationTermErr } = await supabase.from('nations').select('presidential_term_ticks, presidential_term_limit').eq('id', nationId).single();
     if (nationTermErr) console.error(`[inauguratePresident] Failed to fetch nation term data:`, nationTermErr.message);
 
-    // Look up trait data for trait_upside / trait_downside
-    const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', candidate.trait_key).maybeSingle();
+    // Trait is now resolved from POSITIVE_TRAITS at display time (leader_traits table removed)
 
     // Determine terms_served: if re-elected (same person), increment; otherwise start at 1
     let termsServed = 1;
@@ -2582,16 +2581,7 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         }
     }
 
-    // Apply trait effects (same logic as PM)
-    if (trait?.effects) {
-        if (trait.effects.on_appoint_stability) {
-            const { data: nationRow } = await supabase.from('nations').select('stability').eq('id', nationId).single();
-            if (nationRow) {
-                const newStability = Math.max(0, Math.min(100, (nationRow.stability || 50) + trait.effects.on_appoint_stability));
-                await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
-            }
-        }
-    }
+    // Old leader_traits effect system removed — trait is display-only now
 
     // ── Presidential transition: clean slate for new administration ──
 
