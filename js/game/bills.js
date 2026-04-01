@@ -866,9 +866,14 @@ export async function resolveExpiredVotes(supabase, nationId) {
     if (!shard) return [];
     const currentTick = shard.current_tick;
 
-    // Load quorum override for Legislative Quorum Reform Act
-    const { data: nationForQuorum } = await supabase.from('nations').select('legislative_quorum_override').eq('id', nationId).single();
-    const effectiveQuorumPct = (nationForQuorum?.legislative_quorum_override > 0) ? (nationForQuorum.legislative_quorum_override / 100) : GAME_CONFIG.QUORUM_THRESHOLD;
+    // Load nation flags for authoritarian law threshold overrides
+    const { data: nationForFlags } = await supabase.from('nations').select('legislative_quorum_override, judicial_appointment_politicization, constitutional_amendment_streamlining').eq('id', nationId).single();
+    const effectiveQuorumPct = (nationForFlags?.legislative_quorum_override > 0) ? (nationForFlags.legislative_quorum_override / 100) : GAME_CONFIG.QUORUM_THRESHOLD;
+    const nationFlags = {
+        judicial_appointment_politicization: !!nationForFlags?.judicial_appointment_politicization,
+        legislative_quorum_override: nationForFlags?.legislative_quorum_override || 0,
+        constitutional_amendment_streamlining: !!nationForFlags?.constitutional_amendment_streamlining
+    };
 
     const { data: expiredBills, error } = await supabase
         .from('bills')
@@ -968,7 +973,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
             votes_abstain: votesAbstain,
             quorum_failures: bill.quorum_failures || 0
         };
-        const resolution = resolveBillVote(resolveBill, totalSeats);
+        const resolution = resolveBillVote(resolveBill, totalSeats, nationFlags);
         console.log(`[resolveExpiredVotes] bill=${bill.id} votes yes=${votesFor} no=${votesAgainst} abstain=${votesAbstain} effective_yes=${effectiveVotesFor} totalSeats=${totalSeats} resolution=${resolution}`);
 
         // Handle quorum deferral: extend vote by 1 tick
@@ -2148,11 +2153,16 @@ export async function resolveStuckFloorBills(supabase, nationId) {
 
     const { data: nation } = await supabase
         .from('nations')
-        .select('name, government_type, total_seats')
+        .select('name, government_type, total_seats, judicial_appointment_politicization, legislative_quorum_override, constitutional_amendment_streamlining')
         .eq('id', nationId)
         .single();
     const nominalTotalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
     const totalSeats = Math.min(nominalTotalSeats, Math.max(factionSeatSum, 1));
+    const stuckNationFlags = {
+        judicial_appointment_politicization: !!nation?.judicial_appointment_politicization,
+        legislative_quorum_override: nation?.legislative_quorum_override || 0,
+        constitutional_amendment_streamlining: !!nation?.constitutional_amendment_streamlining
+    };
 
     const specialTypes = new Set(['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'ambassador_confirmation']);
     const results = [];
@@ -2193,7 +2203,7 @@ export async function resolveStuckFloorBills(supabase, nationId) {
             votes_abstain: votesAbstain,
             quorum_failures: bill.quorum_failures || 0
         };
-        const resolution = resolveBillVote(resolveBill, totalSeats);
+        const resolution = resolveBillVote(resolveBill, totalSeats, stuckNationFlags);
         console.log(`[resolveStuckFloorBills] bill=${bill.id} "${bill.bill_name}" votes yes=${votesFor} no=${votesAgainst} abstain=${votesAbstain} totalSeats=${totalSeats} resolution=${resolution}`);
 
         if (resolution === 'deferred') {
