@@ -72,9 +72,6 @@ DELETE FROM diplomatic_proposals WHERE proposed_by_faction_id IN (
 DELETE FROM diplomatic_action_log WHERE faction_id IN (
     SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
 );
-DELETE FROM faction_coalitions WHERE proposed_by_faction_id IN (
-    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
-);
 DELETE FROM impeachment_proceedings WHERE initiated_by_faction_id IN (
     SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Sangreza')
 );
