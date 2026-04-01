@@ -59,6 +59,7 @@ const MODULE_FILES = [
     'political-actions.js',
     'election-simulation.js',
     'sovereign-default.js',
+    'incidents.js',
 ];
 
 // Read and process each module

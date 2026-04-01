@@ -429,6 +429,7 @@ export function renderNavTabs(activeTab) {
         { id: 'laws', label: 'Bills', href: 'laws.html' },
         { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
         { id: 'news', label: 'News', href: 'news.html' },
+        { id: 'conflicts', label: 'Conflicts', href: 'conflicts.html' },
         { id: 'economy', label: 'Economy', href: 'economy.html' },
         { id: 'wiki', label: 'Wiki', href: 'wiki.html' }
     ];
@@ -450,6 +451,9 @@ export function renderNavTabs(activeTab) {
         }
         if (tab.id === 'diplomacy') {
             badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>';
+        }
+        if (tab.id === 'conflicts') {
+            badgeHtml = '<span class="nav-badge nav-badge--crimson" id="conflicts-badge" style="display:none;"></span>';
         }
         return `
             <a href="${href}"
@@ -623,6 +627,30 @@ async function updateDiplomacyBadge(faction, nation, roles) {
         }
     } catch (e) {
         console.error('Error updating diplomacy badge:', e);
+    }
+}
+
+
+// ===== CONFLICTS BADGE (active incidents involving your nation) =====
+
+async function updateConflictsBadge(faction, nation) {
+    const badge = document.getElementById('conflicts-badge');
+    if (!badge || !faction || !nation) return;
+    try {
+        const { count } = await _supabase
+            .from('incidents')
+            .select('id', { count: 'exact', head: true })
+            .in('status', ['active', 'mediating'])
+            .or(`nation_a_id.eq.${nation.id},nation_b_id.eq.${nation.id}`);
+
+        if (count && count > 0) {
+            badge.textContent = count;
+            badge.style.display = '';
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch (e) {
+        console.error('Error updating conflicts badge:', e);
     }
 }
 
@@ -1197,6 +1225,10 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
         updateDiplomacyBadge(state.faction, state.nation, diploRoles);
     }
     updateIPOInviteBadge(state.faction, diploRoles);
+    // Update conflicts badge (active incidents involving your nation)
+    if (activeTab !== 'conflicts') {
+        updateConflictsBadge(state.faction, state.nation);
+    }
 
     // Inject messaging bubble on all pages
     initMessaging(state.faction, state.nation, state.shard);

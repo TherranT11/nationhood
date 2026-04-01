@@ -2665,6 +2665,43 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] IPO processing failed (non-fatal):', ipoErr);
     }
 
+    // ══════════════════════════════════════════════════════════════════
+    // 4c. INCIDENTS — global trigger check (runs once per tick, not per-nation)
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const incidentResults = await processIncidentTriggers(supabase, nationList, newTick);
+        if (incidentResults.length > 0) {
+            summary.incidents = incidentResults;
+            console.log(`[advanceTick] Incidents: ${incidentResults.length} new incident(s) triggered`);
+        }
+
+        // Process active incidents: tick events + inaction penalties
+        const activeResults = await processActiveIncidents(supabase, nationList, newTick);
+        if (activeResults.tickEvents.length > 0 || activeResults.inactionPenalties.length > 0) {
+            summary.incidentTickEvents = activeResults.tickEvents;
+            summary.incidentInaction = activeResults.inactionPenalties;
+            console.log(`[advanceTick] Incidents: ${activeResults.tickEvents.length} tick event(s), ${activeResults.inactionPenalties.length} inaction penalty(ies)`);
+        }
+
+        // Process escalation, mediation, blowback, and resolution
+        const resolutionResults = await processIncidentResolutionPhase(supabase, nationList, newTick);
+        if (resolutionResults.escalations.length > 0) {
+            summary.incidentEscalations = resolutionResults.escalations;
+        }
+        if (resolutionResults.mediations.length > 0) {
+            summary.incidentMediations = resolutionResults.mediations;
+        }
+        if (resolutionResults.blowbacks.length > 0) {
+            summary.incidentBlowbacks = resolutionResults.blowbacks;
+        }
+        if (resolutionResults.resolutions.length > 0) {
+            summary.incidentResolutions = resolutionResults.resolutions;
+            console.log(`[advanceTick] Incidents: ${resolutionResults.resolutions.length} resolved`);
+        }
+    } catch (incidentErr) {
+        console.error('[advanceTick] Incident processing failed (non-fatal):', incidentErr);
+    }
+
     // 5. Commit shard tick/date AFTER all nation processing completes.
     // This is the last step — if the function timed out earlier, the tick
     // number stays unchanged and the cron will re-process on the next run.
