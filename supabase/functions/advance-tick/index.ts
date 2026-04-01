@@ -1013,9 +1013,11 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     // Fetch previous tick's price modifiers for smoothing
     var prevTick = currentTick - 1;
     if (prevTick > 0) {
+        // Fetch one nation's rows — price_modifier is identical across nations per sector
         var { data: prevFlows } = await supabase.from('trade_flows')
             .select('sector, price_modifier')
             .eq('tick', prevTick)
+            .eq('nation_id', nationList[0].id)
             .limit(sectors.length);
         if (prevFlows) {
             for (var i = 0; i < prevFlows.length; i++) {
@@ -1478,13 +1480,14 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             // Allocate each pair: min of (exporter's share, importer's share)
             for (var pi = 0; pi < pairs.length; pi++) {
                 var p = pairs[pi];
-                if (p.weight <= 0) { p.volume = 0; continue; }
+                if (p.weight <= 0) continue; // preserve prior-pass volume for exhausted pairs
 
                 // Share of this exporter's capacity going to this importer
                 var expShare = (expBudget[p.expId] || 0) * (p.weight / (expWeightSum[p.expId] || 1));
                 // Share of this importer's demand filled by this exporter
                 var impShare = (impBudget[p.impId] || 0) * (p.weight / (impWeightSum[p.impId] || 1));
-                p.volume = Math.round(Math.min(expShare, impShare));
+                // Accumulate across passes: pass 0 sets base, pass 1+ adds remaining
+                p.volume += Math.round(Math.min(expShare, impShare));
             }
 
             // Update budgets: subtract allocated volumes, zero out fully-allocated pairs
@@ -11509,11 +11512,11 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
         if (momErr) console.error(`[Election] Failed to reset momentum for faction ${f.id}:`, momErr.message);
     }
 
-    // Dissolve legislature — fail all pending bills (new parliament must re-propose)
+    // Dissolve legislature — fail all pending and frozen bills (new parliament must re-propose)
     const { data: dissolvedBills } = await supabase.from('bills')
         .update({ status: 'failed' })
         .eq('nation_id', nation.id)
-        .in('status', ['committee', 'floor'])
+        .in('status', ['committee', 'floor', 'frozen'])
         .select('id, nation_id, bill_type, ambassador_id, ministry_key');
     await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
     await syncMinistriesForFailedConfirmationBills(supabase, dissolvedBills);
