@@ -27,7 +27,7 @@ import { initPage, getAdminNationOverride, getAdminFactionOverride } from './js/
 import { escapeHtml } from './js/utils.js';
 import {
     initGameConfigForNation,
-    isPresidentialRepublic, isGovernmentAutocracy,
+    isPresidentialRepublic,
     fetchActiveCoalition, loadSeats, syncVoteTallies,
     deductAP, adjustMomentumAll,
     GAME_CONFIG
@@ -76,7 +76,7 @@ const ROLE_CONFIG = {
         description: null, // set dynamically with target nation
         badgePrefix: 'Foreign Minister:',
         confirmLabel: 'Nominate Ambassador',
-        confirmWarning: null, // set dynamically based on autocracy
+        confirmWarning: null, // set dynamically
         confirmVerb: null,
         progressLabel: null,
         emptyTitle: 'Ambassador Appointment',
@@ -98,7 +98,7 @@ let selectedCandidateIndex = null; // Ambassador (index)
 // Ambassador-specific state
 let targetNation = null;
 let allParties = [];
-let isAutocracy = false;
+
 
 const AMB_FIRST_NAMES = [
     'Carlos','Diego','Fernando','H\u00E9ctor','Marcos','Ram\u00F3n','Jos\u00E9','Luis','Miguel',
@@ -161,8 +161,6 @@ async function initPresident() {
 //  Ambassador init
 // ═══════════════════════════════════════
 async function initAmbassador() {
-    isAutocracy = isGovernmentAutocracy(currentNation);
-
     const targetId = params.get('target');
     if (!targetId) {
         renderEmpty('No target nation specified. <a href="' + diploBackUrl() + '">Back to Diplomacy</a>');
@@ -212,7 +210,7 @@ async function initAmbassador() {
         return;
     }
 
-    if (!isAutocracy && !coalition) {
+    if (!coalition) {
         renderEmpty('No government is currently seated. Ambassador appointments require an active government. <a href="' + diploBackUrl() + '">Back to Diplomacy</a>');
         return;
     }
@@ -278,9 +276,7 @@ function renderCandidates() {
 
     const description = 'Select a candidate to serve as your nation\'s Ambassador to <strong>' + escapeHtml(targetNation.name) + '</strong>.';
 
-    const confirmWarning = isAutocracy
-        ? 'The ambassador will be appointed immediately.'
-        : 'A confirmation vote will be held in Parliament (51% required).';
+    const confirmWarning = 'A confirmation vote will be held in Parliament (51% required).';
 
     page.innerHTML = `
         <div class="sc-header">
@@ -339,19 +335,18 @@ async function confirmAmbassador() {
 
     const candidate = candidates[selectedCandidateIndex];
 
-    const actionLabel = isAutocracy ? 'appoint' : 'nominate';
     if (!confirm(
-        '\u{1F3DB}\uFE0F ' + actionLabel.charAt(0).toUpperCase() + actionLabel.slice(1) + ' ' +
+        '\u{1F3DB}\uFE0F Nominate ' +
         candidate.firstName + ' ' + candidate.lastName + ' as Ambassador to ' + targetNation.name + '?\n\n' +
         'Party: ' + candidate.partyName + '\n' +
         'Cost: 1 AP\n' +
         candidate.partyName + ' will gain +1 Approval.\n\n' +
-        (isAutocracy ? 'The ambassador will be appointed immediately.' : 'A confirmation bill will go to a floor vote in Parliament.')
+        'A confirmation bill will go to a floor vote in Parliament.'
     )) return;
 
     const btn = document.getElementById('sc-confirm-btn');
     btn.disabled = true;
-    btn.textContent = isAutocracy ? 'Appointing...' : 'Nominating...';
+    btn.textContent = 'Nominating...';
 
     try {
         // Deduct 1 AP
@@ -370,26 +365,7 @@ async function confirmAmbassador() {
 
         let confirmationBillId = null;
 
-        if (isAutocracy) {
-            const { data: insertedAmbassador, error: ambError } = await _supabase
-                .from('ambassadors')
-                .insert({
-                    nation_id: currentNation.id,
-                    target_nation_id: targetNation.id,
-                    faction_id: candidate.partyId,
-                    ambassador_first_name: candidate.firstName,
-                    ambassador_last_name: candidate.lastName,
-                    ambassador_age: candidate.age,
-                    status: 'active',
-                    is_active: true,
-                    appointed_at_tick: currentTick
-                })
-                .select()
-                .single();
-
-            if (ambError) throw ambError;
-        } else {
-            const billName = 'Confirmation of ' + candidate.firstName + ' ' + candidate.lastName + ' as Ambassador to ' + targetNation.name;
+        const billName = 'Confirmation of ' + candidate.firstName + ' ' + candidate.lastName + ' as Ambassador to ' + targetNation.name;
             const preamble = 'This motion, filed by the ' + currentFaction.faction_name + ', confirms the appointment of ' + candidate.firstName + ' ' + candidate.lastName + ' (' + candidate.partyName + ') as Ambassador to ' + targetNation.name + '. A simple majority (51%) is required for confirmation.';
 
             const { data: nominationResult, error: nominationError } = await _supabase.rpc('create_ambassador_nomination_with_bill', {
@@ -414,14 +390,12 @@ async function confirmAmbassador() {
             }
 
             confirmationBillId = nominationRow.bill_id;
-        }
 
         // +1 approval to the candidate's party
         await adjustMomentumAll(_supabase, currentNation.id, candidate.partyId, 1, 'diplomacy:ambassador_selected');
 
-        // Democracy: auto-cast FM seats on the confirmation bill
-        if (!isAutocracy) {
-            if (!confirmationBillId) throw new Error('Missing confirmation bill ID from nomination RPC.');
+        // Auto-cast FM seats on the confirmation bill
+        if (!confirmationBillId) throw new Error('Missing confirmation bill ID from nomination RPC.');
 
             const { data: parties } = await _supabase
                 .from('factions')
@@ -440,11 +414,8 @@ async function confirmAmbassador() {
             }
 
             await syncVoteTallies(_supabase, confirmationBillId);
-        }
 
-        const msg = isAutocracy
-            ? '\u{1F3DB}\uFE0F ' + candidate.firstName + ' ' + candidate.lastName + ' has been appointed Ambassador to ' + targetNation.name + '!'
-            : '\u{1F3DB}\uFE0F ' + candidate.firstName + ' ' + candidate.lastName + ' has been nominated as Ambassador to ' + targetNation.name + '. A confirmation vote has been filed in Parliament.';
+        const msg = '\u{1F3DB}\uFE0F ' + candidate.firstName + ' ' + candidate.lastName + ' has been nominated as Ambassador to ' + targetNation.name + '. A confirmation vote has been filed in Parliament.';
         alert(msg);
         window.location.href = diploBackUrl();
 

@@ -9,7 +9,6 @@
 import { GAME_CONFIG } from './config.js';
 import { IDEOLOGY_AXES, IDEOLOGY_TO_AXIS } from './ideology.js';
 import { fetchActiveCoalition } from './government-structure.js';
-import { isAutocracy } from './government-types.js';
 
 // ==================== CONSTANTS ====================
 
@@ -72,14 +71,6 @@ export function getCaucusFactionCount(seatShare) {
  * Called once per tick. Activates or deactivates caucuses based on seat share.
  */
 export async function evaluateCaucusActivation(supabase, nationId, totalSeats) {
-    // Skip autocracies — caucus system only applies to democracies
-    const { data: nationRow } = await supabase
-        .from('nations')
-        .select('government_type')
-        .eq('id', nationId)
-        .single();
-    if (isAutocracy(nationRow)) return;
-
     const { data: parties, error } = await supabase
         .from('factions')
         .select('id, faction_name, seats')

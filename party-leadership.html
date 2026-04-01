@@ -31,7 +31,7 @@ import {
     generateLeadershipCandidates
 } from './js/game/party-leadership.js';
 import { PM_TRAIT_KEYS } from './js/game/political-actions.js';
-import { isPresidentialRepublic, isAutocracy } from './js/game/government-types.js';
+import { isPresidentialRepublic } from './js/game/government-types.js';
 
 let currentNation = null;
 let currentFaction = null;
@@ -478,7 +478,7 @@ window._appointLeader = async function() {
     }
     confirmLines.push('', 'This will replace the current party leader.');
     const isRulingPartyPreCheck = currentNation?.ruling_faction_id === currentFaction?.id;
-    const isParliamentaryPreCheck = !isPresidentialRepublic(currentNation) && !isAutocracy(currentNation);
+    const isParliamentaryPreCheck = !isPresidentialRepublic(currentNation);
     if (isRulingPartyPreCheck && isParliamentaryPreCheck) {
         confirmLines.push('As the ruling party leader, they will also become Prime Minister.');
     }
@@ -518,7 +518,7 @@ window._appointLeader = async function() {
         // If this faction is the ruling party (parliamentary), update PM records
         // so the new leader becomes PM with a fresh trait
         const isRulingParty = currentNation.ruling_faction_id === currentFaction.id;
-        const isParliamentary = !isPresidentialRepublic(currentNation) && !isAutocracy(currentNation);
+        const isParliamentary = !isPresidentialRepublic(currentNation);
         if (isRulingParty && isParliamentary) {
             const newTraitKey = PM_TRAIT_KEYS[Math.floor(Math.random() * PM_TRAIT_KEYS.length)];
             const leaderAge = candidate.age || (35 + Math.floor(Math.random() * 16));

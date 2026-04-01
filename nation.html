@@ -34,7 +34,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, refreshGameState, qCache, qCacheSet, qCacheBust, formatNumber, scaleRawToDollars, assertRawEconomicValue } from './js/common.js';
 import './js/guide.js';
 import { formatCurrencyShort, escapeHtml } from './js/utils.js';
-import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
+import { CANONICAL_GOVERNMENT_TYPES, isPresidentialRepublic, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel, inflationColorClass, inflationRate, formatFuelPrice, getFuelPriceLabel, fuelPriceColorClass, fuelPricePerGallon } from './js/game/stats.js';
 /**
  * Nation Page - Comprehensive Stats Display
@@ -839,16 +839,6 @@ async function renderRevolutionBanner(nation) {
             h += '<span class="revolution-tag revolution-tag--green">Elections Complete</span>';
         }
         h += '<span class="revolution-tag revolution-tag--green">Democracy Established</span></div></div>';
-        return h;
-    }
-    if (isAutocracy(nation) && nation.revolution_started_tick != null && nation.revolution_duration != null) {
-        var elapsed = currentTick - nation.revolution_started_tick;
-        var remaining = Math.max(0, nation.revolution_duration - elapsed);
-        var h = '<div class="revolution-banner">';
-        h += '<div class="revolution-banner__title">Democratic Revolution</div>';
-        h += '<div class="revolution-banner__subtitle">The people demand democracy. Pro-democracy protests grow stronger each day.</div>';
-        h += '<div class="revolution-banner__countdown">' + remaining + ' tick' + (remaining !== 1 ? 's' : '') + ' until revolution</div>';
-        h += '</div>';
         return h;
     }
     return '';

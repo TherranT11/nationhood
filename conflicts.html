@@ -678,10 +678,8 @@ function showActionModal(action, incident, stretchedThin) {
 
     if (isConcede) {
         const oppLev = isA ? (incident.leverage_b || 0) : (incident.leverage_a || 0);
-        const govType = isA ? incident.nation_a_gov_type : incident.nation_b_gov_type;
-        const isAuto = govType === 'autocracy';
-        const cost = isAuto ? Math.round(oppLev * 1.5) : oppLev;
-        const costLabel = isAuto ? `Regime Health: -${cost}` : `Gov Approval: -${cost}`;
+        const cost = oppLev;
+        const costLabel = `Gov Approval: -${cost}`;
         bodyHtml += `<div class="modal-warning">This resolves the crisis in your opponent's favor.<br>${costLabel}</div>`;
         confirmBtn.textContent = 'Concede — Cannot Be Undone';
         confirmBtn.className = 'modal-btn modal-btn--danger';
@@ -792,9 +790,7 @@ async function executeAction(action, incident, stretchedThin) {
         if (isConcede) {
             const resType = isA ? 'concession_a' : 'concession_b';
             const oppLev = isA ? (incident.leverage_b || 0) : (incident.leverage_a || 0);
-            const govType = isA ? incident.nation_a_gov_type : incident.nation_b_gov_type;
-            const isAuto = govType === 'autocracy';
-            const cost = isAuto ? Math.round(oppLev * 1.5) : oppLev;
+            const cost = oppLev;
 
             // Resolve incident
             await _supabase.from('incidents').update({
@@ -804,7 +800,7 @@ async function executeAction(action, incident, stretchedThin) {
             }).eq('id', incident.id);
 
             // Apply stat cost
-            const statKey = isAuto ? 'regime_health' : 'gov_approval';
+            const statKey = 'gov_approval';
             const currentVal = Number(currentNation[statKey] ?? 50);
             await _supabase.from('nations').update({
                 [statKey]: Math.max(0, currentVal - cost)

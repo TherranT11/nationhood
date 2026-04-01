@@ -76,20 +76,6 @@ DECLARE
         'faction_coalitions',
         'loyalty_demands',
 
-        -- ══ Autocracy ══
-        'stewards',
-        'executive_orders',
-        'autocracy_action_log',
-        'autocracy_tracker',
-        'regime_pillars',
-        'faction_pillar_state',
-        'coup_attempt_log',
-        'putsch_state',
-        'pyrrhic_window',
-        'vulnerability_window',
-        'silent_coup_offers',
-        'silent_coup_votes',
-
         -- ══ Elections & endorsements ══
         'presidential_endorsements',
         'party_endorsement_preferences',
@@ -159,14 +145,6 @@ BEGIN
     -- First: null out FKs on nations so factions can be deleted
     UPDATE nations SET ruling_faction_id = NULL WHERE ruling_faction_id IS NOT NULL;
     result := result || '{"nations.ruling_faction_id": "nulled"}'::JSONB;
-
-    -- Null out regime_pillars FK if the table exists
-    BEGIN
-        UPDATE regime_pillars SET steward_faction_id = NULL WHERE steward_faction_id IS NOT NULL;
-        result := result || '{"regime_pillars.steward_faction_id": "nulled"}'::JSONB;
-    EXCEPTION WHEN undefined_table THEN
-        result := result || '{"regime_pillars.steward_faction_id": "table missing (skipped)"}'::JSONB;
-    END;
 
     -- Null out diplomatic_relations FKs
     BEGIN

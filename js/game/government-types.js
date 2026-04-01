@@ -1,5 +1,5 @@
 /**
- * government-types.js — Government type helpers (autocracy, democracy, presidential)
+ * government-types.js — Government type helpers (democracy, presidential)
  * Extracted from game-common.js
  */
 
@@ -9,7 +9,6 @@
  */
 export const CANONICAL_GOVERNMENT_TYPES = Object.freeze({
     PARLIAMENTARY_DEMOCRACY: 'Democracy',
-    AUTOCRACY: 'Autocracy',
     PRESIDENTIAL_REPUBLIC: 'Presidential'
 });
 
@@ -19,12 +18,6 @@ export const GOVERNMENT_TYPE_ALIASES = Object.freeze({
     parliamentary: CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
     parliamentarian: CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
     'parliamentary democracy': CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
-    autocracy: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
-    authoritarian: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
-    authoritarianism: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
-    dictatorship: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
-    dictatorial: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
-    'military junta': CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
     presidential: CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC,
     'presidential republic': CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC,
     'executive presidency': CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC
@@ -36,15 +29,13 @@ export function getCanonicalGovernmentType(input, fallbackType = CANONICAL_GOVER
     return GOVERNMENT_TYPE_ALIASES[govType.trim().toLowerCase()] || fallbackType;
 }
 
-export function isAutocracy(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.AUTOCRACY; }
 export function isParliamentaryDemocracy(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY; }
 export function isPresidentialRepublic(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC; }
 
-export function isGovernmentAutocracy(nation) { return isAutocracy(nation); }
 export function isGovernmentPresidential(nation) { return isPresidentialRepublic(nation); }
 
 // Canonical government types used by nations and ministry event templates.
-export const canonicalNationGovTypes = ['Autocracy', 'Parliamentary Republic', 'Presidential'];
+export const canonicalNationGovTypes = ['Parliamentary Republic', 'Presidential'];
 
 // Temporary aliases to support migration from legacy gov-type strings.
 // TODO(next migration stub): remove aliases and require strict canonical-only values.
@@ -62,12 +53,10 @@ export function canonicalizeNationGovType(govType) {
  * Accounts for Constitutional Monarchy (hereditary HOS in a parliamentary system).
  *
  * @param {object} nation - Nation row (needs government_type, hos_election_method)
- * @returns {string} e.g. "Parliamentary Democracy", "Constitutional Monarchy", "Presidential Republic", "Autocratic State"
+ * @returns {string} e.g. "Parliamentary Democracy", "Constitutional Monarchy", "Presidential Republic"
  */
 export function getGovDisplayLabel(nation) {
-    if (isAutocracy(nation)) return 'Autocratic State';
     if (isPresidentialRepublic(nation)) return 'Presidential Republic';
     if (nation?.hos_election_method === 'hereditary') return 'Constitutional Monarchy';
     return 'Parliamentary Democracy';
 }
-

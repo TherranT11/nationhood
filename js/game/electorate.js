@@ -19,7 +19,6 @@
 
 import { IDEOLOGY_AXES } from './ideology.js';
 import { statDirectionSign, ISSUE_CATEGORY_STATS } from './stats.js';
-import { isAutocracy } from './government-types.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { deductAP } from './config.js';
 import { computeEngagementScores } from './engagement.js';
@@ -1044,8 +1043,6 @@ export async function genesisElectorate(supabase, nation, factions, currentTick 
  * @param {boolean} [opts.snap] - If true, bypass drift caps and snap pillars to target values immediately
  */
 export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
-    if (isAutocracy(nation)) return;
-
     // ── 1. Load all non-abandoned parties ──
     // All parties participate in electoral calculations (vote share pipeline)
     // so that elections always have accurate realized_vote_share data.

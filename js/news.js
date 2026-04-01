@@ -12,7 +12,6 @@ let _articleReaderHandler = null; // stored ref to prevent listener accumulation
 let _archiveBackContext = null; // navigation context for article reader back button
 let _editingArticleId = null; // null = create mode, UUID string = edit mode
 let _removeExistingImage = false; // flag: user wants to drop the current image on edit
-let _isAutocracyNation = false; // detected during init for reward display
 let _publication = 'cruceran'; // 'cruceran' or 'continental'
 let _publicationSetByUser = false; // true when user manually switched via dropdown
 
@@ -65,18 +64,6 @@ export async function initNewspaper(supabase, state) {
     _shardNationIds = null; // reset cache on reinit
     _categoryFilter = 'all'; // reset filter on reinit
     _archiveBackContext = null; // reset: article reader "Back" goes to front page
-
-    // Detect autocracy for article reward display
-    _isAutocracyNation = false;
-    if (state.nation?.id) {
-        const { data: admin } = await supabase
-            .from('administrations')
-            .select('government_type')
-            .eq('nation_id', state.nation.id)
-            .order('started_at_tick', { ascending: false })
-            .limit(1).maybeSingle();
-        if (admin?.government_type === 'autocracy') _isAutocracyNation = true;
-    }
 
     const root = document.getElementById('newspaper-root');
     if (!root) return;
@@ -429,12 +416,10 @@ export async function initNewspaper(supabase, state) {
         });
     }
 
-    // Update reward badge text based on government type
+    // Update reward badge text
     const rewardBadge = document.getElementById('nws-reward-badge');
     if (rewardBadge) {
-        rewardBadge.textContent = _isAutocracyNation
-            ? '+1 Backing (4000+)'
-            : '+5 Momentum (8000+)';
+        rewardBadge.textContent = '+5 Momentum (8000+)';
     }
 
     // === LOAD & DISPLAY ARTICLES ===
@@ -442,22 +427,6 @@ export async function initNewspaper(supabase, state) {
 
     // === VOLBAL LIGUE NATIONALE ===
     loadAndRenderVLN();
-}
-
-/** Award backing to an autocracy faction for writing an article */
-async function _applyArticleBackingReward(factionId) {
-    const { data: fps } = await _supabase
-        .from('faction_pillar_state')
-        .select('pillar, backing')
-        .eq('faction_id', factionId)
-        .maybeSingle();
-    if (!fps) return;
-    const current = Number(fps.backing ?? 0);
-    const newVal = Math.min(20, current + 1);
-    await _supabase
-        .from('faction_pillar_state')
-        .update({ backing: newVal })
-        .eq('faction_id', factionId);
 }
 
 function bindModalEvents() {
@@ -507,15 +476,10 @@ function bindModalEvents() {
     if (bodyInput && charCount) {
         bodyInput.addEventListener('input', () => {
             const len = bodyInput.value.length;
-            let tag;
-            if (_isAutocracyNation) {
-                tag = len >= 4000 ? ' · +1 Backing' : ` · ${4000 - len} more for +1 Backing`;
-            } else {
-                tag = len >= 8000 ? ' · +5 Momentum' : ` · ${8000 - len} more for +5 Momentum`;
-            }
+            const tag = len >= 8000 ? ' · +5 Momentum' : ` · ${8000 - len} more for +5 Momentum`;
             charCount.textContent = `${len} / 12000${tag}`;
             charCount.classList.toggle('nws-near-limit', len >= 11500);
-            charCount.classList.toggle('nws-ap-qualified', _isAutocracyNation ? (len >= 4000 && len < 11500) : (len >= 8000 && len < 11500));
+            charCount.classList.toggle('nws-ap-qualified', len >= 8000 && len < 11500);
         });
     }
 
@@ -660,17 +624,8 @@ function bindSubmitHandler() {
                 if (error) throw error;
 
                 let successMsg = 'Article published!';
-                if (_isAutocracyNation) {
-                    // Autocracy: +1 Backing for any article >= 4000 chars
-                    const backingReward = body.length >= 4000 ? 1 : 0;
-                    if (backingReward > 0) {
-                        _applyArticleBackingReward(faction.id).catch(err => console.error('[News] Backing reward failed:', err));
-                        successMsg = `Article published! +${backingReward} Backing.`;
-                    } else {
-                        successMsg = `Article published! (${body.length}/4000 chars — no backing reward)`;
-                    }
-                } else {
-                    // Democracy: +5 Momentum for any article >= 8000 chars
+                {
+                    // +5 Momentum for any article >= 8000 chars
                     if (body.length >= 8000) {
                         _supabase.rpc('adjust_momentum', { p_faction_id: faction.id, p_delta: 5 })
                             .then(({ error: momErr }) => { if (momErr) console.error('[News] Momentum reward failed:', momErr); });
@@ -802,16 +757,10 @@ function openEditModal(article) {
     const bodyLen = (article.body || '').length;
     const charCount = document.getElementById('nws-char-count');
     if (charCount) {
-        let tag;
-        if (_isAutocracyNation) {
-            tag = bodyLen >= 4000 ? ' · +1 Backing' : ` · ${4000 - bodyLen} more for +1 Backing`;
-        } else {
-            if (bodyLen >= 8000) tag = ' · +5 Momentum';
-            else tag = ` · ${8000 - bodyLen} more for +5 Momentum`;
-        }
+        const tag = bodyLen >= 8000 ? ' · +5 Momentum' : ` · ${8000 - bodyLen} more for +5 Momentum`;
         charCount.textContent = `${bodyLen} / 12000${tag}`;
         charCount.classList.toggle('nws-near-limit', bodyLen >= 11500);
-        charCount.classList.toggle('nws-ap-qualified', _isAutocracyNation ? (bodyLen >= 4000 && bodyLen < 11500) : (bodyLen >= 8000 && bodyLen < 11500));
+        charCount.classList.toggle('nws-ap-qualified', bodyLen >= 8000 && bodyLen < 11500);
     }
 
     // Image state

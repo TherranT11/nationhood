@@ -1,21 +1,16 @@
 [
-  "createparty.html:isAutocracy",
   "dashboard-old.html:currentFaction",
   "dashboard-old.html:currentNation",
   "diplomacy.html:currentFaction",
   "diplomacy.html:currentNation",
   "elections.html:currentFaction",
   "elections.html:currentNation",
-  "elections.html:isAutocracy",
   "factions.html:currentNation",
   "factions.html:currentFaction",
   "government.html:currentNation",
   "government.html:currentFaction",
-  "government.html:isAutocracy",
   "laws.html:currentNation",
-  "laws.html:isAutocracy",
   "map.html:currentFaction",
   "select-candidate.html:currentNation",
-  "select-candidate.html:currentFaction",
-  "select-candidate.html:isAutocracy"
+  "select-candidate.html:currentFaction"
 ]

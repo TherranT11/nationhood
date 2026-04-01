@@ -228,7 +228,6 @@ body {
 }
 .gov-democracy { color: var(--green); border-color: var(--green-border); background: var(--green-faint); }
 .gov-presidential { color: var(--blue); border-color: var(--blue-border); background: var(--blue-faint); }
-.gov-autocracy { color: var(--red); border-color: var(--red-border); background: var(--red-faint); }
 
 .nation-card__body {
   padding: 12px 14px;
@@ -530,12 +529,10 @@ function getDemand(nationId) {
 
 // ── Gov helpers ──
 function getGovClass(nation) {
-    if (nation.government_type === 'Autocracy') return 'gov-autocracy';
     if (nation.government_type === 'Presidential') return 'gov-presidential';
     return 'gov-democracy';
 }
 function getGovLabel(nation) {
-    if (nation.government_type === 'Autocracy') return 'Autocracy';
     if (nation.government_type === 'Presidential') return 'Presidential';
     if (nation.hos_election_method === 'hereditary') return 'Constitutional Monarchy';
     return 'Parliamentary';

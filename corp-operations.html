@@ -1136,6 +1136,364 @@ body.light-mode .wh-empty__text { color: #1a1a17; }
   font-family: var(--font-mono); font-size: 11px; font-weight: 700;
 }
 
+/* ── Permits card — 380×450 ── */
+.pm-card {
+  width: 380px; height: 450px;
+  background: var(--bg-2); border: 1px solid var(--border-0);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.pm-card__header {
+  padding: 8px 14px; border-bottom: 1px solid var(--border-0);
+  display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+}
+.pm-card__header-left { display: flex; align-items: center; gap: 6px; }
+.pm-card__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--amber); }
+.pm-card__label {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 2px; color: var(--text-muted); text-transform: uppercase;
+}
+.pm-card__badges { display: flex; gap: 6px; }
+.pm-badge {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  padding: 1px 6px; letter-spacing: 0.5px;
+}
+.pm-badge--expiring { color: var(--orange); background: var(--orange-faint); border: 1px solid var(--orange-border); }
+.pm-badge--pending { color: var(--gold); background: var(--gold-faint); border: 1px solid var(--gold-border); }
+
+/* Permits tab bar */
+.pm-tabs {
+  display: flex; border-bottom: 1px solid var(--border-0);
+  background: var(--bg-4); flex-shrink: 0;
+}
+.pm-tab {
+  flex: 1; padding: 6px 0; text-align: center; cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  background: none; border-top: none; border-left: none; border-right: none;
+}
+.pm-tab:hover { background: rgba(255,255,255,0.01); }
+.pm-tab.active { border-bottom-color: var(--green); }
+.pm-tab__label {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  color: var(--text-dim); letter-spacing: 0.8px;
+}
+.pm-tab.active .pm-tab__label { color: var(--green); }
+.pm-tab__count {
+  font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); margin-left: 4px;
+}
+
+/* Permits list */
+.pm-list { flex: 1; overflow-y: auto; }
+.pm-empty {
+  flex: 1; display: flex; align-items: center; justify-content: center; min-height: 260px;
+}
+.pm-empty__text {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-bright);
+  letter-spacing: 0.04em; text-align: center; line-height: 1.8;
+}
+body.light-mode .pm-empty__text { color: #1a1a17; }
+
+/* Permit item (active) */
+.pm-item {
+  border-bottom: 1px solid var(--border-0); cursor: pointer;
+}
+.pm-item__inner {
+  padding: 8px 14px; border-left: 2px solid transparent;
+}
+.pm-item--expiring .pm-item__inner { border-left-color: var(--orange); }
+.pm-item.expanded .pm-item__inner { background: rgba(139,154,107,0.03); }
+.pm-item__row1 {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;
+}
+.pm-item__name { font-size: 11px; font-weight: 600; color: var(--text-bright); }
+.pm-item__status {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  padding: 1px 6px;
+}
+.pm-item__status--active { color: var(--green); background: var(--green-faint); border: 1px solid var(--green-border); }
+.pm-item__status--processing { color: var(--gold); background: var(--gold-faint); border: 1px solid var(--gold-border); }
+.pm-item__status--review { color: var(--orange); background: var(--orange-faint); border: 1px solid var(--orange-border); }
+.pm-item__row2 {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 5px;
+}
+.pm-nation-tag {
+  font-family: var(--font-mono); font-size: 7px; letter-spacing: 0.5px;
+  color: #8b9a6b; padding: 0 4px; line-height: 12px;
+  background: rgba(139,154,107,0.08); border: 1px solid rgba(139,154,107,0.15);
+}
+.pm-item__expiry { font-family: var(--font-mono); font-size: 8px; }
+.pm-item__ticks { font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); }
+.pm-item__arrow { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
+
+/* Expiry/progress bar */
+.pm-bar { width: 100%; height: 3px; background: var(--border-0); }
+.pm-bar__fill { height: 100%; }
+
+/* Expanded detail panel */
+.pm-detail {
+  margin-top: 8px; padding: 6px 8px;
+  background: var(--bg-4); border: 1px solid var(--border-0);
+}
+.pm-detail__row {
+  display: flex; justify-content: space-between; padding: 3px 0;
+  border-bottom: 1px solid var(--border-0);
+}
+.pm-detail__row:last-child { border-bottom: none; }
+.pm-detail__key {
+  font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); letter-spacing: 0.8px;
+}
+.pm-detail__val {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-secondary);
+}
+.pm-detail__val--green { color: var(--green); }
+.pm-detail__val--red { color: var(--red); }
+.pm-detail__val--gold { color: var(--gold); }
+
+/* Project chips */
+.pm-projects { padding: 3px 0; }
+.pm-projects__label {
+  font-family: var(--font-mono); font-size: 8px; color: var(--text-dim);
+  letter-spacing: 0.8px; margin-bottom: 2px;
+}
+.pm-projects__list { display: flex; gap: 3px; flex-wrap: wrap; }
+.pm-project-chip {
+  font-family: var(--font-mono); font-size: 8px; padding: 1px 5px;
+  color: var(--text-secondary); background: var(--bg-0); border: 1px solid var(--border-0);
+  cursor: pointer;
+}
+.pm-project-chip:hover { border-color: var(--border-2); }
+
+/* Site-specific note */
+.pm-note {
+  margin-top: 4px; padding: 3px 6px;
+  background: var(--gold-faint); border: 1px solid rgba(200,168,50,0.1);
+}
+.pm-note__text { font-family: var(--font-mono); font-size: 8px; color: var(--gold); }
+
+/* Renew / Apply button */
+.pm-btn {
+  padding: 3px 12px; font-family: var(--font-mono); font-size: 8px;
+  font-weight: 700; letter-spacing: 1px; cursor: pointer; border: none;
+}
+.pm-btn--renew { color: #000; background: var(--orange); }
+.pm-btn--apply { color: #000; background: #8b9a6b; padding: 4px 16px; font-size: 9px; }
+.pm-btn:hover { opacity: 0.85; }
+.pm-btn-row { margin-top: 6px; display: flex; justify-content: flex-end; }
+
+/* Pending detail bar */
+.pm-pending-detail {
+  display: flex; gap: 0; margin-top: 6px;
+  background: var(--bg-4); border: 1px solid var(--border-0);
+}
+.pm-pending-detail__cell {
+  flex: 1; padding: 4px 8px;
+}
+.pm-pending-detail__cell + .pm-pending-detail__cell { border-left: 1px solid var(--border-0); }
+.pm-pending-detail__label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); letter-spacing: 0.8px;
+}
+.pm-pending-detail__value {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700; margin-top: 1px;
+}
+
+/* Processing label row */
+.pm-processing-row {
+  display: flex; justify-content: space-between; margin-bottom: 2px;
+}
+.pm-processing-label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); letter-spacing: 0.8px;
+}
+.pm-processing-ticks {
+  font-family: var(--font-mono); font-size: 8px; color: var(--text-secondary);
+}
+
+/* Available permit description */
+.pm-desc {
+  font-size: 10px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 8px;
+}
+
+/* Footer */
+.pm-card__footer {
+  padding: 8px 14px; border-top: 1px solid var(--border-0);
+  background: var(--bg-3); display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0;
+}
+.pm-footer__total-label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); letter-spacing: 0.8px;
+}
+.pm-footer__total-value {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--red);
+}
+.pm-footer__stats { display: flex; gap: 6px; }
+.pm-footer__stat { text-align: center; }
+.pm-footer__stat-label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); letter-spacing: 0.8px;
+}
+.pm-footer__stat-value {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+}
+
+/* ── Deliveries card — 380×450 ── */
+.dl-card {
+  width: 380px; height: 450px;
+  background: var(--bg-2); border: 1px solid var(--border-0);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.dl-card__header {
+  padding: 8px 14px; border-bottom: 1px solid var(--border-0);
+  display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+}
+.dl-card__header-left { display: flex; align-items: center; gap: 6px; }
+.dl-card__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
+.dl-card__label {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 2px; color: var(--text-muted); text-transform: uppercase;
+}
+.dl-card__count { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
+
+/* Delivery list */
+.dl-list { flex: 1; overflow-y: auto; }
+.dl-empty {
+  flex: 1; display: flex; align-items: center; justify-content: center; min-height: 260px;
+}
+.dl-empty__text {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-bright);
+  letter-spacing: 0.04em; text-align: center; line-height: 1.8;
+}
+body.light-mode .dl-empty__text { color: #1a1a17; }
+
+/* Delivery item */
+.dl-item { border-bottom: 1px solid var(--border-0); cursor: pointer; }
+.dl-item__inner { padding: 8px 14px; }
+.dl-item.expanded .dl-item__inner { background: rgba(139,154,107,0.03); }
+.dl-item__row1 {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;
+}
+.dl-item__name { font-size: 11px; font-weight: 600; color: var(--text-bright); flex: 1; margin-right: 8px; }
+.dl-result-badge {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  padding: 1px 6px; flex-shrink: 0;
+}
+.dl-result--distinction { color: var(--gold); background: var(--gold-faint); border: 1px solid var(--gold-border); }
+.dl-result--pass { color: var(--green); background: var(--green-faint); border: 1px solid var(--green-border); }
+.dl-result--conditional { color: var(--orange); background: var(--orange-faint); border: 1px solid var(--orange-border); }
+.dl-result--fail { color: var(--red); background: var(--red-faint); border: 1px solid var(--red-border); }
+
+.dl-item__row2 { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.dl-item__id { font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); }
+.dl-item__issuer { font-size: 9px; }
+.dl-item__date { font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); margin-left: auto; }
+
+/* Summary bar */
+.dl-summary-bar {
+  display: flex; gap: 0;
+  background: var(--bg-4); border: 1px solid var(--border-0);
+}
+.dl-summary-cell {
+  padding: 4px 8px;
+}
+.dl-summary-cell + .dl-summary-cell { border-left: 1px solid var(--border-0); }
+.dl-summary-label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); letter-spacing: 0.8px;
+}
+.dl-summary-value {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 700; margin-top: 2px;
+}
+
+/* Expanded section headers */
+.dl-section-label {
+  font-family: var(--font-mono); font-size: 8px; letter-spacing: 1.5px;
+  color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px;
+}
+
+/* Inspection row */
+.dl-inspect-row {
+  padding: 3px 8px; margin-bottom: 2px;
+  background: var(--bg-4); border: 1px solid var(--border-0);
+}
+.dl-inspect-row__header {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.dl-inspect-row__label { font-family: var(--font-mono); font-size: 9px; color: var(--text-secondary); }
+.dl-inspect-row__score-area { display: flex; align-items: center; gap: 6px; }
+.dl-inspect-row__score {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  width: 24px; text-align: right;
+}
+.dl-inspect-bar { width: 40px; height: 3px; background: var(--border-0); }
+.dl-inspect-bar__fill { height: 100%; }
+.dl-inspect-issue {
+  font-size: 9px; color: var(--orange); margin-top: 2px; line-height: 1.4;
+  padding-left: 8px; border-left: 1px solid rgba(200,132,68,0.2);
+}
+.dl-inspect-issue--red {
+  color: var(--red); border-left-color: rgba(204,85,85,0.2);
+}
+
+/* Permits compliance row */
+.dl-permits-row {
+  padding: 4px 8px; margin-bottom: 2px;
+}
+.dl-permits-row--pass { background: rgba(92,204,92,0.04); border: 1px solid rgba(92,204,92,0.1); }
+.dl-permits-row--fail { background: rgba(204,85,85,0.04); border: 1px solid rgba(204,85,85,0.1); }
+.dl-permits-status {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+}
+
+/* Material impact tags */
+.dl-mat-tag {
+  padding: 2px 6px; background: var(--bg-0); border: 1px solid var(--border-0);
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.dl-mat-tag__name { font-family: var(--font-mono); font-size: 8px; color: var(--text-secondary); }
+.dl-mat-tag__dot { width: 4px; height: 4px; border-radius: 1px; }
+.dl-mat-tag__grade { font-family: var(--font-mono); font-size: 7px; }
+.dl-mat-tag__impact { font-family: var(--font-mono); font-size: 8px; }
+
+/* Financial detail */
+.dl-fin-panel {
+  background: var(--bg-4); border: 1px solid var(--border-0); padding: 4px 8px;
+}
+.dl-fin-row {
+  display: flex; justify-content: space-between; padding: 2px 0;
+  border-bottom: 1px solid var(--border-0);
+}
+.dl-fin-row:last-child { border-bottom: none; }
+.dl-fin-key { font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); }
+.dl-fin-val { font-family: var(--font-mono); font-size: 9px; color: var(--text-secondary); }
+.dl-fin-total {
+  display: flex; justify-content: space-between; padding: 3px 0;
+}
+.dl-fin-total__label { font-family: var(--font-mono); font-size: 9px; font-weight: 700; color: var(--text-bright); }
+.dl-fin-total__value { font-family: var(--font-mono); font-size: 11px; font-weight: 700; }
+
+/* Timeline badge */
+.dl-timeline { margin-top: 6px; display: flex; gap: 6px; align-items: center; }
+.dl-timeline__label { font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); }
+.dl-timeline__ticks { font-family: var(--font-mono); font-size: 8px; color: var(--text-secondary); }
+.dl-timeline__badge {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  padding: 0 4px; line-height: 13px;
+}
+.dl-timeline__badge--early { color: var(--green); background: var(--green-faint); border: 1px solid var(--green-border); }
+.dl-timeline__badge--late { color: var(--red); background: var(--red-faint); border: 1px solid var(--red-border); }
+
+/* Footer */
+.dl-card__footer {
+  padding: 8px 14px; border-top: 1px solid var(--border-0);
+  background: var(--bg-3); display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0;
+}
+.dl-footer__profit-label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); letter-spacing: 0.8px;
+}
+.dl-footer__profit-value {
+  font-family: var(--font-mono); font-size: 14px; font-weight: 700;
+}
+.dl-footer__results { display: flex; gap: 8px; }
+.dl-footer__result-box { text-align: center; }
+.dl-footer__result-label { font-family: var(--font-mono); font-size: 7px; letter-spacing: 0.5px; }
+.dl-footer__result-count { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--text-bright); }
+
 /* ── Equipment Market card — 380×450 ── */
 .em-card {
   width: 380px; height: 450px;
@@ -1343,7 +1701,7 @@ body.light-mode .wh-empty__text { color: #1a1a17; }
   .top-bar-right { gap: 6px; flex-wrap: wrap; }
   .corp-name-badge { font-size: 10px; }
   .content { flex-direction: column; align-items: center; padding: 12px 8px; }
-  .oc-card, .ap-card, .wh-card, .pr-card, .eq-card, .em-card { width: 100%; max-width: 420px; height: auto; min-height: 380px; }
+  .oc-card, .ap-card, .wh-card, .pr-card, .eq-card, .em-card, .pm-card, .dl-card { width: 100%; max-width: 420px; height: auto; min-height: 380px; }
 }
 @media (max-width: 820px) {
   .corp-hamburger { display: block; }
@@ -1360,7 +1718,7 @@ body.light-mode .wh-empty__text { color: #1a1a17; }
   .tick-label { font-size: 8px; }
   .tick-value { font-size: 11px; }
   .corp-name-badge { font-size: 9px; padding: 2px 6px; }
-  .oc-card, .ap-card, .wh-card, .pr-card, .eq-card, .em-card { max-width: 100%; }
+  .oc-card, .ap-card, .wh-card, .pr-card, .eq-card, .em-card, .pm-card, .dl-card { max-width: 100%; }
 }
 </style>
 </head>
@@ -1600,6 +1958,58 @@ body.light-mode .wh-empty__text { color: #1a1a17; }
       </div>
     </div>
 
+    <!-- Permits card -->
+    <div class="pm-card">
+      <div class="pm-card__header">
+        <div class="pm-card__header-left">
+          <div class="pm-card__dot"></div>
+          <span class="pm-card__label">Permits</span>
+        </div>
+        <div class="pm-card__badges" id="pm-badges"></div>
+      </div>
+
+      <!-- Tab bar -->
+      <div class="pm-tabs">
+        <button class="pm-tab active" data-pm-tab="active" onclick="setPmTab('active')">
+          <span class="pm-tab__label">Active</span>
+          <span class="pm-tab__count" id="pm-active-count">(0)</span>
+        </button>
+        <button class="pm-tab" data-pm-tab="pending" onclick="setPmTab('pending')">
+          <span class="pm-tab__label">Pending</span>
+          <span class="pm-tab__count" id="pm-pending-count">(0)</span>
+        </button>
+        <button class="pm-tab" data-pm-tab="available" onclick="setPmTab('available')">
+          <span class="pm-tab__label">Apply</span>
+          <span class="pm-tab__count" id="pm-apply-count">(0)</span>
+        </button>
+      </div>
+
+      <!-- Permit list -->
+      <div class="pm-list" id="pm-list">
+        <div class="pm-empty">
+          <div class="pm-empty__text">No active permits.<br>Permits are required by government<br>policy before starting certain projects.<br>Check the Apply tab for available permits.</div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="pm-card__footer">
+        <div>
+          <div class="pm-footer__total-label">TOTAL PERMIT COSTS / YEAR</div>
+          <div class="pm-footer__total-value" id="pm-total-cost">$0</div>
+        </div>
+        <div class="pm-footer__stats">
+          <div class="pm-footer__stat">
+            <div class="pm-footer__stat-label">ACTIVE</div>
+            <div class="pm-footer__stat-value" id="pm-footer-active" style="color:var(--green);">0</div>
+          </div>
+          <div class="pm-footer__stat">
+            <div class="pm-footer__stat-label">PENDING</div>
+            <div class="pm-footer__stat-value" id="pm-footer-pending" style="color:var(--gold);">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Equipment Inventory card -->
     <div class="eq-card">
       <div class="eq-card__header">
@@ -1612,6 +2022,31 @@ body.light-mode .wh-empty__text { color: #1a1a17; }
       <div class="eq-summary" id="eq-summary"></div>
       <div class="eq-list" id="eq-list"></div>
       <div class="eq-card__footer" id="eq-footer"></div>
+    </div>
+
+    <!-- Deliveries card -->
+    <div class="dl-card">
+      <div class="dl-card__header">
+        <div class="dl-card__header-left">
+          <div class="dl-card__dot"></div>
+          <span class="dl-card__label">Deliveries</span>
+        </div>
+        <span class="dl-card__count" id="dl-count">0 COMPLETED</span>
+      </div>
+
+      <div class="dl-list" id="dl-list">
+        <div class="dl-empty">
+          <div class="dl-empty__text">No completed deliveries.<br>Finish a construction project to<br>receive an inspection report and<br>collect payment.</div>
+        </div>
+      </div>
+
+      <div class="dl-card__footer">
+        <div>
+          <div class="dl-footer__profit-label">LIFETIME PROFIT</div>
+          <div class="dl-footer__profit-value" id="dl-lifetime-profit" style="color:var(--text-dim);">$0</div>
+        </div>
+        <div class="dl-footer__results" id="dl-footer-results"></div>
+      </div>
     </div>
 
   </div>
@@ -3221,6 +3656,439 @@ async function purchaseEquipment() {
     }
 }
 
+// ── Permits ──
+let pmTab = 'active';
+let pmExpanded = -1;
+let pmActivePermits = [];
+let pmPendingPermits = [];
+let pmAvailablePermits = [];
+
+function setPmTab(tab) {
+    pmTab = tab;
+    pmExpanded = -1;
+    document.querySelectorAll('.pm-tab').forEach(t => t.classList.toggle('active', t.dataset.pmTab === tab));
+    renderPermits();
+}
+
+function togglePmExpand(idx) {
+    pmExpanded = pmExpanded === idx ? -1 : idx;
+    renderPermits();
+}
+
+function fmtPermitCost(n) {
+    if (Math.abs(n) >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
+    if (Math.abs(n) >= 1000) return '$' + (n / 1000).toFixed(0) + 'k';
+    return '$' + n.toLocaleString();
+}
+
+function getExpiryColor(ticksLeft, totalTicks, expiringSoon) {
+    if (expiringSoon) return 'var(--orange)';
+    const pct = (ticksLeft / (totalTicks || 1)) * 100;
+    if (pct > 50) return 'var(--green)';
+    if (pct > 25) return 'var(--amber)';
+    return 'var(--red)';
+}
+
+function renderPermits() {
+    const list = document.getElementById('pm-list');
+    const totalActive = pmActivePermits.length;
+    const totalPending = pmPendingPermits.length;
+    const totalAvailable = pmAvailablePermits.length;
+    const expiringSoon = pmActivePermits.filter(p => p.expiring_soon).length;
+
+    // Update counts
+    document.getElementById('pm-active-count').textContent = `(${totalActive})`;
+    document.getElementById('pm-pending-count').textContent = `(${totalPending})`;
+    document.getElementById('pm-apply-count').textContent = `(${totalAvailable})`;
+
+    // Update header badges
+    const badgesEl = document.getElementById('pm-badges');
+    let badgesHtml = '';
+    if (expiringSoon > 0) {
+        badgesHtml += `<span class="pm-badge pm-badge--expiring">${expiringSoon} EXPIRING</span>`;
+    }
+    if (totalPending > 0) {
+        badgesHtml += `<span class="pm-badge pm-badge--pending">${totalPending} PENDING</span>`;
+    }
+    badgesEl.innerHTML = badgesHtml;
+
+    // Update footer
+    const totalCost = pmActivePermits.reduce((s, p) => s + (p.cost || 0), 0)
+                    + pmPendingPermits.reduce((s, p) => s + (p.cost || 0), 0);
+    document.getElementById('pm-total-cost').textContent = fmtPermitCost(totalCost);
+    document.getElementById('pm-footer-active').textContent = totalActive;
+    document.getElementById('pm-footer-pending').textContent = totalPending;
+
+    // ─ Active tab ─
+    if (pmTab === 'active') {
+        if (totalActive === 0) {
+            list.innerHTML = `<div class="pm-empty">
+                <div class="pm-empty__text">No active permits.<br>Permits are required by government<br>policy before starting certain projects.<br>Check the Apply tab for available permits.</div>
+            </div>`;
+            return;
+        }
+        let html = '';
+        pmActivePermits.forEach((p, i) => {
+            const isExp = pmExpanded === i;
+            const expiryColor = getExpiryColor(p.ticks_left, p.total_ticks, p.expiring_soon);
+            const pct = Math.min((p.ticks_left / (p.total_ticks || 1)) * 100, 100);
+            html += `<div class="pm-item ${p.expiring_soon ? 'pm-item--expiring' : ''} ${isExp ? 'expanded' : ''}" onclick="togglePmExpand(${i})">
+                <div class="pm-item__inner">
+                    <div class="pm-item__row1">
+                        <span class="pm-item__name">${escapeHtml(p.name)}</span>
+                        <span class="pm-item__status pm-item__status--active">ACTIVE</span>
+                    </div>
+                    <div class="pm-item__row2">
+                        <span class="pm-nation-tag">${escapeHtml((p.nation || '').toUpperCase())}</span>
+                        <span class="pm-item__expiry" style="color:${expiryColor}">Expires: ${escapeHtml(p.expires || '')}</span>
+                        <span class="pm-item__ticks">(${p.ticks_left} ticks)</span>
+                    </div>
+                    <div class="pm-bar"><div class="pm-bar__fill" style="width:${pct}%;background:${expiryColor}"></div></div>`;
+            if (isExp) {
+                html += `<div class="pm-detail">
+                    <div class="pm-detail__row">
+                        <span class="pm-detail__key">SOURCE POLICY</span>
+                        <span class="pm-detail__val">${escapeHtml(p.policy || '')}</span>
+                    </div>
+                    <div class="pm-detail__row">
+                        <span class="pm-detail__key">ISSUED</span>
+                        <span class="pm-detail__val">${escapeHtml(p.issued || '')}</span>
+                    </div>
+                    <div class="pm-detail__row">
+                        <span class="pm-detail__key">COST</span>
+                        <span class="pm-detail__val">${fmtPermitCost(p.cost || 0)}</span>
+                    </div>
+                    <div class="pm-detail__row">
+                        <span class="pm-detail__key">RENEWABLE</span>
+                        <span class="pm-detail__val ${p.renewable ? 'pm-detail__val--green' : 'pm-detail__val--red'}">${p.renewable ? 'YES' : 'NO'}</span>
+                    </div>
+                    <div class="pm-projects">
+                        <div class="pm-projects__label">COVERS PROJECTS</div>
+                        <div class="pm-projects__list">${(p.projects || []).map(pid =>
+                            `<span class="pm-project-chip">${escapeHtml(pid)}</span>`
+                        ).join('')}</div>
+                    </div>`;
+                if (p.note) {
+                    html += `<div class="pm-note"><span class="pm-note__text">${escapeHtml(p.note)}</span></div>`;
+                }
+                if (p.expiring_soon && p.renewable) {
+                    html += `<div class="pm-btn-row"><button class="pm-btn pm-btn--renew">RENEW — ${fmtPermitCost(p.cost || 0)}</button></div>`;
+                }
+                html += `</div>`;
+            }
+            html += `</div></div>`;
+        });
+        list.innerHTML = html;
+        return;
+    }
+
+    // ─ Pending tab ─
+    if (pmTab === 'pending') {
+        if (totalPending === 0) {
+            list.innerHTML = `<div class="pm-empty">
+                <div class="pm-empty__text">No pending permits.<br>Apply for permits in the Apply tab<br>to begin the approval process.</div>
+            </div>`;
+            return;
+        }
+        let html = '';
+        pmPendingPermits.forEach((p, i) => {
+            const elapsed = p.processing_total - p.ticks_remaining;
+            const pct = Math.min((elapsed / (p.processing_total || 1)) * 100, 100);
+            const statusClass = p.status === 'PROCESSING' ? 'pm-item__status--processing' : 'pm-item__status--review';
+            html += `<div style="padding:8px 14px;border-bottom:1px solid var(--border-0);">
+                <div class="pm-item__row1">
+                    <span class="pm-item__name">${escapeHtml(p.name)}</span>
+                    <span class="pm-item__status ${statusClass}">${escapeHtml(p.status || 'PROCESSING')}</span>
+                </div>
+                <div class="pm-item__row2">
+                    <span class="pm-nation-tag">${escapeHtml((p.nation || '').toUpperCase())}</span>
+                    <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">Applied: ${escapeHtml(p.applied || '')}</span>
+                </div>
+                <div class="pm-processing-row">
+                    <span class="pm-processing-label">PROCESSING</span>
+                    <span class="pm-processing-ticks">${elapsed}/${p.processing_total} ticks</span>
+                </div>
+                <div class="pm-bar"><div class="pm-bar__fill" style="width:${pct}%;background:var(--gold)"></div></div>
+                <div class="pm-pending-detail">
+                    <div class="pm-pending-detail__cell">
+                        <div class="pm-pending-detail__label">EST. APPROVAL</div>
+                        <div class="pm-pending-detail__value" style="color:var(--text-bright);">${escapeHtml(p.est_approval || '')}</div>
+                    </div>
+                    <div class="pm-pending-detail__cell">
+                        <div class="pm-pending-detail__label">COST</div>
+                        <div class="pm-pending-detail__value" style="color:var(--red);">${fmtPermitCost(p.cost || 0)}</div>
+                    </div>
+                    <div class="pm-pending-detail__cell">
+                        <div class="pm-pending-detail__label">REQUIRED BY</div>
+                        <div class="pm-pending-detail__value" style="color:var(--text-secondary);">${escapeHtml(p.required_by || '')}</div>
+                    </div>
+                </div>
+            </div>`;
+        });
+        list.innerHTML = html;
+        return;
+    }
+
+    // ─ Apply tab ─
+    if (pmTab === 'available') {
+        if (totalAvailable === 0) {
+            list.innerHTML = `<div class="pm-empty">
+                <div class="pm-empty__text">No permits available to apply for.<br>Permits appear when government<br>policies require them for<br>construction activities.</div>
+            </div>`;
+            return;
+        }
+        let html = '';
+        pmAvailablePermits.forEach((p, i) => {
+            const isExp = pmExpanded === i;
+            html += `<div style="border-bottom:1px solid var(--border-0);">
+                <div onclick="togglePmExpand(${i})" style="padding:8px 14px;cursor:pointer;${isExp ? 'background:rgba(139,154,107,0.03);' : ''}">
+                    <div class="pm-item__row1">
+                        <span class="pm-item__name">${escapeHtml(p.name)}</span>
+                        <span class="pm-item__arrow">${isExp ? '▾' : '▸'}</span>
+                    </div>
+                    <div class="pm-item__row2">
+                        <span class="pm-nation-tag">${escapeHtml((p.nation || '').toUpperCase())}</span>
+                        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);">${fmtPermitCost(p.cost || 0)}</span>
+                        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">·</span>
+                        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);">${p.processing_time} tick${p.processing_time > 1 ? 's' : ''} processing</span>
+                        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">·</span>
+                        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);">${p.duration} tick duration</span>
+                    </div>`;
+            if (isExp) {
+                html += `<div style="margin-top:8px;">
+                    <div class="pm-desc">${escapeHtml(p.description || '')}</div>
+                    <div class="pm-detail" style="margin-top:0;margin-bottom:6px;">
+                        <div class="pm-detail__row">
+                            <span class="pm-detail__key">SOURCE POLICY</span>
+                            <span class="pm-detail__val">${escapeHtml(p.policy || '')}</span>
+                        </div>
+                        <div class="pm-detail__row">
+                            <span class="pm-detail__key">APPLICATION COST</span>
+                            <span class="pm-detail__val pm-detail__val--red">${fmtPermitCost(p.cost || 0)}</span>
+                        </div>
+                        <div class="pm-detail__row">
+                            <span class="pm-detail__key">PROCESSING TIME</span>
+                            <span class="pm-detail__val pm-detail__val--gold">${p.processing_time} tick${p.processing_time > 1 ? 's' : ''}</span>
+                        </div>
+                        <div class="pm-detail__row">
+                            <span class="pm-detail__key">VALID FOR</span>
+                            <span class="pm-detail__val">${p.duration} ticks from approval</span>
+                        </div>
+                    </div>
+                    <div class="pm-btn-row"><button class="pm-btn pm-btn--apply" onclick="event.stopPropagation();">APPLY — ${fmtPermitCost(p.cost || 0)}</button></div>
+                </div>`;
+            }
+            html += `</div></div>`;
+        });
+        list.innerHTML = html;
+        return;
+    }
+}
+
+function loadPermits() {
+    // Empty for now — no permits exist in game yet.
+    // Future: fetch from Supabase and populate pmActivePermits, pmPendingPermits, pmAvailablePermits
+    pmActivePermits = [];
+    pmPendingPermits = [];
+    pmAvailablePermits = [];
+    renderPermits();
+}
+
+// ── Deliveries ──
+let dlDeliveries = [];
+let dlExpanded = -1;
+
+function toggleDlExpand(idx) {
+    dlExpanded = dlExpanded === idx ? -1 : idx;
+    renderDeliveries();
+}
+
+function fmtDeliveryCost(n) {
+    if (Math.abs(n) >= 1000000) return '$' + (n / 1000000).toFixed(2) + 'M';
+    if (Math.abs(n) >= 1000) return '$' + (n / 1000).toFixed(0) + 'k';
+    return '$' + n.toLocaleString();
+}
+
+function getScoreColor(score) {
+    if (score >= 85) return 'var(--gold)';
+    if (score >= 60) return 'var(--green)';
+    if (score >= 40) return 'var(--orange)';
+    return 'var(--red)';
+}
+
+function getResultClass(result) {
+    return 'dl-result--' + result.toLowerCase();
+}
+
+function renderDeliveries() {
+    const list = document.getElementById('dl-list');
+    const total = dlDeliveries.length;
+
+    document.getElementById('dl-count').textContent = `${total} COMPLETED`;
+
+    // Footer
+    const lifetimeProfit = dlDeliveries.reduce((sum, d) => {
+        const f = d.financials || {};
+        return sum + ((f.payment || 0) + (f.bonus || 0) - (f.penalty || 0) - (f.total_cost || 0));
+    }, 0);
+    const profitEl = document.getElementById('dl-lifetime-profit');
+    profitEl.textContent = (lifetimeProfit >= 0 ? '+' : '') + fmtDeliveryCost(lifetimeProfit);
+    profitEl.style.color = lifetimeProfit >= 0 ? 'var(--green)' : 'var(--red)';
+
+    // Result breakdown in footer
+    const resultCounts = {};
+    dlDeliveries.forEach(d => { resultCounts[d.result] = (resultCounts[d.result] || 0) + 1; });
+    const resultsEl = document.getElementById('dl-footer-results');
+    resultsEl.innerHTML = Object.entries(resultCounts).map(([result, count]) => {
+        const colorMap = { DISTINCTION: 'var(--gold)', PASS: 'var(--green)', CONDITIONAL: 'var(--orange)', FAIL: 'var(--red)' };
+        return `<div class="dl-footer__result-box">
+            <div class="dl-footer__result-label" style="color:${colorMap[result] || 'var(--text-dim)'}">${escapeHtml(result)}</div>
+            <div class="dl-footer__result-count">${count}</div>
+        </div>`;
+    }).join('');
+
+    if (total === 0) {
+        list.innerHTML = `<div class="dl-empty">
+            <div class="dl-empty__text">No completed deliveries.<br>Finish a construction project to<br>receive an inspection report and<br>collect payment.</div>
+        </div>`;
+        return;
+    }
+
+    let html = '';
+    dlDeliveries.forEach((d, i) => {
+        const isExp = dlExpanded === i;
+        const f = d.financials || {};
+        const netProfit = (f.payment || 0) + (f.bonus || 0) - (f.penalty || 0) - (f.total_cost || 0);
+        const isProfitable = netProfit >= 0;
+        const resultClass = getResultClass(d.result);
+        const resultColorMap = { DISTINCTION: 'var(--gold)', PASS: 'var(--green)', CONDITIONAL: 'var(--orange)', FAIL: 'var(--red)' };
+        const resultColor = resultColorMap[d.result] || 'var(--text-dim)';
+        const isGov = d.type === 'GOVERNMENT';
+
+        html += `<div class="dl-item ${isExp ? 'expanded' : ''}" onclick="toggleDlExpand(${i})">
+            <div class="dl-item__inner" style="border-left:2px solid ${resultColor}">
+                <div class="dl-item__row1">
+                    <span class="dl-item__name">${escapeHtml(d.name)}</span>
+                    <span class="dl-result-badge ${resultClass}">${escapeHtml(d.result)}</span>
+                </div>
+                <div class="dl-item__row2">
+                    <span class="dl-item__id">${escapeHtml(d.id)}</span>
+                    <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">·</span>
+                    <span class="dl-item__issuer" style="color:${isGov ? 'var(--green)' : 'var(--gold)'}">${escapeHtml(d.issuer)}</span>
+                    <span class="dl-item__date">${escapeHtml(d.delivered)}</span>
+                </div>
+                <div class="dl-summary-bar">
+                    <div class="dl-summary-cell" style="flex:1;">
+                        <div class="dl-summary-label">QUALITY</div>
+                        <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">
+                            <span class="dl-summary-value" style="color:${getScoreColor(d.quality_score)}">${d.quality_score}</span>
+                            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">/100</span>
+                        </div>
+                    </div>
+                    <div class="dl-summary-cell" style="flex:0.7;text-align:center;">
+                        <div class="dl-summary-label">REP</div>
+                        <div class="dl-summary-value" style="color:${d.rep_change > 0 ? 'var(--green)' : d.rep_change < 0 ? 'var(--red)' : 'var(--text-dim)'};margin-top:2px;">${d.rep_change > 0 ? '+' : ''}${d.rep_change || '±0'}</div>
+                    </div>
+                    <div class="dl-summary-cell" style="flex:1.3;">
+                        <div class="dl-summary-label">${isProfitable ? 'PROFIT' : 'LOSS'}</div>
+                        <div class="dl-summary-value" style="color:${isProfitable ? 'var(--green)' : 'var(--red)'};margin-top:2px;">${isProfitable ? '+' : ''}${fmtDeliveryCost(netProfit)}</div>
+                    </div>
+                </div>`;
+
+        if (isExp) {
+            const insp = d.inspection || {};
+            html += `<div style="margin-top:8px;">`;
+
+            // Inspection Report
+            html += `<div class="dl-section-label">Inspection Report</div>`;
+            ['materials', 'structural', 'systems'].forEach(cat => {
+                const data = insp[cat] || { score: 0, issues: [] };
+                const sc = getScoreColor(data.score);
+                const pct = Math.min((data.score / 100) * 100, 100);
+                html += `<div class="dl-inspect-row">
+                    <div class="dl-inspect-row__header">
+                        <span class="dl-inspect-row__label">${escapeHtml(cat.charAt(0).toUpperCase() + cat.slice(1))}</span>
+                        <div class="dl-inspect-row__score-area">
+                            <div class="dl-inspect-bar"><div class="dl-inspect-bar__fill" style="width:${pct}%;background:${sc}"></div></div>
+                            <span class="dl-inspect-row__score" style="color:${sc}">${data.score}</span>
+                        </div>
+                    </div>
+                    ${(data.issues || []).map(issue => `<div class="dl-inspect-issue">${escapeHtml(issue)}</div>`).join('')}
+                </div>`;
+            });
+
+            // Permits
+            const permits = insp.permits || { passed: true, issues: [] };
+            html += `<div class="dl-permits-row ${permits.passed ? 'dl-permits-row--pass' : 'dl-permits-row--fail'}">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-secondary);">Permits</span>
+                    <span class="dl-permits-status" style="color:${permits.passed ? 'var(--green)' : 'var(--red)'}">${permits.passed ? '✓ COMPLIANT' : '✗ VIOLATION'}</span>
+                </div>
+                ${(permits.issues || []).map(issue => `<div class="dl-inspect-issue dl-inspect-issue--red">${escapeHtml(issue)}</div>`).join('')}
+            </div>`;
+
+            // Material Quality Impact
+            html += `<div class="dl-section-label" style="margin-top:8px;">Material Quality Impact</div>`;
+            html += `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">`;
+            (d.materials_used || []).forEach(m => {
+                const gradeColor = m.grade === 'HIGH' ? 'var(--green)' : m.grade === 'STANDARD' ? 'var(--amber)' : 'var(--orange)';
+                const impactIcon = m.impact === 'positive' ? '▲' : m.impact === 'negative' ? '▼' : '–';
+                const impactColor = m.impact === 'positive' ? 'var(--green)' : m.impact === 'negative' ? 'var(--red)' : 'var(--text-dim)';
+                html += `<div class="dl-mat-tag">
+                    <span class="dl-mat-tag__name">${escapeHtml(m.name)}</span>
+                    <div class="dl-mat-tag__dot" style="background:${gradeColor}"></div>
+                    <span class="dl-mat-tag__grade" style="color:${gradeColor}">${escapeHtml(m.grade)}</span>
+                    <span class="dl-mat-tag__impact" style="color:${impactColor}">${impactIcon}</span>
+                </div>`;
+            });
+            html += `</div>`;
+
+            // Financial Summary
+            html += `<div class="dl-section-label">Financial Summary</div>`;
+            html += `<div class="dl-fin-panel">`;
+            html += `<div class="dl-fin-row"><span class="dl-fin-key">CONTRACT VALUE</span><span class="dl-fin-val">${fmtDeliveryCost(f.contract_value || 0)}</span></div>`;
+            if ((f.bonus || 0) > 0) {
+                html += `<div class="dl-fin-row"><span class="dl-fin-key">QUALITY BONUS</span><span class="dl-fin-val" style="color:var(--green)">+${fmtDeliveryCost(f.bonus)}</span></div>`;
+            }
+            if ((f.penalty || 0) > 0) {
+                html += `<div class="dl-fin-row"><span class="dl-fin-key">PENALTIES</span><span class="dl-fin-val" style="color:var(--red)">-${fmtDeliveryCost(f.penalty)}</span></div>`;
+            }
+            const received = (f.payment || 0) + (f.bonus || 0) - (f.penalty || 0);
+            html += `<div class="dl-fin-row"><span class="dl-fin-key">PAYMENT RECEIVED</span><span class="dl-fin-val" style="color:var(--green)">${fmtDeliveryCost(received)}</span></div>`;
+            html += `<div class="dl-fin-row"><span class="dl-fin-key">TOTAL COST</span><span class="dl-fin-val" style="color:var(--red)">-${fmtDeliveryCost(f.total_cost || 0)}</span></div>`;
+            html += `<div class="dl-fin-total">
+                <span class="dl-fin-total__label">${isProfitable ? 'NET PROFIT' : 'NET LOSS'}</span>
+                <span class="dl-fin-total__value" style="color:${isProfitable ? 'var(--green)' : 'var(--red)'}">${isProfitable ? '+' : ''}${fmtDeliveryCost(netProfit)}</span>
+            </div>`;
+            html += `</div>`;
+
+            // Timeline
+            const tl = d.timeline || {};
+            html += `<div class="dl-timeline">
+                <span class="dl-timeline__label">TIMELINE</span>
+                <span class="dl-timeline__ticks">${tl.actual || 0}/${tl.expected || 0} ticks</span>`;
+            if (tl.early) {
+                html += `<span class="dl-timeline__badge dl-timeline__badge--early">${(tl.expected || 0) - (tl.actual || 0)} TICK${(tl.expected - tl.actual) !== 1 ? 'S' : ''} EARLY</span>`;
+            } else if (!tl.on_time && tl.actual > tl.expected) {
+                html += `<span class="dl-timeline__badge dl-timeline__badge--late">${(tl.actual || 0) - (tl.expected || 0)} TICK${(tl.actual - tl.expected) !== 1 ? 'S' : ''} LATE</span>`;
+            }
+            html += `</div>`;
+
+            html += `</div>`; // close expanded
+        }
+
+        html += `</div></div>`; // close inner + item
+    });
+    list.innerHTML = html;
+}
+
+function loadDeliveries() {
+    // Empty for now — no completed deliveries exist in game yet.
+    // Future: fetch from Supabase and populate dlDeliveries
+    dlDeliveries = [];
+    renderDeliveries();
+}
+
 // ── Equipment Inventory ──
 function renderEquipment() {
     const totalOwned = equipmentData.reduce((s, e) => s + (e.owned || 0), 0);
@@ -3472,7 +4340,7 @@ async function init() {
     }
 
     // Load contracts
-    await Promise.all([loadContracts(), loadActiveProjects(), loadWarehouse(), loadEquipment()]);
+    await Promise.all([loadContracts(), loadActiveProjects(), loadWarehouse(), loadEquipment(), loadPermits(), loadDeliveries()]);
 
     // Load all nations for equipment market nation switcher
     try {

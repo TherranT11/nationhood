@@ -209,7 +209,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination, advanceBillEmergency, EO_CONFIG, executeWhipCaucus } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination, advanceBillEmergency, EO_CONFIG, executeWhipCaucus } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 /** Scale a policy cost by its scaling stat (e.g., population). */
 function scalePolicyCost(baseCost, scalingStat, nation) {
@@ -222,7 +222,7 @@ function scalePolicyCost(baseCost, scalingStat, nation) {
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let institutionConfig = [];
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
-let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
+let selectedAmendmentPolicy = null, isHeadFaction = false, headFactionId = null;
 let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
 let factionIdeology = null; // Dynamic ideology scores for current player
 let nationActiveLaws = []; // Active laws in the nation (for repeal articles)
@@ -264,7 +264,7 @@ function _getCompatiblePolicies(sector) {
     // Also exclude policies already enacted as active laws (can't propose what's already law)
     const activeLawPolicyIds = nationActiveLaws.map(l => l.policy_id).filter(Boolean);
     const allExcluded = [...excludeIds, ...struckIds, ...activeLawPolicyIds];
-    return getCompatiblePolicies(sector, allPolicies, currentFaction, isAutocracy, allExcluded);
+    return getCompatiblePolicies(sector, allPolicies, currentFaction, allExcluded);
 }
 
 initPage('laws', async (state) => {
@@ -272,7 +272,6 @@ initPage('laws', async (state) => {
     currentNation = nation;
     currentFaction = faction;
     initGameConfigForNation(nation);
-    isAutocracy = isGovernmentAutocracy(nation);
     isPresidential = isGovernmentPresidential(nation);
     if (isPresidential && nation) {
         const { data: activePresident } = await _supabase.from('presidents')
@@ -280,7 +279,7 @@ initPage('laws', async (state) => {
         presidentFactionId = activePresident?.faction_id || null;
         isPresidentParty = (presidentFactionId && faction?.id === presidentFactionId);
     }
-    if (!isAutocracy && nation) {
+    if (nation) {
         const coalition = await fetchActiveCoalition(_supabase, nation.id);
         isNoGovernment = !coalition;
         coalitionPartyIds = coalition?.party_ids || [];
@@ -376,15 +375,9 @@ async function loadBillData() {
             .eq('nation_id', bill.nation_id).eq('faction_type', 'party');
         allParties = parties || [];
 
-        const seatData = await loadSeats(_supabase, bill.nation_id, isAutocracy, allParties, currentFaction?.id);
+        const seatData = await loadSeats(_supabase, bill.nation_id, allParties, currentFaction?.id);
         allPartySeats = seatData.allPartySeats;
         currentSeats = seatData.currentSeats;
-
-        if (isAutocracy) {
-            const hf = await detectHeadFaction(_supabase, bill.nation_id, allParties, allPartySeats, currentFaction?.id);
-            headFactionId = hf.headFactionId;
-            isHeadFaction = hf.isHeadFaction;
-        }
 
         const { data: policies } = await _supabase.from('policies').select('*').eq('is_active', true);
         allPolicies = policies || [];
@@ -632,12 +625,7 @@ function renderBill() {
     } else if (isCommittee) {
         const el = document.getElementById('sponsor-actions');
         const canActOnBill = isSponsor;
-        if (isAutocracy) {
-            if (isHeadFaction || isSponsor) {
-                el.style.display = 'flex';
-                el.innerHTML = `${isHeadFaction ? '<button class="sponsor-btn enact-decree" onclick="enactDecree()">⚡ Enact Decree</button>' : ''}${isSponsor ? '<button class="sponsor-btn retract" onclick="retractBill()">Retract Decree</button>' : ''}`;
-            }
-        } else if (canActOnBill) {
+        if (canActOnBill) {
     el.style.display = 'flex';
 
     const sponsorSeats = allPartySeats[bill.proposed_by] || 0;
@@ -659,7 +647,7 @@ function renderBill() {
     }
 
     // Emergency bill advance button (presidential only, during active emergency)
-    if (isPresidential && isPresidentParty && (isCommittee || isFloor) && !isAutocracy) {
+    if (isPresidential && isPresidentParty && (isCommittee || isFloor)) {
         renderEmergencyAdvanceButton(bill);
     }
 
@@ -1689,53 +1677,7 @@ async function renderSidebar() {
     const billSupport = bill.bill_support || [];
     let html = '';
 
-    if (isCommittee && isAutocracy) {
-        html = `<div class="support-box">
-            <div class="support-box-header"><div class="support-box-title">Decree Status</div></div>
-            <div class="support-box-content">
-                <div style="text-align:center; padding: 12px 0;">
-                    ${isHeadFaction
-                        ? '<div style="color: var(--red); font-weight: bold; font-size: 0.9rem;">⚡ You may enact this decree</div><div style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 4px;">Use the Enact Decree button below</div>'
-                        : `<div style="color: var(--text-secondary); font-size: 0.85rem;">Awaiting <span style="color: var(--red); font-weight: bold;">${allParties.find(p => p.id === headFactionId)?.faction_name || 'Head Faction'}</span> to enact</div>`
-                    }
-                </div>
-            </div>
-            ${amendmentRequests.length > 0 ? `
-                <div class="support-box-header" style="border-top:1px solid var(--border-main);"><div class="support-box-title">Conditional Support</div></div>
-                <div class="support-box-content">
-                    ${amendmentRequests.map(req => {
-                        const isMyAmendment = currentFaction && req.faction_id === currentFaction.id;
-                        const withdrawBtn = isMyAmendment ? `<button class="amendment-withdraw-btn" onclick="withdrawConditionalSupport('${req.id}')" title="Withdraw">✕</button>` : '';
-                        if (req.request_type === 'strike') {
-                            const targetArt = (currentBill.bill_articles || []).find(a => a.id === req.target_article_id);
-                            const artLabel = targetArt ? (targetArt.policies?.policy_name || targetArt.article_title || 'Article ' + targetArt.article_number) : 'Unknown Article';
-                            return `<div class="amendment-request strike" style="position:relative;">
-                                ${withdrawBtn}
-                                <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
-                                <div style="color:var(--orange);font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you <strong>REMOVE</strong>:</div>
-                                <div class="amendment-policy strike-policy">✂ ${artLabel}</div>
-                                ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
-                            </div>`;
-                        }
-                        return `<div class="amendment-request" style="position:relative;">
-                            ${withdrawBtn}
-                            <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
-                            <div style="color:var(--blue);font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you agree to add the following:</div>
-                            ${req.policy_id ? `<div class="amendment-policy">📎 ${req.policies?.policy_name || "Unknown"}</div>` : `<div class="amendment-policy">📎 ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
-                            ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
-                        </div>`;
-                    }).join('')}
-                </div>` : `
-                <div class="support-box-header" style="border-top:1px solid var(--border-main);"><div class="support-box-title">Conditional Support</div></div>
-                <div class="no-amendments">No conditional support offers</div>
-            `}
-            ${(() => {
-                const myLocked = currentFaction && billSupport.find(s => s.faction_id === currentFaction.id)?.locked;
-                return (!isSponsor && !myLocked) ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button><button class="add-strike-btn" onclick="openStrikeAmendmentModal()">✂ Strike Article</button></div>` : '';
-            })()}
-        </div>`;
-
-    } else if (isCommittee) {
+    if (isCommittee) {
         const support = calculateBillSupport(billSupport, bill.proposed_by, allPartySeats);
         html = `<div class="support-box">
             <div class="support-box-header"><div class="support-box-title">Support (${support.percent}%)</div></div>
@@ -2251,39 +2193,6 @@ async function vetoBillAction() {
         alert('Bill vetoed. A veto override bill has been sent to the floor.');
         window.location.href = 'laws.html';
     } catch (error) { console.error('Veto error:', error); alert('Error: ' + error.message); }
-    finally { _actionLock = false; }
-}
-
-async function enactDecree() {
-    if (_actionLock || !isAutocracy || !isHeadFaction) return;
-    if (!confirm('⚡ ENACT this decree?\n\nThis will send it directly to the floor for a vote.\n\nProceed?')) return;
-    _actionLock = true;
-    try {
-        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const currentTick = shard?.current_tick || 0;
-        const decreeFields = {
-            status: 'floor',
-            floor_tick: currentTick,
-            voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS,
-            early_resolution_status: null,
-            early_resolution_tick: null,
-            passed_tick: null,
-            votes_for: 0,
-            votes_against: 0,
-            votes_abstain: 0
-        };
-        const { error } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
-        if (error) throw error;
-
-        // Calculate caucus dispositions via server-side RPC (RLS blocks client writes)
-        try {
-            const { error: caucusErr } = await _supabase.rpc('calculate_caucus_dispositions', { p_bill_id: billId });
-            if (caucusErr) console.warn('[enactDecree] Caucus RPC error (non-fatal):', caucusErr.message);
-        } catch (e) { /* non-fatal */ }
-
-        alert('⚡ Decree sent to the floor!');
-        window.location.reload();
-    } catch (e) { console.error(e); alert('Error: ' + e.message); }
     finally { _actionLock = false; }
 }
 
@@ -3058,7 +2967,6 @@ window.submitAmendment = submitAmendment;
 window.submitTextAmendment = submitTextAmendment;
 window.signBillAction = signBillAction;
 window.vetoBillAction = vetoBillAction;
-window.enactDecree = enactDecree;
 window.retractBill = retractBill;
 window.sendToFloor = sendToFloor;
 window.respondToAmendment = respondToAmendment;

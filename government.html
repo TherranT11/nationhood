@@ -56,7 +56,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest, seizeAutocraticPower, nudgeApproval, getNationNames } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest, nudgeApproval, getNationNames } from './js/game-common.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
 (function () {
@@ -72,7 +72,6 @@ function ideologyBg(name) { return IDEOLOGY_COLORS[(name || '').toLowerCase()] |
 /**
  * Government Page
  * Displays government structure, administration, cabinet, and parliament.
- * Autocracy: ruling faction can ASSIGN/PURGE ministers; others can REQUEST.
  */
 
 const NEW_MINISTER_APPROVAL = 40;
@@ -953,14 +952,12 @@ let coalitionData = null;
 let ministryData = [];
 let allParties = [];
 let allPartySeats = {};
-let isAutocracy = false;
 let isPresidential = false;
 let isPresidentParty = false;
 let presidentFactionId = null;
 let presidentData = null;
 let isRulingFaction = false;
 let rulingFactionId = null;
-let ministryRequests = [];
 let ministryActionUseCounts = {}; // { 'interior:enforcePublicOrder': 2, ... }
 let activeMinistryActions = {};   // { 'interior-enforcePublicOrder': true } — currently running
 let missingAmbassadorCount = 0; // pre-fetched for Foreign Minister performance panel
@@ -1023,7 +1020,6 @@ initPage('government', async (state) => {
         return;
     }
 
-    isAutocracy = isGovernmentAutocracy(nation);
     isPresidential = isGovernmentPresidential(nation);
 
     // Backfill head of state if missing/incomplete — use nation-specific names
@@ -1052,135 +1048,6 @@ initPage('government', async (state) => {
     await renderGovernmentPage();
 });
 
-// ═══════════════════════════════════════════════════════
-// V5 AUTOCRACY GOVERNMENT PANELS
-// ═══════════════════════════════════════════════════════
-
-async function renderAutocracyGovPanels() {
-    if (!currentNation || !isAutocracy) return '';
-
-    const nationId = currentNation.id;
-    const myFactionId = currentFaction?.id;
-
-    // Fetch V5 data
-    const [fpsRes, trackerRes, putschRes, coupOffersRes, successorRes] = await Promise.all([
-        _supabase.from('faction_pillar_state').select('*').eq('nation_id', nationId),
-        _supabase.from('autocracy_tracker').select('*').eq('nation_id', nationId).single(),
-        _supabase.from('putsch_state').select('*').eq('nation_id', nationId).eq('resolved', false).maybeSingle(),
-        _supabase.from('silent_coup_offers').select('*').eq('nation_id', nationId).eq('voided', false),
-        _supabase.from('nations').select('designated_successor_faction_id').eq('id', nationId).single(),
-    ]);
-
-    const allFps = fpsRes.data || [];
-    const tracker = trackerRes.data;
-    const putsch = putschRes.data;
-    const coupOffers = coupOffersRes.data || [];
-    const successorFactionId = successorRes.data?.designated_successor_faction_id;
-
-    const myFps = allFps.find(fps => fps.faction_id === myFactionId);
-    const isStrongmanPlayer = myFps?.is_strongman;
-
-    let html = '';
-
-    // ── Support Track — public-facing regime support indicator ──
-    if (tracker) {
-        const pubVal = tracker.public_tracker_value ?? 30;
-        // 0 = full regime, 100 = full coup. Clamp for safety.
-        const pct = Math.max(0, Math.min(100, pubVal));
-        // Color transitions: green (regime) → amber → red (coup)
-        const dotColor = pct <= 30 ? '#5cb85c' : pct <= 50 ? '#c8a64e' : pct <= 70 ? '#d48a3c' : '#d9534f';
-
-        html += `
-        <div class="info-block" style="margin-bottom:16px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">Support</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-                <span style="font-size:9px;color:#5cb85c;font-weight:700;white-space:nowrap">REGIME</span>
-                <div style="flex:1;position:relative;height:12px;background:var(--bg-depth-2);border:1px solid var(--border-dim);border-radius:6px;overflow:visible">
-                    <div style="position:absolute;left:${pct}%;top:50%;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:50%;background:${dotColor};border:2px solid var(--bg-surface);box-shadow:0 0 4px ${dotColor}88;transition:left 0.5s ease"></div>
-                </div>
-                <span style="font-size:9px;color:#d9534f;font-weight:700;white-space:nowrap">COUP</span>
-            </div>
-        </div>`;
-    }
-
-    // ── Putsch banner (martial law active) ──
-    if (putsch) {
-        const smResponseNeeded = isStrongmanPlayer && !putsch.strongman_response;
-        html += `
-        <div class="info-block" style="border-left:3px solid var(--red);margin-bottom:16px">
-            <div style="font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">PUTSCH — MARTIAL LAW</div>
-            <div style="font-size:12px;color:var(--text-secondary)">The Military has declared martial law. Normal governance is suspended.</div>
-            ${smResponseNeeded ? `
-            <div style="margin-top:12px;font-size:11px;color:var(--text-muted)">Use the Actions tab on the Politics page to respond.</div>
-            ` : `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">Awaiting Strongman response...</div>`}
-        </div>`;
-    }
-
-    // ── Silent Coup phase banner ──
-    const pendingOffers = coupOffers.filter(o => !o.accepted);
-    const myOffer = pendingOffers.find(o => o.to_faction_id === myFactionId);
-    if (pendingOffers.length > 0 && !isStrongmanPlayer) {
-        if (myOffer) {
-            html += `
-            <div class="info-block" style="border-left:3px solid var(--red);margin-bottom:16px">
-                <div style="font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">SECRET — SILENT COUP PROPOSAL</div>
-                <div style="font-size:12px;color:var(--text-secondary)">The Security Services have approached you with a proposal to remove the Strongman from power. Your vote is requested.</div>
-                <div style="margin-top:12px;font-size:11px;color:var(--text-muted)">Use the Actions tab on the Politics page to cast your vote.</div>
-            </div>`;
-        } else {
-            // Security Services player sees deal phase status
-            const secFps = allFps.find(fps => fps.pillar === 'security');
-            if (secFps && secFps.faction_id === myFactionId) {
-                const accepted = coupOffers.filter(o => o.accepted).length;
-                html += `
-                <div class="info-block" style="border-left:3px solid var(--red);margin-bottom:16px">
-                    <div style="font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">SILENT COUP — DEAL PHASE</div>
-                    <div style="font-size:12px;color:var(--text-secondary)">Offers sent. ${accepted} of ${coupOffers.length} factions have accepted.</div>
-                </div>`;
-            }
-        }
-    }
-
-    // ── Arrested leader panel ──
-    const arrestedFps = allFps.filter(fps => fps.arrested_leader);
-    if (arrestedFps.length > 0) {
-        let arrestedHtml = '';
-        for (const afps of arrestedFps) {
-            const pName = allParties.find(p => p.id === afps.faction_id)?.faction_name || 'Unknown';
-            arrestedHtml += `
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-hair)">
-                <div>
-                    <span style="font-size:12px;color:var(--text-primary);font-weight:600">${escapeHtml(afps.leader_name || 'Unknown')}</span>
-                    <span style="font-size:11px;color:var(--text-secondary)"> — ${escapeHtml(pName)} (${escapeHtml(afps.pillar || '?')})</span>
-                </div>
-                ${isStrongmanPlayer ? `<div style="font-size:10px;color:var(--text-muted)">Use Actions tab to Execute or Release</div>` : ''}
-            </div>`;
-        }
-        html += `
-        <div class="info-block" style="border-left:3px solid var(--red);margin-bottom:16px">
-            <div style="font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">DETAINED LEADERS</div>
-            ${arrestedHtml}
-        </div>`;
-    }
-
-    // ── Successor panel (Strongman only) ──
-    if (isStrongmanPlayer) {
-        const { data: successorParty } = successorFactionId
-            ? await _supabase.from('factions').select('faction_name').eq('id', successorFactionId).single()
-            : { data: null };
-        html += `
-        <div class="info-block" style="margin-bottom:16px">
-            <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">SUCCESSION</div>
-            ${successorFactionId
-                ? `<div style="font-size:12px;color:var(--text-secondary)">Designated successor: <strong style="color:var(--text-primary)">${escapeHtml(successorParty?.faction_name || 'Unknown')}</strong></div>`
-                : '<div style="font-size:12px;color:var(--text-muted)">No successor designated. If the Strongman dies, the highest-Backing faction will attempt an automatic coup.</div>'}
-        </div>`;
-    }
-
-    return html;
-}
 
 async function renderRevolutionBannerGov() {
     var nation = currentNation;
@@ -1211,111 +1078,13 @@ async function renderRevolutionBannerGov() {
         return h;
     }
 
-    // Active countdown (Autocracy only)
-    if (isGovernmentAutocracy(nation) && nation.revolution_started_tick != null && nation.revolution_duration != null) {
-        var elapsed = currentTick - nation.revolution_started_tick;
-        var remaining = Math.max(0, nation.revolution_duration - elapsed);
-        var h = '<div class="revolution-banner">';
-        h += '<div class="revolution-icon">&#x1F525;</div>';
-        h += '<div class="revolution-title">Democratic Revolution</div>';
-        h += '<div class="revolution-subtitle">The people demand democracy. Pro-democracy protests grow stronger each day.</div>';
-        h += '<div class="revolution-countdown">' + remaining + ' tick' + (remaining !== 1 ? 's' : '') + ' until revolution</div>';
-        h += '</div>';
-        return h;
-    }
-
     return '';
 }
-
-// ==================== AUTHORITARIAN SEIZURE BANNER ====================
-
-function renderAuthoritarianSeizeBanner() {
-    if (!currentNation || !currentNation.authoritarianism_seize_available_tick) return '';
-    if (isAutocracy) return '';
-    if (currentNation.seize_power_rejected) return '';
-    // Only the ruling faction sees the seize power option
-    const isRuling = currentFaction && currentNation.ruling_faction_id && currentFaction.id === currentNation.ruling_faction_id;
-    if (!isRuling) return '';
-
-    return `
-        <div class="revolution-banner" style="background: linear-gradient(135deg, rgba(120,0,0,0.15), rgba(60,0,0,0.25)); border-color: var(--red);">
-            <div class="revolution-icon" style="font-size: 2.5rem;">&#9876;</div>
-            <div class="revolution-title" style="color: var(--red);">The Path to Absolute Power</div>
-            <div class="revolution-subtitle" style="margin-bottom: 12px;">
-                Democratic institutions have crumbled after prolonged authoritarian erosion. Your party now has the power to dissolve the legislature and establish single-party rule. This is irreversible.
-            </div>
-            <div style="display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap;">
-                <button id="seize-power-btn"
-                    style="padding: 14px 36px; background: var(--red); color: white; border: none; border-radius: 3px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer; transition: all 0.2s;"
-                    onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 20px rgba(255,68,68,0.4)';"
-                    onmouseout="this.style.transform='none'; this.style.boxShadow='none';"
-                    onclick="confirmSeizePower()">
-                    Seize Absolute Power
-                </button>
-                <button id="reject-seize-btn"
-                    style="padding: 14px 24px; background: transparent; color: var(--text-secondary); border: 1px solid var(--border-main); border-radius: 3px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer;"
-                    onclick="rejectSeizePower()">
-                    Reject
-                </button>
-            </div>
-            <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 10px;">
-                Converts the nation to an Autocracy. Coalition dissolved. All elections cancelled.
-            </div>
-        </div>
-    `;
-}
-
-window.confirmSeizePower = async function() {
-    if (!confirm('SEIZE ABSOLUTE POWER?\n\nThis will:\n• Convert the nation to an Autocracy\n• Dissolve the coalition and legislature\n• Cancel all scheduled elections\n• Install your party as the ruling regime\n\nThis action is IRREVERSIBLE.')) return;
-
-    const btn = document.getElementById('seize-power-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Seizing power...'; }
-
-    try {
-        const result = await seizeAutocraticPower(_supabase, currentNation.id, currentFaction.id);
-        if (result?.success) {
-            alert(`${result.rulingParty} has seized absolute power. ${currentNation.name} is now an Autocracy.`);
-            location.reload();
-        }
-    } catch (err) {
-        console.error('[SeizePower] Failed:', err);
-        alert('Failed to seize power: ' + (err.message || err));
-        if (btn) { btn.disabled = false; btn.textContent = 'Seize Absolute Power'; }
-    }
-};
-
-window.rejectSeizePower = async function() {
-    if (!confirm('Reject the path to absolute power?\n\nYou are choosing to preserve democratic governance. This decision is final — you will not be offered this opportunity again.')) return;
-
-    const btn = document.getElementById('reject-seize-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Rejecting...'; }
-
-    try {
-        await _supabase.from('nations').update({
-            seize_power_rejected: true,
-            authoritarianism_seize_available_tick: null
-        }).eq('id', currentNation.id);
-
-        await _supabase.from('event_log').insert({
-            nation_id: currentNation.id,
-            event_name: 'SEIZE_POWER_REJECTED',
-            trigger_key: 'seize_power_rejected',
-            description_used: 'The ruling party has rejected the path to absolute power, choosing to preserve democratic governance.',
-            category: 'POLITICAL',
-            effects_applied: { action: 'rejected' }
-        });
-
-        location.reload();
-    } catch (err) {
-        alert('Error: ' + (err.message || err));
-        if (btn) { btn.disabled = false; btn.textContent = 'Reject'; }
-    }
-};
 
 // ==================== PARLIAMENTARY EMERGENCY (requires Emergency Powers Act) ====================
 
 function renderParliamentaryEmergency() {
-    if (!currentNation || isAutocracy || isPresidential) return '';
+    if (!currentNation || isPresidential) return '';
     if (!currentNation.emergency_powers_act) return '';
     // Only the ruling faction (PM's party) can declare
     const isRuling = currentFaction && currentNation.ruling_faction_id && currentFaction.id === currentNation.ruling_faction_id;
@@ -1470,7 +1239,7 @@ async function renderGovernmentPage() {
 
         // Check if coalition formation is in progress for the latest election
         let coalitionFormationInProgress = false;
-        if (!isAutocracy && !isPresidential && electionData?.id && !coalition) {
+        if (!isPresidential && electionData?.id && !coalition) {
             const { data: formedGov } = await _supabase
                 .from('government_formations')
                 .select('id')
@@ -1491,7 +1260,7 @@ async function renderGovernmentPage() {
 
         // Populate formation state when election data is available
         // (needed for both explicit formation-in-progress and fallback "no majority, no coalition")
-        if (!isAutocracy && !isPresidential && electionData) {
+        if (!isPresidential && electionData) {
             currentElectionId = electionData.id;
             electionResults = electionData.results?.votes || [];
             // Use factions.seats as the single source of truth for total legislature seats
@@ -1505,21 +1274,8 @@ async function renderGovernmentPage() {
         }
 
         // Seat loading via game-common.js
-        const seatData = await loadSeats(_supabase, currentNation.id, isAutocracy, allParties, currentFaction?.id);
+        const seatData = await loadSeats(_supabase, currentNation.id, false, allParties, currentFaction?.id);
         allPartySeats = seatData.allPartySeats;
-
-        // Detect ruling faction for autocracy
-        if (isAutocracy) {
-            const hf = await detectHeadFaction(_supabase, currentNation.id, allParties, allPartySeats, currentFaction?.id);
-            rulingFactionId = hf.headFactionId;
-            isRulingFaction = hf.isHeadFaction;
-
-            const { data: requests } = await _supabase
-                .from('ministry_requests')
-                .select('*, factions(faction_name)')
-                .eq('nation_id', currentNation.id);
-            ministryRequests = requests || [];
-        }
 
         // Detect president's party for Presidential systems
         if (isPresidential) {
@@ -1646,7 +1402,7 @@ async function renderGovernmentPage() {
         _protestCrisisData = activeProtestCrisis;
 
         // Check for active parliamentary emergency (for Emergency Powers Act UI)
-        if (!isAutocracy && !isPresidential && currentNation.emergency_powers_act) {
+        if (!isPresidential && currentNation.emergency_powers_act) {
             const { data: activeEmergency } = await _supabase
                 .from('executive_orders')
                 .select('id')
@@ -1658,20 +1414,16 @@ async function renderGovernmentPage() {
         }
 
         const revolutionBannerHtml = await renderRevolutionBannerGov();
-        const authoritarianSeizeBannerHtml = renderAuthoritarianSeizeBanner();
         const administrationBoxHtml = await renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress, allPartySeats);
         const protestCrisisCardHtml = renderProtestCrisisCard();
-        const autocracyPanelsHtml = isAutocracy ? await renderAutocracyGovPanels() : '';
         const parliamentaryEmergencyHtml = renderParliamentaryEmergency();
 
         document.getElementById('content-area').innerHTML = `
             <div class="panel-padding">
                 ${revolutionBannerHtml}
-                ${authoritarianSeizeBannerHtml}
                 ${protestCrisisCardHtml}
                 ${administrationBoxHtml}
                 ${parliamentaryEmergencyHtml}
-                ${autocracyPanelsHtml}
 
                 <div class="section-header">Government Structure</div>
                 <div class="info-block">
@@ -1857,74 +1609,6 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
     // Coalition formation in progress — show countdown with snap election warning
     if (coalitionFormationInProgress) {
         return renderFormationInProgress(parties);
-    }
-
-    // === AUTOCRACY: No ruling faction yet — show Seize Power prompt ===
-    if (isAutocracy && !rulingFactionId) {
-        return `
-            <div class="administration-box" style="border-color: var(--red);">
-                <div class="administration-header" style="border-bottom-color: var(--border-hair);">
-                    <div style="font-size: 2.5rem; margin-bottom: 8px;">&#9876;</div>
-                    <div class="administration-title" style="color: var(--red);">Power Vacuum</div>
-                    <div class="administration-subtitle">No faction controls the government</div>
-                </div>
-                <div class="administration-content" style="display:block; text-align:center; padding: 24px;">
-                    <div style="font-size:0.9rem; color:var(--text-secondary); margin-bottom: 20px;">
-                        The nation has no ruling faction. The Head of State, <strong style="color:var(--text-primary);">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</strong>, awaits a faction bold enough to seize the reins of government.
-                    </div>
-                    <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom: 20px;">
-                        Claiming power will make your faction the ruling faction, granting control over all ministries and the Prime Minister's office.
-                    </div>
-                    <button id="claim-power-btn"
-                        style="padding: 14px 36px; background: var(--red); color: white; border: none; border-radius: 3px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer; transition: all 0.2s;"
-                        onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 20px rgba(255,68,68,0.4)';"
-                        onmouseout="this.style.transform='none'; this.style.boxShadow='none';"
-                        onclick="claimPower()">
-                        Seize Power
-                    </button>
-                    <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 10px;">Cost: 0 AP &mdash; Uncontested</div>
-                </div>
-            </div>`;
-    }
-
-    if (isAutocracy) {
-        const rulingParty = allParties.find(p => p.id === rulingFactionId);
-        const rulingPartyName = rulingParty?.faction_name || '—';
-        const pmName = safePmName(primeMinister);
-        const pmAge = primeMinister?.minister_age ?? '—';
-        const pmPartyName = primeMinister?.factions?.faction_name || '—';
-        return `
-            <div class="administration-box">
-                <div class="administration-header">
-                    <div class="administration-title">${escapeHtml(adminLast)} Administration</div>
-                    <div class="administration-subtitle">National Government</div>
-                </div>
-                <div class="administration-content">
-                    <div class="admin-leaders-column">
-                        <div class="admin-section">
-                            <div class="admin-section-title">Prime Minister</div>
-                            <div class="admin-person-name">${activeHOG ? `${escapeHtml(activeHOG.first_name)} ${escapeHtml(activeHOG.last_name)}` : escapeHtml(pmName)}</div>
-                            <div class="admin-person-details">${activeHOG ? `Age ${activeHOG.age} • ` : (pmAge !== '—' ? `Age ${pmAge} • ` : '')}<span class="admin-person-party">${activeHOG ? (activeHOG.factions?.faction_name || allParties.find(p => p.id === activeHOG.faction_id)?.faction_name || pmPartyName) : pmPartyName}</span></div>
-                            ${primeMinister?.minister_approval != null ? `<div class="minister-approval" style="margin-top:6px;">PM Approval: <span class="${primeMinister.minister_approval < 35 ? 'low' : primeMinister.minister_approval < 50 ? 'mid' : 'high'}">${Math.round(primeMinister.minister_approval)}%</span></div>` : ''}
-                            ${activeHOG ? `
-                                <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
-                                    <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(activeHOG._resolvedIdeology)};color:white;margin-bottom:6px;">${activeHOG._resolvedIdeology || 'Unknown'}</div>
-                                    <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${activeHOG.leader_traits?.trait_name || activeHOG.trait_key}</div>
-                                    <div style="font-size:0.75rem;color:var(--green);margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
-                                    <div style="font-size:0.75rem;color:var(--red);">▼ ${activeHOG.leader_traits?.downside || ''}</div>
-                                </div>
-                            ` : ''}
-                        </div>
-                        <div class="admin-section">
-                            <div class="admin-section-title">${escapeHtml(currentNation.head_of_state_title || 'Head of State')}</div>
-                            <div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div>
-                            <div class="admin-person-details">Age ${hosAge} · <span class="admin-person-party">${escapeHtml(rulingPartyName)}</span></div>
-                            <div style="color: var(--red); font-size: 0.75rem; margin-top: 6px; font-weight: bold;">Rules until dead or deposed</div>
-                        </div>
-                    </div>
-                    ${renderAdminChat()}
-                </div>
-            </div>`;
     }
 
     // ==================== PRESIDENTIAL SYSTEM ====================
@@ -3586,33 +3270,7 @@ function buildMgmtButtons(key, ministry, govContext) {
     const disabledStyle = 'style="opacity:0.4;cursor:not-allowed;"';
     let btns = '';
 
-    if (govContext.type === 'autocracy') {
-        if (govContext.isRuling) {
-            if (isFilled) {
-                if (noAP) {
-                    btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--purge" ${disabledStyle} title="Need 1 AP">PURGE<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
-                } else {
-                    btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--purge" onclick="event.stopPropagation();purgeMinister('${key}')">PURGE<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
-                }
-            } else {
-                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--assign" onclick="event.stopPropagation();openAssignModal('${key}')">ASSIGN</div>`;
-            }
-        } else if (govContext.isMyMinistry) {
-            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--resign" onclick="event.stopPropagation();resignMinistry('${key}')">RESIGN MINISTRY</div>`;
-        } else {
-            const totalMyRequests = ministryRequests.filter(r => r.faction_id === currentFaction?.id).length;
-            if (govContext.myRequest) {
-                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--unrequest" onclick="event.stopPropagation();unrequestMinistry('${govContext.myRequest.id}')">UNREQUEST<span class="ministry-card__mgmt-ap">0 AP</span></div>`;
-            } else {
-                const canRequest = totalMyRequests < 2 && ap >= 1;
-                if (canRequest) {
-                    btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--request" onclick="event.stopPropagation();requestMinistry('${key}')">REQUEST<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
-                } else {
-                    btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--request" ${disabledStyle} title="${totalMyRequests >= 2 ? 'Max 2 requests' : 'Need 1 AP'}">REQUEST<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
-                }
-            }
-        }
-    } else if (govContext.type === 'parliamentary') {
+    if (govContext.type === 'parliamentary') {
         if (govContext.isMyMinistry && !govContext.isCaretaker) {
             btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--resign" onclick="event.stopPropagation();resignMinistry('${key}')">RESIGN</div>`;
         }
@@ -5350,8 +5008,7 @@ function renderDoctrinePanel() {
     const sectorDoctrines = getDoctrinesBySector(_doctrineActiveTab);
     let cardsHtml = '';
     sectorDoctrines.forEach(def => {
-        // Praetorian: hide from democratic governments
-        if (def.autocracyOnly && !isAutocracy) return;
+        if (def.autocracyOnly) return; // skip any autocracy-only doctrines
 
         cardsHtml += renderDoctrineCard(def, getDoctrineState(def.id), isMine);
     });
@@ -5392,11 +5049,11 @@ function renderDoctrineCard(def, state, isMine) {
     let buttonHtml = '';
 
     if (isPermanent && isActiveDoc) {
-        // Praetorian Doctrine — permanent autocracy card
+        // Praetorian Doctrine — permanent card
         cardClass += ' doctrine-card--praetorian';
         stateTagHtml = `<span class="doctrine-card__tag doctrine-card__tag--permanent">PERMANENT</span>`;
         barHtml = renderCohesionBar(state);
-        buttonHtml = `<div class="doctrine-card__btn doctrine-card__btn--disabled">AUTOCRACY — CANNOT BE RENOUNCED</div>`;
+        buttonHtml = `<div class="doctrine-card__btn doctrine-card__btn--disabled">PERMANENT — CANNOT BE RENOUNCED</div>`;
     } else if (isRenouncing) {
         // Renouncing state — cooldown in progress
         cardClass += ' doctrine-card--renouncing';
@@ -5727,7 +5384,7 @@ async function fireDoctrineEvent(poolKey, vars) {
 
         // Insert directly into event_log (fire_system_event RPC has auth
         // guard issues for client-side calls; direct insert matches the
-        // pattern used by autocracy-coups.js, bills.js, etc.)
+        // pattern used by bills.js, etc.)
         const { error } = await _supabase.from('event_log').insert({
             nation_id: currentNation.id,
             event_name: 'Military Doctrine',
@@ -6202,7 +5859,6 @@ async function protestCrisisAction(actionType) {
 
 // --- Vacant ministry alert (PM/President only) ---
 function renderVacantMinistryAlert(ministries, coalition) {
-    if (isAutocracy) return '';
     // Determine if current player is PM or President
     const isPlayerPMorPresident = isPresidential
         ? isPresidentParty
@@ -6238,15 +5894,12 @@ function renderCabinet(ministries, coalition) {
     const canAppoint = isPMParty && pmFilled && !isCaretaker;
 
     let govType = 'parliamentary';
-    if (isAutocracy) govType = 'autocracy';
-    else if (isPresidential) govType = 'presidential';
+    if (isPresidential) govType = 'presidential';
 
     // Determine which keys to show (presidential/parliamentary skip PM)
-    const keys = isAutocracy
-        ? MINISTRY_KEYS_CABINET
-        : MINISTRY_KEYS_CABINET.filter(k => k !== 'prime_minister');
+    const keys = MINISTRY_KEYS_CABINET.filter(k => k !== 'prime_minister');
 
-    if ((!ministries || ministries.length === 0) && !isAutocracy && !isPresidential) {
+    if ((!ministries || ministries.length === 0) && !isPresidential) {
         // Parliamentary with coalition allocations but no ministers yet
         if (coalition && coalition.ministry_allocations) {
             const cards = Object.entries(coalition.ministry_allocations)
@@ -6270,7 +5923,7 @@ function renderCabinet(ministries, coalition) {
         const m = ministryMap[key];
         const title = MINISTRY_NAMES[key] || m?.ministry_name || key;
         const isFilled = m && m.minister_first_name;
-        const requests = isAutocracy ? ministryRequests.filter(r => r.ministry_key === key) : [];
+        const requests = [];
         const myRequest = requests.find(r => r.faction_id === currentFaction?.id);
         const isMyMinistry = isFilled && m && currentFaction && m.party_id === currentFaction.id;
 
@@ -6418,8 +6071,8 @@ function openAssignModal(ministryKey) {
     document.getElementById('assign-confirm-btn').textContent = 'Appoint Minister';
     document.getElementById('assign-modal-title').textContent = 'Assign — ' + (MINISTRY_NAMES[ministryKey] || ministryKey);
 
-    // For democracies, only show coalition parties; for autocracies, show all
-    const eligibleParties = (!isAutocracy && !isPresidential && coalitionData?.party_ids)
+    // For parliamentary democracies, only show coalition parties
+    const eligibleParties = (!isPresidential && coalitionData?.party_ids)
         ? allParties.filter(p => coalitionData.party_ids.includes(p.id))
         : allParties;
 
@@ -6664,156 +6317,6 @@ async function confirmAppointment() {
     }
 }
 
-// ==================== CLAIM POWER (Autocracy — No Ruler) ====================
-
-async function claimPower() {
-    if (!currentFaction || !currentNation) return;
-    if (!isAutocracy) return;
-
-    // Race condition guard: re-check that no one claimed power in the meantime
-    const { data: freshNation } = await _supabase
-        .from('nations')
-        .select('ruling_faction_id')
-        .eq('id', currentNation.id)
-        .single();
-
-    if (freshNation?.ruling_faction_id) {
-        alert('Another faction has already claimed power. Refreshing...');
-        await renderGovernmentPage();
-        return;
-    }
-
-    if (!confirm(
-        'SEIZE POWER?\n\n' +
-        'As the first faction to act, you will claim uncontested control of the government.\n\n' +
-        'You will become the Ruling Faction and receive:\n' +
-        '- Control of the Head of State\n' +
-        '- A Prime Minister from your faction\n' +
-        '- All cabinet ministries staffed with your appointees\n' +
-        '- Loyalty set to 80\n\n' +
-        'Cost: 0 AP\n\nProceed?'
-    )) return;
-
-    const btn = document.getElementById('claim-power-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'SEIZING POWER...'; }
-
-    try {
-        const { data: shard } = await _supabase
-            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const tick = shard?.current_tick || 0;
-
-        // 1. Set this faction as the ruling faction
-        await _supabase.from('nations')
-            .update({ ruling_faction_id: currentFaction.id })
-            .eq('id', currentNation.id);
-
-        // 2. Set faction loyalty to 80
-        await _supabase.from('factions')
-            .update({ loyalty: 80 })
-            .eq('id', currentFaction.id);
-
-        // 3. Generate and insert ministry rows for all positions
-        const ministryInserts = MINISTRY_KEYS_CABINET.map(key => ({
-            nation_id: currentNation.id,
-            ministry_key: key,
-            ministry_name: MINISTRY_NAMES[key] || key,
-            party_id: currentFaction.id,
-            minister_first_name: FIRST_NAMES_POOL[Math.floor(Math.random() * FIRST_NAMES_POOL.length)],
-            minister_last_name: LAST_NAMES_POOL[Math.floor(Math.random() * LAST_NAMES_POOL.length)],
-            minister_age: 35 + Math.floor(Math.random() * 31),
-            is_active: true
-        }));
-
-        const { error: ministryError } = await _supabase
-            .from('ministries').insert(ministryInserts);
-        if (ministryError) throw ministryError;
-
-        // 4. Create head_of_government record for the PM
-        const pmInsert = ministryInserts.find(m => m.ministry_key === 'prime_minister');
-        if (pmInsert) {
-            await _supabase.from('head_of_government')
-                .update({ active: false })
-                .eq('nation_id', currentNation.id)
-                .eq('active', true);
-
-            await _supabase.from('head_of_government').upsert({
-                nation_id: currentNation.id,
-                faction_id: currentFaction.id,
-                first_name: pmInsert.minister_first_name,
-                last_name: pmInsert.minister_last_name,
-                age: pmInsert.minister_age,
-                ideology: currentFaction.leader_ideology || null,
-                active: true
-            }, { onConflict: 'nation_id' });
-        }
-
-        // 5. Log to campaign_actions
-        await _supabase.from('campaign_actions').insert({
-            party_id: currentFaction.id,
-            nation_id: currentNation.id,
-            action_type: 'claim_power',
-            tick_performed: tick,
-            result: {
-                faction_name: currentFaction.faction_name,
-                ministries_assigned: MINISTRY_KEYS_CABINET.length,
-                pm_name: pmInsert ? `${pmInsert.minister_first_name} ${pmInsert.minister_last_name}` : null
-            }
-        });
-
-        // 6. Create initial administration record (non-blocking)
-        try {
-            const hosName = (currentNation.head_of_state_first_name && currentNation.head_of_state_last_name)
-                ? `${currentNation.head_of_state_first_name} ${currentNation.head_of_state_last_name}`
-                : null;
-            const adminName = pmInsert
-                ? `${pmInsert.minister_last_name} Administration`
-                : `${currentNation.head_of_state_last_name || currentFaction.faction_name} Administration`;
-
-            await _supabase.from('administrations').insert({
-                nation_id: currentNation.id,
-                admin_name: adminName,
-                head_of_state: hosName,
-                prime_minister: pmInsert ? `${pmInsert.minister_first_name} ${pmInsert.minister_last_name}` : null,
-                pm_party_name: currentFaction.faction_name,
-                pm_party_id: currentFaction.id,
-                coalition_parties: [{ party_id: currentFaction.id, party_name: currentFaction.faction_name, seats: currentFaction.seats || 0 }],
-                total_seats: currentFaction.seats || 0,
-                government_type: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
-                started_at_tick: tick,
-                started_at_date: tickToDate(tick),
-                approval_at_start: 50,
-                head_of_state_title: currentNation.head_of_state_title || null
-            });
-        } catch (adminErr) {
-            console.warn('Administration record creation failed (non-blocking):', adminErr);
-        }
-
-        // 7. Update local state
-        currentFaction.loyalty = 80;
-        currentNation.ruling_faction_id = currentFaction.id;
-        rulingFactionId = currentFaction.id;
-        isRulingFaction = true;
-
-        // 8. Clear cache and re-render
-        sessionStorage.removeItem('nationhood_state');
-        qCacheBust('coalition_');
-
-        alert(
-            'POWER SEIZED!\n\n' +
-            `${currentFaction.faction_name} now controls the government.\n\n` +
-            `Prime Minister: ${pmInsert?.minister_first_name} ${pmInsert?.minister_last_name}\n` +
-            `All ${MINISTRY_KEYS_CABINET.length} cabinet positions filled.`
-        );
-
-        await renderGovernmentPage();
-
-    } catch (error) {
-        console.error('Claim power error:', error);
-        alert('Error claiming power: ' + error.message);
-        if (btn) { btn.disabled = false; btn.textContent = 'Seize Power'; }
-    }
-}
-
 // ==================== PURGE MINISTER ====================
 
 async function purgeMinister(ministryKey) {
@@ -7015,7 +6518,7 @@ async function denyRequest(requestId) {
 // ==================== VOTE OF NO CONFIDENCE ====================
 
 function renderNoConfidenceButton(coalition) {
-    if (!currentFaction || isAutocracy || isPresidential) return '';
+    if (!currentFaction || isPresidential) return '';
 
     // Only opposition parties can file (not in coalition)
     const isInCoalition = coalition.party_ids.includes(currentFaction.id);
@@ -7209,8 +6712,8 @@ async function fileNoConfidence() {
 // ==================== IMPEACH PRESIDENT ====================
 
 function renderImpeachmentButton() {
-    // Only presidential systems, only non-autocracy, only if we have a faction
-    if (!currentFaction || isAutocracy || !isPresidential) return '';
+    // Only presidential systems, only if we have a faction
+    if (!currentFaction || !isPresidential) return '';
     if (!presidentData) return '';
 
     // President's own party cannot file impeachment
@@ -8174,7 +7677,7 @@ window.fileImpeachment = fileImpeachment;
 // ==================== CALL EARLY ELECTIONS ====================
 
 function renderEarlyElectionsButton(coalition) {
-    if (!currentFaction || isAutocracy || isPresidential) return '';
+    if (!currentFaction || isPresidential) return '';
 
     // Only the PM's party can call early elections
     const isPMParty = currentFaction.id === coalition.lead_party_id;
@@ -8821,21 +8324,13 @@ function renderAdminCard(admin, isCurrent) {
     // Detail sections
     let detailHTML = '';
 
-    // Info grid — adapt labels for presidential vs parliamentary vs autocracy
+    // Info grid — adapt labels for presidential vs parliamentary
     const isPres = admin.government_type === 'Presidential';
-    const isAutoc = admin.government_type === 'Autocracy';
 
     let hogLabel, hogName, hogParty;
     let govLeaderLabel, govLeaderName, govLeaderSub;
 
-    if (isAutoc) {
-        hogLabel = escapeHtml(admin.head_of_state_title || 'Ruler');
-        hogName = admin.head_of_state || admin.prime_minister || 'Unknown';
-        hogParty = admin.pm_party_name || '';
-        govLeaderLabel = 'Ruling Faction';
-        govLeaderName = admin.pm_party_name || '—';
-        govLeaderSub = '';
-    } else if (isPres) {
+    if (isPres) {
         hogLabel = 'President';
         hogName = admin.president_name || admin.head_of_state || 'Unknown';
         hogParty = admin.president_party_name || admin.pm_party_name || '';
@@ -8866,7 +8361,7 @@ function renderAdminCard(admin, isCurrent) {
             ${govLeaderSub ? `<div class="pad-info-sub">${govLeaderSub}</div>` : ''}
         </div>
         <div class="pad-info-box">
-            <div class="pad-info-label">${isAutoc ? 'Faction Seats' : (isPres ? 'Party Seats' : 'Coalition')}</div>
+            <div class="pad-info-label">${isPres ? 'Party Seats' : 'Coalition'}</div>
             <div class="pad-info-value">${seatCount} / ${currentNation.total_seats || GAME_CONFIG.TOTAL_SEATS} seats</div>
             <div class="pad-info-sub">${durationText}${admin.end_reason ? ' &middot; Ended: ' + (END_REASON_LABELS[admin.end_reason] || admin.end_reason) : ''}</div>
         </div>
@@ -9060,11 +8555,9 @@ function renderAdminCard(admin, isCurrent) {
                         <span class="past-admin-date">${dateRange}</span>
                     </div>
                     <div class="past-admin-meta">
-                        ${isAutoc
-                            ? `<span class="pm-name">${escapeHtml(admin.head_of_state || admin.prime_minister || 'TBD')}</span> &middot; ${escapeHtml(admin.pm_party_name || '')}`
-                            : (isPres
+                        ${isPres
                                 ? `<span class="pm-name">${escapeHtml(admin.president_name || admin.head_of_state || 'TBD')}</span> &middot; ${escapeHtml(admin.president_party_name || admin.pm_party_name || '')}`
-                                : `PM: <span class="pm-name">${admin.prime_minister || 'TBD'}</span> &middot; ${admin.pm_party_name || ''}`)}
+                                : `PM: <span class="pm-name">${admin.prime_minister || 'TBD'}</span> &middot; ${admin.pm_party_name || ''}`}
                         ${partyList ? ` &middot; ${partyList}` : ''}
                         ${seatCount ? ` &middot; ${seatCount}/${GAME_CONFIG.TOTAL_SEATS} seats` : ''}
                     </div>
@@ -9084,7 +8577,6 @@ function renderAdminCard(admin, isCurrent) {
 // Expose handlers used by inline HTML attributes
 window.closeAssignModal = closeAssignModal;
 window.handleConfirmMinister = handleConfirmMinister;
-window.claimPower = claimPower;
 window.resignPMAction = resignPMAction;
 window.resignMinistry = resignMinistry;
 window.purgeMinister = purgeMinister;

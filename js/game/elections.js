@@ -4,7 +4,7 @@
  */
 
 import { FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, GAME_CONFIG, SNAP_COOLDOWN_GAP, getPresidentialTermTicks, getPresidentialTermLimit, getParliamentaryTermTicks } from './config.js';
-import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isAutocracy, isPresidentialRepublic } from './government-types.js';
+import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isPresidentialRepublic } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { snapshotNationStats } from './stats.js';
 import { nudgeApproval, adjustCredibility, adjustGovernmentApprovalEvent, round2 } from './momentum.js';
@@ -1050,7 +1050,6 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
  */
 export async function processGovernmentVacancy(supabase, nation, currentTick) {
     // Only applies to parliamentary democracies
-    if (isAutocracy(nation)) return null;
     if (isPresidentialRepublic(nation)) return null;
 
     // Check for active coalition
@@ -1755,8 +1754,6 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
 }
 
 export async function processElections(supabase, nation, currentTick) {
-    if (isAutocracy(nation)) return [];
-
     const isPresidential = isPresidentialRepublic(nation);
     const results = [];
 
