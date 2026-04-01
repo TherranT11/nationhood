@@ -29546,11 +29546,13 @@ async function createIncident(supabase, { type, config, nationA, nationB, roleA,
     }
 
     // Insert event_log entries (Nation tab + World tab)
+    // Uses structured summary text (not the narrative event pool text)
+    const eventLogSummary = getIncidentEventLogSummary(type, nationA, nationB, roleA);
     await supabase.from('event_log').insert({
         nation_id: nationA.id,
         event_name: formatCrisisName(type),
         trigger_key: `incident_started_${type}`,
-        description_chosen: eventText,
+        description_chosen: eventLogSummary,
         category: 'crisis',
         fired_at_tick: currentTick
     });
@@ -29558,7 +29560,7 @@ async function createIncident(supabase, { type, config, nationA, nationB, roleA,
         nation_id: nationB.id,
         event_name: formatCrisisName(type),
         trigger_key: `incident_started_${type}`,
-        description_chosen: eventText,
+        description_chosen: eventLogSummary,
         category: 'crisis',
         fired_at_tick: currentTick
     });
@@ -29609,6 +29611,26 @@ function formatCrisisName(type) {
         case 'spy_arrest': return 'Spy Arrest Crisis';
         default: return type;
     }
+}
+
+/**
+ * Generate a summary description for the event_log (dashboard World/Nation feeds).
+ * Uses clean, structured text instead of the narrative event pool text.
+ */
+const FISHING_EVENT_SUMMARIES = [
+    'A Maritime Fishing Dispute was triggered when {enforcer} seized a {aggrieved} fishing vessel in disputed waters.',
+    'A Maritime Fishing Dispute erupted after {enforcer} coast guard detained {aggrieved} fishermen in contested territory.',
+    'A Maritime Fishing Dispute has begun — {enforcer} intercepted and impounded a {aggrieved} vessel in disputed waters.'
+];
+
+function getIncidentEventLogSummary(type, nationA, nationB, roleA) {
+    if (type === 'fishing_dispute') {
+        const enforcer = roleA === 'enforcer' ? nationA.name : nationB.name;
+        const aggrieved = roleA === 'aggrieved' ? nationA.name : nationB.name;
+        const template = FISHING_EVENT_SUMMARIES[Math.floor(Math.random() * FISHING_EVENT_SUMMARIES.length)];
+        return template.replace(/\{enforcer\}/g, enforcer).replace(/\{aggrieved\}/g, aggrieved);
+    }
+    return `A ${formatCrisisName(type)} incident has been triggered between ${nationA.name} and ${nationB.name}.`;
 }
 
 /**
