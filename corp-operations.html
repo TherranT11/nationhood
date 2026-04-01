@@ -2026,16 +2026,16 @@ body.light-mode .dl-empty__text { color: #1a1a17; }
       <div class="ap-card__footer" id="ap-footer" style="display:none;">
         <div class="ap-footer-stats">
           <div>
-            <div class="ap-footer-stat__label">TOTAL CREW</div>
+            <div class="ap-footer-stat__label">PROJECTS</div>
             <div class="ap-footer-stat__value" id="ap-total-crew">0</div>
           </div>
           <div>
-            <div class="ap-footer-stat__label">TOTAL BUDGET</div>
+            <div class="ap-footer-stat__label">TOTAL VALUE</div>
             <div class="ap-footer-stat__value" id="ap-total-budget">$0</div>
           </div>
           <div>
-            <div class="ap-footer-stat__label">TOTAL SPENT</div>
-            <div class="ap-footer-stat__value" id="ap-total-spent" style="color:var(--amber);">$0</div>
+            <div class="ap-footer-stat__label">YOUR BIDS</div>
+            <div class="ap-footer-stat__value" id="ap-total-spent" style="color:var(--gold);">$0</div>
           </div>
         </div>
         <div id="ap-late-badge"></div>
@@ -3310,82 +3310,71 @@ function renderActiveProjects() {
         return;
     }
 
-    let totalCrew = 0;
+    const currentTick = shard?.current_tick || 0;
     let totalBudget = 0;
-    let totalSpent = 0;
-    let lateCount = 0;
+    let totalBid = 0;
 
     let html = '';
     for (const p of activeProjects) {
-        const isGov = p.contract_type === 'GOVERNMENT';
+        const isGov = p.issuer_type === 'GOVERNMENT';
         const typeClass = isGov ? 'gov' : 'private';
-        const spent = Number(p.amount_spent) || 0;
-        const budget = Number(p.budget) || 1;
-        const budgetPct = Math.round((spent / budget) * 100);
-        const budgetColor = getBudgetColor(budgetPct);
-        const phase = p.current_phase || 'Permits';
-        const workforce = Number(p.assigned_workforce) || 0;
-        const assets = Number(p.assigned_assets) || 0;
+        const bid = Array.isArray(p.contract_bids) ? p.contract_bids[0] : p.contract_bids;
+        const bidPrice = bid?.bid_price || 0;
+        const estCost = bid?.estimated_cost || 0;
+        const quality = bid?.estimated_quality || 0;
+        const budget = p.budget_ceiling || 0;
 
-        const expectedFinishTick = p.expected_finish_tick;
-        const deadlineTick = p.deadline_tick || (p.started_at_tick ? p.started_at_tick + (p.timeline_months * 1) : null);
-        const isLate = expectedFinishTick && deadlineTick && expectedFinishTick > deadlineTick;
+        // Timeline
+        const awardedTick = p.awarded_at_tick || currentTick;
+        const deadlineTick = awardedTick + (p.timeline_ticks || 8);
+        const ticksRemaining = Math.max(0, deadlineTick - currentTick);
+        const ticksElapsed = Math.max(0, currentTick - awardedTick);
+        const totalTicks = p.timeline_ticks || 8;
+        const progressPct = Math.min(100, Math.round((ticksElapsed / totalTicks) * 100));
+        const isLate = currentTick > deadlineTick;
 
-        const expectedDate = expectedFinishTick ? tickToGameDate(expectedFinishTick) : '—';
-        const deadlineDate = deadlineTick ? tickToGameDate(deadlineTick) : '—';
+        const specCls = sectorClass(p.sector);
+        const specLbl = sectorLabel(p.sector);
 
-        const pmName = (p.pm_first_name && p.pm_last_name)
-            ? escapeHtml(p.pm_first_name) + ' ' + escapeHtml(p.pm_last_name)
-            : '—';
-
-        totalCrew += workforce;
         totalBudget += budget;
-        totalSpent += spent;
-        if (isLate) lateCount++;
+        totalBid += bidPrice;
 
         html += `<div class="ap-item">
             <div class="ap-item__row1">
                 <div class="ap-item__info">
                     <div class="ap-item__name">${escapeHtml(p.name)}</div>
-                    <div class="ap-item__id">${escapeHtml(p.contract_number)}</div>
+                    <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${escapeHtml(p.issuer_name || '—')} · ${specLbl}</div>
                 </div>
                 <span class="oc-item__type-badge ${typeClass}">${isGov ? 'GOV' : 'PVT'}</span>
             </div>
-            ${renderPhaseTrack(phase)}
             <div class="ap-budget">
                 <div class="ap-budget__header">
-                    <span class="ap-budget__label">COST / BUDGET</span>
-                    <span class="ap-budget__values" style="color:${budgetColor}">
-                        ${fmtBig(spent)} <span style="color:var(--text-dim)">/</span> ${fmtBig(budget)}
+                    <span class="ap-budget__label">PROGRESS</span>
+                    <span class="ap-budget__values" style="color:${isLate ? 'var(--red)' : 'var(--teal)'}">
+                        ${ticksElapsed}/${totalTicks} ticks ${isLate ? '<span style="color:var(--red);font-weight:700;"> OVERDUE</span>' : ''}
                     </span>
                 </div>
                 <div class="ap-budget__bar">
-                    <div class="ap-budget__fill" style="width:${Math.min(budgetPct, 100)}%;background:${budgetColor}"></div>
+                    <div class="ap-budget__fill" style="width:${progressPct}%;background:${isLate ? 'var(--red)' : 'var(--teal)'}"></div>
                 </div>
             </div>
             <div class="ap-details">
-                <div class="ap-detail-cell" style="flex:1.2">
-                    <div class="ap-detail-cell__label">PM</div>
-                    <div class="ap-detail-cell__value">${pmName}</div>
+                <div class="ap-detail-cell" style="flex:1">
+                    <div class="ap-detail-cell__label">YOUR BID</div>
+                    <div class="ap-detail-cell__value" style="font-size:10px;font-weight:700;color:var(--gold)">${fmtBudget(bidPrice)}</div>
+                </div>
+                <div class="ap-detail-cell" style="flex:1">
+                    <div class="ap-detail-cell__label">EST. COST</div>
+                    <div class="ap-detail-cell__value" style="font-size:10px;font-weight:700;color:var(--red)">${fmtBudget(estCost)}</div>
                 </div>
                 <div class="ap-detail-cell" style="flex:0.7;text-align:center">
-                    <div class="ap-detail-cell__label">CREW</div>
-                    <div class="ap-detail-cell__value${workforce === 0 ? ' zero' : ''}" style="font-size:10px;font-weight:700">${workforce}</div>
+                    <div class="ap-detail-cell__label">QUALITY</div>
+                    <div class="ap-detail-cell__value" style="font-size:10px;font-weight:700;color:${quality >= 70 ? 'var(--green)' : quality >= 40 ? 'var(--teal)' : 'var(--orange)'}">${quality}/100</div>
                 </div>
-                <div class="ap-detail-cell" style="flex:0.6;text-align:center">
-                    <div class="ap-detail-cell__label">ASSETS</div>
-                    <div class="ap-detail-cell__value${assets === 0 ? ' zero' : ''}" style="font-size:10px;font-weight:700">${assets}</div>
+                <div class="ap-detail-cell" style="flex:1">
+                    <div class="ap-detail-cell__label">REMAINING</div>
+                    <div class="ap-detail-cell__value" style="font-size:10px;font-weight:700;color:${isLate ? 'var(--red)' : 'var(--text-bright)'}">${ticksRemaining} ticks</div>
                 </div>
-                <div class="ap-detail-cell" style="flex:1.5">
-                    <div class="ap-detail-cell__label">FINISH</div>
-                    <div class="ap-detail-cell__value" style="color:${isLate ? 'var(--orange)' : 'var(--text-bright)'}">
-                        ${expectedDate}${isLate ? '<span class="ap-late-tag">LATE</span>' : ''}
-                    </div>
-                    <div class="ap-detail-cell__sub">due ${deadlineDate}</div>
-                </div>
-            </div>
-            <div class="ap-item__view-row">
-                <button class="ap-view-btn" onclick="openContractDetail(activeProjects.find(c=>c.id==='${p.id}'))">VIEW</button>
             </div>
         </div>`;
     }
@@ -3393,28 +3382,25 @@ function renderActiveProjects() {
     list.innerHTML = html;
 
     // Footer
-    footer.style.display = '';
-    document.getElementById('ap-total-crew').textContent = totalCrew.toLocaleString();
-    document.getElementById('ap-total-budget').textContent = fmtBig(totalBudget);
-    document.getElementById('ap-total-spent').textContent = fmtBig(totalSpent);
-
-    const lateBadge = document.getElementById('ap-late-badge');
-    if (lateCount > 0) {
-        lateBadge.innerHTML = `<span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:1px 6px;color:var(--orange);background:var(--orange-faint);border:1px solid var(--orange-border);">${lateCount} LATE</span>`;
-    } else {
-        lateBadge.innerHTML = '';
+    footer.style.display = activeProjects.length > 0 ? '' : 'none';
+    if (activeProjects.length > 0) {
+        document.getElementById('ap-total-crew').textContent = activeProjects.length;
+        document.getElementById('ap-total-budget').textContent = fmtBudget(totalBudget);
+        document.getElementById('ap-total-spent').textContent = fmtBudget(totalBid);
     }
 }
 
 async function loadActiveProjects() {
     if (!faction) return;
 
+    // Load awarded + in_progress contracts for this corporation
     const { data, error } = await _supabase
-        .from('corp_contracts')
-        .select('*')
-        .eq('winner_faction_id', faction.id)
-        .eq('status', 'active')
-        .order('started_at_tick', { ascending: true });
+        .from('construction_contracts')
+        .select('*, contract_bids!inner(bid_price, material_grades, labor_count, estimated_cost, estimated_quality)')
+        .eq('awarded_to_faction', faction.id)
+        .in('status', ['awarded', 'in_progress'])
+        .eq('contract_bids.faction_id', faction.id)
+        .order('awarded_at_tick', { ascending: true });
 
     if (error) {
         console.warn('Failed to load active projects:', error.message);
