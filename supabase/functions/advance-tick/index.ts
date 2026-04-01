@@ -22952,9 +22952,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     }
 
                     if (totalCollected > 0) {
+                        const newBalance = (org.solidarity_fund_balance || 0) + totalCollected;
                         await supabase.from('international_orgs')
-                            .update({ solidarity_fund_balance: (org.solidarity_fund_balance || 0) + totalCollected })
+                            .update({ solidarity_fund_balance: newBalance })
                             .eq('id', org.id);
+                        // Update local copy so HQ cost (section 4) reads the post-collection balance
+                        org.solidarity_fund_balance = newBalance;
 
                         await supabase.from('ipo_chat').insert({
                             org_id: org.id, faction_id: null, is_system: true,
