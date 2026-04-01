@@ -5,7 +5,7 @@ const path = require('path');
 
 const ROOT_DIR = process.cwd();
 const TARGET_EXT = '.html';
-const RISKY_GLOBALS = new Set(['isAutocracy', 'currentNation', 'currentFaction']);
+const RISKY_GLOBALS = new Set(['currentNation', 'currentFaction']);
 const ALLOWLIST_PATH = path.join(ROOT_DIR, 'scripts', 'inline-script-globals-allowlist.json');
 
 function loadAllowlist() {

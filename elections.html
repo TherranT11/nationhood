@@ -24,7 +24,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, runElectionPreview, getPartyAlignment, distributeVotes, allocateSeatsByVotes } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentPresidential, loadSeats, runElectionPreview, getPartyAlignment, distributeVotes, allocateSeatsByVotes } from './js/game-common.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 (function () {
     'use strict';
@@ -32,8 +32,6 @@ import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
  * Elections / Government Formation Page
  * 
  * Campaign actions (Rally, Attack Ad, Fundraiser, Lobby) have been moved to politics.html.
- * Autocracy actions (Give Speech, Spread Rumors, Seize Power) remain here.
- *
  * Formation rules:
  * - Any party with 1+ seats can propose a coalition
  * - Only coalition (invited) parties see support options
@@ -47,7 +45,6 @@ import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 let currentFaction = null;
 let currentNation = null;
 let currentElectionId = null;
-let isAutocracy = false;
 let isPresidential = false;
 let allParties = [];
 let electionResults = [];
@@ -103,14 +100,8 @@ initPage('elections', async (state) => {
         return;
     }
 
-    isAutocracy = isGovernmentAutocracy(nation);
     isPresidential = isGovernmentPresidential(nation);
-    if (isAutocracy) {
-        document.title = 'Internal Affairs | Nationhood Alpha';
-        await renderAutocracyPage();
-    } else {
-        await renderDemocracyPage();
-    }
+    await renderDemocracyPage();
 });
 
 
@@ -651,156 +642,6 @@ async function renderPresidentialResults(election) {
 
 // Formation code has been moved to government.html
 // See government.html for coalition proposal, negotiation, and government formation UI
-
-// ===================================================================
-// AUTOCRACY PAGE
-// ===================================================================
-
-async function renderAutocracyPage() {
-    const [{ data: rawFactions }, { data: standings }] = await Promise.all([
-        _supabase.from('factions').select('id, faction_name, seats')
-            .eq('nation_id', currentNation.id).eq('faction_type', 'party')
-            .order('seats', { ascending: false }),
-        _supabase.from('faction_electoral_standing').select('faction_id, party_approval')
-            .eq('nation_id', currentNation.id)
-    ]);
-    const standingsMap = Object.fromEntries((standings || []).map(s => [s.faction_id, s.party_approval]));
-    const allFactions = (rawFactions || []).map(f => ({ ...f, party_approval: standingsMap[f.id] ?? 0 }));
-
-    const { data: activeShakeup } = await _supabase
-        .from('shakeups').select('*').eq('nation_id', currentNation.id).eq('status', 'voting').limit(1).maybeSingle();
-
-    const standingsHTML = (allFactions || []).map((f, i) => {
-        const isYou = f.id === currentFaction.id;
-        const barWidth = Math.max(2, (f.seats / GAME_CONFIG.TOTAL_SEATS) * 100);
-        return `
-            <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: ${isYou ? '#2a2a1a' : '#1a1a1a'}; border-radius: 4px; margin-bottom: 8px; ${isYou ? 'border-left: 3px solid #ffcc00;' : ''}">
-                <div style="width: 24px; text-align: center; font-size: 1.2rem;">${f.id === currentNation.ruling_faction_id ? '👑' : ''}</div>
-                <div style="flex: 1;">
-                    <div style="font-weight: bold; color: ${isYou ? '#ffcc00' : '#e0e0e0'}; font-size: 0.9rem;">
-                        ${f.faction_name} ${isYou ? '(You)' : ''}
-                        ${f.id === currentNation.ruling_faction_id ? '<span style="color: #d9534f; font-size: 0.75rem; margin-left: 8px;">RULING</span>' : ''}
-                    </div>
-                    <div style="margin-top: 6px; background: #333; height: 6px; border-radius: 3px; overflow: hidden;">
-                        <div style="width: ${barWidth}%; height: 100%; background: ${isYou ? '#ffcc00' : '#666'}; border-radius: 3px;"></div>
-                    </div>
-                </div>
-                <div style="text-align: right; min-width: 80px;">
-                    <div style="font-size: 1.1rem; font-weight: bold; color: #ffcc00;">${f.seats}</div>
-                    <div style="font-size: 0.7rem; color: #888;">seats</div>
-                </div>
-                <div style="text-align: right; min-width: 60px;">
-                    <div style="font-size: 0.9rem; color: #5cb85c;">${Math.round(f.party_approval || 0)}%</div>
-                    <div style="font-size: 0.7rem; color: #888;">approval</div>
-                </div>
-            </div>`;
-    }).join('');
-
-    const html = `
-        <div class="panel-padding">
-            <div class="strongman-banner">
-                <div class="strongman-icon">🏛️</div>
-                <div class="strongman-details">
-                    <div class="strongman-label">Strongman Leader of ${currentNation.name}</div>
-                    <div class="strongman-name-display">${currentNation.head_of_state_first_name || 'Unknown'} ${currentNation.head_of_state_last_name || 'Leader'}</div>
-                    <div class="strongman-meta">
-                        Age ${currentNation.head_of_state_age || '??'} · Rules until dead or deposed ·
-                        Stability: <span style="color: ${currentNation.stability < 20 ? '#d9534f' : currentNation.stability < 50 ? '#d48a3c' : '#5cb85c'};">${currentNation.stability}%</span>
-                    </div>
-                </div>
-            </div>
-
-            <div id="shakeup-section" style="display: ${activeShakeup ? 'block' : 'none'};">
-                ${activeShakeup ? renderShakeupUI(activeShakeup, allFactions) : ''}
-            </div>
-
-            <div class="section-header">Faction Standings</div>
-            <div style="margin-bottom: 24px;">
-                ${standingsHTML || '<div style="color: #666; text-align: center; padding: 20px;">No factions yet</div>'}
-            </div>
-        </div>
-    `;
-
-    document.getElementById('content-area').innerHTML = html;
-}
-
-function renderShakeupUI(shakeup, allFactions) {
-    const votes = shakeup.votes || [];
-    const myVote = votes.find(v => v.faction_id === currentFaction.id);
-    const rulingFaction = allFactions?.find(f => f.id === shakeup.ruling_faction_id);
-    const seizingFaction = allFactions?.find(f => f.id === shakeup.initiated_by);
-    const rulingVoters = votes.filter(v => v.side === 'ruling').map(v => { const f = allFactions?.find(af => af.id === v.faction_id); return f ? f.faction_name : 'Unknown'; });
-    const seizingVoters = votes.filter(v => v.side === 'seizing').map(v => { const f = allFactions?.find(af => af.id === v.faction_id); return f ? f.faction_name : 'Unknown'; });
-    const totalFactions = allFactions?.length || 0;
-    const totalVotes = votes.length;
-    const allVoted = totalVotes >= totalFactions;
-    const majorityVoted = totalVotes >= Math.ceil(totalFactions / 2);
-    const nonVoters = totalFactions - totalVotes;
-
-    return `
-        <div class="shakeup-banner">
-            <div class="shakeup-title">⚔️ SHAKEUP IN PROGRESS ⚔️</div>
-            <div class="shakeup-desc">
-                A faction is attempting to seize power!
-                <br>All factions must choose a side. <strong style="color:#d48a3c;">Non-voters will be counted as abstaining at next tick.</strong>
-            </div>
-            <div class="shakeup-sides">
-                <div class="shakeup-side ruling">
-                    <div class="shakeup-side-label">Ruling Faction</div>
-                    <div class="shakeup-side-name">${rulingFaction?.faction_name || 'Unknown'}</div>
-                    <div class="shakeup-side-seats">${rulingFaction?.seats || 0} seats</div>
-                    <div style="margin-top: 8px; font-size: 0.8rem; color: #aaa;">Supporters: ${rulingVoters.length > 0 ? rulingVoters.join(', ') : 'None yet'}</div>
-                </div>
-                <div class="shakeup-vs">VS</div>
-                <div class="shakeup-side seizing">
-                    <div class="shakeup-side-label">Challenging Faction</div>
-                    <div class="shakeup-side-name">${seizingFaction?.faction_name || 'Unknown'}</div>
-                    <div class="shakeup-side-seats">${seizingFaction?.seats || 0} seats</div>
-                    <div style="margin-top: 8px; font-size: 0.8rem; color: #aaa;">Supporters: ${seizingVoters.length > 0 ? seizingVoters.join(', ') : 'None yet'}</div>
-                </div>
-            </div>
-            ${myVote ? `
-                <div class="shakeup-voted">✓ You sided with the ${myVote.side} faction</div>
-            ` : `
-                <div class="shakeup-vote-buttons">
-                    <button class="shakeup-vote-btn ruling-btn" onclick="voteShakeup('${shakeup.id}', 'ruling')">Side with Ruling</button>
-                    <button class="shakeup-vote-btn seizing-btn" onclick="voteShakeup('${shakeup.id}', 'seizing')">Side with Challenger</button>
-                </div>
-            `}
-            <div style="margin-top: 16px; font-size: 0.85rem; color: #888;">
-                Votes cast: ${totalVotes} / ${totalFactions}
-                ${nonVoters > 0 && !allVoted ? `<br><span style="color: #d48a3c;">${nonVoters} faction${nonVoters > 1 ? 's' : ''} haven't voted — they will abstain at next tick</span>` : ''}
-                ${(totalVotes >= Math.ceil(totalFactions / 2) && currentFaction.id === shakeup.initiated_by) ? '<br><button class="action-btn" style="margin-top: 12px;" onclick="resolveActiveShakeup(\'' + shakeup.id + '\')">⚔️ Resolve Shakeup Now</button>' : ''}
-            </div>
-        </div>
-    `;
-}
-
-
-// ===================================================================
-// AUTOCRACY ACTIONS
-// ===================================================================
-
-async function voteShakeup(shakeupId, side) {
-    if (!confirm(`Side with the ${side} faction? This cannot be changed.`)) return;
-    try {
-        const { data, error } = await _supabase.rpc('vote_on_shakeup', { p_shakeup_id: shakeupId, p_faction_id: currentFaction.id, p_side: side });
-        if (error) throw error;
-        if (data.success) { alert('✅ ' + data.message); await renderAutocracyPage(); }
-        else { alert('❌ ' + data.message); }
-    } catch (error) { alert('❌ Error: ' + error.message); }
-}
-
-async function resolveActiveShakeup(shakeupId) {
-    if (!confirm('Resolve this shakeup? The losing side will lose seats and approval.')) return;
-    try {
-        const { data, error } = await _supabase.rpc('resolve_shakeup', { p_shakeup_id: shakeupId });
-        if (error) throw error;
-        if (data.success) { alert('⚔️ ' + data.message); await renderAutocracyPage(); }
-        else { alert('❌ ' + data.message); }
-    } catch (error) { alert('❌ Error: ' + error.message); }
-}
-
 
 // ===================================================================
 // SHARED FUNCTIONS (election info)

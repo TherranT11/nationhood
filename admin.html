@@ -41,7 +41,7 @@
 
 import { _supabase } from './js/supabase-client.js';
 import { fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName, STAT_DECAY_CONFIG, normalizeNationStatKey, SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES, BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, OPINION_TRIGGERS, REPORTERS, generateArticle, generateTickArticles, buildFundingPctMap, getInstFundingPct } from './js/game-common.js';
+import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName, STAT_DECAY_CONFIG, normalizeNationStatKey, SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES, BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, OPINION_TRIGGERS, REPORTERS, generateArticle, generateTickArticles, buildFundingPctMap, getInstFundingPct } from './js/game-common.js';
 
     let isAuthenticated = false;
     let nations = [];
@@ -299,7 +299,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             // Populate schedule-election nation dropdown
             const schedSelect = document.getElementById('schedule-nation-select');
             schedSelect.innerHTML = '<option value="__all__">All Nations (Democracies)</option>';
-            nations.filter(n => !isGovernmentAutocracy(n)).forEach(n => {
+            nations.forEach(n => {
                 schedSelect.innerHTML += `<option value="${n.id}">${escHtml(n.name)} (${getCanonicalGovernmentType(n)})</option>`;
             });
         } catch (error) { console.error(error); }

@@ -5385,7 +5385,7 @@ async function fireDoctrineEvent(poolKey, vars) {
 
         // Insert directly into event_log (fire_system_event RPC has auth
         // guard issues for client-side calls; direct insert matches the
-        // pattern used by autocracy-coups.js, bills.js, etc.)
+        // pattern used by bills.js, etc.)
         const { error } = await _supabase.from('event_log').insert({
             nation_id: currentNation.id,
             event_name: 'Military Doctrine',
@@ -7678,7 +7678,7 @@ window.fileImpeachment = fileImpeachment;
 // ==================== CALL EARLY ELECTIONS ====================
 
 function renderEarlyElectionsButton(coalition) {
-    if (!currentFaction || isAutocracy || isPresidential) return '';
+    if (!currentFaction || isPresidential) return '';
 
     // Only the PM's party can call early elections
     const isPMParty = currentFaction.id === coalition.lead_party_id;

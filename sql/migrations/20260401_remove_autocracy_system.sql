@@ -62,6 +62,39 @@ WHERE faction_id IN (
     WHERE n.name = 'Melizea'
 );
 
+-- Clean up non-CASCADE foreign key references to Melizea factions before deletion.
+-- These tables have FK constraints that would block DELETE FROM factions.
+DELETE FROM ambassadors WHERE faction_id IN (
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+);
+DELETE FROM diplomatic_messages WHERE from_faction_id IN (
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+);
+DELETE FROM diplomatic_proposals WHERE proposed_by_faction_id IN (
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+);
+DELETE FROM diplomatic_action_log WHERE faction_id IN (
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+);
+DELETE FROM faction_coalitions WHERE proposed_by_faction_id IN (
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+);
+DELETE FROM impeachment_proceedings WHERE initiated_by_faction_id IN (
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+);
+UPDATE presidents SET faction_id = NULL WHERE faction_id IN (
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+);
+UPDATE wiki_pages SET created_by = NULL WHERE created_by IN (
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+);
+UPDATE wiki_pages SET updated_by = NULL WHERE updated_by IN (
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+);
+UPDATE wiki_pages SET locked_by = NULL WHERE locked_by IN (
+    SELECT id FROM factions WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea')
+);
+
 -- Delete all factions in Melizea
 DELETE FROM factions
 WHERE nation_id = (SELECT id FROM nations WHERE name = 'Melizea');

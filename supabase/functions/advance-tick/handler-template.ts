@@ -1115,20 +1115,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.warn(`[advanceTick] AP already distributed for nation ${nation.name} tick ${newTick} — skipping`);
             continue;
         }
-        // Autocracy V5: +5 AP per tick, capped at 20. No coalition bonus.
-        if (isAutocracy(nation)) {
-            for (const faction of factions) {
-                const result = await accumulateAP(supabase, faction.id, 5, GAME_CONFIG.MAX_AP);
-                if (result.success) {
-                    console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+5, autocracy)`);
-                    apDistributed++;
-                    await supabase.from('ap_ledger').insert({ faction_id: faction.id, tick: newTick, delta: 5, reason: 'tick_gain', detail: 'Base AP per tick' }).then(() => {}, () => {/* ignore duplicate */});
-                } else {
-                    console.error(`[advanceTick] Autocracy AP FAILED for faction ${faction.id}: ${result.error}`);
-                    apFailed++;
-                }
-            }
-        } else {
         // Democracy AP logic
         const coalition = await fetchActiveCoalition(supabase, nation.id);
         const governmentPartyIds = new Set([
@@ -1176,7 +1162,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 failedFactionIds.add(faction.id);
             }
         }
-        } // end democracy AP
         } // end factions.length > 0
       } catch (apErr) {
         console.error(`[advanceTick] AP distribution FAILED for nation ${nation.id} (${nation.name}):`, apErr);
@@ -1489,7 +1474,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Safety net: ensure every nation with a government has an active administration record
         try {
-            if (!isAutocracy(nation)) {
                 const { data: activeAdmin } = await supabase.from('administrations')
                     .select('id').eq('nation_id', nation.id).is('ended_at_tick', null).limit(1).maybeSingle();
                 if (!activeAdmin) {
@@ -1511,7 +1495,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         console.log(`[advanceTick] Safety net: created missing administration for ${nation.name} (${hog.last_name} Administration)`);
                     }
                 }
-            }
         } catch (adminSafetyErr) {
             console.error(`[advanceTick] Admin safety net failed for ${nation.name} (non-fatal):`, adminSafetyErr);
         }
@@ -1782,21 +1765,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Purge approval decay (autocracy scapegoat mechanic)
         try {
-            if (isAutocracy(nation)) {
-                await processPurgeDecay(supabase, nation.id, newTick);
-            }
+            await processPurgeDecay(supabase, nation.id, newTick);
         } catch (purgeErr) {
             console.error(`[advanceTick] Purge decay failed for ${nation.name} (non-fatal):`, purgeErr);
         }
 
         // Autocracy V5: pillar passive drift, wildcard decay, neglect, longevity
         try {
-            if (isAutocracy(nation)) {
-                const pillarResult = await processAutocracyPillarTick(supabase, nation, newTick);
-                if (pillarResult) {
-                    summary.autocracyPillars = summary.autocracyPillars || [];
-                    summary.autocracyPillars.push(pillarResult);
-                }
+            const pillarResult = await processAutocracyPillarTick(supabase, nation, newTick);
+            if (pillarResult) {
+                summary.autocracyPillars = summary.autocracyPillars || [];
+                summary.autocracyPillars.push(pillarResult);
             }
         } catch (pillarErr) {
             console.error(`[advanceTick] Autocracy pillar tick failed for ${nation.name} (non-fatal):`, pillarErr);
@@ -1804,23 +1783,19 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Autocracy V5: timed effects (Rally/Agitate/Patronage buffs), deploy decay, congress resolution
         try {
-            if (isAutocracy(nation)) {
-                await processAutocracyTimedEffects(supabase, nation, newTick);
-                await processDeployEscalationDecay(supabase, nation.id, newTick);
-                await resolvePartyCongressPending(supabase, nation.id, newTick);
-            }
+            await processAutocracyTimedEffects(supabase, nation, newTick);
+            await processDeployEscalationDecay(supabase, nation.id, newTick);
+            await resolvePartyCongressPending(supabase, nation.id, newTick);
         } catch (timedErr) {
             console.error(`[advanceTick] Autocracy timed effects failed for ${nation.name} (non-fatal):`, timedErr);
         }
 
         // Autocracy V5: vulnerability windows (Strongman backing = 0 → 3-tick window)
         try {
-            if (isAutocracy(nation)) {
-                const vulnResult = await processVulnerabilityWindows(supabase, nation, newTick);
-                if (vulnResult) {
-                    summary.autocracyVulnerability = summary.autocracyVulnerability || [];
-                    summary.autocracyVulnerability.push({ nation: nation.name, events: vulnResult });
-                }
+            const vulnResult = await processVulnerabilityWindows(supabase, nation, newTick);
+            if (vulnResult) {
+                summary.autocracyVulnerability = summary.autocracyVulnerability || [];
+                summary.autocracyVulnerability.push({ nation: nation.name, events: vulnResult });
             }
         } catch (vulnErr) {
             console.error(`[advanceTick] Vulnerability window processing failed for ${nation.name} (non-fatal):`, vulnErr);
@@ -1828,12 +1803,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Autocracy V5: putsch resolution (after response window expires)
         try {
-            if (isAutocracy(nation)) {
-                const putschResult = await processPutschResolution(supabase, nation, newTick);
-                if (putschResult) {
-                    summary.autocracyPutsch = summary.autocracyPutsch || [];
-                    summary.autocracyPutsch.push({ nation: nation.name, result: putschResult });
-                }
+            const putschResult = await processPutschResolution(supabase, nation, newTick);
+            if (putschResult) {
+                summary.autocracyPutsch = summary.autocracyPutsch || [];
+                summary.autocracyPutsch.push({ nation: nation.name, result: putschResult });
             }
         } catch (putschErr) {
             console.error(`[advanceTick] Putsch resolution failed for ${nation.name} (non-fatal):`, putschErr);
@@ -1841,12 +1814,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Autocracy V5: pyrrhic window expiry (3-tick window closes, regime stabilizes)
         try {
-            if (isAutocracy(nation)) {
-                const pyrrhicResult = await processPyrrhicWindows(supabase, nation, newTick);
-                if (pyrrhicResult) {
-                    summary.autocracyPyrrhic = summary.autocracyPyrrhic || [];
-                    summary.autocracyPyrrhic.push({ nation: nation.name, events: pyrrhicResult });
-                }
+            const pyrrhicResult = await processPyrrhicWindows(supabase, nation, newTick);
+            if (pyrrhicResult) {
+                summary.autocracyPyrrhic = summary.autocracyPyrrhic || [];
+                summary.autocracyPyrrhic.push({ nation: nation.name, events: pyrrhicResult });
             }
         } catch (pyrrhicErr) {
             console.error(`[advanceTick] Pyrrhic window processing failed for ${nation.name} (non-fatal):`, pyrrhicErr);
@@ -1854,12 +1825,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Autocracy V5: silent coup resolution (deal/vote phase)
         try {
-            if (isAutocracy(nation)) {
-                const silentResult = await processSilentCoupResolution(supabase, nation, newTick);
-                if (silentResult) {
-                    summary.autocracySilentCoup = summary.autocracySilentCoup || [];
-                    summary.autocracySilentCoup.push({ nation: nation.name, result: silentResult });
-                }
+            const silentResult = await processSilentCoupResolution(supabase, nation, newTick);
+            if (silentResult) {
+                summary.autocracySilentCoup = summary.autocracySilentCoup || [];
+                summary.autocracySilentCoup.push({ nation: nation.name, result: silentResult });
             }
         } catch (silentErr) {
             console.error(`[advanceTick] Silent coup resolution failed for ${nation.name} (non-fatal):`, silentErr);
@@ -1867,12 +1836,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Autocracy V5: pillar leader aging (+1 year per 12 ticks, death at death_age)
         try {
-            if (isAutocracy(nation)) {
-                const pillarAgingResult = await processAutocracyLeaderAging(supabase, nation, newTick);
-                if (pillarAgingResult) {
-                    summary.autocracyLeaderAging = summary.autocracyLeaderAging || [];
-                    summary.autocracyLeaderAging.push({ nation: nation.name, results: pillarAgingResult });
-                }
+            const pillarAgingResult = await processAutocracyLeaderAging(supabase, nation, newTick);
+            if (pillarAgingResult) {
+                summary.autocracyLeaderAging = summary.autocracyLeaderAging || [];
+                summary.autocracyLeaderAging.push({ nation: nation.name, results: pillarAgingResult });
             }
         } catch (pillarAgingErr) {
             console.error(`[advanceTick] Autocracy pillar leader aging failed for ${nation.name} (non-fatal):`, pillarAgingErr);
@@ -1974,12 +1941,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Autocracy V5: tracker natural decay toward 30 (runs after actions resolve)
         try {
-            if (isAutocracy(nation)) {
-                const trackerDecayResult = await processAutocracyTrackerDecay(supabase, nation, newTick);
-                if (trackerDecayResult) {
-                    summary.autocracyTrackerDecay = summary.autocracyTrackerDecay || [];
-                    summary.autocracyTrackerDecay.push(trackerDecayResult);
-                }
+            const trackerDecayResult = await processAutocracyTrackerDecay(supabase, nation, newTick);
+            if (trackerDecayResult) {
+                summary.autocracyTrackerDecay = summary.autocracyTrackerDecay || [];
+                summary.autocracyTrackerDecay.push(trackerDecayResult);
             }
         } catch (trackerDecayErr) {
             console.error(`[advanceTick] Autocracy tracker decay failed for ${nation.name} (non-fatal):`, trackerDecayErr);
@@ -2054,42 +2019,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // ── Succession helper: updates HOS, syncs nation object, logs action ──
-        // Autocracies use V5 resolveSuccession (designated successor or auto-coup).
-        // Non-autocracies use random replacement (legacy behavior).
+        // Random replacement for head of state succession.
         async function handleStrongmanSuccession(
             supabase: any, nation: any, hosName: string, hosAge: number, newTick: number
         ) {
-            // V5 succession for autocracies
-            if (isAutocracy(nation)) {
-                await supabase.from('campaign_actions').insert({
-                    party_id: nation.ruling_faction_id, nation_id: nation.id,
-                    action_type: 'strongman_death', tick_performed: newTick,
-                    result: { deceased_name: hosName, deceased_age: hosAge, cause: 'natural_causes' },
-                });
-
-                const successionResult = await resolveSuccession(supabase, nation, newTick);
-
-                // Generate new HOS identity for the new regime
-                const FIRST = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
-                const LAST = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
-                const newFirst = FIRST[Math.floor(Math.random() * FIRST.length)];
-                const newLast = LAST[Math.floor(Math.random() * LAST.length)];
-                const newAge = 45 + Math.floor(Math.random() * 16);
-
-                await supabase.from('nations').update({
-                    head_of_state_first_name: newFirst, head_of_state_last_name: newLast,
-                    head_of_state_age: newAge,
-                    designated_successor_faction_id: null,
-                }).eq('id', nation.id);
-                nation.head_of_state_first_name = newFirst;
-                nation.head_of_state_last_name = newLast;
-                nation.head_of_state_age = newAge;
-
-                return { type: 'strongman_death', deceased: hosName, deceasedAge: hosAge,
-                    successor: `${newFirst} ${newLast}`, successorAge: newAge, ...successionResult };
-            }
-
-            // Legacy random replacement for non-autocracies
+            // Random replacement for head of state death
             const FIRST = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
             const LAST = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
             const newFirst = FIRST[Math.floor(Math.random() * FIRST.length)];
@@ -2254,40 +2188,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                             count: activeMinistries.length,
                             nation: nation.name
                         });
-                    }
-                }
-
-                // 2. Age the strongman (head of state) +1 and roll health checks (autocracy)
-                if (isAutocracy(nation)) {
-                    // (Steward aging removed — Phase 0)
-                    const hosAge = Number(nation.head_of_state_age ?? 0);
-                    if (hosAge > 0) {
-                        const newHosAge = hosAge + 1;
-                        await supabase.from('nations')
-                            .update({ head_of_state_age: newHosAge })
-                            .eq('id', nation.id);
-                        nation.head_of_state_age = newHosAge;
-                        agingResults.push({
-                            type: 'strongman',
-                            name: `${nation.head_of_state_first_name || '?'} ${nation.head_of_state_last_name || '?'}`,
-                            newAge: newHosAge
-                        });
-
-                        // Strongman health check: escalating death chance from age 70 to 85.
-                        // Probability: 5% at 70, rising linearly to 100% at 85.
-                        // Formula: deathChance = 0.05 + (age - 70) * (0.95 / 15)
-                        if (newHosAge >= 70) {
-                            const deathChance = Math.min(1.0, 0.05 + (newHosAge - 70) * (0.95 / 15));
-                            const roll = Math.random();
-                            console.log(`[LeaderAging] Strongman health check for ${nation.name}: age=${newHosAge}, deathChance=${(deathChance * 100).toFixed(1)}%, roll=${roll.toFixed(3)}`);
-
-                            if (roll < deathChance) {
-                                const hosName = `${nation.head_of_state_first_name || 'The Strongman'} ${nation.head_of_state_last_name || ''}`.trim();
-                                console.log(`[LeaderAging] Strongman ${hosName} of ${nation.name} has died at age ${newHosAge}`);
-                                const result = await handleStrongmanSuccession(supabase, nation, hosName, newHosAge, newTick);
-                                agingResults.push(result);
-                            }
-                        }
                     }
                 }
 

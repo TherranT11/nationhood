@@ -3496,7 +3496,7 @@ function fmtPermitCost(n) {
 
 function getExpiryColor(ticksLeft, totalTicks, expiringSoon) {
     if (expiringSoon) return 'var(--orange)';
-    const pct = (ticksLeft / totalTicks) * 100;
+    const pct = (ticksLeft / (totalTicks || 1)) * 100;
     if (pct > 50) return 'var(--green)';
     if (pct > 25) return 'var(--amber)';
     return 'var(--red)';
@@ -3544,7 +3544,7 @@ function renderPermits() {
         pmActivePermits.forEach((p, i) => {
             const isExp = pmExpanded === i;
             const expiryColor = getExpiryColor(p.ticks_left, p.total_ticks, p.expiring_soon);
-            const pct = Math.min((p.ticks_left / p.total_ticks) * 100, 100);
+            const pct = Math.min((p.ticks_left / (p.total_ticks || 1)) * 100, 100);
             html += `<div class="pm-item ${p.expiring_soon ? 'pm-item--expiring' : ''} ${isExp ? 'expanded' : ''}" onclick="togglePmExpand(${i})">
                 <div class="pm-item__inner">
                     <div class="pm-item__row1">
@@ -3606,7 +3606,7 @@ function renderPermits() {
         let html = '';
         pmPendingPermits.forEach((p, i) => {
             const elapsed = p.processing_total - p.ticks_remaining;
-            const pct = Math.min((elapsed / p.processing_total) * 100, 100);
+            const pct = Math.min((elapsed / (p.processing_total || 1)) * 100, 100);
             const statusClass = p.status === 'PROCESSING' ? 'pm-item__status--processing' : 'pm-item__status--review';
             html += `<div style="padding:8px 14px;border-bottom:1px solid var(--border-0);">
                 <div class="pm-item__row1">

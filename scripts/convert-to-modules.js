@@ -12,37 +12,37 @@ const imports = {
   'world.html': [
     `import { _supabase } from './js/supabase-client.js';`,
     `import { initPage, formatNumber } from './js/common.js';`,
-    `import { isGovernmentAutocracy, isGovernmentPresidential, getCanonicalGovernmentType, loadSeats, CANONICAL_GOVERNMENT_TYPES, GAME_CONFIG } from './js/game-common.js';`,
+    `import { isGovernmentPresidential, getCanonicalGovernmentType, loadSeats, CANONICAL_GOVERNMENT_TYPES, GAME_CONFIG } from './js/game-common.js';`,
   ],
   'nation.html': [
     `import { _supabase } from './js/supabase-client.js';`,
     `import { initPage, qCache, qCacheSet, formatNumber, scaleRawToDollars } from './js/common.js';`,
-    `import { CANONICAL_GOVERNMENT_TYPES, isGovernmentAutocracy, isGovernmentPresidential, getCanonicalGovernmentType, INVERTED_STATS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER } from './js/game-common.js';`,
+    `import { CANONICAL_GOVERNMENT_TYPES, isGovernmentPresidential, getCanonicalGovernmentType, INVERTED_STATS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER } from './js/game-common.js';`,
   ],
   'government.html': [
     `import { _supabase } from './js/supabase-client.js';`,
     `import { initPage } from './js/common.js';`,
-    `import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP } from './js/game-common.js';`,
+    `import { GAME_CONFIG, initGameConfigForNation, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP } from './js/game-common.js';`,
   ],
   'elections.html': [
     `import { _supabase } from './js/supabase-client.js';`,
     `import { initPage, formatNumber } from './js/common.js';`,
-    `import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, fetchActiveCoalition, runElectionPreview, getPartyAlignment, distributeVotes, allocateSeatsByVotes } from './js/game-common.js';`,
+    `import { GAME_CONFIG, initGameConfigForNation, isGovernmentPresidential, loadSeats, fetchActiveCoalition, runElectionPreview, getPartyAlignment, distributeVotes, allocateSeatsByVotes } from './js/game-common.js';`,
   ],
   'laws.html': [
     `import { _supabase } from './js/supabase-client.js';`,
     `import { initPage, qCache, qCacheSet, qCacheBust } from './js/common.js';`,
-    `import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill } from './js/game-common.js';`,
+    `import { GAME_CONFIG, initGameConfigForNation, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill } from './js/game-common.js';`,
   ],
   'bill.html': [
     `import { _supabase } from './js/supabase-client.js';`,
     `import { initPage, qCache, qCacheSet } from './js/common.js';`,
-    `import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES } from './js/game-common.js';`,
+    `import { GAME_CONFIG, initGameConfigForNation, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES } from './js/game-common.js';`,
   ],
   'diplomacy.html': [
     `import { _supabase } from './js/supabase-client.js';`,
     `import { initPage, formatNumber } from './js/common.js';`,
-    `import { isGovernmentAutocracy, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG } from './js/game-common.js';`,
+    `import { fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG } from './js/game-common.js';`,
   ],
   'factions.html': [
     `import { _supabase } from './js/supabase-client.js';`,
@@ -63,7 +63,7 @@ const imports = {
     `import { _supabase } from './js/supabase-client.js';`,
     `import { initPage, getAdminNationOverride, getAdminFactionOverride } from './js/common.js';`,
     `import { getIdeologyClass, escapeHtml } from './js/utils.js';`,
-    `import { initGameConfigForNation, generatePMCandidates, selectPMCandidate, selectPresidentCandidate, isPresidentialRepublic, isGovernmentAutocracy, fetchActiveCoalition, loadSeats, syncVoteTallies, deductAP, adjustMomentumAll, GAME_CONFIG } from './js/game-common.js';`,
+    `import { initGameConfigForNation, generatePMCandidates, selectPMCandidate, selectPresidentCandidate, isPresidentialRepublic, fetchActiveCoalition, loadSeats, syncVoteTallies, deductAP, adjustMomentumAll, GAME_CONFIG } from './js/game-common.js';`,
   ],
 
   // GROUP B: CDN + supabase-client + game-common (no common.js)

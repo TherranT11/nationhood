@@ -27,7 +27,7 @@ import { initPage, qCache, qCacheSet, formatCurrency, assertRawEconomicValue } f
 import './js/guide.js';
 import { escapeHtml } from './js/utils.js';
 import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
-import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TAX_CONFIG, isPresidentialRepublic, isAutocracy, ISSUE_CATEGORY_STATS, formatStatName, deductAP, fetchActiveCoalition, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG, buildFundingPctMap, getInstFundingPct, formatSectorVolume } from './js/game-common.js';
+import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TAX_CONFIG, isPresidentialRepublic, ISSUE_CATEGORY_STATS, formatStatName, deductAP, fetchActiveCoalition, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG, buildFundingPctMap, getInstFundingPct, formatSectorVolume } from './js/game-common.js';
 
 // ==================== STATE ====================
 var previousTickData = null;
@@ -615,8 +615,7 @@ async function submitTaxBill(nation) {
     if (currentFaction && (currentFaction.leader_positive_traits || []).includes('policy_wonk')) apCost = Math.max(1, apCost - 1);
     // Leader trait: micromanager → +1 AP for all actions
     if (currentFaction && (currentFaction.leader_negative_traits || []).includes('micromanager')) apCost += 1;
-    var isAutocracyGov = isAutocracy(nation);
-    var termBill = isAutocracyGov ? 'decree' : 'bill';
+    var termBill = 'bill';
 
     // Build confirmation summary
     var gdp = Number(nation.gdp || 0);
@@ -642,7 +641,7 @@ async function submitTaxBill(nation) {
             impactLine
         );
     }
-    var confirmMsg = 'Submit Tax Reform ' + (isAutocracyGov ? 'Decree' : 'Bill') + '?\n\n' +
+    var confirmMsg = 'Submit Tax Reform Bill?\n\n' +
         summaryLines.join('\n\n') + '\n\nCost: ' + apCost + ' AP';
     if (!confirm(confirmMsg)) return;
 
@@ -1356,16 +1355,15 @@ function renderTaxationTab(nation) {
     var changedKeys = Object.keys(taxRateChanges).filter(function(k) { return taxRateChanges[k] !== originalRates[k]; });
     var hasChanges = changedKeys.length > 0;
     var mySeats = currentFaction ? (currentFaction.seats || 0) : 0;
-    var isAutoRuler = isAutocracy(nation) && currentFaction && nation.ruling_faction_id === currentFaction.id;
     var isInGovt = activeCoalition && currentFaction && (activeCoalition.party_ids || []).indexOf(currentFaction.id) !== -1;
-    var hasAuthority = mySeats >= 1 || isAutoRuler || isInGovt;
+    var hasAuthority = mySeats >= 1 || isInGovt;
     var canSubmit = hasAuthority && hasChanges;
     var apCost = GAME_CONFIG.DRAFT_BILL_AP_COST || 2;
     if (currentFaction && (currentFaction.leader_positive_traits || []).includes('policy_wonk')) apCost = Math.max(1, apCost - 1);
     if (currentFaction && (currentFaction.leader_negative_traits || []).includes('micromanager')) apCost += 1;
     var hasAp = currentFaction ? (currentFaction.action_points || 0) >= apCost : false;
     var btnDisabled = !(canSubmit && hasAp);
-    var termBill = isAutocracy(nation) ? 'Decree' : 'Bill';
+    var termBill = 'Bill';
     var btnTitle = !hasAuthority ? 'Your party holds no legislature seats' : !hasChanges ? 'Adjust at least one tax rate' : !hasAp ? 'Not enough AP (' + apCost + ' required)' : 'Submit tax reform ' + termBill.toLowerCase();
 
     h += '<div class="tax-summary-spacer"></div>';
