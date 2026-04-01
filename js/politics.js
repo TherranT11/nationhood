@@ -5307,7 +5307,7 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
         }
 
         const isGov = status.startsWith('governing');
-        const govScore = Number((isGov ? nationalGovScore : -nationalGovScore).toFixed(1));
+        const govScore = Math.round((isGov ? nationalGovScore : -nationalGovScore) * 10);
 
         return {
             id: p.id,
@@ -5550,18 +5550,19 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
     // Apply incumbency decay: positive score × 0.95^(terms) every 12 ticks
     const decayCycles = Math.floor(ticksInPower / 12);
     const incumbencyMultiplier = governanceScore > 0 ? Math.pow(0.95, decayCycles) : 1;
-    const displayScore = governanceScore * incumbencyMultiplier;
+    const rawDisplayScore = governanceScore * incumbencyMultiplier;
+    const displayScore = rawDisplayScore * 10; // ×10 multiplier for readable display
 
     // Sort deltas: biggest improvements first, then biggest declines
     statDeltas.sort((a, b) => b.signed - a.signed);
 
-    // Score color
-    const scoreColor = displayScore > 2 ? 'var(--dgreen)' : displayScore > 0 ? 'var(--damber)' : displayScore > -2 ? 'var(--damber)' : 'var(--dred)';
+    // Score color (thresholds adjusted for ×10 scale)
+    const scoreColor = displayScore > 5 ? 'var(--dgreen)' : displayScore > 0 ? 'var(--damber)' : displayScore > -5 ? 'var(--damber)' : 'var(--dred)';
     const scoreSign = displayScore > 0 ? '+' : '';
 
     // Opposition gets inverse
     const effectiveScore = isGoverning ? displayScore : -displayScore;
-    const effectiveColor = effectiveScore > 2 ? 'var(--dgreen)' : effectiveScore > 0 ? 'var(--damber)' : effectiveScore > -2 ? 'var(--damber)' : 'var(--dred)';
+    const effectiveColor = effectiveScore > 5 ? 'var(--dgreen)' : effectiveScore > 0 ? 'var(--damber)' : effectiveScore > -5 ? 'var(--damber)' : 'var(--dred)';
     const effectiveSign = effectiveScore > 0 ? '+' : '';
 
     // --- Build stat delta rows ---
@@ -5600,11 +5601,11 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
             <div class="elec-score-row">
                 <div class="elec-score-block">
                     <div class="elec-score-label">${isGoverning ? 'Gov. Score' : 'National Score'}</div>
-                    <div class="elec-score-value" style="color:${scoreColor}">${scoreSign}${displayScore.toFixed(1)}</div>
+                    <div class="elec-score-value" style="color:${scoreColor}">${scoreSign}${Math.round(displayScore)}</div>
                 </div>
                 ${!isGoverning ? `<div class="elec-score-block">
                     <div class="elec-score-label">Your Impact (Opposition)</div>
-                    <div class="elec-score-value" style="color:${effectiveColor}">${effectiveSign}${effectiveScore.toFixed(1)}</div>
+                    <div class="elec-score-value" style="color:${effectiveColor}">${effectiveSign}${Math.round(effectiveScore)}</div>
                 </div>` : ''}
             </div>
             ${decayNote}

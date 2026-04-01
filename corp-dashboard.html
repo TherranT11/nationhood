@@ -753,6 +753,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
       </div>
     </div>
     <div class="top-bar-right">
+      <span class="topbar-cash" id="topbar-cash" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;color:var(--gold);padding:3px 8px;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.2);">CASH: --</span>
       <div class="faction-switcher" id="faction-switcher" style="position:relative;">
         <span class="corp-name-badge" id="corp-name-badge" onclick="toggleCorpDropdown()" style="cursor:pointer;">--</span>
         <div class="corp-faction-dropdown" id="corp-faction-dropdown"></div>
@@ -972,7 +973,14 @@ async function init() {
 
     // Top bar — right side (badge + dropdown)
     document.getElementById('corp-name-badge').textContent =
-        (faction.faction_name || 'Corp') + (ticker ? ' [' + ticker + ']' : '') + ' ▾';
+        (ticker ? '[' + ticker + ']' : (faction.faction_name || 'Corp')) + ' ▾';
+    // Cash display next to abbreviation
+    const cashEl = document.getElementById('topbar-cash');
+    if (cashEl) {
+        const cash = Number(faction.corp_cash_reserves ?? 0);
+        const cashStr = cash >= 1e9 ? '$' + (cash / 1e9).toFixed(1) + 'B' : cash >= 1e6 ? '$' + (cash / 1e6).toFixed(1) + 'M' : '$' + Math.round(cash / 1000) + 'k';
+        cashEl.textContent = 'CASH: ' + cashStr;
+    }
     const ap = faction.action_points ?? 0;
     document.getElementById('topbar-ap').innerHTML =
         '<span class="topbar-ap__count">' + ap + ' AP</span>';
@@ -1242,7 +1250,8 @@ function renderFinances(nation, shard, wfData) {
     const materials = 0, facilities = 0, equipment = 0, debtService = 0, taxes = 0;
     const totalExpenses = wages + materials + facilities + equipment + debtService + taxes;
     const netProfit = totalRevenue - totalExpenses;
-    const cash = 0, debt = 0;
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    const debt = 0;
 
     // Driver data for display
     const drivers = [

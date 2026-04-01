@@ -2337,13 +2337,34 @@ function fmtBig(n) {
     return '$' + n;
 }
 
-function fmtTimeline(months) {
-    if (months >= 12) {
-        const y = Math.floor(months / 12);
-        const m = months % 12;
+function fmtTimeline(ticks) {
+    if (ticks >= 12) {
+        const y = Math.floor(ticks / 12);
+        const m = ticks % 12;
         return m > 0 ? y + 'y ' + m + 'mo' : y + 'y';
     }
-    return months + 'mo';
+    return ticks + ' ticks';
+}
+
+function fmtBudget(n) {
+    if (Math.abs(n) >= 1e9) return '$' + (n / 1e9).toFixed(1) + 'B';
+    if (Math.abs(n) >= 1e6) return '$' + (n / 1e6).toFixed(0) + 'M';
+    if (Math.abs(n) >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'k';
+    return '$' + n;
+}
+
+function sectorLabel(sector) {
+    if (sector === 'civil_engineering') return 'CIVIL';
+    if (sector === 'industrial') return 'INDUSTRIAL';
+    if (sector === 'mega_project') return 'MEGA';
+    return sector?.toUpperCase() || '—';
+}
+
+function sectorClass(sector) {
+    if (sector === 'civil_engineering') return 'light';
+    if (sector === 'industrial') return 'heavy';
+    if (sector === 'mega_project') return 'mega';
+    return 'light';
 }
 
 // ── Tick countdown ──
@@ -2387,10 +2408,11 @@ function setFilter(group, value) {
 // ── Check qualification ──
 function isQualified(contract) {
     if (!faction) return false;
-    if (faction.corp_sector !== contract.required_sector) return false;
-    if (contract.required_subsector && faction.corp_subsector !== contract.required_subsector) return false;
-    // Megaprojects require the Megaprojects subsector
-    if (contract.spec_category === 'Megaproject' && faction.corp_subsector !== 'Megaprojects') return false;
+    // All construction corps can bid on civil engineering
+    // Industrial requires Heavy Infrastructure or higher subsector
+    // Mega projects require Megaprojects subsector
+    if (contract.sector === 'mega_project' && faction.corp_subsector !== 'Megaprojects') return false;
+    if (contract.sector === 'industrial' && !['Heavy Infrastructure', 'Megaprojects'].includes(faction.corp_subsector)) return false;
     return true;
 }
 
@@ -2399,12 +2421,15 @@ function renderContracts() {
     const list = document.getElementById('oc-list');
     let filtered = [...contracts];
 
-    if (typeFilter !== 'ALL') {
-        filtered = filtered.filter(c => c.contract_type === typeFilter);
+    // Filter by issuer type (GOV/PRIVATE maps to sector for now)
+    if (typeFilter === 'GOVERNMENT') {
+        filtered = filtered.filter(c => c.issuer_type === 'GOVERNMENT');
+    } else if (typeFilter === 'PRIVATE') {
+        filtered = filtered.filter(c => c.issuer_type === 'PRIVATE');
     }
 
-    if (sortBy === 'TIMELINE') filtered.sort((a, b) => a.timeline_months - b.timeline_months);
-    if (sortBy === 'BUDGET') filtered.sort((a, b) => b.budget - a.budget);
+    if (sortBy === 'TIMELINE') filtered.sort((a, b) => (a.timeline_ticks || 0) - (b.timeline_ticks || 0));
+    if (sortBy === 'BUDGET') filtered.sort((a, b) => (b.budget_ceiling || 0) - (a.budget_ceiling || 0));
 
     document.getElementById('oc-count').textContent = filtered.length + ' AVAILABLE';
 
@@ -2416,19 +2441,21 @@ function renderContracts() {
         return;
     }
 
+    // Ticks remaining for bidding
+    const currentTick = shard?.current_tick || 0;
+
     let html = '';
     for (const c of filtered) {
-        const isGov = c.contract_type === 'GOVERNMENT';
+        const isGov = c.issuer_type === 'GOVERNMENT';
         const typeClass = isGov ? 'gov' : 'private';
         const qualified = isQualified(c);
         const lockedClass = qualified ? '' : ' locked';
 
-        let specClass = 'light';
-        let specLabel = 'LIGHT';
-        if (c.spec_category === 'Heavy Infrastructure') { specClass = 'heavy'; specLabel = 'HEAVY'; }
-        if (c.spec_category === 'Megaproject') { specClass = 'mega'; specLabel = 'MEGA'; }
+        const specCls = sectorClass(c.sector);
+        const specLbl = sectorLabel(c.sector);
 
-        const timelineWarn = c.timeline_months > 18 ? ' warn' : '';
+        const timelineWarn = (c.timeline_ticks || 0) > 18 ? ' warn' : '';
+        const biddingEnds = c.bidding_ends_tick ? Math.max(0, c.bidding_ends_tick - currentTick) : '?';
 
         html += `
             <div class="oc-item${lockedClass}" data-contract-id="${c.id}">
@@ -2437,27 +2464,28 @@ function renderContracts() {
                     <span class="oc-item__type-badge ${typeClass}">${isGov ? 'GOV' : 'PRIVATE'}</span>
                 </div>
                 <div class="oc-item__row2">
-                    <span class="oc-item__issuer ${typeClass}">${escapeHtml(c.issuer_name)}</span>
-                    <span class="oc-item__id">${escapeHtml(c.contract_number)}</span>
+                    <span class="oc-item__issuer ${typeClass}">${escapeHtml(c.issuer_name || '—')}</span>
+                    <span class="oc-item__id" style="margin-left:auto;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${biddingEnds} tick${biddingEnds !== 1 ? 's' : ''} left</span>
                 </div>
                 <div class="oc-item__stats">
                     <div class="oc-stat">
                         <div class="oc-stat__label">BUDGET</div>
-                        <div class="oc-stat__value">${fmtBig(c.budget)}</div>
+                        <div class="oc-stat__value">${fmtBudget(c.budget_ceiling || 0)}</div>
                     </div>
                     <div class="oc-stat">
                         <div class="oc-stat__label">TIMELINE</div>
-                        <div class="oc-stat__value${timelineWarn}">${fmtTimeline(c.timeline_months)}</div>
+                        <div class="oc-stat__value${timelineWarn}">${fmtTimeline(c.timeline_ticks || 0)}</div>
                     </div>
                     <div class="oc-stat">
-                        <div class="oc-stat__label">SPEC</div>
-                        <div class="oc-stat__value ${specClass}">${specLabel}</div>
+                        <div class="oc-stat__label">SECTOR</div>
+                        <div class="oc-stat__value ${specCls}">${specLbl}</div>
                     </div>
                     <div class="oc-eligibility">
                         <span class="oc-eligible-badge ${qualified ? 'yes' : 'no'}">${qualified ? 'ELIGIBLE' : 'LOCKED'}</span>
                     </div>
-                    ${qualified ? `<button class="bid-btn bid-btn--submit" style="padding:3px 10px;font-size:8px;margin-left:auto;" onclick="event.stopPropagation();openBidModal(contracts.find(c=>c.id==='${c.id}'))">VIEW</button>` : ''}
+                    ${qualified ? `<button class="bid-btn bid-btn--submit" style="padding:3px 10px;font-size:8px;margin-left:auto;" onclick="event.stopPropagation();openBidModal(contracts.find(x=>x.id==='${c.id}'))">VIEW</button>` : ''}
                 </div>
+                ${c.description ? `<div style="font-size:9px;color:var(--text-dim);padding:4px 0 0;font-style:italic;">${escapeHtml(c.description)}</div>` : ''}
             </div>`;
     }
 
@@ -3064,12 +3092,13 @@ async function placeBid() {
 async function loadContracts() {
     if (!faction || !faction.nation_id) return;
 
+    // Load open contracts from all nations (corps can see cross-nation opportunities)
+    // but primarily their home nation
     const { data, error } = await _supabase
-        .from('corp_contracts')
+        .from('construction_contracts')
         .select('*')
-        .eq('status', 'open')
-        .eq('issuer_nation_id', faction.nation_id)
-        .order('created_at', { ascending: false });
+        .in('status', ['open', 'bidding'])
+        .order('generated_at_tick', { ascending: false });
 
     if (error) {
         console.warn('Failed to load contracts:', error.message);
