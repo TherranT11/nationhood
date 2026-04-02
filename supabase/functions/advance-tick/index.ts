@@ -22869,23 +22869,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             if (corpFactions && corpFactions.length > 0) {
                 const ns = (key) => Number(nation[key] ?? 50);
 
-                // Revenue: Gov Contracts + Private Contracts + Market Revenue (derived from nation stats)
+                // Revenue comes ONLY from contracts. No free base rate.
                 const monthlyGovContracts = 0;   // TODO: sum from active construction contract payments
                 const monthlyPvtContracts = 0;   // TODO: sum from private contracts when implemented
-
-                // Market Revenue: derived from nation economic stats (same formula as corp-dashboard.html)
-                const BASE_RATE = 50_000_000;
-                const gdpFactor     = 1 + (ns('gdp_growth') - 50) / 100 * 0.4;
-                const urbanFactor   = 1 + (ns('urbanization') - 50) / 100 * 0.3;
-                const popFactor     = 1 + (ns('population_growth') - 50) / 100 * 0.2;
-                const solFactor     = 1 + (ns('standard_of_living') - 50) / 100 * 0.15;
-                const infraFactor   = 1 + (50 - ns('physical_infrastructure')) / 100 * 0.1;
-                const inflFactor    = 1 - Math.max(0, ns('inflation') - 50) / 100 * 0.1;
-                const intFactor     = 1 - Math.max(0, ns('interest_rates') - 50) / 100 * 0.1;
-                const multiplier = gdpFactor * urbanFactor * popFactor * solFactor * infraFactor * inflFactor * intFactor;
-                const monthlyMarketRev = Math.round(Math.round(BASE_RATE * multiplier) / 12);
-
-                const monthlyRevenue = monthlyGovContracts + monthlyPvtContracts + monthlyMarketRev;
+                const monthlyRevenue = monthlyGovContracts + monthlyPvtContracts;
 
                 // Wages: same formula as corp-dashboard.html renderWorkforce
                 const TOTAL_WORKFORCE = 3000;
