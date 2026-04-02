@@ -120,339 +120,171 @@ function ccRand(min, max) { return min + Math.floor(Math.random() * (max - min +
 function ccPick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 // ════════════════════════════════════════════════════════════════════════════════
-//  CONSTRUCTION SECTOR — Project Events
+//  CONSTRUCTION EVENTS — Templates
+//
+//  Phase windows: EARLY (Permits/Planning/Foundation), MID (Foundation/Structural/Systems),
+//                 LATE (Systems/Finishing/Delivery), ANY (all phases)
+//  category: 'notification' (no player choice) or 'choice' (requires response)
+//  appliesTo: array of sectors or ['all']
+//  govOnly: true if only fires on GOVERNMENT contracts
 // ════════════════════════════════════════════════════════════════════════════════
 
-// Event templates grouped by type. Each has severity, title, description, impact,
-// and response options with tag (SAFE/RISKY/DANGEROUS), cost, delay, qualityImpact.
-const EVENT_TEMPLATES = [
-    // ── WEATHER ──
+const PHASE_WINDOWS = {
+    EARLY: ['Permits', 'Planning', 'Foundation'],
+    MID:   ['Foundation', 'Structural', 'Systems'],
+    LATE:  ['Systems', 'Finishing', 'Delivery'],
+    ANY:   ['Permits', 'Planning', 'Foundation', 'Structural', 'Systems', 'Finishing', 'Delivery'],
+};
+
+// ── NOTIFICATION EVENTS (N1-N10): No player choice, effects applied immediately ──
+
+const NOTIFICATION_EVENTS = [
+    // ── N1: FAVORABLE WEATHER WINDOW ──
     {
-        key: 'heavy_rainfall', type: 'WEATHER', severity: 'MODERATE',
-        title: 'Heavy Rainfall — Foundation Work Delayed',
-        desc: 'Sustained rainfall over 72 hours has waterlogged the excavation. Concrete pouring cannot proceed until drainage is complete and soil stability is confirmed.',
-        impact: 'Construction paused. Quality at risk if resumed too quickly.',
-        responses: [
-            { key: 'wait', label: 'Wait it out', tag: 'SAFE', detail: 'Wait for conditions to improve. No quality loss, no additional cost.', cost: 0, delay: 2, qualityImpact: 0 },
-            { key: 'pump', label: 'Pump and resume', tag: 'RISKY', detail: 'Pump drainage and resume in 1 tick. Equipment rental required. Quality risk from damp soil.', cost: 180000, delay: 1, qualityImpact: -4 },
-            { key: 'force', label: 'Force resume immediately', tag: 'DANGEROUS', detail: 'Override safety protocols and continue now. High probability of structural defects.', cost: 0, delay: 0, qualityImpact: -12 },
+        key: 'favorable_weather', type: 'WEATHER', severity: 'LOW',
+        category: 'notification', phaseWindow: 'MID', probability: 0.08,
+        appliesTo: ['all'],
+        title: 'Favorable Weather Window',
+        desc: 'An extended dry spell with moderate temperatures has created ideal construction conditions. Concrete curing is optimal, earthmoving is efficient, and outdoor work is uninterrupted.',
+        impact: 'Construction accelerated. Good conditions produce good work.',
+        effects: { phaseProgress: 15, quality: 2 },
+        statModifiers: [
+            { stat: 'stability', baseline: 50, perPoint: 0.02, direction: 'above' },
         ],
     },
+    // ── N2: WORKFORCE EFFICIENCY BREAKTHROUGH ──
     {
-        key: 'heat_wave', type: 'WEATHER', severity: 'LOW',
-        title: 'Heat Wave — Concrete Curing Issues',
-        desc: 'Extreme temperatures are causing rapid concrete curing, potentially reducing structural integrity. Workers also at risk of heat-related illness.',
-        impact: 'Slight quality risk. Workforce efficiency reduced.',
-        responses: [
-            { key: 'shade', label: 'Install shade structures', tag: 'SAFE', detail: 'Temporary shade and hydration stations. Minor cost, no delay.', cost: 45000, delay: 0, qualityImpact: 0 },
-            { key: 'night', label: 'Switch to night shifts', tag: 'RISKY', detail: 'Pour concrete at night when temperatures drop. Lighting costs, slight delay.', cost: 90000, delay: 1, qualityImpact: 2 },
-            { key: 'ignore', label: 'Continue as normal', tag: 'DANGEROUS', detail: 'Push through the heat. Workers slow down, concrete may cure improperly.', cost: 0, delay: 0, qualityImpact: -6 },
+        key: 'workforce_efficiency', type: 'LABOR', severity: 'LOW',
+        category: 'notification', phaseWindow: 'MID_LATE', probability: 0.05,
+        appliesTo: ['all'],
+        title: 'Workforce Efficiency Breakthrough',
+        desc: 'Your crew has developed an optimized workflow for the current phase. A senior foreman reorganized the task sequencing and the team is completing work faster than projected without cutting corners.',
+        impact: 'Crew working faster. Quality slightly improved.',
+        effects: { phaseProgress: 10, quality: 1 },
+        statModifiers: [
+            { stat: 'workforce_skill', baseline: 50, perPoint: 0.01, direction: 'above' },
         ],
     },
+    // ── N3: MATERIAL SURPLUS DISCOVERED ──
     {
-        key: 'flooding', type: 'WEATHER', severity: 'HIGH',
-        title: 'Flash Flooding — Site Damage',
-        desc: 'Flash flooding has damaged equipment staging areas and washed out access roads. Some foundation work may need to be redone.',
-        impact: 'Significant delay. Possible equipment damage. Foundation integrity at risk.',
-        responses: [
-            { key: 'full_repair', label: 'Full site assessment and repair', tag: 'SAFE', detail: 'Complete assessment, repair damage, rebuild access. Expensive but thorough.', cost: 350000, delay: 3, qualityImpact: 0 },
-            { key: 'partial', label: 'Patch and proceed', tag: 'RISKY', detail: 'Quick repairs to critical areas only. Resume faster but some damage unaddressed.', cost: 150000, delay: 1, qualityImpact: -8 },
-            { key: 'ignore', label: 'Resume without assessment', tag: 'DANGEROUS', detail: 'Skip assessment entirely. Unknown foundation damage may cause failures at inspection.', cost: 0, delay: 0, qualityImpact: -18 },
+        key: 'material_surplus', type: 'SUPPLY', severity: 'LOW',
+        category: 'notification', phaseWindow: 'MID', probability: 0.04,
+        appliesTo: ['all'],
+        title: 'Material Surplus Discovered',
+        desc: 'Post-delivery audit of recent material shipments reveals the supplier over-delivered by approximately 8%. The surplus is usable and already on-site. No additional cost incurred.',
+        impact: 'Free materials. Small but meaningful cost savings this phase.',
+        effects: { materialSavings: 0.08 },
+        statModifiers: [],
+    },
+    // ── N4: POSITIVE INSPECTION PREVIEW ──
+    {
+        key: 'positive_inspection', type: 'REGULATORY', severity: 'LOW',
+        category: 'notification', phaseWindow: 'LATE', probability: 0.06,
+        appliesTo: ['all'],
+        title: 'Positive Inspection Preview',
+        desc: 'A government inspector conducted a routine mid-construction visit and noted that the project is "progressing well and meeting all current standards." This is not the final inspection but it\'s a strong signal.',
+        impact: 'Early validation. Crew motivated to maintain standards.',
+        effects: { quality: 3, reputation: 1 },
+        statModifiers: [
+            { stat: 'regulatory_standing', baseline: 60, perPoint: 0.02, direction: 'above' },
         ],
     },
-    // ── LABOR ──
+    // ── N5: SUPPLY CHAIN DISRUPTION ──
     {
-        key: 'worker_injury', type: 'LABOR', severity: 'MODERATE',
-        title: 'Worker Injury — Safety Stop-Work Order',
-        desc: 'A trench wall collapse injured two workers. Safety inspector issued a stop-work order pending structural shoring installation.',
-        impact: 'Excavation paused. Workforce morale reduced. Potential regulatory scrutiny.',
-        responses: [
-            { key: 'full_compliance', label: 'Full safety compliance', tag: 'SAFE', detail: 'Install all required shoring, retrain crew, resume when cleared. Slow but clean.', cost: 85000, delay: 2, qualityImpact: 0 },
-            { key: 'quick_fix', label: 'Quick shoring and resume', tag: 'RISKY', detail: 'Install minimum shoring requirements. Resume quickly with partial compliance.', cost: 45000, delay: 1, qualityImpact: -3 },
-            { key: 'ignore_order', label: 'Resume without full compliance', tag: 'DANGEROUS', detail: 'Minimal fixes, resume immediately. Risk of further injuries and regulatory penalties.', cost: 0, delay: 0, qualityImpact: -10 },
+        key: 'supply_chain_disruption', type: 'SUPPLY', severity: 'MODERATE',
+        category: 'notification', phaseWindow: 'MID', probability: 0.10,
+        appliesTo: ['all'],
+        title: 'Supply Chain Disruption',
+        desc: 'A key material supplier has reported delays due to transport disruption. Your next scheduled delivery will arrive 1 tick late. Material consumption continues from existing on-site stock but reserves are thinning.',
+        impact: 'Delivery delayed 1 tick. Construction may slow if warehouse stock is low.',
+        effects: { phaseProgress: -10 },
+        statModifiers: [
+            { stat: 'inflation', baseline: 50, perPoint: 0.03, direction: 'above' },
+            { stat: 'physical_infrastructure', baseline: 30, perPoint: 0.02, direction: 'below' },
         ],
     },
+    // ── N6: WORKER SAFETY INCIDENT ──
     {
-        key: 'labor_shortage', type: 'LABOR', severity: 'LOW',
-        title: 'Labor Shortage — Workers Poached by Competitor',
-        desc: 'A rival construction firm is offering higher wages for skilled workers. Several crew members are considering leaving.',
-        impact: 'Risk of losing skilled workers. Build speed may decrease.',
-        responses: [
-            { key: 'raise', label: 'Match competitor wages', tag: 'SAFE', detail: 'Increase wages to retain workers. Ongoing cost increase for remaining ticks.', cost: 120000, delay: 0, qualityImpact: 0 },
-            { key: 'replace', label: 'Let them go, hire replacements', tag: 'RISKY', detail: 'New workers need training time. Slight delay, slightly lower skill level.', cost: 0, delay: 1, qualityImpact: -3 },
-            { key: 'nothing', label: 'Do nothing', tag: 'DANGEROUS', detail: 'Hope they stay. If they leave, significant understaffing and quality impact.', cost: 0, delay: 0, qualityImpact: -7 },
+        key: 'worker_safety_incident', type: 'LABOR', severity: 'MODERATE',
+        category: 'notification', phaseWindow: 'MID', probability: 0.08,
+        appliesTo: ['all'],
+        title: 'Worker Safety Incident',
+        desc: 'A workplace accident has injured one worker. The crew member has been hospitalized. A safety review is underway and work in the affected sector has been temporarily halted while conditions are assessed.',
+        impact: 'Progress slowed. Regulatory standing affected.',
+        effects: { phaseProgress: -5, quality: -1 },
+        statModifiers: [
+            { stat: 'workforce_skill', baseline: 40, perPoint: -0.01, direction: 'above' },
         ],
     },
+    // ── N7: UNEXPECTED SUBSURFACE CONDITIONS ──
     {
-        key: 'strike_action', type: 'LABOR', severity: 'HIGH',
-        title: 'Worker Strike — Demands for Better Conditions',
-        desc: 'Workers have organized a strike demanding improved safety equipment, overtime pay, and rest facilities. Work has stopped completely.',
-        impact: 'All construction halted until resolved. Public attention on the project.',
-        responses: [
-            { key: 'negotiate', label: 'Negotiate and meet demands', tag: 'SAFE', detail: 'Meet worker demands. Expensive but resolves immediately. Good reputation.', cost: 250000, delay: 1, qualityImpact: 2 },
-            { key: 'partial', label: 'Partial concessions', tag: 'RISKY', detail: 'Offer some improvements. Workers may accept or continue striking.', cost: 120000, delay: 2, qualityImpact: 0 },
-            { key: 'replace', label: 'Hire replacement workers', tag: 'DANGEROUS', detail: 'Fire strikers, hire replacements. Fast but unskilled replacements hurt quality.', cost: 60000, delay: 1, qualityImpact: -14 },
+        key: 'subsurface_conditions', type: 'WEATHER', severity: 'MODERATE',
+        category: 'notification', phaseWindow: 'EARLY', probability: 0.12,
+        appliesTo: ['all'],
+        title: 'Unexpected Subsurface Conditions',
+        desc: 'Excavation has encountered unexpected geological conditions — harder rock than soil surveys indicated, or an underground water table higher than mapped. Foundation design requires adjustment and additional excavation is needed.',
+        impact: 'Foundation phase extended. Additional cost and quality impact.',
+        effects: { delay: 1, cost: 180000, quality: -2 },
+        statModifiers: [
+            { stat: 'physical_infrastructure', baseline: 25, perPoint: 0.02, direction: 'below' },
         ],
     },
-    // ── SUPPLY ──
+    // ── N8: PERMIT COMPLIANCE WARNING ──
     {
-        key: 'material_delay', type: 'SUPPLY', severity: 'LOW',
-        title: 'Material Delivery Delay — Supplier Backlog',
-        desc: 'Primary supplier reports a delay on the next scheduled delivery. Materials will arrive late.',
-        impact: 'No immediate impact if materials not yet needed. Monitor situation.',
-        responses: [
-            { key: 'wait', label: 'Wait for delivery', tag: 'SAFE', detail: 'Accept the delay. No cost if materials not urgently needed.', cost: 0, delay: 1, qualityImpact: 0 },
-            { key: 'alt_supplier', label: 'Source from alternate supplier', tag: 'RISKY', detail: 'Rush order from another supplier at premium cost. Quality may vary.', cost: 95000, delay: 0, qualityImpact: -2 },
+        key: 'permit_compliance_warning', type: 'REGULATORY', severity: 'HIGH',
+        category: 'notification', phaseWindow: 'ANY', probability: 0.06,
+        appliesTo: ['all'],
+        title: 'Permit Compliance Warning',
+        desc: 'A government compliance officer has flagged a potential violation in your permit documentation. The specific regulation cited is ambiguous and enforcement appears discretionary.',
+        impact: 'Legal review required. Fine possible if permits not current.',
+        effects: { cost: 25000 },
+        statModifiers: [
+            { stat: 'corruption', baseline: 60, perPoint: 0.02, direction: 'above' },
         ],
     },
+    // ── N9: EQUIPMENT MALFUNCTION ──
     {
-        key: 'material_defect', type: 'SUPPLY', severity: 'MODERATE',
-        title: 'Material Quality Defect — Failed Inspection',
-        desc: 'A batch of delivered materials failed quality inspection. The affected materials cannot be used in structural elements.',
-        impact: 'Materials wasted. Replacement needed before work can continue.',
-        responses: [
-            { key: 'replace', label: 'Order replacement materials', tag: 'SAFE', detail: 'Full replacement at cost. Wait for delivery. Quality maintained.', cost: 200000, delay: 2, qualityImpact: 0 },
-            { key: 'downgrade', label: 'Use in non-structural areas', tag: 'RISKY', detail: 'Redirect defective materials to non-critical applications. Saves time and money.', cost: 0, delay: 0, qualityImpact: -6 },
-            { key: 'use_anyway', label: 'Use as-is in structural elements', tag: 'DANGEROUS', detail: 'Ignore the failed inspection. Serious risk at final delivery inspection.', cost: 0, delay: 0, qualityImpact: -15 },
-        ],
+        key: 'equipment_malfunction', type: 'EQUIPMENT', severity: 'MODERATE',
+        category: 'notification', phaseWindow: 'MID', probability: 0.06,
+        appliesTo: ['all'],
+        title: 'Equipment Malfunction',
+        desc: 'A critical piece of equipment has suffered a mechanical failure and is offline. Repairs are underway but the unit will be unavailable for 1 tick. Work requiring this equipment is stalled until the repair is complete.',
+        impact: 'Equipment offline. Progress stalled. Emergency repair cost.',
+        effects: { phaseProgress: -8, cost: 60000 },
+        statModifiers: [],
     },
+    // ── N10: LOCAL COMMUNITY OPPOSITION ──
     {
-        key: 'price_spike', type: 'SUPPLY', severity: 'MODERATE',
-        title: 'Market Price Spike — Construction Materials',
-        desc: 'Global commodity markets have spiked. Remaining material purchases will cost significantly more than budgeted.',
-        impact: 'Budget overrun risk. May need to absorb additional costs.',
-        responses: [
-            { key: 'absorb', label: 'Absorb the cost increase', tag: 'SAFE', detail: 'Pay the higher prices. Eats into profit margin but no delays.', cost: 280000, delay: 0, qualityImpact: 0 },
-            { key: 'substitute', label: 'Substitute cheaper materials', tag: 'RISKY', detail: 'Use lower-grade alternatives where possible. Saves money, reduces quality.', cost: 60000, delay: 0, qualityImpact: -5 },
-            { key: 'delay', label: 'Delay purchases, wait for prices to drop', tag: 'RISKY', detail: 'Pause material orders. Prices may drop but project is delayed.', cost: 0, delay: 2, qualityImpact: 0 },
-        ],
-    },
-    // ── REGULATORY ──
-    {
-        key: 'permit_inspection', type: 'REGULATORY', severity: 'HIGH',
-        title: 'Permit Inspection — Unannounced Site Visit',
-        desc: 'Government inspector conducted an unannounced site visit. Found compliance deviations that need remediation.',
-        impact: 'Written warning issued. Must remediate or face fines and permit suspension.',
-        responses: [
-            { key: 'immediate', label: 'Immediate full remediation', tag: 'SAFE', detail: 'Address all findings immediately. Inspector satisfied, no further action.', cost: 65000, delay: 1, qualityImpact: 0 },
-            { key: 'minimal', label: 'Minimal compliance fixes', tag: 'RISKY', detail: 'Address only the critical findings. May trigger follow-up inspection.', cost: 25000, delay: 0, qualityImpact: -4 },
-            { key: 'ignore', label: 'Ignore the warning', tag: 'DANGEROUS', detail: 'Risk the fine and potential permit suspension. Could halt the entire project.', cost: 0, delay: 0, qualityImpact: -12 },
-        ],
-    },
-    {
-        key: 'zoning_dispute', type: 'REGULATORY', severity: 'MODERATE',
-        title: 'Zoning Dispute — Neighbouring Property Complaint',
-        desc: 'Adjacent property owners have filed a complaint about noise levels, dust, and access road damage. Local council is reviewing.',
-        impact: 'Possible operating hour restrictions. Community relations at stake.',
-        responses: [
-            { key: 'community', label: 'Community engagement and mitigation', tag: 'SAFE', detail: 'Dust suppression, noise barriers, road repair. Good community relations.', cost: 110000, delay: 0, qualityImpact: 0 },
-            { key: 'legal', label: 'Legal response', tag: 'RISKY', detail: 'Contest the complaint legally. May win but takes time and strains relations.', cost: 75000, delay: 2, qualityImpact: 0 },
-            { key: 'ignore', label: 'Continue without changes', tag: 'DANGEROUS', detail: 'Risk council-imposed restrictions or fines. May escalate to work stoppage.', cost: 0, delay: 0, qualityImpact: -5 },
-        ],
-    },
-    // ── EQUIPMENT ──
-    {
-        key: 'equipment_breakdown', type: 'EQUIPMENT', severity: 'MODERATE',
-        title: 'Equipment Breakdown — Crane Malfunction',
-        desc: 'A critical crane has suffered a hydraulic failure. Heavy lifting operations are halted until repairs are completed or a replacement is sourced.',
-        impact: 'Heavy lifting work suspended. Delays to structural phase.',
-        responses: [
-            { key: 'repair', label: 'Full repair', tag: 'SAFE', detail: 'Repair the crane properly. Takes time but restores full capability.', cost: 140000, delay: 2, qualityImpact: 0 },
-            { key: 'rent', label: 'Rent a replacement', tag: 'RISKY', detail: 'Rent a crane while yours is repaired. Expensive but fast.', cost: 220000, delay: 0, qualityImpact: 0 },
-            { key: 'workaround', label: 'Work around it', tag: 'DANGEROUS', detail: 'Use smaller equipment and manual labor. Slow and risky for heavy components.', cost: 0, delay: 1, qualityImpact: -8 },
-        ],
-    },
-    {
-        key: 'equipment_theft', type: 'EQUIPMENT', severity: 'HIGH',
-        title: 'Equipment Theft — Site Security Breach',
-        desc: 'Multiple pieces of equipment and materials were stolen from the site overnight. Security was inadequate.',
-        impact: 'Lost equipment and materials. Need replacements. Security upgrade needed.',
-        responses: [
-            { key: 'replace_secure', label: 'Replace all and upgrade security', tag: 'SAFE', detail: 'Full replacement of stolen items plus security upgrade. Expensive but comprehensive.', cost: 320000, delay: 1, qualityImpact: 0 },
-            { key: 'partial', label: 'Replace essentials only', tag: 'RISKY', detail: 'Replace only what is immediately needed. Some capabilities reduced.', cost: 160000, delay: 0, qualityImpact: -4 },
-            { key: 'makeshift', label: 'Use makeshift alternatives', tag: 'DANGEROUS', detail: 'Improvise with what remains. Significant capability and quality reduction.', cost: 0, delay: 0, qualityImpact: -12 },
+        key: 'community_opposition', type: 'POLITICAL', severity: 'MODERATE',
+        category: 'notification', phaseWindow: 'EARLY_MID', probability: 0.07,
+        appliesTo: ['civil_engineering', 'industrial'],
+        title: 'Local Community Opposition',
+        desc: 'Residents near the construction site have organized protests against the project, citing noise, dust, traffic disruption, and environmental concerns. Local media is covering the protests.',
+        impact: 'Political pressure on the issuing ministry. Reputation affected.',
+        effects: { reputation: -1 },
+        statModifiers: [
+            { stat: 'civil_unrest', baseline: 50, perPoint: 0.03, direction: 'above' },
+            { stat: 'pollution', baseline: 60, perPoint: 0.02, direction: 'above' },
+            { stat: 'happiness', baseline: 60, perPoint: -0.02, direction: 'above' },
         ],
     },
 ];
 
-// Chance of an event firing per in_progress project per tick
-const EVENT_CHANCE_PER_TICK = 0.25; // 25% per project per tick
-// Max active (unresolved) events per project
-const MAX_ACTIVE_EVENTS_PER_PROJECT = 2;
-// Ticks before an unresolved event auto-expires with worst outcome
-const EVENT_EXPIRY_TICKS = 3;
+// Phase window lookup including combo windows
+const PHASE_WINDOW_LOOKUP = {
+    ...PHASE_WINDOWS,
+    MID_LATE: [...PHASE_WINDOWS.MID, ...new Set([...PHASE_WINDOWS.LATE].filter(p => !PHASE_WINDOWS.MID.includes(p)))],
+    EARLY_MID: [...PHASE_WINDOWS.EARLY, ...new Set([...PHASE_WINDOWS.MID].filter(p => !PHASE_WINDOWS.EARLY.includes(p)))],
+};
+// Deduplicate
+PHASE_WINDOW_LOOKUP.MID_LATE = [...new Set([...PHASE_WINDOWS.MID, ...PHASE_WINDOWS.LATE])];
+PHASE_WINDOW_LOOKUP.EARLY_MID = [...new Set([...PHASE_WINDOWS.EARLY, ...PHASE_WINDOWS.MID])];
 
-async function generateProjectEvents(supabase, nationId, currentTick) {
-    // Get all in_progress contracts for this nation
-    const { data: activeContracts } = await supabase
-        .from('construction_contracts')
-        .select('id, name, awarded_to_faction')
-        .eq('nation_id', nationId)
-        .eq('status', 'in_progress');
+// ── CHOICE EVENTS (E1-E10): Placeholder — Phase 2 will add these ──
+const CHOICE_EVENTS = [];
 
-    if (!activeContracts || activeContracts.length === 0) return [];
-
-    const generated = [];
-
-    for (const contract of activeContracts) {
-        // Check how many active events this project already has
-        const { count: activeCount } = await supabase
-            .from('construction_events')
-            .select('id', { count: 'exact', head: true })
-            .eq('contract_id', contract.id)
-            .eq('status', 'ACTIVE');
-
-        if ((activeCount || 0) >= MAX_ACTIVE_EVENTS_PER_PROJECT) continue;
-
-        // Roll for event
-        if (Math.random() > EVENT_CHANCE_PER_TICK) continue;
-
-        // Pick a random event template
-        const template = ccPick(EVENT_TEMPLATES);
-
-        // Check we haven't fired this exact event on this project recently (within 6 ticks)
-        const { data: recentSame } = await supabase
-            .from('construction_events')
-            .select('id')
-            .eq('contract_id', contract.id)
-            .eq('event_key', template.key)
-            .gte('fired_at_tick', currentTick - 6)
-            .limit(1);
-
-        if (recentSame && recentSame.length > 0) continue;
-
-        // Insert the event
-        const { data: evt, error: evtErr } = await supabase
-            .from('construction_events')
-            .insert({
-                contract_id: contract.id,
-                faction_id: contract.awarded_to_faction,
-                nation_id: nationId,
-                event_key: template.key,
-                type: template.type,
-                severity: template.severity,
-                title: template.title,
-                description: template.desc,
-                impact: template.impact,
-                responses: template.responses,
-                status: 'ACTIVE',
-                expires_at_tick: currentTick + EVENT_EXPIRY_TICKS,
-                fired_at_tick: currentTick,
-            })
-            .select('id, event_key, type, severity')
-            .single();
-
-        if (evtErr) {
-            console.error(`[Events] Failed to create event for ${contract.name}:`, evtErr.message);
-        } else {
-            generated.push({ contract: contract.name, event: evt.event_key, type: evt.type, severity: evt.severity });
-            console.log(`[Events] ${contract.name}: ${template.type}/${template.severity} — ${template.title}`);
-        }
-    }
-
-    return generated;
-}
-
-async function resolveExpiredEvents(supabase, nationId, currentTick) {
-    // Find events that have expired without a player response
-    const { data: expiredEvents } = await supabase
-        .from('construction_events')
-        .select('id, contract_id, faction_id, event_key, title, responses')
-        .eq('nation_id', nationId)
-        .eq('status', 'ACTIVE')
-        .lte('expires_at_tick', currentTick);
-
-    if (!expiredEvents || expiredEvents.length === 0) return [];
-
-    const results = [];
-
-    for (const evt of expiredEvents) {
-        // Auto-apply the worst response (last one, which is always DANGEROUS)
-        const responses = evt.responses || [];
-        const worstResponse = responses.length > 0 ? responses[responses.length - 1] : null;
-
-        const costApplied = worstResponse?.cost || 0;
-        const delayApplied = worstResponse?.delay || 0;
-        const qualityApplied = worstResponse?.qualityImpact || -5;
-
-        // Mark as expired with worst outcome
-        const { error: updateErr } = await supabase
-            .from('construction_events')
-            .update({
-                status: 'EXPIRED',
-                chosen_response: worstResponse?.key || 'inaction',
-                resolution: `No response received. Worst outcome applied automatically: ${worstResponse?.detail || 'Default penalty applied.'}`,
-                resolved_at_tick: currentTick,
-                cost_applied: costApplied,
-                delay_applied: delayApplied,
-                quality_applied: qualityApplied,
-            })
-            .eq('id', evt.id);
-
-        if (updateErr) {
-            console.error(`[Events] Failed to expire event ${evt.id}:`, updateErr.message);
-            continue;
-        }
-
-        // Apply cost to corp cash reserves
-        if (costApplied > 0) {
-            const { data: corp } = await supabase
-                .from('factions')
-                .select('corp_cash_reserves')
-                .eq('id', evt.faction_id)
-                .single();
-            if (corp) {
-                const newCash = Math.max(0, Number(corp.corp_cash_reserves || 0) - costApplied);
-                await supabase.from('factions')
-                    .update({ corp_cash_reserves: newCash })
-                    .eq('id', evt.faction_id);
-            }
-        }
-
-        // Apply delay by extending the contract timeline
-        if (delayApplied > 0) {
-            const { data: contract } = await supabase
-                .from('construction_contracts')
-                .select('timeline_ticks')
-                .eq('id', evt.contract_id)
-                .single();
-            if (contract) {
-                await supabase.from('construction_contracts')
-                    .update({ timeline_ticks: (contract.timeline_ticks || 8) + delayApplied })
-                    .eq('id', evt.contract_id);
-            }
-        }
-
-        // Apply quality impact to the bid's estimated_quality
-        if (qualityApplied !== 0) {
-            const { data: bid } = await supabase
-                .from('contract_bids')
-                .select('id, estimated_quality')
-                .eq('contract_id', evt.contract_id)
-                .eq('status', 'won')
-                .maybeSingle();
-            if (bid) {
-                const newQuality = Math.max(0, Math.min(100, (bid.estimated_quality || 65) + qualityApplied));
-                await supabase.from('contract_bids')
-                    .update({ estimated_quality: newQuality })
-                    .eq('id', bid.id);
-            }
-        }
-
-        results.push({
-            event: evt.title,
-            outcome: 'expired',
-            response: worstResponse?.key || 'inaction',
-            cost: costApplied,
-            delay: delayApplied,
-            quality: qualityApplied,
-        });
-
-        console.log(`[Events] EXPIRED: ${evt.title} — auto-applied worst outcome (cost=${costApplied}, delay=${delayApplied}, quality=${qualityApplied})`);
-    }
-
-    return results;
-}
+// Combined list for generation
+const ALL_EVENT_TEMPLATES = [...NOTIFICATION_EVENTS, ...CHOICE_EVENTS];
 
 // ════════════════════════════════════════════════════════════════════════════════
 //  CONSTRUCTION SECTOR — Contract Generation & Bid Resolution
