@@ -28,7 +28,7 @@ const PUBLICATION_CONFIG = {
         key: 'continental',
         name: 'The Continental',
         tagline: 'Where Ideas Converge',
-        nations: ['Calveth'],
+        nations: ['Calveth', 'Flandis'],
         style: 'continental'
     }
 };
