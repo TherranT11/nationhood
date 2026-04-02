@@ -10,7 +10,7 @@ import { getCanonicalGovernmentType } from './government-types.js';
 
 const INCIDENT_CONFIG = {
     fishing_dispute: {
-        base_chance: 0.4,
+        base_chance: 15,
         required_border: 'maritime',
         required_proximity: 100,        // 100 = bordering
         roles: { a: 'aggrieved', b: 'enforcer' },
@@ -28,7 +28,7 @@ const INCIDENT_CONFIG = {
         ]
     },
     border_incursion: {
-        base_chance: 0.15,
+        base_chance: 0,            // disabled — no event pool seeded, would crash on trigger
         required_border: 'land',
         required_proximity: 100,
         roles: { a: 'invader', b: 'defender' },
@@ -50,7 +50,7 @@ const INCIDENT_CONFIG = {
         ]
     },
     dam_water: {
-        base_chance: 0.1,
+        base_chance: 0,            // disabled — no event pool seeded, would crash on trigger
         required_border: 'river',
         required_proximity: 100,
         roles: { a: 'upstream', b: 'downstream' },
