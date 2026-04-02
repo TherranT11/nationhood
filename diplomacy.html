@@ -6562,7 +6562,9 @@ function renderTradeArticleSummary(article, viewerNationId, authorNationId) {
         case 'aid_terms': {
             const amt = Number(d.annual_amount || 0);
             const amtLabel = amt >= 1e9 ? '$' + (amt / 1e9).toFixed(1) + 'B' : amt >= 1e6 ? '$' + (amt / 1e6).toFixed(0) + 'M' : '$' + amt.toLocaleString();
-            const dirLabel = d.aid_direction === 'request' ? 'We receive' : 'We provide';
+            // Use donor_nation_id to determine perspective — viewer is donor or recipient
+            const viewerIsDonor = d.donor_nation_id && viewerNationId && d.donor_nation_id === viewerNationId;
+            const dirLabel = viewerIsDonor ? 'We provide' : 'We receive';
             return dirLabel + ': ' + amtLabel + '/yr (GDP cap: ' + (d.gdp_cap_pct || 10) + '%)';
         }
         case 'aid_condition': {
