@@ -734,7 +734,8 @@ body.light-mode .oc-empty__text { color: #1a1a17; }
 .ap-list::-webkit-scrollbar-thumb { background: var(--border-1); }
 
 /* Project item */
-.ap-item { padding: 10px 14px; border-bottom: 1px solid var(--border-0); }
+.ap-item { padding: 10px 14px; border-bottom: 1px solid var(--border-0); cursor:pointer; }
+.ap-item:hover { background:var(--bg-hover); }
 
 /* Row 1: name + type */
 .ap-item__row1 {
@@ -1907,6 +1908,262 @@ body.light-mode .dl-empty__text { color: #1a1a17; }
   .corp-name-badge { font-size: 9px; padding: 2px 6px; }
   .oc-card, .ap-card, .wh-card, .pr-card, .eq-card, .em-card, .pm-card, .dl-card { max-width: 100%; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════════════
+   ACTIVE PROJECT MODAL — 720px, four tabs
+   ════════════════════════════════════════════════════════════════════════════════ */
+.pm-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:3000; align-items:center; justify-content:center; }
+.pm-overlay.open { display:flex; }
+.pm-modal {
+  width:720px; max-height:92vh;
+  background:var(--bg-2); border:1px solid var(--border-0);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+
+/* Header */
+.pm-hdr { padding:10px 16px; border-bottom:1px solid var(--border-0); background:var(--bg-3); flex-shrink:0; }
+.pm-hdr__row1 { display:flex; justify-content:space-between; align-items:center; }
+.pm-hdr__left { display:flex; align-items:center; gap:8px; }
+.pm-hdr__nation {
+  font-family:var(--font-mono); font-size:8px; font-weight:700; letter-spacing:0.8px;
+  padding:2px 8px; color:var(--teal); background:var(--teal-faint); border:1px solid var(--teal-border);
+}
+.pm-hdr__name { font-size:15px; font-weight:700; color:var(--text-bright); }
+.pm-hdr__issuer { font-size:12px; color:var(--teal); }
+.pm-hdr__type {
+  font-family:var(--font-mono); font-size:8px; font-weight:700; letter-spacing:0.8px;
+  padding:2px 6px; color:var(--teal); background:var(--teal-faint); border:1px solid var(--teal-border);
+}
+.pm-hdr__close {
+  font-family:var(--font-mono); font-size:14px; color:var(--text-dim); cursor:pointer;
+  padding:0 4px; line-height:1; background:none; border:none;
+}
+.pm-hdr__row2 { display:flex; align-items:center; gap:8px; margin-top:6px; }
+.pm-hdr__id { font-family:var(--font-mono); font-size:9px; color:var(--text-dim); }
+.pm-hdr__badge {
+  font-family:var(--font-mono); font-size:8px; font-weight:700; padding:1px 6px;
+  letter-spacing:0.5px;
+}
+.pm-hdr__badge--spec { color:var(--gold); background:var(--gold-faint); border:1px solid var(--gold-border); }
+.pm-hdr__badge--sub { color:var(--text-secondary); background:var(--bg-3); border:1px solid var(--border-0); }
+
+/* Phase track */
+.pm-phase { padding:8px 16px; border-bottom:1px solid var(--border-0); background:rgba(139,154,107,0.02); flex-shrink:0; }
+.pm-phase__bar { display:flex; gap:2px; align-items:center; }
+.pm-phase__seg { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; }
+.pm-phase__seg-fill { width:100%; height:6px; border-radius:1px; }
+.pm-phase__seg-fill--done { background:var(--teal); }
+.pm-phase__seg-fill--active { background:#a3b07e; }
+.pm-phase__seg-fill--future { background:var(--border-0); }
+.pm-phase__seg-label {
+  font-family:var(--font-mono); font-size:7px; letter-spacing:0.3px; color:var(--text-dim);
+}
+.pm-phase__seg-label--done { color:var(--teal); }
+.pm-phase__seg-label--active { color:#a3b07e; font-weight:700; }
+.pm-phase__info { display:flex; justify-content:space-between; align-items:center; margin-top:6px; }
+.pm-phase__status { font-family:var(--font-mono); font-size:9px; color:#a3b07e; }
+.pm-phase__tick { font-family:var(--font-mono); font-size:9px; color:var(--text-secondary); }
+
+/* Tab bar */
+.pm-tabs { display:flex; border-bottom:1px solid var(--border-0); background:var(--bg-3); flex-shrink:0; }
+.pm-tab {
+  flex:1; padding:7px 0; text-align:center; cursor:pointer;
+  border-bottom:2px solid transparent; margin-bottom:-1px;
+  font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:0.8px;
+  color:var(--text-dim); background:none; border-top:none; border-left:none; border-right:none;
+}
+.pm-tab.active { color:#a3b07e; border-bottom-color:#a3b07e; }
+.pm-tab__badge {
+  font-family:var(--font-mono); font-size:7px; font-weight:700; margin-left:4px;
+  padding:0 4px; line-height:12px;
+  color:var(--red); background:var(--red-faint); border:1px solid var(--red-border);
+}
+
+/* Content area */
+.pm-content { flex:1; overflow-y:auto; }
+.pm-content::-webkit-scrollbar { width:4px; }
+.pm-content::-webkit-scrollbar-track { background:transparent; }
+.pm-content::-webkit-scrollbar-thumb { background:var(--border-1); }
+
+/* Overview tab */
+.pm-section { padding:10px 0; border-bottom:1px solid var(--border-0); }
+.pm-section__title {
+  font-family:var(--font-mono); font-size:8px; letter-spacing:1.5px;
+  color:var(--text-dim); text-transform:uppercase; margin-bottom:4px;
+}
+.pm-desc { font-size:11px; color:var(--text-secondary); line-height:1.6; }
+
+/* Metrics grid */
+.pm-metrics { display:grid; grid-template-columns:1fr 1fr 1fr; border-bottom:1px solid var(--border-0); }
+.pm-metric {
+  padding:8px 10px;
+  border-right:1px solid var(--border-0);
+  border-bottom:1px solid var(--border-0);
+}
+.pm-metric:nth-child(3n) { border-right:none; }
+.pm-metric:nth-child(n+4) { border-bottom:none; }
+.pm-metric__label {
+  font-family:var(--font-mono); font-size:7px; color:var(--text-dim);
+  letter-spacing:0.8px; text-transform:uppercase;
+}
+.pm-metric__value {
+  font-family:var(--font-mono); font-size:14px; font-weight:700; margin-top:2px;
+}
+.pm-metric__sub { font-family:var(--font-mono); font-size:8px; color:var(--text-dim); margin-top:1px; }
+
+/* PM row */
+.pm-manager { display:flex; justify-content:space-between; align-items:center; }
+.pm-manager__name { font-size:12px; font-weight:600; color:var(--text-bright); }
+.pm-manager__skill { font-family:var(--font-mono); font-size:10px; color:var(--text-secondary); }
+
+/* Permit row */
+.pm-permit { display:flex; justify-content:space-between; align-items:center; padding:3px 0; }
+.pm-permit + .pm-permit { border-top:1px solid var(--border-0); }
+.pm-permit__left { display:flex; align-items:center; gap:6px; }
+.pm-permit__check { font-family:var(--font-mono); font-size:8px; font-weight:700; }
+.pm-permit__name { font-size:11px; color:var(--text-secondary); }
+.pm-permit__exp { font-family:var(--font-mono); font-size:8px; color:var(--text-dim); }
+
+/* Events tab */
+.pm-evt { border-bottom:1px solid var(--border-0); }
+.pm-evt--active { border-left:2px solid var(--blue); }
+.pm-evt--resolved { border-left:2px solid transparent; }
+.pm-evt__header { padding:8px 14px; cursor:pointer; }
+.pm-evt__header:hover { background:var(--bg-hover); }
+.pm-evt__row1 { display:flex; align-items:center; gap:6px; margin-bottom:3px; }
+.pm-evt__type-badge {
+  font-family:var(--font-mono); font-size:7px; font-weight:700; letter-spacing:0.5px;
+  padding:1px 5px; line-height:13px;
+}
+.pm-evt__sev-badge {
+  font-family:var(--font-mono); font-size:7px; font-weight:700; letter-spacing:0.5px;
+  padding:1px 5px; line-height:13px; background:transparent; border:1px solid var(--border-0);
+}
+.pm-evt__status {
+  font-family:var(--font-mono); font-size:8px; margin-left:auto;
+}
+.pm-evt__title { font-size:12px; font-weight:600; color:var(--text-bright); margin-bottom:2px; }
+.pm-evt__meta { font-family:var(--font-mono); font-size:8px; color:var(--text-dim); }
+.pm-evt__body { margin-top:8px; }
+.pm-evt__desc { font-size:11px; color:var(--text-secondary); line-height:1.6; margin-bottom:6px; }
+.pm-evt__impact {
+  padding:5px 8px; margin-bottom:8px;
+  background:var(--bg-3); border:1px solid var(--border-0);
+}
+.pm-evt__impact-label { font-family:var(--font-mono); font-size:8px; color:var(--text-dim); letter-spacing:0.8px; }
+.pm-evt__impact-text { font-size:10px; color:var(--orange); }
+
+/* Response options */
+.pm-evt__resp-title {
+  font-family:var(--font-mono); font-size:8px; letter-spacing:1.5px;
+  color:#a3b07e; text-transform:uppercase; margin-bottom:6px;
+}
+.pm-resp {
+  padding:8px 10px; margin-bottom:4px; cursor:pointer;
+  background:var(--bg-0); border:1px solid var(--border-0);
+}
+.pm-resp:hover { background:var(--bg-3); }
+.pm-resp.selected { background:var(--bg-3); }
+.pm-resp__row1 { display:flex; justify-content:space-between; align-items:center; margin-bottom:3px; }
+.pm-resp__left { display:flex; align-items:center; gap:6px; }
+.pm-resp__label { font-size:11px; font-weight:600; color:var(--text-bright); }
+.pm-resp__tag {
+  font-family:var(--font-mono); font-size:7px; font-weight:700;
+  padding:0 5px; line-height:13px;
+}
+.pm-resp__delay { font-family:var(--font-mono); font-size:8px; }
+.pm-resp__detail { font-size:10px; color:var(--text-secondary); line-height:1.5; margin-bottom:4px; }
+.pm-resp__costs { display:flex; gap:8px; align-items:center; }
+.pm-resp__cost { font-family:var(--font-mono); font-size:8px; }
+.pm-resp__confirm {
+  display:flex; justify-content:flex-end; margin-top:6px;
+  padding-top:6px; border-top:1px solid var(--border-0);
+}
+.pm-resp__confirm-btn {
+  padding:4px 16px; font-family:var(--font-mono); font-size:9px;
+  font-weight:700; letter-spacing:1px; color:#000; cursor:pointer;
+  border:none;
+}
+
+/* Resolution box */
+.pm-evt__resolution {
+  padding:6px 8px;
+  background:rgba(92,204,92,0.03); border:1px solid rgba(92,204,92,0.1);
+}
+.pm-evt__resolution-label {
+  font-family:var(--font-mono); font-size:8px; color:var(--green);
+  letter-spacing:0.8px; margin-bottom:3px;
+}
+.pm-evt__resolution-text { font-size:10px; color:var(--text-secondary); line-height:1.5; }
+
+/* Materials tab */
+.pm-mat { padding:8px 16px; border-bottom:1px solid var(--border-0); }
+.pm-mat__row1 { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+.pm-mat__left { display:flex; align-items:center; gap:6px; }
+.pm-mat__name { font-size:12px; font-weight:600; color:var(--text-bright); }
+.pm-mat__grade-dot { width:5px; height:5px; border-radius:1px; }
+.pm-mat__grade-dot--high { background:var(--green); }
+.pm-mat__grade-dot--std { background:var(--amber); }
+.pm-mat__grade-dot--low { background:var(--orange); }
+.pm-mat__grade { font-family:var(--font-mono); font-size:8px; }
+.pm-mat__qty { font-family:var(--font-mono); font-size:9px; color:var(--text-secondary); }
+.pm-mat__bar-row { display:flex; align-items:center; gap:8px; }
+.pm-mat__bar { flex:1; height:3px; background:var(--border-0); }
+.pm-mat__bar-fill { height:100%; background:var(--teal); }
+.pm-mat__pct { font-family:var(--font-mono); font-size:8px; color:var(--text-dim); }
+
+/* Equipment tab */
+.pm-eq { padding:8px 16px; border-bottom:1px solid var(--border-0); display:flex; align-items:center; }
+.pm-eq__info { flex:1; }
+.pm-eq__left { display:flex; align-items:center; gap:6px; }
+.pm-eq__name { font-size:12px; font-weight:600; color:var(--text-bright); }
+.pm-eq__qty { font-family:var(--font-mono); font-size:9px; color:var(--text-secondary); }
+.pm-eq__wear {
+  font-family:var(--font-mono); font-size:7px; font-weight:700;
+  padding:0 4px; line-height:12px;
+  color:var(--orange); background:var(--orange-faint); border:1px solid var(--orange-border);
+}
+.pm-eq__cond { display:flex; align-items:center; gap:6px; width:140px; }
+.pm-eq__cond-bar { flex:1; height:3px; background:var(--border-0); }
+.pm-eq__cond-fill { height:100%; }
+.pm-eq__cond-val {
+  font-family:var(--font-mono); font-size:10px; font-weight:700;
+  width:28px; text-align:right;
+}
+
+/* Footer */
+.pm-ftr {
+  padding:8px 16px; border-top:1px solid var(--border-0); background:var(--bg-3);
+  display:flex; justify-content:space-between; align-items:center; flex-shrink:0;
+}
+.pm-ftr__left { display:flex; gap:12px; align-items:center; }
+.pm-ftr__badge {
+  font-family:var(--font-mono); font-size:8px; font-weight:700; padding:1px 6px;
+}
+.pm-ftr__close {
+  padding:5px 20px; font-family:var(--font-mono); font-size:10px; font-weight:700;
+  letter-spacing:1px; color:var(--text-dim); border:1px solid var(--border-0);
+  cursor:pointer; background:none;
+}
+.pm-ftr__close:hover { border-color:var(--border-2); color:var(--text-secondary); }
+
+/* Empty events state */
+.pm-evt-empty {
+  padding:30px 16px; text-align:center;
+  font-family:var(--font-mono); font-size:10px; color:var(--text-dim);
+}
+/* Section header in materials/equipment tabs */
+.pm-tab-header {
+  padding:8px 16px; font-family:var(--font-mono); font-size:8px;
+  letter-spacing:1.5px; color:var(--text-dim); text-transform:uppercase;
+  border-bottom:1px solid var(--border-0);
+}
+
+@media (max-width: 780px) {
+  .pm-modal { width:95vw; max-height:95vh; }
+  .pm-hdr__name { font-size:13px; }
+  .pm-metrics { grid-template-columns:1fr 1fr; }
+}
 </style>
 </head>
 <body>
@@ -2289,6 +2546,17 @@ body.light-mode .dl-empty__text { color: #1a1a17; }
         <button class="bid-btn bid-btn--submit" id="bid-submit-btn" disabled onclick="submitBid()">SUBMIT BID</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Active Project Modal -->
+<div class="pm-overlay" id="pm-overlay" onclick="closeProjectModal(event)">
+  <div class="pm-modal" onclick="event.stopPropagation()">
+    <div class="pm-hdr" id="pm-header"></div>
+    <div class="pm-phase" id="pm-phase"></div>
+    <div class="pm-tabs" id="pm-tabs"></div>
+    <div class="pm-content" id="pm-content"></div>
+    <div class="pm-ftr" id="pm-footer"></div>
   </div>
 </div>
 
@@ -3074,6 +3342,550 @@ async function submitBid() {
 }
 window.submitBid = submitBid;
 
+// ════════════════════════════════════════════════════════════════════════════════
+//  ACTIVE PROJECT MODAL — 720px, four tabs (Overview, Events, Materials, Equipment)
+// ════════════════════════════════════════════════════════════════════════════════
+
+const PM_PHASES = ['Permits', 'Planning', 'Foundation', 'Structural', 'Systems', 'Finishing', 'Delivery'];
+
+// Event type colors
+const PM_EVT_COLORS = {
+    WEATHER:    { color: 'var(--blue)',   bg: 'var(--blue-faint)',   border: 'var(--blue-border)' },
+    SUPPLY:     { color: 'var(--gold)',   bg: 'var(--gold-faint)',   border: 'var(--gold-border)' },
+    LABOR:      { color: 'var(--orange)', bg: 'var(--orange-faint)', border: 'var(--orange-border)' },
+    REGULATORY: { color: 'var(--red)',    bg: 'var(--red-faint)',    border: 'var(--red-border)' },
+    EQUIPMENT:  { color: 'var(--amber)',  bg: 'var(--amber-faint)',  border: 'var(--amber-border)' },
+    POLITICAL:  { color: 'var(--teal)',   bg: 'var(--teal-faint)',   border: 'var(--teal-border)' },
+};
+const PM_SEV_COLORS = {
+    LOW: 'var(--green)', MODERATE: 'var(--amber)', HIGH: 'var(--orange)', CRITICAL: 'var(--red)',
+};
+
+let pmState = null; // { project, bid, tab, expandedEvent, selectedResponse, events }
+
+function openProjectModal(projectId) {
+    const project = activeProjects.find(p => p.id === projectId);
+    if (!project) return;
+
+    const bid = Array.isArray(project.contract_bids) ? project.contract_bids[0] : project.contract_bids;
+    const currentTick = shard?.current_tick || 0;
+    const awardedTick = project.awarded_at_tick || currentTick;
+    const totalTicks = project.timeline_ticks || 8;
+    const ticksElapsed = Math.max(0, currentTick - awardedTick);
+
+    // Determine current phase from progress
+    const progressPct = Math.min(100, (ticksElapsed / totalTicks) * 100);
+    let phaseIdx = Math.min(PM_PHASES.length - 1, Math.floor(progressPct / (100 / PM_PHASES.length)));
+    const phaseProgress = Math.round((progressPct % (100 / PM_PHASES.length)) / (100 / PM_PHASES.length) * 100);
+
+    // Build materials from contract required_materials + bid material_grades
+    const reqMats = project.required_materials || {};
+    const bidGrades = bid?.material_grades || {};
+    const materials = Object.entries(reqMats).map(([key, qty]) => {
+        const grade = bidGrades[key] || 'STANDARD';
+        const consumed = Math.round(qty * (progressPct / 100) * (0.6 + Math.random() * 0.4));
+        return {
+            key,
+            name: key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+            grade,
+            allocated: qty,
+            used: Math.min(consumed, qty),
+        };
+    });
+
+    // Build equipment from contract required_equipment
+    const reqEquip = project.required_equipment || [];
+    const equipment = reqEquip.map(eqKey => ({
+        key: eqKey,
+        name: eqKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        qty: 1 + Math.floor(Math.random() * 3),
+        condition: 55 + Math.floor(Math.random() * 40),
+    }));
+
+    // Build budget/spend data
+    const budget = project.budget_ceiling || 0;
+    const estCost = bid?.estimated_cost || 0;
+    const spent = Math.round(estCost * Math.min(1, ticksElapsed / totalTicks));
+    const quality = bid?.estimated_quality || 65;
+    const qualityLabel = quality >= 80 ? 'STRONG' : quality >= 60 ? 'PROMISING' : quality >= 40 ? 'FAIR' : 'UNCERTAIN';
+
+    // Workforce from contract
+    const reqWf = project.required_workforce || {};
+    const wfNeeded = (reqWf.general || 0) + (reqWf.skilled || 0);
+    const laborCount = bid?.labor_count || wfNeeded;
+
+    pmState = {
+        project,
+        bid,
+        tab: 'overview',
+        expandedEvent: -1,
+        selectedResponse: null,
+        // Computed data
+        currentTick,
+        awardedTick,
+        totalTicks,
+        ticksElapsed,
+        phaseIdx,
+        phaseProgress,
+        materials,
+        equipment,
+        budget,
+        estCost,
+        spent,
+        quality,
+        qualityLabel,
+        laborCount,
+        wfNeeded,
+        events: [],
+    };
+
+    document.getElementById('pm-overlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+
+    // Load events from DB
+    loadProjectEvents(project.id).then(() => renderProjectModal());
+    renderProjectModal();
+}
+
+function closeProjectModal(event) {
+    if (event && event.target !== document.getElementById('pm-overlay')) return;
+    document.getElementById('pm-overlay').classList.remove('open');
+    document.body.style.overflow = '';
+    pmState = null;
+}
+
+function pmSetTab(tab) {
+    if (!pmState) return;
+    pmState.tab = tab;
+    pmState.expandedEvent = -1;
+    pmState.selectedResponse = null;
+    renderProjectModal();
+}
+
+function pmToggleEvent(idx) {
+    if (!pmState) return;
+    pmState.expandedEvent = pmState.expandedEvent === idx ? -1 : idx;
+    pmState.selectedResponse = null;
+    renderProjectModal();
+}
+
+function pmSelectResponse(idx) {
+    if (!pmState) return;
+    pmState.selectedResponse = pmState.selectedResponse === idx ? null : idx;
+    renderProjectModal();
+}
+
+function renderProjectModal() {
+    if (!pmState) return;
+    const s = pmState;
+    const p = s.project;
+    const isGov = p.issuer_type === 'GOVERNMENT';
+    const specLbl = sectorLabel(p.sector);
+    const nationName = faction?.nation || 'Nation';
+
+    const deadlineTick = s.awardedTick + s.totalTicks;
+    const ticksRemaining = Math.max(0, deadlineTick - s.currentTick);
+    const isLate = s.currentTick > deadlineTick;
+
+    // Budget metrics
+    const budgetPct = s.budget > 0 ? Math.round((s.spent / s.budget) * 100) : 0;
+    const budgetColor = budgetPct > 85 ? 'var(--red)' : budgetPct > 60 ? 'var(--amber)' : 'var(--teal)';
+    const remaining = s.budget - s.spent;
+
+    const activeEvents = s.events.filter(e => e.status === 'ACTIVE').length;
+
+    // ─── HEADER ───
+    document.getElementById('pm-header').innerHTML = `
+        <div class="pm-hdr__row1">
+            <div class="pm-hdr__left">
+                <span class="pm-hdr__nation">${escapeHtml(nationName.toUpperCase())}</span>
+                <span class="pm-hdr__name">${escapeHtml(p.name)}</span>
+                <span style="color:var(--text-dim);font-size:12px">—</span>
+                <span class="pm-hdr__issuer">${escapeHtml(p.issuer_name || '—')}</span>
+                <span class="pm-hdr__type">${isGov ? 'GOV' : 'PVT'}</span>
+            </div>
+            <button class="pm-hdr__close" onclick="closeProjectModal()">×</button>
+        </div>
+        <div class="pm-hdr__row2">
+            <span class="pm-hdr__id">${escapeHtml(p.template_key || p.id)}</span>
+            <span class="pm-hdr__badge pm-hdr__badge--spec">${escapeHtml(specLbl.toUpperCase())}</span>
+            <span class="pm-hdr__badge pm-hdr__badge--sub">${escapeHtml((p.sector || '').replace(/_/g, ' ').toUpperCase())}</span>
+        </div>
+    `;
+
+    // ─── PHASE TRACK ───
+    let phaseHtml = '<div class="pm-phase__bar">';
+    for (let i = 0; i < PM_PHASES.length; i++) {
+        const done = i < s.phaseIdx;
+        const active = i === s.phaseIdx;
+        const cls = done ? 'done' : active ? 'active' : 'future';
+        const lblCls = done ? 'done' : active ? 'active' : '';
+        phaseHtml += `<div class="pm-phase__seg">
+            <div class="pm-phase__seg-fill pm-phase__seg-fill--${cls}"></div>
+            <span class="pm-phase__seg-label pm-phase__seg-label--${lblCls}">${PM_PHASES[i]}</span>
+        </div>`;
+    }
+    phaseHtml += '</div>';
+    phaseHtml += `<div class="pm-phase__info">
+        <span class="pm-phase__status">${PM_PHASES[s.phaseIdx]} — ${s.phaseProgress}% complete</span>
+        <span class="pm-phase__tick" style="color:${isLate ? 'var(--red)' : 'var(--text-secondary)'}">Tick ${s.ticksElapsed} / ${s.totalTicks}${isLate ? ' — OVERDUE' : ''}</span>
+    </div>`;
+    document.getElementById('pm-phase').innerHTML = phaseHtml;
+
+    // ─── TAB BAR ───
+    const tabs = [
+        { id: 'overview', label: 'Overview' },
+        { id: 'events', label: 'Events', badge: activeEvents },
+        { id: 'materials', label: 'Materials' },
+        { id: 'equipment', label: 'Equipment' },
+    ];
+    document.getElementById('pm-tabs').innerHTML = tabs.map(t =>
+        `<button class="pm-tab${s.tab === t.id ? ' active' : ''}" onclick="pmSetTab('${t.id}')">
+            ${t.label}${t.badge > 0 ? `<span class="pm-tab__badge">${t.badge}</span>` : ''}
+        </button>`
+    ).join('');
+
+    // ─── CONTENT ───
+    let content = '';
+
+    if (s.tab === 'overview') {
+        content = renderPmOverview(s, p, budgetColor, budgetPct, remaining, ticksRemaining, isLate);
+    } else if (s.tab === 'events') {
+        content = renderPmEvents(s);
+    } else if (s.tab === 'materials') {
+        content = renderPmMaterials(s);
+    } else if (s.tab === 'equipment') {
+        content = renderPmEquipment(s);
+    }
+
+    document.getElementById('pm-content').innerHTML = `<div style="padding:0">${content}</div>`;
+
+    // ─── FOOTER ───
+    let footerLeft = '';
+    if (activeEvents > 0) {
+        footerLeft += `<span class="pm-ftr__badge" style="color:var(--red);background:var(--red-faint);border:1px solid var(--red-border)">${activeEvents} EVENT${activeEvents > 1 ? 'S' : ''} REQUIRES RESPONSE</span>`;
+    }
+    footerLeft += `<span class="pm-ftr__badge" style="color:${s.quality >= 70 ? 'var(--green)' : s.quality >= 50 ? 'var(--amber)' : 'var(--orange)'};background:var(--bg-0);border:1px solid var(--border-0)">QUALITY: ${s.quality}/100 — ${s.qualityLabel}</span>`;
+
+    document.getElementById('pm-footer').innerHTML = `
+        <div class="pm-ftr__left">${footerLeft}</div>
+        <button class="pm-ftr__close" onclick="closeProjectModal()">CLOSE</button>
+    `;
+}
+
+function renderPmOverview(s, p, budgetColor, budgetPct, remaining, ticksRemaining, isLate) {
+    const deadlineDate = tickToDate(s.awardedTick + s.totalTicks);
+    const estFinishDate = tickToDate(s.awardedTick + s.totalTicks);
+    const startDate = tickToDate(s.awardedTick);
+
+    // Metrics
+    const metrics = [
+        { label: 'Budget', value: fmtBudget(s.budget), sub: `${budgetPct}% spent`, color: budgetColor },
+        { label: 'Spent', value: fmtBudget(s.spent), color: 'var(--red)' },
+        { label: 'Remaining', value: fmtBudget(remaining), color: 'var(--green)' },
+        { label: 'Quality', value: `${s.quality}/100`, sub: s.qualityLabel, color: s.quality >= 70 ? 'var(--green)' : s.quality >= 50 ? 'var(--amber)' : 'var(--red)' },
+        { label: 'Workforce', value: `${s.laborCount}/${s.wfNeeded}`, sub: `Bid: ${s.laborCount}`, color: s.laborCount < s.wfNeeded ? 'var(--orange)' : 'var(--text-bright)' },
+        { label: 'Remaining', value: `${ticksRemaining} ticks`, sub: isLate ? 'OVERDUE' : `Deadline: ${deadlineDate}`, color: isLate ? 'var(--red)' : 'var(--text-bright)' },
+    ];
+
+    let html = '';
+
+    // Description
+    html += `<div style="padding:0 16px"><div class="pm-section">
+        <div class="pm-section__title">Description</div>
+        <div class="pm-desc">${escapeHtml(p.description || p.name)}</div>
+    </div></div>`;
+
+    // Metrics grid
+    html += '<div class="pm-metrics">';
+    for (const m of metrics) {
+        html += `<div class="pm-metric">
+            <div class="pm-metric__label">${m.label}</div>
+            <div class="pm-metric__value" style="color:${m.color}">${m.value}</div>
+            ${m.sub ? `<div class="pm-metric__sub">${escapeHtml(m.sub)}</div>` : ''}
+        </div>`;
+    }
+    html += '</div>';
+
+    // Timeline
+    html += `<div style="padding:0 16px"><div class="pm-section">
+        <div class="pm-section__title">Timeline</div>
+        <div class="pm-manager">
+            <span style="font-size:11px;color:var(--text-secondary)">Started: ${startDate}</span>
+            <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary)">Deadline: <span style="color:${isLate ? 'var(--red)' : 'var(--text-bright)'};font-weight:700">${deadlineDate}</span></span>
+        </div>
+    </div></div>`;
+
+    // Permits (from contract if available)
+    const permits = [];
+    // Show sector-appropriate permits based on project type
+    if (p.sector === 'civil_engineering' || p.sector === 'industrial' || p.sector === 'mega_project') {
+        permits.push({ name: 'Municipal Zoning Approval', status: 'ACTIVE' });
+        permits.push({ name: 'Structural Engineering Cert.', status: 'ACTIVE' });
+        if (p.sector !== 'civil_engineering') {
+            permits.push({ name: 'Environmental Impact Assessment', status: 'ACTIVE' });
+        }
+    }
+
+    if (permits.length > 0) {
+        html += `<div style="padding:0 16px"><div class="pm-section">
+            <div class="pm-section__title">Permits</div>`;
+        for (const permit of permits) {
+            html += `<div class="pm-permit">
+                <div class="pm-permit__left">
+                    <span class="pm-permit__check" style="color:var(--green)">✓</span>
+                    <span class="pm-permit__name">${escapeHtml(permit.name)}</span>
+                </div>
+                <span class="pm-permit__exp" style="color:var(--green)">ACTIVE</span>
+            </div>`;
+        }
+        html += '</div></div>';
+    }
+
+    return html;
+}
+
+function renderPmEvents(s) {
+    if (s.events.length === 0) {
+        return `<div class="pm-evt-empty">No events have occurred on this project yet.<br>Events will appear here as construction progresses.</div>`;
+    }
+
+    let html = '';
+    for (let i = 0; i < s.events.length; i++) {
+        const evt = s.events[i];
+        const isExp = s.expandedEvent === i;
+        const isActive = evt.status === 'ACTIVE';
+        const tm = PM_EVT_COLORS[evt.type] || PM_EVT_COLORS.WEATHER;
+        const sevColor = PM_SEV_COLORS[evt.severity] || PM_SEV_COLORS.LOW;
+
+        html += `<div class="pm-evt ${isActive ? 'pm-evt--active' : 'pm-evt--resolved'}" style="${isActive ? `border-left-color:${tm.color}` : ''}">`;
+        html += `<div class="pm-evt__header" onclick="pmToggleEvent(${i})" style="${isExp ? `background:${tm.bg}` : ''}">`;
+
+        // Row 1: type + severity + status
+        html += `<div class="pm-evt__row1">
+            <span class="pm-evt__type-badge" style="color:${tm.color};background:${tm.bg};border:1px solid ${tm.border}">${evt.type}</span>
+            <span class="pm-evt__sev-badge" style="color:${sevColor}">${evt.severity}</span>
+            <span class="pm-evt__status" style="color:${isActive ? 'var(--red)' : 'var(--text-dim)'};font-weight:${isActive ? '700' : '400'}">${isActive ? 'REQUIRES RESPONSE' : 'RESOLVED'}</span>
+        </div>`;
+
+        // Title + meta
+        html += `<div class="pm-evt__title">${escapeHtml(evt.title)}</div>`;
+        html += `<div class="pm-evt__meta">Tick ${evt.tick} · ${escapeHtml(evt.id || '')}</div>`;
+
+        // Expanded
+        if (isExp) {
+            html += '<div class="pm-evt__body">';
+            html += `<div class="pm-evt__desc">${escapeHtml(evt.desc)}</div>`;
+
+            if (evt.impact) {
+                html += `<div class="pm-evt__impact">
+                    <span class="pm-evt__impact-label">IMPACT: </span>
+                    <span class="pm-evt__impact-text">${escapeHtml(evt.impact)}</span>
+                </div>`;
+            }
+
+            // Response options (active events only)
+            if (isActive && evt.responses && evt.responses.length > 0) {
+                html += `<div class="pm-evt__resp-title">Response Options</div>`;
+                for (let ri = 0; ri < evt.responses.length; ri++) {
+                    const resp = evt.responses[ri];
+                    const isSel = s.selectedResponse === ri;
+                    const tagColors = { SAFE: 'var(--green)', RISKY: 'var(--orange)', DANGEROUS: 'var(--red)' };
+                    const tagColor = tagColors[resp.tag] || 'var(--text-secondary)';
+
+                    html += `<div class="pm-resp${isSel ? ' selected' : ''}" style="${isSel ? `border-color:${tagColor}` : ''}" onclick="event.stopPropagation();pmSelectResponse(${ri})">`;
+
+                    // Row 1
+                    html += `<div class="pm-resp__row1">
+                        <div class="pm-resp__left">
+                            <span class="pm-resp__label">${escapeHtml(resp.label)}</span>
+                            <span class="pm-resp__tag" style="color:${tagColor};background:${tagColor}12;border:1px solid ${tagColor}25">${resp.tag}</span>
+                        </div>
+                        <span class="pm-resp__delay" style="color:${resp.delay > 0 ? 'var(--orange)' : 'var(--green)'}">
+                            ${resp.delay > 0 ? `+${resp.delay} tick${resp.delay > 1 ? 's' : ''}` : 'No delay'}
+                        </span>
+                    </div>`;
+
+                    // Detail
+                    html += `<div class="pm-resp__detail">${escapeHtml(resp.detail)}</div>`;
+
+                    // Costs
+                    html += '<div class="pm-resp__costs">';
+                    if (resp.cost) {
+                        html += `<span class="pm-resp__cost" style="color:var(--red)">Cost: ${fmtBudget(resp.cost)}</span>`;
+                    }
+                    if (resp.qualityImpact && resp.qualityImpact !== 0) {
+                        html += `<span class="pm-resp__cost" style="color:${resp.qualityImpact > 0 ? 'var(--green)' : 'var(--red)'}">Quality: ${resp.qualityImpact > 0 ? '+' : ''}${resp.qualityImpact}</span>`;
+                    }
+                    if (!resp.cost && (!resp.qualityImpact || resp.qualityImpact === 0)) {
+                        html += `<span class="pm-resp__cost" style="color:var(--green)">No additional cost</span>`;
+                    }
+                    html += '</div>';
+
+                    // Confirm button
+                    if (isSel) {
+                        html += `<div class="pm-resp__confirm">
+                            <button class="pm-resp__confirm-btn" style="background:${tagColor}" onclick="event.stopPropagation();confirmEventResponse('${evt.id}','${resp.key}')">CONFIRM</button>
+                        </div>`;
+                    }
+
+                    html += '</div>';
+                }
+            }
+
+            // Resolution (resolved events)
+            if (!isActive && evt.resolution) {
+                html += `<div class="pm-evt__resolution">
+                    <div class="pm-evt__resolution-label">RESOLUTION</div>
+                    <div class="pm-evt__resolution-text">${escapeHtml(evt.resolution)}</div>
+                </div>`;
+            }
+
+            html += '</div>'; // pm-evt__body
+        }
+
+        html += '</div></div>'; // header + evt
+    }
+    return html;
+}
+
+function renderPmMaterials(s) {
+    if (s.materials.length === 0) {
+        return '<div class="pm-evt-empty">No materials allocated to this project.</div>';
+    }
+
+    let html = '<div class="pm-tab-header">Allocated Materials</div>';
+    for (const mat of s.materials) {
+        const usedPct = mat.allocated > 0 ? Math.round((mat.used / mat.allocated) * 100) : 0;
+        const gradeClass = mat.grade === 'HIGH' ? 'high' : mat.grade === 'LOW' ? 'low' : 'std';
+        const gradeColor = mat.grade === 'HIGH' ? 'var(--green)' : mat.grade === 'LOW' ? 'var(--orange)' : 'var(--amber)';
+
+        html += `<div class="pm-mat">
+            <div class="pm-mat__row1">
+                <div class="pm-mat__left">
+                    <span class="pm-mat__name">${escapeHtml(mat.name)}</span>
+                    <div class="pm-mat__grade-dot pm-mat__grade-dot--${gradeClass}"></div>
+                    <span class="pm-mat__grade" style="color:${gradeColor}">${mat.grade}</span>
+                </div>
+                <span class="pm-mat__qty">${mat.used.toLocaleString()} / ${mat.allocated.toLocaleString()}</span>
+            </div>
+            <div class="pm-mat__bar-row">
+                <div class="pm-mat__bar"><div class="pm-mat__bar-fill" style="width:${usedPct}%"></div></div>
+                <span class="pm-mat__pct">${usedPct}% consumed</span>
+            </div>
+        </div>`;
+    }
+    return html;
+}
+
+function renderPmEquipment(s) {
+    if (s.equipment.length === 0) {
+        return '<div class="pm-evt-empty">No equipment deployed to this project.</div>';
+    }
+
+    let html = '<div class="pm-tab-header">Deployed Equipment</div>';
+    for (const eq of s.equipment) {
+        const cc = eq.condition >= 75 ? 'var(--green)' : eq.condition >= 50 ? 'var(--amber)' : eq.condition >= 25 ? 'var(--orange)' : 'var(--red)';
+        const showWear = eq.condition < 60;
+
+        html += `<div class="pm-eq">
+            <div class="pm-eq__info">
+                <div class="pm-eq__left">
+                    <span class="pm-eq__name">${escapeHtml(eq.name)}</span>
+                    <span class="pm-eq__qty">×${eq.qty}</span>
+                    ${showWear ? '<span class="pm-eq__wear">WEAR</span>' : ''}
+                </div>
+            </div>
+            <div class="pm-eq__cond">
+                <div class="pm-eq__cond-bar"><div class="pm-eq__cond-fill" style="width:${eq.condition}%;background:${cc}"></div></div>
+                <span class="pm-eq__cond-val" style="color:${cc}">${eq.condition}%</span>
+            </div>
+        </div>`;
+    }
+    return html;
+}
+
+// Helper: tick number to date string
+function tickToDate(tick) {
+    const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return `${MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
+}
+
+window.openProjectModal = openProjectModal;
+window.closeProjectModal = closeProjectModal;
+window.pmSetTab = pmSetTab;
+window.pmToggleEvent = pmToggleEvent;
+window.pmSelectResponse = pmSelectResponse;
+
+async function loadProjectEvents(contractId) {
+    if (!pmState) return;
+    const { data, error } = await _supabase
+        .from('construction_events')
+        .select('*')
+        .eq('contract_id', contractId)
+        .order('fired_at_tick', { ascending: false });
+
+    if (error) {
+        console.warn('Failed to load project events:', error.message);
+        pmState.events = [];
+    } else {
+        // Map DB rows to the format the renderer expects
+        pmState.events = (data || []).map(e => ({
+            id: e.id,
+            type: e.type,
+            severity: e.severity,
+            tick: e.fired_at_tick,
+            title: e.title,
+            desc: e.description,
+            impact: e.impact,
+            status: e.status === 'ACTIVE' ? 'ACTIVE' : 'RESOLVED',
+            resolution: e.resolution,
+            responses: e.responses || [],
+        }));
+    }
+    renderProjectModal();
+}
+
+let _pmResponding = false;
+async function confirmEventResponse(eventId, responseKey) {
+    if (_pmResponding || !pmState) return;
+    _pmResponding = true;
+
+    try {
+        const { data, error } = await _supabase.rpc('resolve_construction_event', {
+            p_event_id: eventId,
+            p_response_key: responseKey,
+        });
+
+        if (error) {
+            console.error('Failed to resolve event:', error.message);
+            alert('Failed to submit response: ' + error.message);
+            return;
+        }
+
+        const result = typeof data === 'string' ? JSON.parse(data) : data;
+        if (result?.error) {
+            alert('Error: ' + result.error);
+            return;
+        }
+
+        // Reload events and active projects to reflect changes
+        await loadProjectEvents(pmState.project.id);
+        await loadActiveProjects();
+
+        // Update quality in pmState if it changed
+        if (result?.quality_applied && result.quality_applied !== 0) {
+            pmState.quality = Math.max(0, Math.min(100, pmState.quality + result.quality_applied));
+            pmState.qualityLabel = pmState.quality >= 80 ? 'STRONG' : pmState.quality >= 60 ? 'PROMISING' : pmState.quality >= 40 ? 'FAIR' : 'UNCERTAIN';
+        }
+
+        renderProjectModal();
+    } finally {
+        _pmResponding = false;
+    }
+}
+window.confirmEventResponse = confirmEventResponse;
+
 function detailRow(label, value, color) {
     const colorStyle = color ? ` style="color:${color}"` : '';
     return `<div class="cd-detail-row">
@@ -3339,7 +4151,7 @@ function renderActiveProjects() {
         totalBudget += budget;
         totalBid += bidPrice;
 
-        html += `<div class="ap-item">
+        html += `<div class="ap-item" onclick="openProjectModal('${p.id}')">
             <div class="ap-item__row1">
                 <div class="ap-item__info">
                     <div class="ap-item__name">${escapeHtml(p.name)}</div>
