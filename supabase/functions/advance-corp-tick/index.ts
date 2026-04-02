@@ -492,17 +492,10 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
 
     const ns = (key) => Number(nation[key] ?? 50);
 
-    // Revenue: same formula as corp-dashboard.html renderFinances
-    const BASE_RATE = 50_000_000;
-    const gdpFactor     = 1 + (ns('gdp_growth') - 50) / 100 * 0.4;
-    const urbanFactor   = 1 + (ns('urbanization') - 50) / 100 * 0.3;
-    const popFactor     = 1 + (ns('population_growth') - 50) / 100 * 0.2;
-    const solFactor     = 1 + (ns('standard_of_living') - 50) / 100 * 0.15;
-    const infraFactor   = 1 + (50 - ns('physical_infrastructure')) / 100 * 0.1;
-    const inflFactor    = 1 - Math.max(0, ns('inflation') - 50) / 100 * 0.1;
-    const intFactor     = 1 - Math.max(0, ns('interest_rates') - 50) / 100 * 0.1;
-    const multiplier = gdpFactor * urbanFactor * popFactor * solFactor * infraFactor * inflFactor * intFactor;
-    const monthlyMarketRev = Math.round(Math.round(BASE_RATE * multiplier) / 12);
+    // Revenue comes ONLY from contracts. No free base rate.
+    const monthlyGovContracts = 0;   // TODO: sum from active construction contract payments
+    const monthlyPvtContracts = 0;   // TODO: sum from private contracts when implemented
+    const monthlyRevenue = monthlyGovContracts + monthlyPvtContracts;
 
     // Wages: same formula as corp-dashboard.html renderWorkforce
     const TOTAL_WORKFORCE = 3000;
@@ -513,7 +506,7 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
     const innovativeWages = (TOTAL_WORKFORCE - Math.round(TOTAL_WORKFORCE * 0.75) - Math.round(TOTAL_WORKFORCE * 0.20)) * baseAnnualWage * 2.75 * CONSTRUCTION_SECTOR_MULT;
     const monthlyWages = Math.round((generalWages + skilledWages + innovativeWages) / 12);
 
-    const monthlyIncome = monthlyMarketRev - monthlyWages;
+    const monthlyIncome = monthlyRevenue - monthlyWages;
 
     for (const corp of corpFactions) {
         const currentCash = Number(corp.corp_cash_reserves || 0);
@@ -522,7 +515,7 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
             .update({ corp_cash_reserves: newCash })
             .eq('id', corp.id);
     }
-    console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}, wages=${monthlyWages}, net=${monthlyIncome}`);
+    console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, rev=${monthlyRevenue}, wages=${monthlyWages}, net=${monthlyIncome}`);
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
