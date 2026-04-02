@@ -198,7 +198,7 @@ export function calculateExportCapacity(nation, sector, opts) {
     // Political instability disrupts production across all sectors.
     // Below 40 stability, export capacity starts degrading.
     // At stability 20, capacity is halved. At 0, no exports at all.
-    var stability = Number(nation.stability) || 50;
+    var stability = Number(nation.stability ?? 50);
     var stabilityMod = Math.min(1.0, stability / 40);
     capacity *= stabilityMod;
 
@@ -206,7 +206,7 @@ export function calculateExportCapacity(nation, sector, opts) {
     // Affects export VALUE (what appears on trade page).
     // Weak currency = exports are cheaper = lower value per unit.
     // currency_strength 50 = 1.0 (neutral), 25 = 0.5 (cheap), 75 = 1.5 (premium)
-    var currencyStrength = Number(nation.currency_strength) || 50;
+    var currencyStrength = Number(nation.currency_strength ?? 50);
     var currencyModifier = currencyStrength / 50;
     capacity *= currencyModifier;
 
@@ -277,7 +277,7 @@ export function calculateImportDemand(nation, sector, opts) {
     // Uses population scaling, NOT GDP — even poor nations need food.
     // Domestic offset: arable_land (max 70%).
     else if (sector.key === 'food_agriculture') {
-        var sol = (Number(nation.standard_of_living) || 50) / 100;
+        var sol = (Number(nation.standard_of_living ?? 50)) / 100;
         grossDemand = popNorm * (1 + sol * 0.5) * cfg.BASE_TRADE_MULTIPLIER * 0.8;
 
         var arableLand = (Number(nation.arable_land) || 0) / 100;
@@ -289,7 +289,7 @@ export function calculateImportDemand(nation, sector, opts) {
     // Domestic offset: manufacturing_output (max 60% — even industrial nations
     // import cars, electronics, clothing from abroad).
     else if (sector.key === 'manufactured_goods') {
-        var sol = (Number(nation.standard_of_living) || 50) / SN;
+        var sol = (Number(nation.standard_of_living ?? 50)) / SN;
         grossDemand = popNorm * (sol / 8) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.7;
 
         var manufScore = (Number(nation.manufacturing_output) || 0) / 100;
@@ -301,7 +301,7 @@ export function calculateImportDemand(nation, sector, opts) {
     // infrastructure needs + population base.
     // Domestic offset: higher_education + digital_infrastructure (max 60%).
     else if (sector.key === 'technology') {
-        var sol = (Number(nation.standard_of_living) || 50) / SN;
+        var sol = (Number(nation.standard_of_living ?? 50)) / SN;
         var digi = (Number(nation.digital_infrastructure) || 0) / SN;
         grossDemand = popNorm * ((sol + digi) / 16) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
 
@@ -315,7 +315,7 @@ export function calculateImportDemand(nation, sector, opts) {
     // Domestic offset: nations with arms exports cover 60% internally.
     else if (sector.key === 'arms') {
         var defenseBudget = (opts && opts.defense_budget) || 0;
-        var stability = Number(nation.stability) || 50;
+        var stability = Number(nation.stability ?? 50);
         var instabilityPremium = Math.max(0, (50 - stability) / 50) * 0.3;
         grossDemand = defenseBudget * (0.15 + instabilityPremium);
 
@@ -330,7 +330,7 @@ export function calculateImportDemand(nation, sector, opts) {
     // ── Currency strength on imports ──
     // Weak currency makes imports MORE expensive → you can afford LESS.
     // currency_strength 50 = 1.0, 25 = 0.5 (can only afford half), 75 = 1.5
-    var currencyStrength = Number(nation.currency_strength) || 50;
+    var currencyStrength = Number(nation.currency_strength ?? 50);
     var affordability = currencyStrength / 50;
     rawDemand *= affordability;
 
@@ -1275,13 +1275,13 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         var tradeVolumeRatio = gdp > 0 ? tradeVolume / gdp : 0;
         var tradeGdpNudge = Math.max(-0.2, Math.min(0.2, (tradeVolumeRatio - 0.5) * 0.4));
         if (Math.abs(tradeGdpNudge) >= 0.01) {
-            var currentGdpGrowth = Number(n.gdp_growth) || 50;
+            var currentGdpGrowth = Number(n.gdp_growth ?? 50);
             nationUpdates.gdp_growth = Math.round(Math.max(0, Math.min(100, currentGdpGrowth + tradeGdpNudge)) * 10) / 10;
         }
 
         // Currency strength: trade surplus strengthens currency, deficit weakens it
         // Gentler than GDP nudge: (tradeBalance - 50) / 100 → range -0.5 to +0.5 per tick
-        var currentCurrency = Number(n.currency_strength) || 50;
+        var currentCurrency = Number(n.currency_strength ?? 50);
         var currencyNudge = (tradeBalanceIdx - 50) / 100;
         if (Math.abs(currencyNudge) >= 0.01) {
             nationUpdates.currency_strength = Math.round(Math.max(0, Math.min(100, currentCurrency + currencyNudge)) * 10) / 10;
@@ -1301,7 +1301,7 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         }
         var avgImportPrice = totalImpForPrice > 0 ? importWeightedPrice / totalImpForPrice : 1.0;
         // Nudge inflation: (avgPrice - 1.0) scaled to ±0.5 per tick
-        var currentInflation = Number(n.inflation) || 50;
+        var currentInflation = Number(n.inflation ?? 50);
         var inflationNudge = (avgImportPrice - 1.0) * 1.0; // price 1.5 → +0.5 nudge, price 0.7 → -0.3
         if (Math.abs(inflationNudge) >= 0.01) {
             nationUpdates.inflation = Math.round(Math.max(0, Math.min(100, currentInflation + inflationNudge)) * 10) / 10;
@@ -1317,7 +1317,7 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
             // Negative ratio = net exporter in job sectors → unemployment nudge down (job creation)
             var unemploymentNudge = Math.max(-0.5, Math.min(0.5, displacementRatio * 100));
             if (Math.abs(unemploymentNudge) >= 0.01) {
-                var currentUnemployment = Number(n.unemployment) || 50;
+                var currentUnemployment = Number(n.unemployment ?? 50);
                 nationUpdates.unemployment = Math.round(Math.max(0, Math.min(100, currentUnemployment + unemploymentNudge)) * 10) / 10;
             }
         }
@@ -1341,35 +1341,35 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                 var fuelManufPen = severity * 1.0;
                 var fuelInflation = severity * 1.0;
                 var fuelCol = severity * 0.8;
-                nationUpdates.energy_generation = Math.round(Math.max(0, (Number(n.energy_generation) || 50) - fuelEnergyPen) * 10) / 10;
-                nationUpdates.manufacturing_output = Math.round(Math.max(0, (Number(n.manufacturing_output) || 50) - fuelManufPen) * 10) / 10;
-                nationUpdates.inflation = Math.round(Math.min(100, (nationUpdates.inflation != null ? nationUpdates.inflation : (Number(n.inflation) || 50)) + fuelInflation) * 10) / 10;
-                nationUpdates.cost_of_living = Math.round(Math.min(100, (Number(n.cost_of_living) || 50) + fuelCol) * 10) / 10;
+                nationUpdates.energy_generation = Math.round(Math.max(0, (Number(n.energy_generation ?? 50)) - fuelEnergyPen) * 10) / 10;
+                nationUpdates.manufacturing_output = Math.round(Math.max(0, (Number(n.manufacturing_output ?? 50)) - fuelManufPen) * 10) / 10;
+                nationUpdates.inflation = Math.round(Math.min(100, (nationUpdates.inflation != null ? nationUpdates.inflation : (Number(n.inflation ?? 50))) + fuelInflation) * 10) / 10;
+                nationUpdates.cost_of_living = Math.round(Math.min(100, (Number(n.cost_of_living ?? 50)) + fuelCol) * 10) / 10;
             } else if (sKey3 === 'food_agriculture') {
                 var foodHappiness = severity * 1.2;
                 var foodUnrest = severity * 1.5;
                 var foodHealth = severity * 0.8;
-                nationUpdates.happiness = Math.round(Math.max(0, (Number(n.happiness) || 50) - foodHappiness) * 10) / 10;
+                nationUpdates.happiness = Math.round(Math.max(0, (Number(n.happiness ?? 50)) - foodHappiness) * 10) / 10;
                 nationUpdates.civil_unrest = Math.round(Math.min(100, (Number(n.civil_unrest) || 0) + foodUnrest) * 10) / 10;
-                nationUpdates.healthcare_quality = Math.round(Math.max(0, (Number(n.healthcare_quality) || 50) - foodHealth) * 10) / 10;
+                nationUpdates.healthcare_quality = Math.round(Math.max(0, (Number(n.healthcare_quality ?? 50)) - foodHealth) * 10) / 10;
             } else if (sKey3 === 'minerals') {
                 var minManuf = severity * 1.0;
                 var minInfra = severity * 0.7;
-                nationUpdates.manufacturing_output = Math.round(Math.max(0, (nationUpdates.manufacturing_output != null ? nationUpdates.manufacturing_output : (Number(n.manufacturing_output) || 50)) - minManuf) * 10) / 10;
-                nationUpdates.infrastructure = Math.round(Math.max(0, (Number(n.infrastructure) || 50) - minInfra) * 10) / 10;
+                nationUpdates.manufacturing_output = Math.round(Math.max(0, (nationUpdates.manufacturing_output != null ? nationUpdates.manufacturing_output : (Number(n.manufacturing_output ?? 50))) - minManuf) * 10) / 10;
+                nationUpdates.infrastructure = Math.round(Math.max(0, (Number(n.infrastructure ?? 50)) - minInfra) * 10) / 10;
             } else if (sKey3 === 'manufactured_goods') {
                 var mfgSol = severity * 1.0;
                 var mfgCol = severity * 0.8;
-                nationUpdates.standard_of_living = Math.round(Math.max(0, (Number(n.standard_of_living) || 50) - mfgSol) * 10) / 10;
-                nationUpdates.cost_of_living = Math.round(Math.min(100, (nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living) || 50)) + mfgCol) * 10) / 10;
+                nationUpdates.standard_of_living = Math.round(Math.max(0, (Number(n.standard_of_living ?? 50)) - mfgSol) * 10) / 10;
+                nationUpdates.cost_of_living = Math.round(Math.min(100, (nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living ?? 50))) + mfgCol) * 10) / 10;
             } else if (sKey3 === 'technology') {
                 var techDigi = severity * 0.8;
                 var techInnov = severity * 0.8;
-                nationUpdates.digital_infrastructure = Math.round(Math.max(0, (Number(n.digital_infrastructure) || 50) - techDigi) * 10) / 10;
-                nationUpdates.innovation_index = Math.round(Math.max(0, (Number(n.innovation_index) || 50) - techInnov) * 10) / 10;
+                nationUpdates.digital_infrastructure = Math.round(Math.max(0, (Number(n.digital_infrastructure ?? 50)) - techDigi) * 10) / 10;
+                nationUpdates.innovation_index = Math.round(Math.max(0, (Number(n.innovation_index ?? 50)) - techInnov) * 10) / 10;
             } else if (sKey3 === 'arms') {
                 var armsMil = severity * 1.0;
-                nationUpdates.military_strength = Math.round(Math.max(0, (Number(n.military_strength) || 50) - armsMil) * 10) / 10;
+                nationUpdates.military_strength = Math.round(Math.max(0, (Number(n.military_strength ?? 50)) - armsMil) * 10) / 10;
             }
         }
 
