@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nationhood — Conflicts</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Shared Styles -->
+  <script type="module" crossorigin src="/assets/conflicts-CDqzvhnX.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
+  <link rel="modulepreload" crossorigin href="/assets/messaging-5qyQ6ziq.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-CxfFcfZv.js">
+  <link rel="stylesheet" crossorigin href="/assets/conflicts-rsc-9-0a.css">
+  <link rel="stylesheet" crossorigin href="/assets/dashboard-Bk9Ly0o-.css">
+</head>
+<body>
+
+<!-- ===== TOP BAR (rendered by common.js) ===== -->
+<div id="top-bar"></div>
+
+<!-- ===== SUB-TABS ===== -->
+<div class="conflicts-subtabs">
+    <button class="subtab active" data-tab="incidents" id="subtab-incidents">Incidents <span class="subtab-badge" id="incidents-count-badge"></span></button>
+    <button class="subtab" data-tab="conflicts" id="subtab-conflicts">Conflicts <span class="subtab-badge" id="conflicts-count-badge"></span></button>
+</div>
+
+<!-- ===== MAIN 3-COLUMN LAYOUT ===== -->
+<div class="conflicts-layout" id="conflicts-layout" style="display:none;">
+
+    <!-- LEFT SIDEBAR (240px) -->
+    <div class="conflicts-sidebar" id="sidebar">
+        <div class="sidebar-section" id="sidebar-your">
+            <div class="sidebar-section-header">Your Incidents</div>
+            <div class="sidebar-list" id="sidebar-your-list"></div>
+        </div>
+        <div class="sidebar-section" id="sidebar-international">
+            <div class="sidebar-section-header">International Incidents</div>
+            <div class="sidebar-list" id="sidebar-international-list"></div>
+        </div>
+        <div class="sidebar-section sidebar-section--collapsed" id="sidebar-resolved">
+            <div class="sidebar-section-header sidebar-section-header--toggle" id="sidebar-resolved-toggle">
+                Resolved <span class="sidebar-toggle-icon">&#9656;</span>
+            </div>
+            <div class="sidebar-list" id="sidebar-resolved-list" style="display:none;"></div>
+        </div>
+    </div>
+
+    <!-- CENTER COLUMN (flex) -->
+    <div class="conflicts-center" id="center">
+        <!-- Empty state (shown when no incident selected) -->
+        <div class="conflicts-empty" id="empty-state">
+            <div class="empty-icon">&#9876;</div>
+            <div class="empty-title">No Incident Selected</div>
+            <div class="empty-subtitle" id="empty-subtitle">Select an incident from the sidebar to view details.</div>
+        </div>
+
+        <!-- Incident detail (hidden until selected) -->
+        <div class="conflicts-detail" id="detail" style="display:none;">
+            <!-- Leverage Track -->
+            <div class="leverage-track" id="leverage-track">
+                <div class="leverage-header">
+                    <span class="leverage-nation leverage-nation--a" id="lev-nation-a"></span>
+                    <span class="leverage-label">LEVERAGE</span>
+                    <span class="leverage-nation leverage-nation--b" id="lev-nation-b"></span>
+                </div>
+                <div class="leverage-bar-container">
+                    <div class="leverage-bar">
+                        <div class="leverage-fill leverage-fill--a" id="lev-fill-a"></div>
+                        <div class="leverage-fill leverage-fill--b" id="lev-fill-b"></div>
+                        <div class="leverage-marker" id="lev-marker"></div>
+                        <div class="leverage-threshold" style="left:25%"><span>5</span></div>
+                        <div class="leverage-threshold" style="left:40%"><span>8</span></div>
+                        <div class="leverage-threshold" style="left:50%"></div>
+                        <div class="leverage-threshold" style="right:40%"><span>8</span></div>
+                        <div class="leverage-threshold" style="right:25%"><span>5</span></div>
+                    </div>
+                </div>
+                <div class="leverage-status" id="lev-status"></div>
+            </div>
+
+            <!-- Incident Header -->
+            <div class="incident-header" id="incident-header">
+                <div class="incident-title" id="incident-title"></div>
+                <div class="incident-meta" id="incident-meta"></div>
+            </div>
+
+            <!-- Timeline -->
+            <div class="incident-timeline" id="timeline"></div>
+
+            <!-- Actions Panel (bottom) -->
+            <div class="incident-actions" id="actions-panel">
+                <div class="actions-header" id="actions-header"></div>
+                <div class="actions-list" id="actions-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT COLUMN: CHAT (300px) -->
+    <div class="conflicts-chat" id="chat-column" style="display:none;">
+        <div class="chat-header">
+            <span class="chat-title">Crisis Chat</span>
+            <span class="chat-participants" id="chat-participants"></span>
+        </div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input-area" id="chat-input-area">
+            <input type="text" class="chat-input" id="chat-input" placeholder="Type as HoG..." />
+            <button class="chat-send" id="chat-send">Send</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== GLOBAL EMPTY STATE (no incidents at all) ===== -->
+<div class="conflicts-global-empty" id="global-empty" style="display:none;">
+    <div class="empty-icon">&#9876;</div>
+    <div class="empty-title">No Active Incidents</div>
+    <div class="empty-subtitle">The continent is at peace — for now. Incidents will appear here when diplomatic crises emerge between nations.</div>
+</div>
+
+<!-- ===== ACTION CONFIRMATION MODAL ===== -->
+<div class="modal-overlay" id="action-modal" style="display:none;">
+    <div class="modal-box">
+        <div class="modal-header" id="modal-header"></div>
+        <div class="modal-body" id="modal-body"></div>
+        <div class="modal-footer">
+            <button class="modal-btn modal-btn--cancel" id="modal-cancel">Cancel</button>
+            <button class="modal-btn modal-btn--confirm" id="modal-confirm">Execute</button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Corporation Setup | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0: #0e0e0c;
+  --bg-1: #1a1a1a;
+  --bg-2: #1a1a17;
+  --bg-3: #252525;
+  --bg-4: #24241f;
+  --bg-5: #2c2c26;
+  --bg-hover: #282822;
+  --text-bright: #f0efe6;
+  --text-primary: #c4c2b8;
+  --text-secondary: #888;
+  --text-muted: #666;
+  --text-dim: #4a4940;
+  --text-ghost: #333229;
+  --border-hair: rgba(255,255,255,0.04);
+  --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08);
+  --border-2: rgba(255,255,255,0.12);
+  --green: #5cb85c;
+  --green-faint: rgba(92,184,92,0.08);
+  --green-border: rgba(92,184,92,0.18);
+  --red: #d9534f;
+  --red-faint: rgba(217,83,79,0.08);
+  --red-border: rgba(217,83,79,0.18);
+  --amber: #c8a64e;
+  --amber-faint: rgba(200,166,78,0.08);
+  --amber-border: rgba(200,166,78,0.18);
+  --blue: #5b9bd5;
+  --blue-faint: rgba(91,155,213,0.08);
+  --blue-border: rgba(91,155,213,0.18);
+  --purple: #8b7ec8;
+  --purple-faint: rgba(139,126,200,0.08);
+  --purple-border: rgba(139,126,200,0.18);
+  --teal: #5aafa5;
+  --teal-faint: rgba(90,175,165,0.08);
+  --teal-border: rgba(90,175,165,0.18);
+  --orange: #d48a3c;
+  --orange-faint: rgba(212,138,60,0.08);
+  --orange-border: rgba(212,138,60,0.18);
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+  --font-serif: 'IBM Plex Serif', Georgia, serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ── Page header ── */
+.page-header {
+  text-align: center;
+  padding: 48px 20px 12px;
+  max-width: 640px;
+}
+.page-header h1 {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.page-header .title {
+  font-family: var(--font-ui);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: 6px;
+}
+.page-header .subtitle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* ── Step indicator ── */
+.step-indicator {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-bottom: 24px;
+  padding: 0 16px;
+}
+.step-pip {
+  width: 48px;
+  height: 3px;
+  background: var(--bg-4);
+  border-radius: 1px;
+  transition: background 0.3s;
+}
+.step-pip.active {
+  background: var(--teal);
+}
+.step-pip.done {
+  background: var(--green);
+}
+
+/* ── Step container ── */
+.step-container {
+  width: 100%;
+  max-width: 640px;
+  padding: 0 16px 24px;
+}
+
+.step-section {
+  display: none;
+}
+.step-section.active {
+  display: block;
+}
+
+/* ── Section block (reusable container) ── */
+.section-block {
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  margin-bottom: 12px;
+}
+.section-header {
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--border-hair);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.section-body {
+  padding: 10px;
+}
+
+/* ── Option cards (sector, subsector, company type) ── */
+.option-card {
+  background: var(--bg-3);
+  border: 1px solid var(--border-0);
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  margin-bottom: 6px;
+  position: relative;
+}
+.option-card:last-child { margin-bottom: 0; }
+.option-card:hover:not(.disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-1);
+}
+.option-card.selected {
+  background: var(--teal-faint);
+  border-color: var(--teal-border);
+}
+.option-card.disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.option-card__name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.option-card.selected .option-card__name {
+  color: var(--teal);
+}
+.option-card__desc {
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+.option-card__badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 2px;
+}
+.option-card__badge--soon {
+  background: var(--amber-faint);
+  border: 1px solid var(--amber-border);
+  color: var(--amber);
+}
+
+/* ── Text inputs ── */
+.input-group {
+  margin-bottom: 14px;
+}
+.input-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.input-group input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-4);
+  border: 1px solid var(--border-0);
+  border-radius: 3px;
+  color: var(--text-bright);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input-group input:focus {
+  border-color: var(--teal-border);
+}
+.input-group input::placeholder {
+  color: var(--text-ghost);
+}
+.input-hint {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  letter-spacing: 0.02em;
+}
+.input-hint--error {
+  color: var(--red);
+}
+
+/* ── Selection summary bar ── */
+.selection-bar {
+  width: 100%;
+  max-width: 640px;
+  padding: 0 16px;
+  margin-bottom: 16px;
+}
+.selection-inner {
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sel-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.sel-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.sel-tag {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--teal-faint);
+  color: var(--teal);
+  border: 1px solid var(--teal-border);
+}
+.sel-placeholder {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+/* ── Action bar ── */
+.action-bar {
+  width: 100%;
+  max-width: 640px;
+  padding: 0 16px 48px;
+  display: flex;
+  justify-content: space-between;
+}
+.btn-next {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 7px 14px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-0);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.btn-next:hover:not(:disabled) {
+  background: var(--bg-4);
+  color: var(--text-secondary);
+  border-color: var(--border-1);
+}
+.btn-next:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.btn-next.ready {
+  background: var(--green-faint);
+  color: var(--green);
+  border-color: var(--green-border);
+}
+.btn-next.ready:hover {
+  background: rgba(92,184,92,0.14);
+}
+
+/* ── Loading ── */
+.loading-msg {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 80px 20px;
+}
+
+/* ── Error ── */
+.error-msg {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--red);
+  text-align: center;
+  margin-top: 10px;
+}
+</style>
+  <script type="module" crossorigin src="/assets/corp-setup-NTAjRz4O.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+</head>
+<body>
+
+<div id="loading" class="loading-msg">AUTHENTICATING...</div>
+
+<div id="page-content" style="display:none; width:100%; flex-direction:column; align-items:center;">
+  <div class="page-header">
+    <h1 id="step-label">Step 1 of 3</h1>
+    <div class="title" id="step-title">Select Your Sector</div>
+    <div class="subtitle" id="step-subtitle">Choose the industry your corporation will operate in. This determines your contracts, revenue, and growth path.</div>
+  </div>
+
+  <!-- Step progress pips -->
+  <div class="step-indicator" id="step-indicator">
+    <div class="step-pip active" data-step="1"></div>
+    <div class="step-pip" data-step="2"></div>
+  </div>
+
+  <!-- Step container — each step rendered here -->
+  <div class="step-container" id="step-container">
+    <!-- Step 1: Select Sector (Phase 3 will populate) -->
+    <div class="step-section active" id="step-1"></div>
+
+    <!-- Step 2: Select Subsector (Phase 4 will populate) -->
+    <div class="step-section" id="step-2"></div>
+
+  </div>
+
+  <!-- Selection summary -->
+  <div class="selection-bar">
+    <div class="selection-inner">
+      <span class="sel-label">Selected</span>
+      <div id="sel-tags" class="sel-tags">
+        <span class="sel-placeholder">Choose a sector to begin</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <div class="action-bar">
+    <button class="btn-next" id="btn-back" onclick="goBack()">&#x25C0; Back</button>
+    <button class="btn-next" id="btn-next" disabled onclick="goNext()">Next &#x25B6;</button>
+  </div>
+
+  <div class="error-msg" id="error-message"></div>
+</div>
+
+</body>
+</html>
