@@ -4,7 +4,9 @@
  *
  * Server-side corporation tick processor for Nationhood Alpha.
  * Called by pg_cron every minute — reads current_tick from the shard,
- * skips if already processed, then runs all corporation systems.
+ * skips if already processed or not yet due. Runs once per tick at
+ * the midpoint of the tick interval (e.g. 4 hours after advance-tick
+ * for an 8-hour interval), then processes all corporation systems.
  *
  * This function does NOT advance the tick or acquire the tick lock.
  * advance-tick owns tick advancement; this function piggybacks on
@@ -530,10 +532,10 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
 // ════════════════════════════════════════════════════════════════════════════════
 
 async function advanceCorpTick(supabase, { force = false } = {}) {
-    // 1. Read shard to get current tick
+    // 1. Read shard to get current tick and scheduling info
     const { data: shard, error: shardErr } = await supabase
         .from('shard')
-        .select('current_tick, current_date')
+        .select('current_tick, current_date, next_tick_at, tick_interval_hours')
         .eq('name', 'Alpha Shard')
         .single();
 
@@ -546,6 +548,24 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
     // 2. Idempotency check — skip if we already processed this tick
     if (!force && currentTick === lastProcessedTick) {
         return { status: 'already_processed', tick: currentTick };
+    }
+
+    // 3. Time-based gating — only run at the midpoint of the tick interval
+    //    (e.g. 4 hours after tick advance for an 8-hour interval)
+    //    This prevents running every minute on cold starts.
+    if (!force) {
+        const now = Date.now();
+        const nextTickAt = new Date(shard.next_tick_at).getTime();
+        const intervalMs = (shard.tick_interval_hours || 8) * 60 * 60 * 1000;
+        // Corp tick fires at the midpoint: halfway between last advance and next advance
+        const lastAdvanceAt = nextTickAt - intervalMs;
+        const corpDueAt = lastAdvanceAt + (intervalMs / 2);
+
+        if (now < corpDueAt) {
+            const remainMs = corpDueAt - now;
+            console.log(`[advance-corp-tick] Not due — tick ${currentTick}, corp due in ${Math.round(remainMs / 1000)}s`);
+            return { status: 'not_due', tick: currentTick, corp_due_in_ms: remainMs };
+        }
     }
 
     console.log(`[advance-corp-tick] Processing tick ${currentTick} (${shard.current_date})`);
