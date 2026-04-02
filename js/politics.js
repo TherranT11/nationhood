@@ -1748,8 +1748,11 @@ function initEditIdentityBox(f) {
                 custom_logo_url: useCustomImage ? customLogoUrl : null,
                 party_description: descArea ? descArea.value.slice(0, MAX_DESC) : ''
             };
-            const { error: saveErr } = await _supabase.from('factions').update(updateData).eq('id', f.id);
-            if (saveErr) { _showToast('Save failed: ' + saveErr.message); return; }
+            const { data: savedRows, error: saveErr } = await _supabase.from('factions').update(updateData).eq('id', f.id).select('id');
+            if (saveErr) { _showToast('Save failed: ' + saveErr.message); saveBtn.disabled = false; saveBtn.textContent = 'Save Changes'; return; }
+            if (!savedRows || savedRows.length === 0) { _showToast('Save failed: no rows updated (permission denied?)'); saveBtn.disabled = false; saveBtn.textContent = 'Save Changes'; return; }
+            // Invalidate cached state so changes persist on page reload
+            sessionStorage.removeItem('nationhood_state');
             saveBtn.textContent = '✓ Saved';
             saveBtn.classList.add('saved');
             saveBtn.disabled = false;
