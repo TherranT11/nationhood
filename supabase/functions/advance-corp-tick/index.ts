@@ -535,7 +535,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
     // 1. Read shard to get current tick and scheduling info
     const { data: shard, error: shardErr } = await supabase
         .from('shard')
-        .select('current_tick, current_date, next_tick_at, tick_interval_hours')
+        .select('current_tick, current_date, next_tick_at, tick_interval_hours, corp_last_processed_tick')
         .eq('name', 'Alpha Shard')
         .single();
 
@@ -545,19 +545,19 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
     const currentTick = shard.current_tick || 0;
 
-    // 2. Idempotency check — skip if we already processed this tick
-    if (!force && currentTick === lastProcessedTick) {
+    // 2. Idempotency check — use DB-persisted corp_last_processed_tick (not in-memory,
+    //    because Deno edge functions cold-start frequently, resetting in-memory state)
+    const corpLastTick = shard.corp_last_processed_tick ?? -1;
+    if (!force && currentTick <= corpLastTick) {
         return { status: 'already_processed', tick: currentTick };
     }
 
     // 3. Time-based gating — only run at the midpoint of the tick interval
     //    (e.g. 4 hours after tick advance for an 8-hour interval)
-    //    This prevents running every minute on cold starts.
     if (!force && shard.next_tick_at) {
         const now = Date.now();
         const nextTickAt = new Date(shard.next_tick_at).getTime();
         const intervalMs = (shard.tick_interval_hours || 8) * 60 * 60 * 1000;
-        // Corp tick fires at the midpoint: halfway between last advance and next advance
         const lastAdvanceAt = nextTickAt - intervalMs;
         const corpDueAt = lastAdvanceAt + (intervalMs / 2);
 
@@ -662,8 +662,9 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
         }
     }
 
-    // 6. Mark this tick as processed
+    // 6. Mark this tick as processed (persisted to DB to survive cold starts)
     lastProcessedTick = currentTick;
+    await supabase.from('shard').update({ corp_last_processed_tick: currentTick }).eq('name', 'Alpha Shard');
 
     console.log(`[advance-corp-tick] Tick ${currentTick} complete. ${summary.corpsProcessed} corps across ${nationList.length} nations.`);
     return summary;
