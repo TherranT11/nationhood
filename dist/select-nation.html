@@ -148,11 +148,6 @@ body {
   color: var(--green);
   border: 1px solid var(--green-border);
 }
-.gov-autocracy {
-  background: var(--red-faint);
-  color: var(--red);
-  border: 1px solid var(--red-border);
-}
 .gov-presidential {
   background: var(--blue-faint);
   color: var(--blue);
@@ -485,13 +480,132 @@ body {
   display: none;
 }
 
+/* Continent tabs */
+.continent-tabs {
+  width: 100%;
+  max-width: 900px;
+  padding: 0 16px;
+  display: flex;
+  gap: 2px;
+  margin-bottom: 16px;
+}
+.continent-tab {
+  flex: 1;
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  border-bottom: none;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  text-align: center;
+}
+.continent-tab:hover {
+  background: var(--bg-3);
+}
+.continent-tab.active {
+  background: var(--bg-3);
+  border-color: var(--border-2);
+  border-bottom: 2px solid var(--amber);
+}
+.continent-tab__name {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.continent-tab.active .continent-tab__name {
+  color: var(--text-bright);
+}
+.continent-tab__desc {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  color: var(--text-dim);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+.continent-tab.active .continent-tab__desc {
+  color: var(--text-muted);
+}
+
+/* Alpha code input in modal */
+.alpha-code-section {
+  margin-top: 10px;
+  display: none;
+}
+.alpha-code-section.visible {
+  display: block;
+}
+.alpha-code-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--amber);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.alpha-code-input {
+  width: 100%;
+  background: var(--bg-0);
+  border: 1px solid var(--amber-border);
+  color: var(--text-bright);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  outline: none;
+}
+.alpha-code-input:focus {
+  border-color: var(--amber);
+}
+.alpha-code-input::placeholder {
+  color: var(--text-dim);
+  text-transform: none;
+  font-weight: 400;
+}
+.alpha-code-error {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--red);
+  margin-top: 4px;
+  display: none;
+}
+.alpha-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  font-weight: 700;
+  padding: 2px 5px;
+  background: var(--amber-faint);
+  color: var(--amber);
+  border: 1px solid var(--amber-border);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
 @media (max-width: 480px) {
   .nations-grid {
     grid-template-columns: 1fr;
   }
+  .continent-tabs {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .continent-tab { padding: 6px 10px; font-size: 10px; }
+  .nation-card { padding: 14px; }
+  .nation-card-name { font-size: 14px; }
+  .page-header h1 { font-size: 20px; }
+  .page-header p { font-size: 12px; }
+  .modal { width: 95%; padding: 16px; }
 }
 </style>
-  <script type="module" crossorigin src="/assets/select-nation-XKDFI2ai.js"></script>
+  <script type="module" crossorigin src="/assets/select-nation-gF4wLdlN.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
 </head>
@@ -500,6 +614,8 @@ body {
 <div id="loading" class="loading-msg">LOADING NATIONS...</div>
 
 <div id="page-content" style="display:none; width:100%; flex-direction:column; align-items:center;">
+  <button id="back-btn" onclick="history.back()" style="position:fixed;top:16px;left:20px;z-index:100;background:var(--bg-3);border:1px solid var(--border-0);color:var(--text-muted);font-family:var(--font-mono);font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;padding:6px 16px;border-radius:2px;cursor:pointer;transition:background 0.15s,color 0.15s,border-color 0.15s;" onmouseover="this.style.background='var(--bg-4)';this.style.color='var(--text-secondary)';this.style.borderColor='var(--border-1)'" onmouseout="this.style.background='var(--bg-3)';this.style.color='var(--text-muted)';this.style.borderColor='var(--border-0)'">&#x25C0; Back</button>
+  <button id="logout-btn" onclick="logoutUser()" style="position:fixed;top:16px;right:20px;z-index:100;background:rgba(217,83,79,0.12);border:1px solid rgba(217,83,79,0.3);color:#d9534f;font-family:var(--font-mono);font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;padding:6px 16px;border-radius:2px;cursor:pointer;">Logout</button>
   <div class="page-header">
     <h1>Nationhood</h1>
     <div class="title">Choose Your Nation</div>
@@ -507,6 +623,17 @@ body {
   </div>
 
   <div class="error-msg"><div class="error-msg__inner" id="error-message"></div></div>
+
+  <div class="continent-tabs" id="continent-tabs">
+    <div class="continent-tab active" data-continent="Crucera" onclick="switchContinent('Crucera')">
+      <div class="continent-tab__name">Crucera</div>
+      <div class="continent-tab__desc">A vast and diverse continent in the Southern Hemisphere, rich in natural resources such as oil and gas and raw materials.</div>
+    </div>
+    <div class="continent-tab" data-continent="Meridian" onclick="switchContinent('Meridian')">
+      <div class="continent-tab__name">Meridian</div>
+      <div class="continent-tab__desc">The old world, home to diverse nations, cultures, and ancient traditions. Its kingdoms and republics shaped the modern political order.</div>
+    </div>
+  </div>
 
   <div class="nations-grid" id="nations-grid"></div>
 </div>
@@ -523,6 +650,11 @@ body {
       <div class="modal__nation-name" id="modal-nation-name"></div>
       <div id="modal-gov-badge" class="modal__gov-badge"></div>
       <div class="modal__text" id="modal-flow-hint" style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono);"></div>
+      <div class="alpha-code-section" id="alpha-code-section">
+        <div class="alpha-code-label">Alpha Tester Code Required</div>
+        <input type="text" class="alpha-code-input" id="alpha-code-input" placeholder="Enter your access code..." maxlength="30" autocomplete="off">
+        <div class="alpha-code-error" id="alpha-code-error">Invalid or already used code.</div>
+      </div>
       <div class="modal__actions">
         <button class="modal__btn modal__btn--cancel" onclick="closeModal()">CANCEL</button>
         <button class="modal__btn modal__btn--confirm" id="modal-confirm-btn" onclick="confirmNation()">CONTINUE</button>

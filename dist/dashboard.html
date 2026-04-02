@@ -15,9 +15,8 @@
   }
   .dash-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 20px;
-    max-width: 1580px;
   }
 
   /* ── Dashboard Cards — sharp corners, panel bg ── */
@@ -32,12 +31,16 @@
     height: 520px;
   }
   #world-map-card {
-    grid-column: 1 / span 3;
+    grid-column: 1 / span 4;
     grid-row: 2;
   }
   #crises-card {
-    grid-column: 4;
+    grid-column: 5;
     grid-row: 2;
+  }
+  #events-card {
+    grid-column: 4 / span 2;
+    grid-row: 1;
   }
 
   /* Card Header — v5: mono, 0.72rem, 600, centered, uppercase */
@@ -53,36 +56,6 @@
     text-align: center;
     border-bottom: 1px solid var(--border-light);
   }
-
-  /* ── Tabbed card header ── */
-  .dash-card-tabs {
-    display: flex;
-    gap: 0;
-    background: var(--bg-card);
-    border-bottom: 1px solid var(--border-light);
-  }
-  .dash-card-tab {
-    flex: 1;
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    padding: 10px 18px;
-    cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
-  }
-  .dash-card-tab:hover { color: var(--text-secondary); }
-  .dash-card-tab.active {
-    color: var(--text-bright);
-    border-bottom-color: var(--text-bright);
-  }
-  .dash-tab-pane { display: none; }
-  .dash-tab-pane.active { display: block; }
 
   /* ── Events tab bar ── */
   .events-tab-bar {
@@ -436,14 +409,6 @@
   .election-item.midterm      { border-left-color: var(--amber); }
   .election-item.presidential { border-left-color: var(--red); }
   .election-item.parliamentary { border-left-color: var(--blue); }
-  /* Urgent elections — within 5 ticks */
-  .election-item.urgent {
-    border-left-color: var(--amber);
-    background: var(--amber-faint);
-    border: 1px solid var(--amber-border);
-    border-left: 3px solid var(--amber);
-    animation: deadline-pulse 2s ease-in-out infinite;
-  }
   .election-item-type {
     font-size: 0.78rem;
     font-weight: 700;
@@ -458,16 +423,6 @@
     color: var(--text-dim);
     margin-top: 2px;
   }
-  .elections-suspended {
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: var(--red);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    padding: 20px 0;
-  }
-
   /* ── Active Crises Card — v5: left border, red triad ── */
   .crises-scroll {
     overflow-y: auto;
@@ -475,7 +430,6 @@
     flex: 1;
   }
   .crisis-item {
-    border-left: 3px solid var(--red);
     padding: 8px 10px;
     margin-bottom: 12px;
     background: var(--red-faint);
@@ -549,6 +503,10 @@
       grid-column: span 2 !important;
       grid-row: auto !important;
     }
+    #events-card {
+      grid-column: span 2 !important;
+      grid-row: auto !important;
+    }
   }
 
   @media (max-width: 768px) {
@@ -565,13 +523,17 @@
       max-height: 480px;
     }
     #events-card.dash-card-tall {
-      max-height: 400px;
+      max-height: 450px;
+      height: 450px;
     }
-    #world-map-card {
+    #world-map-card,
+    #crises-card,
+    #events-card,
+    #nation-card,
+    #gov-card,
+    #elections-card {
       grid-column: span 1 !important;
-    }
-    #crises-card {
-      grid-column: span 1 !important;
+      grid-row: auto !important;
     }
     .dash-card-header {
       padding: 8px 14px;
@@ -622,15 +584,93 @@
       width: 64px;
       height: 44px;
     }
+    .dash-card-tall {
+      height: auto;
+      max-height: 380px;
+    }
+    #events-card.dash-card-tall {
+      max-height: 360px;
+      height: 360px;
+    }
+    .dash-card-header {
+      padding: 6px 10px;
+      font-size: 0.6rem;
+    }
+    .dash-card-body {
+      padding: 4px 10px 10px;
+    }
+    .nation-identity {
+      margin-bottom: 14px;
+    }
+    .nation-identity h2 {
+      font-size: 1rem;
+    }
+    .nation-identity .motto {
+      font-size: 0.72rem;
+    }
+    .nation-stat-row {
+      padding: 4px 2px;
+      font-size: 0.7rem;
+    }
+    .nation-stat-row .stat-label {
+      font-size: 0.62rem;
+    }
+    .gov-admin-name {
+      font-size: 0.85rem;
+    }
+    .gov-badges {
+      gap: 4px;
+    }
+    .gov-badges span {
+      font-size: 0.55rem;
+      padding: 2px 5px;
+    }
+    .dash-event-row {
+      padding: 5px 4px;
+      gap: 6px;
+      font-size: 0.58rem;
+    }
+    .dash-event-text {
+      font-size: 0.72rem;
+    }
+    .dash-event-date {
+      min-width: 44px;
+      font-size: 0.55rem;
+    }
+    .dash-events-scroll {
+      padding: 0 8px 8px;
+    }
+    .election-item {
+      padding: 5px 8px;
+      margin-bottom: 6px;
+    }
+  }
+
+  @media (max-width: 360px) {
+    #content-area {
+      margin: 2px 4px;
+      padding: 4px 0;
+    }
+    .dash-grid {
+      gap: 8px;
+    }
+    .nation-flag-box {
+      width: 52px;
+      height: 36px;
+    }
+    .nation-identity h2 {
+      font-size: 0.9rem;
+    }
   }
 </style>
-  <script type="module" crossorigin src="/assets/dashboard-CiGUiRh-.js"></script>
+  <script type="module" crossorigin src="/assets/dashboard-DRXFMDO8.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
-  <link rel="modulepreload" crossorigin href="/assets/common-BedtaFOo.js">
-  <link rel="modulepreload" crossorigin href="/assets/guide-RrxJIDYT.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-structure-DKbbGMPO.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
-  <link rel="stylesheet" crossorigin href="/assets/dashboard-DwcD1jvW.css">
+  <link rel="modulepreload" crossorigin href="/assets/messaging-5qyQ6ziq.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-CxfFcfZv.js">
+  <link rel="modulepreload" crossorigin href="/assets/guide-C4vj_XhJ.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-structure-BZhgKfAB.js">
+  <link rel="stylesheet" crossorigin href="/assets/dashboard-Bk9Ly0o-.css">
   <link rel="stylesheet" crossorigin href="/assets/map-BepPJbC3.css">
 </head>
 

@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nationhood | Policy Builder</title>
-  <script type="module" crossorigin src="/assets/policyadmin-BCWJBwho.js"></script>
+  <script type="module" crossorigin src="/assets/policyadmin-CheKnmEe.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
   <link rel="stylesheet" crossorigin href="/assets/policyadmin-DC2qTpUn.css">
-  <link rel="stylesheet" crossorigin href="/assets/dashboard-DwcD1jvW.css">
+  <link rel="stylesheet" crossorigin href="/assets/dashboard-Bk9Ly0o-.css">
 </head>
 <body>
 
@@ -163,8 +163,8 @@
                     <div class="builder-section-title">💰 4. Costs</div>
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
                         <div class="form-field">
-                            <label>Upfront Base Cost ($M)</label>
-                            <input type="number" id="b-upfront" value="0" min="0" step="1" oninput="updateCostPreview()">
+                            <label>Upfront Base Cost ($M) <span style="font-size:0.7rem;color:var(--text-dim);">negative = revenue</span></label>
+                            <input type="number" id="b-upfront" value="0" step="1" oninput="updateCostPreview()">
                         </div>
                         <div class="form-field">
                             <label>Upfront Scaling Stat (or None)</label>
@@ -173,8 +173,8 @@
                             </select>
                         </div>
                         <div class="form-field">
-                            <label>Ongoing Base Cost ($M/tick)</label>
-                            <input type="number" id="b-ongoing-base" value="0" min="0" step="0.1" oninput="updateCostPreview()">
+                            <label>Ongoing Base Cost ($M/tick) <span style="font-size:0.7rem;color:var(--text-dim);">negative = relief</span></label>
+                            <input type="number" id="b-ongoing-base" value="0" step="0.1" oninput="updateCostPreview()">
                         </div>
                         <div class="form-field">
                             <label>Ongoing Scaling Stat (or None)</label>
