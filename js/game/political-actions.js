@@ -83,8 +83,11 @@ export async function processStatDecay(supabase, nation, statInstitutionMap, pol
     for (const [statKey, config] of Object.entries(STAT_DECAY_CONFIG)) {
         if (!NATION_STAT_COLUMN_SET.has(statKey)) continue;
 
-        const currentVal = nation[statKey] !== undefined && nation[statKey] !== null
-            ? Number(nation[statKey]) : 50;
+        const rawDecayVal = nation[statKey];
+        // Skip if stat is null/undefined — never default to 50
+        if (rawDecayVal === undefined || rawDecayVal === null) continue;
+        const currentVal = Number(rawDecayVal);
+        if (Number.isNaN(currentVal)) continue;
         let target = config.target;
 
         // Apply policy-driven floor/ceiling adjustments to the decay target
@@ -117,7 +120,7 @@ export async function processStatDecay(supabase, nation, statInstitutionMap, pol
             newVal = Math.min(target, currentVal + speed);
         }
 
-        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+        newVal = Math.round(Math.max(2, Math.min(98, newVal)) * 10) / 10;
 
         if (newVal !== Math.round(currentVal * 10) / 10) {
             nationUpdates[statKey] = newVal;
@@ -194,8 +197,13 @@ export async function processStatConnections(supabase, nation, currentTick, conn
         // GDP and debt are driven by dedicated systems — skip
         if (STAT_PROCESSOR_SKIP.has(conn.target_stat)) continue;
 
-        const sourceVal = Number(nation[conn.source_stat] ?? 50);
-        const targetVal = Number(nation[conn.target_stat] ?? 50);
+        const rawSource = nation[conn.source_stat];
+        const rawTarget = nation[conn.target_stat];
+        // Skip if source or target stat is null/undefined — never default to 50
+        if (rawSource === undefined || rawSource === null || rawTarget === undefined || rawTarget === null) continue;
+        const sourceVal = Number(rawSource);
+        const targetVal = Number(rawTarget);
+        if (Number.isNaN(sourceVal) || Number.isNaN(targetVal)) continue;
 
         // Check whether the source stat has crossed the threshold
         const triggered = conn.source_dir === 'above'
@@ -235,7 +243,7 @@ export async function processStatConnections(supabase, nation, currentTick, conn
         if (RAW_SCALING_DIVISORS[conn.target_stat]) {
             newVal = Math.max(0, newVal);
         } else {
-            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+            newVal = Math.round(Math.max(2, Math.min(98, newVal)) * 10) / 10;
         }
 
         if (newVal !== Math.round(targetVal * 10) / 10) {
@@ -2161,9 +2169,15 @@ export async function processStatEffects(supabase, nation, currentTick) {
                     // GDP and debt are driven by dedicated systems — skip
                     if (STAT_PROCESSOR_SKIP.has(statKey)) continue;
 
-                    const currentVal = nationUpdates[statKey] !== undefined
+                    const rawVal = nationUpdates[statKey] !== undefined
                         ? nationUpdates[statKey]
-                        : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
+                        : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : null);
+                    // Guard: if stat is null/undefined in DB, log warning and skip — never default to 50
+                    if (rawVal === null || Number.isNaN(rawVal)) {
+                        console.warn(`[processStatEffects] Stat "${statKey}" is null/NaN for ${nation.name} — skipping effect to prevent corruption`);
+                        continue;
+                    }
+                    const currentVal = rawVal;
 
                     // For raw-value stats (population), scale rate by divisor
                     // so rate: 1 means +1M for population
@@ -2185,7 +2199,8 @@ export async function processStatEffects(supabase, nation, currentTick) {
                     if (RAW_SCALING_DIVISORS[statKey]) {
                         newVal = Math.max(0, newVal);
                     } else {
-                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                        // Clamp 0-100 scale stats to 2-98 floor/ceiling to prevent edge-case corruption
+                        newVal = Math.round(Math.max(2, Math.min(98, newVal)) * 10) / 10;
                     }
                     nationUpdates[statKey] = newVal;
                     anyEffectApplied = true;
@@ -2353,16 +2368,22 @@ export async function processMinistryActions(supabase, nation, currentTick) {
                         // Default: nation stat
                         // GDP and debt are driven by dedicated systems — skip
                         if (STAT_PROCESSOR_SKIP.has(statKey)) continue;
-                        currentVal = nationUpdates[statKey] !== undefined
+                        const rawMinVal = nationUpdates[statKey] !== undefined
                             ? nationUpdates[statKey]
-                            : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
+                            : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : null);
+                        // Guard: skip if stat is null/NaN — never default to 50
+                        if (rawMinVal === null || Number.isNaN(rawMinVal)) {
+                            console.warn(`[processMinistryActions] Stat "${statKey}" is null/NaN for ${nation.name} — skipping`);
+                            continue;
+                        }
+                        currentVal = rawMinVal;
                         let scaledMinistryRate = RAW_SCALING_DIVISORS[statKey] ? rate * RAW_SCALING_DIVISORS[statKey] : rate;
                         newVal = eff.direction === 'up' ? currentVal + scaledMinistryRate : currentVal - scaledMinistryRate;
                         // Raw-value stats (debt, population) must not be clamped to 0-100
                         if (RAW_SCALING_DIVISORS[statKey]) {
                             newVal = Math.max(0, newVal);
                         } else {
-                            newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                            newVal = Math.round(Math.max(2, Math.min(98, newVal)) * 10) / 10;
                         }
                         nationUpdates[statKey] = newVal;
                     }
