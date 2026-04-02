@@ -150,13 +150,7 @@ export async function processIncidentTriggers(supabase, nationList, currentTick)
             continue;
         }
 
-        // Roll base trigger chance (0-100)
-        const roll = Math.random() * 100;
-        if (roll >= config.base_chance) {
-            continue;
-        }
-
-        console.log(`[Incidents] ${crisisType} trigger rolled ${roll.toFixed(2)} < ${config.base_chance}. Attempting to find nations...`);
+        console.log(`[Incidents] ${crisisType} passed cooldown check. Attempting to find nations...`);
 
         // Pick a random nation (1d7)
         const shuffled = [...nationList].sort(() => Math.random() - 0.5);
