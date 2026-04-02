@@ -76,6 +76,8 @@ export async function initNewspaper(supabase, state) {
 
     const gameDate = state.shard?.current_date || '[Month], [Year]';
     const canWrite = canWriteToPublication(_publication, state.nation?.name);
+    const isHomePub = canWrite;
+    const writeLabel = isHomePub ? 'Write Article' : 'Write Article (1 AP)';
 
     // Publication switcher options
     const pubSwitcher = Object.entries(PUBLICATION_CONFIG).map(([key, cfg]) =>
@@ -89,7 +91,7 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-top-ribbon-inner">
                 <span>${gameDate}</span>
                 <select class="nws-pub-switcher" id="nws-pub-switcher">${pubSwitcher}</select>
-                ${canWrite ? '<span><button class="nws-write-btn" id="nws-write-article-btn">Write Article</button></span>' : '<span></span>'}
+                <span><button class="nws-write-btn" id="nws-write-article-btn">${writeLabel}</button></span>
             </div>
         </div>
 
@@ -375,13 +377,6 @@ export async function initNewspaper(supabase, state) {
                         <div class="nws-char-count" id="nws-char-count">0 / 12000</div>
                     </div>
 
-                    <div class="nws-form-group nws-intl-check">
-                        <label class="nws-intl-label">
-                            <input type="checkbox" id="nws-intl-checkbox">
-                            <strong>Post Internationally</strong>: This will show up across all news sites. Cost 1 AP.
-                        </label>
-                    </div>
-
                     <button class="nws-submit-btn" id="nws-submit-btn">Publish Article</button>
                 </div>
             </div>
@@ -544,7 +539,7 @@ function bindSubmitHandler() {
         const body = document.getElementById('nws-article-body').value.trim();
         const fileInput = document.getElementById('nws-article-image');
         const file = fileInput.files[0] || null;
-        const isInternational = document.getElementById('nws-intl-checkbox')?.checked || false;
+        const isCrossPub = !canWriteToPublication(_publication, _state?.nation?.name);
 
         // Validation
         if (!title) return showFormError('Please enter a headline.');
@@ -589,13 +584,12 @@ function bindSubmitHandler() {
             } else {
                 // ── CREATE MODE ──
 
-                // International post costs 1 AP
-                if (isInternational) {
-                    const apCost = 1;
+                // Cross-publication post costs 1 AP
+                if (isCrossPub) {
                     const { deductAP } = await import('./game/config.js');
-                    const apResult = await deductAP(_supabase, faction.id, apCost);
+                    const apResult = await deductAP(_supabase, faction.id, 1);
                     if (!apResult.success) {
-                        showFormError('Not enough AP for international post (need 1 AP).');
+                        showFormError('Not enough AP to post on another publication (need 1 AP).');
                         return;
                     }
                     faction.action_points = apResult.newAp;
@@ -618,37 +612,46 @@ function bindSubmitHandler() {
                         image_url: imageUrl,
                         status: 'published',
                         published_tick: shard?.current_tick || 0,
-                        publication: isInternational ? 'international' : _publication
+                        publication: _publication
                     });
 
                 if (error) throw error;
 
+                // Momentum: +5 for home pub (>= 8000 chars), +1 for cross-pub (any length)
+                let momDelta = 0;
+                let momLabel = '';
+                if (isCrossPub) {
+                    momDelta = 1;
+                    momLabel = 'Cross-publication article (+1)';
+                } else if (body.length >= 8000) {
+                    momDelta = 5;
+                    momLabel = 'News article published (+5)';
+                }
+
                 let successMsg = 'Article published!';
-                // +5 Momentum for any article >= 8000 chars
-                if (body.length >= 8000) {
+                if (momDelta > 0) {
                     try {
                         const { error: momErr } = await _supabase.rpc('adjust_momentum', {
                             p_faction_id: faction.id,
-                            p_delta: 5,
-                            p_label: 'News article published (+5)',
+                            p_delta: momDelta,
+                            p_label: momLabel,
                             p_tick: shard?.current_tick || 0
                         });
                         if (momErr) {
                             console.error('[News] Momentum reward failed:', momErr);
                             successMsg = 'Article published! (Momentum reward failed)';
                         } else {
-                            successMsg = 'Article published! +5 Momentum.';
+                            successMsg = `Article published! +${momDelta} Momentum.`;
                         }
                     } catch (momCatchErr) {
                         console.error('[News] Momentum reward error:', momCatchErr);
                         successMsg = 'Article published! (Momentum reward failed)';
                     }
+                    sessionStorage.removeItem('nationhood_state');
                 } else {
                     successMsg = `Article published! (${body.length}/8000 chars — no momentum reward)`;
                 }
                 showFormSuccess(successMsg);
-                // Invalidate cached state so momentum log refreshes on next page load
-                if (body.length >= 8000) sessionStorage.removeItem('nationhood_state');
             }
 
             resetModalToCreateMode();
@@ -754,8 +757,6 @@ function resetModalToCreateMode() {
     if (header) header.textContent = 'Write Article';
     const submitBtn = document.getElementById('nws-submit-btn');
     if (submitBtn) submitBtn.textContent = 'Publish Article';
-    const intlCheck = document.getElementById('nws-intl-checkbox');
-    if (intlCheck) { intlCheck.checked = false; intlCheck.closest('.nws-intl-check').style.display = ''; }
 }
 
 function openEditModal(article) {
@@ -802,9 +803,6 @@ function openEditModal(article) {
     const submitBtn = document.getElementById('nws-submit-btn');
     if (submitBtn) submitBtn.textContent = 'Update Article';
     // Hide international checkbox in edit mode (can't change after publishing)
-    const intlCheck = document.getElementById('nws-intl-checkbox');
-    if (intlCheck) { intlCheck.checked = false; intlCheck.closest('.nws-intl-check').style.display = 'none'; }
-
     document.getElementById('nws-modal-overlay').classList.add('active');
 }
 
@@ -1160,9 +1158,10 @@ function populateLeadSection(lead, sidebar) {
         `).join('')
         : `<div class="nws-sidebar-story"><p class="nws-placeholder">[More stories will appear as articles are published.]</p></div>`;
 
+    // Skip image container entirely when no image — avoids empty placeholder box
     const leadImageHtml = lead.image_url
         ? `<img src="${escapeHtml(lead.image_url)}" alt="${escapeHtml(lead.headline)}">`
-        : renderImageOrPlaceholder(null, 'Photo');
+        : '';
 
     // Truncate body for deck (first ~200 chars), collapsing newlines for clean display
     const leadBody = lead.body || '';
@@ -1185,8 +1184,8 @@ function populateLeadSection(lead, sidebar) {
             </div>
         </div>
         <div class="nws-lead-sidebar">
-            <div class="nws-lead-image">${leadImageHtml}</div>
-            <p class="nws-img-caption">${lead.image_url ? escapeHtml(lead.headline) : '<span class="nws-placeholder">[Photo]</span>'}</p>
+            ${lead.image_url ? `<div class="nws-lead-image">${leadImageHtml}</div>
+            <p class="nws-img-caption">${escapeHtml(lead.headline)}</p>` : ''}
             ${sidebarHtml}
         </div>
     `;
@@ -1695,7 +1694,7 @@ function buildLeadHtml(lead, sidebar, dateLabel) {
 
     const leadImageHtml = lead.image_url
         ? `<img src="${escapeHtml(lead.image_url)}" alt="${escapeHtml(lead.headline)}">`
-        : renderImageOrPlaceholder(null, 'Photo');
+        : '';
 
     const leadBody = lead.body || '';
     const deckText = leadBody.replace(/\n+/g, ' ');
@@ -1716,8 +1715,8 @@ function buildLeadHtml(lead, sidebar, dateLabel) {
             </div>
         </div>
         <div class="nws-lead-sidebar">
-            <div class="nws-lead-image">${leadImageHtml}</div>
-            <p class="nws-img-caption">${lead.image_url ? escapeHtml(lead.headline) : '<span class="nws-placeholder">[Photo]</span>'}</p>
+            ${lead.image_url ? `<div class="nws-lead-image">${leadImageHtml}</div>
+            <p class="nws-img-caption">${escapeHtml(lead.headline)}</p>` : ''}
             ${sidebarHtml}
         </div>
     `;
