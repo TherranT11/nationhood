@@ -553,7 +553,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
     // 3. Time-based gating — only run at the midpoint of the tick interval
     //    (e.g. 4 hours after tick advance for an 8-hour interval)
     //    This prevents running every minute on cold starts.
-    if (!force) {
+    if (!force && shard.next_tick_at) {
         const now = Date.now();
         const nextTickAt = new Date(shard.next_tick_at).getTime();
         const intervalMs = (shard.tick_interval_hours || 8) * 60 * 60 * 1000;
@@ -570,7 +570,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
     console.log(`[advance-corp-tick] Processing tick ${currentTick} (${shard.current_date})`);
 
-    // 3. Load all nations
+    // 4. Load all nations
     const { data: nations, error: nationErr } = await supabase
         .from('nations')
         .select('*');
@@ -593,7 +593,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
         errors: [],
     };
 
-    // 4. Process each nation
+    // 5. Process each nation
     for (const nation of nationList) {
         try {
             // Load corporation factions for this nation
@@ -662,7 +662,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
         }
     }
 
-    // 5. Mark this tick as processed
+    // 6. Mark this tick as processed
     lastProcessedTick = currentTick;
 
     console.log(`[advance-corp-tick] Tick ${currentTick} complete. ${summary.corpsProcessed} corps across ${nationList.length} nations.`);
