@@ -265,7 +265,8 @@ let selectedStrikeArticleId = null;
 let editingArticleId = null;
 let sponsorSelectedPolicy = null;
 let selectedRepealLaw = null; // Active law selected for repeal article
-const SPECIAL_BILL_TYPES = ['no_confidence', 'confirmation', 'minister_confirmation', 'veto_override', 'repeal', 'impeachment_motion', 'impeachment_conviction'];
+// Repeal bills can have additional articles added in committee, so 'repeal' is NOT in this list
+const SPECIAL_BILL_TYPES = ['no_confidence', 'confirmation', 'minister_confirmation', 'veto_override', 'impeachment_motion', 'impeachment_conviction'];
 const FREE_ARTICLE_LIMIT = GAME_CONFIG.FREE_BILL_ARTICLES || 4;
 
 /** Count non-text articles in a bill. Text articles have no policy_id, no funding_data, no effect_data. */
