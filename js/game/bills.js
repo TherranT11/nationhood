@@ -3359,29 +3359,33 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             legitimacy: Math.max(0, (nation?.legitimacy ?? 50) - 3)
         }).eq('id', bill.nation_id);
 
-        // Governing parties: +1 approval/tick × 10 ticks = +10 total
-        // Opposition parties: -1 approval/tick × 10 ticks = -10 total
+        // Government approval: +10 one-time
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, 10, 'state_media_control');
+
+        // Governing parties: +2 momentum/tick for 10 ticks (snapshotted at enactment)
         const { data: coalition } = await supabase.from('government_formations')
             .select('party_ids').eq('nation_id', bill.nation_id).eq('status', 'active').maybeSingle();
         const govPartyIds = coalition?.party_ids || [];
-        const { data: allParties } = await supabase.from('factions')
-            .select('id').eq('nation_id', bill.nation_id).eq('faction_type', 'party');
-        for (const party of (allParties || [])) {
-            const isGov = govPartyIds.includes(party.id);
-            const delta = isGov ? 10 : -10; // +1/tick × 10 ticks or -1/tick × 10 ticks
-            await nudgeApproval(supabase, party.id, bill.nation_id, delta, { source: 'state_media_control' });
-        }
 
-        // Government approval: +2/tick × 5 ticks = +10 total
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, 10, 'state_media_control');
+        if (govPartyIds.length > 0) {
+            // Read existing timed effects and append the new momentum boost
+            const existingEffects = Array.isArray(nation?.timed_momentum_effects) ? nation.timed_momentum_effects : [];
+            existingEffects.push({
+                party_ids: govPartyIds,
+                delta_per_tick: 2,
+                remaining_ticks: 10,
+                source: 'state_media_control'
+            });
+            await supabase.from('nations').update({ timed_momentum_effects: existingEffects }).eq('id', bill.nation_id);
+        }
 
         await supabase.from('event_log').insert({
             nation_id: bill.nation_id,
             event_name: 'FOUNDATIONAL_LAW_PASSED',
             trigger_key: 'state_media_control',
-            description_used: 'The State Media Control Act has passed. Government now controls national media. Press freedom is permanently capped at 40.',
+            description_used: 'The State Media Control Act has passed. Government now controls national media. Press freedom is permanently capped at 40. +10 government approval. Governing parties receive +2 momentum/tick for 10 ticks.',
             category: 'POLITICAL',
-            effects_applied: { law: 'state_media_control', press_freedom_cap: 40, legitimacy: -3, gov_parties_approval: 10, opp_parties_approval: -10, gov_approval: 10 },
+            effects_applied: { law: 'state_media_control', press_freedom_cap: 40, legitimacy: -3, gov_approval: 10, momentum_boost: { delta: 2, ticks: 10, parties: govPartyIds } },
             fired_at_tick: currentTick
         });
 

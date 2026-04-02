@@ -204,6 +204,35 @@
     </div>
 </div>
 
+<!-- Sponsor Add Funding Article Modal -->
+<div class="modal-overlay" id="sponsor-add-funding-modal">
+    <div class="modal-content" style="max-width:600px;">
+        <div class="modal-header">
+            <div class="modal-title">Add Funding Article</div>
+            <button class="modal-close" onclick="closeSponsorAddFundingModal()">&times;</button>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Select Ministry</label>
+            <select class="form-select" id="sponsor-funding-ministry" onchange="onSponsorFundingMinistryChange()">
+                <option value="">-- Choose a ministry --</option>
+            </select>
+        </div>
+        <div id="sponsor-funding-controls" style="display:none;">
+            <div id="sponsor-funding-institutions"></div>
+            <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border-main, rgba(255,255,255,0.08));">
+                <label class="form-label">Discretionary Funds ($M)</label>
+                <div id="sponsor-funding-disc-balance" style="font-size:0.7rem;margin-bottom:6px;"></div>
+                <input type="number" class="form-input" id="sponsor-funding-discretionary" min="-50000" max="50000" value="0" placeholder="0">
+                <div style="font-size:0.7rem;color:var(--text-secondary, #888);margin-top:4px;">Positive = allocate funds (adds to debt). Negative = withdraw surplus.</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeSponsorAddFundingModal()">Cancel</button>
+            <button class="btn-submit" id="sponsor-funding-add-btn" disabled onclick="submitSponsorAddFundingArticle()">Add Funding Article</button>
+        </div>
+    </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
@@ -236,7 +265,8 @@ let selectedStrikeArticleId = null;
 let editingArticleId = null;
 let sponsorSelectedPolicy = null;
 let selectedRepealLaw = null; // Active law selected for repeal article
-const SPECIAL_BILL_TYPES = ['no_confidence', 'confirmation', 'minister_confirmation', 'veto_override', 'repeal', 'impeachment_motion', 'impeachment_conviction'];
+// Repeal bills can have additional articles added in committee, so 'repeal' is NOT in this list
+const SPECIAL_BILL_TYPES = ['no_confidence', 'confirmation', 'minister_confirmation', 'veto_override', 'impeachment_motion', 'impeachment_conviction'];
 const FREE_ARTICLE_LIMIT = GAME_CONFIG.FREE_BILL_ARTICLES || 4;
 
 /** Count non-text articles in a bill. Text articles have no policy_id, no funding_data, no effect_data. */
@@ -742,6 +772,7 @@ function renderArticles() {
         toolbar.innerHTML = `
             <button class="sponsor-tool-btn" onclick="openSponsorAddModal()">+ Add Policy Article</button>
             <button class="sponsor-tool-btn" onclick="openSponsorAddTextModal()">+ Add Text Article</button>
+            <button class="sponsor-tool-btn" onclick="openSponsorAddFundingModal()">+ Add Funding Article</button>
         `;
         const billArticlesEl = document.getElementById('bill-articles');
         billArticlesEl.parentNode.insertBefore(toolbar, billArticlesEl);
@@ -951,7 +982,8 @@ function renderArticles() {
                     '<div class="repeal-notice-text" style="color:var(--red);">Government assumes control of all national media</div>' +
                     '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
                         'Requires <strong style="color:var(--red);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
-                        'If passed: press freedom permanently capped at 40, legitimacy −3.' +
+                        'If passed: press freedom permanently capped at 40, legitimacy −3.<br>' +
+                        '+10 Government Approval. +2 Momentum all Parties in Government / tick for 10 ticks.' +
                     '</div>' +
                 '</div>';
         } else if (bill.proposed_emergency_powers_act) {
@@ -3101,6 +3133,228 @@ async function submitSponsorAddTextArticle() {
         await loadBillData();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
+
+// Sponsor Add Funding Article
+const SPONSOR_FUNDING_MINISTRY_LABELS = { interior:'Interior', foreign:'Foreign Affairs', defense:'Defense', finance:'Finance', education:'Education', healthcare:'Healthcare', labor:'Labor', justice:'Justice', trade:'Trade', energy:'Energy', transportation:'Transport' };
+const SPONSOR_FUNDING_INSTITUTIONS = {
+    healthcare: [
+        { id: 'hospitals', name: 'Public Hospital Network' },
+        { id: 'workforce', name: 'Medical Workforce' },
+        { id: 'prevention', name: 'Public Health & Disease Prevention' }
+    ],
+    education: [
+        { id: 'primary_schools', name: 'Primary & Secondary Schools' },
+        { id: 'universities', name: 'Universities & Research' },
+        { id: 'vocational', name: 'Vocational Training' }
+    ],
+    defense: [
+        { id: 'military', name: 'Armed Forces' },
+        { id: 'intelligence', name: 'Intelligence & Cybersecurity' },
+        { id: 'veterans', name: 'Veterans Affairs' }
+    ],
+    labor: [
+        { id: 'employment_services', name: 'Employment Services' },
+        { id: 'worker_safety', name: 'Worker Safety & Standards' },
+        { id: 'social_security', name: 'Social Security & Pensions' }
+    ],
+    justice: [
+        { id: 'courts', name: 'Courts & Legal System' },
+        { id: 'corrections', name: 'Corrections & Prisons' },
+        { id: 'law_enforcement', name: 'Law Enforcement' }
+    ],
+    energy: [
+        { id: 'power_grid', name: 'Power Grid & Distribution' },
+        { id: 'generation', name: 'Power Generation' },
+        { id: 'regulation', name: 'Energy Regulation' }
+    ],
+    transportation: [
+        { id: 'roads', name: 'Roads & Highways' },
+        { id: 'public_transit', name: 'Public Transit' },
+        { id: 'aviation', name: 'Ports & Aviation' }
+    ],
+    finance: [
+        { id: 'tax_admin', name: 'Tax Administration' },
+        { id: 'central_bank', name: 'Central Bank & Monetary Policy' },
+        { id: 'development_bank', name: 'Development & Investment' }
+    ],
+    foreign: [
+        { id: 'embassies', name: 'Embassies & Consulates' },
+        { id: 'foreign_aid', name: 'Foreign Aid Programs' },
+        { id: 'trade_missions', name: 'Trade Missions' }
+    ],
+    interior: [
+        { id: 'civil_service', name: 'Civil Service' },
+        { id: 'emergency_services', name: 'Emergency Services' },
+        { id: 'census', name: 'Census & Statistics' }
+    ],
+    trade: [
+        { id: 'customs', name: 'Customs & Border Trade' },
+        { id: 'export_promotion', name: 'Export Promotion Agency' },
+        { id: 'competition', name: 'Competition & Consumer Protection' }
+    ]
+};
+
+let _sponsorFundingPctMap = null;
+let _sponsorAllMinistries = null;
+
+function _sponsorGetFundingLabel(pct) {
+    if (pct > 100) return { label: 'OVERFUNDED', color: 'var(--green, #5cb85c)' };
+    if (pct >= 100) return { label: 'FULLY FUNDED', color: 'var(--green, #5cb85c)' };
+    if (pct >= 90) return { label: 'STRETCHED', color: 'var(--amber, #c8a64e)' };
+    if (pct >= 75) return { label: 'STRAINED', color: 'var(--amber, #c8a64e)' };
+    if (pct >= 50) return { label: 'UNDERFUNDED', color: 'var(--orange, #d48a3c)' };
+    if (pct >= 25) return { label: 'CRITICAL', color: 'var(--red, #d9534f)' };
+    return { label: 'COLLAPSED', color: 'var(--red, #d9534f)' };
+}
+
+function _sponsorGetInstPct(instId) {
+    return (_sponsorFundingPctMap && _sponsorFundingPctMap[instId] !== undefined) ? _sponsorFundingPctMap[instId] : 100;
+}
+
+async function openSponsorAddFundingModal() {
+    document.getElementById('sponsor-add-funding-modal').classList.add('active');
+    document.getElementById('sponsor-funding-controls').style.display = 'none';
+    document.getElementById('sponsor-funding-add-btn').disabled = true;
+    const sel = document.getElementById('sponsor-funding-ministry');
+
+    // Load funding data if not cached
+    if (!_sponsorFundingPctMap) {
+        try {
+            const [ministries, itemAllocs] = await Promise.all([
+                _supabase.from('ministries').select('ministry_key, funding_level, discretionary_balance').eq('nation_id', currentBill.nation_id).eq('is_active', true),
+                _supabase.from('budget_item_allocations').select('item_id, item_type, allocation_amount, needed_amount').eq('nation_id', currentBill.nation_id).eq('item_type', 'institution').order('created_at', { ascending: true })
+            ]);
+            _sponsorAllMinistries = ministries.data || [];
+            const map = {};
+            for (const row of (itemAllocs.data || [])) {
+                if (row.item_type === 'institution') {
+                    const needed = Number(row.needed_amount || 0);
+                    map[row.item_id] = needed > 0 ? Math.min(200, Math.round((Number(row.allocation_amount || 0) / needed) * 100)) : 100;
+                }
+            }
+            _sponsorFundingPctMap = map;
+        } catch (e) {
+            console.error('[bill] Failed to load funding data:', e);
+        }
+    }
+
+    // Populate ministry dropdown, excluding ministries already in bill
+    const existingKeys = new Set((currentBill.bill_articles || []).filter(a => a.funding_data).map(a => a.funding_data.ministry_key));
+    sel.innerHTML = '<option value="">-- Choose a ministry --</option>';
+    for (const [key, label] of Object.entries(SPONSOR_FUNDING_MINISTRY_LABELS)) {
+        if (existingKeys.has(key)) continue;
+        sel.innerHTML += `<option value="${key}">${label}</option>`;
+    }
+}
+window.openSponsorAddFundingModal = openSponsorAddFundingModal;
+
+function closeSponsorAddFundingModal() {
+    document.getElementById('sponsor-add-funding-modal').classList.remove('active');
+}
+window.closeSponsorAddFundingModal = closeSponsorAddFundingModal;
+
+function onSponsorFundingMinistryChange() {
+    const key = document.getElementById('sponsor-funding-ministry').value;
+    if (!key) { document.getElementById('sponsor-funding-controls').style.display = 'none'; document.getElementById('sponsor-funding-add-btn').disabled = true; return; }
+    document.getElementById('sponsor-funding-controls').style.display = 'block';
+    document.getElementById('sponsor-funding-add-btn').disabled = false;
+    document.getElementById('sponsor-funding-discretionary').value = 0;
+
+    const mRow = (_sponsorAllMinistries || []).find(m => m.ministry_key === key);
+    const curBal = Number(mRow?.discretionary_balance || 0);
+    const balLabel = document.getElementById('sponsor-funding-disc-balance');
+    if (balLabel) {
+        const fmtBal = curBal >= 1000000 ? '$' + (curBal / 1000000).toFixed(1) + 'M' : '$' + Math.round(curBal).toLocaleString();
+        balLabel.innerHTML = `Current balance: <strong style="color:${curBal > 0 ? 'var(--green, #5cb85c)' : 'var(--red, #d9534f)'}">${fmtBal}</strong>`;
+    }
+
+    const institutions = SPONSOR_FUNDING_INSTITUTIONS[key] || [];
+    const container = document.getElementById('sponsor-funding-institutions');
+    container.innerHTML = institutions.map(inst => {
+        const currentPct = _sponsorGetInstPct(inst.id);
+        const fl = _sponsorGetFundingLabel(currentPct);
+        return `<div class="funding-inst-card" style="border-left:3px solid ${fl.color};background:var(--bg-panel, #1a1a17);padding:10px 12px;margin-bottom:8px;border-radius:3px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="font-weight:600;font-size:0.85rem;color:var(--text-bright, #e8e4d9);">${escapeHtml(inst.name)}</div>
+                <div style="text-align:right;">
+                    <span style="font-size:0.65rem;font-weight:bold;color:${fl.color};text-transform:uppercase;">${fl.label}</span>
+                    <div style="font-size:0.9rem;font-weight:700;color:${fl.color};" id="sponsor-fpct-${inst.id}">${currentPct}%</div>
+                </div>
+            </div>
+            <input type="range" id="sponsor-fslider-${inst.id}" min="0" max="200" value="${currentPct}" step="5" style="width:100%;margin-top:6px;" oninput="onSponsorInstSlider('${inst.id}')">
+            <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-muted, #666);"><span>0%</span><span>100%</span><span>200%</span></div>
+        </div>`;
+    }).join('');
+}
+window.onSponsorFundingMinistryChange = onSponsorFundingMinistryChange;
+
+function onSponsorInstSlider(instId) {
+    const slider = document.getElementById('sponsor-fslider-' + instId);
+    const pct = parseInt(slider.value);
+    const fl = _sponsorGetFundingLabel(pct);
+    const pctEl = document.getElementById('sponsor-fpct-' + instId);
+    if (pctEl) { pctEl.textContent = pct + '%'; pctEl.style.color = fl.color; }
+    const card = slider.closest('.funding-inst-card');
+    if (card) card.style.borderLeftColor = fl.color;
+    const badge = card?.querySelector('span[style*="text-transform:uppercase"]');
+    if (badge) { badge.textContent = fl.label; badge.style.color = fl.color; }
+}
+window.onSponsorInstSlider = onSponsorInstSlider;
+
+async function submitSponsorAddFundingArticle() {
+    const key = document.getElementById('sponsor-funding-ministry').value;
+    if (!key) { alert('Please select a ministry.'); return; }
+    const label = SPONSOR_FUNDING_MINISTRY_LABELS[key] || key;
+    const institutions = SPONSOR_FUNDING_INSTITUTIONS[key] || [];
+
+    const instLevels = [];
+    let anyChange = false;
+    for (const inst of institutions) {
+        const slider = document.getElementById('sponsor-fslider-' + inst.id);
+        const proposedPct = parseInt(slider.value);
+        const currentPct = _sponsorGetInstPct(inst.id);
+        instLevels.push({ id: inst.id, name: inst.name, current_pct: currentPct, proposed_pct: proposedPct, base_cost: 0 });
+        if (proposedPct !== currentPct) anyChange = true;
+    }
+
+    const discretionary = parseInt(document.getElementById('sponsor-funding-discretionary').value) || 0;
+    if (!anyChange && discretionary === 0) { alert('No funding changes made.'); return; }
+
+    try {
+        const { data: existingArticles } = await _supabase.from('bill_articles')
+            .select('article_number').eq('bill_id', billId)
+            .order('article_number', { ascending: false }).limit(1);
+        const nextNum = (existingArticles?.[0]?.article_number || 1) + 1;
+
+        const changes = instLevels.filter(i => i.proposed_pct !== i.current_pct);
+        const textParts = changes.map(i => `${i.name}: ${i.current_pct}% → ${i.proposed_pct}%`);
+        if (discretionary) textParts.push(discretionary > 0 ? `Allocate: +$${discretionary}M` : `Withdraw: -$${Math.abs(discretionary)}M`);
+        const title = `${label} Funding`;
+        const text = textParts.join('. ') + '.';
+
+        const fundingData = {
+            ministry_key: key,
+            ministry_label: label,
+            institutions: instLevels,
+            discretionary: discretionary !== 0 ? discretionary : null
+        };
+
+        const { error } = await _supabase.from('bill_articles').insert({
+            bill_id: billId,
+            policy_id: null,
+            article_number: nextNum,
+            added_by: currentFaction.id,
+            article_title: title,
+            article_text: text,
+            funding_data: fundingData
+        });
+        if (error) throw error;
+
+        closeSponsorAddFundingModal();
+        await loadBillData();
+    } catch (e) { console.error(e); alert('Error: ' + e.message); }
+}
+window.submitSponsorAddFundingArticle = submitSponsorAddFundingArticle;
 
 // ==================== CHAT ====================
 

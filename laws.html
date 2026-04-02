@@ -475,6 +475,9 @@ function toggleAllLaws() {
 
 function populateAllLawsFilters() {
     const sectors = [...new Set(allPolicies.map(p => p.major_sector).filter(Boolean))].sort();
+    // Add Foundational as a sector if not already present (foundational laws aren't regular policies)
+    if (!sectors.includes('FOUNDATIONAL')) sectors.push('FOUNDATIONAL');
+    sectors.sort();
     const ideologies = new Set();
     allPolicies.forEach(p => {
         if (p.ideologies && Array.isArray(p.ideologies)) p.ideologies.forEach(i => ideologies.add(i));
@@ -493,6 +496,61 @@ function filterAllLaws() {
     const ideology = document.getElementById('law-filter-ideology')?.value || '';
 
     const activePolicyIds = new Set(activeLaws.filter(al => !al.is_reversal).map(al => al.policy_id));
+
+    // Handle foundational laws separately — they are nation-level settings, not policies
+    if (sector === 'FOUNDATIONAL') {
+        const container = document.getElementById('all-laws-list');
+        const n = currentNation;
+        if (!n) { container.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:30px;">No nation loaded.</div>'; return; }
+
+        const ticksPerYear = GAME_CONFIG.TICKS_PER_YEAR || 12;
+        const parlTermTicks = n.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS || 48;
+        const parlTermYears = parlTermTicks / ticksPerYear;
+        const hosMethod = n.hos_election_method === 'hereditary' ? 'Hereditary (Constitutional Monarchy)' : n.hos_election_method === 'direct_vote' ? 'Direct Popular Vote' : 'Appointed by Parliament';
+        const isPresidential = (n.government_type || '').toLowerCase().includes('presidential');
+        const termLimit = n.presidential_term_limit !== null && n.presidential_term_limit !== undefined ? n.presidential_term_limit : GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT;
+        const presTermTicks = n.presidential_term_ticks || GAME_CONFIG.PRESIDENTIAL_TERM_TICKS || 48;
+        const presTermYears = presTermTicks / ticksPerYear;
+
+        const foundationalLaws = [
+            { name: 'Electoral Makeup', icon: '🏛', desc: `Parliament has ${n.total_seats || '?'} total seats.`, value: `${n.total_seats || '?'} seats` },
+            { name: 'Head of State Title', icon: '👑', desc: `The head of state holds the title of ${n.head_of_state_title || 'President'}.`, value: n.head_of_state_title || 'President' },
+            { name: 'Head of State Election Method', icon: '🗳', desc: `The head of state is selected via: ${hosMethod}.`, value: hosMethod },
+            { name: 'Legislative Term Length', icon: '🗓', desc: `Parliamentary elections occur every ${parlTermYears} year${parlTermYears !== 1 ? 's' : ''} (${parlTermTicks} ticks).`, value: `${parlTermYears} year${parlTermYears !== 1 ? 's' : ''}` },
+        ];
+
+        if (isPresidential) {
+            foundationalLaws.push(
+                { name: 'Presidential Term Length', icon: '📅', desc: `Presidential elections occur every ${presTermYears} year${presTermYears !== 1 ? 's' : ''} (${presTermTicks} ticks).`, value: `${presTermYears} year${presTermYears !== 1 ? 's' : ''}` },
+                { name: 'Presidential Term Limits', icon: '🔒', desc: termLimit === 0 ? 'No term limits — the president can serve unlimited terms.' : `The president is limited to ${termLimit} term${termLimit !== 1 ? 's' : ''}.`, value: termLimit === 0 ? 'None' : `${termLimit} term${termLimit !== 1 ? 's' : ''}` }
+            );
+        }
+
+        if (n.state_media_control) foundationalLaws.push({ name: 'State Media Control Act', icon: '📺', desc: 'State controls major media outlets. Press freedom capped at 40.', value: 'Enacted' });
+        if (n.emergency_powers_act) foundationalLaws.push({ name: 'Emergency Powers Act', icon: '🚨', desc: 'Emergency executive powers have been granted.', value: 'Enacted' });
+        if (n.judicial_appointment_politicization) foundationalLaws.push({ name: 'Judicial Appointment Politicization', icon: '⚖', desc: 'Judicial appointments are politicized. Judicial independence capped at 30.', value: 'Enacted' });
+        if (n.constitutional_amendment_threshold_lowered) foundationalLaws.push({ name: 'Lowered Amendment Threshold', icon: '📜', desc: 'Foundational law threshold lowered from 67% to 55%.', value: 'Enacted' });
+
+        let filteredFoundational = foundationalLaws;
+        if (search) {
+            filteredFoundational = foundationalLaws.filter(f => f.name.toLowerCase().includes(search) || f.desc.toLowerCase().includes(search));
+        }
+
+        document.getElementById('law-count-label').textContent = filteredFoundational.length + ' foundational laws';
+        if (filteredFoundational.length === 0) { container.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:30px;">No foundational laws match search.</div>'; return; }
+
+        container.innerHTML = filteredFoundational.map(f => `<div class="law-card law-active">
+            <div class="law-card-header">
+                <div class="law-card-name">${f.icon} ${escapeHtml(f.name)} <span style="color:var(--purple);font-size:0.75rem;">● FOUNDATIONAL</span></div>
+                <div class="law-card-sector" style="color:var(--purple);">FOUNDATIONAL</div>
+            </div>
+            <div class="law-card-desc">${escapeHtml(f.desc)}</div>
+            <div class="law-card-tags">
+                <span class="tag" style="background:var(--purple-faint);color:var(--purple);border:1px solid var(--purple-border);">${escapeHtml(f.value)}</span>
+            </div>
+        </div>`).join('');
+        return;
+    }
 
     let filtered = allPolicies.filter(p => {
         if (search && !(p.policy_name || '').toLowerCase().includes(search) && !(p.description || '').toLowerCase().includes(search)) return false;
@@ -1714,7 +1772,7 @@ function renderFoundationalOptions() {
             <div class="policy-option-name">📺 State Media Control Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
             <div class="policy-option-desc">${currentNation.state_media_control
                 ? 'Already enacted — the government controls national media.'
-                : 'Government takes control of national media. Press freedom permanently capped at 40. Governing parties +1 approval/tick for 10 ticks. Opposition -1 approval/tick for 10 ticks. Gov. approval +2/tick for 5 ticks. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+                : 'Government takes control of national media. Press freedom permanently capped at 40. +10 Government Approval. +2 Momentum all Parties in Government / tick for 10 ticks. Requires 2/3 supermajority (' + required + ' seats).'}</div>
         </div>
         <div class="policy-option${selectedFoundationalType === 'emergency_powers' ? ' selected' : ''}" style="${selectedFoundationalType === 'emergency_powers' ? 'border-color:var(--red);' : ''}${currentNation.emergency_powers_act ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('emergency_powers')" data-foundational-type="emergency_powers">
             <div class="policy-option-name">🚨 Emergency Powers Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
