@@ -3618,6 +3618,29 @@ export const CALVETH_LAST_NAMES = [
 
 const CALVETH_NATIONS = ['Calveth'];
 
+// Flandis names (Dutch)
+export const FLANDIS_FIRST_NAMES = [
+    'Anneliese', 'Bregje', 'Clasien', 'Dymphna', 'Elske', 'Fenna', 'Grietje', 'Hanneke',
+    'Ilse', 'Jobke', 'Karlijn', 'Lieselotte', 'Maaike', 'Nienke', 'Roos',
+    'Adriaan', 'Bastiaan', 'Casper', 'Damiaan', 'Evert', 'Floris', 'Gerben', 'Harmen',
+    'Ivo', 'Jasper', 'Klaas', 'Laurens', 'Maarten', 'Niels', 'Olaf', 'Pieter',
+    'Quinten', 'Reinier', 'Sander', 'Thijs', 'Uwe', 'Valentijn', 'Wessel', 'Xander',
+    'Yorick', 'Zeger', 'Arjen', 'Bram', 'Cor', 'Daan', 'Egbert', 'Folkert',
+    'Gijs', 'Hedzer', 'Imro'
+];
+
+export const FLANDIS_LAST_NAMES = [
+    'Bakker', 'Bos', 'Bosman', 'Brouwer', 'De Graaf', 'De Jong', 'De Vries', 'De Wit',
+    'Dekker', 'Dijkstra', 'Dijk', 'Driessen', 'Gerritsen', 'Hendriks', 'Hermans',
+    'Hoekstra', 'Huisman', 'Jacobs', 'Janssen', 'Koster', 'Kuiper', 'Lammers', 'Maas',
+    'Meijer', 'Mulder', 'Peters', 'Pieters', 'Pijpers', 'Post', 'Prins', 'Smit',
+    'Smits', 'Snel', 'Snoek', 'Timmers', 'Van Dam', 'Van den Berg', 'Van den Bosch',
+    'Van der Laan', 'Van der Meer', 'Van Dijk', 'Van Houten', 'Van Leeuwen', 'Van Rijn',
+    'Vermeer', 'Visser', 'Willems', 'Wolff', 'Zijlstra', 'Zwart'
+];
+
+const FLANDIS_NATIONS = ['Flandis'];
+
 // Female first names from both name pools (used for gendered title selection)
 const FEMALE_NAMES = new Set([
     // Crucera
@@ -3627,7 +3650,10 @@ const FEMALE_NAMES = new Set([
     'Marisol', 'Florencia', 'Celeste',
     // Calveth
     'Alma', 'Ida', 'Clara', 'Ella', 'Olivia', 'Freja', 'Sofie', 'Astrid',
-    'Maja', 'Agnes'
+    'Maja', 'Agnes',
+    // Flandis
+    'Anneliese', 'Bregje', 'Clasien', 'Dymphna', 'Elske', 'Fenna', 'Grietje',
+    'Hanneke', 'Ilse', 'Jobke', 'Karlijn', 'Lieselotte', 'Maaike', 'Nienke', 'Roos'
 ]);
 
 export function isFemaleName(firstName) {
@@ -3640,6 +3666,9 @@ export function getNationNames(nationName) {
     }
     if (CALVETH_NATIONS.includes(nationName)) {
         return { firstNames: CALVETH_FIRST_NAMES, lastNames: CALVETH_LAST_NAMES };
+    }
+    if (FLANDIS_NATIONS.includes(nationName)) {
+        return { firstNames: FLANDIS_FIRST_NAMES, lastNames: FLANDIS_LAST_NAMES };
     }
     return { firstNames: PM_FIRST_NAMES, lastNames: PM_LAST_NAMES };
 }
