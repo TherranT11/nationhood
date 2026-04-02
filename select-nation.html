@@ -732,6 +732,18 @@ body {
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, countEligibleParties } from './js/utils.js';
 
+// Flag file lookup — some filenames don't match nation names exactly
+const FLAG_URLS = {
+    'Melizea': 'assets/flags/Melizea.png',
+    'Avelia': 'assets/flags/Avelia1.png',
+    'Sangreza': 'assets/flags/sangreza.png',
+    'Montequilla': 'assets/flags/Montequilla.png',
+    'San Estrella': 'assets/flags/sanestrella.png',
+    'Palvera': 'assets/flags/Palvera.png',
+    'Calveth': 'assets/flags/Calveth.png',
+    'Flandis': 'assets/flags/Flandis.png'
+};
+
 const FALLBACK_COLORS = ['#5b9bd5','#d48a3c','#5aafa5','#8b7ec8','#5cb85c','#d9534f','#c8a64e'];
 
 const IDEOLOGY_COLORS = {
@@ -891,7 +903,7 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
     const isFull = eligiblePartyCount >= maxParties;
     const np = nation.nation_profiles;
     const profileFlagUrl = Array.isArray(np) ? np[0]?.flag_url : np?.flag_url;
-    const flagUrl = profileFlagUrl || nation.flag_url || `assets/flags/${nation.name}.png`;
+    const flagUrl = profileFlagUrl || nation.flag_url || FLAG_URLS[nation.name] || `assets/flags/${nation.name}.png`;
     const govClass = getGovTypeClass(nation.government_type);
     const govLabel = getGovTypeLabel(nation);
     const needsAlphaCode = ALPHA_CODE_NATIONS.has(nation.id);
