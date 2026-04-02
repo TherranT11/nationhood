@@ -624,17 +624,31 @@ function bindSubmitHandler() {
                 if (error) throw error;
 
                 let successMsg = 'Article published!';
-                {
-                    // +5 Momentum for any article >= 8000 chars
-                    if (body.length >= 8000) {
-                        _supabase.rpc('adjust_momentum', { p_faction_id: faction.id, p_delta: 5, p_label: 'News article published (+5)', p_tick: shard?.current_tick || 0 })
-                            .then(({ error: momErr }) => { if (momErr) console.error('[News] Momentum reward failed:', momErr); });
-                        successMsg = `Article published! +5 Momentum.`;
-                    } else {
-                        successMsg = `Article published! (${body.length}/8000 chars — no momentum reward)`;
+                // +5 Momentum for any article >= 8000 chars
+                if (body.length >= 8000) {
+                    try {
+                        const { error: momErr } = await _supabase.rpc('adjust_momentum', {
+                            p_faction_id: faction.id,
+                            p_delta: 5,
+                            p_label: 'News article published (+5)',
+                            p_tick: shard?.current_tick || 0
+                        });
+                        if (momErr) {
+                            console.error('[News] Momentum reward failed:', momErr);
+                            successMsg = 'Article published! (Momentum reward failed)';
+                        } else {
+                            successMsg = 'Article published! +5 Momentum.';
+                        }
+                    } catch (momCatchErr) {
+                        console.error('[News] Momentum reward error:', momCatchErr);
+                        successMsg = 'Article published! (Momentum reward failed)';
                     }
+                } else {
+                    successMsg = `Article published! (${body.length}/8000 chars — no momentum reward)`;
                 }
                 showFormSuccess(successMsg);
+                // Invalidate cached state so momentum log refreshes on next page load
+                if (body.length >= 8000) sessionStorage.removeItem('nationhood_state');
             }
 
             resetModalToCreateMode();

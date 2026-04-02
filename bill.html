@@ -951,7 +951,8 @@ function renderArticles() {
                     '<div class="repeal-notice-text" style="color:var(--red);">Government assumes control of all national media</div>' +
                     '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
                         'Requires <strong style="color:var(--red);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
-                        'If passed: press freedom permanently capped at 40, legitimacy −3.' +
+                        'If passed: press freedom permanently capped at 40, legitimacy −3.<br>' +
+                        '+10 Government Approval. +2 Momentum all Parties in Government / tick for 10 ticks.' +
                     '</div>' +
                 '</div>';
         } else if (bill.proposed_emergency_powers_act) {

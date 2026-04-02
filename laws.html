@@ -1772,7 +1772,7 @@ function renderFoundationalOptions() {
             <div class="policy-option-name">📺 State Media Control Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
             <div class="policy-option-desc">${currentNation.state_media_control
                 ? 'Already enacted — the government controls national media.'
-                : 'Government takes control of national media. Press freedom permanently capped at 40. Governing parties +1 approval/tick for 10 ticks. Opposition -1 approval/tick for 10 ticks. Gov. approval +2/tick for 5 ticks. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+                : 'Government takes control of national media. Press freedom permanently capped at 40. +10 Government Approval. +2 Momentum all Parties in Government / tick for 10 ticks. Requires 2/3 supermajority (' + required + ' seats).'}</div>
         </div>
         <div class="policy-option${selectedFoundationalType === 'emergency_powers' ? ' selected' : ''}" style="${selectedFoundationalType === 'emergency_powers' ? 'border-color:var(--red);' : ''}${currentNation.emergency_powers_act ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('emergency_powers')" data-foundational-type="emergency_powers">
             <div class="policy-option-name">🚨 Emergency Powers Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
