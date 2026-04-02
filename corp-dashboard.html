@@ -1083,7 +1083,7 @@ async function init() {
 
     // ── Render all dashboard cards ──
     const wfData = renderWorkforce(nationStats, nationName);
-    renderFinances(nationStats, shard, wfData);
+    renderFinances(nationStats, shard, wfData, faction);
     renderStats(nationName);
     const propData = renderProperty(nationStats, nationName, faction, shard);
     renderValuation(nationStats, nationName, faction, wfData, propData);
@@ -1220,7 +1220,7 @@ function renderWorkforce(nation, nationName) {
     return { totalWages, generalTotal, skilledTotal, innovativeTotal, monthlyWages: Math.round(totalWages / 12) };
 }
 
-function renderFinances(nation, shard, wfData) {
+function renderFinances(nation, shard, wfData, faction) {
     const currentTick = shard?.current_tick || 0;
     document.getElementById('fin-tick').textContent = 'TICK ' + currentTick;
 
