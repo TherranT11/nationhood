@@ -2026,16 +2026,16 @@ body.light-mode .dl-empty__text { color: #1a1a17; }
       <div class="ap-card__footer" id="ap-footer" style="display:none;">
         <div class="ap-footer-stats">
           <div>
-            <div class="ap-footer-stat__label">TOTAL CREW</div>
+            <div class="ap-footer-stat__label">PROJECTS</div>
             <div class="ap-footer-stat__value" id="ap-total-crew">0</div>
           </div>
           <div>
-            <div class="ap-footer-stat__label">TOTAL BUDGET</div>
+            <div class="ap-footer-stat__label">TOTAL VALUE</div>
             <div class="ap-footer-stat__value" id="ap-total-budget">$0</div>
           </div>
           <div>
-            <div class="ap-footer-stat__label">TOTAL SPENT</div>
-            <div class="ap-footer-stat__value" id="ap-total-spent" style="color:var(--amber);">$0</div>
+            <div class="ap-footer-stat__label">YOUR BIDS</div>
+            <div class="ap-footer-stat__value" id="ap-total-spent" style="color:var(--gold);">$0</div>
           </div>
         </div>
         <div id="ap-late-badge"></div>
@@ -2286,7 +2286,7 @@ body.light-mode .dl-empty__text { color: #1a1a17; }
       </div>
       <div class="bid-footer__actions">
         <button class="bid-btn bid-btn--cancel" onclick="closeBidModal()">CANCEL</button>
-        <button class="bid-btn bid-btn--submit" id="bid-submit-btn" disabled>SUBMIT BID</button>
+        <button class="bid-btn bid-btn--submit" id="bid-submit-btn" disabled onclick="submitBid()">SUBMIT BID</button>
       </div>
     </div>
   </div>
@@ -2304,6 +2304,7 @@ let faction = null;
 let nationStats = null;
 let shard = null;
 let contracts = [];
+let playerBids = {}; // { contractId: bidData }
 let activeProjects = [];
 let warehouseData = {};  // { materialKey: { LOW: {qty,value}, STD: {qty,value}, HIGH: {qty,value} } }
 let whExpandedRow = -1;  // index of expanded material row, -1 = none
@@ -2481,9 +2482,12 @@ function renderContracts() {
                         <div class="oc-stat__value ${specCls}">${specLbl}</div>
                     </div>
                     <div class="oc-eligibility">
-                        <span class="oc-eligible-badge ${qualified ? 'yes' : 'no'}">${qualified ? 'ELIGIBLE' : 'LOCKED'}</span>
+                        ${playerBids[c.id]
+                            ? `<span class="oc-eligible-badge yes" style="background:var(--green-faint);border-color:var(--green-border);color:var(--green);">BID: ${fmtBudget(playerBids[c.id].bid_price)}</span>`
+                            : `<span class="oc-eligible-badge ${qualified ? 'yes' : 'no'}">${qualified ? 'ELIGIBLE' : 'LOCKED'}</span>`
+                        }
                     </div>
-                    ${qualified ? `<button class="bid-btn bid-btn--submit" style="padding:3px 10px;font-size:8px;margin-left:auto;" onclick="event.stopPropagation();openBidModal(contracts.find(x=>x.id==='${c.id}'))">VIEW</button>` : ''}
+                    ${qualified ? `<button class="bid-btn bid-btn--submit" style="padding:3px 10px;font-size:8px;margin-left:auto;" onclick="event.stopPropagation();openBidModal(contracts.find(x=>x.id==='${c.id}'))">${playerBids[c.id] ? 'EDIT' : 'VIEW'}</button>` : ''}
                 </div>
                 ${c.description ? `<div style="font-size:9px;color:var(--text-dim);padding:4px 0 0;font-style:italic;">${escapeHtml(c.description)}</div>` : ''}
             </div>`;
@@ -2707,35 +2711,62 @@ let bidState = null;
 
 function openBidModal(contract) {
     if (!contract) return;
-    const totalSeats = contract.budget_ceiling || 12400000;
 
-    // Initialize bid state with defaults
+    // Read materials from contract's required_materials (populated by tick processor from templates)
+    const reqMats = contract.required_materials || {};
+    const reqEquip = contract.required_equipment || [];
+    const reqWorkforce = contract.required_workforce || {};
+
+    // Base price per unit varies by material type (in dollars)
+    const MAT_BASE_PRICES = {
+        concrete: 180000, steel: 250000, lumber: 120000, aggregate: 80000,
+        em_systems: 320000, glass_facades: 280000, asphalt: 140000, heavy_parts: 400000,
+    };
+
+    // Build materials list from contract requirements (only include materials this contract needs)
+    const contractMaterials = BID_MATERIALS
+        .filter(m => reqMats[m.key] > 0)
+        .map(m => ({
+            ...m,
+            qty: reqMats[m.key],
+            basePrice: MAT_BASE_PRICES[m.key] || 200000,
+            grade: m.key === 'aggregate' ? 'LOW' : 'STANDARD',
+            highDisabled: false, // TODO: check nation manufacturing_output for steel
+        }));
+
+    // Build equipment list — check which are required and whether player owns them
+    const contractEquipment = BID_EQUIPMENT
+        .filter(e => reqEquip.includes(e.key))
+        .map(e => ({
+            ...e,
+            owned: (equipmentData || []).some(eq => eq.equipment_key === e.key && eq.quantity > 0),
+        }));
+
+    // Labor defaults from contract workforce requirements
+    const defaultLabor = (reqWorkforce.general || 100) + (reqWorkforce.skilled || 20);
+
+    // Overhead scales with budget
+    const budgetCeiling = contract.budget_ceiling || 100_000_000;
+    const overhead = Math.round(budgetCeiling * 0.03); // 3% of budget ceiling
+
     bidState = {
         contract,
-        budgetCeiling: totalSeats,
-        materials: BID_MATERIALS.map(m => ({
-            ...m,
-            qty: Math.floor(Math.random() * 8) + 3, // mock quantities
-            basePrice: Math.floor(Math.random() * 300000) + 100000, // mock base prices
-            grade: m.key === 'aggregate' ? 'LOW' : 'STANDARD', // aggregate defaults to Low
-            highDisabled: m.key === 'steel', // Steel high disabled as example
-        })),
-        laborCount: 120,
-        laborRate: 15200, // per tick
-        estimatedTicks: 8,
-        equipment: BID_EQUIPMENT.map(e => ({ ...e, owned: true })), // mock all owned
-        permits: [], // blank for now
-        overhead: 400000,
+        budgetCeiling,
+        materials: contractMaterials,
+        laborCount: defaultLabor,
+        laborRate: 15200,
+        estimatedTicks: contract.timeline_ticks || 8,
+        equipment: contractEquipment,
+        permits: [],
+        overhead,
         markupPct: 15,
-        competitors: [
-            { name: 'Constructora del Sur', rep: 52 },
-            { name: 'Meridian Builders', rep: 71 },
-        ],
-        playerRep: 67,
+        competitors: [], // TODO Phase 6: load from contract_bids
+        playerRep: faction?.standing || 50,
+        requiredWorkforce: reqWorkforce,
     };
 
     document.getElementById('bid-title').textContent = 'BID ASSEMBLY';
-    document.getElementById('bid-subtitle').textContent = (contract.name || 'Contract') + ' — ' + (contract.contract_number || '');
+    document.getElementById('bid-subtitle').textContent = (contract.name || 'Contract') + ' — ' + sectorLabel(contract.sector) + ' — ' + (contract.issuer_name || 'Government');
     document.getElementById('bid-overlay').classList.add('open');
     document.body.style.overflow = 'hidden';
     renderBidModal();
@@ -2833,13 +2864,24 @@ function renderBidModal() {
     leftHTML += `<div class="bid-line-total"><span class="bid-line-total__label">MATERIALS TOTAL</span><span class="bid-line-total__value">${fmtBid(materialsCost)}</span></div></div>`;
 
     // Labor
+    // Dynamic labor presets based on required workforce
+    const baseLabor = (s.requiredWorkforce?.general || 80) + (s.requiredWorkforce?.skilled || 20);
+    const laborPresets = [
+        Math.round(baseLabor * 0.8),
+        baseLabor,
+        Math.round(baseLabor * 1.2),
+        Math.round(baseLabor * 1.4),
+        Math.round(baseLabor * 1.6),
+    ];
     leftHTML += '<div class="bid-section"><div class="bid-section__title">Labor</div>';
     leftHTML += '<div class="bid-labor-presets">';
-    LABOR_PRESETS.forEach(p => {
+    laborPresets.forEach(p => {
         leftHTML += `<button class="bid-labor-btn ${s.laborCount === p ? 'active' : ''}" onclick="setBidLabor(${p})">${p}</button>`;
     });
     leftHTML += '</div>';
-    leftHTML += `<div class="bid-labor-formula">${s.laborCount} workers × ${fmtBid(s.laborRate)}/tick × ${s.estimatedTicks} ticks = <strong>${fmtBid(laborCost)}</strong></div>`;
+    const wfReq = s.requiredWorkforce || {};
+    leftHTML += `<div class="bid-labor-formula">Required: ${wfReq.general || '?'} general + ${wfReq.skilled || '?'} skilled<br>`;
+    leftHTML += `${s.laborCount} workers × ${fmtBid(s.laborRate)}/tick × ${s.estimatedTicks} ticks = <strong>${fmtBid(laborCost)}</strong></div>`;
     leftHTML += `<div class="bid-line-total"><span class="bid-line-total__label">LABOR TOTAL</span><span class="bid-line-total__value">${fmtBid(laborCost)}</span></div></div>`;
 
     // Equipment
@@ -2930,6 +2972,107 @@ window.closeBidModal = closeBidModal;
 window.setBidGrade = setBidGrade;
 window.setBidLabor = setBidLabor;
 window.setBidMarkup = setBidMarkup;
+
+let _bidSubmitting = false;
+async function submitBid() {
+    if (!bidState || !faction || _bidSubmitting) return;
+    const s = bidState;
+    const contract = s.contract;
+
+    // Calculate final values
+    let materialsCost = 0;
+    const materialGrades = {};
+    for (const m of s.materials) {
+        materialsCost += Math.round(m.qty * m.basePrice * GRADE_COSTS[m.grade]);
+        materialGrades[m.key] = m.grade;
+    }
+    const laborCost = Math.round(s.laborCount * s.laborRate * s.estimatedTicks);
+    const equipMaint = Math.round(s.equipment.filter(e => e.owned).length * 12000 * s.estimatedTicks);
+    const totalCost = materialsCost + laborCost + equipMaint + s.overhead;
+    const markupAmt = Math.round(totalCost * s.markupPct / 100);
+    const bidPrice = totalCost + markupAmt;
+    const avgQuality = Math.round(s.materials.reduce((sum, m) => sum + GRADE_QUALITY[m.grade], 0) / (s.materials.length || 1));
+
+    if (bidPrice > s.budgetCeiling) {
+        alert('Bid exceeds budget ceiling. Lower your costs or markup.');
+        return;
+    }
+
+    const btn = document.getElementById('bid-submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'SUBMITTING...';
+    _bidSubmitting = true;
+
+    try {
+        // Get current tick
+        const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shardData?.current_tick || 0;
+
+        // Check if player already bid on this contract
+        const { data: existingBid } = await _supabase
+            .from('contract_bids')
+            .select('id')
+            .eq('contract_id', contract.id)
+            .eq('faction_id', faction.id)
+            .maybeSingle();
+
+        if (existingBid) {
+            // Update existing bid
+            const { error } = await _supabase
+                .from('contract_bids')
+                .update({
+                    bid_price: bidPrice,
+                    material_grades: materialGrades,
+                    labor_count: s.laborCount,
+                    markup_pct: s.markupPct,
+                    estimated_cost: totalCost,
+                    estimated_quality: avgQuality,
+                    submitted_at_tick: currentTick,
+                })
+                .eq('id', existingBid.id);
+            if (error) throw error;
+        } else {
+            // Insert new bid
+            const { error } = await _supabase
+                .from('contract_bids')
+                .insert({
+                    contract_id: contract.id,
+                    faction_id: faction.id,
+                    bid_price: bidPrice,
+                    material_grades: materialGrades,
+                    labor_count: s.laborCount,
+                    markup_pct: s.markupPct,
+                    estimated_cost: totalCost,
+                    estimated_quality: avgQuality,
+                    status: 'pending',
+                    submitted_at_tick: currentTick,
+                });
+            if (error) throw error;
+        }
+
+        // Success — close modal and show confirmation
+        closeBidModal();
+        // Brief visual feedback
+        const countEl = document.getElementById('oc-count');
+        if (countEl) {
+            const origText = countEl.textContent;
+            countEl.textContent = '✓ BID SUBMITTED';
+            countEl.style.color = 'var(--green)';
+            setTimeout(() => { countEl.textContent = origText; countEl.style.color = ''; }, 2000);
+        }
+        // Reload contracts to reflect any status changes
+        await loadContracts();
+
+    } catch (err) {
+        console.error('Bid submission failed:', err);
+        alert('Failed to submit bid: ' + (err.message || 'Unknown error'));
+        btn.disabled = false;
+        btn.textContent = 'SUBMIT BID';
+    } finally {
+        _bidSubmitting = false;
+    }
+}
+window.submitBid = submitBid;
 
 function detailRow(label, value, color) {
     const colorStyle = color ? ` style="color:${color}"` : '';
@@ -3092,8 +3235,7 @@ async function placeBid() {
 async function loadContracts() {
     if (!faction || !faction.nation_id) return;
 
-    // Load open contracts from all nations (corps can see cross-nation opportunities)
-    // but primarily their home nation
+    // Load open contracts from all nations
     const { data, error } = await _supabase
         .from('construction_contracts')
         .select('*')
@@ -3105,6 +3247,20 @@ async function loadContracts() {
         contracts = [];
     } else {
         contracts = data || [];
+    }
+
+    // Load player's existing bids on open contracts
+    playerBids = {};
+    if (faction && contracts.length > 0) {
+        const contractIds = contracts.map(c => c.id);
+        const { data: bids } = await _supabase
+            .from('contract_bids')
+            .select('contract_id, bid_price, estimated_quality, status')
+            .eq('faction_id', faction.id)
+            .in('contract_id', contractIds);
+        for (const b of (bids || [])) {
+            playerBids[b.contract_id] = b;
+        }
     }
 
     renderContracts();
@@ -3154,82 +3310,71 @@ function renderActiveProjects() {
         return;
     }
 
-    let totalCrew = 0;
+    const currentTick = shard?.current_tick || 0;
     let totalBudget = 0;
-    let totalSpent = 0;
-    let lateCount = 0;
+    let totalBid = 0;
 
     let html = '';
     for (const p of activeProjects) {
-        const isGov = p.contract_type === 'GOVERNMENT';
+        const isGov = p.issuer_type === 'GOVERNMENT';
         const typeClass = isGov ? 'gov' : 'private';
-        const spent = Number(p.amount_spent) || 0;
-        const budget = Number(p.budget) || 1;
-        const budgetPct = Math.round((spent / budget) * 100);
-        const budgetColor = getBudgetColor(budgetPct);
-        const phase = p.current_phase || 'Permits';
-        const workforce = Number(p.assigned_workforce) || 0;
-        const assets = Number(p.assigned_assets) || 0;
+        const bid = Array.isArray(p.contract_bids) ? p.contract_bids[0] : p.contract_bids;
+        const bidPrice = bid?.bid_price || 0;
+        const estCost = bid?.estimated_cost || 0;
+        const quality = bid?.estimated_quality || 0;
+        const budget = p.budget_ceiling || 0;
 
-        const expectedFinishTick = p.expected_finish_tick;
-        const deadlineTick = p.deadline_tick || (p.started_at_tick ? p.started_at_tick + (p.timeline_months * 1) : null);
-        const isLate = expectedFinishTick && deadlineTick && expectedFinishTick > deadlineTick;
+        // Timeline
+        const awardedTick = p.awarded_at_tick || currentTick;
+        const deadlineTick = awardedTick + (p.timeline_ticks || 8);
+        const ticksRemaining = Math.max(0, deadlineTick - currentTick);
+        const ticksElapsed = Math.max(0, currentTick - awardedTick);
+        const totalTicks = p.timeline_ticks || 8;
+        const progressPct = Math.min(100, Math.round((ticksElapsed / totalTicks) * 100));
+        const isLate = currentTick > deadlineTick;
 
-        const expectedDate = expectedFinishTick ? tickToGameDate(expectedFinishTick) : '—';
-        const deadlineDate = deadlineTick ? tickToGameDate(deadlineTick) : '—';
+        const specCls = sectorClass(p.sector);
+        const specLbl = sectorLabel(p.sector);
 
-        const pmName = (p.pm_first_name && p.pm_last_name)
-            ? escapeHtml(p.pm_first_name) + ' ' + escapeHtml(p.pm_last_name)
-            : '—';
-
-        totalCrew += workforce;
         totalBudget += budget;
-        totalSpent += spent;
-        if (isLate) lateCount++;
+        totalBid += bidPrice;
 
         html += `<div class="ap-item">
             <div class="ap-item__row1">
                 <div class="ap-item__info">
                     <div class="ap-item__name">${escapeHtml(p.name)}</div>
-                    <div class="ap-item__id">${escapeHtml(p.contract_number)}</div>
+                    <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${escapeHtml(p.issuer_name || '—')} · ${specLbl}</div>
                 </div>
                 <span class="oc-item__type-badge ${typeClass}">${isGov ? 'GOV' : 'PVT'}</span>
             </div>
-            ${renderPhaseTrack(phase)}
             <div class="ap-budget">
                 <div class="ap-budget__header">
-                    <span class="ap-budget__label">COST / BUDGET</span>
-                    <span class="ap-budget__values" style="color:${budgetColor}">
-                        ${fmtBig(spent)} <span style="color:var(--text-dim)">/</span> ${fmtBig(budget)}
+                    <span class="ap-budget__label">PROGRESS</span>
+                    <span class="ap-budget__values" style="color:${isLate ? 'var(--red)' : 'var(--teal)'}">
+                        ${ticksElapsed}/${totalTicks} ticks ${isLate ? '<span style="color:var(--red);font-weight:700;"> OVERDUE</span>' : ''}
                     </span>
                 </div>
                 <div class="ap-budget__bar">
-                    <div class="ap-budget__fill" style="width:${Math.min(budgetPct, 100)}%;background:${budgetColor}"></div>
+                    <div class="ap-budget__fill" style="width:${progressPct}%;background:${isLate ? 'var(--red)' : 'var(--teal)'}"></div>
                 </div>
             </div>
             <div class="ap-details">
-                <div class="ap-detail-cell" style="flex:1.2">
-                    <div class="ap-detail-cell__label">PM</div>
-                    <div class="ap-detail-cell__value">${pmName}</div>
+                <div class="ap-detail-cell" style="flex:1">
+                    <div class="ap-detail-cell__label">YOUR BID</div>
+                    <div class="ap-detail-cell__value" style="font-size:10px;font-weight:700;color:var(--gold)">${fmtBudget(bidPrice)}</div>
+                </div>
+                <div class="ap-detail-cell" style="flex:1">
+                    <div class="ap-detail-cell__label">EST. COST</div>
+                    <div class="ap-detail-cell__value" style="font-size:10px;font-weight:700;color:var(--red)">${fmtBudget(estCost)}</div>
                 </div>
                 <div class="ap-detail-cell" style="flex:0.7;text-align:center">
-                    <div class="ap-detail-cell__label">CREW</div>
-                    <div class="ap-detail-cell__value${workforce === 0 ? ' zero' : ''}" style="font-size:10px;font-weight:700">${workforce}</div>
+                    <div class="ap-detail-cell__label">QUALITY</div>
+                    <div class="ap-detail-cell__value" style="font-size:10px;font-weight:700;color:${quality >= 70 ? 'var(--green)' : quality >= 40 ? 'var(--teal)' : 'var(--orange)'}">${quality}/100</div>
                 </div>
-                <div class="ap-detail-cell" style="flex:0.6;text-align:center">
-                    <div class="ap-detail-cell__label">ASSETS</div>
-                    <div class="ap-detail-cell__value${assets === 0 ? ' zero' : ''}" style="font-size:10px;font-weight:700">${assets}</div>
+                <div class="ap-detail-cell" style="flex:1">
+                    <div class="ap-detail-cell__label">REMAINING</div>
+                    <div class="ap-detail-cell__value" style="font-size:10px;font-weight:700;color:${isLate ? 'var(--red)' : 'var(--text-bright)'}">${ticksRemaining} ticks</div>
                 </div>
-                <div class="ap-detail-cell" style="flex:1.5">
-                    <div class="ap-detail-cell__label">FINISH</div>
-                    <div class="ap-detail-cell__value" style="color:${isLate ? 'var(--orange)' : 'var(--text-bright)'}">
-                        ${expectedDate}${isLate ? '<span class="ap-late-tag">LATE</span>' : ''}
-                    </div>
-                    <div class="ap-detail-cell__sub">due ${deadlineDate}</div>
-                </div>
-            </div>
-            <div class="ap-item__view-row">
-                <button class="ap-view-btn" onclick="openContractDetail(activeProjects.find(c=>c.id==='${p.id}'))">VIEW</button>
             </div>
         </div>`;
     }
@@ -3237,28 +3382,25 @@ function renderActiveProjects() {
     list.innerHTML = html;
 
     // Footer
-    footer.style.display = '';
-    document.getElementById('ap-total-crew').textContent = totalCrew.toLocaleString();
-    document.getElementById('ap-total-budget').textContent = fmtBig(totalBudget);
-    document.getElementById('ap-total-spent').textContent = fmtBig(totalSpent);
-
-    const lateBadge = document.getElementById('ap-late-badge');
-    if (lateCount > 0) {
-        lateBadge.innerHTML = `<span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:1px 6px;color:var(--orange);background:var(--orange-faint);border:1px solid var(--orange-border);">${lateCount} LATE</span>`;
-    } else {
-        lateBadge.innerHTML = '';
+    footer.style.display = activeProjects.length > 0 ? '' : 'none';
+    if (activeProjects.length > 0) {
+        document.getElementById('ap-total-crew').textContent = activeProjects.length;
+        document.getElementById('ap-total-budget').textContent = fmtBudget(totalBudget);
+        document.getElementById('ap-total-spent').textContent = fmtBudget(totalBid);
     }
 }
 
 async function loadActiveProjects() {
     if (!faction) return;
 
+    // Load awarded + in_progress contracts for this corporation
     const { data, error } = await _supabase
-        .from('corp_contracts')
-        .select('*')
-        .eq('winner_faction_id', faction.id)
-        .eq('status', 'active')
-        .order('started_at_tick', { ascending: true });
+        .from('construction_contracts')
+        .select('*, contract_bids!inner(bid_price, material_grades, labor_count, estimated_cost, estimated_quality)')
+        .eq('awarded_to_faction', faction.id)
+        .in('status', ['awarded', 'in_progress'])
+        .eq('contract_bids.faction_id', faction.id)
+        .order('awarded_at_tick', { ascending: true });
 
     if (error) {
         console.warn('Failed to load active projects:', error.message);
@@ -4596,10 +4738,51 @@ function renderDeliveries() {
     list.innerHTML = html;
 }
 
-function loadDeliveries() {
-    // Empty for now — no completed deliveries exist in game yet.
-    // Future: fetch from Supabase and populate dlDeliveries
-    dlDeliveries = [];
+async function loadDeliveries() {
+    if (!faction) { dlDeliveries = []; renderDeliveries(); return; }
+
+    const { data, error } = await _supabase
+        .from('construction_deliveries')
+        .select('*, construction_contracts(name, sector, issuer_name, issuer_type, timeline_ticks)')
+        .eq('faction_id', faction.id)
+        .order('delivered_at_tick', { ascending: false })
+        .limit(20);
+
+    if (error) {
+        console.warn('Failed to load deliveries:', error.message);
+        dlDeliveries = [];
+    } else {
+        // Map to the format renderDeliveries expects
+        dlDeliveries = (data || []).map(d => {
+            const cc = d.construction_contracts || {};
+            return {
+                id: d.contract_id,
+                name: cc.name || 'Project',
+                type: cc.issuer_type || 'GOVERNMENT',
+                issuer: cc.issuer_name || 'Government',
+                delivered: 'Tick ' + (d.delivered_at_tick || 0),
+                result: d.result,
+                quality_score: d.quality_score,
+                rep_change: d.rep_change,
+                financials: {
+                    contract_value: d.contract_value || 0,
+                    bonus: d.quality_bonus || 0,
+                    penalty: d.penalties || 0,
+                    payment: d.payment_received || 0,
+                    total_cost: d.total_cost || 0,
+                },
+                inspection: d.inspection || {},
+                materials_used: d.materials_used || [],
+                timeline: {
+                    expected: d.timeline_expected || 0,
+                    actual: d.timeline_actual || 0,
+                    on_time: d.on_time,
+                    early: d.timeline_actual < d.timeline_expected,
+                },
+            };
+        });
+    }
+
     renderDeliveries();
 }
 
