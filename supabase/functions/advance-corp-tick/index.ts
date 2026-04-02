@@ -137,14 +137,12 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
     if (targetContracts === 0) return [];
 
     // Count active corporations in this nation
-    const { data: corpCount } = await supabase
+    const { count: corpCount } = await supabase
         .from('factions')
         .select('id', { count: 'exact', head: true })
         .eq('nation_id', nation.id)
         .eq('faction_type', 'corporation');
-    const activeCorporations = corpCount?.length ?? 0;
-    const corpNum = activeCorporations || 0;
-    const maxOpen = corpNum + 2;
+    const maxOpen = (corpCount || 0) + 2;
 
     // Count currently open contracts
     const { count: openCount } = await supabase
@@ -335,17 +333,17 @@ async function processActiveProjects(supabase, nationId, currentTick) {
         // Load the winning bid for cost calculations
         const { data: bid } = await supabase
             .from('contract_bids')
-            .select('estimated_cost, bid_price, estimated_quality, faction_id')
+            .select('estimated_cost, bid_price, estimated_quality, material_grades, faction_id')
             .eq('contract_id', contract.id)
             .eq('status', 'won')
             .maybeSingle();
 
         if (!bid) continue;
 
-        // Per-tick cost deduction from corp cash
+        // Per-tick cost deduction from corp cash (skip award tick to avoid off-by-one)
         // Known limitation: corps can complete projects even with 0 cash (no bankruptcy system yet)
         const perTickCost = Math.round((bid.estimated_cost || 0) / totalTicks);
-        if (perTickCost > 0) {
+        if (perTickCost > 0 && ticksElapsed > 0) {
             const { data: corp } = await supabase
                 .from('factions')
                 .select('corp_cash_reserves')
@@ -432,9 +430,13 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             }
 
             // Delivery succeeded — now mark contract completed and pay corporation
-            await supabase.from('construction_contracts')
+            const { error: completeErr } = await supabase.from('construction_contracts')
                 .update({ status: 'completed', completed_at_tick: currentTick })
                 .eq('id', contract.id);
+            if (completeErr) {
+                console.error(`[Projects] Failed to mark ${contract.name} completed — delivery record exists but contract stays in_progress. Manual fix needed:`, completeErr.message);
+                continue;
+            }
 
             if (actualPayment > 0) {
                 const { data: corpPay } = await supabase
