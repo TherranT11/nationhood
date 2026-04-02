@@ -4306,6 +4306,10 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     await supabase.from('faction_coalitions').delete().eq('faction_b_id', factionId);
     await supabase.from('loyalty_demands').delete().eq('strongman_faction_id', factionId);
     await supabase.from('loyalty_demands').delete().eq('target_faction_id', factionId);
+    // Remove from all group chats (nation chat, etc.) so rejoining a different nation starts clean
+    await supabase.from('group_chat_members').delete().eq('faction_id', factionId);
+    // Remove electoral standing from old nation
+    await supabase.from('faction_electoral_standing').delete().eq('faction_id', factionId);
 
     return { result: 'disbanded' };
 }
