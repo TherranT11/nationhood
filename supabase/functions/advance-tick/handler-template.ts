@@ -1410,6 +1410,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         try {
             const effects = Array.isArray(nation.timed_momentum_effects) ? nation.timed_momentum_effects : [];
             if (effects.length > 0) {
+                // Decrement remaining_ticks FIRST to prevent double-fire if RPC calls fail
+                const updated = effects
+                    .map(e => ({ ...e, remaining_ticks: e.remaining_ticks - 1 }))
+                    .filter(e => e.remaining_ticks >= 0);
+                const afterCleanup = updated.filter(e => e.remaining_ticks > 0);
+                await supabase.from('nations').update({ timed_momentum_effects: afterCleanup }).eq('id', nation.id);
+                nation.timed_momentum_effects = afterCleanup;
+
+                // Now apply momentum boosts for this tick (using pre-decrement values)
                 for (const eff of effects) {
                     if (eff.remaining_ticks > 0 && Array.isArray(eff.party_ids)) {
                         for (const partyId of eff.party_ids) {
@@ -1422,12 +1431,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         }
                     }
                 }
-                // Decrement remaining_ticks and remove expired effects
-                const updated = effects
-                    .map(e => ({ ...e, remaining_ticks: e.remaining_ticks - 1 }))
-                    .filter(e => e.remaining_ticks > 0);
-                await supabase.from('nations').update({ timed_momentum_effects: updated }).eq('id', nation.id);
-                nation.timed_momentum_effects = updated;
             }
         } catch (timedMomErr) {
             console.error(`[advanceTick] Timed momentum effects failed for ${nation.name} (non-fatal):`, timedMomErr);
