@@ -1227,8 +1227,8 @@ function computeRealizedVoteShares(updates, profile, nation) {
     if (updates.length === 0) return;
 
     const enthusiasm = Number(profile?.enthusiasm ?? 50);
-    const polarization = clamp(Number(nation?.polarization ?? 50) || 50, 0, 100);
-    const stability = clamp(Number(nation?.stability ?? 50) || 50, 0, 100);
+    const polarization = clamp(Number(nation?.polarization ?? 50), 0, 100);
+    const stability = clamp(Number(nation?.stability ?? 50), 0, 100);
 
     // Dynamic base turnout:
     //   Base 50% + polarization pushes it up (polarized electorates are angry, they vote)
