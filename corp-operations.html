@@ -3436,11 +3436,14 @@ function openProjectModal(projectId) {
         qualityLabel,
         laborCount,
         wfNeeded,
-        events: [], // TODO: load from construction_events table when it exists
+        events: [],
     };
 
     document.getElementById('pm-overlay').classList.add('open');
     document.body.style.overflow = 'hidden';
+
+    // Load events from DB
+    loadProjectEvents(project.id).then(() => renderProjectModal());
     renderProjectModal();
 }
 
@@ -3722,7 +3725,7 @@ function renderPmEvents(s) {
                     // Confirm button
                     if (isSel) {
                         html += `<div class="pm-resp__confirm">
-                            <button class="pm-resp__confirm-btn" style="background:${tagColor}" onclick="event.stopPropagation()">CONFIRM</button>
+                            <button class="pm-resp__confirm-btn" style="background:${tagColor}" onclick="event.stopPropagation();confirmEventResponse('${evt.id}','${resp.key}')">CONFIRM</button>
                         </div>`;
                     }
 
@@ -3813,6 +3816,75 @@ window.closeProjectModal = closeProjectModal;
 window.pmSetTab = pmSetTab;
 window.pmToggleEvent = pmToggleEvent;
 window.pmSelectResponse = pmSelectResponse;
+
+async function loadProjectEvents(contractId) {
+    if (!pmState) return;
+    const { data, error } = await _supabase
+        .from('construction_events')
+        .select('*')
+        .eq('contract_id', contractId)
+        .order('fired_at_tick', { ascending: false });
+
+    if (error) {
+        console.warn('Failed to load project events:', error.message);
+        pmState.events = [];
+    } else {
+        // Map DB rows to the format the renderer expects
+        pmState.events = (data || []).map(e => ({
+            id: e.id,
+            type: e.type,
+            severity: e.severity,
+            tick: e.fired_at_tick,
+            title: e.title,
+            desc: e.description,
+            impact: e.impact,
+            status: e.status === 'ACTIVE' ? 'ACTIVE' : 'RESOLVED',
+            resolution: e.resolution,
+            responses: e.responses || [],
+        }));
+    }
+    renderProjectModal();
+}
+
+let _pmResponding = false;
+async function confirmEventResponse(eventId, responseKey) {
+    if (_pmResponding || !pmState) return;
+    _pmResponding = true;
+
+    try {
+        const { data, error } = await _supabase.rpc('resolve_construction_event', {
+            p_event_id: eventId,
+            p_response_key: responseKey,
+        });
+
+        if (error) {
+            console.error('Failed to resolve event:', error.message);
+            alert('Failed to submit response: ' + error.message);
+            return;
+        }
+
+        const result = typeof data === 'string' ? JSON.parse(data) : data;
+        if (result?.error) {
+            alert('Error: ' + result.error);
+            return;
+        }
+
+        // Reload events and active projects to reflect changes
+        await loadProjectEvents(pmState.project.id);
+        await loadActiveProjects();
+
+        // Update quality in pmState if it changed
+        if (result?.quality_applied && result.quality_applied !== 0) {
+            pmState.quality = Math.max(0, Math.min(100, pmState.quality + result.quality_applied));
+            pmState.qualityLabel = pmState.quality >= 80 ? 'STRONG' : pmState.quality >= 60 ? 'PROMISING' : pmState.quality >= 40 ? 'FAIR' : 'UNCERTAIN';
+        }
+
+        renderProjectModal();
+    } finally {
+        _pmResponding = false;
+    }
+}
+window.confirmEventResponse = confirmEventResponse;
 
 function detailRow(label, value, color) {
     const colorStyle = color ? ` style="color:${color}"` : '';
