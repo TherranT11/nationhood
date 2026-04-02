@@ -1797,12 +1797,28 @@ function renderFoundationalOptions() {
             <div class="policy-option-desc">${currentNation.party_registration_threshold > 0
                 ? 'Already enacted — parties below ' + currentNation.party_registration_threshold + '% of seats are removed after elections.'
                 : 'Raises barriers for party representation. Choose a threshold (5%, 10%, or 15%) — parties below that percentage of seats have their seats reallocated after elections. Affected parties cannot sponsor bills, vote, or hold ministries. Legitimacy -4, polarization +5, freedom index -3. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+            <div id="foundational-party-reg-config" style="margin-top:12px;${selectedFoundationalType === 'party_registration_act' ? '' : 'display:none;'}">
+                <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-bottom:6px;">Seat Threshold:</label>
+                <select id="foundational-party-reg-threshold" style="background:var(--bg-card);border:1px solid var(--red);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:220px;">
+                    <option value="5">5% — Moderate</option>
+                    <option value="10">10% — Restrictive</option>
+                    <option value="15">15% — Severe</option>
+                </select>
+            </div>
         </div>
         <div class="policy-option${selectedFoundationalType === 'legislative_quorum_reform' ? ' selected' : ''}" style="${selectedFoundationalType === 'legislative_quorum_reform' ? 'border-color:var(--red);' : ''}${currentNation.legislative_quorum_override > 0 ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('legislative_quorum_reform')" data-foundational-type="legislative_quorum_reform">
             <div class="policy-option-name">📋 Legislative Quorum Reform Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
             <div class="policy-option-desc">${currentNation.legislative_quorum_override > 0
                 ? 'Already enacted — quorum requirement lowered to ' + currentNation.legislative_quorum_override + '%.'
                 : 'Lowers the quorum requirement for standard bills from 50%. Choose a new threshold (40%, 30%, or 25%). The ruling coalition can pass legislation with fewer participants. Legitimacy -3, freedom index -2. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+            <div id="foundational-quorum-config" style="margin-top:12px;${selectedFoundationalType === 'legislative_quorum_reform' ? '' : 'display:none;'}">
+                <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-bottom:6px;">New Quorum Requirement:</label>
+                <select id="foundational-quorum-threshold" style="background:var(--bg-card);border:1px solid var(--red);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:220px;">
+                    <option value="40">40% — Moderate reduction</option>
+                    <option value="30">30% — Significant reduction</option>
+                    <option value="25">25% — Minimal quorum</option>
+                </select>
+            </div>
         </div>
         <div class="policy-option${selectedFoundationalType === 'constitutional_amendment_streamlining' ? ' selected' : ''}" style="${selectedFoundationalType === 'constitutional_amendment_streamlining' ? 'border-color:var(--red);' : ''}${currentNation.constitutional_amendment_streamlining ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('constitutional_amendment_streamlining')" data-foundational-type="constitutional_amendment_streamlining">
             <div class="policy-option-name">📜 Constitutional Amendment Streamlining <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
@@ -1839,7 +1855,7 @@ function selectFoundationalType(type) {
     document.querySelectorAll('[data-foundational-type]').forEach(el => {
         const isSelected = el.dataset.foundationalType === type;
         el.classList.toggle('selected', isSelected);
-        const authTypes = ['abolish_term_limits', 'state_media_control', 'emergency_powers'];
+        const authTypes = ['abolish_term_limits', 'state_media_control', 'emergency_powers', 'judicial_appointment_politicization', 'electoral_commission_reform', 'party_registration_act', 'legislative_quorum_reform', 'constitutional_amendment_streamlining'];
         el.style.borderColor = isSelected ? (authTypes.includes(type) ? 'var(--red)' : 'var(--purple)') : '';
     });
     const seatsConfig = document.getElementById('foundational-seats-config');
@@ -1854,6 +1870,10 @@ function selectFoundationalType(type) {
     if (termLimitConfig) termLimitConfig.style.display = type === 'term_limit' ? '' : 'none';
     if (parlTermConfig) parlTermConfig.style.display = type === 'parliamentary_term_length' ? '' : 'none';
     if (hosElectionConfig) hosElectionConfig.style.display = type === 'hos_election' ? '' : 'none';
+    const partyRegConfig = document.getElementById('foundational-party-reg-config');
+    const quorumConfig = document.getElementById('foundational-quorum-config');
+    if (partyRegConfig) partyRegConfig.style.display = type === 'party_registration_act' ? '' : 'none';
+    if (quorumConfig) quorumConfig.style.display = type === 'legislative_quorum_reform' ? '' : 'none';
     document.getElementById('add-article-btn').disabled = false;
 }
 window.selectFoundationalType = selectFoundationalType;
@@ -2177,6 +2197,84 @@ async function addArticle() {
             document.getElementById('submit-bill-btn').disabled = false;
             _hideAllArticleButtons();
             return;
+        } else if (selectedFoundationalType === 'judicial_appointment_politicization') {
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'judicial_appointment_politicization',
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = 'Judicial Appointment Politicization Act';
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'electoral_commission_reform') {
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'electoral_commission_reform',
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = 'Electoral Commission Reform Act';
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'party_registration_act') {
+            const thresholdEl = document.getElementById('foundational-party-reg-threshold');
+            const threshold = thresholdEl ? parseInt(thresholdEl.value) : 0;
+            if (!threshold || threshold <= 0) { alert('Please select a registration threshold.'); return; }
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'party_registration_act',
+                proposedPartyRegistrationThreshold: threshold,
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = `Political Party Registration Act (${threshold}% threshold)`;
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'legislative_quorum_reform') {
+            const quorumEl = document.getElementById('foundational-quorum-threshold');
+            const quorum = quorumEl ? parseInt(quorumEl.value) : 0;
+            if (!quorum || quorum <= 0) { alert('Please select a quorum threshold.'); return; }
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'legislative_quorum_reform',
+                proposedQuorumOverride: quorum,
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = `Legislative Quorum Reform Act (${quorum}% quorum)`;
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'constitutional_amendment_streamlining') {
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'constitutional_amendment_streamlining',
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = 'Constitutional Amendment Streamlining Act';
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
         } else {
             alert('Please select a foundational option first.');
             return;
@@ -2292,7 +2390,7 @@ function renderDraftArticles() {
                     <div class="draft-article-info">
                         <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
                         <div class="draft-article-name">📺 State Media Control Act</div>
-                        <div class="draft-article-meta">Press freedom capped at 40. Gov. parties +1 approval/tick (10t). Opposition -1/tick (10t). Gov. approval +2/tick (5t). Requires 2/3 supermajority.</div>
+                        <div class="draft-article-meta">Press freedom capped at 40. +10 Gov Approval. +2 Momentum/tick for governing parties (10 ticks). Requires 2/3 supermajority.</div>
                     </div>
                     <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
                 </div>`;
@@ -2303,6 +2401,56 @@ function renderDraftArticles() {
                         <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
                         <div class="draft-article-name">🚨 Emergency Powers Act</div>
                         <div class="draft-article-meta">Head of government may declare emergencies to bypass votes. Stat drain while active. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'judicial_appointment_politicization') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">⚖️ Judicial Appointment Politicization Act</div>
+                        <div class="draft-article-meta">Judicial independence capped at 30. Legitimacy -5, freedom index -3. Harder to remove leader. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'electoral_commission_reform') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">🗳️ Electoral Commission Reform Act</div>
+                        <div class="draft-article-meta">Governing parties get 5-10% seat bonus in elections. Legitimacy -5, polarization +3. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'party_registration_act') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">🚫 Political Party Registration Act (${art.proposedPartyRegistrationThreshold || '?'}%)</div>
+                        <div class="draft-article-meta">Parties below ${art.proposedPartyRegistrationThreshold || '?'}% of seats removed. Legitimacy -4, polarization +5, freedom index -3. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'legislative_quorum_reform') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">📋 Legislative Quorum Reform Act (${art.proposedQuorumOverride || '?'}%)</div>
+                        <div class="draft-article-meta">Quorum lowered to ${art.proposedQuorumOverride || '?'}%. Legitimacy -3, freedom index -2. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'constitutional_amendment_streamlining') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">📜 Constitutional Amendment Streamlining</div>
+                        <div class="draft-article-meta">Foundational bills need only 55% (down from 67%). Legitimacy -8, polarization +5, freedom index -5. Requires 2/3 supermajority.</div>
                     </div>
                     <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
                 </div>`;
@@ -2829,9 +2977,9 @@ async function submitToCommittee() {
             } else if (fArt.foundationalSubtype === 'electoral_commission_reform') {
                 billInsert.proposed_electoral_commission_reform = true;
             } else if (fArt.foundationalSubtype === 'party_registration_act') {
-                billInsert.proposed_party_registration_threshold = 10; // default 10%, can be changed in committee
+                billInsert.proposed_party_registration_threshold = fArt.proposedPartyRegistrationThreshold || 10;
             } else if (fArt.foundationalSubtype === 'legislative_quorum_reform') {
-                billInsert.proposed_legislative_quorum_override = 30; // default 30%, can be changed in committee
+                billInsert.proposed_legislative_quorum_override = fArt.proposedQuorumOverride || 30;
             } else if (fArt.foundationalSubtype === 'constitutional_amendment_streamlining') {
                 billInsert.proposed_constitutional_amendment_streamlining = true;
             } else {
