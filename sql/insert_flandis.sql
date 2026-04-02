@@ -23,7 +23,7 @@ UPDATE nations SET
     continent = 'Meridian',
 
     -- Head of State (Elected President)
-    hos_election_method = 'elected',
+    hos_election_method = 'direct_vote',
     head_of_state_title = 'President',
     head_of_state_first_name = 'Harmen',
     head_of_state_last_name = 'Van der Laan',
@@ -218,7 +218,7 @@ SET seed_stats = jsonb_build_object(
     'illegal_immigration', 38,
     'emigration', 24,
     'international_reputation', 72,
-    'hos_election_method', 'elected',
+    'hos_election_method', 'direct_vote',
     'head_of_state_title', 'President'
 )
 WHERE LOWER(name) = 'flandis';
