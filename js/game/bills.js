@@ -1413,6 +1413,30 @@ export async function resolveExpiredVotes(supabase, nationId) {
                                 auto_renew: dt.auto_renew || false,
                                 withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
                                 diplomatic_proposal_id: proposal.id
+                            }).select('id').single().then(async ({ data: newTA, error: taErr }) => {
+                                if (taErr) { console.error('[ratification] trade_agreements insert failed:', taErr.message); return; }
+                                // For economic aid: create aid_agreement_state so per-tick budget processing works
+                                if (pd.agreement_type === 'economic_aid' && newTA) {
+                                    const aidArt = activeArticles.find(a => a.type === 'aid_terms');
+                                    if (aidArt) {
+                                        const donorId = aidArt.data?.donor_nation_id;
+                                        const annualAmount = Number(aidArt.data?.annual_amount || 0);
+                                        if (donorId && annualAmount > 0) {
+                                            const recipientId = donorId === proposal.proposing_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+                                            const { error: aidErr } = await supabase.from('aid_agreement_state').insert({
+                                                agreement_id: newTA.id,
+                                                donor_nation_id: donorId,
+                                                recipient_nation_id: recipientId,
+                                                current_annual_amount: annualAmount,
+                                                original_annual_amount: annualAmount,
+                                                next_review_tick: currentTick + (DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL || 12),
+                                                condition_failures: {}
+                                            });
+                                            if (aidErr) console.error('[ratification] aid_agreement_state insert failed:', aidErr.message);
+                                            else console.log(`[ratification] Aid state created: donor=${donorId}, recipient=${recipientId}, amount=$${(annualAmount/1e9).toFixed(1)}B/yr`);
+                                        }
+                                    }
+                                }
                             });
                         }
 
