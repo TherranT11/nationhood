@@ -78,6 +78,146 @@ async function adjustFactionMomentum(supabase: any, factionId: string, nationId:
     }
 }
 
+// ==================== CROSS-STAT CONNECTORS ====================
+// Realistic economic feedback loops. Runs each tick after stat effects.
+// Small per-tick nudges (0.1-0.5) so players can counteract with policy.
+
+async function processStatConnectors(supabase: any, nation: any) {
+    const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v * 10) / 10));
+    const gdp = Number(nation.gdp ?? 0);
+    const updates: any = {};
+    let changed = false;
+
+    // Read current stats
+    const unemployment = Number(nation.unemployment ?? 50);
+    const happiness = Number(nation.happiness ?? 50);
+    const gdpGrowth = Number(nation.gdp_growth ?? 50);
+    const standardOfLiving = Number(nation.standard_of_living ?? 50);
+    const inflation = Number(nation.inflation ?? 38);
+    const currencyStrength = Number(nation.currency_strength ?? 50);
+    const tradeBalance = Number(nation.trade_balance ?? 50);
+    const crimeRate = Number(nation.crime_rate ?? 20);
+    const foreignInvestment = Number(nation.foreign_investment ?? 50);
+    const corruption = Number(nation.corruption ?? 50);
+    const efficiency = Number(nation.efficiency ?? 50);
+
+    // Calculate surplus ratio from budget (requires GDP > 0)
+    // Revenue and expenditure are computed per tick; we approximate from nation stats
+    const revenue = Number(nation.revenue_per_tick ?? 0);
+    const expenditure = Number(nation.expenditure_per_tick ?? 0);
+    const surplus = revenue - expenditure;
+    const surplusRatio = gdp > 0 ? (surplus / gdp) * 100 : 0; // as % of GDP
+
+    // ── 1. Unemployment → Happiness ──
+    // High unemployment makes people unhappy
+    if (unemployment > 10) {
+        const delta = -(unemployment - 10) * 0.15;
+        updates.happiness = clamp(happiness + delta);
+        changed = true;
+    } else if (unemployment < 4) {
+        const delta = (4 - unemployment) * 0.1;
+        updates.happiness = clamp(happiness + delta);
+        changed = true;
+    }
+
+    // ── 2. Unemployment → GDP Growth ──
+    // Mass unemployment drags the economy
+    if (unemployment > 10) {
+        const delta = -(unemployment - 10) * 0.1;
+        updates.gdp_growth = clamp(gdpGrowth + delta);
+        changed = true;
+    } else if (unemployment < 4) {
+        updates.gdp_growth = clamp(gdpGrowth + 0.1);
+        changed = true;
+    }
+
+    // ── 3. Unemployment → Standard of Living ──
+    // Can't maintain high SoL with mass unemployment
+    if (unemployment > 8) {
+        const delta = -(unemployment - 8) * 0.2;
+        updates.standard_of_living = clamp(standardOfLiving + delta);
+        changed = true;
+    }
+
+    // ── 4. Low Unemployment → Inflation (labor shortage) ──
+    // Full employment → wage pressure → prices rise
+    if (unemployment < 4) {
+        const delta = (4 - unemployment) * 0.15;
+        updates.inflation = clamp(inflation + delta);
+        changed = true;
+    }
+
+    // ── 5. Surplus → Inflation ──
+    // Extracting too much from economy via taxes without spending it back
+    if (surplusRatio > 5) {
+        const delta = (surplusRatio - 5) * 0.1;
+        updates.inflation = clamp((updates.inflation ?? inflation) + delta);
+        changed = true;
+    }
+    // Deficit spending is also inflationary
+    if (surplusRatio < -5) {
+        const delta = (-surplusRatio - 5) * 0.05;
+        updates.inflation = clamp((updates.inflation ?? inflation) + delta);
+        changed = true;
+    }
+
+    // ── 6. Surplus → Currency Strength ──
+    // Strong fiscal position attracts capital → currency appreciates
+    if (surplusRatio > 3) {
+        const delta = (surplusRatio - 3) * 0.08;
+        updates.currency_strength = clamp(currencyStrength + delta);
+        changed = true;
+    }
+    // Large deficit weakens currency
+    if (surplusRatio < -5) {
+        const delta = (-surplusRatio - 5) * 0.1;
+        updates.currency_strength = clamp(currencyStrength - delta);
+        changed = true;
+    }
+
+    // ── 7. High Currency → Trade Balance Damage ──
+    // Strong currency makes exports expensive, imports cheap
+    if (currencyStrength > 65) {
+        const delta = -(currencyStrength - 65) * 0.06;
+        updates.trade_balance = clamp(tradeBalance + delta);
+        changed = true;
+    } else if (currencyStrength < 35) {
+        const delta = (35 - currencyStrength) * 0.04;
+        updates.trade_balance = clamp(tradeBalance + delta);
+        changed = true;
+    }
+
+    // ── 8. Crime → Foreign Investment ──
+    // High crime scares away capital
+    if (crimeRate > 30) {
+        const delta = -(crimeRate - 30) * 0.08;
+        updates.foreign_investment = clamp(foreignInvestment + delta);
+        changed = true;
+    }
+
+    // ── 9. Corruption → Efficiency ──
+    // Corrupt governments waste resources
+    if (corruption > 50) {
+        const delta = -(corruption - 50) * 0.05;
+        updates.efficiency = clamp(efficiency + delta);
+        changed = true;
+    } else if (corruption < 20) {
+        const delta = (20 - corruption) * 0.03;
+        updates.efficiency = clamp(efficiency + delta);
+        changed = true;
+    }
+
+    // ── Write updates ──
+    if (changed) {
+        const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
+        if (error) {
+            console.error(`[StatConnectors] Update failed for ${nation.name}:`, error.message);
+        }
+        // Apply to in-memory nation object so downstream processors see fresh values
+        Object.assign(nation, updates);
+    }
+}
+
 // ==================== POPULATION GROWTH ====================
 //
 // population_growth is a standalone 0-100 stat driven by policy effects and decay.
@@ -1918,6 +2058,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (collapseErr) {
             console.error(`[advanceTick] Gov collapse check failed for ${nation.name} (non-fatal):`, collapseErr);
+        }
+
+        // Cross-stat connectors: realistic economic feedback loops
+        try {
+            await processStatConnectors(supabase, nation);
+        } catch (connErr) {
+            console.error(`[advanceTick] Stat connectors failed for ${nation.name} (non-fatal):`, connErr);
         }
 
         // Re-fetch nation with post-effect values for remaining processors

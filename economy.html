@@ -761,7 +761,7 @@ async function submitTaxBill(nation) {
 function computeBudgetSummary(nation) {
     var budget = calculateNationalBudget(nation);
     if (tradeData && tradeData.summary) {
-        applyTradeTariffOverride(budget, Number(tradeData.summary.tariff_revenue));
+        applyTradeTariffOverride(budget, Number(tradeData.summary.tariff_revenue), Number(nation.gdp ?? nation.GDP ?? 0));
     }
     var aidReceived = aidData ? Number(aidData.received || 0) : 0;
     var aidGivenAmt = aidData ? Number(aidData.given || 0) : 0;
@@ -1269,7 +1269,7 @@ function getSliderColorClass(rate, maxRate) {
 function renderTaxationTab(nation) {
     var budget = calculateNationalBudget(nation);
     if (tradeData && tradeData.summary && Number(tradeData.summary.tariff_revenue) > 0) {
-        applyTradeTariffOverride(budget, tradeData.summary.tariff_revenue);
+        applyTradeTariffOverride(budget, tradeData.summary.tariff_revenue, Number(nation.gdp ?? nation.GDP ?? 0));
     }
 
     var incomeTax = Math.round(Number(nation.income_tax || 0));

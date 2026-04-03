@@ -62,10 +62,16 @@ export function calculateNationalBudget(nation) {
  * Override formula-based tariff revenue with real trade engine data.
  * Mutates the budget object in place and returns it.
  */
-export function applyTradeTariffOverride(budget, tradeTariffRevenue) {
+export function applyTradeTariffOverride(budget, tradeTariffRevenue, gdp) {
     if (tradeTariffRevenue != null && Number(tradeTariffRevenue) > 0) {
         const oldTariff = budget.tariffRevenue;
-        budget.tariffRevenue = Number(tradeTariffRevenue);
+        let newTariff = Number(tradeTariffRevenue);
+        // Cap tariff revenue at 4% of GDP — realistic ceiling even for protectionist economies
+        if (gdp > 0) {
+            const maxTariff = gdp * 0.04;
+            newTariff = Math.min(newTariff, maxTariff);
+        }
+        budget.tariffRevenue = newTariff;
         budget.grossRevenue = budget.grossRevenue - oldTariff + budget.tariffRevenue;
         budget.availableBudget = budget.grossRevenue - budget.debtService;
     }
@@ -221,7 +227,7 @@ export function computeMinistryInstitutionCost(institutions, fiscalCategory, nat
  */
 export function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions, aidData) {
     const budget = calculateNationalBudget(nation);
-    applyTradeTariffOverride(budget, tradeTariffRevenue);
+    applyTradeTariffOverride(budget, tradeTariffRevenue, Number(nation.gdp ?? nation.GDP ?? 0));
     const inflationStat = Number(nation.inflation || 0);
     const inflationPct = Math.pow(Math.max(0, inflationStat), 1.5) / 100;
     const reserves = 0;
