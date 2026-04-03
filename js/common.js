@@ -820,6 +820,8 @@ let nextTickAt = null;
 let tickPoller = null;
 
 export function updateTopBarInfo(faction, shard, nation) {
+    // Store faction type for poller access
+    window._currentFactionType = faction?.faction_type || 'party';
     const badge = document.getElementById('party-badge');
     if (badge) {
         if (faction && faction.nation_id) {
@@ -920,7 +922,21 @@ export function updateTopBarInfo(faction, shard, nation) {
         if (gameDate) gameDate.textContent = shard.current_date || '—';
         if (tickNumber) tickNumber.textContent = shard.current_tick || '—';
         if (shard.next_tick_at) {
-            nextTickAt = new Date(shard.next_tick_at);
+            const isCorp = faction?.faction_type === 'corporation';
+            if (isCorp) {
+                // Corp tick fires at the midpoint of the political tick interval
+                const intervalMs = (Number(shard.tick_interval_hours) || 8) * 3600000;
+                const politicalTickAt = new Date(shard.next_tick_at).getTime();
+                const lastAdvanceAt = politicalTickAt - intervalMs;
+                const corpDueAt = lastAdvanceAt + (intervalMs / 2);
+                // If corp tick is past, next one is half-interval after next political tick
+                nextTickAt = new Date(corpDueAt > Date.now() ? corpDueAt : politicalTickAt + (intervalMs / 2));
+            } else {
+                nextTickAt = new Date(shard.next_tick_at);
+            }
+            // Update label
+            const tickLabel = document.querySelector('#tick-countdown')?.closest('.tick-item')?.querySelector('.tick-label');
+            if (tickLabel) tickLabel.textContent = isCorp ? 'Next Corp Tick' : 'Next Tick';
             startTickCountdown();
         }
     }
@@ -1086,7 +1102,7 @@ function pollForNewTick() {
         try {
             const { data: shard } = await _supabase
                 .from('shard')
-                .select('next_tick_at, current_tick, current_date')
+                .select('next_tick_at, current_tick, current_date, tick_interval_hours')
                 .eq('name', 'Alpha Shard')
                 .single();
 
@@ -1098,7 +1114,17 @@ function pollForNewTick() {
                     clearInterval(tickPoller);
                     tickPoller = null;
 
-                    nextTickAt = new Date(shard.next_tick_at);
+                    // Recalculate target based on faction type
+                    const isCorp = window._currentFactionType === 'corporation';
+                    if (isCorp) {
+                        const intervalMs = (Number(shard.tick_interval_hours) || 8) * 3600000;
+                        const politicalTickAt = new Date(shard.next_tick_at).getTime();
+                        const lastAdvanceAt = politicalTickAt - intervalMs;
+                        const corpDueAt = lastAdvanceAt + (intervalMs / 2);
+                        nextTickAt = new Date(corpDueAt > Date.now() ? corpDueAt : politicalTickAt + (intervalMs / 2));
+                    } else {
+                        nextTickAt = new Date(shard.next_tick_at);
+                    }
 
                     // Update tick number and game date in the top bar
                     const tickEl = document.getElementById('tick-number');
