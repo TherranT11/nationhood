@@ -88,7 +88,7 @@ import { initPage, formatNumber } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate, fmtBudgetCurrency } from './js/utils.js';
 import { getPartyLogoHTML } from './js/party-icons.js';
-import { isGovernmentPresidential, getGovDisplayLabel, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkCreditForTradeAgreement, TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume } from './js/game-common.js';
+import { isGovernmentPresidential, getGovDisplayLabel, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, syncVoteTallies, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkCreditForTradeAgreement, TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume, adjustGovernmentApprovalEvent } from './js/game-common.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -9250,7 +9250,7 @@ async function acceptStateVisit(proposalId) {
         relations: null, // handled separately via diplomatic_relations
         public_awareness: 'public_awareness',
         public_opinion: 'public_opinion',
-        gov_approval: 'gov_approval',
+        gov_approval: null, // applied via adjustGovernmentApprovalEvent (survives tick recalculation)
         trade_relations: 'trade_balance',
         soft_power: 'international_reputation',
         education_approval: 'education_approval',
@@ -9292,7 +9292,8 @@ async function acceptStateVisit(proposalId) {
                 triggeredRisks.push(risk);
                 // Gaffe: -2 gov_approval for visitor
                 if (risk.key === 'gaffe') {
-                    visitorUpdates.gov_approval = Math.max(0, (visitorUpdates.gov_approval ?? Math.round(Number(visitorNation.gov_approval ?? 40))) - 2);
+                    // Applied via event system after nation updates (below)
+                    computedEffects._gaffe_penalty = -2;
                     bonusSummary.push('Risk triggered: ' + risk.source + ' gaffe (-2 Gov Approval)');
                 }
             }
@@ -9308,6 +9309,17 @@ async function acceptStateVisit(proposalId) {
         _supabase.from('nations').update(visitorUpdates).eq('id', visitorNationId),
         _supabase.from('nations').update(hostUpdates).eq('id', hostNationId)
     ]);
+
+    // ── Gov approval via event system (survives tick recalculation) ──
+    const govApprovalDelta = Number(computedEffects.gov_approval || 0) + Number(computedEffects._gaffe_penalty || 0);
+    if (govApprovalDelta !== 0) {
+        await adjustGovernmentApprovalEvent(_supabase, visitorNationId, govApprovalDelta, 'state_visit:' + (proposal?.proposal_data?.visit_type || 'diplomatic'));
+        // Host only gets the positive boost, not the visitor's gaffe penalty
+        const hostDelta = Number(computedEffects.gov_approval || 0);
+        if (hostDelta !== 0) {
+            await adjustGovernmentApprovalEvent(_supabase, hostNationId, hostDelta, 'state_visit:' + (proposal?.proposal_data?.visit_type || 'diplomatic'));
+        }
+    }
 
     // ── Charge costs to FM embassy budget (visitor pays) ──
     if (totalDebt > 0) {
