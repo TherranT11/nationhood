@@ -27777,37 +27777,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Purge decay failed for ${nation.name} (non-fatal):`, purgeErr);
         }
 
-        // Autocracy V5: pillar passive drift, wildcard decay, neglect, longevity
-        try {
-            const pillarResult = await processAutocracyPillarTick(supabase, nation, newTick);
-            if (pillarResult) {
-                summary.autocracyPillars = summary.autocracyPillars || [];
-                summary.autocracyPillars.push(pillarResult);
-            }
-        } catch (pillarErr) {
-            console.error(`[advanceTick] Autocracy pillar tick failed for ${nation.name} (non-fatal):`, pillarErr);
-        }
-
-        // Autocracy V5: timed effects (Rally/Agitate/Patronage buffs), deploy decay, congress resolution
-        try {
-            await processAutocracyTimedEffects(supabase, nation, newTick);
-            await processDeployEscalationDecay(supabase, nation.id, newTick);
-            await resolvePartyCongressPending(supabase, nation.id, newTick);
-        } catch (timedErr) {
-            console.error(`[advanceTick] Autocracy timed effects failed for ${nation.name} (non-fatal):`, timedErr);
-        }
-
-        // Autocracy V5: pillar leader aging (+1 year per 12 ticks, death at death_age)
-        try {
-            const pillarAgingResult = await processAutocracyLeaderAging(supabase, nation, newTick);
-            if (pillarAgingResult) {
-                summary.autocracyLeaderAging = summary.autocracyLeaderAging || [];
-                summary.autocracyLeaderAging.push({ nation: nation.name, results: pillarAgingResult });
-            }
-        } catch (pillarAgingErr) {
-            console.error(`[advanceTick] Autocracy pillar leader aging failed for ${nation.name} (non-fatal):`, pillarAgingErr);
-        }
-
         // Seat rebalancing: if factions were disbanded and seats are vacant,
         // proportionally redistribute the empty seats across remaining factions.
         try {
@@ -27891,26 +27860,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (collapseErr) {
             console.error(`[advanceTick] Gov collapse check failed for ${nation.name} (non-fatal):`, collapseErr);
-        }
-
-        // 3-pillar election engine (Governance + Momentum + Ideology + Gov Approval)
-        try {
-            await tickElectionPillars(supabase, nation, newTick);
-        } catch (electorateErr) {
-            console.error(`[advanceTick] Election pillar engine failed for ${nation.name} (non-fatal):`, electorateErr);
-        }
-
-        // (Autocracy action systems removed — Phase 0. Actions will be added in Phase 4+.)
-
-        // Autocracy V5: tracker natural decay toward 30 (runs after actions resolve)
-        try {
-            const trackerDecayResult = await processAutocracyTrackerDecay(supabase, nation, newTick);
-            if (trackerDecayResult) {
-                summary.autocracyTrackerDecay = summary.autocracyTrackerDecay || [];
-                summary.autocracyTrackerDecay.push(trackerDecayResult);
-            }
-        } catch (trackerDecayErr) {
-            console.error(`[advanceTick] Autocracy tracker decay failed for ${nation.name} (non-fatal):`, trackerDecayErr);
         }
 
         // Re-fetch nation with post-effect values for remaining processors
