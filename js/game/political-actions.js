@@ -1883,12 +1883,16 @@ function _round3(v) { return Math.round(v * 1000) / 1000; }
  */
 async function _nudgeApproval(supabase, factionId, nationId, delta, source, tick = 0) {
     if (!factionId || delta === 0) return;
-    await supabase.rpc('adjust_momentum', {
-        p_faction_id: factionId,
-        p_delta: delta,
-        p_label: source || 'unknown',
-        p_tick: tick
-    });
+    try {
+        await supabase.rpc('adjust_momentum', {
+            p_faction_id: factionId,
+            p_delta: delta,
+            p_label: source || 'unknown',
+            p_tick: tick
+        });
+    } catch (e) {
+        console.warn(`[_nudgeApproval] adjust_momentum failed for ${factionId}:`, e.message);
+    }
 }
 
 /**

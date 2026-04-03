@@ -151,12 +151,14 @@ export async function applyEnactmentApproval(supabase, nationId, approvalDeltas,
         if (delta === 0) continue;
         const momDelta = round2(delta * 0.3);
         if (momDelta === 0) continue;
-        await supabase.rpc('adjust_momentum', {
-            p_faction_id: factionId,
-            p_delta: momDelta,
-            p_label: `Bill enacted (${momDelta > 0 ? '+' : ''}${momDelta})`,
-            p_tick: currentTick
-        });
+        try {
+            await supabase.rpc('adjust_momentum', {
+                p_faction_id: factionId,
+                p_delta: momDelta,
+                p_label: `Bill enacted (${momDelta > 0 ? '+' : ''}${momDelta})`,
+                p_tick: currentTick
+            });
+        } catch (e) { /* non-fatal */ }
     }
 }
 

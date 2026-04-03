@@ -6103,12 +6103,14 @@ async function applyEnactmentApproval(supabase, nationId, approvalDeltas, curren
         if (delta === 0) continue;
         const momDelta = round2(delta * 0.3);
         if (momDelta === 0) continue;
-        await supabase.rpc('adjust_momentum', {
-            p_faction_id: factionId,
-            p_delta: momDelta,
-            p_label: `Bill enacted (${momDelta > 0 ? '+' : ''}${momDelta})`,
-            p_tick: currentTick
-        });
+        try {
+            await supabase.rpc('adjust_momentum', {
+                p_faction_id: factionId,
+                p_delta: momDelta,
+                p_label: `Bill enacted (${momDelta > 0 ? '+' : ''}${momDelta})`,
+                p_tick: currentTick
+            });
+        } catch (e) { /* non-fatal */ }
     }
 }
 
@@ -15630,19 +15632,7 @@ async function boostVisibility(supabase, factionId, nationId, boost) {
     return;
 }
 
-/**
- * Nudge a faction's party_approval after a campaign action.
- * Applies diminishing returns when multiple actions are taken in the same tick.
- *
- * @param {object} supabase
- * @param {string} factionId
- * @param {string} nationId
- * @param {number} delta - Signed approval change (positive = boost, negative = damage)
- * @param {object} [opts] - Options
- * @param {boolean} [opts.campaign=false] - If true, apply diminishing returns and increment action counter (for player campaign actions only)
- * @param {string} [opts.source='unknown'] - Audit tag for the party_approval_log (e.g., 'rally', 'crisis:Recession')
- */
-// nudgeApproval removed — all calls converted to adjust_momentum RPC.
+// nudgeApproval removed — all 41 calls converted to adjust_momentum RPC.
 
 /**
  * Nudge the nation-wide enthusiasm on electorate_profile.
@@ -21155,12 +21145,16 @@ function _round3(v) { return Math.round(v * 1000) / 1000; }
  */
 async function _nudgeApproval(supabase, factionId, nationId, delta, source, tick = 0) {
     if (!factionId || delta === 0) return;
-    await supabase.rpc('adjust_momentum', {
-        p_faction_id: factionId,
-        p_delta: delta,
-        p_label: source || 'unknown',
-        p_tick: tick
-    });
+    try {
+        await supabase.rpc('adjust_momentum', {
+            p_faction_id: factionId,
+            p_delta: delta,
+            p_label: source || 'unknown',
+            p_tick: tick
+        });
+    } catch (e) {
+        console.warn(`[_nudgeApproval] adjust_momentum failed for ${factionId}:`, e.message);
+    }
 }
 
 /**

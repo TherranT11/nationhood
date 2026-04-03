@@ -1875,19 +1875,7 @@ export async function boostVisibility(supabase, factionId, nationId, boost) {
     return;
 }
 
-/**
- * Nudge a faction's party_approval after a campaign action.
- * Applies diminishing returns when multiple actions are taken in the same tick.
- *
- * @param {object} supabase
- * @param {string} factionId
- * @param {string} nationId
- * @param {number} delta - Signed approval change (positive = boost, negative = damage)
- * @param {object} [opts] - Options
- * @param {boolean} [opts.campaign=false] - If true, apply diminishing returns and increment action counter (for player campaign actions only)
- * @param {string} [opts.source='unknown'] - Audit tag for the party_approval_log (e.g., 'rally', 'crisis:Recession')
- */
-// nudgeApproval removed — all calls converted to adjust_momentum RPC.
+// nudgeApproval removed — all 41 calls converted to adjust_momentum RPC.
 
 /**
  * Nudge the nation-wide enthusiasm on electorate_profile.
