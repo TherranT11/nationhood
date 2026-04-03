@@ -5995,6 +5995,7 @@ async function switchToExpansion(e) {
     e.target.classList.add('active');
     renderHireFireCard();
     renderWorkforceSummary();
+    await loadOwnedProperties();
     renderPropertyCard();
     await loadAvailableProperties();
     renderNewPropertyCard();
@@ -6319,70 +6320,69 @@ function renderWorkforceSummary() {
     </div>`;
 }
 
+let _ownedProperties = [];
+
+async function loadOwnedProperties() {
+    if (!faction?.id) return;
+    const { data } = await _supabase
+        .from('corp_properties')
+        .select('*')
+        .eq('faction_id', faction.id)
+        .eq('is_active', true)
+        .order('purchased_at_tick', { ascending: false });
+    _ownedProperties = data || [];
+}
+
 function renderPropertyCard() {
     const container = document.getElementById('property-card-container');
     if (!container) return;
 
     const mono = "'JetBrains Mono', monospace";
     const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
-        accent: '#8b9a6b', green: '#4a8', red: '#c55',
+        accent: '#8b9a6b', green: '#4a8', red: '#c55', gold: '#c8a832', orange: '#c84',
         text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
 
     const nationName = (nationStats?.name || faction?.nation || 'Nation').toUpperCase();
-    const inflation = Number(nationStats?.inflation ?? 50);
-    const stability = Number(nationStats?.stability ?? 50);
-    const civilUnrest = Number(nationStats?.civil_unrest ?? 20);
-
-    // Property: Corporate HQ — always owned, base cost $8M
-    const baseCost = 8000000;
-    const inflMod = 1 + ((inflation - 50) / 100 * 0.08); // mild inflation impact
-    const stabMod = 0.8 + (stability / 100) * 0.4; // 0.8 at 0 stability, 1.2 at 100
-    const unrestMod = Math.max(0.5, 1 - (civilUnrest / 100) * 0.5); // 1.0 at 0 unrest, 0.5 at 100
-    const adjustedValue = Math.round(baseCost * inflMod * stabMod * unrestMod);
-
-    const fmtMod = (val) => val >= 1 ? `<span style="color:${C.green}">×${val.toFixed(2)}</span>` : `<span style="color:${C.red}">×${val.toFixed(2)}</span>`;
-
-    // Future: array of properties. For now just HQ.
-    const properties = [
-        { name: 'Corporate Headquarters', owned: true, baseCost, adjustedValue }
-    ];
 
     let propsHtml = '';
     let totalValue = 0;
+    let totalMaint = 0;
 
-    for (const prop of properties) {
-        totalValue += prop.adjustedValue;
+    if (_ownedProperties.length === 0) {
+        propsHtml = `<div style="padding:20px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">No properties owned.<br>Purchase from the marketplace →</div>`;
+    }
+
+    for (const prop of _ownedProperties) {
+        const sm = NP_STYLE_META[prop.style] || NP_STYLE_META.Basic;
+        totalValue += Number(prop.purchase_price || 0);
+        totalMaint += Number(prop.monthly_maintenance || 0);
+
         propsHtml += `
-        <div style="padding:10px 12px;border-bottom:1px solid ${C.border};">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                <span style="font-size:13px;font-weight:700;color:${C.text}">${prop.name}</span>
-                <span style="font-family:${mono};font-size:8px;font-weight:700;padding:2px 8px;color:${C.green};background:rgba(68,170,136,0.08);border:1px solid rgba(68,170,136,0.15)">${prop.owned ? 'OWNED' : 'AVAILABLE'}</span>
+        <div style="padding:8px 12px;border-bottom:1px solid ${C.border};">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                <span style="font-size:11px;font-weight:600;color:${C.text}">${prop.name}</span>
+                <span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${C.green};background:rgba(68,170,136,0.08);border:1px solid rgba(68,170,136,0.15)">OWNED</span>
             </div>
-            <div style="margin-bottom:6px;">
-                <span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${nationName}</span>
-            </div>
-            <div style="padding:6px 8px;background:${C.bg};border:1px solid ${C.border};">
-                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
-                    <span style="font-family:${mono};font-size:9px;color:${C.dim}">BASE COST</span>
-                    <span style="font-family:${mono};font-size:10px;color:${C.text}">${hfFmtBig(prop.baseCost)}</span>
+            <div style="font-family:${mono};font-size:8px;color:${C.dim};margin-bottom:4px;">${prop.city || nationName} · ${(prop.type || '').replace(/_/g, ' ')} · <span style="color:${sm.color}">${(prop.style || 'Basic').toUpperCase()}</span></div>
+            <div style="display:flex;gap:0;background:${C.card};border:1px solid ${C.border}">
+                <div style="flex:1;padding:3px 6px;border-right:1px solid ${C.border}">
+                    <div style="font-family:${mono};font-size:7px;color:${C.dim}">CAPACITY</div>
+                    <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.text}">${(prop.capacity || 0).toLocaleString()}</div>
                 </div>
-                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
-                    <span style="font-family:${mono};font-size:9px;color:${C.dim}">INFLATION (${nationName})</span>
-                    <span style="font-family:${mono};font-size:10px;color:${C.muted}">${inflation}/100 — ${fmtMod(inflMod)}</span>
+                <div style="flex:1;padding:3px 6px;border-right:1px solid ${C.border}">
+                    <div style="font-family:${mono};font-size:7px;color:${C.dim}">PAID</div>
+                    <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.gold}">${hfFmtBig(prop.purchase_price || 0)}</div>
                 </div>
-                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
-                    <span style="font-family:${mono};font-size:9px;color:${C.dim}">STABILITY (${nationName})</span>
-                    <span style="font-family:${mono};font-size:10px;color:${C.muted}">${stability}/100 — ${fmtMod(stabMod)}</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
-                    <span style="font-family:${mono};font-size:9px;color:${C.dim}">CIVIL UNREST (${nationName})</span>
-                    <span style="font-family:${mono};font-size:10px;color:${C.muted}">${civilUnrest}/100 — ${fmtMod(unrestMod)}</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;padding:4px 0;">
-                    <span style="font-family:${mono};font-size:9px;color:${C.accent}">ADJUSTED VALUE</span>
-                    <span style="font-family:${mono};font-size:11px;font-weight:700;color:${C.green}">${hfFmtBig(prop.adjustedValue)}</span>
+                <div style="flex:1;padding:3px 6px">
+                    <div style="font-family:${mono};font-size:7px;color:${C.dim}">MAINT/MO</div>
+                    <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.red}">${hfFmtBig(prop.monthly_maintenance || 0)}</div>
                 </div>
             </div>
+            <div style="margin-top:4px;display:flex;justify-content:space-between;">
+                <span style="font-family:${mono};font-size:7px;color:${C.dim}">CONDITION</span>
+                <span style="font-family:${mono};font-size:9px;color:${prop.condition >= 75 ? '#5c5' : prop.condition >= 50 ? '#ca5' : C.orange}">${prop.condition}%</span>
+            </div>
+            <div style="width:100%;height:3px;background:${C.border};margin-top:2px;"><div style="width:${prop.condition}%;height:100%;background:${prop.condition >= 75 ? '#5c5' : prop.condition >= 50 ? '#ca5' : C.orange}"></div></div>
         </div>`;
     }
 
@@ -6393,15 +6393,19 @@ function renderPropertyCard() {
                 <span style="font-size:8px;color:${C.accent}">●</span>
                 <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Property</span>
             </div>
-            <span style="font-family:${mono};font-size:10px;color:${C.muted}">${properties.length} ASSET${properties.length !== 1 ? 'S' : ''}</span>
+            <span style="font-family:${mono};font-size:10px;color:${C.muted}">${_ownedProperties.length} ASSET${_ownedProperties.length !== 1 ? 'S' : ''}</span>
         </div>
         <div style="flex:1;overflow:auto;">
             ${propsHtml}
         </div>
         <div style="padding:8px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px">TOTAL VALUE</span>
+                <span style="font-family:${mono};font-size:13px;font-weight:700;color:${C.green}">${hfFmtBig(totalValue)}</span>
+            </div>
             <div style="display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px">TOTAL PROPERTY VALUE</span>
-                <span style="font-family:${mono};font-size:14px;font-weight:700;color:${C.green}">${hfFmtBig(totalValue)}</span>
+                <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px">TOTAL MAINTENANCE</span>
+                <span style="font-family:${mono};font-size:13px;font-weight:700;color:${C.red}">${hfFmtBig(totalMaint)}/mo</span>
             </div>
         </div>
     </div>`;
@@ -6422,29 +6426,21 @@ const NP_STYLE_META = {
 };
 
 async function loadAvailableProperties() {
-    if (!nationStats) return;
-    const gdpGrowth = Number(nationStats.gdp_growth ?? 50);
-    const sol = Number(nationStats.standard_of_living ?? 50);
+    if (!faction?.nation_id) return;
 
     const { data, error } = await _supabase
-        .from('property_catalog')
+        .from('available_properties')
         .select('*')
-        .lte('min_gdp_growth', Math.round(gdpGrowth))
-        .lte('min_sol', Math.round(sol))
-        .order('base_cost', { ascending: true });
+        .eq('nation_id', faction.nation_id)
+        .eq('status', 'available')
+        .order('price', { ascending: true });
 
-    if (error) { console.warn('[Property] Failed to load catalog:', error.message); return; }
-
-    // Adjust prices by nation stats
-    const inflation = Number(nationStats.inflation ?? 50);
-    const inflMod = 1 + ((inflation - 50) / 100 * 0.3);
-    const solMod = 1 + ((sol - 50) / 100 * 0.2);
+    if (error) { console.warn('[Property] Failed to load marketplace:', error.message); return; }
 
     _npAvailable = (data || []).map(p => ({
         ...p,
-        adjusted_cost: Math.round(p.base_cost * inflMod * solMod),
-        adjusted_maintenance: Math.round(p.base_maintenance * inflMod * 0.8),
-        condition: 60 + Math.floor(Math.random() * 35), // 60-95% random condition
+        adjusted_cost: p.price,
+        adjusted_maintenance: p.monthly_maintenance,
     }));
 }
 
@@ -6549,9 +6545,69 @@ function npSelect(idx) {
     renderNewPropertyCard();
 }
 
-function npBuyProperty() {
-    if (_npSelected === null) return;
-    alert('Phase 3: Buy Property — coming soon.');
+let _npBuying = false;
+async function npBuyProperty() {
+    if (_npSelected === null || _npBuying) return;
+    const prop = _npAvailable[_npSelected];
+    if (!prop) return;
+
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    if (prop.adjusted_cost > cash) {
+        alert('Insufficient cash reserves.\nProperty: ' + hfFmtBig(prop.adjusted_cost) + '\nCash: ' + hfFmtBig(cash));
+        return;
+    }
+
+    if (!confirm('Buy "' + prop.name + '" for ' + hfFmtBig(prop.adjusted_cost) + '?\n\nMonthly maintenance: ' + hfFmtBig(prop.adjusted_maintenance) + '/mo\nCondition: ' + prop.condition + '%\n\nThis will be deducted from your cash reserves.')) return;
+
+    _npBuying = true;
+    try {
+        // 1. Insert into corp_properties
+        const { error: insertErr } = await _supabase.from('corp_properties').insert({
+            faction_id: faction.id,
+            nation_id: faction.nation_id,
+            catalog_id: prop.catalog_id || null,
+            name: prop.name,
+            type: prop.type,
+            style: prop.style,
+            capacity: prop.capacity,
+            purchase_price: prop.adjusted_cost,
+            monthly_maintenance: prop.adjusted_maintenance,
+            condition: prop.condition,
+            city: prop.city,
+            purchased_at_tick: Number(document.getElementById('tick-number')?.textContent || 0),
+            is_active: true,
+        });
+        if (insertErr) throw insertErr;
+
+        // 2. Deduct cash
+        const newCash = Math.max(0, cash - prop.adjusted_cost);
+        const { error: cashErr } = await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        if (cashErr) throw cashErr;
+        faction.corp_cash_reserves = newCash;
+
+        // 3. Mark available property as sold
+        if (prop.id) {
+            await _supabase.from('available_properties').update({ status: 'sold', purchased_by: faction.id }).eq('id', prop.id);
+        }
+
+        // 4. Update cash display
+        const cashEl = document.getElementById('topbar-cash');
+        if (cashEl) {
+            cashEl.textContent = 'CASH: ' + (newCash >= 1e6 ? '$' + (newCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newCash / 1000) + 'k');
+        }
+
+        // 5. Refresh
+        _npSelected = null;
+        await loadAvailableProperties();
+        renderNewPropertyCard();
+        renderPropertyCard(); // refresh owned properties card
+
+        alert('Property purchased: ' + prop.name + '\n\nDeducted: ' + hfFmtBig(prop.adjusted_cost));
+    } catch (err) {
+        alert('Purchase failed: ' + err.message);
+    } finally {
+        _npBuying = false;
+    }
 }
 
 function npOpenConstructionModal() {

@@ -446,6 +446,79 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
     return generated;
 }
 
+// ==================== PROPERTY MARKETPLACE GENERATOR ====================
+
+async function replenishPropertyMarketplace(supabase, nation, currentTick) {
+    const TARGET_COUNT = 8;
+
+    // Count current available properties for this nation
+    const { count, error: countErr } = await supabase
+        .from('available_properties')
+        .select('id', { count: 'exact', head: true })
+        .eq('nation_id', nation.id)
+        .eq('status', 'available');
+    if (countErr) return;
+
+    const currentCount = count || 0;
+    if (currentCount >= TARGET_COUNT) return;
+
+    const toGenerate = TARGET_COUNT - currentCount;
+
+    // Load catalog templates that this nation qualifies for
+    const gdpGrowth = Number(nation.gdp_growth ?? 50);
+    const sol = Number(nation.standard_of_living ?? 50);
+    const { data: catalog } = await supabase
+        .from('property_catalog')
+        .select('*')
+        .lte('min_gdp_growth', Math.round(gdpGrowth))
+        .lte('min_sol', Math.round(sol));
+
+    if (!catalog || catalog.length === 0) return;
+
+    // Price modifiers from nation stats
+    const inflation = Number(nation.inflation ?? 50);
+    const inflMod = 1 + ((inflation - 50) / 100 * 0.3);
+    const solMod = 1 + ((sol - 50) / 100 * 0.2);
+
+    // City names from nation capital
+    const capital = nation.capital || 'Capital';
+    const cityNames = [capital, capital + ' Port District', capital + ' Industrial Zone', capital + ' Suburbs', capital + ' Coast'];
+    const cityMap = { capital: capital, port: capital + ' Port District', industrial: capital + ' Industrial Zone', suburban: capital + ' Suburbs', coastal: capital + ' Coast' };
+
+    const inserts = [];
+    for (let i = 0; i < toGenerate; i++) {
+        const template = catalog[Math.floor(Math.random() * catalog.length)];
+        const adjustedPrice = Math.round(template.base_cost * inflMod * solMod);
+        const adjustedMaint = Math.round(template.base_maintenance * inflMod * 0.9);
+        const condition = 55 + Math.floor(Math.random() * 40); // 55-95%
+        const city = cityMap[template.city_template] || capital;
+
+        inserts.push({
+            nation_id: nation.id,
+            catalog_id: template.id,
+            name: template.name,
+            type: template.type,
+            style: template.style,
+            capacity: template.capacity,
+            price: adjustedPrice,
+            monthly_maintenance: adjustedMaint,
+            condition: condition,
+            city: city,
+            generated_at_tick: currentTick,
+            status: 'available',
+        });
+    }
+
+    if (inserts.length > 0) {
+        const { error } = await supabase.from('available_properties').insert(inserts);
+        if (error) {
+            console.error(`[PropertyMarket] Failed to insert for ${nation.name}:`, error.message);
+        } else {
+            console.log(`[PropertyMarket] Generated ${inserts.length} properties for ${nation.name} (${currentCount} → ${currentCount + inserts.length})`);
+        }
+    }
+}
+
 async function resolveExpiredBids(supabase, nationId, currentTick) {
     // Find contracts where bidding has ended
     const { data: expiredContracts } = await supabase
@@ -840,6 +913,13 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 const eventResults = await generateProjectEvents(supabase, nation.id, currentTick);
                 if (eventResults.length > 0) {
                     summary.construction.push({ nation: nation.name, type: 'events', data: eventResults });
+                }
+
+                // Property marketplace: ensure 8 available per nation
+                try {
+                    await replenishPropertyMarketplace(supabase, nation, currentTick);
+                } catch (propErr) {
+                    console.warn(`[advance-corp-tick] Property marketplace failed for ${nation.name}:`, propErr.message);
                 }
 
                 // Expired events: auto-resolve events the player ignored
