@@ -1765,7 +1765,7 @@ export async function processElections(supabase, nation, currentTick) {
         // Safety check: skip snap elections if a government has already been formed
         if (electionType === 'parliamentary') {
             const existingGov = await fetchActiveCoalition(supabase, nation.id);
-            if (existingGov && (existingGov.status === 'formed' || existingGov.status === 'active' || existingGov.status === 'caretaker')) {
+            if (existingGov && (existingGov.status === 'formed' || existingGov.status === 'active')) {
                 console.log(`Skipping parliamentary election for ${nation.name} — government already formed (status: ${existingGov.status})`);
                 await supabase.from('elections')
                     .update({ status: 'cancelled' })
