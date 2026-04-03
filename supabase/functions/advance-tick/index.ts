@@ -22714,7 +22714,7 @@ async function processCrises(supabase, nation, currentTick) {
             const crisisResolveBoost = Math.ceil(Math.random() * 6);
             await adjustGovernmentApprovalEvent(supabase, nation.id, crisisResolveBoost, `crisis:resolved:${template.name}`);
 
-            // +3 momentum to governing coalition parties for resolving the crisis
+            // +8 momentum to governing coalition parties for resolving the crisis
             try {
                 const { data: govFormation } = await supabase
                     .from('government_formations')
@@ -22728,8 +22728,8 @@ async function processCrises(supabase, nation, currentTick) {
                     for (const pid of govFormation.party_ids) {
                         await supabase.rpc('adjust_momentum', {
                             p_faction_id: pid,
-                            p_delta: 3,
-                            p_label: `Crisis resolved: ${template.name} (+3)`,
+                            p_delta: 8,
+                            p_label: `Crisis resolved: ${template.name} (+8)`,
                             p_tick: currentTick
                         });
                     }

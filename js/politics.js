@@ -5616,6 +5616,18 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
                 <span>${escapeHtml(administration?.admin_name || 'Government')}</span>
                 <span class="elec-ticks">${ticksInPower} tick${ticksInPower !== 1 ? 's' : ''} in power</span>
             </div>
+            ${isGoverning ? (() => {
+                const govApp = Number(nationData?.gov_approval ?? 50);
+                const approvalFactor = Math.max(-1, Math.min(1, (govApp - 35) / 30));
+                const fatigueFactor = Math.max(0, 1 - ticksInPower / 20);
+                const bonus = Math.round(0.08 * approvalFactor * fatigueFactor * 1000) / 10;
+                const bonusColor = bonus > 0 ? 'var(--dgreen)' : bonus < 0 ? 'var(--dred)' : 'var(--dtext-3)';
+                const bonusSign = bonus > 0 ? '+' : '';
+                return `<div class="elec-incumbency-row" style="display:flex;justify-content:space-between;padding:4px 8px;margin-top:4px;background:rgba(255,255,255,0.03);border-radius:4px;font-size:11px;">
+                    <span style="color:var(--dtext-3)">Incumbency Turnout Modifier</span>
+                    <span style="color:${bonusColor};font-weight:600">${bonusSign}${bonus.toFixed(1)}%</span>
+                </div>`;
+            })() : ''}
             <div class="elec-stat-header">
                 <span class="elec-stat-name">Stat</span>
                 <span class="elec-stat-start">Start</span>
@@ -5654,6 +5666,15 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
                     <li>You receive the <em>inverse</em> of the governance score. Bad governance helps your election chances.</li>
                     <li>Vote against harmful legislation to protect the nation — and your reputation.</li>
                     <li>Build your case through ideology and momentum to maximize seat gains when elections come.</li>
+                </ul>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">Incumbency Turnout Modifier:</div>
+                <ul>
+                    <li>Governing parties get a <strong>turnout bonus</strong> — their supporters are more likely to vote.</li>
+                    <li>At high approval (60%+), this can add up to <strong>+8% turnout</strong>.</li>
+                    <li>Below 35% approval, it <strong>flips negative</strong> — your own supporters stay home (anti-incumbency).</li>
+                    <li>The bonus <strong>decays over time</strong> — fresh governments benefit most, long-serving ones face voter fatigue.</li>
                 </ul>
             </div>
             <div class="elec-explainer-section">
@@ -5739,6 +5760,14 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
                 <ul>
                     <li><strong>Rally</strong> (1 AP) — Moderate, reliable momentum gain.</li>
                     <li>Other campaign actions like stances, public addresses, and media campaigns also contribute.</li>
+                </ul>
+            </div>
+            <div class="elec-explainer-section">
+                <div class="elec-explainer-heading">Crisis Resolution:</div>
+                <ul>
+                    <li>When a national crisis is resolved, <strong>all governing coalition parties receive +8 momentum</strong>.</li>
+                    <li>This rewards the government for managing the crisis — even if the resolution was automatic.</li>
+                    <li>The government also receives a 1-6 approval boost alongside the momentum.</li>
                 </ul>
             </div>
             <div class="elec-explainer-section">
