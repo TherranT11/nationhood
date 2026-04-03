@@ -1169,7 +1169,7 @@ import{_ as I}from"./supabase-client-BXEzLDpS.js";/* empty css                  
                 <span>${$(t?.admin_name||"Government")}</span>
                 <span class="elec-ticks">${x} tick${x!==1?"s":""} in power</span>
             </div>
-            ${b?(()=>{const B=Number(nationData?.gov_approval??50),K=Math.max(-1,Math.min(1,(B-35)/30)),se=Math.max(0,1-x/20),J=Math.round(.08*K*se*1e3)/10,ve=J>0?"var(--dgreen)":J<0?"var(--dred)":"var(--dtext-3)",Ee=J>0?"+":"";return`<div class="elec-incumbency-row" style="display:flex;justify-content:space-between;padding:4px 8px;margin-top:4px;background:rgba(255,255,255,0.03);border-radius:4px;font-size:11px;">
+            ${b?(()=>{const B=Number(e?.gov_approval??50),K=Math.max(-1,Math.min(1,(B-35)/30)),se=Math.max(0,1-x/20),J=Math.round(.08*K*se*1e3)/10,ve=J>0?"var(--dgreen)":J<0?"var(--dred)":"var(--dtext-3)",Ee=J>0?"+":"";return`<div class="elec-incumbency-row" style="display:flex;justify-content:space-between;padding:4px 8px;margin-top:4px;background:rgba(255,255,255,0.03);border-radius:4px;font-size:11px;">
                     <span style="color:var(--dtext-3)">Incumbency Turnout Modifier</span>
                     <span style="color:${ve};font-weight:600">${Ee}${J.toFixed(1)}%</span>
                 </div>`})():""}
