@@ -2944,6 +2944,22 @@ async function submitToCommittee() {
                     ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the legislative term length in ${currentNation.name} to ${draftArticles.find(a => a.isFoundational).proposedParliamentaryTermLength / (GAME_CONFIG.TICKS_PER_YEAR || 12)} years. The new term length takes effect after the next scheduled election. Requires a two-thirds supermajority to pass.`
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'hos_election'
                     ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the Head of State election method in ${currentNation.name} to ${draftArticles.find(a => a.isFoundational).proposedHosElectionMethod === 'hereditary' ? 'hereditary succession (establishing the ' + draftArticles.find(a => a.isFoundational).proposedDynastyName + ' dynasty)' : draftArticles.find(a => a.isFoundational).proposedHosElectionMethod === 'direct_vote' ? 'direct popular vote' : 'parliamentary appointment'}. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'abolish_term_limits'
+                    ? `This foundational law removes all presidential term limits in ${currentNation.name}. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'state_media_control'
+                    ? `This foundational law establishes state control over national media in ${currentNation.name}. Press freedom permanently capped at 40. +10 government approval. Governing parties receive +2 momentum/tick for 10 ticks. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'emergency_powers'
+                    ? `This foundational law grants the head of government emergency powers in ${currentNation.name}, allowing them to bypass legislative votes. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'judicial_appointment_politicization'
+                    ? `This foundational law politicizes judicial appointments in ${currentNation.name}. Judicial independence permanently capped at 30. Harder to impeach or remove leaders. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'electoral_commission_reform'
+                    ? `This foundational law gives the ruling coalition control over the election commission in ${currentNation.name}. Governing parties receive a 5-10% seat bonus in elections. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'party_registration_act'
+                    ? `This foundational law sets a ${draftArticles.find(a => a.isFoundational).proposedPartyRegistrationThreshold || 10}% party registration threshold in ${currentNation.name}. Parties below the threshold lose seats and legislative rights. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'legislative_quorum_reform'
+                    ? `This foundational law lowers the legislative quorum to ${draftArticles.find(a => a.isFoundational).proposedQuorumOverride || 30}% in ${currentNation.name}. The ruling coalition can pass bills with fewer participants. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'constitutional_amendment_streamlining'
+                    ? `This foundational law lowers the supermajority threshold for all future foundational bills from 67% to 55% in ${currentNation.name}. Requires a two-thirds supermajority to pass.`
                     : `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the number of legislative seats in ${currentNation.name} from ${GAME_CONFIG.TOTAL_SEATS} to ${draftArticles.find(a => a.isFoundational).proposedSeats}. Requires a two-thirds supermajority to pass.`)
                 : `This ${'bill'}, put forth in the ${'legislature'} of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to enact the following provisions.`
         };
