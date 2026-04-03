@@ -569,6 +569,106 @@ async function replenishPropertyMarketplace(supabase, nation, currentTick) {
     }
 }
 
+// ==================== PROPERTY EFFECTS ====================
+// Each corp tick: deduct maintenance from cash, degrade condition, enforce capacity
+
+async function processPropertyEffects(supabase, nation, corps, currentTick) {
+    for (const corp of corps) {
+        // Load owned properties for this corp in this nation
+        const { data: properties, error: propErr } = await supabase
+            .from('corp_properties')
+            .select('id, monthly_maintenance, condition, capacity')
+            .eq('faction_id', corp.id)
+            .eq('nation_id', nation.id)
+            .eq('is_active', true);
+
+        if (propErr || !properties || properties.length === 0) continue;
+
+        let totalMaintenance = 0;
+        const conditionUpdates = [];
+
+        for (const prop of properties) {
+            // Sum maintenance
+            totalMaintenance += Number(prop.monthly_maintenance || 0);
+
+            // Condition degrades 0.5-1.5 per corp tick (random)
+            // Heritage properties degrade faster (×1.3), Sustainable slower (×0.7)
+            const degradeBase = 0.5 + Math.random() * 1.0;
+            const newCondition = Math.max(0, Math.round((Number(prop.condition || 100) - degradeBase) * 10) / 10);
+
+            if (newCondition !== prop.condition) {
+                conditionUpdates.push({ id: prop.id, condition: Math.round(newCondition) });
+            }
+        }
+
+        // Deduct maintenance from cash reserves
+        if (totalMaintenance > 0) {
+            const currentCash = Number(corp.corp_cash_reserves ?? 0);
+            const newCash = Math.max(0, currentCash - totalMaintenance);
+            const { error: cashErr } = await supabase
+                .from('factions')
+                .update({ corp_cash_reserves: newCash })
+                .eq('id', corp.id);
+
+            if (cashErr) {
+                console.error(`[PropertyEffects] Cash deduction failed for ${corp.faction_name}:`, cashErr.message);
+            } else if (totalMaintenance > 0) {
+                console.log(`[PropertyEffects] ${corp.faction_name}: -${Math.round(totalMaintenance).toLocaleString()} maintenance (${properties.length} properties)`);
+            }
+
+            // If cash hit zero, log a warning (future: trigger maintenance crisis)
+            if (newCash <= 0 && currentCash > 0) {
+                console.warn(`[PropertyEffects] ${corp.faction_name} ran out of cash from property maintenance!`);
+            }
+        }
+
+        // Batch update conditions
+        for (const upd of conditionUpdates) {
+            await supabase.from('corp_properties').update({ condition: upd.condition }).eq('id', upd.id);
+        }
+
+        // Workforce capacity enforcement:
+        // Total workforce cannot exceed total capacity from owned properties + base HQ (500)
+        const totalCapacity = properties.reduce((sum, p) => sum + Number(p.capacity || 0), 0) + 500; // 500 = base HQ capacity
+        const { data: factionWf } = await supabase
+            .from('factions')
+            .select('corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
+            .eq('id', corp.id)
+            .single();
+
+        if (factionWf) {
+            const totalWf = Number(factionWf.corp_general_workforce ?? 0) +
+                            Number(factionWf.corp_skilled_workforce ?? 0) +
+                            Number(factionWf.corp_innovative_workforce ?? 0);
+
+            if (totalWf > totalCapacity) {
+                // Reduce general workforce first to fit capacity
+                const excess = totalWf - totalCapacity;
+                const generalNow = Number(factionWf.corp_general_workforce ?? 0);
+                const generalReduction = Math.min(excess, generalNow);
+                const remainingExcess = excess - generalReduction;
+
+                const updates = { corp_general_workforce: generalNow - generalReduction };
+
+                if (remainingExcess > 0) {
+                    const skilledNow = Number(factionWf.corp_skilled_workforce ?? 0);
+                    const skilledReduction = Math.min(remainingExcess, skilledNow);
+                    updates.corp_skilled_workforce = skilledNow - skilledReduction;
+
+                    const stillExcess = remainingExcess - skilledReduction;
+                    if (stillExcess > 0) {
+                        const innovNow = Number(factionWf.corp_innovative_workforce ?? 0);
+                        updates.corp_innovative_workforce = Math.max(0, innovNow - stillExcess);
+                    }
+                }
+
+                await supabase.from('factions').update(updates).eq('id', corp.id);
+                console.log(`[PropertyEffects] ${corp.faction_name}: workforce capped at ${totalCapacity} (was ${totalWf}, -${excess} excess)`);
+            }
+        }
+    }
+}
+
 async function resolveExpiredBids(supabase, nationId, currentTick) {
     // Find contracts where bidding has ended
     const { data: expiredContracts } = await supabase
@@ -923,7 +1023,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // Load corporation factions for this nation
             const { data: corpFactions, error: corpErr } = await supabase
                 .from('factions')
-                .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves')
+                .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
                 .eq('nation_id', nation.id)
                 .eq('faction_type', 'corporation');
 
@@ -980,6 +1080,14 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (constructionErr) {
                 console.error(`[advance-corp-tick] Construction failed for ${nation.name} (non-fatal):`, constructionErr);
                 summary.errors.push({ nation: nation.name, sector: 'construction', error: String(constructionErr) });
+            }
+
+            // ── Property Effects (maintenance, condition degradation) ──
+            try {
+                await processPropertyEffects(supabase, nation, corps, currentTick);
+            } catch (propEffErr) {
+                console.error(`[advance-corp-tick] Property effects failed for ${nation.name} (non-fatal):`, propEffErr);
+                summary.errors.push({ nation: nation.name, sector: 'property_effects', error: String(propEffErr) });
             }
 
             // ── Corporation Monthly Income ──────────────────────────────
