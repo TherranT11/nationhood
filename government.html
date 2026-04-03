@@ -7688,12 +7688,40 @@ function renderEarlyElectionsButton(coalition) {
     const isPMParty = currentFaction.id === coalition.lead_party_id;
     if (!isPMParty) return '';
 
+    // Cooldown: can't call within 6 ticks of the last election
+    const ticksSinceLast = lastElectionTick != null ? (currentTick - lastElectionTick) : 999;
+    if (ticksSinceLast < 6) {
+        const remaining = 6 - ticksSinceLast;
+        return `
+            <div id="early-elections" style="text-align:center;margin-top:12px;">
+                <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;opacity:0.4;cursor:not-allowed;" disabled>
+                    ⚡ Call Early Elections
+                </button>
+                <div style="font-size:0.7rem;color:var(--text-muted);margin-top:6px;">Cooldown: ${remaining} tick${remaining !== 1 ? 's' : ''} until available</div>
+            </div>`;
+    }
+
+    // Cooldown: can't call within 2 ticks of the next scheduled election
+    const nextElTick = coalitionData?._earlyElectionTick || null;
+    if (nextElTick && (nextElTick - currentTick) <= 2) {
+        return `
+            <div id="early-elections" style="text-align:center;margin-top:12px;">
+                <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;opacity:0.4;cursor:not-allowed;" disabled>
+                    ⚡ Call Early Elections
+                </button>
+                <div style="font-size:0.7rem;color:var(--text-muted);margin-top:6px;">Elections already imminent</div>
+            </div>`;
+    }
+
+    const govApproval = Number(currentNation?.gov_approval ?? 50);
+    const momBoost = govApproval < 40 ? 2 : 5;
+
     return `
         <div id="early-elections" style="text-align:center;margin-top:12px;">
             <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="callEarlyElections()" id="early-elections-btn">
                 ⚡ Call Early Elections
             </button>
-            <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">PM only — dissolve the legislature</div>
+            <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">PM only — dissolve the legislature · <span style="color:var(--green);">+${momBoost} Momentum</span></div>
         </div>`;
 }
 
@@ -7742,11 +7770,15 @@ async function callEarlyElections() {
         .filter(id => id !== currentFaction.id)
         .map(id => allParties.find(p => p.id === id)?.faction_name || 'Unknown');
 
+    const govApproval = Number(currentNation?.gov_approval ?? 50);
+    const momBoost = govApproval < 40 ? 2 : 5;
+
     const confirmMsg =
         `⚡ CALL EARLY ELECTIONS?\n\n` +
         `This will:\n` +
         `• Cost your party ${GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST} Approval\n` +
         (coalitionPartyNames.length > 0 ? `• Cost coalition partners (${coalitionPartyNames.join(', ')}) ${GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST} Approval each\n` : '') +
+        `• Your party gains +${momBoost} Momentum${govApproval < 40 ? ' (reduced — approval below 40%)' : ''}\n` +
         `• Freeze all pending legislation\n` +
         `• Dissolve the legislature\n` +
         `• Trigger elections in ${GAME_CONFIG.EARLY_ELECTION_TICKS} ticks\n\n` +
