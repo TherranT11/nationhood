@@ -844,6 +844,11 @@ export async function advanceBillEmergency(supabase, nationId, factionId, billId
         if (billErr) return { success: false, error: billErr.message };
         advancedTo = 'president_desk';
 
+    } else if (bill.status === 'floor' && bill.bill_type === 'default_resolution') {
+        // Default resolutions require server-side enactSovereignDefault (cross-nation contagion).
+        // Cannot be emergency-enacted client-side — must go through normal tick resolution.
+        return { success: false, error: 'Sovereign default resolutions cannot be fast-tracked past floor. They must complete the normal voting process.' };
+
     } else if (bill.status === 'floor') {
         // floor → enacted (parliamentary systems — no president's desk)
         const enactment = await enactBill(supabase, bill, currentTick);
