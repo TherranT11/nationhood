@@ -28148,6 +28148,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     } else {
                         console.log(`[Inactivity] ${party.faction_name} in ${nation.name}: ${currentSeats} → ${newSeats} seats (${ticksInactive} ticks inactive, -${seatsLost})`);
                     }
+                }
             }
         } catch (inactErr) {
             console.error(`[advanceTick] Inactivity processing failed for ${nation.name} (non-fatal):`, inactErr);
