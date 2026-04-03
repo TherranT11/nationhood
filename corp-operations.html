@@ -6610,8 +6610,275 @@ async function npBuyProperty() {
     }
 }
 
+// ==================== CONSTRUCTION PROJECT MODAL ====================
+
+const CP_STYLE_META = {
+    Basic:       { costMod: 1.0, maintMod: 1.0, repGain: 1, color: '#6a6660', desc: 'Functional. No frills.' },
+    Modern:      { costMod: 1.4, maintMod: 1.2, repGain: 2, color: '#8b9a6b', desc: 'Contemporary design. Good retention.' },
+    Sustainable: { costMod: 1.6, maintMod: 0.8, repGain: 3, color: '#5c5',    desc: 'Green building. Lower upkeep.' },
+    Innovative:  { costMod: 2.0, maintMod: 1.5, repGain: 4, color: '#c8a832', desc: 'Cutting edge. Attracts top talent.' },
+    Heritage:    { costMod: 1.3, maintMod: 1.4, repGain: 2, color: '#c84',    desc: 'Restored historic. High character.' },
+    Premium:     { costMod: 2.5, maintMod: 1.8, repGain: 5, color: '#ca5',    desc: 'Flagship prestige. Maximum reputation.' },
+};
+
+let _cpModal = false;
+let _cpData = { name: '', type: 'Office Building', size: 2000, style: 'Modern', timeline: 36, budgetMod: 0 };
+let _cpSubmitting = false;
+
+function cpCalcBudget() {
+    const inflation = Number(nationStats?.inflation ?? 50);
+    const inflMod = 1 + ((inflation - 50) / 100 * 0.3);
+    const styleMod = CP_STYLE_META[_cpData.style]?.costMod || 1.0;
+    // $100K per employee base, scaled by inflation and style
+    const baseBudget = Math.round(_cpData.size * 100000 * inflMod * styleMod);
+    const adjusted = Math.round(baseBudget * (1 + _cpData.budgetMod / 100));
+    const maint = Math.round(adjusted * 0.007 * (CP_STYLE_META[_cpData.style]?.maintMod || 1.0));
+    return { baseBudget, adjusted, maint, inflMod, styleMod };
+}
+
 function npOpenConstructionModal() {
-    alert('Phase 4: Construction Project — coming soon.');
+    _cpModal = true;
+    _cpData = { name: '', type: 'Office Building', size: 2000, style: 'Modern', timeline: 36, budgetMod: 0 };
+    renderConstructionModal();
+}
+
+function cpClose() {
+    _cpModal = false;
+    document.getElementById('cp-modal-overlay')?.remove();
+}
+
+function cpSetField(field, value) {
+    _cpData[field] = value;
+    renderConstructionModal();
+}
+
+async function cpSubmit() {
+    if (_cpSubmitting || !_cpData.name.trim()) return;
+    _cpSubmitting = true;
+
+    try {
+        const budget = cpCalcBudget();
+        const nationName = nationStats?.name || faction?.nation || 'Unknown';
+        const repGain = CP_STYLE_META[_cpData.style]?.repGain || 1;
+
+        // Generate project code: PVT-C1-2015
+        const shardRes = await _supabase.from('shard').select('current_tick, current_date').eq('name', 'Alpha Shard').single();
+        const currentTick = shardRes.data?.current_tick || 0;
+        const gameYear = (shardRes.data?.current_date || '').match(/\d{4}/)?.[0] || '2015';
+
+        // Count existing private contracts to generate sequence
+        const { count: existingCount } = await _supabase.from('construction_contracts')
+            .select('id', { count: 'exact', head: true })
+            .eq('nation_id', faction.nation_id)
+            .eq('issuer_type', 'PRIVATE');
+        const seq = (existingCount || 0) + 1;
+        const projectCode = `PVT-C${seq}-${gameYear}`;
+
+        // Insert into construction_contracts
+        const { error } = await _supabase.from('construction_contracts').insert({
+            nation_id: faction.nation_id,
+            template_key: 'custom_building',
+            sector: 'civil_engineering',
+            name: _cpData.name.trim(),
+            description: `${_cpData.type} (${_cpData.style}) — ${_cpData.size.toLocaleString()} employees, commissioned by ${faction.faction_name}`,
+            project_code: projectCode,
+            budget_ceiling: budget.adjusted,
+            timeline_ticks: _cpData.timeline,
+            required_materials: { concrete: Math.ceil(_cpData.size / 200), steel: Math.ceil(_cpData.size / 300) },
+            required_equipment: ['work_trucks', 'excavators', 'concrete_mixers', 'tower_cranes'],
+            required_workforce: { general: Math.ceil(_cpData.size / 15), skilled: Math.ceil(_cpData.size / 50) },
+            status: 'open',
+            generated_at_tick: currentTick,
+            bidding_ends_tick: currentTick + 3,
+            issuer_type: 'PRIVATE',
+            issuer_name: faction.faction_name,
+            issuer_faction_id: faction.id,
+        });
+
+        if (error) throw error;
+
+        cpClose();
+        alert('Construction project submitted!\n\n' +
+            'Project: ' + _cpData.name.trim() + '\n' +
+            'Code: ' + projectCode + '\n' +
+            'Budget: ' + hfFmtBig(budget.adjusted) + '\n' +
+            'Expected Reputation: +' + repGain + '\n\n' +
+            'All construction corporations in ' + nationName + ' can now bid on this project.');
+    } catch (err) {
+        alert('Failed to submit project: ' + err.message);
+    } finally {
+        _cpSubmitting = false;
+    }
+}
+
+function renderConstructionModal() {
+    // Remove existing overlay
+    document.getElementById('cp-modal-overlay')?.remove();
+    if (!_cpModal) return;
+
+    const mono = "'JetBrains Mono', monospace";
+    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+        accent: '#8b9a6b', gold: '#c8a832', orange: '#c84',
+        greenBright: '#5c5', red: '#c55', redDim: '#a44', yellow: '#ca5',
+        text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
+
+    const budget = cpCalcBudget();
+    const nationName = nationStats?.name || faction?.nation || 'Nation';
+    const repGain = CP_STYLE_META[_cpData.style]?.repGain || 1;
+    const repColor = repGain >= 4 ? C.gold : repGain >= 3 ? C.greenBright : repGain >= 2 ? C.accent : C.dim;
+
+    // Style grid
+    const stylesHtml = Object.entries(CP_STYLE_META).map(([name, meta]) => {
+        const active = _cpData.style === name;
+        return `<div onclick="cpSetField('style','${name}')" style="padding:5px 6px;cursor:pointer;text-align:center;background:${active ? meta.color + '18' : 'transparent'};border:1px solid ${active ? meta.color + '44' : C.border};">
+            <div style="font-family:${mono};font-size:9px;font-weight:700;color:${active ? meta.color : C.dim}">${name}</div>
+            <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:1px">×${meta.costMod.toFixed(1)} cost</div>
+        </div>`;
+    }).join('');
+
+    const overlay = document.createElement('div');
+    overlay.id = 'cp-modal-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
+
+    overlay.innerHTML = `
+    <div style="width:440px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;max-height:90vh;">
+        <div style="padding:10px 16px;border-bottom:1px solid ${C.border};background:${C.card};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:8px;color:${C.gold}">●</span>
+                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Construction Project</span>
+            </div>
+            <span onclick="cpClose()" style="font-family:${mono};font-size:14px;color:${C.dim};cursor:pointer">×</span>
+        </div>
+        <div style="padding:12px 16px;overflow:auto;flex:1;">
+
+            <div style="margin-bottom:12px;">
+                <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Building Name</div>
+                <input id="cp-name-input" value="${_cpData.name.replace(/"/g, '&quot;')}" placeholder="e.g., McKenna Tower"
+                    style="width:100%;padding:6px 10px;font-family:${mono};font-size:11px;color:${C.text};background:${C.card};border:1px solid ${C.border};outline:none;box-sizing:border-box;" />
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Type</div>
+                <div style="display:flex;gap:4px;">
+                    ${['Regional HQ', 'Office Building'].map(t => `<span onclick="cpSetField('type','${t}')" style="flex:1;text-align:center;padding:5px 0;font-family:${mono};font-size:9px;font-weight:700;cursor:pointer;color:${_cpData.type === t ? '#000' : C.dim};background:${_cpData.type === t ? C.accent : 'transparent'};border:1px solid ${_cpData.type === t ? C.accent : C.border}">${t}</span>`).join('')}
+                </div>
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase">Size (Employees)</span>
+                    <span style="font-family:${mono};font-size:14px;font-weight:700;color:${C.text}">${_cpData.size.toLocaleString()}</span>
+                </div>
+                <input type="range" min="500" max="18000" step="500" value="${_cpData.size}" oninput="cpSetField('size',+this.value)"
+                    style="width:100%;accent-color:${C.accent};height:4px;" />
+                <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:7px;color:${C.dim};margin-top:2px">
+                    <span>500 min</span><span>18,000 max</span>
+                </div>
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Style</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;">${stylesHtml}</div>
+                <div style="margin-top:4px;font-family:${mono};font-size:8px;color:${CP_STYLE_META[_cpData.style].color}">${CP_STYLE_META[_cpData.style].desc}</div>
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase">Timeline</span>
+                    <span style="font-family:${mono};font-size:12px;font-weight:700;color:${C.text}">${_cpData.timeline} months</span>
+                </div>
+                <input type="range" min="24" max="60" step="6" value="${_cpData.timeline}" oninput="cpSetField('timeline',+this.value)"
+                    style="width:100%;accent-color:${C.gold};height:4px;" />
+                <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:7px;color:${C.dim};margin-top:2px">
+                    <span>24 months</span><span>60 months</span>
+                </div>
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Budget</div>
+                <div style="background:${C.card};border:1px solid ${C.border};padding:8px 10px;">
+                    <div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid ${C.border}">
+                        <span style="font-family:${mono};font-size:8px;color:${C.dim}">BASE (${_cpData.size.toLocaleString()} × $100k × ${budget.inflMod.toFixed(2)} × ${budget.styleMod.toFixed(1)})</span>
+                        <span style="font-family:${mono};font-size:9px;color:${C.muted}">${hfFmtBig(budget.baseBudget)}</span>
+                    </div>
+                    <div style="padding:6px 0">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+                            <span style="font-family:${mono};font-size:8px;color:${C.dim}">ADJUSTMENT</span>
+                            <span style="font-family:${mono};font-size:10px;font-weight:700;color:${_cpData.budgetMod > 0 ? C.greenBright : _cpData.budgetMod < 0 ? C.red : C.dim}">${_cpData.budgetMod > 0 ? '+' : ''}${_cpData.budgetMod}%</span>
+                        </div>
+                        <input type="range" min="-15" max="15" step="1" value="${_cpData.budgetMod}" oninput="cpSetField('budgetMod',+this.value)"
+                            style="width:100%;accent-color:${C.accent};height:4px;" />
+                        <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:7px;color:${C.dim};margin-top:2px">
+                            <span>-15% (budget cut)</span><span>+15% (quality invest)</span>
+                        </div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid ${C.border}">
+                        <span style="font-family:${mono};font-size:9px;font-weight:700;color:${C.text}">TOTAL BUDGET</span>
+                        <span style="font-family:${mono};font-size:14px;font-weight:700;color:${C.gold}">${hfFmtBig(budget.adjusted)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:2px 0">
+                        <span style="font-family:${mono};font-size:8px;color:${C.dim}">EST. MONTHLY MAINTENANCE</span>
+                        <span style="font-family:${mono};font-size:9px;color:${C.redDim}">${hfFmtBig(budget.maint)}/mo</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style="padding:6px 8px;background:rgba(200,168,50,0.04);border:1px solid rgba(200,168,50,0.12);margin-bottom:8px;">
+                <div style="font-family:${mono};font-size:8px;color:${C.gold};margin-bottom:2px">WHAT HAPPENS NEXT</div>
+                <div style="font-size:9px;color:${C.dim};line-height:1.5">
+                    This project will appear as a Civil Engineering bid in the Open Contracts pool for all construction corporations with an HQ or Regional HQ in ${nationName}. The lowest qualified bidder wins the contract and begins construction.
+                </div>
+            </div>
+
+            <div style="padding:6px 8px;background:rgba(139,154,107,0.04);border:1px solid rgba(139,154,107,0.12);">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-family:${mono};font-size:9px;color:${C.accent}">EXPECTED REPUTATION GAIN</span>
+                    <span style="font-family:${mono};font-size:16px;font-weight:700;color:${repColor}">+${repGain}</span>
+                </div>
+                <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:2px">${_cpData.style} style · ${repGain === 5 ? 'Maximum prestige' : repGain >= 4 ? 'Impressive presence' : repGain >= 3 ? 'Strong statement' : repGain >= 2 ? 'Solid investment' : 'Functional addition'}</div>
+            </div>
+
+        </div>
+        <div style="padding:10px 16px;border-top:1px solid ${C.border};background:${C.card};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div>
+                <div style="font-family:${mono};font-size:7px;color:${C.dim}">TOTAL PROJECT</div>
+                <div style="font-family:${mono};font-size:14px;font-weight:700;color:${C.gold}">${hfFmtBig(budget.adjusted)}</div>
+            </div>
+            <div style="display:flex;gap:6px;">
+                <div onclick="cpClose()" style="padding:5px 16px;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:${C.dim};border:1px solid ${C.border};cursor:pointer">CANCEL</div>
+                <div onclick="cpSubmitFromModal()" style="padding:5px 16px;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:${C.gold};cursor:pointer;opacity:${_cpData.name.trim().length > 0 ? 1 : 0.4}">SUBMIT PROJECT</div>
+            </div>
+        </div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+
+    // Wire up the name input (can't use oninput in template string easily)
+    const nameInput = document.getElementById('cp-name-input');
+    if (nameInput) {
+        nameInput.addEventListener('input', (e) => { _cpData.name = e.target.value; });
+    }
+
+    // Close on overlay click (not modal body)
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) cpClose(); });
+}
+
+function cpSubmitFromModal() {
+    // Read latest name from input
+    const nameInput = document.getElementById('cp-name-input');
+    if (nameInput) _cpData.name = nameInput.value;
+    if (!_cpData.name.trim()) { alert('Please enter a building name.'); return; }
+    cpSubmit();
+}
+
+window.cpClose = cpClose;
+window.cpSetField = cpSetField;
+window.cpSubmitFromModal = cpSubmitFromModal;
+
+function npOpenConstructionModal() {
+    _cpModal = true;
+    _cpData = { name: '', type: 'Office Building', size: 2000, style: 'Modern', timeline: 36, budgetMod: 0 };
+    renderConstructionModal();
 }
 
 window.npSelect = npSelect;
