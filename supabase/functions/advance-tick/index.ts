@@ -11122,7 +11122,8 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
         return null; // Caretaker is a valid government state
     }
 
-    if (coalition) return null;
+    // 'active' = proposed but not finalized; only 'formed' is a real government
+    if (coalition && coalition.status === 'formed') return null;
 
     // Get latest completed election (filter out records without results)
     const { data: election } = await supabase
@@ -13324,7 +13325,7 @@ async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
     if (!isParliamentaryDemocracy(nation)) return;
 
     const coalition = await fetchActiveCoalition(supabase, nation.id);
-    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'active' && coalition.status !== 'caretaker')) return;
+    if (!coalition || coalition.status !== 'formed') return;
 
     const { data: existingHOG } = await supabase
         .from('head_of_government')

@@ -1100,7 +1100,8 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
         return null; // Caretaker is a valid government state
     }
 
-    if (coalition) return null;
+    // 'active' = proposed but not finalized; only 'formed' is a real government
+    if (coalition && coalition.status === 'formed') return null;
 
     // Get latest completed election (filter out records without results)
     const { data: election } = await supabase
