@@ -142,6 +142,37 @@ async function processSurplusConnectors(supabase: any, nation: any) {
     }
 }
 
+// ==================== TARIFF → RELATIONS PENALTY ====================
+// Nations with tariffs > 25% lose -0.5 relations/tick with ALL other nations (floor 10)
+
+async function processTariffRelationsPenalty(supabase, nation) {
+    const tariffRate = Number(nation.tariffs ?? 0);
+    if (tariffRate <= 25) return;
+
+    // Load all diplomatic relations for this nation
+    const { data: relations } = await supabase
+        .from('diplomatic_relations')
+        .select('id, nation_a_id, nation_b_id, relation_score')
+        .or(`nation_a_id.eq.${nation.id},nation_b_id.eq.${nation.id}`);
+
+    if (!relations || relations.length === 0) return;
+
+    const FLOOR = 10;
+    const PENALTY = 0.5;
+
+    for (const rel of relations) {
+        const currentScore = Number(rel.relation_score ?? 50);
+        if (currentScore <= FLOOR) continue;
+        const newScore = Math.max(FLOOR, Math.round((currentScore - PENALTY) * 10) / 10);
+        if (newScore !== currentScore) {
+            const { error } = await supabase.from('diplomatic_relations')
+                .update({ relation_score: newScore })
+                .eq('id', rel.id);
+            if (error) console.warn(`[TariffPenalty] Failed to update relation ${rel.id}:`, error.message);
+        }
+    }
+}
+
 // ==================== POPULATION GROWTH ====================
 //
 // population_growth is a standalone 0-100 stat driven by policy effects and decay.
@@ -1989,6 +2020,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             await processSurplusConnectors(supabase, nation);
         } catch (connErr) {
             console.error(`[advanceTick] Surplus connectors failed for ${nation.name} (non-fatal):`, connErr);
+        }
+
+        // Tariff → relations penalty (tariffs > 25% degrade relations with all nations)
+        try {
+            await processTariffRelationsPenalty(supabase, nation);
+        } catch (tariffErr) {
+            console.error(`[advanceTick] Tariff relations penalty failed for ${nation.name} (non-fatal):`, tariffErr);
         }
 
         // Re-fetch nation with post-effect values for remaining processors

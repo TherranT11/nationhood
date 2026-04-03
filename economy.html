@@ -2797,6 +2797,14 @@ function renderTariffsTab(nation) {
     h += 'Import dampener = 1 &minus; (tariff_rate / 200). ';
     h += 'At <strong>0%</strong> tariffs, imports flow at 100%. At <strong>50%</strong>, imports are reduced to 75%. At <strong>100%</strong>, imports are cut by half.';
     h += '</div>';
+
+    // Tariff relations warning
+    if (tariffRate > 25) {
+        h += '<div style="margin-top:8px;padding:8px 12px;background:rgba(204,85,85,0.06);border:1px solid rgba(204,85,85,0.2);border-radius:4px;">';
+        h += '<div style="font-family:var(--font-mono,monospace);font-size:9px;font-weight:700;color:#c55;margin-bottom:4px;">⚠ HIGH TARIFF DIPLOMATIC PENALTY</div>';
+        h += '<div style="font-size:11px;color:var(--text-muted,#9e9a92);line-height:1.5;">Tariffs above 25% degrade diplomatic relations with <strong>all nations</strong> by <strong>-0.5/tick</strong> (floor: 10). Current rate: <strong>' + tariffRate.toFixed(0) + '%</strong>. Reduce tariffs below 25% to stop the penalty.</div>';
+        h += '</div>';
+    }
     h += '</div>';
 
     // --- Tariff Impact Simulator ---

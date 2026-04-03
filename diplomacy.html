@@ -1017,7 +1017,15 @@ async function renderRelationsTab() {
             return;
         }
 
+        // Tariff relations warning
+        const _tariffRate = Number(currentNation.tariffs ?? 0);
         let cardsHTML = '';
+        if (_tariffRate > 25) {
+            cardsHTML += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(204,85,85,0.06);border:1px solid rgba(204,85,85,0.2);border-radius:4px;">'
+                + '<div style="font-family:var(--font-mono,monospace);font-size:9px;font-weight:700;color:#c55;margin-bottom:4px;">⚠ HIGH TARIFF PENALTY ACTIVE</div>'
+                + '<div style="font-size:11px;color:var(--text-muted,#9e9a92);line-height:1.5;">Your tariff rate of <strong>' + _tariffRate.toFixed(0) + '%</strong> exceeds 25%. Relations with all nations are degrading by <strong>-0.5/tick</strong> (floor: 10). Lower tariffs to stop the penalty.</div>'
+                + '</div>';
+        }
         for (const nation of otherNations) {
             // Find relation for this pair
             const relation = allRelations.find(r =>

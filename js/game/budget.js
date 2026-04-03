@@ -38,7 +38,7 @@ export function calculateNationalBudget(nation) {
     const incomeRevenue  = gdp * (incomeTaxRate / 100) * 0.40 * collectionRate;
     const corpRevenue    = gdp * (corpTaxRate / 100)   * 0.10 * collectionRate;
     const salesRevenue   = gdp * (salesTaxRate / 100)  * 0.30 * collectionRate;
-    const tariffRevenue  = gdp * (tariffsRate / 100)   * 0.05 * collectionRate;
+    const tariffRevenue  = gdp * (tariffsRate / 100)   * 0.0025 * collectionRate;
 
     // Oil & Gas Revenue (only if oil_and_gas stat > 30)
     const oilRevenue = oilGas > 30 ? gdp * (oilGas / 100) * 0.06 : 0;
@@ -66,9 +66,9 @@ export function applyTradeTariffOverride(budget, tradeTariffRevenue, gdp) {
     if (tradeTariffRevenue != null && Number(tradeTariffRevenue) > 0) {
         const oldTariff = budget.tariffRevenue;
         let newTariff = Number(tradeTariffRevenue);
-        // Cap tariff revenue at 4% of GDP — realistic ceiling even for protectionist economies
+        // Cap tariff revenue at 0.2% of GDP — tariffs are a minor revenue source
         if (gdp > 0) {
-            const maxTariff = gdp * 0.04;
+            const maxTariff = gdp * 0.002;
             newTariff = Math.min(newTariff, maxTariff);
         }
         budget.tariffRevenue = newTariff;
