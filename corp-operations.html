@@ -6354,6 +6354,7 @@ async function loadOwnedProperties() {
         .select('*')
         .eq('faction_id', faction.id)
         .eq('is_active', true)
+        .order('type', { ascending: true }) // regional_hq sorts before 'office'
         .order('purchased_at_tick', { ascending: false });
     _ownedProperties = data || [];
 }
@@ -6408,6 +6409,10 @@ function renderPropertyCard() {
                 <span style="font-family:${mono};font-size:9px;color:${prop.condition >= 75 ? '#5c5' : prop.condition >= 50 ? '#ca5' : C.orange}">${prop.condition}%</span>
             </div>
             <div style="width:100%;height:3px;background:${C.border};margin-top:2px;"><div style="width:${prop.condition}%;height:100%;background:${prop.condition >= 75 ? '#5c5' : prop.condition >= 50 ? '#ca5' : C.orange}"></div></div>
+            <div style="display:flex;gap:4px;margin-top:6px;">
+                <div onclick="propRefurbish('${prop.id}')" style="flex:1;padding:3px 0;text-align:center;font-family:${mono};font-size:7px;font-weight:700;letter-spacing:0.8px;color:${C.accent};border:1px solid ${C.accent}33;cursor:pointer;">REFURBISH (${hfFmtBig(Math.round((prop.purchase_price || 0) * 0.1))})</div>
+                <div onclick="propSell('${prop.id}')" style="flex:1;padding:3px 0;text-align:center;font-family:${mono};font-size:7px;font-weight:700;letter-spacing:0.8px;color:${C.red};border:1px solid ${C.red}33;cursor:pointer;">SELL</div>
+            </div>
         </div>`;
     }
 
@@ -6930,6 +6935,112 @@ window.cpSubmitFromModal = cpSubmitFromModal;
 window.npSelect = npSelect;
 window.npBuyProperty = npBuyProperty;
 window.npOpenConstructionModal = npOpenConstructionModal;
+
+let _propActing = false;
+
+async function propRefurbish(propId) {
+    if (_propActing) return;
+    const prop = _ownedProperties.find(p => p.id === propId);
+    if (!prop) return;
+
+    const cost = Math.round((prop.purchase_price || 0) * 0.1);
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    if (cost > cash) {
+        alert('Insufficient cash. Refurbishment costs ' + hfFmtBig(cost) + ', you have ' + hfFmtBig(cash));
+        return;
+    }
+
+    if (prop.condition >= 95) {
+        alert('Property is already in excellent condition (' + prop.condition + '%).');
+        return;
+    }
+
+    // 1d20 condition boost (5-25%)
+    const boost = 5 + Math.floor(Math.random() * 21);
+    const newCondition = Math.min(100, prop.condition + boost);
+
+    if (!confirm('Refurbish "' + prop.name + '"?\n\nCost: ' + hfFmtBig(cost) + '\nExpected improvement: +' + boost + '% condition (' + prop.condition + '% → ' + newCondition + '%)')) return;
+
+    _propActing = true;
+    try {
+        await _supabase.from('corp_properties').update({ condition: newCondition }).eq('id', propId);
+        const newCash = Math.max(0, cash - cost);
+        await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        faction.corp_cash_reserves = newCash;
+
+        const cashEl = document.getElementById('topbar-cash');
+        if (cashEl) cashEl.textContent = 'CASH: ' + (newCash >= 1e6 ? '$' + (newCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newCash / 1000) + 'k');
+
+        await loadOwnedProperties();
+        renderPropertyCard();
+        alert('Refurbished! Condition: ' + prop.condition + '% → ' + newCondition + '%');
+    } catch (err) {
+        alert('Refurbishment failed: ' + err.message);
+    } finally {
+        _propActing = false;
+    }
+}
+
+async function propSell(propId) {
+    if (_propActing) return;
+    const prop = _ownedProperties.find(p => p.id === propId);
+    if (!prop) return;
+
+    // Sale value: 60% of purchase price, scaled by condition
+    const conditionFactor = (prop.condition || 50) / 100;
+    const saleValue = Math.round((prop.purchase_price || 0) * 0.6 * conditionFactor);
+
+    if (!confirm('Sell "' + prop.name + '"?\n\nSale value: ' + hfFmtBig(saleValue) + ' (60% × ' + prop.condition + '% condition)\n\nThe property will go back on the market for 6 ticks.\nThis cannot be undone.')) return;
+
+    _propActing = true;
+    try {
+        // 1. Deactivate owned property
+        await _supabase.from('corp_properties').update({ is_active: false }).eq('id', propId);
+
+        // 2. Add sale value to cash
+        const cash = Number(faction?.corp_cash_reserves ?? 0);
+        const newCash = cash + saleValue;
+        await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        faction.corp_cash_reserves = newCash;
+
+        // 3. Put it back on the market for 6 ticks
+        const shardRes = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shardRes.data?.current_tick || 0;
+
+        await _supabase.from('available_properties').insert({
+            nation_id: faction.nation_id,
+            catalog_id: prop.catalog_id || null,
+            name: prop.name,
+            type: prop.type,
+            style: prop.style,
+            capacity: prop.capacity,
+            price: Math.round(saleValue * 1.1), // slight markup from sale value
+            monthly_maintenance: prop.monthly_maintenance,
+            condition: prop.condition,
+            city: prop.city,
+            generated_at_tick: currentTick,
+            expires_at_tick: currentTick + 6,
+            status: 'available',
+        });
+
+        // 4. Update UI
+        const cashEl = document.getElementById('topbar-cash');
+        if (cashEl) cashEl.textContent = 'CASH: ' + (newCash >= 1e6 ? '$' + (newCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newCash / 1000) + 'k');
+
+        await loadOwnedProperties();
+        renderPropertyCard();
+        await loadAvailableProperties();
+        renderNewPropertyCard();
+        alert('Sold "' + prop.name + '" for ' + hfFmtBig(saleValue));
+    } catch (err) {
+        alert('Sale failed: ' + err.message);
+    } finally {
+        _propActing = false;
+    }
+}
+
+window.propRefurbish = propRefurbish;
+window.propSell = propSell;
 
 window.switchToExpansion = switchToExpansion;
 window.switchToOperations = switchToOperations;

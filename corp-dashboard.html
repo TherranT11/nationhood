@@ -1464,6 +1464,7 @@ async function renderProperty(nation, nationName, factionData, shard) {
             .select('*')
             .eq('faction_id', factionData.id)
             .eq('is_active', true)
+            .order('type', { ascending: true })
             .order('purchased_at_tick', { ascending: false });
         ownedProps = data || [];
     }
