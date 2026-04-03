@@ -1885,11 +1885,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         if (freshNation) Object.assign(nation, freshNation);
 
         // Electoral standing calculator: 3-pillar (Governance + Momentum + Ideology)
-        // Computes contested_vote_share and turnout_rate for all parties each tick
-        try {
-            await tickElectorate(supabase, nation, newTick);
-        } catch (electorateErr) {
-            console.error(`[advanceTick] Electoral standing calc failed for ${nation.name} (non-fatal):`, electorateErr);
+        // Runs every 3rd tick to reduce compute load — standings don't need per-tick precision
+        // Also runs if standings are stale (last_updated_tick is more than 3 ticks old)
+        if (newTick % 3 === 0 || newTick <= 185) {
+            try {
+                await tickElectorate(supabase, nation, newTick);
+            } catch (electorateErr) {
+                console.error(`[advanceTick] Electoral standing calc failed for ${nation.name} (non-fatal):`, electorateErr);
+            }
         }
 
         // Random events
