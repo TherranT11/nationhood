@@ -2791,7 +2791,7 @@ let selectedContract = null;
 function openContractDetail(contract) {
     selectedContract = contract;
     const overlay = document.getElementById('cd-overlay');
-    const isGov = contract.contract_type === 'GOVERNMENT';
+    const isGov = contract.issuer_type === 'GOVERNMENT';
     const typeClass = isGov ? 'gov' : 'private';
     const nationName = (nationStats?.name || faction.nation || '—').toUpperCase();
     const qualified = isQualified(contract);
@@ -2817,15 +2817,18 @@ function openContractDetail(contract) {
 
     // Content
     const permits = contract.permits_required || [];
-    const equipment = contract.equipment_required || [];
-    const materials = contract.materials_estimated || [];
+    const equipment = contract.required_equipment || contract.equipment_required || [];
+    const materials = contract.required_materials || contract.materials_estimated || {};
 
+    // Map sector to specialization label
+    const sectorLabels = { civil_engineering: 'Civil Engineering', industrial: 'Industrial Construction', mega_project: 'Megaprojects' };
+    const specLabel = sectorLabels[contract.sector] || contract.spec_category || contract.sector || '—';
     let specColor = 'var(--teal)';
-    if (contract.spec_category === 'Heavy Infrastructure') specColor = 'var(--orange)';
-    if (contract.spec_category === 'Megaproject') specColor = 'var(--red)';
+    if (contract.sector === 'industrial') specColor = 'var(--orange)';
+    if (contract.sector === 'mega_project') specColor = 'var(--red)';
 
-    let budgetStr = fmtBig(contract.budget);
-    let timelineStr = contract.timeline_months + ' Months';
+    let budgetStr = fmtBig(contract.budget_ceiling || contract.budget || 0);
+    let timelineStr = (contract.timeline_ticks || contract.timeline_months || 0) + ' Months';
 
     let contentHtml = '';
 
@@ -2834,7 +2837,7 @@ function openContractDetail(contract) {
         <div class="cd-issue">
             <div class="cd-issue__left">
                 <span class="cd-issue__label">PROJECT ISSUE</span>
-                <span class="cd-issue__number">${escapeHtml(contract.contract_number)}</span>
+                <span class="cd-issue__number">${escapeHtml(contract.project_code || contract.contract_number || '')}</span>
             </div>
             <div class="cd-issue__tags">
                 ${contract.project_type ? `<span class="cd-tag teal">${escapeHtml(contract.project_type.toUpperCase())}</span>` : ''}
@@ -2855,7 +2858,7 @@ function openContractDetail(contract) {
     contentHtml += `<div class="cd-details">`;
     if (contract.project_type) contentHtml += detailRow('Type', contract.project_type);
     if (contract.project_subtype) contentHtml += detailRow('Sub-Type', contract.project_subtype);
-    contentHtml += detailRow('Specialization', contract.spec_category, specColor);
+    contentHtml += detailRow('Specialization', specLabel, specColor);
     contentHtml += detailRow('Total Budget', budgetStr, 'var(--green)');
     contentHtml += detailRow('Timeline', timelineStr);
     contentHtml += detailRow('Nation', nationStats?.name || faction.nation || '—');
