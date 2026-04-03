@@ -5617,7 +5617,7 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
                 <span class="elec-ticks">${ticksInPower} tick${ticksInPower !== 1 ? 's' : ''} in power</span>
             </div>
             ${isGoverning ? (() => {
-                const govApp = Number(nationData?.gov_approval ?? 50);
+                const govApp = Number(nation?.gov_approval ?? 50);
                 const approvalFactor = Math.max(-1, Math.min(1, (govApp - 35) / 30));
                 const fatigueFactor = Math.max(0, 1 - ticksInPower / 20);
                 const bonus = Math.round(0.08 * approvalFactor * fatigueFactor * 1000) / 10;
