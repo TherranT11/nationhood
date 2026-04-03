@@ -3313,7 +3313,7 @@ async function submitSponsorAddFundingArticle() {
         const slider = document.getElementById('sponsor-fslider-' + inst.id);
         const proposedPct = parseInt(slider.value);
         const currentPct = _sponsorGetInstPct(inst.id);
-        instLevels.push({ id: inst.id, name: inst.name, current_pct: currentPct, proposed_pct: proposedPct, base_cost: 0 });
+        instLevels.push({ id: inst.id, name: inst.name, current_pct: currentPct, proposed_pct: proposedPct, base_cost: getInstitutionBaseCost(inst.id) });
         if (proposedPct !== currentPct) anyChange = true;
     }
 
