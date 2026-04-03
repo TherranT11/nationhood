@@ -436,9 +436,10 @@ export async function processIdeologyDecay(supabase, nationId, currentTick) {
             if (Math.abs(score) <= IDEOLOGY_DECAY_DEAD_ZONE) continue;
 
             const absDecay = Math.abs(score) >= 50 ? 1 : 0.5;
-            const newScore = score > 0
+            // Round to int — smallint columns reject decimals like 28.5
+            const newScore = Math.round(score > 0
                 ? Math.max(0, score - absDecay)
-                : Math.min(0, score + absDecay);
+                : Math.min(0, score + absDecay));
 
             if (newScore !== score) updateObj[axis.key] = newScore;
         }
