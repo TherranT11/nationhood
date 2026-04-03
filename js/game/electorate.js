@@ -1084,7 +1084,7 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     const standingMap = {};
     for (const s of (existingStandings || [])) standingMap[s.faction_id] = s;
 
-    // 6. Determine governing faction IDs
+    // 6. Determine governing faction IDs + incumbency tenure
     const { data: coalitionRow } = await supabase
         .from('government_formations')
         .select('lead_party_id, party_ids')
@@ -1095,6 +1095,21 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         .maybeSingle();
     const governingIds = new Set(coalitionRow?.party_ids || []);
     if (coalitionRow?.lead_party_id) governingIds.add(coalitionRow.lead_party_id);
+
+    // Incumbency tenure: ticks since current administration started
+    let incumbencyTicks = 0;
+    if (governingIds.size > 0) {
+        const { data: adminRow } = await supabase
+            .from('administrations')
+            .select('started_at_tick')
+            .eq('nation_id', nationId)
+            .order('started_at_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        incumbencyTicks = adminRow?.started_at_tick
+            ? Math.max(0, currentTick - adminRow.started_at_tick)
+            : 0;
+    }
 
     // 7. Compute engagement scores (Governance pillar)
     const coalitionPartyIds = coalitionRow?.party_ids || [];
@@ -1157,6 +1172,20 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
             govApprovalPillar * CFG.PILLAR_WEIGHT_GOV_APPROVAL
         );
 
+        // Incumbency turnout modifier for governing parties
+        // Bonus: up to +0.08 turnout at high approval, decays with tenure, flips negative below ~35% approval
+        let incumbencyTurnoutBonus = 0;
+        if (governingIds.has(f.id)) {
+            // Approval factor: positive above 40, zero at 35, negative below 30
+            const approvalFactor = clamp((govApproval - 35) / 30, -1, 1); // -1 to +1
+
+            // Fatigue factor: full at 0 ticks, halved by 10 ticks, near-zero by 20
+            const fatigueFactor = Math.max(0, 1 - incumbencyTicks / 20);
+
+            // Base bonus: +0.08 at peak, scales with approval and fatigue
+            incumbencyTurnoutBonus = round3(0.08 * approvalFactor * fatigueFactor);
+        }
+
         updates.push({
             faction_id: f.id,
             nation_id: nationId,
@@ -1165,6 +1194,7 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
             visibility: round2(momentum), // visibility column repurposed for momentum display
             raw_appeal: rawAppeal,
             last_updated_tick: currentTick,
+            _incumbencyBonus: incumbencyTurnoutBonus, // consumed by computeRealizedVoteShares
         });
     }
 
@@ -1408,7 +1438,9 @@ function computeRealizedVoteShares(updates, profile, nation) {
         const vis = Number(u.visibility ?? CFG.DEFAULT_VISIBILITY);
         const enthBonus = (enthusiasm - 50) * CFG.TURNOUT_ENTHUSIASM_SCALE;
         const visBonus = Math.max(0, (vis - 50)) * CFG.TURNOUT_VISIBILITY_SCALE;
-        u.turnout_rate = round3(clamp(nationalBase + enthBonus + visBonus, 0.25, CFG.TURNOUT_MAX));
+        // Incumbency bonus: governing parties mobilize supporters better (or worse if unpopular)
+        const incumbencyBonus = Number(u._incumbencyBonus ?? 0);
+        u.turnout_rate = round3(clamp(nationalBase + enthBonus + visBonus + incumbencyBonus, 0.25, CFG.TURNOUT_MAX));
     }
 
     // realized = contested × turnout (then renormalize)

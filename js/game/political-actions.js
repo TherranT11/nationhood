@@ -3523,6 +3523,30 @@ export async function processCrises(supabase, nation, currentTick) {
             const crisisResolveBoost = Math.ceil(Math.random() * 6);
             await adjustGovernmentApprovalEvent(supabase, nation.id, crisisResolveBoost, `crisis:resolved:${template.name}`);
 
+            // +3 momentum to governing coalition parties for resolving the crisis
+            try {
+                const { data: govFormation } = await supabase
+                    .from('government_formations')
+                    .select('party_ids')
+                    .eq('nation_id', nation.id)
+                    .in('status', ['formed', 'active', 'caretaker'])
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (govFormation?.party_ids) {
+                    for (const pid of govFormation.party_ids) {
+                        await supabase.rpc('adjust_momentum', {
+                            p_faction_id: pid,
+                            p_delta: 3,
+                            p_label: `Crisis resolved: ${template.name} (+3)`,
+                            p_tick: currentTick
+                        });
+                    }
+                }
+            } catch (momErr) {
+                console.warn(`[Crisis] Momentum boost failed for crisis resolution:`, momErr.message);
+            }
+
             crisisEvents.push({
                 type: 'crisis_resolved',
                 crisisName: template.name,
