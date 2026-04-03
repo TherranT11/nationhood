@@ -1823,9 +1823,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     const currentSeats = party.seats || 0;
                     const seatsLost = Math.max(1, Math.floor(currentSeats * 0.2));
                     const newSeats = Math.max(0, currentSeats - seatsLost);
-                    await supabase.from('factions').update({ seats: newSeats }).eq('id', party.id);
-                    console.log(`[Inactivity] ${party.faction_name} in ${nation.name}: ${currentSeats} → ${newSeats} seats (${ticksInactive} ticks inactive, -${seatsLost})`);
-                }
+                    const { error: drainErr } = await supabase.from('factions').update({ seats: newSeats }).eq('id', party.id);
+                    if (drainErr) {
+                        console.error(`[Inactivity] Seat drain failed for ${party.faction_name}: ${drainErr.message}`);
+                    } else {
+                        console.log(`[Inactivity] ${party.faction_name} in ${nation.name}: ${currentSeats} → ${newSeats} seats (${ticksInactive} ticks inactive, -${seatsLost})`);
+                    }
             }
         } catch (inactErr) {
             console.error(`[advanceTick] Inactivity processing failed for ${nation.name} (non-fatal):`, inactErr);
