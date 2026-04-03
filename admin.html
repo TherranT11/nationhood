@@ -514,27 +514,47 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             const totalSeats = result.total_seats;
 
             previewSummary.innerHTML = `
-                <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:8px;">
-                    <span>Eligible voters: <strong>${result.eligible_voters.toLocaleString()}</strong></span>
-                    <span>Votes cast: <strong>${result.total_votes_cast.toLocaleString()}</strong></span>
-                    <span>Abstentions: <strong>${result.total_abstentions.toLocaleString()}</strong></span>
-                    <span>Turnout: <strong>${result.turnout_pct}%</strong></span>
+                <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:12px; font-family:'JetBrains Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#8a8778;">
+                    <span>Eligible <strong style="color:#c8c4b8;">${result.eligible_voters.toLocaleString()}</strong></span>
+                    <span>Cast <strong style="color:#c8c4b8;">${result.total_votes_cast.toLocaleString()}</strong></span>
+                    <span>Abstain <strong style="color:#c8c4b8;">${result.total_abstentions.toLocaleString()}</strong></span>
+                    <span>Turnout <strong style="color:${result.turnout_pct > 60 ? '#5aafa5' : result.turnout_pct > 40 ? '#d4a843' : '#c25450'};">${result.turnout_pct}%</strong></span>
+                </div>
+                <div style="display:grid; grid-template-columns:minmax(140px,1.5fr) repeat(4,55px) 50px 80px; gap:0; font-family:'JetBrains Mono',monospace; font-size:8.5px; text-transform:uppercase; letter-spacing:0.06em; color:#5c5a50; padding:6px 10px; background:#1e1e1c; border-bottom:1px solid #2a2a26;">
+                    <span>Party</span>
+                    <span style="text-align:right;">Gov</span>
+                    <span style="text-align:right;">Mom</span>
+                    <span style="text-align:right;">Ideo</span>
+                    <span style="text-align:right;">Score</span>
+                    <span style="text-align:right;">Seats</span>
+                    <span style="text-align:right;">Vote %</span>
                 </div>
             `;
 
-            previewContent.innerHTML = result.results.map(r => `
-                <div class="result-party">
+            previewContent.innerHTML = result.results.map(r => {
+                const barPct = totalSeats > 0 ? (r.seats / totalSeats) * 100 : 0;
+                const govColor = r.is_governing ? '#5aafa5' : '#d4a843';
+                const govLabel = r.is_governing ? 'GOV' : 'OPP';
+                const scoreColor = r.raw_appeal >= 40 ? '#5aafa5' : r.raw_appeal >= 25 ? '#d4a843' : '#c25450';
+                return `
+                <div style="display:grid; grid-template-columns:minmax(140px,1.5fr) repeat(4,55px) 50px 80px; gap:0; align-items:center; padding:8px 10px; background:#1a1a18; border-bottom:1px solid #242420; font-family:'IBM Plex Sans',sans-serif; font-size:12px;">
                     <div>
-                        <div class="result-party-name">${escHtml(r.party_name)} <span style="color:#888; font-size:0.75rem;">(${r.approval}% approval)</span></div>
-                        <div class="result-bar" style="width:200px;">
-                            <div class="result-bar-fill" style="width:${(r.seats/totalSeats)*100}%"></div>
+                        <div style="font-weight:600; color:#c8c4b8; font-size:12px; display:flex; align-items:center; gap:6px;">
+                            ${escHtml(r.party_name)}
+                            <span style="font-family:'JetBrains Mono',monospace; font-size:7.5px; font-weight:700; padding:1px 5px; border-radius:2px; color:${govColor}; background:${govColor}15; border:1px solid ${govColor}30;">${govLabel}</span>
+                        </div>
+                        <div style="height:3px; width:100%; max-width:160px; background:#242420; border-radius:2px; margin-top:4px;">
+                            <div style="height:3px; width:${barPct}%; background:${scoreColor}; border-radius:2px;"></div>
                         </div>
                     </div>
-                    <div class="result-party-seats">
-                        ${r.seats} seats <span style="color:#888; font-size:0.75rem;">(${r.vote_percentage}% · ${r.votes.toLocaleString()} votes)</span>
-                    </div>
-                </div>
-            `).join('');
+                    <span style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:11px; color:${r.governance > 40 ? '#5aafa5' : r.governance > 20 ? '#d4a843' : '#c25450'};">${r.governance}</span>
+                    <span style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:11px; color:${r.momentum > 40 ? '#5aafa5' : r.momentum > 15 ? '#d4a843' : '#8a8778'};">${r.momentum}</span>
+                    <span style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:11px; color:${r.ideology > 50 ? '#5aafa5' : r.ideology > 30 ? '#d4a843' : '#c25450'};">${r.ideology}%</span>
+                    <span style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; color:${scoreColor};">${r.raw_appeal}</span>
+                    <span style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:700; color:#d4a843;">${r.seats}</span>
+                    <span style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:10px; color:#8a8778;">${r.vote_percentage}%<br><span style="font-size:8px; color:#5c5a50;">${r.votes.toLocaleString()}</span></span>
+                </div>`;
+            }).join('');
 
             // Bloc breakdown (collapsible) with per-party vote detail
             const blocDetails = result.bloc_details || [];

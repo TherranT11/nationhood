@@ -313,7 +313,7 @@ export async function runElectionPreview(supabase, nationId) {
     const factionIds = factions.map(f => f.id);
     const { data: standings } = await supabase
         .from('faction_electoral_standing')
-        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval')
+        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval, ideological_alignment, visibility, raw_appeal')
         .eq('nation_id', nationId)
         .in('faction_id', factionIds);
 
@@ -437,12 +437,29 @@ export async function runElectionPreview(supabase, nationId) {
     }
 
     // 6. Build friendly results
+    // Determine governing party IDs for governance/opposition label
+    const { data: coalitionRow } = await supabase
+        .from('government_formations')
+        .select('party_ids')
+        .eq('nation_id', nationId)
+        .in('status', ['formed', 'active', 'caretaker'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    const govIds = new Set(coalitionRow?.party_ids || []);
+
     const partyResults = factions.map(f => {
         const s = standingMap[f.id];
+        const isGov = govIds.has(f.id);
         return {
             party_id: f.id,
             party_name: f.faction_name,
             approval: Math.round(Number(s?.party_approval || 0)),
+            governance: Math.round(Number(s?.party_approval || 0)),
+            momentum: Math.round(Number(s?.visibility || 0)),
+            ideology: Math.round(Number(s?.ideological_alignment || 0)),
+            raw_appeal: Math.round(Number(s?.raw_appeal || 0) * 10) / 10,
+            is_governing: isGov,
             votes: tally[f.id] || 0,
             vote_percentage: totalVotesCast > 0
                 ? Math.round(((tally[f.id] || 0) / totalVotesCast) * 10000) / 100
@@ -567,7 +584,7 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
     // party_approval column repurposed: now stores governance score (3-pillar system)
     const { data: standings } = await supabase
         .from('faction_electoral_standing')
-        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval')
+        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval, ideological_alignment, visibility, raw_appeal')
         .eq('nation_id', nationId)
         .in('faction_id', factionIds);
     const standingMap = {};
