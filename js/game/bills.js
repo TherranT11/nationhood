@@ -7,7 +7,7 @@ import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPres
 import { isPresidentialRepublic } from './government-types.js';
 import { DIPLOMACY_CONFIG } from './diplomacy-constants.js';
 import { IDEOLOGY_AXES, IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology, loadNationIdeologies } from './ideology.js';
-import { adjustGovernmentApprovalEvent, nudgeApproval, adjustCredibility, round2 } from './momentum.js';
+import { adjustGovernmentApprovalEvent, adjustCredibility, round2 } from './momentum.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
 import { fetchActiveCoalition } from './government-structure.js';
@@ -146,11 +146,17 @@ export function calculateEnactmentApproval(articles, billSupport, sponsorId, fac
     return approvalDeltas;
 }
 
-export async function applyEnactmentApproval(supabase, nationId, approvalDeltas) {
+export async function applyEnactmentApproval(supabase, nationId, approvalDeltas, currentTick = 0) {
     for (const [factionId, delta] of Object.entries(approvalDeltas)) {
         if (delta === 0) continue;
-        const scaled = round2(delta * 0.3);
-        await nudgeApproval(supabase, factionId, nationId, scaled, { source: 'bill:passed' });
+        const momDelta = round2(delta * 0.3);
+        if (momDelta === 0) continue;
+        await supabase.rpc('adjust_momentum', {
+            p_faction_id: factionId,
+            p_delta: momDelta,
+            p_label: `Bill enacted (${momDelta > 0 ? '+' : ''}${momDelta})`,
+            p_tick: currentTick
+        });
     }
 }
 
@@ -182,7 +188,7 @@ export async function applyBlocPreferenceOnPassage(supabase, bill, nationId) {
  * @param {object} bill - Full bill row with bill_articles (with policies) and bill_support
  * @param {string} nationId
  */
-export async function applyNoVotePenalty(supabase, bill, nationId) {
+export async function applyNoVotePenalty(supabase, bill, nationId, currentTick = 0) {
     const VISIBILITY_PENALTY = -5;
     const CREDIBILITY_PENALTY = -0.05; // -5 on the 0-100 display scale
 
@@ -209,9 +215,12 @@ export async function applyNoVotePenalty(supabase, bill, nationId) {
     // 4. Apply penalties to each non-voter
     const penalized = [];
     for (const faction of nonVoters) {
-        // -1d3 party_approval
-        const approvalLoss = -(1 + Math.floor(Math.random() * 3));
-        await nudgeApproval(supabase, faction.id, nationId, approvalLoss, { source: 'bill:no_vote' });
+        // -1d3 momentum for not voting
+        const momLoss = -(1 + Math.floor(Math.random() * 3));
+        await supabase.rpc('adjust_momentum', {
+            p_faction_id: faction.id, p_delta: momLoss,
+            p_label: `Absent from vote (${momLoss})`, p_tick: currentTick || 0
+        });
 
         // Visibility and credibility writes removed — 3-pillar election system.
         // No-vote penalty is handled server-side via adjustFactionMomentum.
@@ -1779,7 +1788,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presidentRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proceedingData.president_id).single();
                     if (presidentRow) {
-                        await nudgeApproval(supabase, presidentRow.faction_id, bill.nation_id, -5, { source: 'impeachment:passed' });
+                        await supabase.rpc('adjust_momentum', { p_faction_id: presidentRow.faction_id, p_delta: -5, p_label: 'Impeachment passed (-5)', p_tick: currentTick });
                         await adjustCredibility(supabase, presidentRow.faction_id, bill.nation_id, -0.15, 12, currentTick, { source: 'impeachment:passed' });
                     }
                 }
@@ -1830,7 +1839,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 }).eq('id', bill.nation_id);
 
                 // Filer takes approval & credibility hit (partisan overreach)
-                await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -2, { source: 'impeachment:failed' });
+                await supabase.rpc('adjust_momentum', { p_faction_id: bill.proposed_by, p_delta: -2, p_label: 'Impeachment failed — initiator (-2)', p_tick: currentTick });
                 await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.05, 0, currentTick, { source: 'impeachment:motion_failed' });
 
                 // President gets +3 approval (vindication)
@@ -1840,7 +1849,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proc.president_id).single();
                     if (presRow) {
-                        await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 2, { source: 'impeachment:failed' });
+                        await supabase.rpc('adjust_momentum', { p_faction_id: presRow.faction_id, p_delta: 2, p_label: 'Impeachment failed — president vindicated (+2)', p_tick: currentTick });
                         await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.03, 0, currentTick, { source: 'impeachment:motion_failed:vindicated' });
                     }
                 }
@@ -1899,7 +1908,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     const { data: presRow } = await supabase.from('presidents')
                         .select('faction_id').eq('id', proc.president_id).single();
                     if (presRow) {
-                        await nudgeApproval(supabase, presRow.faction_id, bill.nation_id, 3, { source: 'impeachment:survived' });
+                        await supabase.rpc('adjust_momentum', { p_faction_id: presRow.faction_id, p_delta: 3, p_label: 'Survived impeachment (+3)', p_tick: currentTick });
                         await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.05, 0, currentTick, { source: 'impeachment:survived' });
                     }
                 }
@@ -1916,11 +1925,11 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 const yesVoters = (bill.bill_support || []).filter(s => s.stance === 'yes' || s.stance === 'accept');
                 for (const v of yesVoters) {
                     if (v.faction_id !== bill.proposed_by) {
-                        await nudgeApproval(supabase, v.faction_id, bill.nation_id, -1, { source: 'impeachment:survived' });
+                        await supabase.rpc('adjust_momentum', { p_faction_id: v.faction_id, p_delta: -1, p_label: 'Impeachment survived — yes voter (-1)', p_tick: currentTick });
                         await adjustCredibility(supabase, v.faction_id, bill.nation_id, -0.03, 0, currentTick, { source: 'impeachment:survived:accuser' });
                     }
                 }
-                await nudgeApproval(supabase, bill.proposed_by, bill.nation_id, -1, { source: 'impeachment:survived' });
+                await supabase.rpc('adjust_momentum', { p_faction_id: bill.proposed_by, p_delta: -1, p_label: 'Impeachment survived — initiator (-1)', p_tick: currentTick });
                 await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.03, 0, currentTick, { source: 'impeachment:survived:accuser' });
 
                 try {
@@ -2049,7 +2058,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
 
         // ── No-vote penalty: punish factions that didn't cast any vote ──
         try {
-            const penalized = await applyNoVotePenalty(supabase, bill, bill.nation_id);
+            const penalized = await applyNoVotePenalty(supabase, bill, bill.nation_id, currentTick);
             if (penalized.length > 0) {
                 const names = penalized.map(p => `${p.factionName} (${p.approvalLoss} approval, ${p.visibilityLoss} vis, ${p.credibilityLoss} cred)`).join(', ');
                 console.log(`[resolveExpiredVotes] No-vote penalty on "${bill.bill_name}": ${names}`);
@@ -2814,7 +2823,7 @@ export async function enactBill(supabase, bill, currentTick) {
         bill.proposed_by,
         factionIdeologies
     );
-    await applyEnactmentApproval(supabase, bill.nation_id, approvalDeltas);
+    await applyEnactmentApproval(supabase, bill.nation_id, approvalDeltas, currentTick);
 
     // Sponsor gains/loses preference with voter blocs based on bill ideology alignment
     await applyBlocPreferenceOnPassage(supabase, bill, bill.nation_id);
@@ -3153,7 +3162,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             if (allFactions) {
                 for (const faction of allFactions) {
                     // Base loves it (+3 approval) but anti-democratic (-0.1 credibility)
-                    await nudgeApproval(supabase, faction.id, bill.nation_id, 3, { source: 'bill:term_limit' });
+                    await supabase.rpc('adjust_momentum', { p_faction_id: faction.id, p_delta: 3, p_label: 'Term limits abolished (+3)', p_tick: currentTick });
                     await adjustCredibility(supabase, faction.id, bill.nation_id, -0.1, 0, currentTick, { source: 'bill:term_limit' });
                 }
             }

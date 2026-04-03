@@ -7,7 +7,7 @@ import { FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, GAME_CONFIG, SNAP_C
 import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isPresidentialRepublic } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { snapshotNationStats } from './stats.js';
-import { nudgeApproval, adjustCredibility, adjustGovernmentApprovalEvent, round2 } from './momentum.js';
+import { adjustCredibility, adjustGovernmentApprovalEvent, round2 } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { syncAmbassadorsForFailedConfirmationBills, syncMinistriesForFailedConfirmationBills } from './bills.js';
 import { autoSelectPresidentialCandidates, registerPartyLeaderAsCandidate } from './presidential.js';
@@ -790,11 +790,11 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
             await dissolveCoalition(supabase, nationId);
 
             // Calling party gets approval boost
-            await nudgeApproval(supabase, callingPartyId, nationId, 2, { source: 'election:no_confidence_called' });
+            await supabase.rpc('adjust_momentum', { p_faction_id: callingPartyId, p_delta: 2, p_label: 'No confidence called (+2)', p_tick: currentTick });
 
             // All coalition parties take approval & credibility hit
             for (const partyId of coalitionPartyIds) {
-                await nudgeApproval(supabase, partyId, nationId, -3, { source: 'election:no_confidence_called' });
+                await supabase.rpc('adjust_momentum', { p_faction_id: partyId, p_delta: -3, p_label: 'No confidence — gov party (-3)', p_tick: currentTick });
                 await adjustCredibility(supabase, partyId, nationId, -0.05);
             }
             await adjustGovernmentApprovalEvent(supabase, nationId, -5, 'no_confidence:success');
@@ -829,12 +829,12 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
 
     } else {
         // FAILED: calling party takes approval & credibility hit
-        await nudgeApproval(supabase, callingPartyId, nationId, -3, { source: 'election:no_confidence_failed' });
+        await supabase.rpc('adjust_momentum', { p_faction_id: callingPartyId, p_delta: -3, p_label: 'No confidence failed — caller (-3)', p_tick: currentTick });
         await adjustCredibility(supabase, callingPartyId, nationId, -0.05);
 
         // PM's party gets approval & credibility boost
         if (pmFactionId) {
-            await nudgeApproval(supabase, pmFactionId, nationId, 2, { source: 'election:no_confidence_failed' });
+            await supabase.rpc('adjust_momentum', { p_faction_id: pmFactionId, p_delta: 2, p_label: 'No confidence defeated (+2)', p_tick: currentTick });
             await adjustCredibility(supabase, pmFactionId, nationId, 0.03);
         }
 
@@ -1145,9 +1145,9 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
         .order('seats', { ascending: false });
 
     if (allParties && allParties.length > 0) {
-        await nudgeApproval(supabase, allParties[0].id, nation.id, -2, { source: 'election:formation_timeout' });
+        await supabase.rpc('adjust_momentum', { p_faction_id: allParties[0].id, p_delta: -2, p_label: 'Formation timeout (-2)', p_tick: currentTick });
         if (allParties.length > 1) {
-            await nudgeApproval(supabase, allParties[1].id, nation.id, -2, { source: 'election:formation_timeout' });
+            await supabase.rpc('adjust_momentum', { p_faction_id: allParties[1].id, p_delta: -2, p_label: 'Formation timeout (-2)', p_tick: currentTick });
         }
     }
 
@@ -1223,7 +1223,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
             // Penalize non-responsive invitees
             for (const pid of invitedPartyIds) {
                 if (!respondedPartyIds.has(pid)) {
-                    await nudgeApproval(supabase, pid, nation.id, -3, { source: 'election:formation_timeout' });
+                    await supabase.rpc('adjust_momentum', { p_faction_id: pid, p_delta: -3, p_label: 'Formation timeout — non-responsive (-3)', p_tick: currentTick });
                     const partyName = allParties?.find(p => p.id === pid)?.faction_name || pid;
                     console.log(`  Non-responsive penalty: ${partyName} -3 approval`);
                 }
@@ -2397,11 +2397,11 @@ export async function processPresidentialElectionResult(supabase, nation, comple
 
         // Election effects: incumbent win boosts approval, challenger win penalizes loser
         if (isIncumbentWin && incumbentFactionId) {
-            await nudgeApproval(supabase, incumbentFactionId, nation.id, 3, { source: 'election:presidential' });
+            await supabase.rpc('adjust_momentum', { p_faction_id: incumbentFactionId, p_delta: 3, p_label: 'Incumbent re-elected (+3)', p_tick: currentTick });
             console.log(`Incumbent re-elected: +3 approval to ${winner.party_name}`);
         } else if (isChallengerWin && incumbentFactionId) {
-            await nudgeApproval(supabase, incumbentFactionId, nation.id, -4, { source: 'election:presidential' });
-            await nudgeApproval(supabase, winner.faction_id, nation.id, 3, { source: 'election:presidential' });
+            await supabase.rpc('adjust_momentum', { p_faction_id: incumbentFactionId, p_delta: -4, p_label: 'Lost presidency (-4)', p_tick: currentTick });
+            await supabase.rpc('adjust_momentum', { p_faction_id: winner.faction_id, p_delta: 3, p_label: 'Won presidency (+3)', p_tick: currentTick });
             console.log(`Challenger wins: -4 approval to outgoing party, +3 to ${winner.party_name}`);
         }
     } catch (effectsErr) { console.warn('Could not apply winner/loser effects:', effectsErr); }

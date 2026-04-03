@@ -5,7 +5,7 @@
 
 import { GAME_CONFIG } from './config.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
-import { adjustGovernmentApprovalEvent, nudgeApproval, adjustCredibility } from './momentum.js';
+import { adjustGovernmentApprovalEvent, adjustCredibility } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { SOVEREIGN_DEFAULT_CRISIS_ID, SOVEREIGN_DEBT_CRISIS_ID, ECONOMIC_COLLAPSE_CRISIS_ID } from './sovereign-default.js';
 import { MINISTER_APPROVAL_CONFIG } from './stats.js';
@@ -636,7 +636,7 @@ async function activateEconomicCollapse(supabase, nation, currentTick) {
 
         const coalition = await fetchActiveCoalition(supabase, nation.id);
         for (const partyId of (coalition?.party_ids || [])) {
-            await nudgeApproval(supabase, partyId, nation.id, -6, { source: 'crisis:sovereign_default' });
+            await supabase.rpc('adjust_momentum', { p_faction_id: partyId, p_delta: -6, p_label: 'Sovereign default (-6)', p_tick: currentTick });
             await adjustCredibility(supabase, partyId, nation.id, -0.15, 12, currentTick, { source: 'sovereign_default' });
         }
 

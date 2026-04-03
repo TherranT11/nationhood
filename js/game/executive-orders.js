@@ -15,7 +15,7 @@
 import { GAME_CONFIG, deductAP } from './config.js';
 import { MINISTER_APPROVAL_CONFIG } from './stats.js';
 import { isGovernmentPresidential, isPresidentialRepublic } from './government-types.js';
-import { adjustGovernmentApprovalEvent, nudgeApproval, adjustCredibility } from './momentum.js';
+import { adjustGovernmentApprovalEvent, adjustCredibility } from './momentum.js';
 import { getNationNames } from './political-actions.js';
 import { enactBill } from './bills.js';
 import { getTraitAPModifier } from './party-leadership.js';
@@ -566,7 +566,7 @@ export async function issuePriceControls(supabase, nationId, factionId, stat) {
     if (insertErr) return { success: false, error: insertErr.message };
 
     // Party approval boost for populist action
-    await nudgeApproval(supabase, factionId, nationId, 2, { source: 'executive_order:price_controls' });
+    await supabase.rpc('adjust_momentum', { p_faction_id: factionId, p_delta: 2, p_label: 'Price controls ordered (+2)', p_tick: currentTick });
 
     // Gov approval penalty
     await adjustGovernmentApprovalEvent(supabase, nationId, -3, 'executive_order:price_controls');
@@ -638,7 +638,7 @@ export async function issueNationalEmergency(supabase, nationId, factionId) {
     const { data: factions } = await supabase
         .from('factions').select('id').eq('nation_id', nationId).neq('id', factionId);
     for (const f of (factions || [])) {
-        await nudgeApproval(supabase, f.id, nationId, 2, { source: 'executive_order:national_emergency' });
+        await supabase.rpc('adjust_momentum', { p_faction_id: f.id, p_delta: 2, p_label: 'National emergency declared (+2)', p_tick: currentTick });
     }
 
     // Update overreach
@@ -743,12 +743,12 @@ export async function issueCensure(supabase, nationId, factionId, targetFactionI
     if (insertErr) return { success: false, error: insertErr.message };
 
     // Censure: -2 approval & -0.05 credibility to target
-    await nudgeApproval(supabase, targetFactionId, nationId, -2, { source: 'executive_order:censure' });
+    await supabase.rpc('adjust_momentum', { p_faction_id: targetFactionId, p_delta: -2, p_label: 'Censured (-2)', p_tick: currentTick });
     await adjustCredibility(supabase, targetFactionId, nationId, -0.05, 0, currentTick, { source: 'executive_order:censure' });
 
     // Martyr effect: target regains some approval (bigger if repeated censure)
     const martyrApproval = Math.round(martyrMomentum * 0.3 * 100) / 100;
-    await nudgeApproval(supabase, targetFactionId, nationId, martyrApproval, { source: 'executive_order:censure_martyr' });
+    await supabase.rpc('adjust_momentum', { p_faction_id: targetFactionId, p_delta: martyrApproval, p_label: `Censure martyr effect (+${martyrApproval})`, p_tick: currentTick });
 
     // -3 gov approval
     await adjustGovernmentApprovalEvent(supabase, nationId, -3, 'executive_order:censure');

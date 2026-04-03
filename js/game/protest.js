@@ -9,7 +9,7 @@
 import { fetchActiveCoalition } from './government-structure.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { loadFactionIdeology } from './ideology.js';
-import { nudgeApproval, nudgeEnthusiasm } from './electorate.js';
+import { nudgeEnthusiasm } from './electorate.js';
 
 // ==================== PROTEST LOG UPDATE RPC ====================
 // All protest_log writes from client code must go through this RPC
@@ -1574,7 +1574,7 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
         }
         // Party approval
         if (effects.organiserApproval < 0) {
-            await nudgeApproval(supabase, factionId, nationId, effects.organiserApproval, { source: 'protest:organiser' });
+            await supabase.rpc('adjust_momentum', { p_faction_id: factionId, p_delta: effects.organiserApproval, p_label: `Protest backlash (${effects.organiserApproval})`, p_tick: currentTick });
             appliedEffects.push({ stat: 'organiser_approval', delta: effects.organiserApproval });
         }
         // Nation-wide enthusiasm

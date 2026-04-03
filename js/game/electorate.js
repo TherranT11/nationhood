@@ -1887,12 +1887,7 @@ export async function boostVisibility(supabase, factionId, nationId, boost) {
  * @param {boolean} [opts.campaign=false] - If true, apply diminishing returns and increment action counter (for player campaign actions only)
  * @param {string} [opts.source='unknown'] - Audit tag for the party_approval_log (e.g., 'rally', 'crisis:Recession')
  */
-export async function nudgeApproval(supabase, factionId, nationId, delta, opts) {
-    // No-op: party_approval column repurposed for governance score (3-pillar election system).
-    // Server-side tickElectionPillars overwrites party_approval with governance score each tick.
-    // All momentum effects are handled server-side via adjustFactionMomentum().
-    return;
-}
+// nudgeApproval removed — all calls converted to adjust_momentum RPC.
 
 /**
  * Nudge the nation-wide enthusiasm on electorate_profile.
@@ -2202,7 +2197,7 @@ export async function onRally(supabase, factionId, nationId, outcomeId, currentT
         counter: -3,
     }[outcomeId] ?? 0;
     if (approvalHit !== 0) {
-        await nudgeApproval(supabase, factionId, nationId, approvalHit, { source: 'rally:approval_hit' });
+        await supabase.rpc('adjust_momentum', { p_faction_id: factionId, p_delta: approvalHit, p_label: `Rally outcome (${approvalHit > 0 ? '+' : ''}${approvalHit})`, p_tick: currentTick });
     }
 
     await logActivity(supabase, factionId, nationId, 'rally',
@@ -2233,7 +2228,7 @@ export async function onOutreach(supabase, factionId, nationId, alignmentScore, 
 
     // Approval nudge: small positive based on alignment
     const approvalNudge = round2(Math.max(0.5, diminishedEffect * 0.3));
-    await nudgeApproval(supabase, factionId, nationId, approvalNudge, { source: 'outreach:approval' });
+    await supabase.rpc('adjust_momentum', { p_faction_id: factionId, p_delta: approvalNudge, p_label: `Outreach (+${approvalNudge})`, p_tick: currentTick });
 
     await logActivity(supabase, factionId, nationId, 'outreach',
         'Outreach', `Outreach — effect: ${diminishedEffect}, alignment: ${alignmentScore}`,
