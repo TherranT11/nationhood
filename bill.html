@@ -3404,13 +3404,18 @@ function formatBillCost(monthlyAmt, label) {
     // monthlyAmt > 0 = costs money, monthlyAmt < 0 = saves money
     if (!monthlyAmt || isNaN(monthlyAmt)) return '';
     const abs = Math.abs(monthlyAmt);
+    const isUpfront = label && label.toLowerCase().includes('upfront');
+    if (isUpfront) {
+        // One-time cost — no monthly/yearly
+        const color = monthlyAmt > 0 ? 'var(--red)' : 'var(--green)';
+        const displayLabel = monthlyAmt > 0 ? 'Upfront Cost' : 'Upfront Relief';
+        return `<span class="cost-value" style="color:${color};font-weight:bold;">${displayLabel}: ${formatCurrency(abs)}</span>`;
+    }
     const monthly = formatCurrency(abs);
     const yearly = formatCurrency(abs * 12);
     if (monthlyAmt > 0) {
-        // COST — red
         return `<span class="cost-value" style="color:var(--red);font-weight:bold;">${label || 'Cost'}: ${monthly} / mo (${yearly} / yr)</span>`;
     } else {
-        // RELIEF — green
         return `<span class="cost-value" style="color:var(--green);font-weight:bold;">${label || 'Relief'}: ${monthly} / mo (${yearly} / yr)</span>`;
     }
 }
