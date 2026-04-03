@@ -14689,9 +14689,166 @@ async function genesisElectorate(supabase, nation, factions, currentTick = 0) {
  * @param {boolean} [opts.snap] - If true, bypass drift caps and snap pillars to target values immediately
  */
 async function tickElectorate(supabase, nation, currentTick, opts = {}) {
-    // Dead code — replaced by tickElectionPillars in advance-tick (3-pillar election system).
-    // Export signature kept so imports don't break.
-    return;
+    // ── 3-Pillar Electoral Standing Calculator ──
+    // Runs each tick to compute contested_vote_share and turnout_rate
+    // for all active parties in a nation.
+    //
+    // Pillars: Governance (35%) + Momentum (25%) + Ideology (30%) + Gov Approval (10%)
+
+    const nationId = nation.id;
+
+    // 1. Load all active parties with momentum
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, faction_name, seats, momentum, last_seen_tick, founded_tick, abandoned_at')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party')
+        .is('abandoned_at', null);
+
+    if (!factions || factions.length === 0) return;
+
+    // Exclude inactive parties (unseen for 12+ ticks)
+    const activeFactions = factions.filter(f => {
+        const ref = f.last_seen_tick ?? f.founded_tick ?? 0;
+        return (currentTick - ref) < CFG.INACTIVITY_EXCLUSION_TICKS;
+    });
+    if (activeFactions.length === 0) return;
+
+    const factionIds = activeFactions.map(f => f.id);
+
+    // 2. Load electorate profile
+    const { data: profile } = await supabase
+        .from('electorate_profile')
+        .select('*')
+        .eq('nation_id', nationId)
+        .maybeSingle();
+
+    // If no profile exists, seed one (first tick after nation creation)
+    if (!profile) {
+        await genesisElectorate(supabase, nation, activeFactions, currentTick);
+        return;
+    }
+
+    // 3. Load issue states for salience weights
+    const { data: issueStates } = await supabase
+        .from('issue_state')
+        .select('issue_id, salience')
+        .eq('nation_id', nationId);
+    const axisSalienceWeights = computeAxisSalienceWeights(issueStates || []);
+
+    // 4. Load faction ideologies
+    const { data: ideologies } = await supabase
+        .from('faction_ideology')
+        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+        .in('faction_id', factionIds);
+    const ideoMap = {};
+    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
+
+    // 5. Load existing standings (for fields we don't recalculate, like platform_appeal)
+    const { data: existingStandings } = await supabase
+        .from('faction_electoral_standing')
+        .select('faction_id, platform_appeal, visibility, credibility_modifier, party_approval')
+        .eq('nation_id', nationId)
+        .in('faction_id', factionIds);
+    const standingMap = {};
+    for (const s of (existingStandings || [])) standingMap[s.faction_id] = s;
+
+    // 6. Determine governing faction IDs
+    const { data: coalitionRow } = await supabase
+        .from('government_formations')
+        .select('lead_party_id, party_ids')
+        .eq('nation_id', nationId)
+        .in('status', ['formed', 'active', 'caretaker'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    const governingIds = new Set(coalitionRow?.party_ids || []);
+    if (coalitionRow?.lead_party_id) governingIds.add(coalitionRow.lead_party_id);
+
+    // 7. Compute engagement scores (Governance pillar)
+    const engagementScores = await computeEngagementScores(supabase, nationId, activeFactions, currentTick);
+
+    // ── PILLAR 1: Ideology (30%) ──
+    // Spatial competition: parties near the same position split voters
+    const spatialAlignments = computeSpatialAlignments(ideoMap, profile, axisSalienceWeights);
+
+    // ── Gov Approval pillar (10%) ──
+    // Map gov_approval (0-100, centered ~35-65) to a 0-100 pillar score
+    const govApproval = clamp(Number(nation.gov_approval ?? 50), 0, 100);
+    const govApprovalPillar = clamp(50 + (govApproval - 35) * (50 / 65), 0, 100);
+
+    // ── Build standing updates ──
+    const updates = [];
+
+    for (const f of activeFactions) {
+        const existing = standingMap[f.id] || {};
+
+        // PILLAR 1: Ideology (0-100 from spatial alignment)
+        const ideology = spatialAlignments[f.id] ?? 50;
+
+        // PILLAR 2: Momentum (0-100 from factions.momentum)
+        const momentum = clamp(Number(f.momentum ?? 0), 0, 100);
+
+        // PILLAR 3: Governance (0-100 from engagement score)
+        const engagement = engagementScores[f.id] ?? 50;
+
+        // Party approval: governing parties drift toward gov_approval,
+        // opposition drifts toward a target based on their momentum
+        let partyApproval = Number(existing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);
+        if (governingIds.has(f.id)) {
+            // Governing: nudge toward gov_approval
+            const target = govApproval;
+            const nudge = clamp((target - partyApproval) / CFG.APPROVAL_GOV_NUDGE_DIVISOR,
+                -CFG.APPROVAL_GOV_NUDGE_CAP, CFG.APPROVAL_GOV_NUDGE_CAP);
+            partyApproval = clamp(partyApproval + nudge, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX);
+        } else {
+            // Opposition: drift toward target based on momentum
+            const target = CFG.APPROVAL_OPPOSITION_TARGET + (momentum - 50) * 0.3;
+            const diff = target - partyApproval;
+            const drift = clamp(diff, -CFG.APPROVAL_DRIFT_SPEED, CFG.APPROVAL_DRIFT_SPEED);
+            partyApproval = clamp(partyApproval + drift, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX);
+        }
+
+        // ── Combine pillars into raw_appeal ──
+        const rawAppeal = round2(
+            engagement * CFG.PILLAR_WEIGHT_GOVERNANCE +
+            momentum * CFG.PILLAR_WEIGHT_MOMENTUM +
+            ideology * CFG.PILLAR_WEIGHT_IDEOLOGY +
+            govApprovalPillar * CFG.PILLAR_WEIGHT_GOV_APPROVAL
+        );
+
+        updates.push({
+            faction_id: f.id,
+            nation_id: nationId,
+            ideological_alignment: round2(ideology),
+            party_approval: round2(partyApproval),
+            visibility: round2(momentum), // visibility column repurposed for momentum display
+            raw_appeal: rawAppeal,
+            last_updated_tick: currentTick,
+        });
+    }
+
+    // ── Vote share pipeline ──
+    computeContestedVoteShares(updates);
+    computeRealizedVoteShares(updates, profile, nation);
+
+    // Ensure turnout_rate has a sane default
+    for (const u of updates) {
+        u.base_vote_share = u.contested_vote_share;
+        u.turnout_rate = u.turnout_rate || 0.65;
+    }
+
+    // ── Write to faction_electoral_standing ──
+    const { error: upsertErr } = await supabase
+        .from('faction_electoral_standing')
+        .upsert(updates, { onConflict: 'faction_id,nation_id' });
+
+    if (upsertErr) {
+        console.error(`[tickElectorate] Failed to upsert standings for ${nation.name}:`, upsertErr.message);
+        return;
+    }
+
+    console.log(`[tickElectorate] Updated ${updates.length} electoral standings for ${nation.name} (tick ${currentTick})`);
 }
 
 // ============================================================================
@@ -23749,7 +23906,7 @@ async function runElectionPreview(supabase, nationId) {
         return {
             party_id: f.id,
             party_name: f.faction_name,
-            governance: Math.round(Number(s?.party_approval || 0)), // repurposed: was approval, now governance score
+            approval: Math.round(Number(s?.party_approval || 0)),
             votes: tally[f.id] || 0,
             vote_percentage: totalVotesCast > 0
                 ? Math.round(((tally[f.id] || 0) / totalVotesCast) * 10000) / 100
@@ -27865,6 +28022,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Re-fetch nation with post-effect values for remaining processors
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (freshNation) Object.assign(nation, freshNation);
+
+        // Electoral standing calculator: 3-pillar (Governance + Momentum + Ideology)
+        // Computes contested_vote_share and turnout_rate for all parties each tick
+        try {
+            await tickElectorate(supabase, nation, newTick);
+        } catch (electorateErr) {
+            console.error(`[advanceTick] Electoral standing calc failed for ${nation.name} (non-fatal):`, electorateErr);
+        }
 
         // Random events
         try {

@@ -442,7 +442,7 @@ export async function runElectionPreview(supabase, nationId) {
         return {
             party_id: f.id,
             party_name: f.faction_name,
-            governance: Math.round(Number(s?.party_approval || 0)), // repurposed: was approval, now governance score
+            approval: Math.round(Number(s?.party_approval || 0)),
             votes: tally[f.id] || 0,
             vote_percentage: totalVotesCast > 0
                 ? Math.round(((tally[f.id] || 0) / totalVotesCast) * 10000) / 100

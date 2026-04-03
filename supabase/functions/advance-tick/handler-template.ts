@@ -1868,6 +1868,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (freshNation) Object.assign(nation, freshNation);
 
+        // Electoral standing calculator: 3-pillar (Governance + Momentum + Ideology)
+        // Computes contested_vote_share and turnout_rate for all parties each tick
+        try {
+            await tickElectorate(supabase, nation, newTick);
+        } catch (electorateErr) {
+            console.error(`[advanceTick] Electoral standing calc failed for ${nation.name} (non-fatal):`, electorateErr);
+        }
+
         // Random events
         try {
             const eventResults = await processEvents(supabase, nation, newTick);
