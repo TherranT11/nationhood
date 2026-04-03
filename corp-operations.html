@@ -5889,6 +5889,12 @@ async function init() {
     // Show page
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = 'block';
+
+    // Check for ?tab=expansion to auto-switch on load
+    if (new URLSearchParams(window.location.search).get('tab') === 'expansion') {
+        const expTab = document.querySelector('[data-tab="expansion"]');
+        if (expTab) switchToExpansion({ preventDefault: () => {}, target: expTab });
+    }
 }
 
 // ── Window functions ──

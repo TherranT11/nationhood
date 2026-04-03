@@ -769,7 +769,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
   <nav class="corp-nav" id="corp-nav">
     <a href="corp-dashboard.html" class="corp-nav__tab active" data-tab="home">Home</a>
     <a href="corp-operations.html" class="corp-nav__tab" data-tab="operations">Operations</a>
-    <a href="#" class="corp-nav__tab" data-tab="expansion" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Expansion</a>
+    <a href="corp-operations.html?tab=expansion" class="corp-nav__tab" data-tab="expansion">Expansion</a>
     <a href="#" class="corp-nav__tab" data-tab="industries" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Industries</a>
     <a href="#" class="corp-nav__tab" data-tab="innovation" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Innovation</a>
     <a href="#" class="corp-nav__tab" data-tab="lobbying" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Lobbying</a>
@@ -1088,7 +1088,7 @@ async function init() {
     window._currentTick = currentTick;
 
     // ── Render all dashboard cards ──
-    const wfData = renderWorkforce(nationStats, nationName);
+    const wfData = renderWorkforce(nationStats, nationName, faction);
     renderFinances(nationStats, shard, wfData, faction);
     renderStats(nationName);
     const propData = renderProperty(nationStats, nationName, faction, shard);
@@ -1102,32 +1102,36 @@ async function init() {
     document.getElementById('page-content').style.display = 'block';
 }
 
-function renderWorkforce(nation, nationName) {
+function renderWorkforce(nation, nationName, factionData) {
     const s = (key) => getNationStat(nation, key);
     const natUp = (nationName || 'UNKNOWN').toUpperCase();
 
-    const TOTAL_WORKFORCE = 3000;
-    const CONSTRUCTION_SECTOR_MULT = 0.20; // low-skill sector multiplier
+    // Read workforce from DB columns (fall back to legacy defaults)
+    const generalCount = Number(factionData?.corp_general_workforce ?? 2250);
+    const skilledCount = Number(factionData?.corp_skilled_workforce ?? 600);
+    const innovativeCount = Number(factionData?.corp_innovative_workforce ?? 150);
+    const TOTAL_WORKFORCE = generalCount + skilledCount + innovativeCount;
 
-    // Workforce tiers (% split)
-    const generalCount = Math.round(TOTAL_WORKFORCE * 0.75);  // 75%
-    const skilledCount = Math.round(TOTAL_WORKFORCE * 0.20);   // 20%
-    const innovativeCount = TOTAL_WORKFORCE - generalCount - skilledCount; // 5%
+    // Wage multipliers per tier (matches Hire/Fire card on Expansion page)
+    const GENERAL_MULT = 2;
+    const SKILLED_MULT = 3;
+    const INNOVATIVE_MULT = 6;
 
-    // Wage multipliers per tier
-    const GENERAL_MULT = 1.00;
-    const SKILLED_MULT = 1.50;
-    const INNOVATIVE_MULT = 2.75;
-
-    // Base annual wage derived from minimum_wage stat
-    // minimum_wage is 1-100 scale → map to ~$8,000–$40,000 annual range
+    // Base annual wage: (minimum_wage / 100) × $48,000
     const minWageStat = s('minimum_wage');
-    const baseAnnualWage = 8000 + (minWageStat / 100) * 32000; // $8k at 0, $40k at 100
+    const baseAnnualWage = (minWageStat / 100) * 48000;
+
+    // Modifiers: inflation + standard of living
+    const inflation = s('inflation');
+    const sol = s('standard_of_living');
+    const inflMod = 1 + ((inflation - 50) / 100 * 0.5);
+    const solMod = 1 + ((sol - 50) / 100 * 0.5);
 
     // Per-tier annual wages
-    const generalWage = baseAnnualWage * GENERAL_MULT * CONSTRUCTION_SECTOR_MULT;
-    const skilledWage = baseAnnualWage * SKILLED_MULT * CONSTRUCTION_SECTOR_MULT;
-    const innovativeWage = baseAnnualWage * INNOVATIVE_MULT * CONSTRUCTION_SECTOR_MULT;
+    const calcWage = (mult) => Math.round(baseAnnualWage * mult * inflMod * solMod);
+    const generalWage = calcWage(GENERAL_MULT);
+    const skilledWage = calcWage(SKILLED_MULT);
+    const innovativeWage = calcWage(INNOVATIVE_MULT);
 
     const generalTotal = generalCount * generalWage;
     const skilledTotal = skilledCount * skilledWage;
@@ -1137,6 +1141,8 @@ function renderWorkforce(nation, nationName) {
     function fmtWage(n) {
         return '$' + Math.round(n).toLocaleString() + '/yr';
     }
+
+    const modStr = `${inflMod.toFixed(2)} &times; ${solMod.toFixed(2)}`;
 
     document.getElementById('wf-total-header').textContent = TOTAL_WORKFORCE.toLocaleString();
 
@@ -1150,7 +1156,7 @@ function renderWorkforce(nation, nationName) {
                 <span class="wf-tier__count" style="color:var(--text-primary);">${generalCount.toLocaleString()}</span>
             </div>
             <div class="wf-tier__detail">
-                <span class="wf-tier__label">Wage (min &times; ${GENERAL_MULT.toFixed(2)} &times; ${CONSTRUCTION_SECTOR_MULT.toFixed(2)})</span>
+                <span class="wf-tier__label">Wage (min &times; ${GENERAL_MULT}.0 &times; ${modStr})</span>
                 <span class="wf-tier__value">${fmtWage(generalWage)}</span>
             </div>
             <div class="wf-tier__detail">
@@ -1168,7 +1174,7 @@ function renderWorkforce(nation, nationName) {
                 <span class="wf-tier__count" style="color:var(--blue);">${skilledCount.toLocaleString()}</span>
             </div>
             <div class="wf-tier__detail">
-                <span class="wf-tier__label">Wage (min &times; ${SKILLED_MULT.toFixed(2)} &times; ${CONSTRUCTION_SECTOR_MULT.toFixed(2)})</span>
+                <span class="wf-tier__label">Wage (min &times; ${SKILLED_MULT}.0 &times; ${modStr})</span>
                 <span class="wf-tier__value">${fmtWage(skilledWage)}</span>
             </div>
             <div class="wf-tier__detail">
@@ -1186,7 +1192,7 @@ function renderWorkforce(nation, nationName) {
                 <span class="wf-tier__count" style="color:var(--amber);">${innovativeCount.toLocaleString()}</span>
             </div>
             <div class="wf-tier__detail">
-                <span class="wf-tier__label">Wage (min &times; ${INNOVATIVE_MULT.toFixed(2)} &times; ${CONSTRUCTION_SECTOR_MULT.toFixed(2)})</span>
+                <span class="wf-tier__label">Wage (min &times; ${INNOVATIVE_MULT}.0 &times; ${modStr})</span>
                 <span class="wf-tier__value">${fmtWage(innovativeWage)}</span>
             </div>
             <div class="wf-tier__detail">
@@ -1202,8 +1208,12 @@ function renderWorkforce(nation, nationName) {
                 <span class="wf-tier__value">${minWageStat}/100 → ${fmtWage(baseAnnualWage)}</span>
             </div>
             <div class="wf-tier__detail">
-                <span class="wf-tier__label">Sector Multiplier (Construction)</span>
-                <span class="wf-tier__value">&times;${CONSTRUCTION_SECTOR_MULT.toFixed(2)}</span>
+                <span class="wf-tier__label">Inflation Modifier</span>
+                <span class="wf-tier__value">&times;${inflMod.toFixed(2)}</span>
+            </div>
+            <div class="wf-tier__detail">
+                <span class="wf-tier__label">Std of Living Modifier</span>
+                <span class="wf-tier__value">&times;${solMod.toFixed(2)}</span>
             </div>
         </div>
 
