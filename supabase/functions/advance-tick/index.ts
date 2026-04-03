@@ -14766,7 +14766,16 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     if (coalitionRow?.lead_party_id) governingIds.add(coalitionRow.lead_party_id);
 
     // 7. Compute engagement scores (Governance pillar)
-    const engagementScores = await computeEngagementScores(supabase, nationId, activeFactions, currentTick);
+    const coalitionPartyIds = coalitionRow?.party_ids || [];
+    const leadPartyId = coalitionRow?.lead_party_id || null;
+    let engagementResults = {};
+    try {
+        engagementResults = await computeEngagementScores(
+            supabase, nation, activeFactions, coalitionPartyIds, leadPartyId, issueStates || [], currentTick
+        ) || {};
+    } catch (engErr) {
+        console.warn(`[tickElectorate] Engagement scores failed for ${nation.name}, using defaults:`, engErr.message);
+    }
 
     // ── PILLAR 1: Ideology (30%) ──
     // Spatial competition: parties near the same position split voters
@@ -14790,7 +14799,7 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         const momentum = clamp(Number(f.momentum ?? 0), 0, 100);
 
         // PILLAR 3: Governance (0-100 from engagement score)
-        const engagement = engagementScores[f.id] ?? 50;
+        const engagement = engagementResults[f.id]?.engagementScore ?? 50;
 
         // Party approval: governing parties drift toward gov_approval,
         // opposition drifts toward a target based on their momentum
