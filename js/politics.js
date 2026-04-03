@@ -2309,9 +2309,6 @@ const CA_ACTIONS = [
     { id: 'attack', name: 'Campaign Attack', ap: ATTACK_CONFIG.AP_COST, color: '#ef4444', icon: '✦',
       category: 'momentum', affects: 'Momentum',
       desc: 'Target a rival party\'s record or leadership. Lowers their momentum and can hurt their election chances. More effective with evidence — but a weak attack backfires on you.' },
-    { id: 'promise', name: 'Make a Promise', ap: MAKE_PROMISE_CONFIG.AP_COST, color: '#a78bfa', icon: '◆',
-      category: 'momentum', affects: 'Momentum',
-      desc: 'Publicly commit to improving a national stat or resolving a crisis. Gives an immediate momentum boost, but you\'ll face governance penalties if you fail to deliver.' },
     // ALIGNMENT
     { id: 'fund_think_tank', name: 'Fund Think Tank', ap: IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST, color: '#14b8a6', icon: '🏛',
       category: 'alignment', affects: 'Ideology',
@@ -2824,7 +2821,6 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
     container.innerHTML = `<div class="ca-wrap"><div class="ca-list">${listHtml}</div>${panelHtml}</div>
     ${activeActionsHtml}
     <div class="ca-portfolios" style="margin-top:16px;">
-        <div id="ca-promises-container"><div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px">Loading promises...</div></div>
     </div>
     <div class="pe-container">
         <div class="pe-header"><span class="pol-mod-title">Party Events</span></div>
@@ -2832,8 +2828,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
     </div>
     <div id="ca-stance-portfolio-container" style="margin-top:16px;"></div>`;
 
-    // Load promises and stance portfolio on the actions page
-    _renderActionsPromisesPanel(f, n, tick);
+    // Load stance portfolio on the actions page
     _renderStancePortfolio(document.getElementById('ca-stance-portfolio-container'), f, n);
 
     // Load party events feed
@@ -2989,7 +2984,6 @@ async function _renderActionsPromisesPanel(faction, nation, tick) {
 function renderActionConfig(sel, otherParties, factionIdeo, nation, ap, tick) {
     if (sel.id === 'rally') return renderRallyConfig();
     if (sel.id === 'attack') return renderAttackConfig(otherParties);
-    if (sel.id === 'promise') return renderPromiseConfig(nation);
     if (sel.id === 'protest') return renderProtestConfig(nation, tick);
     if (sel.id === 'take_stance') return renderTakeStanceConfig(nation);
     if (sel.id === 'poll_now') return renderPollNowConfig();
