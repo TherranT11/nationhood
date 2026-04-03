@@ -62,6 +62,22 @@ async function ensureApRpcAvailability(supabase) {
 
 // ===== TICK-ONLY HELPERS (edge-function-only — not in game-common.js) =====
 
+// ==================== FACTION MOMENTUM HELPER ====================
+// Thin wrapper around adjust_momentum RPC for use in tick-only code.
+async function adjustFactionMomentum(supabase: any, factionId: string, nationId: string, delta: number, opts: any = {}) {
+    if (!factionId || delta === 0) return;
+    try {
+        await supabase.rpc('adjust_momentum', {
+            p_faction_id: factionId,
+            p_delta: delta,
+            p_label: opts.source || 'tick_effect',
+            p_tick: opts.tick || 0
+        });
+    } catch (e: any) {
+        console.warn(`[adjustFactionMomentum] Failed for ${factionId}: ${e.message}`);
+    }
+}
+
 // ==================== POPULATION GROWTH ====================
 //
 // population_growth is a standalone 0-100 stat driven by policy effects and decay.

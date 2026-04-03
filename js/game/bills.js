@@ -1971,6 +1971,59 @@ export async function resolveExpiredVotes(supabase, nationId) {
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
         }
 
+        // ── Bill momentum: award momentum to YES/NO voters based on outcome ──
+        // Sponsor: +3 on passage. YES voters: +2/article on pass, -2/article on fail.
+        // NO voters: +2/article on fail. Abstain: nothing.
+        // Skip special bill types that don't have policy articles.
+        if (!['no_confidence', 'confirmation', 'minister_confirmation', 'impeachment_conviction'].includes(bill.bill_type)) {
+            try {
+                const articleCount = Math.max(1, (bill.bill_articles || []).filter(a => a.policies && a.policies.length > 0).length);
+                const billPassed = passed && resolution === 'passed';
+                const supports = bill.bill_support || [];
+
+                for (const s of supports) {
+                    const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+                    let delta = 0;
+                    let label = '';
+
+                    if (stance === 'yes' && billPassed) {
+                        delta = 2 * articleCount;
+                        label = `Bill passed: ${(bill.bill_name || '').slice(0, 25)}… (+${delta})`;
+                    } else if (stance === 'yes' && !billPassed) {
+                        delta = -2 * articleCount;
+                        label = `Bill failed: ${(bill.bill_name || '').slice(0, 25)}… (${delta})`;
+                    } else if (stance === 'no' && !billPassed) {
+                        delta = 2 * articleCount;
+                        label = `Bill failed: ${(bill.bill_name || '').slice(0, 25)}… (+${delta})`;
+                    } else if (stance === 'no' && billPassed) {
+                        delta = -1;
+                        label = `Bill passed: ${(bill.bill_name || '').slice(0, 25)}… (${delta})`;
+                    }
+
+                    if (delta !== 0) {
+                        await supabase.rpc('adjust_momentum', {
+                            p_faction_id: s.faction_id,
+                            p_delta: delta,
+                            p_label: label,
+                            p_tick: currentTick
+                        });
+                    }
+                }
+
+                // Sponsor bonus: +3 on passage
+                if (billPassed && bill.proposed_by) {
+                    await supabase.rpc('adjust_momentum', {
+                        p_faction_id: bill.proposed_by,
+                        p_delta: 3,
+                        p_label: `Sponsored bill passed: ${(bill.bill_name || '').slice(0, 25)}… (+3)`,
+                        p_tick: currentTick
+                    });
+                }
+            } catch (momErr) {
+                console.warn(`[resolveExpiredVotes] Momentum awards failed for bill ${bill.id}:`, momErr.message);
+            }
+        }
+
         // Guardrail: resolved bills must not remain on the floor after this function.
         // If any branch forgets to persist status, fail closed so the bill leaves the active queue.
         try {
