@@ -630,7 +630,12 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
 
         // Workforce capacity enforcement:
         // Total workforce cannot exceed total capacity from owned properties + base HQ (500)
-        const totalCapacity = properties.reduce((sum, p) => sum + Number(p.capacity || 0), 0) + 500; // 500 = base HQ capacity
+        // Condition scales effective capacity: 100% condition = full, 50% = half, 0% = none
+        const totalCapacity = properties.reduce((sum, p) => {
+            const cap = Number(p.capacity || 0);
+            const cond = Number(p.condition || 0) / 100; // 0.0-1.0
+            return sum + Math.floor(cap * cond);
+        }, 0) + 500; // 500 = base HQ capacity
         const { data: factionWf } = await supabase
             .from('factions')
             .select('corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')

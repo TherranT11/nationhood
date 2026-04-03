@@ -6009,11 +6009,33 @@ function switchToOperations(e) {
     document.querySelector('[data-tab="operations"]')?.classList.add('active');
 }
 
+function hfGetCapacity() {
+    // Total capacity from owned properties (condition-scaled) + 500 base HQ
+    const propCapacity = _ownedProperties.reduce((sum, p) => {
+        const cap = Number(p.capacity || 0);
+        const cond = Number(p.condition || 0) / 100;
+        return sum + Math.floor(cap * cond);
+    }, 0);
+    return propCapacity + 500;
+}
+
 function hfSetChange(id, delta) {
     const type = HF_TYPES.find(t => t.id === id);
     const current = Number(faction?.[type.factionKey] ?? 0);
     const newDelta = _hfChanges[id] + delta;
     if (current + newDelta < 0) return;
+
+    // Check capacity on hiring (not firing)
+    if (delta > 0) {
+        const totalAfter = HF_TYPES.reduce((s, t) => {
+            const cur = Number(faction?.[t.factionKey] ?? 0);
+            const pendingDelta = t.id === id ? newDelta : _hfChanges[t.id];
+            return s + cur + pendingDelta;
+        }, 0);
+        const capacity = hfGetCapacity();
+        if (totalAfter > capacity) return; // silently block — UI shows capacity
+    }
+
     _hfChanges[id] = newDelta;
     renderHireFireCard();
 }
@@ -6098,6 +6120,7 @@ function renderHireFireCard() {
 
     const hasChanges = Object.values(_hfChanges).some(v => v !== 0);
 
+    const capacity = hfGetCapacity();
     let totalCurrent = 0, totalAfter = 0, totalCurrentCost = 0, totalAfterCost = 0;
     let typesHtml = '';
 
@@ -6192,11 +6215,10 @@ function renderHireFireCard() {
         <div style="padding:8px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
             <div style="display:flex;justify-content:space-between;align-items:center;${hasChanges ? 'margin-bottom:6px;' : ''}">
                 <div>
-                    <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.8px">TOTAL WORKFORCE</div>
+                    <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.8px">WORKFORCE / CAPACITY</div>
                     <div style="display:flex;align-items:baseline;gap:4px;">
-                        <span style="font-family:${mono};font-size:13px;font-weight:700;color:${C.text}">${totalCurrent.toLocaleString()}</span>
-                        ${hasChanges ? `<span style="font-family:${mono};font-size:9px;color:${C.dim}">→</span>
-                        <span style="font-family:${mono};font-size:13px;font-weight:700;color:${totalAfter > totalCurrent ? C.greenBright : totalAfter < totalCurrent ? C.red : C.text}">${totalAfter.toLocaleString()}</span>` : ''}
+                        <span style="font-family:${mono};font-size:13px;font-weight:700;color:${totalAfter > capacity ? C.red : C.text}">${hasChanges ? totalAfter.toLocaleString() : totalCurrent.toLocaleString()}</span>
+                        <span style="font-family:${mono};font-size:9px;color:${C.dim}">/ ${capacity.toLocaleString()}</span>
                     </div>
                 </div>
                 <div style="text-align:right;">
