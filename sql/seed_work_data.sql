@@ -92,6 +92,14 @@ BEGIN
     SELECT id INTO v_faction_id FROM factions WHERE nation_id = v_nation_id ORDER BY seats DESC LIMIT 1;
     UPDATE nations SET ruling_faction_id = v_faction_id WHERE id = v_nation_id;
 
+    UPDATE nations SET
+        term_limits_abolished = true,
+        state_media_control = true,
+        judicial_appointment_politicization = true,
+        electoral_commission_reform = true,
+        legislative_quorum_override = 40
+    WHERE id = v_nation_id;
+
     result := result || '{"Sangreza": "Presidential, 4 factions"}'::JSONB;
 
     -- ==================== MELIZEA ====================
