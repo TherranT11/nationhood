@@ -2501,6 +2501,7 @@ body.light-mode .dl-empty__text { color: #1a1a17; }
     <!-- Expansion content (hidden by default) -->
     <div id="expansion-content" style="display:none;">
       <div id="hf-card-container"></div>
+      <div id="wf-summary-container"></div>
     </div>
 
   </div>
@@ -5982,10 +5983,16 @@ function hfFmtBig(n) {
 function switchToExpansion(e) {
     e.preventDefault();
     document.getElementById('operations-content').style.display = 'none';
-    document.getElementById('expansion-content').style.display = '';
+    const expEl = document.getElementById('expansion-content');
+    expEl.style.display = 'flex';
+    expEl.style.justifyContent = 'center';
+    expEl.style.gap = '12px';
+    expEl.style.alignItems = 'flex-start';
+    expEl.style.flexWrap = 'wrap';
     document.querySelectorAll('.corp-nav__tab').forEach(t => t.classList.remove('active'));
     e.target.classList.add('active');
     renderHireFireCard();
+    renderWorkforceSummary();
 }
 
 function switchToOperations(e) {
@@ -6206,6 +6213,103 @@ function renderHireFireCard() {
                     <div onclick="hfConfirm()" style="padding:4px 14px;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:1px;color:#000;background:${C.accent};cursor:pointer">CONFIRM</div>
                 </div>
             </div>` : ''}
+        </div>
+    </div>`;
+}
+
+function renderWorkforceSummary() {
+    const container = document.getElementById('wf-summary-container');
+    if (!container) return;
+
+    const mono = "'JetBrains Mono', monospace";
+    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+        accent: '#8b9a6b', gold: '#c8a832', orange: '#c84', blue: '#5a9abf',
+        text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660', red: '#c55' };
+
+    const nationName = (nationStats?.name || faction?.nation || 'Nation').toUpperCase();
+    const minWage = Number(nationStats?.minimum_wage ?? 50);
+    const inflation = Number(nationStats?.inflation ?? 50);
+    const sol = Number(nationStats?.standard_of_living ?? 50);
+    const baseAnnual = (minWage / 100) * 48000;
+    const inflMod = 1 + ((inflation - 50) / 100 * 0.5);
+    const solMod = 1 + ((sol - 50) / 100 * 0.5);
+
+    const tiers = [
+        { label: 'General Workforce', mult: 2, color: C.accent, key: 'corp_general_workforce', countColor: C.text },
+        { label: 'Skilled Workforce', mult: 3, color: C.gold, key: 'corp_skilled_workforce', countColor: C.blue },
+        { label: 'Innovative Workforce', mult: 6, color: C.orange, key: 'corp_innovative_workforce', countColor: C.gold },
+    ];
+
+    let totalCount = 0, totalCost = 0;
+    let tiersHtml = '';
+
+    for (const t of tiers) {
+        const count = Number(faction?.[t.key] ?? 0);
+        const wage = Math.round(baseAnnual * t.mult * inflMod * solMod);
+        const annualCost = count * wage;
+        totalCount += count;
+        totalCost += annualCost;
+
+        tiersHtml += `
+        <div style="padding:8px 12px;border-bottom:1px solid ${C.border};">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <span style="font-size:12px;font-weight:700;color:${C.text}">${t.label}</span>
+                    <span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;margin-left:4px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${nationName}</span>
+                </div>
+                <span style="font-family:${mono};font-size:16px;font-weight:700;color:${t.countColor}">${count.toLocaleString()}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:2px;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim}">WAGE (MIN × ${t.mult}.0 × ${inflMod.toFixed(2)} × ${solMod.toFixed(2)})</span>
+                <span style="font-family:${mono};font-size:10px;color:${C.muted}">${hfFmtBig(wage)}/yr</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:1px;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim}">TOTAL ANNUAL COST</span>
+                <span style="font-family:${mono};font-size:10px;font-weight:700;color:${C.text}">${hfFmtBig(annualCost)}</span>
+            </div>
+        </div>`;
+    }
+
+    container.innerHTML = `
+    <div style="width:380px;height:450px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:8px;color:${C.accent}">●</span>
+                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Workforce</span>
+            </div>
+            <span style="font-family:${mono};font-size:12px;font-weight:700;color:${C.text}">${totalCount.toLocaleString()}</span>
+        </div>
+        <div style="flex:1;overflow:auto;">
+            ${tiersHtml}
+            <div style="padding:8px 12px;background:${C.card};border-bottom:1px solid ${C.border};">
+                <div style="font-family:${mono};font-size:8px;letter-spacing:1px;color:${C.dim};text-transform:uppercase;margin-bottom:4px">Wage Inputs</div>
+                <div style="display:flex;justify-content:space-between;">
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim}">MINIMUM WAGE (${nationName})</span>
+                    <span style="font-family:${mono};font-size:9px;color:${C.text}">${minWage}/100 → ${hfFmtBig(baseAnnual)}/yr</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:2px;">
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim}">INFLATION MODIFIER</span>
+                    <span style="font-family:${mono};font-size:9px;color:${C.text}">×${inflMod.toFixed(2)}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:2px;">
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim}">STD OF LIVING MODIFIER</span>
+                    <span style="font-family:${mono};font-size:9px;color:${C.text}">×${solMod.toFixed(2)}</span>
+                </div>
+            </div>
+        </div>
+        <div style="padding:8px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px">TOTAL WORKFORCE</span>
+                <span style="font-family:${mono};font-size:13px;font-weight:700;color:${C.text}">${totalCount.toLocaleString()}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px">TOTAL ANNUAL WAGES</span>
+                <span style="font-family:${mono};font-size:13px;font-weight:700;color:${C.red}">${hfFmtBig(totalCost)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px">PER TICK (÷12)</span>
+                <span style="font-family:${mono};font-size:13px;font-weight:700;color:${C.red}">${hfFmtBig(Math.round(totalCost / 12))}</span>
+            </div>
         </div>
     </div>`;
 }
