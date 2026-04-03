@@ -48,38 +48,38 @@ const CC_MEGA = [
 ];
 
 const CC_TEMPLATES = {
-    // Civil ($30M-$300M)
-    municipal_hospital:   { name: 'Municipal Hospital', sector: 'civil_engineering', budget: [80e6,220e6], ticks: [6,12], desc: 'Healthcare facility, 200-400 beds' },
-    regional_school:      { name: 'Regional School Complex', sector: 'civil_engineering', budget: [30e6,75e6], ticks: [4,8], desc: '8-16 classrooms with gym and labs' },
-    highway_extension:    { name: 'Highway Extension', sector: 'civil_engineering', budget: [100e6,300e6], ticks: [8,16], desc: '20-80km arterial road segment' },
-    public_housing:       { name: 'Public Housing Development', sector: 'civil_engineering', budget: [50e6,150e6], ticks: [6,12], desc: '200-600 residential units' },
-    water_treatment:      { name: 'Water Treatment Facility', sector: 'civil_engineering', budget: [60e6,160e6], ticks: [6,10], desc: 'Municipal water processing plant' },
-    government_office:    { name: 'Government Office Building', sector: 'civil_engineering', budget: [60e6,160e6], ticks: [6,10], desc: 'Administrative complex' },
-    bridge_construction:  { name: 'Bridge Construction', sector: 'civil_engineering', budget: [80e6,250e6], ticks: [8,14], desc: 'River crossing or interchange' },
-    transit_station:      { name: 'Public Transit Station', sector: 'civil_engineering', budget: [30e6,90e6], ticks: [4,8], desc: 'Bus terminal or rail stop' },
-    waste_processing:     { name: 'Municipal Waste Processing Plant', sector: 'civil_engineering', budget: [50e6,130e6], ticks: [6,10], desc: 'Solid waste or sewage processing' },
-    flood_defense:        { name: 'Coastal Flood Defense System', sector: 'civil_engineering', budget: [70e6,200e6], ticks: [8,14], desc: 'Seawalls, levees, drainage' },
-    // Industrial ($200M-$800M)
-    power_station:        { name: 'Power Station', sector: 'industrial', budget: [300e6,650e6], ticks: [10,18], desc: 'Coal, gas, or oil-fired generating plant' },
-    hydroelectric_dam:    { name: 'Hydroelectric Dam', sector: 'industrial', budget: [450e6,800e6], ticks: [14,24], desc: 'River dam with power generation' },
-    manufacturing_complex:{ name: 'Industrial Manufacturing Complex', sector: 'industrial', budget: [250e6,550e6], ticks: [10,16], desc: 'Factory, warehousing, logistics' },
-    oil_refinery:         { name: 'Oil Refinery Expansion', sector: 'industrial', budget: [400e6,750e6], ticks: [12,20], desc: 'Processing, storage, pipeline' },
-    shipping_port:        { name: 'Commercial Shipping Port', sector: 'industrial', budget: [350e6,700e6], ticks: [12,20], desc: 'Docks, cranes, container yard' },
-    military_installation:{ name: 'Military Installation', sector: 'industrial', budget: [200e6,500e6], ticks: [10,16], desc: 'Barracks, armory, training grounds' },
-    telecom_network:      { name: 'Telecommunications Tower Network', sector: 'industrial', budget: [200e6,400e6], ticks: [8,14], desc: '8-20 tower regional deployment' },
-    railway_corridor:     { name: 'Railway Corridor', sector: 'industrial', budget: [300e6,650e6], ticks: [12,20], desc: '50-200km rail line with stations' },
-    desalination_plant:   { name: 'Desalination Plant', sector: 'industrial', budget: [250e6,500e6], ticks: [10,16], desc: 'Coastal water processing' },
-    // Mega ($800M-$4B)
-    sports_stadium:       { name: 'National Sports Stadium', sector: 'mega_project', budget: [800e6,1.5e9], ticks: [18,30], desc: '50,000+ seating capacity' },
-    international_airport:{ name: 'International Airport', sector: 'mega_project', budget: [2e9,4e9], ticks: [24,36], desc: 'Terminals, runways, control tower' },
-    high_speed_rail:      { name: 'High-Speed Rail Network', sector: 'mega_project', budget: [2.5e9,4e9], ticks: [24,36], desc: 'Dedicated high-speed rail line' },
-    parliament_complex:   { name: 'National Parliament Complex', sector: 'mega_project', budget: [900e6,1.8e9], ticks: [18,28], desc: 'Seat of government' },
-    national_freeway:     { name: 'National Freeway System', sector: 'mega_project', budget: [1.5e9,3.5e9], ticks: [24,36], desc: 'Multi-hundred km freeway network' },
-    deepwater_port:       { name: 'Deepwater Commercial Port', sector: 'mega_project', budget: [1.2e9,2.8e9], ticks: [20,30], desc: 'Container terminals, breakwaters' },
-    intercontinental_crossing: { name: 'Intercontinental Bridge or Tunnel', sector: 'mega_project', budget: [2.5e9,4e9], ticks: [28,36], desc: 'Landmark engineering project' },
-    university_campus:    { name: 'National University Campus', sector: 'mega_project', budget: [900e6,1.6e9], ticks: [16,26], desc: 'Full university with all facilities' },
-    metro_system:         { name: 'Metropolitan Subway System', sector: 'mega_project', budget: [1.5e9,3.5e9], ticks: [24,36], desc: 'Underground metro network' },
-    flood_irrigation_network: { name: 'National Flood Control & Irrigation Network', sector: 'mega_project', budget: [1.2e9,2.5e9], ticks: [20,30], desc: 'Dams, canals, levees, irrigation' },
+    // Civil ($25M-$300M, timeline 36-60 months)
+    municipal_hospital:   { name: 'Municipal Hospital', sector: 'civil_engineering', budget: [80e6,220e6], ticks: [36,55], desc: 'Healthcare facility, 200-400 beds' },
+    regional_school:      { name: 'Regional School Complex', sector: 'civil_engineering', budget: [25e6,75e6], ticks: [36,48], desc: '8-16 classrooms with gym and labs' },
+    highway_extension:    { name: 'Highway Extension', sector: 'civil_engineering', budget: [100e6,300e6], ticks: [42,60], desc: '20-80km arterial road segment' },
+    public_housing:       { name: 'Public Housing Development', sector: 'civil_engineering', budget: [50e6,150e6], ticks: [36,52], desc: '200-600 residential units' },
+    water_treatment:      { name: 'Water Treatment Facility', sector: 'civil_engineering', budget: [60e6,160e6], ticks: [36,50], desc: 'Municipal water processing plant' },
+    government_office:    { name: 'Government Office Building', sector: 'civil_engineering', budget: [60e6,160e6], ticks: [36,50], desc: 'Administrative complex' },
+    bridge_construction:  { name: 'Bridge Construction', sector: 'civil_engineering', budget: [80e6,250e6], ticks: [40,58], desc: 'River crossing or interchange' },
+    transit_station:      { name: 'Public Transit Station', sector: 'civil_engineering', budget: [25e6,90e6], ticks: [36,46], desc: 'Bus terminal or rail stop' },
+    waste_processing:     { name: 'Municipal Waste Processing Plant', sector: 'civil_engineering', budget: [50e6,130e6], ticks: [36,50], desc: 'Solid waste or sewage processing' },
+    flood_defense:        { name: 'Coastal Flood Defense System', sector: 'civil_engineering', budget: [70e6,200e6], ticks: [40,56], desc: 'Seawalls, levees, drainage' },
+    // Industrial ($180M-$2.5B, timeline 36-85 months)
+    power_station:        { name: 'Power Station', sector: 'industrial', budget: [300e6,900e6], ticks: [45,70], desc: 'Coal, gas, or oil-fired generating plant' },
+    hydroelectric_dam:    { name: 'Hydroelectric Dam', sector: 'industrial', budget: [600e6,2.5e9], ticks: [55,85], desc: 'River dam with power generation' },
+    manufacturing_complex:{ name: 'Industrial Manufacturing Complex', sector: 'industrial', budget: [250e6,800e6], ticks: [42,65], desc: 'Factory, warehousing, logistics' },
+    oil_refinery:         { name: 'Oil Refinery Expansion', sector: 'industrial', budget: [400e6,1.5e9], ticks: [48,75], desc: 'Processing, storage, pipeline' },
+    shipping_port:        { name: 'Commercial Shipping Port', sector: 'industrial', budget: [350e6,1.2e9], ticks: [48,72], desc: 'Docks, cranes, container yard' },
+    military_installation:{ name: 'Military Installation', sector: 'industrial', budget: [180e6,600e6], ticks: [36,60], desc: 'Barracks, armory, training grounds' },
+    telecom_network:      { name: 'Telecommunications Tower Network', sector: 'industrial', budget: [200e6,500e6], ticks: [36,55], desc: '8-20 tower regional deployment' },
+    railway_corridor:     { name: 'Railway Corridor', sector: 'industrial', budget: [400e6,1.5e9], ticks: [48,75], desc: '50-200km rail line with stations' },
+    desalination_plant:   { name: 'Desalination Plant', sector: 'industrial', budget: [250e6,700e6], ticks: [42,65], desc: 'Coastal water processing' },
+    // Mega ($1.5B-$36B, timeline 60-100 months)
+    sports_stadium:       { name: 'National Sports Stadium', sector: 'mega_project', budget: [1.5e9,4e9], ticks: [60,78], desc: '50,000+ seating capacity' },
+    international_airport:{ name: 'International Airport', sector: 'mega_project', budget: [5e9,18e9], ticks: [72,95], desc: 'Terminals, runways, control tower' },
+    high_speed_rail:      { name: 'High-Speed Rail Network', sector: 'mega_project', budget: [6e9,20e9], ticks: [75,98], desc: 'Dedicated high-speed rail line' },
+    parliament_complex:   { name: 'National Parliament Complex', sector: 'mega_project', budget: [1.5e9,5e9], ticks: [60,80], desc: 'Seat of government' },
+    national_freeway:     { name: 'National Freeway System', sector: 'mega_project', budget: [4e9,15e9], ticks: [70,92], desc: 'Multi-hundred km freeway network' },
+    deepwater_port:       { name: 'Deepwater Commercial Port', sector: 'mega_project', budget: [3e9,10e9], ticks: [68,88], desc: 'Container terminals, breakwaters' },
+    intercontinental_crossing: { name: 'Intercontinental Bridge or Tunnel', sector: 'mega_project', budget: [8e9,36e9], ticks: [80,100], desc: 'Landmark engineering project' },
+    university_campus:    { name: 'National University Campus', sector: 'mega_project', budget: [1.5e9,4e9], ticks: [60,78], desc: 'Full university with all facilities' },
+    metro_system:         { name: 'Metropolitan Subway System', sector: 'mega_project', budget: [4e9,16e9], ticks: [72,95], desc: 'Underground metro network' },
+    flood_irrigation_network: { name: 'National Flood Control & Irrigation Network', sector: 'mega_project', budget: [3e9,10e9], ticks: [68,88], desc: 'Dams, canals, levees, irrigation' },
 };
 
 // Material/equipment/workforce requirements per template (ranges: [min, max])
@@ -353,7 +353,7 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
         }
     }
 
-    // Ministry issuers
+    // Ministry issuers for GOVERNMENT contracts
     const ISSUERS = [
         'Ministry of Infrastructure', 'Ministry of Housing',
         'Ministry of Transport', 'Ministry of Energy',
@@ -361,15 +361,48 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
         'Ministry of Defense', 'Ministry of the Interior'
     ];
 
+    // Sector prefix for project IDs
+    const SECTOR_PREFIX = { civil_engineering: 'GOV-C', industrial: 'GOV-I', mega_project: 'GOV-M' };
+
+    // GDP growth scaling factor: 0.3 at gdp_growth=0, 1.0 at gdp_growth=50, 1.8 at gdp_growth=100
+    const gdpGrowth = Number(nation.gdp_growth ?? 50);
+    const gdpScale = 0.3 + (gdpGrowth / 100) * 1.5;
+
+    // Game year for project ID (e.g., "2014")
+    const { data: shardDate } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+    const gameYear = (shardDate?.current_date || '').match(/\d{4}/)?.[0] || '2014';
+
     const generated = [];
+    let contractSeq = 1; // sequence number within this generation batch
     for (const sector of slots) {
         const pool = sector === 'mega_project' ? CC_MEGA : sector === 'industrial' ? CC_INDUSTRIAL : CC_CIVIL;
         const key = ccPick(pool);
         const tmpl = CC_TEMPLATES[key];
         if (!tmpl) continue;
 
-        const budget = ccRand(tmpl.budget[0], tmpl.budget[1]);
-        const timeline = ccRand(tmpl.ticks[0], tmpl.ticks[1]);
+        // Scale budget by GDP growth: lerp within template range, then apply gdpScale
+        const budgetBase = ccRand(tmpl.budget[0], tmpl.budget[1]);
+        const budget = Math.round(budgetBase * gdpScale);
+
+        // Timeline: for mega projects, scale proportionally to budget within range
+        let timeline;
+        if (sector === 'mega_project') {
+            const budgetFraction = (budget - tmpl.budget[0] * gdpScale) / ((tmpl.budget[1] - tmpl.budget[0]) * gdpScale || 1);
+            const clampedFraction = Math.max(0, Math.min(1, budgetFraction));
+            timeline = Math.round(tmpl.ticks[0] + clampedFraction * (tmpl.ticks[1] - tmpl.ticks[0]));
+            // Add 1d6 variation
+            timeline += ccRand(-3, 3);
+            timeline = Math.max(tmpl.ticks[0], Math.min(tmpl.ticks[1], timeline));
+        } else {
+            timeline = ccRand(tmpl.ticks[0], tmpl.ticks[1]);
+        }
+
+        // Project ID: GOV-C1-2014, GOV-I2-2014, GOV-M1-2014
+        const projectId = `${SECTOR_PREFIX[sector]}${contractSeq}-${gameYear}`;
+        contractSeq++;
+
+        // Issuer: always GOVERNMENT with a ministry name for auto-generated
+        const issuerName = ccPick(ISSUERS);
 
         const { data: contract, error } = await supabase.from('construction_contracts').insert({
             nation_id: nation.id,
@@ -377,6 +410,7 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
             sector: tmpl.sector,
             name: tmpl.name,
             description: tmpl.desc,
+            project_code: projectId,
             budget_ceiling: budget,
             timeline_ticks: timeline,
             required_materials: (() => {
@@ -396,7 +430,7 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
             generated_at_tick: currentTick,
             bidding_ends_tick: currentTick + 3,
             issuer_type: 'GOVERNMENT',
-            issuer_name: ccPick(ISSUERS),
+            issuer_name: issuerName,
         }).select('id, name, sector').single();
 
         if (error) {
