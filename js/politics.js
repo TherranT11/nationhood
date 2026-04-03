@@ -2292,7 +2292,6 @@ let _caTopIssueStats = null; // Stats from top 7 issues by salience (for Make Pr
 // Campaign actions organized by category
 const CA_ACTION_CATEGORIES = [
     { key: 'momentum', label: 'MOMENTUM', color: '#f97316' },
-    { key: 'approval', label: 'APPROVAL', color: '#4ade80' },
     { key: 'alignment', label: 'ALIGNMENT', color: '#a78bfa' },
     { key: 'appeal', label: 'APPEAL', color: '#38bdf8' },
     { key: 'tools', label: 'TOOLS', color: '#6b7280' },
@@ -2308,11 +2307,11 @@ const CA_ACTIONS = [
       desc: 'Hold a press conference to make a public statement. Base roll: -2 to +2 Momentum. Opposition parties get +1 bonus. High-approval governing parties get +2 bonus.' },
     // APPROVAL
     { id: 'attack', name: 'Campaign Attack', ap: ATTACK_CONFIG.AP_COST, color: '#ef4444', icon: '✦',
-      category: 'approval', affects: 'Approval',
-      desc: 'Target a rival party\'s record or leadership. Lowers their approval and can hurt their momentum. More effective with evidence — but a weak attack backfires on you.' },
+      category: 'momentum', affects: 'Momentum',
+      desc: 'Target a rival party\'s record or leadership. Lowers their momentum and can hurt their election chances. More effective with evidence — but a weak attack backfires on you.' },
     { id: 'promise', name: 'Make a Promise', ap: MAKE_PROMISE_CONFIG.AP_COST, color: '#a78bfa', icon: '◆',
-      category: 'approval', affects: 'Approval',
-      desc: 'Publicly commit to improving a national stat or resolving a crisis. Gives an immediate approval boost, but you\'ll face governance penalties if you fail to deliver.' },
+      category: 'momentum', affects: 'Momentum',
+      desc: 'Publicly commit to improving a national stat or resolving a crisis. Gives an immediate momentum boost, but you\'ll face governance penalties if you fail to deliver.' },
     // ALIGNMENT
     { id: 'fund_think_tank', name: 'Fund Think Tank', ap: IDEO_SHIFT_CONFIG.THINK_TANK.AP_COST, color: '#14b8a6', icon: '🏛',
       category: 'alignment', affects: 'Ideology',
@@ -2711,7 +2710,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             const bgStyle = isSel ? `background:${act.color}08;` : '';
             const borderStyle = isSel ? `border-color:${act.color}33;` : '';
             const nameColor = isSel ? act.color : 'var(--dtext-0)';
-            const affectsColor = act.affects === 'Momentum' ? '#f97316' : act.affects === 'Approval' ? '#4ade80' : act.affects === 'Appeal' ? '#38bdf8' : act.affects.includes('Ideology') ? '#a78bfa' : act.affects === 'Alignment' ? '#f59e0b' : '#6b7280';
+            const affectsColor = act.affects === 'Momentum' ? '#f97316' : act.affects === 'Appeal' ? '#38bdf8' : act.affects.includes('Ideology') ? '#a78bfa' : act.affects === 'Alignment' ? '#f59e0b' : '#6b7280';
             const usedLabel = usedThisTick ? `${act.name} already used this turn` : '';
             const statusBadge = usedThisTick
                 ? `<span class="ca-used-badge">USED</span>`
@@ -5366,7 +5365,6 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
                 <span class="op-sort-label">Sort by</span>
                 <button class="op-sort-btn${currentSort === 'seats' ? ' active' : ''}" data-op-sort="seats">Seats</button>
                 <button class="op-sort-btn${currentSort === 'vote_share' ? ' active' : ''}" data-op-sort="vote_share">Vote Share</button>
-                <button class="op-sort-btn${currentSort === 'approval' ? ' active' : ''}" data-op-sort="approval">Approval</button>
                 <button class="op-sort-btn${currentSort === 'alignment' ? ' active' : ''}" data-op-sort="alignment">Alignment</button>
             </div>
         </div>
