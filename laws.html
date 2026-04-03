@@ -1014,15 +1014,19 @@ function renderCommitteeBill(bill) {
 
 // ==================== ACTIVE LAWS (SECTORS) ====================
 
+function normalizeMinorKey(p) {
+    return (p.minor_sector || p.law_category || '').toLowerCase().replace(/_/g, ' ').trim();
+}
+
 function renderMajorSector(sector) {
     const sectorPolicies = allPolicies.filter(p => p.major_sector === sector.key);
-    const minorSectors = [...new Set(sectorPolicies.map(p => (p.minor_sector || p.law_category || '').toLowerCase()))].filter(Boolean);
+    const minorSectors = [...new Set(sectorPolicies.map(normalizeMinorKey))].filter(Boolean);
     if (minorSectors.length === 0) return '';
     return `<div class="major-sector" id="sector-${sector.key}"><div class="major-sector-header" onclick="toggleMajorSector('${sector.key}')"><div class="major-sector-title">${sector.icon} ${sector.label}</div><div class="major-sector-arrow">▶</div></div><div class="major-sector-content">${minorSectors.map(minor => renderMinorSector(sector.key, minor)).join('')}</div></div>`;
 }
 
 function renderMinorSector(majorKey, minorKey) {
-    const matchingLaws = activeLaws.filter(law => !law.is_reversal && law.policies?.major_sector === majorKey && ((law.policies?.minor_sector || '').toLowerCase() === minorKey || (law.policies?.law_category || '').toLowerCase() === minorKey));
+    const matchingLaws = activeLaws.filter(law => !law.is_reversal && law.policies?.major_sector === majorKey && (normalizeMinorKey(law.policies) === minorKey));
     const safeMinor = (minorKey || '').replace(/'/g, "\\'");
     const lawsHTML = matchingLaws.length > 0 ? matchingLaws.map(law => renderActiveLaw(law)).join('') : '<div class="no-law">No active law in this area.</div>';
     return `<div class="minor-sector" id="minor-${majorKey}-${minorKey}"><div class="minor-sector-header" onclick="toggleMinorSector('${majorKey}','${safeMinor}')"><div class="minor-sector-title">${formatMinorSector(minorKey)}</div><div class="minor-sector-arrow">▶</div></div><div class="minor-sector-content">${lawsHTML}</div></div>`;
