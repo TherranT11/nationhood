@@ -1112,7 +1112,7 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     }
 
     // 7. Compute engagement scores (Governance pillar)
-    const coalitionPartyIds = coalitionRow?.party_ids || [];
+    const coalitionPartyIds = new Set(coalitionRow?.party_ids || []);
     const leadPartyId = coalitionRow?.lead_party_id || null;
     let engagementResults = {};
     try {
@@ -1202,10 +1202,11 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     computeContestedVoteShares(updates);
     computeRealizedVoteShares(updates, profile, nation);
 
-    // Ensure turnout_rate has a sane default
+    // Ensure turnout_rate has a sane default and strip transient properties before DB write
     for (const u of updates) {
         u.base_vote_share = u.contested_vote_share;
         u.turnout_rate = u.turnout_rate || 0.65;
+        delete u._incumbencyBonus;
     }
 
     // ── Write to faction_electoral_standing ──
