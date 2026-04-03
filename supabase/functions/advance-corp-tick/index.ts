@@ -622,9 +622,10 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
             }
         }
 
-        // Batch update conditions
+        // Batch update conditions (non-fatal per-property)
         for (const upd of conditionUpdates) {
-            await supabase.from('corp_properties').update({ condition: upd.condition }).eq('id', upd.id);
+            const { error: condErr } = await supabase.from('corp_properties').update({ condition: upd.condition }).eq('id', upd.id);
+            if (condErr) console.warn(`[PropertyEffects] Condition update failed for property ${upd.id}:`, condErr.message);
         }
 
         // Workforce capacity enforcement:
@@ -662,8 +663,9 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
                     }
                 }
 
-                await supabase.from('factions').update(updates).eq('id', corp.id);
-                console.log(`[PropertyEffects] ${corp.faction_name}: workforce capped at ${totalCapacity} (was ${totalWf}, -${excess} excess)`);
+                const { error: wfErr } = await supabase.from('factions').update(updates).eq('id', corp.id);
+                if (wfErr) console.error(`[PropertyEffects] Workforce cap update failed for ${corp.faction_name}:`, wfErr.message);
+                else console.log(`[PropertyEffects] ${corp.faction_name}: workforce capped at ${totalCapacity} (was ${totalWf}, -${excess} excess)`);
             }
         }
     }
