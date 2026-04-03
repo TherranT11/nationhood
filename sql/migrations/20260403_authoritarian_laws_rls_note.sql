@@ -1,0 +1,39 @@
+-- RLS note for authoritarian foundational law columns
+--
+-- The authoritarian law flag columns added by:
+--   20260323_authoritarian_foundational_laws.sql
+--   20260401_judicial_appointment_politicization.sql
+--   20260401_electoral_commission_reform.sql
+--   20260401_legislative_quorum_reform.sql
+--   20260401_party_registration_act.sql
+--   20260401_constitutional_amendment_streamlining.sql
+--
+-- ...are added to the `nations` table, which currently has permissive write
+-- policies inherited from the base schema. This means an authenticated client
+-- could theoretically SET term_limits_abolished = true directly via the
+-- Supabase client without passing a bill through the legislative process.
+--
+-- This is a pre-existing known issue documented in 20260302_fix_rls_ownership.sql
+-- (lines 327-345). The fix requires migrating all client-side nation writes to
+-- SECURITY DEFINER RPCs, at which point a restrictive UPDATE policy can be added.
+--
+-- REQUIRED FOLLOW-UP: When nations write access is migrated to RPCs, add:
+--
+--   CREATE POLICY "nations_authoritarian_flags_no_direct_write"
+--   ON nations
+--   FOR UPDATE
+--   USING (true)
+--   WITH CHECK (
+--     term_limits_abolished = (SELECT term_limits_abolished FROM nations WHERE id = nations.id) AND
+--     state_media_control   = (SELECT state_media_control   FROM nations WHERE id = nations.id) AND
+--     emergency_powers_act  = (SELECT emergency_powers_act  FROM nations WHERE id = nations.id) AND
+--     judicial_appointment_politicization = (SELECT judicial_appointment_politicization FROM nations WHERE id = nations.id) AND
+--     electoral_commission_reform         = (SELECT electoral_commission_reform         FROM nations WHERE id = nations.id) AND
+--     party_registration_threshold        = (SELECT party_registration_threshold        FROM nations WHERE id = nations.id) AND
+--     legislative_quorum_override         = (SELECT legislative_quorum_override         FROM nations WHERE id = nations.id) AND
+--     constitutional_amendment_streamlining = (SELECT constitutional_amendment_streamlining FROM nations WHERE id = nations.id)
+--   );
+--
+-- Until then, mutation of these flags is enforced at the application layer only
+-- (bills must pass the legislative process in enactFoundationalBill).
+SELECT 1; -- no-op placeholder so this file is a valid SQL migration

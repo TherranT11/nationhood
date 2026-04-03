@@ -3343,7 +3343,8 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
     if (bill.proposed_abolish_term_limits) {
         const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
 
-        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
         const updates = { term_limits_abolished: true };
         // Also remove presidential term limit if applicable
@@ -3353,7 +3354,8 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         updates.legitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
         updates.stability = Math.min(100, (nation?.stability ?? 50) + 2);
 
-        await supabase.from('nations').update(updates).eq('id', bill.nation_id);
+        const { error: nationErr } = await supabase.from('nations').update(updates).eq('id', bill.nation_id);
+        if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for abolish term limits:`, nationErr.message);
 
         await supabase.from('event_log').insert({
             nation_id: bill.nation_id,
@@ -3366,7 +3368,6 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         });
 
         await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-        console.log(`[enactFoundationalBill] Abolish Term Limits enacted for nation ${bill.nation_id}`);
         return true;
     }
 
@@ -3374,14 +3375,16 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
     if (bill.proposed_state_media_control) {
         const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
 
-        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
         const cappedPressFreedom = Math.min(Number(nation?.press_freedom ?? 50), 40);
-        await supabase.from('nations').update({
+        const { error: nationErr } = await supabase.from('nations').update({
             state_media_control: true,
             press_freedom: cappedPressFreedom,
             legitimacy: Math.max(0, (nation?.legitimacy ?? 50) - 3)
         }).eq('id', bill.nation_id);
+        if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for state media control:`, nationErr.message);
 
         // Government approval: +10 one-time
         await adjustGovernmentApprovalEvent(supabase, bill.nation_id, 10, 'state_media_control');
@@ -3413,7 +3416,6 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             fired_at_tick: currentTick
         });
 
-        console.log(`[enactFoundationalBill] State Media Control Act enacted for nation ${bill.nation_id}`);
         return true;
     }
 
@@ -3421,13 +3423,15 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
     if (bill.proposed_emergency_powers_act) {
         const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
 
-        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
-        await supabase.from('nations').update({
+        const { error: nationErr } = await supabase.from('nations').update({
             emergency_powers_act: true,
             stability: Math.max(0, (nation?.stability ?? 50) - 2),
             freedom_index: Math.max(0, (nation?.freedom_index ?? 50) - 3)
         }).eq('id', bill.nation_id);
+        if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for emergency powers act:`, nationErr.message);
 
         await supabase.from('event_log').insert({
             nation_id: bill.nation_id,
@@ -3440,7 +3444,6 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         });
 
         await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-        console.log(`[enactFoundationalBill] Emergency Powers Act enacted for nation ${bill.nation_id}`);
         return true;
     }
 
@@ -3485,7 +3488,6 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         });
 
         await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-        console.log(`[enactFoundationalBill] Judicial Appointment Politicization Act enacted for nation ${bill.nation_id}`);
         return true;
     }
 
@@ -3522,7 +3524,6 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         });
 
         await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-        console.log(`[enactFoundationalBill] Electoral Commission Reform Act enacted for nation ${bill.nation_id}`);
         return true;
     }
 
@@ -3569,7 +3570,6 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         });
 
         await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-        console.log(`[enactFoundationalBill] Political Party Registration Act enacted for nation ${bill.nation_id} (threshold: ${threshold}%)`);
         return true;
     }
 
@@ -3608,7 +3608,6 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         });
 
         await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-        console.log(`[enactFoundationalBill] Legislative Quorum Reform Act enacted for nation ${bill.nation_id} (quorum: ${quorumPct}%)`);
         return true;
     }
 
@@ -3638,7 +3637,6 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         });
 
         await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-        console.log(`[enactFoundationalBill] Constitutional Amendment Streamlining enacted for nation ${bill.nation_id}`);
         return true;
     }
 

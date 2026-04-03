@@ -283,7 +283,7 @@ export async function runElectionPreview(supabase, nationId) {
     // 1. Load nation
     const { data: nation } = await supabase
         .from('nations')
-        .select('id, name, total_seats, eligible_voters, electoral_commission_reform, ruling_faction_id')
+        .select('id, name, total_seats, eligible_voters, electoral_commission_reform, party_registration_threshold, ruling_faction_id')
         .eq('id', nationId)
         .single();
     if (!nation) throw new Error('Nation not found');
@@ -402,7 +402,6 @@ export async function runElectionPreview(supabase, nationId) {
                         seats[id] = (seats[id] || 0) + gain;
                         distributed += gain;
                     }
-                    console.log(`[Election] Electoral Commission Reform: ${transferred} seats transferred to coalition (${(bonusPct * 100).toFixed(1)}% bonus)`);
                 }
             }
         }
@@ -432,7 +431,6 @@ export async function runElectionPreview(supabase, nationId) {
                 seats[id] += gain;
                 distributed += gain;
             }
-            console.log(`[Election] Party Registration Act: ${belowThreshold.length} parties below ${regThreshold}% threshold (${minSeats} seats), ${seatsFreed} seats reallocated`);
         }
     }
 

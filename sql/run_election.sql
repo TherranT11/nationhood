@@ -63,13 +63,30 @@ DECLARE
     v_total_realized NUMERIC := 0;
     v_target_votes  BIGINT;
     v_current_tick  INT;
+    v_coalition     RECORD;
+    v_coalition_ids UUID[];
+    v_bonus_pct     NUMERIC;
+    v_bonus_seats   INT;
+    v_opp_ids       UUID[];
+    v_total_opp     INT;
+    v_to_transfer   INT;
+    v_transferred   INT;
+    v_reg_threshold INT;
+    v_min_seats     INT;
+    v_seats_freed   INT;
+    v_total_surv    INT;
+    v_gain          INT;
+    v_dist          INT;
+    v_idx           INT;
+    v_pcount        INT;
 BEGIN
     IF v_election_type NOT IN ('parliamentary', 'presidential') THEN
         RAISE EXCEPTION 'Invalid election type: % (allowed: parliamentary, presidential)', p_election_type;
     END IF;
 
     -- ---- Load nation ----
-    SELECT id, name, total_seats, population, eligible_voters
+    SELECT id, name, total_seats, population, eligible_voters,
+           electoral_commission_reform, party_registration_threshold
     INTO v_nation
     FROM nations
     WHERE id = p_nation_id;
@@ -144,6 +161,143 @@ BEGIN
 
     -- ---- Allocate seats (Largest Remainder / Hare Quota) ----
     v_seats := _election_allocate_seats(v_tally, v_total_votes, v_total_seats);
+
+    -- ---- Electoral Commission Reform: ruling coalition seat bonus ----
+    IF v_nation.electoral_commission_reform THEN
+        SELECT ARRAY(
+            SELECT unnest(party_ids)
+            FROM government_formations
+            WHERE nation_id = p_nation_id
+              AND status IN ('formed', 'caretaker')
+            ORDER BY created_at DESC
+            LIMIT 1
+        ) INTO v_coalition_ids;
+
+        IF v_coalition_ids IS NOT NULL AND array_length(v_coalition_ids, 1) > 0 THEN
+            -- Random 5–10% bonus using tick-seeded determinism
+            v_bonus_pct := 0.05 + (((v_current_tick * 2654435761) % 1000)::NUMERIC / 1000.0) * 0.05;
+            v_bonus_seats := ROUND(v_total_seats * v_bonus_pct)::INT;
+
+            IF v_bonus_seats > 0 THEN
+                -- Sum opposition seats
+                v_total_opp := 0;
+                FOR v_frac IN SELECT key AS pid FROM jsonb_each_text(v_seats)
+                LOOP
+                    IF NOT (v_frac.pid::UUID = ANY(v_coalition_ids)) THEN
+                        v_total_opp := v_total_opp + COALESCE((v_seats->>v_frac.pid)::INT, 0);
+                    END IF;
+                END LOOP;
+
+                IF v_total_opp > 0 THEN
+                    v_to_transfer := LEAST(v_bonus_seats, v_total_opp);
+                    v_transferred := 0;
+
+                    -- Subtract proportionally from opposition
+                    FOR v_frac IN SELECT key AS pid FROM jsonb_each_text(v_seats)
+                    LOOP
+                        IF NOT (v_frac.pid::UUID = ANY(v_coalition_ids)) THEN
+                            DECLARE
+                                cur_seats INT := COALESCE((v_seats->>v_frac.pid)::INT, 0);
+                                loss INT;
+                            BEGIN
+                                IF cur_seats > 0 THEN
+                                    loss := LEAST(ROUND(v_to_transfer::NUMERIC * cur_seats / v_total_opp)::INT, cur_seats);
+                                    v_seats := jsonb_set(v_seats, ARRAY[v_frac.pid], to_jsonb(cur_seats - loss));
+                                    v_transferred := v_transferred + loss;
+                                END IF;
+                            END;
+                        END IF;
+                    END LOOP;
+
+                    -- Distribute to coalition proportionally
+                    v_total_surv := 0;
+                    FOR v_frac IN SELECT key AS pid FROM jsonb_each_text(v_seats)
+                    LOOP
+                        IF v_frac.pid::UUID = ANY(v_coalition_ids) THEN
+                            v_total_surv := v_total_surv + COALESCE((v_seats->>v_frac.pid)::INT, 0);
+                        END IF;
+                    END LOOP;
+
+                    v_dist := 0;
+                    v_pcount := array_length(v_coalition_ids, 1);
+                    v_idx := 0;
+                    FOR v_frac IN SELECT key AS pid FROM jsonb_each_text(v_seats)
+                    LOOP
+                        IF v_frac.pid::UUID = ANY(v_coalition_ids) THEN
+                            v_idx := v_idx + 1;
+                            DECLARE
+                                cur_seats INT := COALESCE((v_seats->>v_frac.pid)::INT, 0);
+                            BEGIN
+                                IF v_idx = v_pcount THEN
+                                    v_gain := v_transferred - v_dist;
+                                ELSIF v_total_surv > 0 THEN
+                                    v_gain := ROUND(v_transferred::NUMERIC * cur_seats / v_total_surv)::INT;
+                                ELSE
+                                    v_gain := ROUND(v_transferred::NUMERIC / v_pcount)::INT;
+                                END IF;
+                                v_seats := jsonb_set(v_seats, ARRAY[v_frac.pid], to_jsonb(cur_seats + v_gain));
+                                v_dist := v_dist + v_gain;
+                            END;
+                        END IF;
+                    END LOOP;
+                END IF;
+            END IF;
+        END IF;
+    END IF;
+
+    -- ---- Political Party Registration Act: reallocate seats below threshold ----
+    v_reg_threshold := COALESCE(v_nation.party_registration_threshold, 0);
+    IF v_reg_threshold > 0 THEN
+        v_min_seats := CEIL(v_total_seats::NUMERIC * v_reg_threshold / 100)::INT;
+        v_seats_freed := 0;
+
+        -- Zero out parties below threshold and mark them as disbanded
+        FOR v_frac IN SELECT key AS pid FROM jsonb_each_text(v_seats)
+        LOOP
+            DECLARE
+                cur_seats INT := COALESCE((v_seats->>v_frac.pid)::INT, 0);
+            BEGIN
+                IF cur_seats > 0 AND cur_seats < v_min_seats THEN
+                    v_seats_freed := v_seats_freed + cur_seats;
+                    v_seats := jsonb_set(v_seats, ARRAY[v_frac.pid], to_jsonb(0));
+                    -- C3 fix: mark faction as registration_act_disbanded
+                    UPDATE factions
+                    SET registration_act_disbanded = true
+                    WHERE id = v_frac.pid::UUID;
+                END IF;
+            END;
+        END LOOP;
+
+        IF v_seats_freed > 0 THEN
+            -- Redistribute freed seats proportionally to survivors
+            v_total_surv := 0;
+            FOR v_frac IN SELECT key AS pid FROM jsonb_each_text(v_seats)
+            LOOP
+                v_total_surv := v_total_surv + COALESCE((v_seats->>v_frac.pid)::INT, 0);
+            END LOOP;
+
+            v_dist := 0;
+            v_pcount := (SELECT COUNT(*) FROM jsonb_each_text(v_seats) WHERE value::INT > 0);
+            v_idx := 0;
+            FOR v_frac IN SELECT key AS pid FROM jsonb_each_text(v_seats) WHERE value::INT > 0
+            LOOP
+                v_idx := v_idx + 1;
+                DECLARE
+                    cur_seats INT := COALESCE((v_seats->>v_frac.pid)::INT, 0);
+                BEGIN
+                    IF v_idx = v_pcount THEN
+                        v_gain := v_seats_freed - v_dist;
+                    ELSIF v_total_surv > 0 THEN
+                        v_gain := ROUND(v_seats_freed::NUMERIC * cur_seats / v_total_surv)::INT;
+                    ELSE
+                        v_gain := ROUND(v_seats_freed::NUMERIC / v_pcount)::INT;
+                    END IF;
+                    v_seats := jsonb_set(v_seats, ARRAY[v_frac.pid], to_jsonb(cur_seats + v_gain));
+                    v_dist := v_dist + v_gain;
+                END;
+            END LOOP;
+        END IF;
+    END IF;
 
     -- ---- Build result arrays ----
     FOR v_frac IN SELECT * FROM jsonb_array_elements(v_fractionals)
