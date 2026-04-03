@@ -122,6 +122,173 @@ function ccRand(min, max) { return min + Math.floor(Math.random() * (max - min +
 function ccPick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 // ════════════════════════════════════════════════════════════════════════════════
+//  CONSTRUCTION EVENTS — Templates
+//
+//  Phase windows: EARLY (Permits/Planning/Foundation), MID (Foundation/Structural/Systems),
+//                 LATE (Systems/Finishing/Delivery), ANY (all phases)
+//  category: 'notification' (no player choice) or 'choice' (requires response)
+//  appliesTo: array of sectors or ['all']
+//  govOnly: true if only fires on GOVERNMENT contracts
+// ════════════════════════════════════════════════════════════════════════════════
+
+const PHASE_WINDOWS = {
+    EARLY: ['Permits', 'Planning', 'Foundation'],
+    MID:   ['Foundation', 'Structural', 'Systems'],
+    LATE:  ['Systems', 'Finishing', 'Delivery'],
+    ANY:   ['Permits', 'Planning', 'Foundation', 'Structural', 'Systems', 'Finishing', 'Delivery'],
+};
+
+// ── NOTIFICATION EVENTS (N1-N10): No player choice, effects applied immediately ──
+
+const NOTIFICATION_EVENTS = [
+    // ── N1: FAVORABLE WEATHER WINDOW ──
+    {
+        key: 'favorable_weather', type: 'WEATHER', severity: 'LOW',
+        category: 'notification', phaseWindow: 'MID', probability: 0.08,
+        appliesTo: ['all'],
+        title: 'Favorable Weather Window',
+        desc: 'An extended dry spell with moderate temperatures has created ideal construction conditions. Concrete curing is optimal, earthmoving is efficient, and outdoor work is uninterrupted.',
+        impact: 'Construction accelerated. Good conditions produce good work.',
+        effects: { phaseProgress: 15, quality: 2 },
+        statModifiers: [
+            { stat: 'stability', baseline: 50, perPoint: 0.02, direction: 'above' },
+        ],
+    },
+    // ── N2: WORKFORCE EFFICIENCY BREAKTHROUGH ──
+    {
+        key: 'workforce_efficiency', type: 'LABOR', severity: 'LOW',
+        category: 'notification', phaseWindow: 'MID_LATE', probability: 0.05,
+        appliesTo: ['all'],
+        title: 'Workforce Efficiency Breakthrough',
+        desc: 'Your crew has developed an optimized workflow for the current phase. A senior foreman reorganized the task sequencing and the team is completing work faster than projected without cutting corners.',
+        impact: 'Crew working faster. Quality slightly improved.',
+        effects: { phaseProgress: 10, quality: 1 },
+        statModifiers: [
+            { stat: 'workforce_skill', baseline: 50, perPoint: 0.01, direction: 'above' },
+        ],
+    },
+    // ── N3: MATERIAL SURPLUS DISCOVERED ──
+    {
+        key: 'material_surplus', type: 'SUPPLY', severity: 'LOW',
+        category: 'notification', phaseWindow: 'MID', probability: 0.04,
+        appliesTo: ['all'],
+        title: 'Material Surplus Discovered',
+        desc: 'Post-delivery audit of recent material shipments reveals the supplier over-delivered by approximately 8%. The surplus is usable and already on-site. No additional cost incurred.',
+        impact: 'Free materials. Small but meaningful cost savings this phase.',
+        effects: { materialSavings: 0.08 },
+        statModifiers: [],
+    },
+    // ── N4: POSITIVE INSPECTION PREVIEW ──
+    {
+        key: 'positive_inspection', type: 'REGULATORY', severity: 'LOW',
+        category: 'notification', phaseWindow: 'LATE', probability: 0.06,
+        appliesTo: ['all'],
+        title: 'Positive Inspection Preview',
+        desc: 'A government inspector conducted a routine mid-construction visit and noted that the project is "progressing well and meeting all current standards." This is not the final inspection but it\'s a strong signal.',
+        impact: 'Early validation. Crew motivated to maintain standards.',
+        effects: { quality: 3, reputation: 1 },
+        statModifiers: [
+            { stat: 'regulatory_standing', baseline: 60, perPoint: 0.02, direction: 'above' },
+        ],
+    },
+    // ── N5: SUPPLY CHAIN DISRUPTION ──
+    {
+        key: 'supply_chain_disruption', type: 'SUPPLY', severity: 'MODERATE',
+        category: 'notification', phaseWindow: 'MID', probability: 0.10,
+        appliesTo: ['all'],
+        title: 'Supply Chain Disruption',
+        desc: 'A key material supplier has reported delays due to transport disruption. Your next scheduled delivery will arrive 1 tick late. Material consumption continues from existing on-site stock but reserves are thinning.',
+        impact: 'Delivery delayed 1 tick. Construction may slow if warehouse stock is low.',
+        effects: { phaseProgress: -10 },
+        statModifiers: [
+            { stat: 'inflation', baseline: 50, perPoint: 0.03, direction: 'above' },
+            { stat: 'physical_infrastructure', baseline: 30, perPoint: 0.02, direction: 'below' },
+        ],
+    },
+    // ── N6: WORKER SAFETY INCIDENT ──
+    {
+        key: 'worker_safety_incident', type: 'LABOR', severity: 'MODERATE',
+        category: 'notification', phaseWindow: 'MID', probability: 0.08,
+        appliesTo: ['all'],
+        title: 'Worker Safety Incident',
+        desc: 'A workplace accident has injured one worker. The crew member has been hospitalized. A safety review is underway and work in the affected sector has been temporarily halted while conditions are assessed.',
+        impact: 'Progress slowed. Regulatory standing affected.',
+        effects: { phaseProgress: -5, quality: -1 },
+        statModifiers: [
+            { stat: 'workforce_skill', baseline: 40, perPoint: -0.01, direction: 'above' },
+        ],
+    },
+    // ── N7: UNEXPECTED SUBSURFACE CONDITIONS ──
+    {
+        key: 'subsurface_conditions', type: 'WEATHER', severity: 'MODERATE',
+        category: 'notification', phaseWindow: 'EARLY', probability: 0.12,
+        appliesTo: ['all'],
+        title: 'Unexpected Subsurface Conditions',
+        desc: 'Excavation has encountered unexpected geological conditions — harder rock than soil surveys indicated, or an underground water table higher than mapped. Foundation design requires adjustment and additional excavation is needed.',
+        impact: 'Foundation phase extended. Additional cost and quality impact.',
+        effects: { delay: 1, cost: 180000, quality: -2 },
+        statModifiers: [
+            { stat: 'physical_infrastructure', baseline: 25, perPoint: 0.02, direction: 'below' },
+        ],
+    },
+    // ── N8: PERMIT COMPLIANCE WARNING ──
+    {
+        key: 'permit_compliance_warning', type: 'REGULATORY', severity: 'HIGH',
+        category: 'notification', phaseWindow: 'ANY', probability: 0.06,
+        appliesTo: ['all'],
+        title: 'Permit Compliance Warning',
+        desc: 'A government compliance officer has flagged a potential violation in your permit documentation. The specific regulation cited is ambiguous and enforcement appears discretionary.',
+        impact: 'Legal review required. Fine possible if permits not current.',
+        effects: { cost: 25000 },
+        statModifiers: [
+            { stat: 'corruption', baseline: 60, perPoint: 0.02, direction: 'above' },
+        ],
+    },
+    // ── N9: EQUIPMENT MALFUNCTION ──
+    {
+        key: 'equipment_malfunction', type: 'EQUIPMENT', severity: 'MODERATE',
+        category: 'notification', phaseWindow: 'MID', probability: 0.06,
+        appliesTo: ['all'],
+        title: 'Equipment Malfunction',
+        desc: 'A critical piece of equipment has suffered a mechanical failure and is offline. Repairs are underway but the unit will be unavailable for 1 tick. Work requiring this equipment is stalled until the repair is complete.',
+        impact: 'Equipment offline. Progress stalled. Emergency repair cost.',
+        effects: { phaseProgress: -8, cost: 60000 },
+        statModifiers: [],
+    },
+    // ── N10: LOCAL COMMUNITY OPPOSITION ──
+    {
+        key: 'community_opposition', type: 'POLITICAL', severity: 'MODERATE',
+        category: 'notification', phaseWindow: 'EARLY_MID', probability: 0.07,
+        appliesTo: ['civil_engineering', 'industrial'],
+        title: 'Local Community Opposition',
+        desc: 'Residents near the construction site have organized protests against the project, citing noise, dust, traffic disruption, and environmental concerns. Local media is covering the protests.',
+        impact: 'Political pressure on the issuing ministry. Reputation affected.',
+        effects: { reputation: -1 },
+        statModifiers: [
+            { stat: 'civil_unrest', baseline: 50, perPoint: 0.03, direction: 'above' },
+            { stat: 'pollution', baseline: 60, perPoint: 0.02, direction: 'above' },
+            { stat: 'happiness', baseline: 60, perPoint: -0.02, direction: 'above' },
+        ],
+    },
+];
+
+// Phase window lookup including combo windows
+const PHASE_WINDOW_LOOKUP = {
+    ...PHASE_WINDOWS,
+    MID_LATE: [...PHASE_WINDOWS.MID, ...new Set([...PHASE_WINDOWS.LATE].filter(p => !PHASE_WINDOWS.MID.includes(p)))],
+    EARLY_MID: [...PHASE_WINDOWS.EARLY, ...new Set([...PHASE_WINDOWS.MID].filter(p => !PHASE_WINDOWS.EARLY.includes(p)))],
+};
+// Deduplicate
+PHASE_WINDOW_LOOKUP.MID_LATE = [...new Set([...PHASE_WINDOWS.MID, ...PHASE_WINDOWS.LATE])];
+PHASE_WINDOW_LOOKUP.EARLY_MID = [...new Set([...PHASE_WINDOWS.EARLY, ...PHASE_WINDOWS.MID])];
+
+// ── CHOICE EVENTS (E1-E10): Placeholder — Phase 2 will add these ──
+const CHOICE_EVENTS = [];
+
+// Combined list for generation
+const ALL_EVENT_TEMPLATES = [...NOTIFICATION_EVENTS, ...CHOICE_EVENTS];
+
+// ════════════════════════════════════════════════════════════════════════════════
 //  CONSTRUCTION SECTOR — Contract Generation & Bid Resolution
 // ════════════════════════════════════════════════════════════════════════════════
 
@@ -633,6 +800,18 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 const bidResults = await resolveExpiredBids(supabase, nation.id, currentTick);
                 if (bidResults.length > 0) {
                     summary.construction.push({ nation: nation.name, type: 'bids', data: bidResults });
+                }
+
+                // Project events: generate random events on in_progress projects
+                const eventResults = await generateProjectEvents(supabase, nation.id, currentTick);
+                if (eventResults.length > 0) {
+                    summary.construction.push({ nation: nation.name, type: 'events', data: eventResults });
+                }
+
+                // Expired events: auto-resolve events the player ignored
+                const expiredResults = await resolveExpiredEvents(supabase, nation.id, currentTick);
+                if (expiredResults.length > 0) {
+                    summary.construction.push({ nation: nation.name, type: 'expired_events', data: expiredResults });
                 }
             } catch (constructionErr) {
                 console.error(`[advance-corp-tick] Construction failed for ${nation.name} (non-fatal):`, constructionErr);
