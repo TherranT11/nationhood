@@ -6354,7 +6354,7 @@ async function loadOwnedProperties() {
         .select('*')
         .eq('faction_id', faction.id)
         .eq('is_active', true)
-        .order('type', { ascending: true }) // regional_hq sorts before 'office'
+        .order('type', { ascending: false }) // regional_hq sorts first
         .order('purchased_at_tick', { ascending: false });
     _ownedProperties = data || [];
 }
