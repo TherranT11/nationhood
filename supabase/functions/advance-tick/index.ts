@@ -10960,24 +10960,40 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
         .eq('nation_id', nationId)
         .is('dissolved_at', null);
 
-    // 3. Apply approval penalties — PM party: -5, other coalition parties: -3
-    // (After status transition so penalties aren't lost if transition fails)
-    for (const partyId of coalitionPartyIds) {
-        const penalty = partyId === pmFactionId
-            ? GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST
-            : GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST;
-        await nudgeApproval(supabase, partyId, nationId, -round2(penalty * 0.5), { source: 'election:early_election' });
-    }
-
-    // 3b. Momentum boost for PM's party: +5 normally, +2 if gov approval < 40
+    // 3. Tiered effects based on gov_approval
     const govApproval = Number(nationCheck?.gov_approval ?? 50);
-    const momBoost = govApproval < 40 ? 2 : 5;
-    await supabase.rpc('adjust_momentum', {
-        p_faction_id: pmFactionId,
-        p_delta: momBoost,
-        p_label: `Early elections called (+${momBoost})`,
-        p_tick: currentTick
-    });
+
+    if (govApproval > 50) {
+        // STRENGTH: "Seeking a fresh mandate" — PM party gets +10 momentum
+        await supabase.rpc('adjust_momentum', {
+            p_faction_id: pmFactionId,
+            p_delta: 10,
+            p_label: 'Snap elections from strength (+10)',
+            p_tick: currentTick
+        });
+    } else if (govApproval < 35) {
+        // WEAKNESS: "Conceding to the people" — opposition +5 each, stability +3
+        const { data: allFactions } = await supabase
+            .from('factions')
+            .select('id')
+            .eq('nation_id', nationId)
+            .eq('faction_type', 'party')
+            .is('abandoned_at', null);
+        const oppositionIds = (allFactions || [])
+            .filter(f => !coalitionPartyIds.includes(f.id))
+            .map(f => f.id);
+        for (const oppId of oppositionIds) {
+            await supabase.rpc('adjust_momentum', {
+                p_faction_id: oppId,
+                p_delta: 5,
+                p_label: 'Government concedes — snap elections (+5)',
+                p_tick: currentTick
+            });
+        }
+        const newStability = Math.min(100, Number(nationCheck?.stability ?? 50) + 3);
+        await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
+    }
+    // 35-50: no momentum or stability changes
 
     // Bust coalition cache after caretaker transition
     if (typeof qCacheBust === 'function') qCacheBust('coalition_' + nationId);
@@ -11014,18 +11030,24 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
     const pmName = hog ? `${hog.first_name} ${hog.last_name}` : 'The Prime Minister';
 
     // 8. Fire system event
+    const tierLabel = govApproval > 50 ? 'from strength' : govApproval < 35 ? 'concession' : 'neutral';
+    const tierDesc = govApproval > 50
+        ? `PM ${pmName} has called snap elections from a position of strength. The ruling party gains a momentum surge.`
+        : govApproval < 35
+            ? `PM ${pmName} has conceded to public pressure and called snap elections. Opposition parties gain momentum. Stability improves from the orderly transition.`
+            : `PM ${pmName} has dissolved the Legislature. Caretaker government in place until elections.`;
     await supabase.from('event_log').insert({
         nation_id: nationId,
         event_name: 'Legislature Dissolved — Early Elections Called',
         trigger_key: 'snap_election_called',
         fired_at_tick: currentTick,
         category: 'government',
-        description_used: `Prime Minister ${pmName} has dissolved the Legislature. Caretaker government in place until elections.`,
+        description_used: tierDesc,
         effects_applied: {
             caretaker: true,
             election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
-            pm_approval: -GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST,
-            coalition_approval: -GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST,
+            tier: tierLabel,
+            gov_approval: govApproval,
             bills_frozen: true
         }
     });

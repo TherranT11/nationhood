@@ -7714,14 +7714,18 @@ function renderEarlyElectionsButton(coalition) {
     }
 
     const govApproval = Number(currentNation?.gov_approval ?? 50);
-    const momBoost = govApproval < 40 ? 2 : 5;
+    const tierHint = govApproval > 50
+        ? `<span style="color:var(--green);">+10 Momentum (strength)</span>`
+        : govApproval < 35
+            ? `<span style="color:var(--red);">Opposition +5 Mom · +3 Stability</span>`
+            : `<span style="color:var(--text-muted);">No bonus (neutral)</span>`;
 
     return `
         <div id="early-elections" style="text-align:center;margin-top:12px;">
             <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="callEarlyElections()" id="early-elections-btn">
                 ⚡ Call Early Elections
             </button>
-            <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">PM only — dissolve the legislature · <span style="color:var(--green);">+${momBoost} Momentum</span></div>
+            <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">PM only — dissolve the legislature · ${tierHint}</div>
         </div>`;
 }
 
@@ -7766,19 +7770,23 @@ async function callEarlyElections() {
         return;
     }
 
-    const coalitionPartyNames = coalitionData.party_ids
-        .filter(id => id !== currentFaction.id)
-        .map(id => allParties.find(p => p.id === id)?.faction_name || 'Unknown');
-
     const govApproval = Number(currentNation?.gov_approval ?? 50);
-    const momBoost = govApproval < 40 ? 2 : 5;
+
+    // Build tier-specific effects text
+    let tierEffects = '';
+    if (govApproval > 50) {
+        tierEffects = `• Your party gains +10 Momentum (calling from strength)\n`;
+    } else if (govApproval < 35) {
+        tierEffects = `• Opposition parties each gain +5 Momentum\n• Nation gains +3 Stability (orderly transition)\n`;
+    } else {
+        tierEffects = `• No momentum or stability changes (neutral call)\n`;
+    }
 
     const confirmMsg =
         `⚡ CALL EARLY ELECTIONS?\n\n` +
+        `Gov Approval: ${Math.round(govApproval)}%\n\n` +
         `This will:\n` +
-        `• Cost your party ${GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST} Approval\n` +
-        (coalitionPartyNames.length > 0 ? `• Cost coalition partners (${coalitionPartyNames.join(', ')}) ${GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST} Approval each\n` : '') +
-        `• Your party gains +${momBoost} Momentum${govApproval < 40 ? ' (reduced — approval below 40%)' : ''}\n` +
+        tierEffects +
         `• Freeze all pending legislation\n` +
         `• Dissolve the legislature\n` +
         `• Trigger elections in ${GAME_CONFIG.EARLY_ELECTION_TICKS} ticks\n\n` +
