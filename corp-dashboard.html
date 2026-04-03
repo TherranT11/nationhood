@@ -1091,7 +1091,7 @@ async function init() {
     const wfData = renderWorkforce(nationStats, nationName, faction);
     renderFinances(nationStats, shard, wfData, faction);
     renderStats(nationName);
-    const propData = renderProperty(nationStats, nationName, faction, shard);
+    const propData = await renderProperty(nationStats, nationName, faction, shard);
     renderValuation(nationStats, nationName, faction, wfData, propData);
 
     // Messaging bubble
@@ -1453,77 +1453,90 @@ function renderStats(nationName) {
     document.getElementById('stats-body').innerHTML = html;
 }
 
-function renderProperty(nation, nationName, faction, shard) {
-    const s = (key) => getNationStat(nation, key);
-    const currentTick = shard?.current_tick || 0;
-    const foundedTick = faction.founded_tick || currentTick;
-    const TICKS_PER_YEAR = 12;
-    const yearsSinceFounded = Math.max(0, (currentTick - foundedTick) / TICKS_PER_YEAR);
-
-    const BASE_COST = 8_000_000;
-
-    // Inflation compound: (1 + (inflation/100 × 0.05))^years
-    const inflationStat = s('inflation');
-    const inflationAnnual = 1 + (inflationStat / 100 * 0.05);
-    const inflationCompound = Math.pow(inflationAnnual, yearsSinceFounded);
-
-    // Stability multiplier: high stability = more valuable, low = less
-    const stability = s('stability');
-    const stabilityMult = 1 + ((stability - 50) / 100 * 0.3);
-
-    // Unrest multiplier: high unrest = less valuable
-    const unrest = s('civil_unrest');
-    const unrestMult = 1 - (unrest / 100 * 0.2);
-
-    const adjustedCost = Math.round(BASE_COST * inflationCompound * stabilityMult * unrestMult);
+async function renderProperty(nation, nationName, factionData, shard) {
     const natUp = (nationName || 'UNKNOWN').toUpperCase();
 
-    document.getElementById('prop-body').innerHTML = `
-        <div class="prop-asset">
+    // Load owned properties from DB
+    let ownedProps = [];
+    if (factionData?.id) {
+        const { data } = await _supabase
+            .from('corp_properties')
+            .select('*')
+            .eq('faction_id', factionData.id)
+            .eq('is_active', true)
+            .order('purchased_at_tick', { ascending: false });
+        ownedProps = data || [];
+    }
+
+    const NP_STYLE_META = {
+        Basic: { color: '#6a6660' }, Modern: { color: '#8b9a6b' }, Sustainable: { color: '#5c5' },
+        Innovative: { color: '#c8a832' }, Heritage: { color: '#c84' }, Premium: { color: '#ca5' },
+    };
+
+    let totalValue = 0;
+    let totalMaint = 0;
+    let propsHtml = '';
+
+    if (ownedProps.length === 0) {
+        propsHtml = '<div style="padding:20px;text-align:center;font-size:11px;color:var(--text-dim);">No properties owned.<br>Visit the Expansion tab to purchase.</div>';
+    }
+
+    for (const prop of ownedProps) {
+        const sm = NP_STYLE_META[prop.style] || NP_STYLE_META.Basic;
+        totalValue += Number(prop.purchase_price || 0);
+        totalMaint += Number(prop.monthly_maintenance || 0);
+        const condColor = prop.condition >= 75 ? 'var(--green)' : prop.condition >= 50 ? 'var(--amber)' : 'var(--orange)';
+
+        propsHtml += `
+        <div class="prop-asset" style="margin-bottom:6px;">
             <div class="prop-asset__top">
                 <div>
-                    <div class="prop-asset__name">Corporate Headquarters</div>
-                    <span class="prop-asset__nation">${escapeHtml(natUp)}</span>
+                    <div class="prop-asset__name">${escapeHtml(prop.name)}</div>
+                    <div style="font-size:9px;color:var(--text-dim);margin-top:1px;">${escapeHtml(prop.city || natUp)} · ${(prop.type || '').replace(/_/g, ' ')} · <span style="color:${sm.color}">${(prop.style || 'Basic').toUpperCase()}</span></div>
                 </div>
                 <span class="prop-asset__badge">OWNED</span>
             </div>
-            <div class="prop-cost-box">
-                <div class="prop-cost-row">
-                    <span class="prop-cost-row__label">BASE COST</span>
-                    <span class="prop-cost-row__value" style="color:var(--text-muted);">$8,000,000</span>
+            <div style="display:flex;gap:0;background:var(--bg-3);border:1px solid var(--border-hair);margin:4px 0;">
+                <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
+                    <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">CAPACITY</div>
+                    <div style="font-size:10px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);">${(prop.capacity || 0).toLocaleString()}</div>
                 </div>
-                <div class="prop-cost-row">
-                    <span class="prop-cost-row__label">INFLATION (${escapeHtml(natUp)})</span>
-                    <span class="prop-cost-row__value" style="color:${inflationStat > 50 ? 'var(--red)' : 'var(--green)'}">
-                        ${inflationStat}/100 &mdash; &times;${inflationCompound.toFixed(2)}
-                    </span>
+                <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
+                    <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">PAID</div>
+                    <div style="font-size:10px;font-weight:700;color:var(--gold);font-family:var(--font-mono);">${fmtMoney(prop.purchase_price || 0)}</div>
                 </div>
-                <div class="prop-cost-row">
-                    <span class="prop-cost-row__label">STABILITY (${escapeHtml(natUp)})</span>
-                    <span class="prop-cost-row__value" style="color:${stability >= 50 ? 'var(--green)' : 'var(--red)'}">
-                        ${stability}/100 &mdash; &times;${stabilityMult.toFixed(2)}
-                    </span>
-                </div>
-                <div class="prop-cost-row">
-                    <span class="prop-cost-row__label">CIVIL UNREST (${escapeHtml(natUp)})</span>
-                    <span class="prop-cost-row__value" style="color:${unrest > 20 ? 'var(--red)' : 'var(--green)'}">
-                        ${unrest}/100 &mdash; &times;${unrestMult.toFixed(2)}
-                    </span>
-                </div>
-                <div class="prop-cost-row" style="padding-top:4px;">
-                    <span class="prop-cost-row__label" style="color:var(--text-muted);">ADJUSTED VALUE</span>
-                    <span class="prop-cost-row__value" style="font-size:11px;font-weight:700;color:var(--text-bright);">${fmtMoney(adjustedCost)}</span>
+                <div style="flex:1;padding:3px 6px;">
+                    <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">MAINT/MO</div>
+                    <div style="font-size:10px;font-weight:700;color:var(--red);font-family:var(--font-mono);">${fmtMoney(prop.monthly_maintenance || 0)}</div>
                 </div>
             </div>
-        </div>
+            <div style="display:flex;justify-content:space-between;font-size:8px;font-family:var(--font-mono);">
+                <span style="color:var(--text-dim);">CONDITION</span>
+                <span style="color:${condColor}">${prop.condition}%</span>
+            </div>
+            <div style="width:100%;height:3px;background:var(--bg-2);margin-top:2px;"><div style="width:${prop.condition}%;height:100%;background:${condColor};"></div></div>
+        </div>`;
+    }
+
+    const propCountEl = document.getElementById('prop-count');
+    if (propCountEl) propCountEl.textContent = ownedProps.length + ' ASSET' + (ownedProps.length !== 1 ? 'S' : '');
+
+    document.getElementById('prop-body').innerHTML = `
+        ${propsHtml}
         <div style="flex:1;"></div>
         <div class="prop-total">
-            <span class="prop-total__label">Total Property Value</span>
-            <span class="prop-total__value">${fmtMoney(adjustedCost)}</span>
+            <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+                <span class="prop-total__label">Total Value</span>
+                <span class="prop-total__value">${fmtMoney(totalValue)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+                <span class="prop-total__label">Total Maintenance</span>
+                <span style="font-size:12px;font-weight:700;color:var(--red);font-family:var(--font-mono);">${fmtMoney(totalMaint)}/mo</span>
+            </div>
         </div>
     `;
 
-    return { propertyValue: adjustedCost };
+    return { propertyValue: totalValue };
 }
 
 function renderValuation(nation, nationName, faction, wfData, propData) {
