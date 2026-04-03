@@ -2503,6 +2503,7 @@ body.light-mode .dl-empty__text { color: #1a1a17; }
       <div id="hf-card-container"></div>
       <div id="wf-summary-container"></div>
       <div id="property-card-container"></div>
+      <div id="new-property-container"></div>
     </div>
 
   </div>
@@ -5981,7 +5982,7 @@ function hfFmtBig(n) {
     return sign + '$' + abs.toLocaleString();
 }
 
-function switchToExpansion(e) {
+async function switchToExpansion(e) {
     e.preventDefault();
     document.getElementById('operations-content').style.display = 'none';
     const expEl = document.getElementById('expansion-content');
@@ -5995,6 +5996,8 @@ function switchToExpansion(e) {
     renderHireFireCard();
     renderWorkforceSummary();
     renderPropertyCard();
+    await loadAvailableProperties();
+    renderNewPropertyCard();
 }
 
 function switchToOperations(e) {
@@ -6403,6 +6406,161 @@ function renderPropertyCard() {
         </div>
     </div>`;
 }
+
+// ==================== NEW PROPERTY MARKETPLACE ====================
+
+let _npAvailable = [];
+let _npSelected = null;
+
+const NP_STYLE_META = {
+    Basic:       { color: '#6a6660', label: 'BASIC' },
+    Modern:      { color: '#8b9a6b', label: 'MODERN' },
+    Sustainable: { color: '#5c5',    label: 'SUSTAINABLE' },
+    Innovative:  { color: '#c8a832', label: 'INNOVATIVE' },
+    Heritage:    { color: '#c84',    label: 'HERITAGE' },
+    Premium:     { color: '#ca5',    label: 'PREMIUM' },
+};
+
+async function loadAvailableProperties() {
+    if (!nationStats) return;
+    const gdpGrowth = Number(nationStats.gdp_growth ?? 50);
+    const sol = Number(nationStats.standard_of_living ?? 50);
+
+    const { data, error } = await _supabase
+        .from('property_catalog')
+        .select('*')
+        .lte('min_gdp_growth', Math.round(gdpGrowth))
+        .lte('min_sol', Math.round(sol))
+        .order('base_cost', { ascending: true });
+
+    if (error) { console.warn('[Property] Failed to load catalog:', error.message); return; }
+
+    // Adjust prices by nation stats
+    const inflation = Number(nationStats.inflation ?? 50);
+    const inflMod = 1 + ((inflation - 50) / 100 * 0.3);
+    const solMod = 1 + ((sol - 50) / 100 * 0.2);
+
+    _npAvailable = (data || []).map(p => ({
+        ...p,
+        adjusted_cost: Math.round(p.base_cost * inflMod * solMod),
+        adjusted_maintenance: Math.round(p.base_maintenance * inflMod * 0.8),
+        condition: 60 + Math.floor(Math.random() * 35), // 60-95% random condition
+    }));
+}
+
+function renderNewPropertyCard() {
+    const container = document.getElementById('new-property-container');
+    if (!container) return;
+
+    const mono = "'JetBrains Mono', monospace";
+    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+        accent: '#8b9a6b', gold: '#c8a832', orange: '#c84',
+        greenBright: '#5c5', red: '#c55', redDim: '#a44', yellow: '#ca5',
+        text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
+
+    const nationName = (nationStats?.name || faction?.nation || 'Nation').toUpperCase();
+    const sol = Number(nationStats?.standard_of_living ?? 50);
+    const gdpGrowth = Number(nationStats?.gdp_growth ?? 50);
+    const inflation = Number(nationStats?.inflation ?? 50);
+
+    // City name mapping from city_template
+    const capital = nationStats?.capital || 'Capital';
+    const cityMap = { capital: capital, port: capital + ' Port', industrial: capital + ' Industrial Zone', suburban: capital + ' Suburbs', coastal: capital + ' Coast' };
+
+    let listingsHtml = '';
+    if (_npAvailable.length === 0) {
+        listingsHtml = `<div style="padding:20px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">No properties available in this market.<br>Improve GDP Growth and Standard of Living to unlock more.</div>`;
+    } else {
+        for (let i = 0; i < _npAvailable.length; i++) {
+            const p = _npAvailable[i];
+            const isSel = _npSelected === i;
+            const sm = NP_STYLE_META[p.style] || NP_STYLE_META.Basic;
+            const city = cityMap[p.city_template] || capital;
+
+            listingsHtml += `
+            <div onclick="npSelect(${i})" style="padding:8px 14px;border-bottom:1px solid ${C.border};cursor:pointer;border-left:2px solid ${isSel ? C.accent : 'transparent'};background:${isSel ? 'rgba(139,154,107,0.03)' : 'transparent'};">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                    <span style="font-size:11px;font-weight:600;color:${C.text}">${p.name}</span>
+                    <span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${sm.color};background:${sm.color}12;border:1px solid ${sm.color}25">${sm.label}</span>
+                </div>
+                <div style="font-family:${mono};font-size:8px;color:${C.dim};margin-bottom:5px;">${city} · ${p.type.replace(/_/g, ' ')}</div>
+                <div style="display:flex;gap:0;background:${C.card};border:1px solid ${C.border}">
+                    <div style="flex:1;padding:4px 8px;border-right:1px solid ${C.border}">
+                        <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">CAPACITY</div>
+                        <div style="font-family:${mono};font-size:11px;font-weight:700;color:${C.text};margin-top:1px">${p.capacity.toLocaleString()}</div>
+                    </div>
+                    <div style="flex:1;padding:4px 8px;border-right:1px solid ${C.border}">
+                        <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">PRICE</div>
+                        <div style="font-family:${mono};font-size:11px;font-weight:700;color:${C.gold};margin-top:1px">${hfFmtBig(p.adjusted_cost)}</div>
+                    </div>
+                    <div style="flex:1;padding:4px 8px">
+                        <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">MAINT/MO</div>
+                        <div style="font-family:${mono};font-size:11px;font-weight:700;color:${C.redDim};margin-top:1px">${hfFmtBig(p.adjusted_maintenance)}</div>
+                    </div>
+                </div>
+                ${isSel ? `<div style="margin-top:5px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+                        <span style="font-family:${mono};font-size:7px;color:${C.dim}">CONDITION</span>
+                        <span style="font-family:${mono};font-size:9px;color:${p.condition >= 75 ? C.greenBright : p.condition >= 50 ? C.yellow : C.orange}">${p.condition}%</span>
+                    </div>
+                    <div style="width:100%;height:3px;background:${C.border}"><div style="width:${p.condition}%;height:100%;background:${p.condition >= 75 ? C.greenBright : p.condition >= 50 ? C.yellow : C.orange}"></div></div>
+                </div>` : ''}
+            </div>`;
+        }
+    }
+
+    container.innerHTML = `
+    <div style="width:380px;height:450px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:8px;color:${C.accent}">●</span>
+                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">New Property</span>
+            </div>
+            <span style="font-family:${mono};font-size:9px;color:${C.dim}">${_npAvailable.length} AVAILABLE</span>
+        </div>
+        <div style="padding:4px 14px;border-bottom:1px solid ${C.border};display:flex;gap:12px;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:4px;">
+                <span style="font-family:${mono};font-size:7px;color:${C.dim}">STD OF LIVING</span>
+                <span style="font-family:${mono};font-size:9px;font-weight:700;color:${sol >= 50 ? C.greenBright : C.yellow}">${Math.round(sol)}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;">
+                <span style="font-family:${mono};font-size:7px;color:${C.dim}">GDP GROWTH</span>
+                <span style="font-family:${mono};font-size:9px;font-weight:700;color:${gdpGrowth >= 50 ? C.greenBright : C.yellow}">${Math.round(gdpGrowth)}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;">
+                <span style="font-family:${mono};font-size:7px;color:${C.dim}">INFLATION</span>
+                <span style="font-family:${mono};font-size:9px;font-weight:700;color:${inflation <= 50 ? C.greenBright : C.red}">${Math.round(inflation)}</span>
+            </div>
+        </div>
+        <div style="flex:1;overflow:auto;">
+            ${listingsHtml}
+        </div>
+        <div style="padding:8px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            <div style="display:flex;gap:6px;justify-content:space-between;">
+                <div onclick="npOpenConstructionModal()" style="flex:1;padding:6px 0;text-align:center;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:${C.gold};border:1px solid ${C.gold}44;cursor:pointer">CONSTRUCTION PROJECT</div>
+                <div onclick="npBuyProperty()" style="flex:1;padding:6px 0;text-align:center;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:${_npSelected !== null ? '#000' : C.dim};background:${_npSelected !== null ? C.accent : 'transparent'};border:1px solid ${_npSelected !== null ? C.accent : C.border};cursor:${_npSelected !== null ? 'pointer' : 'default'};opacity:${_npSelected !== null ? 1 : 0.4}">BUY PROPERTY</div>
+            </div>
+        </div>
+    </div>`;
+}
+
+function npSelect(idx) {
+    _npSelected = _npSelected === idx ? null : idx;
+    renderNewPropertyCard();
+}
+
+function npBuyProperty() {
+    if (_npSelected === null) return;
+    alert('Phase 3: Buy Property — coming soon.');
+}
+
+function npOpenConstructionModal() {
+    alert('Phase 4: Construction Project — coming soon.');
+}
+
+window.npSelect = npSelect;
+window.npBuyProperty = npBuyProperty;
+window.npOpenConstructionModal = npOpenConstructionModal;
 
 window.switchToExpansion = switchToExpansion;
 window.switchToOperations = switchToOperations;
