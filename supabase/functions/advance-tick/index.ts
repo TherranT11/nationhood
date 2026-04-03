@@ -10829,7 +10829,7 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
  */
 async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coalitionPartyIds) {
     // Presidential systems cannot call early elections
-    const { data: nationCheck } = await supabase.from('nations').select('government_type').eq('id', nationId).single();
+    const { data: nationCheck } = await supabase.from('nations').select('government_type, gov_approval').eq('id', nationId).single();
     if (isPresidentialRepublic(nationCheck)) return { success: false, error: 'Presidential systems cannot call early elections' };
 
     // 0. Server-side guard: only proceed if coalition is still 'formed' (check both tables)
@@ -10869,6 +10869,22 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
         .single();
     const currentTick = shard?.current_tick || 0;
 
+    // 1b. Cooldown: can't call within 6 ticks of the last election
+    const { data: lastElection } = await supabase.from('elections')
+        .select('election_tick').eq('nation_id', nationId).eq('status', 'completed')
+        .order('election_tick', { ascending: false }).limit(1).maybeSingle();
+    if (lastElection && (currentTick - lastElection.election_tick) < 6) {
+        throw new Error(`Too soon after last election (tick ${lastElection.election_tick}). Must wait 6 ticks between elections.`);
+    }
+
+    // 1c. Cooldown: can't call within 2 ticks of the next scheduled election
+    const { data: nextElection } = await supabase.from('elections')
+        .select('election_tick').eq('nation_id', nationId).eq('status', 'scheduled')
+        .order('election_tick', { ascending: true }).limit(1).maybeSingle();
+    if (nextElection && (nextElection.election_tick - currentTick) <= 2) {
+        throw new Error(`Elections already scheduled in ${nextElection.election_tick - currentTick} tick(s). Too close to call early elections.`);
+    }
+
     // 2. Set government to caretaker (both tables — legacy active_coalitions may be source)
     // Use status='formed' filter as optimistic lock — only one caller can transition formed→caretaker
     const { data: updatedGov, count: updatedCount } = await supabase
@@ -10894,6 +10910,16 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
             : GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST;
         await nudgeApproval(supabase, partyId, nationId, -round2(penalty * 0.5), { source: 'election:early_election' });
     }
+
+    // 3b. Momentum boost for PM's party: +5 normally, +2 if gov approval < 40
+    const govApproval = Number(nationCheck?.gov_approval ?? 50);
+    const momBoost = govApproval < 40 ? 2 : 5;
+    await supabase.rpc('adjust_momentum', {
+        p_faction_id: pmFactionId,
+        p_delta: momBoost,
+        p_label: `Early elections called (+${momBoost})`,
+        p_tick: currentTick
+    });
 
     // Bust coalition cache after caretaker transition
     if (typeof qCacheBust === 'function') qCacheBust('coalition_' + nationId);
