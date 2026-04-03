@@ -22748,7 +22748,7 @@ function weightedRandomPick(weightedItems) {
  */
 async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, currentTick) {
     const coalition = await fetchActiveCoalition(supabase, nationId);
-    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'caretaker')) {
+    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'active' && coalition.status !== 'caretaker')) {
         throw new Error('Cannot appoint a Prime Minister until a coalition has been formed.');
     }
 
