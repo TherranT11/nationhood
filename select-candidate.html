@@ -29,7 +29,7 @@ import {
     initGameConfigForNation,
     isPresidentialRepublic,
     fetchActiveCoalition, loadSeats, syncVoteTallies,
-    deductAP, adjustMomentumAll,
+    deductAP,
     GAME_CONFIG
 } from './js/game-common.js';
 
@@ -391,8 +391,8 @@ async function confirmAmbassador() {
 
             confirmationBillId = nominationRow.bill_id;
 
-        // +1 approval to the candidate's party
-        await adjustMomentumAll(_supabase, currentNation.id, candidate.partyId, 1, 'diplomacy:ambassador_selected');
+        // +1 momentum to the candidate's party
+        await _supabase.rpc('adjust_momentum', { p_faction_id: candidate.partyId, p_delta: 1, p_label: 'Ambassador selected (+1)', p_tick: currentTick || 0 });
 
         // Auto-cast FM seats on the confirmation bill
         if (!confirmationBillId) throw new Error('Missing confirmation bill ID from nomination RPC.');
