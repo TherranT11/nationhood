@@ -23599,6 +23599,23 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
     if (logErr) console.warn('disbandParty: could not log action:', logErr);
 
     // 10. Clean up all faction-related data from the old nation
+    // IPO tables (each wrapped to skip if table doesn't exist)
+    const ipoCleanup = [
+        () => supabase.from('ipo_fund_transactions').delete().eq('faction_id', factionId),
+        () => supabase.from('ipo_votes').delete().eq('proposed_by', factionId),
+        () => supabase.from('ipo_action_log').delete().eq('faction_id', factionId),
+        () => supabase.from('ipo_amendment_history').delete().eq('faction_id', factionId),
+        () => supabase.from('ipo_actions').delete().eq('faction_id', factionId),
+        () => supabase.from('ipo_actions').delete().eq('target_faction_id', factionId),
+        () => supabase.from('ipo_ballots').delete().eq('faction_id', factionId),
+        () => supabase.from('ipo_chat').delete().eq('faction_id', factionId),
+        () => supabase.from('ipo_invitations').delete().eq('target_faction_id', factionId),
+        () => supabase.from('ipo_invitations').delete().eq('invited_by_faction_id', factionId),
+        () => supabase.from('ipo_members').delete().eq('faction_id', factionId),
+        () => supabase.from('ipo_organisations').update({ president_id: null }).eq('president_id', factionId),
+    ];
+    for (const fn of ipoCleanup) { try { await fn(); } catch (_) { /* table may not exist */ } }
+
     await supabase.from('faction_ideology').delete().eq('faction_id', factionId);
     await supabase.from('ideology_history').delete().eq('faction_id', factionId);
     // momentum_log table dropped — no cleanup needed
