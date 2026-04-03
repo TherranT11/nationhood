@@ -6709,9 +6709,36 @@ async function cpSubmit() {
             project_code: projectCode,
             budget_ceiling: budget.adjusted,
             timeline_ticks: _cpData.timeline,
-            required_materials: { concrete: Math.ceil(_cpData.size / 200), steel: Math.ceil(_cpData.size / 300) },
-            required_equipment: ['work_trucks', 'excavators', 'concrete_mixers', 'tower_cranes'],
-            required_workforce: { general: Math.ceil(_cpData.size / 15), skilled: Math.ceil(_cpData.size / 50) },
+            required_materials: (() => {
+                const k = _cpData.size / 1000; // units per 1,000 employees
+                const s = _cpData.style;
+                const styleMat = {
+                    Basic:       { concrete: 1.0, steel: 1.0, glass: 0.5, em: 1.0, lumber: 1.5, heavy: 1.0, agg: 1.0 },
+                    Modern:      { concrete: 1.1, steel: 1.1, glass: 1.4, em: 1.4, lumber: 0.5, heavy: 1.1, agg: 1.1 },
+                    Sustainable: { concrete: 0.9, steel: 0.9, glass: 0.9, em: 0.9, lumber: 1.5, heavy: 0.9, agg: 0.9 },
+                    Innovative:  { concrete: 1.2, steel: 1.2, glass: 2.0, em: 2.0, lumber: 0.5, heavy: 2.0, agg: 1.2 },
+                    Heritage:    { concrete: 1.3, steel: 1.3, glass: 1.3, em: 1.3, lumber: 2.0, heavy: 1.3, agg: 1.3 },
+                    Premium:     { concrete: 1.5, steel: 1.5, glass: 2.5, em: 1.5, lumber: 1.0, heavy: 1.5, agg: 1.5 },
+                }[s] || { concrete: 1, steel: 1, glass: 1, em: 1, lumber: 1, heavy: 1, agg: 1 };
+                const r = (base, mod) => Math.max(1, Math.ceil(k * base * mod));
+                return {
+                    concrete: r(8, styleMat.concrete),
+                    steel: r(6, styleMat.steel),
+                    glass_facades: r(3, styleMat.glass),
+                    em_systems: r(4, styleMat.em),
+                    lumber: r(1, styleMat.lumber),
+                    heavy_parts: r(2, styleMat.heavy),
+                    aggregate: r(3, styleMat.agg),
+                };
+            })(),
+            required_equipment: (() => {
+                const equip = ['work_trucks', 'concrete_mixers'];
+                if (_cpData.size > 1000) { equip.push('excavators', 'tower_cranes'); }
+                if (_cpData.size > 3000) { equip.push('bulldozers', 'heavy_haulers'); }
+                if (_cpData.size > 8000) { equip.push('pile_drivers'); }
+                return equip;
+            })(),
+            required_workforce: { general: Math.ceil(_cpData.size * 0.08), skilled: Math.ceil(_cpData.size * 0.03) },
             status: 'open',
             generated_at_tick: currentTick,
             bidding_ends_tick: currentTick + 3,
