@@ -6390,9 +6390,10 @@ async function processIdeologyDecay(supabase, nationId, currentTick) {
             if (Math.abs(score) <= IDEOLOGY_DECAY_DEAD_ZONE) continue;
 
             const absDecay = Math.abs(score) >= 50 ? 1 : 0.5;
-            const newScore = score > 0
+            // Round to int — smallint columns reject decimals like 28.5
+            const newScore = Math.round(score > 0
                 ? Math.max(0, score - absDecay)
-                : Math.min(0, score + absDecay);
+                : Math.min(0, score + absDecay));
 
             if (newScore !== score) updateObj[axis.key] = newScore;
         }
@@ -27794,50 +27795,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             await resolvePartyCongressPending(supabase, nation.id, newTick);
         } catch (timedErr) {
             console.error(`[advanceTick] Autocracy timed effects failed for ${nation.name} (non-fatal):`, timedErr);
-        }
-
-        // Autocracy V5: vulnerability windows (Strongman backing = 0 → 3-tick window)
-        try {
-            const vulnResult = await processVulnerabilityWindows(supabase, nation, newTick);
-            if (vulnResult) {
-                summary.autocracyVulnerability = summary.autocracyVulnerability || [];
-                summary.autocracyVulnerability.push({ nation: nation.name, events: vulnResult });
-            }
-        } catch (vulnErr) {
-            console.error(`[advanceTick] Vulnerability window processing failed for ${nation.name} (non-fatal):`, vulnErr);
-        }
-
-        // Autocracy V5: putsch resolution (after response window expires)
-        try {
-            const putschResult = await processPutschResolution(supabase, nation, newTick);
-            if (putschResult) {
-                summary.autocracyPutsch = summary.autocracyPutsch || [];
-                summary.autocracyPutsch.push({ nation: nation.name, result: putschResult });
-            }
-        } catch (putschErr) {
-            console.error(`[advanceTick] Putsch resolution failed for ${nation.name} (non-fatal):`, putschErr);
-        }
-
-        // Autocracy V5: pyrrhic window expiry (3-tick window closes, regime stabilizes)
-        try {
-            const pyrrhicResult = await processPyrrhicWindows(supabase, nation, newTick);
-            if (pyrrhicResult) {
-                summary.autocracyPyrrhic = summary.autocracyPyrrhic || [];
-                summary.autocracyPyrrhic.push({ nation: nation.name, events: pyrrhicResult });
-            }
-        } catch (pyrrhicErr) {
-            console.error(`[advanceTick] Pyrrhic window processing failed for ${nation.name} (non-fatal):`, pyrrhicErr);
-        }
-
-        // Autocracy V5: silent coup resolution (deal/vote phase)
-        try {
-            const silentResult = await processSilentCoupResolution(supabase, nation, newTick);
-            if (silentResult) {
-                summary.autocracySilentCoup = summary.autocracySilentCoup || [];
-                summary.autocracySilentCoup.push({ nation: nation.name, result: silentResult });
-            }
-        } catch (silentErr) {
-            console.error(`[advanceTick] Silent coup resolution failed for ${nation.name} (non-fatal):`, silentErr);
         }
 
         // Autocracy V5: pillar leader aging (+1 year per 12 ticks, death at death_age)
