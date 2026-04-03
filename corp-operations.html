@@ -2502,6 +2502,7 @@ body.light-mode .dl-empty__text { color: #1a1a17; }
     <div id="expansion-content" style="display:none;">
       <div id="hf-card-container"></div>
       <div id="wf-summary-container"></div>
+      <div id="property-card-container"></div>
     </div>
 
   </div>
@@ -5993,6 +5994,7 @@ function switchToExpansion(e) {
     e.target.classList.add('active');
     renderHireFireCard();
     renderWorkforceSummary();
+    renderPropertyCard();
 }
 
 function switchToOperations(e) {
@@ -6309,6 +6311,94 @@ function renderWorkforceSummary() {
             <div style="display:flex;justify-content:space-between;">
                 <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px">PER TICK (÷12)</span>
                 <span style="font-family:${mono};font-size:13px;font-weight:700;color:${C.red}">${hfFmtBig(Math.round(totalCost / 12))}</span>
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderPropertyCard() {
+    const container = document.getElementById('property-card-container');
+    if (!container) return;
+
+    const mono = "'JetBrains Mono', monospace";
+    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+        accent: '#8b9a6b', green: '#4a8', red: '#c55',
+        text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
+
+    const nationName = (nationStats?.name || faction?.nation || 'Nation').toUpperCase();
+    const inflation = Number(nationStats?.inflation ?? 50);
+    const stability = Number(nationStats?.stability ?? 50);
+    const civilUnrest = Number(nationStats?.civil_unrest ?? 20);
+
+    // Property: Corporate HQ — always owned, base cost $8M
+    const baseCost = 8000000;
+    const inflMod = 1 + ((inflation - 50) / 100 * 0.08); // mild inflation impact
+    const stabMod = 0.8 + (stability / 100) * 0.4; // 0.8 at 0 stability, 1.2 at 100
+    const unrestMod = Math.max(0.5, 1 - (civilUnrest / 100) * 0.5); // 1.0 at 0 unrest, 0.5 at 100
+    const adjustedValue = Math.round(baseCost * inflMod * stabMod * unrestMod);
+
+    const fmtMod = (val) => val >= 1 ? `<span style="color:${C.green}">×${val.toFixed(2)}</span>` : `<span style="color:${C.red}">×${val.toFixed(2)}</span>`;
+
+    // Future: array of properties. For now just HQ.
+    const properties = [
+        { name: 'Corporate Headquarters', owned: true, baseCost, adjustedValue }
+    ];
+
+    let propsHtml = '';
+    let totalValue = 0;
+
+    for (const prop of properties) {
+        totalValue += prop.adjustedValue;
+        propsHtml += `
+        <div style="padding:10px 12px;border-bottom:1px solid ${C.border};">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <span style="font-size:13px;font-weight:700;color:${C.text}">${prop.name}</span>
+                <span style="font-family:${mono};font-size:8px;font-weight:700;padding:2px 8px;color:${C.green};background:rgba(68,170,136,0.08);border:1px solid rgba(68,170,136,0.15)">${prop.owned ? 'OWNED' : 'AVAILABLE'}</span>
+            </div>
+            <div style="margin-bottom:6px;">
+                <span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${nationName}</span>
+            </div>
+            <div style="padding:6px 8px;background:${C.bg};border:1px solid ${C.border};">
+                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
+                    <span style="font-family:${mono};font-size:9px;color:${C.dim}">BASE COST</span>
+                    <span style="font-family:${mono};font-size:10px;color:${C.text}">${hfFmtBig(prop.baseCost)}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
+                    <span style="font-family:${mono};font-size:9px;color:${C.dim}">INFLATION (${nationName})</span>
+                    <span style="font-family:${mono};font-size:10px;color:${C.muted}">${inflation}/100 — ${fmtMod(inflMod)}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
+                    <span style="font-family:${mono};font-size:9px;color:${C.dim}">STABILITY (${nationName})</span>
+                    <span style="font-family:${mono};font-size:10px;color:${C.muted}">${stability}/100 — ${fmtMod(stabMod)}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
+                    <span style="font-family:${mono};font-size:9px;color:${C.dim}">CIVIL UNREST (${nationName})</span>
+                    <span style="font-family:${mono};font-size:10px;color:${C.muted}">${civilUnrest}/100 — ${fmtMod(unrestMod)}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;">
+                    <span style="font-family:${mono};font-size:9px;color:${C.accent}">ADJUSTED VALUE</span>
+                    <span style="font-family:${mono};font-size:11px;font-weight:700;color:${C.green}">${hfFmtBig(prop.adjustedValue)}</span>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    container.innerHTML = `
+    <div style="width:380px;height:450px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:8px;color:${C.accent}">●</span>
+                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Property</span>
+            </div>
+            <span style="font-family:${mono};font-size:10px;color:${C.muted}">${properties.length} ASSET${properties.length !== 1 ? 'S' : ''}</span>
+        </div>
+        <div style="flex:1;overflow:auto;">
+            ${propsHtml}
+        </div>
+        <div style="padding:8px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px">TOTAL PROPERTY VALUE</span>
+                <span style="font-family:${mono};font-size:14px;font-weight:700;color:${C.green}">${hfFmtBig(totalValue)}</span>
             </div>
         </div>
     </div>`;
