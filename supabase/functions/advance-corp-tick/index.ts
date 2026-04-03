@@ -450,8 +450,18 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
 
 async function replenishPropertyMarketplace(supabase, nation, currentTick) {
     const TARGET_COUNT = 8;
+    const EXPIRY_TICKS = 12; // properties expire after 12 corp ticks (~4 days)
 
-    // Count current available properties for this nation
+    // 1. Expire stale listings
+    const { error: expireErr } = await supabase
+        .from('available_properties')
+        .update({ status: 'expired' })
+        .eq('nation_id', nation.id)
+        .eq('status', 'available')
+        .lt('generated_at_tick', currentTick - EXPIRY_TICKS);
+    if (expireErr) console.warn(`[PropertyMarket] Expire failed for ${nation.name}:`, expireErr.message);
+
+    // 2. Count remaining available properties
     const { count, error: countErr } = await supabase
         .from('available_properties')
         .select('id', { count: 'exact', head: true })
@@ -464,7 +474,7 @@ async function replenishPropertyMarketplace(supabase, nation, currentTick) {
 
     const toGenerate = TARGET_COUNT - currentCount;
 
-    // Load catalog templates that this nation qualifies for
+    // 3. Load catalog templates that this nation qualifies for
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
     const sol = Number(nation.standard_of_living ?? 50);
     const { data: catalog } = await supabase
@@ -475,19 +485,58 @@ async function replenishPropertyMarketplace(supabase, nation, currentTick) {
 
     if (!catalog || catalog.length === 0) return;
 
-    // Price modifiers from nation stats
+    // 4. Load existing available to avoid duplicates
+    const { data: existing } = await supabase
+        .from('available_properties')
+        .select('catalog_id')
+        .eq('nation_id', nation.id)
+        .eq('status', 'available');
+    const existingCatalogIds = new Set((existing || []).map(e => e.catalog_id));
+
+    // 5. GDP-weighted selection: higher GDP growth biases toward larger properties
+    // Weight: small=1, medium=2+(gdp/25), large=1+(gdp/20), campus=gdp>=60?2:0
+    const weightedPool = [];
+    for (const tmpl of catalog) {
+        if (existingCatalogIds.has(tmpl.id)) continue; // skip duplicates
+        let weight = 1;
+        if (tmpl.size_class === 'medium') weight = 2 + gdpGrowth / 25;
+        else if (tmpl.size_class === 'large') weight = 1 + gdpGrowth / 20;
+        else if (tmpl.size_class === 'campus') weight = gdpGrowth >= 60 ? 2 : 0.2;
+        // Premium/Innovative styles are rarer
+        if (tmpl.style === 'Premium' || tmpl.style === 'Innovative') weight *= 0.6;
+        for (let w = 0; w < Math.ceil(weight); w++) weightedPool.push(tmpl);
+    }
+
+    if (weightedPool.length === 0) {
+        // Fall back to full catalog if all are duplicates
+        for (const tmpl of catalog) weightedPool.push(tmpl);
+    }
+
+    // 6. Price modifiers from nation stats
     const inflation = Number(nation.inflation ?? 50);
     const inflMod = 1 + ((inflation - 50) / 100 * 0.3);
     const solMod = 1 + ((sol - 50) / 100 * 0.2);
 
     // City names from nation capital
     const capital = nation.capital || 'Capital';
-    const cityNames = [capital, capital + ' Port District', capital + ' Industrial Zone', capital + ' Suburbs', capital + ' Coast'];
     const cityMap = { capital: capital, port: capital + ' Port District', industrial: capital + ' Industrial Zone', suburban: capital + ' Suburbs', coastal: capital + ' Coast' };
 
+    // 7. Generate listings
+    const usedTemplates = new Set();
     const inserts = [];
     for (let i = 0; i < toGenerate; i++) {
-        const template = catalog[Math.floor(Math.random() * catalog.length)];
+        // Pick from weighted pool, avoid picking same template twice in one batch
+        let template = null;
+        for (let attempt = 0; attempt < 20; attempt++) {
+            const candidate = weightedPool[Math.floor(Math.random() * weightedPool.length)];
+            if (!usedTemplates.has(candidate.id)) {
+                template = candidate;
+                usedTemplates.add(candidate.id);
+                break;
+            }
+        }
+        if (!template) template = weightedPool[Math.floor(Math.random() * weightedPool.length)];
+
         const adjustedPrice = Math.round(template.base_cost * inflMod * solMod);
         const adjustedMaint = Math.round(template.base_maintenance * inflMod * 0.9);
         const condition = 55 + Math.floor(Math.random() * 40); // 55-95%
@@ -505,6 +554,7 @@ async function replenishPropertyMarketplace(supabase, nation, currentTick) {
             condition: condition,
             city: city,
             generated_at_tick: currentTick,
+            expires_at_tick: currentTick + EXPIRY_TICKS,
             status: 'available',
         });
     }
