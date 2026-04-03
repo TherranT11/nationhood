@@ -26404,144 +26404,66 @@ async function adjustFactionMomentum(supabase: any, factionId: string, nationId:
     }
 }
 
-// ==================== CROSS-STAT CONNECTORS ====================
-// Realistic economic feedback loops. Runs each tick after stat effects.
-// Small per-tick nudges (0.1-0.5) so players can counteract with policy.
+// ==================== SURPLUS/DEFICIT CONNECTORS ====================
+// These require budget calculation and can't be expressed as simple
+// stat_connections rows. Simple threshold connectors (unemployment→happiness,
+// crime→investment, etc.) are in the stat_connections table via admin panel.
 
-async function processStatConnectors(supabase: any, nation: any) {
+async function processSurplusConnectors(supabase: any, nation: any) {
     const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v * 10) / 10));
+    const capDelta = (d: number) => Math.max(-2, Math.min(2, d));
     const gdp = Number(nation.gdp ?? 0);
+    if (gdp <= 0) return;
+
+    const efficiency = Number(nation.efficiency ?? 50);
+    const inflation = Number(nation.inflation ?? 38);
+    const currencyStrength = Number(nation.currency_strength ?? 50);
+
+    // Calculate surplus ratio from budget formula
+    let surplusRatio = 0;
+    try {
+        const budget = calculateNationalBudget(nation);
+        const baseExpenditure = gdp * 0.08 * (1 + (100 - efficiency) / 200);
+        const surplus = budget.grossRevenue - baseExpenditure;
+        surplusRatio = (surplus / gdp) * 100;
+    } catch (_) {
+        return;
+    }
+
     const updates: any = {};
     let changed = false;
 
-    // Read current stats
-    const unemployment = Number(nation.unemployment ?? 50);
-    const happiness = Number(nation.happiness ?? 50);
-    const gdpGrowth = Number(nation.gdp_growth ?? 50);
-    const standardOfLiving = Number(nation.standard_of_living ?? 50);
-    const inflation = Number(nation.inflation ?? 38);
-    const currencyStrength = Number(nation.currency_strength ?? 50);
-    const tradeBalance = Number(nation.trade_balance ?? 50);
-    const crimeRate = Number(nation.crime_rate ?? 20);
-    const foreignInvestment = Number(nation.foreign_investment ?? 50);
-    const corruption = Number(nation.corruption ?? 50);
-    const efficiency = Number(nation.efficiency ?? 50);
-
-    // Calculate surplus ratio from budget formula (no stored columns needed)
-    // Use calculateNationalBudget if available, otherwise approximate from tax stats
-    let surplusRatio = 0;
-    if (gdp > 0) {
-        try {
-            const budget = calculateNationalBudget(nation);
-            // Estimate expenditure from ministry costs (base ~8% of GDP scaled by efficiency)
-            const baseExpenditure = gdp * 0.08 * (1 + (100 - efficiency) / 200);
-            const surplus = budget.grossRevenue - baseExpenditure;
-            surplusRatio = (surplus / gdp) * 100;
-        } catch (_) {
-            surplusRatio = 0;
-        }
-    }
-
-    // Cap any single connector delta to ±2.0 per tick to prevent extreme swings
-    const capDelta = (d: number) => Math.max(-2, Math.min(2, d));
-
-    // ── 1. Unemployment → Happiness ──
-    // High unemployment makes people unhappy
-    if (unemployment > 10) {
-        const delta = capDelta(-(unemployment - 10) * 0.15);
-        updates.happiness = clamp(happiness + delta);
-        changed = true;
-    } else if (unemployment < 4) {
-        const delta = capDelta((4 - unemployment) * 0.1);
-        updates.happiness = clamp(happiness + delta);
-        changed = true;
-    }
-
-    // ── 2. Unemployment → GDP Growth ──
-    if (unemployment > 10) {
-        const delta = capDelta(-(unemployment - 10) * 0.1);
-        updates.gdp_growth = clamp(gdpGrowth + delta);
-        changed = true;
-    } else if (unemployment < 4) {
-        updates.gdp_growth = clamp(gdpGrowth + 0.1);
-        changed = true;
-    }
-
-    // ── 3. Unemployment → Standard of Living ──
-    if (unemployment > 8) {
-        const delta = capDelta(-(unemployment - 8) * 0.2);
-        updates.standard_of_living = clamp(standardOfLiving + delta);
-        changed = true;
-    }
-
-    // ── 4. Low Unemployment → Inflation (labor shortage) ──
-    if (unemployment < 4) {
-        const delta = capDelta((4 - unemployment) * 0.15);
+    // ── Surplus → Inflation ──
+    if (surplusRatio > 5) {
+        const delta = capDelta((surplusRatio - 5) * 0.1);
         updates.inflation = clamp(inflation + delta);
         changed = true;
     }
-
-    // ── 5. Surplus → Inflation ──
-    if (surplusRatio > 5) {
-        const delta = capDelta((surplusRatio - 5) * 0.1);
-        updates.inflation = clamp((updates.inflation ?? inflation) + delta);
-        changed = true;
-    }
+    // Deficit spending is also inflationary
     if (surplusRatio < -5) {
         const delta = capDelta((-surplusRatio - 5) * 0.05);
         updates.inflation = clamp((updates.inflation ?? inflation) + delta);
         changed = true;
     }
 
-    // ── 6. Surplus → Currency Strength ──
+    // ── Surplus → Currency Strength ──
     if (surplusRatio > 3) {
         const delta = capDelta((surplusRatio - 3) * 0.08);
         updates.currency_strength = clamp(currencyStrength + delta);
         changed = true;
     }
+    // Large deficit weakens currency
     if (surplusRatio < -5) {
         const delta = capDelta((-surplusRatio - 5) * 0.1);
         updates.currency_strength = clamp(currencyStrength - delta);
         changed = true;
     }
 
-    // ── 7. High Currency → Trade Balance Damage ──
-    if (currencyStrength > 65) {
-        const delta = capDelta(-(currencyStrength - 65) * 0.06);
-        updates.trade_balance = clamp(tradeBalance + delta);
-        changed = true;
-    } else if (currencyStrength < 35) {
-        const delta = capDelta((35 - currencyStrength) * 0.04);
-        updates.trade_balance = clamp(tradeBalance + delta);
-        changed = true;
-    }
-
-    // ── 8. Crime → Foreign Investment ──
-    if (crimeRate > 30) {
-        const delta = capDelta(-(crimeRate - 30) * 0.08);
-        updates.foreign_investment = clamp(foreignInvestment + delta);
-        changed = true;
-    }
-
-    // ── 9. Corruption → Efficiency ──
-    // Corrupt governments waste resources
-    if (corruption > 50) {
-        const delta = capDelta(-(corruption - 50) * 0.05);
-        updates.efficiency = clamp(efficiency + delta);
-        changed = true;
-    } else if (corruption < 20) {
-        const delta = capDelta((20 - corruption) * 0.03);
-        updates.efficiency = clamp(efficiency + delta);
-        changed = true;
-    }
-
-    // ── Write updates ──
     if (changed) {
         const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
         if (error) {
-            console.error(`[StatConnectors] Update failed for ${nation.name}:`, error.message);
+            console.error(`[SurplusConnectors] Update failed for ${nation.name}:`, error.message);
         }
-        // Apply to in-memory nation object so downstream processors see fresh values
         Object.assign(nation, updates);
     }
 }
@@ -28388,11 +28310,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Gov collapse check failed for ${nation.name} (non-fatal):`, collapseErr);
         }
 
-        // Cross-stat connectors: realistic economic feedback loops
+        // Surplus/deficit connectors (require budget calculation, can't be stat_connections rows)
         try {
-            await processStatConnectors(supabase, nation);
+            await processSurplusConnectors(supabase, nation);
         } catch (connErr) {
-            console.error(`[advanceTick] Stat connectors failed for ${nation.name} (non-fatal):`, connErr);
+            console.error(`[advanceTick] Surplus connectors failed for ${nation.name} (non-fatal):`, connErr);
         }
 
         // Re-fetch nation with post-effect values for remaining processors
