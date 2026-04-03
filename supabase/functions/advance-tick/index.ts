@@ -7929,10 +7929,14 @@ async function resolveExpiredVotes(supabase, nationId) {
         // Sponsor: +3 on passage. YES voters: +2/article on pass, -2/article on fail.
         // NO voters: +2/article on fail. Abstain: nothing.
         // Skip special bill types that don't have policy articles.
-        if (!['no_confidence', 'confirmation', 'minister_confirmation', 'impeachment_conviction'].includes(bill.bill_type)) {
+        // Skip momentum for special bill types and presidential desk (not yet enacted)
+        const lastResult = results[results.length - 1];
+        const skipMomentum = ['no_confidence', 'confirmation', 'minister_confirmation', 'impeachment_conviction'].includes(bill.bill_type)
+            || lastResult?.result === 'president_desk';
+        if (!skipMomentum) {
             try {
                 const articleCount = Math.max(1, (bill.bill_articles || []).filter(a => a.policies && a.policies.length > 0).length);
-                const billPassed = passed && resolution === 'passed';
+                const billPassed = lastResult?.result === 'passed';
                 const supports = bill.bill_support || [];
 
                 for (const s of supports) {
@@ -26427,7 +26431,7 @@ async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
     const ticksToElection = upcomingElection.election_tick - currentTick;
     console.log(`Campaign bonuses for incumbent ${president.first_name} ${president.last_name} in ${nation.name} (${ticksToElection} ticks to election)`);
 
-    await adjustFactionMomentum(supabase, president.faction_id, nation.id, 1, { source: 'campaign:incumbent' });
+    await adjustFactionMomentum(supabase, president.faction_id, nation.id, 1, { source: 'campaign:incumbent', tick: currentTick });
 
     const { data: nationStats } = await supabase
         .from('nations')
@@ -26664,7 +26668,7 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
         if (!result || !result.decay_ticks_remaining || result.decay_ticks_remaining <= 0) continue;
 
         const decayRate = result.decay_rate || 1;
-        await adjustFactionMomentum(supabase, action.party_id, nationId, -round2(decayRate * 0.3), { source: 'purge:decay' });
+        await adjustFactionMomentum(supabase, action.party_id, nationId, -round2(decayRate * 0.3), { source: 'purge:decay', tick: currentTick });
 
         const newRemaining = result.decay_ticks_remaining - 1;
         await supabase.from('campaign_actions')
@@ -27921,7 +27925,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     }).eq('id', proc.president_id);
 
                     // President's party takes massive momentum hit
-                    await adjustFactionMomentum(supabase, president.faction_id, nation.id, -5, { source: 'impeachment:convicted' });
+                    await adjustFactionMomentum(supabase, president.faction_id, nation.id, -5, { source: 'impeachment:convicted', tick: newTick });
 
                     // Stability -3, international_reputation -3
                     const newStab = Math.max(0, Math.round(Number(nation.stability || 50) - 3));

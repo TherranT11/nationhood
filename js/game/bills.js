@@ -1975,10 +1975,14 @@ export async function resolveExpiredVotes(supabase, nationId) {
         // Sponsor: +3 on passage. YES voters: +2/article on pass, -2/article on fail.
         // NO voters: +2/article on fail. Abstain: nothing.
         // Skip special bill types that don't have policy articles.
-        if (!['no_confidence', 'confirmation', 'minister_confirmation', 'impeachment_conviction'].includes(bill.bill_type)) {
+        // Skip momentum for special bill types and presidential desk (not yet enacted)
+        const lastResult = results[results.length - 1];
+        const skipMomentum = ['no_confidence', 'confirmation', 'minister_confirmation', 'impeachment_conviction'].includes(bill.bill_type)
+            || lastResult?.result === 'president_desk';
+        if (!skipMomentum) {
             try {
                 const articleCount = Math.max(1, (bill.bill_articles || []).filter(a => a.policies && a.policies.length > 0).length);
-                const billPassed = passed && resolution === 'passed';
+                const billPassed = lastResult?.result === 'passed';
                 const supports = bill.bill_support || [];
 
                 for (const s of supports) {
