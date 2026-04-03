@@ -56,7 +56,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest, nudgeApproval, getNationNames, POSITIVE_TRAITS } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest, getNationNames, POSITIVE_TRAITS } from './js/game-common.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
 (function () {
@@ -6190,7 +6190,7 @@ async function confirmAssign() {
         }
 
         // +3% approval to the receiving party
-        await nudgeApproval(_supabase, selectedCandidate.partyId, currentNation.id, 3, { source: 'minister:appointed' });
+        await _supabase.rpc('adjust_momentum', { p_faction_id: selectedCandidate.partyId, p_delta: 3, p_label: 'Minister appointed (+3)', p_tick: currentTick });
 
         await _supabase.from('ministry_requests').delete()
             .eq('nation_id', currentNation.id).eq('ministry_key', assignMinistryKey);
@@ -6403,7 +6403,7 @@ async function purgeMinister(ministryKey) {
         }
 
         if (approvalBoost > 0) {
-            await nudgeApproval(_supabase, currentFaction.id, currentNation.id, approvalBoost, { source: 'minister:purge_boost' });
+            await _supabase.rpc('adjust_momentum', { p_faction_id: currentFaction.id, p_delta: approvalBoost, p_label: `Minister purge boost (+${approvalBoost})`, p_tick: currentTick });
         }
 
         if (ministry.party_id && ministry.party_id !== rulingFactionId) {
@@ -6412,7 +6412,7 @@ async function purgeMinister(ministryKey) {
             await _supabase.from('factions').update({
                 loyalty: Math.max(0, currentLoyalty - loyaltyLoss)
             }).eq('id', ministry.party_id);
-            await nudgeApproval(_supabase, ministry.party_id, currentNation.id, -approvalLossPurged, { source: 'minister:purged' });
+            await _supabase.rpc('adjust_momentum', { p_faction_id: ministry.party_id, p_delta: -approvalLossPurged, p_label: `Minister purged (${-approvalLossPurged})`, p_tick: currentTick });
         }
 
         const { data: nation } = await _supabase.from('nations').select('stability, corruption').eq('id', currentNation.id).single();
