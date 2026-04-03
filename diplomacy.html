@@ -9259,11 +9259,16 @@ async function acceptStateVisit(proposalId) {
     };
 
     for (const [stat, val] of Object.entries(computedEffects)) {
+        if (stat.startsWith('_')) continue; // skip transient properties like _gaffe_penalty
         const col = effectToColumn[stat];
-        if (!col) continue; // relations handled below, unknown stats skipped
-        visitorUpdates[col] = Math.max(0, Math.min(100, Math.round(Number(visitorNation[col] || 0) + val)));
-        hostUpdates[col] = Math.max(0, Math.min(100, Math.round(Number(hostNation[col] || 0) + val)));
-        bonusSummary.push((val > 0 ? '+' : '') + val + ' ' + stat.replace(/_/g, ' '));
+        if (col) {
+            visitorUpdates[col] = Math.max(0, Math.min(100, Math.round(Number(visitorNation[col] || 0) + val)));
+            hostUpdates[col] = Math.max(0, Math.min(100, Math.round(Number(hostNation[col] || 0) + val)));
+        }
+        // Always add to summary (gov_approval, relations handled separately but still reported)
+        if (stat !== 'relations') {
+            bonusSummary.push((val > 0 ? '+' : '') + val + ' ' + stat.replace(/_/g, ' '));
+        }
     }
 
     // ── Relation boost from computed effects ──
