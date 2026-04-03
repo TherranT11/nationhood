@@ -785,13 +785,6 @@ async function init() {
       return;
     }
 
-    // Load which nations have alpha codes (restricted access)
-    const { data: alphaCodes } = await _supabase
-      .from('alpha_tester_codes').select('nation_id').is('used_by', null);
-    if (alphaCodes) {
-      for (const ac of alphaCodes) ALPHA_CODE_NATIONS.add(ac.nation_id);
-    }
-
     await loadNations();
 
     document.getElementById('loading').style.display = 'none';
