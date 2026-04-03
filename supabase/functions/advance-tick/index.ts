@@ -28114,6 +28114,42 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Purge decay failed for ${nation.name} (non-fatal):`, purgeErr);
         }
 
+        // Inactivity seat drain + auto-disband
+        // 12-17 ticks inactive: lose ~20% of seats per tick (min 1)
+        // 18+ ticks inactive: auto-disband (seats → 0, nation_id → null)
+        try {
+            const { data: allParties } = await supabase
+                .from('factions')
+                .select('id, faction_name, seats, last_seen_tick, founded_tick, abandoned_at')
+                .eq('nation_id', nation.id)
+                .eq('faction_type', 'party')
+                .is('abandoned_at', null);
+
+            for (const party of (allParties || [])) {
+                const ref = party.last_seen_tick ?? party.founded_tick ?? 0;
+                const ticksInactive = newTick - ref;
+
+                if (ticksInactive >= 18) {
+                    // Auto-disband: full cleanup via existing disbandParty()
+                    try {
+                        await disbandParty(supabase, nation.id, party.id, newTick);
+                        console.log(`[Inactivity] Auto-disbanded ${party.faction_name} in ${nation.name} (${ticksInactive} ticks inactive)`);
+                    } catch (disbandErr) {
+                        console.error(`[Inactivity] Auto-disband failed for ${party.faction_name}: ${disbandErr.message}`);
+                    }
+                } else if (ticksInactive >= 12 && (party.seats || 0) > 0) {
+                    // Seat drain: lose 20% of seats per tick (minimum 1)
+                    const currentSeats = party.seats || 0;
+                    const seatsLost = Math.max(1, Math.floor(currentSeats * 0.2));
+                    const newSeats = Math.max(0, currentSeats - seatsLost);
+                    await supabase.from('factions').update({ seats: newSeats }).eq('id', party.id);
+                    console.log(`[Inactivity] ${party.faction_name} in ${nation.name}: ${currentSeats} → ${newSeats} seats (${ticksInactive} ticks inactive, -${seatsLost})`);
+                }
+            }
+        } catch (inactErr) {
+            console.error(`[advanceTick] Inactivity processing failed for ${nation.name} (non-fatal):`, inactErr);
+        }
+
         // Seat rebalancing: if factions were disbanded and seats are vacant,
         // proportionally redistribute the empty seats across remaining factions.
         try {
