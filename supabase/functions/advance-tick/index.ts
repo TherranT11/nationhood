@@ -26427,29 +26427,39 @@ async function processStatConnectors(supabase: any, nation: any) {
     const corruption = Number(nation.corruption ?? 50);
     const efficiency = Number(nation.efficiency ?? 50);
 
-    // Calculate surplus ratio from budget (requires GDP > 0)
-    // Revenue and expenditure are computed per tick; we approximate from nation stats
-    const revenue = Number(nation.revenue_per_tick ?? 0);
-    const expenditure = Number(nation.expenditure_per_tick ?? 0);
-    const surplus = revenue - expenditure;
-    const surplusRatio = gdp > 0 ? (surplus / gdp) * 100 : 0; // as % of GDP
+    // Calculate surplus ratio from budget formula (no stored columns needed)
+    // Use calculateNationalBudget if available, otherwise approximate from tax stats
+    let surplusRatio = 0;
+    if (gdp > 0) {
+        try {
+            const budget = calculateNationalBudget(nation);
+            // Estimate expenditure from ministry costs (base ~8% of GDP scaled by efficiency)
+            const baseExpenditure = gdp * 0.08 * (1 + (100 - efficiency) / 200);
+            const surplus = budget.grossRevenue - baseExpenditure;
+            surplusRatio = (surplus / gdp) * 100;
+        } catch (_) {
+            surplusRatio = 0;
+        }
+    }
+
+    // Cap any single connector delta to ±2.0 per tick to prevent extreme swings
+    const capDelta = (d: number) => Math.max(-2, Math.min(2, d));
 
     // ── 1. Unemployment → Happiness ──
     // High unemployment makes people unhappy
     if (unemployment > 10) {
-        const delta = -(unemployment - 10) * 0.15;
+        const delta = capDelta(-(unemployment - 10) * 0.15);
         updates.happiness = clamp(happiness + delta);
         changed = true;
     } else if (unemployment < 4) {
-        const delta = (4 - unemployment) * 0.1;
+        const delta = capDelta((4 - unemployment) * 0.1);
         updates.happiness = clamp(happiness + delta);
         changed = true;
     }
 
     // ── 2. Unemployment → GDP Growth ──
-    // Mass unemployment drags the economy
     if (unemployment > 10) {
-        const delta = -(unemployment - 10) * 0.1;
+        const delta = capDelta(-(unemployment - 10) * 0.1);
         updates.gdp_growth = clamp(gdpGrowth + delta);
         changed = true;
     } else if (unemployment < 4) {
@@ -26458,65 +26468,57 @@ async function processStatConnectors(supabase: any, nation: any) {
     }
 
     // ── 3. Unemployment → Standard of Living ──
-    // Can't maintain high SoL with mass unemployment
     if (unemployment > 8) {
-        const delta = -(unemployment - 8) * 0.2;
+        const delta = capDelta(-(unemployment - 8) * 0.2);
         updates.standard_of_living = clamp(standardOfLiving + delta);
         changed = true;
     }
 
     // ── 4. Low Unemployment → Inflation (labor shortage) ──
-    // Full employment → wage pressure → prices rise
     if (unemployment < 4) {
-        const delta = (4 - unemployment) * 0.15;
+        const delta = capDelta((4 - unemployment) * 0.15);
         updates.inflation = clamp(inflation + delta);
         changed = true;
     }
 
     // ── 5. Surplus → Inflation ──
-    // Extracting too much from economy via taxes without spending it back
     if (surplusRatio > 5) {
-        const delta = (surplusRatio - 5) * 0.1;
+        const delta = capDelta((surplusRatio - 5) * 0.1);
         updates.inflation = clamp((updates.inflation ?? inflation) + delta);
         changed = true;
     }
-    // Deficit spending is also inflationary
     if (surplusRatio < -5) {
-        const delta = (-surplusRatio - 5) * 0.05;
+        const delta = capDelta((-surplusRatio - 5) * 0.05);
         updates.inflation = clamp((updates.inflation ?? inflation) + delta);
         changed = true;
     }
 
     // ── 6. Surplus → Currency Strength ──
-    // Strong fiscal position attracts capital → currency appreciates
     if (surplusRatio > 3) {
-        const delta = (surplusRatio - 3) * 0.08;
+        const delta = capDelta((surplusRatio - 3) * 0.08);
         updates.currency_strength = clamp(currencyStrength + delta);
         changed = true;
     }
-    // Large deficit weakens currency
     if (surplusRatio < -5) {
-        const delta = (-surplusRatio - 5) * 0.1;
+        const delta = capDelta((-surplusRatio - 5) * 0.1);
         updates.currency_strength = clamp(currencyStrength - delta);
         changed = true;
     }
 
     // ── 7. High Currency → Trade Balance Damage ──
-    // Strong currency makes exports expensive, imports cheap
     if (currencyStrength > 65) {
-        const delta = -(currencyStrength - 65) * 0.06;
+        const delta = capDelta(-(currencyStrength - 65) * 0.06);
         updates.trade_balance = clamp(tradeBalance + delta);
         changed = true;
     } else if (currencyStrength < 35) {
-        const delta = (35 - currencyStrength) * 0.04;
+        const delta = capDelta((35 - currencyStrength) * 0.04);
         updates.trade_balance = clamp(tradeBalance + delta);
         changed = true;
     }
 
     // ── 8. Crime → Foreign Investment ──
-    // High crime scares away capital
     if (crimeRate > 30) {
-        const delta = -(crimeRate - 30) * 0.08;
+        const delta = capDelta(-(crimeRate - 30) * 0.08);
         updates.foreign_investment = clamp(foreignInvestment + delta);
         changed = true;
     }
@@ -26524,11 +26526,11 @@ async function processStatConnectors(supabase: any, nation: any) {
     // ── 9. Corruption → Efficiency ──
     // Corrupt governments waste resources
     if (corruption > 50) {
-        const delta = -(corruption - 50) * 0.05;
+        const delta = capDelta(-(corruption - 50) * 0.05);
         updates.efficiency = clamp(efficiency + delta);
         changed = true;
     } else if (corruption < 20) {
-        const delta = (20 - corruption) * 0.03;
+        const delta = capDelta((20 - corruption) * 0.03);
         updates.efficiency = clamp(efficiency + delta);
         changed = true;
     }
