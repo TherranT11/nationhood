@@ -947,6 +947,9 @@ async function init() {
         return;
     }
 
+    // Persist the active faction so dissolve and other actions can find it
+    sessionStorage.setItem('active_faction_id', faction.id);
+
     // If active faction isn't a corporation, redirect to party dashboard
     if (faction.faction_type !== 'corporation') {
         window.location.href = 'dashboard.html';
