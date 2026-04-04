@@ -98,13 +98,14 @@ import { _supabase } from './js/supabase-client.js';
             // Load all factions owned by this user (primary + linked)
             const { data: allFactions } = await _supabase
                 .from('factions')
-                .select('id, faction_type, nation_id')
+                .select('id, faction_type, nation_id, abandoned_at')
                 .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
 
-            const ownedFactions = (allFactions || []).filter(f => f.nation_id);
+            // Filter out dissolved/abandoned factions
+            const ownedFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
 
             if (ownedFactions.length === 0) {
-                window.location.href = 'select-nation.html';
+                window.location.href = 'faction-select.html';
                 return;
             }
 
@@ -119,7 +120,7 @@ import { _supabase } from './js/supabase-client.js';
             }
         } catch (error) {
             console.error('Faction check error:', error);
-            window.location.href = 'select-nation.html';
+            window.location.href = 'faction-select.html';
         }
     }
 </script>

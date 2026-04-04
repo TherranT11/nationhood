@@ -941,9 +941,9 @@ async function init() {
         || allUserFactions[0];
 
     if (!faction) {
-        console.error('Corp dashboard: no factions found');
-        await _supabase.auth.signOut();
-        window.location.href = 'login.html';
+        // No active factions — redirect to faction select (don't sign out)
+        sessionStorage.removeItem('active_faction_id');
+        window.location.href = 'faction-select.html';
         return;
     }
 
