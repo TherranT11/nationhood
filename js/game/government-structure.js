@@ -118,9 +118,11 @@ export async function fetchActiveCoalition(supabase, nationId) {
 
     // === PARLIAMENTARY DEMOCRACY: existing logic ===
 
-    // Helper: if status looks active but frozen bills exist, it's actually caretaker
+    // Helper: if status looks active but frozen bills exist, it's actually caretaker.
+    // Skip for emergency_minority governments — they are real governments that should
+    // not be overridden to caretaker by stale frozen bills.
     async function inferCaretakerStatus(result) {
-        if (result && (!result.status || result.status === 'formed')) {
+        if (result && (!result.status || result.status === 'formed') && result.formation_type !== 'emergency_minority') {
             const { count } = await supabase
                 .from('bills')
                 .select('id', { count: 'exact', head: true })
