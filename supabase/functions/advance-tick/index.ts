@@ -28480,9 +28480,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         async function handleStrongmanSuccession(
             supabase: any, nation: any, hosName: string, hosAge: number, newTick: number
         ) {
-            // Random replacement for head of state death
-            const FIRST = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
-            const LAST = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
+            // Random replacement for head of state death — use nation-specific name pool
+            const { firstNames: FIRST, lastNames: LAST } = getNationNames(nation.name);
             const newFirst = FIRST[Math.floor(Math.random() * FIRST.length)];
             const newLast = LAST[Math.floor(Math.random() * LAST.length)];
             const newAge = 45 + Math.floor(Math.random() * 16);
