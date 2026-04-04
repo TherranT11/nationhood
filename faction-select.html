@@ -335,15 +335,28 @@ async function init() {
   const { data: { user } } = await _supabase.auth.getUser();
   if (!user) { window.location.href = 'login.html'; return; }
 
-  // Check if user already has a party
+  // Check if user already has an active party
   const { data: faction } = await _supabase
-    .from('factions').select('id, nation_id').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
-  if (faction && faction.nation_id) {
+    .from('factions').select('id, nation_id, abandoned_at').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
+  if (faction && faction.nation_id && !faction.abandoned_at) {
     window.location.href = 'dashboard.html';
     return;
   }
 
+  // Check if user has an active corporation
+  const { data: corpFaction } = await _supabase
+    .from('factions').select('id, nation_id, abandoned_at')
+    .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+    .eq('faction_type', 'corporation')
+    .is('abandoned_at', null)
+    .maybeSingle();
+  if (corpFaction && corpFaction.nation_id) {
+    window.location.href = 'corp-dashboard.html';
+    return;
+  }
+
   // Load pending nation from sessionStorage (set by select-nation.html)
+  // If no pending nation, send to select-nation first so they can pick one
   const raw = sessionStorage.getItem('nationhood_pending_nation');
   if (!raw) {
     window.location.href = 'select-nation.html';

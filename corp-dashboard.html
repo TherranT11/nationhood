@@ -943,7 +943,7 @@ async function init() {
     if (!faction) {
         // No active factions — redirect to faction select (don't sign out)
         sessionStorage.removeItem('active_faction_id');
-        window.location.href = 'faction-select.html';
+        window.location.href = 'select-nation.html';
         return;
     }
 
@@ -1894,7 +1894,7 @@ async function dissolveCorporation() {
             window.location.href = 'corp-dashboard.html';
         } else {
             alert(corpName + ' has been dissolved.\n\nYou have no remaining factions.');
-            window.location.href = 'faction-select.html';
+            window.location.href = 'select-nation.html';
         }
     } catch (err) {
         alert('Dissolution failed: ' + (err.message || err) + '\n\nPlease try again or contact support.');
