@@ -5418,8 +5418,8 @@ async function assignCaucusFactions(supabase, party, nationId, totalFactionCount
 
         for (const wing of ['left', 'right']) {
             const wingWeight = wing === 'left' ? axis.leftWeight : axis.rightWeight;
-            // Seat share: proportional to wing weight, minimum 0.05
-            const seatShare = Math.max(0.05, Math.min(0.40, wingWeight / totalWingWeight * 0.30));
+            // Seat share: proportional to wing weight, minimum 0.12 (~10-15% of party seats)
+            const seatShare = Math.max(0.12, Math.min(0.40, wingWeight / totalWingWeight * 0.50));
 
             await supabase.from('caucus_factions').insert({
                 party_id: party.id,
@@ -6746,7 +6746,7 @@ async function checkEarlyMajority(supabase, nationId) {
     // Bills still voting, not yet locked, not yet expired
     const { data: activeBills, error } = await supabase
         .from('bills')
-        .select('id, bill_name, bill_type, voting_ends_tick, proposed_tick, floor_tick, caucus_votes_withheld, bill_support(faction_id, stance, seat_count)')
+        .select('id, bill_name, bill_type, voting_ends_tick, proposed_tick, floor_tick, caucus_votes_withheld, proposed_constitutional_amendment_streamlining, bill_support(faction_id, stance, seat_count)')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .is('early_resolution_status', null)
@@ -6769,9 +6769,10 @@ async function checkEarlyMajority(supabase, nationId) {
     const factionSeatSum = (factionRows || []).reduce((sum, f) => sum + (f.seats || 0), 0);
     const effectiveTotalSeats = Math.min(GAME_CONFIG.TOTAL_SEATS, Math.max(factionSeatSum, 1));
 
-    // Check for Legislative Quorum Reform override
-    const { data: nationQuorum } = await supabase.from('nations').select('legislative_quorum_override').eq('id', nationId).single();
+    // Check for Legislative Quorum Reform override and Constitutional Amendment Streamlining
+    const { data: nationQuorum } = await supabase.from('nations').select('legislative_quorum_override, constitutional_amendment_streamlining').eq('id', nationId).single();
     const qPct = (nationQuorum?.legislative_quorum_override > 0) ? (nationQuorum.legislative_quorum_override / 100) : GAME_CONFIG.QUORUM_THRESHOLD;
+    const hasStreamlining = !!nationQuorum?.constitutional_amendment_streamlining;
     const quorumSeats = Math.ceil(effectiveTotalSeats * qPct);
     const results = [];
 
@@ -6806,11 +6807,17 @@ async function checkEarlyMajority(supabase, nationId) {
 
         // ── Check 1: Mathematical lock (outcome impossible to change) ──
         if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
-            // Absolute supermajority: 67% of effective total seats, no quorum
-            // Must use effectiveTotalSeats (not GAME_CONFIG.TOTAL_SEATS) to match resolveBillVote
-            const requiredSeats = (bill.bill_type === 'veto_override')
-                ? Math.ceil(effectiveTotalSeats * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD)
-                : Math.ceil(effectiveTotalSeats * GAME_CONFIG.SUPERMAJORITY_THRESHOLD);
+            // Supermajority threshold — must match resolveBillVote logic:
+            // - Veto override uses VETO_OVERRIDE_THRESHOLD
+            // - Foundational + streamlining active (not the streamlining bill itself): 55%
+            // - Everything else: 67%
+            let ratio = GAME_CONFIG.SUPERMAJORITY_THRESHOLD;
+            if (bill.bill_type === 'veto_override') {
+                ratio = GAME_CONFIG.VETO_OVERRIDE_THRESHOLD;
+            } else if (bill.bill_type === 'foundational' && hasStreamlining && !bill.proposed_constitutional_amendment_streamlining) {
+                ratio = 0.55;
+            }
+            const requiredSeats = Math.ceil(effectiveTotalSeats * ratio);
             if (effectiveYes >= requiredSeats) {
                 earlyStatus = 'majority_reached';
             } else if (effectiveYes + undeclaredSeats < requiredSeats) {
@@ -19816,29 +19823,37 @@ function rollRallyOutcome(weights) {
  * Returns { success, outcomeId, outcomeName, headline, effects, newAp }
  */
 async function executeRally(supabase, factionId, nationId, blocId, currentTick) {
-    // ── 1. Validate AP (with leader trait modifiers) ──
+    // ── 1. Validate AP (with leader trait modifiers + escalation) ──
     const { data: faction } = await supabase
         .from('factions').select('action_points, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
-    const rallyApMod = getTraitAPModifier('rally', faction, currentTick);
-    const effectiveRallyCost = Math.max(1, RALLY_CONFIG.AP_COST + rallyApMod);
-    if ((faction.action_points || 0) < effectiveRallyCost)
-        return { success: false, error: `Not enough AP. Need ${effectiveRallyCost}.` };
 
-    // ── 2. Check cooldown (one rally per tick) ──
+    // ── 2. Check cooldown (one rally per tick) + compute escalation ──
     const { data: recentRallies } = await supabase
         .from('campaign_actions')
         .select('tick_performed, result')
         .eq('party_id', factionId)
         .eq('action_type', 'rally')
-        .gte('tick_performed', currentTick - RALLY_CONFIG.COOLDOWN_WINDOW)
+        .gte('tick_performed', currentTick - 10)
         .order('tick_performed', { ascending: false });
 
     if ((recentRallies || []).some(r => r.tick_performed === currentTick))
         return { success: false, error: 'Already held a rally this tick.' };
 
-    // Count how many times this specific bloc was rallied recently
-    const ralliedRecently = (recentRallies || []).filter(r => r.result?.blocId === blocId).length;
+    // Escalating cost: +1 per recent use, -1 per tick since last use
+    let rallyEscalation = 0;
+    if (recentRallies && recentRallies.length > 0) {
+        const lastRallyTick = Math.max(...recentRallies.map(r => r.tick_performed));
+        rallyEscalation = Math.max(0, recentRallies.length - (currentTick - lastRallyTick));
+    }
+
+    const rallyApMod = getTraitAPModifier('rally', faction, currentTick);
+    const effectiveRallyCost = Math.max(1, RALLY_CONFIG.AP_COST + rallyEscalation + rallyApMod);
+    if ((faction.action_points || 0) < effectiveRallyCost)
+        return { success: false, error: `Not enough AP. Need ${effectiveRallyCost}.` };
+
+    // Count how many times this specific bloc was rallied recently (within cooldown window)
+    const ralliedRecently = (recentRallies || []).filter(r => r.result?.blocId === blocId && r.tick_performed >= currentTick - RALLY_CONFIG.COOLDOWN_WINDOW).length;
 
     // ── 3. Load target bloc (optional) + nation stats ──
     // (voter_blocs table removed; default to General Public)
@@ -19870,11 +19885,18 @@ async function executeRally(supabase, factionId, nationId, blocId, currentTick) 
     const outcomeId = rollRallyOutcome(weights);
     const outcome = RALLY_OUTCOMES.find(o => o.id === outcomeId);
 
-    // ── 6. Roll specific target effect (with telegenic multiplier) ──
+    // ── 6. Roll specific target effect (with telegenic multiplier + diminishing returns) ──
     let targetDelta = outcome.targetMin + Math.floor(Math.random() * (outcome.targetMax - outcome.targetMin + 1));
     if (targetDelta > 0) {
         const mult = getTraitApprovalMultiplier(faction, 'rally', 'SWING'); // generic multiplier for rally
         targetDelta = Math.round(targetDelta * mult);
+    }
+    // Diminishing returns: reduce effect by 25% per escalation level (min 25% of original)
+    if (rallyEscalation > 0 && targetDelta !== 0) {
+        const sign = targetDelta > 0 ? 1 : -1;
+        const diminish = Math.max(0.25, 1 - rallyEscalation * 0.25);
+        targetDelta = Math.round(targetDelta * diminish);
+        if (targetDelta === 0) targetDelta = sign; // preserve direction even at minimum
     }
 
     // ── 7. Apply momentum from rally outcome ──
