@@ -27,6 +27,7 @@ import { initPage, getAdminNationOverride, getAdminFactionOverride } from './js/
 import { escapeHtml } from './js/utils.js';
 import { initGameConfigForNation, deductAP, GAME_CONFIG } from './js/game/config.js';
 import { isPresidentialRepublic } from './js/game/government-types.js';
+import { getNationNames } from './js/game/political-actions.js';
 import { fetchActiveCoalition, loadSeats } from './js/game/government-structure.js';
 import { syncVoteTallies } from './js/game/bills.js';
 
@@ -97,18 +98,9 @@ let targetNation = null;
 let allParties = [];
 
 
-const AMB_FIRST_NAMES = [
-    'Carlos','Diego','Fernando','H\u00E9ctor','Marcos','Ram\u00F3n','Jos\u00E9','Luis','Miguel',
-    'Antonio','Roberto','Francisco','Eduardo','Pablo','Alejandro','Rafael','Gabriel',
-    'Santiago','Andr\u00E9s','Javier','Ricardo','Tom\u00E1s','Emilio','Sergio','Nicol\u00E1s',
-    'Arturo','Enrique','Oscar','Felipe','Gonzalo','Ignacio','Mateo','Dante'
-];
-const AMB_LAST_NAMES = [
-    'Velasco','Salazar','Guerrero','R\u00EDos','Morales','Torres','Mendoza','Castillo',
-    'Herrera','Vargas','Reyes','Cruz','Navarro','Delgado','Ortiz','Romero','Flores',
-    'Ram\u00EDrez','Guzm\u00E1n','Medina','Soto','Pacheco','Ibarra','Carrasco','Espinoza',
-    'Montenegro','Echeverr\u00EDa','Valdez','C\u00F3rdoba','Aguilar','Paredes','Lara'
-];
+// Nation-specific name pools — set on page init via getNationNames()
+let AMB_FIRST_NAMES = [];
+let AMB_LAST_NAMES = [];
 
 // ── Helper: diplomacy back URL (ambassador) ──
 function diploBackUrl() {
@@ -130,6 +122,13 @@ initPage(cfg.initTab, async (state) => {
     if (!nation || !faction) {
         renderEmpty('No nation or party found.');
         return;
+    }
+
+    // Set nation-specific name pools
+    if (nation?.name) {
+        const { firstNames, lastNames } = getNationNames(nation.name);
+        AMB_FIRST_NAMES = firstNames;
+        AMB_LAST_NAMES = lastNames;
     }
 
     if (ROLE === 'pm') await initPM();
