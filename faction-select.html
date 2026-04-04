@@ -282,7 +282,7 @@ body {
   </div>
 </div>
 
-<div id="page-content" style="display:none; width:100%; display:none; flex-direction:column; align-items:center;">
+<div id="page-content" style="display:none; width:100%; flex-direction:column; align-items:center;">
   <div class="page-header">
     <h1>Step 2 of 3</h1>
     <div class="title">Define Your Political Identity</div>
@@ -358,20 +358,22 @@ async function init() {
   if (!user) { window.location.href = 'login.html'; return; }
 
   // Check if user already has an active party
-  const { data: faction } = await _supabase
+  const { data: faction, error: partyErr } = await _supabase
     .from('factions').select('id, nation_id, abandoned_at').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
+  if (partyErr) console.warn('Party check failed:', partyErr.message);
   if (faction && faction.nation_id && !faction.abandoned_at) {
     window.location.href = 'dashboard.html';
     return;
   }
 
   // Check if user has an active corporation
-  const { data: corpFaction } = await _supabase
+  const { data: corpFaction, error: corpErr } = await _supabase
     .from('factions').select('id, nation_id, abandoned_at')
     .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
     .eq('faction_type', 'corporation')
     .is('abandoned_at', null)
     .maybeSingle();
+  if (corpErr) console.warn('Corp check failed:', corpErr.message);
   if (corpFaction && corpFaction.nation_id) {
     window.location.href = 'corp-dashboard.html';
     return;

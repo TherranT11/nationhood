@@ -22,11 +22,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ════════════════════════════════════════════════════════════════════════════════
-//  IDEMPOTENCY — in-memory tracker to skip duplicate cron fires
-// ════════════════════════════════════════════════════════════════════════════════
-
-let lastProcessedTick = -1;
-
 // ════════════════════════════════════════════════════════════════════════════════
 //  CONSTRUCTION SECTOR — Templates & Helpers
 // ════════════════════════════════════════════════════════════════════════════════
@@ -1205,7 +1200,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
     }
 
     // 6. Mark this tick as processed (persisted to DB to survive cold starts)
-    lastProcessedTick = currentTick;
     await supabase.from('shard').update({ corp_last_processed_tick: currentTick }).eq('name', 'Alpha Shard');
 
     console.log(`[advance-corp-tick] Tick ${currentTick} complete. ${summary.corpsProcessed} corps across ${nationList.length} nations.`);
