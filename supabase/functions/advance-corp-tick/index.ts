@@ -493,16 +493,26 @@ async function replenishPropertyMarketplace(supabase, nation, currentTick) {
         .eq('status', 'available');
     const existingCatalogIds = new Set((existing || []).map(e => e.catalog_id));
 
+    // 4b. Check if construction corps exist in this nation (for warehouse generation)
+    const { count: constructionCorpCount } = await supabase
+        .from('factions')
+        .select('id', { count: 'exact', head: true })
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'corporation')
+        .eq('corp_sector', 'Construction');
+    const hasConstructionCorps = (constructionCorpCount || 0) > 0;
+
     // 5. GDP-weighted selection: higher GDP growth biases toward larger properties
-    // Weight: small=1, medium=2+(gdp/25), large=1+(gdp/20), campus=gdp>=60?2:0
     const weightedPool = [];
     for (const tmpl of catalog) {
-        if (existingCatalogIds.has(tmpl.id)) continue; // skip duplicates
+        if (existingCatalogIds.has(tmpl.id)) continue;
+        // Warehouse: only if construction corps exist, 10% chance per slot
+        if (tmpl.type === 'warehouse' && !hasConstructionCorps) continue;
         let weight = 1;
-        if (tmpl.size_class === 'medium') weight = 2 + gdpGrowth / 25;
+        if (tmpl.type === 'warehouse') weight = hasConstructionCorps ? 0.5 : 0; // ~10% of pool
+        else if (tmpl.size_class === 'medium') weight = 2 + gdpGrowth / 25;
         else if (tmpl.size_class === 'large') weight = 1 + gdpGrowth / 20;
         else if (tmpl.size_class === 'campus') weight = gdpGrowth >= 60 ? 2 : 0.2;
-        // Premium/Innovative styles are rarer
         if (tmpl.style === 'Premium' || tmpl.style === 'Innovative') weight *= 0.6;
         for (let w = 0; w < Math.ceil(weight); w++) weightedPool.push(tmpl);
     }
@@ -635,7 +645,7 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
             const cap = Number(p.capacity || 0);
             const cond = Number(p.condition || 0) / 100; // 0.0-1.0
             return sum + Math.floor(cap * cond);
-        }, 0) + 3000; // 3000 = National HQ base capacity
+        }, 0) + 500; // 500 = National HQ base capacity
         const { data: factionWf } = await supabase
             .from('factions')
             .select('corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
