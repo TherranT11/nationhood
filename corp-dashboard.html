@@ -1120,27 +1120,7 @@ async function init() {
     // Messaging bubble
     initMessaging(faction, nationStats, shard);
 
-    // Dissolve button — 60 tick cooldown from founding
-    const DISSOLVE_COOLDOWN = 60;
-    const foundedTick = faction.founded_tick || 0;
-    const currentTickVal = shard?.current_tick || 0;
-    const ticksUntilDissolve = Math.max(0, DISSOLVE_COOLDOWN - (currentTickVal - foundedTick));
-    const dissolveBtn = document.getElementById('dissolve-btn');
-    const dissolveInfo = document.getElementById('dissolve-info');
-    if (dissolveBtn) {
-        if (ticksUntilDissolve > 0) {
-            dissolveBtn.disabled = true;
-            dissolveBtn.style.opacity = '0.4';
-            dissolveBtn.style.cursor = 'not-allowed';
-            if (dissolveInfo) dissolveInfo.innerHTML =
-                `<span style="color:#a44;">Available in ${ticksUntilDissolve} tick${ticksUntilDissolve !== 1 ? 's' : ''}</span><br>` +
-                'Corporations must operate for 60 ticks before dissolution.';
-        } else {
-            dissolveBtn.disabled = false;
-            dissolveBtn.style.opacity = '1';
-            dissolveBtn.style.cursor = 'pointer';
-        }
-    }
+    // Dissolve button — no cooldown, always available
 
     // Show page
     document.getElementById('loading').style.display = 'none';
@@ -1806,27 +1786,30 @@ window.switchToFaction = switchToFaction;
 let _dissolving = false;
 
 async function dissolveCorporation() {
-    if (_dissolving) return;
+    if (_dissolving) { console.warn('Dissolve already in progress'); return; }
     const { data: { user } } = await _supabase.auth.getUser();
-    if (!user) return;
+    if (!user) { alert('Not logged in.'); return; }
 
     const factionId = sessionStorage.getItem('active_faction_id');
-    if (!factionId) return;
+    if (!factionId) { alert('No active faction selected.'); return; }
 
-    // Find the active corp faction
-    const corp = allUserFactions.find(f => f.id === factionId && f.faction_type === 'corporation');
-    if (!corp) { alert('No active corporation found.'); return; }
+    // Find the active corp faction — fetch fresh from DB to avoid stale cache
+    const { data: freshCorp, error: corpErr } = await _supabase
+        .from('factions')
+        .select('*')
+        .eq('id', factionId)
+        .eq('faction_type', 'corporation')
+        .is('abandoned_at', null)
+        .single();
 
-    const corpName = corp.faction_name || 'this corporation';
-
-    // Verify 60-tick cooldown server-side
-    const { data: shardNow } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const nowTick = shardNow?.current_tick || 0;
-    const age = nowTick - (corp.founded_tick || 0);
-    if (age < 60) {
-        alert('Corporation must be at least 60 ticks old to dissolve.\n\n' + (60 - age) + ' ticks remaining.');
+    if (corpErr || !freshCorp) {
+        alert('No active corporation found. It may have already been dissolved.');
+        console.error('Dissolve lookup failed:', corpErr?.message, 'factionId:', factionId);
         return;
     }
+    const corp = freshCorp;
+
+    const corpName = corp.faction_name || 'this corporation';
 
     // Two-step confirmation
     if (!confirm(
@@ -1877,7 +1860,9 @@ async function dissolveCorporation() {
         await run(_supabase.from('factions').update({
             abandoned_at: new Date().toISOString(),
             corp_cash_reserves: 0,
-            corp_employees: 0,
+            corp_general_workforce: 0,
+            corp_skilled_workforce: 0,
+            corp_innovative_workforce: 0,
             action_points: 0,
         }).eq('id', factionId));
 
