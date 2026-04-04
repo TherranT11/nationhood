@@ -3242,7 +3242,6 @@ window.setBidGrade = setBidGrade;
 window.setBidLabor = setBidLabor;
 window.setBidMarkup = setBidMarkup;
 
-let _bidSubmitting = false;
 async function submitBid() {
     if (!bidState || !faction || _bidSubmitting) return;
     const s = bidState;
