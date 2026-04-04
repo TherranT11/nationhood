@@ -54,9 +54,18 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
-import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, autoAppointPartyLeaderAsPM, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration, dissolveCoalition, EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder, PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest, getNationNames, POSITIVE_TRAITS } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, deductAP } from './js/game/config.js';
+import { isGovernmentPresidential, CANONICAL_GOVERNMENT_TYPES } from './js/game/government-types.js';
+import { loadSeats, detectHeadFaction, fetchActiveCoalition } from './js/game/government-structure.js';
+import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, buildMinistryBaselines } from './js/game/stats.js';
+import { formatStatName, autoAppointPartyLeaderAsPM, getNationNames, resignPM } from './js/game/political-actions.js';
+import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
+import { callEarlyElectionsAction, closeAdministration, rolloverAdministration, dissolveCoalition } from './js/game/elections.js';
+import { nominateMinister } from './js/game/presidential.js';
+import { EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder } from './js/game/executive-orders.js';
+import { PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game/protest.js';
+import { POSITIVE_TRAITS } from './js/game/party-leadership.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
 (function () {
@@ -2241,6 +2250,29 @@ function updateSeatPreview() {
 }
 
 async function createProposal() {
+    // DIAGNOSTIC: Log every call with stack trace to find ghost proposals
+    const diagStack = new Error().stack;
+    const diagTime = new Date().toISOString();
+    console.warn(`[DIAG] createProposal() CALLED at ${diagTime}`, {
+        faction: currentFaction?.id,
+        factionName: currentFaction?.faction_name,
+        nation: currentNation?.name,
+        electionId: currentElectionId,
+        selectedParties: [...proposalSelectedParties],
+        stack: diagStack
+    });
+
+    // Also persist to event_log so we can see it server-side even if console is lost
+    try {
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation?.id,
+            event_name: 'DIAG_CREATE_PROPOSAL_CALLED',
+            trigger_key: 'diag_create_proposal',
+            description_used: `createProposal() called by ${currentFaction?.faction_name} (${currentFaction?.id}) at ${diagTime}. Selected: ${proposalSelectedParties.length} parties. Stack: ${diagStack?.split('\n').slice(0, 5).join(' | ')}`,
+            category: 'POLITICAL'
+        });
+    } catch (diagErr) { console.warn('[DIAG] event_log insert failed:', diagErr); }
+
     if (_proposalSubmitting) return;
     if (getFormationPartySeats(currentFaction.id) === 0) {
         alert('Your party has no seats — you cannot propose a coalition.');
@@ -2275,6 +2307,8 @@ async function createProposal() {
         const { data: shard } = await _supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
         const gameYear = shard?.current_date || '';
 
+        console.warn(`[DIAG] createProposal() INSERTING at ${new Date().toISOString()}`, { partyIds, coalitionSeats, gameYear });
+
         const { data, error } = await _supabase
             .from('government_formations')
             .insert({
@@ -2289,6 +2323,8 @@ async function createProposal() {
             .single();
 
         if (error) { alert('Error creating proposal: ' + error.message); return; }
+
+        console.warn(`[DIAG] createProposal() SUCCESS — formation id: ${data.id}`);
 
         const { error: supportError } = await _supabase.rpc('toggle_formation_support', {
             p_formation_id: data.id,
@@ -2873,6 +2909,26 @@ async function retractProposal(formationId) {
 // ===== Form Government =====
 
 async function formGovernment() {
+    // DIAGNOSTIC: Log every call with stack trace to find ghost formations
+    const diagStack = new Error().stack;
+    const diagTime = new Date().toISOString();
+    console.warn(`[DIAG] formGovernment() CALLED at ${diagTime}`, {
+        faction: currentFaction?.id,
+        factionName: currentFaction?.faction_name,
+        nation: currentNation?.name,
+        activeFormationId,
+        stack: diagStack
+    });
+    try {
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation?.id,
+            event_name: 'DIAG_FORM_GOVERNMENT_CALLED',
+            trigger_key: 'diag_form_government',
+            description_used: `formGovernment() called by ${currentFaction?.faction_name} (${currentFaction?.id}) at ${diagTime}. Formation: ${activeFormationId}. Stack: ${diagStack?.split('\n').slice(0, 5).join(' | ')}`,
+            category: 'POLITICAL'
+        });
+    } catch (diagErr) { console.warn('[DIAG] event_log insert failed:', diagErr); }
+
     if (_formingInProgress) return;
     if (!activeFormationId) return;
 

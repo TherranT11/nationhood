@@ -1687,7 +1687,7 @@ function createOverlay() {
     return overlayEl;
 }
 
-function openGuide() {
+export function openGuide() {
     const tab = window.__currentTab || 'dashboard';
     const guide = guideContent[tab] || placeholderGuide;
     const overlay = createOverlay();
@@ -1701,42 +1701,4 @@ function closeGuide() {
     if (overlayEl) overlayEl.classList.remove('active');
 }
 
-// Tab ID to display label
-const TAB_LABELS = {
-    dashboard: 'Home', nation: 'Nation', government: 'Government',
-    politics: 'Politics', laws: 'Bills', diplomacy: 'Diplomacy',
-    economy: 'Economy', events: 'Events', elections: 'Elections'
-};
-
-// Hidden on dashboard (no guide needed there)
-const HIDDEN_TABS = ['dashboard', 'home'];
-
-// Attach to guide button once DOM is ready
-function attachGuideButton() {
-    const btn = document.getElementById('guide-btn');
-    if (!btn) return;
-
-    const tab = window.__currentTab || 'dashboard';
-    if (HIDDEN_TABS.includes(tab)) {
-        btn.style.display = 'none';
-        return;
-    }
-
-    const label = TAB_LABELS[tab] || tab.charAt(0).toUpperCase() + tab.slice(1);
-    btn.textContent = label + ' Guide';
-    btn.style.display = '';
-    btn.addEventListener('click', openGuide);
-}
-
-// Run on import - use MutationObserver in case top bar renders after import
-if (document.getElementById('guide-btn')) {
-    attachGuideButton();
-} else {
-    const observer = new MutationObserver(() => {
-        if (document.getElementById('guide-btn')) {
-            attachGuideButton();
-            observer.disconnect();
-        }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-}
+// Guide button setup is now handled by common.js (lazy-loaded on click)

@@ -25,13 +25,10 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, getAdminNationOverride, getAdminFactionOverride } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import {
-    initGameConfigForNation,
-    isPresidentialRepublic,
-    fetchActiveCoalition, loadSeats, syncVoteTallies,
-    deductAP,
-    GAME_CONFIG
-} from './js/game-common.js';
+import { initGameConfigForNation, deductAP, GAME_CONFIG } from './js/game/config.js';
+import { isPresidentialRepublic } from './js/game/government-types.js';
+import { fetchActiveCoalition, loadSeats } from './js/game/government-structure.js';
+import { syncVoteTallies } from './js/game/bills.js';
 
 // ── Role detection ──
 const params = new URLSearchParams(window.location.search);

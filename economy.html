@@ -24,10 +24,17 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatCurrency, assertRawEconomicValue } from './js/common.js';
-import './js/guide.js';
 import { escapeHtml } from './js/utils.js';
 import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
-import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TAX_CONFIG, isPresidentialRepublic, ISSUE_CATEGORY_STATS, formatStatName, deductAP, fetchActiveCoalition, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG, buildFundingPctMap, getInstFundingPct, formatSectorVolume } from './js/game-common.js';
+import { GAME_CONFIG, deductAP } from './js/game/config.js';
+import { isPresidentialRepublic } from './js/game/government-types.js';
+import { fetchActiveCoalition } from './js/game/government-structure.js';
+import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TAX_CONFIG } from './js/game/budget.js';
+import { RAW_SCALING_DIVISORS, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS } from './js/game/diplomacy-constants.js';
+import { TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, formatSectorVolume } from './js/game/trade-constants.js';
+import { ISSUE_CATEGORY_STATS, buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
+import { formatStatName } from './js/game/political-actions.js';
+import { getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG } from './js/game/sovereign-default.js';
 
 // ==================== STATE ====================
 var previousTickData = null;
