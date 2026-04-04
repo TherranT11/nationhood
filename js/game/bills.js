@@ -1391,11 +1391,9 @@ export async function resolveExpiredVotes(supabase, nationId) {
                                                     condition_failures: {}
                                                 });
                                                 if (aidErr) console.error('[bilateral] aid_agreement_state insert failed:', aidErr.message);
-                                                else console.log(`[bilateral] Aid state created: donor=${donorId}, recipient=${recipientId}, amount=$${(annualAmount/1e9).toFixed(1)}B/yr`);
                                             }
                                         }
                                     }
-                                    console.log(`[bilateral] trade_agreements row created for ${pd.agreement_type}: ${newTA.id}`);
                                 }
                             }
 

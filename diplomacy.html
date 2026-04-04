@@ -12262,7 +12262,8 @@ function renderIssueStatementPanel(body, statusEl) {
     html += '<span class="action-bar-info">Fires immediately &middot; +1 Momentum</span>';
     html += '<div class="action-bar-spacer"></div>';
     html += '<button class="btn btn--dim" onclick="cancelDraft()">Cancel</button>';
-    html += '<button class="btn btn--send" id="submit-statement-btn" onclick="submitIssueStatement()">Issue Statement (1 AP)</button>';
+    html += '<button class="btn btn--send' + (hasEnoughAP ? '' : '" disabled') + '" id="submit-statement-btn" onclick="submitIssueStatement()"' +
+        (!hasEnoughAP ? ' title="Not enough AP (1 required)"' : '') + '>Issue Statement (1 AP)</button>';
     html += '</div>';
 
     html += '</div>';
@@ -12332,7 +12333,7 @@ async function submitIssueStatement() {
         const description = 'The nation of ' + currentNation.name + ' has issued the following statement regarding ' + topic + ': \u201c' + statement + '\u201d';
 
         // Post to event_log (visible in World Events for other nations, domestic events for own nation)
-        await _supabase.from('event_log').insert({
+        const { error: eventErr } = await _supabase.from('event_log').insert({
             nation_id: currentNation.id,
             event_name: 'Official Statement: ' + topic,
             trigger_key: 'issue_statement',
@@ -12340,14 +12341,19 @@ async function submitIssueStatement() {
             description_chosen: description,
             fired_at_tick: currentTick
         });
+        if (eventErr) {
+            console.error('Failed to post statement event:', eventErr.message);
+            alert('Error posting statement: ' + eventErr.message);
+            return;
+        }
 
-        // +1 momentum for the ambassador's party
-        await _supabase.rpc('adjust_momentum', {
+        // +1 momentum for the ambassador's party (non-blocking)
+        _supabase.rpc('adjust_momentum', {
             p_faction_id: currentFaction.id,
             p_delta: 1,
             p_label: 'Issued official statement (+1)',
             p_tick: currentTick
-        });
+        }).then(null, e => console.error('adjust_momentum failed:', e));
 
         // Update AP display
         currentFaction.action_points = apResult.newAp;

@@ -25,9 +25,7 @@ DECLARE
   v_active_hog RECORD;
   v_coalition_parties JSONB;
   v_total_seats INT := 0;
-  v_pm_name TEXT;
   v_hos_name TEXT;
-  v_admin_name TEXT;
   v_end_reason TEXT;
   v_gov_approval INT;
   v_recent_election RECORD;
@@ -52,9 +50,6 @@ DECLARE
     "transportation": "Ministry of Transportation"
   }'::JSONB;
   v_stats_snapshot JSONB;
-  v_ideology RECORD;
-  v_trait RECORD;
-  v_leader_trait_key TEXT;
 BEGIN
   -- 1. Validate formation exists and caller is the PM party
   SELECT * INTO v_formation
@@ -267,22 +262,12 @@ BEGIN
     v_active_hog := NULL;
   END;
 
-  v_pm_name := NULL;
-  IF v_active_hog.first_name IS NOT NULL THEN
-    v_pm_name := v_active_hog.first_name || ' ' || v_active_hog.last_name;
-  END IF;
-
   v_hos_name := NULL;
   IF v_nation.head_of_state_first_name IS NOT NULL AND v_nation.head_of_state_last_name IS NOT NULL THEN
     v_hos_name := v_nation.head_of_state_first_name || ' ' || v_nation.head_of_state_last_name;
   END IF;
 
   SELECT * INTO v_pm_faction FROM factions WHERE id = v_pm_party_id;
-  v_admin_name := COALESCE(
-    v_active_hog.last_name || ' Administration',
-    v_nation.head_of_state_last_name || ' Administration',
-    COALESCE(v_pm_faction.faction_name, 'Unknown') || ' Administration'
-  );
 
   UPDATE administrations SET
     ended_at_tick = v_shard.current_tick,
