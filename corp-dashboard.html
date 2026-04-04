@@ -932,7 +932,7 @@ async function init() {
         .select('*')
         .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
 
-    allUserFactions = (allFactions || []).filter(f => f.nation_id);
+    allUserFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
 
     // Pick active faction — prefer sessionStorage, then first corp, then first
     const activeFactionId = sessionStorage.getItem('active_faction_id');
@@ -1802,9 +1802,9 @@ async function dissolveCorporation() {
         'DISSOLVE ' + corpName.toUpperCase() + '?\n\n' +
         'This will permanently:\n' +
         '• Remove the corporation from the game\n' +
-        '• Delete all bids, equipment, properties, and inventory\n' +
-        '• Cancel all active construction projects\n' +
-        '• Detach this corporation from your account\n\n' +
+        '• Delete all properties, equipment, and inventory\n' +
+        '• Remove all cash reserves\n' +
+        '• Outstanding debts and active projects will remain\n\n' +
         'This action CANNOT be undone.'
     )) return;
 
@@ -1825,40 +1825,41 @@ async function dissolveCorporation() {
         // 1. Delete all bids this corp has submitted
         await run(_supabase.from('contract_bids').delete().eq('faction_id', factionId));
 
-        // 2. Cancel any contracts this corp was awarded (mark completed)
-        await run(_supabase.from('construction_contracts')
-            .update({ status: 'completed' })
-            .eq('awarded_to_faction', factionId)
-            .in('status', ['awarded', 'in_progress']));
-
-        // 3. Expire any open contracts this corp issued
+        // 2. Expire any open contracts this corp issued (not in-progress — those stay)
         await run(_supabase.from('construction_contracts')
             .update({ status: 'expired' })
             .eq('issuer_faction_id', factionId)
             .in('status', ['open', 'bidding']));
 
-        // 4. Delete equipment and deliveries
+        // 3. Delete equipment and deliveries
         await run(_supabase.from('corp_equipment_deliveries').delete().eq('faction_id', factionId));
         await run(_supabase.from('corp_equipment').delete().eq('faction_id', factionId));
 
-        // 5. Delete properties
+        // 4. Delete properties
         await run(_supabase.from('corp_properties').delete().eq('faction_id', factionId));
 
-        // 6. Delete warehouse / material inventory
+        // 5. Delete warehouse / material inventory
         await run(_supabase.from('corp_material_inventory').delete().eq('faction_id', factionId));
         await run(_supabase.from('corp_warehouse').delete().eq('faction_id', factionId));
 
-        // 7. Delete the faction itself
-        await run(_supabase.from('factions').delete().eq('id', factionId));
+        // 6. Mark as dissolved — zero out cash/employees but keep debts + active projects
+        await run(_supabase.from('factions').update({
+            abandoned_at: new Date().toISOString(),
+            corp_cash_reserves: 0,
+            corp_employees: 0,
+            action_points: 0,
+        }).eq('id', factionId));
 
-        // 8. Clear session and redirect
+        // 7. Clear session and redirect
         sessionStorage.removeItem('active_faction_id');
+        sessionStorage.removeItem('nationhood_state');
 
-        // Check if user still has other factions
+        // Check if user still has other active factions
         const { data: remaining } = await _supabase
             .from('factions')
-            .select('id, faction_type')
-            .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
+            .select('id, faction_type, abandoned_at')
+            .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+            .is('abandoned_at', null);
 
         const party = (remaining || []).find(f => f.faction_type === 'party');
         const otherCorp = (remaining || []).find(f => f.faction_type === 'corporation');
@@ -1872,11 +1873,11 @@ async function dissolveCorporation() {
             alert(corpName + ' has been dissolved.\n\nRedirecting to your other corporation.');
             window.location.href = 'corp-dashboard.html';
         } else {
-            alert(corpName + ' has been dissolved.\n\nYou have no remaining factions. Redirecting to faction select.');
+            alert(corpName + ' has been dissolved.\n\nYou have no remaining factions.');
             window.location.href = 'select-nation.html';
         }
     } catch (err) {
-        alert('Dissolution failed at step: ' + (err.message || err) + '\n\nPlease contact support if the corporation is in a broken state.');
+        alert('Dissolution failed: ' + (err.message || err) + '\n\nPlease try again or contact support.');
         if (btn) { btn.disabled = false; btn.textContent = 'Dissolve Corporation'; btn.style.opacity = '1'; }
     } finally {
         _dissolving = false;
