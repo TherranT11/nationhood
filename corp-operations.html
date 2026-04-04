@@ -6009,7 +6009,7 @@ async function switchToExpansion(e) {
 
 function switchToOperations(e) {
     if (e) e.preventDefault();
-    document.getElementById('operations-content').style.display = '';
+    document.getElementById('operations-content').style.display = 'flex';
     document.getElementById('expansion-content').style.display = 'none';
     document.querySelectorAll('.corp-nav__tab').forEach(t => t.classList.remove('active'));
     document.querySelector('[data-tab="operations"]')?.classList.add('active');
@@ -6022,7 +6022,7 @@ function hfGetCapacity() {
         const cond = Number(p.condition || 0) / 100;
         return sum + Math.floor(cap * cond);
     }, 0);
-    return propCapacity + 500;
+    return propCapacity + 3000; // 3000 = National HQ base capacity
 }
 
 function hfSetChange(id, delta) {
@@ -6378,9 +6378,30 @@ function renderPropertyCard() {
     let totalValue = 0;
     let totalMaint = 0;
 
-    if (_ownedProperties.length === 0) {
-        propsHtml = `<div style="padding:20px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">No properties owned.<br>Purchase from the marketplace →</div>`;
-    }
+    // National HQ is always present (not stored in DB — it's implicit)
+    const hqNation = nationStats?.name || faction?.nation || 'Home Nation';
+    propsHtml += `
+    <div style="padding:8px 12px;border-bottom:1px solid ${C.border};">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+            <span style="font-size:11px;font-weight:600;color:${C.text}">National Headquarters</span>
+            <span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:#5c5;background:rgba(68,170,136,0.08);border:1px solid rgba(68,170,136,0.15)">HQ</span>
+        </div>
+        <div style="font-family:${mono};font-size:8px;color:${C.dim};margin-bottom:4px;">${hqNation} · Headquarters</div>
+        <div style="display:flex;gap:0;background:${C.card};border:1px solid ${C.border}">
+            <div style="flex:1;padding:3px 6px;border-right:1px solid ${C.border}">
+                <div style="font-family:${mono};font-size:7px;color:${C.dim}">CAPACITY</div>
+                <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.text}">3,000</div>
+            </div>
+            <div style="flex:1;padding:3px 6px;border-right:1px solid ${C.border}">
+                <div style="font-family:${mono};font-size:7px;color:${C.dim}">VALUE</div>
+                <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.gold}">Included</div>
+            </div>
+            <div style="flex:1;padding:3px 6px">
+                <div style="font-family:${mono};font-size:7px;color:${C.dim}">MAINT/MO</div>
+                <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.dim}">$0</div>
+            </div>
+        </div>
+    </div>`;
 
     for (const prop of _ownedProperties) {
         const sm = NP_STYLE_META[prop.style] || NP_STYLE_META.Basic;
@@ -6427,7 +6448,7 @@ function renderPropertyCard() {
                 <span style="font-size:8px;color:${C.accent}">●</span>
                 <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Property</span>
             </div>
-            <span style="font-family:${mono};font-size:10px;color:${C.muted}">${_ownedProperties.length} ASSET${_ownedProperties.length !== 1 ? 'S' : ''}</span>
+            <span style="font-family:${mono};font-size:10px;color:${C.muted}">${_ownedProperties.length + 1} ASSET${_ownedProperties.length + 1 !== 1 ? 'S' : ''}</span>
         </div>
         <div style="flex:1;overflow:auto;">
             ${propsHtml}

@@ -1476,11 +1476,32 @@ async function renderProperty(nation, nationName, factionData, shard) {
 
     let totalValue = 0;
     let totalMaint = 0;
-    let propsHtml = '';
 
-    if (ownedProps.length === 0) {
-        propsHtml = '<div style="padding:20px;text-align:center;font-size:11px;color:var(--text-dim);">No properties owned.<br>Visit the Expansion tab to purchase.</div>';
-    }
+    // National HQ always present (implicit, not in DB)
+    let propsHtml = `
+    <div class="prop-asset" style="margin-bottom:6px;">
+        <div class="prop-asset__top">
+            <div>
+                <div class="prop-asset__name">National Headquarters</div>
+                <div style="font-size:9px;color:var(--text-dim);margin-top:1px;">${escapeHtml(natUp)} · Headquarters</div>
+            </div>
+            <span class="prop-asset__badge">HQ</span>
+        </div>
+        <div style="display:flex;gap:0;background:var(--bg-3);border:1px solid var(--border-hair);margin:4px 0;">
+            <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
+                <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">CAPACITY</div>
+                <div style="font-size:10px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);">3,000</div>
+            </div>
+            <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
+                <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">VALUE</div>
+                <div style="font-size:10px;font-weight:700;color:var(--gold);font-family:var(--font-mono);">Included</div>
+            </div>
+            <div style="flex:1;padding:3px 6px;">
+                <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">MAINT/MO</div>
+                <div style="font-size:10px;font-weight:700;color:var(--text-dim);font-family:var(--font-mono);">$0</div>
+            </div>
+        </div>
+    </div>`;
 
     for (const prop of ownedProps) {
         const sm = NP_STYLE_META[prop.style] || NP_STYLE_META.Basic;
@@ -1520,7 +1541,7 @@ async function renderProperty(nation, nationName, factionData, shard) {
     }
 
     const propCountEl = document.getElementById('prop-count');
-    if (propCountEl) propCountEl.textContent = ownedProps.length + ' ASSET' + (ownedProps.length !== 1 ? 'S' : '');
+    if (propCountEl) propCountEl.textContent = (ownedProps.length + 1) + ' ASSET' + (ownedProps.length + 1 !== 1 ? 'S' : '');
 
     document.getElementById('prop-body').innerHTML = `
         ${propsHtml}

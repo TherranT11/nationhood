@@ -635,7 +635,7 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
             const cap = Number(p.capacity || 0);
             const cond = Number(p.condition || 0) / 100; // 0.0-1.0
             return sum + Math.floor(cap * cond);
-        }, 0) + 500; // 500 = base HQ capacity
+        }, 0) + 3000; // 3000 = National HQ base capacity
         const { data: factionWf } = await supabase
             .from('factions')
             .select('corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
