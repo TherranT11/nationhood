@@ -25107,7 +25107,7 @@ const INCIDENT_CONFIG = {
     fishing_dispute: {
         base_chance: 15,
         required_border: 'maritime',
-        required_proximity: 100,        // 100 = bordering
+        required_proximity: 0,          // must be bordering (0 = bordering, 100 = far)
         roles: { a: 'aggrieved', b: 'enforcer' },
         aggressor_role: 'enforcer',
         immediate_effects: { Relations: -5, Civil_Unrest_a: 1, Intl_Reputation_b: -0.5 },
@@ -25125,7 +25125,7 @@ const INCIDENT_CONFIG = {
     border_incursion: {
         base_chance: 0,            // disabled — no event pool seeded, would crash on trigger
         required_border: 'land',
-        required_proximity: 100,
+        required_proximity: 0,          // must be bordering (0 = bordering, 100 = far)
         roles: { a: 'invader', b: 'defender' },
         aggressor_role: 'invader',
         starting_leverage_a: 2,
@@ -25147,7 +25147,7 @@ const INCIDENT_CONFIG = {
     dam_water: {
         base_chance: 0,            // disabled — no event pool seeded, would crash on trigger
         required_border: 'river',
-        required_proximity: 100,
+        required_proximity: 0,          // must be bordering (0 = bordering, 100 = far)
         roles: { a: 'upstream', b: 'downstream' },
         aggressor_role: 'upstream',
         immediate_effects: { Relations: -8, Stability_b: -2 },
@@ -25269,8 +25269,8 @@ async function processIncidentTriggers(supabase, nationList, currentTick) {
                 const rel = relMap[`${nationA.id}::${nationB.id}`];
                 if (!rel) continue;
 
-                // Check proximity (100 = bordering for land/maritime/river crises)
-                if (config.required_proximity != null && rel.proximity < config.required_proximity) continue;
+                // Check proximity (0 = bordering, 100 = far; skip if too far apart)
+                if (config.required_proximity != null && rel.proximity > config.required_proximity) continue;
 
                 // Check border type
                 if (config.required_border) {
