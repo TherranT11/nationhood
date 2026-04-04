@@ -738,7 +738,7 @@ export async function checkEarlyMajority(supabase, nationId) {
     // Bills still voting, not yet locked, not yet expired
     const { data: activeBills, error } = await supabase
         .from('bills')
-        .select('id, bill_name, bill_type, voting_ends_tick, proposed_tick, floor_tick, caucus_votes_withheld, bill_support(faction_id, stance, seat_count)')
+        .select('id, bill_name, bill_type, voting_ends_tick, proposed_tick, floor_tick, caucus_votes_withheld, proposed_constitutional_amendment_streamlining, bill_support(faction_id, stance, seat_count)')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .is('early_resolution_status', null)
@@ -761,9 +761,10 @@ export async function checkEarlyMajority(supabase, nationId) {
     const factionSeatSum = (factionRows || []).reduce((sum, f) => sum + (f.seats || 0), 0);
     const effectiveTotalSeats = Math.min(GAME_CONFIG.TOTAL_SEATS, Math.max(factionSeatSum, 1));
 
-    // Check for Legislative Quorum Reform override
-    const { data: nationQuorum } = await supabase.from('nations').select('legislative_quorum_override').eq('id', nationId).single();
+    // Check for Legislative Quorum Reform override and Constitutional Amendment Streamlining
+    const { data: nationQuorum } = await supabase.from('nations').select('legislative_quorum_override, constitutional_amendment_streamlining').eq('id', nationId).single();
     const qPct = (nationQuorum?.legislative_quorum_override > 0) ? (nationQuorum.legislative_quorum_override / 100) : GAME_CONFIG.QUORUM_THRESHOLD;
+    const hasStreamlining = !!nationQuorum?.constitutional_amendment_streamlining;
     const quorumSeats = Math.ceil(effectiveTotalSeats * qPct);
     const results = [];
 
@@ -798,11 +799,17 @@ export async function checkEarlyMajority(supabase, nationId) {
 
         // ── Check 1: Mathematical lock (outcome impossible to change) ──
         if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
-            // Absolute supermajority: 67% of effective total seats, no quorum
-            // Must use effectiveTotalSeats (not GAME_CONFIG.TOTAL_SEATS) to match resolveBillVote
-            const requiredSeats = (bill.bill_type === 'veto_override')
-                ? Math.ceil(effectiveTotalSeats * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD)
-                : Math.ceil(effectiveTotalSeats * GAME_CONFIG.SUPERMAJORITY_THRESHOLD);
+            // Supermajority threshold — must match resolveBillVote logic:
+            // - Veto override uses VETO_OVERRIDE_THRESHOLD
+            // - Foundational + streamlining active (not the streamlining bill itself): 55%
+            // - Everything else: 67%
+            let ratio = GAME_CONFIG.SUPERMAJORITY_THRESHOLD;
+            if (bill.bill_type === 'veto_override') {
+                ratio = GAME_CONFIG.VETO_OVERRIDE_THRESHOLD;
+            } else if (bill.bill_type === 'foundational' && hasStreamlining && !bill.proposed_constitutional_amendment_streamlining) {
+                ratio = 0.55;
+            }
+            const requiredSeats = Math.ceil(effectiveTotalSeats * ratio);
             if (effectiveYes >= requiredSeats) {
                 earlyStatus = 'majority_reached';
             } else if (effectiveYes + undeclaredSeats < requiredSeats) {
