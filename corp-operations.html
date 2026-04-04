@@ -6378,8 +6378,16 @@ function renderPropertyCard() {
     let totalValue = 0;
     let totalMaint = 0;
 
-    // National HQ is always present (not stored in DB — it's implicit)
+    // National HQ always present — value scales with nation stats
     const hqNation = nationStats?.name || faction?.nation || 'Home Nation';
+    const hqBaseCost = 300000000;
+    const hqInflMod = 1 + ((Number(nationStats?.inflation ?? 50) - 50) / 100 * 0.3);
+    const hqStabMod = 0.8 + (Number(nationStats?.stability ?? 50) / 100 * 0.4);
+    const hqValue = Math.round(hqBaseCost * hqInflMod * hqStabMod);
+    const hqMaint = Math.round(hqValue * 0.005);
+    totalValue += hqValue;
+    totalMaint += hqMaint;
+
     propsHtml += `
     <div style="padding:8px 12px;border-bottom:1px solid ${C.border};">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
@@ -6394,11 +6402,11 @@ function renderPropertyCard() {
             </div>
             <div style="flex:1;padding:3px 6px;border-right:1px solid ${C.border}">
                 <div style="font-family:${mono};font-size:7px;color:${C.dim}">VALUE</div>
-                <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.gold}">Included</div>
+                <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.gold}">${hfFmtBig(hqValue)}</div>
             </div>
             <div style="flex:1;padding:3px 6px">
                 <div style="font-family:${mono};font-size:7px;color:${C.dim}">MAINT/MO</div>
-                <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.dim}">$0</div>
+                <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.red}">${hfFmtBig(hqMaint)}</div>
             </div>
         </div>
     </div>`;
