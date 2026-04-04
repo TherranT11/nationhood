@@ -1590,10 +1590,9 @@ var MINISTRY_DESCRIPTIONS = {
 function renderBudgetTab(nation) {
     var budget = calculateNationalBudget(nation);
 
-    if (tradeData && tradeData.summary && Number(tradeData.summary.tariff_revenue) > 0) {
-        var oldTariff = budget.tariffRevenue;
-        budget.tariffRevenue = Number(tradeData.summary.tariff_revenue);
-        budget.grossRevenue = budget.grossRevenue - oldTariff + budget.tariffRevenue;
+    // Apply tariff override with GDP cap (same as Overview tab — single source of truth)
+    if (tradeData && tradeData.summary) {
+        applyTradeTariffOverride(budget, Number(tradeData.summary.tariff_revenue), Number(nation.gdp ?? nation.GDP ?? 0));
     }
 
     var aidReceived = aidData ? Number(aidData.received || 0) : 0;
