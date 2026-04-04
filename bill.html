@@ -2193,14 +2193,6 @@ async function renderCaucusDispositions() {
     const relevant = dispositions.filter(d => d.disposition !== 'not_triggered');
     if (relevant.length === 0 && dispositions.every(d => d.disposition === 'not_triggered')) return;
 
-    const AXIS_LABELS = {
-        liberty_equality: 'Liberty / Equality',
-        tradition_progress: 'Tradition / Progress',
-        security_freedom: 'Security / Freedom',
-        globalism_nationalism: 'Globalism / Nationalism',
-        individualism_collectivism: 'Individualism / Collectivism',
-    };
-
     const DISP_ICONS = {
         aligned: { icon: '✓', color: 'var(--green)', label: 'ALIGNED' },
         nervous: { icon: '⚠', color: 'var(--amber)', label: 'NERVOUS' },

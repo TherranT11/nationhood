@@ -19841,9 +19841,10 @@ async function executeRally(supabase, factionId, nationId, blocId, currentTick) 
     }
     // Diminishing returns: reduce effect by 25% per escalation level (min 25% of original)
     if (rallyEscalation > 0 && targetDelta !== 0) {
+        const sign = targetDelta > 0 ? 1 : -1;
         const diminish = Math.max(0.25, 1 - rallyEscalation * 0.25);
         targetDelta = Math.round(targetDelta * diminish);
-        if (targetDelta === 0 && outcome.targetMin !== 0) targetDelta = targetDelta >= 0 ? 1 : -1;
+        if (targetDelta === 0) targetDelta = sign; // preserve direction even at minimum
     }
 
     // ── 7. Apply momentum from rally outcome ──

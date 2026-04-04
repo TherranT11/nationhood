@@ -4291,8 +4291,10 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
                 else if ((n.gov_approval || 0) >= 40) baseRoll += 2; // government with decent approval
                 // Diminishing returns: reduce effect by 25% per escalation level (min 25% of original)
                 if ((_caPressEscalation || 0) > 0 && baseRoll !== 0) {
+                    const rollSign = baseRoll > 0 ? 1 : -1;
                     const diminish = Math.max(0.25, 1 - _caPressEscalation * 0.25);
                     baseRoll = Math.round(baseRoll * diminish);
+                    if (baseRoll === 0) baseRoll = rollSign;
                 }
                 // Give momentum via atomic RPC (3-pillar system) — label+tick for log
                 const sign = baseRoll >= 0 ? '+' : '';
