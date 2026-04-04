@@ -13,7 +13,8 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { NATION_STAT_COLUMNS, formatStatName } from './js/game-common.js';
+import { NATION_STAT_COLUMNS } from './js/game/stats.js';
+import { formatStatName } from './js/game/political-actions.js';
 import { escapeHtml, escapeAttr } from './js/utils.js';
 
 // ==================== STATE ====================

@@ -23,7 +23,8 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import { getNationNames, deductAP } from './js/game-common.js';
+import { deductAP } from './js/game/config.js';
+import { getNationNames } from './js/game/political-actions.js';
 import {
     POSITIVE_MAP, NEGATIVE_MAP,
     IDEOLOGY_COLORS, CATEGORY_COLORS,

@@ -33,7 +33,8 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, refreshGameState, qCache, qCacheSet, qCacheBust, formatNumber, scaleRawToDollars, assertRawEconomicValue } from './js/common.js';
 import { formatCurrencyShort, escapeHtml } from './js/utils.js';
-import { CANONICAL_GOVERNMENT_TYPES, isPresidentialRepublic, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
+import { CANONICAL_GOVERNMENT_TYPES, isPresidentialRepublic } from './js/game/government-types.js';
+import { normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game/stats.js';
 import { formatInflationRate, getInflationLabel, inflationColorClass, inflationRate, formatFuelPrice, getFuelPriceLabel, fuelPriceColorClass, fuelPricePerGallon } from './js/game/stats.js';
 /**
  * Nation Page - Comprehensive Stats Display
