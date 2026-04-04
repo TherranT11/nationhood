@@ -5988,9 +5988,9 @@ async function switchToExpansion(e) {
     expEl.style.flexWrap = 'wrap';
     document.querySelectorAll('.corp-nav__tab').forEach(t => t.classList.remove('active'));
     e.target.classList.add('active');
+    await loadOwnedProperties();
     renderHireFireCard();
     renderWorkforceSummary();
-    await loadOwnedProperties();
     await loadAvailableProperties();
     renderNewPropertyCard();
     await loadNationsForSubsidiary();
@@ -6061,6 +6061,14 @@ async function hfConfirm() {
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     if (hiringCost > cash) {
         alert('Insufficient cash reserves. Hiring cost: ' + hfFmtBig(hiringCost) + ', available: ' + hfFmtBig(cash));
+        return;
+    }
+
+    // Enforce capacity limit before writing
+    const totalAfterAll = HF_TYPES.reduce((s, t) => s + Number(faction?.[t.factionKey] ?? 0) + _hfChanges[t.id], 0);
+    const cap = hfGetCapacity();
+    if (totalAfterAll > cap) {
+        alert('Cannot hire beyond property capacity (' + cap.toLocaleString() + '). You need more workplaces.');
         return;
     }
 
@@ -7319,7 +7327,6 @@ async function subCreate() {
         _subSelectedNation = null;
         await loadOwnedProperties();
         renderPropertyCard();
-        renderSubsidiariesCard();
         renderCreateSubsidiaryCard();
         alert('Subsidiary established in ' + nation.name + '!\n\nCost: ' + hfFmtBig(cost) + '\nRegional HQ created with ' + condition + '% condition.');
     } catch (err) {
@@ -7541,7 +7548,7 @@ function renderCorporationsCard() {
         </div>
         ${stats.map(r => `<div style="display:flex;justify-content:space-between;padding:4px 14px;border-bottom:1px solid ${C.border};">
             <span style="font-family:${mono};font-size:9px;color:${C.dim};text-transform:uppercase">${r.label}</span>
-            <span style="font-family:${mono};font-size:${r.label === 'Market Valuation' ? 12 : 10}px;font-weight:700;color:${r.color};${r.value === 'UNDISCLOSED' ? 'font-style:italic;' : ''}">${r.value}</span>
+            <span style="font-family:${mono};font-size:10px;font-weight:700;color:${r.value === 'UNDISCLOSED' ? C.dim : r.color};${r.value === 'UNDISCLOSED' ? 'font-style:italic;' : ''}">${r.value}</span>
         </div>`).join('')}
         <div style="padding:6px 14px;border-bottom:1px solid ${C.border};flex-shrink:0;">
             <div style="width:100%;height:4px;background:${C.border}"><div style="width:${sel.reputation}%;height:100%;background:${sel.reputation >= 70 ? C.greenBright : sel.reputation >= 40 ? C.accent : C.yellow}"></div></div>
