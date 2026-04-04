@@ -11435,7 +11435,7 @@ async function processPartialElection(supabase, nation, election, currentTick) {
 
     if (!factions || factions.length === 0) {
         console.warn('No parties found for partial election');
-        await supabase.from('elections').update({ status: 'completed', results: { partial: true, error: 'no_parties', bloc_details: [] } }).eq('id', election.id);
+        await supabase.from('elections').update({ status: 'completed', results: { partial: true, error: 'no_parties', bloc_details: [] }, election_tick: currentTick }).eq('id', election.id);
         return;
     }
 
