@@ -1100,7 +1100,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
         return null; // Caretaker is a valid government state
     }
 
-    // 'active' = proposed but not finalized; only 'formed' is a real government
+    // fetchActiveCoalition only returns 'formed' or 'caretaker' (not proposals)
     if (coalition && coalition.status === 'formed') return null;
 
     // Get latest completed election (filter out records without results)
