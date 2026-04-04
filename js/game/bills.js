@@ -1368,7 +1368,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                                     expires_at_tick: expiresAt,
                                     auto_renew: dt.auto_renew || false,
                                     withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
-                                    diplomatic_proposal_id: proposal.id
+                                    negotiation_id: null
                                 }).select('id').single();
 
                                 if (taErr) {

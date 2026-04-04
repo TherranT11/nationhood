@@ -4,7 +4,7 @@
 -- tick processor needs to actually transfer aid.
 --
 -- This script creates the missing rows for the existing active agreement.
--- Safe to re-run: uses ON CONFLICT / IF NOT EXISTS guards.
+-- Safe to re-run: checks for existing rows before inserting.
 
 DO $$
 DECLARE
@@ -37,6 +37,13 @@ BEGIN
     RETURN;
   END IF;
 
+  -- Canonical nation ordering (A < B)
+  IF v_avelia_id < v_montequilla_id THEN
+    v_nation_a := v_avelia_id; v_nation_b := v_montequilla_id;
+  ELSE
+    v_nation_a := v_montequilla_id; v_nation_b := v_avelia_id;
+  END IF;
+
   -- Find the active economic aid diplomatic proposal
   SELECT * INTO v_proposal
   FROM diplomatic_proposals
@@ -56,18 +63,22 @@ BEGIN
 
   RAISE NOTICE 'Found proposal: % (activated tick %)', v_proposal.id, v_proposal.activated_at_tick;
 
-  -- Check if trade_agreements row already exists
-  IF EXISTS (
-    SELECT 1 FROM trade_agreements WHERE diplomatic_proposal_id = v_proposal.id
-  ) THEN
-    RAISE NOTICE 'trade_agreements row already exists — skipping insert.';
-    SELECT id INTO v_ta_id FROM trade_agreements WHERE diplomatic_proposal_id = v_proposal.id;
+  -- Check if trade_agreements row already exists for this pair + type
+  SELECT id INTO v_ta_id
+  FROM trade_agreements
+  WHERE nation_a_id = v_nation_a
+    AND nation_b_id = v_nation_b
+    AND agreement_type = 'economic_aid'
+    AND status = 'active';
+
+  IF v_ta_id IS NOT NULL THEN
+    RAISE NOTICE 'trade_agreements row already exists: % — skipping insert.', v_ta_id;
   ELSE
     -- Build the active articles list
     v_articles := COALESCE(v_proposal.proposal_data->'articles', '[]'::JSONB);
 
     -- Extract duration
-    v_duration_ticks := 480; -- default 1 year
+    v_duration_ticks := 480;
     v_auto_renew := false;
     v_notice_ticks := 3;
     FOR i IN 0..jsonb_array_length(v_articles)-1 LOOP
@@ -81,17 +92,10 @@ BEGIN
 
     v_expires_at := v_proposal.activated_at_tick + v_duration_ticks;
 
-    -- Canonical nation ordering (A < B)
-    IF v_avelia_id < v_montequilla_id THEN
-      v_nation_a := v_avelia_id; v_nation_b := v_montequilla_id;
-    ELSE
-      v_nation_a := v_montequilla_id; v_nation_b := v_avelia_id;
-    END IF;
-
     INSERT INTO trade_agreements (
       nation_a_id, nation_b_id, agreement_type, agreement_name,
       articles, status, enacted_at_tick, expires_at_tick,
-      auto_renew, withdrawal_notice_ticks, diplomatic_proposal_id
+      auto_renew, withdrawal_notice_ticks
     ) VALUES (
       v_nation_a, v_nation_b,
       'economic_aid',
@@ -101,8 +105,7 @@ BEGIN
       v_proposal.activated_at_tick,
       v_expires_at,
       v_auto_renew,
-      v_notice_ticks,
-      v_proposal.id
+      v_notice_ticks
     )
     RETURNING id INTO v_ta_id;
 
@@ -111,6 +114,8 @@ BEGIN
 
   -- Create aid_agreement_state if missing
   IF NOT EXISTS (SELECT 1 FROM aid_agreement_state WHERE agreement_id = v_ta_id) THEN
+    v_articles := COALESCE(v_proposal.proposal_data->'articles', '[]'::JSONB);
+
     -- Find the aid_terms article
     FOR i IN 0..jsonb_array_length(v_articles)-1 LOOP
       IF v_articles->i->>'type' = 'aid_terms' THEN
@@ -120,9 +125,8 @@ BEGIN
     END LOOP;
 
     IF v_aid_art IS NULL THEN
-      -- Fallback: use proposal_data directly
-      v_donor_id := v_avelia_id; -- Avelia is the donor per the screenshot
-      v_annual_amount := 30000000000; -- $30B/yr per the screenshot
+      v_donor_id := v_avelia_id;
+      v_annual_amount := 30000000000;
     ELSE
       v_donor_id := (v_aid_art->'data'->>'donor_nation_id')::UUID;
       v_annual_amount := COALESCE((v_aid_art->'data'->>'annual_amount')::NUMERIC, 0);
