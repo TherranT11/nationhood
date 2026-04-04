@@ -7620,10 +7620,25 @@ let _bidContract = null;
 let _bidGrades = {};
 let _bidWorkers = 120;
 let _bidMarkup = 15;
+let _bidWarehouse = {};
 
-function openBidAssembly() {
+async function openBidAssembly() {
     if (!selectedContract) return;
     _bidContract = selectedContract;
+
+    // Load warehouse inventory
+    _bidWarehouse = {};
+    try {
+        const { data: invRows } = await _supabase
+            .from('corp_material_inventory')
+            .select('material_key, quantity')
+            .eq('faction_id', faction.id);
+        for (const r of (invRows || [])) {
+            _bidWarehouse[r.material_key] = Number(r.quantity || 0);
+        }
+    } catch (_) {
+        // Table may not exist yet — warehouse inventory is Phase 5
+    }
 
     // Initialize grades to STD for each required material
     _bidGrades = {};
@@ -7679,39 +7694,52 @@ function renderBidAssembly() {
     const mats = contract.required_materials || {};
     const matKeys = Object.keys(mats);
 
-    // Grade prices (per unit) — placeholder tiers, will be from procurement in Phase 2
-    const GRADE_PRICES = { LOW: 0.6, STD: 1.0, HIGH: 1.7 };
+    // Grade multipliers: LOW = cheap/risky, STD = balanced, HIGH = premium quality
+    const GRADE_MULTI = { LOW: 0.5, STD: 1.0, HIGH: 2.0 };
     const GRADE_COLOR = { LOW: C.orange, STD: C.yellow, HIGH: C.greenBright };
     const GRADE_LABEL = { LOW: 'Low', STD: 'Standard', HIGH: 'High' };
 
-    // Material base prices (rough $/unit by type)
+    // Material base prices per unit (doubled from procurement for project-scale quantities)
     const MAT_BASE_PRICE = {
-        concrete: 250, steel: 600, glass_facades: 800, em_systems: 900,
-        lumber: 120, heavy_parts: 1200, aggregate: 55, asphalt: 180,
+        concrete: 360000, steel: 500000, glass_facades: 560000, em_systems: 640000,
+        lumber: 240000, heavy_parts: 800000, aggregate: 160000, asphalt: 280000,
     };
 
     // ── CALCULATE COSTS ──
+    // Load warehouse inventory for material availability display
+    const warehouse = _bidWarehouse || {};
+
     let materialCost = 0;
     let matRows = '';
     for (const key of matKeys) {
         const qty = Number(mats[key] || 0);
         const grade = _bidGrades[key] || 'STD';
-        const basePrice = MAT_BASE_PRICE[key] || 300;
-        const gradeMulti = GRADE_PRICES[grade];
+        const basePrice = MAT_BASE_PRICE[key] || 300000;
+        const gradeMulti = GRADE_MULTI[grade];
         const unitPrice = Math.round(basePrice * gradeMulti);
         const lineCost = qty * unitPrice;
         materialCost += lineCost;
         const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
+        // Warehouse check
+        const inStock = Number(warehouse[key] || 0);
+        const shortfall = Math.max(0, qty - inStock);
+        const stockColor = shortfall === 0 ? C.greenBright : shortfall < qty ? C.yellow : C.red;
+        const stockLabel = shortfall === 0 ? '✓ IN STOCK' : `${inStock}/${qty}`;
+
         matRows += `
         <div style="display:flex;align-items:center;padding:5px 14px;border-bottom:1px solid ${C.border};">
-            <div style="flex:1.2"><span style="font-size:11px;color:${C.text}">${label}</span></div>
+            <div style="flex:1.2">
+                <span style="font-size:11px;color:${C.text}">${label}</span>
+                <div style="font-family:${mono};font-size:7px;color:${stockColor};margin-top:1px">${stockLabel}</div>
+            </div>
             <div style="flex:0.5;text-align:center"><span style="font-family:${mono};font-size:9px;color:${C.muted}">${qty.toLocaleString()}</span></div>
             <div style="flex:1.2;display:flex;gap:2px;justify-content:center;">
                 ${['LOW','STD','HIGH'].map(g => {
                     const active = grade === g;
                     const gc = GRADE_COLOR[g];
-                    return `<span onclick="bidSetGrade('${key}','${g}')" style="padding:2px 6px;font-family:${mono};font-size:7px;font-weight:700;cursor:pointer;color:${active ? '#000' : C.dim};background:${active ? gc : 'transparent'};border:1px solid ${active ? gc : C.border}">${GRADE_LABEL[g]}</span>`;
+                    const gPrice = hfFmtBig(Math.round(basePrice * GRADE_MULTI[g]));
+                    return `<span onclick="bidSetGrade('${key}','${g}')" style="padding:2px 6px;font-family:${mono};font-size:7px;font-weight:700;cursor:pointer;color:${active ? '#000' : C.dim};background:${active ? gc : 'transparent'};border:1px solid ${active ? gc : C.border}" title="${gPrice}/unit">${GRADE_LABEL[g]}</span>`;
                 }).join('')}
             </div>
             <div style="flex:0.8;text-align:right"><span style="font-family:${mono};font-size:10px;color:${C.text}">${hfFmtBig(lineCost)}</span></div>
