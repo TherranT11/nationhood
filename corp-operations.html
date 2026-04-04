@@ -7082,6 +7082,26 @@ async function propSell(propId) {
 window.propRefurbish = propRefurbish;
 window.propSell = propSell;
 
+// ==================== SUBSIDIARY SHARED HELPERS ====================
+
+// Parse amount input — supports "5M", "2.5m", "500k", "$1,000,000", plain numbers
+function subParseAmount(input) {
+    if (!input) return 0;
+    const cleaned = input.trim().replace(/[$,]/g, '');
+    const mMatch = cleaned.match(/^([\d.]+)\s*[Mm]$/);
+    const kMatch = cleaned.match(/^([\d.]+)\s*[Kk]$/);
+    if (mMatch) return Math.round(parseFloat(mMatch[1]) * 1000000);
+    if (kMatch) return Math.round(parseFloat(kMatch[1]) * 1000);
+    return Math.round(parseFloat(cleaned));
+}
+
+function subUpdateTopbarCash(cash) {
+    const cashEl = document.getElementById('topbar-cash');
+    if (cashEl) cashEl.textContent = 'CASH: ' + (cash >= 1e6 ? '$' + (cash / 1e6).toFixed(1) + 'M' : '$' + Math.round(cash / 1000) + 'k');
+}
+
+let _subActionLock = false; // Prevents double-fire on sell/dissolve/inject/withdraw/merge
+
 // ==================== SUBSIDIARIES CARD ====================
 
 let _mSubSelected = 0;
@@ -7109,7 +7129,8 @@ function getSubsidiaryData(hqProp) {
     const totalMaint = nationProps.reduce((s, p) => s + Number(p.monthly_maintenance || 0), 0);
     const totalCapacity = nationProps.reduce((s, p) => s + Number(p.capacity || 0), 0);
     const projects = _subProjectCounts[hqProp.nation_id] || 0;
-    const nationName = _subNations.find(n => n.id === hqProp.nation_id)?.name || hqProp.city || '—';
+    const nationData = _subNations.find(n => n.id === hqProp.nation_id);
+    const nationName = nationData?.name || hqProp.city || '—';
 
     // Derive abbreviation from name
     const words = (hqProp.name || '').trim().split(/\s+/);
@@ -7119,7 +7140,6 @@ function getSubsidiaryData(hqProp) {
 
     // Derived business metrics — mirrors server-side processSubsidiaryRevenue
     const subCash = Number(hqProp.sub_cash || 0);
-    const nationData = _subNations.find(n => n.id === hqProp.nation_id);
     const gdpGrowth = Number(nationData?.gdp_growth ?? 50);
     const reputation = 25; // fixed for now
     const base = subCash * 0.02;
@@ -7142,16 +7162,11 @@ function getSubsidiaryData(hqProp) {
         cash: Number(hqProp.sub_cash || 0),
         reputation: 25,
         valuation: totalVal,
-        maintenance: totalMaint,
         workforce: totalCapacity,
         projects,
-        capacity: totalCapacity,
-        condition: hqProp.condition || 85,
         established: hqProp.created_at ? new Date(hqProp.created_at).getFullYear().toString() : '—',
         trend,
         profitable,
-        propCount: nationProps.length,
-        style: hqProp.style || 'Modern',
     };
 }
 
@@ -7299,6 +7314,7 @@ function renderManageSubsidiariesCard() {
 
 // ─── SELL: Sell subsidiary as going concern (80% × condition + sub_cash) ───
 async function subSell(propId) {
+    if (_subActionLock) return;
     const hq = _ownedProperties.find(p => p.id === propId);
     if (!hq) return;
     const nationName = _subNations.find(n => n.id === hq.nation_id)?.name || hq.city || '—';
@@ -7317,6 +7333,7 @@ async function subSell(propId) {
         'All operations in ' + nationName + ' cease.\nThis cannot be undone.'
     )) return;
 
+    _subActionLock = true;
     try {
         const propIds = nationProps.map(p => p.id);
         for (const pid of propIds) {
@@ -7325,8 +7342,7 @@ async function subSell(propId) {
         const newCash = Number(faction?.corp_cash_reserves ?? 0) + totalReturn;
         await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
         faction.corp_cash_reserves = newCash;
-        const cashEl = document.getElementById('topbar-cash');
-        if (cashEl) cashEl.textContent = 'CASH: ' + (newCash >= 1e6 ? '$' + (newCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newCash / 1000) + 'k');
+        subUpdateTopbarCash(newCash);
         _mSubSelected = 0;
         await loadOwnedProperties();
         renderPropertyCard();
@@ -7334,10 +7350,12 @@ async function subSell(propId) {
         renderCreateSubsidiaryCard();
         alert('Subsidiary sold. ' + nationProps.length + ' properties liquidated.\nTotal received: ' + hfFmtBig(totalReturn));
     } catch (err) { alert('Failed: ' + err.message); }
+    finally { _subActionLock = false; }
 }
 
 // ─── DISSOLVE: Liquidate at fire-sale rate (60% × condition + sub_cash) ───
 async function subDissolve(propId) {
+    if (_subActionLock) return;
     const hq = _ownedProperties.find(p => p.id === propId);
     if (!hq) return;
     const nationName = _subNations.find(n => n.id === hq.nation_id)?.name || hq.city || '—';
@@ -7356,6 +7374,7 @@ async function subDissolve(propId) {
         'All operations in ' + nationName + ' cease.\nThis cannot be undone.'
     )) return;
 
+    _subActionLock = true;
     try {
         const propIds = nationProps.map(p => p.id);
         for (const pid of propIds) {
@@ -7364,8 +7383,7 @@ async function subDissolve(propId) {
         const newCash = Number(faction?.corp_cash_reserves ?? 0) + totalReturn;
         await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
         faction.corp_cash_reserves = newCash;
-        const cashEl = document.getElementById('topbar-cash');
-        if (cashEl) cashEl.textContent = 'CASH: ' + (newCash >= 1e6 ? '$' + (newCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newCash / 1000) + 'k');
+        subUpdateTopbarCash(newCash);
         _mSubSelected = 0;
         await loadOwnedProperties();
         renderPropertyCard();
@@ -7373,14 +7391,15 @@ async function subDissolve(propId) {
         renderCreateSubsidiaryCard();
         alert('Subsidiary dissolved. ' + nationProps.length + ' properties liquidated.\nTotal received: ' + hfFmtBig(totalReturn));
     } catch (err) { alert('Failed: ' + err.message); }
+    finally { _subActionLock = false; }
 }
 
 // ─── INJECT CAPITAL: Parent → Subsidiary ───
 async function subInjectCapital(propId) {
+    if (_subActionLock) return;
     const hq = _ownedProperties.find(p => p.id === propId);
     if (!hq) return;
     const parentCash = Number(faction?.corp_cash_reserves ?? 0);
-    const nationName = _subNations.find(n => n.id === hq.nation_id)?.name || hq.city || '—';
     const subCash = Number(hq.sub_cash || 0);
 
     const input = prompt(
@@ -7391,20 +7410,13 @@ async function subInjectCapital(propId) {
     );
     if (!input) return;
 
-    // Parse amount — support "5M", "2.5m", "500k", plain numbers
-    let amount = 0;
-    const cleaned = input.trim().replace(/[$,]/g, '');
-    const mMatch = cleaned.match(/^([\d.]+)\s*[Mm]$/);
-    const kMatch = cleaned.match(/^([\d.]+)\s*[Kk]$/);
-    if (mMatch) amount = Math.round(parseFloat(mMatch[1]) * 1000000);
-    else if (kMatch) amount = Math.round(parseFloat(kMatch[1]) * 1000);
-    else amount = Math.round(parseFloat(cleaned));
-
+    const amount = subParseAmount(input);
     if (!amount || amount <= 0 || isNaN(amount)) { alert('Invalid amount.'); return; }
     if (amount > parentCash) { alert('Insufficient parent cash. Available: ' + hfFmtBig(parentCash)); return; }
 
     if (!confirm('Inject ' + hfFmtBig(amount) + ' into ' + hq.name + '?\n\nParent cash: ' + hfFmtBig(parentCash) + ' → ' + hfFmtBig(parentCash - amount) + '\nSubsidiary cash: ' + hfFmtBig(subCash) + ' → ' + hfFmtBig(subCash + amount))) return;
 
+    _subActionLock = true;
     try {
         const newParentCash = parentCash - amount;
         const newSubCash = subCash + amount;
@@ -7412,17 +7424,16 @@ async function subInjectCapital(propId) {
         await _supabase.from('corp_properties').update({ sub_cash: newSubCash }).eq('id', propId);
         faction.corp_cash_reserves = newParentCash;
         hq.sub_cash = newSubCash;
-
-        const cashEl = document.getElementById('topbar-cash');
-        if (cashEl) cashEl.textContent = 'CASH: ' + (newParentCash >= 1e6 ? '$' + (newParentCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newParentCash / 1000) + 'k');
-
+        subUpdateTopbarCash(newParentCash);
         renderManageSubsidiariesCard();
         alert('Injected ' + hfFmtBig(amount) + ' into ' + hq.name + '.');
     } catch (err) { alert('Failed: ' + err.message); }
+    finally { _subActionLock = false; }
 }
 
 // ─── WITHDRAW: Subsidiary → Parent ───
 async function subWithdraw(propId) {
+    if (_subActionLock) return;
     const hq = _ownedProperties.find(p => p.id === propId);
     if (!hq) return;
     const parentCash = Number(faction?.corp_cash_reserves ?? 0);
@@ -7438,19 +7449,13 @@ async function subWithdraw(propId) {
     );
     if (!input) return;
 
-    let amount = 0;
-    const cleaned = input.trim().replace(/[$,]/g, '');
-    const mMatch = cleaned.match(/^([\d.]+)\s*[Mm]$/);
-    const kMatch = cleaned.match(/^([\d.]+)\s*[Kk]$/);
-    if (mMatch) amount = Math.round(parseFloat(mMatch[1]) * 1000000);
-    else if (kMatch) amount = Math.round(parseFloat(kMatch[1]) * 1000);
-    else amount = Math.round(parseFloat(cleaned));
-
+    const amount = subParseAmount(input);
     if (!amount || amount <= 0 || isNaN(amount)) { alert('Invalid amount.'); return; }
     if (amount > subCash) { alert('Insufficient subsidiary cash. Available: ' + hfFmtBig(subCash)); return; }
 
     if (!confirm('Withdraw ' + hfFmtBig(amount) + ' from ' + hq.name + '?\n\nSubsidiary cash: ' + hfFmtBig(subCash) + ' → ' + hfFmtBig(subCash - amount) + '\nParent cash: ' + hfFmtBig(parentCash) + ' → ' + hfFmtBig(parentCash + amount))) return;
 
+    _subActionLock = true;
     try {
         const newParentCash = parentCash + amount;
         const newSubCash = subCash - amount;
@@ -7458,18 +7463,17 @@ async function subWithdraw(propId) {
         await _supabase.from('corp_properties').update({ sub_cash: newSubCash }).eq('id', propId);
         faction.corp_cash_reserves = newParentCash;
         hq.sub_cash = newSubCash;
-
-        const cashEl = document.getElementById('topbar-cash');
-        if (cashEl) cashEl.textContent = 'CASH: ' + (newParentCash >= 1e6 ? '$' + (newParentCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newParentCash / 1000) + 'k');
-
+        subUpdateTopbarCash(newParentCash);
         renderManageSubsidiariesCard();
         alert('Withdrew ' + hfFmtBig(amount) + ' from ' + hq.name + '.');
     } catch (err) { alert('Failed: ' + err.message); }
+    finally { _subActionLock = false; }
 }
 // ─── MERGE: Absorb source subsidiary into a target subsidiary ───
 // Properties from source nation are reassigned to target nation.
 // Source HQ deactivated, sub_cash transferred, 10% merger fee on source valuation.
 async function subMerge(propId) {
+    if (_subActionLock) return;
     const sourceHq = _ownedProperties.find(p => p.id === propId);
     if (!sourceHq) return;
 
@@ -7530,6 +7534,7 @@ async function subMerge(propId) {
         'This cannot be undone.'
     )) return;
 
+    _subActionLock = true;
     try {
         // 1. Reassign non-HQ properties from source nation to target nation
         const nonHqProps = sourceProps.filter(p => p.id !== sourceHq.id);
@@ -7551,9 +7556,7 @@ async function subMerge(propId) {
         const newParentCash = parentCash - mergerFee;
         await _supabase.from('factions').update({ corp_cash_reserves: newParentCash }).eq('id', faction.id);
         faction.corp_cash_reserves = newParentCash;
-
-        const cashEl = document.getElementById('topbar-cash');
-        if (cashEl) cashEl.textContent = 'CASH: ' + (newParentCash >= 1e6 ? '$' + (newParentCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newParentCash / 1000) + 'k');
+        subUpdateTopbarCash(newParentCash);
 
         _mSubSelected = 0;
         await loadOwnedProperties();
@@ -7568,9 +7571,8 @@ async function subMerge(propId) {
             'Merger fee paid: ' + hfFmtBig(mergerFee)
         );
     } catch (err) { alert('Merge failed: ' + err.message); }
+    finally { _subActionLock = false; }
 }
-// subSell defined above with subDissolve
-
 window.subDissolve = subDissolve;
 window.subInjectCapital = subInjectCapital;
 window.subWithdraw = subWithdraw;
@@ -7617,7 +7619,8 @@ const SUB_SUBSECTORS = {
 };
 
 async function loadNationsForSubsidiary() {
-    const { data } = await _supabase.from('nations').select('*').order('name');
+    const { data, error } = await _supabase.from('nations').select('*').order('name');
+    if (error) { console.warn('[Subsidiary] Failed to load nations:', error.message); }
     _subNations = (data || []).filter(n => n.id !== faction?.nation_id);
 
     // Count active corps per nation for demand indicator
@@ -7741,8 +7744,7 @@ async function subCreate() {
         await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
         faction.corp_cash_reserves = newCash;
 
-        const cashEl = document.getElementById('topbar-cash');
-        if (cashEl) cashEl.textContent = 'CASH: ' + (newCash >= 1e6 ? '$' + (newCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newCash / 1000) + 'k');
+        subUpdateTopbarCash(newCash);
 
         _subSelectedNation = null;
         _subCustomName = '';
@@ -7773,7 +7775,6 @@ function renderCreateSubsidiaryCard() {
     const parentSubsector = faction?.corp_subsector || '';
     const subsectors = subGetSubsectors();
     const selectedSub = subsectors.find(s => s.name === _subSelectedSubsector) || subsectors[0];
-    const isSameSubsector = selectedSub.name === parentSubsector;
 
     // Filter out nations where we already have a subsidiary
     const existingNationIds = new Set(_ownedProperties.filter(p => p.type === 'regional_hq').map(p => p.nation_id));
