@@ -413,29 +413,37 @@ function rollRallyOutcome(weights) {
  * Returns { success, outcomeId, outcomeName, headline, effects, newAp }
  */
 export async function executeRally(supabase, factionId, nationId, blocId, currentTick) {
-    // ── 1. Validate AP (with leader trait modifiers) ──
+    // ── 1. Validate AP (with leader trait modifiers + escalation) ──
     const { data: faction } = await supabase
         .from('factions').select('action_points, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
-    const rallyApMod = getTraitAPModifier('rally', faction, currentTick);
-    const effectiveRallyCost = Math.max(1, RALLY_CONFIG.AP_COST + rallyApMod);
-    if ((faction.action_points || 0) < effectiveRallyCost)
-        return { success: false, error: `Not enough AP. Need ${effectiveRallyCost}.` };
 
-    // ── 2. Check cooldown (one rally per tick) ──
+    // ── 2. Check cooldown (one rally per tick) + compute escalation ──
     const { data: recentRallies } = await supabase
         .from('campaign_actions')
         .select('tick_performed, result')
         .eq('party_id', factionId)
         .eq('action_type', 'rally')
-        .gte('tick_performed', currentTick - RALLY_CONFIG.COOLDOWN_WINDOW)
+        .gte('tick_performed', currentTick - 10)
         .order('tick_performed', { ascending: false });
 
     if ((recentRallies || []).some(r => r.tick_performed === currentTick))
         return { success: false, error: 'Already held a rally this tick.' };
 
-    // Count how many times this specific bloc was rallied recently
-    const ralliedRecently = (recentRallies || []).filter(r => r.result?.blocId === blocId).length;
+    // Escalating cost: +1 per recent use, -1 per tick since last use
+    let rallyEscalation = 0;
+    if (recentRallies && recentRallies.length > 0) {
+        const lastRallyTick = Math.max(...recentRallies.map(r => r.tick_performed));
+        rallyEscalation = Math.max(0, recentRallies.length - (currentTick - lastRallyTick));
+    }
+
+    const rallyApMod = getTraitAPModifier('rally', faction, currentTick);
+    const effectiveRallyCost = Math.max(1, RALLY_CONFIG.AP_COST + rallyEscalation + rallyApMod);
+    if ((faction.action_points || 0) < effectiveRallyCost)
+        return { success: false, error: `Not enough AP. Need ${effectiveRallyCost}.` };
+
+    // Count how many times this specific bloc was rallied recently (within cooldown window)
+    const ralliedRecently = (recentRallies || []).filter(r => r.result?.blocId === blocId && r.tick_performed >= currentTick - RALLY_CONFIG.COOLDOWN_WINDOW).length;
 
     // ── 3. Load target bloc (optional) + nation stats ──
     // (voter_blocs table removed; default to General Public)
@@ -467,11 +475,17 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
     const outcomeId = rollRallyOutcome(weights);
     const outcome = RALLY_OUTCOMES.find(o => o.id === outcomeId);
 
-    // ── 6. Roll specific target effect (with telegenic multiplier) ──
+    // ── 6. Roll specific target effect (with telegenic multiplier + diminishing returns) ──
     let targetDelta = outcome.targetMin + Math.floor(Math.random() * (outcome.targetMax - outcome.targetMin + 1));
     if (targetDelta > 0) {
         const mult = getTraitApprovalMultiplier(faction, 'rally', 'SWING'); // generic multiplier for rally
         targetDelta = Math.round(targetDelta * mult);
+    }
+    // Diminishing returns: reduce effect by 25% per escalation level (min 25% of original)
+    if (rallyEscalation > 0 && targetDelta !== 0) {
+        const diminish = Math.max(0.25, 1 - rallyEscalation * 0.25);
+        targetDelta = Math.round(targetDelta * diminish);
+        if (targetDelta === 0 && outcome.targetMin !== 0) targetDelta = targetDelta >= 0 ? 1 : -1;
     }
 
     // ── 7. Apply momentum from rally outcome ──

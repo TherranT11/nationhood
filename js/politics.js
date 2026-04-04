@@ -2307,7 +2307,7 @@ const CA_ACTIONS = [
     { id: 'rally', name: 'Hold a Rally', ap: RALLY_CONFIG.AP_COST, color: '#f97316', icon: '★',
       category: 'momentum', affects: 'Momentum',
       desc: 'Rally your supporters in a public show of strength. Random outcome that directly affects your Momentum score. A rousing success builds momentum; a gaffe costs it.' },
-    { id: 'press_conference', name: 'Press Conference', ap: 2, color: '#fbbf24', icon: '🎤',
+    { id: 'press_conference', name: 'Press Conference', ap: 1, color: '#fbbf24', icon: '🎤',
       category: 'momentum', affects: 'Momentum',
       desc: 'Hold a press conference to make a public statement. Base roll: -2 to +2 Momentum. Opposition parties get +1 bonus. High-approval governing parties get +2 bonus.' },
     // APPROVAL
@@ -2346,6 +2346,8 @@ let _caTargetDirection = null;
 let _caPivotIdeo = null; // cached faction ideology for pivot cost calculation
 let _caPollTier = 1; // poll investment: 1 AP (±5%) or 3 AP (±3%)
 let _caOutreachEscalation = 0; // outreach cost escalation: +1 per use, -1 per tick of non-use
+let _caRallyEscalation = 0;    // rally cost escalation: +1 per use, -1 per tick
+let _caPressEscalation = 0;    // press conference cost escalation: +1 per use, -1 per tick
 window._selectPollTier = function(tier) { _caPollTier = tier; const rerender = document.getElementById('ca-config-panel'); if (rerender) { rerender.innerHTML = renderPollNowConfig(); } };
 let _caTargetDemographic = null;
 let _caTargetBand = null;
@@ -2418,10 +2420,15 @@ function caGetCost() {
         const _t = _currentShard?.current_tick || 0;
         return Math.max(1, 3 + (_caOutreachEscalation || 0) + (_f ? getTraitAPModifier('outreach', _f, _t) : 0));
     }
+    if (_caSelected === 'rally') {
+        const _fr = _currentFaction;
+        const _tr = _currentShard?.current_tick || 0;
+        return Math.max(1, RALLY_CONFIG.AP_COST + (_caRallyEscalation || 0) + (_fr ? getTraitAPModifier('rally', _fr, _tr) : 0));
+    }
     if (_caSelected === 'press_conference') {
         const _f2 = _currentFaction;
         const _t2 = _currentShard?.current_tick || 0;
-        return Math.max(1, 2 + (_f2 ? getTraitAPModifier('press_conference', _f2, _t2) : 0));
+        return Math.max(1, 1 + (_caPressEscalation || 0) + (_f2 ? getTraitAPModifier('press_conference', _f2, _t2) : 0));
     }
     const act = CA_ACTIONS.find(a => a.id === _caSelected);
     if (!act) return 0;
@@ -2604,15 +2611,15 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
     }
     _caActiveActions = activeShiftActions || [];
 
-    // Compute outreach escalation: +1 per use, decays -1 per tick of non-use
-    // Count outreach actions, then subtract ticks since last outreach
-    const outreachActions = (recentActions || []).filter(a => a.action_type === 'outreach');
-    if (outreachActions.length > 0) {
-        const lastOutreachTick = Math.max(...outreachActions.map(a => a.tick_performed));
-        const ticksSinceLastOutreach = tick - lastOutreachTick;
-        _caOutreachEscalation = Math.max(0, outreachActions.length - ticksSinceLastOutreach);
-    } else {
-        _caOutreachEscalation = 0;
+    // Compute escalation for repeatable actions: +1 per use, decays -1 per tick of non-use
+    for (const [actionType, setter] of [['outreach', v => _caOutreachEscalation = v], ['rally', v => _caRallyEscalation = v], ['press_conference', v => _caPressEscalation = v]]) {
+        const acts = (recentActions || []).filter(a => a.action_type === actionType);
+        if (acts.length > 0) {
+            const lastTick = Math.max(...acts.map(a => a.tick_performed));
+            setter(Math.max(0, acts.length - (tick - lastTick)));
+        } else {
+            setter(0);
+        }
     }
 
     renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost);
@@ -2697,9 +2704,9 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
                 continue;
             }
 
-            let displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'outreach' ? (3 + (_caOutreachEscalation || 0)) : act.id === 'press_conference' ? 2 : act.ap;
+            let displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'outreach' ? (3 + (_caOutreachEscalation || 0)) : act.id === 'rally' ? (RALLY_CONFIG.AP_COST + (_caRallyEscalation || 0)) : act.id === 'press_conference' ? (1 + (_caPressEscalation || 0)) : act.ap;
             // Apply leader trait modifiers to displayed cost
-            if (['outreach', 'press_conference'].includes(act.id) && f.leader_positive_traits) {
+            if (['outreach', 'press_conference', 'rally'].includes(act.id) && f.leader_positive_traits) {
                 displayCost = Math.max(1, displayCost + getTraitAPModifier(act.id, f, tick));
             }
             const dbActionType = act.id === 'promise' ? 'make_promise' : act.id;
@@ -4241,15 +4248,21 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
             result = await executeGrassrootsMovement(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
         } else if (sel.id === 'press_conference') {
             // Press Conference: base -2 to +2 momentum, +1 if opposition, +2 if gov with approval >= 40
+            // Escalating cost: base 1 AP + escalation (+1 per use, -1 per tick)
             const { deductAP } = await import('./game/config.js');
             const { getTraitAPModifier: _getTraitModPC } = await import('./game/party-leadership.js');
-            const pressCost = Math.max(1, 2 + _getTraitModPC('press_conference', f, tick));
+            const pressCost = Math.max(1, 1 + (_caPressEscalation || 0) + _getTraitModPC('press_conference', f, tick));
             const apResult = await deductAP(_supabase, f.id, pressCost, { reason: 'press_conference', detail: 'Press Conference', tick });
             if (!apResult.success) { result = { success: false, error: apResult.error || 'Insufficient AP' }; }
             else {
                 let baseRoll = Math.floor(Math.random() * 5) - 2; // -2 to +2
                 if (!_caIsGoverning) baseRoll += 1; // opposition bonus
                 else if ((n.gov_approval || 0) >= 40) baseRoll += 2; // government with decent approval
+                // Diminishing returns: reduce effect by 25% per escalation level (min 25% of original)
+                if ((_caPressEscalation || 0) > 0 && baseRoll !== 0) {
+                    const diminish = Math.max(0.25, 1 - _caPressEscalation * 0.25);
+                    baseRoll = Math.round(baseRoll * diminish);
+                }
                 // Give momentum via atomic RPC (3-pillar system) — label+tick for log
                 const sign = baseRoll >= 0 ? '+' : '';
                 const { error: momErr } = await _supabase.rpc('adjust_momentum', {
