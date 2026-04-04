@@ -5103,11 +5103,14 @@ async function fetchActiveCoalition(supabase, nationId) {
         return result;
     }
 
+    // Only return formed or caretaker governments — 'active' means a proposal
+    // that hasn't been finalized. Returning proposals here causes the UI to
+    // render them as the actual government.
     const { data: newGov } = await supabase
         .from('government_formations')
         .select('*')
         .eq('nation_id', nationId)
-        .in('status', ['formed', 'active', 'caretaker'])
+        .in('status', ['formed', 'caretaker'])
         .order('formed_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -11134,7 +11137,7 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
         return null; // Caretaker is a valid government state
     }
 
-    // 'active' = proposed but not finalized; only 'formed' is a real government
+    // fetchActiveCoalition only returns 'formed' or 'caretaker' (not proposals)
     if (coalition && coalition.status === 'formed') return null;
 
     // Get latest completed election (filter out records without results)
