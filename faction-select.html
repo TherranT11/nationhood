@@ -471,10 +471,11 @@ function goBack() {
 }
 
 function chooseFactionType(type) {
-  sessionStorage.setItem('pending_faction_type', type);
   if (type === 'corporation') {
+    sessionStorage.setItem('pending_faction_type', 'corp');
     window.location.href = 'corp-setup.html';
   } else {
+    sessionStorage.setItem('pending_faction_type', 'party');
     // Party flow: pick nation, then ideology
     window.location.href = 'select-nation.html';
   }
