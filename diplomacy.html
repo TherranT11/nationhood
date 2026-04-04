@@ -94,6 +94,7 @@ import { DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, TRADE_AGREEMENT_T
 import { syncVoteTallies } from './js/game/bills.js';
 import { TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume } from './js/game/trade-constants.js';
 import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
+import { getNationNames } from './js/game/political-actions.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -149,20 +150,9 @@ let recallCachedAmbassadors = null; // cached active ambassador list for panel r
 
 // Appoint Ambassador state
 const APPOINT_AMBASSADOR_AP = 1;
-const AMB_FIRST_NAMES = [
-    'Carlos','Diego','Fernando','Héctor','Marcos','Ramón','José','Luis','Miguel',
-    'Antonio','Roberto','Francisco','Eduardo','Pablo','Alejandro','Rafael','Gabriel',
-    'Santiago','Andrés','Javier','Ricardo','Tomás','Emilio','Sergio','Nicolás',
-    'Arturo','Enrique','Oscar','Felipe','Gonzalo','Ignacio','Mateo','Dante',
-    'Sofia','Isabella','Valentina','Camila','Lucía','Elena','Mariana','Gabriela',
-    'Andrea','Carolina','Paula','Diana','Natalia','Fernanda','Daniela','Laura'
-];
-const AMB_LAST_NAMES = [
-    'Velasco','Salazar','Guerrero','Ríos','Morales','Torres','Mendoza','Castillo',
-    'Herrera','Vargas','Reyes','Cruz','Navarro','Delgado','Ortiz','Romero','Flores',
-    'Ramírez','Guzmán','Medina','Soto','Pacheco','Ibarra','Carrasco','Espinoza',
-    'Montenegro','Echeverría','Valdez','Córdoba','Aguilar','Paredes','Lara'
-];
+// Nation-specific name pools — set on page init via getNationNames()
+let AMB_FIRST_NAMES = [];
+let AMB_LAST_NAMES = [];
 let appointTargetNation = null;
 let appointCandidates = [];
 let appointSelectedIndex = null;
@@ -295,6 +285,13 @@ initPage('diplomacy', async (state) => {
     try {
         currentFaction = state.faction;
         currentNation  = state.nation;
+
+        // Set nation-specific name pools
+        if (state.nation?.name) {
+            const { firstNames, lastNames } = getNationNames(state.nation.name);
+            AMB_FIRST_NAMES = firstNames;
+            AMB_LAST_NAMES = lastNames;
+        }
 
         // Load shard tick for term calculations
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
