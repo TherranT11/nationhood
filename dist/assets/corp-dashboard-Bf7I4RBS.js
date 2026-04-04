@@ -228,7 +228,7 @@ import{_ as N}from"./supabase-client-BXEzLDpS.js";import{e as _}from"./utils-C2W
                     ${l?'<span class="stat-item__max">/100</span>':""}
                     ${d(t.change)}
                 </div>
-            </div>`}document.getElementById("stats-body").innerHTML=p}async function J(e,n,i,a){const d=(n||"UNKNOWN").toUpperCase();let p=[];if(i?.id){const{data:o}=await N.from("corp_properties").select("*").eq("faction_id",i.id).eq("is_active",!0).order("type",{ascending:!1}).order("purchased_at_tick",{ascending:!1});p=o||[]}const t={Basic:{color:"#6a6660"},Modern:{color:"#8b9a6b"},Sustainable:{color:"#5c5"},Innovative:{color:"#c8a832"},Heritage:{color:"#c84"},Premium:{color:"#ca5"}};let l=0,r=0;const m=3e8,$=1+(F(e,"inflation")-50)/100*.3,M=.8+F(e,"stability")/100*.4,k=Math.round(m*$*M),w=Math.round(k*.005);l+=k,r+=w;let C=`
+            </div>`}document.getElementById("stats-body").innerHTML=p}async function J(e,n,i,a){const d=(n||"UNKNOWN").toUpperCase();let p=[];if(i?.id){const{data:o}=await N.from("corp_properties").select("*").eq("faction_id",i.id).eq("is_active",!0).order("type",{ascending:!1}).order("purchased_at_tick",{ascending:!1});p=o||[]}const t={Basic:{color:"#6a6660"},Modern:{color:"#8b9a6b"},Sustainable:{color:"#5c5"},Innovative:{color:"#c8a832"},Heritage:{color:"#c84"},Premium:{color:"#ca5"}};let l=0,r=0;const m=5e7,$=1+(F(e,"inflation")-50)/100*.3,M=.8+F(e,"stability")/100*.4,k=Math.round(m*$*M),w=Math.round(k*.005);l+=k,r+=w;let C=`
     <div class="prop-asset" style="margin-bottom:6px;">
         <div class="prop-asset__top">
             <div>
@@ -240,7 +240,7 @@ import{_ as N}from"./supabase-client-BXEzLDpS.js";import{e as _}from"./utils-C2W
         <div style="display:flex;gap:0;background:var(--bg-3);border:1px solid var(--border-hair);margin:4px 0;">
             <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
                 <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">CAPACITY</div>
-                <div style="font-size:10px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);">3,000</div>
+                <div style="font-size:10px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);">500</div>
             </div>
             <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
                 <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">VALUE</div>

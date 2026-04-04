@@ -1478,7 +1478,7 @@ async function renderProperty(nation, nationName, factionData, shard) {
     let totalMaint = 0;
 
     // National HQ always present — value scales with nation stats
-    const hqBaseCost = 300000000; // $300M base for a 3,000 capacity HQ
+    const hqBaseCost = 50000000; // $50M base for a 500 capacity HQ
     const hqInflMod = 1 + ((getNationStat(nation, 'inflation') - 50) / 100 * 0.3);
     const hqStabMod = 0.8 + (getNationStat(nation, 'stability') / 100 * 0.4);
     const hqValue = Math.round(hqBaseCost * hqInflMod * hqStabMod);
@@ -1498,7 +1498,7 @@ async function renderProperty(nation, nationName, factionData, shard) {
         <div style="display:flex;gap:0;background:var(--bg-3);border:1px solid var(--border-hair);margin:4px 0;">
             <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
                 <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">CAPACITY</div>
-                <div style="font-size:10px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);">3,000</div>
+                <div style="font-size:10px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);">500</div>
             </div>
             <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
                 <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">VALUE</div>
