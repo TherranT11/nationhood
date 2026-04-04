@@ -5386,8 +5386,8 @@ async function assignCaucusFactions(supabase, party, nationId, totalFactionCount
 
         for (const wing of ['left', 'right']) {
             const wingWeight = wing === 'left' ? axis.leftWeight : axis.rightWeight;
-            // Seat share: proportional to wing weight, minimum 0.05
-            const seatShare = Math.max(0.05, Math.min(0.40, wingWeight / totalWingWeight * 0.30));
+            // Seat share: proportional to wing weight, minimum 0.12 (~10-15% of party seats)
+            const seatShare = Math.max(0.12, Math.min(0.40, wingWeight / totalWingWeight * 0.50));
 
             await supabase.from('caucus_factions').insert({
                 party_id: party.id,
