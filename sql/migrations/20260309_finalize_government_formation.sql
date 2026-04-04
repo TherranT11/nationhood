@@ -43,9 +43,6 @@ DECLARE
     "transportation": "Ministry of Transportation"
   }'::JSONB;
   v_stats_snapshot JSONB;
-  v_ideology RECORD;
-  v_trait RECORD;
-  v_leader_trait_key TEXT;
 BEGIN
   -- 1. Validate formation exists and caller is the PM party
   SELECT * INTO v_formation
@@ -327,10 +324,10 @@ BEGIN
   WHERE id = v_nation.id;
 
   -- 9. Auto-appoint PM (party leader)
-  SELECT f.*, fi.value AS ideology_tag
+  -- faction_ideology is a flat table (columns per axis), not rows — use factions.ideology_value_1
+  SELECT f.*, f.ideology_value_1 AS ideology_tag
   INTO v_pm_faction
   FROM factions f
-  LEFT JOIN faction_ideology fi ON fi.faction_id = f.id AND fi.axis = 'primary'
   WHERE f.id = v_pm_party_id;
 
   IF v_pm_faction.id IS NOT NULL AND v_pm_faction.leader_first_name IS NOT NULL THEN
