@@ -1107,11 +1107,11 @@ async function init() {
     // Load equipment maintenance from DB
     let equipMaint = 0;
     if (faction?.id) {
-        const { data: eqRows } = await _supabase
+        const { data: eqRows, error: eqErr } = await _supabase
             .from('corp_equipment')
             .select('equipment_key, owned')
             .eq('faction_id', faction.id);
-        equipMaint = calculateTotalMaintenance(eqRows || []);
+        if (!eqErr) equipMaint = calculateTotalMaintenance(eqRows || []);
     }
 
     renderFinances(nationStats, shard, wfData, faction, propData.propertyMaintenance || 0, equipMaint);
@@ -1774,7 +1774,10 @@ window.switchToFaction = switchToFaction;
 
 // ==================== DISSOLVE CORPORATION ====================
 
+let _dissolving = false;
+
 async function dissolveCorporation() {
+    if (_dissolving) return;
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) return;
 
@@ -1801,38 +1804,45 @@ async function dissolveCorporation() {
     const typed = prompt('Type "DISSOLVE" to confirm permanent dissolution of ' + corpName + ':');
     if (typed !== 'DISSOLVE') { alert('Dissolution cancelled.'); return; }
 
+    _dissolving = true;
     const btn = document.getElementById('dissolve-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'DISSOLVING...'; btn.style.opacity = '0.5'; }
 
     try {
-        // 1. Delete all bids this corp has submitted
-        await _supabase.from('contract_bids').delete().eq('faction_id', factionId);
+        // Helper: run a Supabase mutation and throw on error
+        async function run(op) {
+            const { error } = await op;
+            if (error) throw error;
+        }
 
-        // 2. Cancel any contracts this corp was awarded (mark completed/cancelled)
-        await _supabase.from('construction_contracts')
+        // 1. Delete all bids this corp has submitted
+        await run(_supabase.from('contract_bids').delete().eq('faction_id', factionId));
+
+        // 2. Cancel any contracts this corp was awarded (mark completed)
+        await run(_supabase.from('construction_contracts')
             .update({ status: 'completed' })
             .eq('awarded_to_faction', factionId)
-            .in('status', ['awarded', 'in_progress']);
+            .in('status', ['awarded', 'in_progress']));
 
         // 3. Expire any open contracts this corp issued
-        await _supabase.from('construction_contracts')
+        await run(_supabase.from('construction_contracts')
             .update({ status: 'expired' })
             .eq('issuer_faction_id', factionId)
-            .in('status', ['open', 'bidding']);
+            .in('status', ['open', 'bidding']));
 
         // 4. Delete equipment and deliveries
-        await _supabase.from('corp_equipment_deliveries').delete().eq('faction_id', factionId);
-        await _supabase.from('corp_equipment').delete().eq('faction_id', factionId);
+        await run(_supabase.from('corp_equipment_deliveries').delete().eq('faction_id', factionId));
+        await run(_supabase.from('corp_equipment').delete().eq('faction_id', factionId));
 
         // 5. Delete properties
-        await _supabase.from('corp_properties').delete().eq('faction_id', factionId);
+        await run(_supabase.from('corp_properties').delete().eq('faction_id', factionId));
 
         // 6. Delete warehouse / material inventory
-        await _supabase.from('corp_material_inventory').delete().eq('faction_id', factionId);
-        await _supabase.from('corp_warehouse').delete().eq('faction_id', factionId);
+        await run(_supabase.from('corp_material_inventory').delete().eq('faction_id', factionId));
+        await run(_supabase.from('corp_warehouse').delete().eq('faction_id', factionId));
 
         // 7. Delete the faction itself
-        await _supabase.from('factions').delete().eq('id', factionId);
+        await run(_supabase.from('factions').delete().eq('id', factionId));
 
         // 8. Clear session and redirect
         sessionStorage.removeItem('active_faction_id');
@@ -1859,9 +1869,10 @@ async function dissolveCorporation() {
             window.location.href = 'select-nation.html';
         }
     } catch (err) {
-        console.error('Dissolve failed:', err);
-        alert('Failed to dissolve corporation: ' + err.message);
+        alert('Dissolution failed at step: ' + (err.message || err) + '\n\nPlease contact support if the corporation is in a broken state.');
         if (btn) { btn.disabled = false; btn.textContent = 'Dissolve Corporation'; btn.style.opacity = '1'; }
+    } finally {
+        _dissolving = false;
     }
 }
 
