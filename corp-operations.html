@@ -8001,9 +8001,130 @@ function renderBidAssembly() {
     document.body.appendChild(overlay);
 }
 
-function submitBidAssembly() {
-    // Phase 5: Full DB write to contract_bids
-    alert('Phase 5: SUBMIT BID — coming in next phase.');
+let _bidSubmitting = false;
+
+async function submitBidAssembly() {
+    if (_bidSubmitting || !_bidContract) return;
+
+    const contract = _bidContract;
+    const mats = contract.required_materials || {};
+    const matKeys = Object.keys(mats);
+    const budgetCeiling = Number(contract.budget_ceiling || 0);
+    const timelineTicks = Number(contract.timeline_ticks || 8);
+
+    // Recalculate costs (same formulas as renderBidAssembly)
+    const MAT_BASE_PRICE = {
+        concrete: 360000, steel: 500000, glass_facades: 560000, em_systems: 640000,
+        lumber: 240000, heavy_parts: 800000, aggregate: 160000, asphalt: 280000,
+    };
+    const GRADE_MULTI = { LOW: 0.5, STD: 1.0, HIGH: 2.0 };
+
+    let materialCost = 0;
+    for (const key of matKeys) {
+        const qty = Number(mats[key] || 0);
+        const grade = _bidGrades[key] || 'STD';
+        const basePrice = MAT_BASE_PRICE[key] || 300000;
+        materialCost += qty * Math.round(basePrice * GRADE_MULTI[grade]);
+    }
+
+    const wageRate = 15200;
+    const laborCost = _bidWorkers * wageRate * timelineTicks;
+
+    // Permits
+    const budget = budgetCeiling;
+    const PERMIT_TEMPLATES = [
+        { name: 'Municipal Zoning Approval', cost: 180000, required: true },
+        { name: 'Structural Engineering Cert.', cost: 240000, required: true },
+        { name: 'Environmental Impact Assessment', cost: 340000, required: budget > 20000000 },
+        { name: 'Seismic Resilience Compliance', cost: 210000, required: budget > 50000000 },
+        { name: 'Fire Safety Certification', cost: 120000, required: budget > 10000000 },
+    ];
+    const heldPermitNames = new Set(['Municipal Zoning Approval', 'Structural Engineering Cert.']);
+    const permitCost = PERMIT_TEMPLATES.filter(p => p.required && !heldPermitNames.has(p.name)).reduce((s, p) => s + p.cost, 0);
+
+    const overhead = 400000;
+    const totalCost = materialCost + laborCost + permitCost + overhead;
+    const markup = Math.round(totalCost * (_bidMarkup / 100));
+    const bidPrice = totalCost + markup;
+
+    if (bidPrice > budgetCeiling) {
+        alert('Bid exceeds budget ceiling. Reduce costs or markup.');
+        return;
+    }
+
+    // Quality estimate
+    const gradeVals = Object.values(_bidGrades);
+    const qualityEst = gradeVals.length > 0
+        ? Math.round(gradeVals.reduce((s, g) => s + (g === 'HIGH' ? 85 : g === 'STD' ? 65 : 45), 0) / gradeVals.length)
+        : 50;
+
+    // Confirm
+    if (!confirm(
+        'Submit bid for "' + contract.name + '"?\n\n' +
+        'Bid Price: ' + hfFmtBig(bidPrice) + '\n' +
+        'Est. Cost: ' + hfFmtBig(totalCost) + '\n' +
+        'Markup: ' + _bidMarkup + '% (' + hfFmtBig(markup) + ')\n' +
+        'Quality: ' + qualityEst + '/100\n' +
+        'Workers: ' + _bidWorkers + '\n\n' +
+        'Once submitted, your bid cannot be changed.'
+    )) return;
+
+    _bidSubmitting = true;
+    try {
+        // Get current tick
+        const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shardData?.current_tick || 0;
+
+        // Build material grades JSONB
+        const materialGrades = {};
+        for (const key of matKeys) {
+            materialGrades[key] = _bidGrades[key] || 'STD';
+        }
+
+        // Insert bid
+        const { error: bidErr } = await _supabase.from('contract_bids').insert({
+            contract_id: contract.id,
+            faction_id: faction.id,
+            bid_price: bidPrice,
+            material_grades: materialGrades,
+            labor_count: _bidWorkers,
+            markup_pct: _bidMarkup,
+            estimated_cost: totalCost,
+            estimated_quality: qualityEst,
+            status: 'pending',
+            submitted_at_tick: currentTick,
+        });
+
+        if (bidErr) throw bidErr;
+
+        // Update contract status to 'bidding' if it was 'open'
+        if (contract.status === 'open') {
+            await _supabase.from('construction_contracts')
+                .update({ status: 'bidding' })
+                .eq('id', contract.id)
+                .eq('status', 'open');
+        }
+
+        closeBidAssembly();
+
+        alert(
+            'Bid submitted successfully!\n\n' +
+            'Contract: ' + contract.name + '\n' +
+            'Your Bid: ' + hfFmtBig(bidPrice) + '\n' +
+            'Quality: ' + qualityEst + '/100\n\n' +
+            'Bids will be resolved when the bidding window closes (' +
+            (contract.bidding_ends_tick ? 'tick ' + contract.bidding_ends_tick : 'TBD') + ').\n' +
+            'Lowest qualified bid wins.'
+        );
+
+        // Refresh contracts list
+        if (typeof loadContracts === 'function') await loadContracts();
+
+    } catch (err) {
+        alert('Bid submission failed: ' + err.message);
+    } finally {
+        _bidSubmitting = false;
+    }
 }
 
 window.openBidAssembly = openBidAssembly;
