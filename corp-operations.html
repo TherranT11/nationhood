@@ -7770,11 +7770,32 @@ function renderBidAssembly() {
         </div>`;
     }
 
+    // Worker presets — doubled range from contract requirements
+    const wf = contract.required_workforce || {};
+    const baseWorkers = (Number(wf.general || 0) + Number(wf.skilled || 0)) || 100;
+    const minWorkers = Math.max(40, Math.round(baseWorkers * 0.5));
+    const maxWorkers = baseWorkers * 2;
+    const workerPresets = [
+        minWorkers,
+        Math.round(baseWorkers * 0.75),
+        baseWorkers,
+        Math.round(baseWorkers * 1.5),
+        maxWorkers,
+    ];
+
+    // Completion timeline: min workers = +3-6mo, max workers = -3-4mo from base
+    const workerRatio = Math.max(0, Math.min(1, (_bidWorkers - minWorkers) / (maxWorkers - minWorkers || 1)));
+    const baseTimeline = timelineTicks;
+    const timelineDelta = Math.round(4.5 - (workerRatio * 8));
+    const estCompletionTicks = Math.max(Math.round(baseTimeline * 0.6), baseTimeline + timelineDelta);
+    const timelineLabel = timelineDelta > 0 ? `+${timelineDelta}mo` : timelineDelta < 0 ? `${timelineDelta}mo` : 'On schedule';
+    const timelineColor = timelineDelta > 0 ? C.red : timelineDelta < 0 ? C.greenBright : C.yellow;
+
+    // Labor cost uses estimated completion timeline
     const wageRate = 15200;
-    const laborCost = _bidWorkers * wageRate * timelineTicks;
+    const laborCost = _bidWorkers * wageRate * estCompletionTicks;
 
     // ── PERMITS ──
-    // Generate realistic permits based on contract sector and size
     const budget = budgetCeiling;
     const PERMIT_TEMPLATES = [
         { name: 'Municipal Zoning Approval', cost: 180000, ticks: 2, required: true },
@@ -7785,7 +7806,6 @@ function renderBidAssembly() {
         { name: 'Fire Safety Certification', cost: 120000, ticks: 2, required: budget > 10000000 },
     ];
     const permits = PERMIT_TEMPLATES.filter(p => p.required);
-    // Simulate which permits are already held (based on previous projects — placeholder)
     const heldPermitNames = new Set(['Municipal Zoning Approval', 'Structural Engineering Cert.']);
     const permitCost = permits.filter(p => !heldPermitNames.has(p.name)).reduce((s, p) => s + p.cost, 0);
 
@@ -7806,17 +7826,6 @@ function renderBidAssembly() {
     const qualityEst = gradeVals.length > 0 ? Math.round(gradeVals.reduce((s, g) => s + (g === 'HIGH' ? 85 : g === 'STD' ? 65 : 45), 0) / gradeVals.length) : 50;
     const qualityColor = qualityEst >= 75 ? C.greenBright : qualityEst >= 55 ? C.yellow : C.orange;
     const qualityLabel = qualityEst >= 75 ? 'STRONG' : qualityEst >= 55 ? 'PROMISING' : 'UNCERTAIN';
-
-    // Worker presets
-    const wf = contract.required_workforce || {};
-    const baseWorkers = (Number(wf.general || 0) + Number(wf.skilled || 0)) || 100;
-    const workerPresets = [
-        Math.max(40, Math.round(baseWorkers * 0.7)),
-        Math.max(60, Math.round(baseWorkers * 0.85)),
-        baseWorkers,
-        Math.round(baseWorkers * 1.15),
-        Math.round(baseWorkers * 1.3),
-    ];
 
     const overlay = document.createElement('div');
     overlay.id = 'bid-assembly-overlay';
@@ -7877,8 +7886,12 @@ function renderBidAssembly() {
                         </div>
                     </div>
                     <div style="display:flex;justify-content:space-between;">
-                        <span style="font-family:${mono};font-size:8px;color:${C.dim}">${_bidWorkers} × $${wageRate.toLocaleString()}/tick × ${timelineTicks} ticks</span>
+                        <span style="font-family:${mono};font-size:8px;color:${C.dim}">${_bidWorkers} × $${wageRate.toLocaleString()}/tick × ${estCompletionTicks} ticks</span>
                         <span style="font-family:${mono};font-size:11px;font-weight:700;color:${C.text}">${hfFmtBig(laborCost)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;margin-top:6px;padding-top:6px;border-top:1px solid ${C.border};">
+                        <span style="font-family:${mono};font-size:8px;color:${C.dim}">COMPLETION TIMELINE</span>
+                        <span style="font-family:${mono};font-size:10px;font-weight:700;color:${timelineColor}">${estCompletionTicks}mo <span style="font-size:8px;opacity:0.7">(${timelineLabel})</span></span>
                     </div>
                 </div>
 
@@ -8034,7 +8047,14 @@ async function submitBidAssembly() {
     }
 
     const wageRate = 15200;
-    const laborCost = _bidWorkers * wageRate * timelineTicks;
+    const _swfReq = contract.required_workforce || {};
+    const _sbaseWf = (Number(_swfReq.general || 0) + Number(_swfReq.skilled || 0)) || 100;
+    const _sminWf = Math.max(40, Math.round(_sbaseWf * 0.5));
+    const _smaxWf = _sbaseWf * 2;
+    const _swRatio = Math.max(0, Math.min(1, (_bidWorkers - _sminWf) / (_smaxWf - _sminWf || 1)));
+    const _stDelta = Math.round(4.5 - (_swRatio * 8));
+    const _sestTicks = Math.max(Math.round(timelineTicks * 0.6), timelineTicks + _stDelta);
+    const laborCost = _bidWorkers * wageRate * _sestTicks;
 
     // Permits
     const budget = budgetCeiling;
