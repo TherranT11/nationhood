@@ -7460,7 +7460,109 @@ async function subWithdraw(propId) {
         alert('Withdrew ' + hfFmtBig(amount) + ' from ' + hq.name + '.');
     } catch (err) { alert('Failed: ' + err.message); }
 }
-function subMerge(propId) { alert('MERGE — Coming in Phase 4'); }
+// ─── MERGE: Absorb source subsidiary into a target subsidiary ───
+// Properties from source nation are reassigned to target nation.
+// Source HQ deactivated, sub_cash transferred, 10% merger fee on source valuation.
+async function subMerge(propId) {
+    const sourceHq = _ownedProperties.find(p => p.id === propId);
+    if (!sourceHq) return;
+
+    // Get all other subsidiaries to pick a merge target
+    const otherHqs = _ownedProperties.filter(p => p.type === 'regional_hq' && p.id !== propId);
+    if (otherHqs.length === 0) {
+        alert('No other subsidiaries to merge into.\nYou need at least 2 subsidiaries to merge.');
+        return;
+    }
+
+    const sourceNation = _subNations.find(n => n.id === sourceHq.nation_id)?.name || sourceHq.city || '—';
+    const sourceProps = _ownedProperties.filter(p => p.nation_id === sourceHq.nation_id);
+    const sourceVal = sourceProps.reduce((s, p) => s + Number(p.purchase_price || 0), 0);
+    const sourceCash = Number(sourceHq.sub_cash || 0);
+    const mergerFee = Math.round(sourceVal * 0.10);
+
+    // Build target options
+    let targetList = '';
+    for (let i = 0; i < otherHqs.length; i++) {
+        const t = otherHqs[i];
+        const tNation = _subNations.find(n => n.id === t.nation_id)?.name || t.city || '—';
+        targetList += (i + 1) + '. ' + t.name + ' (' + tNation + ')\n';
+    }
+
+    const choice = prompt(
+        'MERGE "' + sourceHq.name + '" (' + sourceNation + ') INTO another subsidiary.\n\n' +
+        'Source properties: ' + sourceProps.length + ' (value: ' + hfFmtBig(sourceVal) + ')\n' +
+        'Source cash: ' + hfFmtBig(sourceCash) + '\n' +
+        'Merger fee (10%): ' + hfFmtBig(mergerFee) + '\n\n' +
+        'Properties will be reassigned to the target nation.\n' +
+        'Source HQ will be closed.\n\n' +
+        'Select target subsidiary:\n' + targetList + '\n' +
+        'Enter number (1-' + otherHqs.length + '):'
+    );
+    if (!choice) return;
+
+    const idx = parseInt(choice, 10) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= otherHqs.length) {
+        alert('Invalid selection.');
+        return;
+    }
+
+    const targetHq = otherHqs[idx];
+    const targetNation = _subNations.find(n => n.id === targetHq.nation_id)?.name || targetHq.city || '—';
+    const parentCash = Number(faction?.corp_cash_reserves ?? 0);
+
+    if (mergerFee > parentCash) {
+        alert('Insufficient parent cash for merger fee.\nFee: ' + hfFmtBig(mergerFee) + ', available: ' + hfFmtBig(parentCash));
+        return;
+    }
+
+    if (!confirm(
+        'Merge "' + sourceHq.name + '" INTO "' + targetHq.name + '"?\n\n' +
+        '• ' + (sourceProps.length - 1) + ' properties move from ' + sourceNation + ' → ' + targetNation + '\n' +
+        '• Source HQ closed\n' +
+        '• Cash transferred: ' + hfFmtBig(sourceCash) + '\n' +
+        '• Merger fee: ' + hfFmtBig(mergerFee) + ' (from parent)\n\n' +
+        'This cannot be undone.'
+    )) return;
+
+    try {
+        // 1. Reassign non-HQ properties from source nation to target nation
+        const nonHqProps = sourceProps.filter(p => p.id !== sourceHq.id);
+        for (const p of nonHqProps) {
+            await _supabase.from('corp_properties').update({
+                nation_id: targetHq.nation_id,
+                city: targetHq.city,
+            }).eq('id', p.id);
+        }
+
+        // 2. Deactivate source HQ
+        await _supabase.from('corp_properties').update({ is_active: false, sub_cash: 0 }).eq('id', sourceHq.id);
+
+        // 3. Transfer sub_cash to target HQ
+        const newTargetCash = Number(targetHq.sub_cash || 0) + sourceCash;
+        await _supabase.from('corp_properties').update({ sub_cash: newTargetCash }).eq('id', targetHq.id);
+
+        // 4. Deduct merger fee from parent
+        const newParentCash = parentCash - mergerFee;
+        await _supabase.from('factions').update({ corp_cash_reserves: newParentCash }).eq('id', faction.id);
+        faction.corp_cash_reserves = newParentCash;
+
+        const cashEl = document.getElementById('topbar-cash');
+        if (cashEl) cashEl.textContent = 'CASH: ' + (newParentCash >= 1e6 ? '$' + (newParentCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newParentCash / 1000) + 'k');
+
+        _mSubSelected = 0;
+        await loadOwnedProperties();
+        renderPropertyCard();
+        renderManageSubsidiariesCard();
+        renderCreateSubsidiaryCard();
+        alert(
+            'Merger complete!\n\n' +
+            '"' + sourceHq.name + '" absorbed into "' + targetHq.name + '"\n' +
+            (nonHqProps.length > 0 ? nonHqProps.length + ' properties reassigned to ' + targetNation + '\n' : '') +
+            'Cash transferred: ' + hfFmtBig(sourceCash) + '\n' +
+            'Merger fee paid: ' + hfFmtBig(mergerFee)
+        );
+    } catch (err) { alert('Merge failed: ' + err.message); }
+}
 // subSell defined above with subDissolve
 
 window.subDissolve = subDissolve;
