@@ -1,12 +1,14 @@
 -- ════════════════════════════════════════════════════════════════════════════════
--- Fix: finalize_government_formation uses hardcoded Spanish names for Head of State
+-- Fix: Preserve ministry discretionary_balance across government formation
 --
--- Bug: The HoS auto-generation block in finalize_government_formation only uses
--- Crucera (Spanish) names for all nations. Calveth should use Danish names,
--- Flandis should use Dutch names, and Avelia should use Avelian names.
+-- Bug: When a new government forms, discretionary funds drop to $0. The
+-- finalize_government_formation function's INSERT path creates new ministry
+-- rows with DEFAULT 0 balance, and external RPCs may also reset the rows.
 --
--- Fix: Full CREATE OR REPLACE with nation-aware CASE on v_nation.name.
--- Also carries forward the to_jsonb(v_nation) stats snapshot fix from 20260401.
+-- Fix: Snapshot all discretionary_balance values before clearing ministers,
+-- then explicitly carry them forward in both UPDATE and INSERT paths.
+--
+-- Also carries forward all prior fixes (nation-aware HoS names, etc.).
 -- ════════════════════════════════════════════════════════════════════════════════
 
 CREATE OR REPLACE FUNCTION finalize_government_formation(
@@ -31,6 +33,8 @@ DECLARE
   v_ministry_party_id UUID;
   v_minister JSONB;
   v_existing_ministry_id UUID;
+  v_saved_balances JSONB;        -- snapshot of discretionary_balance per ministry_key
+  v_restored_balance NUMERIC;
   v_ministry_display_names JSONB := '{
     "prime_minister": "Prime Minister",
     "interior": "Ministry of the Interior",
@@ -95,6 +99,13 @@ BEGIN
   SET active = false
   WHERE nation_id = v_nation.id AND active = true;
 
+  -- *** SAVE discretionary balances before clearing ministers ***
+  -- Funds must survive government transitions — they were allocated by legislation.
+  SELECT COALESCE(jsonb_object_agg(ministry_key, discretionary_balance), '{}'::JSONB)
+  INTO v_saved_balances
+  FROM ministries
+  WHERE nation_id = v_nation.id AND is_active = true;
+
   UPDATE ministries
   SET minister_first_name = NULL,
       minister_last_name = NULL,
@@ -140,6 +151,9 @@ BEGIN
       CONTINUE;
     END IF;
 
+    -- Restore saved discretionary balance (funds survive government changes)
+    v_restored_balance := COALESCE((v_saved_balances->>v_ministry_key)::NUMERIC, 0);
+
     SELECT id INTO v_existing_ministry_id
     FROM ministries
     WHERE nation_id = v_nation.id
@@ -154,13 +168,14 @@ BEGIN
         minister_last_name = v_minister->>'last_name',
         minister_age = (v_minister->>'age')::INT,
         minister_approval = 50,
-        stat_baselines = COALESCE(p_ministry_baselines->v_ministry_key, '{}'::JSONB)
+        stat_baselines = COALESCE(p_ministry_baselines->v_ministry_key, '{}'::JSONB),
+        discretionary_balance = v_restored_balance
       WHERE id = v_existing_ministry_id;
     ELSE
       INSERT INTO ministries (
         nation_id, ministry_key, ministry_name, is_active,
         party_id, minister_first_name, minister_last_name, minister_age,
-        minister_approval, stat_baselines
+        minister_approval, stat_baselines, discretionary_balance
       ) VALUES (
         v_nation.id, v_ministry_key,
         COALESCE(v_ministry_display_names->>v_ministry_key, v_ministry_key),
@@ -168,7 +183,8 @@ BEGIN
         v_minister->>'first_name', v_minister->>'last_name',
         (v_minister->>'age')::INT,
         50,
-        COALESCE(p_ministry_baselines->v_ministry_key, '{}'::JSONB)
+        COALESCE(p_ministry_baselines->v_ministry_key, '{}'::JSONB),
+        v_restored_balance
       );
     END IF;
   END LOOP;
@@ -297,6 +313,9 @@ BEGIN
     DELETE FROM pm_candidates
     WHERE faction_id = v_pm_party_id AND nation_id = v_nation.id;
 
+    -- Restore PM discretionary balance too
+    v_restored_balance := COALESCE((v_saved_balances->>'prime_minister')::NUMERIC, 0);
+
     INSERT INTO head_of_government (
       nation_id, faction_id, first_name, last_name, age,
       ideology, appointed_tick, active
@@ -336,20 +355,22 @@ BEGIN
         minister_last_name = v_pm_faction.leader_last_name,
         minister_age = v_pm_faction.leader_age,
         minister_approval = 50,
-        stat_baselines = COALESCE(p_ministry_baselines->'prime_minister', '{}'::JSONB)
+        stat_baselines = COALESCE(p_ministry_baselines->'prime_minister', '{}'::JSONB),
+        discretionary_balance = v_restored_balance
       WHERE id = v_existing_ministry_id;
     ELSE
       INSERT INTO ministries (
         nation_id, ministry_key, ministry_name, is_active,
         party_id, minister_first_name, minister_last_name, minister_age,
-        minister_approval, stat_baselines
+        minister_approval, stat_baselines, discretionary_balance
       ) VALUES (
         v_nation.id, 'prime_minister', 'Prime Minister', true,
         v_pm_party_id,
         v_pm_faction.leader_first_name, v_pm_faction.leader_last_name,
         v_pm_faction.leader_age,
         50,
-        COALESCE(p_ministry_baselines->'prime_minister', '{}'::JSONB)
+        COALESCE(p_ministry_baselines->'prime_minister', '{}'::JSONB),
+        v_restored_balance
       );
     END IF;
 
