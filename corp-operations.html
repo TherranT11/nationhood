@@ -7748,8 +7748,25 @@ function renderBidAssembly() {
 
     const wageRate = 15200;
     const laborCost = _bidWorkers * wageRate * timelineTicks;
+
+    // ── PERMITS ──
+    // Generate realistic permits based on contract sector and size
+    const budget = budgetCeiling;
+    const PERMIT_TEMPLATES = [
+        { name: 'Municipal Zoning Approval', cost: 180000, ticks: 2, required: true },
+        { name: 'Structural Engineering Cert.', cost: 240000, ticks: 3, required: true },
+        { name: 'Environmental Impact Assessment', cost: 340000, ticks: 8, required: budget > 20000000 },
+        { name: 'Seismic Resilience Compliance', cost: 210000, ticks: 4, required: budget > 50000000 },
+        { name: 'Heritage Conservation Review', cost: 160000, ticks: 6, required: false },
+        { name: 'Fire Safety Certification', cost: 120000, ticks: 2, required: budget > 10000000 },
+    ];
+    const permits = PERMIT_TEMPLATES.filter(p => p.required);
+    // Simulate which permits are already held (based on previous projects — placeholder)
+    const heldPermitNames = new Set(['Municipal Zoning Approval', 'Structural Engineering Cert.']);
+    const permitCost = permits.filter(p => !heldPermitNames.has(p.name)).reduce((s, p) => s + p.cost, 0);
+
     const overhead = 400000;
-    const totalCost = materialCost + laborCost + overhead;
+    const totalCost = materialCost + laborCost + permitCost + overhead;
     const markup = Math.round(totalCost * (_bidMarkup / 100));
     const bidPrice = totalCost + markup;
     const overBudget = bidPrice > budgetCeiling;
@@ -7841,6 +7858,30 @@ function renderBidAssembly() {
                     </div>
                 </div>
 
+                <div style="padding:6px 14px;border-bottom:1px solid ${C.border};background:${C.card};">
+                    <span style="font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1.5px;color:${C.accentBright};text-transform:uppercase">Permits</span>
+                </div>
+                ${permits.map(p => {
+                    const held = heldPermitNames.has(p.name);
+                    return `<div style="display:flex;align-items:center;padding:4px 14px;border-bottom:1px solid ${C.border};">
+                        <div style="flex:1;display:flex;align-items:center;gap:6px;">
+                            <span style="font-family:${mono};font-size:8px;font-weight:700;color:${held ? C.greenBright : C.orange}">${held ? '✓' : '○'}</span>
+                            <span style="font-size:10px;color:${held ? C.muted : C.text}">${p.name}</span>
+                        </div>
+                        ${held
+                            ? `<span style="font-family:${mono};font-size:8px;color:${C.greenBright}">HELD</span>`
+                            : `<div style="text-align:right">
+                                <span style="font-family:${mono};font-size:9px;color:${C.redDim}">${hfFmtBig(p.cost)}</span>
+                                <span style="font-family:${mono};font-size:7px;color:${C.dim};margin-left:4px">${p.ticks}t</span>
+                            </div>`
+                        }
+                    </div>`;
+                }).join('')}
+                <div style="display:flex;justify-content:space-between;padding:5px 14px;border-bottom:1px solid ${C.border};background:rgba(139,154,107,0.02);">
+                    <span style="font-family:${mono};font-size:9px;color:${C.muted}">PERMIT COSTS</span>
+                    <span style="font-family:${mono};font-size:11px;font-weight:700;color:${C.text}">${hfFmtBig(permitCost)}</span>
+                </div>
+
                 <div style="display:flex;justify-content:space-between;padding:5px 14px;border-bottom:1px solid ${C.border};">
                     <span style="font-family:${mono};font-size:9px;color:${C.muted}">OVERHEAD & CONTINGENCY</span>
                     <span style="font-family:${mono};font-size:11px;font-weight:700;color:${C.text}">${hfFmtBig(overhead)}</span>
@@ -7852,7 +7893,7 @@ function renderBidAssembly() {
                 <div style="padding:6px 14px;border-bottom:1px solid ${C.border};background:${C.card};">
                     <span style="font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1.5px;color:${C.accentBright};text-transform:uppercase">Cost Summary</span>
                 </div>
-                ${[{l:'Materials',v:materialCost},{l:'Labor',v:laborCost},{l:'Overhead',v:overhead}].map(r => `<div style="display:flex;justify-content:space-between;padding:4px 14px;border-bottom:1px solid ${C.border};">
+                ${[{l:'Materials',v:materialCost},{l:'Labor',v:laborCost},{l:'Permits',v:permitCost},{l:'Overhead',v:overhead}].map(r => `<div style="display:flex;justify-content:space-between;padding:4px 14px;border-bottom:1px solid ${C.border};">
                     <span style="font-size:10px;color:${C.muted}">${r.l}</span>
                     <span style="font-family:${mono};font-size:10px;color:${C.redDim}">${hfFmtBig(r.v)}</span>
                 </div>`).join('')}
