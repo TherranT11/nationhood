@@ -7,14 +7,14 @@
 --
 -- Fix: Replace the hardcoded Spanish name arrays with a CASE on v_nation.name
 -- that selects the appropriate culture-specific name pool.
+--
+-- Uses regexp_replace to tolerate whitespace differences in the stored function.
 -- ════════════════════════════════════════════════════════════════════════════════
 
 DO $patch$
 DECLARE
     v_src TEXT;
     v_patched TEXT;
-    v_old_block TEXT;
-    v_new_block TEXT;
 BEGIN
     SELECT prosrc INTO v_src
     FROM pg_proc p
@@ -26,40 +26,39 @@ BEGIN
         RAISE EXCEPTION 'Function finalize_government_formation not found';
     END IF;
 
-    -- The old HoS block uses hardcoded Spanish name arrays.
-    -- Replace with nation-aware name selection using CASE on v_nation.name.
+    -- Replace the first-name COALESCE block (tolerates whitespace variations)
+    -- Matches: head_of_state_first_name = COALESCE(v_nation.head_of_state_first_name, (ARRAY[...Spanish names...])[1 + floor(random()*10)::int])
+    v_patched := regexp_replace(
+        v_src,
+        E'head_of_state_first_name\\s*=\\s*COALESCE\\s*\\(\\s*v_nation\\.head_of_state_first_name\\s*,\\s*\\(ARRAY\\[''Alejandro''[^\\]]+\\]\\)\\s*\\[1\\s*\\+\\s*floor\\(random\\(\\)\\s*\\*\\s*10\\)::int\\]\\s*\\)',
+        E'head_of_state_first_name = COALESCE(v_nation.head_of_state_first_name,\n'
+        E'        CASE v_nation.name\n'
+        E'          WHEN ''Calveth'' THEN (ARRAY[''Lukas'',''Noah'',''Victor'',''Oliver'',''Oscar'',''William'',''Emil'',''Alfred'',''Magnus'',''Mads'',''Frederik'',''Christian'',''Mikkel'',''Anders'',''Lars'',''Søren'',''Rasmus'',''Kristian'',''Morten'',''Jesper''])[1 + floor(random()*20)::int]\n'
+        E'          WHEN ''Avelia'' THEN (ARRAY[''Marcelo'',''Luciana'',''Dante'',''Sofía'',''Lorenzo'',''Elena'',''Tomás'',''Rosario'',''Fabrizio'',''Carolina'',''Leandro'',''Paloma'',''Giancarlo'',''Inés'',''Renato'',''Marisol'',''Nico'',''Florencia'',''Aurelio'',''Celeste''])[1 + floor(random()*20)::int]\n'
+        E'          WHEN ''Flandis'' THEN (ARRAY[''Adriaan'',''Bastiaan'',''Casper'',''Damiaan'',''Evert'',''Floris'',''Gerben'',''Harmen'',''Ivo'',''Jasper'',''Klaas'',''Laurens'',''Maarten'',''Niels'',''Olaf'',''Pieter'',''Quinten'',''Reinier'',''Sander'',''Thijs''])[1 + floor(random()*20)::int]\n'
+        E'          ELSE (ARRAY[''Alejandro'',''Camila'',''Diego'',''Valentina'',''Mateo'',''Isabela'',''Sebastián'',''Luca'',''Andrés'',''Gabriel''])[1 + floor(random()*10)::int]\n'
+        E'        END)',
+        'n'
+    );
 
-    v_old_block := $old$head_of_state_first_name = COALESCE(v_nation.head_of_state_first_name,
-        (ARRAY['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel'])[1 + floor(random()*10)::int])$old$;
-
-    v_new_block := $new$head_of_state_first_name = COALESCE(v_nation.head_of_state_first_name,
-        CASE v_nation.name
-          WHEN 'Calveth' THEN (ARRAY['Lukas','Noah','Victor','Oliver','Oscar','William','Emil','Alfred','Magnus','Mads','Frederik','Christian','Mikkel','Anders','Lars','Søren','Rasmus','Kristian','Morten','Jesper'])[1 + floor(random()*20)::int]
-          WHEN 'Avelia' THEN (ARRAY['Marcelo','Luciana','Dante','Sofía','Lorenzo','Elena','Tomás','Rosario','Fabrizio','Carolina','Leandro','Paloma','Giancarlo','Inés','Renato','Marisol','Nico','Florencia','Aurelio','Celeste'])[1 + floor(random()*20)::int]
-          WHEN 'Flandis' THEN (ARRAY['Adriaan','Bastiaan','Casper','Damiaan','Evert','Floris','Gerben','Harmen','Ivo','Jasper','Klaas','Laurens','Maarten','Niels','Olaf','Pieter','Quinten','Reinier','Sander','Thijs'])[1 + floor(random()*20)::int]
-          ELSE (ARRAY['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel'])[1 + floor(random()*10)::int]
-        END)$new$;
-
-    v_patched := replace(v_src, v_old_block, v_new_block);
-
-    -- Now fix the last names
-    v_old_block := $old$head_of_state_last_name = COALESCE(v_nation.head_of_state_last_name,
-        (ARRAY['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza'])[1 + floor(random()*10)::int])$old$;
-
-    v_new_block := $new$head_of_state_last_name = COALESCE(v_nation.head_of_state_last_name,
-        CASE v_nation.name
-          WHEN 'Calveth' THEN (ARRAY['Jensen','Nielsen','Hansen','Pedersen','Andersen','Christensen','Larsen','Sørensen','Rasmussen','Jørgensen','Petersen','Madsen','Kristensen','Olsen','Thomsen','Christiansen','Poulsen','Johansen','Knudsen','Mortensen'])[1 + floor(random()*20)::int]
-          WHEN 'Avelia' THEN (ARRAY['Montalbán','Ferretti','Salcedo','Conti','Valverde','Lucero','Maretti','Orellana','Bellini','Calderón','Santoro','Vásquez','Lombardi','Peñaloza','Rinaldi','Escobar','Castellani','Madrigal','Giacomo','Solano'])[1 + floor(random()*20)::int]
-          WHEN 'Flandis' THEN (ARRAY['Bakker','Bos','Bosman','Brouwer','De Graaf','De Jong','De Vries','De Wit','Dekker','Dijkstra','Dijk','Driessen','Gerritsen','Hendriks','Hermans','Hoekstra','Huisman','Jacobs','Janssen','Koster'])[1 + floor(random()*20)::int]
-          ELSE (ARRAY['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza'])[1 + floor(random()*10)::int]
-        END)$new$;
-
-    v_patched := replace(v_patched, v_old_block, v_new_block);
-
-    -- Verify at least one replacement happened — fail loud if match not found
     IF v_patched = v_src THEN
-        RAISE EXCEPTION 'No replacements made — HoS name arrays may have already been patched or the stored function text differs from expected. Run SELECT prosrc FROM pg_proc WHERE proname = ''finalize_government_formation'' to inspect.';
+        RAISE EXCEPTION 'First-name pattern not matched. Run: SELECT prosrc FROM pg_proc WHERE proname = ''finalize_government_formation''; and search for head_of_state_first_name to see the actual format.';
     END IF;
+
+    -- Replace the last-name COALESCE block
+    -- Matches: head_of_state_last_name = COALESCE(v_nation.head_of_state_last_name, (ARRAY[...Spanish names...])[1 + floor(random()*10)::int])
+    v_patched := regexp_replace(
+        v_patched,
+        E'head_of_state_last_name\\s*=\\s*COALESCE\\s*\\(\\s*v_nation\\.head_of_state_last_name\\s*,\\s*\\(ARRAY\\[''Velasco''[^\\]]+\\]\\)\\s*\\[1\\s*\\+\\s*floor\\(random\\(\\)\\s*\\*\\s*10\\)::int\\]\\s*\\)',
+        E'head_of_state_last_name = COALESCE(v_nation.head_of_state_last_name,\n'
+        E'        CASE v_nation.name\n'
+        E'          WHEN ''Calveth'' THEN (ARRAY[''Jensen'',''Nielsen'',''Hansen'',''Pedersen'',''Andersen'',''Christensen'',''Larsen'',''Sørensen'',''Rasmussen'',''Jørgensen'',''Petersen'',''Madsen'',''Kristensen'',''Olsen'',''Thomsen'',''Christiansen'',''Poulsen'',''Johansen'',''Knudsen'',''Mortensen''])[1 + floor(random()*20)::int]\n'
+        E'          WHEN ''Avelia'' THEN (ARRAY[''Montalbán'',''Ferretti'',''Salcedo'',''Conti'',''Valverde'',''Lucero'',''Maretti'',''Orellana'',''Bellini'',''Calderón'',''Santoro'',''Vásquez'',''Lombardi'',''Peñaloza'',''Rinaldi'',''Escobar'',''Castellani'',''Madrigal'',''Giacomo'',''Solano''])[1 + floor(random()*20)::int]\n'
+        E'          WHEN ''Flandis'' THEN (ARRAY[''Bakker'',''Bos'',''Bosman'',''Brouwer'',''De Graaf'',''De Jong'',''De Vries'',''De Wit'',''Dekker'',''Dijkstra'',''Dijk'',''Driessen'',''Gerritsen'',''Hendriks'',''Hermans'',''Hoekstra'',''Huisman'',''Jacobs'',''Janssen'',''Koster''])[1 + floor(random()*20)::int]\n'
+        E'          ELSE (ARRAY[''Velasco'',''Mendoza'',''Guerrero'',''Salazar'',''Castillo'',''Herrera'',''Morales'',''Ríos'',''Delgado'',''Espinoza''])[1 + floor(random()*10)::int]\n'
+        E'        END)',
+        'n'
+    );
 
     -- Recreate function with patched source
     EXECUTE format(
