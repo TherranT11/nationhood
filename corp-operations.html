@@ -7117,11 +7117,17 @@ function getSubsidiaryData(hqProp) {
         ? words.map(w => w[0]).join('').toUpperCase().slice(0, 4)
         : (hqProp.name || 'SUB').slice(0, 4).toUpperCase();
 
-    // Derived business metrics — placeholders until per-subsidiary accounting exists
-    // Revenue = maintenance × 3 if has projects, else 0 (rough proxy)
-    const revenue = projects > 0 ? totalMaint * 3 * projects : 0;
-    const profitable = revenue > totalMaint;
-    const trend = projects >= 2 ? 'up' : projects === 1 ? 'flat' : 'down';
+    // Derived business metrics — mirrors server-side processSubsidiaryRevenue
+    const subCash = Number(hqProp.sub_cash || 0);
+    const nationData = _subNations.find(n => n.id === hqProp.nation_id);
+    const gdpGrowth = Number(nationData?.gdp_growth ?? 50);
+    const reputation = 25; // fixed for now
+    const base = subCash * 0.02;
+    const gdpMod = (gdpGrowth - 30) / 100;
+    const repMult = reputation / 100;
+    const revenue = subCash > 0 ? Math.round(base * (1 + gdpMod) * repMult) : 0;
+    const profitable = revenue > 0;
+    const trend = gdpGrowth >= 40 && subCash > 0 ? 'up' : gdpGrowth >= 30 && subCash > 0 ? 'flat' : 'down';
 
     return {
         id: hqProp.id,
