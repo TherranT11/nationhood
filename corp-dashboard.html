@@ -894,8 +894,8 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
   <div style="display:flex;justify-content:center;padding:40px 14px 60px;">
     <div id="dissolve-box" style="border:1px solid #3a2020;background:rgba(204,85,85,0.03);padding:20px 32px;text-align:center;max-width:400px;width:100%;">
       <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:2px;color:#a44;margin-bottom:8px;text-transform:uppercase;">Irreversible Action</div>
-      <button id="dissolve-btn" onclick="dissolveCorporation()" style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#c55;background:transparent;border:1px solid #c55;padding:8px 28px;cursor:pointer;transition:all 0.15s;">Dissolve Corporation</button>
-      <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:8px;line-height:1.5;">
+      <button id="dissolve-btn" disabled style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#c55;background:transparent;border:1px solid #c55;padding:8px 28px;cursor:pointer;transition:all 0.15s;opacity:0.4;">Dissolve Corporation</button>
+      <div id="dissolve-info" style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:8px;line-height:1.5;">
         Permanently removes this corporation, all assets,<br>bids, equipment, properties, and warehouse inventory.
       </div>
     </div>
@@ -1119,6 +1119,28 @@ async function init() {
 
     // Messaging bubble
     initMessaging(faction, nationStats, shard);
+
+    // Dissolve button — 60 tick cooldown from founding
+    const DISSOLVE_COOLDOWN = 60;
+    const foundedTick = faction.founded_tick || 0;
+    const currentTickVal = shard?.current_tick || 0;
+    const ticksUntilDissolve = Math.max(0, DISSOLVE_COOLDOWN - (currentTickVal - foundedTick));
+    const dissolveBtn = document.getElementById('dissolve-btn');
+    const dissolveInfo = document.getElementById('dissolve-info');
+    if (dissolveBtn) {
+        if (ticksUntilDissolve > 0) {
+            dissolveBtn.disabled = true;
+            dissolveBtn.style.opacity = '0.4';
+            dissolveBtn.style.cursor = 'not-allowed';
+            if (dissolveInfo) dissolveInfo.innerHTML =
+                `<span style="color:#a44;">Available in ${ticksUntilDissolve} tick${ticksUntilDissolve !== 1 ? 's' : ''}</span><br>` +
+                'Corporations must operate for 60 ticks before dissolution.';
+        } else {
+            dissolveBtn.disabled = false;
+            dissolveBtn.style.opacity = '1';
+            dissolveBtn.style.cursor = 'pointer';
+        }
+    }
 
     // Show page
     document.getElementById('loading').style.display = 'none';
@@ -1789,6 +1811,15 @@ async function dissolveCorporation() {
     if (!corp) { alert('No active corporation found.'); return; }
 
     const corpName = corp.faction_name || 'this corporation';
+
+    // Verify 60-tick cooldown server-side
+    const { data: shardNow } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const nowTick = shardNow?.current_tick || 0;
+    const age = nowTick - (corp.founded_tick || 0);
+    if (age < 60) {
+        alert('Corporation must be at least 60 ticks old to dissolve.\n\n' + (60 - age) + ' ticks remaining.');
+        return;
+    }
 
     // Two-step confirmation
     if (!confirm(

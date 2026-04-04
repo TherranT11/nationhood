@@ -353,16 +353,25 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
         }
     }
 
-    // Ministry issuers for GOVERNMENT contracts
-    const ISSUERS = [
-        'Ministry of Infrastructure', 'Ministry of Housing',
-        'Ministry of Transport', 'Ministry of Energy',
-        'Ministry of Health', 'Ministry of Education',
-        'Ministry of Defense', 'Ministry of the Interior'
+    // Private organization issuers for auto-generated contracts
+    const PRIVATE_ISSUERS = [
+        'Meridian Development Group', 'Atlas Property Holdings', 'Continental Realty Corp',
+        'Sovereign Capital Partners', 'Pinnacle Urban Development', 'Citadel Land Trust',
+        'Pacific Rim Investments', 'Heritage Builders Alliance', 'Vanguard Real Estate Ltd',
+        'Summit Infrastructure Fund', 'Cornerstone Properties Inc', 'Ironclad Holdings Group',
+        'Anchor Estates Development', 'Sterling Land Associates', 'Bedrock Capital Partners',
     ];
 
     // Sector prefix for project IDs
-    const SECTOR_PREFIX = { civil_engineering: 'GOV-C', industrial: 'GOV-I', mega_project: 'GOV-M' };
+    const SECTOR_PREFIX = { civil_engineering: 'PVT-C', industrial: 'PVT-I', mega_project: 'PVT-M' };
+
+    // Material base prices (must match client-side MAT_BASE_PRICE)
+    const MAT_PRICE = {
+        concrete: 360000, steel: 500000, glass_facades: 560000, em_systems: 640000,
+        lumber: 240000, heavy_parts: 800000, aggregate: 160000, asphalt: 280000,
+    };
+    const GRADE_LOW = 0.5;
+    const GRADE_HIGH = 2.0;
 
     // GDP growth scaling factor: 0.3 at gdp_growth=0, 1.0 at gdp_growth=50, 1.8 at gdp_growth=100
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
@@ -380,29 +389,52 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
         const tmpl = CC_TEMPLATES[key];
         if (!tmpl) continue;
 
-        // Scale budget by GDP growth: lerp within template range, then apply gdpScale
-        const budgetBase = ccRand(tmpl.budget[0], tmpl.budget[1]);
-        const budget = Math.round(budgetBase * gdpScale);
-
-        // Timeline: for mega projects, scale proportionally to budget within range
-        let timeline;
-        if (sector === 'mega_project') {
-            const budgetFraction = (budget - tmpl.budget[0] * gdpScale) / ((tmpl.budget[1] - tmpl.budget[0]) * gdpScale || 1);
-            const clampedFraction = Math.max(0, Math.min(1, budgetFraction));
-            timeline = Math.round(tmpl.ticks[0] + clampedFraction * (tmpl.ticks[1] - tmpl.ticks[0]));
-            // Add 1d6 variation
-            timeline += ccRand(-3, 3);
-            timeline = Math.max(tmpl.ticks[0], Math.min(tmpl.ticks[1], timeline));
-        } else {
-            timeline = ccRand(tmpl.ticks[0], tmpl.ticks[1]);
+        // Generate required materials first (needed for budget calculation)
+        const requiredMats: Record<string, number> = {};
+        const reqs = CC_REQUIREMENTS[key];
+        if (reqs?.mat) {
+            for (const [k, [lo, hi]] of Object.entries(reqs.mat)) requiredMats[k] = ccRand(lo as number, hi as number);
         }
 
-        // Project ID: GOV-C1-2014, GOV-I2-2014, GOV-M1-2014
+        // Generate workforce (doubled from template ranges)
+        const requiredWf = reqs?.wf
+            ? { general: ccRand((reqs.wf as any).general[0], (reqs.wf as any).general[1]) * 2, skilled: ccRand((reqs.wf as any).skilled[0], (reqs.wf as any).skilled[1]) * 2 }
+            : {};
+
+        // Budget: range from [all LOW materials, 0% markup] to [all HIGH materials, 40% markup]
+        // then ±10% random delta
+        let lowCost = 0, highCost = 0;
+        for (const [matKey, qty] of Object.entries(requiredMats)) {
+            const basePrice = (MAT_PRICE as any)[matKey] || 300000;
+            lowCost += qty * Math.round(basePrice * GRADE_LOW);
+            highCost += qty * Math.round(basePrice * GRADE_HIGH);
+        }
+        // Add labor cost estimate (wage rate 15200 per worker per tick)
+        const totalWorkers = ((requiredWf as any).general || 0) + ((requiredWf as any).skilled || 0);
+        const estTimeline = ccRand(tmpl.ticks[0], tmpl.ticks[1]);
+        const laborLow = totalWorkers * 15200 * estTimeline;
+        const laborHigh = laborLow; // labor cost same for both bounds
+        lowCost += laborLow;
+        highCost += laborHigh;
+        // Apply 40% markup to high end
+        highCost = Math.round(highCost * 1.40);
+        // Apply ±10% delta
+        const delta = 0.9 + Math.random() * 0.2; // 0.9 to 1.1
+        const budget = Math.round(ccRand(lowCost, highCost) * delta);
+
+        // Timeline from template range
+        let timeline = estTimeline;
+        if (sector === 'mega_project') {
+            timeline += ccRand(-3, 3);
+            timeline = Math.max(tmpl.ticks[0], Math.min(tmpl.ticks[1], timeline));
+        }
+
+        // Project ID: PVT-C1-2014, PVT-I2-2014, PVT-M1-2014
         const projectId = `${SECTOR_PREFIX[sector]}${contractSeq}-${gameYear}`;
         contractSeq++;
 
-        // Issuer: always GOVERNMENT with a ministry name for auto-generated
-        const issuerName = ccPick(ISSUERS);
+        // Issuer: always PRIVATE with a local organization name
+        const issuerName = ccPick(PRIVATE_ISSUERS);
 
         const { data: contract, error } = await supabase.from('construction_contracts').insert({
             nation_id: nation.id,
@@ -413,23 +445,13 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
             project_code: projectId,
             budget_ceiling: budget,
             timeline_ticks: timeline,
-            required_materials: (() => {
-                const reqs = CC_REQUIREMENTS[key];
-                if (!reqs?.mat) return {};
-                const m = {};
-                for (const [k, [lo, hi]] of Object.entries(reqs.mat)) m[k] = ccRand(lo, hi);
-                return m;
-            })(),
+            required_materials: requiredMats,
             required_equipment: CC_REQUIREMENTS[key]?.equip || [],
-            required_workforce: (() => {
-                const reqs = CC_REQUIREMENTS[key];
-                if (!reqs?.wf) return {};
-                return { general: ccRand(reqs.wf.general[0], reqs.wf.general[1]), skilled: ccRand(reqs.wf.skilled[0], reqs.wf.skilled[1]) };
-            })(),
+            required_workforce: requiredWf,
             status: 'open',
             generated_at_tick: currentTick,
             bidding_ends_tick: currentTick + 3,
-            issuer_type: 'GOVERNMENT',
+            issuer_type: 'PRIVATE',
             issuer_name: issuerName,
         }).select('id, name, sector').single();
 
@@ -687,19 +709,20 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
 }
 
 async function resolveExpiredBids(supabase, nationId, currentTick) {
-    // Find contracts where bidding has ended
-    const { data: expiredContracts } = await supabase
+    // Find contracts ready to resolve:
+    // 1. Bidding timer expired (3 ticks), OR
+    // 2. Already have 3+ bids (auto-resolve immediately)
+    const { data: openContracts } = await supabase
         .from('construction_contracts')
-        .select('id, name, budget_ceiling')
+        .select('id, name, budget_ceiling, bidding_ends_tick')
         .eq('nation_id', nationId)
-        .eq('status', 'open')
-        .lte('bidding_ends_tick', currentTick);
+        .in('status', ['open', 'bidding']);
 
-    if (!expiredContracts || expiredContracts.length === 0) return [];
+    if (!openContracts || openContracts.length === 0) return [];
 
     const results = [];
-    for (const contract of expiredContracts) {
-        // Find all bids, sorted by price (cheapest first)
+    for (const contract of openContracts) {
+        // Load all pending bids
         const { data: bids } = await supabase
             .from('contract_bids')
             .select('id, faction_id, bid_price, estimated_quality')
@@ -707,17 +730,41 @@ async function resolveExpiredBids(supabase, nationId, currentTick) {
             .eq('status', 'pending')
             .order('bid_price', { ascending: true });
 
-        if (!bids || bids.length === 0) {
-            // No bids — contract expires
-            await supabase.from('construction_contracts')
-                .update({ status: 'expired' })
-                .eq('id', contract.id);
-            results.push({ contract: contract.name, result: 'expired', reason: 'no_bids' });
+        const bidCount = bids?.length || 0;
+        const timerExpired = currentTick >= (contract.bidding_ends_tick || 0);
+
+        // Auto-resolve if: timer expired OR 3+ bids received
+        if (!timerExpired && bidCount < 3) continue;
+
+        if (bidCount === 0) {
+            // No bids and timer expired — contract expires
+            if (timerExpired) {
+                await supabase.from('construction_contracts')
+                    .update({ status: 'expired' })
+                    .eq('id', contract.id);
+                results.push({ contract: contract.name, result: 'expired', reason: 'no_bids' });
+            }
             continue;
         }
 
-        // Award to cheapest bid
-        const winner = bids[0];
+        // Select winner: 33% lowest price, 33% highest quality, 33% random
+        const roll = Math.random();
+        let winner;
+        let method: string;
+        if (roll < 0.33) {
+            // Lowest price (already sorted ascending)
+            winner = bids![0];
+            method = 'lowest_price';
+        } else if (roll < 0.66) {
+            // Highest quality
+            winner = bids!.reduce((best, b) => (b.estimated_quality || 0) > (best.estimated_quality || 0) ? b : best, bids![0]);
+            method = 'highest_quality';
+        } else {
+            // Random
+            winner = bids![Math.floor(Math.random() * bids!.length)];
+            method = 'random';
+        }
+
         await supabase.from('construction_contracts')
             .update({ status: 'awarded', awarded_to_faction: winner.faction_id, awarded_at_tick: currentTick })
             .eq('id', contract.id);
@@ -726,13 +773,14 @@ async function resolveExpiredBids(supabase, nationId, currentTick) {
             .eq('id', winner.id);
 
         // Mark all other bids as lost
-        for (const bid of bids.slice(1)) {
+        if (bids!.length > 1) {
             await supabase.from('contract_bids')
                 .update({ status: 'lost' })
-                .eq('id', bid.id);
+                .eq('contract_id', contract.id)
+                .neq('id', winner.id);
         }
 
-        results.push({ contract: contract.name, result: 'awarded', winner: winner.faction_id, price: winner.bid_price });
+        results.push({ contract: contract.name, result: 'awarded', winner: winner.faction_id, price: winner.bid_price, method });
     }
 
     return results;
