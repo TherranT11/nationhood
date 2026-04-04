@@ -557,9 +557,22 @@ const FLANDIS_LAST = [
   'Vermeer','Visser','Willems','Wolff','Zijlstra','Zwart'
 ];
 
+// Avelia names (Spanish with Italian influence)
+const AVELIA_FIRST = [
+  'Marcelo','Luciana','Dante','Sofía','Lorenzo','Elena','Tomás','Rosario',
+  'Fabrizio','Carolina','Leandro','Paloma','Giancarlo','Inés','Renato','Marisol',
+  'Nico','Florencia','Aurelio','Celeste'
+];
+const AVELIA_LAST = [
+  'Montalbán','Ferretti','Salcedo','Conti','Valverde','Lucero','Maretti','Orellana',
+  'Bellini','Calderón','Santoro','Vásquez','Lombardi','Peñaloza','Rinaldi','Escobar',
+  'Castellani','Madrigal','Giacomo','Solano'
+];
+
 // Nation-aware name selection
 const NATION_NAMES = {
   'Calveth': { first: CALVETH_FIRST, last: CALVETH_LAST },
+  'Avelia': { first: AVELIA_FIRST, last: AVELIA_LAST },
   'Flandis': { first: FLANDIS_FIRST, last: FLANDIS_LAST }
 };
 function getNamePool(nationName) {

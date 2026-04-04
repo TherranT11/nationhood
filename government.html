@@ -2755,6 +2755,24 @@ async function onMinistryChange(ministryKey, partyId) {
             });
             if (error) throw error;
             if (!data.success) alert(data.message);
+
+            // Generate nation-specific minister name client-side
+            // (the assign_ministry RPC does not use per-nation naming lists)
+            const { data: formation } = await _supabase.from('government_formations')
+                .select('minister_names')
+                .eq('id', activeFormationId).single();
+            const ministerNames = formation?.minister_names || {};
+            if (partyId) {
+                const firstName = FIRST_NAMES_POOL[Math.floor(Math.random() * FIRST_NAMES_POOL.length)];
+                const lastName = LAST_NAMES_POOL[Math.floor(Math.random() * LAST_NAMES_POOL.length)];
+                const age = 30 + Math.floor(Math.random() * 31);
+                ministerNames[ministryKey] = { first_name: firstName, last_name: lastName, age };
+            } else {
+                delete ministerNames[ministryKey];
+            }
+            await _supabase.from('government_formations')
+                .update({ minister_names: ministerNames })
+                .eq('id', activeFormationId);
         }
     } catch (err) { alert('Error: ' + err.message); }
 }
@@ -3084,10 +3102,9 @@ async function formGovernmentFallback(ministryBaselines) {
     // Auto-generate Head of State if missing (or forced by appointed method)
     const hasValidHosAge = Number.isFinite(Number(currentNation.head_of_state_age)) && Number(currentNation.head_of_state_age) > 0;
     if (fallbackHosMethod !== 'hereditary' && (forceNewHos || !currentNation.head_of_state_first_name || !currentNation.head_of_state_last_name || !hasValidHosAge)) {
-        const HOS_FIRST = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
-        const HOS_LAST = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
-        const hosFirst = forceNewHos ? HOS_FIRST[Math.floor(Math.random() * HOS_FIRST.length)] : (currentNation.head_of_state_first_name || HOS_FIRST[Math.floor(Math.random() * HOS_FIRST.length)]);
-        const hosLast = forceNewHos ? HOS_LAST[Math.floor(Math.random() * HOS_LAST.length)] : (currentNation.head_of_state_last_name || HOS_LAST[Math.floor(Math.random() * HOS_LAST.length)]);
+        // Use nation-specific name pools (FIRST/LAST_NAMES_POOL set on page init via getNationNames)
+        const hosFirst = forceNewHos ? FIRST_NAMES_POOL[Math.floor(Math.random() * FIRST_NAMES_POOL.length)] : (currentNation.head_of_state_first_name || FIRST_NAMES_POOL[Math.floor(Math.random() * FIRST_NAMES_POOL.length)]);
+        const hosLast = forceNewHos ? LAST_NAMES_POOL[Math.floor(Math.random() * LAST_NAMES_POOL.length)] : (currentNation.head_of_state_last_name || LAST_NAMES_POOL[Math.floor(Math.random() * LAST_NAMES_POOL.length)]);
         const hosAge = forceNewHos ? (45 + Math.floor(Math.random() * 25)) : (hasValidHosAge ? Number(currentNation.head_of_state_age) : (45 + Math.floor(Math.random() * 25)));
         try {
             await _supabase.from('nations').update({
