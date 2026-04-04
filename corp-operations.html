@@ -2505,7 +2505,8 @@ body.light-mode .dl-empty__text { color: #1a1a17; }
       <div id="property-card-container"></div>
       <div id="new-property-container"></div>
       <!-- Row 2 -->
-      <div id="subsidiaries-container" style="width:100%;"></div>
+      <div id="subsidiaries-container"></div>
+      <div id="create-subsidiary-container"></div>
     </div>
 
   </div>
@@ -6005,6 +6006,8 @@ async function switchToExpansion(e) {
     await loadAvailableProperties();
     renderNewPropertyCard();
     renderSubsidiariesCard();
+    await loadNationsForSubsidiary();
+    renderCreateSubsidiaryCard();
 }
 
 function switchToOperations(e) {
@@ -7147,6 +7150,212 @@ function renderSubsidiariesCard() {
         </div>
     </div>`;
 }
+
+// ==================== CREATE SUBSIDIARY ====================
+
+let _subNations = [];
+let _subSelectedNation = null;
+let _subCreating = false;
+
+async function loadNationsForSubsidiary() {
+    const { data } = await _supabase.from('nations').select('*').order('name');
+    _subNations = (data || []).filter(n => n.id !== faction?.nation_id);
+}
+
+function subCalcEntryCost(n) {
+    const BASE = 50000000;
+    const s = (key) => Number(n[key] ?? 50);
+    const sol = s('standard_of_living');
+    const col = s('cost_of_living');
+    const corpTax = s('corporate_tax');
+    const minWage = s('minimum_wage');
+    const urban = s('urbanization');
+    const union = s('union_strength');
+    const corruption = s('corruption');
+    const unemp = s('unemployment');
+    const stability = s('stability');
+
+    const cost = BASE
+        * (1 + (sol - 50) / 100 * 0.4)
+        * (1 + (col - 50) / 100 * 0.3)
+        * (1 + (corpTax - 50) / 100 * 0.2)
+        * (1 + (minWage - 50) / 100 * 0.15)
+        * (1 + (urban - 50) / 100 * 0.1)
+        * (1 + (union - 50) / 100 * 0.1)
+        * (1 - (corruption - 50) / 100 * 0.15)
+        * (1 - (unemp - 50) / 100 * 0.1)
+        * (1 + (50 - stability) / 100 * 0.3);
+
+    return Math.round(Math.max(10000000, cost)); // floor $10M
+}
+
+function subSelectNation(nationId) {
+    _subSelectedNation = _subSelectedNation === nationId ? null : nationId;
+    renderCreateSubsidiaryCard();
+}
+
+async function subCreate() {
+    if (_subCreating || !_subSelectedNation) return;
+    const nation = _subNations.find(n => n.id === _subSelectedNation);
+    if (!nation) return;
+
+    // Check if already have subsidiary there
+    const existing = _ownedProperties.find(p => p.nation_id === nation.id && p.type === 'regional_hq');
+    if (existing) { alert('You already have a subsidiary in ' + nation.name); return; }
+
+    const cost = subCalcEntryCost(nation);
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    if (cost > cash) {
+        alert('Insufficient cash. Entry cost: ' + hfFmtBig(cost) + ', available: ' + hfFmtBig(cash));
+        return;
+    }
+
+    if (!confirm('Establish subsidiary in ' + nation.name + '?\n\nEntry cost: ' + hfFmtBig(cost) + '\nCreates a Regional HQ (500 capacity)\nUnlocks ' + nation.name + ' for operations\n\nDeducted from cash reserves.')) return;
+
+    _subCreating = true;
+    try {
+        const shardRes = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shardRes.data?.current_tick || 0;
+        const condition = 85 + Math.floor(Math.random() * 16); // 85-100% new build
+        const maint = Math.round(cost * 0.005);
+
+        // Create regional HQ property
+        const { error: propErr } = await _supabase.from('corp_properties').insert({
+            faction_id: faction.id,
+            nation_id: nation.id,
+            name: 'Regional Headquarters — ' + nation.name,
+            type: 'regional_hq',
+            style: 'Modern',
+            capacity: 500,
+            purchase_price: cost,
+            monthly_maintenance: maint,
+            condition: condition,
+            city: nation.capital || nation.name,
+            purchased_at_tick: currentTick,
+            is_active: true,
+        });
+        if (propErr) throw propErr;
+
+        // Deduct cash
+        const newCash = Math.max(0, cash - cost);
+        await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        faction.corp_cash_reserves = newCash;
+
+        const cashEl = document.getElementById('topbar-cash');
+        if (cashEl) cashEl.textContent = 'CASH: ' + (newCash >= 1e6 ? '$' + (newCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newCash / 1000) + 'k');
+
+        _subSelectedNation = null;
+        await loadOwnedProperties();
+        renderPropertyCard();
+        renderSubsidiariesCard();
+        renderCreateSubsidiaryCard();
+        alert('Subsidiary established in ' + nation.name + '!\n\nCost: ' + hfFmtBig(cost) + '\nRegional HQ created with ' + condition + '% condition.');
+    } catch (err) {
+        alert('Failed: ' + err.message);
+    } finally {
+        _subCreating = false;
+    }
+}
+
+function renderCreateSubsidiaryCard() {
+    const container = document.getElementById('create-subsidiary-container');
+    if (!container) return;
+
+    const mono = "'JetBrains Mono', monospace";
+    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+        accent: '#8b9a6b', blue: '#5a9abf', gold: '#c8a832', orange: '#c84',
+        greenBright: '#5c5', red: '#c55',
+        text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
+
+    // Filter out nations where we already have a subsidiary
+    const existingNationIds = new Set(_ownedProperties.filter(p => p.type === 'regional_hq').map(p => p.nation_id));
+    const available = _subNations.filter(n => !existingNationIds.has(n.id));
+
+    const sel = _subSelectedNation ? available.find(n => n.id === _subSelectedNation) : null;
+
+    let listHtml = '';
+    for (const n of available) {
+        const isSel = n.id === _subSelectedNation;
+        const cost = subCalcEntryCost(n);
+        const sol = Number(n.standard_of_living ?? 50);
+        const stab = Number(n.stability ?? 50);
+        const costColor = cost > 60000000 ? C.red : cost > 40000000 ? C.orange : C.greenBright;
+
+        listHtml += `
+        <div onclick="subSelectNation('${n.id}')" style="padding:6px 12px;border-bottom:1px solid ${C.border};cursor:pointer;border-left:2px solid ${isSel ? C.blue : 'transparent'};background:${isSel ? 'rgba(90,154,191,0.03)' : 'transparent'};">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:11px;font-weight:600;color:${C.text}">${n.name}</span>
+                <span style="font-family:${mono};font-size:10px;font-weight:700;color:${costColor}">${hfFmtBig(cost)}</span>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:2px;">
+                <span style="font-family:${mono};font-size:7px;color:${C.dim}">SoL <span style="color:${sol >= 50 ? C.greenBright : C.orange}">${Math.round(sol)}</span></span>
+                <span style="font-family:${mono};font-size:7px;color:${C.dim}">STAB <span style="color:${stab >= 50 ? C.greenBright : C.red}">${Math.round(stab)}</span></span>
+                <span style="font-family:${mono};font-size:7px;color:${C.dim}">GDP <span style="color:${C.muted}">${Math.round(Number(n.gdp_growth ?? 50))}</span></span>
+                <span style="font-family:${mono};font-size:7px;color:${C.dim}">INFL <span style="color:${Number(n.inflation ?? 50) <= 50 ? C.greenBright : C.red}">${Math.round(Number(n.inflation ?? 50))}</span></span>
+            </div>
+        </div>`;
+    }
+
+    // Detail breakdown if a nation is selected
+    let detailHtml = '';
+    if (sel) {
+        const cost = subCalcEntryCost(sel);
+        const s = (key) => Number(sel[key] ?? 50);
+        const factors = [
+            { label: 'STD OF LIVING', val: s('standard_of_living'), weight: '×0.4', inc: true },
+            { label: 'COST OF LIVING', val: s('cost_of_living'), weight: '×0.3', inc: true },
+            { label: 'CORPORATE TAX', val: s('corporate_tax'), weight: '×0.2', inc: true },
+            { label: 'MINIMUM WAGE', val: s('minimum_wage'), weight: '×0.15', inc: true },
+            { label: 'URBANIZATION', val: s('urbanization'), weight: '×0.1', inc: true },
+            { label: 'UNION STRENGTH', val: s('union_strength'), weight: '×0.1', inc: true },
+            { label: 'CORRUPTION', val: s('corruption'), weight: '×0.15', inc: false },
+            { label: 'UNEMPLOYMENT', val: s('unemployment'), weight: '×0.1', inc: false },
+            { label: 'STABILITY', val: s('stability'), weight: '×0.3', inc: false },
+        ];
+
+        detailHtml = `<div style="padding:6px 12px;background:${C.card};border-bottom:1px solid ${C.border};">
+            <div style="font-family:${mono};font-size:8px;letter-spacing:1px;color:${C.dim};text-transform:uppercase;margin-bottom:4px">COST BREAKDOWN — ${sel.name.toUpperCase()}</div>
+            ${factors.map(f => {
+                const mod = f.inc ? (f.val - 50) : (50 - f.val);
+                const modColor = mod > 0 ? (f.inc ? C.red : C.greenBright) : (f.inc ? C.greenBright : C.red);
+                return `<div style="display:flex;justify-content:space-between;padding:1px 0;">
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim}">${f.label} (${f.weight})</span>
+                    <span style="font-family:${mono};font-size:8px;color:${modColor}">${f.val}/100 ${mod >= 0 ? '↑' : '↓'} cost</span>
+                </div>`;
+            }).join('')}
+            <div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-top:1px solid ${C.border};">
+                <span style="font-family:${mono};font-size:9px;font-weight:700;color:${C.text}">ENTRY COST</span>
+                <span style="font-family:${mono};font-size:13px;font-weight:700;color:${C.gold}">${hfFmtBig(cost)}</span>
+            </div>
+            <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:2px;">Creates Regional HQ (500 capacity) · Unlocks ${sel.name} for operations</div>
+        </div>`;
+    }
+
+    if (available.length === 0) {
+        listHtml = `<div style="padding:30px 20px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">Subsidiaries established in all available nations.</div>`;
+    }
+
+    container.innerHTML = `
+    <div style="width:380px;height:450px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:8px;color:${C.blue}">●</span>
+                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Create Subsidiary</span>
+            </div>
+            <span style="font-family:${mono};font-size:9px;color:${C.dim}">${available.length} MARKET${available.length !== 1 ? 'S' : ''}</span>
+        </div>
+        ${detailHtml}
+        <div style="flex:1;overflow:auto;">
+            ${listHtml}
+        </div>
+        <div style="padding:8px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            <div onclick="subCreate()" style="width:100%;padding:6px 0;text-align:center;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:${sel ? '#000' : C.dim};background:${sel ? C.blue : 'transparent'};border:1px solid ${sel ? C.blue : C.border};cursor:${sel ? 'pointer' : 'default'};opacity:${sel ? 1 : 0.4}">ESTABLISH SUBSIDIARY</div>
+        </div>
+    </div>`;
+}
+
+window.subSelectNation = subSelectNation;
+window.subCreate = subCreate;
 
 window.switchToExpansion = switchToExpansion;
 window.switchToOperations = switchToOperations;
