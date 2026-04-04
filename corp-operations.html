@@ -6228,9 +6228,10 @@ function renderHireFireCard() {
                 <div>
                     <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.8px">WORKFORCE / CAPACITY</div>
                     <div style="display:flex;align-items:baseline;gap:4px;">
-                        <span style="font-family:${mono};font-size:13px;font-weight:700;color:${totalAfter > capacity ? C.red : C.text}">${hasChanges ? totalAfter.toLocaleString() : totalCurrent.toLocaleString()}</span>
+                        <span style="font-family:${mono};font-size:13px;font-weight:700;color:${totalCurrent >= capacity ? C.red : C.text}">${hasChanges ? totalAfter.toLocaleString() : totalCurrent.toLocaleString()}</span>
                         <span style="font-family:${mono};font-size:9px;color:${C.dim}">/ ${capacity.toLocaleString()}</span>
                     </div>
+                    ${totalCurrent >= capacity && !hasChanges ? `<div style="font-family:${mono};font-size:7px;color:${C.red};margin-top:2px;">Need workplaces to hire new employees.</div>` : ''}
                 </div>
                 <div style="text-align:right;">
                     <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.8px">ANNUAL WAGES</div>
