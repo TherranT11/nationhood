@@ -7626,6 +7626,28 @@ let _bidContract = null;
 let _bidGrades = {};
 let _bidWorkers = 120;
 let _bidMarkup = 15;
+
+// Shared helper: calculate completion timeline delta based on worker count
+// Returns { delta, estTicks } — delta is months added/saved, estTicks is estimated completion
+function calcTimelineDelta(workers, contract) {
+    const wf = contract.required_workforce || {};
+    const base = (Number(wf.general || 0) + Number(wf.skilled || 0)) || 100;
+    const min = Math.max(40, Math.round(base * 0.5));
+    const max = base * 2;
+    const ratio = Math.max(0, Math.min(1, (workers - min) / (max - min || 1)));
+    const baseRatio = (base - min) / (max - min || 1); // ~0.333
+    const timeline = Number(contract.timeline_ticks || 36);
+    let delta;
+    if (ratio <= baseRatio) {
+        // Below base: interpolate from +5 (min workers) to 0 (base workers)
+        delta = Math.round(5 * (1 - ratio / baseRatio));
+    } else {
+        // Above base: interpolate from 0 (base workers) to -4 (max workers)
+        delta = Math.round(-4 * ((ratio - baseRatio) / (1 - baseRatio)));
+    }
+    const estTicks = Math.max(Math.round(timeline * 0.6), timeline + delta);
+    return { delta, estTicks };
+}
 let _bidWarehouse = {};
 let _bidCompetitors = [];
 
@@ -7783,11 +7805,8 @@ function renderBidAssembly() {
         maxWorkers,
     ];
 
-    // Completion timeline: min workers = +3-6mo, max workers = -3-4mo from base
-    const workerRatio = Math.max(0, Math.min(1, (_bidWorkers - minWorkers) / (maxWorkers - minWorkers || 1)));
-    const baseTimeline = timelineTicks;
-    const timelineDelta = Math.round(4.5 - (workerRatio * 8));
-    const estCompletionTicks = Math.max(Math.round(baseTimeline * 0.6), baseTimeline + timelineDelta);
+    // Completion timeline from shared helper
+    const { delta: timelineDelta, estTicks: estCompletionTicks } = calcTimelineDelta(_bidWorkers, contract);
     const timelineLabel = timelineDelta > 0 ? `+${timelineDelta}mo` : timelineDelta < 0 ? `${timelineDelta}mo` : 'On schedule';
     const timelineColor = timelineDelta > 0 ? C.red : timelineDelta < 0 ? C.greenBright : C.yellow;
 
@@ -8047,14 +8066,8 @@ async function submitBidAssembly() {
     }
 
     const wageRate = 15200;
-    const _swfReq = contract.required_workforce || {};
-    const _sbaseWf = (Number(_swfReq.general || 0) + Number(_swfReq.skilled || 0)) || 100;
-    const _sminWf = Math.max(40, Math.round(_sbaseWf * 0.5));
-    const _smaxWf = _sbaseWf * 2;
-    const _swRatio = Math.max(0, Math.min(1, (_bidWorkers - _sminWf) / (_smaxWf - _sminWf || 1)));
-    const _stDelta = Math.round(4.5 - (_swRatio * 8));
-    const _sestTicks = Math.max(Math.round(timelineTicks * 0.6), timelineTicks + _stDelta);
-    const laborCost = _bidWorkers * wageRate * _sestTicks;
+    const { estTicks: submitEstTicks } = calcTimelineDelta(_bidWorkers, contract);
+    const laborCost = _bidWorkers * wageRate * submitEstTicks;
 
     // Permits
     const budget = budgetCeiling;

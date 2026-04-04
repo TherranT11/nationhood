@@ -373,10 +373,6 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
     const GRADE_LOW = 0.5;
     const GRADE_HIGH = 2.0;
 
-    // GDP growth scaling factor: 0.3 at gdp_growth=0, 1.0 at gdp_growth=50, 1.8 at gdp_growth=100
-    const gdpGrowth = Number(nation.gdp_growth ?? 50);
-    const gdpScale = 0.3 + (gdpGrowth / 100) * 1.5;
-
     // Game year for project ID (e.g., "2014")
     const { data: shardDate } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
     const gameYear = (shardDate?.current_date || '').match(/\d{4}/)?.[0] || '2014';
@@ -410,10 +406,11 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
             highCost += qty * Math.round(basePrice * GRADE_HIGH);
         }
         // Add labor cost estimate (wage rate 15200 per worker per tick)
+        // Low end: half workforce (min workers), High end: full workforce (max workers)
         const totalWorkers = ((requiredWf as any).general || 0) + ((requiredWf as any).skilled || 0);
         const estTimeline = ccRand(tmpl.ticks[0], tmpl.ticks[1]);
-        const laborLow = totalWorkers * 15200 * estTimeline;
-        const laborHigh = laborLow; // labor cost same for both bounds
+        const laborLow = Math.round(totalWorkers * 0.5) * 15200 * estTimeline;
+        const laborHigh = totalWorkers * 15200 * estTimeline;
         lowCost += laborLow;
         highCost += laborHigh;
         // Apply 40% markup to high end
@@ -711,24 +708,29 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
 async function resolveExpiredBids(supabase, nationId, currentTick) {
     // Find contracts ready to resolve:
     // 1. Bidding timer expired (3 ticks), OR
-    // 2. Already have 3+ bids (auto-resolve immediately)
-    const { data: openContracts } = await supabase
+    // 2. Already have 3+ pending bids (auto-resolve immediately)
+    const { data: openContracts, error: ocErr } = await supabase
         .from('construction_contracts')
         .select('id, name, budget_ceiling, bidding_ends_tick')
         .eq('nation_id', nationId)
         .in('status', ['open', 'bidding']);
 
-    if (!openContracts || openContracts.length === 0) return [];
+    if (ocErr || !openContracts || openContracts.length === 0) return [];
 
     const results = [];
     for (const contract of openContracts) {
-        // Load all pending bids
-        const { data: bids } = await supabase
+        // Load pending bids only — already-won bids (from manual review) are excluded
+        const { data: bids, error: bidErr } = await supabase
             .from('contract_bids')
             .select('id, faction_id, bid_price, estimated_quality')
             .eq('contract_id', contract.id)
             .eq('status', 'pending')
             .order('bid_price', { ascending: true });
+
+        if (bidErr) {
+            console.error(`[ResolveExpiredBids] Failed to load bids for ${contract.name}:`, bidErr.message);
+            continue;
+        }
 
         const bidCount = bids?.length || 0;
         const timerExpired = currentTick >= (contract.bidding_ends_tick || 0);
@@ -737,7 +739,6 @@ async function resolveExpiredBids(supabase, nationId, currentTick) {
         if (!timerExpired && bidCount < 3) continue;
 
         if (bidCount === 0) {
-            // No bids and timer expired — contract expires
             if (timerExpired) {
                 await supabase.from('construction_contracts')
                     .update({ status: 'expired' })
@@ -752,32 +753,36 @@ async function resolveExpiredBids(supabase, nationId, currentTick) {
         let winner;
         let method: string;
         if (roll < 0.33) {
-            // Lowest price (already sorted ascending)
-            winner = bids![0];
+            winner = bids[0];
             method = 'lowest_price';
         } else if (roll < 0.66) {
-            // Highest quality
-            winner = bids!.reduce((best, b) => (b.estimated_quality || 0) > (best.estimated_quality || 0) ? b : best, bids![0]);
+            winner = bids.reduce((best, b) => (b.estimated_quality || 0) > (best.estimated_quality || 0) ? b : best, bids[0]);
             method = 'highest_quality';
         } else {
-            // Random
-            winner = bids![Math.floor(Math.random() * bids!.length)];
+            winner = bids[Math.floor(Math.random() * bids.length)];
             method = 'random';
         }
 
-        await supabase.from('construction_contracts')
+        const { error: awardErr } = await supabase.from('construction_contracts')
             .update({ status: 'awarded', awarded_to_faction: winner.faction_id, awarded_at_tick: currentTick })
             .eq('id', contract.id);
-        await supabase.from('contract_bids')
+        if (awardErr) {
+            console.error(`[ResolveExpiredBids] Failed to award ${contract.name}:`, awardErr.message);
+            continue;
+        }
+
+        const { error: winErr } = await supabase.from('contract_bids')
             .update({ status: 'won' })
             .eq('id', winner.id);
+        if (winErr) console.error(`[ResolveExpiredBids] Failed to mark winning bid:`, winErr.message);
 
         // Mark all other bids as lost
-        if (bids!.length > 1) {
-            await supabase.from('contract_bids')
+        if (bids.length > 1) {
+            const { error: lossErr } = await supabase.from('contract_bids')
                 .update({ status: 'lost' })
                 .eq('contract_id', contract.id)
                 .neq('id', winner.id);
+            if (lossErr) console.error(`[ResolveExpiredBids] Failed to mark losing bids:`, lossErr.message);
         }
 
         results.push({ contract: contract.name, result: 'awarded', winner: winner.faction_id, price: winner.bid_price, method });
