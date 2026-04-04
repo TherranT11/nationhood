@@ -896,7 +896,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
       <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:2px;color:#a44;margin-bottom:8px;text-transform:uppercase;">Irreversible Action</div>
       <button id="dissolve-btn" onclick="dissolveCorporation()" style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#c55;background:transparent;border:1px solid #c55;padding:8px 28px;cursor:pointer;transition:all 0.15s;">Dissolve Corporation</button>
       <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:8px;line-height:1.5;">
-        Permanently removes this corporation, all assets,<br>bids, equipment, properties, and warehouse inventory.
+        Permanently removes this corporation, all properties,<br>equipment, and inventory. Debts and active projects remain.
       </div>
     </div>
   </div>
@@ -1855,11 +1855,12 @@ async function dissolveCorporation() {
         sessionStorage.removeItem('nationhood_state');
 
         // Check if user still has other active factions
-        const { data: remaining } = await _supabase
+        const { data: remaining, error: remainErr } = await _supabase
             .from('factions')
-            .select('id, faction_type, abandoned_at')
+            .select('id, faction_type')
             .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
             .is('abandoned_at', null);
+        if (remainErr) console.warn('Failed to check remaining factions:', remainErr.message);
 
         const party = (remaining || []).find(f => f.faction_type === 'party');
         const otherCorp = (remaining || []).find(f => f.faction_type === 'corporation');
