@@ -385,11 +385,11 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
         const tmpl = CC_TEMPLATES[key];
         if (!tmpl) continue;
 
-        // Generate required materials first (needed for budget calculation)
+        // Generate required materials first (needed for budget calculation) — 1.5x base quantities
         const requiredMats: Record<string, number> = {};
         const reqs = CC_REQUIREMENTS[key];
         if (reqs?.mat) {
-            for (const [k, [lo, hi]] of Object.entries(reqs.mat)) requiredMats[k] = ccRand(lo as number, hi as number);
+            for (const [k, [lo, hi]] of Object.entries(reqs.mat)) requiredMats[k] = Math.round(ccRand(lo as number, hi as number) * 1.5);
         }
 
         // Generate workforce (doubled from template ranges)
@@ -398,7 +398,7 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
             : {};
 
         // Budget: range from [all LOW materials, 0% markup] to [all HIGH materials, 40% markup]
-        // then ±10% random delta
+        // Budget stays strictly within the range a player can bid
         let lowCost = 0, highCost = 0;
         for (const [matKey, qty] of Object.entries(requiredMats)) {
             const basePrice = (MAT_PRICE as any)[matKey] || 300000;
@@ -408,15 +408,12 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
         // Add labor cost estimate (wage rate 15200 per worker per tick)
         const totalWorkers = ((requiredWf as any).general || 0) + ((requiredWf as any).skilled || 0);
         const estTimeline = ccRand(tmpl.ticks[0], tmpl.ticks[1]);
-        const laborLow = totalWorkers * 15200 * estTimeline;
-        const laborHigh = laborLow; // labor cost same for both bounds
-        lowCost += laborLow;
-        highCost += laborHigh;
-        // Apply 40% markup to high end
+        const laborCost = totalWorkers * 15200 * estTimeline;
+        lowCost += laborCost;
+        highCost += laborCost;
+        // Apply 40% markup to high end (matches max player markup)
         highCost = Math.round(highCost * 1.40);
-        // Apply ±10% delta
-        const delta = 0.9 + Math.random() * 0.2; // 0.9 to 1.1
-        const budget = Math.round(ccRand(lowCost, highCost) * delta);
+        const budget = ccRand(lowCost, highCost);
 
         // Timeline from template range
         let timeline = estTimeline;
@@ -429,8 +426,8 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
         const projectId = `${SECTOR_PREFIX[sector]}${contractSeq}-${gameYear}`;
         contractSeq++;
 
-        // Issuer: always PRIVATE with a local organization name
-        const issuerName = ccPick(PRIVATE_ISSUERS);
+        // Issuer: auto-generated contracts are always from the local government
+        const issuerName = `Local Corporation — ${nation.name}`;
 
         const { data: contract, error } = await supabase.from('construction_contracts').insert({
             nation_id: nation.id,
@@ -447,7 +444,7 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
             status: 'open',
             generated_at_tick: currentTick,
             bidding_ends_tick: currentTick + 3,
-            issuer_type: 'PRIVATE',
+            issuer_type: 'GOV',
             issuer_name: issuerName,
         }).select('id, name, sector').single();
 

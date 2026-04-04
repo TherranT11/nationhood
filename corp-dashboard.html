@@ -560,7 +560,7 @@ body.light-mode .corp-nav__tab.active { color: #1a1a17; border-bottom-color: #1a
 .prop-total {
   padding: 10px 14px; border-top: 1px solid var(--border-0);
   background: rgba(90,175,165,0.02);
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; flex-direction: column; gap: 6px;
   margin-top: auto;
 }
 .prop-total__label {
@@ -1087,7 +1087,9 @@ async function init() {
     const currentTick = shard?.current_tick || 0;
     const SLOGAN_COOLDOWN = 120;
     const ticksRemaining = Math.max(0, (sloganCooldownTick + SLOGAN_COOLDOWN) - currentTick);
-    const canEditSlogan = ticksRemaining <= 0;
+    // Allow first slogan edit for free (no cooldown if slogan is empty/default)
+    const isFirstSlogan = !currentSlogan || currentSlogan === '-' || currentSlogan === '"-"';
+    const canEditSlogan = isFirstSlogan || ticksRemaining <= 0;
 
     const sloganEditor = document.getElementById('slogan-editor');
     sloganEditor.innerHTML = `
@@ -1509,6 +1511,14 @@ async function renderProperty(nation, nationName, factionData, shard) {
     let totalValue = 0;
     let totalMaint = 0;
 
+    // Workforce allocation — distribute proportionally across properties by capacity
+    const totalWf = Number(factionData?.corp_general_workforce ?? 0)
+                   + Number(factionData?.corp_skilled_workforce ?? 0)
+                   + Number(factionData?.corp_innovative_workforce ?? 0);
+    const hqCapacity = 500;
+    const totalCapacity = hqCapacity + ownedProps.reduce((sum, p) => sum + Number(p.capacity || 0), 0);
+    const hqAllocated = totalCapacity > 0 ? Math.round(totalWf * (hqCapacity / totalCapacity)) : totalWf;
+
     // National HQ always present — value scales with nation stats
     const hqBaseCost = 50000000; // $50M base for a 500 capacity HQ
     const hqInflMod = 1 + ((getNationStat(nation, 'inflation') - 50) / 100 * 0.3);
@@ -1530,7 +1540,11 @@ async function renderProperty(nation, nationName, factionData, shard) {
         <div style="display:flex;gap:0;background:var(--bg-3);border:1px solid var(--border-hair);margin:4px 0;">
             <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
                 <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">CAPACITY</div>
-                <div style="font-size:10px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);">500</div>
+                <div style="font-size:10px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);">${hqCapacity}</div>
+            </div>
+            <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
+                <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">WORKFORCE</div>
+                <div style="font-size:10px;font-weight:700;color:var(--blue);font-family:var(--font-mono);">${hqAllocated.toLocaleString()}</div>
             </div>
             <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
                 <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">VALUE</div>
@@ -1543,11 +1557,15 @@ async function renderProperty(nation, nationName, factionData, shard) {
         </div>
     </div>`;
 
+    let allocatedSoFar = hqAllocated;
     for (const prop of ownedProps) {
         const sm = NP_STYLE_META[prop.style] || NP_STYLE_META.Basic;
         totalValue += Number(prop.purchase_price || 0);
         totalMaint += Number(prop.monthly_maintenance || 0);
         const condColor = prop.condition >= 75 ? 'var(--green)' : prop.condition >= 50 ? 'var(--amber)' : 'var(--orange)';
+        const propCap = Number(prop.capacity || 0);
+        const propAllocated = totalCapacity > 0 ? Math.min(totalWf - allocatedSoFar, Math.round(totalWf * (propCap / totalCapacity))) : 0;
+        allocatedSoFar += propAllocated;
 
         propsHtml += `
         <div class="prop-asset" style="margin-bottom:6px;">
@@ -1561,7 +1579,11 @@ async function renderProperty(nation, nationName, factionData, shard) {
             <div style="display:flex;gap:0;background:var(--bg-3);border:1px solid var(--border-hair);margin:4px 0;">
                 <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
                     <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">CAPACITY</div>
-                    <div style="font-size:10px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);">${(prop.capacity || 0).toLocaleString()}</div>
+                    <div style="font-size:10px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);">${propCap.toLocaleString()}</div>
+                </div>
+                <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
+                    <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">WORKFORCE</div>
+                    <div style="font-size:10px;font-weight:700;color:var(--blue);font-family:var(--font-mono);">${propAllocated.toLocaleString()}</div>
                 </div>
                 <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
                     <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">PAID</div>
