@@ -1786,16 +1786,28 @@ window.switchToFaction = switchToFaction;
 let _dissolving = false;
 
 async function dissolveCorporation() {
-    if (_dissolving) return;
+    if (_dissolving) { console.warn('Dissolve already in progress'); return; }
     const { data: { user } } = await _supabase.auth.getUser();
-    if (!user) return;
+    if (!user) { alert('Not logged in.'); return; }
 
     const factionId = sessionStorage.getItem('active_faction_id');
-    if (!factionId) return;
+    if (!factionId) { alert('No active faction selected.'); return; }
 
-    // Find the active corp faction
-    const corp = allUserFactions.find(f => f.id === factionId && f.faction_type === 'corporation');
-    if (!corp) { alert('No active corporation found.'); return; }
+    // Find the active corp faction — fetch fresh from DB to avoid stale cache
+    const { data: freshCorp, error: corpErr } = await _supabase
+        .from('factions')
+        .select('*')
+        .eq('id', factionId)
+        .eq('faction_type', 'corporation')
+        .is('abandoned_at', null)
+        .single();
+
+    if (corpErr || !freshCorp) {
+        alert('No active corporation found. It may have already been dissolved.');
+        console.error('Dissolve lookup failed:', corpErr?.message, 'factionId:', factionId);
+        return;
+    }
+    const corp = freshCorp;
 
     const corpName = corp.faction_name || 'this corporation';
 
