@@ -551,7 +551,9 @@ function calculateExportCapacity(nation, sector, opts) {
     var currencyModifier = currencyStrength / 50;
     capacity *= currencyModifier;
 
-    return Math.round(capacity);
+    // Floor: even distressed nations maintain some organic trade (5% of GDP-scaled baseline)
+    var minCapacity = Math.round(0.05 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
+    return Math.max(minCapacity, Math.round(capacity));
 }
 
 /**
@@ -682,7 +684,9 @@ function calculateImportDemand(nation, sector, opts) {
     var tariffDampener = 1 - (tariffs / 200);
     rawDemand *= tariffDampener;
 
-    return Math.round(rawDemand);
+    // Floor: even distressed nations import essential goods (5% of GDP-scaled baseline)
+    var minDemand = Math.round(0.05 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
+    return Math.max(minDemand, Math.round(rawDemand));
 }
 
 /**
@@ -28370,6 +28374,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             await processTariffRelationsPenalty(supabase, nation);
         } catch (tariffErr) {
             console.error(`[advanceTick] Tariff relations penalty failed for ${nation.name} (non-fatal):`, tariffErr);
+        }
+
+        // Credit lockout auto-clear: if credit has recovered above threshold, unlock
+        if (nation.credit_locked_out && Number(nation.credit ?? 0) > 5) {
+            await supabase.from('nations').update({ credit_locked_out: false }).eq('id', nation.id);
+            nation.credit_locked_out = false;
         }
 
         // Re-fetch nation with post-effect values for remaining processors

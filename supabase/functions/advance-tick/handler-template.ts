@@ -2029,6 +2029,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Tariff relations penalty failed for ${nation.name} (non-fatal):`, tariffErr);
         }
 
+        // Credit lockout auto-clear: if credit has recovered above threshold, unlock
+        if (nation.credit_locked_out && Number(nation.credit ?? 0) > 5) {
+            await supabase.from('nations').update({ credit_locked_out: false }).eq('id', nation.id);
+            nation.credit_locked_out = false;
+        }
+
         // Re-fetch nation with post-effect values for remaining processors
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (freshNation) Object.assign(nation, freshNation);
