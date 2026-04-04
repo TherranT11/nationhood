@@ -5994,6 +5994,7 @@ async function switchToExpansion(e) {
     await loadAvailableProperties();
     renderNewPropertyCard();
     await loadNationsForSubsidiary();
+    await loadSubsidiaryProjectCounts();
     renderCreateSubsidiaryCard();
     renderManageSubsidiariesCard();
     await loadAllCorporations();
@@ -7084,6 +7085,69 @@ window.propSell = propSell;
 // ==================== SUBSIDIARIES CARD ====================
 
 let _mSubSelected = 0;
+let _subProjectCounts = {}; // nation_id -> number of active projects
+
+async function loadSubsidiaryProjectCounts() {
+    if (!faction?.id) return;
+    try {
+        const { data } = await _supabase
+            .from('construction_contracts')
+            .select('nation_id')
+            .eq('awarded_faction_id', faction.id)
+            .in('status', ['in_progress', 'awarded']);
+        _subProjectCounts = {};
+        for (const c of (data || [])) {
+            if (c.nation_id) _subProjectCounts[c.nation_id] = (_subProjectCounts[c.nation_id] || 0) + 1;
+        }
+    } catch (e) { /* non-fatal */ }
+}
+
+function getSubsidiaryData(hqProp) {
+    // Gather all properties this corp owns in the subsidiary's nation
+    const nationProps = _ownedProperties.filter(p => p.nation_id === hqProp.nation_id);
+    const totalVal = nationProps.reduce((s, p) => s + Number(p.purchase_price || 0), 0);
+    const totalMaint = nationProps.reduce((s, p) => s + Number(p.monthly_maintenance || 0), 0);
+    const totalCapacity = nationProps.reduce((s, p) => s + Number(p.capacity || 0), 0);
+    const projects = _subProjectCounts[hqProp.nation_id] || 0;
+    const nationName = _subNations.find(n => n.id === hqProp.nation_id)?.name || hqProp.city || '—';
+
+    // Derive abbreviation from name
+    const words = (hqProp.name || '').trim().split(/\s+/);
+    const abbr = words.length >= 2
+        ? words.map(w => w[0]).join('').toUpperCase().slice(0, 4)
+        : (hqProp.name || 'SUB').slice(0, 4).toUpperCase();
+
+    // Derived business metrics — placeholders until per-subsidiary accounting exists
+    // Revenue = maintenance × 3 if has projects, else 0 (rough proxy)
+    const revenue = projects > 0 ? totalMaint * 3 * projects : 0;
+    const profitable = revenue > totalMaint;
+    const trend = projects >= 2 ? 'up' : projects === 1 ? 'flat' : 'down';
+
+    return {
+        id: hqProp.id,
+        name: hqProp.name,
+        abbr,
+        nation: nationName,
+        nationId: hqProp.nation_id,
+        sector: faction?.corp_sector || 'General',
+        subsector: faction?.corp_subsector || '—',
+        revenue,
+        debt: 0,
+        cash: 0,
+        reputation: 25,
+        valuation: totalVal,
+        maintenance: totalMaint,
+        workforce: totalCapacity,
+        projects,
+        capacity: totalCapacity,
+        condition: hqProp.condition || 85,
+        established: hqProp.created_at ? new Date(hqProp.created_at).getFullYear().toString() : '—',
+        trend,
+        profitable,
+        propCount: nationProps.length,
+        style: hqProp.style || 'Modern',
+    };
+}
 
 function renderManageSubsidiariesCard() {
     const container = document.getElementById('manage-subsidiaries-container');
@@ -7091,84 +7155,99 @@ function renderManageSubsidiariesCard() {
 
     const mono = "'JetBrains Mono', monospace";
     const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
-        accent: '#8b9a6b', blue: '#5a9abf', gold: '#c8a832', orange: '#c84',
+        accent: '#8b9a6b', accentBright: '#a3b07e', blue: '#5a9abf', gold: '#c8a832', orange: '#c84',
         greenBright: '#5c5', greenDark: '#2a5a3a', red: '#c55', redDim: '#a44', yellow: '#ca5',
         text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
 
-    const subsidiaries = _ownedProperties.filter(p => p.type === 'regional_hq');
+    const hqProps = _ownedProperties.filter(p => p.type === 'regional_hq');
+    const subsidiaries = hqProps.map(getSubsidiaryData);
     if (_mSubSelected >= subsidiaries.length) _mSubSelected = 0;
-    const sel = subsidiaries[_mSubSelected] || null;
+    const sub = subsidiaries[_mSubSelected] || null;
 
-    // Left panel — table
+    // ─── LEFT: Table ───
     let tableRows = '';
     if (subsidiaries.length === 0) {
         tableRows = `<div style="padding:30px 14px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">No subsidiaries established.<br>Use Create Subsidiary to expand.</div>`;
     }
-    let totalVal = 0;
+    let totalRevenue = 0, totalVal = 0;
     for (let i = 0; i < subsidiaries.length; i++) {
         const s = subsidiaries[i];
         const isSel = i === _mSubSelected;
-        const val = Number(s.purchase_price || 0);
-        totalVal += val;
-        const nationName = _subNations.find(n => n.id === s.nation_id)?.name || s.city || '—';
+        totalRevenue += s.revenue;
+        totalVal += s.valuation;
+        const tc = s.trend === 'up' ? C.greenBright : s.trend === 'down' ? C.red : C.dim;
+        const tChar = s.trend === 'up' ? '▲' : s.trend === 'down' ? '▼' : '–';
         tableRows += `
         <div onclick="_mSubSelected=${i};renderManageSubsidiariesCard();" style="display:flex;align-items:center;padding:7px 14px;border-bottom:1px solid ${C.border};cursor:pointer;border-left:2px solid ${isSel ? C.accent : 'transparent'};background:${isSel ? 'rgba(139,154,107,0.03)' : 'transparent'};">
-            <span style="width:40px;font-family:${mono};font-size:9px;font-weight:700;color:${C.gold}">${(s.name || '').split('—')[0]?.trim().split(' ').map(w=>w[0]).join('').slice(0,4) || 'SUB'}</span>
-            <div style="flex:1.2;">
-                <div style="font-size:10px;font-weight:600;color:${C.text};line-height:1.2">${s.name}</div>
-                <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:1px">${s.style || 'Modern'}</div>
+            <span style="width:40px;font-family:${mono};font-size:10px;font-weight:700;color:${C.gold}">${s.abbr}</span>
+            <div style="flex:1.5;">
+                <div style="font-size:11px;font-weight:600;color:${C.text};line-height:1.2">${s.name}</div>
+                <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:1px">${s.subsector}</div>
             </div>
-            <span style="width:60px"><span style="font-family:${mono};font-size:7px;padding:1px 4px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${nationName.toUpperCase().slice(0,8)}</span></span>
-            <span style="width:50px;font-family:${mono};font-size:9px;font-weight:700;color:${C.gold};text-align:right">${hfFmtBig(val)}</span>
-            <span style="width:35px;font-family:${mono};font-size:9px;font-weight:700;color:${s.condition >= 75 ? C.greenBright : s.condition >= 50 ? C.yellow : C.orange};text-align:right">${s.condition}%</span>
+            <span style="width:65px"><span style="font-family:${mono};font-size:7px;letter-spacing:0.5px;padding:1px 5px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${s.nation.toUpperCase().slice(0,8)}</span></span>
+            <span style="width:55px;font-family:${mono};font-size:9px;font-weight:700;color:${s.profitable ? C.greenBright : C.redDim};text-align:right">${hfFmtBig(s.revenue)}</span>
+            <span style="width:40px;font-family:${mono};font-size:9px;font-weight:700;color:${s.reputation >= 40 ? C.accent : s.reputation >= 25 ? C.yellow : C.orange};text-align:right">${s.reputation}</span>
+            <span style="width:55px;font-family:${mono};font-size:9px;color:${C.muted};text-align:right">${hfFmtBig(s.valuation)}</span>
+            <span style="width:12px;font-family:${mono};font-size:8px;color:${tc};text-align:right">${tChar}</span>
         </div>`;
     }
 
-    // Right panel — detail
+    // ─── RIGHT: Detail ───
     let detailHtml = '';
-    if (sel) {
-        const nationName = _subNations.find(n => n.id === sel.nation_id)?.name || sel.city || '—';
-        const condColor = sel.condition >= 75 ? C.greenBright : sel.condition >= 50 ? C.yellow : C.orange;
+    if (sub) {
+        const trendColor = sub.trend === 'up' ? C.greenBright : sub.trend === 'down' ? C.red : C.dim;
+        const trendChar = sub.trend === 'up' ? '▲' : sub.trend === 'down' ? '▼' : '–';
+        const trendLabel = sub.trend === 'up' ? 'Growing' : sub.trend === 'down' ? 'Declining' : 'Stable';
+        const repColor = sub.reputation >= 40 ? C.accent : sub.reputation >= 25 ? C.yellow : C.orange;
+
         const stats = [
-            { label: 'Valuation', value: hfFmtBig(sel.purchase_price || 0), color: C.gold },
-            { label: 'Maintenance/Mo', value: hfFmtBig(sel.monthly_maintenance || 0), color: C.red },
-            { label: 'Capacity', value: (sel.capacity || 0).toLocaleString(), color: C.text },
-            { label: 'Condition', value: sel.condition + '%', color: condColor },
-            { label: 'Nation', value: nationName, color: C.accent },
-            { label: 'Style', value: sel.style || 'Modern', color: C.muted },
+            { label: 'Revenue', value: hfFmtBig(sub.revenue), color: sub.profitable ? C.greenBright : C.redDim },
+            { label: 'Cash', value: hfFmtBig(sub.cash), color: C.text },
+            { label: 'Debt', value: sub.debt > 0 ? hfFmtBig(sub.debt) : '$0', color: sub.debt > 0 ? C.orange : C.dim },
+            { label: 'Reputation', value: sub.reputation + '/100', color: repColor },
+            { label: 'Market Valuation', value: hfFmtBig(sub.valuation), color: C.gold },
+            { label: 'Workforce', value: sub.workforce.toLocaleString(), color: C.text },
+            { label: 'Active Projects', value: sub.projects.toString(), color: sub.projects > 0 ? C.text : C.dim },
         ];
+
+        const canDissolve = sub.projects === 0;
 
         detailHtml = `
             <div style="padding:8px 14px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
-                <div style="font-size:12px;font-weight:700;color:${C.text};margin-bottom:2px">${sel.name}</div>
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+                    <span style="font-family:${mono};font-size:12px;font-weight:700;color:${C.gold}">${sub.abbr}</span>
+                    <span style="font-size:12px;font-weight:700;color:${C.text}">${sub.name}</span>
+                </div>
                 <div style="display:flex;gap:6px;align-items:center;">
-                    <span style="font-family:${mono};font-size:7px;padding:1px 5px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${nationName.toUpperCase()}</span>
-                    <span style="font-family:${mono};font-size:7px;padding:1px 5px;color:${C.blue};background:rgba(90,154,191,0.08);border:1px solid rgba(90,154,191,0.15)">SUBSIDIARY</span>
+                    <span style="font-family:${mono};font-size:7px;letter-spacing:0.5px;padding:1px 5px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${sub.nation.toUpperCase()}</span>
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim}">Est. ${sub.established}</span>
+                    <span style="font-family:${mono};font-size:8px;color:${trendColor}">${trendChar} ${trendLabel}</span>
                 </div>
             </div>
-            ${stats.map(r => `<div style="display:flex;justify-content:space-between;padding:4px 14px;border-bottom:1px solid ${C.border};">
-                <span style="font-family:${mono};font-size:9px;color:${C.dim};text-transform:uppercase">${r.label}</span>
+            ${stats.map(r => `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 14px;border-bottom:1px solid ${C.border};">
+                <span style="font-family:${mono};font-size:9px;color:${C.dim};letter-spacing:0.5px;text-transform:uppercase">${r.label}</span>
                 <span style="font-family:${mono};font-size:11px;font-weight:700;color:${r.color}">${r.value}</span>
             </div>`).join('')}
             <div style="padding:6px 14px;border-bottom:1px solid ${C.border};flex-shrink:0;">
                 <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-                    <span style="font-family:${mono};font-size:7px;color:${C.dim}">CONDITION</span>
-                    <span style="font-family:${mono};font-size:8px;color:${condColor}">${sel.condition}%</span>
+                    <span style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.8px">REPUTATION</span>
+                    <span style="font-family:${mono};font-size:8px;color:${C.muted}">75% sub / 25% parent</span>
                 </div>
-                <div style="width:100%;height:4px;background:${C.border}"><div style="width:${sel.condition}%;height:100%;background:${condColor}"></div></div>
+                <div style="width:100%;height:4px;background:${C.border}"><div style="width:${sub.reputation}%;height:100%;background:${repColor}"></div></div>
             </div>
             <div style="flex:1"></div>
             <div style="padding:6px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
                 <div style="font-family:${mono};font-size:8px;letter-spacing:1.5px;color:${C.dim};text-transform:uppercase;margin-bottom:6px">Actions</div>
                 <div style="display:flex;gap:4px;margin-bottom:4px;">
-                    <div style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;color:${C.greenBright};border:1px solid ${C.greenDark};background:rgba(74,170,136,0.06)">INJECT CAPITAL</div>
-                    <div style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;color:${C.gold};border:1px solid ${C.gold}44">WITHDRAW</div>
+                    <div onclick="subInjectCapital('${sub.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${C.greenBright};border:1px solid ${C.greenDark};background:rgba(74,170,136,0.06)">INJECT CAPITAL</div>
+                    <div onclick="subWithdraw('${sub.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${sub.cash > 0 ? C.gold : C.dim};border:1px solid ${sub.cash > 0 ? C.gold + '44' : C.border};opacity:${sub.cash > 0 ? 1 : 0.4}">WITHDRAW</div>
                 </div>
                 <div style="display:flex;gap:4px;">
-                    <div style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;color:${C.accent};border:1px solid ${C.accent}44">MERGE</div>
-                    <div style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;color:${C.orange};border:1px solid ${C.orange}44">SELL</div>
-                    <div onclick="subDissolve('${sel.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;color:${C.red};border:1px solid ${C.red}44">DISSOLVE</div>
+                    <div onclick="subMerge('${sub.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${C.accent};border:1px solid ${C.accent}44">MERGE</div>
+                    <div onclick="subSell('${sub.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${C.orange};border:1px solid ${C.orange}44">SELL</div>
+                    <div onclick="${canDissolve ? "subDissolve('" + sub.id + "')" : ''}" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${canDissolve ? C.red : C.dim};border:1px solid ${canDissolve ? C.red + '44' : C.border};opacity:${canDissolve ? 1 : 0.3}">DISSOLVE</div>
                 </div>
+                ${sub.projects > 0 ? `<div style="margin-top:4px;font-family:${mono};font-size:7px;color:${C.dim}">Cannot dissolve with active projects.</div>` : ''}
             </div>`;
     } else {
         detailHtml = `<div style="padding:30px 14px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">Select a subsidiary to manage.</div>`;
@@ -7185,20 +7264,24 @@ function renderManageSubsidiariesCard() {
         </div>
         <div style="flex:1;display:flex;overflow:hidden;">
             <div style="flex:1;border-right:1px solid ${C.border};display:flex;flex-direction:column;">
-                <div style="display:flex;padding:5px 14px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
-                    <span style="width:40px;font-family:${mono};font-size:7px;color:${C.dim}">ABBR</span>
-                    <span style="flex:1.2;font-family:${mono};font-size:7px;color:${C.dim}">NAME</span>
-                    <span style="width:60px;font-family:${mono};font-size:7px;color:${C.dim}">NATION</span>
-                    <span style="width:50px;font-family:${mono};font-size:7px;color:${C.dim};text-align:right">VALUE</span>
-                    <span style="width:35px;font-family:${mono};font-size:7px;color:${C.dim};text-align:right">COND</span>
+                <div style="display:flex;align-items:center;padding:5px 14px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+                    <span style="width:40px;font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">ABBR</span>
+                    <span style="flex:1.5;font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">NAME</span>
+                    <span style="width:65px;font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">NATION</span>
+                    <span style="width:55px;font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px;text-align:right">REVENUE</span>
+                    <span style="width:40px;font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px;text-align:right">REP</span>
+                    <span style="width:55px;font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px;text-align:right">VALUE</span>
+                    <span style="width:12px"></span>
                 </div>
                 <div style="flex:1;overflow:auto;">${tableRows}</div>
-                <div style="padding:6px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;display:flex;">
+                <div style="padding:6px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;display:flex;align-items:center;">
                     <span style="width:40px"></span>
-                    <span style="flex:1.2;font-family:${mono};font-size:8px;color:${C.dim}">COMBINED</span>
-                    <span style="width:60px"></span>
-                    <span style="width:50px;font-family:${mono};font-size:9px;font-weight:700;color:${C.text};text-align:right">${hfFmtBig(totalVal)}</span>
-                    <span style="width:35px"></span>
+                    <span style="flex:1.5;font-family:${mono};font-size:8px;color:${C.dim}">COMBINED</span>
+                    <span style="width:65px"></span>
+                    <span style="width:55px;font-family:${mono};font-size:9px;font-weight:700;color:${C.text};text-align:right">${hfFmtBig(totalRevenue)}</span>
+                    <span style="width:40px"></span>
+                    <span style="width:55px;font-family:${mono};font-size:9px;font-weight:700;color:${C.text};text-align:right">${hfFmtBig(totalVal)}</span>
+                    <span style="width:12px"></span>
                 </div>
             </div>
             <div style="width:280px;display:flex;flex-direction:column;overflow:auto;">
@@ -7209,13 +7292,19 @@ function renderManageSubsidiariesCard() {
 }
 
 async function subDissolve(propId) {
-    const prop = _ownedProperties.find(p => p.id === propId);
-    if (!prop) return;
-    const saleValue = Math.round((prop.purchase_price || 0) * 0.6 * (prop.condition || 50) / 100);
-    if (!confirm('Dissolve subsidiary "' + prop.name + '"?\n\nAssets liquidated at 60% × condition: ' + hfFmtBig(saleValue) + '\nAll operations in this nation cease.\n\nThis cannot be undone.')) return;
+    const hq = _ownedProperties.find(p => p.id === propId);
+    if (!hq) return;
+    // Gather ALL properties in this subsidiary's nation
+    const nationProps = _ownedProperties.filter(p => p.nation_id === hq.nation_id);
+    const saleValue = nationProps.reduce((s, p) => s + Math.round((p.purchase_price || 0) * 0.6 * (p.condition || 50) / 100), 0);
+    if (!confirm('Dissolve subsidiary "' + hq.name + '"?\n\n' + nationProps.length + ' properties liquidated at 60% × condition: ' + hfFmtBig(saleValue) + '\nAll operations in ' + (hq.city || 'this nation') + ' cease.\n\nThis cannot be undone.')) return;
 
     try {
-        await _supabase.from('corp_properties').update({ is_active: false }).eq('id', propId);
+        // Deactivate ALL properties in this nation
+        const propIds = nationProps.map(p => p.id);
+        for (const pid of propIds) {
+            await _supabase.from('corp_properties').update({ is_active: false }).eq('id', pid);
+        }
         const cash = Number(faction?.corp_cash_reserves ?? 0) + saleValue;
         await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
         faction.corp_cash_reserves = cash;
@@ -7226,10 +7315,21 @@ async function subDissolve(propId) {
         renderPropertyCard();
         renderManageSubsidiariesCard();
         renderCreateSubsidiaryCard();
-        alert('Subsidiary dissolved. Received: ' + hfFmtBig(saleValue));
+        alert('Subsidiary dissolved. ' + nationProps.length + ' properties liquidated.\nReceived: ' + hfFmtBig(saleValue));
     } catch (err) { alert('Failed: ' + err.message); }
 }
+
+// Placeholder stubs for Phase 2-4 actions
+function subInjectCapital(propId) { alert('INJECT CAPITAL — Coming in Phase 2'); }
+function subWithdraw(propId) { alert('WITHDRAW — Coming in Phase 2'); }
+function subMerge(propId) { alert('MERGE — Coming in Phase 4'); }
+function subSell(propId) { alert('SELL — Coming in Phase 3'); }
+
 window.subDissolve = subDissolve;
+window.subInjectCapital = subInjectCapital;
+window.subWithdraw = subWithdraw;
+window.subMerge = subMerge;
+window.subSell = subSell;
 
 // ==================== CREATE SUBSIDIARY ====================
 
