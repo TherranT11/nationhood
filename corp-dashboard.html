@@ -889,6 +889,17 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
       <div class="val-card__scroll" id="val-body"></div>
     </div>
   </div>
+
+  <!-- Dissolve Corporation -->
+  <div style="display:flex;justify-content:center;padding:40px 14px 60px;">
+    <div id="dissolve-box" style="border:1px solid #3a2020;background:rgba(204,85,85,0.03);padding:20px 32px;text-align:center;max-width:400px;width:100%;">
+      <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:2px;color:#a44;margin-bottom:8px;text-transform:uppercase;">Irreversible Action</div>
+      <button id="dissolve-btn" onclick="dissolveCorporation()" style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#c55;background:transparent;border:1px solid #c55;padding:8px 28px;cursor:pointer;transition:all 0.15s;">Dissolve Corporation</button>
+      <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:8px;line-height:1.5;">
+        Permanently removes this corporation, all assets,<br>bids, equipment, properties, and warehouse inventory.
+      </div>
+    </div>
+  </div>
 </div>
 
 <script type="module">
@@ -1760,6 +1771,101 @@ window.toggleTheme = toggleTheme;
 window.saveSlogan = saveSlogan;
 window.toggleCorpDropdown = toggleCorpDropdown;
 window.switchToFaction = switchToFaction;
+
+// ==================== DISSOLVE CORPORATION ====================
+
+async function dissolveCorporation() {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) return;
+
+    const factionId = sessionStorage.getItem('active_faction_id');
+    if (!factionId) return;
+
+    // Find the active corp faction
+    const corp = allUserFactions.find(f => f.id === factionId && f.faction_type === 'corporation');
+    if (!corp) { alert('No active corporation found.'); return; }
+
+    const corpName = corp.faction_name || 'this corporation';
+
+    // Two-step confirmation
+    if (!confirm(
+        'DISSOLVE ' + corpName.toUpperCase() + '?\n\n' +
+        'This will permanently:\n' +
+        '• Remove the corporation from the game\n' +
+        '• Delete all bids, equipment, properties, and inventory\n' +
+        '• Cancel all active construction projects\n' +
+        '• Detach this corporation from your account\n\n' +
+        'This action CANNOT be undone.'
+    )) return;
+
+    const typed = prompt('Type "DISSOLVE" to confirm permanent dissolution of ' + corpName + ':');
+    if (typed !== 'DISSOLVE') { alert('Dissolution cancelled.'); return; }
+
+    const btn = document.getElementById('dissolve-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'DISSOLVING...'; btn.style.opacity = '0.5'; }
+
+    try {
+        // 1. Delete all bids this corp has submitted
+        await _supabase.from('contract_bids').delete().eq('faction_id', factionId);
+
+        // 2. Cancel any contracts this corp was awarded (mark completed/cancelled)
+        await _supabase.from('construction_contracts')
+            .update({ status: 'completed' })
+            .eq('awarded_to_faction', factionId)
+            .in('status', ['awarded', 'in_progress']);
+
+        // 3. Expire any open contracts this corp issued
+        await _supabase.from('construction_contracts')
+            .update({ status: 'expired' })
+            .eq('issuer_faction_id', factionId)
+            .in('status', ['open', 'bidding']);
+
+        // 4. Delete equipment and deliveries
+        await _supabase.from('corp_equipment_deliveries').delete().eq('faction_id', factionId);
+        await _supabase.from('corp_equipment').delete().eq('faction_id', factionId);
+
+        // 5. Delete properties
+        await _supabase.from('corp_properties').delete().eq('faction_id', factionId);
+
+        // 6. Delete warehouse / material inventory
+        await _supabase.from('corp_material_inventory').delete().eq('faction_id', factionId);
+        await _supabase.from('corp_warehouse').delete().eq('faction_id', factionId);
+
+        // 7. Delete the faction itself
+        await _supabase.from('factions').delete().eq('id', factionId);
+
+        // 8. Clear session and redirect
+        sessionStorage.removeItem('active_faction_id');
+
+        // Check if user still has other factions
+        const { data: remaining } = await _supabase
+            .from('factions')
+            .select('id, faction_type')
+            .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
+
+        const party = (remaining || []).find(f => f.faction_type === 'party');
+        const otherCorp = (remaining || []).find(f => f.faction_type === 'corporation');
+
+        if (party) {
+            sessionStorage.setItem('active_faction_id', party.id);
+            alert(corpName + ' has been dissolved.\n\nRedirecting to your political party.');
+            window.location.href = 'dashboard.html';
+        } else if (otherCorp) {
+            sessionStorage.setItem('active_faction_id', otherCorp.id);
+            alert(corpName + ' has been dissolved.\n\nRedirecting to your other corporation.');
+            window.location.href = 'corp-dashboard.html';
+        } else {
+            alert(corpName + ' has been dissolved.\n\nYou have no remaining factions. Redirecting to faction select.');
+            window.location.href = 'select-nation.html';
+        }
+    } catch (err) {
+        console.error('Dissolve failed:', err);
+        alert('Failed to dissolve corporation: ' + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = 'Dissolve Corporation'; btn.style.opacity = '1'; }
+    }
+}
+
+window.dissolveCorporation = dissolveCorporation;
 
 init();
 </script>
