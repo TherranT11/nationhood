@@ -7243,9 +7243,9 @@ function renderManageSubsidiariesCard() {
                     <div onclick="subWithdraw('${sub.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${sub.cash > 0 ? C.gold : C.dim};border:1px solid ${sub.cash > 0 ? C.gold + '44' : C.border};opacity:${sub.cash > 0 ? 1 : 0.4}">WITHDRAW</div>
                 </div>
                 <div style="display:flex;gap:4px;">
-                    <div onclick="subMerge('${sub.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${C.accent};border:1px solid ${C.accent}44">MERGE</div>
-                    <div onclick="subSell('${sub.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${C.orange};border:1px solid ${C.orange}44">SELL</div>
-                    <div onclick="${canDissolve ? "subDissolve('" + sub.id + "')" : ''}" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${canDissolve ? C.red : C.dim};border:1px solid ${canDissolve ? C.red + '44' : C.border};opacity:${canDissolve ? 1 : 0.3}">DISSOLVE</div>
+                    <div onclick="subMerge('${sub.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${C.accent};border:1px solid ${C.accent}">MERGE</div>
+                    <div onclick="subSell('${sub.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${C.orange};border:1px solid ${C.orange}">SELL</div>
+                    <div onclick="${canDissolve ? "subDissolve('" + sub.id + "')" : ''}" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${canDissolve ? C.red : C.dim};border:1px solid ${canDissolve ? C.red : C.border};opacity:${canDissolve ? 1 : 0.3}">DISSOLVE</div>
                 </div>
                 ${sub.projects > 0 ? `<div style="margin-top:4px;font-family:${mono};font-size:7px;color:${C.dim}">Cannot dissolve with active projects.</div>` : ''}
             </div>`;
@@ -7291,31 +7291,81 @@ function renderManageSubsidiariesCard() {
     </div>`;
 }
 
-async function subDissolve(propId) {
+// ─── SELL: Sell subsidiary as going concern (80% × condition + sub_cash) ───
+async function subSell(propId) {
     const hq = _ownedProperties.find(p => p.id === propId);
     if (!hq) return;
-    // Gather ALL properties in this subsidiary's nation
+    const nationName = _subNations.find(n => n.id === hq.nation_id)?.name || hq.city || '—';
     const nationProps = _ownedProperties.filter(p => p.nation_id === hq.nation_id);
-    const saleValue = nationProps.reduce((s, p) => s + Math.round((p.purchase_price || 0) * 0.6 * (p.condition || 50) / 100), 0);
-    if (!confirm('Dissolve subsidiary "' + hq.name + '"?\n\n' + nationProps.length + ' properties liquidated at 60% × condition: ' + hfFmtBig(saleValue) + '\nAll operations in ' + (hq.city || 'this nation') + ' cease.\n\nThis cannot be undone.')) return;
+    const propValue = nationProps.reduce((s, p) => s + Math.round((p.purchase_price || 0) * 0.8 * (p.condition || 50) / 100), 0);
+    const subCash = Number(hq.sub_cash || 0);
+    const totalReturn = propValue + subCash;
+
+    if (!confirm(
+        'SELL subsidiary "' + hq.name + '"?\n\n' +
+        nationProps.length + ' properties sold at 80% × condition:\n' +
+        '  Property value: ' + hfFmtBig(propValue) + '\n' +
+        '  Subsidiary cash: ' + hfFmtBig(subCash) + '\n' +
+        '  ─────────────────\n' +
+        '  Total return: ' + hfFmtBig(totalReturn) + '\n\n' +
+        'All operations in ' + nationName + ' cease.\nThis cannot be undone.'
+    )) return;
 
     try {
-        // Deactivate ALL properties in this nation
         const propIds = nationProps.map(p => p.id);
         for (const pid of propIds) {
-            await _supabase.from('corp_properties').update({ is_active: false }).eq('id', pid);
+            await _supabase.from('corp_properties').update({ is_active: false, sub_cash: 0 }).eq('id', pid);
         }
-        const cash = Number(faction?.corp_cash_reserves ?? 0) + saleValue;
-        await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
-        faction.corp_cash_reserves = cash;
+        const newCash = Number(faction?.corp_cash_reserves ?? 0) + totalReturn;
+        await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        faction.corp_cash_reserves = newCash;
         const cashEl = document.getElementById('topbar-cash');
-        if (cashEl) cashEl.textContent = 'CASH: ' + (cash >= 1e6 ? '$' + (cash / 1e6).toFixed(1) + 'M' : '$' + Math.round(cash / 1000) + 'k');
+        if (cashEl) cashEl.textContent = 'CASH: ' + (newCash >= 1e6 ? '$' + (newCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newCash / 1000) + 'k');
         _mSubSelected = 0;
         await loadOwnedProperties();
         renderPropertyCard();
         renderManageSubsidiariesCard();
         renderCreateSubsidiaryCard();
-        alert('Subsidiary dissolved. ' + nationProps.length + ' properties liquidated.\nReceived: ' + hfFmtBig(saleValue));
+        alert('Subsidiary sold. ' + nationProps.length + ' properties liquidated.\nTotal received: ' + hfFmtBig(totalReturn));
+    } catch (err) { alert('Failed: ' + err.message); }
+}
+
+// ─── DISSOLVE: Liquidate at fire-sale rate (60% × condition + sub_cash) ───
+async function subDissolve(propId) {
+    const hq = _ownedProperties.find(p => p.id === propId);
+    if (!hq) return;
+    const nationName = _subNations.find(n => n.id === hq.nation_id)?.name || hq.city || '—';
+    const nationProps = _ownedProperties.filter(p => p.nation_id === hq.nation_id);
+    const propValue = nationProps.reduce((s, p) => s + Math.round((p.purchase_price || 0) * 0.6 * (p.condition || 50) / 100), 0);
+    const subCash = Number(hq.sub_cash || 0);
+    const totalReturn = propValue + subCash;
+
+    if (!confirm(
+        'DISSOLVE subsidiary "' + hq.name + '"?\n\n' +
+        nationProps.length + ' properties liquidated at 60% × condition:\n' +
+        '  Property value: ' + hfFmtBig(propValue) + '\n' +
+        '  Subsidiary cash: ' + hfFmtBig(subCash) + '\n' +
+        '  ─────────────────\n' +
+        '  Total return: ' + hfFmtBig(totalReturn) + '\n\n' +
+        'All operations in ' + nationName + ' cease.\nThis cannot be undone.'
+    )) return;
+
+    try {
+        const propIds = nationProps.map(p => p.id);
+        for (const pid of propIds) {
+            await _supabase.from('corp_properties').update({ is_active: false, sub_cash: 0 }).eq('id', pid);
+        }
+        const newCash = Number(faction?.corp_cash_reserves ?? 0) + totalReturn;
+        await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        faction.corp_cash_reserves = newCash;
+        const cashEl = document.getElementById('topbar-cash');
+        if (cashEl) cashEl.textContent = 'CASH: ' + (newCash >= 1e6 ? '$' + (newCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newCash / 1000) + 'k');
+        _mSubSelected = 0;
+        await loadOwnedProperties();
+        renderPropertyCard();
+        renderManageSubsidiariesCard();
+        renderCreateSubsidiaryCard();
+        alert('Subsidiary dissolved. ' + nationProps.length + ' properties liquidated.\nTotal received: ' + hfFmtBig(totalReturn));
     } catch (err) { alert('Failed: ' + err.message); }
 }
 
@@ -7411,7 +7461,7 @@ async function subWithdraw(propId) {
     } catch (err) { alert('Failed: ' + err.message); }
 }
 function subMerge(propId) { alert('MERGE — Coming in Phase 4'); }
-function subSell(propId) { alert('SELL — Coming in Phase 3'); }
+// subSell defined above with subDissolve
 
 window.subDissolve = subDissolve;
 window.subInjectCapital = subInjectCapital;
