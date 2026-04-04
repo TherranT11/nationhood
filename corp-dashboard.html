@@ -1104,7 +1104,7 @@ async function init() {
 
     // ── Render all dashboard cards ──
     const wfData = renderWorkforce(nationStats, nationName, faction);
-    renderStats(nationName);
+    renderStats(nationName, faction);
     const propData = await renderProperty(nationStats, nationName, faction, shard);
 
     // Load equipment maintenance from DB
@@ -1400,25 +1400,23 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
     `;
 }
 
-function renderStats(nationName) {
-    const nation = nationName.toUpperCase();
+function renderStats(nationName, faction) {
+    const nation = (nationName || '').toUpperCase();
+    const totalWf = Number(faction.corp_general_workforce ?? 0)
+                  + Number(faction.corp_skilled_workforce ?? 0)
+                  + Number(faction.corp_innovative_workforce ?? 0);
 
-    // Starting values (these will come from DB later)
+    // Starting defaults — will be driven by DB columns as we add them
     const stats = [
-        // { label, value, change, decay, nation, max, isHero }
-        { label: 'Reputation', value: 65, change: 0, decay: true, max: 100, isHero: true },
-        // Core
-        { label: 'Workforce Size', value: 3000, change: 0, section: 'Core' },
-        { label: 'Workforce Skill', value: 50, change: 0, decay: true, max: 100 },
-        { label: 'Operational Efficiency', value: 50, change: 0, decay: true, max: 100 },
-        // Market & Financials
-        { label: 'Market Share', value: 5, change: 0, nation, max: 100, section: 'Market & Financials' },
-        { label: 'Credit Rating', value: 50, change: 0, max: 100 },
-        // Political Standing
-        { label: 'Regulatory Standing', value: 50, change: 0, nation, max: 100, section: 'Political Standing' },
-        { label: 'Political Influence', value: 10, change: 0, decay: true, nation, max: 100 },
-        // Innovation
-        { label: 'Innovation', value: 20, change: 0, decay: true, max: 100, section: 'Innovation' },
+        { label: 'Reputation', value: Number(faction.corp_reputation ?? 65), change: 0, decay: true, max: 100, isHero: true },
+        { label: 'Workforce Size', value: totalWf || 3000, change: 0, section: 'Core' },
+        { label: 'Workforce Skill', value: Number(faction.corp_workforce_skill ?? 50), change: 0, decay: true, max: 100 },
+        { label: 'Operational Efficiency', value: Number(faction.corp_operational_efficiency ?? 50), change: 0, decay: true, max: 100 },
+        { label: 'Market Share', value: Number(faction.corp_market_share ?? 5), change: 0, nation, max: 100, section: 'Market & Financials' },
+        { label: 'Credit Rating', value: Number(faction.corp_credit_rating ?? 50), change: 0, max: 100 },
+        { label: 'Regulatory Standing', value: Number(faction.corp_regulatory_standing ?? 50), change: 0, nation, max: 100, section: 'Political Standing' },
+        { label: 'Political Influence', value: Number(faction.corp_political_influence ?? 10), change: 0, decay: true, nation, max: 100 },
+        { label: 'Innovation', value: Number(faction.corp_innovation ?? 20), change: 0, decay: true, max: 100, section: 'Innovation' },
     ];
 
     function valColor(v, max) {
@@ -1443,7 +1441,6 @@ function renderStats(nationName) {
     let html = '';
 
     for (const s of stats) {
-        // Hero stat (reputation)
         if (s.isHero) {
             html += `
                 <div class="stats-hero">
@@ -1463,12 +1460,10 @@ function renderStats(nationName) {
             continue;
         }
 
-        // Section header
         if (s.section) {
             html += `<div class="stats-section"><span class="stats-section__label">${s.section}</span></div>`;
         }
 
-        // Regular stat row
         const hasMax = s.max && s.max <= 100;
         html += `
             <div class="stat-item">

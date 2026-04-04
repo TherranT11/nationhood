@@ -5792,7 +5792,7 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
             <div class="elec-explainer-section">
                 <div class="elec-explainer-heading">Legislation:</div>
                 <ul>
-                    <li><strong>Sponsoring a bill:</strong> +3 momentum for the sponsoring party.</li>
+                    <li><strong>Sponsoring a bill:</strong> +2 momentum for the sponsoring party.</li>
                     <li><strong>Bill passes:</strong> YES voters get +2 momentum per policy article.</li>
                     <li><strong>Bill fails:</strong> YES voters lose -2 per article. NO voters gain +2 per article.</li>
                     <li>Text-only articles do not count. Abstaining gives nothing.</li>

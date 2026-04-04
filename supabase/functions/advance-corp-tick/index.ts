@@ -22,11 +22,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ════════════════════════════════════════════════════════════════════════════════
-//  IDEMPOTENCY — in-memory tracker to skip duplicate cron fires
-// ════════════════════════════════════════════════════════════════════════════════
-
-let lastProcessedTick = -1;
-
 // ════════════════════════════════════════════════════════════════════════════════
 //  CONSTRUCTION SECTOR — Templates & Helpers
 // ════════════════════════════════════════════════════════════════════════════════
@@ -997,16 +992,14 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
     const multiplier = gdpFactor * urbanFactor * popFactor * solFactor * infraFactor * inflFactor * intFactor;
     const monthlyMarketRev = Math.round(Math.round(BASE_RATE * multiplier) / 12);
 
-    // Wages: same formula as corp-dashboard.html renderWorkforce
-    const TOTAL_WORKFORCE = 3000;
-    const CONSTRUCTION_SECTOR_MULT = 0.20;
-    const baseAnnualWage = 8000 + (ns('minimum_wage') / 100) * 32000;
-    const generalWages = Math.round(TOTAL_WORKFORCE * 0.75) * baseAnnualWage * 1.00 * CONSTRUCTION_SECTOR_MULT;
-    const skilledWages = Math.round(TOTAL_WORKFORCE * 0.20) * baseAnnualWage * 1.50 * CONSTRUCTION_SECTOR_MULT;
-    const innovativeWages = (TOTAL_WORKFORCE - Math.round(TOTAL_WORKFORCE * 0.75) - Math.round(TOTAL_WORKFORCE * 0.20)) * baseAnnualWage * 2.75 * CONSTRUCTION_SECTOR_MULT;
-    const monthlyWages = Math.round((generalWages + skilledWages + innovativeWages) / 12);
-
-    const monthlyIncome = monthlyMarketRev - monthlyWages;
+    // Wages: matches corp-dashboard.html renderWorkforce formula exactly
+    const baseAnnualWage = (ns('minimum_wage') / 100) * 48000;
+    const inflation = ns('inflation');
+    const sol = ns('standard_of_living');
+    const inflMod = 1 + ((inflation - 50) / 100 * 0.5);
+    const solMod = 1 + ((sol - 50) / 100 * 0.5);
+    const GENERAL_MULT = 2, SKILLED_MULT = 3, INNOVATIVE_MULT = 6;
+    const calcWage = (mult) => Math.round(baseAnnualWage * mult * inflMod * solMod);
 
     // Loan servicing constants (5% annual rate, 10-year amortization)
     const LOAN_ANNUAL_RATE = 0.05;
@@ -1016,6 +1009,16 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
     for (const corp of corpFactions) {
         const currentCash = Number(corp.corp_cash_reserves || 0);
         const currentLoans = Number(corp.corp_loans || 0);
+
+        // Per-corp wages from actual workforce counts
+        const generalCount = Number(corp.corp_general_workforce ?? 0);
+        const skilledCount = Number(corp.corp_skilled_workforce ?? 0);
+        const innovativeCount = Number(corp.corp_innovative_workforce ?? 0);
+        const annualWages = (generalCount * calcWage(GENERAL_MULT))
+                          + (skilledCount * calcWage(SKILLED_MULT))
+                          + (innovativeCount * calcWage(INNOVATIVE_MULT));
+        const monthlyWages = Math.round(annualWages / 12);
+        const monthlyIncome = monthlyMarketRev - monthlyWages;
 
         // Compute monthly loan payment (amortized) and split into interest + principal
         let debtPayment = 0;
@@ -1034,11 +1037,12 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
         const updateFields = { corp_cash_reserves: newCash };
         if (principalPaid > 0) updateFields.corp_loans = newLoans;
 
-        await supabase.from('factions')
+        const { error: updateErr } = await supabase.from('factions')
             .update(updateFields)
             .eq('id', corp.id);
+        if (updateErr) console.error(`[advance-corp-tick] Income update failed for ${corp.faction_name}:`, updateErr.message);
     }
-    console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}, wages=${monthlyWages}, net=${monthlyIncome}`);
+    console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}`);
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -1205,7 +1209,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
     }
 
     // 6. Mark this tick as processed (persisted to DB to survive cold starts)
-    lastProcessedTick = currentTick;
     await supabase.from('shard').update({ corp_last_processed_tick: currentTick }).eq('name', 'Alpha Shard');
 
     console.log(`[advance-corp-tick] Tick ${currentTick} complete. ${summary.corpsProcessed} corps across ${nationList.length} nations.`);
