@@ -1,6 +1,5 @@
 import { _supabase } from './supabase-client.js';
 import { initPage, refreshAP } from './common.js';
-import './guide.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate } from './utils.js';
 

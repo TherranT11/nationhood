@@ -9,7 +9,6 @@
 
 import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
-import { initMessaging } from './messaging.js';
 
 // ===== QUERY CACHE =====
 // Generic sessionStorage cache for Supabase query results.
@@ -1301,9 +1300,32 @@ export function updateThemeButton() {
 
 // ===== PAGE INITIALIZATION =====
 
+// Guide button label map + hidden tabs (lightweight — avoids loading guide.js eagerly)
+const _GUIDE_TAB_LABELS = {
+    dashboard: 'Home', nation: 'Nation', government: 'Government',
+    politics: 'Politics', laws: 'Bills', diplomacy: 'Diplomacy',
+    economy: 'Economy', events: 'Events', elections: 'Elections'
+};
+const _GUIDE_HIDDEN_TABS = ['dashboard', 'home'];
+
+let _guideModule = null;
+function setupGuideButton(tab) {
+    const btn = document.getElementById('guide-btn');
+    if (!btn) return;
+    if (_GUIDE_HIDDEN_TABS.includes(tab)) { btn.style.display = 'none'; return; }
+    const label = _GUIDE_TAB_LABELS[tab] || tab.charAt(0).toUpperCase() + tab.slice(1);
+    btn.textContent = label + ' Guide';
+    btn.style.display = '';
+    btn.addEventListener('click', async () => {
+        if (!_guideModule) _guideModule = await import('./guide.js');
+        _guideModule.openGuide();
+    });
+}
+
 export async function initPage(activeTab, onReady, requireFaction = true) {
     renderTopBar(activeTab);
     window.__currentTab = activeTab;
+    setupGuideButton(activeTab);
     updateThemeButton();
 
     // Ban enforcement — check before loading any game state
@@ -1346,8 +1368,11 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
         updateConflictsBadge(state.faction, state.nation);
     }
 
-    // Inject messaging bubble on all pages
-    initMessaging(state.faction, state.nation, state.shard);
+    // Lazy-load messaging bubble (deferred — not needed for initial render)
+    const _msgState = state;
+    (typeof requestIdleCallback === 'function' ? requestIdleCallback : setTimeout)(() => {
+        import('./messaging.js').then(m => m.initMessaging(_msgState.faction, _msgState.nation, _msgState.shard));
+    });
 
     if (onReady) {
         await onReady(state);
