@@ -731,9 +731,9 @@ async function confirmNation() {
         const ceoLast = lastNames[Math.floor(Math.random() * lastNames.length)];
         const ceoAge = 40 + Math.floor(Math.random() * 36);
 
-        // Starting financials: $20M cash, $8M loans, scaled by currency strength
+        // Starting financials: $36M cash, $8M loans, scaled by currency strength
         const currencyMult = (Number(nation.currency_strength) || 50) / 50;
-        const startingCash = Math.round(20_000_000 * currencyMult);
+        const startingCash = Math.round(36_000_000 * currencyMult);
         const startingLoans = Math.round(8_000_000 * currencyMult);
 
         // Upsert corporation faction record
@@ -762,12 +762,15 @@ async function confirmNation() {
                 corp_ticker: ticker,
                 corp_cash_reserves: startingCash,
                 corp_loans: startingLoans,
+                corp_general_workforce: 375,
+                corp_skilled_workforce: 100,
+                corp_innovative_workforce: 25,
+                abandoned_at: null,
             });
 
         if (upsertError) throw upsertError;
 
-        // Clean up session storage
-        // Seed starting equipment for construction corps
+        // Seed starting equipment + warehouse for construction corps
         if (corpSetup.sector === 'Construction') {
             const startingEquip = getStartingEquipment();
             if (startingEquip.length > 0) {
@@ -783,6 +786,22 @@ async function confirmNation() {
                 }));
                 await _supabase.from('corp_equipment').insert(equipRows);
             }
+
+            // Starting warehouse for construction corps
+            await _supabase.from('corp_properties').insert({
+                faction_id: currentUser.id,
+                nation_id: nation.id,
+                name: 'Starting Warehouse — ' + nation.name,
+                type: 'warehouse',
+                style: 'Basic',
+                capacity: 100,
+                purchase_price: 15000000,
+                monthly_maintenance: 75000,
+                condition: 95,
+                city: nation.capital || nation.name,
+                purchased_at_tick: currentTick,
+                is_active: true,
+            });
         }
 
         sessionStorage.removeItem('pending_faction_type');
