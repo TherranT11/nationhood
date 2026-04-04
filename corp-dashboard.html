@@ -1855,9 +1855,9 @@ async function dissolveCorporation() {
         // 4. Delete properties
         await run(_supabase.from('corp_properties').delete().eq('faction_id', factionId));
 
-        // 5. Delete warehouse / material inventory
-        await run(_supabase.from('corp_material_inventory').delete().eq('faction_id', factionId));
-        await run(_supabase.from('corp_warehouse').delete().eq('faction_id', factionId));
+        // 5. Delete warehouse / material inventory (tables may not exist yet)
+        await _supabase.from('corp_material_inventory').delete().eq('faction_id', factionId);
+        await _supabase.from('corp_warehouse').delete().eq('faction_id', factionId);
 
         // 6. Mark as dissolved — zero out cash/employees but keep debts + active projects
         await run(_supabase.from('factions').update({
