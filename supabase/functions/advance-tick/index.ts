@@ -5105,7 +5105,8 @@ async function fetchActiveCoalition(supabase, nationId) {
 
     // Only return formed or caretaker governments — 'active' means a proposal
     // that hasn't been finalized. Returning proposals here causes the UI to
-    // render them as the actual government.
+    // render them as the actual government (e.g. "Majority Coalition Government"
+    // for an unfinalized proposal).
     const { data: newGov } = await supabase
         .from('government_formations')
         .select('*')

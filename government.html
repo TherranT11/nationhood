@@ -2241,6 +2241,29 @@ function updateSeatPreview() {
 }
 
 async function createProposal() {
+    // DIAGNOSTIC: Log every call with stack trace to find ghost proposals
+    const diagStack = new Error().stack;
+    const diagTime = new Date().toISOString();
+    console.warn(`[DIAG] createProposal() CALLED at ${diagTime}`, {
+        faction: currentFaction?.id,
+        factionName: currentFaction?.faction_name,
+        nation: currentNation?.name,
+        electionId: currentElectionId,
+        selectedParties: [...proposalSelectedParties],
+        stack: diagStack
+    });
+
+    // Also persist to event_log so we can see it server-side even if console is lost
+    try {
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation?.id,
+            event_name: 'DIAG_CREATE_PROPOSAL_CALLED',
+            trigger_key: 'diag_create_proposal',
+            description_used: `createProposal() called by ${currentFaction?.faction_name} (${currentFaction?.id}) at ${diagTime}. Selected: ${proposalSelectedParties.length} parties. Stack: ${diagStack?.split('\n').slice(0, 5).join(' | ')}`,
+            category: 'POLITICAL'
+        });
+    } catch (diagErr) { console.warn('[DIAG] event_log insert failed:', diagErr); }
+
     if (_proposalSubmitting) return;
     if (getFormationPartySeats(currentFaction.id) === 0) {
         alert('Your party has no seats — you cannot propose a coalition.');
@@ -2275,6 +2298,8 @@ async function createProposal() {
         const { data: shard } = await _supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
         const gameYear = shard?.current_date || '';
 
+        console.warn(`[DIAG] createProposal() INSERTING at ${new Date().toISOString()}`, { partyIds, coalitionSeats, gameYear });
+
         const { data, error } = await _supabase
             .from('government_formations')
             .insert({
@@ -2289,6 +2314,8 @@ async function createProposal() {
             .single();
 
         if (error) { alert('Error creating proposal: ' + error.message); return; }
+
+        console.warn(`[DIAG] createProposal() SUCCESS — formation id: ${data.id}`);
 
         const { error: supportError } = await _supabase.rpc('toggle_formation_support', {
             p_formation_id: data.id,
@@ -2873,6 +2900,26 @@ async function retractProposal(formationId) {
 // ===== Form Government =====
 
 async function formGovernment() {
+    // DIAGNOSTIC: Log every call with stack trace to find ghost formations
+    const diagStack = new Error().stack;
+    const diagTime = new Date().toISOString();
+    console.warn(`[DIAG] formGovernment() CALLED at ${diagTime}`, {
+        faction: currentFaction?.id,
+        factionName: currentFaction?.faction_name,
+        nation: currentNation?.name,
+        activeFormationId,
+        stack: diagStack
+    });
+    try {
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation?.id,
+            event_name: 'DIAG_FORM_GOVERNMENT_CALLED',
+            trigger_key: 'diag_form_government',
+            description_used: `formGovernment() called by ${currentFaction?.faction_name} (${currentFaction?.id}) at ${diagTime}. Formation: ${activeFormationId}. Stack: ${diagStack?.split('\n').slice(0, 5).join(' | ')}`,
+            category: 'POLITICAL'
+        });
+    } catch (diagErr) { console.warn('[DIAG] event_log insert failed:', diagErr); }
+
     if (_formingInProgress) return;
     if (!activeFormationId) return;
 
