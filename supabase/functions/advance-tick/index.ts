@@ -12011,20 +12011,23 @@ async function processElections(supabase, nation, currentTick) {
             await syncAmbassadorsForFailedConfirmationBills(supabase, frozenBills);
             await syncMinistriesForFailedConfirmationBills(supabase, frozenBills);
 
-            // Reset failed_formation_attempts so the new election gets a fresh
-            // formation window (FORMATION_DEADLINE_TICKS). Without this, a stale
-            // counter from a previous snap election cycle causes the shorter
-            // POST_SNAP_DEADLINE_TICKS deadline and skips straight to Stage 2.
-            if (nation.failed_formation_attempts > 0) {
-                await supabase.from('nations')
-                    .update({ failed_formation_attempts: 0 })
-                    .eq('id', nation.id);
-                nation.failed_formation_attempts = 0;
-                console.log(`Reset failed_formation_attempts for ${nation.name} after new election`);
-            }
-
             if (existingGov) {
                 console.log(`Dissolving ${existingGov.status} government after election for ${nation.name} (source: ${existingGovSource})`);
+
+                // Reset failed_formation_attempts so the new election gets a fresh
+                // formation window (FORMATION_DEADLINE_TICKS). Without this, a stale
+                // counter from a previous snap election cycle causes the shorter
+                // POST_SNAP_DEADLINE_TICKS deadline and skips straight to Stage 2.
+                // Only reset when dissolving an existing government (regular elections),
+                // NOT after snap elections (where existingGov is null and the counter
+                // must stay at 1 so Stage 2 can trigger).
+                if (nation.failed_formation_attempts > 0) {
+                    await supabase.from('nations')
+                        .update({ failed_formation_attempts: 0 })
+                        .eq('id', nation.id);
+                    nation.failed_formation_attempts = 0;
+                    console.log(`Reset failed_formation_attempts for ${nation.name} after new election`);
+                }
 
                 // Close the administration
                 try {
