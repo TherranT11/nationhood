@@ -895,6 +895,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
+import { calculateTotalMaintenance } from './js/game/equipment.js';
 
 let allUserFactions = [];
 
@@ -1089,9 +1090,20 @@ async function init() {
 
     // ── Render all dashboard cards ──
     const wfData = renderWorkforce(nationStats, nationName, faction);
-    renderFinances(nationStats, shard, wfData, faction);
     renderStats(nationName);
     const propData = await renderProperty(nationStats, nationName, faction, shard);
+
+    // Load equipment maintenance from DB
+    let equipMaint = 0;
+    if (faction?.id) {
+        const { data: eqRows } = await _supabase
+            .from('corp_equipment')
+            .select('equipment_key, owned')
+            .eq('faction_id', faction.id);
+        equipMaint = calculateTotalMaintenance(eqRows || []);
+    }
+
+    renderFinances(nationStats, shard, wfData, faction, propData.propertyMaintenance || 0, equipMaint);
     renderValuation(nationStats, nationName, faction, wfData, propData);
 
     // Messaging bubble
@@ -1236,7 +1248,7 @@ function renderWorkforce(nation, nationName, factionData) {
     return { totalWages, generalTotal, skilledTotal, innovativeTotal, monthlyWages: Math.round(totalWages / 12) };
 }
 
-function renderFinances(nation, shard, wfData, faction) {
+function renderFinances(nation, shard, wfData, faction, propertyMaint, equipmentMaint) {
     const currentTick = shard?.current_tick || 0;
     document.getElementById('fin-tick').textContent = 'TICK ' + currentTick;
 
@@ -1263,8 +1275,10 @@ function renderFinances(nation, shard, wfData, faction) {
     // Expenses — workforce wages from wfData, divided by 12 (monthly)
     const annualWages = wfData?.totalWages || 0;
     const wages = Math.round(annualWages / 12);
-    const materials = 0, facilities = 0, equipment = 0, debtService = 0, taxes = 0;
-    const totalExpenses = wages + materials + facilities + equipment + debtService + taxes;
+    const materials = 0, debtService = 0, taxes = 0;
+    const properties = propertyMaint || 0;
+    const equipment = equipmentMaint || 0;
+    const totalExpenses = wages + materials + properties + equipment + debtService + taxes;
     const netProfit = totalRevenue - totalExpenses;
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const debt = 0;
@@ -1318,7 +1332,7 @@ function renderFinances(nation, shard, wfData, faction) {
             <div class="fin-section__title" style="color:var(--red);">Expenses</div>
             <div class="fin-row"><span class="fin-row__label">Workforce Wages</span><span class="fin-row__value" style="color:#a44">${fmtMoney(wages)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Materials & Supplies</span><span class="fin-row__value" style="color:#a44">${fmtMoney(materials)}</span></div>
-            <div class="fin-row"><span class="fin-row__label">Facilities</span><span class="fin-row__value" style="color:#a44">${fmtMoney(facilities)}</span></div>
+            <div class="fin-row"><span class="fin-row__label">Properties</span><span class="fin-row__value" style="color:#a44">${fmtMoney(properties)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Equipment</span><span class="fin-row__value" style="color:#a44">${fmtMoney(equipment)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Debt Service</span><span class="fin-row__value" style="color:#a44">${fmtMoney(debtService)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Taxes</span><span class="fin-row__value" style="color:#a44">${fmtMoney(taxes)}</span></div>
@@ -1566,7 +1580,7 @@ async function renderProperty(nation, nationName, factionData, shard) {
         </div>
     `;
 
-    return { propertyValue: totalValue };
+    return { propertyValue: totalValue, propertyMaintenance: totalMaint };
 }
 
 function renderValuation(nation, nationName, faction, wfData, propData) {

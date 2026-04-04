@@ -129,7 +129,7 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-nav-inner">
                 <div class="nws-nav-item active" data-category="all">Front Page</div>
                 <div class="nws-nav-item" data-category="politics">Politics</div>
-                <div class="nws-nav-item" data-category="economy">Economy</div>
+                <div class="nws-nav-item" data-category="economy">Business</div>
                 <div class="nws-nav-item" data-category="international">International</div>
                 <div class="nws-nav-item" data-category="social">Social</div>
                 <div class="nws-nav-item" data-category="entertainment">Entertainment</div>
@@ -232,11 +232,11 @@ export async function initNewspaper(supabase, state) {
                 </div>
                 <div class="nws-sec-story">
                     <div class="nws-sec-image">
-                        <div class="nws-img-ph" style="background:linear-gradient(135deg,#2a1a0a,#1a0d00);">Economy</div>
+                        <div class="nws-img-ph" style="background:linear-gradient(135deg,#2a1a0a,#1a0d00);">Business</div>
                     </div>
-                    <span class="nws-section-tag nws-placeholder">[Economy]</span>
-                    <h3 class="nws-sec-headline nws-placeholder">[Economy Section Headline]</h3>
-                    <p class="nws-sec-deck nws-placeholder">[Summary of an economy-related article will appear here.]</p>
+                    <span class="nws-section-tag nws-placeholder">[Business]</span>
+                    <h3 class="nws-sec-headline nws-placeholder">[Business Section Headline]</h3>
+                    <p class="nws-sec-deck nws-placeholder">[Summary of a business-related article will appear here.]</p>
                     <div class="nws-byline"><span class="nws-author nws-placeholder">[Author]</span><span class="nws-dot">&middot;</span><span class="nws-placeholder">[Date]</span></div>
                 </div>
             </div>
@@ -349,7 +349,7 @@ export async function initNewspaper(supabase, state) {
                         <select id="nws-article-category">
                             <option value="">Select a category...</option>
                             <option value="politics">Politics</option>
-                            <option value="economy">Economy</option>
+                            <option value="economy">Business</option>
                             <option value="international">International</option>
                             <option value="social">Social</option>
                             <option value="entertainment">Entertainment</option>
@@ -957,7 +957,7 @@ function formatBodyHtml(body) {
 function categoryLabel(cat) {
     if (cat === 'elections') cat = 'politics'; // legacy: fold elections into politics
     const labels = {
-        politics: 'Politics', economy: 'Economy', international: 'International',
+        politics: 'Politics', economy: 'Business', international: 'International',
         social: 'Social', entertainment: 'Entertainment', sports: 'Sports',
         opinion: 'Opinion'
     };
@@ -1200,7 +1200,7 @@ function populateSecondaryGrid(articles) {
 
     // Pad to 3 with placeholders
     const slots = [...articles];
-    const placeholderLabels = ['Crisis', 'Election', 'Economy'];
+    const placeholderLabels = ['Crisis', 'Election', 'Business'];
 
     const html = [0, 1, 2].map(i => {
         const a = slots[i];
@@ -1445,7 +1445,7 @@ function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
             <div>
                 <div class="ct-footer__col-title">Sections</div>
                 <span class="ct-footer__link">Politics</span>
-                <span class="ct-footer__link">Economy</span>
+                <span class="ct-footer__link">Business</span>
                 <span class="ct-footer__link">International</span>
                 <span class="ct-footer__link">Society</span>
                 <span class="ct-footer__link">Culture</span>
