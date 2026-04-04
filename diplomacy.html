@@ -10076,7 +10076,9 @@ async function renderActionsBox() {
     // Ambassador
     html += '<div class="role-header role-header-amb' + (hasAmb ? '' : ' role-disabled') + '">Ambassador</div>';
     [
+        { key: 'issue_statement', label: 'Issue Statement', ap: 1, type: 'amb' },
         { key: 'minor_initiative', label: 'Minor Diplomatic Initiative', ap: 2, type: 'amb' },
+        { key: 'foreign_aid', label: 'Foreign Aid Proposal', ap: 4, type: 'amb', comingSoon: true },
         { key: 'formal_protest', label: 'Formal Protest', ap: 2, type: 'amb', comingSoon: true },
         { key: 'send_message', label: 'Send Message', ap: 0, type: 'amb', badge: totalUnreadMessages > 0 ? totalUnreadMessages : 0 }
     ].forEach(a => { html += actionHtml(a, hasAmb, 'amb'); });
@@ -10095,8 +10097,7 @@ async function renderActionsBox() {
     [
         { key: 'appoint_ambassador', label: 'Appoint Ambassador', ap: 1, type: 'fm' },
         { key: 'recall_ambassador', label: 'Recall Ambassador', ap: 1, type: 'fm' },
-        { key: 'major_initiative', label: 'Major Diplomatic Initiative', ap: 2, type: 'fm' },
-        { key: 'foreign_aid', label: 'Foreign Aid Proposal', ap: 4, type: 'fm', comingSoon: true }
+        { key: 'major_initiative', label: 'Major Diplomatic Initiative', ap: 2, type: 'fm' }
     ].forEach(a => { html += actionHtml(a, hasFM, 'fm'); });
 
     // Minister of Trade
@@ -10872,6 +10873,13 @@ async function renderDraftBox() {
     if (activeDraftAction.key === 'send_message') {
         body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
         await renderSendMessagePanel(body, statusEl);
+        return;
+    }
+
+    // Special branch for Issue Statement — simple free-text statement
+    if (activeDraftAction.key === 'issue_statement') {
+        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading...</div></div>';
+        renderIssueStatementPanel(body, statusEl);
         return;
     }
 
@@ -12207,6 +12215,158 @@ function removeDraftArticle(index) {
     renderDraftBox();
 }
 window.removeDraftArticle = removeDraftArticle;
+
+// ══════════════════════════════════════════════════════
+// ISSUE STATEMENT — Ambassador Action (1 AP, fires immediately)
+// ══════════════════════════════════════════════════════
+var _submitStatementLock = false;
+
+function renderIssueStatementPanel(body, statusEl) {
+    if (statusEl) statusEl.textContent = 'Issue Statement';
+
+    const ambPostings = diplomaticRoles.ambassadorTo || [];
+    if (ambPostings.length === 0) {
+        body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Requires Ambassador posting.</div></div>';
+        return;
+    }
+
+    const apCost = 1;
+    const maxChars = 400;
+    const hasEnoughAP = (currentFaction?.action_points ?? 0) >= apCost;
+
+    let html = '<div class="draft-panel">';
+
+    // Header
+    html += '<div class="draft-header">';
+    html += '<div class="draft-field"><div class="draft-field-label">Action</div><div class="draft-field-input">Issue Statement <span style="font-family:var(--font-mono);font-size:10px;font-weight:600;color:var(--teal);">1 AP</span></div></div>';
+    html += '</div>';
+
+    // Topic
+    html += '<div style="padding:10px 14px 0;">';
+    html += '<div class="draft-field"><div class="draft-field-label">Topic</div>';
+    html += '<input type="text" id="statement-topic" class="draft-field-input" placeholder="e.g. Regional Security, Trade Relations, Climate Policy" maxlength="100" style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:6px 10px;font-family:var(--font-sans);font-size:12px;width:100%;"></div>';
+
+    // Statement
+    html += '<div class="draft-field" style="margin-top:8px;"><div class="draft-field-label">Statement <span id="statement-char-count" style="font-family:var(--font-mono);font-size:9px;color:var(--text-faint);">0/' + maxChars + '</span></div>';
+    html += '<textarea id="statement-text" maxlength="' + maxChars + '" rows="6" placeholder="Enter the official statement text..." oninput="updateStatementCharCount()" style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:8px 10px;font-family:var(--font-sans);font-size:12px;width:100%;resize:vertical;line-height:1.5;"></textarea></div>';
+
+    // Preview
+    html += '<div style="margin-top:10px;padding:10px;background:var(--bg-2);border:1px solid var(--border-hair);border-radius:4px;">';
+    html += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);margin-bottom:4px;font-weight:600;">Preview (World Events)</div>';
+    html += '<div id="statement-preview" style="font-size:11px;color:var(--text-secondary);line-height:1.5;font-style:italic;">The nation of ' + escapeHtml(currentNation?.name || '...') + ' has issued the following statement regarding <em>[topic]</em>: "<em>[statement]</em>"</div>';
+    html += '</div>';
+    html += '</div>';
+
+    // Action bar
+    html += '<div class="action-bar" style="margin-top:auto;">';
+    html += '<span class="action-bar-info">Fires immediately &middot; +1 Momentum</span>';
+    html += '<div class="action-bar-spacer"></div>';
+    html += '<button class="btn btn--dim" onclick="cancelDraft()">Cancel</button>';
+    html += '<button class="btn btn--send" id="submit-statement-btn" onclick="submitIssueStatement()">Issue Statement (1 AP)</button>';
+    html += '</div>';
+
+    html += '</div>';
+    body.innerHTML = html;
+
+    // Attach live preview updater
+    const topicEl = document.getElementById('statement-topic');
+    const textEl = document.getElementById('statement-text');
+    if (topicEl) topicEl.addEventListener('input', updateStatementPreview);
+    if (textEl) textEl.addEventListener('input', updateStatementPreview);
+}
+
+function updateStatementCharCount() {
+    const textEl = document.getElementById('statement-text');
+    const countEl = document.getElementById('statement-char-count');
+    if (textEl && countEl) {
+        countEl.textContent = textEl.value.length + '/400';
+    }
+}
+window.updateStatementCharCount = updateStatementCharCount;
+
+function updateStatementPreview() {
+    const topicEl = document.getElementById('statement-topic');
+    const textEl = document.getElementById('statement-text');
+    const previewEl = document.getElementById('statement-preview');
+    if (!previewEl) return;
+    const topic = topicEl?.value?.trim() || '[topic]';
+    const text = textEl?.value?.trim() || '[statement]';
+    previewEl.innerHTML = 'The nation of ' + escapeHtml(currentNation?.name || '...') + ' has issued the following statement regarding ' + escapeHtml(topic) + ': &ldquo;' + escapeHtml(text) + '&rdquo;';
+}
+window.updateStatementPreview = updateStatementPreview;
+
+async function submitIssueStatement() {
+    if (_submitStatementLock) return;
+
+    const topicEl = document.getElementById('statement-topic');
+    const textEl = document.getElementById('statement-text');
+    const topic = topicEl?.value?.trim();
+    const statement = textEl?.value?.trim();
+
+    if (!topic) { alert('Please enter a topic for the statement.'); return; }
+    if (!statement) { alert('Please enter the statement text.'); return; }
+    if (statement.length > 400) { alert('Statement exceeds 400 character limit.'); return; }
+
+    const apCost = 1;
+    if ((currentFaction?.action_points ?? 0) < apCost) {
+        alert('Not enough AP (1 required). Current AP: ' + (currentFaction?.action_points ?? 0));
+        return;
+    }
+
+    _submitStatementLock = true;
+    const btn = document.getElementById('submit-statement-btn');
+    if (btn) btn.disabled = true;
+
+    try {
+        // Deduct AP
+        const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+        if (!apResult.success) {
+            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+            alert('Not enough AP (1 needed). Current AP: ' + (apResult.currentAp ?? '?'));
+            return;
+        }
+
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shard?.current_tick || shardTick;
+
+        const description = 'The nation of ' + currentNation.name + ' has issued the following statement regarding ' + topic + ': \u201c' + statement + '\u201d';
+
+        // Post to event_log (visible in World Events for other nations, domestic events for own nation)
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation.id,
+            event_name: 'Official Statement: ' + topic,
+            trigger_key: 'issue_statement',
+            category: 'Diplomacy',
+            description_chosen: description,
+            fired_at_tick: currentTick
+        });
+
+        // +1 momentum for the ambassador's party
+        await _supabase.rpc('adjust_momentum', {
+            p_faction_id: currentFaction.id,
+            p_delta: 1,
+            p_label: 'Issued official statement (+1)',
+            p_tick: currentTick
+        });
+
+        // Update AP display
+        currentFaction.action_points = apResult.newAp;
+        const apEl = document.getElementById('diplo-ap');
+        if (apEl) apEl.textContent = currentFaction.action_points + ' AP';
+
+        alert('Statement issued regarding "' + topic + '" — posted to World Events.');
+        cancelDraft();
+        await renderDiploHeader();
+
+    } catch (err) {
+        console.error('Submit issue statement error:', err);
+        alert('Error: ' + err.message);
+    } finally {
+        _submitStatementLock = false;
+        if (btn) btn.disabled = false;
+    }
+}
+window.submitIssueStatement = submitIssueStatement;
 
 // ══════════════════════════════════════════════════════
 // MINOR DIPLOMATIC INITIATIVE — Rich Draft Panel
