@@ -338,6 +338,6 @@ Redirecting to your political party.`),window.location.href="dashboard.html"):b?
 
 Redirecting to your other corporation.`),window.location.href="corp-dashboard.html"):(alert(r+` has been dissolved.
 
-You have no remaining factions.`),window.location.href="select-nation.html")}catch(e){alert("Dissolution failed: "+(e.message||e)+`
+You have no remaining factions.`),window.location.href="faction-select.html")}catch(e){alert("Dissolution failed: "+(e.message||e)+`
 
 Please try again or contact support.`),o&&(o.disabled=!1,o.textContent="Dissolve Corporation",o.style.opacity="1")}finally{R=!1}}window.dissolveCorporation=pt;Z();
