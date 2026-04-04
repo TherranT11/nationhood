@@ -1346,6 +1346,59 @@ export async function resolveExpiredVotes(supabase, nationId) {
                                 }
                             }
 
+                            // For trade agreements (bilateral): create trade_agreements + aid_agreement_state rows
+                            // so the tick processor can apply economic effects (aid transfers, tariffs, etc.)
+                            if (proposal.proposal_type === 'trade_agreement' && pd.agreement_type) {
+                                const durationArt = activeArticles.find(a => a.type === 'duration');
+                                const dt = durationArt?.data || {};
+                                const durationTicks = dt.duration_type === 'permanent' ? null : (dt.duration_ticks || 480);
+                                const expiresAt = durationTicks ? currentTick + durationTicks : null;
+
+                                const taNationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                                const taNationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+
+                                const { data: newTA, error: taErr } = await supabase.from('trade_agreements').insert({
+                                    nation_a_id: taNationA,
+                                    nation_b_id: taNationB,
+                                    agreement_type: pd.agreement_type,
+                                    agreement_name: pd.agreement_name || pd.name || 'Trade Agreement',
+                                    articles: activeArticles,
+                                    status: 'active',
+                                    enacted_at_tick: currentTick,
+                                    expires_at_tick: expiresAt,
+                                    auto_renew: dt.auto_renew || false,
+                                    withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
+                                    diplomatic_proposal_id: proposal.id
+                                }).select('id').single();
+
+                                if (taErr) {
+                                    console.error('[bilateral] trade_agreements insert failed:', taErr.message);
+                                } else if (newTA) {
+                                    if (pd.agreement_type === 'economic_aid') {
+                                        const aidArt = activeArticles.find(a => a.type === 'aid_terms');
+                                        if (aidArt) {
+                                            const donorId = aidArt.data?.donor_nation_id;
+                                            const annualAmount = Number(aidArt.data?.annual_amount || 0);
+                                            if (donorId && annualAmount > 0) {
+                                                const recipientId = donorId === proposal.proposing_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+                                                const { error: aidErr } = await supabase.from('aid_agreement_state').insert({
+                                                    agreement_id: newTA.id,
+                                                    donor_nation_id: donorId,
+                                                    recipient_nation_id: recipientId,
+                                                    current_annual_amount: annualAmount,
+                                                    original_annual_amount: annualAmount,
+                                                    next_review_tick: currentTick + (DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL || 12),
+                                                    condition_failures: {}
+                                                });
+                                                if (aidErr) console.error('[bilateral] aid_agreement_state insert failed:', aidErr.message);
+                                                else console.log(`[bilateral] Aid state created: donor=${donorId}, recipient=${recipientId}, amount=$${(annualAmount/1e9).toFixed(1)}B/yr`);
+                                            }
+                                        }
+                                    }
+                                    console.log(`[bilateral] trade_agreements row created for ${pd.agreement_type}: ${newTA.id}`);
+                                }
+                            }
+
                             await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: activeArticles.length });
 
                             // Fire activation news event

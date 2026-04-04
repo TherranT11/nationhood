@@ -1892,7 +1892,7 @@ async function withdrawAgreement(agreementId) {
     // Set agreement to withdrawn
     const { error: updateErr } = await _supabase
         .from('diplomatic_proposals')
-        .update({ status: 'withdrawn', withdrawn_at_tick: currentTick, terminated_at_tick: currentTick })
+        .update({ status: 'withdrawn', terminated_at_tick: currentTick })
         .eq('id', agreementId);
 
     if (updateErr) { alert('Error withdrawing: ' + updateErr.message); return; }
