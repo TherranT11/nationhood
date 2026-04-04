@@ -7133,7 +7133,7 @@ function getSubsidiaryData(hqProp) {
         subsector: faction?.corp_subsector || '—',
         revenue,
         debt: 0,
-        cash: 0,
+        cash: Number(hqProp.sub_cash || 0),
         reputation: 25,
         valuation: totalVal,
         maintenance: totalMaint,
@@ -7319,9 +7319,97 @@ async function subDissolve(propId) {
     } catch (err) { alert('Failed: ' + err.message); }
 }
 
-// Placeholder stubs for Phase 2-4 actions
-function subInjectCapital(propId) { alert('INJECT CAPITAL — Coming in Phase 2'); }
-function subWithdraw(propId) { alert('WITHDRAW — Coming in Phase 2'); }
+// ─── INJECT CAPITAL: Parent → Subsidiary ───
+async function subInjectCapital(propId) {
+    const hq = _ownedProperties.find(p => p.id === propId);
+    if (!hq) return;
+    const parentCash = Number(faction?.corp_cash_reserves ?? 0);
+    const nationName = _subNations.find(n => n.id === hq.nation_id)?.name || hq.city || '—';
+    const subCash = Number(hq.sub_cash || 0);
+
+    const input = prompt(
+        'INJECT CAPITAL into ' + hq.name + '\n\n' +
+        'Parent cash: ' + hfFmtBig(parentCash) + '\n' +
+        'Subsidiary cash: ' + hfFmtBig(subCash) + '\n\n' +
+        'Enter amount to inject (e.g., 5000000 or 5M):'
+    );
+    if (!input) return;
+
+    // Parse amount — support "5M", "2.5m", "500k", plain numbers
+    let amount = 0;
+    const cleaned = input.trim().replace(/[$,]/g, '');
+    const mMatch = cleaned.match(/^([\d.]+)\s*[Mm]$/);
+    const kMatch = cleaned.match(/^([\d.]+)\s*[Kk]$/);
+    if (mMatch) amount = Math.round(parseFloat(mMatch[1]) * 1000000);
+    else if (kMatch) amount = Math.round(parseFloat(kMatch[1]) * 1000);
+    else amount = Math.round(parseFloat(cleaned));
+
+    if (!amount || amount <= 0 || isNaN(amount)) { alert('Invalid amount.'); return; }
+    if (amount > parentCash) { alert('Insufficient parent cash. Available: ' + hfFmtBig(parentCash)); return; }
+
+    if (!confirm('Inject ' + hfFmtBig(amount) + ' into ' + hq.name + '?\n\nParent cash: ' + hfFmtBig(parentCash) + ' → ' + hfFmtBig(parentCash - amount) + '\nSubsidiary cash: ' + hfFmtBig(subCash) + ' → ' + hfFmtBig(subCash + amount))) return;
+
+    try {
+        const newParentCash = parentCash - amount;
+        const newSubCash = subCash + amount;
+        await _supabase.from('factions').update({ corp_cash_reserves: newParentCash }).eq('id', faction.id);
+        await _supabase.from('corp_properties').update({ sub_cash: newSubCash }).eq('id', propId);
+        faction.corp_cash_reserves = newParentCash;
+        hq.sub_cash = newSubCash;
+
+        const cashEl = document.getElementById('topbar-cash');
+        if (cashEl) cashEl.textContent = 'CASH: ' + (newParentCash >= 1e6 ? '$' + (newParentCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newParentCash / 1000) + 'k');
+
+        renderManageSubsidiariesCard();
+        alert('Injected ' + hfFmtBig(amount) + ' into ' + hq.name + '.');
+    } catch (err) { alert('Failed: ' + err.message); }
+}
+
+// ─── WITHDRAW: Subsidiary → Parent ───
+async function subWithdraw(propId) {
+    const hq = _ownedProperties.find(p => p.id === propId);
+    if (!hq) return;
+    const parentCash = Number(faction?.corp_cash_reserves ?? 0);
+    const subCash = Number(hq.sub_cash || 0);
+
+    if (subCash <= 0) { alert('This subsidiary has no cash to withdraw.'); return; }
+
+    const input = prompt(
+        'WITHDRAW from ' + hq.name + '\n\n' +
+        'Subsidiary cash: ' + hfFmtBig(subCash) + '\n' +
+        'Parent cash: ' + hfFmtBig(parentCash) + '\n\n' +
+        'Enter amount to withdraw (e.g., 2000000 or 2M):'
+    );
+    if (!input) return;
+
+    let amount = 0;
+    const cleaned = input.trim().replace(/[$,]/g, '');
+    const mMatch = cleaned.match(/^([\d.]+)\s*[Mm]$/);
+    const kMatch = cleaned.match(/^([\d.]+)\s*[Kk]$/);
+    if (mMatch) amount = Math.round(parseFloat(mMatch[1]) * 1000000);
+    else if (kMatch) amount = Math.round(parseFloat(kMatch[1]) * 1000);
+    else amount = Math.round(parseFloat(cleaned));
+
+    if (!amount || amount <= 0 || isNaN(amount)) { alert('Invalid amount.'); return; }
+    if (amount > subCash) { alert('Insufficient subsidiary cash. Available: ' + hfFmtBig(subCash)); return; }
+
+    if (!confirm('Withdraw ' + hfFmtBig(amount) + ' from ' + hq.name + '?\n\nSubsidiary cash: ' + hfFmtBig(subCash) + ' → ' + hfFmtBig(subCash - amount) + '\nParent cash: ' + hfFmtBig(parentCash) + ' → ' + hfFmtBig(parentCash + amount))) return;
+
+    try {
+        const newParentCash = parentCash + amount;
+        const newSubCash = subCash - amount;
+        await _supabase.from('factions').update({ corp_cash_reserves: newParentCash }).eq('id', faction.id);
+        await _supabase.from('corp_properties').update({ sub_cash: newSubCash }).eq('id', propId);
+        faction.corp_cash_reserves = newParentCash;
+        hq.sub_cash = newSubCash;
+
+        const cashEl = document.getElementById('topbar-cash');
+        if (cashEl) cashEl.textContent = 'CASH: ' + (newParentCash >= 1e6 ? '$' + (newParentCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newParentCash / 1000) + 'k');
+
+        renderManageSubsidiariesCard();
+        alert('Withdrew ' + hfFmtBig(amount) + ' from ' + hq.name + '.');
+    } catch (err) { alert('Failed: ' + err.message); }
+}
 function subMerge(propId) { alert('MERGE — Coming in Phase 4'); }
 function subSell(propId) { alert('SELL — Coming in Phase 3'); }
 
