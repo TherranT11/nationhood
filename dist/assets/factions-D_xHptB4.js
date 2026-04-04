@@ -1,4 +1,4 @@
-import{_ as v}from"./supabase-client-BXEzLDpS.js";/* empty css                  */import{i as w}from"./common-DnQvEMW5.js";import{e as c}from"./utils-C2W-HleY.js";import"./messaging-5qyQ6ziq.js";let n=null,p=null,m=0;w("factions",async s=>{const{nation:t,faction:o,shard:i}=s;if(n=t,p=o,m=i?.current_tick||0,!t){document.getElementById("content-area").innerHTML=`
+import{_ as v}from"./supabase-client-BXEzLDpS.js";/* empty css                  */import{i as w}from"./common-DKfT-nlB.js";import{e as c}from"./utils-C2W-HleY.js";let n=null,p=null,m=0;w("factions",async s=>{const{nation:t,faction:o,shard:i}=s;if(n=t,p=o,m=i?.current_tick||0,!t){document.getElementById("content-area").innerHTML=`
             <div class="placeholder-panel">
                 <div class="ph-icon">🏛️</div>
                 <h3>No Nation Selected</h3>

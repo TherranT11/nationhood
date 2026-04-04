@@ -1,4 +1,4 @@
-const a={economy:{title:"Economy Guide",html:`
+const s={economy:{title:"Economy Guide",html:`
 <details open><summary>Overview Sub-Tab</summary><div>
 <p>The Overview is your economic dashboard &mdash; a snapshot of fiscal health, trade, debt, and macro indicators.</p>
 
@@ -1609,13 +1609,13 @@ const a={economy:{title:"Economy Guide",html:`
 <tr><td>Environmental accord compliance window</td><td>24 ticks</td></tr>
 </table>
 </div></details>
-`}},n={title:"Guide",html:`
+`}},a={title:"Guide",html:`
 <div style="text-align:center; padding: 40px 20px;">
     <div style="font-size: 2.5rem; margin-bottom: 16px; opacity: 0.5;">&#x1F4D6;</div>
     <h2 style="border: none; margin-bottom: 8px;">Guide Coming Soon</h2>
     <p style="color: #888;">A detailed guide for this page is being written. Check back later!</p>
 </div>
-`};let e=null;function d(){return e||(e=document.createElement("div"),e.className="guide-overlay",e.id="guide-overlay",e.innerHTML=`
+`};let t=null;function n(){return t||(t=document.createElement("div"),t.className="guide-overlay",t.id="guide-overlay",t.innerHTML=`
         <div class="guide-panel" id="guide-panel">
             <div class="guide-panel-header">
                 <span class="guide-panel-title" id="guide-panel-title"></span>
@@ -1623,4 +1623,4 @@ const a={economy:{title:"Economy Guide",html:`
             </div>
             <div id="guide-panel-body"></div>
         </div>
-    `,document.body.appendChild(e),e.querySelector("#guide-close").addEventListener("click",o),e.addEventListener("click",t=>{t.target===e&&o()}),document.addEventListener("keydown",t=>{t.key==="Escape"&&e.classList.contains("active")&&o()}),e)}function l(){const t=window.__currentTab||"dashboard",r=a[t]||n,i=d();document.getElementById("guide-panel-title").textContent=r.title,document.getElementById("guide-panel-body").innerHTML=r.html,i.classList.add("active")}function o(){e&&e.classList.remove("active")}const c={dashboard:"Home",nation:"Nation",government:"Government",politics:"Politics",laws:"Bills",diplomacy:"Diplomacy",economy:"Economy",events:"Events",elections:"Elections"},h=["dashboard","home"];function s(){const t=document.getElementById("guide-btn");if(!t)return;const r=window.__currentTab||"dashboard";if(h.includes(r)){t.style.display="none";return}const i=c[r]||r.charAt(0).toUpperCase()+r.slice(1);t.textContent=i+" Guide",t.style.display="",t.addEventListener("click",l)}if(document.getElementById("guide-btn"))s();else{const t=new MutationObserver(()=>{document.getElementById("guide-btn")&&(s(),t.disconnect())});t.observe(document.body,{childList:!0,subtree:!0})}
+    `,document.body.appendChild(t),t.querySelector("#guide-close").addEventListener("click",r),t.addEventListener("click",e=>{e.target===t&&r()}),document.addEventListener("keydown",e=>{e.key==="Escape"&&t.classList.contains("active")&&r()}),t)}function d(){const e=window.__currentTab||"dashboard",i=s[e]||a,o=n();document.getElementById("guide-panel-title").textContent=i.title,document.getElementById("guide-panel-body").innerHTML=i.html,o.classList.add("active")}function r(){t&&t.classList.remove("active")}export{d as openGuide};
