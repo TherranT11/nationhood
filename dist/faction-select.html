@@ -255,12 +255,34 @@ body {
   padding: 80px 20px;
 }
 </style>
-  <script type="module" crossorigin src="/assets/faction-select-BalSKK53.js"></script>
+  <script type="module" crossorigin src="/assets/faction-select-EiENDlhO.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
 </head>
 <body>
 
 <div id="loading" class="loading-msg">AUTHENTICATING...</div>
+
+<!-- Faction type chooser (shown when user has no factions and no pending nation) -->
+<div id="faction-chooser" style="display:none; width:100%; flex-direction:column; align-items:center;">
+  <div class="page-header">
+    <h1>Nationhood</h1>
+    <div class="title">Choose Your Faction Path</div>
+    <div class="subtitle">How will you shape the world? Choose your path, then select a nation to join.</div>
+  </div>
+  <div style="width:100%;max-width:640px;padding:0 16px 48px;">
+    <div onclick="chooseFactionType('party')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--blue-border)'" onmouseout="this.style.borderColor='var(--border-0)'">
+      <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Political Party</div>
+      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Shape laws, influence policy, and guide your nation's future through political power.</div>
+    </div>
+    <div onclick="chooseFactionType('corporation')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--green-border)'" onmouseout="this.style.borderColor='var(--border-0)'">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.06em;">Corporation</span>
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--amber);background:var(--amber-faint);border:1px solid var(--amber-border);padding:1px 6px;letter-spacing:0.06em;">ALPHA</span>
+      </div>
+      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Control wealth, trade, and economic power to influence the nation.</div>
+    </div>
+  </div>
+</div>
 
 <div id="page-content" style="display:none; width:100%; display:none; flex-direction:column; align-items:center;">
   <div class="page-header">
