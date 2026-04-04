@@ -286,7 +286,7 @@ export async function loadGameState(requireFaction = true) {
         if (ownedFactions.length === 0) {
             if (requireFaction) {
                 sessionStorage.removeItem(STATE_KEY);
-                window.location.href = 'select-nation.html';
+                window.location.href = 'faction-select.html';
                 return null;
             }
         } else {
