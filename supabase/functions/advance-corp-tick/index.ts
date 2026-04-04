@@ -305,12 +305,13 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
     else if (gdp >= 26) targetContracts = 1;
     if (targetContracts === 0) return [];
 
-    // Count active corporations in this nation
+    // Count active corporations in this nation (exclude dissolved)
     const { count: corpCount } = await supabase
         .from('factions')
         .select('id', { count: 'exact', head: true })
         .eq('nation_id', nation.id)
-        .eq('faction_type', 'corporation');
+        .eq('faction_type', 'corporation')
+        .is('abandoned_at', null);
     const maxOpen = (corpCount || 0) + 2;
 
     // Count currently open contracts
@@ -515,13 +516,14 @@ async function replenishPropertyMarketplace(supabase, nation, currentTick) {
         .eq('status', 'available');
     const existingCatalogIds = new Set((existing || []).map(e => e.catalog_id));
 
-    // 4b. Check if construction corps exist in this nation (for warehouse generation)
+    // 4b. Check if active construction corps exist in this nation (for warehouse generation)
     const { count: constructionCorpCount } = await supabase
         .from('factions')
         .select('id', { count: 'exact', head: true })
         .eq('nation_id', nation.id)
         .eq('faction_type', 'corporation')
-        .eq('corp_sector', 'Construction');
+        .eq('corp_sector', 'Construction')
+        .is('abandoned_at', null);
     const hasConstructionCorps = (constructionCorpCount || 0) > 0;
 
     // 5. GDP-weighted selection: higher GDP growth biases toward larger properties
@@ -1108,12 +1110,13 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
     // 5. Process each nation
     for (const nation of nationList) {
         try {
-            // Load corporation factions for this nation
+            // Load corporation factions for this nation (exclude dissolved corps)
             const { data: corpFactions, error: corpErr } = await supabase
                 .from('factions')
                 .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_loans, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
                 .eq('nation_id', nation.id)
-                .eq('faction_type', 'corporation');
+                .eq('faction_type', 'corporation')
+                .is('abandoned_at', null);
 
             if (corpErr) {
                 console.error(`[advance-corp-tick] Failed to load corps for ${nation.name}:`, corpErr.message);

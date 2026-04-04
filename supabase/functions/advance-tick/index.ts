@@ -28648,6 +28648,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 console.log(`[LeaderAging] ${nation.name}: tick=${newTick} (January — aging leaders)`);
                 const agingResults = [];
 
+                // RULE: Party leaders must NEVER be auto-generated. Leaders only change via:
+                //   1. Player action on party-leadership.html (manual appointment)
+                //   2. Retirement (cleared to NULL here) — player picks replacement
+                // Do NOT auto-fill vacant leader slots. The player must choose.
+
                 // 1. Age all party faction leaders +1
                 const { data: partyFactions } = await supabase
                     .from('factions')

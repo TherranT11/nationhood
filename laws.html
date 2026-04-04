@@ -535,10 +535,15 @@ function filterAllLaws() {
             );
         }
 
+        // Authoritarian foundational laws
+        if (n.term_limits_abolished) foundationalLaws.push({ name: 'Abolish Term Limits', icon: '⛓', desc: 'All term limits for the head of government have been removed. Ruling party gains +5 approval/tick, press freedom erodes -0.3/tick.', value: 'Enacted' });
         if (n.state_media_control) foundationalLaws.push({ name: 'State Media Control Act', icon: '📺', desc: 'State controls major media outlets. Press freedom capped at 40.', value: 'Enacted' });
-        if (n.emergency_powers_act) foundationalLaws.push({ name: 'Emergency Powers Act', icon: '🚨', desc: 'Emergency executive powers have been granted.', value: 'Enacted' });
-        if (n.judicial_appointment_politicization) foundationalLaws.push({ name: 'Judicial Appointment Politicization', icon: '⚖', desc: 'Judicial appointments are politicized. Judicial independence capped at 30.', value: 'Enacted' });
-        if (n.constitutional_amendment_threshold_lowered) foundationalLaws.push({ name: 'Lowered Amendment Threshold', icon: '📜', desc: 'Foundational law threshold lowered from 67% to 55%.', value: 'Enacted' });
+        if (n.emergency_powers_act) foundationalLaws.push({ name: 'Emergency Powers Act', icon: '🚨', desc: 'The head of government can declare national emergencies, bypassing legislative votes. Stability -1/tick, freedom index -0.5/tick, judicial independence -0.5/tick while active.', value: 'Enacted' });
+        if (n.judicial_appointment_politicization) foundationalLaws.push({ name: 'Judicial Appointment Politicization Act', icon: '⚖️', desc: 'The ruling coalition appoints judges directly. Judicial independence permanently capped at 30. No confidence threshold raised to 60%.', value: 'Enacted' });
+        if (n.electoral_commission_reform) foundationalLaws.push({ name: 'Electoral Commission Reform Act', icon: '🗳️', desc: 'The ruling coalition controls the election commission. Governing parties receive a 5-10% seat bonus in elections drawn from opposition.', value: 'Enacted' });
+        if (n.party_registration_threshold > 0) foundationalLaws.push({ name: 'Political Party Registration Act', icon: '🚫', desc: `Parties below ${n.party_registration_threshold}% of seats have their seats reallocated. Affected parties cannot sponsor bills, vote, or hold ministries.`, value: `${n.party_registration_threshold}% threshold` });
+        if (n.legislative_quorum_override > 0) foundationalLaws.push({ name: 'Legislative Quorum Reform Act', icon: '📋', desc: `Quorum requirement for standard bills lowered from 50% to ${n.legislative_quorum_override}%.`, value: `${n.legislative_quorum_override}% quorum` });
+        if (n.constitutional_amendment_streamlining) foundationalLaws.push({ name: 'Constitutional Amendment Streamlining', icon: '📜', desc: 'Supermajority threshold for foundational bills lowered from 67% to 55%. The constitution is far easier to rewrite.', value: 'Enacted' });
 
         let filteredFoundational = foundationalLaws;
         if (search) {
