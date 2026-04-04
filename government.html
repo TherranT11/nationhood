@@ -2754,25 +2754,27 @@ async function onMinistryChange(ministryKey, partyId) {
                 p_formation_id: activeFormationId, p_ministry_key: ministryKey, p_party_id: partyId || ''
             });
             if (error) throw error;
-            if (!data.success) alert(data.message);
+            if (!data.success) { alert(data.message); return; }
 
             // Generate nation-specific minister name client-side
             // (the assign_ministry RPC does not use per-nation naming lists)
-            const { data: formation } = await _supabase.from('government_formations')
+            const { data: formation, error: fmErr } = await _supabase.from('government_formations')
                 .select('minister_names')
                 .eq('id', activeFormationId).single();
+            if (fmErr) throw fmErr;
             const ministerNames = formation?.minister_names || {};
             if (partyId) {
                 const firstName = FIRST_NAMES_POOL[Math.floor(Math.random() * FIRST_NAMES_POOL.length)];
                 const lastName = LAST_NAMES_POOL[Math.floor(Math.random() * LAST_NAMES_POOL.length)];
-                const age = 30 + Math.floor(Math.random() * 31);
+                const age = 35 + Math.floor(Math.random() * 31);
                 ministerNames[ministryKey] = { first_name: firstName, last_name: lastName, age };
             } else {
                 delete ministerNames[ministryKey];
             }
-            await _supabase.from('government_formations')
+            const { error: updErr } = await _supabase.from('government_formations')
                 .update({ minister_names: ministerNames })
                 .eq('id', activeFormationId);
+            if (updErr) throw updErr;
         }
     } catch (err) { alert('Error: ' + err.message); }
 }

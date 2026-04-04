@@ -56,9 +56,9 @@ BEGIN
 
     v_patched := replace(v_patched, v_old_block, v_new_block);
 
-    -- Verify at least one replacement happened
+    -- Verify at least one replacement happened — fail loud if match not found
     IF v_patched = v_src THEN
-        RAISE NOTICE 'WARNING: No replacements made — HoS name arrays may have already been patched or format differs';
+        RAISE EXCEPTION 'No replacements made — HoS name arrays may have already been patched or the stored function text differs from expected. Run SELECT prosrc FROM pg_proc WHERE proname = ''finalize_government_formation'' to inspect.';
     END IF;
 
     -- Recreate function with patched source
