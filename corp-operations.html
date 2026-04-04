@@ -2500,13 +2500,14 @@ body.light-mode .dl-empty__text { color: #1a1a17; }
 
     <!-- Expansion content (hidden by default) -->
     <div id="expansion-content" style="display:none;">
+      <!-- Row 1: Hire/Fire, Workforce, New Property, Create Subsidiary -->
       <div id="hf-card-container"></div>
       <div id="wf-summary-container"></div>
-      <div id="property-card-container"></div>
       <div id="new-property-container"></div>
-      <!-- Row 2 -->
-      <div id="manage-subsidiaries-container"></div>
       <div id="create-subsidiary-container"></div>
+      <!-- Row 2: Manage Subsidiaries, Corporations -->
+      <div id="manage-subsidiaries-container"></div>
+      <div id="corporations-container"></div>
     </div>
 
   </div>
@@ -6002,12 +6003,13 @@ async function switchToExpansion(e) {
     renderHireFireCard();
     renderWorkforceSummary();
     await loadOwnedProperties();
-    renderPropertyCard();
     await loadAvailableProperties();
     renderNewPropertyCard();
-    renderManageSubsidiariesCard();
     await loadNationsForSubsidiary();
     renderCreateSubsidiaryCard();
+    renderManageSubsidiariesCard();
+    await loadAllCorporations();
+    renderCorporationsCard();
 }
 
 function switchToOperations(e) {
@@ -7437,6 +7439,197 @@ function renderCreateSubsidiaryCard() {
 
 window.subSelectNation = subSelectNation;
 window.subCreate = subCreate;
+
+// ==================== CORPORATIONS CARD (760×450) ====================
+
+let _allCorps = [];
+let _corpSelected = 0;
+let _corpFilterNation = 'ALL';
+let _corpSortBy = 'REPUTATION';
+
+async function loadAllCorporations() {
+    const { data } = await _supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, corp_sector, corp_subsector, corp_company_type, corp_ticker, corp_cash_reserves, nation_id, nation, linked_user_id')
+        .eq('faction_type', 'corporation')
+        .is('abandoned_at', null)
+        .order('faction_name');
+    _allCorps = (data || []).map(c => ({
+        ...c,
+        abbr: c.corp_ticker || c.abbreviation || c.faction_name?.slice(0,4).toUpperCase() || '???',
+        status: (c.corp_company_type || 'Private').toUpperCase(),
+        isPlayer: !!c.linked_user_id,
+        reputation: 50, // placeholder until reputation system exists
+        revenue: c.status === 'PUBLIC' ? Number(c.corp_cash_reserves || 0) * 0.1 : null, // estimate
+        valuation: c.status === 'PUBLIC' ? Number(c.corp_cash_reserves || 0) * 3 : null,
+    }));
+}
+
+function corpSelect(idx) { _corpSelected = idx; renderCorporationsCard(); }
+function corpFilterNation(n) { _corpFilterNation = n; _corpSelected = 0; renderCorporationsCard(); }
+function corpSort(s) { _corpSortBy = s; _corpSelected = 0; renderCorporationsCard(); }
+
+function renderCorporationsCard() {
+    const container = document.getElementById('corporations-container');
+    if (!container) return;
+
+    const mono = "'JetBrains Mono', monospace";
+    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+        accent: '#8b9a6b', blue: '#5a8aaa', gold: '#c8a832', orange: '#c84',
+        greenBright: '#5c5', red: '#c55', yellow: '#ca5',
+        text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
+
+    const STATUS_META = {
+        PUBLIC: { color: C.greenBright, bg: 'rgba(92,204,92,0.06)', border: 'rgba(92,204,92,0.15)' },
+        PRIVATE: { color: C.gold, bg: 'rgba(200,168,50,0.08)', border: 'rgba(200,168,50,0.2)' },
+        STATE: { color: C.orange, bg: 'rgba(204,136,68,0.06)', border: 'rgba(204,136,68,0.15)' },
+    };
+
+    // Collect nations for filter
+    const nations = [...new Set(_allCorps.map(c => c.nation).filter(Boolean))];
+
+    // Filter + sort
+    let filtered = [..._allCorps];
+    if (_corpFilterNation !== 'ALL') filtered = filtered.filter(c => c.nation === _corpFilterNation);
+    if (_corpSortBy === 'REPUTATION') filtered.sort((a, b) => (b.reputation || 0) - (a.reputation || 0));
+    else if (_corpSortBy === 'REVENUE') filtered.sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
+    else if (_corpSortBy === 'VALUATION') filtered.sort((a, b) => (b.valuation || 0) - (a.valuation || 0));
+
+    if (_corpSelected >= filtered.length) _corpSelected = 0;
+    const sel = filtered[_corpSelected] || null;
+    const isPrivateHidden = sel && sel.status === 'PRIVATE';
+    const isState = sel && sel.status === 'STATE';
+
+    // Left table rows
+    let tableRows = '';
+    if (filtered.length === 0) {
+        tableRows = `<div style="padding:30px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">No corporations found.</div>`;
+    }
+    for (let i = 0; i < filtered.length; i++) {
+        const c = filtered[i];
+        const isSel = i === _corpSelected;
+        const csm = STATUS_META[c.status] || STATUS_META.PRIVATE;
+        const hidden = c.status === 'PRIVATE';
+        tableRows += `
+        <div onclick="corpSelect(${i})" style="display:flex;align-items:center;padding:6px 14px;border-bottom:1px solid ${C.border};cursor:pointer;border-left:2px solid ${isSel ? C.accent : 'transparent'};background:${isSel ? 'rgba(139,154,107,0.03)' : 'transparent'};">
+            <span style="width:36px;font-family:${mono};font-size:9px;font-weight:700;color:${C.gold}">${c.abbr}</span>
+            <div style="flex:1.3;">
+                <div style="font-size:10px;font-weight:600;color:${C.text};line-height:1.2">${c.faction_name}</div>
+                <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:1px">${c.corp_subsector || c.corp_sector || '—'}</div>
+            </div>
+            <span style="width:55px"><span style="font-family:${mono};font-size:7px;padding:1px 4px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${(c.nation || '—').toUpperCase().slice(0,6)}</span></span>
+            <span style="width:50px;font-family:${mono};font-size:8px;font-weight:700;color:${hidden ? C.dim : C.muted};text-align:right">${hidden ? '—' : hfFmtBig(c.revenue)}</span>
+            <span style="width:30px;font-family:${mono};font-size:9px;font-weight:700;color:${c.reputation >= 70 ? C.greenBright : c.reputation >= 40 ? C.accent : C.yellow};text-align:right">${c.reputation}</span>
+            <span style="width:50px;font-family:${mono};font-size:8px;color:${hidden ? C.dim : C.muted};text-align:right">${hidden ? '—' : hfFmtBig(c.valuation)}</span>
+            <span style="width:42px;text-align:center"><span style="font-family:${mono};font-size:6px;font-weight:700;padding:1px 4px;color:${csm.color};background:${csm.bg};border:1px solid ${csm.border}">${c.status}</span></span>
+        </div>`;
+    }
+
+    // Right detail panel
+    let detailHtml = '';
+    if (sel) {
+        const sm = STATUS_META[sel.status] || STATUS_META.PRIVATE;
+        const stats = [
+            { label: 'Sector', value: sel.corp_sector || '—', color: C.text },
+            { label: 'Subsector', value: sel.corp_subsector || '—', color: C.accent },
+            { label: 'Reputation', value: sel.reputation + '/100', color: sel.reputation >= 70 ? C.greenBright : sel.reputation >= 40 ? C.accent : C.yellow },
+            { label: 'Revenue', value: isPrivateHidden ? 'UNDISCLOSED' : hfFmtBig(sel.revenue), color: isPrivateHidden ? C.dim : C.greenBright },
+            { label: 'Cash Reserves', value: isPrivateHidden ? 'UNDISCLOSED' : hfFmtBig(sel.corp_cash_reserves || 0), color: isPrivateHidden ? C.dim : C.text },
+            { label: 'Market Valuation', value: isPrivateHidden ? 'UNDISCLOSED' : hfFmtBig(sel.valuation), color: isPrivateHidden ? C.dim : C.gold },
+        ];
+
+        detailHtml = `
+        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+                <span style="font-family:${mono};font-size:12px;font-weight:700;color:${C.gold}">${sel.abbr}</span>
+                <span style="font-size:12px;font-weight:700;color:${C.text}">${sel.faction_name}</span>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <span style="font-family:${mono};font-size:7px;padding:1px 5px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${(sel.nation || '—').toUpperCase()}</span>
+                <span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${sm.color};background:${sm.bg};border:1px solid ${sm.border}">${sel.status}</span>
+                ${sel.isPlayer ? `<span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${C.blue};background:rgba(90,138,170,0.08);border:1px solid rgba(90,138,170,0.2)">PLAYER</span>` : `<span style="font-family:${mono};font-size:7px;color:${C.dim}">NPC</span>`}
+            </div>
+        </div>
+        ${stats.map(r => `<div style="display:flex;justify-content:space-between;padding:4px 14px;border-bottom:1px solid ${C.border};">
+            <span style="font-family:${mono};font-size:9px;color:${C.dim};text-transform:uppercase">${r.label}</span>
+            <span style="font-family:${mono};font-size:${r.label === 'Market Valuation' ? 12 : 10}px;font-weight:700;color:${r.color};${r.value === 'UNDISCLOSED' ? 'font-style:italic;' : ''}">${r.value}</span>
+        </div>`).join('')}
+        <div style="padding:6px 14px;border-bottom:1px solid ${C.border};flex-shrink:0;">
+            <div style="width:100%;height:4px;background:${C.border}"><div style="width:${sel.reputation}%;height:100%;background:${sel.reputation >= 70 ? C.greenBright : sel.reputation >= 40 ? C.accent : C.yellow}"></div></div>
+        </div>
+        ${isPrivateHidden ? `<div style="padding:6px 14px;border-bottom:1px solid ${C.border};background:rgba(200,168,50,0.03);">
+            <div style="font-family:${mono};font-size:8px;color:${C.gold};margin-bottom:2px">PRIVATE — FINANCIALS UNDISCLOSED</div>
+            <div style="font-size:9px;color:${C.dim};line-height:1.4">Use INVESTIGATE to reveal financial data for 12 ticks.</div>
+        </div>` : ''}
+        ${isState ? `<div style="padding:6px 14px;border-bottom:1px solid ${C.border};background:rgba(204,136,68,0.03);">
+            <div style="font-family:${mono};font-size:8px;color:${C.orange};margin-bottom:2px">STATE-OWNED ENTERPRISE</div>
+            <div style="font-size:9px;color:${C.dim};line-height:1.4">Government-controlled. Cannot be acquired directly. May be privatized by parliamentary vote.</div>
+        </div>` : ''}
+        <div style="flex:1"></div>
+        <div style="padding:6px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            <div style="font-family:${mono};font-size:8px;letter-spacing:1.5px;color:${C.dim};text-transform:uppercase;margin-bottom:6px">Actions</div>
+            <div style="display:flex;gap:4px;margin-bottom:4px;">
+                <div style="flex:1;padding:5px 0;text-align:center;cursor:${isPrivateHidden ? 'pointer' : 'default'};font-family:${mono};font-size:8px;font-weight:700;color:${isPrivateHidden ? C.blue : C.dim};border:1px solid ${isPrivateHidden ? C.blue + '44' : C.border};opacity:${isPrivateHidden ? 1 : 0.3}">INVESTIGATE — $500k</div>
+                <div style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;color:${C.accent};border:1px solid ${C.accent}44">PARTNER</div>
+            </div>
+            <div style="display:flex;gap:4px;">
+                <div style="flex:1;padding:5px 0;text-align:center;cursor:${isState ? 'not-allowed' : 'pointer'};font-family:${mono};font-size:8px;font-weight:700;color:${isState ? C.dim : C.gold};border:1px solid ${isState ? C.border : C.gold + '44'};opacity:${isState ? 0.3 : 1}">ACQUIRE</div>
+                <div style="flex:1;padding:5px 0;text-align:center;cursor:${isState ? 'not-allowed' : 'pointer'};font-family:${mono};font-size:8px;font-weight:700;color:${isState ? C.dim : C.orange};border:1px solid ${isState ? C.border : C.orange + '44'};opacity:${isState ? 0.3 : 1}">MERGER</div>
+            </div>
+            ${isState ? `<div style="margin-top:4px;font-family:${mono};font-size:7px;color:${C.dim}">State-owned corps cannot be acquired or merged.</div>` : ''}
+        </div>`;
+    } else {
+        detailHtml = `<div style="padding:30px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">Select a corporation to view details.</div>`;
+    }
+
+    // Filter pills
+    const filterHtml = `
+    <div style="padding:5px 14px;border-bottom:1px solid ${C.border};background:${C.card};display:flex;gap:12px;align-items:center;flex-shrink:0;">
+        <div style="display:flex;gap:3px;align-items:center;">
+            <span style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.8px;width:32px">NATION</span>
+            <span onclick="corpFilterNation('ALL')" style="padding:2px 7px;font-family:${mono};font-size:7px;font-weight:700;cursor:pointer;color:${_corpFilterNation === 'ALL' ? '#000' : C.dim};background:${_corpFilterNation === 'ALL' ? C.accent : 'transparent'};border:1px solid ${_corpFilterNation === 'ALL' ? C.accent : C.border}">ALL</span>
+            ${nations.map(n => `<span onclick="corpFilterNation('${n}')" style="padding:2px 7px;font-family:${mono};font-size:7px;font-weight:700;cursor:pointer;color:${_corpFilterNation === n ? '#000' : C.dim};background:${_corpFilterNation === n ? C.accent : 'transparent'};border:1px solid ${_corpFilterNation === n ? C.accent : C.border}">${n}</span>`).join('')}
+        </div>
+        <div style="flex:1"></div>
+        <div style="display:flex;gap:3px;align-items:center;">
+            <span style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.8px">SORT</span>
+            ${['REPUTATION', 'REVENUE', 'VALUATION'].map(s => `<span onclick="corpSort('${s}')" style="padding:2px 7px;font-family:${mono};font-size:7px;font-weight:700;cursor:pointer;color:${_corpSortBy === s ? '#000' : C.dim};background:${_corpSortBy === s ? C.accent : 'transparent'};border:1px solid ${_corpSortBy === s ? C.accent : C.border}">${s}</span>`).join('')}
+        </div>
+    </div>`;
+
+    container.innerHTML = `
+    <div style="width:760px;height:450px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:8px;color:${C.accent}">●</span>
+                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Corporations</span>
+            </div>
+            <span style="font-family:${mono};font-size:9px;color:${C.dim}">${_allCorps.length} IN DATABASE</span>
+        </div>
+        ${filterHtml}
+        <div style="flex:1;display:flex;overflow:hidden;">
+            <div style="flex:1;border-right:1px solid ${C.border};display:flex;flex-direction:column;">
+                <div style="display:flex;padding:4px 14px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+                    <span style="width:36px;font-family:${mono};font-size:7px;color:${C.dim}">ABBR</span>
+                    <span style="flex:1.3;font-family:${mono};font-size:7px;color:${C.dim}">CORPORATION</span>
+                    <span style="width:55px;font-family:${mono};font-size:7px;color:${C.dim}">NATION</span>
+                    <span style="width:50px;font-family:${mono};font-size:7px;color:${C.dim};text-align:right">REV</span>
+                    <span style="width:30px;font-family:${mono};font-size:7px;color:${C.dim};text-align:right">REP</span>
+                    <span style="width:50px;font-family:${mono};font-size:7px;color:${C.dim};text-align:right">VALUE</span>
+                    <span style="width:42px;font-family:${mono};font-size:7px;color:${C.dim};text-align:center">STATUS</span>
+                </div>
+                <div style="flex:1;overflow:auto;">${tableRows}</div>
+            </div>
+            <div style="width:280px;display:flex;flex-direction:column;overflow:auto;">
+                ${detailHtml}
+            </div>
+        </div>
+    </div>`;
+}
+
+window.corpSelect = corpSelect;
+window.corpFilterNation = corpFilterNation;
+window.corpSort = corpSort;
 
 window.switchToExpansion = switchToExpansion;
 window.switchToOperations = switchToOperations;
