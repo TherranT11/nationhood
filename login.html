@@ -105,7 +105,8 @@ import { _supabase } from './js/supabase-client.js';
             const ownedFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
 
             if (ownedFactions.length === 0) {
-                window.location.href = 'faction-select.html';
+                // No active factions — start the join flow: pick nation, then faction type
+                window.location.href = 'select-nation.html';
                 return;
             }
 
