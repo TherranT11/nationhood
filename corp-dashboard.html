@@ -1860,7 +1860,9 @@ async function dissolveCorporation() {
         await run(_supabase.from('factions').update({
             abandoned_at: new Date().toISOString(),
             corp_cash_reserves: 0,
-            corp_employees: 0,
+            corp_general_workforce: 0,
+            corp_skilled_workforce: 0,
+            corp_innovative_workforce: 0,
             action_points: 0,
         }).eq('id', factionId));
 
