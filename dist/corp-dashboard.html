@@ -723,10 +723,11 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
   }
 }
 </style>
-  <script type="module" crossorigin src="/assets/corp-dashboard-Bf7I4RBS.js"></script>
+  <script type="module" crossorigin src="/assets/corp-dashboard-CpnxQHTc.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
   <link rel="modulepreload" crossorigin href="/assets/messaging-B5Fng3EZ.js">
+  <link rel="modulepreload" crossorigin href="/assets/equipment-DsuDdEne.js">
 </head>
 <body>
 
@@ -893,7 +894,18 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
       <div class="val-card__scroll" id="val-body"></div>
     </div>
   </div>
+
+  <!-- Dissolve Corporation -->
+  <div style="display:flex;justify-content:center;padding:40px 14px 60px;">
+    <div id="dissolve-box" style="border:1px solid #3a2020;background:rgba(204,85,85,0.03);padding:20px 32px;text-align:center;max-width:400px;width:100%;">
+      <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:2px;color:#a44;margin-bottom:8px;text-transform:uppercase;">Irreversible Action</div>
+      <button id="dissolve-btn" disabled style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#c55;background:transparent;border:1px solid #c55;padding:8px 28px;cursor:pointer;transition:all 0.15s;opacity:0.4;">Dissolve Corporation</button>
+      <div id="dissolve-info" style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:8px;line-height:1.5;">
+        Permanently removes this corporation, all assets,<br>bids, equipment, properties, and warehouse inventory.
+      </div>
+    </div>
+  </div>
 </div>
-
+
 </body>
 </html>
