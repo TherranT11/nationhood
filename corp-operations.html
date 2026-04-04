@@ -8146,27 +8146,31 @@ let _reviewBids = [];
 let _reviewSelected = 0;
 let _reviewContract = null;
 let _reviewAccepting = false;
+let _reviewLoading = false;
+let _decliningBids = false;
 
 async function openBidReview() {
-    if (!selectedContract) return;
+    if (!selectedContract || _reviewLoading) return;
+    _reviewLoading = true;
     _reviewContract = selectedContract;
     _reviewSelected = 0;
 
     // Load bids for this contract
-    const { data: bids } = await _supabase
+    const { data: bids, error } = await _supabase
         .from('contract_bids')
         .select('*, factions(faction_name, corp_ticker, corp_subsector)')
         .eq('contract_id', _reviewContract.id)
         .in('status', ['pending', 'won'])
         .order('bid_price', { ascending: true });
 
+    _reviewLoading = false;
+    if (error) { alert('Failed to load bids: ' + error.message); return; }
+
     _reviewBids = (bids || []).map(b => ({
         ...b,
         corp: b.factions?.faction_name || 'Unknown',
         abbr: b.factions?.corp_ticker || '???',
         subsector: b.factions?.corp_subsector || '—',
-        reputation: 50, // placeholder until reputation system
-        track: [], // placeholder until project history
     }));
 
     closeContractDetail();
@@ -8186,7 +8190,7 @@ function reviewSelectBid(idx) {
 async function acceptBid() {
     if (_reviewAccepting || _reviewBids.length === 0) return;
     const bid = _reviewBids[_reviewSelected];
-    if (!bid) return;
+    if (!bid?.id || !bid.faction_id) return;
 
     if (!confirm(
         'Accept bid from ' + bid.corp + '?\n\n' +
@@ -8202,49 +8206,58 @@ async function acceptBid() {
         const currentTick = shardData?.current_tick || 0;
 
         // Mark winning bid
-        await _supabase.from('contract_bids').update({ status: 'won' }).eq('id', bid.id);
+        const { error: e1 } = await _supabase.from('contract_bids').update({ status: 'won' }).eq('id', bid.id);
+        if (e1) throw e1;
 
         // Mark losing bids
-        await _supabase.from('contract_bids')
+        const { error: e2 } = await _supabase.from('contract_bids')
             .update({ status: 'lost' })
             .eq('contract_id', _reviewContract.id)
             .neq('id', bid.id);
+        if (e2) throw e2;
 
         // Award contract
-        await _supabase.from('construction_contracts').update({
+        const { error: e3 } = await _supabase.from('construction_contracts').update({
             status: 'awarded',
             awarded_to_faction: bid.faction_id,
             awarded_at_tick: currentTick,
         }).eq('id', _reviewContract.id);
+        if (e3) throw e3;
 
         closeBidReview();
         alert('Contract awarded to ' + bid.corp + '!\n\nBid: ' + hfFmtBig(bid.bid_price) + '\nProject begins immediately.');
 
         if (typeof loadContracts === 'function') await loadContracts();
     } catch (err) {
-        alert('Failed to accept bid: ' + err.message);
+        alert('Failed to accept bid: ' + (err.message || err));
     } finally {
         _reviewAccepting = false;
     }
 }
 
 async function declineAllBids() {
-    if (!_reviewContract) return;
+    if (!_reviewContract || _decliningBids) return;
     if (!confirm('Decline all bids and cancel this project?\n\nNo bids will be accepted. The contract will be removed.')) return;
 
+    _decliningBids = true;
     try {
-        await _supabase.from('contract_bids')
+        const { error: e1 } = await _supabase.from('contract_bids')
             .update({ status: 'lost' })
             .eq('contract_id', _reviewContract.id);
-        await _supabase.from('construction_contracts')
+        if (e1) throw e1;
+
+        const { error: e2 } = await _supabase.from('construction_contracts')
             .update({ status: 'expired' })
             .eq('id', _reviewContract.id);
+        if (e2) throw e2;
 
         closeBidReview();
         alert('All bids declined. Contract cancelled.');
         if (typeof loadContracts === 'function') await loadContracts();
     } catch (err) {
-        alert('Failed: ' + err.message);
+        alert('Failed: ' + (err.message || err));
+    } finally {
+        _decliningBids = false;
     }
 }
 
@@ -8266,7 +8279,6 @@ function renderBidReview() {
     const timelineTicks = Number(contract.timeline_ticks || 36);
 
     const cheapest = Math.min(...bids.map(b => b.bid_price));
-    const highestRep = Math.max(...bids.map(b => b.reputation));
     const highestQuality = Math.max(...bids.map(b => b.estimated_quality || 0));
 
     // Left panel — bid cards
