@@ -1286,13 +1286,20 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
     // Expenses — workforce wages from wfData, divided by 12 (monthly)
     const annualWages = wfData?.totalWages || 0;
     const wages = Math.round(annualWages / 12);
-    const materials = 0, debtService = 0, taxes = 0;
+    const materials = 0, taxes = 0;
     const properties = propertyMaint || 0;
     const equipment = equipmentMaint || 0;
+    // Debt service: monthly payment on outstanding loans (5% annual rate, 10-year amortization)
+    const outstandingDebt = Number(faction?.corp_loans) || 0;
+    const LOAN_ANNUAL_RATE = 0.05;
+    const LOAN_TERM_MONTHS = 120;
+    const debtService = outstandingDebt > 0
+        ? Math.round((outstandingDebt * (LOAN_ANNUAL_RATE / 12)) / (1 - Math.pow(1 + LOAN_ANNUAL_RATE / 12, -LOAN_TERM_MONTHS)))
+        : 0;
     const totalExpenses = wages + materials + properties + equipment + debtService + taxes;
     const netProfit = totalRevenue - totalExpenses;
     const cash = Number(faction?.corp_cash_reserves ?? 0);
-    const debt = 0;
+    const debt = outstandingDebt;
 
     // Driver data for display
     const drivers = [

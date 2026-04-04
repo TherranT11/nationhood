@@ -958,11 +958,34 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
 
     const monthlyIncome = monthlyMarketRev - monthlyWages;
 
+    // Loan servicing constants (5% annual rate, 10-year amortization)
+    const LOAN_ANNUAL_RATE = 0.05;
+    const LOAN_TERM_MONTHS = 120;
+    const monthlyRate = LOAN_ANNUAL_RATE / 12;
+
     for (const corp of corpFactions) {
         const currentCash = Number(corp.corp_cash_reserves || 0);
-        const newCash = Math.max(0, currentCash + monthlyIncome);
+        const currentLoans = Number(corp.corp_loans || 0);
+
+        // Compute monthly loan payment (amortized) and split into interest + principal
+        let debtPayment = 0;
+        let principalPaid = 0;
+        if (currentLoans > 0) {
+            const monthlyPayment = Math.round((currentLoans * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -LOAN_TERM_MONTHS)));
+            const interestPortion = Math.round(currentLoans * monthlyRate);
+            principalPaid = Math.min(currentLoans, monthlyPayment - interestPortion);
+            debtPayment = monthlyPayment;
+        }
+
+        const netChange = monthlyIncome - debtPayment;
+        const newCash = Math.max(0, currentCash + netChange);
+        const newLoans = Math.max(0, currentLoans - principalPaid);
+
+        const updateFields = { corp_cash_reserves: newCash };
+        if (principalPaid > 0) updateFields.corp_loans = newLoans;
+
         await supabase.from('factions')
-            .update({ corp_cash_reserves: newCash })
+            .update(updateFields)
             .eq('id', corp.id);
     }
     console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}, wages=${monthlyWages}, net=${monthlyIncome}`);
@@ -1040,7 +1063,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // Load corporation factions for this nation
             const { data: corpFactions, error: corpErr } = await supabase
                 .from('factions')
-                .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
+                .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_loans, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
                 .eq('nation_id', nation.id)
                 .eq('faction_type', 'corporation');
 
