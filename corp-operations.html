@@ -7621,6 +7621,7 @@ let _bidGrades = {};
 let _bidWorkers = 120;
 let _bidMarkup = 15;
 let _bidWarehouse = {};
+let _bidCompetitors = [];
 
 async function openBidAssembly() {
     if (!selectedContract) return;
@@ -7639,6 +7640,23 @@ async function openBidAssembly() {
     } catch (_) {
         // Table may not exist yet — warehouse inventory is Phase 5
     }
+
+    // Load competing bids
+    _bidCompetitors = [];
+    try {
+        const { data: bids } = await _supabase
+            .from('contract_bids')
+            .select('faction_id, bid_price, estimated_quality, status, factions(faction_name, corp_ticker)')
+            .eq('contract_id', _bidContract.id)
+            .in('status', ['pending', 'won']);
+        _bidCompetitors = (bids || []).filter(b => b.faction_id !== faction?.id).map(b => ({
+            name: b.factions?.faction_name || 'Unknown',
+            ticker: b.factions?.corp_ticker || '???',
+            price: Number(b.bid_price || 0),
+            quality: Number(b.estimated_quality || 0),
+            status: b.status,
+        }));
+    } catch (_) { /* table may not exist */ }
 
     // Initialize grades to STD for each required material
     _bidGrades = {};
@@ -7950,6 +7968,17 @@ function renderBidAssembly() {
                     </div>
                     <div style="width:100%;height:4px;background:${C.border}"><div style="width:${qualityEst}%;height:100%;background:${qualityColor}"></div></div>
                     <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:4px">Based on material grades. Workforce and events also affect final quality.</div>
+                </div>
+                <div style="padding:6px 14px;border-bottom:1px solid ${C.border};">
+                    <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px;margin-bottom:3px">COMPETING BIDS</div>
+                    ${_bidCompetitors.length === 0
+                        ? `<div style="font-family:${mono};font-size:8px;color:${C.dim};padding:4px 0;">No competing bids yet. First mover advantage.</div>`
+                        : `<div style="display:flex;gap:4px;flex-wrap:wrap;">
+                            ${_bidCompetitors.map(c => `<span style="padding:2px 6px;font-family:${mono};font-size:7px;color:${C.muted};background:${C.card};border:1px solid ${C.border};">${c.name} <span style="color:${C.dim}">Q:${c.quality}</span></span>`).join('')}
+                        </div>
+                        <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:3px">${_bidCompetitors.length} competing bid${_bidCompetitors.length !== 1 ? 's' : ''}. Bid prices are sealed until resolution.</div>`
+                    }
+                    <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:3px">Higher reputation bidders may win at higher prices.</div>
                 </div>
                 <div style="flex:1"></div>
             </div>
