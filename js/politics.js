@@ -397,7 +397,7 @@ async function renderPartyTab(f, nation, data) {
                 <div class="pol-stat-value">${mySeats}<span class="pol-stat-total">/${totalSeats}</span>${deltaHtml}</div>
             </div>
         </div>
-        ${renderCaucusSection(caucusFactions, mySeats)}
+        ${renderCaucusSection(caucusFactions, mySeats, myIdeo)}
         </div>
         </div>
         ${renderParliamentBox(allParties, coalition, nation, f.id)}
@@ -681,21 +681,45 @@ function hogTitle(govType, nation) {
     return 'Head of Gov.';
 }
 
-function renderCaucusSection(caucusFactions, partySeats) {
+function renderCaucusSection(caucusFactions, partySeats, partyIdeo) {
     if (!caucusFactions || caucusFactions.length === 0) return '';
 
-    const AXIS_LABELS = {
-        liberty_equality: 'Liberty / Equality',
-        tradition_progress: 'Tradition / Progress',
-        security_freedom: 'Security / Freedom',
-        globalism_nationalism: 'Globalism / Nationalism',
-        individualism_collectivism: 'Individualism / Collectivism',
-    };
+    // Build axis lookup for wing label + color
+    const axisMap = {};
+    for (const ax of IDEOLOGY_AXES) {
+        axisMap[ax.key] = ax;
+    }
 
+    let totalCaucusSeats = 0;
     let rows = '';
     for (const cf of caucusFactions) {
-        const approxSeats = Math.round(partySeats * cf.seat_share);
-        const seatRange = `~${Math.max(1, approxSeats - 2)}–${approxSeats + 2}`;
+        const ax = axisMap[cf.dominant_axis];
+        // Wing label: use the ideology pole this caucus represents (e.g., "Progress Wing")
+        const wingLabel = ax
+            ? (cf.wing_end === 'left' ? ax.leftLabel : ax.rightLabel) + ' Wing'
+            : cf.dominant_axis;
+        const wingColor = ax
+            ? (cf.wing_end === 'left' ? ax.leftColor : ax.rightColor)
+            : 'var(--text-dim)';
+
+        // Seat +/- based on how aligned party ideology is with this wing
+        // Party score on this axis: negative = left-leaning, positive = right-leaning
+        // If wing_end matches party lean, bonus seats; if opposite, fewer
+        const baseSeats = Math.round(partySeats * cf.seat_share);
+        let seatBonus = 0;
+        if (partyIdeo && ax) {
+            const partyScore = partyIdeo[cf.dominant_axis] ?? 0;
+            // wing_end='right' aligns with positive scores; 'left' with negative
+            const alignment = cf.wing_end === 'right' ? partyScore : -partyScore;
+            // ±1 seat per 15 points of alignment (max ±3)
+            seatBonus = Math.max(-3, Math.min(3, Math.round(alignment / 15)));
+        }
+        const effectiveSeats = Math.max(1, baseSeats + seatBonus);
+        totalCaucusSeats += effectiveSeats;
+
+        const bonusStr = seatBonus > 0 ? ` <span style="color:var(--green);font-size:0.7rem;">(+${seatBonus})</span>`
+            : seatBonus < 0 ? ` <span style="color:var(--red);font-size:0.7rem;">(${seatBonus})</span>` : '';
+
         const relPct = cf.relationship_score;
         const relColor = relPct >= 60 ? 'var(--green)' : relPct >= 30 ? 'var(--amber)' : 'var(--red)';
         const volatile = relPct < 30 ? ' <span style="color:var(--red);font-size:0.7rem;">VOLATILE</span>' : '';
@@ -703,20 +727,27 @@ function renderCaucusSection(caucusFactions, partySeats) {
         rows += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-dim);">
             <div>
                 <div style="font-size:0.85rem;font-weight:500;">${escapeHtml(cf.name)}</div>
-                <div style="font-size:0.75rem;color:var(--text-dim);">${AXIS_LABELS[cf.dominant_axis] || cf.dominant_axis} · ${seatRange} seats</div>
+                <div style="font-size:0.7rem;color:${wingColor};opacity:0.8;">${wingLabel}</div>
             </div>
-            <div style="display:flex;align-items:center;gap:6px;">
-                <div style="width:60px;height:6px;background:var(--border-dim);border-radius:3px;overflow:hidden;">
-                    <div style="width:${relPct}%;height:100%;background:${relColor};border-radius:3px;"></div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div style="font-size:0.85rem;font-weight:600;white-space:nowrap;">${effectiveSeats} seats${bonusStr}</div>
+                <div style="display:flex;align-items:center;gap:4px;">
+                    <div style="width:50px;height:5px;background:var(--border-dim);border-radius:3px;overflow:hidden;">
+                        <div style="width:${relPct}%;height:100%;background:${relColor};border-radius:3px;"></div>
+                    </div>
+                    <span style="font-size:0.65rem;color:var(--text-dim);">${relPct}</span>
+                    ${volatile}
                 </div>
-                ${volatile}
             </div>
         </div>`;
     }
 
+    const activeCount = caucusFactions.length;
+
     return `<hr class="pol-divider">
         <div style="padding:0 0 4px;">
-            <div class="pol-sub-label" style="margin-bottom:6px;">Internal Caucuses</div>
+            <div class="pol-sub-label" style="margin-bottom:2px;">Internal Caucuses</div>
+            <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:6px;">${activeCount} active caucus${activeCount !== 1 ? 'es' : ''} · ${totalCaucusSeats} / ${partySeats} seats</div>
             ${rows}
         </div>`;
 }
@@ -5985,17 +6016,14 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
     </div>`;
 
     // --- Caucus Box ---
-    const CAUCUS_AXIS_LABELS = {
-        liberty_equality: 'Liberty / Equality',
-        tradition_progress: 'Tradition / Progress',
-        security_freedom: 'Security / Freedom',
-        globalism_nationalism: 'Globalism / Nationalism',
-        individualism_collectivism: 'Individualism / Collectivism',
-    };
+    // Build axis lookup for wing labels
+    const caucusAxisMap = {};
+    for (const ax of IDEOLOGY_AXES) caucusAxisMap[ax.key] = ax;
     const partySeats = mySeats || 0;
     const totalSeatsAll = (allParties || []).reduce((s, p) => s + (p.seats || 0), 0);
     const seatPct = totalSeatsAll > 0 ? partySeats / totalSeatsAll : 0;
     const activeCaucuses = (caucusFactions || []).filter(c => c.is_active !== false);
+    const elecPlayerIdeo = ideoMap[faction.id] || {};
     let caucusRowsHtml = '';
     if (activeCaucuses.length === 0) {
         const pctDisplay = (seatPct * 100).toFixed(0);
@@ -6004,22 +6032,41 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
             <span style="margin-top:6px;display:inline-block">You currently hold <strong>${partySeats}</strong> / ${totalSeatsAll} seats (${pctDisplay}%).</span>
         </div>`;
     } else {
-        const totalCaucusSeats = activeCaucuses.reduce((s, c) => s + Math.round(partySeats * c.seat_share), 0);
+        let elecTotalCaucusSeats = 0;
         for (const cf of activeCaucuses) {
-            const caucusSeats = Math.round(partySeats * cf.seat_share);
+            const cAx = caucusAxisMap[cf.dominant_axis];
+            const baseSeats = Math.round(partySeats * cf.seat_share);
+            // Seat +/- based on party ideology alignment with this wing
+            let cSeatBonus = 0;
+            if (cAx) {
+                const pScore = elecPlayerIdeo[cf.dominant_axis] ?? 0;
+                const cAlignment = cf.wing_end === 'right' ? pScore : -pScore;
+                cSeatBonus = Math.max(-3, Math.min(3, Math.round(cAlignment / 15)));
+            }
+            const caucusSeats = Math.max(1, baseSeats + cSeatBonus);
+            elecTotalCaucusSeats += caucusSeats;
+            const cBonusStr = cSeatBonus > 0 ? ` <span style="color:var(--dgreen);font-size:9px">(+${cSeatBonus})</span>`
+                : cSeatBonus < 0 ? ` <span style="color:var(--dred);font-size:9px">(${cSeatBonus})</span>` : '';
+
+            const cWingLabel = cAx
+                ? (cf.wing_end === 'left' ? cAx.leftLabel : cAx.rightLabel) + ' Wing'
+                : cf.dominant_axis;
+            const cWingColor = cAx
+                ? (cf.wing_end === 'left' ? cAx.leftColor : cAx.rightColor)
+                : 'var(--dtext-3)';
+
             const relPct = Number(cf.relationship_score ?? 50);
             const relColor = relPct >= 60 ? 'var(--dgreen)' : relPct >= 30 ? 'var(--damber)' : 'var(--dred)';
-            const wingLabel = cf.wing_end === 'left' ? '◂' : '▸';
             const volatileBadge = relPct < 30 ? '<span style="font-family:var(--dfont-mono);font-size:9px;color:var(--dred);font-weight:700;letter-spacing:0.5px;margin-left:4px">VOLATILE</span>' : '';
             caucusRowsHtml += `
             <div style="padding:8px 0;border-bottom:1px solid var(--dborder-1)">
                 <div style="display:flex;justify-content:space-between;align-items:center">
                     <div>
                         <div style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0)">${escapeHtml(cf.name)}</div>
-                        <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:2px">${wingLabel} ${CAUCUS_AXIS_LABELS[cf.dominant_axis] || cf.dominant_axis}</div>
+                        <div style="font-family:var(--dfont-mono);font-size:10px;color:${cWingColor};margin-top:2px">${cWingLabel}</div>
                     </div>
                     <div style="text-align:right">
-                        <div style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:var(--dtext-0)">${caucusSeats} seat${caucusSeats !== 1 ? 's' : ''}</div>
+                        <div style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:var(--dtext-0)">${caucusSeats} seat${caucusSeats !== 1 ? 's' : ''}${cBonusStr}</div>
                         <div style="display:flex;align-items:center;gap:5px;margin-top:3px">
                             <div style="width:50px;height:5px;background:var(--dborder-1);border-radius:3px;overflow:hidden">
                                 <div style="width:${relPct}%;height:100%;background:${relColor};border-radius:3px;transition:width 0.3s"></div>
@@ -6033,7 +6080,7 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
         }
         caucusRowsHtml = `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-2);margin-bottom:6px;display:flex;justify-content:space-between">
             <span>${activeCaucuses.length} active caucus${activeCaucuses.length !== 1 ? 'es' : ''}</span>
-            <span>${totalCaucusSeats} / ${partySeats} seats</span>
+            <span>${elecTotalCaucusSeats} / ${partySeats} seats</span>
         </div>` + caucusRowsHtml;
     }
 
