@@ -15,12 +15,9 @@ DECLARE
   v_shard RECORD;
   v_pm_party_id UUID;
   v_pm_faction RECORD;
-  v_active_hog RECORD;
   v_coalition_parties JSONB;
   v_total_seats INT := 0;
-  v_pm_name TEXT;
   v_hos_name TEXT;
-  v_admin_name TEXT;
   v_end_reason TEXT;
   v_gov_approval INT;
   v_recent_election RECORD;
@@ -259,33 +256,13 @@ BEGIN
     'immigration_rate', v_nation.immigration_rate
   );
 
-  -- Try rollover_administration RPC first (atomically closes old + creates new)
-  BEGIN
-    SELECT first_name, last_name INTO v_active_hog
-    FROM head_of_government
-    WHERE nation_id = v_nation.id AND active = true
-    LIMIT 1;
-  EXCEPTION WHEN OTHERS THEN
-    v_active_hog := NULL;
-  END;
-
-  v_pm_name := NULL;
-  IF v_active_hog.first_name IS NOT NULL THEN
-    v_pm_name := v_active_hog.first_name || ' ' || v_active_hog.last_name;
-  END IF;
-
   v_hos_name := NULL;
   IF v_nation.head_of_state_first_name IS NOT NULL AND v_nation.head_of_state_last_name IS NOT NULL THEN
     v_hos_name := v_nation.head_of_state_first_name || ' ' || v_nation.head_of_state_last_name;
   END IF;
 
-  -- Get PM faction name for admin_name
+  -- Get PM faction name for administration record
   SELECT * INTO v_pm_faction FROM factions WHERE id = v_pm_party_id;
-  v_admin_name := COALESCE(
-    v_active_hog.last_name || ' Administration',
-    v_nation.head_of_state_last_name || ' Administration',
-    COALESCE(v_pm_faction.faction_name, 'Unknown') || ' Administration'
-  );
 
   -- Close current administration
   UPDATE administrations SET
