@@ -13,7 +13,7 @@
  */
 
 import { GAME_CONFIG, deductAP } from './config.js';
-import { MINISTER_APPROVAL_CONFIG } from './stats.js';
+import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 import { isGovernmentPresidential, isPresidentialRepublic } from './government-types.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility } from './momentum.js';
 import { getNationNames } from './political-actions.js';
@@ -833,6 +833,47 @@ export async function advanceBillEmergency(supabase, nationId, factionId, billId
             const { error: caucusErr } = await supabase.rpc('calculate_caucus_dispositions', { p_bill_id: billId });
             if (caucusErr) console.warn(`[EmergencyAdvance] Caucus RPC error for ${billId} (non-fatal):`, caucusErr.message);
         } catch (e) { /* non-fatal */ }
+
+    } else if (bill.status === 'floor' && isPresidential && bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
+        // Minister confirmation bills are resolved directly — they don't go to president's desk.
+        // Seat the minister immediately, matching the logic in resolveExpiredVotes (bills.js).
+        const mKey = bill.ministry_key;
+        const { data: ministry } = await supabase.from('ministries')
+            .select('id, pending_minister')
+            .eq('nation_id', nationId).eq('ministry_key', mKey).eq('is_active', true)
+            .maybeSingle();
+
+        if (ministry?.pending_minister) {
+            const pm = ministry.pending_minister;
+            const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
+            const ministryNames = {
+                prime_minister: 'Prime Minister', interior: 'Ministry of the Interior',
+                foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
+                finance: 'Ministry of Finance', education: 'Ministry of Education',
+                healthcare: 'Ministry of Healthcare', labor: 'Ministry of Labor',
+                justice: 'Ministry of Justice', trade: 'Ministry of Trade',
+                energy: 'Ministry of Energy', transportation: 'Ministry of Transportation',
+                security: 'Ministry of Security'
+            };
+            const { error: minErr } = await supabase.from('ministries').update({
+                party_id: pm.party_id,
+                minister_first_name: pm.first_name,
+                minister_last_name: pm.last_name,
+                minister_age: pm.age,
+                minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
+                ministry_name: ministryNames[mKey] || mKey,
+                confirmation_status: 'confirmed',
+                pending_minister: null,
+                stat_baselines: fullNation ? buildMinistryBaselines(mKey, fullNation) : {}
+            }).eq('id', ministry.id);
+            if (minErr) return { success: false, error: 'Failed to seat minister: ' + minErr.message };
+        }
+
+        const { error: billErr } = await supabase.from('bills').update({
+            status: 'passed', passed_tick: currentTick
+        }).eq('id', billId);
+        if (billErr) return { success: false, error: billErr.message };
+        advancedTo = 'passed';
 
     } else if (bill.status === 'floor' && isPresidential) {
         // floor → president's desk (presidential systems)
