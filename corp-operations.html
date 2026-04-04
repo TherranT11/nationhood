@@ -2887,24 +2887,6 @@ function openContractDetail(contract) {
             </div>`;
     }
 
-    // Equipment
-    if (equipment.length > 0) {
-        contentHtml += `
-            <div class="cd-items">
-                <div class="cd-section-label">Required Equipment</div>
-                <div class="cd-items__list">
-                    ${equipment.map(e => {
-                        const cls = e.owned ? 'owned' : 'missing';
-                        const icon = e.owned ? '&#10003;' : '&#10007;';
-                        return `<div class="cd-chip ${cls}">
-                            <span class="cd-chip__icon">${icon}</span>
-                            <span class="cd-chip__label">${escapeHtml(e.name)}</span>
-                        </div>`;
-                    }).join('')}
-                </div>
-            </div>`;
-    }
-
     // Materials
     if (materials.length > 0) {
         contentHtml += `
@@ -2949,8 +2931,8 @@ function openContractDetail(contract) {
         <div class="cd-footer__badges">${badgesHtml}</div>
         <div class="cd-footer__actions">
             <button class="cd-btn secondary" onclick="closeContractDetail()">CLOSE</button>
-            <button class="cd-btn primary" onclick="placeBid()" ${canBid && apAvailable ? '' : 'disabled'}
-                title="${!canBid ? 'Not qualified for this contract' : !apAvailable ? 'Need 2 AP to bid' : 'Place a bid (2 AP)'}">BID</button>
+            <button class="cd-btn primary" onclick="openBidAssembly()" ${canBid ? '' : 'disabled'}
+                title="${!canBid ? 'Not qualified for this contract' : 'Assemble and submit a bid'}">BID</button>
         </div>
     `;
 
@@ -7631,6 +7613,307 @@ function renderCorporationsCard() {
 window.corpSelect = corpSelect;
 window.corpFilterNation = corpFilterNation;
 window.corpSort = corpSort;
+
+// ==================== BID ASSEMBLY MODAL ====================
+
+let _bidContract = null;
+let _bidGrades = {};
+let _bidWorkers = 120;
+let _bidMarkup = 15;
+
+function openBidAssembly() {
+    if (!selectedContract) return;
+    _bidContract = selectedContract;
+
+    // Initialize grades to STD for each required material
+    _bidGrades = {};
+    const mats = _bidContract.required_materials || {};
+    for (const key of Object.keys(mats)) {
+        _bidGrades[key] = 'STD';
+    }
+
+    // Default workers from contract requirements
+    const wf = _bidContract.required_workforce || {};
+    _bidWorkers = (Number(wf.general || 0) + Number(wf.skilled || 0)) || 120;
+    _bidMarkup = 15;
+
+    closeContractDetail();
+    renderBidAssembly();
+}
+
+function closeBidAssembly() {
+    document.getElementById('bid-assembly-overlay')?.remove();
+    _bidContract = null;
+}
+
+function bidSetGrade(matKey, grade) {
+    _bidGrades[matKey] = grade;
+    renderBidAssembly();
+}
+
+function bidSetWorkers(count) {
+    _bidWorkers = count;
+    renderBidAssembly();
+}
+
+function bidSetMarkup(pct) {
+    _bidMarkup = pct;
+    renderBidAssembly();
+}
+
+function renderBidAssembly() {
+    document.getElementById('bid-assembly-overlay')?.remove();
+    if (!_bidContract) return;
+
+    const mono = "'JetBrains Mono', monospace";
+    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+        accent: '#8b9a6b', accentBright: '#a3b07e', gold: '#c8a832', orange: '#c84',
+        greenBright: '#5c5', greenDark: '#2a5a3a', red: '#c55', redDim: '#a44', yellow: '#ca5',
+        text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660', blue: '#5a8aaa' };
+
+    const contract = _bidContract;
+    const isGov = contract.issuer_type === 'GOVERNMENT';
+    const nationName = nationStats?.name || faction?.nation || '—';
+    const budgetCeiling = Number(contract.budget_ceiling || 0);
+    const timelineTicks = Number(contract.timeline_ticks || 8);
+    const mats = contract.required_materials || {};
+    const matKeys = Object.keys(mats);
+
+    // Grade prices (per unit) — placeholder tiers, will be from procurement in Phase 2
+    const GRADE_PRICES = { LOW: 0.6, STD: 1.0, HIGH: 1.7 };
+    const GRADE_COLOR = { LOW: C.orange, STD: C.yellow, HIGH: C.greenBright };
+    const GRADE_LABEL = { LOW: 'Low', STD: 'Standard', HIGH: 'High' };
+
+    // Material base prices (rough $/unit by type)
+    const MAT_BASE_PRICE = {
+        concrete: 250, steel: 600, glass_facades: 800, em_systems: 900,
+        lumber: 120, heavy_parts: 1200, aggregate: 55, asphalt: 180,
+    };
+
+    // ── CALCULATE COSTS ──
+    let materialCost = 0;
+    let matRows = '';
+    for (const key of matKeys) {
+        const qty = Number(mats[key] || 0);
+        const grade = _bidGrades[key] || 'STD';
+        const basePrice = MAT_BASE_PRICE[key] || 300;
+        const gradeMulti = GRADE_PRICES[grade];
+        const unitPrice = Math.round(basePrice * gradeMulti);
+        const lineCost = qty * unitPrice;
+        materialCost += lineCost;
+        const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+        matRows += `
+        <div style="display:flex;align-items:center;padding:5px 14px;border-bottom:1px solid ${C.border};">
+            <div style="flex:1.2"><span style="font-size:11px;color:${C.text}">${label}</span></div>
+            <div style="flex:0.5;text-align:center"><span style="font-family:${mono};font-size:9px;color:${C.muted}">${qty.toLocaleString()}</span></div>
+            <div style="flex:1.2;display:flex;gap:2px;justify-content:center;">
+                ${['LOW','STD','HIGH'].map(g => {
+                    const active = grade === g;
+                    const gc = GRADE_COLOR[g];
+                    return `<span onclick="bidSetGrade('${key}','${g}')" style="padding:2px 6px;font-family:${mono};font-size:7px;font-weight:700;cursor:pointer;color:${active ? '#000' : C.dim};background:${active ? gc : 'transparent'};border:1px solid ${active ? gc : C.border}">${GRADE_LABEL[g]}</span>`;
+                }).join('')}
+            </div>
+            <div style="flex:0.8;text-align:right"><span style="font-family:${mono};font-size:10px;color:${C.text}">${hfFmtBig(lineCost)}</span></div>
+        </div>`;
+    }
+
+    const wageRate = 15200;
+    const laborCost = _bidWorkers * wageRate * timelineTicks;
+    const overhead = 400000;
+    const totalCost = materialCost + laborCost + overhead;
+    const markup = Math.round(totalCost * (_bidMarkup / 100));
+    const bidPrice = totalCost + markup;
+    const overBudget = bidPrice > budgetCeiling;
+    const profit = markup;
+
+    // Competitiveness
+    const comp = overBudget ? 0 : Math.max(0, Math.min(100, Math.round(100 - ((bidPrice / budgetCeiling) * 100) + 30)));
+    const compColor = comp > 70 ? C.greenBright : comp > 40 ? C.yellow : comp > 0 ? C.orange : C.red;
+    const compLabel = overBudget ? 'OVER CEILING' : comp > 70 ? 'STRONG' : comp > 40 ? 'COMPETITIVE' : comp > 20 ? 'WEAK' : 'UNLIKELY';
+
+    // Quality
+    const gradeVals = Object.values(_bidGrades);
+    const qualityEst = gradeVals.length > 0 ? Math.round(gradeVals.reduce((s, g) => s + (g === 'HIGH' ? 85 : g === 'STD' ? 65 : 45), 0) / gradeVals.length) : 50;
+    const qualityColor = qualityEst >= 75 ? C.greenBright : qualityEst >= 55 ? C.yellow : C.orange;
+    const qualityLabel = qualityEst >= 75 ? 'STRONG' : qualityEst >= 55 ? 'PROMISING' : 'UNCERTAIN';
+
+    // Worker presets
+    const wf = contract.required_workforce || {};
+    const baseWorkers = (Number(wf.general || 0) + Number(wf.skilled || 0)) || 100;
+    const workerPresets = [
+        Math.max(40, Math.round(baseWorkers * 0.7)),
+        Math.max(60, Math.round(baseWorkers * 0.85)),
+        baseWorkers,
+        Math.round(baseWorkers * 1.15),
+        Math.round(baseWorkers * 1.3),
+    ];
+
+    const overlay = document.createElement('div');
+    overlay.id = 'bid-assembly-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeBidAssembly(); });
+
+    overlay.innerHTML = `
+    <div style="width:740px;max-height:94vh;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
+        <!-- HEADER -->
+        <div style="padding:10px 16px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-family:${mono};font-size:8px;font-weight:700;padding:2px 8px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${nationName.toUpperCase()}</span>
+                    <span style="font-size:14px;font-weight:700;color:${C.text}">${contract.name}</span>
+                    <span style="font-family:${mono};font-size:8px;font-weight:700;padding:2px 6px;color:${isGov ? C.accentBright : C.gold};background:${isGov ? 'rgba(163,176,126,0.1)' : 'rgba(200,168,50,0.08)'};border:1px solid ${isGov ? 'rgba(163,176,126,0.2)' : 'rgba(200,168,50,0.2)'}">${isGov ? 'GOV' : 'PRIVATE'}</span>
+                </div>
+                <span onclick="closeBidAssembly()" style="font-family:${mono};font-size:14px;color:${C.dim};cursor:pointer;padding:0 4px">×</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                <span style="font-family:${mono};font-size:9px;color:${C.dim}">${contract.project_code || '—'}</span>
+                <span style="font-family:${mono};font-size:9px;color:${C.dim}">·</span>
+                <span style="font-size:10px;color:${C.accent}">${contract.issuer_name || '—'}</span>
+                <span style="font-family:${mono};font-size:9px;color:${C.dim}">·</span>
+                <span style="font-family:${mono};font-size:9px;color:${C.muted}">Ceiling: <span style="color:${C.text};font-weight:700">${hfFmtBig(budgetCeiling)}</span></span>
+                <span style="font-family:${mono};font-size:9px;color:${C.dim}">·</span>
+                <span style="font-family:${mono};font-size:9px;color:${C.muted}">Timeline: <span style="color:${C.text};font-weight:700">${timelineTicks} months</span></span>
+            </div>
+        </div>
+
+        <!-- CONTENT — two columns -->
+        <div style="flex:1;display:flex;overflow:hidden;">
+
+            <!-- LEFT: Cost Assembly -->
+            <div style="flex:1;border-right:1px solid ${C.border};overflow:auto;">
+                <div style="padding:6px 14px;border-bottom:1px solid ${C.border};background:${C.card};">
+                    <span style="font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1.5px;color:${C.accentBright};text-transform:uppercase">Materials</span>
+                </div>
+                <div style="display:flex;padding:4px 14px;border-bottom:1px solid ${C.border};">
+                    <span style="flex:1.2;font-family:${mono};font-size:7px;color:${C.dim}">MATERIAL</span>
+                    <span style="flex:0.5;font-family:${mono};font-size:7px;color:${C.dim};text-align:center">QTY</span>
+                    <span style="flex:1.2;font-family:${mono};font-size:7px;color:${C.dim};text-align:center">GRADE</span>
+                    <span style="flex:0.8;font-family:${mono};font-size:7px;color:${C.dim};text-align:right">COST</span>
+                </div>
+                ${matRows}
+                <div style="display:flex;justify-content:space-between;padding:5px 14px;border-bottom:1px solid ${C.border};background:rgba(139,154,107,0.02);">
+                    <span style="font-family:${mono};font-size:9px;color:${C.muted}">MATERIALS TOTAL</span>
+                    <span style="font-family:${mono};font-size:11px;font-weight:700;color:${C.text}">${hfFmtBig(materialCost)}</span>
+                </div>
+
+                <div style="padding:6px 14px;border-bottom:1px solid ${C.border};background:${C.card};">
+                    <span style="font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1.5px;color:${C.accentBright};text-transform:uppercase">Labor</span>
+                </div>
+                <div style="padding:8px 14px;border-bottom:1px solid ${C.border};">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                        <span style="font-family:${mono};font-size:8px;color:${C.dim};width:60px">WORKERS</span>
+                        <div style="display:flex;gap:3px;">
+                            ${workerPresets.map(w => `<span onclick="bidSetWorkers(${w})" style="padding:2px 8px;font-family:${mono};font-size:8px;font-weight:700;cursor:pointer;color:${_bidWorkers === w ? '#000' : C.dim};background:${_bidWorkers === w ? C.accent : 'transparent'};border:1px solid ${_bidWorkers === w ? C.accent : C.border}">${w}</span>`).join('')}
+                        </div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;">
+                        <span style="font-family:${mono};font-size:8px;color:${C.dim}">${_bidWorkers} × $${wageRate.toLocaleString()}/tick × ${timelineTicks} ticks</span>
+                        <span style="font-family:${mono};font-size:11px;font-weight:700;color:${C.text}">${hfFmtBig(laborCost)}</span>
+                    </div>
+                </div>
+
+                <div style="display:flex;justify-content:space-between;padding:5px 14px;border-bottom:1px solid ${C.border};">
+                    <span style="font-family:${mono};font-size:9px;color:${C.muted}">OVERHEAD & CONTINGENCY</span>
+                    <span style="font-family:${mono};font-size:11px;font-weight:700;color:${C.text}">${hfFmtBig(overhead)}</span>
+                </div>
+            </div>
+
+            <!-- RIGHT: Bid Summary -->
+            <div style="width:280px;display:flex;flex-direction:column;overflow:auto;">
+                <div style="padding:6px 14px;border-bottom:1px solid ${C.border};background:${C.card};">
+                    <span style="font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1.5px;color:${C.accentBright};text-transform:uppercase">Cost Summary</span>
+                </div>
+                ${[{l:'Materials',v:materialCost},{l:'Labor',v:laborCost},{l:'Overhead',v:overhead}].map(r => `<div style="display:flex;justify-content:space-between;padding:4px 14px;border-bottom:1px solid ${C.border};">
+                    <span style="font-size:10px;color:${C.muted}">${r.l}</span>
+                    <span style="font-family:${mono};font-size:10px;color:${C.redDim}">${hfFmtBig(r.v)}</span>
+                </div>`).join('')}
+                <div style="display:flex;justify-content:space-between;padding:6px 14px;border-bottom:1px solid ${C.border};background:rgba(204,85,85,0.03);">
+                    <span style="font-family:${mono};font-size:10px;font-weight:700;color:${C.text}">TOTAL EST. COST</span>
+                    <span style="font-family:${mono};font-size:13px;font-weight:700;color:${C.red}">${hfFmtBig(totalCost)}</span>
+                </div>
+
+                <div style="padding:6px 14px;border-bottom:1px solid ${C.border};background:${C.card};">
+                    <span style="font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1.5px;color:${C.gold};text-transform:uppercase">Set Markup</span>
+                </div>
+                <div style="padding:10px 14px;border-bottom:1px solid ${C.border};">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                        <span style="font-family:${mono};font-size:9px;color:${C.dim}">MARKUP %</span>
+                        <span style="font-family:${mono};font-size:16px;font-weight:700;color:${C.gold}">${_bidMarkup}%</span>
+                    </div>
+                    <input type="range" min="0" max="40" step="1" value="${_bidMarkup}" oninput="bidSetMarkup(+this.value)" style="width:100%;accent-color:${C.gold};height:6px;" />
+                    <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:7px;color:${C.dim};margin-top:2px;">
+                        <span>0% (at cost)</span><span>40% (maximum)</span>
+                    </div>
+                </div>
+
+                <div style="padding:10px 14px;border-bottom:1px solid ${C.border};background:${overBudget ? 'rgba(204,85,85,0.04)' : 'rgba(200,168,50,0.03)'};">
+                    <div style="font-family:${mono};font-size:8px;color:${C.dim};margin-bottom:4px">YOUR BID PRICE</div>
+                    <div style="font-family:${mono};font-size:22px;font-weight:700;color:${overBudget ? C.red : C.gold}">${hfFmtBig(bidPrice)}</div>
+                    ${overBudget ? `<div style="font-family:${mono};font-size:8px;font-weight:700;color:${C.red};margin-top:4px;padding:2px 6px;background:rgba(204,85,85,0.08);border:1px solid rgba(204,85,85,0.15);display:inline-block">EXCEEDS BUDGET CEILING (${hfFmtBig(budgetCeiling)})</div>` : ''}
+                </div>
+
+                <div style="padding:8px 14px;border-bottom:1px solid ${C.border};">
+                    <div style="display:flex;justify-content:space-between;">
+                        <span style="font-family:${mono};font-size:8px;color:${C.dim}">PROJECTED PROFIT</span>
+                        <span style="font-family:${mono};font-size:14px;font-weight:700;color:${profit > 0 ? C.greenBright : C.dim}">+${hfFmtBig(profit)}</span>
+                    </div>
+                </div>
+
+                <div style="padding:6px 14px;border-bottom:1px solid ${C.border};background:${C.card};">
+                    <span style="font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1.5px;color:${C.accentBright};text-transform:uppercase">Bid Assessment</span>
+                </div>
+                <div style="padding:8px 14px;border-bottom:1px solid ${C.border};">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                        <span style="font-family:${mono};font-size:8px;color:${C.dim}">COMPETITIVENESS</span>
+                        <span style="font-family:${mono};font-size:11px;font-weight:700;color:${compColor}">${compLabel}</span>
+                    </div>
+                    <div style="width:100%;height:4px;background:${C.border}"><div style="width:${comp}%;height:100%;background:${compColor}"></div></div>
+                </div>
+                <div style="padding:8px 14px;border-bottom:1px solid ${C.border};">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                        <span style="font-family:${mono};font-size:8px;color:${C.dim}">QUALITY ESTIMATE</span>
+                        <div style="display:flex;align-items:baseline;gap:4px;">
+                            <span style="font-family:${mono};font-size:11px;font-weight:700;color:${qualityColor}">${qualityEst}</span>
+                            <span style="font-family:${mono};font-size:8px;color:${C.dim}">/100</span>
+                            <span style="font-family:${mono};font-size:8px;font-weight:700;color:${qualityColor}">${qualityLabel}</span>
+                        </div>
+                    </div>
+                    <div style="width:100%;height:4px;background:${C.border}"><div style="width:${qualityEst}%;height:100%;background:${qualityColor}"></div></div>
+                    <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:4px">Based on material grades. Workforce and events also affect final quality.</div>
+                </div>
+                <div style="flex:1"></div>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div style="padding:10px 16px;border-top:1px solid ${C.border};background:${C.card};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;gap:12px;">
+                <div><div style="font-family:${mono};font-size:7px;color:${C.dim}">YOUR BID</div><div style="font-family:${mono};font-size:14px;font-weight:700;color:${overBudget ? C.red : C.gold}">${hfFmtBig(bidPrice)}</div></div>
+                <div><div style="font-family:${mono};font-size:7px;color:${C.dim}">EST. PROFIT</div><div style="font-family:${mono};font-size:14px;font-weight:700;color:${C.greenBright}">+${hfFmtBig(profit)}</div></div>
+                <div><div style="font-family:${mono};font-size:7px;color:${C.dim}">QUALITY</div><div style="font-family:${mono};font-size:14px;font-weight:700;color:${qualityColor}">${qualityEst}</div></div>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <div onclick="closeBidAssembly()" style="padding:6px 20px;font-family:${mono};font-size:10px;font-weight:700;letter-spacing:1px;color:${C.dim};border:1px solid ${C.border};cursor:pointer">CANCEL</div>
+                <div onclick="${overBudget ? '' : 'submitBidAssembly()'}" style="padding:6px 24px;font-family:${mono};font-size:10px;font-weight:700;letter-spacing:1px;color:${overBudget ? C.dim : '#000'};background:${overBudget ? C.border : C.gold};cursor:${overBudget ? 'not-allowed' : 'pointer'};opacity:${overBudget ? 0.5 : 1}">SUBMIT BID</div>
+            </div>
+        </div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+}
+
+function submitBidAssembly() {
+    // Phase 5: Full DB write to contract_bids
+    alert('Phase 5: SUBMIT BID — coming in next phase.');
+}
+
+window.openBidAssembly = openBidAssembly;
+window.closeBidAssembly = closeBidAssembly;
+window.bidSetGrade = bidSetGrade;
+window.bidSetWorkers = bidSetWorkers;
+window.bidSetMarkup = bidSetMarkup;
+window.submitBidAssembly = submitBidAssembly;
 
 window.switchToExpansion = switchToExpansion;
 window.switchToOperations = switchToOperations;
