@@ -619,13 +619,16 @@ function bindSubmitHandler() {
                 const currentTick = shard?.current_tick || 0;
                 let momDelta = 1; // default: subsequent article
                 // Check how many articles this faction already published this tick
-                const { data: tickArticles } = await _supabase
-                    .from('news_articles')
+                const { data: tickArticles, error: tickCountErr } = await _supabase
+                    .from('player_articles')
                     .select('id')
                     .eq('author_faction_id', faction.id)
                     .eq('published_tick', currentTick);
+                if (tickCountErr) {
+                    console.error('[News] Failed to count articles this tick:', tickCountErr);
+                }
                 // Count includes the article we just inserted, so 1 means this is the first
-                if (!tickArticles || tickArticles.length <= 1) {
+                if (!tickCountErr && (!tickArticles || tickArticles.length <= 1)) {
                     momDelta = 3;
                 }
                 const momLabel = `News article published (+${momDelta})`;
