@@ -25036,11 +25036,13 @@ async function nudgeIssueRelations(supabase, nationAId, nationBId, delta) {
     const aId = nationAId < nationBId ? nationAId : nationBId;
     const bId = nationAId < nationBId ? nationBId : nationAId;
 
-    await supabase.rpc('nudge_relation_score', {
-        p_nation_a_id: aId,
-        p_nation_b_id: bId,
-        p_delta: delta
-    }).then(() => {}, async () => {
+    try {
+        await supabase.rpc('nudge_relation_score', {
+            p_nation_a_id: aId,
+            p_nation_b_id: bId,
+            p_delta: delta
+        });
+    } catch (_rpcErr) {
         // Fallback: direct update
         const { data: rel } = await supabase.from('diplomatic_relations')
             .select('relation_score')
@@ -25052,7 +25054,7 @@ async function nudgeIssueRelations(supabase, nationAId, nationBId, delta) {
             .update({ relation_score: Math.max(0, Math.min(100, current + delta)) })
             .eq('nation_a_id', aId)
             .eq('nation_b_id', bId);
-    });
+    }
 }
 
 /**
@@ -26271,6 +26273,8 @@ async function processArbitration(supabase, issueId, currentTick) {
                 .eq('issue_id', issueId)
                 .eq('event_type', 'status_changed')
                 .limit(1);
+
+            if (alreadyDone && alreadyDone.length > 0) continue;
 
             // Find if structural modifiers still exist
             const { data: structMods } = await supabase
