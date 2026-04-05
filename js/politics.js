@@ -5573,7 +5573,7 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
         </div>`;
     }).join('');
 
-    const noDataMsg = !statsAtStart
+    const noDataMsg = !administration?.stats_at_start
         ? '<div style="color:var(--dtext-3);font-size:11px;padding:10px">No administration data available.</div>'
         : statDeltas.length === 0
             ? '<div style="color:var(--dtext-3);font-size:11px;padding:10px">No stat changes recorded yet.</div>'
