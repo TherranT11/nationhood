@@ -3430,6 +3430,418 @@ async function unbanPlayer(userId, playerName) {
 }
 window.unbanPlayer = unbanPlayer;
 
+// ==================== BILATERAL ISSUES SPAWNER ====================
+
+const ISSUE_SPAWNER_TYPES = {
+    maritime_fishing_rights: {
+        key: 'maritime_fishing_rights',
+        name: 'Maritime Fishing Rights',
+        required_border: 'maritime',
+        description: 'Fishing vessels from both nations routinely operate in overlapping waters.',
+        starter_modifiers: [
+            'no_defined_maritime_territories',
+            'no_regulatory_framework',
+            'no_defined_quotas',
+            'no_joint_enforcement',
+            'no_dispute_resolution_mechanism',
+        ],
+    },
+};
+
+const ISSUE_SPAWNER_MODIFIERS = {
+    // Structural
+    no_defined_maritime_territories: { name: 'No Defined Maritime Territories', category: 'structural', applies_to: 'both', stat_effects: [{ stat_key: 'stability', delta: -0.1 }], duration: null, spawn_chance: 1.0 },
+    no_regulatory_framework: { name: 'No Regulatory Framework', category: 'structural', applies_to: 'both', stat_effects: [{ stat_key: 'pollution', delta: 0.1 }], duration: null, spawn_chance: 1.0 },
+    no_defined_quotas: { name: 'No Defined Quotas', category: 'structural', applies_to: 'both', stat_effects: [{ stat_key: 'population_growth', delta: -0.05 }], duration: null, spawn_chance: 1.0 },
+    no_joint_enforcement: { name: 'No Joint Enforcement', category: 'structural', applies_to: 'both', stat_effects: [{ stat_key: 'crime_rate', delta: 0.1 }], duration: null, spawn_chance: 0.6 },
+    no_dispute_resolution_mechanism: { name: 'No Dispute Resolution Mechanism', category: 'structural', applies_to: 'disfavored', stat_effects: [{ stat_key: 'gov_approval', delta: -0.1 }], duration: null, spawn_chance: 0.4 },
+    // Competitive
+    overfishing: { name: 'Overfishing in Disputed Waters', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'arable_land', delta: -0.1 }, { stat_key: 'population_growth', delta: -0.1 }], duration: 30 },
+    fish_stock_depletion: { name: 'Fish Stock Depletion', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'cost_of_living', delta: 0.2 }], duration: 40 },
+    foreign_vessels_in_waters: { name: 'Foreign Vessels in Your Waters', category: 'competitive', applies_to: 'disfavored', stat_effects: [{ stat_key: 'gov_approval', delta: -0.15 }, { stat_key: 'civil_unrest', delta: 0.1 }], duration: 20 },
+    coastal_community_decline: { name: 'Coastal Community Decline', category: 'competitive', applies_to: 'disfavored', stat_effects: [{ stat_key: 'unemployment', delta: 0.1 }, { stat_key: 'poverty_rate', delta: 0.1 }, { stat_key: 'emigration', delta: 0.1 }], duration: 30 },
+    illegal_fishing_surge: { name: 'Illegal Fishing Surge', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'crime_rate', delta: 0.2 }, { stat_key: 'corruption', delta: 0.1 }], duration: 20 },
+    diplomatic_friction: { name: 'Diplomatic Friction', category: 'competitive', applies_to: 'both', stat_effects: [], duration: 30 },
+    international_attention: { name: 'International Attention', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'international_reputation', delta: -0.1 }], duration: 20 },
+    seasonal_fishing_conflict: { name: 'Seasonal Fishing Conflict', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'civil_unrest', delta: 0.2 }], duration: null, is_periodic: true, periodic_interval: 20, periodic_duration: 8 },
+    environmental_damage: { name: 'Environmental Damage', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'arable_land', delta: -0.2 }, { stat_key: 'pollution', delta: 0.1 }], duration: 25 },
+    domestic_fleet_expansion: { name: 'Domestic Fleet Expansion', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'manufacturing_output', delta: 0.1 }, { stat_key: 'pollution', delta: 0.1 }], duration: 15 },
+    // Escalation
+    active_vessel_expulsion: { name: 'Active Vessel Expulsion', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'trade_balance', delta: -0.2 }], duration: 15 },
+    naval_presence: { name: 'Naval Presence', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'stability', delta: -0.2 }], duration: 20 },
+    seized_vessel_held: { name: 'Seized Vessel Held', category: 'escalation', applies_to: 'disfavored', stat_effects: [{ stat_key: 'gov_approval', delta: -0.3 }, { stat_key: 'civil_unrest', delta: 0.2 }], duration: 10 },
+    fishing_ban_in_effect: { name: 'Fishing Ban in Effect', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'cost_of_living', delta: 0.2 }, { stat_key: 'manufacturing_output', delta: -0.1 }], duration: 20 },
+    public_hostility: { name: 'Public Hostility', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'polarization', delta: 0.1 }, { stat_key: 'civil_unrest', delta: 0.1 }, { stat_key: 'immigration', delta: -0.1 }], duration: 15 },
+};
+
+let _issueNations = [];
+let _issueRelations = [];
+
+async function initIssueSpawner() {
+    console.log('[Issues Spawner] Initializing...');
+    const container = document.getElementById('issue-spawner-panel');
+    if (!container) { console.warn('[Issues Spawner] Container not found'); return; }
+
+    // Load nations
+    const { data: nats, error: natErr } = await _supabase.from('nations').select('id, name').order('name');
+    if (natErr) console.error('[Issues Spawner] Nations load error:', natErr);
+    _issueNations = nats || [];
+    console.log('[Issues Spawner] Loaded', _issueNations.length, 'nations');
+
+    // Load diplomatic relations (for border types + current tension info)
+    const { data: rels, error: relErr } = await _supabase.from('diplomatic_relations')
+        .select('nation_a_id, nation_b_id, border_types, relation_score, proximity');
+    if (relErr) console.error('[Issues Spawner] Relations load error:', relErr);
+    _issueRelations = rels || [];
+
+    renderIssueSpawner();
+    console.log('[Issues Spawner] Rendered.');
+}
+
+function getRelation(aId, bId) {
+    const cA = aId < bId ? aId : bId;
+    const cB = aId < bId ? bId : aId;
+    return _issueRelations.find(r => r.nation_a_id === cA && r.nation_b_id === cB);
+}
+
+function renderIssueSpawner() {
+    const container = document.getElementById('issue-spawner-panel');
+    if (!container) return;
+
+    const nationOpts = _issueNations.map(n => `<option value="${n.id}">${esc(n.name)}</option>`).join('');
+    const typeOpts = Object.values(ISSUE_SPAWNER_TYPES).map(t => `<option value="${t.key}">${esc(t.name)}</option>`).join('');
+
+    container.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+            <div>
+                <label style="color:#999;font-size:12px;display:block;margin-bottom:4px;">Nation A</label>
+                <select id="is-nation-a" style="width:100%;padding:8px;background:#333;color:#eee;border:1px solid #555;border-radius:4px;">
+                    <option value="">— Select —</option>${nationOpts}
+                </select>
+            </div>
+            <div>
+                <label style="color:#999;font-size:12px;display:block;margin-bottom:4px;">Nation B</label>
+                <select id="is-nation-b" style="width:100%;padding:8px;background:#333;color:#eee;border:1px solid #555;border-radius:4px;">
+                    <option value="">— Select —</option>${nationOpts}
+                </select>
+            </div>
+        </div>
+        <div id="is-relation-info" style="margin-bottom:16px;padding:8px 12px;background:#2a2a2a;border-radius:4px;color:#888;font-size:13px;display:none;"></div>
+        <div style="margin-bottom:16px;">
+            <label style="color:#999;font-size:12px;display:block;margin-bottom:4px;">Issue Type</label>
+            <select id="is-issue-type" style="width:100%;padding:8px;background:#333;color:#eee;border:1px solid #555;border-radius:4px;">
+                ${typeOpts}
+            </select>
+            <div id="is-type-desc" style="color:#888;font-size:12px;margin-top:4px;font-style:italic;"></div>
+            <div id="is-border-warning" style="color:#d9534f;font-size:12px;margin-top:4px;display:none;"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+            <div>
+                <label style="color:#999;font-size:12px;display:block;margin-bottom:4px;">Starting Tension: <span id="is-tension-val" style="color:#ffcc00;">0</span></label>
+                <input type="range" id="is-tension" min="0" max="10" step="0.25" value="0" style="width:100%;">
+                <div style="display:flex;justify-content:space-between;font-size:10px;color:#666;"><span>0 (Low)</span><span>5 (Moderate)</span><span>10 (Critical)</span></div>
+            </div>
+            <div>
+                <label style="color:#999;font-size:12px;display:block;margin-bottom:4px;">Starting Favor: <span id="is-favor-val" style="color:#ffcc00;">0 (Neutral)</span></label>
+                <input type="range" id="is-favor" min="0" max="5" step="1" value="0" style="width:100%;">
+                <div style="margin-top:6px;">
+                    <label style="color:#999;font-size:11px;margin-right:8px;">Favors:</label>
+                    <label style="color:#ccc;font-size:12px;margin-right:12px;"><input type="radio" name="is-favor-side" value="a" checked> <span id="is-favor-label-a">Nation A</span></label>
+                    <label style="color:#ccc;font-size:12px;"><input type="radio" name="is-favor-side" value="b"> <span id="is-favor-label-b">Nation B</span></label>
+                </div>
+            </div>
+        </div>
+        <div style="margin-bottom:16px;">
+            <label style="color:#999;font-size:12px;display:block;margin-bottom:8px;">Status</label>
+            <select id="is-status" style="padding:8px;background:#333;color:#eee;border:1px solid #555;border-radius:4px;">
+                <option value="active" selected>Active</option>
+                <option value="partial">Partial</option>
+                <option value="escalated">Escalated</option>
+            </select>
+        </div>
+        <div style="margin-bottom:16px;">
+            <label style="color:#999;font-size:12px;display:block;margin-bottom:8px;">Modifiers</label>
+            <div style="margin-bottom:8px;">
+                <button class="btn btn-secondary btn-sm" onclick="isSelectStarterMods()" style="margin-right:6px;font-size:11px;padding:4px 10px;">Select Starter Mods</button>
+                <button class="btn btn-secondary btn-sm" onclick="isSelectAllMods()" style="margin-right:6px;font-size:11px;padding:4px 10px;">Select All</button>
+                <button class="btn btn-secondary btn-sm" onclick="isClearMods()" style="font-size:11px;padding:4px 10px;">Clear All</button>
+            </div>
+            <div id="is-modifiers" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;"></div>
+        </div>
+        <div style="border-top:1px solid #444;padding-top:16px;display:flex;align-items:center;gap:12px;">
+            <button class="btn btn-primary" onclick="spawnBilateralIssue()" style="padding:10px 24px;">Spawn Issue</button>
+            <span id="is-spawn-status" style="font-size:13px;"></span>
+        </div>
+    `;
+
+    // Render modifier checkboxes grouped by category
+    renderModifierCheckboxes();
+
+    // Listeners
+    document.getElementById('is-nation-a').addEventListener('change', onIssueNationChange);
+    document.getElementById('is-nation-b').addEventListener('change', onIssueNationChange);
+    document.getElementById('is-issue-type').addEventListener('change', onIssueTypeChange);
+    document.getElementById('is-tension').addEventListener('input', () => {
+        document.getElementById('is-tension-val').textContent = document.getElementById('is-tension').value;
+    });
+    document.getElementById('is-favor').addEventListener('input', updateFavorLabel);
+
+    onIssueTypeChange();
+}
+
+function renderModifierCheckboxes() {
+    const container = document.getElementById('is-modifiers');
+    if (!container) return;
+
+    const groups = { structural: [], competitive: [], escalation: [] };
+    for (const [key, mod] of Object.entries(ISSUE_SPAWNER_MODIFIERS)) {
+        groups[mod.category] = groups[mod.category] || [];
+        groups[mod.category].push({ key, ...mod });
+    }
+
+    let html = '';
+    for (const [cat, mods] of Object.entries(groups)) {
+        const catColor = cat === 'structural' ? '#5bc0de' : cat === 'competitive' ? '#f0ad4e' : '#d9534f';
+        html += `<div style="grid-column:1/-1;margin-top:8px;"><span style="color:${catColor};font-size:11px;font-weight:bold;text-transform:uppercase;">${cat}</span></div>`;
+        for (const m of mods) {
+            const chanceTag = m.spawn_chance != null ? ` <span style="color:#888;font-size:10px;">(${Math.round(m.spawn_chance * 100)}%)</span>` : '';
+            const durTag = m.duration ? ` <span style="color:#666;font-size:10px;">${m.duration}t</span>` : m.is_periodic ? ` <span style="color:#666;font-size:10px;">periodic</span>` : '';
+            html += `<label style="display:flex;align-items:center;gap:6px;color:#ccc;font-size:12px;padding:2px 4px;cursor:pointer;">
+                <input type="checkbox" class="is-mod-cb" data-key="${m.key}" value="1"> ${esc(m.name)}${chanceTag}${durTag}
+            </label>`;
+        }
+    }
+    container.innerHTML = html;
+}
+
+function onIssueNationChange() {
+    const aId = document.getElementById('is-nation-a').value;
+    const bId = document.getElementById('is-nation-b').value;
+    const infoDiv = document.getElementById('is-relation-info');
+
+    // Update favor labels
+    const aName = _issueNations.find(n => n.id === aId)?.name || 'Nation A';
+    const bName = _issueNations.find(n => n.id === bId)?.name || 'Nation B';
+    document.getElementById('is-favor-label-a').textContent = aName;
+    document.getElementById('is-favor-label-b').textContent = bName;
+
+    if (!aId || !bId || aId === bId) {
+        infoDiv.style.display = 'none';
+        return;
+    }
+
+    const rel = getRelation(aId, bId);
+    if (rel) {
+        const borders = rel.border_types || [];
+        const borderStr = borders.length ? borders.join(', ') : 'none';
+        infoDiv.innerHTML = `<strong>Relation:</strong> score ${rel.relation_score}, proximity ${rel.proximity} | <strong>Borders:</strong> ${borderStr}`;
+        infoDiv.style.display = 'block';
+    } else {
+        infoDiv.innerHTML = '<span style="color:#d9534f;">No diplomatic relation found between these nations.</span>';
+        infoDiv.style.display = 'block';
+    }
+
+    // Check border requirement
+    checkBorderRequirement();
+}
+
+function onIssueTypeChange() {
+    const typeKey = document.getElementById('is-issue-type').value;
+    const typeDef = ISSUE_SPAWNER_TYPES[typeKey];
+    document.getElementById('is-type-desc').textContent = typeDef?.description || '';
+    checkBorderRequirement();
+}
+
+function checkBorderRequirement() {
+    const typeKey = document.getElementById('is-issue-type').value;
+    const typeDef = ISSUE_SPAWNER_TYPES[typeKey];
+    const aId = document.getElementById('is-nation-a').value;
+    const bId = document.getElementById('is-nation-b').value;
+    const warnDiv = document.getElementById('is-border-warning');
+
+    if (!typeDef?.required_border || !aId || !bId || aId === bId) {
+        warnDiv.style.display = 'none';
+        return;
+    }
+
+    const rel = getRelation(aId, bId);
+    const borders = rel?.border_types || [];
+    if (!borders.includes(typeDef.required_border)) {
+        warnDiv.textContent = `Warning: This issue requires a "${typeDef.required_border}" border, but these nations share: ${borders.length ? borders.join(', ') : 'none'}. You can still spawn it for testing.`;
+        warnDiv.style.display = 'block';
+    } else {
+        warnDiv.style.display = 'none';
+    }
+}
+
+function updateFavorLabel() {
+    const val = parseInt(document.getElementById('is-favor').value, 10);
+    const label = val === 0 ? '0 (Neutral)' : `${val}`;
+    document.getElementById('is-favor-val').textContent = label;
+}
+
+function isSelectStarterMods() {
+    const typeKey = document.getElementById('is-issue-type').value;
+    const typeDef = ISSUE_SPAWNER_TYPES[typeKey];
+    if (!typeDef) return;
+
+    document.querySelectorAll('.is-mod-cb').forEach(cb => {
+        const key = cb.dataset.key;
+        const mod = ISSUE_SPAWNER_MODIFIERS[key];
+        if (typeDef.starter_modifiers.includes(key)) {
+            // Respect spawn_chance for probabilistic starters
+            const chance = mod?.spawn_chance ?? 1.0;
+            cb.checked = Math.random() < chance;
+        } else {
+            cb.checked = false;
+        }
+    });
+}
+
+function isSelectAllMods() {
+    document.querySelectorAll('.is-mod-cb').forEach(cb => cb.checked = true);
+}
+
+function isClearMods() {
+    document.querySelectorAll('.is-mod-cb').forEach(cb => cb.checked = false);
+}
+
+async function spawnBilateralIssue() {
+    const status = document.getElementById('is-spawn-status');
+    const nationA = document.getElementById('is-nation-a').value;
+    const nationB = document.getElementById('is-nation-b').value;
+    const issueType = document.getElementById('is-issue-type').value;
+    const tension = parseFloat(document.getElementById('is-tension').value);
+    const favor = parseInt(document.getElementById('is-favor').value, 10);
+    const favorSide = document.querySelector('input[name="is-favor-side"]:checked')?.value || 'a';
+    const issueStatus = document.getElementById('is-status').value;
+
+    if (!nationA || !nationB) { status.textContent = 'Select both nations.'; status.style.color = '#d9534f'; return; }
+    if (nationA === nationB) { status.textContent = 'Nations must be different.'; status.style.color = '#d9534f'; return; }
+
+    // Build modifiers array
+    const modifiers = [];
+    document.querySelectorAll('.is-mod-cb:checked').forEach(cb => {
+        const key = cb.dataset.key;
+        const def = ISSUE_SPAWNER_MODIFIERS[key];
+        if (!def) return;
+        modifiers.push({
+            modifier_key: key,
+            category: def.category,
+            applies_to: def.applies_to || 'both',
+            stat_effects: def.stat_effects || [],
+            duration_remaining: def.duration || null,
+            is_periodic: def.is_periodic || false,
+            periodic_interval: def.periodic_interval || null,
+            periodic_duration: def.periodic_duration || null,
+        });
+    });
+
+    status.textContent = 'Spawning...'; status.style.color = '#ffcc00';
+
+    const { data, error } = await _supabase.rpc('admin_spawn_bilateral_issue', {
+        p_nation_a_id: nationA,
+        p_nation_b_id: nationB,
+        p_issue_type: issueType,
+        p_tension: tension,
+        p_favor: favor,
+        p_favor_nation: favorSide,
+        p_modifiers: modifiers,
+        p_status: issueStatus,
+    });
+
+    if (error) {
+        status.textContent = 'RPC error: ' + error.message;
+        status.style.color = '#d9534f';
+        return;
+    }
+
+    if (data?.ok) {
+        const aName = _issueNations.find(n => n.id === nationA)?.name || '?';
+        const bName = _issueNations.find(n => n.id === nationB)?.name || '?';
+        status.innerHTML = `<span style="color:#5cb85c;">Spawned!</span> ${esc(aName)} vs ${esc(bName)} — tension ${data.tension}, favor ${data.favor} — ${modifiers.length} modifier(s). ID: <code style="color:#ffcc00;">${data.issue_id?.slice(0,8)}</code>`;
+        // Load active issues list
+        await loadActiveIssues();
+    } else {
+        status.textContent = data?.message || 'Unknown error';
+        status.style.color = '#d9534f';
+    }
+}
+
+async function loadActiveIssues() {
+    const list = document.getElementById('is-active-list');
+    if (!list) return;
+
+    const { data: issues } = await _supabase
+        .from('bilateral_issues')
+        .select('id, issue_type, nation_a_id, nation_b_id, tension, favor, status, created_tick')
+        .in('status', ['active', 'partial', 'escalated'])
+        .order('created_tick', { ascending: false });
+
+    if (!issues || issues.length === 0) {
+        list.innerHTML = '<div style="color:#888;font-size:13px;padding:8px;">No active issues.</div>';
+        return;
+    }
+
+    const nameMap = {};
+    _issueNations.forEach(n => nameMap[n.id] = n.name);
+
+    let html = '<table style="width:100%;font-size:12px;border-collapse:collapse;">';
+    html += '<tr style="color:#999;border-bottom:1px solid #444;"><th style="text-align:left;padding:4px;">Type</th><th>Nations</th><th>Tension</th><th>Favor</th><th>Status</th><th>Tick</th><th></th></tr>';
+    for (const i of issues) {
+        const tensionColor = i.tension <= 2 ? '#5cb85c' : i.tension <= 5 ? '#f0ad4e' : i.tension <= 8 ? '#d9534f' : '#ff4444';
+        html += `<tr style="border-bottom:1px solid #333;">
+            <td style="padding:4px;color:#ccc;">${esc(i.issue_type.replace(/_/g, ' '))}</td>
+            <td style="padding:4px;color:#ccc;">${esc(nameMap[i.nation_a_id] || '?')} vs ${esc(nameMap[i.nation_b_id] || '?')}</td>
+            <td style="padding:4px;text-align:center;color:${tensionColor};font-weight:bold;">${i.tension}</td>
+            <td style="padding:4px;text-align:center;color:#ccc;">${i.favor > 0 ? '+' : ''}${i.favor}</td>
+            <td style="padding:4px;text-align:center;"><span style="color:${i.status === 'active' ? '#5cb85c' : i.status === 'escalated' ? '#d9534f' : '#f0ad4e'};">${i.status}</span></td>
+            <td style="padding:4px;text-align:center;color:#888;">${i.created_tick}</td>
+            <td style="padding:4px;"><button class="btn btn-danger btn-sm" onclick="deleteIssue('${i.id}')" style="font-size:10px;padding:2px 8px;">Delete</button></td>
+        </tr>`;
+    }
+    html += '</table>';
+    list.innerHTML = html;
+}
+
+async function deleteIssue(issueId) {
+    if (!confirm('Delete this issue and all its modifiers/history?')) return;
+
+    const { data, error } = await _supabase.rpc('admin_delete_bilateral_issue', { p_issue_id: issueId });
+    if (error) { alert('Delete failed: ' + error.message); return; }
+    if (!data?.ok) { alert(data?.message || 'Delete failed.'); return; }
+    await loadActiveIssues();
+}
+
+// Init on tab switch — also try on admin-panel-loaded in case user lands on Issues tab
+var _issueSpawnerLoaded = false;
+async function tryInitIssueSpawner() {
+    if (_issueSpawnerLoaded) return;
+    if (!document.getElementById('issue-spawner-panel')) return;
+    _issueSpawnerLoaded = true;
+    try {
+        await initIssueSpawner();
+        await loadActiveIssues();
+    } catch (e) { console.error('[Issues Spawner] Init error:', e); }
+}
+var _prevShowTab3 = showTab;
+showTab = function(tabName) {
+    _prevShowTab3(tabName);
+    if (tabName === 'issues') tryInitIssueSpawner();
+};
+window.showTab = showTab;
+document.addEventListener('admin-panel-loaded', () => {
+    // If user clicks Issues tab before panel loaded, retry
+    const active = document.querySelector('.tab-content.active');
+    if (active?.id === 'tab-issues') tryInitIssueSpawner();
+});
+
+window.isSelectStarterMods = isSelectStarterMods;
+window.isSelectAllMods = isSelectAllMods;
+window.isClearMods = isClearMods;
+window.spawnBilateralIssue = spawnBilateralIssue;
+window.deleteIssue = deleteIssue;
+
 </script>
 </body>
 </html>
