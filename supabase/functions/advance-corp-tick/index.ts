@@ -710,51 +710,49 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
 // Reputation scales returns (25 = 0.25x, 50 = 0.50x, 100 = 1.0x)
 // Losses clamped to max 5% of sub_cash per tick to prevent wipeout.
 
+const SUB_REVENUE_BASE = 0.02;
+const SUB_GDP_NEUTRAL = 30;
+const SUB_DEFAULT_REPUTATION = 25;
+const SUB_MAX_LOSS_RATE = 0.05;
+
 async function processSubsidiaryRevenue(supabase, nation, corps, currentTick) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
+    const corpIds = corps.map(c => c.id);
+    const corpMap = Object.fromEntries(corps.map(c => [c.id, c]));
 
-    for (const corp of corps) {
-        // Load regional HQs for this corp in this nation
-        const { data: hqs, error: hqErr } = await supabase
+    // Single query for all corps in this nation
+    const { data: hqs, error: hqErr } = await supabase
+        .from('corp_properties')
+        .select('id, sub_cash, name, faction_id')
+        .in('faction_id', corpIds)
+        .eq('nation_id', nation.id)
+        .eq('type', 'regional_hq')
+        .eq('is_active', true)
+        .gt('sub_cash', 0);
+
+    if (hqErr || !hqs || hqs.length === 0) return;
+
+    const repMult = SUB_DEFAULT_REPUTATION / 100;
+    for (const hq of hqs) {
+        const subCash = Number(hq.sub_cash);
+        const base = subCash * SUB_REVENUE_BASE;
+        const gdpMod = (gdpGrowth - SUB_GDP_NEUTRAL) / 100;
+        let revenue = Math.round(base * (1 + gdpMod) * repMult);
+
+        if (revenue < 0) revenue = Math.max(revenue, -Math.round(subCash * SUB_MAX_LOSS_RATE));
+        if (revenue === 0) continue;
+
+        const newSubCash = Math.max(0, subCash + revenue);
+        const { error: updErr } = await supabase
             .from('corp_properties')
-            .select('id, sub_cash, name')
-            .eq('faction_id', corp.id)
-            .eq('nation_id', nation.id)
-            .eq('type', 'regional_hq')
-            .eq('is_active', true);
+            .update({ sub_cash: newSubCash })
+            .eq('id', hq.id);
 
-        if (hqErr || !hqs || hqs.length === 0) continue;
-
-        for (const hq of hqs) {
-            const subCash = Number(hq.sub_cash || 0);
-            if (subCash <= 0) continue; // No cash deployed = no revenue
-
-            // Subsidiary reputation — fixed at 25 for now (future: per-subsidiary column)
-            const reputation = 25;
-
-            const base = subCash * 0.02;
-            const gdpMod = (gdpGrowth - 30) / 100; // negative when GDP < 30
-            const repMult = reputation / 100;
-            let revenue = Math.round(base * (1 + gdpMod) * repMult);
-
-            // Clamp losses to max 5% of sub_cash per tick
-            const maxLoss = Math.round(subCash * 0.05);
-            if (revenue < 0) revenue = Math.max(revenue, -maxLoss);
-
-            if (revenue === 0) continue;
-
-            const newSubCash = Math.max(0, subCash + revenue);
-            const { error: updErr } = await supabase
-                .from('corp_properties')
-                .update({ sub_cash: newSubCash })
-                .eq('id', hq.id);
-
-            if (updErr) {
-                console.warn(`[SubRevenue] Failed to update sub_cash for ${hq.name}:`, updErr.message);
-            } else {
-                const sign = revenue >= 0 ? '+' : '';
-                console.log(`[SubRevenue] ${corp.faction_name} → ${hq.name}: ${sign}${revenue.toLocaleString()} (GDP:${gdpGrowth}, cash:${subCash.toLocaleString()} → ${newSubCash.toLocaleString()})`);
-            }
+        const corp = corpMap[hq.faction_id];
+        if (updErr) {
+            console.warn(`[SubRevenue] Failed to update sub_cash for ${hq.name}:`, updErr.message);
+        } else {
+            console.log(`[SubRevenue] ${corp?.faction_name || '?'} → ${hq.name}: ${revenue >= 0 ? '+' : ''}${revenue.toLocaleString()} (GDP:${gdpGrowth}, cash:${subCash.toLocaleString()} → ${newSubCash.toLocaleString()})`);
         }
     }
 }
