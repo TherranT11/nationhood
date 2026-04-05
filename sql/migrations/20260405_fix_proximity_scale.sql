@@ -151,8 +151,8 @@ UPDATE diplomatic_relations SET proximity = 84
 WHERE nation_a_id = LEAST((SELECT id FROM nations WHERE LOWER(name) = 'flandis'), (SELECT id FROM nations WHERE LOWER(name) = 'palvera'))
   AND nation_b_id = GREATEST((SELECT id FROM nations WHERE LOWER(name) = 'flandis'), (SELECT id FROM nations WHERE LOWER(name) = 'palvera'));
 
--- Flandis ↔ Calveth (60 — both island nations, closest to each other)
-UPDATE diplomatic_relations SET proximity = 60
+-- Flandis ↔ Calveth (15 — both island nations, close neighbors)
+UPDATE diplomatic_relations SET proximity = 15
 WHERE nation_a_id = LEAST((SELECT id FROM nations WHERE LOWER(name) = 'flandis'), (SELECT id FROM nations WHERE LOWER(name) = 'calveth'))
   AND nation_b_id = GREATEST((SELECT id FROM nations WHERE LOWER(name) = 'flandis'), (SELECT id FROM nations WHERE LOWER(name) = 'calveth'));
 
