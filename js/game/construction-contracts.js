@@ -1,5 +1,5 @@
 /**
- * construction-contracts.js — Contract templates for automated government bid generation
+ * construction-contracts.js — Contract templates for automated private-sector bid generation
  *
  * Three sub-sectors:
  *   1. Civil Engineering ($30M–$300M) — always at least 1 per generation cycle
@@ -7,10 +7,10 @@
  *   3. Mega Projects ($800M–$4B) — GDP 75+ only, 360-tick cooldown per nation
  *
  * Generation rules (every 3 ticks per nation):
- *   GDP 0–25:  0 contracts
- *   GDP 26–50: 1 contract
- *   GDP 51–74: 2 contracts
- *   GDP 75–100: 4 contracts
+ *   GDP 0–25:  2 contracts
+ *   GDP 26–50: 3 contracts
+ *   GDP 51–74: 4 contracts
+ *   GDP 75–100: 5 contracts
  *   MAX OPEN PROJECTS = active_corporations + 2
  *   Civil engineering always gets at least 1 slot
  *   Mega projects only at GDP 75+, 360-tick cooldown
@@ -426,10 +426,10 @@ export const CONTRACT_GENERATION = {
     MEGA_PROJECT_MIN_GDP: 75,   // GDP must be 75+ for mega projects
     // GDP tiers determine how many NEW contracts to generate per cycle
     GDP_TIERS: [
-        { min: 0,  max: 25,  contracts: 0 },
-        { min: 26, max: 50,  contracts: 1 },
-        { min: 51, max: 74,  contracts: 2 },
-        { min: 75, max: 100, contracts: 4 },
+        { min: 0,  max: 25,  contracts: 2 },
+        { min: 26, max: 50,  contracts: 3 },
+        { min: 51, max: 74,  contracts: 4 },
+        { min: 75, max: 100, contracts: 5 },
     ],
     // Max open contracts = active_corporations + 2
     // If max is already reached, no new contracts are generated

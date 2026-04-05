@@ -294,11 +294,10 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
     const gdp = Number(nation.gdp_growth ?? 50);
 
     // Determine how many contracts this GDP tier generates
-    let targetContracts = 0;
-    if (gdp >= 75) targetContracts = 4;
-    else if (gdp >= 51) targetContracts = 2;
-    else if (gdp >= 26) targetContracts = 1;
-    if (targetContracts === 0) return [];
+    let targetContracts = 2;
+    if (gdp >= 75) targetContracts = 5;
+    else if (gdp >= 51) targetContracts = 4;
+    else if (gdp >= 26) targetContracts = 3;
 
     // Count active corporations in this nation (exclude dissolved)
     const { count: corpCount } = await supabase
@@ -426,8 +425,8 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
         const projectId = `${SECTOR_PREFIX[sector]}${contractSeq}-${gameYear}`;
         contractSeq++;
 
-        // Issuer: auto-generated contracts are always from the local government
-        const issuerName = `Local Corporation — ${nation.name}`;
+        // Issuer: auto-generated contracts are private sector offerings
+        const issuerName = PRIVATE_ISSUERS[Math.floor(Math.random() * PRIVATE_ISSUERS.length)];
 
         const { data: contract, error } = await supabase.from('construction_contracts').insert({
             nation_id: nation.id,
@@ -444,7 +443,7 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
             status: 'open',
             generated_at_tick: currentTick,
             bidding_ends_tick: currentTick + 3,
-            issuer_type: 'GOV',
+            issuer_type: 'PRIVATE',
             issuer_name: issuerName,
         }).select('id, name, sector').single();
 
