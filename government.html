@@ -485,77 +485,10 @@ const MINISTRY_ACTIONS = {
     energy: {
         actions: [
             {
-                id: 'greenEnergyTransition',
-                triggerKey: 'ministry_green_energy_transition',
-                name: 'Green Energy Transition',
-                desc: 'Invest in renewable energy infrastructure. Reduces emissions long-term but raises short-term costs.',
-                apCosts: [3, 4, 6, 9],
-                budgetPerCapita: 1000000 / 6000000, // $1M per 6M pop per tick
-                delay: 3, duration: 10,
-                decayTicks: 4,
-                useResetInterval: 18,
-                conflictsWith: 'fossilFuelExpansion',
-                tags: [
-                    { label: 'RENEWABLES +3', cls: 'positive' },
-                    { label: 'EMISSIONS −2', cls: 'positive' },
-                    { label: 'FUEL PRICES +2', cls: 'negative' },
-                    { label: 'MANUFACTURING −1', cls: 'negative' }
-                ],
-                baseEffects: [
-                    { stat_key: 'renewable_energy_percentage', direction: 'up',   rate: 3, scalable: true },
-                    { stat_key: 'carbon_emissions',            direction: 'down', rate: 2, scalable: true },
-                    { stat_key: 'fuel_prices',                 direction: 'up',   rate: 2, scalable: false },
-                    { stat_key: 'manufacturing_output',        direction: 'down', rate: 1, scalable: false },
-                    { stat_key: 'minister_approval',           direction: 'down', rate: 1, scalable: false, target: 'minister', delayOverride: 0, durationOverride: 2 }
-                ]
-            },
-            {
-                id: 'fossilFuelExpansion',
-                triggerKey: 'ministry_fossil_fuel_expansion',
-                name: 'Fossil Fuel Expansion',
-                desc: 'Expand oil, gas, and coal extraction. Boosts energy output and lowers prices but worsens pollution.',
-                apCosts: [2, 3, 5, 8],
-                budgetPerCapita: 1000000 / 8000000, // $1M per 8M pop per tick
-                delay: 1, duration: 8,
-                decayTicks: 3,
-                useResetInterval: 15,
-                conflictsWith: 'greenEnergyTransition',
-                tags: [
-                    { label: 'ENERGY +3', cls: 'positive' },
-                    { label: 'FUEL PRICES −2', cls: 'positive' },
-                    { label: 'EMISSIONS +3', cls: 'negative' },
-                    { label: 'POLLUTION +2', cls: 'negative' }
-                ],
-                baseEffects: [
-                    { stat_key: 'energy_generation',           direction: 'up',   rate: 3, scalable: true },
-                    { stat_key: 'fuel_prices',                 direction: 'down', rate: 2, scalable: true },
-                    { stat_key: 'carbon_emissions',            direction: 'up',   rate: 3, scalable: false },
-                    { stat_key: 'pollution',                   direction: 'up',   rate: 2, scalable: false },
-                    { stat_key: 'minister_approval',           direction: 'up',   rate: 1, scalable: false, target: 'minister', delayOverride: 0, durationOverride: 1 }
-                ]
-            },
-            {
-                id: 'energyEfficiencyProgram',
-                triggerKey: 'ministry_energy_efficiency_program',
-                name: 'Energy Efficiency Program',
-                desc: 'Fund insulation, smart grids, and efficiency standards. Broad benefits but slow to materialise.',
-                apCosts: [2, 3, 4, 6],
-                budgetPerCapita: 1000000 / 10000000, // $1M per 10M pop per tick
-                delay: 4, duration: 12,
-                decayTicks: 5,
-                useResetInterval: 20,
-                tags: [
-                    { label: 'FUEL PRICES −1', cls: 'positive' },
-                    { label: 'POLLUTION −1', cls: 'positive' },
-                    { label: 'STD OF LIVING +1', cls: 'positive' },
-                    { label: 'ENERGY +1', cls: 'positive' }
-                ],
-                baseEffects: [
-                    { stat_key: 'fuel_prices',                 direction: 'down', rate: 1, scalable: true },
-                    { stat_key: 'pollution',                   direction: 'down', rate: 1, scalable: true },
-                    { stat_key: 'standard_of_living',          direction: 'up',   rate: 1, scalable: true },
-                    { stat_key: 'energy_generation',           direction: 'up',   rate: 1, scalable: true }
-                ]
+                id: 'expandInfrastructure',
+                name: 'Expand Infrastructure',
+                desc: 'Fund construction and modernisation of energy generation and distribution infrastructure.',
+                comingSoon: true
             }
         ]
     },
@@ -3411,6 +3344,8 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
     if (ministryKey === 'labor') return buildLaborActionRows(isMyMinistry);
     // Education ministry has a custom action layout
     if (ministryKey === 'education') return buildEducationActionRows(isMyMinistry);
+    // Energy ministry has a custom action layout (oil reserves system)
+    if (ministryKey === 'energy') return buildEnergyActionRows(isMyMinistry);
 
     // Foreign ministry actions live on the Diplomacy page
     if (ministryKey === 'foreign') {
@@ -4740,6 +4675,38 @@ async function confirmLaborWorkforceAction(actionId) {
     }
 }
 
+// ==================== ENERGY MINISTRY — CUSTOM ACTION ROWS ====================
+
+function buildEnergyActionRows(isMyMinistry) {
+    const comingSoonBtn = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div>`;
+    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb || 0);
+    const pop = currentNation?.population || 20000000;
+    const reserveCap = Math.round((pop / 1000000) * 20);
+
+    let html = `<div class="ministry-card__actions-label" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>ACTIONS</span>
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--text-muted);letter-spacing:0.03em;">Strategic Oil Reserve: <span style="color:${reserveMb > 0 ? '#c8a64e' : 'var(--text-dim)'}">${reserveMb} Mb</span> / ${reserveCap} Mb</span>
+    </div>`;
+
+    // Action 1: Expand Infrastructure — COMING SOON
+    html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Expand Infrastructure</span>
+            <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
+        </div>
+        <div class="ministry-action__desc">Fund construction and modernisation of energy generation and distribution infrastructure.</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags"></div>
+            <div>${comingSoonBtn}</div>
+        </div>
+    </div>`;
+
+    // Action 2: Build Oil Reserves — placeholder for Phase 3
+    // Action 3: Release Oil Reserves — placeholder for Phase 4
+
+    return html;
+}
+
 function _curriculumAxisLabel(axisId) {
     const a = CURRICULUM_AXES.find(x => x.id === axisId);
     return a ? `${a.left} / ${a.right}` : axisId;
@@ -5556,7 +5523,7 @@ function ministryActionDeselect(actionId) {
 // after AP changes (avoids full page re-render)
 function refreshMinistryActionStates(ministryKey) {
     // Custom-layout ministries manage their own state
-    if (ministryKey === 'defense' || ministryKey === 'healthcare' || ministryKey === 'education') return;
+    if (ministryKey === 'defense' || ministryKey === 'healthcare' || ministryKey === 'education' || ministryKey === 'energy') return;
     const config = MINISTRY_ACTIONS[ministryKey];
     if (!config?.actions) return;
     const ap = currentFaction?.action_points || 0;
