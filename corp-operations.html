@@ -2783,7 +2783,7 @@ function renderContracts() {
                             : `<span class="oc-eligible-badge ${qualified ? 'yes' : 'no'}">${qualified ? 'ELIGIBLE' : 'LOCKED'}</span>`
                         }
                     </div>
-                    ${qualified ? `<button class="bid-btn bid-btn--submit" style="padding:3px 10px;font-size:8px;margin-left:auto;" onclick="event.stopPropagation();openBidModal(contracts.find(x=>x.id==='${c.id}'))">${playerBids[c.id] ? 'EDIT' : 'VIEW'}</button>` : ''}
+                    ${qualified ? `<button class="bid-btn bid-btn--submit" style="padding:3px 10px;font-size:8px;margin-left:auto;" onclick="event.stopPropagation();openContractDetail(contracts.find(x=>x.id==='${c.id}'))">VIEW</button>` : ''}
                 </div>
                 ${c.description ? `<div style="font-size:9px;color:var(--text-dim);padding:4px 0 0;font-style:italic;">${escapeHtml(c.description)}</div>` : ''}
             </div>`;
@@ -2941,6 +2941,7 @@ function openContractDetail(contract) {
 
     const isMyProject = contract.issuer_faction_id === faction?.id;
     const hasBids = contract.status === 'bidding';
+    const existingBid = playerBids[contract.id];
 
     document.getElementById('cd-footer').innerHTML = `
         <div class="cd-footer__badges">${badgesHtml}</div>
@@ -2949,8 +2950,11 @@ function openContractDetail(contract) {
             ${isMyProject
                 ? `<button class="cd-btn primary" onclick="openBidReview()" style="background:#c8a832;border-color:#c8a832;"
                     ${hasBids ? '' : 'disabled'} title="${hasBids ? 'Review submitted bids' : 'No bids received yet'}">REVIEW BIDS</button>`
-                : `<button class="cd-btn primary" onclick="openBidAssembly()" ${canBid ? '' : 'disabled'}
-                    title="${!canBid ? 'Not qualified for this contract' : 'Assemble and submit a bid'}">BID</button>`
+                : existingBid
+                    ? `<button class="cd-btn primary" onclick="retractBid('${contract.id}')" style="background:#c55;border-color:#c55;"
+                        title="Retract your bid ($1M penalty)">RETRACT BID</button>`
+                    : `<button class="cd-btn primary" onclick="openBidAssembly()" ${canBid ? '' : 'disabled'}
+                        title="${!canBid ? 'Not qualified for this contract' : 'Assemble and submit a bid'}">BID</button>`
             }
         </div>
     `;
@@ -8084,6 +8088,10 @@ let _bidCompetitors = [];
 
 async function openBidAssembly() {
     if (!selectedContract) return;
+    if (playerBids[selectedContract.id]) {
+        alert('You already have a bid on this contract. Retract it first if you want to re-bid.');
+        return;
+    }
     _bidContract = selectedContract;
 
     // Load warehouse inventory
@@ -8612,6 +8620,43 @@ window.bidSetGrade = bidSetGrade;
 window.bidSetWorkers = bidSetWorkers;
 window.bidSetMarkup = bidSetMarkup;
 window.submitBidAssembly = submitBidAssembly;
+
+async function retractBid(contractId) {
+    const RETRACT_COST = 1_000_000; // $1M penalty
+    const cash = Number(faction?.corp_cash_reserves || 0);
+    if (cash < RETRACT_COST) {
+        alert('Cannot retract — you need at least $1M in cash reserves to cover the retraction penalty.');
+        return;
+    }
+    if (!confirm('Retract your bid?\n\nThis will cost $1M as a retraction penalty.\nThis action cannot be undone.')) return;
+
+    try {
+        // Delete the bid
+        const { error: delErr } = await _supabase
+            .from('contract_bids')
+            .delete()
+            .eq('contract_id', contractId)
+            .eq('faction_id', faction.id);
+        if (delErr) throw delErr;
+
+        // Deduct $1M penalty
+        const newCash = cash - RETRACT_COST;
+        const { error: cashErr } = await _supabase
+            .from('factions')
+            .update({ corp_cash_reserves: newCash })
+            .eq('id', faction.id);
+        if (cashErr) throw cashErr;
+        faction.corp_cash_reserves = newCash;
+        if (typeof subUpdateTopbarCash === 'function') subUpdateTopbarCash(newCash);
+
+        alert('Bid retracted. $1M penalty applied.');
+        closeContractDetail();
+        await loadContracts();
+    } catch (err) {
+        alert('Failed to retract bid: ' + (err.message || 'Unknown error'));
+    }
+}
+window.retractBid = retractBid;
 
 // ==================== CLIENT BID REVIEW MODAL ====================
 
