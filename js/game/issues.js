@@ -822,6 +822,43 @@ export async function processIssueTick(supabase, nationList, currentTick) {
         const activeKeys = new Set((modifiers || []).filter(m => m.is_active).map(m => m.modifier_key));
         await checkAutoSpawns(supabase, issue, activeKeys, modifiers || [], nationA, nationB, currentTick, results);
 
+        // ── 4b. Tension drift ──
+        // Tension drifts based on active modifier severity:
+        //   escalation modifiers: +0.5/tick each
+        //   competitive modifiers: +0.25/tick each
+        //   structural modifiers alone: no drift (they're the baseline)
+        // If only structural remain and no competitive/escalation: tension drifts -0.25/tick (natural cooling)
+        const activeMods = (modifiers || []).filter(m => m.is_active && (!m.is_periodic || m.is_periodic_active));
+        const escalationCount = activeMods.filter(m => m.category === 'escalation').length;
+        const competitiveCount = activeMods.filter(m => m.category === 'competitive').length;
+
+        let tensionDrift = 0;
+        if (escalationCount > 0 || competitiveCount > 0) {
+            tensionDrift = (escalationCount * 0.5) + (competitiveCount * 0.25);
+        } else {
+            // Only structural — slow cooling
+            tensionDrift = -0.25;
+        }
+
+        // Apply tension drift (accumulate fractional, clamp 0-10)
+        const rawTension = Number(issue.tension) + tensionDrift;
+        const newTension = Math.max(0, Math.min(10, Math.round(rawTension * 4) / 4)); // quarter-step precision
+        const tensionChanged = newTension !== issue.tension;
+
+        // ── 4c. Favor-based Gov_Approval bleed ──
+        // The disfavored nation loses Gov_Approval proportional to |favor|
+        // This is separate from modifier effects — it's the base cost of losing the dispute
+        if (Math.abs(issue.favor) >= 1) {
+            const disfavoredSide = getDisfavoredSide(issue.favor);
+            const disfavoredNation = disfavoredSide === 'nation_a' ? nationA : nationB;
+            if (disfavoredNation) {
+                // -0.1 per point of favor against you (so favor ±3 = -0.3/tick)
+                const approvalDelta = -(Math.abs(issue.favor) * 0.1);
+                await applyIssueStatEffects(supabase, disfavoredNation.id, disfavoredNation,
+                    [{ stat_key: 'gov_approval', delta: approvalDelta }]);
+            }
+        }
+
         // ── 5. Increment idle tick counter ──
         // Check if any diplomatic action was taken THIS tick
         const { data: dipActions } = await supabase
@@ -855,13 +892,20 @@ export async function processIssueTick(supabase, nationList, currentTick) {
             newStatus = 'partial';
         }
 
-        // ── 7. Check tension 10 → escalation ──
-        if (issue.tension >= 10 && issue.status !== 'escalated') {
+        // ── 7. Check tension 10 → escalation to incident ──
+        if (newTension >= 10 && issue.status !== 'escalated') {
             newStatus = 'escalated';
             const leverage = favorToLeverage(issue.favor);
+
+            // Spawn the actual incident via the existing incident system
+            const incidentResult = await spawnIncidentFromIssue(
+                supabase, issue, nationA, nationB, leverage, currentTick
+            );
+
             results.escalations.push({
                 issue_id: issue.id,
                 issue_type: issue.issue_type,
+                incident_id: incidentResult?.incidentId || null,
                 nation_a_id: issue.nation_a_id,
                 nation_b_id: issue.nation_b_id,
                 favor: issue.favor,
@@ -870,14 +914,29 @@ export async function processIssueTick(supabase, nationList, currentTick) {
 
             await insertHistory(supabase, issue.id, currentTick, 'escalated',
                 'This issue has escalated to an incident.',
-                { tension: issue.tension, favor: issue.favor, leverage });
+                { tension: newTension, favor: issue.favor, leverage,
+                  incident_id: incidentResult?.incidentId });
+        }
+
+        // Log tension changes
+        if (tensionChanged && newStatus !== 'escalated') {
+            const oldLabel = getTensionLabel(issue.tension).label;
+            const newLabel = getTensionLabel(newTension).label;
+            if (oldLabel !== newLabel) {
+                await insertHistory(supabase, issue.id, currentTick, 'tension_changed',
+                    `Tension shifted from ${oldLabel} to ${newLabel}.`,
+                    { tension_before: issue.tension, tension_after: newTension });
+            }
         }
 
         // Update issue record
-        const issueUpdate = { ticks_without_diplomatic_action: newIdleTicks };
+        const issueUpdate = {
+            ticks_without_diplomatic_action: newIdleTicks,
+            tension: newTension,
+            updated_at: new Date().toISOString(),
+        };
         if (newStatus !== issue.status) {
             issueUpdate.status = newStatus;
-            issueUpdate.updated_at = new Date().toISOString();
             if (newStatus === 'resolved') issueUpdate.resolved_tick = currentTick;
             if (newStatus === 'escalated') issueUpdate.escalated_tick = currentTick;
 
@@ -1072,6 +1131,198 @@ async function spawnModifier(supabase, issue, modifierKey, appliesTo, currentTic
     await insertHistory(supabase, issue.id, currentTick, 'modifier_added',
         `${config.name} has emerged.`,
         { modifier_key: modifierKey, created_by: createdBy });
+}
+
+
+// ==================== ISSUE → INCIDENT ESCALATION ====================
+
+/**
+ * Spawn a fishing_dispute incident when a bilateral issue hits tension 10.
+ * Uses the existing incident infrastructure (incident_event_pool, incident_chat_messages, etc.)
+ * but sets starting leverage based on the issue's favor position.
+ */
+async function spawnIncidentFromIssue(supabase, issue, nationA, nationB, leverageFromFavor, currentTick) {
+    const issueType = ISSUE_TYPES[issue.issue_type];
+    if (!issueType) {
+        console.error(`[Issues] Unknown issue type for escalation: ${issue.issue_type}`);
+        return null;
+    }
+
+    const incidentType = issueType.incident_type; // 'fishing_dispute'
+
+    // Check caps — same as processIncidentTriggers
+    const { count: globalActive } = await supabase
+        .from('incidents')
+        .select('id', { count: 'exact', head: true })
+        .in('status', ['active', 'mediating']);
+    if ((globalActive || 0) >= 12) {
+        console.log(`[Issues] Incident cap reached, cannot escalate issue ${issue.id}`);
+        return null;
+    }
+
+    // Check if this pair already has an active incident of this type
+    const aId = nationA.id < nationB.id ? nationA.id : nationB.id;
+    const bId = nationA.id < nationB.id ? nationB.id : nationA.id;
+    const { data: existing } = await supabase
+        .from('incidents')
+        .select('id')
+        .eq('incident_type', incidentType)
+        .eq('nation_a_id', aId)
+        .eq('nation_b_id', bId)
+        .in('status', ['active', 'mediating'])
+        .limit(1);
+    if (existing && existing.length > 0) {
+        console.log(`[Issues] ${incidentType} already active between these nations, skipping`);
+        return null;
+    }
+
+    // Roll a start event from the pool
+    const { data: startEvents } = await supabase
+        .from('incident_event_pool')
+        .select('*')
+        .eq('incident_type', incidentType)
+        .eq('category', 'start');
+
+    if (!startEvents || startEvents.length === 0) {
+        console.error(`[Issues] No start events found for ${incidentType}`);
+        return null;
+    }
+
+    const startEvent = startEvents[Math.floor(Math.random() * startEvents.length)];
+
+    // Determine roles — the favored nation is the "enforcer" (aggressor)
+    // The disfavored nation is "aggrieved"
+    let roleA, roleB;
+    if (issue.favor > 0) {
+        // favor > 0 means nation_b is favored → nation_b is enforcer
+        roleA = 'aggrieved';
+        roleB = 'enforcer';
+    } else if (issue.favor < 0) {
+        roleA = 'enforcer';
+        roleB = 'aggrieved';
+    } else {
+        // Neutral — random assignment
+        if (Math.random() < 0.5) {
+            roleA = 'aggrieved'; roleB = 'enforcer';
+        } else {
+            roleA = 'enforcer'; roleB = 'aggrieved';
+        }
+    }
+
+    // Set starting leverage from favor + start event shifts
+    // The favored nation gets the leverage advantage
+    let leverageA = (startEvent.leverage_shift_a || 0);
+    let leverageB = (startEvent.leverage_shift_b || 0);
+    if (issue.favor > 0) {
+        leverageB += leverageFromFavor;
+    } else if (issue.favor < 0) {
+        leverageA += leverageFromFavor;
+    }
+
+    const incidentData = {
+        incident_type: incidentType,
+        status: 'active',
+        nation_a_id: issue.nation_a_id,
+        nation_b_id: issue.nation_b_id,
+        nation_a_role: roleA,
+        nation_b_role: roleB,
+        nation_a_gov_type: 'democracy',
+        nation_b_gov_type: 'democracy',
+        leverage_a: Math.max(0, leverageA),
+        leverage_b: Math.max(0, leverageB),
+        started_tick: currentTick,
+    };
+
+    const { data: incident, error: insertErr } = await supabase
+        .from('incidents')
+        .insert(incidentData)
+        .select('id')
+        .single();
+
+    if (insertErr || !incident) {
+        console.error(`[Issues] Failed to create incident from issue escalation:`, insertErr);
+        return null;
+    }
+
+    // Link the issue to the spawned incident
+    await supabase.from('bilateral_issues').update({
+        escalated_to_incident_id: incident.id,
+    }).eq('id', issue.id);
+
+    // Insert start event
+    const eventText = (startEvent.event_text_template || 'A fishing dispute has erupted.')
+        .replace(/\{nation_a\}/g, nationA.name)
+        .replace(/\{nation_b\}/g, nationB.name);
+
+    await supabase.from('incident_events').insert({
+        incident_id: incident.id,
+        tick: currentTick,
+        event_type: 'start_event',
+        event_key: startEvent.event_key,
+        leverage_shift_a: startEvent.leverage_shift_a || 0,
+        leverage_shift_b: startEvent.leverage_shift_b || 0,
+        event_text: eventText,
+        event_source_label: 'Maritime Fishing Rights — Issue Escalation',
+        stat_effects: startEvent.stat_effects_template,
+        metadata: { escalated_from_issue: issue.id, favor_at_escalation: issue.favor },
+        visibility: 'both',
+    });
+
+    // Apply immediate stat effects (Relations -5, Civil_Unrest +1, etc.)
+    const immediateEffects = { Relations: -5, Civil_Unrest_a: 1, Intl_Reputation_b: -0.5 };
+    for (const [key, value] of Object.entries(immediateEffects)) {
+        if (key === 'Relations') {
+            await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, value);
+            continue;
+        }
+        let targets = [];
+        let statName = key;
+        if (key.endsWith('_a')) { targets = [nationA]; statName = key.slice(0, -2).toLowerCase(); }
+        else if (key.endsWith('_b')) { targets = [nationB]; statName = key.slice(0, -2).toLowerCase(); }
+        else if (key.endsWith('_both')) { targets = [nationA, nationB]; statName = key.slice(0, -5).toLowerCase(); }
+        for (const t of targets) {
+            await applyIssueStatEffects(supabase, t.id, t, [{ stat_key: statName, delta: value }]);
+        }
+    }
+
+    // Insert system chat messages
+    const crisisName = `${nationA.name}-${nationB.name} Fishing Dispute`;
+    for (const nation of [nationA, nationB]) {
+        await supabase.from('incident_chat_messages').insert({
+            incident_id: incident.id,
+            nation_id: nation.id,
+            sender_role: 'system',
+            message_text: `-- ${crisisName} opened Tick ${currentTick} (escalated from Maritime Fishing Rights issue) --`,
+            tick: currentTick,
+            is_system: true,
+            chat_context: 'internal',
+        });
+    }
+
+    // Event log entries
+    const logDesc = `${nationA.name} and ${nationB.name}'s maritime fishing rights dispute has escalated to a full incident. Tensions reached critical levels.`;
+    for (const nation of [nationA, nationB]) {
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'Fishing Dispute',
+            trigger_key: 'issue_escalated_fishing_dispute',
+            description_chosen: logDesc,
+            category: 'crisis',
+            fired_at_tick: currentTick,
+        });
+    }
+
+    console.log(`[Issues] Escalated issue ${issue.id} to incident ${incident.id}. Leverage: ${incidentData.leverage_a}-${incidentData.leverage_b}. Roles: ${nationA.name}(${roleA}) vs ${nationB.name}(${roleB})`);
+
+    return {
+        incidentId: incident.id,
+        type: incidentType,
+        nationA: nationA.name,
+        nationB: nationB.name,
+        roleA, roleB,
+        leverageA: incidentData.leverage_a,
+        leverageB: incidentData.leverage_b,
+    };
 }
 
 
