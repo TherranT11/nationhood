@@ -118,6 +118,76 @@
     <div class="empty-subtitle">The continent is at peace — for now. Incidents will appear here when diplomatic crises emerge between nations.</div>
 </div>
 
+<!-- ===== ISSUES LAYOUT (2-column: sidebar + detail) ===== -->
+<div class="issues-layout" id="issues-layout" style="display:none;">
+
+    <!-- LEFT: ISSUE LIST -->
+    <div class="issues-sidebar" id="issues-sidebar">
+        <div class="sidebar-section">
+            <div class="sidebar-section-header">Your Issues</div>
+            <div class="sidebar-list" id="issues-your-list"></div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-section-header">International Issues</div>
+            <div class="sidebar-list" id="issues-intl-list"></div>
+        </div>
+    </div>
+
+    <!-- CENTER: ISSUE DETAIL -->
+    <div class="issues-center" id="issues-center">
+        <!-- Empty state -->
+        <div class="conflicts-empty" id="issues-empty-state">
+            <div class="empty-icon">&#9878;</div>
+            <div class="empty-title">No Issue Selected</div>
+            <div class="empty-subtitle">Select an issue from the sidebar to view details.</div>
+        </div>
+
+        <!-- Issue detail (hidden until selected) -->
+        <div class="issues-detail" id="issues-detail" style="display:none;">
+
+            <!-- Scrollable top section -->
+            <div class="issues-scroll" id="issues-scroll">
+
+                <!-- Header -->
+                <div class="issues-header" id="issues-header"></div>
+
+                <!-- Status bar: Tension / Favor / Status -->
+                <div class="issues-status-bar" id="issues-status-bar"></div>
+
+                <!-- Active modifiers -->
+                <div class="issues-section" id="issues-modifiers-section">
+                    <div class="issues-section-label">Active Modifiers</div>
+                    <div id="issues-modifiers-list"></div>
+                </div>
+
+                <!-- Current effects summary -->
+                <div class="issues-section" id="issues-effects-section">
+                    <div class="issues-section-label">Current Effects (per tick)</div>
+                    <div id="issues-effects-list"></div>
+                </div>
+
+                <!-- History -->
+                <div class="issues-section" id="issues-history-section">
+                    <div class="issues-section-label">History</div>
+                    <div id="issues-history-list"></div>
+                </div>
+
+            </div>
+
+            <!-- Actions panel (bottom, fixed) -->
+            <div class="issues-actions-panel" id="issues-actions-panel"></div>
+
+        </div>
+    </div>
+</div>
+
+<!-- ===== ISSUES EMPTY STATE (no issues at all) ===== -->
+<div class="conflicts-global-empty" id="issues-global-empty" style="display:none;">
+    <div class="empty-icon">&#9878;</div>
+    <div class="empty-title">No Active Issues</div>
+    <div class="empty-subtitle">No bilateral issues are currently active. Issues emerge from diplomatic relationships between nations.</div>
+</div>
+
 <!-- ===== ACTION CONFIRMATION MODAL ===== -->
 <div class="modal-overlay" id="action-modal" style="display:none;">
     <div class="modal-box">
@@ -134,13 +204,19 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
+import { ACTIONS, MODIFIERS, executeIssueAction, respondToProposal } from './js/game/issues.js';
 
 let currentFaction = null;
 let currentNation = null;
 let currentTick = 0;
 let selectedIncidentId = null;
-let currentSubTab = 'incidents'; // 'incidents' (internal chat + actions) or 'conflicts' (public chat, no actions)
+let currentSubTab = 'incidents';
 let allIncidents = [];
+
+// Issues state
+let allIssues = [];
+let selectedIssueId = null;
+let issuesLoaded = false;
 
 // ==================== INIT ====================
 
@@ -157,10 +233,7 @@ initPage('conflicts', async (state) => {
             document.querySelectorAll('.subtab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
             currentSubTab = tab.dataset.tab;
-            if (selectedIncidentId) {
-                const incident = allIncidents.find(i => i.id === selectedIncidentId);
-                if (incident) refreshChatAndActions(incident);
-            }
+            switchSubTab(currentSubTab);
         });
     });
 
@@ -179,7 +252,738 @@ initPage('conflicts', async (state) => {
     });
 
     await loadIncidents();
+
+    // If issues tab was the initial tab, load issues
+    if (currentSubTab === 'issues') {
+        switchSubTab('issues');
+    }
 });
+
+
+// ==================== SUB-TAB SWITCHING ====================
+
+function switchSubTab(tab) {
+    const incidentsLayout = document.getElementById('conflicts-layout');
+    const incidentsEmpty = document.getElementById('global-empty');
+    const issuesLayout = document.getElementById('issues-layout');
+    const issuesEmpty = document.getElementById('issues-global-empty');
+
+    if (tab === 'issues') {
+        // Hide incidents, show issues
+        incidentsLayout.style.display = 'none';
+        incidentsEmpty.style.display = 'none';
+        issuesLayout.style.display = '';
+        issuesEmpty.style.display = 'none';
+        if (!issuesLoaded) {
+            loadIssues();
+        }
+    } else {
+        // Hide issues, show incidents
+        issuesLayout.style.display = 'none';
+        issuesEmpty.style.display = 'none';
+        // Re-evaluate incidents display
+        if (allIncidents.length === 0) {
+            incidentsLayout.style.display = 'none';
+            incidentsEmpty.style.display = '';
+        } else {
+            incidentsLayout.style.display = '';
+            incidentsEmpty.style.display = 'none';
+        }
+        if (selectedIncidentId) {
+            const incident = allIncidents.find(i => i.id === selectedIncidentId);
+            if (incident) refreshChatAndActions(incident);
+        }
+    }
+}
+
+
+// ==================== LOAD ISSUES ====================
+
+async function loadIssues() {
+    const [yourResult, intlResult] = await Promise.allSettled([
+        _supabase.from('bilateral_issues')
+            .select('*, nation_a:nations!bilateral_issues_nation_a_id_fkey(id, name), nation_b:nations!bilateral_issues_nation_b_id_fkey(id, name)')
+            .or(`nation_a_id.eq.${currentNation.id},nation_b_id.eq.${currentNation.id}`)
+            .in('status', ['active', 'partial'])
+            .order('tension', { ascending: false }),
+        _supabase.from('bilateral_issues')
+            .select('*, nation_a:nations!bilateral_issues_nation_a_id_fkey(id, name), nation_b:nations!bilateral_issues_nation_b_id_fkey(id, name)')
+            .not('nation_a_id', 'eq', currentNation.id)
+            .not('nation_b_id', 'eq', currentNation.id)
+            .in('status', ['active', 'partial'])
+            .order('tension', { ascending: false }),
+    ]);
+
+    const yours = yourResult.status === 'fulfilled' ? (yourResult.value.data || []) : [];
+    const intl = intlResult.status === 'fulfilled' ? (intlResult.value.data || []) : [];
+    allIssues = [...yours, ...intl];
+    issuesLoaded = true;
+
+    // Badge
+    const badge = document.getElementById('issues-count-badge');
+    if (yours.length > 0) {
+        badge.textContent = yours.length;
+        badge.style.display = '';
+    } else {
+        badge.style.display = 'none';
+    }
+
+    if (allIssues.length === 0) {
+        document.getElementById('issues-layout').style.display = 'none';
+        document.getElementById('issues-global-empty').style.display = '';
+        return;
+    }
+
+    document.getElementById('issues-layout').style.display = '';
+    document.getElementById('issues-global-empty').style.display = 'none';
+
+    renderIssuesSidebar(yours, intl);
+
+    // Auto-select first
+    if (yours.length > 0) selectIssue(yours[0].id);
+    else if (intl.length > 0) selectIssue(intl[0].id);
+}
+
+function getTensionInfo(tension) {
+    if (tension <= 2) return { label: 'Low', cls: 'low' };
+    if (tension <= 5) return { label: 'Moderate', cls: 'mod' };
+    if (tension <= 8) return { label: 'High', cls: 'high' };
+    return { label: 'Critical', cls: 'crit' };
+}
+
+function renderIssuesSidebar(yours, intl) {
+    const yourList = document.getElementById('issues-your-list');
+    const intlList = document.getElementById('issues-intl-list');
+
+    yourList.innerHTML = yours.length === 0
+        ? '<div class="sidebar-empty">No active issues involving your nation.</div>'
+        : yours.map(renderIssueSidebarItem).join('');
+
+    intlList.innerHTML = intl.length === 0
+        ? '<div class="sidebar-empty">No international issues.</div>'
+        : intl.map(renderIssueSidebarItem).join('');
+
+    document.querySelectorAll('.issue-sidebar-item').forEach(el => {
+        el.addEventListener('click', () => selectIssue(el.dataset.issueId));
+    });
+}
+
+function renderIssueSidebarItem(issue) {
+    const tInfo = getTensionInfo(issue.tension);
+    const otherNation = issue.nation_a_id === currentNation.id
+        ? issue.nation_b?.name : issue.nation_a?.name;
+    const isIntl = issue.nation_a_id !== currentNation.id && issue.nation_b_id !== currentNation.id;
+    const nations = isIntl
+        ? `${issue.nation_a?.name} / ${issue.nation_b?.name}`
+        : (otherNation || 'Unknown');
+    const isActive = issue.id === selectedIssueId;
+    const typeName = ISSUE_TYPE_NAMES[issue.issue_type] || issue.issue_type;
+
+    return `<div class="sidebar-item issue-sidebar-item${isActive ? ' sidebar-item--active' : ''}" data-issue-id="${issue.id}">
+        <div class="sidebar-item-title">${escapeHtml(typeName)}</div>
+        <div class="sidebar-item-meta">
+            <span class="sidebar-item-nation">${escapeHtml(nations)}</span>
+            <span class="issue-tension issue-tension--${tInfo.cls}">${tInfo.label}</span>
+            <span class="sidebar-item-status">${issue.status === 'partial' ? 'Partial' : 'Unresolved'}</span>
+        </div>
+    </div>`;
+}
+
+const ISSUE_TYPE_NAMES = {
+    maritime_fishing_rights: 'Maritime Fishing Rights',
+};
+
+
+// ==================== SELECT ISSUE ====================
+
+async function selectIssue(issueId) {
+    selectedIssueId = issueId;
+    const issue = allIssues.find(i => i.id === issueId);
+    if (!issue) return;
+
+    // Update sidebar active state
+    document.querySelectorAll('.issue-sidebar-item').forEach(el => {
+        el.classList.toggle('sidebar-item--active', el.dataset.issueId === issueId);
+    });
+
+    // Show detail, hide empty
+    document.getElementById('issues-empty-state').style.display = 'none';
+    document.getElementById('issues-detail').style.display = '';
+
+    // Load modifiers, history, and pending actions
+    const [modsResult, histResult, actionsResult] = await Promise.allSettled([
+        _supabase.from('bilateral_issue_modifiers')
+            .select('*')
+            .eq('issue_id', issueId)
+            .order('created_tick', { ascending: true }),
+        _supabase.from('bilateral_issue_history')
+            .select('*')
+            .eq('issue_id', issueId)
+            .order('tick', { ascending: false })
+            .limit(50),
+        _supabase.from('bilateral_issue_actions_taken')
+            .select('*')
+            .eq('issue_id', issueId)
+            .order('submitted_tick', { ascending: false }),
+    ]);
+
+    const modifiers = modsResult.status === 'fulfilled' ? (modsResult.value.data || []) : [];
+    const history = histResult.status === 'fulfilled' ? (histResult.value.data || []) : [];
+    const actionsTaken = actionsResult.status === 'fulfilled' ? (actionsResult.value.data || []) : [];
+
+    renderIssueHeader(issue);
+    renderIssueStatusBar(issue);
+    renderIssueModifiers(issue, modifiers);
+    renderIssueEffects(issue, modifiers);
+    renderIssueHistory(issue, history);
+    renderIssueActions(issue, modifiers, actionsTaken);
+}
+
+
+// ==================== RENDER ISSUE HEADER ====================
+
+function renderIssueHeader(issue) {
+    const el = document.getElementById('issues-header');
+    const typeName = ISSUE_TYPE_NAMES[issue.issue_type] || issue.issue_type;
+    const otherNation = issue.nation_a_id === currentNation.id
+        ? issue.nation_b?.name : issue.nation_a?.name;
+    const isYours = issue.nation_a_id === currentNation.id || issue.nation_b_id === currentNation.id;
+
+    const statusBadge = issue.status === 'escalated'
+        ? '<span class="issue-badge issue-badge--escalated">Escalated</span>'
+        : issue.status === 'partial'
+            ? '<span class="issue-badge issue-badge--partial">Partial</span>'
+            : issue.status === 'resolved'
+                ? '<span class="issue-badge issue-badge--resolved">Resolved</span>'
+                : '<span class="issue-badge issue-badge--active">Unresolved</span>';
+
+    el.innerHTML = `
+        <div class="issues-title-row">
+            <span class="issues-title">${escapeHtml(typeName)}</span>
+            ${isYours ? `<span class="issue-nation-tag">${escapeHtml(otherNation)}</span>` : ''}
+            ${statusBadge}
+        </div>
+        <div class="issues-type">Economic / Sea Border / Since Tick ${issue.created_tick}</div>
+        <div class="issues-desc">Fishing vessels from both nations routinely operate in overlapping waters. No formal agreement governs who can fish where, how much, or when. Coastal communities on both sides depend on the same declining fish stocks.</div>
+    `;
+}
+
+
+// ==================== RENDER STATUS BAR ====================
+
+function renderIssueStatusBar(issue) {
+    const el = document.getElementById('issues-status-bar');
+    const tInfo = getTensionInfo(issue.tension);
+    const tensionPct = (issue.tension / 10) * 100;
+
+    // Favor display
+    const favorAbs = Math.abs(Number(issue.favor));
+    let favorLabel = 'Neutral';
+    let favorColor = 'var(--text-dim)';
+    if (favorAbs >= 0.5) {
+        const favoredNation = Number(issue.favor) > 0 ? issue.nation_b?.name : issue.nation_a?.name;
+        if (favorAbs >= 3) favorLabel = `Strongly ${favoredNation}`;
+        else if (favorAbs >= 1) favorLabel = `Slightly ${favoredNation}`;
+        else favorLabel = `Barely ${favoredNation}`;
+        favorColor = 'var(--blue)';
+    }
+
+    // Favor bar positioning: favor -5 to +5 maps to 0% to 100%
+    const favorPct = ((Number(issue.favor) + 5) / 10) * 100;
+    const favorLeft = Math.min(favorPct, 50);
+    const favorWidth = Math.abs(favorPct - 50);
+
+    // Tension color gradient
+    const tensionGradient = tensionPct <= 30
+        ? 'var(--green)' : tensionPct <= 60
+            ? 'linear-gradient(90deg, var(--green), var(--amber))' : tensionPct <= 80
+                ? 'linear-gradient(90deg, var(--amber), var(--red))'
+                : 'linear-gradient(90deg, var(--red), var(--crimson))';
+
+    el.innerHTML = `
+        <div class="issues-status-cell">
+            <div class="issues-status-label">Tension</div>
+            <div class="issues-status-value" style="color:var(--${tInfo.cls === 'low' ? 'green' : tInfo.cls === 'mod' ? 'amber' : tInfo.cls === 'high' ? 'red' : 'crimson'});">${tInfo.label}</div>
+            <div class="issues-status-detail">${issue.tension}/10</div>
+            <div class="issues-tension-meter">
+                <div class="issues-tension-fill" style="width:${tensionPct}%;background:${tensionGradient};"></div>
+            </div>
+        </div>
+        <div class="issues-status-cell">
+            <div class="issues-status-label">Favor</div>
+            <div class="issues-status-value" style="color:${favorColor};">${escapeHtml(favorLabel)}</div>
+            <div class="issues-status-detail">${Number(issue.favor) > 0 ? '+' : ''}${Number(issue.favor).toFixed(1)}</div>
+            <div class="issues-favor-bar">
+                <span class="issues-favor-label">${escapeHtml(issue.nation_a?.name || 'A')}</span>
+                <div class="issues-favor-track">
+                    <div class="issues-favor-center"></div>
+                    <div class="issues-favor-fill" style="left:${favorLeft}%;width:${favorWidth}%;"></div>
+                </div>
+                <span class="issues-favor-label" style="text-align:right;">${escapeHtml(issue.nation_b?.name || 'B')}</span>
+            </div>
+        </div>
+        <div class="issues-status-cell">
+            <div class="issues-status-label">Status</div>
+            <div class="issues-status-value">${issue.status === 'partial' ? 'Partially Resolved' : issue.status === 'escalated' ? 'Escalated' : 'Unresolved'}</div>
+            <div class="issues-status-detail">${issue.status === 'escalated' ? 'This issue has escalated to an incident.' : `Idle ${issue.ticks_without_diplomatic_action} ticks`}</div>
+        </div>
+    `;
+}
+
+
+// ==================== RENDER MODIFIERS ====================
+
+const MODIFIER_NAMES = {
+    no_defined_maritime_territories: 'No Defined Maritime Territories',
+    no_regulatory_framework: 'No Regulatory Framework',
+    no_defined_quotas: 'No Defined Quotas',
+    no_joint_enforcement: 'No Joint Enforcement',
+    no_dispute_resolution_mechanism: 'No Dispute Resolution Mechanism',
+    overfishing: 'Overfishing in Disputed Waters',
+    fish_stock_depletion: 'Fish Stock Depletion',
+    foreign_vessels_in_waters: 'Foreign Vessels in Your Waters',
+    domestic_fleet_expansion: 'Domestic Fleet Expansion',
+    coastal_community_decline: 'Coastal Community Economic Decline',
+    illegal_fishing_surge: 'Illegal Fishing Surge',
+    diplomatic_friction: 'Diplomatic Friction Over Fishing',
+    international_attention: 'International Attention on Dispute',
+    seasonal_fishing_conflict: 'Seasonal Fishing Conflict',
+    environmental_damage: 'Environmental Damage to Fishery',
+    active_vessel_expulsion: 'Active Vessel Expulsion Order',
+    naval_presence: 'Naval Presence in Fishing Zone',
+    seized_vessel_held: 'Seized Vessel Held',
+    fishing_ban_in_effect: 'Fishing Ban in Effect',
+    public_hostility: 'Public Hostility Over Fishing',
+};
+
+function renderIssueModifiers(issue, modifiers) {
+    const el = document.getElementById('issues-modifiers-list');
+    const active = modifiers.filter(m => m.is_active);
+    const resolved = modifiers.filter(m => !m.is_active);
+    const sectionLabel = document.querySelector('#issues-modifiers-section .issues-section-label');
+    sectionLabel.textContent = `Active Modifiers (${active.length})`;
+
+    let html = '';
+    for (const mod of active) {
+        const name = MODIFIER_NAMES[mod.modifier_key] || mod.modifier_key;
+        const catCls = mod.category;
+        const effects = (mod.stat_effects || []).map(e =>
+            `${e.stat_key.replace(/_/g, ' ')} ${e.delta > 0 ? '+' : ''}${e.delta}/tick`
+        ).join(', ');
+        const duration = mod.duration_remaining !== null
+            ? `${mod.duration_remaining} ticks remaining`
+            : (mod.is_periodic && mod.is_periodic_active ? `${mod.duration_remaining || '?'} ticks (periodic)` : 'Until resolved');
+        const appliesLabel = mod.applies_to === 'both' ? 'Both nations' :
+            mod.applies_to === 'nation_a' ? (issue.nation_a?.name || 'Nation A') :
+            mod.applies_to === 'nation_b' ? (issue.nation_b?.name || 'Nation B') :
+            mod.applies_to === 'disfavored' ? 'Disfavored nation' : mod.applies_to;
+
+        html += `<div class="issue-modifier issue-modifier--${catCls}">
+            <div class="issue-mod-content">
+                <div class="issue-mod-name">${escapeHtml(name)}</div>
+                <div class="issue-mod-effect">${escapeHtml(effects)} (${escapeHtml(appliesLabel)}) — ${escapeHtml(duration)}</div>
+            </div>
+            <span class="issue-mod-tag issue-mod-tag--${catCls}">${catCls === 'structural' ? 'Structural' : catCls === 'competitive' ? 'Emergent' : 'Escalation'}</span>
+        </div>`;
+    }
+
+    for (const mod of resolved) {
+        const name = MODIFIER_NAMES[mod.modifier_key] || mod.modifier_key;
+        html += `<div class="issue-modifier issue-modifier--resolved">
+            <div class="issue-mod-content">
+                <div class="issue-mod-name" style="text-decoration:line-through;">${escapeHtml(name)}</div>
+                <div class="issue-mod-effect">Resolved at Tick ${mod.resolved_tick || '?'} — ${escapeHtml(mod.resolved_by || 'unknown')}</div>
+            </div>
+            <span class="issue-mod-tag issue-mod-tag--resolved">Resolved</span>
+        </div>`;
+    }
+
+    el.innerHTML = html || '<div class="sidebar-empty">No modifiers.</div>';
+}
+
+
+// ==================== RENDER EFFECTS SUMMARY ====================
+
+function renderIssueEffects(issue, modifiers) {
+    const el = document.getElementById('issues-effects-list');
+    const active = modifiers.filter(m => m.is_active && (!m.is_periodic || m.is_periodic_active));
+
+    // Aggregate effects by stat+appliesTo
+    const effectMap = {};
+    for (const mod of active) {
+        for (const eff of (mod.stat_effects || [])) {
+            const key = `${eff.stat_key}::${mod.applies_to}`;
+            if (!effectMap[key]) effectMap[key] = { stat_key: eff.stat_key, applies_to: mod.applies_to, delta: 0 };
+            effectMap[key].delta += eff.delta;
+        }
+    }
+
+    const effects = Object.values(effectMap).sort((a, b) => a.delta - b.delta);
+    if (effects.length === 0) {
+        el.innerHTML = '<div class="sidebar-empty">No active effects.</div>';
+        return;
+    }
+
+    let html = '';
+    for (const eff of effects) {
+        const statLabel = eff.stat_key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const appliesLabel = eff.applies_to === 'both' ? 'Both' :
+            eff.applies_to === 'nation_a' ? (issue.nation_a?.name || 'A') :
+            eff.applies_to === 'nation_b' ? (issue.nation_b?.name || 'B') :
+            eff.applies_to === 'disfavored' ? 'Disfavored' : eff.applies_to;
+        const isNeg = (eff.stat_key === 'pollution' || eff.stat_key === 'crime_rate' ||
+            eff.stat_key === 'civil_unrest' || eff.stat_key === 'cost_of_living' ||
+            eff.stat_key === 'corruption' || eff.stat_key === 'polarization' ||
+            eff.stat_key === 'emigration' || eff.stat_key === 'unemployment' ||
+            eff.stat_key === 'poverty_rate')
+            ? (eff.delta > 0 ? 'neg' : 'pos')
+            : (eff.delta < 0 ? 'neg' : 'pos');
+
+        html += `<div class="issue-effect-row">
+            <div><span class="issue-effect-stat">${escapeHtml(statLabel)}</span><span class="issue-effect-nation">${escapeHtml(appliesLabel)}</span></div>
+            <span class="issue-effect-value issue-effect-value--${isNeg}">${eff.delta > 0 ? '+' : ''}${eff.delta.toFixed(2)}</span>
+        </div>`;
+    }
+    el.innerHTML = html;
+}
+
+
+// ==================== RENDER HISTORY ====================
+
+function renderIssueHistory(issue, history) {
+    const el = document.getElementById('issues-history-list');
+
+    if (history.length === 0) {
+        el.innerHTML = '<div class="sidebar-empty">No history yet.</div>';
+        return;
+    }
+
+    const dotColors = {
+        created: 'var(--text-dim)',
+        modifier_added: 'var(--amber)',
+        modifier_removed: 'var(--green)',
+        modifier_fired: 'var(--amber)',
+        action_proposed: 'var(--blue)',
+        action_accepted: 'var(--green)',
+        action_rejected: 'var(--red)',
+        action_executed: 'var(--blue)',
+        tension_changed: 'var(--amber)',
+        favor_changed: 'var(--blue)',
+        status_changed: 'var(--teal)',
+        escalated: 'var(--crimson)',
+    };
+
+    let html = '';
+    for (const evt of history) {
+        const dotColor = dotColors[evt.event_type] || 'var(--text-dim)';
+        html += `<div class="issue-history-entry">
+            <span class="issue-history-tick">T${evt.tick}</span>
+            <div class="issue-history-dot" style="background:${dotColor}"></div>
+            <span class="issue-history-text">${escapeHtml(evt.event_text)}</span>
+        </div>`;
+    }
+    el.innerHTML = html;
+}
+
+
+// ==================== ISSUE ACTIONS PANEL ====================
+
+let issueActionExecuting = false;
+
+const ACTION_ROLE_LABELS = {
+    foreign_minister: 'FM',
+    minister_of_trade: 'MoT',
+    minister_of_defense: 'MoD',
+    minister_of_finance: 'MoF',
+    ambassador: 'Amb.',
+    head_of_government: 'HoG',
+};
+
+function renderIssueActions(issue, modifiers, actionsTaken) {
+    const el = document.getElementById('issues-actions-panel');
+    const isYours = issue.nation_a_id === currentNation.id || issue.nation_b_id === currentNation.id;
+
+    if (!isYours || issue.status === 'escalated' || issue.status === 'resolved') {
+        el.innerHTML = '';
+        el.style.display = 'none';
+        return;
+    }
+    el.style.display = '';
+
+    // Check for pending proposals targeting this nation
+    const pendingForMe = actionsTaken.filter(a =>
+        a.status === 'pending' && a.target_nation_id === currentNation.id
+    );
+
+    // Build used-action sets for this nation
+    const myUsedActions = new Set(
+        actionsTaken.filter(a => a.acting_nation_id === currentNation.id).map(a => a.action_key)
+    );
+    // Check if already acted this tick
+    const actedThisTick = actionsTaken.some(a =>
+        a.acting_nation_id === currentNation.id && a.submitted_tick === currentTick
+    );
+
+    // Check diplomatic friction (adds +1 AP to diplomatic actions)
+    const hasFriction = modifiers.some(m => m.modifier_key === 'diplomatic_friction' && m.is_active);
+
+    // Group actions by category
+    const diplomatic = Object.values(ACTIONS).filter(a => a.category === 'diplomatic');
+    const unilateral = Object.values(ACTIONS).filter(a => a.category === 'unilateral');
+    const threatening = Object.values(ACTIONS).filter(a => a.category === 'threatening');
+
+    let html = '';
+
+    // Pending proposals banner
+    if (pendingForMe.length > 0) {
+        html += '<div class="issue-pending-banner">';
+        html += `<div class="issue-pending-title">Pending Proposals (${pendingForMe.length})</div>`;
+        for (const p of pendingForMe) {
+            const actionDef = ACTIONS[p.action_key];
+            if (!actionDef) continue;
+            html += `<div class="issue-pending-item">
+                <div class="issue-pending-name">${escapeHtml(actionDef.name)}</div>
+                <div class="issue-pending-desc">${escapeHtml(actionDef.description)}</div>
+                <div class="issue-pending-effects">
+                    ${actionDef.tension_delta ? `<span class="ia-tag ia-tag--tension-down">Tension ${actionDef.tension_delta}</span>` : ''}
+                    ${actionDef.modifiers_removed.map(m => `<span class="ia-tag ia-tag--modifier">Removes: ${MODIFIERS[m]?.name || m}</span>`).join('')}
+                </div>
+                <div class="issue-pending-buttons">
+                    <button class="issue-pending-btn issue-pending-btn--accept" data-action-id="${p.id}" data-issue-id="${issue.id}">Accept</button>
+                    <button class="issue-pending-btn issue-pending-btn--reject" data-action-id="${p.id}" data-issue-id="${issue.id}">Reject</button>
+                </div>
+            </div>`;
+        }
+        html += '</div>';
+    }
+
+    // Action category tabs
+    html += `<div class="ia-tabs">
+        <div class="ia-tab ia-tab--active ia-tab--teal" data-cat="diplomatic" onclick="window._switchIssueActionTab(this,'diplomatic')">Diplomatic</div>
+        <div class="ia-tab ia-tab--amber" data-cat="unilateral" onclick="window._switchIssueActionTab(this,'unilateral')">Unilateral</div>
+        <div class="ia-tab ia-tab--red" data-cat="threatening" onclick="window._switchIssueActionTab(this,'threatening')">Threatening</div>
+    </div>`;
+
+    // Action lists
+    html += renderActionList('diplomatic', diplomatic, myUsedActions, actedThisTick, hasFriction, issue);
+    html += renderActionList('unilateral', unilateral, myUsedActions, actedThisTick, false, issue);
+    html += renderActionList('threatening', threatening, myUsedActions, actedThisTick, false, issue);
+
+    el.innerHTML = html;
+
+    // Wire pending proposal buttons
+    el.querySelectorAll('.issue-pending-btn--accept').forEach(btn => {
+        btn.addEventListener('click', () => handleProposalResponse(btn.dataset.actionId, btn.dataset.issueId, true));
+    });
+    el.querySelectorAll('.issue-pending-btn--reject').forEach(btn => {
+        btn.addEventListener('click', () => handleProposalResponse(btn.dataset.actionId, btn.dataset.issueId, false));
+    });
+
+    // Wire action items
+    el.querySelectorAll('.ia-item:not(.ia-item--used):not(.ia-item--locked)').forEach(item => {
+        item.addEventListener('click', () => {
+            const actionKey = item.dataset.actionKey;
+            showIssueActionModal(actionKey, issue, modifiers);
+        });
+    });
+}
+
+function renderActionList(category, actions, usedActions, actedThisTick, hasFriction, issue) {
+    const colorMap = { diplomatic: 'teal', unilateral: 'amber', threatening: 'red' };
+    const color = colorMap[category];
+    const hidden = category !== 'diplomatic' ? 'style="display:none"' : '';
+
+    let html = `<div class="ia-list" id="ia-list-${category}" ${hidden}>`;
+    let idx = 0;
+    for (const action of actions) {
+        idx++;
+        const isUsed = usedActions.has(action.key);
+        const isLocked = actedThisTick && !isUsed;
+        const cls = isUsed ? 'ia-item--used' : isLocked ? 'ia-item--locked' : '';
+        const apCost = action.ap_cost + (hasFriction && category === 'diplomatic' ? 1 : 0);
+        const roleLabel = ACTION_ROLE_LABELS[action.role] || action.role;
+
+        // Build effect tags
+        let tags = '';
+        if (action.tension_delta < 0) tags += `<span class="ia-tag ia-tag--tension-down">Tension ${action.tension_delta}</span>`;
+        if (action.tension_delta > 0) tags += `<span class="ia-tag ia-tag--tension-up">Tension +${action.tension_delta}</span>`;
+        if (action.favor_delta !== 0) tags += `<span class="ia-tag ia-tag--favor">Favor ${action.favor_delta > 0 ? '+' : ''}${action.favor_delta}</span>`;
+        for (const m of action.modifiers_removed) {
+            tags += `<span class="ia-tag ia-tag--modifier">Removes: ${MODIFIERS[m]?.name || m}</span>`;
+        }
+        for (const m of action.modifiers_added) {
+            tags += `<span class="ia-tag ia-tag--modifier">Adds: ${MODIFIERS[m]?.name || m}</span>`;
+        }
+        if (action.treasury_cost > 0) tags += `<span class="ia-tag ia-tag--ap">$${(action.treasury_cost / 1_000_000).toFixed(0)}M</span>`;
+        tags += `<span class="ia-tag ia-tag--ap">${apCost} AP</span>`;
+        if (action.special === 'incident_trigger_50') tags += `<span class="ia-tag ia-tag--danger">50% triggers Incident</span>`;
+        if (action.special === 'incident_trigger_25') tags += `<span class="ia-tag ia-tag--danger">25% triggers Incident</span>`;
+
+        html += `<div class="ia-item ${cls}" data-action-key="${action.key}">
+            <div class="ia-icon ia-icon--${color}">${idx}</div>
+            <div class="ia-info">
+                <div class="ia-name ia-name--${color}">${escapeHtml(action.name)}</div>
+                <div class="ia-desc">${escapeHtml(isUsed ? 'Already used.' : action.description)}</div>
+                <div class="ia-effects">${tags}</div>
+            </div>
+            <span class="ia-role">${roleLabel}</span>
+        </div>`;
+    }
+    html += '</div>';
+    return html;
+}
+
+// Tab switching for action categories
+window._switchIssueActionTab = function(tabEl, category) {
+    document.querySelectorAll('.ia-tab').forEach(t => {
+        t.classList.remove('ia-tab--active');
+    });
+    tabEl.classList.add('ia-tab--active');
+    document.querySelectorAll('.ia-list').forEach(l => l.style.display = 'none');
+    const list = document.getElementById('ia-list-' + category);
+    if (list) list.style.display = '';
+};
+
+// ==================== ISSUE ACTION MODAL ====================
+
+function showIssueActionModal(actionKey, issue, modifiers) {
+    if (issueActionExecuting) return;
+    const action = ACTIONS[actionKey];
+    if (!action) return;
+
+    const modal = document.getElementById('action-modal');
+    const header = document.getElementById('modal-header');
+    const body = document.getElementById('modal-body');
+    const confirmBtn = document.getElementById('modal-confirm');
+
+    const ap = currentFaction?.action_points || 0;
+
+    // Check friction — diplomatic friction modifier adds +1 AP cost
+    let apCost = action.ap_cost;
+    const hasFriction = (modifiers || []).some(m => m.modifier_key === 'diplomatic_friction' && m.is_active);
+    if (action.category === 'diplomatic' && hasFriction) {
+        apCost += 1;
+    }
+
+    header.innerHTML = `<span class="modal-action-name">${escapeHtml(action.name)}</span>`;
+
+    let bodyHtml = `<div class="modal-description">${escapeHtml(action.description)}</div>`;
+    bodyHtml += '<div class="modal-stats">';
+    bodyHtml += `<div class="modal-stat-row"><span>AP Cost:</span><span>${apCost}</span></div>`;
+    bodyHtml += `<div class="modal-stat-row"><span>Your AP:</span><span>${ap}</span></div>`;
+    bodyHtml += `<div class="modal-stat-row"><span>Category:</span><span style="text-transform:capitalize">${action.category}</span></div>`;
+    bodyHtml += `<div class="modal-stat-row"><span>Role:</span><span>${ACTION_ROLE_LABELS[action.role] || action.role}</span></div>`;
+    if (action.tension_delta !== 0) bodyHtml += `<div class="modal-stat-row"><span>Tension:</span><span>${action.tension_delta > 0 ? '+' : ''}${action.tension_delta}</span></div>`;
+    if (action.favor_delta !== 0) bodyHtml += `<div class="modal-stat-row"><span>Favor:</span><span>${action.favor_delta > 0 ? '+' : ''}${action.favor_delta}</span></div>`;
+    if (action.treasury_cost > 0) bodyHtml += `<div class="modal-stat-row"><span>Cost:</span><span>$${(action.treasury_cost / 1_000_000).toFixed(0)}M from treasury</span></div>`;
+    if (action.relations_delta) bodyHtml += `<div class="modal-stat-row"><span>Relations:</span><span>${action.relations_delta}</span></div>`;
+    bodyHtml += '</div>';
+
+    if (action.category === 'diplomatic') {
+        bodyHtml += '<div class="modal-info">This proposal will be sent to the other nation. They must accept for the effects to apply. If rejected, favor shifts +0.5 toward you.</div>';
+        confirmBtn.textContent = 'Propose';
+        confirmBtn.className = 'modal-btn modal-btn--confirm';
+    } else if (action.category === 'threatening') {
+        if (action.special === 'incident_trigger_50') {
+            bodyHtml += '<div class="modal-risk">WARNING: 50% chance this directly triggers an incident.</div>';
+        } else if (action.special === 'incident_trigger_25') {
+            bodyHtml += '<div class="modal-risk">WARNING: 25% chance this directly triggers an incident.</div>';
+        }
+        confirmBtn.textContent = 'Execute';
+        confirmBtn.className = 'modal-btn modal-btn--danger';
+    } else {
+        confirmBtn.textContent = 'Execute';
+        confirmBtn.className = 'modal-btn modal-btn--confirm';
+    }
+
+    body.innerHTML = bodyHtml;
+    modal.style.display = '';
+
+    // Wire buttons (clone to avoid stacking listeners)
+    const newCancel = document.getElementById('modal-cancel').cloneNode(true);
+    document.getElementById('modal-cancel').replaceWith(newCancel);
+    newCancel.addEventListener('click', () => { modal.style.display = 'none'; });
+
+    const newConfirm = confirmBtn.cloneNode(true);
+    confirmBtn.replaceWith(newConfirm);
+    newConfirm.addEventListener('click', async () => {
+        modal.style.display = 'none';
+        await executeIssueActionFromUI(actionKey, issue);
+    });
+}
+
+
+// ==================== EXECUTE ACTION FROM UI ====================
+
+async function executeIssueActionFromUI(actionKey, issue) {
+    if (issueActionExecuting) return;
+    issueActionExecuting = true;
+
+    try {
+        const result = await executeIssueAction(_supabase, {
+            issueId: issue.id,
+            actionKey,
+            actingNationId: currentNation.id,
+            actingFactionId: currentFaction.id,
+            currentTick,
+        });
+
+        if (!result.success) {
+            alert(result.error || 'Action failed.');
+            return;
+        }
+
+        // Refresh the faction AP
+        const { data: freshFaction } = await _supabase
+            .from('factions')
+            .select('action_points')
+            .eq('id', currentFaction.id)
+            .single();
+        if (freshFaction) currentFaction.action_points = freshFaction.action_points;
+
+        // Refresh the issue view
+        await selectIssue(issue.id);
+
+    } catch (err) {
+        console.error('[Issues] Action execution error:', err);
+        alert('Action failed: ' + err.message);
+    } finally {
+        issueActionExecuting = false;
+    }
+}
+
+
+// ==================== HANDLE PROPOSAL RESPONSE ====================
+
+async function handleProposalResponse(actionTakenId, issueId, accept) {
+    if (issueActionExecuting) return;
+    issueActionExecuting = true;
+
+    try {
+        const result = await respondToProposal(_supabase, {
+            actionTakenId,
+            issueId,
+            respondingNationId: currentNation.id,
+            respondingFactionId: currentFaction.id,
+            accept,
+            currentTick,
+        });
+
+        if (!result.success) {
+            alert(result.error || 'Response failed.');
+            return;
+        }
+
+        alert(accept ? 'Proposal accepted.' : 'Proposal rejected.');
+        await selectIssue(issueId);
+
+    } catch (err) {
+        console.error('[Issues] Proposal response error:', err);
+        alert('Response failed: ' + err.message);
+    } finally {
+        issueActionExecuting = false;
+    }
+}
 
 
 // ==================== LOAD INCIDENTS ====================
@@ -262,8 +1066,8 @@ function renderSidebar(yours, intl, resolved) {
         ? '<div class="sidebar-empty">No recent resolutions.</div>'
         : resolved.map(i => renderSidebarItem(i, false, true)).join('');
 
-    // Click handlers
-    document.querySelectorAll('.sidebar-item').forEach(el => {
+    // Click handlers (exclude issue sidebar items)
+    document.querySelectorAll('.sidebar-item:not(.issue-sidebar-item)').forEach(el => {
         el.addEventListener('click', () => selectIncident(el.dataset.incidentId));
     });
 }

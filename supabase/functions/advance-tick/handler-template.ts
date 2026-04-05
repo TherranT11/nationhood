@@ -2640,7 +2640,30 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // 4c. INCIDENTS — global trigger check (runs once per tick, not per-nation)
+    // 4c. BILATERAL ISSUES — modifier engine (runs before incidents)
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const issueResults = await processIssueTick(supabase, nationList, newTick);
+        if (issueResults.modifiersApplied > 0) {
+            console.log(`[advanceTick] Issues: ${issueResults.modifiersApplied} modifier effect(s) applied`);
+        }
+        if (issueResults.modifiersSpawned.length > 0) {
+            console.log(`[advanceTick] Issues: ${issueResults.modifiersSpawned.length} modifier(s) spawned`);
+        }
+        if (issueResults.modifiersExpired.length > 0) {
+            console.log(`[advanceTick] Issues: ${issueResults.modifiersExpired.length} modifier(s) expired`);
+        }
+        if (issueResults.escalations.length > 0) {
+            summary.issueEscalations = issueResults.escalations;
+            console.log(`[advanceTick] Issues: ${issueResults.escalations.length} issue(s) escalated to incidents`);
+        }
+        summary.issueResults = issueResults;
+    } catch (issueErr) {
+        console.error('[advanceTick] Issue processing failed (non-fatal):', issueErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4d. INCIDENTS — global trigger check (runs once per tick, not per-nation)
     // ══════════════════════════════════════════════════════════════════
     try {
         const incidentResults = await processIncidentTriggers(supabase, nationList, newTick);
