@@ -3478,19 +3478,24 @@ let _issueNations = [];
 let _issueRelations = [];
 
 async function initIssueSpawner() {
+    console.log('[Issues Spawner] Initializing...');
     const container = document.getElementById('issue-spawner-panel');
-    if (!container) return;
+    if (!container) { console.warn('[Issues Spawner] Container not found'); return; }
 
     // Load nations
-    const { data: nats } = await _supabase.from('nations').select('id, name').order('name');
+    const { data: nats, error: natErr } = await _supabase.from('nations').select('id, name').order('name');
+    if (natErr) console.error('[Issues Spawner] Nations load error:', natErr);
     _issueNations = nats || [];
+    console.log('[Issues Spawner] Loaded', _issueNations.length, 'nations');
 
     // Load diplomatic relations (for border types + current tension info)
-    const { data: rels } = await _supabase.from('diplomatic_relations')
+    const { data: rels, error: relErr } = await _supabase.from('diplomatic_relations')
         .select('nation_a_id, nation_b_id, border_types, relation_score, proximity');
+    if (relErr) console.error('[Issues Spawner] Relations load error:', relErr);
     _issueRelations = rels || [];
 
     renderIssueSpawner();
+    console.log('[Issues Spawner] Rendered.');
 }
 
 function getRelation(aId, bId) {
@@ -3808,18 +3813,28 @@ async function deleteIssue(issueId) {
     await loadActiveIssues();
 }
 
-// Init on tab switch
+// Init on tab switch — also try on admin-panel-loaded in case user lands on Issues tab
 var _issueSpawnerLoaded = false;
+async function tryInitIssueSpawner() {
+    if (_issueSpawnerLoaded) return;
+    if (!document.getElementById('issue-spawner-panel')) return;
+    _issueSpawnerLoaded = true;
+    try {
+        await initIssueSpawner();
+        await loadActiveIssues();
+    } catch (e) { console.error('[Issues Spawner] Init error:', e); }
+}
 var _prevShowTab3 = showTab;
 showTab = function(tabName) {
     _prevShowTab3(tabName);
-    if (tabName === 'issues' && !_issueSpawnerLoaded) {
-        _issueSpawnerLoaded = true;
-        initIssueSpawner();
-        loadActiveIssues();
-    }
+    if (tabName === 'issues') tryInitIssueSpawner();
 };
 window.showTab = showTab;
+document.addEventListener('admin-panel-loaded', () => {
+    // If user clicks Issues tab before panel loaded, retry
+    const active = document.querySelector('.tab-content.active');
+    if (active?.id === 'tab-issues') tryInitIssueSpawner();
+});
 
 window.isSelectStarterMods = isSelectStarterMods;
 window.isSelectAllMods = isSelectAllMods;
