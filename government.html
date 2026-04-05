@@ -2981,11 +2981,9 @@ async function formGovernment() {
         });
 
         if (finalizeError) {
-            // RPC might not be deployed yet — fall back to sequential client-side operations
-            const rpcUnavailable = /finalize_government_formation/i.test(finalizeError.message || '') || finalizeError.code === 'PGRST202';
-            if (!rpcUnavailable) throw finalizeError;
-
-            console.warn('finalize_government_formation RPC unavailable; falling back to sequential operations');
+            // Fall back to sequential client-side operations on ANY RPC error
+            // (covers both "RPC not deployed" and runtime SQL errors like uuid[] cast failures)
+            console.warn('finalize_government_formation RPC failed; falling back to sequential operations:', finalizeError.message);
             await formGovernmentFallback(ministryBaselines);
         } else if (finalizeResult && !finalizeResult.success) {
             alert(finalizeResult.message);

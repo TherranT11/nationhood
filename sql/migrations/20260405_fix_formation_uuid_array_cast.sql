@@ -1,15 +1,15 @@
--- ════════════════════════════════════════════════════════════════════════════════
--- Fix: Preserve ministry discretionary_balance across government formation
+-- Fix: "cannot cast type uuid[] to jsonb" in finalize_government_formation.
 --
--- Bug: When a new government forms, discretionary funds drop to $0. The
--- finalize_government_formation function's INSERT path creates new ministry
--- rows with DEFAULT 0 balance, and external RPCs may also reset the rows.
+-- Root cause: `to_jsonb(v_nation)` converts the entire nations row to JSONB.
+-- If any column on the nations table is uuid[] (e.g. added at runtime),
+-- PostgreSQL cannot cast uuid[] → jsonb directly, causing the error.
 --
--- Fix: Snapshot all discretionary_balance values before clearing ministers,
--- then explicitly carry them forward in both UPDATE and INSERT paths.
+-- Fix: Replace to_jsonb(v_nation) with an explicit subquery selecting only
+-- the stat columns needed for the administration snapshot. This matches
+-- the JS snapshotNationStats() function's NATION_STAT_COLUMNS list.
 --
--- Also carries forward all prior fixes (nation-aware HoS names, etc.).
--- ════════════════════════════════════════════════════════════════════════════════
+-- Also previously fixed in 20260330 (party_ids::JSONB), but reintroduced
+-- by later rewrites (20260401, 20260404) that used to_jsonb(v_nation).
 
 CREATE OR REPLACE FUNCTION finalize_government_formation(
   p_formation_id UUID,
@@ -421,3 +421,7 @@ EXCEPTION WHEN OTHERS THEN
   RETURN jsonb_build_object('success', false, 'message', 'Error forming government: ' || SQLERRM);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+ALTER FUNCTION finalize_government_formation(UUID, UUID, JSONB) OWNER TO postgres;
+GRANT EXECUTE ON FUNCTION finalize_government_formation(UUID, UUID, JSONB) TO authenticated;
+GRANT EXECUTE ON FUNCTION finalize_government_formation(UUID, UUID, JSONB) TO service_role;
