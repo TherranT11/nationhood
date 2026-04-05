@@ -16,6 +16,12 @@
     --green: #7a9a5b;
     --green-faint: rgba(122,154,91,0.06);
     --green-border: rgba(122,154,91,0.2);
+    --red: #a65d5d;
+    --red-faint: rgba(166,93,93,0.08);
+    --red-border: rgba(166,93,93,0.25);
+    --amber-action: #cca03c;
+    --amber-action-faint: rgba(204,160,60,0.12);
+    --amber-action-border: rgba(204,160,60,0.25);
     --bg-1: #141412;
     --bg-2: #1a1a17;
     --bg-3: #1e1e1a;
@@ -24,6 +30,7 @@
     --text-primary: #c8c4b8;
     --text-muted: #8a8778;
     --text-dim: #5c5a50;
+    --text-faint: #3d3b34;
     --border-hair: rgba(200,196,184,0.06);
     --border-subtle: rgba(200,196,184,0.1);
     --font-mono: 'JetBrains Mono', monospace;
@@ -1314,9 +1321,9 @@
 .subtab-action-badge {
     font-size: 9px;
     font-weight: 600;
-    background: rgba(204,160,60,0.12);
-    color: #cca03c;
-    border: 1px solid rgba(204,160,60,0.25);
+    background: var(--amber-action-faint);
+    color: var(--amber-action);
+    border: 1px solid var(--amber-action-border);
     padding: 1px 5px;
     border-radius: 3px;
     margin-left: 4px;
@@ -1328,13 +1335,13 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #cca03c;
+    background: var(--amber-action);
     margin-right: 5px;
     vertical-align: middle;
-    box-shadow: 0 0 4px rgba(204,160,60,0.4);
+    box-shadow: 0 0 4px var(--amber-action-faint);
 }
 
 .sidebar-item--has-action {
-    border-left: 2px solid #cca03c;
+    border-left: 2px solid var(--amber-action);
 }
 

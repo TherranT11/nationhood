@@ -7387,11 +7387,12 @@ async function _subLiquidate(propId, mode) {
     try {
         const propIds = nationProps.map(p => p.id);
         // Use .eq() for single property, .in() for multiple — avoids Supabase .in() 400 on single-element arrays
-        const propQuery = _supabase.from('corp_properties').update({ is_active: false, sub_cash: 0 });
         if (propIds.length === 1) {
-            await propQuery.eq('id', propIds[0]);
-        } else {
-            await propQuery.in('id', propIds);
+            const { error: propErr } = await _supabase.from('corp_properties').update({ is_active: false, sub_cash: 0 }).eq('id', propIds[0]);
+            if (propErr) throw propErr;
+        } else if (propIds.length > 1) {
+            const { error: propErr } = await _supabase.from('corp_properties').update({ is_active: false, sub_cash: 0 }).in('id', propIds);
+            if (propErr) throw propErr;
         }
         const newCash = Number(faction?.corp_cash_reserves ?? 0) + totalReturn;
         await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
