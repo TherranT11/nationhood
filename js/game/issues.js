@@ -628,13 +628,12 @@ async function nudgeIssueRelations(supabase, nationAId, nationBId, delta) {
     const aId = nationAId < nationBId ? nationAId : nationBId;
     const bId = nationAId < nationBId ? nationBId : nationAId;
 
-    try {
-        await supabase.rpc('nudge_relation_score', {
-            p_nation_a_id: aId,
-            p_nation_b_id: bId,
-            p_delta: delta
-        });
-    } catch (_rpcErr) {
+    const { error: rpcErr } = await supabase.rpc('nudge_relation_score', {
+        p_nation_a_id: aId,
+        p_nation_b_id: bId,
+        p_delta: delta
+    });
+    if (rpcErr) {
         // Fallback: direct update
         const { data: rel } = await supabase.from('diplomatic_relations')
             .select('relation_score')
@@ -1273,22 +1272,10 @@ async function spawnIncidentFromIssue(supabase, issue, nationA, nationB, leverag
         visibility: 'both',
     });
 
-    // Apply immediate stat effects (Relations -5, Civil_Unrest +1, etc.)
-    const immediateEffects = { Relations: -5, Civil_Unrest_a: 1, Intl_Reputation_b: -0.5 };
-    for (const [key, value] of Object.entries(immediateEffects)) {
-        if (key === 'Relations') {
-            await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, value);
-            continue;
-        }
-        let targets = [];
-        let statName = key;
-        if (key.endsWith('_a')) { targets = [nationA]; statName = key.slice(0, -2).toLowerCase(); }
-        else if (key.endsWith('_b')) { targets = [nationB]; statName = key.slice(0, -2).toLowerCase(); }
-        else if (key.endsWith('_both')) { targets = [nationA, nationB]; statName = key.slice(0, -5).toLowerCase(); }
-        for (const t of targets) {
-            await applyIssueStatEffects(supabase, t.id, t, [{ stat_key: statName, delta: value }]);
-        }
-    }
+    // Apply immediate stat effects on escalation
+    await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, -5);
+    await applyIssueStatEffects(supabase, nationA.id, nationA, [{ stat_key: 'civil_unrest', delta: 1 }]);
+    await applyIssueStatEffects(supabase, nationB.id, nationB, [{ stat_key: 'international_reputation', delta: -0.5 }]);
 
     // Insert system chat messages
     const crisisName = `${nationA.name}-${nationB.name} Fishing Dispute`;
@@ -1858,12 +1845,13 @@ export async function processArbitration(supabase, issueId, currentTick) {
     for (const evt of arbEvents) {
         const resolveTick = evt.metadata?.arbitration_resolve_tick;
         if (resolveTick && currentTick >= resolveTick) {
-            // Check if already resolved (idempotent)
+            // Check if this arbitration was already resolved (idempotent)
             const { data: alreadyDone } = await supabase
                 .from('bilateral_issue_history')
                 .select('id')
                 .eq('issue_id', issueId)
-                .eq('event_type', 'status_changed')
+                .eq('event_type', 'action_executed')
+                .contains('metadata', { reason: 'arbitration_ruling' })
                 .limit(1);
 
             if (alreadyDone && alreadyDone.length > 0) continue;

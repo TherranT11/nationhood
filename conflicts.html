@@ -783,7 +783,7 @@ function renderIssueActions(issue, modifiers, actionsTaken) {
     el.querySelectorAll('.ia-item:not(.ia-item--used):not(.ia-item--locked)').forEach(item => {
         item.addEventListener('click', () => {
             const actionKey = item.dataset.actionKey;
-            showIssueActionModal(actionKey, issue);
+            showIssueActionModal(actionKey, issue, modifiers);
         });
     });
 }
@@ -846,7 +846,7 @@ window._switchIssueActionTab = function(tabEl, category) {
 
 // ==================== ISSUE ACTION MODAL ====================
 
-function showIssueActionModal(actionKey, issue) {
+function showIssueActionModal(actionKey, issue, modifiers) {
     if (issueActionExecuting) return;
     const action = ACTIONS[actionKey];
     if (!action) return;
@@ -858,11 +858,11 @@ function showIssueActionModal(actionKey, issue) {
 
     const ap = currentFaction?.action_points || 0;
 
-    // Check friction
+    // Check friction — diplomatic friction modifier adds +1 AP cost
     let apCost = action.ap_cost;
-    if (action.category === 'diplomatic') {
-        // We'd need to check DB for friction but we already have modifiers from the render call
-        // For simplicity, just note it in the modal if applicable
+    const hasFriction = (modifiers || []).some(m => m.modifier_key === 'diplomatic_friction' && m.is_active);
+    if (action.category === 'diplomatic' && hasFriction) {
+        apCost += 1;
     }
 
     header.innerHTML = `<span class="modal-action-name">${escapeHtml(action.name)}</span>`;

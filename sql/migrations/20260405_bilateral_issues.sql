@@ -23,8 +23,8 @@ CREATE TABLE IF NOT EXISTS bilateral_issues (
     nation_a_id         UUID NOT NULL REFERENCES nations(id) ON DELETE CASCADE,
     nation_b_id         UUID NOT NULL REFERENCES nations(id) ON DELETE CASCADE,
 
-    -- Tension: 0-10 integer. Thresholds: Low 0-2, Moderate 3-5, High 6-8, Critical 9-10. At 10 → escalates to incident.
-    tension             INTEGER NOT NULL DEFAULT 0 CHECK (tension >= 0 AND tension <= 10),
+    -- Tension: 0-10 (quarter-step precision). Thresholds: Low 0-2, Moderate 3-5, High 6-8, Critical 9-10. At 10 → escalates to incident.
+    tension             NUMERIC(4,2) NOT NULL DEFAULT 0 CHECK (tension >= 0 AND tension <= 10),
 
     -- Favor: -5 to +5. Negative = favors nation_a, positive = favors nation_b. 0 = neutral.
     favor               NUMERIC(4,2) NOT NULL DEFAULT 0 CHECK (favor >= -5 AND favor <= 5),
