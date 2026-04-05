@@ -93,6 +93,25 @@ initPage('politics', async (state) => {
             .in('faction_id', partyIds)
         : { data: [] };
 
+    // Fetch 3-pillar electoral standings for forecast display
+    const { data: electoralStandings } = partyIds.length > 0
+        ? await _supabase
+            .from('faction_electoral_standing')
+            .select('faction_id, party_approval, visibility, ideological_alignment, raw_appeal')
+            .eq('nation_id', nation.id)
+            .in('faction_id', partyIds)
+        : { data: [] };
+    const standingMap = {};
+    for (const s of (electoralStandings || [])) standingMap[s.faction_id] = s;
+    // Merge pillar scores into allParties for forecast display
+    for (const p of (allParties || [])) {
+        const s = standingMap[p.id];
+        p._governance = Math.round(Number(s?.party_approval || 0));
+        p._pillarMomentum = Math.round(Number(s?.visibility || 0));
+        p._ideology = Math.round(Number(s?.ideological_alignment || 0));
+        p._rawAppeal = Math.round(Number(s?.raw_appeal || 0) * 10) / 10;
+    }
+
     // Normalise seat counts from election results (single source of truth)
     const { currentSeats } = await loadSeats(_supabase, nation.id, allParties || [], f.id);
 
@@ -893,7 +912,15 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, _,
     const parties = eligibleParties.map(p => {
         const voteShare = Number(p.national_vote_share || 0);
         const estSeats = Math.round((voteShare / 100) * totalSeats);
-        return { ...p, estSeats, momentum: Number(p.momentum ?? 0) };
+        return {
+            ...p,
+            estSeats,
+            momentum: Number(p.momentum ?? 0),
+            governance: p._governance ?? 0,
+            pillarMomentum: p._pillarMomentum ?? 0,
+            ideology: p._ideology ?? 0,
+            rawAppeal: p._rawAppeal ?? 0,
+        };
     }).sort((a, b) => b.estSeats - a.estSeats);
 
     // Confidence
@@ -915,6 +942,11 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, _,
         const momText = p.momentum !== 0 ? `${momArrow}${Math.abs(p.momentum)}` : momArrow;
         const majLinePct = totalSeats > 0 ? (majority / totalSeats) * 100 : 50;
 
+        // 3-pillar score colors (0-100 scale)
+        const govColor = p.governance >= 60 ? 'var(--dgreen)' : p.governance >= 35 ? 'var(--damber)' : 'var(--dred)';
+        const pmColor = p.pillarMomentum >= 60 ? 'var(--dgreen)' : p.pillarMomentum >= 35 ? 'var(--damber)' : 'var(--dred)';
+        const ideoColor = p.ideology >= 60 ? 'var(--dgreen)' : p.ideology >= 35 ? 'var(--damber)' : 'var(--dred)';
+
         return `<div class="pol-fc-party">
             <div class="pol-fc-party-header">
                 <div class="pol-fc-party-left">
@@ -927,6 +959,12 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, _,
                     <span class="pol-fc-range">${lo}–${hi}</span>
                     <span class="pol-fc-seats-label">seats</span>
                 </div>
+            </div>
+            <div class="pol-fc-pillars">
+                <span class="pol-fc-pillar" title="Governance (35%)"><span class="pol-fc-pillar-label">GOV</span> <span style="color:${govColor}">${p.governance}</span></span>
+                <span class="pol-fc-pillar" title="Momentum (25%)"><span class="pol-fc-pillar-label">MOM</span> <span style="color:${pmColor}">${p.pillarMomentum}</span></span>
+                <span class="pol-fc-pillar" title="Ideology (30%)"><span class="pol-fc-pillar-label">IDEO</span> <span style="color:${ideoColor}">${p.ideology}</span></span>
+                <span class="pol-fc-pillar pol-fc-pillar--appeal" title="Combined election score"><span class="pol-fc-pillar-label">SCORE</span> <span>${p.rawAppeal}</span></span>
             </div>
             <div class="pol-fc-band">
                 <div class="pol-fc-band-fill" style="left:${loPct.toFixed(1)}%;width:${(hiPct - loPct).toFixed(1)}%;background:${color}22;border-color:${color}33"></div>
@@ -5535,7 +5573,7 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
         </div>`;
     }).join('');
 
-    const noDataMsg = !statsAtStart
+    const noDataMsg = !administration?.stats_at_start
         ? '<div style="color:var(--dtext-3);font-size:11px;padding:10px">No administration data available.</div>'
         : statDeltas.length === 0
             ? '<div style="color:var(--dtext-3);font-size:11px;padding:10px">No stat changes recorded yet.</div>'
