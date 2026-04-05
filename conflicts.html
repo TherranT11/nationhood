@@ -21,8 +21,8 @@
 
 <!-- ===== SUB-TABS ===== -->
 <div class="conflicts-subtabs">
-    <button class="subtab" data-tab="issues" id="subtab-issues">Issues <span class="subtab-badge" id="issues-count-badge"></span></button>
-    <button class="subtab active" data-tab="incidents" id="subtab-incidents">Incidents <span class="subtab-badge" id="incidents-count-badge"></span></button>
+    <button class="subtab active" data-tab="issues" id="subtab-issues">Issues <span class="subtab-badge" id="issues-count-badge"></span><span class="subtab-action-badge" id="issues-action-badge"></span></button>
+    <button class="subtab" data-tab="incidents" id="subtab-incidents">Incidents <span class="subtab-badge" id="incidents-count-badge"></span></button>
     <button class="subtab" data-tab="conflicts" id="subtab-conflicts">Conflicts <span class="subtab-badge" id="conflicts-count-badge"></span></button>
 </div>
 
@@ -210,13 +210,14 @@ let currentFaction = null;
 let currentNation = null;
 let currentTick = 0;
 let selectedIncidentId = null;
-let currentSubTab = 'incidents';
+let currentSubTab = 'issues';
 let allIncidents = [];
 
 // Issues state
 let allIssues = [];
 let selectedIssueId = null;
 let issuesLoaded = false;
+let issueActionFlags = {};  // { issueId: true } — issues with recent actions
 
 // ==================== INIT ====================
 
@@ -253,10 +254,8 @@ initPage('conflicts', async (state) => {
 
     await loadIncidents();
 
-    // If issues tab was the initial tab, load issues
-    if (currentSubTab === 'issues') {
-        switchSubTab('issues');
-    }
+    // Default to issues tab
+    switchSubTab('issues');
 });
 
 
@@ -297,6 +296,38 @@ function switchSubTab(tab) {
 }
 
 
+// ==================== ISSUE ACTION NOTIFICATIONS ====================
+
+async function loadIssueActionFlags() {
+    issueActionFlags = {};
+    if (allIssues.length === 0) return;
+
+    const issueIds = allIssues.map(i => i.id);
+    // Fetch actions from the current tick (most recent game tick)
+    const { data: actions } = await _supabase
+        .from('bilateral_issue_actions_taken')
+        .select('issue_id, submitted_tick')
+        .in('issue_id', issueIds)
+        .gte('submitted_tick', currentTick - 1)
+        .order('submitted_tick', { ascending: false });
+
+    if (actions && actions.length > 0) {
+        for (const a of actions) {
+            issueActionFlags[a.issue_id] = true;
+        }
+    }
+
+    // Update tab-level amber badge
+    const actionBadge = document.getElementById('issues-action-badge');
+    const actionCount = Object.keys(issueActionFlags).length;
+    if (actionCount > 0) {
+        actionBadge.textContent = actionCount;
+        actionBadge.style.display = '';
+    } else {
+        actionBadge.style.display = 'none';
+    }
+}
+
 // ==================== LOAD ISSUES ====================
 
 async function loadIssues() {
@@ -327,6 +358,9 @@ async function loadIssues() {
     } else {
         badge.style.display = 'none';
     }
+
+    // Fetch recent actions across all issues to set amber notifications
+    await loadIssueActionFlags();
 
     if (allIssues.length === 0) {
         document.getElementById('issues-layout').style.display = 'none';
@@ -379,8 +413,9 @@ function renderIssueSidebarItem(issue) {
     const isActive = issue.id === selectedIssueId;
     const typeName = ISSUE_TYPE_NAMES[issue.issue_type] || issue.issue_type;
 
-    return `<div class="sidebar-item issue-sidebar-item${isActive ? ' sidebar-item--active' : ''}" data-issue-id="${issue.id}">
-        <div class="sidebar-item-title">${escapeHtml(typeName)}</div>
+    const hasAction = issueActionFlags[issue.id];
+    return `<div class="sidebar-item issue-sidebar-item${isActive ? ' sidebar-item--active' : ''}${hasAction ? ' sidebar-item--has-action' : ''}" data-issue-id="${issue.id}">
+        <div class="sidebar-item-title">${hasAction ? '<span class="action-dot"></span>' : ''}${escapeHtml(typeName)}</div>
         <div class="sidebar-item-meta">
             <span class="sidebar-item-nation">${escapeHtml(nations)}</span>
             <span class="issue-tension issue-tension--${tInfo.cls}">${tInfo.label}</span>
