@@ -25230,6 +25230,9 @@ async function processIssueTick(supabase, nationList, currentTick) {
         const activeKeys = new Set((modifiers || []).filter(m => m.is_active).map(m => m.modifier_key));
         await checkAutoSpawns(supabase, issue, activeKeys, modifiers || [], nationA, nationB, currentTick, results);
 
+        // ── 4a. Process arbitration rulings ──
+        await processArbitration(supabase, issue.id, currentTick);
+
         // ── 4b. Tension drift ──
         // Tension drifts based on active modifier severity:
         //   escalation modifiers: +0.5/tick each
@@ -25776,6 +25779,529 @@ async function insertHistory(supabase, issueId, tick, eventType, eventText, meta
     if (error) {
         console.error(`[Issues] Failed to insert history for ${issueId}:`, error);
     }
+}
+
+
+// ==================== ACTIONS SYSTEM ====================
+
+/**
+ * Execute an issue action. Called from the frontend when a player clicks an action.
+ *
+ * Validates: role, AP, one-per-tick, one-time-use, treasury, diplomatic friction AP penalty.
+ * Handles: diplomatic (pending), unilateral (immediate), threatening (immediate + incident rolls).
+ *
+ * @param {object} supabase - Supabase client
+ * @param {object} params - { issueId, actionKey, actingNationId, actingFactionId, currentTick }
+ * @returns {object} { success, error?, result? }
+ */
+async function executeIssueAction(supabase, params) {
+    const { issueId, actionKey, actingNationId, actingFactionId, currentTick } = params;
+
+    const action = ACTIONS[actionKey];
+    if (!action) return { success: false, error: 'Unknown action.' };
+
+    // Load issue
+    const { data: issue, error: issueErr } = await supabase
+        .from('bilateral_issues')
+        .select('*')
+        .eq('id', issueId)
+        .single();
+    if (issueErr || !issue) return { success: false, error: 'Issue not found.' };
+    if (issue.status === 'escalated' || issue.status === 'resolved' || issue.status === 'dormant') {
+        return { success: false, error: `Issue is ${issue.status}. No actions allowed.` };
+    }
+
+    // Verify acting nation is part of this issue
+    const isNationA = actingNationId === issue.nation_a_id;
+    const isNationB = actingNationId === issue.nation_b_id;
+    if (!isNationA && !isNationB) {
+        return { success: false, error: 'Your nation is not involved in this issue.' };
+    }
+    const opponentNationId = isNationA ? issue.nation_b_id : issue.nation_a_id;
+
+    // Check one-time-use: has this action already been used by this nation?
+    const { data: prevAction } = await supabase
+        .from('bilateral_issue_actions_taken')
+        .select('id')
+        .eq('issue_id', issueId)
+        .eq('acting_nation_id', actingNationId)
+        .eq('action_key', actionKey)
+        .limit(1);
+    if (prevAction && prevAction.length > 0) {
+        return { success: false, error: 'This action has already been used.' };
+    }
+
+    // Check one-per-tick: has this nation taken any action this tick?
+    const { data: tickAction } = await supabase
+        .from('bilateral_issue_actions_taken')
+        .select('id')
+        .eq('issue_id', issueId)
+        .eq('acting_nation_id', actingNationId)
+        .eq('submitted_tick', currentTick)
+        .limit(1);
+    if (tickAction && tickAction.length > 0) {
+        return { success: false, error: 'Only one action per tick per nation.' };
+    }
+
+    // Calculate AP cost (check for diplomatic friction modifier — +1 AP on diplomatic actions)
+    let apCost = action.ap_cost;
+    if (action.category === 'diplomatic') {
+        const { data: frictionMod } = await supabase
+            .from('bilateral_issue_modifiers')
+            .select('id')
+            .eq('issue_id', issueId)
+            .eq('modifier_key', 'diplomatic_friction')
+            .eq('is_active', true)
+            .limit(1);
+        if (frictionMod && frictionMod.length > 0) {
+            apCost += 1;
+        }
+    }
+
+    // Deduct AP
+    if (apCost > 0) {
+        const deductResult = await supabase.rpc('deduct_ap', {
+            p_faction_id: actingFactionId,
+            p_cost: apCost,
+        });
+        if (deductResult.error || deductResult.data < 0) {
+            return { success: false, error: `Insufficient AP (need ${apCost}).` };
+        }
+    }
+
+    // Deduct treasury if needed
+    if (action.treasury_cost > 0) {
+        const { data: nationData } = await supabase
+            .from('nations')
+            .select('treasury')
+            .eq('id', actingNationId)
+            .single();
+        const currentTreasury = Number(nationData?.treasury ?? 0);
+        if (currentTreasury < action.treasury_cost) {
+            // Refund AP if we already deducted
+            if (apCost > 0) {
+                await supabase.rpc('deduct_ap', { p_faction_id: actingFactionId, p_cost: -apCost });
+            }
+            return { success: false, error: `Insufficient treasury (need $${(action.treasury_cost / 1_000_000).toFixed(0)}M).` };
+        }
+        await supabase.from('nations')
+            .update({ treasury: currentTreasury - action.treasury_cost })
+            .eq('id', actingNationId);
+    }
+
+    // Build the action record
+    const actionRecord = {
+        issue_id: issueId,
+        acting_nation_id: actingNationId,
+        acting_faction_id: actingFactionId,
+        action_key: actionKey,
+        action_category: action.category,
+        submitted_tick: currentTick,
+        ap_spent: apCost,
+        treasury_cost: action.treasury_cost || 0,
+    };
+
+    // ── DIPLOMATIC: create pending proposal ──
+    if (action.category === 'diplomatic') {
+        actionRecord.status = 'pending';
+        actionRecord.target_nation_id = opponentNationId;
+
+        const { error: insertErr } = await supabase
+            .from('bilateral_issue_actions_taken')
+            .insert(actionRecord);
+        if (insertErr) {
+            return { success: false, error: 'Failed to submit proposal: ' + insertErr.message };
+        }
+
+        await insertHistory(supabase, issueId, currentTick, 'action_proposed',
+            `${action.name} proposed.`,
+            { action_key: actionKey, acting_nation_id: actingNationId },
+            actingNationId);
+
+        return { success: true, result: { type: 'pending', actionKey, apCost } };
+    }
+
+    // ── UNILATERAL / THREATENING: immediate execution ──
+    actionRecord.status = 'executed';
+
+    // Apply favor delta
+    let newFavor = Number(issue.favor);
+    if (action.favor_delta !== 0) {
+        // Positive favor_delta pushes favor toward the acting nation
+        // If acting is nation_a: favor decreases (nation_a favored = negative)
+        // If acting is nation_b: favor increases (nation_b favored = positive)
+        const favorShift = isNationA ? -action.favor_delta : action.favor_delta;
+        newFavor = Math.max(-5, Math.min(5, newFavor + favorShift));
+    }
+
+    // Apply tension delta
+    let newTension = Number(issue.tension);
+    newTension = Math.max(0, Math.min(10, newTension + action.tension_delta));
+
+    // Apply relation delta (threatening actions)
+    if (action.relations_delta) {
+        await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, action.relations_delta);
+    }
+
+    // Apply stat effects to acting nation
+    if (action.stat_effects_acting) {
+        const { data: actNation } = await supabase
+            .from('nations').select('*').eq('id', actingNationId).single();
+        if (actNation) {
+            await applyIssueStatEffects(supabase, actingNationId, actNation, action.stat_effects_acting);
+        }
+    }
+
+    // Apply stat effects to opponent
+    if (action.stat_effects_opponent) {
+        const { data: oppNation } = await supabase
+            .from('nations').select('*').eq('id', opponentNationId).single();
+        if (oppNation) {
+            await applyIssueStatEffects(supabase, opponentNationId, oppNation, action.stat_effects_opponent);
+        }
+    }
+
+    // Add modifiers
+    for (const modKey of action.modifiers_added) {
+        const modConfig = MODIFIERS[modKey];
+        if (!modConfig) continue;
+
+        // Determine who the modifier applies to
+        let appliesTo = modConfig.applies_to || 'both';
+        if (action.modifier_target === 'acting') {
+            appliesTo = isNationA ? 'nation_a' : 'nation_b';
+        } else if (action.modifier_target === 'opponent') {
+            appliesTo = isNationA ? 'nation_b' : 'nation_a';
+        }
+
+        await spawnModifier(supabase, issue, modKey, appliesTo, currentTick,
+            `action:${actionKey}`, { modifiersSpawned: [] });
+    }
+
+    // Remove modifiers
+    for (const modKey of action.modifiers_removed) {
+        // For targeted removals (e.g. redirect_fleet only removes if YOU caused it)
+        let removeQuery = supabase
+            .from('bilateral_issue_modifiers')
+            .update({ is_active: false, resolved_by: `action:${actionKey}`, resolved_tick: currentTick })
+            .eq('issue_id', issueId)
+            .eq('modifier_key', modKey)
+            .eq('is_active', true);
+
+        // If modifier_remove_target is 'acting', only remove modifiers that apply to the acting nation
+        if (action.modifier_remove_target === 'acting') {
+            const actingSide = isNationA ? 'nation_a' : 'nation_b';
+            removeQuery = removeQuery.eq('applies_to', actingSide);
+        }
+
+        const { error: removeErr } = await removeQuery;
+        if (!removeErr) {
+            await insertHistory(supabase, issueId, currentTick, 'modifier_removed',
+                `${MODIFIERS[modKey]?.name || modKey} resolved by ${action.name}.`,
+                { modifier_key: modKey, action_key: actionKey },
+                actingNationId);
+        }
+    }
+
+    // Special: commission_legal_study — favor only if reputation > opponent's
+    if (action.special === 'reputation_check') {
+        const { data: actNation } = await supabase
+            .from('nations').select('international_reputation').eq('id', actingNationId).single();
+        const { data: oppNation } = await supabase
+            .from('nations').select('international_reputation').eq('id', opponentNationId).single();
+        if (actNation && oppNation &&
+            Number(actNation.international_reputation ?? 0) > Number(oppNation.international_reputation ?? 0)) {
+            const favorShift = isNationA ? -0.5 : 0.5;
+            newFavor = Math.max(-5, Math.min(5, newFavor + favorShift));
+        }
+    }
+
+    // Special: incident trigger rolls (threatening actions)
+    let incidentTriggered = false;
+    if (action.special === 'incident_trigger_50' && Math.random() < 0.50) {
+        incidentTriggered = true;
+        newTension = 10; // force escalation
+    } else if (action.special === 'incident_trigger_25' && Math.random() < 0.25) {
+        incidentTriggered = true;
+        newTension = 10;
+    }
+
+    // Insert action record
+    actionRecord.effects_applied = {
+        favor_before: issue.favor, favor_after: newFavor,
+        tension_before: issue.tension, tension_after: newTension,
+        relations_delta: action.relations_delta || 0,
+        modifiers_added: action.modifiers_added,
+        modifiers_removed: action.modifiers_removed,
+        incident_triggered: incidentTriggered,
+    };
+    actionRecord.modifiers_added = action.modifiers_added;
+    actionRecord.modifiers_removed = action.modifiers_removed;
+
+    const { error: insertErr } = await supabase
+        .from('bilateral_issue_actions_taken')
+        .insert(actionRecord);
+    if (insertErr) {
+        return { success: false, error: 'Failed to record action: ' + insertErr.message };
+    }
+
+    // Update issue
+    const issueUpdate = {
+        favor: newFavor,
+        tension: newTension,
+        updated_at: new Date().toISOString(),
+    };
+    await supabase.from('bilateral_issues').update(issueUpdate).eq('id', issueId);
+
+    // History
+    await insertHistory(supabase, issueId, currentTick, 'action_executed',
+        `${action.name} executed.`,
+        { action_key: actionKey, category: action.category, favor_delta: action.favor_delta,
+          tension_delta: action.tension_delta, incident_triggered: incidentTriggered },
+        actingNationId);
+
+    // Tension/favor change history
+    if (newFavor !== Number(issue.favor)) {
+        await insertHistory(supabase, issueId, currentTick, 'favor_changed',
+            `Favor shifted to ${newFavor > 0 ? '+' : ''}${newFavor.toFixed(2)}.`,
+            { favor_before: issue.favor, favor_after: newFavor });
+    }
+    const oldTensionLabel = getTensionLabel(issue.tension).label;
+    const newTensionLabel = getTensionLabel(newTension).label;
+    if (oldTensionLabel !== newTensionLabel) {
+        await insertHistory(supabase, issueId, currentTick, 'tension_changed',
+            `Tension shifted from ${oldTensionLabel} to ${newTensionLabel}.`,
+            { tension_before: issue.tension, tension_after: newTension });
+    }
+
+    return {
+        success: true,
+        result: {
+            type: 'executed',
+            actionKey,
+            apCost,
+            favorBefore: issue.favor,
+            favorAfter: newFavor,
+            tensionBefore: issue.tension,
+            tensionAfter: newTension,
+            incidentTriggered,
+        },
+    };
+}
+
+
+/**
+ * Respond to a pending diplomatic proposal (accept or reject).
+ * Called by the target nation's controlling faction.
+ *
+ * @param {object} supabase
+ * @param {object} params - { actionTakenId, issueId, respondingNationId, respondingFactionId, accept, currentTick }
+ * @returns {object} { success, error?, result? }
+ */
+async function respondToProposal(supabase, params) {
+    const { actionTakenId, issueId, respondingNationId, respondingFactionId, accept, currentTick } = params;
+
+    // Load the pending action
+    const { data: pending, error: pendErr } = await supabase
+        .from('bilateral_issue_actions_taken')
+        .select('*')
+        .eq('id', actionTakenId)
+        .eq('status', 'pending')
+        .single();
+    if (pendErr || !pending) return { success: false, error: 'Pending proposal not found.' };
+
+    // Verify the responder is the target nation
+    if (pending.target_nation_id !== respondingNationId) {
+        return { success: false, error: 'Your nation is not the target of this proposal.' };
+    }
+
+    // Load issue
+    const { data: issue } = await supabase
+        .from('bilateral_issues')
+        .select('*')
+        .eq('id', issueId)
+        .single();
+    if (!issue) return { success: false, error: 'Issue not found.' };
+
+    const action = ACTIONS[pending.action_key];
+    if (!action) return { success: false, error: 'Unknown action.' };
+
+    const isProposerA = pending.acting_nation_id === issue.nation_a_id;
+    const newStatus = accept ? 'accepted' : 'rejected';
+
+    // Update action record
+    await supabase.from('bilateral_issue_actions_taken').update({
+        status: newStatus,
+        response_tick: currentTick,
+        responding_faction_id: respondingFactionId,
+    }).eq('id', actionTakenId);
+
+    if (accept) {
+        // ── ACCEPTED: apply the action's effects ──
+
+        // Apply tension delta
+        let newTension = Math.max(0, Math.min(10, Number(issue.tension) + action.tension_delta));
+
+        // Apply favor delta (diplomatic actions usually have 0 favor delta)
+        let newFavor = Number(issue.favor);
+        if (action.favor_delta !== 0) {
+            const favorShift = isProposerA ? -action.favor_delta : action.favor_delta;
+            newFavor = Math.max(-5, Math.min(5, newFavor + favorShift));
+        }
+
+        // Special: arbitration resets favor to 0
+        if (action.special === 'arbitration') {
+            newFavor = 0;
+        }
+
+        // Remove modifiers
+        for (const modKey of action.modifiers_removed) {
+            const { error: removeErr } = await supabase
+                .from('bilateral_issue_modifiers')
+                .update({ is_active: false, resolved_by: `action:${pending.action_key}`, resolved_tick: currentTick })
+                .eq('issue_id', issueId)
+                .eq('modifier_key', modKey)
+                .eq('is_active', true);
+            if (!removeErr) {
+                await insertHistory(supabase, issueId, currentTick, 'modifier_removed',
+                    `${MODIFIERS[modKey]?.name || modKey} resolved by ${action.name}.`,
+                    { modifier_key: modKey, action_key: pending.action_key });
+            }
+        }
+
+        // Special: arbitration — schedule removal of ALL structural modifiers after 8 ticks
+        // We mark the issue with an arbitration pending state (stored in metadata)
+        if (action.special === 'arbitration') {
+            await supabase.from('bilateral_issue_history').insert({
+                issue_id: issueId,
+                tick: currentTick,
+                event_type: 'action_accepted',
+                event_text: `International arbitration accepted. Ruling expected in 8 ticks (Tick ${currentTick + 8}).`,
+                metadata: { arbitration_resolve_tick: currentTick + 8 },
+            });
+        }
+
+        // Remove diplomatic_friction if any diplomatic action is accepted
+        const { error: frictionErr } = await supabase
+            .from('bilateral_issue_modifiers')
+            .update({ is_active: false, resolved_by: `diplomatic_acceptance:${pending.action_key}`, resolved_tick: currentTick })
+            .eq('issue_id', issueId)
+            .eq('modifier_key', 'diplomatic_friction')
+            .eq('is_active', true);
+
+        // Remove escalation modifiers that are cleared by "any diplomatic acceptance"
+        // active_vessel_expulsion and fishing_ban_in_effect
+        for (const escMod of ['active_vessel_expulsion', 'fishing_ban_in_effect']) {
+            await supabase
+                .from('bilateral_issue_modifiers')
+                .update({ is_active: false, resolved_by: `diplomatic_acceptance:${pending.action_key}`, resolved_tick: currentTick })
+                .eq('issue_id', issueId)
+                .eq('modifier_key', escMod)
+                .eq('is_active', true);
+        }
+
+        // Update issue
+        await supabase.from('bilateral_issues').update({
+            tension: newTension,
+            favor: newFavor,
+            ticks_without_diplomatic_action: 0,
+            updated_at: new Date().toISOString(),
+        }).eq('id', issueId);
+
+        // Update action record with applied effects
+        await supabase.from('bilateral_issue_actions_taken').update({
+            effects_applied: {
+                tension_delta: action.tension_delta,
+                favor_before: issue.favor, favor_after: newFavor,
+                tension_before: issue.tension, tension_after: newTension,
+                modifiers_removed: action.modifiers_removed,
+            },
+        }).eq('id', actionTakenId);
+
+        await insertHistory(supabase, issueId, currentTick, 'action_accepted',
+            `${action.name} accepted.`,
+            { action_key: pending.action_key, tension_delta: action.tension_delta },
+            respondingNationId);
+
+        return { success: true, result: { type: 'accepted', actionKey: pending.action_key, tensionAfter: newTension, favorAfter: newFavor } };
+
+    } else {
+        // ── REJECTED: favor shifts +0.5 toward proposer ──
+        let newFavor = Number(issue.favor);
+        const favorShift = isProposerA ? -0.5 : 0.5; // toward proposer
+        newFavor = Math.max(-5, Math.min(5, newFavor + favorShift));
+
+        await supabase.from('bilateral_issues').update({
+            favor: newFavor,
+            updated_at: new Date().toISOString(),
+        }).eq('id', issueId);
+
+        await insertHistory(supabase, issueId, currentTick, 'action_rejected',
+            `${action.name} rejected. Favor shifts toward proposer.`,
+            { action_key: pending.action_key, favor_before: issue.favor, favor_after: newFavor },
+            respondingNationId);
+
+        return { success: true, result: { type: 'rejected', actionKey: pending.action_key, favorAfter: newFavor } };
+    }
+}
+
+
+/**
+ * Process pending arbitration rulings.
+ * Called each tick from processIssueTick to check if any arbitration has reached its resolve tick.
+ */
+async function processArbitration(supabase, issueId, currentTick) {
+    // Check history for arbitration events
+    const { data: arbEvents } = await supabase
+        .from('bilateral_issue_history')
+        .select('metadata')
+        .eq('issue_id', issueId)
+        .eq('event_type', 'action_accepted')
+        .not('metadata', 'is', null);
+
+    if (!arbEvents) return false;
+
+    for (const evt of arbEvents) {
+        const resolveTick = evt.metadata?.arbitration_resolve_tick;
+        if (resolveTick && currentTick >= resolveTick) {
+            // Check if already resolved (idempotent)
+            const { data: alreadyDone } = await supabase
+                .from('bilateral_issue_history')
+                .select('id')
+                .eq('issue_id', issueId)
+                .eq('event_type', 'status_changed')
+                .limit(1);
+
+            // Find if structural modifiers still exist
+            const { data: structMods } = await supabase
+                .from('bilateral_issue_modifiers')
+                .select('id, modifier_key')
+                .eq('issue_id', issueId)
+                .eq('category', 'structural')
+                .eq('is_active', true);
+
+            if (structMods && structMods.length > 0) {
+                // Remove ALL remaining structural modifiers
+                for (const mod of structMods) {
+                    await supabase
+                        .from('bilateral_issue_modifiers')
+                        .update({ is_active: false, resolved_by: 'arbitration_ruling', resolved_tick: currentTick })
+                        .eq('id', mod.id);
+
+                    await insertHistory(supabase, issueId, currentTick, 'modifier_removed',
+                        `${MODIFIERS[mod.modifier_key]?.name || mod.modifier_key} resolved by international arbitration ruling.`,
+                        { modifier_key: mod.modifier_key, reason: 'arbitration_ruling' });
+                }
+
+                await insertHistory(supabase, issueId, currentTick, 'action_executed',
+                    'International arbitration ruling delivered. All structural disputes resolved.',
+                    { reason: 'arbitration_ruling', modifiers_resolved: structMods.map(m => m.modifier_key) });
+
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 
