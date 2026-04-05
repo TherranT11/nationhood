@@ -1125,6 +1125,18 @@ window.endParliamentaryEmergency = async function() {
 async function renderGovernmentPage() {
     document.getElementById('content-area').innerHTML = '<div class="panel-padding"><div class="loading-container" style="height:200px;"><div class="loading-spinner"></div><div>Loading government data...</div></div></div>';
 
+    // Refresh nation data so tick-updated stats (oil reserves, fuel prices, etc.) display correctly
+    try {
+        const { data: freshNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
+        if (freshNation) currentNation = freshNation;
+    } catch (e) { /* non-blocking — use cached nation */ }
+
+    // Refresh current tick
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        if (shard?.current_tick) currentTick = shard.current_tick;
+    } catch (e) { /* non-blocking */ }
+
     // Always fetch fresh coalition data — status changes (caretaker, dissolved)
     // must never be masked by stale cache entries
     qCacheBust('coalition_');
@@ -4773,7 +4785,7 @@ function buildEnergyActionRows(isMyMinistry) {
         buildApLabel = `<span style="color:#5cb85c;">BUILDING</span>`;
         // Can still stack another cycle
         if (canUse && ap >= buildApCost) {
-            buildBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();confirmBuildOilReserves()">▶ +${buildApCost} AP</div>`;
+            buildBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openBuildOilReserves()">▶ +${buildApCost} AP</div>`;
         } else if (!canUse) {
             buildBtnHtml = '';
         } else {
@@ -4786,7 +4798,7 @@ function buildEnergyActionRows(isMyMinistry) {
         buildStateClass = ' disabled';
         buildBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${buildApCost} AP">▶ ${buildApCost} AP</div>`;
     } else {
-        buildBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();confirmBuildOilReserves()">▶ ${buildApCost} AP</div>`;
+        buildBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openBuildOilReserves()">▶ ${buildApCost} AP</div>`;
     }
 
     const buildTagsHtml = `<span class="tag tag--positive" style="color:#c8a64e;border-color:#c8a64e44;">RESERVE +${buildRate} Mb/TICK</span>`
@@ -4809,19 +4821,26 @@ function buildEnergyActionRows(isMyMinistry) {
             <div class="ministry-action__tags">${buildTagsHtml}</div>
             <div id="energy-buildOilReserves-btns">${buildBtnHtml}</div>
         </div>
+        <div id="energy-build-confirm" style="display:none;"></div>
     </div>`;
 
     // Action 3: Release Oil Reserves
     const releaseApCost = 2; // flat cost
     const noReserves = reserveMb <= 0;
     const tooLow = reserveMb < 10;
+    const releaseActive = activeMinistryActions?.['energy-releaseOilReserves'] || false;
 
     let releaseDesc = 'Deploy strategic oil reserves into the domestic market to stabilise fuel prices and ease energy costs.';
     let releaseApLabelText = `${releaseApCost} AP`;
     let releaseStateClass = '';
     let releaseBtnHtml = '';
 
-    if (noReserves) {
+    if (releaseActive) {
+        releaseStateClass = ' active';
+        releaseDesc = 'Oil reserves deployed — effects active. Fuel prices, happiness, GDP, inflation, and energy generation adjusting over 4 ticks.';
+        releaseApLabelText = `<span style="color:#5cb85c;">● ACTIVE</span>`;
+        releaseBtnHtml = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+    } else if (noReserves) {
         releaseStateClass = ' disabled';
         releaseDesc = 'No oil reserves held. Use Build Oil Reserves to accumulate.';
         releaseApLabelText = '<span style="color:#3a3a2e;">NO RESERVES</span>';
@@ -4862,6 +4881,57 @@ function buildEnergyActionRows(isMyMinistry) {
     html += `<div id="energy-release-confirm" style="display:none;"></div>`;
 
     return html;
+}
+
+// Open the Build Oil Reserves confirm panel with cost/rate preview
+function openBuildOilReserves() {
+    if (!isMyMinistryByKey('energy')) return;
+    const container = document.getElementById('energy-build-confirm');
+    if (!container) return;
+
+    const buildApCosts = [2, 3, 5, 7];
+    const useCount = _energyBuildUseCount ?? 0;
+    const apCost = buildApCosts[Math.min(useCount, 3)];
+    const oilAndGas = Number(currentNation?.oil_and_gas ?? 50);
+    const manufacturing = Number(currentNation?.manufacturing_output ?? 50);
+    const buildRate = Math.round((oilAndGas + manufacturing) * 0.5);
+    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
+    const pop = currentNation?.population ?? 20000000;
+    const reserveCap = Math.round((pop / 1000000) * 20);
+    const projectedAdd = buildRate * 6;
+    const projectedTotal = Math.min(reserveCap, reserveMb + projectedAdd);
+
+    const mono = "var(--font-mono)";
+    container.style.display = 'block';
+    container.innerHTML = `
+    <div style="margin-top:6px;padding:8px 10px;background:rgba(200,166,78,0.06);border:1px solid rgba(200,166,78,0.15);border-radius:4px;">
+        <div style="font-family:${mono};font-size:8px;font-weight:700;color:var(--text-secondary);margin-bottom:6px;letter-spacing:0.05em;">CONFIRM BUILD OIL RESERVES</div>
+        <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;padding:2px 0;">
+            <span style="color:var(--text-secondary);">Duration</span>
+            <span style="color:var(--text-primary);">6 ticks</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;padding:2px 0;">
+            <span style="color:var(--text-secondary);">Accumulation Rate</span>
+            <span style="color:#c8a64e;">+${buildRate} Mb / tick</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;padding:2px 0;">
+            <span style="color:var(--text-secondary);">Projected Total</span>
+            <span style="color:var(--text-primary);">${projectedTotal} / ${reserveCap} Mb</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;padding:2px 0;">
+            <span style="color:var(--text-secondary);">Per-Tick Side Effects</span>
+            <span><span style="color:var(--red);">Fuel +0.1</span> · <span style="color:var(--red);">Energy −0.1</span></span>
+        </div>
+        <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px;">
+            <div class="ministry-action__btn-cancel" onclick="closeBuildOilReserves()" style="padding:4px 10px;font-size:8px;cursor:pointer;">Cancel</div>
+            <div class="ministry-action__btn-confirm" onclick="confirmBuildOilReserves()" style="padding:4px 10px;font-size:8px;cursor:pointer;">Confirm — ${apCost} AP</div>
+        </div>
+    </div>`;
+}
+
+function closeBuildOilReserves() {
+    const container = document.getElementById('energy-build-confirm');
+    if (container) { container.style.display = 'none'; container.innerHTML = ''; }
 }
 
 // Confirm and execute Build Oil Reserves
@@ -4932,7 +5002,8 @@ async function confirmBuildOilReserves() {
             is_active: true
         });
 
-        // Re-render the government page to reflect changes
+        // Close confirm panel and re-render
+        closeBuildOilReserves();
         await renderGovernmentPage();
 
     } catch (err) {

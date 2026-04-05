@@ -102,6 +102,18 @@ export async function processEnergyOilBuildCycles(supabase, nation, currentTick)
         if (nearCapErr) console.error('[Energy] fire_system_event near-cap error:', nearCapErr.message);
     }
 
+    // Cleanup: delete inactive cycles older than 100 ticks (preserves recent ones for use-count decay)
+    const cutoffTick = currentTick - 100;
+    if (cutoffTick > 0) {
+        const { error: cleanupErr } = await supabase
+            .from('energy_oil_build_cycles')
+            .delete()
+            .eq('nation_id', nation.id)
+            .eq('is_active', false)
+            .lt('activated_on_tick', cutoffTick);
+        if (cleanupErr) console.error('[Energy] Cycle cleanup error:', cleanupErr.message);
+    }
+
     return {
         processed: cycles.length,
         completed: completedIds.length,

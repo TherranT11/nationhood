@@ -42,3 +42,9 @@ CREATE POLICY "Service role can update oil build cycles"
     ON energy_oil_build_cycles FOR UPDATE
     TO service_role
     USING (true);
+
+-- Service role (tick processor) can delete old inactive cycles
+CREATE POLICY "Service role can delete oil build cycles"
+    ON energy_oil_build_cycles FOR DELETE
+    TO service_role
+    USING (true);
