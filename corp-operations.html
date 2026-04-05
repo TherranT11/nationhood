@@ -2994,6 +2994,9 @@ const BID_EQUIPMENT = [
     { key: 'asphalt_plants', name: 'Asphalt Plants', tier: 2 },
 ];
 
+// KNOWN DEAD CODE: The old bid modal system below (openBidModal, renderBidModal, submitBid,
+// setBidGrade/Labor/Markup, GRADE_COSTS, GRADE_QUALITY, LABOR_PRESETS, bidState, bid-overlay HTML)
+// is superseded by openBidAssembly/submitBidAssembly. Safe to remove in a future cleanup pass.
 const GRADE_COSTS = { LOW: 0.7, STANDARD: 1.0, HIGH: 1.4 };
 const GRADE_QUALITY = { LOW: 35, STANDARD: 65, HIGH: 90 };
 const LABOR_PRESETS = [80, 100, 120, 140, 160];
@@ -7115,7 +7118,7 @@ window.propSell = propSell;
 
 // ==================== SUBSIDIARY SHARED HELPERS ====================
 
-const SUB_RATES = { SALE: 0.8, DISSOLVE: 0.6, MERGER_FEE: 0.10, REVENUE_BASE: 0.02, MAX_LOSS: 0.05, GDP_NEUTRAL: 30, DEFAULT_REPUTATION: 25 };
+const SUB_RATES = { SALE: 0.8, DISSOLVE: 0.6, REVENUE_BASE: 0.02, MAX_LOSS: 0.05, GDP_NEUTRAL: 30, DEFAULT_REPUTATION: 25 };
 
 function subParseAmount(input) {
     if (!input) return 0;
@@ -7161,7 +7164,7 @@ async function loadSubsidiaryProjectCounts() {
         const { data } = await _supabase
             .from('construction_contracts')
             .select('nation_id')
-            .eq('awarded_faction_id', faction.id)
+            .eq('awarded_to_faction', faction.id)
             .in('status', ['in_progress', 'awarded']);
         _subProjectCounts = {};
         for (const c of (data || [])) {
@@ -7460,12 +7463,11 @@ async function subMerge(propId) {
     const repGain = Math.round(sourceRep * 0.10);
     const repLoss = Math.round(sourceRep * 0.20);
 
-    // Workforce: hire workers to fill capacity from subsidiary properties
-    const subCapacity = sourceProps.reduce((s, p) => s + Number(p.capacity || 0), 0);
+    // Workforce: hire workers to fill total capacity
+    // hfGetCapacity() already includes subsidiary properties (they're in _ownedProperties)
+    const totalCapacity = hfGetCapacity();
     const currentWorkforce = HF_TYPES.reduce((s, t) => s + Number(faction?.[t.factionKey] ?? 0), 0);
-    const parentCapacity = hfGetCapacity();
-    const newCapacityAfterMerge = parentCapacity + subCapacity;
-    const workersToHire = Math.max(0, newCapacityAfterMerge - currentWorkforce);
+    const workersToHire = Math.max(0, totalCapacity - currentWorkforce);
 
     const parentCash = Number(faction?.corp_cash_reserves ?? 0);
     if (mergeCost > parentCash) {
@@ -7496,41 +7498,41 @@ async function subMerge(propId) {
 
     _subActionLock = true;
     try {
-        // Transfer all properties (including HQ) to parent nation, convert HQ to regular property
+        // Transfer all properties to parent nation; demote HQ, clear subsidiary fields
         const parentNationId = faction.nation_id;
         if (sourceProps.length > 0) {
-            await _supabase.from('corp_properties').update({
+            const nonHqIds = sourceProps.filter(p => p.id !== sourceHq.id).map(p => p.id);
+            if (nonHqIds.length > 0) {
+                const { error: propErr } = await _supabase.from('corp_properties').update({
+                    nation_id: parentNationId,
+                    type: 'office',
+                }).in('id', nonHqIds);
+                if (propErr) throw propErr;
+            }
+            // Demote HQ: clear sub_cash, subsector, convert to office
+            const { error: hqErr } = await _supabase.from('corp_properties').update({
                 nation_id: parentNationId,
-                type: 'office', // demote HQ to regular property
-            }).in('id', sourceProps.map(p => p.id));
-            // Make sure the former HQ is no longer typed as regional_hq
-            await _supabase.from('corp_properties').update({
-                type: 'office', sub_cash: 0, subsector: null,
+                type: 'office',
+                sub_cash: 0,
+                subsector: null,
             }).eq('id', sourceHq.id);
+            if (hqErr) throw hqErr;
         }
 
-        // Deduct acquisition cost, absorb subsidiary cash
+        // Compute faction updates
         const newParentCash = parentCash - mergeCost + sourceCash;
-
-        // Hire workers to fill new capacity (general workforce)
         const currentGeneral = Number(faction?.corp_general_workforce ?? 0);
         const newGeneral = currentGeneral + workersToHire;
-
-        // Reputation: random +10% or -20%
-        const repRoll = Math.random();
-        const repDelta = repRoll >= 0.5 ? repGain : -repLoss;
+        const repDelta = Math.random() >= 0.5 ? repGain : -repLoss;
         const currentStanding = Number(faction?.standing ?? 50);
         const newStanding = Math.max(0, Math.min(100, currentStanding + repDelta));
 
-        // Add subsector to parent's portfolio (store as corp_subsectors array, or update corp_subsector)
-        // For now, the qualification system already checks subsidiary subsectors via owned properties
-        // Since properties are kept, the subsector access is maintained
-
-        await _supabase.from('factions').update({
+        const { error: factionErr } = await _supabase.from('factions').update({
             corp_cash_reserves: newParentCash,
             corp_general_workforce: newGeneral,
             standing: newStanding,
         }).eq('id', faction.id);
+        if (factionErr) throw factionErr;
 
         faction.corp_cash_reserves = newParentCash;
         faction.corp_general_workforce = newGeneral;
@@ -8643,17 +8645,28 @@ window.bidSetWorkers = bidSetWorkers;
 window.bidSetMarkup = bidSetMarkup;
 window.submitBidAssembly = submitBidAssembly;
 
+let _retractingBid = false;
 async function retractBid(contractId) {
+    if (_retractingBid) return;
     const RETRACT_COST = 1_000_000; // $1M penalty
-    const cash = Number(faction?.corp_cash_reserves || 0);
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
     if (cash < RETRACT_COST) {
         alert('Cannot retract — you need at least $1M in cash reserves to cover the retraction penalty.');
         return;
     }
     if (!confirm('Retract your bid?\n\nThis will cost $1M as a retraction penalty.\nThis action cannot be undone.')) return;
 
+    _retractingBid = true;
     try {
-        // Delete the bid
+        // Deduct penalty first — if this fails, bid stays (safe)
+        const newCash = cash - RETRACT_COST;
+        const { error: cashErr } = await _supabase
+            .from('factions')
+            .update({ corp_cash_reserves: newCash })
+            .eq('id', faction.id);
+        if (cashErr) throw cashErr;
+
+        // Then delete the bid
         const { error: delErr } = await _supabase
             .from('contract_bids')
             .delete()
@@ -8661,13 +8674,6 @@ async function retractBid(contractId) {
             .eq('faction_id', faction.id);
         if (delErr) throw delErr;
 
-        // Deduct $1M penalty
-        const newCash = cash - RETRACT_COST;
-        const { error: cashErr } = await _supabase
-            .from('factions')
-            .update({ corp_cash_reserves: newCash })
-            .eq('id', faction.id);
-        if (cashErr) throw cashErr;
         faction.corp_cash_reserves = newCash;
         if (typeof subUpdateTopbarCash === 'function') subUpdateTopbarCash(newCash);
 
@@ -8676,6 +8682,8 @@ async function retractBid(contractId) {
         await loadContracts();
     } catch (err) {
         alert('Failed to retract bid: ' + (err.message || 'Unknown error'));
+    } finally {
+        _retractingBid = false;
     }
 }
 window.retractBid = retractBid;
