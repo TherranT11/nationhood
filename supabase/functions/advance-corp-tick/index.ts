@@ -22,11 +22,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ════════════════════════════════════════════════════════════════════════════════
-//  IDEMPOTENCY — in-memory tracker to skip duplicate cron fires
-// ════════════════════════════════════════════════════════════════════════════════
-
-let lastProcessedTick = -1;
-
 // ════════════════════════════════════════════════════════════════════════════════
 //  CONSTRUCTION SECTOR — Templates & Helpers
 // ════════════════════════════════════════════════════════════════════════════════
@@ -299,18 +294,18 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
     const gdp = Number(nation.gdp_growth ?? 50);
 
     // Determine how many contracts this GDP tier generates
-    let targetContracts = 0;
-    if (gdp >= 75) targetContracts = 4;
-    else if (gdp >= 51) targetContracts = 2;
-    else if (gdp >= 26) targetContracts = 1;
-    if (targetContracts === 0) return [];
+    let targetContracts = 2;
+    if (gdp >= 75) targetContracts = 5;
+    else if (gdp >= 51) targetContracts = 4;
+    else if (gdp >= 26) targetContracts = 3;
 
-    // Count active corporations in this nation
+    // Count active corporations in this nation (exclude dissolved)
     const { count: corpCount } = await supabase
         .from('factions')
         .select('id', { count: 'exact', head: true })
         .eq('nation_id', nation.id)
-        .eq('faction_type', 'corporation');
+        .eq('faction_type', 'corporation')
+        .is('abandoned_at', null);
     const maxOpen = (corpCount || 0) + 2;
 
     // Count currently open contracts
@@ -389,11 +384,11 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
         const tmpl = CC_TEMPLATES[key];
         if (!tmpl) continue;
 
-        // Generate required materials first (needed for budget calculation)
+        // Generate required materials first (needed for budget calculation) — 1.5x base quantities
         const requiredMats: Record<string, number> = {};
         const reqs = CC_REQUIREMENTS[key];
         if (reqs?.mat) {
-            for (const [k, [lo, hi]] of Object.entries(reqs.mat)) requiredMats[k] = ccRand(lo as number, hi as number);
+            for (const [k, [lo, hi]] of Object.entries(reqs.mat)) requiredMats[k] = Math.round(ccRand(lo as number, hi as number) * 1.5);
         }
 
         // Generate workforce (doubled from template ranges)
@@ -402,7 +397,7 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
             : {};
 
         // Budget: range from [all LOW materials, 0% markup] to [all HIGH materials, 40% markup]
-        // then ±10% random delta
+        // Budget stays strictly within the range a player can bid
         let lowCost = 0, highCost = 0;
         for (const [matKey, qty] of Object.entries(requiredMats)) {
             const basePrice = (MAT_PRICE as any)[matKey] || 300000;
@@ -412,15 +407,12 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
         // Add labor cost estimate (wage rate 15200 per worker per tick)
         const totalWorkers = ((requiredWf as any).general || 0) + ((requiredWf as any).skilled || 0);
         const estTimeline = ccRand(tmpl.ticks[0], tmpl.ticks[1]);
-        const laborLow = totalWorkers * 15200 * estTimeline;
-        const laborHigh = laborLow; // labor cost same for both bounds
-        lowCost += laborLow;
-        highCost += laborHigh;
-        // Apply 40% markup to high end
+        const laborCost = totalWorkers * 15200 * estTimeline;
+        lowCost += laborCost;
+        highCost += laborCost;
+        // Apply 40% markup to high end (matches max player markup)
         highCost = Math.round(highCost * 1.40);
-        // Apply ±10% delta
-        const delta = 0.9 + Math.random() * 0.2; // 0.9 to 1.1
-        const budget = Math.round(ccRand(lowCost, highCost) * delta);
+        const budget = ccRand(lowCost, highCost);
 
         // Timeline from template range
         let timeline = estTimeline;
@@ -433,8 +425,8 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
         const projectId = `${SECTOR_PREFIX[sector]}${contractSeq}-${gameYear}`;
         contractSeq++;
 
-        // Issuer: always PRIVATE with a local organization name
-        const issuerName = ccPick(PRIVATE_ISSUERS);
+        // Issuer: auto-generated contracts are private sector offerings
+        const issuerName = PRIVATE_ISSUERS[Math.floor(Math.random() * PRIVATE_ISSUERS.length)];
 
         const { data: contract, error } = await supabase.from('construction_contracts').insert({
             nation_id: nation.id,
@@ -515,13 +507,14 @@ async function replenishPropertyMarketplace(supabase, nation, currentTick) {
         .eq('status', 'available');
     const existingCatalogIds = new Set((existing || []).map(e => e.catalog_id));
 
-    // 4b. Check if construction corps exist in this nation (for warehouse generation)
+    // 4b. Check if active construction corps exist in this nation (for warehouse generation)
     const { count: constructionCorpCount } = await supabase
         .from('factions')
         .select('id', { count: 'exact', head: true })
         .eq('nation_id', nation.id)
         .eq('faction_type', 'corporation')
-        .eq('corp_sector', 'Construction');
+        .eq('corp_sector', 'Construction')
+        .is('abandoned_at', null);
     const hasConstructionCorps = (constructionCorpCount || 0) > 0;
 
     // 5. GDP-weighted selection: higher GDP growth biases toward larger properties
@@ -704,6 +697,61 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
                 if (wfErr) console.error(`[PropertyEffects] Workforce cap update failed for ${corp.faction_name}:`, wfErr.message);
                 else console.log(`[PropertyEffects] ${corp.faction_name}: workforce capped at ${totalCapacity} (was ${totalWf}, -${excess} excess)`);
             }
+        }
+    }
+}
+
+// ==================== SUBSIDIARY REVENUE ====================
+// Each corp tick: subsidiaries gain or lose cash based on nation GDP Growth.
+// Revenue = sub_cash × 0.02 × (1 + (gdpGrowth - 30)/100) × (reputation/100)
+// GDP Growth < 30 → net loss (bleeding cash)
+// GDP Growth > 30 → net gain (growing)
+// Reputation scales returns (25 = 0.25x, 50 = 0.50x, 100 = 1.0x)
+// Losses clamped to max 5% of sub_cash per tick to prevent wipeout.
+
+const SUB_REVENUE_BASE = 0.02;
+const SUB_GDP_NEUTRAL = 30;
+const SUB_DEFAULT_REPUTATION = 25;
+const SUB_MAX_LOSS_RATE = 0.05;
+
+async function processSubsidiaryRevenue(supabase, nation, corps, currentTick) {
+    const gdpGrowth = Number(nation.gdp_growth ?? 50);
+    const corpIds = corps.map(c => c.id);
+    const corpMap = Object.fromEntries(corps.map(c => [c.id, c]));
+
+    // Single query for all corps in this nation
+    const { data: hqs, error: hqErr } = await supabase
+        .from('corp_properties')
+        .select('id, sub_cash, name, faction_id')
+        .in('faction_id', corpIds)
+        .eq('nation_id', nation.id)
+        .eq('type', 'regional_hq')
+        .eq('is_active', true)
+        .gt('sub_cash', 0);
+
+    if (hqErr || !hqs || hqs.length === 0) return;
+
+    const repMult = SUB_DEFAULT_REPUTATION / 100;
+    for (const hq of hqs) {
+        const subCash = Number(hq.sub_cash);
+        const base = subCash * SUB_REVENUE_BASE;
+        const gdpMod = (gdpGrowth - SUB_GDP_NEUTRAL) / 100;
+        let revenue = Math.round(base * (1 + gdpMod) * repMult);
+
+        if (revenue < 0) revenue = Math.max(revenue, -Math.round(subCash * SUB_MAX_LOSS_RATE));
+        if (revenue === 0) continue;
+
+        const newSubCash = Math.max(0, subCash + revenue);
+        const { error: updErr } = await supabase
+            .from('corp_properties')
+            .update({ sub_cash: newSubCash })
+            .eq('id', hq.id);
+
+        const corp = corpMap[hq.faction_id];
+        if (updErr) {
+            console.warn(`[SubRevenue] Failed to update sub_cash for ${hq.name}:`, updErr.message);
+        } else {
+            console.log(`[SubRevenue] ${corp?.faction_name || '?'} → ${hq.name}: ${revenue >= 0 ? '+' : ''}${revenue.toLocaleString()} (GDP:${gdpGrowth}, cash:${subCash.toLocaleString()} → ${newSubCash.toLocaleString()})`);
         }
     }
 }
@@ -995,16 +1043,14 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
     const multiplier = gdpFactor * urbanFactor * popFactor * solFactor * infraFactor * inflFactor * intFactor;
     const monthlyMarketRev = Math.round(Math.round(BASE_RATE * multiplier) / 12);
 
-    // Wages: same formula as corp-dashboard.html renderWorkforce
-    const TOTAL_WORKFORCE = 3000;
-    const CONSTRUCTION_SECTOR_MULT = 0.20;
-    const baseAnnualWage = 8000 + (ns('minimum_wage') / 100) * 32000;
-    const generalWages = Math.round(TOTAL_WORKFORCE * 0.75) * baseAnnualWage * 1.00 * CONSTRUCTION_SECTOR_MULT;
-    const skilledWages = Math.round(TOTAL_WORKFORCE * 0.20) * baseAnnualWage * 1.50 * CONSTRUCTION_SECTOR_MULT;
-    const innovativeWages = (TOTAL_WORKFORCE - Math.round(TOTAL_WORKFORCE * 0.75) - Math.round(TOTAL_WORKFORCE * 0.20)) * baseAnnualWage * 2.75 * CONSTRUCTION_SECTOR_MULT;
-    const monthlyWages = Math.round((generalWages + skilledWages + innovativeWages) / 12);
-
-    const monthlyIncome = monthlyMarketRev - monthlyWages;
+    // Wages: matches corp-dashboard.html renderWorkforce formula exactly
+    const baseAnnualWage = (ns('minimum_wage') / 100) * 48000;
+    const inflation = ns('inflation');
+    const sol = ns('standard_of_living');
+    const inflMod = 1 + ((inflation - 50) / 100 * 0.5);
+    const solMod = 1 + ((sol - 50) / 100 * 0.5);
+    const GENERAL_MULT = 2, SKILLED_MULT = 3, INNOVATIVE_MULT = 6;
+    const calcWage = (mult) => Math.round(baseAnnualWage * mult * inflMod * solMod);
 
     // Loan servicing constants (5% annual rate, 10-year amortization)
     const LOAN_ANNUAL_RATE = 0.05;
@@ -1014,6 +1060,16 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
     for (const corp of corpFactions) {
         const currentCash = Number(corp.corp_cash_reserves || 0);
         const currentLoans = Number(corp.corp_loans || 0);
+
+        // Per-corp wages from actual workforce counts
+        const generalCount = Number(corp.corp_general_workforce ?? 0);
+        const skilledCount = Number(corp.corp_skilled_workforce ?? 0);
+        const innovativeCount = Number(corp.corp_innovative_workforce ?? 0);
+        const annualWages = (generalCount * calcWage(GENERAL_MULT))
+                          + (skilledCount * calcWage(SKILLED_MULT))
+                          + (innovativeCount * calcWage(INNOVATIVE_MULT));
+        const monthlyWages = Math.round(annualWages / 12);
+        const monthlyIncome = monthlyMarketRev - monthlyWages;
 
         // Compute monthly loan payment (amortized) and split into interest + principal
         let debtPayment = 0;
@@ -1032,11 +1088,12 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
         const updateFields = { corp_cash_reserves: newCash };
         if (principalPaid > 0) updateFields.corp_loans = newLoans;
 
-        await supabase.from('factions')
+        const { error: updateErr } = await supabase.from('factions')
             .update(updateFields)
             .eq('id', corp.id);
+        if (updateErr) console.error(`[advance-corp-tick] Income update failed for ${corp.faction_name}:`, updateErr.message);
     }
-    console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}, wages=${monthlyWages}, net=${monthlyIncome}`);
+    console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}`);
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -1108,12 +1165,13 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
     // 5. Process each nation
     for (const nation of nationList) {
         try {
-            // Load corporation factions for this nation
+            // Load corporation factions for this nation (exclude dissolved corps)
             const { data: corpFactions, error: corpErr } = await supabase
                 .from('factions')
                 .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_loans, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
                 .eq('nation_id', nation.id)
-                .eq('faction_type', 'corporation');
+                .eq('faction_type', 'corporation')
+                .is('abandoned_at', null);
 
             if (corpErr) {
                 console.error(`[advance-corp-tick] Failed to load corps for ${nation.name}:`, corpErr.message);
@@ -1178,6 +1236,14 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 summary.errors.push({ nation: nation.name, sector: 'property_effects', error: String(propEffErr) });
             }
 
+            // ── Subsidiary Revenue (GDP-based growth/loss per subsidiary) ──
+            try {
+                await processSubsidiaryRevenue(supabase, nation, corps, currentTick);
+            } catch (subRevErr) {
+                console.error(`[advance-corp-tick] Subsidiary revenue failed for ${nation.name} (non-fatal):`, subRevErr);
+                summary.errors.push({ nation: nation.name, sector: 'subsidiary_revenue', error: String(subRevErr) });
+            }
+
             // ── Corporation Monthly Income ──────────────────────────────
             try {
                 await processCorpMonthlyIncome(supabase, nation, corps);
@@ -1202,7 +1268,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
     }
 
     // 6. Mark this tick as processed (persisted to DB to survive cold starts)
-    lastProcessedTick = currentTick;
     await supabase.from('shard').update({ corp_last_processed_tick: currentTick }).eq('name', 'Alpha Shard');
 
     console.log(`[advance-corp-tick] Tick ${currentTick} complete. ${summary.corpsProcessed} corps across ${nationList.length} nations.`);

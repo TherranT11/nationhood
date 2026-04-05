@@ -232,7 +232,7 @@ export async function loadGameState(requireFaction = true) {
                     const { data: allFactions } = await _supabase
                         .from('factions').select('*')
                         .or(`id.eq.${userId},linked_user_id.eq.${userId}`);
-                    _userFactions = (allFactions || []).filter(f => f.nation_id);
+                    _userFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
                 }
             } catch (_) { /* dropdown will just show current faction */ }
         }
@@ -279,14 +279,14 @@ export async function loadGameState(requireFaction = true) {
             .from('factions').select('*')
             .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
 
-        const ownedFactions = (allFactions || []).filter(f => f.nation_id);
+        const ownedFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
         // Store all factions for the dropdown switcher
         _userFactions = ownedFactions;
 
         if (ownedFactions.length === 0) {
             if (requireFaction) {
                 sessionStorage.removeItem(STATE_KEY);
-                window.location.href = 'select-nation.html';
+                window.location.href = 'faction-select.html';
                 return null;
             }
         } else {

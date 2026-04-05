@@ -975,6 +975,30 @@
     font-size: 9px;
     color: var(--dtxt-muted);
 }
+.pol-fc-pillars {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 3px;
+    padding: 0 2px;
+}
+.pol-fc-pillar {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+.pol-fc-pillar-label {
+    color: var(--dtxt-muted);
+    font-weight: 400;
+    font-size: 8px;
+    letter-spacing: 0.3px;
+}
+.pol-fc-pillar--appeal {
+    margin-left: auto;
+    font-weight: 700;
+    color: var(--dtxt-secondary);
+}
 .pol-fc-band {
     position: relative;
     height: 16px;

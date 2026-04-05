@@ -146,21 +146,8 @@ export function calculateEnactmentApproval(articles, billSupport, sponsorId, fac
     return approvalDeltas;
 }
 
-export async function applyEnactmentApproval(supabase, nationId, approvalDeltas, currentTick = 0) {
-    for (const [factionId, delta] of Object.entries(approvalDeltas)) {
-        if (delta === 0) continue;
-        const momDelta = round2(delta * 0.3);
-        if (momDelta === 0) continue;
-        try {
-            await supabase.rpc('adjust_momentum', {
-                p_faction_id: factionId,
-                p_delta: momDelta,
-                p_label: `Bill enacted (${momDelta > 0 ? '+' : ''}${momDelta})`,
-                p_tick: currentTick
-            });
-        } catch (e) { /* non-fatal */ }
-    }
-}
+// No-op: enactment no longer awards momentum.
+export async function applyEnactmentApproval() { }
 
 
 // ==================== SPONSOR BLOC PREFERENCE ON BILL PASSAGE ====================
@@ -1128,7 +1115,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
             // Minister confirmation bill (Presidential systems)
             const mKey = bill.ministry_key;
             const { data: ministry } = await supabase.from('ministries')
-                .select('id, pending_minister')
+                .select('id, pending_minister, is_acting')
                 .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
                 .maybeSingle();
 
@@ -1213,9 +1200,10 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 await failBill(supabase, bill);
 
                 // Clear pending nominee after failed confirmation
+                // If an acting minister was in place, restore 'acting' status instead of 'rejected'
                 if (ministry?.pending_minister) {
                     await supabase.from('ministries').update({
-                        confirmation_status: 'rejected',
+                        confirmation_status: ministry.is_acting ? 'acting' : 'rejected',
                         pending_minister: null
                     }).eq('id', ministry.id);
                 }
@@ -2041,9 +2029,8 @@ export async function resolveExpiredVotes(supabase, nationId) {
         }
 
         // ── Bill momentum: award momentum to YES/NO voters based on outcome ──
-        // Sponsor: +3 on passage. YES voters: +2/article on pass, -2/article on fail.
+        // Sponsor: +1 on passage. YES voters: +2/article on pass, -1 on fail.
         // NO voters: +2/article on fail. Abstain: nothing.
-        // Skip special bill types that don't have policy articles.
         // Skip momentum for special bill types and presidential desk (not yet enacted)
         const lastResult = results[results.length - 1];
         const skipMomentum = ['no_confidence', 'confirmation', 'minister_confirmation', 'impeachment_conviction'].includes(bill.bill_type)
@@ -2063,7 +2050,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         delta = 2 * articleCount;
                         label = `Bill passed: ${(bill.bill_name || '').slice(0, 25)}… (+${delta})`;
                     } else if (stance === 'yes' && !billPassed) {
-                        delta = -2 * articleCount;
+                        delta = -1;
                         label = `Bill failed: ${(bill.bill_name || '').slice(0, 25)}… (${delta})`;
                     } else if (stance === 'no' && !billPassed) {
                         delta = 2 * articleCount;
@@ -2083,12 +2070,12 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     }
                 }
 
-                // Sponsor bonus: +3 on passage
+                // Sponsor bonus: +1 on passage
                 if (billPassed && bill.proposed_by) {
                     await supabase.rpc('adjust_momentum', {
                         p_faction_id: bill.proposed_by,
-                        p_delta: 3,
-                        p_label: `Sponsored bill passed: ${(bill.bill_name || '').slice(0, 25)}… (+3)`,
+                        p_delta: 1,
+                        p_label: `Sponsored bill passed: ${(bill.bill_name || '').slice(0, 25)}… (+1)`,
                         p_tick: currentTick
                     });
                 }
@@ -3965,7 +3952,7 @@ async function syncFailedMinisterConfirmationBill(supabase, bill) {
 
     const { data: ministry, error: fetchErr } = await supabase
         .from('ministries')
-        .select('id')
+        .select('id, is_acting')
         .eq('nation_id', bill.nation_id)
         .eq('ministry_key', bill.ministry_key)
         .eq('is_active', true)
@@ -3977,10 +3964,11 @@ async function syncFailedMinisterConfirmationBill(supabase, bill) {
     }
     if (!ministry) return;
 
+    // If an acting minister is in place, restore 'acting' status instead of 'rejected'
     const { error: updateErr } = await supabase
         .from('ministries')
         .update({
-            confirmation_status: 'rejected',
+            confirmation_status: ministry.is_acting ? 'acting' : 'rejected',
             pending_minister: null
         })
         .eq('id', ministry.id);

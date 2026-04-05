@@ -485,77 +485,10 @@ const MINISTRY_ACTIONS = {
     energy: {
         actions: [
             {
-                id: 'greenEnergyTransition',
-                triggerKey: 'ministry_green_energy_transition',
-                name: 'Green Energy Transition',
-                desc: 'Invest in renewable energy infrastructure. Reduces emissions long-term but raises short-term costs.',
-                apCosts: [3, 4, 6, 9],
-                budgetPerCapita: 1000000 / 6000000, // $1M per 6M pop per tick
-                delay: 3, duration: 10,
-                decayTicks: 4,
-                useResetInterval: 18,
-                conflictsWith: 'fossilFuelExpansion',
-                tags: [
-                    { label: 'RENEWABLES +3', cls: 'positive' },
-                    { label: 'EMISSIONS −2', cls: 'positive' },
-                    { label: 'FUEL PRICES +2', cls: 'negative' },
-                    { label: 'MANUFACTURING −1', cls: 'negative' }
-                ],
-                baseEffects: [
-                    { stat_key: 'renewable_energy_percentage', direction: 'up',   rate: 3, scalable: true },
-                    { stat_key: 'carbon_emissions',            direction: 'down', rate: 2, scalable: true },
-                    { stat_key: 'fuel_prices',                 direction: 'up',   rate: 2, scalable: false },
-                    { stat_key: 'manufacturing_output',        direction: 'down', rate: 1, scalable: false },
-                    { stat_key: 'minister_approval',           direction: 'down', rate: 1, scalable: false, target: 'minister', delayOverride: 0, durationOverride: 2 }
-                ]
-            },
-            {
-                id: 'fossilFuelExpansion',
-                triggerKey: 'ministry_fossil_fuel_expansion',
-                name: 'Fossil Fuel Expansion',
-                desc: 'Expand oil, gas, and coal extraction. Boosts energy output and lowers prices but worsens pollution.',
-                apCosts: [2, 3, 5, 8],
-                budgetPerCapita: 1000000 / 8000000, // $1M per 8M pop per tick
-                delay: 1, duration: 8,
-                decayTicks: 3,
-                useResetInterval: 15,
-                conflictsWith: 'greenEnergyTransition',
-                tags: [
-                    { label: 'ENERGY +3', cls: 'positive' },
-                    { label: 'FUEL PRICES −2', cls: 'positive' },
-                    { label: 'EMISSIONS +3', cls: 'negative' },
-                    { label: 'POLLUTION +2', cls: 'negative' }
-                ],
-                baseEffects: [
-                    { stat_key: 'energy_generation',           direction: 'up',   rate: 3, scalable: true },
-                    { stat_key: 'fuel_prices',                 direction: 'down', rate: 2, scalable: true },
-                    { stat_key: 'carbon_emissions',            direction: 'up',   rate: 3, scalable: false },
-                    { stat_key: 'pollution',                   direction: 'up',   rate: 2, scalable: false },
-                    { stat_key: 'minister_approval',           direction: 'up',   rate: 1, scalable: false, target: 'minister', delayOverride: 0, durationOverride: 1 }
-                ]
-            },
-            {
-                id: 'energyEfficiencyProgram',
-                triggerKey: 'ministry_energy_efficiency_program',
-                name: 'Energy Efficiency Program',
-                desc: 'Fund insulation, smart grids, and efficiency standards. Broad benefits but slow to materialise.',
-                apCosts: [2, 3, 4, 6],
-                budgetPerCapita: 1000000 / 10000000, // $1M per 10M pop per tick
-                delay: 4, duration: 12,
-                decayTicks: 5,
-                useResetInterval: 20,
-                tags: [
-                    { label: 'FUEL PRICES −1', cls: 'positive' },
-                    { label: 'POLLUTION −1', cls: 'positive' },
-                    { label: 'STD OF LIVING +1', cls: 'positive' },
-                    { label: 'ENERGY +1', cls: 'positive' }
-                ],
-                baseEffects: [
-                    { stat_key: 'fuel_prices',                 direction: 'down', rate: 1, scalable: true },
-                    { stat_key: 'pollution',                   direction: 'down', rate: 1, scalable: true },
-                    { stat_key: 'standard_of_living',          direction: 'up',   rate: 1, scalable: true },
-                    { stat_key: 'energy_generation',           direction: 'up',   rate: 1, scalable: true }
-                ]
+                id: 'expandInfrastructure',
+                name: 'Expand Infrastructure',
+                desc: 'Fund construction and modernisation of energy generation and distribution infrastructure.',
+                comingSoon: true
             }
         ]
     },
@@ -970,6 +903,11 @@ let rulingFactionId = null;
 let ministryActionUseCounts = {}; // { 'interior:enforcePublicOrder': 2, ... }
 let activeMinistryActions = {};   // { 'interior-enforcePublicOrder': true } — currently running
 let missingAmbassadorCount = 0; // pre-fetched for Foreign Minister performance panel
+let _energyBuildCycles = [];     // active oil build cycles from energy_oil_build_cycles table
+let _energyBuildUseCount = 0;    // number of build activations for AP cost scaling
+let _energyBuildConfirming = false; // double-fire lock
+let _energyReleaseConfirming = false; // double-fire lock for release
+let _energyReleaseAmount = 0; // slider value for release confirm
 let currentTick = 0;
 let lastElectionTick = null;
 let _protestCrisisData = null; // active protest crisis (T6/T7) for crisis card
@@ -1187,6 +1125,18 @@ window.endParliamentaryEmergency = async function() {
 async function renderGovernmentPage() {
     document.getElementById('content-area').innerHTML = '<div class="panel-padding"><div class="loading-container" style="height:200px;"><div class="loading-spinner"></div><div>Loading government data...</div></div></div>';
 
+    // Refresh nation data so tick-updated stats (oil reserves, fuel prices, etc.) display correctly
+    try {
+        const { data: freshNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
+        if (freshNation) currentNation = freshNation;
+    } catch (e) { /* non-blocking — use cached nation */ }
+
+    // Refresh current tick
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        if (shard?.current_tick) currentTick = shard.current_tick;
+    } catch (e) { /* non-blocking */ }
+
     // Always fetch fresh coalition data — status changes (caretaker, dissolved)
     // must never be masked by stale cache entries
     qCacheBust('coalition_');
@@ -1370,6 +1320,38 @@ async function renderGovernmentPage() {
                 }
             }
         } catch (e) { /* non-blocking — defaults to 0 use counts */ }
+
+        // Load active energy oil build cycles for Energy ministry display
+        try {
+            const { data: buildCycles } = await _supabase
+                .from('energy_oil_build_cycles')
+                .select('id, activated_on_tick, ticks_remaining, rate_per_tick, is_active')
+                .eq('nation_id', currentNation.id)
+                .eq('is_active', true);
+            _energyBuildCycles = buildCycles || [];
+            // Use count for AP scaling: count all build cycles ever (active + inactive)
+            const { count: buildUseCount } = await _supabase
+                .from('energy_oil_build_cycles')
+                .select('id', { count: 'exact', head: true })
+                .eq('nation_id', currentNation.id)
+                .eq('faction_id', currentFaction?.id || '00000000-0000-0000-0000-000000000000');
+            _energyBuildUseCount = buildUseCount || 0;
+            // Apply decay: -1 per 20 ticks of non-use
+            if (_energyBuildCycles.length === 0 && _energyBuildUseCount > 0) {
+                const { data: lastCycle } = await _supabase
+                    .from('energy_oil_build_cycles')
+                    .select('activated_on_tick')
+                    .eq('nation_id', currentNation.id)
+                    .eq('faction_id', currentFaction?.id || '00000000-0000-0000-0000-000000000000')
+                    .order('activated_on_tick', { ascending: false })
+                    .limit(1);
+                if (lastCycle?.[0]) {
+                    const ticksSince = currentTick - lastCycle[0].activated_on_tick;
+                    const decay = Math.floor(ticksSince / 20);
+                    _energyBuildUseCount = Math.max(0, _energyBuildUseCount - decay);
+                }
+            }
+        } catch (e) { _energyBuildCycles = []; _energyBuildUseCount = 0; }
 
         // Load education curriculum drift state for card display
         await loadCurriculumDriftState();
@@ -3411,6 +3393,8 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
     if (ministryKey === 'labor') return buildLaborActionRows(isMyMinistry);
     // Education ministry has a custom action layout
     if (ministryKey === 'education') return buildEducationActionRows(isMyMinistry);
+    // Energy ministry has a custom action layout (oil reserves system)
+    if (ministryKey === 'energy') return buildEnergyActionRows(isMyMinistry);
 
     // Foreign ministry actions live on the Diplomacy page
     if (ministryKey === 'foreign') {
@@ -4740,6 +4724,469 @@ async function confirmLaborWorkforceAction(actionId) {
     }
 }
 
+// ==================== ENERGY MINISTRY — CUSTOM ACTION ROWS ====================
+
+function buildEnergyActionRows(isMyMinistry) {
+    const comingSoonBtn = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div>`;
+    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
+    const pop = currentNation?.population ?? 20000000;
+    const reserveCap = Math.round((pop / 1000000) * 20);
+
+    let html = `<div class="ministry-card__actions-label" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>ACTIONS</span>
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--text-muted);letter-spacing:0.03em;">Strategic Oil Reserve: <span style="color:${reserveMb > 0 ? '#c8a64e' : 'var(--text-dim)'}">${reserveMb} Mb</span> / ${reserveCap} Mb</span>
+    </div>`;
+
+    // Action 1: Expand Infrastructure — COMING SOON
+    html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Expand Infrastructure</span>
+            <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
+        </div>
+        <div class="ministry-action__desc">Fund construction and modernisation of energy generation and distribution infrastructure.</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags"></div>
+            <div>${comingSoonBtn}</div>
+        </div>
+    </div>`;
+
+    // Action 2: Build Oil Reserves
+    const buildApCosts = [2, 3, 5, 7];
+    const buildUseCount = _energyBuildUseCount ?? 0;
+    const buildApCost = buildApCosts[Math.min(buildUseCount, 3)];
+    const ap = currentFaction?.action_points ?? 0;
+    const canUse = isMyMinistry === true;
+    const activeCycles = _energyBuildCycles.length;
+
+    // Calculate accumulation rate from oil_and_gas + manufacturing_output
+    const oilAndGas = Number(currentNation?.oil_and_gas ?? 50);
+    const manufacturing = Number(currentNation?.manufacturing_output ?? 50);
+    const buildRate = Math.round((oilAndGas + manufacturing) * 0.5);
+
+    // Cap check
+    const atCap = reserveMb >= reserveCap;
+    const nearCap = reserveMb >= reserveCap * 0.8;
+    const capRemaining = Math.max(0, reserveCap - reserveMb);
+
+    let buildDesc = 'Divert domestic oil supply into strategic government reserves. Reduces export supply by 3% for 6 ticks.';
+    let buildApLabel = `${buildApCost} AP${buildUseCount > 0 ? ' (use ' + (buildUseCount + 1) + ')' : ''}`;
+    let buildStateClass = '';
+    let buildBtnHtml = '';
+
+    if (atCap) {
+        buildStateClass = ' disabled';
+        buildDesc = 'Reserve at maximum capacity. Release reserves before building further.';
+        buildApLabel = '<span style="color:#3a3a2e;">AT CAPACITY</span>';
+        buildBtnHtml = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">LOCKED</div>`;
+    } else if (activeCycles > 0) {
+        // Show active state with cycle count
+        const maxTicks = Math.max(..._energyBuildCycles.map(c => c.ticks_remaining));
+        buildDesc = `Accumulating reserves. ${activeCycles} cycle${activeCycles > 1 ? 's' : ''} active. ${maxTicks} tick${maxTicks !== 1 ? 's' : ''} remaining. Reserve: ${reserveMb} Mb.`;
+        buildApLabel = `<span style="color:#5cb85c;">BUILDING</span>`;
+        // Can still stack another cycle
+        if (canUse && ap >= buildApCost) {
+            buildBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openBuildOilReserves()">▶ +${buildApCost} AP</div>`;
+        } else if (!canUse) {
+            buildBtnHtml = '';
+        } else {
+            buildBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${buildApCost} AP">▶ ${buildApCost} AP</div>`;
+        }
+    } else if (!canUse) {
+        buildStateClass = ' disabled';
+        buildBtnHtml = '';
+    } else if (ap < buildApCost) {
+        buildStateClass = ' disabled';
+        buildBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${buildApCost} AP">▶ ${buildApCost} AP</div>`;
+    } else {
+        buildBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openBuildOilReserves()">▶ ${buildApCost} AP</div>`;
+    }
+
+    const buildTagsHtml = `<span class="tag tag--positive" style="color:#c8a64e;border-color:#c8a64e44;">RESERVE +${buildRate} Mb/TICK</span>`
+        + `<span class="tag tag--negative">FUEL PRICES ↑</span>`
+        + `<span class="tag tag--negative">ENERGY GEN ↓</span>`
+        + `<span class="tag tag--neutral">NO TICK COST</span>`;
+
+    let buildExtraHtml = '';
+    if (nearCap && !atCap) {
+        buildExtraHtml = `<div style="font-family:var(--font-mono);font-size:7px;color:#c8a64e;margin-top:2px;">Reserve approaching capacity — ${capRemaining} Mb remaining.</div>`;
+    }
+
+    html += `<div class="ministry-action${buildStateClass}" id="energy-buildOilReserves">
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Build Oil Reserves</span>
+            <span class="ministry-action__ap-cost">${buildApLabel}</span>
+        </div>
+        <div class="ministry-action__desc">${escapeHtml(buildDesc)}${buildExtraHtml}</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags">${buildTagsHtml}</div>
+            <div id="energy-buildOilReserves-btns">${buildBtnHtml}</div>
+        </div>
+        <div id="energy-build-confirm" style="display:none;"></div>
+    </div>`;
+
+    // Action 3: Release Oil Reserves
+    const releaseApCost = 2; // flat cost
+    const noReserves = reserveMb <= 0;
+    const tooLow = reserveMb < 10;
+    const releaseActive = activeMinistryActions?.['energy-releaseOilReserves'] || false;
+
+    let releaseDesc = 'Deploy strategic oil reserves into the domestic market to stabilise fuel prices and ease energy costs.';
+    let releaseApLabelText = `${releaseApCost} AP`;
+    let releaseStateClass = '';
+    let releaseBtnHtml = '';
+
+    if (releaseActive) {
+        releaseStateClass = ' active';
+        releaseDesc = 'Oil reserves deployed — effects active. Fuel prices, happiness, GDP, inflation, and energy generation adjusting over 4 ticks.';
+        releaseApLabelText = `<span style="color:#5cb85c;">● ACTIVE</span>`;
+        releaseBtnHtml = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+    } else if (noReserves) {
+        releaseStateClass = ' disabled';
+        releaseDesc = 'No oil reserves held. Use Build Oil Reserves to accumulate.';
+        releaseApLabelText = '<span style="color:#3a3a2e;">NO RESERVES</span>';
+        releaseBtnHtml = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">LOCKED</div>`;
+    } else if (tooLow) {
+        releaseStateClass = ' disabled';
+        releaseDesc = `Reserve too low for release. Minimum 10 Mb required. Current: ${reserveMb} Mb.`;
+        releaseBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Minimum release is 10 Mb">▶ ${releaseApCost} AP</div>`;
+    } else if (!canUse) {
+        releaseStateClass = ' disabled';
+        releaseBtnHtml = '';
+    } else if (ap < releaseApCost) {
+        releaseStateClass = ' disabled';
+        releaseBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${releaseApCost} AP">▶ ${releaseApCost} AP</div>`;
+    } else {
+        releaseBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openReleaseOilReserves()">▶ ${releaseApCost} AP</div>`;
+    }
+
+    const releaseTagsHtml = `<span class="tag tag--positive">FUEL PRICES ↓</span>`
+        + `<span class="tag tag--positive">HAPPINESS ↑</span>`
+        + `<span class="tag tag--positive">GDP ↑</span>`
+        + `<span class="tag tag--positive">INFLATION ↓</span>`
+        + `<span class="tag tag--positive">ENERGY GEN ↑</span>`;
+
+    html += `<div class="ministry-action${releaseStateClass}" id="energy-releaseOilReserves">
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Release Oil Reserves</span>
+            <span class="ministry-action__ap-cost">${releaseApLabelText}</span>
+        </div>
+        <div class="ministry-action__desc">${escapeHtml(releaseDesc)}</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags">${releaseTagsHtml}</div>
+            <div id="energy-releaseOilReserves-btns">${releaseBtnHtml}</div>
+        </div>
+    </div>`;
+
+    // Release confirm panel (hidden by default, shown when player clicks release)
+    html += `<div id="energy-release-confirm" style="display:none;"></div>`;
+
+    return html;
+}
+
+// Open the Build Oil Reserves confirm panel with cost/rate preview
+function openBuildOilReserves() {
+    if (!isMyMinistryByKey('energy')) return;
+    const container = document.getElementById('energy-build-confirm');
+    if (!container) return;
+
+    const buildApCosts = [2, 3, 5, 7];
+    const useCount = _energyBuildUseCount ?? 0;
+    const apCost = buildApCosts[Math.min(useCount, 3)];
+    const oilAndGas = Number(currentNation?.oil_and_gas ?? 50);
+    const manufacturing = Number(currentNation?.manufacturing_output ?? 50);
+    const buildRate = Math.round((oilAndGas + manufacturing) * 0.5);
+    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
+    const pop = currentNation?.population ?? 20000000;
+    const reserveCap = Math.round((pop / 1000000) * 20);
+    const projectedAdd = buildRate * 6;
+    const projectedTotal = Math.min(reserveCap, reserveMb + projectedAdd);
+
+    const mono = "var(--font-mono)";
+    container.style.display = 'block';
+    container.innerHTML = `
+    <div style="margin-top:6px;padding:8px 10px;background:rgba(200,166,78,0.06);border:1px solid rgba(200,166,78,0.15);border-radius:4px;">
+        <div style="font-family:${mono};font-size:8px;font-weight:700;color:var(--text-secondary);margin-bottom:6px;letter-spacing:0.05em;">CONFIRM BUILD OIL RESERVES</div>
+        <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;padding:2px 0;">
+            <span style="color:var(--text-secondary);">Duration</span>
+            <span style="color:var(--text-primary);">6 ticks</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;padding:2px 0;">
+            <span style="color:var(--text-secondary);">Accumulation Rate</span>
+            <span style="color:#c8a64e;">+${buildRate} Mb / tick</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;padding:2px 0;">
+            <span style="color:var(--text-secondary);">Projected Total</span>
+            <span style="color:var(--text-primary);">${projectedTotal} / ${reserveCap} Mb</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;padding:2px 0;">
+            <span style="color:var(--text-secondary);">Per-Tick Side Effects</span>
+            <span><span style="color:var(--red);">Fuel +0.1</span> · <span style="color:var(--red);">Energy −0.1</span></span>
+        </div>
+        <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px;">
+            <div class="ministry-action__btn-cancel" onclick="closeBuildOilReserves()" style="padding:4px 10px;font-size:8px;cursor:pointer;">Cancel</div>
+            <div class="ministry-action__btn-confirm" onclick="confirmBuildOilReserves()" style="padding:4px 10px;font-size:8px;cursor:pointer;">Confirm — ${apCost} AP</div>
+        </div>
+    </div>`;
+}
+
+function closeBuildOilReserves() {
+    const container = document.getElementById('energy-build-confirm');
+    if (container) { container.style.display = 'none'; container.innerHTML = ''; }
+}
+
+// Confirm and execute Build Oil Reserves
+async function confirmBuildOilReserves() {
+    if (_energyBuildConfirming) return;
+    if (!currentFaction || !currentNation) return;
+    if (!isMyMinistryByKey('energy')) return;
+
+    const buildApCosts = [2, 3, 5, 7];
+    const useCount = _energyBuildUseCount ?? 0;
+    const apCost = buildApCosts[Math.min(useCount, 3)];
+    const ap = currentFaction?.action_points ?? 0;
+    if (ap < apCost) { alert('Insufficient AP.'); return; }
+
+    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
+    const pop = currentNation?.population ?? 20000000;
+    const reserveCap = Math.round((pop / 1000000) * 20);
+    if (reserveMb >= reserveCap) { alert('Reserve at maximum capacity. Release reserves before building further.'); return; }
+
+    // Calculate rate from oil_and_gas + manufacturing_output
+    const oilAndGas = Number(currentNation?.oil_and_gas ?? 50);
+    const manufacturing = Number(currentNation?.manufacturing_output ?? 50);
+    const buildRate = Math.round((oilAndGas + manufacturing) * 0.5);
+
+    _energyBuildConfirming = true;
+    try {
+        // Deduct AP
+        const newAP = Math.max(0, ap - apCost);
+        const { error: apErr } = await _supabase
+            .from('factions')
+            .update({ action_points: newAP })
+            .eq('id', currentFaction.id);
+        if (apErr) throw apErr;
+
+        // Insert build cycle
+        const { error: cycleErr } = await _supabase
+            .from('energy_oil_build_cycles')
+            .insert({
+                nation_id: currentNation.id,
+                faction_id: currentFaction.id,
+                activated_on_tick: currentTick,
+                ticks_remaining: 6,
+                rate_per_tick: buildRate,
+                is_active: true
+            });
+        if (cycleErr) {
+            // Refund AP on failure
+            await _supabase.from('factions').update({ action_points: ap }).eq('id', currentFaction.id);
+            throw cycleErr;
+        }
+
+        // Fire event (best-effort)
+        const { error: buildEvtErr } = await _supabase.rpc('fire_system_event', {
+            p_nation_id: currentNation.id,
+            p_trigger_key: 'energy_build_oil_reserves',
+            p_tick: currentTick,
+            p_placeholders: { rate_per_tick: buildRate, ap_cost: apCost, active_cycles: (_energyBuildCycles.length + 1) }
+        });
+        if (buildEvtErr) console.warn('[Energy] Build event failed:', buildEvtErr.message);
+
+        // Update local state
+        currentFaction.action_points = newAP;
+        _energyBuildUseCount = useCount + 1;
+        _energyBuildCycles.push({
+            activated_on_tick: currentTick,
+            ticks_remaining: 6,
+            rate_per_tick: buildRate,
+            is_active: true
+        });
+
+        // Close confirm panel and re-render
+        closeBuildOilReserves();
+        await renderGovernmentPage();
+
+    } catch (err) {
+        alert('Build Oil Reserves failed: ' + (err.message || 'Unknown error'));
+    } finally {
+        _energyBuildConfirming = false;
+    }
+}
+
+// Open the Release Oil Reserves confirm panel with slider
+function openReleaseOilReserves() {
+    if (!isMyMinistryByKey('energy')) return;
+    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
+    if (reserveMb < 10) { alert('Minimum release is 10 Mb.'); return; }
+
+    _energyReleaseAmount = Math.min(reserveMb, 72); // default to one standard cycle or max
+    const container = document.getElementById('energy-release-confirm');
+    if (!container) return;
+    container.style.display = 'block';
+    renderReleaseConfirmPanel();
+}
+
+function closeReleaseOilReserves() {
+    const container = document.getElementById('energy-release-confirm');
+    if (container) { container.style.display = 'none'; container.innerHTML = ''; }
+    _energyReleaseAmount = 0;
+}
+
+function setReleaseAmount(val) {
+    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
+    _energyReleaseAmount = Math.max(10, Math.min(reserveMb, Number(val) || 10));
+    renderReleaseConfirmPanel();
+}
+
+function renderReleaseConfirmPanel() {
+    const container = document.getElementById('energy-release-confirm');
+    if (!container) return;
+
+    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
+    const amount = _energyReleaseAmount;
+    const remaining = reserveMb - amount;
+    const baseline = 72;
+    const scale = amount / baseline;
+
+    // Projected per-tick effects scaled to release amount
+    const eff = {
+        fuelPrices: Math.round(-0.3 * scale * 100) / 100,
+        happiness: Math.round(0.1 * scale * 100) / 100,
+        gdpGrowth: Math.round(0.1 * scale * 100) / 100,
+        inflation: Math.round(-0.1 * scale * 100) / 100,
+        energyGen: Math.round(0.1 * scale * 100) / 100
+    };
+
+    const mono = "var(--font-mono)";
+    const effLine = (label, val, dur) => {
+        const sign = val >= 0 ? '+' : '';
+        const color = val >= 0 ? 'var(--green)' : 'var(--red)';
+        return `<div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;padding:2px 0;">
+            <span style="color:var(--text-secondary);">${label}</span>
+            <span><span style="color:${color};">${sign}${val}</span> <span style="color:var(--text-dim);">/ tick · ${dur} ticks</span></span>
+        </div>`;
+    };
+
+    container.innerHTML = `<div style="background:var(--surface-raised);border:1px solid var(--border);border-radius:4px;padding:12px;margin-top:6px;">
+        <div style="font-family:${mono};font-size:10px;font-weight:700;color:var(--text-primary);margin-bottom:8px;letter-spacing:0.04em;">RELEASE OIL RESERVES</div>
+        <div style="font-family:${mono};font-size:8px;color:var(--text-muted);margin-bottom:10px;">Current reserve: ${reserveMb} Mb</div>
+
+        <div style="margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:8px;color:var(--text-muted);margin-bottom:3px;">
+                <span>Release amount:</span>
+                <span style="color:#c8a64e;font-weight:700;">${amount} Mb</span>
+            </div>
+            <input type="range" min="10" max="${reserveMb}" value="${amount}" step="1"
+                oninput="setReleaseAmount(this.value)"
+                style="width:100%;accent-color:#c8a64e;height:4px;">
+            <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:7px;color:var(--text-dim);">
+                <span>10 Mb</span>
+                <span>${reserveMb} Mb</span>
+            </div>
+        </div>
+
+        <div style="margin-bottom:10px;">
+            <div style="font-family:${mono};font-size:8px;color:var(--text-muted);margin-bottom:4px;">Effects at ${amount} Mb:</div>
+            ${effLine('Fuel Prices', eff.fuelPrices, 4)}
+            ${effLine('Happiness', eff.happiness, 4)}
+            ${effLine('GDP Growth', eff.gdpGrowth, 4)}
+            ${effLine('Inflation', eff.inflation, 4)}
+            ${effLine('Energy Gen', eff.energyGen, 4)}
+        </div>
+
+        <div style="font-family:${mono};font-size:8px;color:var(--text-muted);margin-bottom:10px;">
+            Remaining after release: <span style="color:${remaining > 0 ? '#c8a64e' : 'var(--red)'};">${remaining} Mb</span>
+        </div>
+
+        <div style="display:flex;gap:6px;justify-content:flex-end;">
+            <div class="ministry-action__btn-cancel" onclick="closeReleaseOilReserves()" style="padding:4px 10px;font-size:8px;cursor:pointer;">Cancel</div>
+            <div class="ministry-action__btn-confirm" onclick="confirmReleaseOilReserves()" style="padding:4px 10px;font-size:8px;cursor:pointer;">Confirm — 2 AP</div>
+        </div>
+    </div>`;
+}
+
+// Execute Release Oil Reserves
+async function confirmReleaseOilReserves() {
+    if (_energyReleaseConfirming) return;
+    if (!currentFaction || !currentNation) return;
+    if (!isMyMinistryByKey('energy')) return;
+
+    const releaseApCost = 2;
+    const ap = currentFaction?.action_points ?? 0;
+    if (ap < releaseApCost) { alert('Insufficient AP.'); return; }
+
+    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
+    const amount = _energyReleaseAmount;
+    if (amount < 10) { alert('Minimum release is 10 Mb.'); return; }
+    if (amount > reserveMb) { alert(`Insufficient reserves. Current reserve: ${reserveMb} Mb.`); return; }
+
+    _energyReleaseConfirming = true;
+    try {
+        // Calculate scaled effects (baseline = 72 Mb)
+        const baseline = 72;
+        const scale = amount / baseline;
+        const statEffects = [
+            { stat_key: 'fuel_prices',       direction: 'down', rate: Math.round(0.3 * scale * 100) / 100, delay_ticks: 0, duration_ticks: 4, target: 'nation' },
+            { stat_key: 'happiness',         direction: 'up',   rate: Math.round(0.1 * scale * 100) / 100, delay_ticks: 0, duration_ticks: 4, target: 'nation' },
+            { stat_key: 'gdp_growth',        direction: 'up',   rate: Math.round(0.1 * scale * 100) / 100, delay_ticks: 0, duration_ticks: 4, target: 'nation' },
+            { stat_key: 'inflation',         direction: 'down', rate: Math.round(0.1 * scale * 100) / 100, delay_ticks: 0, duration_ticks: 4, target: 'nation' },
+            { stat_key: 'energy_generation', direction: 'up',   rate: Math.round(0.1 * scale * 100) / 100, delay_ticks: 0, duration_ticks: 4, target: 'nation' }
+        ];
+
+        // Minister approval +1 if fuel_prices > 60
+        const fuelPrices = Number(currentNation?.fuel_prices ?? 50);
+        if (fuelPrices > 60) {
+            statEffects.push({ stat_key: 'minister_approval', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1, target: 'minister' });
+        }
+
+        const actionData = {
+            use_count: 0,
+            scale: 1.0,
+            budget_per_tick: 0,
+            one_time_cost: 0,
+            minister_approval: fuelPrices > 60 ? 1 : 0,
+            release_amount: amount,
+            reserve_remaining: reserveMb - amount
+        };
+
+        // Execute via RPC — atomically deducts AP, inserts action log, and deducts reserve
+        const newReserve = Math.max(0, reserveMb - amount);
+        const { error: rpcErr } = await _supabase.rpc('execute_ministry_action', {
+            p_nation_id: currentNation.id,
+            p_faction_id: currentFaction.id,
+            p_ministry_key: 'energy',
+            p_action_key: 'releaseOilReserves',
+            p_ap_cost: releaseApCost,
+            p_applied_at_tick: currentTick,
+            p_stat_effects: statEffects,
+            p_action_data: actionData,
+            p_nation_stat_updates: { strategic_oil_reserve_mb: newReserve }
+        });
+        if (rpcErr) throw rpcErr;
+
+        // Update local state
+        currentFaction.action_points = Math.max(0, ap - releaseApCost);
+        currentNation.strategic_oil_reserve_mb = newReserve;
+
+        // Fire event (best-effort)
+        const { error: releaseEvtErr } = await _supabase.rpc('fire_system_event', {
+            p_nation_id: currentNation.id,
+            p_trigger_key: 'energy_release_oil_reserves',
+            p_tick: currentTick,
+            p_placeholders: { release_mb: amount, reserve_remaining_mb: newReserve }
+        });
+        if (releaseEvtErr) console.warn('[Energy] Release event failed:', releaseEvtErr.message);
+
+        closeReleaseOilReserves();
+        await renderGovernmentPage();
+
+    } catch (err) {
+        alert('Release failed: ' + (err.message || 'Unknown error'));
+    } finally {
+        _energyReleaseConfirming = false;
+    }
+}
+
 function _curriculumAxisLabel(axisId) {
     const a = CURRICULUM_AXES.find(x => x.id === axisId);
     return a ? `${a.left} / ${a.right}` : axisId;
@@ -5556,7 +6003,7 @@ function ministryActionDeselect(actionId) {
 // after AP changes (avoids full page re-render)
 function refreshMinistryActionStates(ministryKey) {
     // Custom-layout ministries manage their own state
-    if (ministryKey === 'defense' || ministryKey === 'healthcare' || ministryKey === 'education') return;
+    if (ministryKey === 'defense' || ministryKey === 'healthcare' || ministryKey === 'education' || ministryKey === 'energy') return;
     const config = MINISTRY_ACTIONS[ministryKey];
     if (!config?.actions) return;
     const ap = currentFaction?.action_points || 0;
@@ -6053,8 +6500,8 @@ function renderCabinet(ministries, coalition) {
             </div>`;
         }
 
-        // Presidential: skip non-confirmed
-        if (isPresidential && isFilled && m.confirmation_status !== 'confirmed') {
+        // Presidential: skip non-confirmed (but preserve acting ministers)
+        if (isPresidential && isFilled && m.confirmation_status !== 'confirmed' && !m.is_acting) {
             return renderVacantCard(key, title, govContext, requests);
         }
 

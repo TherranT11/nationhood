@@ -57,10 +57,6 @@ async function ensureApRpcAvailability(supabase) {
 
 // ────────── config ──────────
 
-/**
- * config.js — Game configuration constants and AP management
- * Extracted from game-common.js
- */
 
 // ==================== CONSTANTS ====================
 
@@ -288,10 +284,6 @@ async function switchPartyEndorsement(supabase, endorsingPartyId, newEndorsedPar
 
 // ────────── government-types ──────────
 
-/**
- * government-types.js — Government type helpers (democracy, presidential)
- * Extracted from game-common.js
- */
 
 /**
  * Government type helpers.
@@ -353,10 +345,6 @@ function getGovDisplayLabel(nation) {
 
 // ────────── trade-constants ──────────
 
-/**
- * trade-constants.js — Trade system constants and calculation functions
- * Extracted from game-common.js
- */
 
 // ==================== TRADE SYSTEM CONSTANTS ====================
 
@@ -1775,10 +1763,6 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 
 // ────────── diplomacy-constants ──────────
 
-/**
- * diplomacy-constants.js — Diplomacy constants, policy stances, and scaling divisors
- * Extracted from game-common.js
- */
 
 // ==================== DIPLOMACY CONSTANTS ====================
 
@@ -3343,10 +3327,6 @@ function checkSovereigntyConstraints(activeProposals, policySector) {
 
 // ────────── ideology ──────────
 
-/**
- * ideology.js — Dynamic ideology system (axes, labels, alignment, DB helpers)
- * Extracted from game-common.js
- */
 
 // Ideology spectrum opposites
 const IDEOLOGY_OPPOSITES = {
@@ -3570,10 +3550,6 @@ function extractAxisScores(ideologyRow) {
 
 // ────────── stats ──────────
 
-/**
- * stats.js — Nation stat columns, decay config, trends, and approval setup
- * Extracted from game-common.js
- */
 
 // ==================== ADMINISTRATION LIFECYCLE ====================
 
@@ -4333,10 +4309,6 @@ async function adjustGovernmentApprovalEvent(supabase, nationId, amount, source)
 
 // ────────── budget ──────────
 
-/**
- * budget.js — National budget, tax config, economic aid, shutdown, GDP growth
- * Extracted from game-common.js
- */
 
 // ==================== NATIONAL BUDGET CALCULATION ====================
 
@@ -5001,10 +4973,6 @@ async function activateEconomicCollapse(supabase, nation, currentTick) {
 
 // ────────── government-structure ──────────
 
-/**
- * government-structure.js — Seat loading, head faction detection, coalition fetching, policy compatibility
- * Extracted from game-common.js
- */
 
 // ==================== SEAT LOADING ====================
 
@@ -5119,10 +5087,13 @@ async function fetchActiveCoalition(supabase, nationId) {
     // === PARLIAMENTARY DEMOCRACY: existing logic ===
 
     // Helper: if status looks active but frozen bills exist, it's actually caretaker.
-    // Skip for emergency_minority governments — they are real governments that should
-    // not be overridden to caretaker by stale frozen bills.
+    // Skip for emergency_minority governments and explicitly formed governments
+    // (formed_at set) — stale frozen bills from a previous government should not
+    // override a legitimately formed new government.
     async function inferCaretakerStatus(result) {
-        if (result && (!result.status || result.status === 'formed') && result.formation_type !== 'emergency_minority') {
+        if (result && (!result.status || result.status === 'formed')
+            && result.formation_type !== 'emergency_minority'
+            && !result.formed_at) {
             const { count } = await supabase
                 .from('bills')
                 .select('id', { count: 'exact', head: true })
@@ -5915,10 +5886,6 @@ async function repealActiveLaw({
 
 // ────────── event-helpers ──────────
 
-/**
- * event-helpers.js — Shared helpers for firing system events.
- * Extracted from game-common.js
- */
 
 /**
  * Fire a bill-related system event (bill_passed / bill_failed / quorum_failed etc).
@@ -6021,10 +5988,6 @@ async function fireBilateralEvent(supabase, triggerKey, nationIdA, nationIdB, cu
 
 // ────────── bills ──────────
 
-/**
- * bills.js — Bill support, vote tallies, ideology shifts, resolution engine, foundational bills
- * Extracted from game-common.js
- */
 
 // ==================== BILL SUPPORT ====================
 
@@ -6154,21 +6117,8 @@ function calculateEnactmentApproval(articles, billSupport, sponsorId, factionIde
     return approvalDeltas;
 }
 
-async function applyEnactmentApproval(supabase, nationId, approvalDeltas, currentTick = 0) {
-    for (const [factionId, delta] of Object.entries(approvalDeltas)) {
-        if (delta === 0) continue;
-        const momDelta = round2(delta * 0.3);
-        if (momDelta === 0) continue;
-        try {
-            await supabase.rpc('adjust_momentum', {
-                p_faction_id: factionId,
-                p_delta: momDelta,
-                p_label: `Bill enacted (${momDelta > 0 ? '+' : ''}${momDelta})`,
-                p_tick: currentTick
-            });
-        } catch (e) { /* non-fatal */ }
-    }
-}
+// No-op: enactment no longer awards momentum.
+async function applyEnactmentApproval() { }
 
 
 // ==================== SPONSOR BLOC PREFERENCE ON BILL PASSAGE ====================
@@ -7136,7 +7086,7 @@ async function resolveExpiredVotes(supabase, nationId) {
             // Minister confirmation bill (Presidential systems)
             const mKey = bill.ministry_key;
             const { data: ministry } = await supabase.from('ministries')
-                .select('id, pending_minister')
+                .select('id, pending_minister, is_acting')
                 .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
                 .maybeSingle();
 
@@ -7221,9 +7171,10 @@ async function resolveExpiredVotes(supabase, nationId) {
                 await failBill(supabase, bill);
 
                 // Clear pending nominee after failed confirmation
+                // If an acting minister was in place, restore 'acting' status instead of 'rejected'
                 if (ministry?.pending_minister) {
                     await supabase.from('ministries').update({
-                        confirmation_status: 'rejected',
+                        confirmation_status: ministry.is_acting ? 'acting' : 'rejected',
                         pending_minister: null
                     }).eq('id', ministry.id);
                 }
@@ -8049,9 +8000,8 @@ async function resolveExpiredVotes(supabase, nationId) {
         }
 
         // ── Bill momentum: award momentum to YES/NO voters based on outcome ──
-        // Sponsor: +3 on passage. YES voters: +2/article on pass, -2/article on fail.
+        // Sponsor: +1 on passage. YES voters: +2/article on pass, -1 on fail.
         // NO voters: +2/article on fail. Abstain: nothing.
-        // Skip special bill types that don't have policy articles.
         // Skip momentum for special bill types and presidential desk (not yet enacted)
         const lastResult = results[results.length - 1];
         const skipMomentum = ['no_confidence', 'confirmation', 'minister_confirmation', 'impeachment_conviction'].includes(bill.bill_type)
@@ -8071,7 +8021,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         delta = 2 * articleCount;
                         label = `Bill passed: ${(bill.bill_name || '').slice(0, 25)}… (+${delta})`;
                     } else if (stance === 'yes' && !billPassed) {
-                        delta = -2 * articleCount;
+                        delta = -1;
                         label = `Bill failed: ${(bill.bill_name || '').slice(0, 25)}… (${delta})`;
                     } else if (stance === 'no' && !billPassed) {
                         delta = 2 * articleCount;
@@ -8091,12 +8041,12 @@ async function resolveExpiredVotes(supabase, nationId) {
                     }
                 }
 
-                // Sponsor bonus: +3 on passage
+                // Sponsor bonus: +1 on passage
                 if (billPassed && bill.proposed_by) {
                     await supabase.rpc('adjust_momentum', {
                         p_faction_id: bill.proposed_by,
-                        p_delta: 3,
-                        p_label: `Sponsored bill passed: ${(bill.bill_name || '').slice(0, 25)}… (+3)`,
+                        p_delta: 1,
+                        p_label: `Sponsored bill passed: ${(bill.bill_name || '').slice(0, 25)}… (+1)`,
                         p_tick: currentTick
                     });
                 }
@@ -9973,7 +9923,7 @@ async function syncFailedMinisterConfirmationBill(supabase, bill) {
 
     const { data: ministry, error: fetchErr } = await supabase
         .from('ministries')
-        .select('id')
+        .select('id, is_acting')
         .eq('nation_id', bill.nation_id)
         .eq('ministry_key', bill.ministry_key)
         .eq('is_active', true)
@@ -9985,10 +9935,11 @@ async function syncFailedMinisterConfirmationBill(supabase, bill) {
     }
     if (!ministry) return;
 
+    // If an acting minister is in place, restore 'acting' status instead of 'rejected'
     const { error: updateErr } = await supabase
         .from('ministries')
         .update({
-            confirmation_status: 'rejected',
+            confirmation_status: ministry.is_acting ? 'acting' : 'rejected',
             pending_minister: null
         })
         .eq('id', ministry.id);
@@ -10148,10 +10099,6 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
 
 // ────────── elections ──────────
 
-/**
- * elections.js — Administration lifecycle, coalition dissolution, elections, government vacancy
- * Extracted from game-common.js
- */
 
 /**
  * Close the current administration for a nation.
@@ -12855,10 +12802,6 @@ async function ensureElectionsScheduled(supabase, nation, currentTick) {
 
 // ────────── presidential ──────────
 
-/**
- * presidential.js — Presidential candidates, nomination, veto, and term processing
- * Extracted from game-common.js
- */
 
 /** Tally floor votes from bill_support records (already loaded via join). */
 function tallyFloorVotes(bill) {
@@ -14438,7 +14381,6 @@ const ELECTORATE_CONFIG = {
     ENTHUSIASM_ELECTION_PROXIMITY: 10,    // max bonus when election is imminent
     ENTHUSIASM_ELECTION_WINDOW: 20,       // ticks before election when bonus ramps up
     ENTHUSIASM_GOV_EXTREME_SCALE: 0.15,   // bonus per |gov_approval - 50| point
-    ENTHUSIASM_PROMISE_BOOST: 2,          // +2 on Make a Promise
     ENTHUSIASM_STANCE_BOOST_MIN: 1,       // Take a Stance: 1d3 (min)
     ENTHUSIASM_STANCE_BOOST_MAX: 3,       // Take a Stance: 1d3 (max)
     ENTHUSIASM_MIN: 10,
@@ -19418,10 +19360,6 @@ async function resolveProtest(supabase, protest, nationStats, currentTick) {
 
 // ────────── political-actions ──────────
 
-/**
- * political-actions.js — Political actions, tick processors, crises, events, resign PM, disband party
- * Extracted from game-common.js
- */
 
 const _PA_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
@@ -20193,14 +20131,6 @@ function getAttackAPCost(polarization) {
 
 const ATTACK_VECTORS = [
     {
-        id: 'broken_promises',
-        name: 'Broken Promises',
-        icon: '\u2605',
-        description: 'Attack their failure to deliver on commitments',
-        evidence_required: true,
-        effectiveness: 'high',
-    },
-    {
         id: 'voting_record',
         name: 'Voting Record',
         icon: '\u00A7',
@@ -20279,35 +20209,30 @@ function rollAttackOutcome(weights) {
 function _attackHeadline(outcomeId, targetName, vectorId) {
     const headlines = {
         devastating: {
-            broken_promises: `Damning evidence of ${targetName}'s broken promises dominates news cycle`,
             voting_record: `${targetName}'s voting record exposed \u2014 public outrage mounts`,
             governance: `${targetName}'s governance failures laid bare in devastating critique`,
             ideology: `${targetName} branded as extremists in viral opposition campaign`,
             smear: `Relentless attacks leave ${targetName} scrambling to respond`,
         },
         effective: {
-            broken_promises: `Opposition research into ${targetName}'s failed promises gains traction`,
             voting_record: `${targetName}'s controversial votes draw media scrutiny`,
             governance: `Questions mount over ${targetName}'s record on key indicators`,
             ideology: `Voters question ${targetName}'s ideological direction after critique`,
             smear: `Negative campaign against ${targetName} lands some punches`,
         },
         glancing: {
-            broken_promises: `Attack on ${targetName}'s promises fails to resonate with voters`,
             voting_record: `Criticism of ${targetName}'s votes dismissed as political theatre`,
             governance: `Governance critique against ${targetName} falls flat`,
             ideology: `Ideological attack on ${targetName} largely ignored by public`,
             smear: `Smear campaign against ${targetName} fizzles \u2014 voters indifferent`,
         },
         backfire: {
-            broken_promises: `Promise attack on ${targetName} backfires \u2014 sympathy for target surges`,
             voting_record: `Voters rally behind ${targetName} after what they see as unfair attack`,
             governance: `Governance critique seen as hypocritical \u2014 attacker's credibility drops`,
             ideology: `Ideological attack makes attackers look petty \u2014 ${targetName} gains sympathy`,
             smear: `Baseless smear against ${targetName} draws media rebuke`,
         },
         mutual: {
-            broken_promises: `Ugly exchange over broken promises leaves both parties damaged`,
             voting_record: `Mudslinging over voting records erodes public trust in politics`,
             governance: `Governance blame game leaves all sides worse off`,
             ideology: `Ideological warfare between parties leaves voters disgusted`,
@@ -20319,34 +20244,17 @@ function _attackHeadline(outcomeId, targetName, vectorId) {
 }
 
 /**
- * Gather attack evidence (broken promises, controversial votes, stat deterioration)
+ * Gather attack evidence (controversial votes, stat deterioration)
  * for a target party. Used by the UI to show available attack vectors.
  */
 async function gatherAttackEvidence(supabase, targetFactionId, nationId, currentTick) {
     const evidence = {
-        broken_promises: [],
         controversial_votes: [],
         governance_record: [],
         is_governing: false,
     };
 
-    // 1. Broken promises (last 30 ticks)
-    const { data: brokenPromises } = await supabase
-        .from('fundraiser_promises')
-        .select('id, demand_text, bloc_name, tick_resolved, tick_created')
-        .eq('party_id', targetFactionId)
-        .eq('status', 'broken')
-        .gte('tick_resolved', currentTick - 30)
-        .order('tick_resolved', { ascending: false })
-        .limit(5);
-
-    evidence.broken_promises = (brokenPromises || []).map(p => ({
-        text: p.demand_text,
-        bloc: p.bloc_name,
-        tick: p.tick_resolved,
-    }));
-
-    // 2. Controversial votes — bills where this party voted opposite to majority outcome
+    // 1. Controversial votes — bills where this party voted opposite to majority outcome
     const { data: recentBills } = await supabase
         .from('bills')
         .select('id, bill_name, status, bill_support(faction_id, stance), bill_articles(policy_id, policies(policy_name))')
@@ -20433,17 +20341,9 @@ async function gatherAttackEvidence(supabase, targetFactionId, nationId, current
 function buildAttackVectors(evidence) {
     const vectors = [];
 
-    if (evidence.broken_promises.length > 0) {
-        vectors.push({
-            ...ATTACK_VECTORS[0],
-            evidence: evidence.broken_promises,
-            strength: 'strong',
-        });
-    }
-
     if (evidence.controversial_votes.length > 0) {
         vectors.push({
-            ...ATTACK_VECTORS[1],
+            ...ATTACK_VECTORS[0],
             evidence: evidence.controversial_votes,
             strength: 'strong',
         });
@@ -20451,7 +20351,7 @@ function buildAttackVectors(evidence) {
 
     if (evidence.governance_record.length > 0 && evidence.is_governing) {
         vectors.push({
-            ...ATTACK_VECTORS[2],
+            ...ATTACK_VECTORS[1],
             evidence: evidence.governance_record,
             strength: 'strong',
         });
@@ -20459,14 +20359,14 @@ function buildAttackVectors(evidence) {
 
     // Ideology is always available (moderate strength)
     vectors.push({
-        ...ATTACK_VECTORS[3],
+        ...ATTACK_VECTORS[2],
         evidence: null,
         strength: 'moderate',
     });
 
     // General smear is always available (weak strength)
     vectors.push({
-        ...ATTACK_VECTORS[4],
+        ...ATTACK_VECTORS[3],
         evidence: null,
         strength: 'weak',
     });
@@ -20608,695 +20508,6 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
 }
 
 
-// ==================== MAKE PROMISE ====================
-
-const MAKE_PROMISE_CONFIG = {
-    AP_COST: 2,
-    STAT_DELTA: 10,                    // Promise to change stat by ±10
-    STAT_DELTA_GOVERNING: 20,          // Governing factions must promise ±20 (harder target)
-    DEADLINE_DICE: 24,                 // 1D24 + base
-    DEADLINE_BASE: 6,                  // base ticks added to roll (range: 7-30)
-    MAX_ACTIVE_PROMISES: 5,            // limit active promises per faction
-
-    // ── Electorate engine effects (party_approval only — credibility removed, 3-pillar system) ──
-    APPROVAL_ON_PROMISE: 2,            // immediate +party_approval when promise is made
-    PENALTY_PER_TICK_MIN: 0.5,         // -0.5 to -1.5 party_approval/tick while governing & unfulfilled
-    PENALTY_PER_TICK_MAX: 1.5,
-
-    // Promise kept rewards
-    KEPT_APPROVAL: 2,                  // +party_approval when promise fulfilled
-    KEPT_CREDIBILITY: 0.07,            // no-op: credibility removed (3-pillar election system)
-
-    // Promise broken penalties
-    BROKEN_APPROVAL: -2,               // -party_approval when promise broken
-    BROKEN_CREDIBILITY: -0.10,         // no-op: credibility removed (3-pillar election system)
-    BROKEN_CREDIBILITY_SUSPEND: 12,    // no-op: credibility removed (3-pillar election system)
-    BROKEN_NERVOUS_CREDIBILITY: -0.03, // no-op: credibility removed (3-pillar election system)
-};
-
-/**
- * Execute "Make Promise" — faction publicly commits to a stat target or crisis resolution.
- *
- * @param {string} promiseType  'stat' | 'crisis'
- * @param {object} params       { statKey, direction } for stat; { crisisId } for crisis
- * @returns result object with promise details
- */
-async function executeMakePromise(supabase, factionId, nationId, currentTick, promiseType, params) {
-    const cfg = MAKE_PROMISE_CONFIG;
-
-    // Validate currentTick is a finite number (NaN serializes to null in JSON, violating NOT NULL)
-    if (currentTick == null || !Number.isFinite(currentTick)) {
-        console.error('[MakePromise] Invalid currentTick:', currentTick);
-        return { success: false, error: 'Cannot make a promise right now — tick data unavailable. Please refresh.' };
-    }
-
-    // ── 1. Validate faction (with leader trait modifiers) ──
-    const { data: faction } = await supabase
-        .from('factions').select('party_funds, action_points, abbreviation, faction_name, leader_positive_traits, leader_negative_traits, last_action_tick')
-        .eq('id', factionId).single();
-    if (!faction) return { success: false, error: 'Faction not found.' };
-
-    const promiseApMod = getTraitAPModifier('promise', faction, currentTick);
-    const effectivePromiseCost = Math.max(1, cfg.AP_COST + promiseApMod);
-    if (effectivePromiseCost > 0 && (faction.action_points || 0) < effectivePromiseCost)
-        return { success: false, error: `Not enough AP. Need ${effectivePromiseCost}.` };
-
-    // ── 2. Check active promise limit (includes pending_election promises) ──
-    const { data: activePromises } = await supabase
-        .from('fundraiser_promises')
-        .select('id, demand_type, conditions')
-        .eq('party_id', factionId)
-        .in('status', ['active', 'pending_election']);
-
-    if ((activePromises || []).length >= cfg.MAX_ACTIVE_PROMISES)
-        return { success: false, error: `Maximum ${cfg.MAX_ACTIVE_PROMISES} active promises reached.` };
-
-    // ── 2b. Check per-tick rate limit (max 1 promise per tick) ──
-    const { data: promisesThisTick } = await supabase
-        .from('fundraiser_promises')
-        .select('id')
-        .eq('party_id', factionId)
-        .eq('tick_created', currentTick);
-    if ((promisesThisTick || []).length >= 1)
-        return { success: false, error: 'You can only make 1 promise per tick.' };
-
-    // ── 3. Load nation + blocs ──
-    const { data: nation } = await supabase
-        .from('nations').select('*').eq('id', nationId).single();
-    if (!nation) return { success: false, error: 'Nation not found.' };
-
-    // voter_blocs table removed; default to empty array
-    const allBlocs = [];
-
-    // ── 4. Roll deadline: 1D24 + 6 (countdown deferred until next election + in government) ──
-    const deadlineRoll = Math.floor(Math.random() * cfg.DEADLINE_DICE) + 1;
-    const deadlineTicks = deadlineRoll + cfg.DEADLINE_BASE;
-    const tickDeadline = currentTick + deadlineTicks; // Placeholder — real deadline set when promise activates after election
-
-    // ── 5. Build promise based on type ──
-    let demandText, demandType, conditions, affectedBlocIds, affectedBlocNames;
-
-    // ── 5a. Check if faction is in government (ruling faction or coalition member) ──
-    const coalition = await fetchActiveCoalition(supabase, nationId);
-    const coalitionPartyIds = new Set(coalition?.party_ids || []);
-    const isGoverning = factionId === nation.ruling_faction_id || coalitionPartyIds.has(factionId);
-
-    if (promiseType === 'stat') {
-        const { statKey } = params;
-        if (!statKey) return { success: false, error: 'No stat selected.' };
-        if (EXCLUDED_PROMISE_STATS.has(statKey)) return { success: false, error: 'Cannot promise on this stat.' };
-        const sign = statDirectionSign(statKey);
-        if (sign === 0) return { success: false, error: 'Stat has no clear direction.' };
-
-        // Prevent duplicate stat promises
-        const hasDuplicate = (activePromises || []).some(p =>
-            p.conditions?.stat_key === statKey && p.demand_type === 'stat_target');
-        if (hasDuplicate)
-            return { success: false, error: 'You already have an active promise for this stat.' };
-
-        const currentVal = Number(nation[statKey] ?? 50);
-        // Governing factions must promise a bigger change (they have legislative power)
-        const delta = isGoverning ? cfg.STAT_DELTA_GOVERNING : cfg.STAT_DELTA;
-        // Auto-determine direction: good stats → increase, bad stats → decrease
-        const dir = sign === 1 ? 'above' : 'below';
-        const targetValue = dir === 'above'
-            ? Math.min(100, Math.round(currentVal + delta))
-            : Math.max(0, Math.round(currentVal - delta));
-
-        const statLabel = statKey.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-
-        // Reject promises that are already fulfilled (e.g. inflation at 0, promising to reduce to 0)
-        if (dir === 'above' && currentVal >= targetValue)
-            return { success: false, error: `${statLabel} is already at ${currentVal} — nothing to promise.` };
-        if (dir === 'below' && currentVal <= targetValue)
-            return { success: false, error: `${statLabel} is already at ${currentVal} — nothing to promise.` };
-        demandText = dir === 'above'
-            ? `Increase ${statLabel} to ${targetValue}`
-            : `Reduce ${statLabel} to ${targetValue}`;
-        demandType = 'stat_target';
-        conditions = {
-            stat_key: statKey,
-            direction: dir,
-            baseline_value: currentVal,
-            target_value: targetValue,
-            delta: delta,
-            is_governing: isGoverning,
-        };
-
-        // Find affected blocs: those whose priority_issues map to this stat
-        affectedBlocIds = [];
-        affectedBlocNames = [];
-        for (const b of (allBlocs || [])) {
-            const issues = b.priority_issues || [];
-            for (const issue of issues) {
-                const catStats = ISSUE_CATEGORY_STATS[issue] || [];
-                if (catStats.includes(statKey)) {
-                    affectedBlocIds.push(b.id);
-                    affectedBlocNames.push(b.bloc_name);
-                    break;
-                }
-            }
-        }
-    } else if (promiseType === 'crisis') {
-        const { crisisId } = params;
-        if (!crisisId) return { success: false, error: 'No crisis selected.' };
-
-        // Validate the crisis is active
-        const { data: crisisRecord } = await supabase
-            .from('active_crises')
-            .select('id, crisis_id, started_at_tick')
-            .eq('id', crisisId)
-            .eq('nation_id', nationId)
-            .single();
-        if (!crisisRecord) return { success: false, error: 'Crisis not found or not active.' };
-
-        // Get crisis name
-        const { data: crisisTemplate } = await supabase
-            .from('crisis_templates')
-            .select('name, description')
-            .eq('id', crisisRecord.crisis_id)
-            .single();
-
-        const crisisName = crisisTemplate?.name || 'Unknown Crisis';
-
-        // Prevent duplicate crisis promises
-        const hasDuplicate = (activePromises || []).some(p =>
-            p.conditions?.crisis_id === crisisId && p.demand_type === 'crisis_resolution');
-        if (hasDuplicate)
-            return { success: false, error: 'You already have an active promise for this crisis.' };
-
-        demandText = `Resolve ${crisisName}`;
-        demandType = 'crisis_resolution';
-        conditions = {
-            crisis_id: crisisId,
-            crisis_template_id: crisisRecord.crisis_id,
-            crisis_name: crisisName,
-        };
-
-        // Crisis promises affect all blocs
-        affectedBlocIds = (allBlocs || []).map(b => b.id);
-        affectedBlocNames = (allBlocs || []).map(b => b.bloc_name);
-    } else {
-        return { success: false, error: 'Invalid promise type.' };
-    }
-
-    // ── 6. Apply immediate party_approval bump via electorate engine ──
-    const approvalBump = cfg.APPROVAL_ON_PROMISE;
-    await _adjustMomentum(supabase, factionId, nationId, approvalBump, 'promise:made', currentTick);
-    console.log(`[Promise] +${approvalBump} party_approval for ${factionId} on making ${promiseType} promise`);
-    const blocEffects = [];
-
-    // ── 7. Deduct AP if needed + track last_action_tick ──
-    let newAp = faction.action_points || 0;
-    if (effectivePromiseCost > 0) {
-        const apResult = await deductAP(supabase, factionId, effectivePromiseCost, { reason: 'promise', detail: 'Make a Promise', tick: currentTick });
-        newAp = apResult.newAp ?? (newAp - effectivePromiseCost);
-    }
-    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Promise] last_action_tick update failed:', error.message); });
-
-    // ── 8. Create promise record ──
-    const { data: promise, error: promiseErr } = await supabase
-        .from('fundraiser_promises')
-        .insert({
-            party_id: factionId,
-            nation_id: nationId,
-            bloc_id: affectedBlocIds[0] || null,
-            bloc_name: affectedBlocNames.join(', '),
-            demand_index: 0,
-            demand_text: demandText,
-            demand_type: demandType,
-            donation_amount: 0,
-            small_amount: 0,
-            tick_created: currentTick,
-            deadline_ticks: deadlineTicks,
-            tick_deadline: currentTick + deadlineTicks, // Placeholder — real deadline set on activation after election
-            conditions,
-            progress: { source: 'make_promise', promise_type: promiseType },
-            status: 'pending_election',
-        })
-        .select()
-        .single();
-
-    if (promiseErr) {
-        console.error('[MakePromise] Promise insert failed:', promiseErr.message);
-        return { success: false, error: 'Failed to create promise record.' };
-    }
-
-    // ── 9. Log campaign action ──
-    const playerAbbr = faction.abbreviation || faction.faction_name;
-    const headline = promiseType === 'crisis'
-        ? `${playerAbbr} Promises to ${demandText}`
-        : `${playerAbbr} Pledges: "${demandText}"`;
-
-    await supabase.from('campaign_actions').insert({
-        party_id: factionId,
-        nation_id: nationId,
-        action_type: 'make_promise',
-        ap_cost: cfg.AP_COST,
-        money_cost: 0,
-        tick_performed: currentTick,
-        result: {
-            promiseId: promise.id,
-            promiseType,
-            demandText,
-            demandType,
-            conditions,
-            deadlineTicks,
-            tickDeadline,
-            affectedBlocNames,
-            approvalBump,
-            blocEffects,
-            headline,
-        }
-    });
-
-    // Boost nation-wide enthusiasm
-    await nudgeEnthusiasm(supabase, nationId, E_CFG.ENTHUSIASM_PROMISE_BOOST);
-
-    return {
-        success: true,
-        promiseId: promise.id,
-        promiseType,
-        demandText,
-        conditions,
-        deadlineTicks,
-        tickDeadline,
-        affectedBlocNames,
-        approvalBump,
-        blocEffects,
-        headline,
-        newAp,
-    };
-}
-
-/**
- * Get list of stats available for promise-making with current values.
- * Only returns stats with a clear direction (higher/lower is better).
- */
-const EXCLUDED_PROMISE_STATS = new Set(['population', 'gdp', 'debt']);
-
-function getPromiseableStats(nation, isGoverning = false) {
-    const delta = isGoverning ? MAKE_PROMISE_CONFIG.STAT_DELTA_GOVERNING : MAKE_PROMISE_CONFIG.STAT_DELTA;
-    const results = [];
-    for (const statKey of NATION_STAT_COLUMNS) {
-        if (EXCLUDED_PROMISE_STATS.has(statKey)) continue;
-        const sign = statDirectionSign(statKey);
-        if (sign === 0) continue;
-        const currentVal = nation[statKey];
-        if (currentVal == null) continue;
-        const ministry = STAT_TO_MINISTRY[statKey] || null;
-        // Good stats (sign=1) → promise to increase; bad stats (sign=-1) → promise to decrease
-        const promiseDirection = sign === 1 ? 'increase' : 'decrease';
-        // Skip stats already at their limit — no meaningful promise possible
-        const val = Number(currentVal);
-        const target = sign === 1
-            ? Math.min(100, Math.round(val + delta))
-            : Math.max(0, Math.round(val - delta));
-        if (sign === 1 && val >= target) continue;
-        if (sign === -1 && val <= target) continue;
-        results.push({
-            statKey,
-            label: statKey.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-            value: Number(currentVal),
-            direction: sign === 1 ? 'higher_is_better' : 'lower_is_better',
-            promiseDirection,
-            ministry,
-        });
-    }
-    return results;
-}
-
-
-
-// (Mobilize, Successor Config removed — Phase 0: autocracy actions dismantled)
-
-// ==================== PROMISE TICK PROCESSING ====================
-
-/**
- * Evaluate promise fulfillment status for a single promise.
- * Returns { status: 'fulfilled' | 'in_progress' | 'at_risk' | 'broken', progress }
- *
- * This checks stat-based promises. Other types (pass_bill, rally_count, etc.)
- * are tracked via campaign_actions logs and updated externally.
- */
-function evaluatePromiseStatus(promise, nationStats, currentTick, ministries, coalitionPartyIds, campaignActions) {
-    const cond = promise.conditions;
-    const elapsed = currentTick - promise.tick_created;
-    const remaining = promise.tick_deadline - currentTick;
-    const progress = { ...promise.progress };
-
-    // Helper: check if party holds a specific ministry
-    const holdsMinistry = (key) => {
-        return (ministries || []).some(m => m.ministry_key === key && m.party_id === promise.party_id);
-    };
-
-    switch (promise.demand_type) {
-        case 'stat_target': {
-            const currentVal = Number(nationStats[cond.stat_key] ?? 50);
-            const target = cond.target_value ?? cond.absolute_target;
-            progress.current_value = currentVal;
-            progress.target_value = target;
-
-            if (cond.direction === 'below' && currentVal <= target) {
-                return { status: 'fulfilled', progress };
-            }
-            if (cond.direction === 'above' && currentVal >= target) {
-                return { status: 'fulfilled', progress };
-            }
-
-            // At risk if less than 25% time remaining
-            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) {
-                return { status: 'at_risk', progress };
-            }
-            return { status: 'in_progress', progress };
-        }
-
-        case 'ministry_and_stat': {
-            const hasMinistry = holdsMinistry(cond.ministry_key);
-            const currentVal = Number(nationStats[cond.stat_key] ?? 50);
-            const target = cond.target_value ?? cond.absolute_target;
-            progress.has_ministry = hasMinistry;
-            progress.ministry_key = cond.ministry_key;
-            progress.current_value = currentVal;
-            progress.target_value = target;
-
-            const statMet = cond.direction === 'below'
-                ? currentVal <= target
-                : currentVal >= target;
-
-            if (hasMinistry && statMet) {
-                return { status: 'fulfilled', progress };
-            }
-            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) {
-                return { status: 'at_risk', progress };
-            }
-            return { status: 'in_progress', progress };
-        }
-
-        case 'ministry_and_dual_stat': {
-            const hasMinistry = holdsMinistry(cond.ministry_key);
-            progress.has_ministry = hasMinistry;
-            progress.stats = [];
-            let allMet = hasMinistry;
-
-            for (const s of (cond.stats || [])) {
-                const currentVal = Number(nationStats[s.stat_key] ?? 50);
-                const met = s.direction === 'above'
-                    ? currentVal >= s.target_value
-                    : currentVal <= s.target_value;
-                progress.stats.push({ stat_key: s.stat_key, current: currentVal, target: s.target_value, met });
-                if (!met) allMet = false;
-            }
-
-            if (allMet) return { status: 'fulfilled', progress };
-            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
-            return { status: 'in_progress', progress };
-        }
-
-        case 'stat_floor': {
-            const currentVal = Number(nationStats[cond.stat_key] ?? 50);
-            const floor = cond.floor;
-            progress.current_value = currentVal;
-            progress.floor = floor;
-
-            if (currentVal < floor) {
-                return { status: 'broken', progress }; // Instant break if floor violated
-            }
-            return { status: 'in_progress', progress };
-        }
-
-        case 'stat_sustained': {
-            const currentVal = Number(nationStats[cond.stat_key] ?? 50);
-            const threshold = cond.threshold;
-            progress.current_value = currentVal;
-            progress.threshold = threshold;
-            progress.sustained_count = progress.sustained_count || 0;
-            progress.required = cond.sustained_ticks;
-
-            if (currentVal >= threshold) {
-                progress.sustained_count++;
-            } else {
-                progress.sustained_count = 0; // Reset on dip
-            }
-
-            if (progress.sustained_count >= cond.sustained_ticks) {
-                return { status: 'fulfilled', progress };
-            }
-            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
-            return { status: 'in_progress', progress };
-        }
-
-        case 'block_stat_decrease':
-        case 'block_stat_increase': {
-            const currentVal = Number(nationStats[cond.protected_stat] ?? 50);
-            const baseline = cond.baseline_value ?? currentVal;
-            progress.current_value = currentVal;
-            progress.baseline = baseline;
-
-            if (cond.direction === 'no_decrease' && currentVal < baseline - 0.5) {
-                return { status: 'broken', progress };
-            }
-            if (cond.direction === 'no_increase' && currentVal > baseline + 0.5) {
-                return { status: 'broken', progress };
-            }
-            return { status: 'in_progress', progress };
-        }
-
-        case 'rally_count': {
-            const requiredTags = cond.required_tags || [];
-            const matchingRallies = (campaignActions || []).filter(a => {
-                if (a.action_type !== 'rally') return false;
-                if (a.party_id !== promise.party_id) return false;
-                if (a.tick_performed < promise.tick_created) return false;
-                if (a.tick_performed > promise.tick_deadline) return false;
-                const tags = a.result?.tags || [];
-                return requiredTags.some(rt => tags.includes(rt));
-            });
-            progress.completed = matchingRallies.length;
-            progress.required = cond.count;
-
-            if (matchingRallies.length >= cond.count) return { status: 'fulfilled', progress };
-            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
-            return { status: 'in_progress', progress };
-        }
-
-        case 'press_conference_count': {
-            const matchingPCs = (campaignActions || []).filter(a => {
-                if (a.action_type !== 'press_conference') return false;
-                if (a.party_id !== promise.party_id) return false;
-                if (a.tick_performed < promise.tick_created) return false;
-                if (a.tick_performed > promise.tick_deadline) return false;
-                return true; // All press conferences count for this
-            });
-            progress.completed = matchingPCs.length;
-            progress.required = cond.count;
-
-            if (matchingPCs.length >= cond.count) return { status: 'fulfilled', progress };
-            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
-            return { status: 'in_progress', progress };
-        }
-
-        case 'ministry_appointment': {
-            const hasMinistry = holdsMinistry(cond.ministry_key);
-            progress.has_ministry = hasMinistry;
-            progress.ministry_key = cond.ministry_key;
-
-            if (hasMinistry) return { status: 'fulfilled', progress };
-            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
-            return { status: 'in_progress', progress };
-        }
-
-        case 'pass_bill': {
-            // Check if a matching bill was passed during the promise window
-            const passed = progress.bill_passed || false;
-            progress.bill_name = cond.bill_name || 'Required bill';
-            if (passed) return { status: 'fulfilled', progress };
-            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
-            return { status: 'in_progress', progress };
-        }
-
-        case 'pass_bill_count': {
-            const count = progress.bills_passed || 0;
-            progress.required = cond.count;
-            progress.completed = count;
-            if (count >= cond.count) return { status: 'fulfilled', progress };
-            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
-            return { status: 'in_progress', progress };
-        }
-
-        case 'crisis_resolution': {
-            // Fulfilled when the referenced crisis is no longer active
-            // The crisis_id in conditions refers to the active_crises row id
-            // Checked externally via processPromiseTick which loads active crises
-            if (progress.crisis_resolved) return { status: 'fulfilled', progress };
-            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
-            return { status: 'in_progress', progress };
-        }
-
-        case 'repeal_bill':
-        case 'block_bill':
-        case 'block_bill_tag':
-        case 'vote_pattern':
-        case 'coalition_restriction':
-        case 'no_confidence':
-        case 'no_confidence_conditional':
-        case 'constitutional_amendment': {
-            // These are tracked by external events updating the progress field
-            if (progress.completed) return { status: 'fulfilled', progress };
-            if (progress.violated) return { status: 'broken', progress };
-            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
-            return { status: 'in_progress', progress };
-        }
-
-        default:
-            return { status: 'in_progress', progress };
-    }
-}
-
-/**
- * Process all active promises for a nation during tick advancement.
- * Checks fulfillment, applies rewards/penalties for expired promises.
- */
-async function processPromiseTick(supabase, nation, currentTick) {
-    const cfg = MAKE_PROMISE_CONFIG;
-
-    // Fetch both active and pending_election promises
-    const { data: allPromises } = await supabase
-        .from('fundraiser_promises')
-        .select('*')
-        .eq('nation_id', nation.id)
-        .in('status', ['active', 'pending_election']);
-
-    if (!allPromises || allPromises.length === 0) return [];
-
-    const results = [];
-
-    // Load shared data once
-    const { data: ministries } = await supabase
-        .from('ministries')
-        .select('ministry_key, party_id')
-        .eq('nation_id', nation.id)
-        .eq('is_active', true);
-
-    const coalition = await fetchActiveCoalition(supabase, nation.id);
-    const coalitionPartyIds = coalition?.party_ids || [];
-
-    // Load campaign actions for rally/press_conference counting
-    const partyIds = [...new Set(allPromises.map(p => p.party_id))];
-    const minTick = Math.min(...allPromises.map(p => p.tick_created));
-    const { data: campaignActions } = await supabase
-        .from('campaign_actions')
-        .select('party_id, action_type, tick_performed, result')
-        .in('party_id', partyIds)
-        .gte('tick_performed', minTick);
-
-    // Fresh nation stats
-    const { data: freshNation } = await supabase
-        .from('nations').select('*').eq('id', nation.id).single();
-    const nationStats = freshNation || nation;
-
-    // Load active crises for crisis_resolution promise checking
-    const { data: activeCrises } = await supabase
-        .from('active_crises').select('id, crisis_id').eq('nation_id', nation.id);
-    const activeCrisisIds = new Set((activeCrises || []).map(ac => ac.id));
-
-    // Build set of governing faction IDs (ruling faction + coalition members)
-    const governingFactionIds = new Set([
-        nation.ruling_faction_id,
-        ...coalitionPartyIds,
-    ].filter(Boolean));
-
-    // Check if any election completed since promise creation (for pending_election activation)
-    const { data: completedElections } = await supabase
-        .from('elections')
-        .select('id, election_tick')
-        .eq('nation_id', nation.id)
-        .eq('status', 'completed')
-        .order('election_tick', { ascending: false })
-        .limit(1);
-    const lastElectionTick = completedElections?.[0]?.election_tick || 0;
-
-    for (const promise of allPromises) {
-        const isGoverning = governingFactionIds.has(promise.party_id);
-
-        // ── Handle pending_election promises: waiting for next election ──
-        if (promise.status === 'pending_election') {
-            // Has an election completed since this promise was created?
-            if (lastElectionTick > promise.tick_created) {
-                if (isGoverning) {
-                    // Faction won — activate countdown
-                    const tickDeadline = currentTick + promise.deadline_ticks;
-                    await supabase.from('fundraiser_promises')
-                        .update({ status: 'active', tick_deadline: tickDeadline, updated_at: new Date().toISOString() })
-                        .eq('id', promise.id);
-                    console.log(`[Promise] Activated pending promise ${promise.id} — countdown starts, deadline tick ${tickDeadline}`);
-                    results.push({ promise, resolution: 'activated' });
-                } else {
-                    // Faction in opposition — extinguish silently
-                    await supabase.from('fundraiser_promises')
-                        .update({ status: 'expired', tick_resolved: currentTick, updated_at: new Date().toISOString() })
-                        .eq('id', promise.id);
-                    console.log(`[Promise] Extinguished pending promise ${promise.id} — faction not in government after election`);
-                    results.push({ promise, resolution: 'expired' });
-                }
-            }
-            // No election yet — promise stays dormant
-            continue;
-        }
-
-        // ── Handle active promises (countdown running) ──
-
-        // If no longer governing: expire silently (faction lost power mid-countdown)
-        if (!isGoverning) {
-            if (currentTick >= promise.tick_deadline) {
-                await supabase.from('fundraiser_promises')
-                    .update({ status: 'expired', tick_resolved: currentTick, updated_at: new Date().toISOString() })
-                    .eq('id', promise.id);
-                results.push({ promise, resolution: 'expired' });
-            }
-            continue;
-        }
-
-        // For crisis_resolution promises, check if the crisis is still active
-        if (promise.demand_type === 'crisis_resolution' && promise.conditions?.crisis_id) {
-            if (!activeCrisisIds.has(promise.conditions.crisis_id)) {
-                promise.progress = { ...promise.progress, crisis_resolved: true };
-            }
-        }
-
-        const evaluation = evaluatePromiseStatus(promise, nationStats, currentTick, ministries, coalitionPartyIds, campaignActions);
-
-        // Update progress
-        await supabase.from('fundraiser_promises')
-            .update({ progress: evaluation.progress, updated_at: new Date().toISOString() })
-            .eq('id', promise.id);
-
-        // Check if fulfilled
-        if (evaluation.status === 'fulfilled') {
-            await resolvePromise(supabase, promise, 'fulfilled', currentTick, nationStats);
-            results.push({ promise, resolution: 'fulfilled' });
-            continue;
-        }
-
-        // Check if broken (stat floor violated, or deadline passed)
-        if (evaluation.status === 'broken' || currentTick >= promise.tick_deadline) {
-            await resolvePromise(supabase, promise, 'broken', currentTick, nationStats);
-            results.push({ promise, resolution: 'broken' });
-            continue;
-        }
-
-        // Per-tick penalty: governing party with unfulfilled promise loses party_approval
-        if (isGoverning) {
-            const penaltyAmount = -(Math.random() * (cfg.PENALTY_PER_TICK_MAX - cfg.PENALTY_PER_TICK_MIN) + cfg.PENALTY_PER_TICK_MIN);
-            const rounded = Math.round(penaltyAmount * 100) / 100;
-            await _adjustMomentum(supabase, promise.party_id, promise.nation_id, rounded, 'promise:unfulfilled_penalty', currentTick);
-            results.push({ promise, resolution: 'tick_penalty', penaltyAmount: rounded });
-        }
-    }
-
-    return results;
-}
-
 // ── Rounding helpers (mirrors advance-tick) ──
 function _round2(v) { return Math.round(v * 100) / 100; }
 function _round3(v) { return Math.round(v * 1000) / 1000; }
@@ -21319,59 +20530,8 @@ async function _adjustMomentum(supabase, factionId, nationId, delta, source, tic
     }
 }
 
-/**
- * Adjust a faction's credibility_modifier in faction_electoral_standing.
- * Local helper for promise resolution (mirrors adjustCredibility in advance-tick).
- */
 // No-op: credibility_modifier column repurposed for momentum (3-pillar election system).
-// Server-side advance-tick is authoritative; client-side writes are dead.
 async function _adjustCredibility() { return; }
-
-/**
- * Apply rewards or penalties when a promise is resolved.
- */
-async function resolvePromise(supabase, promise, resolution, currentTick, nationStats) {
-    const cfg = MAKE_PROMISE_CONFIG;
-
-    if (resolution === 'fulfilled') {
-        // ── REWARDS via electorate engine (party_approval + credibility) ──
-        const keptSource = `promise:kept:${promise.demand_text || 'Unknown'}`;
-        await _adjustMomentum(supabase, promise.party_id, promise.nation_id, cfg.KEPT_APPROVAL, 'promise:kept', currentTick);
-        await _adjustCredibility(supabase, promise.party_id, promise.nation_id, cfg.KEPT_CREDIBILITY, 0, currentTick, { source: keptSource });
-        console.log(`[Promise] Fulfilled: +${cfg.KEPT_APPROVAL} approval, +${cfg.KEPT_CREDIBILITY} credibility for ${promise.party_id}`);
-
-        // Mark promise as fulfilled
-        await supabase.from('fundraiser_promises')
-            .update({ status: 'fulfilled', tick_resolved: currentTick, updated_at: new Date().toISOString() })
-            .eq('id', promise.id);
-
-    } else if (resolution === 'broken') {
-        // ── PENALTIES via electorate engine (party_approval + credibility) ──
-        const brokenSource = `promise:broken:${promise.demand_text || 'Unknown'}`;
-        await _adjustMomentum(supabase, promise.party_id, promise.nation_id, cfg.BROKEN_APPROVAL, 'promise:broken', currentTick);
-        await _adjustCredibility(supabase, promise.party_id, promise.nation_id, cfg.BROKEN_CREDIBILITY, cfg.BROKEN_CREDIBILITY_SUSPEND, currentTick, { source: brokenSource });
-        console.log(`[Promise] Broken: ${cfg.BROKEN_APPROVAL} approval, ${cfg.BROKEN_CREDIBILITY} credibility for ${promise.party_id}`);
-
-        // Nervous effect: other active promises compound credibility damage
-        const { data: otherPromises } = await supabase
-            .from('fundraiser_promises')
-            .select('id')
-            .eq('party_id', promise.party_id)
-            .eq('status', 'active')
-            .neq('id', promise.id);
-
-        if (otherPromises && otherPromises.length > 0) {
-            const nervousDelta = cfg.BROKEN_NERVOUS_CREDIBILITY * otherPromises.length;
-            await _adjustCredibility(supabase, promise.party_id, promise.nation_id, nervousDelta, 0, currentTick, { source: `promise:nervous:${promise.demand_text || 'Unknown'}` });
-            console.log(`[Promise] Nervous effect: ${nervousDelta} credibility (${otherPromises.length} other active promises)`);
-        }
-
-        // Mark promise as broken
-        await supabase.from('fundraiser_promises')
-            .update({ status: 'broken', tick_resolved: currentTick, updated_at: new Date().toISOString() })
-            .eq('id', promise.id);
-    }
-}
 
 
 // ==================== AUTOCRACY SEAT REBALANCING ====================
@@ -21837,7 +20997,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
         }
 
         // Defer tracking update — only apply after nation stats are persisted
-        trackingUpdates.push({ id: action.id, allEffectsComplete });
+        trackingUpdates.push({ id: action.id, allEffectsComplete, actionKey: action.action_key, ministryKey: action.ministry_key });
     }
 
     // Bulk update nation stats FIRST — before advancing tracking
@@ -21860,6 +21020,17 @@ async function processMinistryActions(supabase, nation, currentTick) {
                 effects_applied_through_tick: currentTick,
                 processed: tu.allEffectsComplete
             }).eq('id', tu.id);
+
+            // Fire expiration event when oil reserve release effects conclude
+            if (tu.allEffectsComplete && tu.actionKey === 'releaseOilReserves') {
+                const { error: releaseEvtErr } = await supabase.rpc('fire_system_event', {
+                    p_nation_id: nation.id,
+                    p_trigger_key: 'energy_release_oil_reserves_expired',
+                    p_tick: currentTick,
+                    p_placeholders: {}
+                });
+                if (releaseEvtErr) console.error('[processMinistryActions] release expired event error:', releaseEvtErr.message);
+            }
         }
     }
 
@@ -23773,8 +22944,6 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
     await supabase.from('faction_ideology').delete().eq('faction_id', factionId);
     await supabase.from('ideology_history').delete().eq('faction_id', factionId);
     // momentum_log table dropped — no cleanup needed
-    await supabase.from('fundraiser_promises').delete().eq('party_id', factionId);
-    await supabase.from('donor_trust').delete().eq('party_id', factionId);
     await supabase.from('bill_support').delete().eq('faction_id', factionId);
     await supabase.from('campaign_actions').delete().eq('party_id', factionId).neq('action_type', 'party_disbanded');
     await supabase.from('faction_coalitions').delete().eq('faction_a_id', factionId);
@@ -23794,10 +22963,6 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
 
 // ────────── election-simulation ──────────
 
-/**
- * election-simulation.js — Election simulation (vote distribution, D'Hondt allocation)
- * Extracted from game-common.js
- */
 
 // ==================== ELECTION SIMULATION ====================
 
@@ -24666,6 +23831,134 @@ async function runPresidentialElectionPreview(supabase, nationId) {
     };
 }
 
+// ────────── energy ──────────
+
+/**
+ * energy.js — Strategic Oil Reserve tick processing
+ *
+ * Processes active oil build cycles each tick:
+ *   - Accumulates reserve based on (oil_and_gas + manufacturing_output) / 2
+ *   - Applies per-tick stat effects: fuel_prices +0.1, energy_generation -0.1 per active cycle
+ *   - Decrements ticks_remaining, deactivates completed cycles
+ *   - Respects reserve cap (population * 20 Mb)
+ */
+
+async function processEnergyOilBuildCycles(supabase, nation, currentTick) {
+    // Fetch active build cycles for this nation
+    const { data: cycles, error } = await supabase
+        .from('energy_oil_build_cycles')
+        .select('id, ticks_remaining, rate_per_tick')
+        .eq('nation_id', nation.id)
+        .eq('is_active', true);
+
+    if (error || !cycles || cycles.length === 0) return { processed: 0 };
+
+    const pop = Number(nation.population || 20000000);
+    const reserveCap = Math.round((pop / 1000000) * 20);
+    let currentReserve = Number(nation.strategic_oil_reserve_mb || 0);
+    const activeCycleCount = cycles.length;
+
+    const completedIds = [];
+    const updatedCycles = [];
+
+    for (const cycle of cycles) {
+        const newTicksRemaining = cycle.ticks_remaining - 1;
+
+        // Accumulate reserve (capped)
+        const canAdd = Math.min(cycle.rate_per_tick, Math.max(0, reserveCap - currentReserve));
+        currentReserve += canAdd;
+
+        if (newTicksRemaining <= 0) {
+            completedIds.push(cycle.id);
+        } else {
+            updatedCycles.push({ id: cycle.id, ticks_remaining: newTicksRemaining });
+        }
+    }
+
+    // Apply stacking stat effects: +0.1 fuel_prices, -0.1 energy_generation per active cycle
+    const fuelPricesDelta = 0.1 * activeCycleCount;
+    const energyGenDelta = -0.1 * activeCycleCount;
+
+    const currentFuelPrices = Number(nation.fuel_prices ?? 50);
+    const currentEnergyGen = Number(nation.energy_generation ?? 50);
+
+    const newFuelPrices = Math.round(Math.max(2, Math.min(98, currentFuelPrices + fuelPricesDelta)) * 10) / 10;
+    const newEnergyGen = Math.round(Math.max(2, Math.min(98, currentEnergyGen + energyGenDelta)) * 10) / 10;
+
+    // Update nation: reserve + stat effects
+    const { error: nationErr } = await supabase.from('nations').update({
+        strategic_oil_reserve_mb: currentReserve,
+        fuel_prices: newFuelPrices,
+        energy_generation: newEnergyGen
+    }).eq('id', nation.id);
+
+    if (nationErr) {
+        console.error(`[Energy] Failed to update nation ${nation.name}:`, nationErr.message);
+        return { processed: 0, error: nationErr.message };
+    }
+
+    // Update cycle ticks_remaining
+    for (const c of updatedCycles) {
+        const { error: tickErr } = await supabase.from('energy_oil_build_cycles')
+            .update({ ticks_remaining: c.ticks_remaining })
+            .eq('id', c.id);
+        if (tickErr) console.error(`[Energy] Failed to update cycle ${c.id}:`, tickErr.message);
+    }
+
+    // Deactivate completed cycles
+    if (completedIds.length > 0) {
+        const { error: deactErr } = await supabase.from('energy_oil_build_cycles')
+            .update({ is_active: false, ticks_remaining: 0 })
+            .in('id', completedIds);
+        if (deactErr) {
+            console.error('[Energy] Failed to deactivate completed cycles:', deactErr.message);
+        }
+
+        // Fire completion event for each finished cycle
+        for (const id of completedIds) {
+            const { error: evtErr } = await supabase.rpc('fire_system_event', {
+                p_nation_id: nation.id,
+                p_trigger_key: 'energy_build_oil_reserves_complete',
+                p_tick: currentTick,
+                p_placeholders: { cycle_id: id, reserve_mb: currentReserve, reserve_cap_mb: reserveCap }
+            });
+            if (evtErr) console.error('[Energy] fire_system_event error:', evtErr.message);
+        }
+    }
+
+    // Fire near-cap warning if reserve >= 90% of cap
+    if (reserveCap > 0 && currentReserve >= reserveCap * 0.9 && currentReserve < reserveCap) {
+        const { error: nearCapErr } = await supabase.rpc('fire_system_event', {
+            p_nation_id: nation.id,
+            p_trigger_key: 'energy_build_oil_reserves_near_cap',
+            p_tick: currentTick,
+            p_placeholders: { reserve_mb: currentReserve, reserve_cap_mb: reserveCap, pct: Math.round((currentReserve / reserveCap) * 100) }
+        });
+        if (nearCapErr) console.error('[Energy] fire_system_event near-cap error:', nearCapErr.message);
+    }
+
+    // Cleanup: delete inactive cycles older than 100 ticks (preserves recent ones for use-count decay)
+    const cutoffTick = currentTick - 100;
+    if (cutoffTick > 0) {
+        const { error: cleanupErr } = await supabase
+            .from('energy_oil_build_cycles')
+            .delete()
+            .eq('nation_id', nation.id)
+            .eq('is_active', false)
+            .lt('activated_on_tick', cutoffTick);
+        if (cleanupErr) console.error('[Energy] Cycle cleanup error:', cleanupErr.message);
+    }
+
+    return {
+        processed: cycles.length,
+        completed: completedIds.length,
+        reserve: currentReserve,
+        reserveCap,
+        fuelPricesDelta,
+        energyGenDelta
+    };
+}
+
 // ────────── sovereign-default ──────────
 
 /**
@@ -25117,10 +24410,6 @@ function formatDebtToGDP(ratio) {
 
 // ────────── incidents ──────────
 
-/**
- * incidents.js — Incident trigger, creation, and lifecycle engine
- * Extracted from game-common.js
- */
 
 // ==================== CONSTANTS ====================
 
@@ -27930,6 +27219,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Ministry actions failed for ${nation.name} (non-fatal):`, minActErr);
         }
 
+        // Energy ministry: process oil reserve build cycles
+        try {
+            const energyResult = await processEnergyOilBuildCycles(supabase, nation, newTick);
+            if (energyResult.processed > 0) {
+                summary.energyOil = summary.energyOil || [];
+                summary.energyOil.push({ nation: nation.name, ...energyResult });
+            }
+        } catch (energyErr) {
+            console.error(`[advanceTick] Energy oil build failed for ${nation.name} (non-fatal):`, energyErr);
+        }
+
         // Apply GDP growth rate
         try {
             await applyGdpGrowth(supabase, nation, newTick);
@@ -28563,17 +27863,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Random events failed for ${nation.name} (non-fatal):`, eventErr);
         }
 
-        // Process active fundraiser promises
-        try {
-            const promiseResults = await processPromiseTick(supabase, nation, newTick);
-            if (promiseResults.length > 0) {
-                summary.promises = summary.promises || [];
-                summary.promises.push({ nation: nation.name, promises: promiseResults });
-            }
-        } catch (promiseErr) {
-            console.error(`[advanceTick] Promise processing failed for ${nation.name} (non-fatal):`, promiseErr);
-        }
-
 
         // Writing AP rewards: grant bonus AP for long op-eds and articles published this tick
         try {
@@ -28646,6 +27935,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             try {
                 console.log(`[LeaderAging] ${nation.name}: tick=${newTick} (January — aging leaders)`);
                 const agingResults = [];
+
+                // RULE: Party leaders must NEVER be auto-generated. Leaders only change via:
+                //   1. Player action on party-leadership.html (manual appointment)
+                //   2. Retirement (cleared to NULL here) — player picks replacement
+                // Do NOT auto-fill vacant leader slots. The player must choose.
 
                 // 1. Age all party faction leaders +1
                 const { data: partyFactions } = await supabase

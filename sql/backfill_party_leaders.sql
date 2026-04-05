@@ -1,8 +1,12 @@
 -- ==================== BACKFILL PARTY LEADERS + FOUNDED DATE ====================
--- Assigns a random leader name + age to every faction.
+-- ⚠️  WARNING: DO NOT RE-RUN THIS SCRIPT ⚠️
+-- This was a ONE-TIME migration to seed initial leader names.
+-- Re-running will OVERWRITE all player-chosen leaders with random names!
+-- Party leaders should ONLY change via player action or retirement.
+--
+-- Original purpose: Assigns a random leader name + age to every faction.
 -- Uses array indexing with per-row random() to ensure different names.
 -- Also backfills created_at for any factions missing a founding date.
--- Re-running is safe: overwrites leader fields, only sets created_at if NULL.
 
 -- 1. Randomize leaders for all party factions using nation-specific name pools
 -- Calveth → Danish names, Avelia → Avelian names, Flandis → Dutch names, others → Crucera (Spanish)

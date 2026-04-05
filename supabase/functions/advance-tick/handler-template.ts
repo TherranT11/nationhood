@@ -1425,6 +1425,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Ministry actions failed for ${nation.name} (non-fatal):`, minActErr);
         }
 
+        // Energy ministry: process oil reserve build cycles
+        try {
+            const energyResult = await processEnergyOilBuildCycles(supabase, nation, newTick);
+            if (energyResult.processed > 0) {
+                summary.energyOil = summary.energyOil || [];
+                summary.energyOil.push({ nation: nation.name, ...energyResult });
+            }
+        } catch (energyErr) {
+            console.error(`[advanceTick] Energy oil build failed for ${nation.name} (non-fatal):`, energyErr);
+        }
+
         // Apply GDP growth rate
         try {
             await applyGdpGrowth(supabase, nation, newTick);
@@ -2058,17 +2069,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Random events failed for ${nation.name} (non-fatal):`, eventErr);
         }
 
-        // Process active fundraiser promises
-        try {
-            const promiseResults = await processPromiseTick(supabase, nation, newTick);
-            if (promiseResults.length > 0) {
-                summary.promises = summary.promises || [];
-                summary.promises.push({ nation: nation.name, promises: promiseResults });
-            }
-        } catch (promiseErr) {
-            console.error(`[advanceTick] Promise processing failed for ${nation.name} (non-fatal):`, promiseErr);
-        }
-
 
         // Writing AP rewards: grant bonus AP for long op-eds and articles published this tick
         try {
@@ -2141,6 +2141,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             try {
                 console.log(`[LeaderAging] ${nation.name}: tick=${newTick} (January — aging leaders)`);
                 const agingResults = [];
+
+                // RULE: Party leaders must NEVER be auto-generated. Leaders only change via:
+                //   1. Player action on party-leadership.html (manual appointment)
+                //   2. Retirement (cleared to NULL here) — player picks replacement
+                // Do NOT auto-fill vacant leader slots. The player must choose.
 
                 // 1. Age all party faction leaders +1
                 const { data: partyFactions } = await supabase
