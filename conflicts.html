@@ -1066,8 +1066,8 @@ function renderSidebar(yours, intl, resolved) {
         ? '<div class="sidebar-empty">No recent resolutions.</div>'
         : resolved.map(i => renderSidebarItem(i, false, true)).join('');
 
-    // Click handlers
-    document.querySelectorAll('.sidebar-item').forEach(el => {
+    // Click handlers (exclude issue sidebar items)
+    document.querySelectorAll('.sidebar-item:not(.issue-sidebar-item)').forEach(el => {
         el.addEventListener('click', () => selectIncident(el.dataset.incidentId));
     });
 }
