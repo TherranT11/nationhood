@@ -1309,3 +1309,32 @@
     text-align: right;
 }
 
+/* ── AMBER ACTION NOTIFICATIONS ── */
+
+.subtab-action-badge {
+    font-size: 9px;
+    font-weight: 600;
+    background: rgba(204,160,60,0.12);
+    color: #cca03c;
+    border: 1px solid rgba(204,160,60,0.25);
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 4px;
+    display: none;
+}
+
+.action-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #cca03c;
+    margin-right: 5px;
+    vertical-align: middle;
+    box-shadow: 0 0 4px rgba(204,160,60,0.4);
+}
+
+.sidebar-item--has-action {
+    border-left: 2px solid #cca03c;
+}
+
