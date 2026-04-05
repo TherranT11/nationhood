@@ -2690,16 +2690,27 @@ function setFilter(group, value) {
     renderContracts();
 }
 
+// Maps corp_subsector name → contract sector value
+const SUBSECTOR_TO_SECTOR = {
+    'Civil Engineering': 'civil_engineering',
+    'Industrial Construction': 'industrial',
+    'Megaprojects': 'mega_project',
+};
+
 // ── Check qualification ──
+// Strict match: parent subsector must match contract sector for home-nation contracts.
+// Subsidiaries unlock bidding on contracts in the subsidiary's nation if the subsidiary's subsector matches.
 function isQualified(contract) {
     if (!faction) return false;
-    // All construction corps can bid on civil engineering
-    // Industrial requires Industrial Construction or Megaprojects subsector
-    // Mega projects require Megaprojects subsector
-    if (contract.sector === 'mega_project' && faction.corp_subsector !== 'Megaprojects') return false;
-    // corp_subsector values: 'Civil Engineering', 'Industrial Construction', 'Megaprojects'
-    if (contract.sector === 'industrial' && !['Industrial Construction', 'Megaprojects'].includes(faction.corp_subsector)) return false;
-    return true;
+    const parentSector = SUBSECTOR_TO_SECTOR[faction.corp_subsector];
+    // Parent corp qualifies for contracts matching its own subsector
+    if (parentSector === contract.sector) return true;
+    // Check subsidiaries: a subsidiary in the contract's nation with a matching subsector qualifies
+    const subs = (_ownedProperties || []).filter(p => p.type === 'regional_hq' && p.is_active && p.nation_id === contract.nation_id);
+    for (const sub of subs) {
+        if (SUBSECTOR_TO_SECTOR[sub.subsector] === contract.sector) return true;
+    }
+    return false;
 }
 
 // ── Render contracts ──
@@ -5884,8 +5895,8 @@ async function init() {
         dd.innerHTML = ddHtml;
     }
 
-    // Load contracts
-    await Promise.all([loadContracts(), loadActiveProjects(), loadWarehouse(), loadEquipment(), loadPermits(), loadDeliveries()]);
+    // Load contracts (loadOwnedProperties needed for subsidiary eligibility checks)
+    await Promise.all([loadContracts(), loadActiveProjects(), loadWarehouse(), loadEquipment(), loadPermits(), loadDeliveries(), loadOwnedProperties()]);
 
     // Load all nations for equipment market nation switcher
     try {
@@ -7182,7 +7193,7 @@ function getSubsidiaryData(hqProp) {
         nation: nationData?.name || hqProp.city || '—',
         nationId: hqProp.nation_id,
         sector: faction?.corp_sector || 'General',
-        subsector: faction?.corp_subsector || '—',
+        subsector: hqProp.subsector || faction?.corp_subsector || '—',
         revenue,
         debt: 0,
         cash: subCash,
@@ -7675,6 +7686,7 @@ async function subCreate() {
             city: nation.capital || nation.name,
             purchased_at_tick: currentTick,
             is_active: true,
+            subsector: _subSelectedSubsector || faction?.corp_subsector || null,
         });
         if (propErr) throw propErr;
 
