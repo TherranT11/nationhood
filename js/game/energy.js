@@ -64,40 +64,42 @@ export async function processEnergyOilBuildCycles(supabase, nation, currentTick)
 
     // Update cycle ticks_remaining
     for (const c of updatedCycles) {
-        await supabase.from('energy_oil_build_cycles')
+        const { error: tickErr } = await supabase.from('energy_oil_build_cycles')
             .update({ ticks_remaining: c.ticks_remaining })
             .eq('id', c.id);
+        if (tickErr) console.error(`[Energy] Failed to update cycle ${c.id}:`, tickErr.message);
     }
 
     // Deactivate completed cycles
     if (completedIds.length > 0) {
-        await supabase.from('energy_oil_build_cycles')
+        const { error: deactErr } = await supabase.from('energy_oil_build_cycles')
             .update({ is_active: false, ticks_remaining: 0 })
             .in('id', completedIds);
+        if (deactErr) {
+            console.error('[Energy] Failed to deactivate completed cycles:', deactErr.message);
+        }
 
         // Fire completion event for each finished cycle
         for (const id of completedIds) {
-            try {
-                await supabase.rpc('fire_system_event', {
-                    p_nation_id: nation.id,
-                    p_trigger_key: 'energy_build_oil_reserves_complete',
-                    p_tick: currentTick,
-                    p_placeholders: { cycle_id: id, reserve_mb: currentReserve, reserve_cap_mb: reserveCap }
-                });
-            } catch (e) { console.error('[Energy] fire_system_event error:', e.message); }
+            const { error: evtErr } = await supabase.rpc('fire_system_event', {
+                p_nation_id: nation.id,
+                p_trigger_key: 'energy_build_oil_reserves_complete',
+                p_tick: currentTick,
+                p_placeholders: { cycle_id: id, reserve_mb: currentReserve, reserve_cap_mb: reserveCap }
+            });
+            if (evtErr) console.error('[Energy] fire_system_event error:', evtErr.message);
         }
     }
 
     // Fire near-cap warning if reserve >= 90% of cap
-    if (currentReserve >= reserveCap * 0.9 && currentReserve < reserveCap) {
-        try {
-            await supabase.rpc('fire_system_event', {
-                p_nation_id: nation.id,
-                p_trigger_key: 'energy_build_oil_reserves_near_cap',
-                p_tick: currentTick,
-                p_placeholders: { reserve_mb: currentReserve, reserve_cap_mb: reserveCap, pct: Math.round((currentReserve / reserveCap) * 100) }
-            });
-        } catch (e) { console.error('[Energy] fire_system_event near-cap error:', e.message); }
+    if (reserveCap > 0 && currentReserve >= reserveCap * 0.9 && currentReserve < reserveCap) {
+        const { error: nearCapErr } = await supabase.rpc('fire_system_event', {
+            p_nation_id: nation.id,
+            p_trigger_key: 'energy_build_oil_reserves_near_cap',
+            p_tick: currentTick,
+            p_placeholders: { reserve_mb: currentReserve, reserve_cap_mb: reserveCap, pct: Math.round((currentReserve / reserveCap) * 100) }
+        });
+        if (nearCapErr) console.error('[Energy] fire_system_event near-cap error:', nearCapErr.message);
     }
 
     return {

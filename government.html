@@ -4716,8 +4716,8 @@ async function confirmLaborWorkforceAction(actionId) {
 
 function buildEnergyActionRows(isMyMinistry) {
     const comingSoonBtn = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div>`;
-    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb || 0);
-    const pop = currentNation?.population || 20000000;
+    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
+    const pop = currentNation?.population ?? 20000000;
     const reserveCap = Math.round((pop / 1000000) * 20);
 
     let html = `<div class="ministry-card__actions-label" style="display:flex;justify-content:space-between;align-items:center;">
@@ -4740,9 +4740,9 @@ function buildEnergyActionRows(isMyMinistry) {
 
     // Action 2: Build Oil Reserves
     const buildApCosts = [2, 3, 5, 7];
-    const buildUseCount = _energyBuildUseCount || 0;
+    const buildUseCount = _energyBuildUseCount ?? 0;
     const buildApCost = buildApCosts[Math.min(buildUseCount, 3)];
-    const ap = currentFaction?.action_points || 0;
+    const ap = currentFaction?.action_points ?? 0;
     const canUse = isMyMinistry === true;
     const activeCycles = _energyBuildCycles.length;
 
@@ -4871,13 +4871,13 @@ async function confirmBuildOilReserves() {
     if (!isMyMinistryByKey('energy')) return;
 
     const buildApCosts = [2, 3, 5, 7];
-    const useCount = _energyBuildUseCount || 0;
+    const useCount = _energyBuildUseCount ?? 0;
     const apCost = buildApCosts[Math.min(useCount, 3)];
-    const ap = currentFaction?.action_points || 0;
+    const ap = currentFaction?.action_points ?? 0;
     if (ap < apCost) { alert('Insufficient AP.'); return; }
 
-    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb || 0);
-    const pop = currentNation?.population || 20000000;
+    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
+    const pop = currentNation?.population ?? 20000000;
     const reserveCap = Math.round((pop / 1000000) * 20);
     if (reserveMb >= reserveCap) { alert('Reserve at maximum capacity. Release reserves before building further.'); return; }
 
@@ -4913,15 +4913,14 @@ async function confirmBuildOilReserves() {
             throw cycleErr;
         }
 
-        // Fire event
-        try {
-            await _supabase.rpc('fire_system_event', {
-                p_nation_id: currentNation.id,
-                p_trigger_key: 'energy_build_oil_reserves',
-                p_tick: currentTick,
-                p_placeholders: { rate_per_tick: buildRate, ap_cost: apCost, active_cycles: (_energyBuildCycles.length + 1) }
-            });
-        } catch (evtErr) { console.warn('Build oil event failed:', evtErr.message); }
+        // Fire event (best-effort)
+        const { error: buildEvtErr } = await _supabase.rpc('fire_system_event', {
+            p_nation_id: currentNation.id,
+            p_trigger_key: 'energy_build_oil_reserves',
+            p_tick: currentTick,
+            p_placeholders: { rate_per_tick: buildRate, ap_cost: apCost, active_cycles: (_energyBuildCycles.length + 1) }
+        });
+        if (buildEvtErr) console.warn('[Energy] Build event failed:', buildEvtErr.message);
 
         // Update local state
         currentFaction.action_points = newAP;
@@ -4946,7 +4945,7 @@ async function confirmBuildOilReserves() {
 // Open the Release Oil Reserves confirm panel with slider
 function openReleaseOilReserves() {
     if (!isMyMinistryByKey('energy')) return;
-    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb || 0);
+    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
     if (reserveMb < 10) { alert('Minimum release is 10 Mb.'); return; }
 
     _energyReleaseAmount = Math.min(reserveMb, 72); // default to one standard cycle or max
@@ -4963,7 +4962,7 @@ function closeReleaseOilReserves() {
 }
 
 function setReleaseAmount(val) {
-    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb || 0);
+    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
     _energyReleaseAmount = Math.max(10, Math.min(reserveMb, Number(val) || 10));
     renderReleaseConfirmPanel();
 }
@@ -4972,7 +4971,7 @@ function renderReleaseConfirmPanel() {
     const container = document.getElementById('energy-release-confirm');
     if (!container) return;
 
-    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb || 0);
+    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
     const amount = _energyReleaseAmount;
     const remaining = reserveMb - amount;
     const baseline = 72;
@@ -5042,10 +5041,10 @@ async function confirmReleaseOilReserves() {
     if (!isMyMinistryByKey('energy')) return;
 
     const releaseApCost = 2;
-    const ap = currentFaction?.action_points || 0;
+    const ap = currentFaction?.action_points ?? 0;
     if (ap < releaseApCost) { alert('Insufficient AP.'); return; }
 
-    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb || 0);
+    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
     const amount = _energyReleaseAmount;
     if (amount < 10) { alert('Minimum release is 10 Mb.'); return; }
     if (amount > reserveMb) { alert(`Insufficient reserves. Current reserve: ${reserveMb} Mb.`); return; }
@@ -5098,21 +5097,24 @@ async function confirmReleaseOilReserves() {
             .from('nations')
             .update({ strategic_oil_reserve_mb: newReserve })
             .eq('id', currentNation.id);
-        if (resErr) console.error('[Energy] Reserve deduction failed:', resErr.message);
+        if (resErr) {
+            console.error('[Energy] Reserve deduction failed — refunding AP:', resErr.message);
+            await _supabase.from('factions').update({ action_points: ap }).eq('id', currentFaction.id);
+            throw new Error('Reserve deduction failed. AP refunded.');
+        }
 
         // Update local state
         currentFaction.action_points = Math.max(0, ap - releaseApCost);
         currentNation.strategic_oil_reserve_mb = newReserve;
 
-        // Fire event
-        try {
-            await _supabase.rpc('fire_system_event', {
-                p_nation_id: currentNation.id,
-                p_trigger_key: 'energy_release_oil_reserves',
-                p_tick: currentTick,
-                p_placeholders: { release_mb: amount, reserve_remaining_mb: newReserve }
-            });
-        } catch (evtErr) { console.warn('Release oil event failed:', evtErr.message); }
+        // Fire event (best-effort)
+        const { error: releaseEvtErr } = await _supabase.rpc('fire_system_event', {
+            p_nation_id: currentNation.id,
+            p_trigger_key: 'energy_release_oil_reserves',
+            p_tick: currentTick,
+            p_placeholders: { release_mb: amount, reserve_remaining_mb: newReserve }
+        });
+        if (releaseEvtErr) console.warn('[Energy] Release event failed:', releaseEvtErr.message);
 
         closeReleaseOilReserves();
         await renderGovernmentPage();

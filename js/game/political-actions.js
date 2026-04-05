@@ -2454,14 +2454,13 @@ export async function processMinistryActions(supabase, nation, currentTick) {
 
             // Fire expiration event when oil reserve release effects conclude
             if (tu.allEffectsComplete && tu.actionKey === 'releaseOilReserves') {
-                try {
-                    await supabase.rpc('fire_system_event', {
-                        p_nation_id: nation.id,
-                        p_trigger_key: 'energy_release_oil_reserves_expired',
-                        p_tick: currentTick,
-                        p_placeholders: {}
-                    });
-                } catch (e) { console.error('[processMinistryActions] release expired event error:', e.message); }
+                const { error: releaseEvtErr } = await supabase.rpc('fire_system_event', {
+                    p_nation_id: nation.id,
+                    p_trigger_key: 'energy_release_oil_reserves_expired',
+                    p_tick: currentTick,
+                    p_placeholders: {}
+                });
+                if (releaseEvtErr) console.error('[processMinistryActions] release expired event error:', releaseEvtErr.message);
             }
         }
     }
