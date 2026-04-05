@@ -17,6 +17,38 @@ import { formatStatName } from './game/political-actions.js';
 import { calculateIdeologyZones, bimodalAxisAlignment } from './game/electorate.js';
 import { getElectabilityTier, getTraitAPModifier } from './game/party-leadership.js';
 
+// ── Shared helpers ──
+
+function toMap(arr, key = 'id') {
+    const m = {};
+    for (const item of (arr || [])) m[item[key]] = item;
+    return m;
+}
+
+function computeGovernanceScore(nation, statsAtStart, startedAtTick, currentTick) {
+    if (!statsAtStart) return { score: 0, deltas: [], decayCycles: 0, multiplier: 1 };
+    let sum = 0, count = 0;
+    const deltas = [];
+    for (const key of NATION_STAT_COLUMNS) {
+        const dir = statDirectionSign(key);
+        if (dir === 0) continue;
+        const start = Number(statsAtStart[key] ?? 0);
+        const now = Number(nation[key] ?? 0);
+        const raw = now - start;
+        if (raw === 0) continue;
+        const signed = raw * dir;
+        deltas.push({ key, start, now, raw, signed, dir });
+        sum += signed;
+        count++;
+    }
+    let score = count > 0 ? sum / count : 0;
+    const ticksInPower = currentTick - (startedAtTick || currentTick);
+    const decayCycles = Math.floor(ticksInPower / 12);
+    const multiplier = score > 0 ? Math.pow(0.95, decayCycles) : 1;
+    score *= multiplier;
+    return { score, deltas, decayCycles, multiplier, ticksInPower };
+}
+
 // Lightweight toast notification (replaces alert() calls)
 function _showToast(msg, isError = true) {
     const existing = document.getElementById('pol-toast');
@@ -48,7 +80,7 @@ initPage('politics', async (state) => {
     // Fetch total seats from all parties
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name, custom_logo_url, party_logo, party_description, momentum, momentum_log')
+        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name, leader_age, founded_tick, custom_logo_url, party_logo, party_description, momentum, momentum_log')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -495,7 +527,7 @@ async function renderPartyTab(f, nation, data) {
             // Lazy-load Other Parties tab on first click
             if (target === 'other-parties' && !otherPartiesLoaded) {
                 otherPartiesLoaded = true;
-                renderOtherPartiesTab(f, nation, allParties, allPartyIdeologies, coalition, totalSeats, currentTick);
+                renderOtherPartiesTab(f, nation, allParties, allPartyIdeologies, coalition, totalSeats, currentTick, administration);
             }
             // Lazy-load Elections tab on first click
             if (target === 'elections' && !electionsLoaded) {
@@ -553,8 +585,8 @@ function _feedTickLabel(tick) {
 
 
 
-async function _loadPartyEventsFeed(nationId, playerFactionId) {
-    const feedEl = document.getElementById('party-events-feed');
+async function _loadEventFeed(elementId, nationId, playerFactionId, { limit = 80, detailed = true } = {}) {
+    const feedEl = document.getElementById(elementId);
     if (!feedEl) return;
 
     const { data: entries, error } = await _supabase
@@ -563,10 +595,10 @@ async function _loadPartyEventsFeed(nationId, playerFactionId) {
         .eq('nation_id', nationId)
         .order('tick', { ascending: false })
         .order('created_at', { ascending: false })
-        .limit(80);
+        .limit(limit);
 
     if (error || !entries || entries.length === 0) {
-        feedEl.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-ui);font-size:12px;padding:12px">No party events yet.</div>';
+        feedEl.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-ui);font-size:11px;padding:8px">No party events yet.</div>';
         return;
     }
 
@@ -575,8 +607,7 @@ async function _loadPartyEventsFeed(nationId, playerFactionId) {
         .from('factions')
         .select('id, faction_name, abbreviation, party_color')
         .in('id', factionIds);
-    const factionMap = {};
-    for (const f of (factions || [])) factionMap[f.id] = f;
+    const factionMap = toMap(factions);
 
     let html = '';
     let lastTick = null;
@@ -599,68 +630,22 @@ async function _loadPartyEventsFeed(nationId, playerFactionId) {
             <div class="pe-item-row">
                 <span class="pe-item-party" style="color:${fColor}">${escapeHtml(fLabel)}</span>
                 <span class="pe-item-label">${escapeHtml((entry.action_label || entry.action_type).replace(/_/g, ' '))}</span>
-                ${entry.ap_spent ? `<span class="pe-item-ap">${entry.ap_spent} AP</span>` : ''}
+                ${detailed && entry.ap_spent ? `<span class="pe-item-ap">${entry.ap_spent} AP</span>` : ''}
                 ${entry.outcome ? `<span class="pe-item-outcome" style="color:${outcomeColor}">${escapeHtml(entry.outcome)}</span>` : ''}
             </div>
-            ${entry.description ? `<div class="pe-item-desc">${escapeHtml(entry.description)}</div>` : ''}
+            ${detailed && entry.description ? `<div class="pe-item-desc">${escapeHtml(entry.description)}</div>` : ''}
         </div>`;
     }
 
     feedEl.innerHTML = html;
 }
 
-async function _loadGovCardPartyEvents(nationId, playerFactionId) {
-    const feedEl = document.getElementById('gov-card-party-events');
-    if (!feedEl) return;
+function _loadPartyEventsFeed(nationId, playerFactionId) {
+    return _loadEventFeed('party-events-feed', nationId, playerFactionId, { limit: 80, detailed: true });
+}
 
-    const { data: entries, error } = await _supabase
-        .from('activity_log')
-        .select('id, faction_id, action_type, action_label, description, outcome, ap_spent, tick, created_at')
-        .eq('nation_id', nationId)
-        .order('tick', { ascending: false })
-        .order('created_at', { ascending: false })
-        .limit(40);
-
-    if (error || !entries || entries.length === 0) {
-        feedEl.innerHTML = '<div style="color:var(--dtext-3);font-family:var(--dfont-ui);font-size:11px">No party events yet.</div>';
-        return;
-    }
-
-    const factionIds = [...new Set(entries.map(e => e.faction_id))];
-    const { data: factions } = await _supabase
-        .from('factions')
-        .select('id, faction_name, abbreviation, party_color')
-        .in('id', factionIds);
-    const factionMap = {};
-    for (const f of (factions || [])) factionMap[f.id] = f;
-
-    let html = '';
-    let lastTick = null;
-
-    for (const entry of entries) {
-        if (entry.tick !== lastTick) {
-            lastTick = entry.tick;
-            html += `<div class="pe-tick-sep">${_feedTickLabel(entry.tick)}</div>`;
-        }
-
-        const faction = factionMap[entry.faction_id];
-        const isPlayer = entry.faction_id === playerFactionId;
-        const fLabel = isPlayer ? 'You' : (faction?.abbreviation || '???');
-        const fColor = faction?.party_color || 'var(--dtext-2)';
-        const outcomeColor = entry.outcome === 'success' ? 'var(--dgreen)'
-            : entry.outcome === 'backfire' ? 'var(--dred)'
-            : entry.outcome === 'failure' ? 'var(--damber)' : 'var(--dtext-3)';
-
-        html += `<div class="pe-item${isPlayer ? ' pe-item--you' : ''}">
-            <div class="pe-item-row">
-                <span class="pe-item-party" style="color:${fColor}">${escapeHtml(fLabel)}</span>
-                <span class="pe-item-label">${escapeHtml((entry.action_label || entry.action_type).replace(/_/g, ' '))}</span>
-                ${entry.outcome ? `<span class="pe-item-outcome" style="color:${outcomeColor}">${escapeHtml(entry.outcome)}</span>` : ''}
-            </div>
-        </div>`;
-    }
-
-    feedEl.innerHTML = html;
+function _loadGovCardPartyEvents(nationId, playerFactionId) {
+    return _loadEventFeed('gov-card-party-events', nationId, playerFactionId, { limit: 40, detailed: false });
 }
 
 function miniLogo(color, acronym, name) {
@@ -857,9 +842,8 @@ function importanceColor(pct) {
     return 'var(--dgreen)';
 }
 
-// Ideology box removed — replaced by stance summary container in pol-row-2
 
-function renderForecastBox(allParties, totalSeats, currentTick, nextElection, _unused, playerFactionId) {
+function renderForecastBox(allParties, totalSeats, currentTick, nextElection, _, playerFactionId) {
     const FORECAST_START = 12;
     const MARGIN_START = 12;
     const INACTIVITY_EXCLUSION = 12;
@@ -4424,11 +4408,7 @@ async function renderElectorateSpreadTab(playerFaction, nation, allParties, allP
         return;
     }
 
-    // Build ideology lookup
-    const ideoMap = {};
-    for (const row of (allPartyIdeologies || [])) {
-        ideoMap[row.faction_id] = row;
-    }
+    const ideoMap = toMap(allPartyIdeologies, 'faction_id');
 
     // Compute electorate mean per axis from electorate_profile.
     // Zone variance driven by polarization (primary), stability (secondary), diversity (tertiary).
@@ -4807,9 +4787,7 @@ async function _renderStancePortfolio(container, faction, nation) {
     const issueStates = issueStatesRes.data || [];
     const currentTick = shardRes.data?.current_tick || 0;
 
-    // Build issue state lookup
-    const issueStateMap = {};
-    for (const is of issueStates) issueStateMap[is.issue_id] = is;
+    const issueStateMap = toMap(issueStates, 'issue_id');
 
     const maxStances = STANCE_CONFIG.MAX_STANCES;
     const atCap = stances.length >= maxStances;
@@ -5257,11 +5235,6 @@ async function _renderStanceSummaryStrip(factionId, nationId) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   VOTERS TAB — REMOVED (replaced by Elections tab with 3-pillar system)
-   ═══════════════════════════════════════════════════════════════════ */
-/* DELETED: renderVotersTab — 5-pillar system (alignment, appeal, approval, visibility, credibility)
-   replaced by 3-pillar Elections tab (governance, momentum, ideology) */
-/* ═══════════════════════════════════════════════════════════════════
    OTHER PARTIES TAB — Rival party intelligence cards
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -5276,11 +5249,10 @@ const OP_AXES = [
     { key: 'individualism_collectivism', leftLabel: 'Individual',  rightLabel: 'Collectivism' },
 ];
 
-async function renderOtherPartiesTab(playerFaction, nation, allParties, allPartyIdeologies, coalition, totalSeats, currentTick) {
+async function renderOtherPartiesTab(playerFaction, nation, allParties, allPartyIdeologies, coalition, totalSeats, currentTick, administration) {
     const container = document.getElementById('other-parties-container');
     if (!container) return;
 
-    // Filter out player's own party
     const rivals = (allParties || []).filter(p => p.id !== playerFaction.id);
     const rivalIds = rivals.map(p => p.id);
     if (rivals.length === 0) {
@@ -5288,51 +5260,11 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
         return;
     }
 
-    // Build ideology lookup
-    const ideoMap = {};
-    for (const row of (allPartyIdeologies || [])) {
-        ideoMap[row.faction_id] = row;
-    }
+    const ideoMap = toMap(allPartyIdeologies, 'faction_id');
+    const { score: nationalGovScore } = computeGovernanceScore(nation, administration?.stats_at_start, administration?.started_at_tick, currentTick);
 
-    // Compute national governance score from current administration stats
-    const { data: administration } = await _supabase
-        .from('administrations')
-        .select('stats_at_start, started_at_tick')
-        .eq('nation_id', nation.id)
-        .is('ended_at_tick', null)
-        .order('started_at_tick', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-    let nationalGovScore = 0;
-    if (administration?.stats_at_start) {
-        let sum = 0, count = 0;
-        for (const key of NATION_STAT_COLUMNS) {
-            const dir = statDirectionSign(key);
-            if (dir === 0) continue;
-            const start = Number(administration.stats_at_start[key] ?? 0);
-            const now = Number(nation[key] ?? 0);
-            const raw = now - start;
-            if (raw === 0) continue;
-            sum += raw * dir;
-            count++;
-        }
-        if (count > 0) nationalGovScore = sum / count;
-        // Incumbency decay
-        const ticksInPower = currentTick - (administration.started_at_tick || currentTick);
-        const decayCycles = Math.floor(ticksInPower / 12);
-        if (nationalGovScore > 0) nationalGovScore *= Math.pow(0.95, decayCycles);
-    }
-
-    // Fetch leader data for each rival (factions table has leader columns)
-    const { data: rivalFactionData } = await _supabase
-        .from('factions')
-        .select('id, leader_first_name, leader_last_name, leader_age, founded_tick, ideology_value_1, ideology_value_2')
-        .in('id', rivalIds);
-    const factionDataMap = {};
-    for (const rd of (rivalFactionData || [])) {
-        factionDataMap[rd.id] = rd;
-    }
+    // allParties already includes leader_age + founded_tick — no extra query needed
+    const factionDataMap = toMap(rivals);
 
     // Determine coalition membership
     const coalitionPartyIds = (coalition && coalition.party_ids) ? coalition.party_ids : [];
@@ -5568,36 +5500,14 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
 
     try {
 
-    const statsAtStart = administration?.stats_at_start;
-    const ticksInPower = currentTick - (administration?.started_at_tick || currentTick);
     const isGoverning = role.includes('Governing') || role.includes('Lead') || role === 'Strongman';
 
-    // --- Compute governance score ---
-    let statDeltas = [];
-    let governanceScore = 0;
-    let scoredCount = 0;
-
-    if (statsAtStart) {
-        for (const key of NATION_STAT_COLUMNS) {
-            const dir = statDirectionSign(key);
-            if (dir === 0) continue; // skip neutral stats (taxes, population, etc.)
-            const start = Number(statsAtStart[key] ?? 0);
-            const now = Number(nation[key] ?? 0);
-            const raw = now - start;
-            if (raw === 0) continue;
-            const signed = raw * dir; // positive = improvement
-            statDeltas.push({ key, start, now, raw, signed, dir });
-            governanceScore += signed;
-            scoredCount++;
-        }
-        if (scoredCount > 0) governanceScore = governanceScore / scoredCount;
-    }
-
-    // Apply incumbency decay: positive score × 0.95^(terms) every 12 ticks
-    const decayCycles = Math.floor(ticksInPower / 12);
-    const incumbencyMultiplier = governanceScore > 0 ? Math.pow(0.95, decayCycles) : 1;
-    const rawDisplayScore = governanceScore * incumbencyMultiplier;
-    const displayScore = rawDisplayScore * 10; // ×10 multiplier for readable display
+    const gov = computeGovernanceScore(nation, administration?.stats_at_start, administration?.started_at_tick, currentTick);
+    const statDeltas = gov.deltas;
+    const decayCycles = gov.decayCycles;
+    const incumbencyMultiplier = gov.multiplier;
+    const ticksInPower = gov.ticksInPower;
+    const displayScore = gov.score * 10;
 
     // Sort deltas: biggest improvements first, then biggest declines
     statDeltas.sort((a, b) => b.signed - a.signed);
@@ -5632,7 +5542,7 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
             : '';
 
     // Incumbency decay note
-    const decayNote = decayCycles > 0 && governanceScore > 0
+    const decayNote = decayCycles > 0 && gov.score > 0
         ? `<div class="elec-decay-note">Incumbency decay: ${((1 - incumbencyMultiplier) * 100).toFixed(1)}% reduction (${decayCycles} cycle${decayCycles > 1 ? 's' : ''})</div>`
         : '';
 
@@ -5833,11 +5743,7 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
         .maybeSingle();
     if (elecProfileErr) console.error('[Elections] electorate_profile fetch failed:', elecProfileErr);
 
-    // Build ideology lookup
-    const ideoMap = {};
-    for (const row of (allPartyIdeologies || [])) {
-        ideoMap[row.faction_id] = row;
-    }
+    const ideoMap = toMap(allPartyIdeologies, 'faction_id');
     const playerIdeo = ideoMap[faction.id] || {};
 
     // Compute zone variance (same formula as Electorate tab)

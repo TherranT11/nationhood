@@ -702,6 +702,61 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
     }
 }
 
+// ==================== SUBSIDIARY REVENUE ====================
+// Each corp tick: subsidiaries gain or lose cash based on nation GDP Growth.
+// Revenue = sub_cash × 0.02 × (1 + (gdpGrowth - 30)/100) × (reputation/100)
+// GDP Growth < 30 → net loss (bleeding cash)
+// GDP Growth > 30 → net gain (growing)
+// Reputation scales returns (25 = 0.25x, 50 = 0.50x, 100 = 1.0x)
+// Losses clamped to max 5% of sub_cash per tick to prevent wipeout.
+
+const SUB_REVENUE_BASE = 0.02;
+const SUB_GDP_NEUTRAL = 30;
+const SUB_DEFAULT_REPUTATION = 25;
+const SUB_MAX_LOSS_RATE = 0.05;
+
+async function processSubsidiaryRevenue(supabase, nation, corps, currentTick) {
+    const gdpGrowth = Number(nation.gdp_growth ?? 50);
+    const corpIds = corps.map(c => c.id);
+    const corpMap = Object.fromEntries(corps.map(c => [c.id, c]));
+
+    // Single query for all corps in this nation
+    const { data: hqs, error: hqErr } = await supabase
+        .from('corp_properties')
+        .select('id, sub_cash, name, faction_id')
+        .in('faction_id', corpIds)
+        .eq('nation_id', nation.id)
+        .eq('type', 'regional_hq')
+        .eq('is_active', true)
+        .gt('sub_cash', 0);
+
+    if (hqErr || !hqs || hqs.length === 0) return;
+
+    const repMult = SUB_DEFAULT_REPUTATION / 100;
+    for (const hq of hqs) {
+        const subCash = Number(hq.sub_cash);
+        const base = subCash * SUB_REVENUE_BASE;
+        const gdpMod = (gdpGrowth - SUB_GDP_NEUTRAL) / 100;
+        let revenue = Math.round(base * (1 + gdpMod) * repMult);
+
+        if (revenue < 0) revenue = Math.max(revenue, -Math.round(subCash * SUB_MAX_LOSS_RATE));
+        if (revenue === 0) continue;
+
+        const newSubCash = Math.max(0, subCash + revenue);
+        const { error: updErr } = await supabase
+            .from('corp_properties')
+            .update({ sub_cash: newSubCash })
+            .eq('id', hq.id);
+
+        const corp = corpMap[hq.faction_id];
+        if (updErr) {
+            console.warn(`[SubRevenue] Failed to update sub_cash for ${hq.name}:`, updErr.message);
+        } else {
+            console.log(`[SubRevenue] ${corp?.faction_name || '?'} → ${hq.name}: ${revenue >= 0 ? '+' : ''}${revenue.toLocaleString()} (GDP:${gdpGrowth}, cash:${subCash.toLocaleString()} → ${newSubCash.toLocaleString()})`);
+        }
+    }
+}
+
 async function resolveExpiredBids(supabase, nationId, currentTick) {
     // Find contracts ready to resolve:
     // 1. Bidding timer expired (3 ticks), OR
@@ -1180,6 +1235,14 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (propEffErr) {
                 console.error(`[advance-corp-tick] Property effects failed for ${nation.name} (non-fatal):`, propEffErr);
                 summary.errors.push({ nation: nation.name, sector: 'property_effects', error: String(propEffErr) });
+            }
+
+            // ── Subsidiary Revenue (GDP-based growth/loss per subsidiary) ──
+            try {
+                await processSubsidiaryRevenue(supabase, nation, corps, currentTick);
+            } catch (subRevErr) {
+                console.error(`[advance-corp-tick] Subsidiary revenue failed for ${nation.name} (non-fatal):`, subRevErr);
+                summary.errors.push({ nation: nation.name, sector: 'subsidiary_revenue', error: String(subRevErr) });
             }
 
             // ── Corporation Monthly Income ──────────────────────────────
