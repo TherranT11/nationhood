@@ -21790,7 +21790,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
         }
 
         // Defer tracking update — only apply after nation stats are persisted
-        trackingUpdates.push({ id: action.id, allEffectsComplete });
+        trackingUpdates.push({ id: action.id, allEffectsComplete, actionKey: action.action_key, ministryKey: action.ministry_key });
     }
 
     // Bulk update nation stats FIRST — before advancing tracking
@@ -21813,6 +21813,18 @@ async function processMinistryActions(supabase, nation, currentTick) {
                 effects_applied_through_tick: currentTick,
                 processed: tu.allEffectsComplete
             }).eq('id', tu.id);
+
+            // Fire expiration event when oil reserve release effects conclude
+            if (tu.allEffectsComplete && tu.actionKey === 'releaseOilReserves') {
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_nation_id: nation.id,
+                        p_trigger_key: 'energy_release_oil_reserves_expired',
+                        p_tick: currentTick,
+                        p_placeholders: {}
+                    });
+                } catch (e) { console.error('[processMinistryActions] release expired event error:', e.message); }
+            }
         }
     }
 
@@ -24693,6 +24705,30 @@ async function processEnergyOilBuildCycles(supabase, nation, currentTick) {
         await supabase.from('energy_oil_build_cycles')
             .update({ is_active: false, ticks_remaining: 0 })
             .in('id', completedIds);
+
+        // Fire completion event for each finished cycle
+        for (const id of completedIds) {
+            try {
+                await supabase.rpc('fire_system_event', {
+                    p_nation_id: nation.id,
+                    p_trigger_key: 'energy_build_oil_reserves_complete',
+                    p_tick: currentTick,
+                    p_placeholders: { cycle_id: id, reserve_mb: currentReserve, reserve_cap_mb: reserveCap }
+                });
+            } catch (e) { console.error('[Energy] fire_system_event error:', e.message); }
+        }
+    }
+
+    // Fire near-cap warning if reserve >= 90% of cap
+    if (currentReserve >= reserveCap * 0.9 && currentReserve < reserveCap) {
+        try {
+            await supabase.rpc('fire_system_event', {
+                p_nation_id: nation.id,
+                p_trigger_key: 'energy_build_oil_reserves_near_cap',
+                p_tick: currentTick,
+                p_placeholders: { reserve_mb: currentReserve, reserve_cap_mb: reserveCap, pct: Math.round((currentReserve / reserveCap) * 100) }
+            });
+        } catch (e) { console.error('[Energy] fire_system_event near-cap error:', e.message); }
     }
 
     return {

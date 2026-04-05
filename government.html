@@ -4913,6 +4913,16 @@ async function confirmBuildOilReserves() {
             throw cycleErr;
         }
 
+        // Fire event
+        try {
+            await _supabase.rpc('fire_system_event', {
+                p_nation_id: currentNation.id,
+                p_trigger_key: 'energy_build_oil_reserves',
+                p_tick: currentTick,
+                p_placeholders: { rate_per_tick: buildRate, ap_cost: apCost, active_cycles: (_energyBuildCycles.length + 1) }
+            });
+        } catch (evtErr) { console.warn('Build oil event failed:', evtErr.message); }
+
         // Update local state
         currentFaction.action_points = newAP;
         _energyBuildUseCount = useCount + 1;
@@ -5093,6 +5103,16 @@ async function confirmReleaseOilReserves() {
         // Update local state
         currentFaction.action_points = Math.max(0, ap - releaseApCost);
         currentNation.strategic_oil_reserve_mb = newReserve;
+
+        // Fire event
+        try {
+            await _supabase.rpc('fire_system_event', {
+                p_nation_id: currentNation.id,
+                p_trigger_key: 'energy_release_oil_reserves',
+                p_tick: currentTick,
+                p_placeholders: { release_mb: amount, reserve_remaining_mb: newReserve }
+            });
+        } catch (evtErr) { console.warn('Release oil event failed:', evtErr.message); }
 
         closeReleaseOilReserves();
         await renderGovernmentPage();
