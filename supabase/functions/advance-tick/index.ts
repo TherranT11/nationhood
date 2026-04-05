@@ -17092,8 +17092,6 @@ CONTRADICTION_PAIRS.forEach(([a, b]) => {
     CONTRADICTS[b].add(a);
 });
 
-{ POSITIVE_MAP, NEGATIVE_MAP };
-
 // ═══════════════════════════════════════
 //  Trait Helper Functions
 // ═══════════════════════════════════════
@@ -26320,20 +26318,6 @@ async function processArbitration(supabase, issueId, currentTick) {
 
 // ==================== EXPORTS ====================
 
-{
-    TENSION_LABELS,
-    getTensionLabel,
-    favorToLeverage,
-    MODIFIERS,
-    ACTIONS,
-    ISSUE_TYPES,
-    applyIssueStatEffects,
-    nudgeIssueRelations,
-    getDisfavoredSide,
-    insertHistory,
-    resolveTargets,
-    spawnModifier,
-};
 
 // ────────── incidents ──────────
 

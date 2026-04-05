@@ -75,6 +75,9 @@ for (const file of MODULE_FILES) {
     // Strip re-export lines (export { ... } from '...') — must come before export keyword strip
     content = content.replace(/^export\s+\{[^}]*\}\s+from\s+['"][^'"]+['"];\s*\n?/gm, '');
 
+    // Strip multi-line export blocks (export {\n  ...\n};) — no 'from', just re-declaring local symbols
+    content = content.replace(/^export\s+\{[\s\S]*?\};\s*\n?/gm, '');
+
     // Strip ES module export keywords
     content = content.replace(/^export /gm, '');
 
