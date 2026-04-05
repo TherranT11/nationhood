@@ -6053,8 +6053,8 @@ function renderCabinet(ministries, coalition) {
             </div>`;
         }
 
-        // Presidential: skip non-confirmed
-        if (isPresidential && isFilled && m.confirmation_status !== 'confirmed') {
+        // Presidential: skip non-confirmed (but preserve acting ministers)
+        if (isPresidential && isFilled && m.confirmation_status !== 'confirmed' && !m.is_acting) {
             return renderVacantCard(key, title, govContext, requests);
         }
 

@@ -1128,7 +1128,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
             // Minister confirmation bill (Presidential systems)
             const mKey = bill.ministry_key;
             const { data: ministry } = await supabase.from('ministries')
-                .select('id, pending_minister')
+                .select('id, pending_minister, is_acting')
                 .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
                 .maybeSingle();
 
@@ -1213,9 +1213,10 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 await failBill(supabase, bill);
 
                 // Clear pending nominee after failed confirmation
+                // If an acting minister was in place, restore 'acting' status instead of 'rejected'
                 if (ministry?.pending_minister) {
                     await supabase.from('ministries').update({
-                        confirmation_status: 'rejected',
+                        confirmation_status: ministry.is_acting ? 'acting' : 'rejected',
                         pending_minister: null
                     }).eq('id', ministry.id);
                 }
@@ -3965,7 +3966,7 @@ async function syncFailedMinisterConfirmationBill(supabase, bill) {
 
     const { data: ministry, error: fetchErr } = await supabase
         .from('ministries')
-        .select('id')
+        .select('id, is_acting')
         .eq('nation_id', bill.nation_id)
         .eq('ministry_key', bill.ministry_key)
         .eq('is_active', true)
@@ -3977,10 +3978,11 @@ async function syncFailedMinisterConfirmationBill(supabase, bill) {
     }
     if (!ministry) return;
 
+    // If an acting minister is in place, restore 'acting' status instead of 'rejected'
     const { error: updateErr } = await supabase
         .from('ministries')
         .update({
-            confirmation_status: 'rejected',
+            confirmation_status: ministry.is_acting ? 'acting' : 'rejected',
             pending_minister: null
         })
         .eq('id', ministry.id);

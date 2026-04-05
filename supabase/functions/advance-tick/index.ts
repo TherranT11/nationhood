@@ -57,10 +57,6 @@ async function ensureApRpcAvailability(supabase) {
 
 // ────────── config ──────────
 
-/**
- * config.js — Game configuration constants and AP management
- * Extracted from game-common.js
- */
 
 // ==================== CONSTANTS ====================
 
@@ -288,10 +284,6 @@ async function switchPartyEndorsement(supabase, endorsingPartyId, newEndorsedPar
 
 // ────────── government-types ──────────
 
-/**
- * government-types.js — Government type helpers (democracy, presidential)
- * Extracted from game-common.js
- */
 
 /**
  * Government type helpers.
@@ -353,10 +345,6 @@ function getGovDisplayLabel(nation) {
 
 // ────────── trade-constants ──────────
 
-/**
- * trade-constants.js — Trade system constants and calculation functions
- * Extracted from game-common.js
- */
 
 // ==================== TRADE SYSTEM CONSTANTS ====================
 
@@ -1775,10 +1763,6 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 
 // ────────── diplomacy-constants ──────────
 
-/**
- * diplomacy-constants.js — Diplomacy constants, policy stances, and scaling divisors
- * Extracted from game-common.js
- */
 
 // ==================== DIPLOMACY CONSTANTS ====================
 
@@ -3343,10 +3327,6 @@ function checkSovereigntyConstraints(activeProposals, policySector) {
 
 // ────────── ideology ──────────
 
-/**
- * ideology.js — Dynamic ideology system (axes, labels, alignment, DB helpers)
- * Extracted from game-common.js
- */
 
 // Ideology spectrum opposites
 const IDEOLOGY_OPPOSITES = {
@@ -3570,10 +3550,6 @@ function extractAxisScores(ideologyRow) {
 
 // ────────── stats ──────────
 
-/**
- * stats.js — Nation stat columns, decay config, trends, and approval setup
- * Extracted from game-common.js
- */
 
 // ==================== ADMINISTRATION LIFECYCLE ====================
 
@@ -4333,10 +4309,6 @@ async function adjustGovernmentApprovalEvent(supabase, nationId, amount, source)
 
 // ────────── budget ──────────
 
-/**
- * budget.js — National budget, tax config, economic aid, shutdown, GDP growth
- * Extracted from game-common.js
- */
 
 // ==================== NATIONAL BUDGET CALCULATION ====================
 
@@ -5001,10 +4973,6 @@ async function activateEconomicCollapse(supabase, nation, currentTick) {
 
 // ────────── government-structure ──────────
 
-/**
- * government-structure.js — Seat loading, head faction detection, coalition fetching, policy compatibility
- * Extracted from game-common.js
- */
 
 // ==================== SEAT LOADING ====================
 
@@ -5119,10 +5087,13 @@ async function fetchActiveCoalition(supabase, nationId) {
     // === PARLIAMENTARY DEMOCRACY: existing logic ===
 
     // Helper: if status looks active but frozen bills exist, it's actually caretaker.
-    // Skip for emergency_minority governments — they are real governments that should
-    // not be overridden to caretaker by stale frozen bills.
+    // Skip for emergency_minority governments and explicitly formed governments
+    // (formed_at set) — stale frozen bills from a previous government should not
+    // override a legitimately formed new government.
     async function inferCaretakerStatus(result) {
-        if (result && (!result.status || result.status === 'formed') && result.formation_type !== 'emergency_minority') {
+        if (result && (!result.status || result.status === 'formed')
+            && result.formation_type !== 'emergency_minority'
+            && !result.formed_at) {
             const { count } = await supabase
                 .from('bills')
                 .select('id', { count: 'exact', head: true })
@@ -5915,10 +5886,6 @@ async function repealActiveLaw({
 
 // ────────── event-helpers ──────────
 
-/**
- * event-helpers.js — Shared helpers for firing system events.
- * Extracted from game-common.js
- */
 
 /**
  * Fire a bill-related system event (bill_passed / bill_failed / quorum_failed etc).
@@ -6021,10 +5988,6 @@ async function fireBilateralEvent(supabase, triggerKey, nationIdA, nationIdB, cu
 
 // ────────── bills ──────────
 
-/**
- * bills.js — Bill support, vote tallies, ideology shifts, resolution engine, foundational bills
- * Extracted from game-common.js
- */
 
 // ==================== BILL SUPPORT ====================
 
@@ -7136,7 +7099,7 @@ async function resolveExpiredVotes(supabase, nationId) {
             // Minister confirmation bill (Presidential systems)
             const mKey = bill.ministry_key;
             const { data: ministry } = await supabase.from('ministries')
-                .select('id, pending_minister')
+                .select('id, pending_minister, is_acting')
                 .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
                 .maybeSingle();
 
@@ -7221,9 +7184,10 @@ async function resolveExpiredVotes(supabase, nationId) {
                 await failBill(supabase, bill);
 
                 // Clear pending nominee after failed confirmation
+                // If an acting minister was in place, restore 'acting' status instead of 'rejected'
                 if (ministry?.pending_minister) {
                     await supabase.from('ministries').update({
-                        confirmation_status: 'rejected',
+                        confirmation_status: ministry.is_acting ? 'acting' : 'rejected',
                         pending_minister: null
                     }).eq('id', ministry.id);
                 }
@@ -7389,7 +7353,6 @@ async function resolveExpiredVotes(supabase, nationId) {
                                 if (taErr) {
                                     console.error('[bilateral] trade_agreements insert failed:', taErr.message);
                                 } else if (newTA) {
-                                    // For economic aid: create aid_agreement_state so per-tick budget processing works
                                     if (pd.agreement_type === 'economic_aid') {
                                         const aidArt = activeArticles.find(a => a.type === 'aid_terms');
                                         if (aidArt) {
@@ -9974,7 +9937,7 @@ async function syncFailedMinisterConfirmationBill(supabase, bill) {
 
     const { data: ministry, error: fetchErr } = await supabase
         .from('ministries')
-        .select('id')
+        .select('id, is_acting')
         .eq('nation_id', bill.nation_id)
         .eq('ministry_key', bill.ministry_key)
         .eq('is_active', true)
@@ -9986,10 +9949,11 @@ async function syncFailedMinisterConfirmationBill(supabase, bill) {
     }
     if (!ministry) return;
 
+    // If an acting minister is in place, restore 'acting' status instead of 'rejected'
     const { error: updateErr } = await supabase
         .from('ministries')
         .update({
-            confirmation_status: 'rejected',
+            confirmation_status: ministry.is_acting ? 'acting' : 'rejected',
             pending_minister: null
         })
         .eq('id', ministry.id);
@@ -10149,10 +10113,6 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
 
 // ────────── elections ──────────
 
-/**
- * elections.js — Administration lifecycle, coalition dissolution, elections, government vacancy
- * Extracted from game-common.js
- */
 
 /**
  * Close the current administration for a nation.
@@ -12856,10 +12816,6 @@ async function ensureElectionsScheduled(supabase, nation, currentTick) {
 
 // ────────── presidential ──────────
 
-/**
- * presidential.js — Presidential candidates, nomination, veto, and term processing
- * Extracted from game-common.js
- */
 
 /** Tally floor votes from bill_support records (already loaded via join). */
 function tallyFloorVotes(bill) {
@@ -19419,10 +19375,6 @@ async function resolveProtest(supabase, protest, nationStats, currentTick) {
 
 // ────────── political-actions ──────────
 
-/**
- * political-actions.js — Political actions, tick processors, crises, events, resign PM, disband party
- * Extracted from game-common.js
- */
 
 const _PA_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
@@ -23795,10 +23747,6 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
 
 // ────────── election-simulation ──────────
 
-/**
- * election-simulation.js — Election simulation (vote distribution, D'Hondt allocation)
- * Extracted from game-common.js
- */
 
 // ==================== ELECTION SIMULATION ====================
 
@@ -25118,10 +25066,6 @@ function formatDebtToGDP(ratio) {
 
 // ────────── incidents ──────────
 
-/**
- * incidents.js — Incident trigger, creation, and lifecycle engine
- * Extracted from game-common.js
- */
 
 // ==================== CONSTANTS ====================
 
