@@ -4543,6 +4543,10 @@ function renderPrContent() {
     const cash = Number(faction?.corp_cash_reserves) || 0;
     const canAfford = cash >= totalCost;
     const overSupply = prPurchaseQty > supply;
+    const { totalUnits: whTotalUnits } = getWarehouseTotals();
+    const whRemaining = MAX_WAREHOUSE_CAPACITY - whTotalUnits;
+    const overCapacity = prPurchaseQty > whRemaining;
+    const whFull = whRemaining <= 0;
     const dotColor = MATERIAL_QUALITY_COLORS[prSelectedTier];
 
     html += `<div class="pr-order">
@@ -4567,14 +4571,19 @@ function renderPrContent() {
             ${overSupply ? `<div class="pr-supply-warn">
                 <span class="pr-supply-warn__text">EXCEEDS AVAILABLE SUPPLY — max ${supply.toLocaleString()} this tick</span>
             </div>` : ''}
+            ${whFull ? `<div class="pr-supply-warn">
+                <span class="pr-supply-warn__text">WAREHOUSE FULL — no remaining capacity</span>
+            </div>` : overCapacity ? `<div class="pr-supply-warn">
+                <span class="pr-supply-warn__text">EXCEEDS WAREHOUSE CAPACITY — ${whRemaining.toLocaleString()} units remaining</span>
+            </div>` : ''}
             <div class="pr-order__total">
                 <div>
                     <div class="pr-order__total-label">TOTAL COST</div>
                     <div class="pr-order__total-value">${fmtBig(totalCost)}</div>
                 </div>
                 <button class="pr-purchase-btn" onclick="purchaseMaterial()"
-                    ${canAfford && !overSupply ? '' : 'disabled'}
-                    title="${!canAfford ? 'Insufficient cash' : overSupply ? 'Exceeds supply' : 'Purchase materials'}"
+                    ${canAfford && !overSupply && !overCapacity && !whFull ? '' : 'disabled'}
+                    title="${!canAfford ? 'Insufficient cash' : overSupply ? 'Exceeds supply' : whFull ? 'Warehouse full' : overCapacity ? 'Exceeds warehouse capacity' : 'Purchase materials'}"
                 >PURCHASE</button>
             </div>
         </div>
@@ -4622,6 +4631,12 @@ async function purchaseMaterial() {
 
     if (totalCost > cash) { alert('Insufficient cash reserves.'); return; }
     if (prPurchaseQty > supply) { alert('Exceeds available supply this tick.'); return; }
+
+    // Enforce warehouse capacity limit
+    const { totalUnits } = getWarehouseTotals();
+    const remaining = MAX_WAREHOUSE_CAPACITY - totalUnits;
+    if (remaining <= 0) { alert('Warehouse is full. Cannot purchase more materials.'); return; }
+    if (prPurchaseQty > remaining) { alert(`Warehouse can only hold ${remaining.toLocaleString()} more units. Reduce quantity.`); return; }
 
     // Disable button and lock
     _prPurchasing = true;
