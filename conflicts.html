@@ -204,6 +204,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
+import { ACTIONS, MODIFIERS, executeIssueAction, respondToProposal } from './js/game/issues.js';
 
 let currentFaction = null;
 let currentNation = null;
@@ -685,7 +686,18 @@ function renderIssueHistory(issue, history) {
 }
 
 
-// ==================== RENDER ACTIONS (placeholder for Phase 6B) ====================
+// ==================== ISSUE ACTIONS PANEL ====================
+
+let issueActionExecuting = false;
+
+const ACTION_ROLE_LABELS = {
+    foreign_minister: 'FM',
+    minister_of_trade: 'MoT',
+    minister_of_defense: 'MoD',
+    minister_of_finance: 'MoF',
+    ambassador: 'Amb.',
+    head_of_government: 'HoG',
+};
 
 function renderIssueActions(issue, modifiers, actionsTaken) {
     const el = document.getElementById('issues-actions-panel');
@@ -696,9 +708,281 @@ function renderIssueActions(issue, modifiers, actionsTaken) {
         el.style.display = 'none';
         return;
     }
-
     el.style.display = '';
-    el.innerHTML = '<div class="issues-actions-placeholder">Actions panel — Phase 6B</div>';
+
+    // Check for pending proposals targeting this nation
+    const pendingForMe = actionsTaken.filter(a =>
+        a.status === 'pending' && a.target_nation_id === currentNation.id
+    );
+
+    // Build used-action sets for this nation
+    const myUsedActions = new Set(
+        actionsTaken.filter(a => a.acting_nation_id === currentNation.id).map(a => a.action_key)
+    );
+    // Check if already acted this tick
+    const actedThisTick = actionsTaken.some(a =>
+        a.acting_nation_id === currentNation.id && a.submitted_tick === currentTick
+    );
+
+    // Check diplomatic friction (adds +1 AP to diplomatic actions)
+    const hasFriction = modifiers.some(m => m.modifier_key === 'diplomatic_friction' && m.is_active);
+
+    // Group actions by category
+    const diplomatic = Object.values(ACTIONS).filter(a => a.category === 'diplomatic');
+    const unilateral = Object.values(ACTIONS).filter(a => a.category === 'unilateral');
+    const threatening = Object.values(ACTIONS).filter(a => a.category === 'threatening');
+
+    let html = '';
+
+    // Pending proposals banner
+    if (pendingForMe.length > 0) {
+        html += '<div class="issue-pending-banner">';
+        html += `<div class="issue-pending-title">Pending Proposals (${pendingForMe.length})</div>`;
+        for (const p of pendingForMe) {
+            const actionDef = ACTIONS[p.action_key];
+            if (!actionDef) continue;
+            html += `<div class="issue-pending-item">
+                <div class="issue-pending-name">${escapeHtml(actionDef.name)}</div>
+                <div class="issue-pending-desc">${escapeHtml(actionDef.description)}</div>
+                <div class="issue-pending-effects">
+                    ${actionDef.tension_delta ? `<span class="ia-tag ia-tag--tension-down">Tension ${actionDef.tension_delta}</span>` : ''}
+                    ${actionDef.modifiers_removed.map(m => `<span class="ia-tag ia-tag--modifier">Removes: ${MODIFIERS[m]?.name || m}</span>`).join('')}
+                </div>
+                <div class="issue-pending-buttons">
+                    <button class="issue-pending-btn issue-pending-btn--accept" data-action-id="${p.id}" data-issue-id="${issue.id}">Accept</button>
+                    <button class="issue-pending-btn issue-pending-btn--reject" data-action-id="${p.id}" data-issue-id="${issue.id}">Reject</button>
+                </div>
+            </div>`;
+        }
+        html += '</div>';
+    }
+
+    // Action category tabs
+    html += `<div class="ia-tabs">
+        <div class="ia-tab ia-tab--active ia-tab--teal" data-cat="diplomatic" onclick="window._switchIssueActionTab(this,'diplomatic')">Diplomatic</div>
+        <div class="ia-tab ia-tab--amber" data-cat="unilateral" onclick="window._switchIssueActionTab(this,'unilateral')">Unilateral</div>
+        <div class="ia-tab ia-tab--red" data-cat="threatening" onclick="window._switchIssueActionTab(this,'threatening')">Threatening</div>
+    </div>`;
+
+    // Action lists
+    html += renderActionList('diplomatic', diplomatic, myUsedActions, actedThisTick, hasFriction, issue);
+    html += renderActionList('unilateral', unilateral, myUsedActions, actedThisTick, false, issue);
+    html += renderActionList('threatening', threatening, myUsedActions, actedThisTick, false, issue);
+
+    el.innerHTML = html;
+
+    // Wire pending proposal buttons
+    el.querySelectorAll('.issue-pending-btn--accept').forEach(btn => {
+        btn.addEventListener('click', () => handleProposalResponse(btn.dataset.actionId, btn.dataset.issueId, true));
+    });
+    el.querySelectorAll('.issue-pending-btn--reject').forEach(btn => {
+        btn.addEventListener('click', () => handleProposalResponse(btn.dataset.actionId, btn.dataset.issueId, false));
+    });
+
+    // Wire action items
+    el.querySelectorAll('.ia-item:not(.ia-item--used):not(.ia-item--locked)').forEach(item => {
+        item.addEventListener('click', () => {
+            const actionKey = item.dataset.actionKey;
+            showIssueActionModal(actionKey, issue);
+        });
+    });
+}
+
+function renderActionList(category, actions, usedActions, actedThisTick, hasFriction, issue) {
+    const colorMap = { diplomatic: 'teal', unilateral: 'amber', threatening: 'red' };
+    const color = colorMap[category];
+    const hidden = category !== 'diplomatic' ? 'style="display:none"' : '';
+
+    let html = `<div class="ia-list" id="ia-list-${category}" ${hidden}>`;
+    let idx = 0;
+    for (const action of actions) {
+        idx++;
+        const isUsed = usedActions.has(action.key);
+        const isLocked = actedThisTick && !isUsed;
+        const cls = isUsed ? 'ia-item--used' : isLocked ? 'ia-item--locked' : '';
+        const apCost = action.ap_cost + (hasFriction && category === 'diplomatic' ? 1 : 0);
+        const roleLabel = ACTION_ROLE_LABELS[action.role] || action.role;
+
+        // Build effect tags
+        let tags = '';
+        if (action.tension_delta < 0) tags += `<span class="ia-tag ia-tag--tension-down">Tension ${action.tension_delta}</span>`;
+        if (action.tension_delta > 0) tags += `<span class="ia-tag ia-tag--tension-up">Tension +${action.tension_delta}</span>`;
+        if (action.favor_delta !== 0) tags += `<span class="ia-tag ia-tag--favor">Favor ${action.favor_delta > 0 ? '+' : ''}${action.favor_delta}</span>`;
+        for (const m of action.modifiers_removed) {
+            tags += `<span class="ia-tag ia-tag--modifier">Removes: ${MODIFIERS[m]?.name || m}</span>`;
+        }
+        for (const m of action.modifiers_added) {
+            tags += `<span class="ia-tag ia-tag--modifier">Adds: ${MODIFIERS[m]?.name || m}</span>`;
+        }
+        if (action.treasury_cost > 0) tags += `<span class="ia-tag ia-tag--ap">$${(action.treasury_cost / 1_000_000).toFixed(0)}M</span>`;
+        tags += `<span class="ia-tag ia-tag--ap">${apCost} AP</span>`;
+        if (action.special === 'incident_trigger_50') tags += `<span class="ia-tag ia-tag--danger">50% triggers Incident</span>`;
+        if (action.special === 'incident_trigger_25') tags += `<span class="ia-tag ia-tag--danger">25% triggers Incident</span>`;
+
+        html += `<div class="ia-item ${cls}" data-action-key="${action.key}">
+            <div class="ia-icon ia-icon--${color}">${idx}</div>
+            <div class="ia-info">
+                <div class="ia-name ia-name--${color}">${escapeHtml(action.name)}</div>
+                <div class="ia-desc">${escapeHtml(isUsed ? 'Already used.' : action.description)}</div>
+                <div class="ia-effects">${tags}</div>
+            </div>
+            <span class="ia-role">${roleLabel}</span>
+        </div>`;
+    }
+    html += '</div>';
+    return html;
+}
+
+// Tab switching for action categories
+window._switchIssueActionTab = function(tabEl, category) {
+    document.querySelectorAll('.ia-tab').forEach(t => {
+        t.classList.remove('ia-tab--active');
+    });
+    tabEl.classList.add('ia-tab--active');
+    document.querySelectorAll('.ia-list').forEach(l => l.style.display = 'none');
+    const list = document.getElementById('ia-list-' + category);
+    if (list) list.style.display = '';
+};
+
+// ==================== ISSUE ACTION MODAL ====================
+
+function showIssueActionModal(actionKey, issue) {
+    if (issueActionExecuting) return;
+    const action = ACTIONS[actionKey];
+    if (!action) return;
+
+    const modal = document.getElementById('action-modal');
+    const header = document.getElementById('modal-header');
+    const body = document.getElementById('modal-body');
+    const confirmBtn = document.getElementById('modal-confirm');
+
+    const ap = currentFaction?.action_points || 0;
+
+    // Check friction
+    let apCost = action.ap_cost;
+    if (action.category === 'diplomatic') {
+        // We'd need to check DB for friction but we already have modifiers from the render call
+        // For simplicity, just note it in the modal if applicable
+    }
+
+    header.innerHTML = `<span class="modal-action-name">${escapeHtml(action.name)}</span>`;
+
+    let bodyHtml = `<div class="modal-description">${escapeHtml(action.description)}</div>`;
+    bodyHtml += '<div class="modal-stats">';
+    bodyHtml += `<div class="modal-stat-row"><span>AP Cost:</span><span>${apCost}</span></div>`;
+    bodyHtml += `<div class="modal-stat-row"><span>Your AP:</span><span>${ap}</span></div>`;
+    bodyHtml += `<div class="modal-stat-row"><span>Category:</span><span style="text-transform:capitalize">${action.category}</span></div>`;
+    bodyHtml += `<div class="modal-stat-row"><span>Role:</span><span>${ACTION_ROLE_LABELS[action.role] || action.role}</span></div>`;
+    if (action.tension_delta !== 0) bodyHtml += `<div class="modal-stat-row"><span>Tension:</span><span>${action.tension_delta > 0 ? '+' : ''}${action.tension_delta}</span></div>`;
+    if (action.favor_delta !== 0) bodyHtml += `<div class="modal-stat-row"><span>Favor:</span><span>${action.favor_delta > 0 ? '+' : ''}${action.favor_delta}</span></div>`;
+    if (action.treasury_cost > 0) bodyHtml += `<div class="modal-stat-row"><span>Cost:</span><span>$${(action.treasury_cost / 1_000_000).toFixed(0)}M from treasury</span></div>`;
+    if (action.relations_delta) bodyHtml += `<div class="modal-stat-row"><span>Relations:</span><span>${action.relations_delta}</span></div>`;
+    bodyHtml += '</div>';
+
+    if (action.category === 'diplomatic') {
+        bodyHtml += '<div class="modal-info">This proposal will be sent to the other nation. They must accept for the effects to apply. If rejected, favor shifts +0.5 toward you.</div>';
+        confirmBtn.textContent = 'Propose';
+        confirmBtn.className = 'modal-btn modal-btn--confirm';
+    } else if (action.category === 'threatening') {
+        if (action.special === 'incident_trigger_50') {
+            bodyHtml += '<div class="modal-risk">WARNING: 50% chance this directly triggers an incident.</div>';
+        } else if (action.special === 'incident_trigger_25') {
+            bodyHtml += '<div class="modal-risk">WARNING: 25% chance this directly triggers an incident.</div>';
+        }
+        confirmBtn.textContent = 'Execute';
+        confirmBtn.className = 'modal-btn modal-btn--danger';
+    } else {
+        confirmBtn.textContent = 'Execute';
+        confirmBtn.className = 'modal-btn modal-btn--confirm';
+    }
+
+    body.innerHTML = bodyHtml;
+    modal.style.display = '';
+
+    // Wire buttons (clone to avoid stacking listeners)
+    const newCancel = document.getElementById('modal-cancel').cloneNode(true);
+    document.getElementById('modal-cancel').replaceWith(newCancel);
+    newCancel.addEventListener('click', () => { modal.style.display = 'none'; });
+
+    const newConfirm = confirmBtn.cloneNode(true);
+    confirmBtn.replaceWith(newConfirm);
+    newConfirm.addEventListener('click', async () => {
+        modal.style.display = 'none';
+        await executeIssueActionFromUI(actionKey, issue);
+    });
+}
+
+
+// ==================== EXECUTE ACTION FROM UI ====================
+
+async function executeIssueActionFromUI(actionKey, issue) {
+    if (issueActionExecuting) return;
+    issueActionExecuting = true;
+
+    try {
+        const result = await executeIssueAction(_supabase, {
+            issueId: issue.id,
+            actionKey,
+            actingNationId: currentNation.id,
+            actingFactionId: currentFaction.id,
+            currentTick,
+        });
+
+        if (!result.success) {
+            alert(result.error || 'Action failed.');
+            return;
+        }
+
+        // Refresh the faction AP
+        const { data: freshFaction } = await _supabase
+            .from('factions')
+            .select('action_points')
+            .eq('id', currentFaction.id)
+            .single();
+        if (freshFaction) currentFaction.action_points = freshFaction.action_points;
+
+        // Refresh the issue view
+        await selectIssue(issue.id);
+
+    } catch (err) {
+        console.error('[Issues] Action execution error:', err);
+        alert('Action failed: ' + err.message);
+    } finally {
+        issueActionExecuting = false;
+    }
+}
+
+
+// ==================== HANDLE PROPOSAL RESPONSE ====================
+
+async function handleProposalResponse(actionTakenId, issueId, accept) {
+    if (issueActionExecuting) return;
+    issueActionExecuting = true;
+
+    try {
+        const result = await respondToProposal(_supabase, {
+            actionTakenId,
+            issueId,
+            respondingNationId: currentNation.id,
+            respondingFactionId: currentFaction.id,
+            accept,
+            currentTick,
+        });
+
+        if (!result.success) {
+            alert(result.error || 'Response failed.');
+            return;
+        }
+
+        alert(accept ? 'Proposal accepted.' : 'Proposal rejected.');
+        await selectIssue(issueId);
+
+    } catch (err) {
+        console.error('[Issues] Proposal response error:', err);
+        alert('Response failed: ' + err.message);
+    } finally {
+        issueActionExecuting = false;
+    }
 }
 
 
