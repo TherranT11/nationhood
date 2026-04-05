@@ -7389,7 +7389,6 @@ async function resolveExpiredVotes(supabase, nationId) {
                                 if (taErr) {
                                     console.error('[bilateral] trade_agreements insert failed:', taErr.message);
                                 } else if (newTA) {
-                                    // For economic aid: create aid_agreement_state so per-tick budget processing works
                                     if (pd.agreement_type === 'economic_aid') {
                                         const aidArt = activeArticles.find(a => a.type === 'aid_terms');
                                         if (aidArt) {
