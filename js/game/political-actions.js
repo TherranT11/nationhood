@@ -2428,7 +2428,7 @@ export async function processMinistryActions(supabase, nation, currentTick) {
         }
 
         // Defer tracking update — only apply after nation stats are persisted
-        trackingUpdates.push({ id: action.id, allEffectsComplete });
+        trackingUpdates.push({ id: action.id, allEffectsComplete, actionKey: action.action_key, ministryKey: action.ministry_key });
     }
 
     // Bulk update nation stats FIRST — before advancing tracking
@@ -2451,6 +2451,17 @@ export async function processMinistryActions(supabase, nation, currentTick) {
                 effects_applied_through_tick: currentTick,
                 processed: tu.allEffectsComplete
             }).eq('id', tu.id);
+
+            // Fire expiration event when oil reserve release effects conclude
+            if (tu.allEffectsComplete && tu.actionKey === 'releaseOilReserves') {
+                const { error: releaseEvtErr } = await supabase.rpc('fire_system_event', {
+                    p_nation_id: nation.id,
+                    p_trigger_key: 'energy_release_oil_reserves_expired',
+                    p_tick: currentTick,
+                    p_placeholders: {}
+                });
+                if (releaseEvtErr) console.error('[processMinistryActions] release expired event error:', releaseEvtErr.message);
+            }
         }
     }
 

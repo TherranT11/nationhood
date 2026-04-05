@@ -86,6 +86,12 @@ BEGIN
             WHEN 'ministry_road_maintenance'              THEN 'Road & Highway Maintenance Activated'
             WHEN 'ministry_road_maintenance_expired'      THEN 'Road & Highway Maintenance Concluded'
             WHEN 'ministry_expand_infrastructure'         THEN 'Infrastructure Expansion Launched'
+            -- Energy Ministry
+            WHEN 'energy_build_oil_reserves'              THEN 'Oil Reserve Build Activated'
+            WHEN 'energy_build_oil_reserves_complete'      THEN 'Oil Reserve Build Complete'
+            WHEN 'energy_build_oil_reserves_near_cap'      THEN 'Oil Reserve Approaching Capacity'
+            WHEN 'energy_release_oil_reserves'             THEN 'Oil Reserves Released'
+            WHEN 'energy_release_oil_reserves_expired'     THEN 'Oil Reserve Release Concluded'
             WHEN 'bill_passed'              THEN 'Bill Passed'
             WHEN 'bill_failed'              THEN 'Bill Failed'
             WHEN 'quorum_failed'            THEN 'Quorum Failed'
@@ -149,6 +155,12 @@ BEGIN
                 'ministry_road_maintenance',
                 'ministry_road_maintenance_expired',
                 'ministry_expand_infrastructure') THEN 'TRANSPORT'
+            -- Energy Ministry
+            WHEN p_trigger_key IN ('energy_build_oil_reserves',
+                'energy_build_oil_reserves_complete',
+                'energy_build_oil_reserves_near_cap',
+                'energy_release_oil_reserves',
+                'energy_release_oil_reserves_expired') THEN 'ENERGY'
             WHEN p_trigger_key IN ('trade_agreement_proposed', 'trade_agreement_accepted',
                 'trade_agreement_rejected', 'trade_agreement_expired', 'trade_negotiation_proposed',
                 'sanctions_imposed', 'aid_terminated', 'aid_suspended', 'aid_resumed') THEN 'Trade'
