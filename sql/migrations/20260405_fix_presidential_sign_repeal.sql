@@ -1,7 +1,11 @@
--- Sign a bill on the president's desk.
--- Validates bill state + signer authorization and transitions bill to 'passed'.
--- Actual enactment (active_laws, reversals, stat effects) is handled in JS
--- by signPresidentialBill() calling enactBill() after this RPC returns.
+-- Fix: sign_presidential_bill RPC was doing full enactment in SQL, which:
+-- 1. Deleted repealed active_laws but never created reversal stat effects
+-- 2. Re-inserted repealed policies as new active_laws (repeal article has policy_id)
+-- 3. Bypassed JS-only logic: reversePolicy, opposed policy handling, approval effects
+--
+-- New approach: RPC only validates authorization + sets bill status.
+-- Actual enactment (active_laws, reversals, stat effects) handled by
+-- signPresidentialBill() calling enactBill() in JS after the RPC returns.
 
 CREATE OR REPLACE FUNCTION sign_presidential_bill(
     p_bill_id UUID
@@ -84,7 +88,3 @@ EXCEPTION
         );
 END;
 $$;
-
-ALTER FUNCTION sign_presidential_bill(UUID) OWNER TO postgres;
-GRANT EXECUTE ON FUNCTION sign_presidential_bill(UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION sign_presidential_bill(UUID) TO service_role;

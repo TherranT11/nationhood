@@ -221,6 +221,8 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
 /**
  * President signs a bill into law.
  * Called from the UI when the President's party clicks "Sign Into Law".
+ * The RPC validates authorization and sets status='passed'.
+ * Then we call enactBill() to handle actual enactment (active_laws, reversals, stat effects).
  */
 export async function signPresidentialBill(supabase, billId, presidentFactionId) {
     const context = { billId, presidentFactionId };
@@ -251,8 +253,9 @@ export async function signPresidentialBill(supabase, billId, presidentFactionId)
         code: rpcResult.code
     });
 
+    // Reload the full bill with articles and policies for enactBill()
     const { data: signedBill, error: signedBillErr } = await supabase.from('bills')
-        .select('id, bill_name, nation_id, bill_articles(id), bill_support(stance, seat_count)')
+        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
         .eq('id', billId)
         .single();
 
@@ -260,9 +263,19 @@ export async function signPresidentialBill(supabase, billId, presidentFactionId)
         throw new Error(`Bill signed but failed to reload bill metadata: ${signedBillErr?.message || 'not found'}`);
     }
 
+    // Enact the bill — handles active_laws, repeal reversals, stat effects, approval
+    const currentTick = rpcResult.tick || 0;
+    const enactment = await enactBill(supabase, signedBill, currentTick);
+    if (!enactment?.success) {
+        console.error('[signPresidentialBill] stage=enactBill result=failed', {
+            ...context,
+            error: enactment?.error
+        });
+    }
+
     const floorVotes = tallyFloorVotes(signedBill);
     await fireBillEvent(supabase, 'bill_passed', signedBill, {
-        currentTick: rpcResult.tick || 0,
+        currentTick,
         votesFor: floorVotes.votesFor,
         votesAgainst: floorVotes.votesAgainst,
         votesAbstain: floorVotes.votesAbstain,
