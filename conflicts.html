@@ -938,6 +938,8 @@ function showIssueActionModal(actionKey, issue, modifiers) {
 
 async function executeIssueActionFromUI(actionKey, issue) {
     if (issueActionExecuting) return;
+    if (!currentFaction || !currentNation) { alert('No faction assigned. Cannot take actions.'); return; }
+    if (currentTick <= 0) { alert('Tick data not loaded. Please reload the page.'); return; }
     issueActionExecuting = true;
 
     try {
