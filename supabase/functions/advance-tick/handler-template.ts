@@ -2069,17 +2069,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Random events failed for ${nation.name} (non-fatal):`, eventErr);
         }
 
-        // Process active fundraiser promises
-        try {
-            const promiseResults = await processPromiseTick(supabase, nation, newTick);
-            if (promiseResults.length > 0) {
-                summary.promises = summary.promises || [];
-                summary.promises.push({ nation: nation.name, promises: promiseResults });
-            }
-        } catch (promiseErr) {
-            console.error(`[advanceTick] Promise processing failed for ${nation.name} (non-fatal):`, promiseErr);
-        }
-
 
         // Writing AP rewards: grant bonus AP for long op-eds and articles published this tick
         try {
