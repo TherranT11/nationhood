@@ -327,7 +327,7 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-modal">
                 <div class="nws-modal-header">
                     <h3>Write Article</h3>
-                    <span class="nws-ap-badge" id="nws-reward-badge">+5 Momentum (8000+)</span>
+                    <span class="nws-ap-badge" id="nws-reward-badge">+3 Momentum (1st) / +1 subsequent</span>
                 </div>
                 <button class="nws-modal-close" id="nws-modal-close">&times;</button>
                 <div class="nws-modal-body">
@@ -414,7 +414,7 @@ export async function initNewspaper(supabase, state) {
     // Update reward badge text
     const rewardBadge = document.getElementById('nws-reward-badge');
     if (rewardBadge) {
-        rewardBadge.textContent = '+5 Momentum (8000+)';
+        rewardBadge.textContent = '+3 Momentum (1st) / +1 subsequent';
     }
 
     // === LOAD & DISPLAY ARTICLES ===
@@ -471,10 +471,8 @@ function bindModalEvents() {
     if (bodyInput && charCount) {
         bodyInput.addEventListener('input', () => {
             const len = bodyInput.value.length;
-            const tag = len >= 8000 ? ' · +5 Momentum' : ` · ${8000 - len} more for +5 Momentum`;
-            charCount.textContent = `${len} / 12000${tag}`;
+            charCount.textContent = `${len} / 12000`;
             charCount.classList.toggle('nws-near-limit', len >= 11500);
-            charCount.classList.toggle('nws-ap-qualified', len >= 8000 && len < 11500);
         });
     }
 
@@ -617,40 +615,43 @@ function bindSubmitHandler() {
 
                 if (error) throw error;
 
-                // Momentum: +5 for home pub (>= 8000 chars), +1 for cross-pub (any length)
-                let momDelta = 0;
-                let momLabel = '';
-                if (isCrossPub) {
-                    momDelta = 1;
-                    momLabel = 'Cross-publication article (+1)';
-                } else if (body.length >= 8000) {
-                    momDelta = 5;
-                    momLabel = 'News article published (+5)';
+                // Momentum: +3 for 1st article this tick, +1 for subsequent articles
+                const currentTick = shard?.current_tick || 0;
+                let momDelta = 1; // default: subsequent article
+                // Check how many articles this faction already published this tick
+                const { data: tickArticles, error: tickCountErr } = await _supabase
+                    .from('player_articles')
+                    .select('id')
+                    .eq('author_faction_id', faction.id)
+                    .eq('published_tick', currentTick);
+                if (tickCountErr) {
+                    console.error('[News] Failed to count articles this tick:', tickCountErr);
                 }
+                // Count includes the article we just inserted, so 1 means this is the first
+                if (!tickCountErr && (!tickArticles || tickArticles.length <= 1)) {
+                    momDelta = 3;
+                }
+                const momLabel = `News article published (+${momDelta})`;
 
                 let successMsg = 'Article published!';
-                if (momDelta > 0) {
-                    try {
-                        const { error: momErr } = await _supabase.rpc('adjust_momentum', {
-                            p_faction_id: faction.id,
-                            p_delta: momDelta,
-                            p_label: momLabel,
-                            p_tick: shard?.current_tick || 0
-                        });
-                        if (momErr) {
-                            console.error('[News] Momentum reward failed:', momErr);
-                            successMsg = 'Article published! (Momentum reward failed)';
-                        } else {
-                            successMsg = `Article published! +${momDelta} Momentum.`;
-                        }
-                    } catch (momCatchErr) {
-                        console.error('[News] Momentum reward error:', momCatchErr);
+                try {
+                    const { error: momErr } = await _supabase.rpc('adjust_momentum', {
+                        p_faction_id: faction.id,
+                        p_delta: momDelta,
+                        p_label: momLabel,
+                        p_tick: currentTick
+                    });
+                    if (momErr) {
+                        console.error('[News] Momentum reward failed:', momErr);
                         successMsg = 'Article published! (Momentum reward failed)';
+                    } else {
+                        successMsg = `Article published! +${momDelta} Momentum.`;
                     }
-                    sessionStorage.removeItem('nationhood_state');
-                } else {
-                    successMsg = `Article published! (${body.length}/8000 chars — no momentum reward)`;
+                } catch (momCatchErr) {
+                    console.error('[News] Momentum reward error:', momCatchErr);
+                    successMsg = 'Article published! (Momentum reward failed)';
                 }
+                sessionStorage.removeItem('nationhood_state');
                 showFormSuccess(successMsg);
             }
 
@@ -772,10 +773,8 @@ function openEditModal(article) {
     const bodyLen = (article.body || '').length;
     const charCount = document.getElementById('nws-char-count');
     if (charCount) {
-        const tag = bodyLen >= 8000 ? ' · +5 Momentum' : ` · ${8000 - bodyLen} more for +5 Momentum`;
-        charCount.textContent = `${bodyLen} / 12000${tag}`;
+        charCount.textContent = `${bodyLen} / 12000`;
         charCount.classList.toggle('nws-near-limit', bodyLen >= 11500);
-        charCount.classList.toggle('nws-ap-qualified', bodyLen >= 8000 && bodyLen < 11500);
     }
 
     // Image state

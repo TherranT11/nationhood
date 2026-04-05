@@ -6,7 +6,7 @@ import { tickToDate } from './utils.js';
 import { fetchActiveCoalition, loadSeats } from './game/government-structure.js';
 import { isPresidentialRepublic } from './game/government-types.js';
 import { initGameConfigForNation, switchPartyEndorsement } from './game/config.js';
-import { RALLY_CONFIG, executeRally, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, disbandParty, getNationNames } from './game/political-actions.js';
+import { RALLY_CONFIG, executeRally, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, disbandParty, getNationNames } from './game/political-actions.js';
 import { IDEOLOGY_AXES } from './game/ideology.js';
 import { PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress } from './game/protest.js';
 import { executeTakeStance, STANCE_CONFIG, ISSUE_DEFS, ISSUE_IDS, POLL_CONFIG, executePollNow, IDEO_SHIFT_CONFIG, executeFundThinkTank, executeMediaCampaign, executeGrassrootsMovement, suspendIdeologyAction, continueIdeologyAction, cancelIdeologyAction, executeIdeologicalPivot, PIVOT_CONFIG } from './game/electorate.js';
@@ -2315,16 +2315,13 @@ function escapeHtml(str) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// DEMOCRACY CAMPAIGN ACTIONS TAB (Rally, Attack, Promise)
+// DEMOCRACY CAMPAIGN ACTIONS TAB (Rally, Attack)
 // ═══════════════════════════════════════════════════════════════════
 
 // Campaign action state
-let _caSelected = null;   // 'rally' | 'attack' | 'promise' | 'protest'
+let _caSelected = null;   // 'rally' | 'attack' | 'protest'
 let _caRival = null;      // selected rival faction id
 let _caVector = null;     // attack vector id
-let _caPromiseType = null; // 'stat' | 'crisis'
-let _caStatKey = null;     // selected stat key for promise
-let _caCrisisId = null;   // selected crisis id for promise
 let _caResult = null;     // last action result for display
 
 let _caAttackVectors = null;  // cached built vectors
@@ -2345,7 +2342,6 @@ let _govProtestCrisis = null;       // active protest crisis for governing party
 // Store references for re-rendering
 let _currentNation = null, _currentFaction = null, _currentShard = null, _currentAllParties = null;
 let _caIsGoverning = false;
-let _caTopIssueStats = null; // Stats from top 7 issues by salience (for Make Promise filtering)
 
 // Campaign actions organized by category
 const CA_ACTION_CATEGORIES = [
@@ -2413,7 +2409,6 @@ let _caStanceIssueStates = null; // cached issue states for stance config
 
 function caReset() {
     _caRival = null; _caVector = null;
-    _caPromiseType = null; _caStatKey = null; _caCrisisId = null;
     _caAttackVectors = null;
     _protestTab = 'minister'; _protestTarget = null;
     _protestCachedMinisters = null; _protestCachedCrises = null; _protestCachedStats = null;
@@ -2427,11 +2422,6 @@ function caReset() {
 function caIsReady() {
     if (_caSelected === 'rally') return true;
     if (_caSelected === 'attack') return !!_caRival && !!_caVector;
-    if (_caSelected === 'promise') {
-        if (_caPromiseType === 'stat') return !!_caStatKey;
-        if (_caPromiseType === 'crisis') return !!_caCrisisId;
-        return false;
-    }
     if (_caSelected === 'protest') return !!_protestTarget;
     if (_caSelected === 'take_stance') return !!_caStanceIssue && !!_caStanceAxis && !!_caStanceSide && !!_caStanceIntensity;
     if (_caSelected === 'poll_now') return true;
@@ -2531,20 +2521,6 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
 
     // Fetch other parties
     const otherParties = (allParties || []).filter(p => p.id !== f.id);
-
-    // Fetch top 7 issues by salience for Make Promise filtering
-    const { data: topIssues } = await _supabase
-        .from('issue_state')
-        .select('issue_id, salience')
-        .eq('nation_id', n.id)
-        .order('salience', { ascending: false })
-        .limit(7);
-    const allowedStats = new Set();
-    for (const iss of (topIssues || [])) {
-        const def = ISSUE_DEFS[iss.issue_id];
-        if (def) for (const s of def.stats) allowedStats.add(s);
-    }
-    _caTopIssueStats = allowedStats;
 
     // Fetch protest state for the action row
     let protestCheck = { allowed: false, reason: '' };
@@ -2762,7 +2738,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             if (['outreach', 'press_conference', 'rally'].includes(act.id) && f.leader_positive_traits) {
                 displayCost = Math.max(1, displayCost + getTraitAPModifier(act.id, f, tick));
             }
-            const dbActionType = act.id === 'promise' ? 'make_promise' : act.id;
+            const dbActionType = act.id;
             const cdRemaining = _caCooldowns[dbActionType] || 0;
             const onCooldown = cdRemaining > 0;
             const usedThisTick = !!_caUsedThisTick[dbActionType];
@@ -2978,70 +2954,6 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
 
     // Wire up config interactions
     wireCampaignConfig(container, f, n, ap, otherParties, factionIdeo, tick, protestCheck, protestApCost);
-}
-
-// ── Promises panel on the Actions page ──
-
-async function _renderActionsPromisesPanel(faction, nation, tick) {
-    const container = document.getElementById('ca-promises-container');
-    if (!container) return;
-
-    const { data: promises, error: promisesErr } = await _supabase
-        .from('fundraiser_promises')
-        .select('*')
-        .eq('party_id', faction.id)
-        .eq('nation_id', nation.id)
-        .in('status', ['active', 'pending_election']);
-
-    if (promisesErr) {
-        container.innerHTML = `<div style="color:var(--dred);font-family:var(--dfont-mono);font-size:11px;padding:8px">Failed to load promises.</div>`;
-        return;
-    }
-
-    const allPromises = promises || [];
-
-    let rowsHtml = '';
-    if (allPromises.length === 0) {
-        rowsHtml = '<div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;padding:8px 0">No active promises.</div>';
-    } else {
-        for (const p of allPromises) {
-            const isPending = p.status === 'pending_election';
-            const isCrisis = p.demand_type === 'crisis_resolution';
-            const label = p.demand_text || (isCrisis ? 'Resolve crisis' : 'Improve stat');
-            const direction = isCrisis ? '✓' : (p.conditions?.direction === 'above' ? '↑' : '↓');
-
-            let statusHtml;
-            if (isPending) {
-                statusHtml = `<span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:#94a3b8">⏳ Awaiting election</span>`;
-            } else {
-                const ticksLeft = Math.max(0, (p.tick_deadline || 0) - tick);
-                const isUrgent = ticksLeft <= 3;
-                const isCritical = ticksLeft <= 1;
-                const tickColor = isCritical ? 'var(--dred)' : isUrgent ? 'var(--damber)' : 'var(--dgreen)';
-                statusHtml = `<span style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;color:${tickColor}">${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} left</span>`;
-            }
-
-            rowsHtml += `
-            <div style="padding:6px 0;border-bottom:1px solid var(--dborder-1)">
-                <div style="display:flex;justify-content:space-between;align-items:center">
-                    <div>
-                        <span style="font-family:var(--dfont-mono);font-size:12px;color:var(--dtext-0)">${direction}</span>
-                        <span style="font-family:var(--dfont-ui);font-size:12px;font-weight:600;color:var(--dtext-0);margin-left:4px">${escapeHtml(label)}</span>
-                    </div>
-                    ${statusHtml}
-                </div>
-            </div>`;
-        }
-    }
-
-    container.innerHTML = `
-    <div style="border:1px solid var(--dborder-1);border-radius:6px;padding:12px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <span style="font-family:var(--dfont-ui);font-size:13px;font-weight:700;color:var(--dtext-0);text-transform:uppercase;letter-spacing:0.5px">Promises</span>
-            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-2)">${allPromises.length} / ${MAKE_PROMISE_CONFIG.MAX_ACTIVE_PROMISES}</span>
-        </div>
-        ${rowsHtml}
-    </div>`;
 }
 
 // ── Render config body for each action ──
@@ -3340,89 +3252,6 @@ function renderAttackConfig(otherParties) {
         }
     } else if (_caRival && !_caAttackVectors) {
         html += `<div class="ca-info-box" style="margin-top:12px">Loading evidence...</div>`;
-    }
-
-    return html;
-}
-
-// ── PROMISE CONFIG ──
-
-function renderPromiseConfig(nation) {
-    let html = `<div class="ca-subtitle">What do you promise?</div>`;
-
-    // Type selector
-    const types = [
-        { id: 'stat', name: 'Improve a Stat', desc: 'Promise to move a national stat in the right direction.', color: '#a78bfa' },
-        { id: 'crisis', name: 'Resolve a Crisis', desc: 'Promise to resolve an active national crisis.', color: '#ef4444' },
-    ];
-    html += `<div style="display:flex;gap:8px;margin-bottom:12px">`;
-    for (const t of types) {
-        const isSel = _caPromiseType === t.id;
-        html += `<div style="flex:1;padding:8px 12px;border:1px solid ${isSel ? t.color + '44' : 'var(--dborder-1)'};border-left:3px solid ${isSel ? t.color : 'transparent'};border-radius:4px;cursor:pointer;transition:all 0.1s;${isSel ? `background:${t.color}08` : ''}" data-promise-type="${t.id}">
-            <div style="font-family:var(--dfont-ui);font-size:12px;font-weight:700;color:${isSel ? t.color : 'var(--dtext-0)'}">${t.name}</div>
-            <div style="font-family:var(--dfont-ui);font-size:10px;color:var(--dtext-3);margin-top:2px">${t.desc}</div>
-        </div>`;
-    }
-    html += `</div>`;
-
-    if (_caPromiseType === 'stat') {
-        const statDelta = _caIsGoverning ? MAKE_PROMISE_CONFIG.STAT_DELTA_GOVERNING : MAKE_PROMISE_CONFIG.STAT_DELTA;
-        const allStats = getPromiseableStats(nation, _caIsGoverning);
-        // Filter to stats from top 7 electorate issues by salience
-        const stats = _caTopIssueStats && _caTopIssueStats.size > 0
-            ? allStats.filter(s => _caTopIssueStats.has(s.statKey))
-            : allStats;
-        if (stats.length === 0) {
-            html += `<div class="ca-info-box">No stats available to promise on — they may all be at their limit.</div>`;
-        } else {
-            if (_caIsGoverning) {
-                html += `<div style="font-family:var(--dfont-mono);font-size:10px;color:#f97316;margin-bottom:8px;padding:4px 8px;border:1px solid rgba(249,115,22,0.2);border-radius:4px;background:rgba(249,115,22,0.04)">⚠ Governing factions must promise ±${statDelta} (you have legislative power)</div>`;
-            }
-            html += `<div class="ca-bloc-list">`;
-            for (const s of stats) {
-                const isSel = _caStatKey === s.statKey;
-                const target = s.direction === 'higher_is_better'
-                    ? Math.min(100, Math.round(s.value + statDelta))
-                    : Math.max(0, Math.round(s.value - statDelta));
-                const dirLabel = s.promiseDirection === 'increase' ? '↑' : '↓';
-                const dirColor = s.promiseDirection === 'increase' ? '#4ade80' : '#22d3ee';
-                html += `<div class="ca-stat-card${isSel ? ' selected' : ''}" data-stat-key="${s.statKey}" style="border-left-color:${isSel ? '#a78bfa' : dirColor};${isSel ? 'border-color:rgba(167,139,250,0.2);background:rgba(167,139,250,0.03)' : ''}">
-                    <div style="display:flex;justify-content:space-between;align-items:center">
-                        <span class="ca-stat-name">${escapeHtml(s.label)}</span>
-                        <div style="display:flex;align-items:center;gap:8px">
-                            <span class="ca-stat-val" style="color:var(--dtext-2)">${Math.round(s.value)}</span>
-                            <span style="color:${dirColor}">${dirLabel}</span>
-                            <span class="ca-stat-val" style="color:${dirColor}">${target}</span>
-                        </div>
-                    </div>
-                    ${isSel ? `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:4px">Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks (starts after next election) · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE} approval</span></div>
-                    <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:3px;display:flex;gap:12px;flex-wrap:wrap">
-                        <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} momentum</span>
-                    </div>
-                    <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;display:flex;gap:12px;flex-wrap:wrap">
-                        <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} momentum</span>
-                    </div>
-                    <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;color:var(--dtext-3)">Countdown deferred until in government · <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick while unfulfilled</span></div>
-                    <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;color:var(--dtext-3)">If in opposition after election: <span style="color:#94a3b8">promise extinguishes — no penalty</span></div>` : ''}
-                </div>`;
-            }
-            html += `</div>`;
-        }
-    }
-
-    if (_caPromiseType === 'crisis') {
-        html += `<div id="ca-crisis-list"><div class="ca-info-box">Loading crises...</div></div>`;
-        html += `<div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-top:8px;padding:0 2px">
-            Deadline: ${MAKE_PROMISE_CONFIG.DEADLINE_BASE + 1}–${MAKE_PROMISE_CONFIG.DEADLINE_BASE + MAKE_PROMISE_CONFIG.DEADLINE_DICE} ticks (starts after next election) · Immediate <span style="color:#4ade80">+${MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE} approval</span>
-        </div>
-        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:3px;padding:0 2px">
-            <span style="color:#4ade80">If kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} momentum</span>
-        </div>
-        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px">
-            <span style="color:#ef4444">If broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} momentum</span>
-        </div>
-        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px;color:var(--dtext-3)">Countdown deferred until in government · <span style="color:#f97316">−${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick while unfulfilled</span></div>
-        <div style="font-family:var(--dfont-mono);font-size:10px;margin-top:2px;padding:0 2px;color:var(--dtext-3)">If in opposition after election: <span style="color:#94a3b8">promise extinguishes — no penalty</span></div>`;
     }
 
     return html;
@@ -3832,31 +3661,6 @@ function renderActionResult(result) {
             <span class="ca-result-val" style="color:${color}">${escapeHtml(result.outcomeName)}</span>
         </div>`;
     }
-    if (result.demandText) {
-        html += `<div class="ca-result-row">
-            <span class="ca-result-label">Promise</span>
-            <span class="ca-result-val" style="color:#a78bfa">${escapeHtml(result.demandText)}</span>
-        </div>`;
-        if (result.conditions?.is_governing) {
-            html += `<div style="font-family:var(--dfont-mono);font-size:10px;color:#f97316;margin-top:2px">Governing target: ±${result.conditions.delta} (higher bar)</div>`;
-        }
-    }
-    if (result.deadlineTicks) {
-        html += `<div class="ca-result-row">
-            <span class="ca-result-label">Deadline</span>
-            <span class="ca-result-val" style="color:var(--dtext-2)">${result.deadlineTicks} ticks</span>
-        </div>`;
-    }
-    if (result.promiseType) {
-        html += `<div style="border-top:1px solid var(--dborder-1);margin-top:8px;padding-top:8px">
-            <div style="font-family:var(--dfont-mono);font-size:10px;color:var(--dtext-3);margin-bottom:4px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase">Consequences</div>
-            <div style="font-family:var(--dfont-mono);font-size:10px;color:#4ade80">Kept: +${MAKE_PROMISE_CONFIG.KEPT_APPROVAL} momentum</div>
-            <div style="font-family:var(--dfont-mono);font-size:10px;color:#ef4444;margin-top:2px">Broken: ${MAKE_PROMISE_CONFIG.BROKEN_APPROVAL} momentum</div>
-            <div style="font-family:var(--dfont-mono);font-size:10px;color:#f97316;margin-top:2px">While unfulfilled: −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MIN} to −${MAKE_PROMISE_CONFIG.PENALTY_PER_TICK_MAX} approval/tick</div>
-            <div style="font-family:var(--dfont-mono);font-size:10px;color:#94a3b8;margin-top:2px">Countdown starts after next election · Opposition = extinguished</div>
-        </div>`;
-    }
-
     html += `</div></div>`;
     return html;
 }
@@ -3998,65 +3802,6 @@ function wireCampaignConfig(container, f, n, ap, otherParties, factionIdeo, tick
         el.addEventListener('click', () => {
             if (el.classList.contains('disabled')) return;
             _caVector = _caVector === el.dataset.vectorId ? null : el.dataset.vectorId;
-            rerender();
-        });
-    });
-
-    // Promise type selection
-    container.querySelectorAll('[data-promise-type]').forEach(el => {
-        el.addEventListener('click', async () => {
-            const type = el.dataset.promiseType;
-            _caPromiseType = _caPromiseType === type ? null : type;
-            _caStatKey = null;
-            _caCrisisId = null;
-            rerender();
-
-            // Load crises for crisis type
-            if (_caPromiseType === 'crisis') {
-                const { data: crises } = await _supabase
-                    .from('active_crises')
-                    .select('id, crisis_id, started_at_tick, crisis_templates(name, description)')
-                    .eq('nation_id', n.id);
-
-                const crisisEl = document.getElementById('ca-crisis-list');
-                if (crisisEl) {
-                    if (!crises || crises.length === 0) {
-                        crisisEl.innerHTML = `<div class="ca-info-box">No active crises to promise on.</div>`;
-                    } else {
-                        let cHtml = '';
-                        for (const c of crises) {
-                            const isSel = _caCrisisId === c.id;
-                            const name = c.crisis_templates?.name || 'Unknown Crisis';
-                            cHtml += `<div class="ca-crisis-card${isSel ? ' selected' : ''}" data-crisis-id="${c.id}">
-                                <span class="ca-crisis-name">${escapeHtml(name)}</span>
-                            </div>`;
-                        }
-                        crisisEl.innerHTML = cHtml;
-                        // Wire crisis click
-                        crisisEl.querySelectorAll('[data-crisis-id]').forEach(cel => {
-                            cel.addEventListener('click', () => {
-                                _caCrisisId = _caCrisisId === cel.dataset.crisisId ? null : cel.dataset.crisisId;
-                                rerender();
-                            });
-                        });
-                    }
-                }
-            }
-        });
-    });
-
-    // Stat selection (promise)
-    container.querySelectorAll('[data-stat-key]').forEach(el => {
-        el.addEventListener('click', () => {
-            _caStatKey = _caStatKey === el.dataset.statKey ? null : el.dataset.statKey;
-            rerender();
-        });
-    });
-
-    // Crisis selection (promise) — if already loaded
-    container.querySelectorAll('[data-crisis-id]').forEach(el => {
-        el.addEventListener('click', () => {
-            _caCrisisId = _caCrisisId === el.dataset.crisisId ? null : el.dataset.crisisId;
             rerender();
         });
     });
@@ -4280,9 +4025,6 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
             result = await executeRally(_supabase, f.id, n.id, null, tick);
         } else if (sel.id === 'attack') {
             result = await executeAttack(_supabase, f.id, n.id, _caRival, _caVector, tick);
-        } else if (sel.id === 'promise') {
-            const params = _caPromiseType === 'stat' ? { statKey: _caStatKey } : { crisisId: _caCrisisId };
-            result = await executeMakePromise(_supabase, f.id, n.id, tick, _caPromiseType, params);
         } else if (sel.id === 'protest') {
             if (!_protestTarget) return;
             const grievanceData = _protestTarget.grievanceData || {};

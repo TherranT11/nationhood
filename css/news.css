@@ -1432,12 +1432,6 @@
     text-decoration: underline;
 }
 
-/* AP qualified counter */
-.nws-char-count.nws-ap-qualified {
-    color: #2a6a2a;
-    font-weight: 600;
-}
-
 /* ===== ARTICLE IMAGE IN LAYOUT ===== */
 .nws-lead-image img,
 .nws-sec-image img {

@@ -538,7 +538,6 @@ export const ELECTORATE_CONFIG = {
     ENTHUSIASM_ELECTION_PROXIMITY: 10,    // max bonus when election is imminent
     ENTHUSIASM_ELECTION_WINDOW: 20,       // ticks before election when bonus ramps up
     ENTHUSIASM_GOV_EXTREME_SCALE: 0.15,   // bonus per |gov_approval - 50| point
-    ENTHUSIASM_PROMISE_BOOST: 2,          // +2 on Make a Promise
     ENTHUSIASM_STANCE_BOOST_MIN: 1,       // Take a Stance: 1d3 (min)
     ENTHUSIASM_STANCE_BOOST_MAX: 3,       // Take a Stance: 1d3 (max)
     ENTHUSIASM_MIN: 10,
