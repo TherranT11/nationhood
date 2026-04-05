@@ -865,6 +865,17 @@ export async function processIssueTick(supabase, nationList, currentTick) {
         // ── 4d. Resolve submitted diplomatic actions (simultaneous matching) ──
         // Both nations must submit the same diplomatic action key on the same tick.
         // Matched → apply effects. Unmatched → political gaffe penalty.
+
+        // Sweep stale submissions from prior ticks (crash recovery)
+        await supabase
+            .from('bilateral_issue_actions_taken')
+            .update({ status: 'gaffe', response_tick: currentTick,
+                effects_applied: { gaffe: true, reason: 'Stale submission — tick processor did not match in time.' } })
+            .eq('issue_id', issue.id)
+            .eq('action_category', 'diplomatic')
+            .eq('status', 'submitted')
+            .lt('submitted_tick', currentTick);
+
         const { data: submittedDipActions, error: dipQueryErr } = await supabase
             .from('bilateral_issue_actions_taken')
             .select('*')
