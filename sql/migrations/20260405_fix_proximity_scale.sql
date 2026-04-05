@@ -1,7 +1,16 @@
 -- ══════════════════════════════════════════════════════════════════════
 -- Fix proximity scale: 0 = bordering, 100 = far away
 -- Sets all nation-pair proximity values definitively.
+-- Also ensures diplomatic_relations rows exist for ALL nation pairs.
 -- ══════════════════════════════════════════════════════════════════════
+
+-- Step 0: Ensure every nation pair has a diplomatic_relations row (default relation_score=30)
+INSERT INTO diplomatic_relations (nation_a_id, nation_b_id)
+SELECT LEAST(a.id, b.id), GREATEST(a.id, b.id)
+FROM nations a
+CROSS JOIN nations b
+WHERE a.id < b.id
+ON CONFLICT (nation_a_id, nation_b_id) DO NOTHING;
 
 -- ── BORDERING NATIONS (proximity = 0) ──
 -- Crucera mainland neighbors that share direct land/maritime borders
