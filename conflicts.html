@@ -204,7 +204,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import { ACTIONS, MODIFIERS, executeIssueAction, respondToProposal } from './js/game/issues.js';
+import { ACTIONS, MODIFIERS, executeIssueAction } from './js/game/issues.js';
 
 let currentFaction = null;
 let currentNation = null;
@@ -745,9 +745,9 @@ function renderIssueActions(issue, modifiers, actionsTaken) {
     }
     el.style.display = '';
 
-    // Check for pending proposals targeting this nation
-    const pendingForMe = actionsTaken.filter(a =>
-        a.status === 'pending' && a.target_nation_id === currentNation.id
+    // Check for submitted diplomatic actions awaiting matching this tick
+    const mySubmitted = actionsTaken.filter(a =>
+        a.status === 'submitted' && a.acting_nation_id === currentNation.id && a.submitted_tick === currentTick
     );
 
     // Build used-action sets for this nation
@@ -769,24 +769,16 @@ function renderIssueActions(issue, modifiers, actionsTaken) {
 
     let html = '';
 
-    // Pending proposals banner
-    if (pendingForMe.length > 0) {
+    // Submitted diplomatic actions banner (awaiting tick-end matching)
+    if (mySubmitted.length > 0) {
         html += '<div class="issue-pending-banner">';
-        html += `<div class="issue-pending-title">Pending Proposals (${pendingForMe.length})</div>`;
-        for (const p of pendingForMe) {
-            const actionDef = ACTIONS[p.action_key];
+        html += `<div class="issue-pending-title">Submitted This Tick (awaiting match)</div>`;
+        for (const s of mySubmitted) {
+            const actionDef = ACTIONS[s.action_key];
             if (!actionDef) continue;
             html += `<div class="issue-pending-item">
                 <div class="issue-pending-name">${escapeHtml(actionDef.name)}</div>
-                <div class="issue-pending-desc">${escapeHtml(actionDef.description)}</div>
-                <div class="issue-pending-effects">
-                    ${actionDef.tension_delta ? `<span class="ia-tag ia-tag--tension-down">Tension ${actionDef.tension_delta}</span>` : ''}
-                    ${actionDef.modifiers_removed.map(m => `<span class="ia-tag ia-tag--modifier">Removes: ${MODIFIERS[m]?.name || m}</span>`).join('')}
-                </div>
-                <div class="issue-pending-buttons">
-                    <button class="issue-pending-btn issue-pending-btn--accept" data-action-id="${p.id}" data-issue-id="${issue.id}">Accept</button>
-                    <button class="issue-pending-btn issue-pending-btn--reject" data-action-id="${p.id}" data-issue-id="${issue.id}">Reject</button>
-                </div>
+                <div class="issue-pending-desc">Will resolve when the tick processes. Both nations must choose this same action.</div>
             </div>`;
         }
         html += '</div>';
@@ -805,14 +797,6 @@ function renderIssueActions(issue, modifiers, actionsTaken) {
     html += renderActionList('threatening', threatening, myUsedActions, actedThisTick, false, issue);
 
     el.innerHTML = html;
-
-    // Wire pending proposal buttons
-    el.querySelectorAll('.issue-pending-btn--accept').forEach(btn => {
-        btn.addEventListener('click', () => handleProposalResponse(btn.dataset.actionId, btn.dataset.issueId, true));
-    });
-    el.querySelectorAll('.issue-pending-btn--reject').forEach(btn => {
-        btn.addEventListener('click', () => handleProposalResponse(btn.dataset.actionId, btn.dataset.issueId, false));
-    });
 
     // Wire action items
     el.querySelectorAll('.ia-item:not(.ia-item--used):not(.ia-item--locked)').forEach(item => {
@@ -858,7 +842,7 @@ function renderActionList(category, actions, usedActions, actedThisTick, hasFric
             <div class="ia-icon ia-icon--${color}">${idx}</div>
             <div class="ia-info">
                 <div class="ia-name ia-name--${color}">${escapeHtml(action.name)}</div>
-                <div class="ia-desc">${escapeHtml(isUsed ? 'Already used.' : action.description)}</div>
+                <div class="ia-desc">${escapeHtml(isUsed ? (action.category === 'diplomatic' ? 'Already submitted.' : 'Already used.') : action.description)}</div>
                 <div class="ia-effects">${tags}</div>
             </div>
             <span class="ia-role">${roleLabel}</span>
@@ -915,8 +899,8 @@ function showIssueActionModal(actionKey, issue, modifiers) {
     bodyHtml += '</div>';
 
     if (action.category === 'diplomatic') {
-        bodyHtml += '<div class="modal-info">This proposal will be sent to the other nation. They must accept for the effects to apply. If rejected, favor shifts +0.5 toward you.</div>';
-        confirmBtn.textContent = 'Propose';
+        bodyHtml += '<div class="modal-info">This will only work if the other nation uses this exact same action on this tick. If they don\'t, you suffer a Political Gaffe: -3 Gov Approval, +1 Tension.</div>';
+        confirmBtn.textContent = 'Submit';
         confirmBtn.className = 'modal-btn modal-btn--confirm';
     } else if (action.category === 'threatening') {
         if (action.special === 'incident_trigger_50') {
@@ -982,39 +966,6 @@ async function executeIssueActionFromUI(actionKey, issue) {
     } catch (err) {
         console.error('[Issues] Action execution error:', err);
         alert('Action failed: ' + err.message);
-    } finally {
-        issueActionExecuting = false;
-    }
-}
-
-
-// ==================== HANDLE PROPOSAL RESPONSE ====================
-
-async function handleProposalResponse(actionTakenId, issueId, accept) {
-    if (issueActionExecuting) return;
-    issueActionExecuting = true;
-
-    try {
-        const result = await respondToProposal(_supabase, {
-            actionTakenId,
-            issueId,
-            respondingNationId: currentNation.id,
-            respondingFactionId: currentFaction.id,
-            accept,
-            currentTick,
-        });
-
-        if (!result.success) {
-            alert(result.error || 'Response failed.');
-            return;
-        }
-
-        alert(accept ? 'Proposal accepted.' : 'Proposal rejected.');
-        await selectIssue(issueId);
-
-    } catch (err) {
-        console.error('[Issues] Proposal response error:', err);
-        alert('Response failed: ' + err.message);
     } finally {
         issueActionExecuting = false;
     }
