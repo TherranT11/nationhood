@@ -660,6 +660,466 @@ function getDisfavoredSide(favor) {
 }
 
 
+// ==================== MODIFIER ENGINE ====================
+
+/**
+ * Main per-tick processor for all active bilateral issues.
+ * Called once per tick from the advance-tick handler.
+ *
+ * 1. Apply active modifier stat effects to nations
+ * 2. Decrement durations, remove expired modifiers
+ * 3. Handle periodic modifiers (activate/deactivate windows)
+ * 4. Check auto-spawn conditions for competitive modifiers
+ * 5. Apply relation bleeds from escalation modifiers
+ * 6. Track idle ticks (no diplomatic action)
+ * 7. Check tension 10 → escalation to incident
+ *
+ * Returns: { modifiersApplied, modifiersExpired, modifiersSpawned, escalations }
+ */
+export async function processIssueTick(supabase, nationList, currentTick) {
+    const results = {
+        modifiersApplied: 0,
+        modifiersExpired: [],
+        modifiersSpawned: [],
+        escalations: [],
+    };
+
+    // Fetch all active/partial issues
+    const { data: issues, error: issueErr } = await supabase
+        .from('bilateral_issues')
+        .select('*')
+        .in('status', ['active', 'partial']);
+
+    if (issueErr) {
+        console.error('[Issues] Failed to load active issues:', issueErr);
+        return results;
+    }
+    if (!issues || issues.length === 0) return results;
+
+    // Build nation lookup
+    const nationMap = {};
+    for (const n of nationList) {
+        nationMap[n.id] = n;
+    }
+
+    for (const issue of issues) {
+        const nationA = nationMap[issue.nation_a_id];
+        const nationB = nationMap[issue.nation_b_id];
+        if (!nationA || !nationB) continue;
+
+        // Load active modifiers for this issue
+        const { data: modifiers, error: modErr } = await supabase
+            .from('bilateral_issue_modifiers')
+            .select('*')
+            .eq('issue_id', issue.id)
+            .eq('is_active', true);
+
+        if (modErr) {
+            console.error(`[Issues] Failed to load modifiers for ${issue.id}:`, modErr);
+            continue;
+        }
+
+        // ── 1. Apply modifier stat effects ──
+        for (const mod of (modifiers || [])) {
+            const config = MODIFIERS[mod.modifier_key];
+            if (!config || !config.stat_effects || config.stat_effects.length === 0) continue;
+
+            // For periodic modifiers, only apply during active windows
+            if (mod.is_periodic && !mod.is_periodic_active) continue;
+
+            // Resolve which nation(s) the effects apply to
+            const targets = resolveTargets(mod.applies_to, issue, nationA, nationB);
+            for (const target of targets) {
+                await applyIssueStatEffects(supabase, target.id, target, config.stat_effects);
+                results.modifiersApplied++;
+            }
+
+            // Special: relations bleed (e.g. active_vessel_expulsion)
+            if (config.relations_delta) {
+                await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, config.relations_delta);
+            }
+        }
+
+        // ── 2. Decrement durations, remove expired ──
+        for (const mod of (modifiers || [])) {
+            if (mod.duration_remaining === null) continue; // persistent
+            if (mod.is_periodic) continue; // periodic durations handled separately
+
+            const newDuration = mod.duration_remaining - 1;
+            if (newDuration <= 0) {
+                // Expire this modifier
+                await supabase
+                    .from('bilateral_issue_modifiers')
+                    .update({
+                        is_active: false,
+                        resolved_by: 'expiry',
+                        resolved_tick: currentTick,
+                        duration_remaining: 0,
+                    })
+                    .eq('id', mod.id);
+
+                results.modifiersExpired.push({
+                    issue_id: issue.id,
+                    modifier_key: mod.modifier_key,
+                });
+
+                await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
+                    `${MODIFIERS[mod.modifier_key]?.name || mod.modifier_key} has expired.`,
+                    { modifier_key: mod.modifier_key, reason: 'expiry' });
+            } else {
+                await supabase
+                    .from('bilateral_issue_modifiers')
+                    .update({ duration_remaining: newDuration })
+                    .eq('id', mod.id);
+            }
+        }
+
+        // ── 3. Handle periodic modifiers ──
+        for (const mod of (modifiers || [])) {
+            if (!mod.is_periodic) continue;
+
+            if (mod.is_periodic_active) {
+                // Currently in an active window — decrement periodic duration
+                const remaining = (mod.duration_remaining ?? 0) - 1;
+                if (remaining <= 0) {
+                    // Window ends — deactivate until next interval
+                    const nextFire = currentTick + (mod.periodic_interval || 20);
+                    await supabase
+                        .from('bilateral_issue_modifiers')
+                        .update({
+                            is_periodic_active: false,
+                            duration_remaining: null,
+                            periodic_next_tick: nextFire,
+                        })
+                        .eq('id', mod.id);
+                } else {
+                    await supabase
+                        .from('bilateral_issue_modifiers')
+                        .update({ duration_remaining: remaining })
+                        .eq('id', mod.id);
+                }
+            } else {
+                // Not currently active — check if it's time to fire
+                if (mod.periodic_next_tick !== null && currentTick >= mod.periodic_next_tick) {
+                    const config = MODIFIERS[mod.modifier_key];
+                    const activeDuration = mod.periodic_duration || config?.periodic_duration || 8;
+                    await supabase
+                        .from('bilateral_issue_modifiers')
+                        .update({
+                            is_periodic_active: true,
+                            duration_remaining: activeDuration,
+                        })
+                        .eq('id', mod.id);
+
+                    await insertHistory(supabase, issue.id, currentTick, 'modifier_fired',
+                        `${config?.name || mod.modifier_key} has flared up again.`,
+                        { modifier_key: mod.modifier_key });
+                }
+            }
+        }
+
+        // ── 4. Auto-spawn competitive modifiers ──
+        const activeKeys = new Set((modifiers || []).filter(m => m.is_active).map(m => m.modifier_key));
+        await checkAutoSpawns(supabase, issue, activeKeys, modifiers || [], nationA, nationB, currentTick, results);
+
+        // ── 5. Increment idle tick counter ──
+        // Check if any diplomatic action was taken THIS tick
+        const { data: dipActions } = await supabase
+            .from('bilateral_issue_actions_taken')
+            .select('id')
+            .eq('issue_id', issue.id)
+            .eq('submitted_tick', currentTick)
+            .eq('action_category', 'diplomatic')
+            .limit(1);
+
+        const hadDiplomaticAction = dipActions && dipActions.length > 0;
+        const newIdleTicks = hadDiplomaticAction ? 0 : issue.ticks_without_diplomatic_action + 1;
+
+        // ── 6. Check resolution status ──
+        // Reload modifiers after expirations/spawns
+        const { data: currentMods } = await supabase
+            .from('bilateral_issue_modifiers')
+            .select('modifier_key, category, is_active')
+            .eq('issue_id', issue.id);
+
+        const activeStructural = (currentMods || []).filter(
+            m => m.is_active && m.category === 'structural'
+        );
+        const totalStructural = (currentMods || []).filter(m => m.category === 'structural');
+        const resolvedStructural = totalStructural.length - activeStructural.length;
+
+        let newStatus = issue.status;
+        if (activeStructural.length === 0 && totalStructural.length > 0) {
+            newStatus = 'resolved';
+        } else if (resolvedStructural >= 3 && activeStructural.length > 0) {
+            newStatus = 'partial';
+        }
+
+        // ── 7. Check tension 10 → escalation ──
+        if (issue.tension >= 10 && issue.status !== 'escalated') {
+            newStatus = 'escalated';
+            const leverage = favorToLeverage(issue.favor);
+            results.escalations.push({
+                issue_id: issue.id,
+                issue_type: issue.issue_type,
+                nation_a_id: issue.nation_a_id,
+                nation_b_id: issue.nation_b_id,
+                favor: issue.favor,
+                starting_leverage: leverage,
+            });
+
+            await insertHistory(supabase, issue.id, currentTick, 'escalated',
+                'This issue has escalated to an incident.',
+                { tension: issue.tension, favor: issue.favor, leverage });
+        }
+
+        // Update issue record
+        const issueUpdate = { ticks_without_diplomatic_action: newIdleTicks };
+        if (newStatus !== issue.status) {
+            issueUpdate.status = newStatus;
+            issueUpdate.updated_at = new Date().toISOString();
+            if (newStatus === 'resolved') issueUpdate.resolved_tick = currentTick;
+            if (newStatus === 'escalated') issueUpdate.escalated_tick = currentTick;
+
+            if (newStatus !== 'escalated') {
+                await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+                    `Issue status changed to ${newStatus}.`,
+                    { old_status: issue.status, new_status: newStatus });
+            }
+        }
+        await supabase.from('bilateral_issues').update(issueUpdate).eq('id', issue.id);
+    }
+
+    return results;
+}
+
+
+// ==================== AUTO-SPAWN LOGIC ====================
+
+/**
+ * Check conditions for auto-spawning competitive modifiers.
+ */
+async function checkAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, nationB, currentTick, results) {
+
+    // #6 Overfishing — 10 ticks with no diplomatic action
+    if (!activeKeys.has('overfishing') && !wasResolved(modifiers, 'overfishing')) {
+        if (issue.ticks_without_diplomatic_action >= 10) {
+            await spawnModifier(supabase, issue, 'overfishing', 'both', currentTick,
+                'auto:10_idle_ticks', results);
+        }
+    }
+
+    // #7 Fish Stock Depletion — overfishing active 10+ ticks
+    if (!activeKeys.has('fish_stock_depletion') && !wasResolved(modifiers, 'fish_stock_depletion')) {
+        if (activeKeys.has('overfishing')) {
+            const overfishMod = modifiers.find(m => m.modifier_key === 'overfishing' && m.is_active);
+            if (overfishMod) {
+                const ticksActive = currentTick - overfishMod.created_tick;
+                if (ticksActive >= 10) {
+                    await spawnModifier(supabase, issue, 'fish_stock_depletion', 'both', currentTick,
+                        'auto:overfishing_10_ticks', results);
+                }
+            }
+        }
+    }
+
+    // #10 Coastal Community Decline — favor ±3 against a nation
+    if (!activeKeys.has('coastal_community_decline') && !wasResolved(modifiers, 'coastal_community_decline')) {
+        if (Math.abs(issue.favor) >= 3) {
+            await spawnModifier(supabase, issue, 'coastal_community_decline', 'disfavored', currentTick,
+                'auto:favor_threshold_3', results);
+        }
+    }
+
+    // #13 International Attention — tension reaches High
+    if (!activeKeys.has('international_attention') && !wasResolved(modifiers, 'international_attention')) {
+        if (issue.tension >= 6) {
+            // Determine which nation is more aggressive (more threatening actions taken)
+            const { data: threatA } = await supabase
+                .from('bilateral_issue_actions_taken')
+                .select('id')
+                .eq('issue_id', issue.id)
+                .eq('acting_nation_id', issue.nation_a_id)
+                .eq('action_category', 'threatening');
+            const { data: threatB } = await supabase
+                .from('bilateral_issue_actions_taken')
+                .select('id')
+                .eq('issue_id', issue.id)
+                .eq('acting_nation_id', issue.nation_b_id)
+                .eq('action_category', 'threatening');
+
+            const countA = threatA?.length || 0;
+            const countB = threatB?.length || 0;
+            const aggressorSide = countA >= countB ? 'nation_a' : 'nation_b';
+            await spawnModifier(supabase, issue, 'international_attention', aggressorSide, currentTick,
+                'auto:tension_high', results);
+        }
+    }
+
+    // #15 Environmental Damage — overfishing AND fish_stock_depletion both active
+    if (!activeKeys.has('environmental_damage') && !wasResolved(modifiers, 'environmental_damage')) {
+        if (activeKeys.has('overfishing') && activeKeys.has('fish_stock_depletion')) {
+            await spawnModifier(supabase, issue, 'environmental_damage', 'both', currentTick,
+                'auto:dual_overfishing_depletion', results);
+        }
+    }
+
+    // #8 Foreign Vessels — natural escalation at tension High (if not already present from action)
+    if (!activeKeys.has('foreign_vessels_in_waters') && !wasResolved(modifiers, 'foreign_vessels_in_waters')) {
+        if (issue.tension >= 6) {
+            // Favor determines who is pushing — the favored nation's vessels are in the disfavored's waters
+            const appliesTo = getDisfavoredSide(issue.favor);
+            if (appliesTo) {
+                await spawnModifier(supabase, issue, 'foreign_vessels_in_waters', appliesTo, currentTick,
+                    'auto:tension_high', results);
+            }
+        }
+    }
+
+    // Remove #13 International Attention if tension drops to Moderate or below
+    if (activeKeys.has('international_attention') && issue.tension <= 5) {
+        const mod = modifiers.find(m => m.modifier_key === 'international_attention' && m.is_active);
+        if (mod) {
+            await supabase
+                .from('bilateral_issue_modifiers')
+                .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
+                .eq('id', mod.id);
+            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'international_attention' });
+            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
+                'International attention has subsided as tensions eased.',
+                { modifier_key: 'international_attention', reason: 'tension_dropped' });
+        }
+    }
+
+    // Remove #10 Coastal Community Decline if favor returns to ±1 or below
+    if (activeKeys.has('coastal_community_decline') && Math.abs(issue.favor) <= 1) {
+        const mod = modifiers.find(m => m.modifier_key === 'coastal_community_decline' && m.is_active);
+        if (mod) {
+            await supabase
+                .from('bilateral_issue_modifiers')
+                .update({ is_active: false, resolved_by: 'auto:favor_normalized', resolved_tick: currentTick })
+                .eq('id', mod.id);
+            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'coastal_community_decline' });
+            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
+                'Coastal community decline has eased as the dispute became more balanced.',
+                { modifier_key: 'coastal_community_decline', reason: 'favor_normalized' });
+        }
+    }
+
+    // Remove #20 Public Hostility if tension drops below High
+    if (activeKeys.has('public_hostility') && issue.tension < 6) {
+        const mod = modifiers.find(m => m.modifier_key === 'public_hostility' && m.is_active);
+        if (mod) {
+            await supabase
+                .from('bilateral_issue_modifiers')
+                .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
+                .eq('id', mod.id);
+            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'public_hostility' });
+            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
+                'Public hostility has cooled as tensions decreased.',
+                { modifier_key: 'public_hostility', reason: 'tension_dropped' });
+        }
+    }
+}
+
+/**
+ * Check if a modifier was previously resolved (prevent re-spawning).
+ */
+function wasResolved(modifiers, key) {
+    return modifiers.some(m => m.modifier_key === key && !m.is_active && m.resolved_by);
+}
+
+/**
+ * Spawn a new modifier on an issue.
+ */
+async function spawnModifier(supabase, issue, modifierKey, appliesTo, currentTick, createdBy, results) {
+    const config = MODIFIERS[modifierKey];
+    if (!config) return;
+
+    const row = {
+        issue_id: issue.id,
+        modifier_key: modifierKey,
+        category: config.category,
+        applies_to: appliesTo,
+        stat_effects: config.stat_effects,
+        duration_remaining: config.duration ?? null,
+        is_periodic: config.is_periodic || false,
+        periodic_interval: config.periodic_interval ?? null,
+        periodic_duration: config.periodic_duration ?? null,
+        periodic_next_tick: config.is_periodic ? currentTick : null,
+        is_periodic_active: config.is_periodic ? true : false,
+        is_active: true,
+        created_by: createdBy,
+        created_tick: currentTick,
+    };
+
+    // For periodic modifiers starting now, set initial active duration
+    if (config.is_periodic) {
+        row.duration_remaining = config.periodic_duration || 8;
+    }
+
+    const { error } = await supabase.from('bilateral_issue_modifiers').insert(row);
+    if (error) {
+        // Might be duplicate — unique constraint prevents double-spawn
+        if (!error.message?.includes('duplicate')) {
+            console.error(`[Issues] Failed to spawn modifier ${modifierKey}:`, error);
+        }
+        return;
+    }
+
+    results.modifiersSpawned.push({ issue_id: issue.id, modifier_key: modifierKey });
+
+    await insertHistory(supabase, issue.id, currentTick, 'modifier_added',
+        `${config.name} has emerged.`,
+        { modifier_key: modifierKey, created_by: createdBy });
+}
+
+
+// ==================== HELPERS ====================
+
+/**
+ * Resolve 'both', 'nation_a', 'nation_b', 'disfavored', 'favored'
+ * to an array of nation objects.
+ */
+function resolveTargets(appliesTo, issue, nationA, nationB) {
+    switch (appliesTo) {
+        case 'both': return [nationA, nationB];
+        case 'nation_a': return [nationA];
+        case 'nation_b': return [nationB];
+        case 'disfavored': {
+            const side = getDisfavoredSide(issue.favor);
+            if (side === 'nation_a') return [nationA];
+            if (side === 'nation_b') return [nationB];
+            return []; // favor is 0, no disfavored nation
+        }
+        case 'favored': {
+            const side = getDisfavoredSide(issue.favor);
+            if (side === 'nation_a') return [nationB]; // A is disfavored, B is favored
+            if (side === 'nation_b') return [nationA];
+            return [];
+        }
+        default: return [];
+    }
+}
+
+/**
+ * Insert a history event for an issue.
+ */
+async function insertHistory(supabase, issueId, tick, eventType, eventText, metadata, causedByNationId) {
+    const { error } = await supabase.from('bilateral_issue_history').insert({
+        issue_id: issueId,
+        tick,
+        event_type: eventType,
+        event_text: eventText,
+        metadata: metadata || null,
+        caused_by_nation_id: causedByNationId || null,
+    });
+    if (error) {
+        console.error(`[Issues] Failed to insert history for ${issueId}:`, error);
+    }
+}
+
+
 // ==================== EXPORTS ====================
 
 export {
@@ -672,4 +1132,7 @@ export {
     applyIssueStatEffects,
     nudgeIssueRelations,
     getDisfavoredSide,
+    insertHistory,
+    resolveTargets,
+    spawnModifier,
 };

@@ -60,6 +60,7 @@ const MODULE_FILES = [
     'election-simulation.js',
     'energy.js',
     'sovereign-default.js',
+    'issues.js',
     'incidents.js',
 ];
 
