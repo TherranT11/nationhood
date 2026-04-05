@@ -2694,10 +2694,11 @@ function setFilter(group, value) {
 function isQualified(contract) {
     if (!faction) return false;
     // All construction corps can bid on civil engineering
-    // Industrial requires Heavy Infrastructure or higher subsector
+    // Industrial requires Industrial Construction or Megaprojects subsector
     // Mega projects require Megaprojects subsector
     if (contract.sector === 'mega_project' && faction.corp_subsector !== 'Megaprojects') return false;
-    if (contract.sector === 'industrial' && !['Heavy Infrastructure', 'Megaprojects'].includes(faction.corp_subsector)) return false;
+    // corp_subsector values: 'Civil Engineering', 'Industrial Construction', 'Megaprojects'
+    if (contract.sector === 'industrial' && !['Industrial Construction', 'Megaprojects'].includes(faction.corp_subsector)) return false;
     return true;
 }
 
