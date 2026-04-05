@@ -7340,6 +7340,10 @@ async function resolveExpiredVotes(supabase, nationId) {
                                 if (taErr) {
                                     console.error('[bilateral] trade_agreements insert failed:', taErr.message);
                                 } else if (newTA) {
+                                    // Move proposal to terminal state so it doesn't show as duplicate active agreement
+                                    await supabase.from('diplomatic_proposals')
+                                        .update({ status: 'enacted' })
+                                        .eq('id', bill.diplomatic_proposal_id);
                                     if (pd.agreement_type === 'economic_aid') {
                                         const aidArt = activeArticles.find(a => a.type === 'aid_terms');
                                         if (aidArt) {
@@ -7444,6 +7448,10 @@ async function resolveExpiredVotes(supabase, nationId) {
                                 diplomatic_proposal_id: proposal.id
                             }).select('id').single().then(async ({ data: newTA, error: taErr }) => {
                                 if (taErr) { console.error('[ratification] trade_agreements insert failed:', taErr.message); return; }
+                                // Move proposal to terminal state so it doesn't show as duplicate active agreement
+                                await supabase.from('diplomatic_proposals')
+                                    .update({ status: 'enacted' })
+                                    .eq('id', proposal.id);
                                 // For economic aid: create aid_agreement_state so per-tick budget processing works
                                 if (pd.agreement_type === 'economic_aid' && newTA) {
                                     const aidArt = activeArticles.find(a => a.type === 'aid_terms');
