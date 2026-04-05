@@ -1425,6 +1425,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Ministry actions failed for ${nation.name} (non-fatal):`, minActErr);
         }
 
+        // Energy ministry: process oil reserve build cycles
+        try {
+            const energyResult = await processEnergyOilBuildCycles(supabase, nation, newTick);
+            if (energyResult.processed > 0) {
+                summary.energyOil = summary.energyOil || [];
+                summary.energyOil.push({ nation: nation.name, ...energyResult });
+            }
+        } catch (energyErr) {
+            console.error(`[advanceTick] Energy oil build failed for ${nation.name} (non-fatal):`, energyErr);
+        }
+
         // Apply GDP growth rate
         try {
             await applyGdpGrowth(supabase, nation, newTick);

@@ -58,6 +58,7 @@ const MODULE_FILES = [
     'protest.js',
     'political-actions.js',
     'election-simulation.js',
+    'energy.js',
     'sovereign-default.js',
     'incidents.js',
 ];

@@ -903,6 +903,9 @@ let rulingFactionId = null;
 let ministryActionUseCounts = {}; // { 'interior:enforcePublicOrder': 2, ... }
 let activeMinistryActions = {};   // { 'interior-enforcePublicOrder': true } — currently running
 let missingAmbassadorCount = 0; // pre-fetched for Foreign Minister performance panel
+let _energyBuildCycles = [];     // active oil build cycles from energy_oil_build_cycles table
+let _energyBuildUseCount = 0;    // number of build activations for AP cost scaling
+let _energyBuildConfirming = false; // double-fire lock
 let currentTick = 0;
 let lastElectionTick = null;
 let _protestCrisisData = null; // active protest crisis (T6/T7) for crisis card
@@ -1303,6 +1306,38 @@ async function renderGovernmentPage() {
                 }
             }
         } catch (e) { /* non-blocking — defaults to 0 use counts */ }
+
+        // Load active energy oil build cycles for Energy ministry display
+        try {
+            const { data: buildCycles } = await _supabase
+                .from('energy_oil_build_cycles')
+                .select('id, activated_on_tick, ticks_remaining, rate_per_tick, is_active')
+                .eq('nation_id', currentNation.id)
+                .eq('is_active', true);
+            _energyBuildCycles = buildCycles || [];
+            // Use count for AP scaling: count all build cycles ever (active + inactive)
+            const { count: buildUseCount } = await _supabase
+                .from('energy_oil_build_cycles')
+                .select('id', { count: 'exact', head: true })
+                .eq('nation_id', currentNation.id)
+                .eq('faction_id', currentFaction?.id || '00000000-0000-0000-0000-000000000000');
+            _energyBuildUseCount = buildUseCount || 0;
+            // Apply decay: -1 per 20 ticks of non-use
+            if (_energyBuildCycles.length === 0 && _energyBuildUseCount > 0) {
+                const { data: lastCycle } = await _supabase
+                    .from('energy_oil_build_cycles')
+                    .select('activated_on_tick')
+                    .eq('nation_id', currentNation.id)
+                    .eq('faction_id', currentFaction?.id || '00000000-0000-0000-0000-000000000000')
+                    .order('activated_on_tick', { ascending: false })
+                    .limit(1);
+                if (lastCycle?.[0]) {
+                    const ticksSince = currentTick - lastCycle[0].activated_on_tick;
+                    const decay = Math.floor(ticksSince / 20);
+                    _energyBuildUseCount = Math.max(0, _energyBuildUseCount - decay);
+                }
+            }
+        } catch (e) { _energyBuildCycles = []; _energyBuildUseCount = 0; }
 
         // Load education curriculum drift state for card display
         await loadCurriculumDriftState();
@@ -4701,10 +4736,151 @@ function buildEnergyActionRows(isMyMinistry) {
         </div>
     </div>`;
 
-    // Action 2: Build Oil Reserves — placeholder for Phase 3
+    // Action 2: Build Oil Reserves
+    const buildApCosts = [2, 3, 5, 7];
+    const buildUseCount = _energyBuildUseCount || 0;
+    const buildApCost = buildApCosts[Math.min(buildUseCount, 3)];
+    const ap = currentFaction?.action_points || 0;
+    const canUse = isMyMinistry === true;
+    const activeCycles = _energyBuildCycles.length;
+
+    // Calculate accumulation rate from oil_and_gas + manufacturing_output
+    const oilAndGas = Number(currentNation?.oil_and_gas ?? 50);
+    const manufacturing = Number(currentNation?.manufacturing_output ?? 50);
+    const buildRate = Math.round((oilAndGas + manufacturing) * 0.5);
+
+    // Cap check
+    const atCap = reserveMb >= reserveCap;
+    const nearCap = reserveMb >= reserveCap * 0.8;
+    const capRemaining = Math.max(0, reserveCap - reserveMb);
+
+    let buildDesc = 'Divert domestic oil supply into strategic government reserves. Reduces export supply by 3% for 6 ticks.';
+    let buildApLabel = `${buildApCost} AP${buildUseCount > 0 ? ' (use ' + (buildUseCount + 1) + ')' : ''}`;
+    let buildStateClass = '';
+    let buildBtnHtml = '';
+
+    if (atCap) {
+        buildStateClass = ' disabled';
+        buildDesc = 'Reserve at maximum capacity. Release reserves before building further.';
+        buildApLabel = '<span style="color:#3a3a2e;">AT CAPACITY</span>';
+        buildBtnHtml = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">LOCKED</div>`;
+    } else if (activeCycles > 0) {
+        // Show active state with cycle count
+        const maxTicks = Math.max(..._energyBuildCycles.map(c => c.ticks_remaining));
+        buildDesc = `Accumulating reserves. ${activeCycles} cycle${activeCycles > 1 ? 's' : ''} active. ${maxTicks} tick${maxTicks !== 1 ? 's' : ''} remaining. Reserve: ${reserveMb} Mb.`;
+        buildApLabel = `<span style="color:#5cb85c;">BUILDING</span>`;
+        // Can still stack another cycle
+        if (canUse && ap >= buildApCost) {
+            buildBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();confirmBuildOilReserves()">▶ +${buildApCost} AP</div>`;
+        } else if (!canUse) {
+            buildBtnHtml = '';
+        } else {
+            buildBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${buildApCost} AP">▶ ${buildApCost} AP</div>`;
+        }
+    } else if (!canUse) {
+        buildStateClass = ' disabled';
+        buildBtnHtml = '';
+    } else if (ap < buildApCost) {
+        buildStateClass = ' disabled';
+        buildBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${buildApCost} AP">▶ ${buildApCost} AP</div>`;
+    } else {
+        buildBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();confirmBuildOilReserves()">▶ ${buildApCost} AP</div>`;
+    }
+
+    const buildTagsHtml = `<span class="tag tag--positive" style="color:#c8a64e;border-color:#c8a64e44;">RESERVE +${buildRate} Mb/TICK</span>`
+        + `<span class="tag tag--negative">FUEL PRICES ↑</span>`
+        + `<span class="tag tag--negative">ENERGY GEN ↓</span>`
+        + `<span class="tag tag--neutral">NO TICK COST</span>`;
+
+    let buildExtraHtml = '';
+    if (nearCap && !atCap) {
+        buildExtraHtml = `<div style="font-family:var(--font-mono);font-size:7px;color:#c8a64e;margin-top:2px;">Reserve approaching capacity — ${capRemaining} Mb remaining.</div>`;
+    }
+
+    html += `<div class="ministry-action${buildStateClass}" id="energy-buildOilReserves">
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">Build Oil Reserves</span>
+            <span class="ministry-action__ap-cost">${buildApLabel}</span>
+        </div>
+        <div class="ministry-action__desc">${escapeHtml(buildDesc)}${buildExtraHtml}</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags">${buildTagsHtml}</div>
+            <div id="energy-buildOilReserves-btns">${buildBtnHtml}</div>
+        </div>
+    </div>`;
+
     // Action 3: Release Oil Reserves — placeholder for Phase 4
 
     return html;
+}
+
+// Confirm and execute Build Oil Reserves
+async function confirmBuildOilReserves() {
+    if (_energyBuildConfirming) return;
+    if (!currentFaction || !currentNation) return;
+    if (!isMyMinistryByKey('energy')) return;
+
+    const buildApCosts = [2, 3, 5, 7];
+    const useCount = _energyBuildUseCount || 0;
+    const apCost = buildApCosts[Math.min(useCount, 3)];
+    const ap = currentFaction?.action_points || 0;
+    if (ap < apCost) { alert('Insufficient AP.'); return; }
+
+    const reserveMb = Number(currentNation?.strategic_oil_reserve_mb || 0);
+    const pop = currentNation?.population || 20000000;
+    const reserveCap = Math.round((pop / 1000000) * 20);
+    if (reserveMb >= reserveCap) { alert('Reserve at maximum capacity. Release reserves before building further.'); return; }
+
+    // Calculate rate from oil_and_gas + manufacturing_output
+    const oilAndGas = Number(currentNation?.oil_and_gas ?? 50);
+    const manufacturing = Number(currentNation?.manufacturing_output ?? 50);
+    const buildRate = Math.round((oilAndGas + manufacturing) * 0.5);
+
+    _energyBuildConfirming = true;
+    try {
+        // Deduct AP
+        const newAP = Math.max(0, ap - apCost);
+        const { error: apErr } = await _supabase
+            .from('factions')
+            .update({ action_points: newAP })
+            .eq('id', currentFaction.id);
+        if (apErr) throw apErr;
+
+        // Insert build cycle
+        const { error: cycleErr } = await _supabase
+            .from('energy_oil_build_cycles')
+            .insert({
+                nation_id: currentNation.id,
+                faction_id: currentFaction.id,
+                activated_on_tick: currentTick,
+                ticks_remaining: 6,
+                rate_per_tick: buildRate,
+                is_active: true
+            });
+        if (cycleErr) {
+            // Refund AP on failure
+            await _supabase.from('factions').update({ action_points: ap }).eq('id', currentFaction.id);
+            throw cycleErr;
+        }
+
+        // Update local state
+        currentFaction.action_points = newAP;
+        _energyBuildUseCount = useCount + 1;
+        _energyBuildCycles.push({
+            activated_on_tick: currentTick,
+            ticks_remaining: 6,
+            rate_per_tick: buildRate,
+            is_active: true
+        });
+
+        // Re-render the government page to reflect changes
+        await renderGovernmentPage();
+
+    } catch (err) {
+        alert('Build Oil Reserves failed: ' + (err.message || 'Unknown error'));
+    } finally {
+        _energyBuildConfirming = false;
+    }
 }
 
 function _curriculumAxisLabel(axisId) {
