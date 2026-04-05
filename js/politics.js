@@ -80,7 +80,7 @@ initPage('politics', async (state) => {
     // Fetch total seats from all parties
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name, custom_logo_url, party_logo, party_description, momentum, momentum_log')
+        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name, leader_age, founded_tick, custom_logo_url, party_logo, party_description, momentum, momentum_log')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -5263,12 +5263,8 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
     const ideoMap = toMap(allPartyIdeologies, 'faction_id');
     const { score: nationalGovScore } = computeGovernanceScore(nation, administration?.stats_at_start, administration?.started_at_tick, currentTick);
 
-    // Fetch leader data for each rival (factions table has leader columns)
-    const { data: rivalFactionData } = await _supabase
-        .from('factions')
-        .select('id, leader_first_name, leader_last_name, leader_age, founded_tick, ideology_value_1, ideology_value_2')
-        .in('id', rivalIds);
-    const factionDataMap = toMap(rivalFactionData);
+    // allParties already includes leader_age + founded_tick — no extra query needed
+    const factionDataMap = toMap(rivals);
 
     // Determine coalition membership
     const coalitionPartyIds = (coalition && coalition.party_ids) ? coalition.party_ids : [];
