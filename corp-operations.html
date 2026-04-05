@@ -7386,7 +7386,13 @@ async function _subLiquidate(propId, mode) {
     _subActionLock = true;
     try {
         const propIds = nationProps.map(p => p.id);
-        await _supabase.from('corp_properties').update({ is_active: false, sub_cash: 0 }).in('id', propIds);
+        // Use .eq() for single property, .in() for multiple — avoids Supabase .in() 400 on single-element arrays
+        const propQuery = _supabase.from('corp_properties').update({ is_active: false, sub_cash: 0 });
+        if (propIds.length === 1) {
+            await propQuery.eq('id', propIds[0]);
+        } else {
+            await propQuery.in('id', propIds);
+        }
         const newCash = Number(faction?.corp_cash_reserves ?? 0) + totalReturn;
         await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
         faction.corp_cash_reserves = newCash;
@@ -7502,7 +7508,13 @@ async function subMerge(propId) {
         const parentNationId = faction.nation_id;
         if (sourceProps.length > 0) {
             const nonHqIds = sourceProps.filter(p => p.id !== sourceHq.id).map(p => p.id);
-            if (nonHqIds.length > 0) {
+            if (nonHqIds.length === 1) {
+                const { error: propErr } = await _supabase.from('corp_properties').update({
+                    nation_id: parentNationId,
+                    type: 'office',
+                }).eq('id', nonHqIds[0]);
+                if (propErr) throw propErr;
+            } else if (nonHqIds.length > 1) {
                 const { error: propErr } = await _supabase.from('corp_properties').update({
                     nation_id: parentNationId,
                     type: 'office',
