@@ -5078,7 +5078,8 @@ async function confirmReleaseOilReserves() {
             reserve_remaining: reserveMb - amount
         };
 
-        // Execute via RPC (deducts AP atomically)
+        // Execute via RPC — atomically deducts AP, inserts action log, and deducts reserve
+        const newReserve = Math.max(0, reserveMb - amount);
         const { error: rpcErr } = await _supabase.rpc('execute_ministry_action', {
             p_nation_id: currentNation.id,
             p_faction_id: currentFaction.id,
@@ -5087,21 +5088,10 @@ async function confirmReleaseOilReserves() {
             p_ap_cost: releaseApCost,
             p_applied_at_tick: currentTick,
             p_stat_effects: statEffects,
-            p_action_data: actionData
+            p_action_data: actionData,
+            p_nation_stat_updates: { strategic_oil_reserve_mb: newReserve }
         });
         if (rpcErr) throw rpcErr;
-
-        // Deduct reserve immediately
-        const newReserve = Math.max(0, reserveMb - amount);
-        const { error: resErr } = await _supabase
-            .from('nations')
-            .update({ strategic_oil_reserve_mb: newReserve })
-            .eq('id', currentNation.id);
-        if (resErr) {
-            console.error('[Energy] Reserve deduction failed — refunding AP:', resErr.message);
-            await _supabase.from('factions').update({ action_points: ap }).eq('id', currentFaction.id);
-            throw new Error('Reserve deduction failed. AP refunded.');
-        }
 
         // Update local state
         currentFaction.action_points = Math.max(0, ap - releaseApCost);

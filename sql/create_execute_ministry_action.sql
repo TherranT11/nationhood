@@ -11,7 +11,8 @@ CREATE OR REPLACE FUNCTION execute_ministry_action(
     p_ap_cost          INT,
     p_applied_at_tick  INT,
     p_stat_effects     JSONB,
-    p_action_data      JSONB DEFAULT '{}'::jsonb
+    p_action_data      JSONB DEFAULT '{}'::jsonb,
+    p_nation_stat_updates JSONB DEFAULT NULL
 )
 RETURNS UUID
 LANGUAGE plpgsql
@@ -20,6 +21,8 @@ AS $$
 DECLARE
     v_new_ap INT;
     v_action_id UUID;
+    v_key TEXT;
+    v_val NUMERIC;
 BEGIN
     -- 0. Verify the caller owns this faction (auth.uid() = faction PK)
     IF p_faction_id != auth.uid() THEN
@@ -59,6 +62,15 @@ BEGIN
         false, p_applied_at_tick
     )
     RETURNING id INTO v_action_id;
+
+    -- 4. Apply immediate nation stat updates atomically (e.g. reserve deduction)
+    IF p_nation_stat_updates IS NOT NULL THEN
+        FOR v_key, v_val IN SELECT * FROM jsonb_each_text(p_nation_stat_updates)
+        LOOP
+            EXECUTE format('UPDATE nations SET %I = $1 WHERE id = $2', v_key)
+            USING v_val::NUMERIC, p_nation_id;
+        END LOOP;
+    END IF;
 
     RETURN v_action_id;
 END;
