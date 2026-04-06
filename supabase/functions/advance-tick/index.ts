@@ -28170,7 +28170,7 @@ async function processTariffRelationsPenalty(supabase, nation) {
     for (const rel of relations) {
         const currentScore = Number(rel.relation_score ?? 50);
         if (currentScore <= FLOOR) continue;
-        const newScore = Math.max(FLOOR, Math.round((currentScore - PENALTY) * 10) / 10);
+        const newScore = Math.max(FLOOR, Math.round(currentScore - PENALTY));
         if (newScore !== currentScore) {
             const { error } = await supabase.from('diplomatic_relations')
                 .update({ relation_score: newScore })
@@ -29640,7 +29640,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 } else {
                     newScore = Math.min(0, score + decayRate);
                 }
-                newScore = Math.round(newScore * 100) / 100;
+                newScore = Math.round(newScore);
 
                 if (newScore !== score) {
                     await supabase.from('diplomatic_relations')
