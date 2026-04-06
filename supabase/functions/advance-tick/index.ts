@@ -11342,6 +11342,115 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
     return { success: true, electionTick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS };
 }
 
+/**
+ * Semi-Presidential exclusive: President dissolves parliament, triggering snap elections.
+ * Cooldown: cannot dissolve within 24 ticks of last dissolution or 12 ticks of parliament forming.
+ * Effects: stability -3, PM's party +5 momentum (sympathy effect).
+ */
+async function dissolveParliamentAction(supabase, nationId, presidentFactionId) {
+    const { data: nation } = await supabase.from('nations')
+        .select('name, government_type, stability, last_dissolution_tick, parliament_formed_tick')
+        .eq('id', nationId).single();
+    if (!isSemiPresidential(nation)) throw new Error('Dissolve Parliament is only available in Semi-Presidential systems');
+
+    // Fetch current tick
+    const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Cooldown: 24 ticks since last dissolution
+    if (nation.last_dissolution_tick && (currentTick - nation.last_dissolution_tick) < 24) {
+        const remaining = 24 - (currentTick - nation.last_dissolution_tick);
+        throw new Error(`Cannot dissolve parliament — ${remaining} tick(s) remaining on dissolution cooldown`);
+    }
+
+    // Cooldown: 12 ticks since parliament formed
+    if (nation.parliament_formed_tick && (currentTick - nation.parliament_formed_tick) < 12) {
+        const remaining = 12 - (currentTick - nation.parliament_formed_tick);
+        throw new Error(`Cannot dissolve parliament — new parliament must serve at least 12 ticks (${remaining} remaining)`);
+    }
+
+    // Verify president's party
+    const { data: president } = await supabase.from('presidents')
+        .select('faction_id').eq('nation_id', nationId).eq('is_active', true).maybeSingle();
+    if (!president || president.faction_id !== presidentFactionId) {
+        throw new Error('Only the President\'s party can dissolve parliament');
+    }
+
+    // Get PM faction for sympathy effect
+    const { data: hog } = await supabase.from('head_of_government')
+        .select('faction_id').eq('nation_id', nationId).eq('active', true).maybeSingle();
+    const pmFactionId = hog?.faction_id;
+
+    // === EFFECTS ===
+
+    // 1. Stability -3
+    const newStability = Math.max(0, Number(nation.stability ?? 50) - 3);
+    await supabase.from('nations').update({
+        stability: newStability,
+        last_dissolution_tick: currentTick
+    }).eq('id', nationId);
+
+    // 2. PM's party gets +5 momentum (sympathy effect)
+    if (pmFactionId) {
+        try {
+            await supabase.rpc('adjust_momentum', {
+                p_faction_id: pmFactionId,
+                p_delta: 5,
+                p_label: 'Parliament dissolved — sympathy effect (+5)',
+                p_tick: currentTick
+            });
+        } catch (momErr) {
+            // Fallback: direct update
+            const { data: pmFaction } = await supabase.from('factions')
+                .select('momentum').eq('id', pmFactionId).single();
+            if (pmFaction) {
+                await supabase.from('factions').update({
+                    momentum: Math.min(100, (pmFaction.momentum || 0) + 5)
+                }).eq('id', pmFactionId);
+            }
+        }
+    }
+
+    // 3. Set government to caretaker
+    await supabase.from('government_formations')
+        .update({ status: 'caretaker' })
+        .eq('nation_id', nationId)
+        .in('status', ['formed', 'active']);
+
+    // 4. Deactivate PM
+    await supabase.from('head_of_government')
+        .update({ active: false })
+        .eq('nation_id', nationId).eq('active', true);
+
+    // 5. Freeze all pending bills
+    await supabase.from('bills')
+        .update({ status: 'frozen' })
+        .eq('nation_id', nationId)
+        .in('status', ['committee', 'floor']);
+
+    // 6. Schedule snap election (2 ticks from now)
+    const EARLY_ELECTION_TICKS = 2;
+    await supabase.from('elections').insert({
+        nation_id: nationId,
+        election_type: 'parliamentary',
+        election_tick: currentTick + EARLY_ELECTION_TICKS,
+        status: 'scheduled'
+    });
+
+    // 7. Fire system event
+    try {
+        await supabase.rpc('fire_system_event', {
+            p_trigger_key: 'parliament_dissolved',
+            p_nation_id: nationId,
+            p_tick: currentTick,
+            p_placeholders: { nation: nation.name || '' }
+        });
+    } catch (e) { /* non-blocking */ }
+
+    console.log(`[dissolveParliamentAction] President dissolved parliament in ${nation.name}. Snap election in ${EARLY_ELECTION_TICKS} ticks.`);
+    return { success: true, electionTick: currentTick + EARLY_ELECTION_TICKS };
+}
+
 
 // ==================== GOVERNMENT VACANCY & FORMATION ESCALATION ====================
 
@@ -12169,6 +12278,11 @@ async function processElections(supabase, nation, currentTick) {
         await supabase.from('elections')
             .update({ status: 'completed', results: data, election_tick: currentTick })
             .eq('id', election.id);
+
+        // Track parliament formation tick for dissolution cooldown
+        if (electionType === 'parliamentary') {
+            await supabase.from('nations').update({ parliament_formed_tick: currentTick }).eq('id', nation.id);
+        }
 
         // Use the specific election we just completed (not a generic "most recent" query
         // which could return a different election type processed earlier in this tick)
@@ -13653,6 +13767,41 @@ async function processSemiPresPMFallback(supabase, nation, currentTick) {
     } catch (e) {
         console.error(`[processSemiPresPMFallback] Failed for ${nation.name}:`, e);
     }
+}
+
+/**
+ * Semi-Presidential cohabitation: when President and PM are from different parties,
+ * apply ongoing friction effects each tick.
+ * efficiency -0.1/tick, polarization +0.1/tick, legitimacy -0.1/tick
+ */
+async function processCohabitationEffects(supabase, nation, currentTick) {
+    if (!isSemiPresidential(nation)) return;
+
+    // Fetch president faction
+    const { data: president } = await supabase.from('presidents')
+        .select('faction_id').eq('nation_id', nation.id).eq('is_active', true).maybeSingle();
+    if (!president) return;
+
+    // Fetch PM faction
+    const { data: hog } = await supabase.from('head_of_government')
+        .select('faction_id').eq('nation_id', nation.id).eq('active', true).maybeSingle();
+    if (!hog) return;
+
+    // Cohabitation = different parties
+    if (president.faction_id === hog.faction_id) return;
+
+    // Apply friction effects
+    const eff = Math.max(0, Number(nation.efficiency ?? 50) - 0.1);
+    const pol = Math.min(100, Number(nation.polarization ?? 50) + 0.1);
+    const leg = Math.max(0, Number(nation.legitimacy ?? 50) - 0.1);
+
+    await supabase.from('nations').update({
+        efficiency: Math.round(eff * 100) / 100,
+        polarization: Math.round(pol * 100) / 100,
+        legitimacy: Math.round(leg * 100) / 100
+    }).eq('id', nation.id);
+
+    console.log(`[processCohabitationEffects] Cohabitation friction for ${nation.name}: eff=${eff.toFixed(2)} pol=${pol.toFixed(2)} leg=${leg.toFixed(2)}`);
 }
 
 /**
@@ -30427,6 +30576,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         await processPresidentialTermEnd(supabase, nation, newTick);
         await processParliamentaryPMTimeout(supabase, nation, newTick);
         await processSemiPresPMFallback(supabase, nation, newTick);
+        await processCohabitationEffects(supabase, nation, newTick);
 
         // Incumbent campaign bonuses (+2 approval/tick during pre-election window)
         await processIncumbentCampaignBonuses(supabase, nation, newTick);

@@ -61,7 +61,7 @@ import { loadSeats, detectHeadFaction, fetchActiveCoalition } from './js/game/go
 import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, buildMinistryBaselines } from './js/game/stats.js';
 import { formatStatName, autoAppointPartyLeaderAsPM, getNationNames, resignPM } from './js/game/political-actions.js';
 import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
-import { callEarlyElectionsAction, closeAdministration, rolloverAdministration, dissolveCoalition } from './js/game/elections.js';
+import { callEarlyElectionsAction, closeAdministration, rolloverAdministration, dissolveCoalition, dissolveParliament } from './js/game/elections.js';
 import { nominateMinister, nominatePMCandidate } from './js/game/presidential.js';
 import { EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder } from './js/game/executive-orders.js';
 import { PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game/protest.js';
@@ -1710,6 +1710,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                     <div class="coalition-party-tag" style="border-left:3px solid ${getPartyColorById(presidentFactionId)};padding-left:8px;">${getPartyLogoById(presidentFactionId) || getPartyCustomLogoById(presidentFactionId) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: getPartyCustomLogoById(presidentFactionId), iconKey: getPartyLogoById(presidentFactionId), size: 16, color: getPartyColorById(presidentFactionId) })}</span>` : ''}${escapeHtml(presPartyName)}<span class="seats">${presPartySeats} Seats</span></div>
                 </div>
                 ${renderImpeachmentButton()}
+                ${isSemiPresidential(currentNation) && isPresidentParty ? renderDissolveParliamentButton() : ''}
             </div>`;
     }
 
@@ -1822,6 +1823,41 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         ${renderCaretakerBanner()}
     </div>`;
 }
+
+// ==================== DISSOLVE PARLIAMENT (SEMI-PRESIDENTIAL) ====================
+
+function renderDissolveParliamentButton() {
+    // Check cooldowns
+    const lastDissolution = currentNation.last_dissolution_tick;
+    const parlFormed = currentNation.parliament_formed_tick;
+    const dissolutionCooldown = lastDissolution ? Math.max(0, 24 - (currentTick - lastDissolution)) : 0;
+    const parlAgeCooldown = parlFormed ? Math.max(0, 12 - (currentTick - parlFormed)) : 0;
+    const cooldownLeft = Math.max(dissolutionCooldown, parlAgeCooldown);
+    const onCooldown = cooldownLeft > 0;
+
+    return `
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-main);">
+            <button class="btn btn--danger" style="width:100%;font-size:0.75rem;padding:8px 12px;${onCooldown ? 'opacity:0.5;cursor:not-allowed;' : ''}"
+                    onclick="handleDissolveParliament()" ${onCooldown ? 'disabled' : ''}>
+                DISSOLVE PARLIAMENT
+            </button>
+            ${onCooldown ? `<div style="font-size:0.65rem;color:var(--text-tertiary);margin-top:4px;text-align:center;">${cooldownLeft} tick(s) until dissolution available</div>` : ''}
+            <div style="font-size:0.65rem;color:var(--red);margin-top:4px;text-align:center;opacity:0.7;">Triggers snap elections · Stability -3 · PM party +5 momentum</div>
+        </div>`;
+}
+
+async function handleDissolveParliament() {
+    if (!confirm('Dissolve Parliament? This will trigger snap elections, cost -3 Stability, and give the PM\'s party +5 momentum. This cannot be undone.')) return;
+    try {
+        await dissolveParliament(_supabase, currentNation.id, currentFaction.id);
+        alert('Parliament dissolved — snap elections scheduled.');
+        await renderGovernmentPage();
+    } catch (e) {
+        alert('Failed: ' + (e.message || e));
+    }
+}
+
+window.handleDissolveParliament = handleDissolveParliament;
 
 // ==================== SEMI-PRESIDENTIAL PM NOMINATION ====================
 
