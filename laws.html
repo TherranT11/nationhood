@@ -2069,23 +2069,6 @@ async function addArticle() {
             document.getElementById('submit-bill-btn').disabled = false;
             _hideAllArticleButtons();
             return;
-        } else if (selectedFoundationalType === 'repeal_parliamentary_term') {
-            // Repeal the active Legislative Term Length law
-            const parlTermYears = (currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS) / (GAME_CONFIG.TICKS_PER_YEAR || 12);
-            draftArticles = [];
-            draftArticles.push({
-                articleNumber: 2,
-                isFoundational: true,
-                foundationalSubtype: 'repeal_parliamentary_term',
-                isFoundationalRepeal: true,
-                policy: null
-            });
-            renderDraftArticles(); hideAddArticleForm();
-            document.getElementById('bill-name-input').value = `Repeal: Legislative Term Length Act (${parlTermYears} Years)`;
-            document.getElementById('bill-name-section').style.display = 'block';
-            document.getElementById('submit-bill-btn').disabled = false;
-            _hideAllArticleButtons();
-            return;
         } else if (selectedFoundationalType === 'parliamentary_term_length') {
             const parlTermSelect = document.getElementById('foundational-parl-term-select');
             const newParlTermTicks = parseInt(parlTermSelect?.value, 10);
