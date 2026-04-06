@@ -720,6 +720,21 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
                 if (wfErr) console.error(`[PropertyEffects] Workforce cap update failed for ${corp.faction_name}:`, wfErr.message);
                 else console.log(`[PropertyEffects] ${corp.faction_name}: workforce capped at ${totalCapacity} (was ${totalWf}, -${excess} excess)`);
             }
+
+            // ── Operational Efficiency ──
+            // Company-wide staffing ratio: total workforce / total property capacity × 100
+            // Represents how well-utilized the corporation's property portfolio is.
+            // Understaffed buildings → low efficiency → wasted overhead.
+            if (totalCapacity > 0) {
+                const effectiveWf = Math.min(totalWf, totalCapacity);
+                const efficiency = Math.min(100, Math.round((effectiveWf / totalCapacity) * 100));
+                const { error: effErr } = await supabase
+                    .from('factions')
+                    .update({ corp_operational_efficiency: efficiency })
+                    .eq('id', corp.id);
+                if (effErr) console.warn(`[PropertyEffects] Efficiency update failed for ${corp.faction_name}:`, effErr.message);
+                else console.log(`[PropertyEffects] ${corp.faction_name}: operational efficiency = ${efficiency}% (${effectiveWf}/${totalCapacity})`);
+            }
         }
     }
 }
