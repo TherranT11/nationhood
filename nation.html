@@ -1839,22 +1839,23 @@ function renderMigrationDestsPanel(nation) {
 
 async function renderNationPage(nation) {
     // Load migration flows in parallel with render, append below immigration tab when ready
-    loadMigrationFlows(nation.id).then(function() {
-        var immPanel = document.getElementById('nation-tab-immigration');
-        if (immPanel) {
-            var flowHtml = '<div class="imm-panels-grid">'
-                + renderMigrationSourcesPanel(nation)
-                + renderMigrationDestsPanel(nation)
-                + '</div>';
-            // Append flow panels after existing immigration tab content
-            var flowContainer = document.getElementById('migration-flow-panels');
-            if (flowContainer) {
-                flowContainer.innerHTML = flowHtml;
-            } else {
-                immPanel.insertAdjacentHTML('beforeend', flowHtml);
+    try {
+        loadMigrationFlows(nation.id).then(function() {
+            var immPanel = document.getElementById('nation-tab-immigration');
+            if (immPanel) {
+                var flowHtml = '<div class="imm-panels-grid">'
+                    + renderMigrationSourcesPanel(nation)
+                    + renderMigrationDestsPanel(nation)
+                    + '</div>';
+                var flowContainer = document.getElementById('migration-flow-panels');
+                if (flowContainer) {
+                    flowContainer.innerHTML = flowHtml;
+                } else {
+                    immPanel.insertAdjacentHTML('beforeend', flowHtml);
+                }
             }
-        }
-    });
+        }).catch(function(err) { console.warn('[nation] Migration flow load failed:', err); });
+    } catch (e) { console.warn('[nation] Migration flows not available:', e); }
 
     var h = '';
 
