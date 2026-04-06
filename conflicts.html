@@ -778,7 +778,9 @@ function renderIssueEffects(issue, modifiers) {
         }
     }
 
-    const effects = Object.values(effectMap).sort((a, b) => a.delta - b.delta);
+    const effects = Object.values(effectMap)
+        .filter(e => e.nationId === currentNation.id) // only show your nation's effects
+        .sort((a, b) => a.delta - b.delta);
     if (effects.length === 0) {
         el.innerHTML = '<div class="sidebar-empty">No active effects.</div>';
         return;
