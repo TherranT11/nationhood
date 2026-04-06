@@ -9776,6 +9776,52 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
         return true;
     }
 
+    // ── Anti-Disinformation Act subtype ──
+    if (bill.proposed_anti_disinformation_act) {
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+        // Press freedom ceiling -5: reduce current press_freedom by 5 (ongoing cap enforced per tick)
+        const currentPF = Number(nation?.press_freedom ?? 50);
+        const newPF = Math.max(0, currentPF - 5);
+
+        await supabase.from('nations').update({
+            anti_disinformation_act: true,
+            anti_disinformation_act_enacted_tick: currentTick,
+            press_freedom: newPF,
+            legitimacy: Math.max(0, (nation?.legitimacy ?? 50) - 4),
+            polarization: Math.min(100, (nation?.polarization ?? 0) + 4)
+        }).eq('id', bill.nation_id);
+
+        // Government approval: +7 one-time (perceived stability)
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, 7, 'anti_disinformation_act');
+
+        // -5 relations with all nations
+        const { data: allRels } = await supabase.from('diplomatic_relations')
+            .select('id, nation_a_id, nation_b_id, relation_score')
+            .or(`nation_a_id.eq.${bill.nation_id},nation_b_id.eq.${bill.nation_id}`);
+        if (allRels && allRels.length > 0) {
+            for (const rel of allRels) {
+                const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) - 5));
+                await supabase.from('diplomatic_relations').update({ relation_score: Math.round(newScore) }).eq('id', rel.id);
+            }
+        }
+
+        await supabase.from('event_log').insert({
+            nation_id: bill.nation_id,
+            event_name: 'FOUNDATIONAL_LAW_PASSED',
+            trigger_key: 'anti_disinformation_act',
+            description_used: 'The Anti-Disinformation Act has passed. The government now defines what constitutes disinformation. Independent journalists, academics, and opposition figures can be sanctioned. Press freedom ceiling permanently reduced. Freedom index will drain for 20 ticks. Relations with all nations worsened.',
+            category: 'POLITICAL',
+            effects_applied: { law: 'anti_disinformation_act', press_freedom_ceiling: -5, freedom_index_drain: { per_tick: -0.2, ticks: 20 }, gov_approval: 7, legitimacy: -4, polarization: 4, relations: -5 },
+            fired_at_tick: currentTick
+        });
+
+        console.log(`[enactFoundationalBill] Anti-Disinformation Act enacted for nation ${bill.nation_id}`);
+        return true;
+    }
+
     // ── Electoral Makeup subtype ──
     // Validate proposed_seats BEFORE marking the bill as passed
     let newTotalSeats = bill.proposed_seats;
@@ -19565,6 +19611,20 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
     if (nation.state_media_control) {
         const pf = nationUpdates.press_freedom ?? Number(nation.press_freedom ?? 50);
         if (pf > 40) nationUpdates.press_freedom = 40;
+    }
+    // Anti-Disinformation Act: press freedom ceiling -5 (cap at 95, stacks with state media cap)
+    if (nation.anti_disinformation_act) {
+        const pfCap = nation.state_media_control ? 35 : 95;
+        const pf = nationUpdates.press_freedom ?? Number(nation.press_freedom ?? 50);
+        if (pf > pfCap) nationUpdates.press_freedom = pfCap;
+    }
+    // Anti-Disinformation Act: freedom_index -0.2/tick for 20 ticks after enactment
+    if (nation.anti_disinformation_act && nation.anti_disinformation_act_enacted_tick != null) {
+        const ticksSinceEnacted = currentTick - nation.anti_disinformation_act_enacted_tick;
+        if (ticksSinceEnacted >= 0 && ticksSinceEnacted < 20) {
+            const fi = nationUpdates.freedom_index ?? Number(nation.freedom_index ?? 50);
+            nationUpdates.freedom_index = Math.max(0, fi - 0.2);
+        }
     }
 
     if (Object.keys(nationUpdates).length > 0) {
