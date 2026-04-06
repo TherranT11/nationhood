@@ -726,6 +726,15 @@ function renderIssueHistory(issue, history) {
 // ==================== ISSUE ACTIONS PANEL ====================
 
 let issueActionExecuting = false;
+let _actionIssue = null;    // current issue for action click handler
+let _actionMods = null;     // current modifiers for action click handler
+
+// Global click handler for issue action items (inline onclick is more reliable than addEventListener)
+window._onIssueActionClick = function(actionKey) {
+    if (_actionIssue && _actionMods !== null) {
+        showIssueActionModal(actionKey, _actionIssue, _actionMods);
+    }
+};
 
 const ACTION_ROLE_LABELS = {
     foreign_minister: 'FM',
@@ -798,15 +807,11 @@ function renderIssueActions(issue, modifiers, actionsTaken) {
     html += renderActionList('unilateral', unilateral, myUsedActions, actedThisTick, false, issue);
     html += renderActionList('threatening', threatening, myUsedActions, actedThisTick, false, issue);
 
-    el.innerHTML = html;
+    // Store for global click handler
+    _actionIssue = issue;
+    _actionMods = modifiers;
 
-    // Wire action items
-    el.querySelectorAll('.ia-item:not(.ia-item--used):not(.ia-item--locked)').forEach(item => {
-        item.addEventListener('click', () => {
-            const actionKey = item.dataset.actionKey;
-            showIssueActionModal(actionKey, issue, modifiers);
-        });
-    });
+    el.innerHTML = html;
 }
 
 function renderActionList(category, actions, usedActions, actedThisTick, hasFriction, issue) {
@@ -840,7 +845,8 @@ function renderActionList(category, actions, usedActions, actedThisTick, hasFric
         if (action.special === 'incident_trigger_50') tags += `<span class="ia-tag ia-tag--danger">50% triggers Incident</span>`;
         if (action.special === 'incident_trigger_25') tags += `<span class="ia-tag ia-tag--danger">25% triggers Incident</span>`;
 
-        html += `<div class="ia-item ${cls}" data-action-key="${action.key}">
+        const clickAttr = (!isUsed && !isLocked) ? `onclick="window._onIssueActionClick('${action.key}')"` : '';
+        html += `<div class="ia-item ${cls}" data-action-key="${action.key}" ${clickAttr}>
             <div class="ia-icon ia-icon--${color}">${idx}</div>
             <div class="ia-info">
                 <div class="ia-name ia-name--${color}">${escapeHtml(action.name)}</div>
