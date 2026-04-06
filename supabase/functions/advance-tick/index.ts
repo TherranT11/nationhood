@@ -361,6 +361,17 @@ function getGovDisplayLabel(nation) {
     return 'Parliamentary Democracy';
 }
 
+const MINISTRY_DOMAINS = {
+    foreign: 'presidential', defense: 'presidential', trade: 'presidential',
+    prime_minister: 'domestic', interior: 'domestic', finance: 'domestic',
+    education: 'domestic', healthcare: 'domestic', labor: 'domestic',
+    justice: 'domestic', energy: 'domestic', transportation: 'domestic',
+    security: 'domestic'
+};
+const PRESIDENTIAL_DOMAIN_MINISTRIES = ['foreign', 'defense', 'trade'];
+function isPresidentialDomainMinistry(key) { return PRESIDENTIAL_DOMAIN_MINISTRIES.includes(key); }
+function getMinistryDomain(key) { return MINISTRY_DOMAINS[key] || 'domestic'; }
+
 // ────────── trade-constants ──────────
 
 /**
@@ -13127,7 +13138,25 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
         .select('id, faction_id')
         .eq('nation_id', nationId).eq('is_active', true)
         .limit(1).maybeSingle();
-    if (!president || president.faction_id !== presidentFactionId) throw new Error('Only the President\'s party can nominate ministers');
+    // Semi-Presidential: PM nominates ministers (not president)
+    if (isSemiPresidential(nation)) {
+        const { data: hog } = await supabase.from('head_of_government')
+            .select('faction_id').eq('nation_id', nationId).eq('active', true).maybeSingle();
+        if (!hog || hog.faction_id !== presidentFactionId) {
+            throw new Error('Only the PM\'s party can nominate ministers in Semi-Presidential systems');
+        }
+        // Presidential-domain ministries must be from president's party
+        if (isPresidentialDomainMinistry(ministryKey)) {
+            if (nominee.partyId !== president.faction_id) {
+                throw new Error(`${ministryKey} minister must be from the President's party in Semi-Presidential systems`);
+            }
+        }
+    } else {
+        // Pure Presidential: caller must be president's party
+        if (!president || president.faction_id !== presidentFactionId) {
+            throw new Error('Only the President\'s party can nominate ministers');
+        }
+    }
 
     // Validate: no existing pending confirmation for this slot
     const { data: existingMinistry } = await supabase.from('ministries')
@@ -13192,7 +13221,8 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
 
     const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministerTitle}`;
     const majoritySeats = Math.ceil(nationTotalSeats * 0.5) + 1;
-    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${majoritySeats} of ${nationTotalSeats} seats) is required for confirmation.`;
+    const nominatorTitle = isSemiPresidential(nation) ? 'Prime Minister' : 'President';
+    const preamble = `The ${nominatorTitle} nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${majoritySeats} of ${nationTotalSeats} seats) is required for confirmation.`;
 
     const { data: bill, error: billErr } = await supabase.from('bills').insert({
         nation_id: nationId,

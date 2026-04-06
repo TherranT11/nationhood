@@ -44,6 +44,61 @@ export function hasParliamentaryPM(input) { return isParliamentaryDemocracy(inpu
 
 export function isGovernmentPresidential(nation) { return hasElectedPresident(nation); }
 
+// ==================== SEMI-PRESIDENTIAL DOMAIN SPLIT ====================
+
+/** Ministry domain: 'presidential' ministries are under the President's policy area,
+ *  'domestic' ministries are under the PM's policy area.
+ *  In semi-presidential cohabitation, the PM appoints all ministers but
+ *  presidential-domain slots MUST be filled from the President's party. */
+export const MINISTRY_DOMAINS = Object.freeze({
+    foreign:        'presidential',
+    defense:        'presidential',
+    trade:          'presidential',
+    prime_minister: 'domestic',
+    interior:       'domestic',
+    finance:        'domestic',
+    education:      'domestic',
+    healthcare:     'domestic',
+    labor:          'domestic',
+    justice:        'domestic',
+    energy:         'domestic',
+    transportation: 'domestic',
+    security:       'domestic'
+});
+
+export const PRESIDENTIAL_DOMAIN_MINISTRIES = Object.freeze(['foreign', 'defense', 'trade']);
+
+/** Executive order domain: which branch controls each EO type in semi-presidential.
+ *  'president' = only the president's party can issue.
+ *  'pm' = only the PM's party can issue.
+ *  'acting_minister' is special — domain depends on the target ministry. */
+export const EO_DOMAIN = Object.freeze({
+    national_emergency: 'president',
+    acting_minister:    'split',      // depends on target ministry domain
+    tax_adjustment:     'pm',
+    price_controls:     'pm',
+    censure:            'pm',
+    stimulate_economy:  'pm'
+});
+
+/** Returns true if the president and PM are from different parties (cohabitation). */
+export function isCohabitation(nation, presidentFactionId, pmFactionId) {
+    if (!isSemiPresidential(nation)) return false;
+    if (!presidentFactionId || !pmFactionId) return false;
+    return presidentFactionId !== pmFactionId;
+}
+
+/** Returns the domain of a ministry key ('presidential' or 'domestic'). */
+export function getMinistryDomain(ministryKey) {
+    return MINISTRY_DOMAINS[ministryKey] || 'domestic';
+}
+
+/** Returns true if the given ministry must be filled from the president's party
+ *  in a semi-presidential system. */
+export function isPresidentialDomainMinistry(ministryKey) {
+    return PRESIDENTIAL_DOMAIN_MINISTRIES.includes(ministryKey);
+}
+
 // Canonical government types used by nations and ministry event templates.
 export const canonicalNationGovTypes = ['Parliamentary Republic', 'Presidential', 'Semi-Presidential'];
 

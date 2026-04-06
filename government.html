@@ -56,7 +56,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, deductAP } from './js/game/config.js';
-import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, CANONICAL_GOVERNMENT_TYPES } from './js/game/government-types.js';
+import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, isPresidentialDomainMinistry, getMinistryDomain, isCohabitation, PRESIDENTIAL_DOMAIN_MINISTRIES, CANONICAL_GOVERNMENT_TYPES } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition } from './js/game/government-structure.js';
 import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, buildMinistryBaselines } from './js/game/stats.js';
 import { formatStatName, autoAppointPartyLeaderAsPM, getNationNames, resignPM } from './js/game/political-actions.js';
@@ -911,6 +911,8 @@ let _energyReleaseAmount = 0; // slider value for release confirm
 let currentTick = 0;
 let lastElectionTick = null;
 let _protestCrisisData = null; // active protest crisis (T6/T7) for crisis card
+let pmFactionId = null;
+let isPMParty = false;
 
 // Assign modal state
 let assignMinistryKey = null;
@@ -1164,6 +1166,11 @@ async function renderGovernmentPage() {
             activeHOG._resolvedIdeology = activeHOG.ideology
                 || activeHOG.factions?.leader_ideology
                 || null;
+        }
+
+        if (isSemiPresidential(currentNation) && activeHOG) {
+            pmFactionId = activeHOG.faction_id || null;
+            isPMParty = (currentFaction?.id === pmFactionId);
         }
 
         coalitionData = coalition;
@@ -1823,6 +1830,7 @@ function renderSemiPresPMSection(activeHOG) {
         // PM is installed — show PM details
         const pmParty = allParties.find(p => p.id === activeHOG.faction_id);
         const pmPartyName = pmParty?.faction_name || '—';
+        const cohabitation = isCohabitation(currentNation, presidentFactionId, activeHOG.faction_id);
         const pmTrait = activeHOG.trait_key ? POSITIVE_TRAITS.find(t => t.key === activeHOG.trait_key) : null;
         let pmTraitHTML = '';
         if (pmTrait) {
@@ -1835,9 +1843,12 @@ function renderSemiPresPMSection(activeHOG) {
                     <div style="font-size:0.75rem;color:var(--green);margin-top:4px;">&#x25B2; ${escapeHtml(pmTrait.effect)}</div>
                 </div>`;
         }
+        const cohabBadge = cohabitation
+            ? ' <span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:rgba(255,180,0,0.1);color:var(--amber);border:1px solid rgba(255,180,0,0.3);margin-left:6px;">COHABITATION</span>'
+            : '';
         return `
             <div class="admin-section" style="border-top:1px solid var(--border-main);padding-top:12px;">
-                <div class="admin-section-title">Prime Minister <span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:var(--teal-bg,rgba(0,200,180,0.1));color:var(--teal);border:1px solid var(--teal)33;margin-left:6px;">SEMI-PRESIDENTIAL</span></div>
+                <div class="admin-section-title">Prime Minister <span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:var(--teal-bg,rgba(0,200,180,0.1));color:var(--teal);border:1px solid var(--teal)33;margin-left:6px;">SEMI-PRESIDENTIAL</span>${cohabBadge}</div>
                 <div class="admin-person-name">${escapeHtml(activeHOG.first_name)} ${escapeHtml(activeHOG.last_name)}</div>
                 <div class="admin-person-details">Age ${activeHOG.age || '—'} · <span class="admin-person-party">${escapeHtml(pmPartyName)}</span></div>
                 ${pmTraitHTML}
@@ -3443,6 +3454,15 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
 
 // --- Shared card builder helpers ---
 
+function getDomainBadge(ministryKey) {
+    if (!isSemiPresidential(currentNation)) return '';
+    const domain = getMinistryDomain(ministryKey);
+    if (domain === 'presidential') {
+        return ' <span style="font-size:0.55rem;padding:1px 4px;border-radius:2px;background:rgba(90,175,165,0.1);color:var(--teal);border:1px solid rgba(90,175,165,0.3);vertical-align:middle;">PRES</span>';
+    }
+    return ' <span style="font-size:0.55rem;padding:1px 4px;border-radius:2px;background:rgba(100,100,200,0.1);color:var(--blue,#5b9bd5);border:1px solid rgba(100,100,200,0.3);vertical-align:middle;">PM</span>';
+}
+
 function buildCardHeader(title, badgeHtml, requestCount) {
     const reqBadge = requestCount > 0
         ? `<span class="ministry-card__badge" style="background:rgba(91,155,213,0.1);border-color:rgba(91,155,213,0.25);color:#5b9bd5;">${requestCount}</span>`
@@ -3500,6 +3520,20 @@ function buildMgmtButtons(key, ministry, govContext) {
         }
         if (!isFilled && govContext.canAppoint) {
             btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--appoint" onclick="event.stopPropagation();openAssignModal('${key}')">APPOINT</div>`;
+        }
+    } else if (govContext.type === 'semi-presidential') {
+        if (govContext.isMyMinistry && !govContext.isPMParty) {
+            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--resign" onclick="event.stopPropagation();resignMinistry('${key}')">RESIGN</div>`;
+        }
+        if (govContext.isPMParty && isFilled) {
+            if (noAP) {
+                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" ${disabledStyle} title="Need 1 AP">DISMISS<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
+            } else {
+                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" onclick="event.stopPropagation();fireMinister('${key}')">DISMISS<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
+            }
+        }
+        if (!isFilled && govContext.isPMParty) {
+            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--nominate" onclick="event.stopPropagation();openNominateModal('${key}')">NOMINATE</div>`;
         }
     } else if (govContext.type === 'presidential') {
         if (govContext.isMyMinistry && !govContext.isPresidentParty) {
@@ -6619,11 +6653,12 @@ function renderCabinet(ministries, coalition) {
     const isCaretaker = coalition && coalition.status === 'caretaker';
     const pmMinistry = ministries?.find(m => m.ministry_key === 'prime_minister');
     const pmFilled = pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name;
-    const isPMParty = currentFaction && coalition && currentFaction.id === coalition.lead_party_id;
-    const canAppoint = isPMParty && pmFilled && !isCaretaker;
+    const isPMPartyLocal = currentFaction && coalition && currentFaction.id === coalition.lead_party_id;
+    const canAppoint = isPMPartyLocal && pmFilled && !isCaretaker;
 
     let govType = 'parliamentary';
-    if (isPresidential) govType = 'presidential';
+    if (isPresidential && isSemiPresidential(currentNation)) govType = 'semi-presidential';
+    else if (isPresidential) govType = 'presidential';
 
     // Determine which keys to show (presidential/parliamentary skip PM)
     const keys = MINISTRY_KEYS_CABINET.filter(k => k !== 'prime_minister');
@@ -6650,7 +6685,7 @@ function renderCabinet(ministries, coalition) {
 
     const cards = keys.map(key => {
         const m = ministryMap[key];
-        const title = MINISTRY_NAMES[key] || m?.ministry_name || key;
+        const title = (MINISTRY_NAMES[key] || m?.ministry_name || key) + getDomainBadge(key);
         const isFilled = m && m.minister_first_name;
         const requests = [];
         const myRequest = requests.find(r => r.faction_id === currentFaction?.id);
@@ -6661,7 +6696,7 @@ function renderCabinet(ministries, coalition) {
             isRuling: isRulingFaction,
             isMyMinistry,
             canAppoint,
-            isPMParty,
+            isPMParty: isPMParty || (currentFaction && coalitionData && currentFaction.id === coalitionData.lead_party_id),
             isPresidentParty: typeof isPresidentParty !== 'undefined' ? isPresidentParty : false,
             isCaretaker,
             requests,
@@ -6744,8 +6779,12 @@ function openNominateModal(ministryKey) {
     document.getElementById('assign-confirm-btn').textContent = 'Nominate for Confirmation';
     document.getElementById('assign-modal-title').textContent = 'Nominate — ' + (MINISTRY_NAMES[ministryKey] || ministryKey);
 
-    // Generate one candidate per party
-    generatedCandidates = allParties
+    // Semi-Presidential domain constraint: presidential-domain ministries must be from president's party
+    const isSemiPres = isSemiPresidential(currentNation);
+    const isPresDomain = isSemiPres && isPresidentialDomainMinistry(ministryKey);
+
+    // Generate one candidate per party (filtered for domain constraints)
+    generatedCandidates = (isPresDomain ? allParties.filter(p => p.id === presidentFactionId) : allParties)
         .map(party => ({
             partyId: party.id,
             partyName: party.faction_name,
