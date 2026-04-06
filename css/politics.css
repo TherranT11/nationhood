@@ -999,6 +999,83 @@
     font-weight: 700;
     color: var(--dtxt-secondary);
 }
+/* 3-Pillar Electoral Standing */
+.pol-fc-3p {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--dborder-0);
+    border-radius: 3px;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+}
+.pol-fc-3p-row {
+    display: grid;
+    grid-template-columns: 28px 22px 1fr 24px 30px;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 3px;
+}
+.pol-fc-3p-row:last-of-type {
+    margin-bottom: 0;
+}
+.pol-fc-3p-label {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    font-weight: 600;
+    color: var(--dtxt-muted);
+    letter-spacing: 0.3px;
+}
+.pol-fc-3p-pct {
+    font-family: var(--dfont-mono);
+    font-size: 7px;
+    color: var(--dtxt-dim);
+    text-align: right;
+}
+.pol-fc-3p-bar {
+    height: 6px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.pol-fc-3p-fill {
+    height: 100%;
+    border-radius: 2px;
+    opacity: 0.7;
+    transition: width 0.3s ease;
+}
+.pol-fc-3p-val {
+    font-family: var(--dfont-mono);
+    font-size: 9px;
+    font-weight: 700;
+    text-align: right;
+}
+.pol-fc-3p-contrib {
+    font-family: var(--dfont-mono);
+    font-size: 7px;
+    color: var(--dtxt-dim);
+    text-align: right;
+}
+.pol-fc-3p-score {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 5px;
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--dborder-hair);
+}
+.pol-fc-3p-score-label {
+    font-family: var(--dfont-mono);
+    font-size: 8px;
+    font-weight: 600;
+    color: var(--dtxt-muted);
+    letter-spacing: 0.4px;
+}
+.pol-fc-3p-score-val {
+    font-family: var(--dfont-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--dtxt-secondary);
+}
 .pol-fc-band {
     position: relative;
     height: 16px;

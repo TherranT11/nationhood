@@ -7859,6 +7859,8 @@ function eoSelectPCStat(stat) {
 window.eoSelectPCStat = eoSelectPCStat;
 
 async function confirmExecutiveOrder() {
+    if (_govActionLock) return;
+    _govActionLock = true;
     const confirmBtn = document.getElementById('eo-confirm-btn');
     confirmBtn.disabled = true;
     confirmBtn.textContent = 'Issuing...';
@@ -7882,6 +7884,7 @@ async function confirmExecutiveOrder() {
         alert('Error: ' + e.message);
         confirmBtn.disabled = false;
         confirmBtn.textContent = 'Issue Order';
+        _govActionLock = false;
         return;
     }
 
@@ -7889,6 +7892,7 @@ async function confirmExecutiveOrder() {
         alert(result?.error || 'Failed to issue executive order.');
         confirmBtn.disabled = false;
         confirmBtn.textContent = 'Issue Order';
+        _govActionLock = false;
         return;
     }
 

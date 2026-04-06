@@ -32,37 +32,7 @@
                 <input type="password" id="password" minlength="6" required>
             </div>
             
-            <div class="input-group">
-                <label>Choose Your Faction Path</label>
-                <div class="faction-types">
-                    <!-- Political Party - Available -->
-                    <div class="faction-option available selected" data-type="party">
-                        <div class="faction-title">Political Party</div>
-                        <div class="faction-desc">Shape laws, influence policy, and guide your nation's future through political power.</div>
-                    </div>
-                    
-                    <!-- Corporation - Alpha Access -->
-                    <div class="faction-option available" data-type="corp">
-                        <span class="alpha-badge">Alpha</span>
-                        <div class="faction-title">Corporation</div>
-                        <div class="faction-desc">Control wealth, trade, and economic power to influence the nation.</div>
-                    </div>
-                    <div class="alpha-code-group" id="corp-alpha-code" style="display:none;">
-                        <label>Alpha Access Code</label>
-                        <input type="text" id="alpha-code" placeholder="Enter alpha code" maxlength="10" autocomplete="off" spellcheck="false">
-                        <div class="alpha-code-hint" id="alpha-code-hint"></div>
-                    </div>
-                    
-                    <!-- Military Branch - Coming Soon -->
-                    <div class="faction-option disabled" data-type="military">
-                        <span class="coming-soon">Coming Soon</span>
-                        <div class="faction-title">Military Branch</div>
-                        <div class="faction-desc">Command forces, ensure security, and project strength for your nation.</div>
-                    </div>
-                </div>
-            </div>
-            
-            <button type="submit" class="btn-join" id="submit-btn">CREATE FACTION</button>
+            <button type="submit" class="btn-join" id="submit-btn">COMPLETE SIGNUP</button>
             <div id="error-message" class="error"></div>
         </form>
         
@@ -92,30 +62,8 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 
+    // Faction type is chosen later in the flow; default to party for signup
     let selectedFactionType = 'party';
-    const CORP_ALPHA_CODE = 'CORP1';
-
-    // Handle faction type selection
-    document.querySelectorAll('.faction-option').forEach(option => {
-        option.addEventListener('click', function() {
-            if (this.classList.contains('disabled')) return;
-            document.querySelectorAll('.faction-option').forEach(opt => opt.classList.remove('selected'));
-            this.classList.add('selected');
-            selectedFactionType = this.getAttribute('data-type');
-
-            // Show/hide alpha code input for corporation
-            const codeGroup = document.getElementById('corp-alpha-code');
-            const codeHint = document.getElementById('alpha-code-hint');
-            if (selectedFactionType === 'corp') {
-                codeGroup.style.display = 'block';
-                document.getElementById('alpha-code').value = '';
-                codeHint.textContent = '';
-                codeHint.className = 'alpha-code-hint';
-            } else {
-                codeGroup.style.display = 'none';
-            }
-        });
-    });
 
     document.getElementById('signup-form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -125,7 +73,7 @@ import { _supabase } from './js/supabase-client.js';
         
         errorMsg.textContent = '';
         submitBtn.disabled = true;
-        submitBtn.textContent = 'CREATING FACTION...';
+        submitBtn.textContent = 'SIGNING UP...';
         
         try {
             const email = document.getElementById('email').value.trim();
@@ -137,17 +85,6 @@ import { _supabase } from './js/supabase-client.js';
 
             if (password.length < 6) {
                 throw new Error('Password must be at least 6 characters.');
-            }
-
-            // Validate alpha code for corporation
-            if (selectedFactionType === 'corp') {
-                const code = document.getElementById('alpha-code').value.trim().toUpperCase();
-                if (code !== CORP_ALPHA_CODE) {
-                    const hint = document.getElementById('alpha-code-hint');
-                    hint.textContent = 'Invalid alpha code.';
-                    hint.className = 'alpha-code-hint alpha-code-hint--error';
-                    throw new Error('Invalid alpha access code for Corporation.');
-                }
             }
 
             const { data: authData, error: authError } = await _supabase.auth.signUp({
@@ -191,7 +128,7 @@ import { _supabase } from './js/supabase-client.js';
             console.error('Signup error:', error);
             errorMsg.textContent = error.message || 'Signup failed. Please try again.';
             submitBtn.disabled = false;
-            submitBtn.textContent = 'CREATE FACTION';
+            submitBtn.textContent = 'COMPLETE SIGNUP';
         }
     });
 </script>
