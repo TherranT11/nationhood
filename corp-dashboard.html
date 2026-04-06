@@ -2392,26 +2392,24 @@ function mergeAndSortCorpEvents(events, billEvents, factionEvents, protestEvents
     }).slice(0, limit);
 }
 
+function eventDisplayText(ev) {
+    if (ev._synthetic && ev._desc_html) return ev._desc_html;
+    const desc = ev.description_chosen || ev.description_used || '';
+    const eventName = formatEventName(ev.event_name);
+    const headline = eventName ? `<strong>${escapeHtml(eventName)}</strong>` : '';
+    const body = desc ? escapeHtml(desc) : '';
+    return headline && body ? `${headline} — ${body}` : (body || headline || 'Event');
+}
+
 function renderCorpEventRows(merged) {
     return merged.map(ev => {
         const dateStr = tickToDate(ev.fired_at_tick);
         const cat = CORP_EVENT_STYLES[(ev.category || '').toLowerCase()] || CORP_EVENT_DEFAULT;
 
-        let displayText;
-        if (ev._synthetic && ev._desc_html) {
-            displayText = ev._desc_html;
-        } else {
-            const desc = ev.description_chosen || ev.description_used || '';
-            const eventName = formatEventName(ev.event_name);
-            const headline = eventName ? `<strong>${escapeHtml(eventName)}</strong>` : '';
-            const body = desc ? escapeHtml(desc) : '';
-            displayText = headline && body ? `${headline} — ${body}` : (body || headline || 'Event');
-        }
-
         return `<div class="corp-ev-row">
             <span class="corp-ev-date">${escapeHtml(dateStr)}</span>
             <span class="corp-ev-icon" style="color:${cat.color}">${cat.icon}</span>
-            <span class="corp-ev-text">${displayText}</span>
+            <span class="corp-ev-text">${eventDisplayText(ev)}</span>
             ${cat.label ? `<span class="corp-ev-cat" style="color:${cat.color};background:${cat.bg}">${cat.label}</span>` : ''}
         </div>`;
     }).join('');
@@ -2439,18 +2437,6 @@ function renderWorldEventRows(merged) {
         const np = ev.nations?.nation_profiles;
         const flagUrl = Array.isArray(np) ? np[0]?.flag_url : np?.flag_url;
         const nc = nationBadgeColor(nationName);
-
-        let displayText;
-        if (ev._synthetic && ev._desc_html) {
-            displayText = ev._desc_html;
-        } else {
-            const desc = ev.description_chosen || ev.description_used || '';
-            const eventName = formatEventName(ev.event_name);
-            const headline = eventName ? `<strong>${escapeHtml(eventName)}</strong>` : '';
-            const body = desc ? escapeHtml(desc) : '';
-            displayText = headline && body ? `${headline} — ${body}` : (body || headline || 'Event');
-        }
-
         const flagHtml = flagUrl ? `<img src="${escapeHtml(flagUrl)}" alt="">` : '';
 
         return `<div class="corp-ev-row">
@@ -2458,7 +2444,7 @@ function renderWorldEventRows(merged) {
                 <span class="corp-ev-date">${escapeHtml(dateStr)}</span>
                 <span class="corp-ev-nation-badge" style="color:${nc.color};background:${nc.bg};border-color:${nc.border};">${flagHtml}${escapeHtml(nationName)}</span>
             </span>
-            <span class="corp-ev-text">${displayText}</span>
+            <span class="corp-ev-text">${eventDisplayText(ev)}</span>
             ${cat.label ? `<span class="corp-ev-cat" style="color:${cat.color};background:${cat.bg}">${cat.label}</span>` : ''}
         </div>`;
     }).join('');
@@ -2502,6 +2488,7 @@ async function loadPoliticalEvents() {
                 .in('status', ['resolved', 'crisis_active'])
                 .order('tick_called', { ascending: false }).limit(15),
         ]);
+        if (evRes.error) throw evRes.error;
         const events = evRes.data || [];
         const merged = mergeAndSortCorpEvents(
             events,
@@ -2549,6 +2536,7 @@ async function loadNationEvents() {
                 .in('status', ['resolved', 'crisis_active'])
                 .order('tick_called', { ascending: false }).limit(20),
         ]);
+        if (evRes.error) throw evRes.error;
         const events = evRes.data || [];
         const merged = mergeAndSortCorpEvents(
             events,
@@ -2596,6 +2584,7 @@ async function loadCorpWorldEvents() {
                 .in('status', ['resolved', 'crisis_active'])
                 .order('tick_called', { ascending: false }).limit(15),
         ]);
+        if (evRes.error) throw evRes.error;
         const events = evRes.data || [];
         const merged = mergeAndSortCorpEvents(
             events,

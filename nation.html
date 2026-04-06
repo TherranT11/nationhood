@@ -1603,10 +1603,9 @@ function renderImmigrationTab(nation) {
     var capacity = Math.round((infra + housing + healthcare) / 3);
 
     var isPositive = netMigration >= 0;
-    var migSign = isPositive ? '+' : '';
+    var migSign = isPositive ? '+' : '\u2212';
     var migColor = isPositive ? 'var(--n-green)' : 'var(--n-red)';
     var migLabel = isPositive ? 'NET POSITIVE' : 'NET NEGATIVE';
-    var migLabelColor = isPositive ? 'var(--n-green)' : 'var(--n-red)';
     var migLabelBg = isPositive ? 'var(--n-green-dim)' : 'var(--n-red-dim)';
     var capColor = capacity >= 60 ? 'var(--n-green)' : capacity >= 40 ? 'var(--n-yellow)' : 'var(--n-red)';
     var capBg = capacity >= 60 ? 'var(--n-green-dim)' : capacity >= 40 ? 'var(--n-yellow-dim)' : 'var(--n-red-dim)';
@@ -1621,7 +1620,7 @@ function renderImmigrationTab(nation) {
     h += '<div class="imm-hero__value" style="color:' + migColor + ';">' + migSign + formatNumber(Math.abs(netMigration)) + ' <span class="imm-hero__unit">people</span></div>';
     h += '</div>';
     h += '<div class="imm-hero__badges">';
-    h += '<span class="imm-badge" style="color:' + migLabelColor + ';background:' + migLabelBg + ';border-color:' + migLabelColor + ';">' + migLabel + '</span>';
+    h += '<span class="imm-badge" style="color:' + migColor + ';background:' + migLabelBg + ';border-color:' + migColor + ';">' + migLabel + '</span>';
     h += '<span class="imm-badge" style="color:' + capColor + ';background:' + capBg + ';border-color:' + capColor + ';">CAPACITY: ' + capacity + '%</span>';
     h += '</div>';
     h += '</div>';
@@ -1653,10 +1652,7 @@ function renderImmigrationTab(nation) {
             }
         }
 
-        // Sparkline bar (accent line on left)
-        var barColor = hc;
-
-        h += '<div class="imm-stat-card" style="border-left:3px solid ' + barColor + ';">';
+        h += '<div class="imm-stat-card" style="border-left:3px solid ' + hc + ';">';
         h += '<div class="imm-stat__label">' + escapeHtml(s.name.toUpperCase()) + '</div>';
         h += '<div class="imm-stat__value" style="color:' + hc + ';">' + val.toFixed(1) + '</div>';
         h += deltaHtml;
@@ -1673,13 +1669,14 @@ async function renderNationPage(nation) {
     var h = '';
 
     // ---- Tab bar ----
+    var statActive = _activeNationTab === 'statistics';
     h += '<div class="nation-tab-bar">';
-    h += '<button class="nation-tab active" data-tab="statistics" onclick="switchNationTab(\'statistics\')">Statistics</button>';
-    h += '<button class="nation-tab" data-tab="immigration" onclick="switchNationTab(\'immigration\')">Immigration</button>';
+    h += '<button class="nation-tab' + (statActive ? ' active' : '') + '" data-tab="statistics" onclick="switchNationTab(\'statistics\')">Statistics</button>';
+    h += '<button class="nation-tab' + (!statActive ? ' active' : '') + '" data-tab="immigration" onclick="switchNationTab(\'immigration\')">Immigration</button>';
     h += '</div>';
 
     // ---- Statistics tab ----
-    h += '<div class="nation-body nation-tab-content" id="nation-tab-statistics">';
+    h += '<div class="nation-body nation-tab-content" id="nation-tab-statistics"' + (statActive ? '' : ' style="display:none;"') + '>';
 
     // Revolution banner
     h += await renderRevolutionBanner(nation);
@@ -1692,7 +1689,7 @@ async function renderNationPage(nation) {
     h += '</div>'; // end statistics tab
 
     // ---- Immigration tab ----
-    h += '<div class="nation-body nation-tab-content" id="nation-tab-immigration" style="display:none;">';
+    h += '<div class="nation-body nation-tab-content" id="nation-tab-immigration"' + (!statActive ? '' : ' style="display:none;"') + '>';
     h += renderImmigrationTab(nation);
     h += '</div>'; // end immigration tab
 
