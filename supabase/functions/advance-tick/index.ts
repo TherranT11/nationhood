@@ -28184,10 +28184,28 @@ async function processTariffRelationsPenalty(supabase, nation) {
 //   0   → -1% per tick (max decline)
 //   50  → 0% per tick (equilibrium)
 //   100 → +1% per tick (max growth)
+//
+// Immigration inputs (per tick nudge to population_growth):
+//   immigration:          ±0.005 per point from 50 (max ±0.25)
+//   emigration:           ±0.005 per point from 50, inverted (max ±0.25)
+//   academic_immigration: ±0.003 per point from 50 (max ±0.15)
+//   illegal_immigration:  ±0.002 per point from 50 (max ±0.10)
 
 async function processPopulationGrowth(supabase: any, nation: any) {
-    // population_growth is now standalone — just use the current value directly
-    const currentPG = Number(nation.population_growth ?? 50);
+    let currentPG = Number(nation.population_growth ?? 50);
+
+    // Immigration/emigration nudges — each stat is 0-100, baseline 50
+    const imm     = Number(nation.immigration ?? 50);
+    const emig    = Number(nation.emigration ?? 50);
+    const acadImm = Number(nation.academic_immigration ?? 50);
+    const illegImm = Number(nation.illegal_immigration ?? 50);
+
+    const immNudge = (imm - 50) * 0.005        // high immigration → growth
+                   - (emig - 50) * 0.005        // high emigration → decline
+                   + (acadImm - 50) * 0.003     // academic immigration → growth (smaller)
+                   + (illegImm - 50) * 0.002;   // illegal immigration → growth (smallest)
+
+    currentPG += immNudge;
     const finalPG = Math.round(Math.max(0, Math.min(100, currentPG)) * 10) / 10;
 
     // Population change: linear mapping from 0-100 to -1%..+1% per tick
