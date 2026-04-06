@@ -4,7 +4,7 @@ import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } f
 import { tickToDate } from './utils.js';
 
 import { fetchActiveCoalition, loadSeats } from './game/government-structure.js';
-import { isPresidentialRepublic } from './game/government-types.js';
+import { hasElectedPresident } from './game/government-types.js';
 import { initGameConfigForNation, switchPartyEndorsement } from './game/config.js';
 import { RALLY_CONFIG, executeRally, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, disbandParty, getNationNames } from './game/political-actions.js';
 import { IDEOLOGY_AXES } from './game/ideology.js';
@@ -1134,12 +1134,12 @@ function renderNationalMoodBox(nation, activeCrises, currentTick, issueStateMap)
 
 
 function renderGovCard(nation, coalition, allParties, currentTick, prevApproval, president, administration) {
-    const isPres = isPresidentialRepublic(nation);
+    const isPres = hasElectedPresident(nation);
     const parties = allParties || [];
     const approval = Math.round(Number(nation.gov_approval ?? 40));
     const ac = approval >= 50 ? 'var(--dgreen)' : approval >= 35 ? 'var(--damber)' : 'var(--dred)';
     const adminName = administration?.admin_name || 'Government';
-    const govTypeLabel = isPres ? 'Presidential' : nation?.hos_election_method === 'hereditary' ? 'Constitutional Monarchy' : 'Parliamentary';
+    const govTypeLabel = getGovDisplayLabel(nation);
 
     // Coalition info
     const coalitionIds = new Set(coalition?.party_ids || []);

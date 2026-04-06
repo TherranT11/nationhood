@@ -4,7 +4,7 @@
  */
 
 import { FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, GAME_CONFIG, SNAP_COOLDOWN_GAP, getPresidentialTermTicks, getPresidentialTermLimit, getParliamentaryTermTicks } from './config.js';
-import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isPresidentialRepublic } from './government-types.js';
+import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, hasElectedPresident, hasParliamentaryPM } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { snapshotNationStats } from './stats.js';
 import { adjustCredibility, adjustGovernmentApprovalEvent, round2 } from './momentum.js';
@@ -755,7 +755,7 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
         .single();
 
     // Presidential systems do not have votes of no confidence
-    if (isPresidentialRepublic(nation)) return;
+    if (!hasParliamentaryPM(nation)) return;
 
     // Get PM's last name for event text
     const { data: hog } = await supabase
@@ -875,7 +875,7 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
 export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coalitionPartyIds) {
     // Presidential systems cannot call early elections
     const { data: nationCheck } = await supabase.from('nations').select('government_type, gov_approval').eq('id', nationId).single();
-    if (isPresidentialRepublic(nationCheck)) return { success: false, error: 'Presidential systems cannot call early elections' };
+    if (!hasParliamentaryPM(nationCheck)) return { success: false, error: 'Presidential systems cannot call early elections' };
 
     // 0. Server-side guard: only proceed if coalition is still 'formed' (check both tables)
     let govStatus = null;
@@ -1071,7 +1071,7 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
  */
 export async function processGovernmentVacancy(supabase, nation, currentTick) {
     // Only applies to parliamentary democracies
-    if (isPresidentialRepublic(nation)) return null;
+    if (!hasParliamentaryPM(nation)) return null;
 
     // Check for active coalition
     const coalition = await fetchActiveCoalition(supabase, nation.id);
@@ -1739,7 +1739,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
 }
 
 export async function processElections(supabase, nation, currentTick) {
-    const isPresidential = isPresidentialRepublic(nation);
+    const isPresidential = hasElectedPresident(nation);
     const results = [];
 
     const { data: dueElections } = await supabase
@@ -2689,7 +2689,7 @@ export async function ensureElectionsScheduled(supabase, nation, currentTick) {
     }
 
     // Presidential systems also need presidential elections
-    if (isPresidentialRepublic(nation)) {
+    if (hasElectedPresident(nation)) {
         const { data: futurePres } = await supabase
             .from('elections')
             .select('id')

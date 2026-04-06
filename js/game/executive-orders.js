@@ -14,7 +14,7 @@
 
 import { GAME_CONFIG, deductAP } from './config.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
-import { isGovernmentPresidential, isPresidentialRepublic } from './government-types.js';
+import { isGovernmentPresidential, hasElectedPresident } from './government-types.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility } from './momentum.js';
 import { getNationNames } from './political-actions.js';
 import { enactBill } from './bills.js';
@@ -798,7 +798,7 @@ export async function advanceBillEmergency(supabase, nationId, factionId, billId
         .single();
     if (!nation) return { success: false, error: 'Nation not found.' };
 
-    const isPresidential = isPresidentialRepublic(nation);
+    const isPresidential = hasElectedPresident(nation);
 
     // Load bill (include articles+policies for parliamentary enactment path)
     const { data: bill } = await supabase

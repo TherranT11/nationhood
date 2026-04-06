@@ -4,7 +4,7 @@
  */
 
 import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPresidentialTermLimit } from './config.js';
-import { isPresidentialRepublic } from './government-types.js';
+import { hasElectedPresident } from './government-types.js';
 import { DIPLOMACY_CONFIG } from './diplomacy-constants.js';
 import { IDEOLOGY_AXES, IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology, loadNationIdeologies } from './ideology.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility, round2 } from './momentum.js';
@@ -2004,7 +2004,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
 
         } else if (passed) {
             // Presidential systems: route regular/repeal bills to president's desk
-            if (isPresidentialRepublic(nation)) {
+            if (hasElectedPresident(nation)) {
                 await supabase.from('bills').update({
                     status: 'president_desk',
                     passed_tick: currentTick,
@@ -2370,7 +2370,7 @@ export async function resolveStuckFloorBills(supabase, nationId) {
 
         const passed = resolution === 'passed';
         if (passed) {
-            if (isPresidentialRepublic(nation)) {
+            if (hasElectedPresident(nation)) {
                 await supabase.from('bills').update({
                     status: 'president_desk',
                     passed_tick: currentTick,
@@ -3469,7 +3469,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
         const updates = { term_limits_abolished: true };
         // Also remove presidential term limit if applicable
-        if (isPresidentialRepublic(nation)) updates.presidential_term_limit = 0;
+        if (hasElectedPresident(nation)) updates.presidential_term_limit = 0;
 
         // One-time stat effects: legitimacy -5, stability +2
         updates.legitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
@@ -3585,7 +3585,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         }).eq('id', bill.nation_id);
         if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for judicial politicization:`, nationErr.message);
 
-        const isPres = isPresidentialRepublic(nation);
+        const isPres = hasElectedPresident(nation);
         const mechanicDesc = isPres
             ? 'Impeachment conviction now requires 75% (up from 67%). The courts no longer serve as a check on executive power.'
             : 'Votes of no confidence now require 60% (up from 50%+1). The ruling coalition is shielded from parliamentary removal.';

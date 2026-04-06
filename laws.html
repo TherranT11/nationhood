@@ -191,7 +191,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, deductAP } from './js/game/config.js';
-import { isGovernmentPresidential } from './js/game/government-types.js';
+import { isGovernmentPresidential, hasElectedPresident } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
 import { loadFactionIdeology, IDEOLOGY_TO_AXIS, getIdeologyChipClass, calculateBillDynamicPenalty } from './js/game/ideology.js';
 import { calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, getRequiredSeats, evaluateBillVote, calculateIdeologyPenalty } from './js/game/bills.js';
@@ -246,7 +246,7 @@ initPage('laws', async (state) => {
         document.getElementById('content-area').innerHTML = '<div class="placeholder-panel"><div class="ph-icon">📜</div><h3>No Nation Selected</h3><p>Your party is not assigned to a nation yet.</p></div>';
         return;
     }
-    isPresidential = (nation.government_type === 'Presidential');
+    isPresidential = isGovernmentPresidential(nation);
 
     // Detect president's party
     if (isPresidential) {
@@ -516,7 +516,7 @@ function filterAllLaws() {
         const parlTermTicks = n.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS || 48;
         const parlTermYears = parlTermTicks / ticksPerYear;
         const hosMethod = n.hos_election_method === 'hereditary' ? 'Hereditary (Constitutional Monarchy)' : n.hos_election_method === 'direct_vote' ? 'Direct Popular Vote' : 'Appointed by Parliament';
-        const isPresidential = (n.government_type || '').toLowerCase().includes('presidential');
+        const isPresidential = hasElectedPresident(n);
         const termLimit = n.presidential_term_limit !== null && n.presidential_term_limit !== undefined ? n.presidential_term_limit : GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT;
         const presTermTicks = n.presidential_term_ticks || GAME_CONFIG.PRESIDENTIAL_TERM_TICKS || 48;
         const presTermYears = presTermTicks / ticksPerYear;

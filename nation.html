@@ -33,7 +33,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, refreshGameState, qCache, qCacheSet, qCacheBust, formatNumber, scaleRawToDollars, assertRawEconomicValue } from './js/common.js';
 import { formatCurrencyShort, escapeHtml } from './js/utils.js';
-import { CANONICAL_GOVERNMENT_TYPES, isPresidentialRepublic } from './js/game/government-types.js';
+import { CANONICAL_GOVERNMENT_TYPES, hasElectedPresident } from './js/game/government-types.js';
 import { normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game/stats.js';
 import { formatInflationRate, getInflationLabel, inflationColorClass, inflationRate, formatFuelPrice, getFuelPriceLabel, fuelPriceColorClass, fuelPricePerGallon } from './js/game/stats.js';
 /**
@@ -435,7 +435,7 @@ async function loadLeaderTraitEffects(nationId, nation) {
     // Old leader_traits effect system removed — trait is display-only now
     return null;
     try {
-        if (isPresidentialRepublic(nation)) {
+        if (hasElectedPresident(nation)) {
             var res = await _supabase.from('presidents')
                 .select('trait, first_name, last_name')
                 .eq('nation_id', nationId)

@@ -4,7 +4,7 @@
  */
 
 import { GAME_CONFIG, getPresidentialTermLimit } from './config.js';
-import { isParliamentaryDemocracy, isPresidentialRepublic } from './government-types.js';
+import { hasElectedPresident, hasParliamentaryPM } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { enactBill, failBill } from './bills.js';
 import { getWeightedIdeologies, weightedRandomPick, autoAppointPartyLeaderAsPM } from './political-actions.js';
@@ -122,7 +122,7 @@ async function computeDominantIdeologyAxis(supabase, factionId) {
 export async function nominateMinister(supabase, nationId, presidentFactionId, ministryKey, nominee) {
     // Validate: must be Presidential system
     const { data: nation } = await supabase.from('nations').select('name, government_type, total_seats').eq('id', nationId).single();
-    if (!isPresidentialRepublic(nation)) throw new Error('Minister nominations only apply to Presidential systems');
+    if (!hasElectedPresident(nation)) throw new Error('Minister nominations only apply to Presidential systems');
     const nationTotalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
 
     // Validate: caller must be president's party
@@ -340,8 +340,8 @@ export async function vetoPresidentialBill(supabase, billId, presidentFactionId)
  * Called during advanceTick().
  */
 export async function processPresidentDesk(supabase, nation, currentTick) {
-    console.log(`[processPresidentDesk] nation=${nation.name} gov=${nation.government_type} isPres=${isPresidentialRepublic(nation)} tick=${currentTick}`);
-    if (!isPresidentialRepublic(nation)) return [];
+    console.log(`[processPresidentDesk] nation=${nation.name} gov=${nation.government_type} isPres=${hasElectedPresident(nation)} tick=${currentTick}`);
+    if (!hasElectedPresident(nation)) return [];
 
     const { data: expiredDesks, error: deskErr } = await supabase.from('bills')
         .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
@@ -391,7 +391,7 @@ export async function processPresidentDesk(supabase, nation, currentTick) {
  * and selected = true.
  */
 export async function triggerPresidentialCandidateSelection(supabase, nation, currentTick) {
-    if (!isPresidentialRepublic(nation)) return;
+    if (!hasElectedPresident(nation)) return;
 
     const leadTicks = GAME_CONFIG.PRESIDENTIAL_CANDIDATE_LEAD_TICKS;
 
@@ -514,7 +514,7 @@ export async function triggerPresidentialCandidateSelection(supabase, nation, cu
  * has expired and a new president was already elected (shouldn't happen, but guards).
  */
 export async function processPresidentialTermEnd(supabase, nation, currentTick) {
-    if (!isPresidentialRepublic(nation)) return;
+    if (!hasElectedPresident(nation)) return;
 
     const { data: president } = await supabase
         .from('presidents')
@@ -628,7 +628,7 @@ export async function autoSelectPresidentialCandidates(supabase, nation, current
  * formation, auto-appoint the PM party's leader.
  */
 export async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
-    if (!isParliamentaryDemocracy(nation)) return;
+    if (!hasParliamentaryPM(nation)) return;
 
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     if (!coalition || coalition.status !== 'formed') return;
