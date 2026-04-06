@@ -1590,10 +1590,7 @@ function renderImmigrationTab(nation) {
     var totalInflow = 0;
     var totalOutflow = 0;
     if (migrationFlowData && migrationFlowData.length > 0) {
-        var latestTick = 0;
-        for (var fi = 0; fi < migrationFlowData.length; fi++) {
-            if (migrationFlowData[fi].tick > latestTick) latestTick = migrationFlowData[fi].tick;
-        }
+        var latestTick = getLatestMigrationTick();
         for (var fi = 0; fi < migrationFlowData.length; fi++) {
             var f = migrationFlowData[fi];
             if (f.tick !== latestTick) continue;
@@ -1674,6 +1671,15 @@ function renderImmigrationTab(nation) {
 
 var migrationFlowData = null;
 
+function getLatestMigrationTick() {
+    if (!migrationFlowData || migrationFlowData.length === 0) return 0;
+    var t = 0;
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        if (migrationFlowData[i].tick > t) t = migrationFlowData[i].tick;
+    }
+    return t;
+}
+
 async function loadMigrationFlows(nationId) {
     // Fetch ALL migration flows (not just this nation) for the matrix view
     var { data } = await _supabase
@@ -1689,10 +1695,7 @@ function renderMigrationSourcesPanel(nation) {
         return '<div class="imm-section"><div class="imm-section-title">Immigration Sources</div><div class="imm-empty">No migration data yet. Data will appear after the next tick.</div></div>';
     }
 
-    var latestTick = 0;
-    for (var i = 0; i < migrationFlowData.length; i++) {
-        if (migrationFlowData[i].tick > latestTick) latestTick = migrationFlowData[i].tick;
-    }
+    var latestTick = getLatestMigrationTick();
 
     var sources = {};
     var totalInflow = 0;
@@ -1768,10 +1771,7 @@ function renderMigrationDestsPanel(nation) {
         return '<div class="imm-section"><div class="imm-section-title">Emigration Destinations</div><div class="imm-empty">No migration data yet.</div></div>';
     }
 
-    var latestTick = 0;
-    for (var i = 0; i < migrationFlowData.length; i++) {
-        if (migrationFlowData[i].tick > latestTick) latestTick = migrationFlowData[i].tick;
-    }
+    var latestTick = getLatestMigrationTick();
 
     var dests = {};
     var totalOutflow = 0;
@@ -1913,10 +1913,7 @@ function renderIllegalPushFactors(nation) {
         return '<div class="ill-empty">Waiting for migration data...</div>';
     }
 
-    var latestTick = 0;
-    for (var i = 0; i < migrationFlowData.length; i++) {
-        if (migrationFlowData[i].tick > latestTick) latestTick = migrationFlowData[i].tick;
-    }
+    var latestTick = getLatestMigrationTick();
 
     // Find nations sending illegal immigrants to us
     var originIds = {};
@@ -1975,6 +1972,9 @@ function renderIllegalPushFactors(nation) {
 }
 
 function renderIllegalStatDrag(nation, illegalVal) {
+    if (!rawStatConnections || rawStatConnections.length === 0) {
+        return '<div class="ill-empty">Loading stat effects...</div>';
+    }
     // Show stat_connections where source_stat = 'illegal_immigration'
     var connections = rawStatConnections.filter(function(c) {
         return c.source_stat === 'illegal_immigration';
@@ -2011,7 +2011,8 @@ function renderIllegalStatDrag(nation, illegalVal) {
             var statName = prettyStatName(c.target_stat);
             h += '<div class="ill-drag-row">';
             h += '<span class="ill-drag-stat">' + escapeHtml(statName) + '</span>';
-            h += '<span class="ill-drag-thresh">&gt; ' + c.threshold + ' threshold</span>';
+            var threshDir = c.source_dir === 'above' ? '&gt;' : '&lt;';
+            h += '<span class="ill-drag-thresh">' + threshDir + ' ' + c.threshold + ' threshold</span>';
             h += '<span class="ill-drag-effect" style="color:' + effectColor + ';">' + dir + c.magnitude.toFixed(2) + '/tick</span>';
             h += '</div>';
         }
@@ -2019,14 +2020,15 @@ function renderIllegalStatDrag(nation, illegalVal) {
 
     // Inactive effects
     if (inactive.length > 0) {
-        h += '<div class="ill-drag-section-label ill-drag-inactive-label">INACTIVE — TRIGGERED IF STAT RISES ABOVE THRESHOLD</div>';
+        h += '<div class="ill-drag-section-label ill-drag-inactive-label">INACTIVE — TRIGGERED IF STAT CROSSES THRESHOLD</div>';
         for (var i = 0; i < inactive.length; i++) {
             var c = inactive[i];
             var dir = c.target_dir === 'up' ? '+' : '-';
+            var threshDir = c.source_dir === 'above' ? '&gt;' : '&lt;';
             var statName = prettyStatName(c.target_stat);
             h += '<div class="ill-drag-row ill-drag-row--inactive">';
             h += '<span class="ill-drag-stat">' + escapeHtml(statName) + '</span>';
-            h += '<span class="ill-drag-thresh">&gt; ' + c.threshold + ' threshold</span>';
+            h += '<span class="ill-drag-thresh">' + threshDir + ' ' + c.threshold + ' threshold</span>';
             h += '<span class="ill-drag-effect">' + dir + c.magnitude.toFixed(2) + '/tick</span>';
             h += '</div>';
         }
@@ -2040,10 +2042,7 @@ function renderIllegalByOrigin(nation) {
         return '';
     }
 
-    var latestTick = 0;
-    for (var i = 0; i < migrationFlowData.length; i++) {
-        if (migrationFlowData[i].tick > latestTick) latestTick = migrationFlowData[i].tick;
-    }
+    var latestTick = getLatestMigrationTick();
 
     // Aggregate illegal flows by origin
     var origins = {};
@@ -2095,10 +2094,7 @@ function renderMigrationMatrix(nation) {
     if (!migrationFlowData || migrationFlowData.length === 0) return '';
 
     // Find latest tick in ALL data
-    var latestTick = 0;
-    for (var i = 0; i < migrationFlowData.length; i++) {
-        if (migrationFlowData[i].tick > latestTick) latestTick = migrationFlowData[i].tick;
-    }
+    var latestTick = getLatestMigrationTick();
 
     // Collect unique nations from flows
     var nationMap = {};

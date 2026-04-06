@@ -1190,6 +1190,10 @@ body.light-mode .loading-spinner {
     margin-bottom: 16px;
     border-left: 3px solid var(--n-red);
 }
+.ill-hero-left {
+    display: flex;
+    flex-direction: column;
+}
 .ill-hero-label {
     font-family: var(--n-font-mono);
     font-size: 10px;
