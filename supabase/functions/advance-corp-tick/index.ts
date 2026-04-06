@@ -283,6 +283,15 @@ const CHOICE_EVENTS = [];
 // Combined list for generation
 const ALL_EVENT_TEMPLATES = [...NOTIFICATION_EVENTS, ...CHOICE_EVENTS];
 
+// ── Phase progression: 7 phases mapped to progress percentage ──
+const CONSTRUCTION_PHASES = ['Permits', 'Planning', 'Foundation', 'Structural', 'Systems', 'Finishing', 'Delivery'];
+
+function getPhaseForProgress(progressPct) {
+    // Each phase gets an equal slice of the timeline
+    const phaseIndex = Math.min(CONSTRUCTION_PHASES.length - 1, Math.floor(progressPct * CONSTRUCTION_PHASES.length));
+    return CONSTRUCTION_PHASES[phaseIndex];
+}
+
 // ════════════════════════════════════════════════════════════════════════════════
 //  CONSTRUCTION SECTOR — Contract Generation & Bid Resolution
 // ════════════════════════════════════════════════════════════════════════════════
@@ -720,6 +729,21 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
                 if (wfErr) console.error(`[PropertyEffects] Workforce cap update failed for ${corp.faction_name}:`, wfErr.message);
                 else console.log(`[PropertyEffects] ${corp.faction_name}: workforce capped at ${totalCapacity} (was ${totalWf}, -${excess} excess)`);
             }
+
+            // ── Operational Efficiency ──
+            // Company-wide staffing ratio: total workforce / total property capacity × 100
+            // Represents how well-utilized the corporation's property portfolio is.
+            // Understaffed buildings → low efficiency → wasted overhead.
+            if (totalCapacity > 0) {
+                const effectiveWf = Math.min(totalWf, totalCapacity);
+                const efficiency = Math.min(100, Math.round((effectiveWf / totalCapacity) * 100));
+                const { error: effErr } = await supabase
+                    .from('factions')
+                    .update({ corp_operational_efficiency: efficiency })
+                    .eq('id', corp.id);
+                if (effErr) console.warn(`[PropertyEffects] Efficiency update failed for ${corp.faction_name}:`, effErr.message);
+                else console.log(`[PropertyEffects] ${corp.faction_name}: operational efficiency = ${efficiency}% (${effectiveWf}/${totalCapacity})`);
+            }
         }
     }
 }
@@ -894,7 +918,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
     // 2. Process in_progress contracts
     const { data: activeContracts } = await supabase
         .from('construction_contracts')
-        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks')
+        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks, current_phase, sector, required_materials, required_equipment, materials_consumed, equipment_condition')
         .eq('nation_id', nationId)
         .eq('status', 'in_progress');
 
@@ -986,6 +1010,48 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                     .update({ corp_cash_reserves: newCash })
                     .eq('id', bid.faction_id);
             }
+        }
+
+        // ── Phase progression, material consumption, equipment wear ──
+        const progressPct = Math.min(1, effectiveProgress / totalTicks);
+        const newPhase = getPhaseForProgress(progressPct);
+        const tickUpdates = {};
+
+        // Phase progression
+        if (newPhase !== contract.current_phase) {
+            tickUpdates.current_phase = newPhase;
+            console.log(`[Projects] ${contract.name}: phase → ${newPhase} (${Math.round(progressPct * 100)}%)`);
+        }
+
+        // Material consumption: proportional to progress
+        const reqMaterials = contract.required_materials || {};
+        const prevConsumed = contract.materials_consumed || {};
+        const newConsumed = {};
+        for (const [mat, total] of Object.entries(reqMaterials)) {
+            newConsumed[mat] = Math.min(Number(total), Math.floor(Number(total) * progressPct));
+        }
+        // Only update if changed
+        if (JSON.stringify(newConsumed) !== JSON.stringify(prevConsumed)) {
+            tickUpdates.materials_consumed = newConsumed;
+        }
+
+        // Equipment condition: degrade 0.5-2.0 per tick, starting from 100
+        const reqEquipment = contract.required_equipment || [];
+        const prevEquipCond = contract.equipment_condition || {};
+        if (reqEquipment.length > 0) {
+            const newEquipCond = { ...prevEquipCond };
+            for (const equip of reqEquipment) {
+                const current = newEquipCond[equip] ?? 100;
+                const degradation = 0.5 + Math.random() * 1.5;
+                newEquipCond[equip] = Math.max(5, Math.round((current - degradation) * 10) / 10);
+            }
+            tickUpdates.equipment_condition = newEquipCond;
+        }
+
+        if (Object.keys(tickUpdates).length > 0) {
+            const { error: trackErr } = await supabase.from('construction_contracts')
+                .update(tickUpdates).eq('id', contract.id);
+            if (trackErr) console.warn(`[Projects] ${contract.name}: tracking update failed:`, trackErr.message);
         }
 
         // Check if project is complete (effective progress, not wall clock)
@@ -1109,6 +1175,193 @@ async function processActiveProjects(supabase, nationId, currentTick) {
 
             console.log(`[Projects] ${contract.name}: ${deliveryResult} (quality=${qualityScore}, net=${netProfit > 0 ? '+' : ''}$${(netProfit / 1e6).toFixed(1)}M, rep=${repChange > 0 ? '+' : ''}${repChange})`);
         }
+    }
+
+    return results;
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+//  CONSTRUCTION EVENTS — Generation & Expiry
+// ════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Generate random construction events on in_progress projects.
+ * Each project rolls against each eligible event template once per tick.
+ * Events respect phase windows, sector filters, and stat-based probability modifiers.
+ * Max 1 event per project per tick to avoid event spam.
+ */
+async function generateProjectEvents(supabase, nationId, currentTick) {
+    const results = [];
+
+    // Load in_progress contracts with phase and sector
+    const { data: contracts } = await supabase
+        .from('construction_contracts')
+        .select('id, name, current_phase, sector, awarded_to_faction')
+        .eq('nation_id', nationId)
+        .eq('status', 'in_progress');
+
+    if (!contracts || contracts.length === 0) return results;
+
+    // Load nation stats for stat modifiers
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('stability, inflation, corruption, civil_unrest, pollution, happiness, physical_infrastructure')
+        .eq('id', nationId)
+        .single();
+    const ns = (key) => Number(nation?.[key] ?? 50);
+
+    // Check existing active events to avoid duplicates (max 1 active per project)
+    const contractIds = contracts.map(c => c.id);
+    const { data: activeEvents } = await supabase
+        .from('construction_events')
+        .select('contract_id')
+        .in('contract_id', contractIds)
+        .eq('status', 'ACTIVE');
+    const hasActiveEvent = new Set((activeEvents || []).map(e => e.contract_id));
+
+    for (const contract of contracts) {
+        // Skip if project already has an active event
+        if (hasActiveEvent.has(contract.id)) continue;
+
+        const phase = contract.current_phase || 'Permits';
+
+        // Roll against each template
+        for (const template of ALL_EVENT_TEMPLATES) {
+            // Sector filter
+            if (!template.appliesTo.includes('all') && !template.appliesTo.includes(contract.sector)) continue;
+
+            // Phase window filter
+            const allowedPhases = PHASE_WINDOW_LOOKUP[template.phaseWindow] || PHASE_WINDOWS.ANY;
+            if (!allowedPhases.includes(phase)) continue;
+
+            // Base probability + stat modifiers
+            let prob = template.probability;
+            for (const mod of (template.statModifiers || [])) {
+                const statVal = ns(mod.stat);
+                if (mod.direction === 'above' && statVal > mod.baseline) {
+                    prob += (statVal - mod.baseline) * mod.perPoint;
+                } else if (mod.direction === 'below' && statVal < mod.baseline) {
+                    prob += (mod.baseline - statVal) * Math.abs(mod.perPoint);
+                }
+            }
+            prob = Math.max(0, Math.min(0.5, prob)); // Cap at 50%
+
+            if (Math.random() > prob) continue;
+
+            // Event fires! Build responses for notification events (auto-resolved)
+            const responses = [{
+                key: 'acknowledge',
+                label: 'Acknowledged',
+                tag: template.severity,
+                detail: template.impact,
+                cost: template.effects.cost || 0,
+                delay: template.effects.delay || 0,
+                qualityImpact: template.effects.quality || 0,
+            }];
+
+            const { error: insertErr } = await supabase.from('construction_events').insert({
+                contract_id: contract.id,
+                faction_id: contract.awarded_to_faction,
+                nation_id: nationId,
+                event_key: template.key,
+                type: template.type,
+                severity: template.severity,
+                title: template.title,
+                description: template.desc,
+                impact: template.impact,
+                responses,
+                status: 'ACTIVE',
+                fired_at_tick: currentTick,
+                expires_at_tick: currentTick + 3, // Auto-resolve after 3 ticks if ignored
+            });
+
+            if (insertErr) {
+                console.warn(`[Events] Failed to create event ${template.key} for ${contract.name}:`, insertErr.message);
+            } else {
+                results.push({ contract: contract.name, event: template.title, severity: template.severity });
+                console.log(`[Events] ${contract.name}: ${template.title} (${template.severity})`);
+            }
+
+            // Max 1 event per project per tick
+            break;
+        }
+    }
+
+    return results;
+}
+
+/**
+ * Auto-resolve expired construction events that the player ignored.
+ * Notification events apply their effects automatically.
+ * Choice events apply the worst outcome.
+ */
+async function resolveExpiredEvents(supabase, nationId, currentTick) {
+    const results = [];
+
+    const { data: expired } = await supabase
+        .from('construction_events')
+        .select('id, contract_id, faction_id, event_key, title, responses, severity')
+        .eq('nation_id', nationId)
+        .eq('status', 'ACTIVE')
+        .lte('expires_at_tick', currentTick);
+
+    if (!expired || expired.length === 0) return results;
+
+    for (const event of expired) {
+        // Use the first (or worst) response as the auto-resolution
+        const response = event.responses?.[0] || { key: 'auto', cost: 0, delay: 0, qualityImpact: 0 };
+
+        // Apply effects
+        const costApplied = response.cost || 0;
+        const delayApplied = response.delay || 0;
+        const qualityApplied = response.qualityImpact || 0;
+
+        // Deduct cost from corporation
+        if (costApplied > 0) {
+            const { data: corp } = await supabase.from('factions')
+                .select('corp_cash_reserves').eq('id', event.faction_id).single();
+            if (corp) {
+                await supabase.from('factions')
+                    .update({ corp_cash_reserves: Math.max(0, Number(corp.corp_cash_reserves || 0) - costApplied) })
+                    .eq('id', event.faction_id);
+            }
+        }
+
+        // Extend timeline
+        if (delayApplied > 0) {
+            const { data: contract } = await supabase.from('construction_contracts')
+                .select('timeline_ticks').eq('id', event.contract_id).single();
+            if (contract) {
+                await supabase.from('construction_contracts')
+                    .update({ timeline_ticks: (contract.timeline_ticks || 0) + delayApplied })
+                    .eq('id', event.contract_id);
+            }
+        }
+
+        // Modify quality
+        if (qualityApplied !== 0) {
+            const { data: bid } = await supabase.from('contract_bids')
+                .select('id, estimated_quality').eq('contract_id', event.contract_id).eq('status', 'won').single();
+            if (bid) {
+                const newQuality = Math.max(0, Math.min(100, (bid.estimated_quality || 65) + qualityApplied));
+                await supabase.from('contract_bids')
+                    .update({ estimated_quality: newQuality }).eq('id', bid.id);
+            }
+        }
+
+        // Mark event as resolved
+        await supabase.from('construction_events').update({
+            status: 'RESOLVED',
+            chosen_response: response.key,
+            resolution: `Auto-resolved: ${response.label || 'expired'}`,
+            resolved_at_tick: currentTick,
+            cost_applied: costApplied,
+            delay_applied: delayApplied,
+            quality_applied: qualityApplied,
+        }).eq('id', event.id);
+
+        results.push({ event: event.title, autoResolved: true, cost: costApplied, delay: delayApplied, quality: qualityApplied });
+        console.log(`[Events] Auto-resolved: ${event.title} (cost=$${costApplied}, delay=${delayApplied}, quality=${qualityApplied > 0 ? '+' : ''}${qualityApplied})`);
     }
 
     return results;
@@ -1320,6 +1573,29 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 const expiredResults = await resolveExpiredEvents(supabase, nation.id, currentTick);
                 if (expiredResults.length > 0) {
                     summary.construction.push({ nation: nation.name, type: 'expired_events', data: expiredResults });
+                }
+
+                // ── Construction GDP Boost ──
+                // Per-project: (budget / $100M) × 0.1 / timeline_ticks
+                // Spreads the 0.1-per-$100M impact evenly across the project lifetime.
+                // Multiple projects stack additively.
+                const { data: activeForGdp } = await supabase
+                    .from('construction_contracts')
+                    .select('budget_ceiling, timeline_ticks')
+                    .eq('nation_id', nation.id)
+                    .eq('status', 'in_progress');
+                let gdpBoost = 0;
+                for (const c of (activeForGdp || [])) {
+                    const budget = Number(c.budget_ceiling || 0);
+                    const ticks = Number(c.timeline_ticks || 1);
+                    gdpBoost += (budget / 100_000_000) * 0.1 / ticks;
+                }
+                gdpBoost = Math.round(gdpBoost * 1000) / 1000; // 3 decimal places
+                await supabase.from('nations')
+                    .update({ construction_gdp_boost: gdpBoost })
+                    .eq('id', nation.id);
+                if (gdpBoost > 0) {
+                    console.log(`[Construction GDP] ${nation.name}: +${gdpBoost}/tick gdp_growth from ${(activeForGdp || []).length} active project(s)`);
                 }
             } catch (constructionErr) {
                 console.error(`[advance-corp-tick] Construction failed for ${nation.name} (non-fatal):`, constructionErr);

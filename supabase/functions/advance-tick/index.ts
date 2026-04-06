@@ -4915,7 +4915,10 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
 // Formula: monthlyChange% = ((gdp_growth - 50) / 50) * 1  →  0=-1%, 50=0%, 100=+1%
 // Includes diminishing returns (GDP < 50% of starting) and hard floor (20% of starting → Economic Collapse)
 async function applyGdpGrowth(supabase, nation, currentTick) {
-    const gdpGrowth = Number(nation.gdp_growth ?? 50);
+    // Construction GDP boost: +0.1 gdp_growth per $100M actively being built
+    // Calculated by advance-corp-tick and stored on nation
+    const constructionBoost = Number(nation.construction_gdp_boost ?? 0);
+    const gdpGrowth = Math.min(100, Number(nation.gdp_growth ?? 50) + constructionBoost);
     const currentGdp = Number(nation.gdp ?? 0);
     const startingGdp = Number(nation.starting_gdp ?? currentGdp);
     if (currentGdp <= 0 || startingGdp <= 0) return;

@@ -502,7 +502,6 @@ function duplicatePolicy(id) {
     if (!p) return;
     editingPolicyId = null;
     loadPolicyIntoBuilder(p);
-    document.getElementById('b-policy-type').value = p.policy_type || 'structural';
     document.getElementById('b-name').value = p.policy_name + ' (Copy)';
     document.getElementById('submit-btn').textContent = '✅ Create Policy';
     switchView('builder');
@@ -522,6 +521,8 @@ function loadPolicyIntoBuilder(p) {
     document.getElementById('b-name').value = p.policy_name || '';
     document.getElementById('b-desc').value = p.description || '';
     document.getElementById('b-sector').value = p.major_sector || '';
+    // Policy type (lever vs structural) — must be set here or edits silently reset to structural
+    document.getElementById('b-policy-type').value = p.policy_type || 'structural';
     populateLawCategories();
     const lawCatVal = p.law_category || p.minor_sector || '';
     const select = document.getElementById('b-law-category-select');
