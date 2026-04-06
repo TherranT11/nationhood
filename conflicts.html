@@ -303,12 +303,13 @@ async function loadIssueActionFlags() {
     if (allIssues.length === 0) return;
 
     const issueIds = allIssues.map(i => i.id);
-    // Fetch actions from the current tick (most recent game tick)
+    // Fetch actions from the current or previous tick
+    const minTick = Math.max(0, currentTick - 1);
     const { data: actions } = await _supabase
         .from('bilateral_issue_actions_taken')
         .select('issue_id, submitted_tick')
         .in('issue_id', issueIds)
-        .gte('submitted_tick', currentTick - 1)
+        .gte('submitted_tick', minTick)
         .order('submitted_tick', { ascending: false });
 
     if (actions && actions.length > 0) {
@@ -698,9 +699,10 @@ function renderIssueHistory(issue, history) {
         modifier_added: 'var(--amber)',
         modifier_removed: 'var(--green)',
         modifier_fired: 'var(--amber)',
-        action_proposed: 'var(--blue)',
+        action_submitted: 'var(--blue)',
+        diplomatic_matched: 'var(--green)',
+        diplomatic_gaffe: 'var(--red)',
         action_accepted: 'var(--green)',
-        action_rejected: 'var(--red)',
         action_executed: 'var(--blue)',
         tension_changed: 'var(--amber)',
         favor_changed: 'var(--blue)',
@@ -936,6 +938,8 @@ function showIssueActionModal(actionKey, issue, modifiers) {
 
 async function executeIssueActionFromUI(actionKey, issue) {
     if (issueActionExecuting) return;
+    if (!currentFaction || !currentNation) { alert('No faction assigned. Cannot take actions.'); return; }
+    if (currentTick <= 0) { alert('Tick data not loaded. Please reload the page.'); return; }
     issueActionExecuting = true;
 
     try {
