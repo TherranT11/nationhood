@@ -25298,25 +25298,19 @@ async function processIssueTick(supabase, nationList, currentTick) {
             }
         }
 
-        // ── 4d. Resolve submitted diplomatic actions (simultaneous matching) ──
-        // Both nations must submit the same diplomatic action key on the same tick.
-        // Matched → apply effects. Unmatched → political gaffe penalty.
+        // ── 4d. Resolve submitted diplomatic actions (3-tick matching window) ──
+        // Nations have 3 ticks to match a diplomatic action. On the tick the window
+        // expires (submitted_tick + 3), unmatched submissions become a gaffe.
+        // Counter-play: if the opponent used a unilateral/threatening action during
+        // the 3-tick window, they get +3 gov_approval and +3 party momentum.
 
-        // Sweep stale submissions from prior ticks (crash recovery)
-        await supabase
-            .from('bilateral_issue_actions_taken')
-            .update({ status: 'gaffe', response_tick: currentTick,
-                effects_applied: { gaffe: true, reason: 'Stale submission — tick processor did not match in time.' } })
-            .eq('issue_id', issue.id)
-            .eq('action_category', 'diplomatic')
-            .eq('status', 'submitted')
-            .lt('submitted_tick', currentTick);
+        const DIPLOMATIC_WINDOW = 3; // ticks to match
 
+        // Fetch ALL pending diplomatic submissions for this issue (any tick)
         const { data: submittedDipActions, error: dipQueryErr } = await supabase
             .from('bilateral_issue_actions_taken')
             .select('*')
             .eq('issue_id', issue.id)
-            .eq('submitted_tick', currentTick)
             .eq('action_category', 'diplomatic')
             .eq('status', 'submitted');
         if (dipQueryErr) console.error('[Issues] Failed to query submitted diplomatic actions:', dipQueryErr.message);
@@ -25335,7 +25329,7 @@ async function processIssueTick(supabase, nationList, currentTick) {
             const matchedIds = new Set();
 
             for (const [actionKey, submissions] of Object.entries(byKey)) {
-                // Check if both nations submitted the same action
+                // Check if both nations submitted the same action (within window)
                 const fromA = submissions.find(s => s.acting_nation_id === issue.nation_a_id);
                 const fromB = submissions.find(s => s.acting_nation_id === issue.nation_b_id);
 
@@ -25423,18 +25417,8 @@ async function processIssueTick(supabase, nationList, currentTick) {
                 }
             }
 
-            // ── UNMATCHED: political gaffe penalty ──
-            // Also check for counter-play: if opponent used unilateral/threatening while
-            // this nation tried diplomacy, opponent gets +3 gov_approval and +3 party momentum.
-
-            // Pre-fetch all executed (unilateral/threatening) actions on this tick for this issue
-            const { data: executedThisTick } = await supabase
-                .from('bilateral_issue_actions_taken')
-                .select('acting_nation_id, acting_faction_id, action_key, action_category')
-                .eq('issue_id', issue.id)
-                .eq('submitted_tick', currentTick)
-                .eq('status', 'executed')
-                .in('action_category', ['unilateral', 'threatening']);
+            // ── EXPIRED (3-tick window): gaffe penalty + counter-play check ──
+            // Only process submissions whose window has expired (submitted 3+ ticks ago)
 
             // Role → ministry_key mapping for looking up which party's minister used the action
             const ROLE_TO_MINISTRY = {
@@ -25449,7 +25433,11 @@ async function processIssueTick(supabase, nationList, currentTick) {
             for (const sa of submittedDipActions) {
                 if (matchedIds.has(sa.id)) continue;
 
-                // This nation submitted a diplomatic action but the other didn't match
+                // Only expire if the 3-tick window has passed
+                const ticksElapsed = currentTick - sa.submitted_tick;
+                if (ticksElapsed < DIPLOMATIC_WINDOW) continue; // still within window
+
+                // This nation's diplomatic action expired without a match
                 const gaffeNationId = sa.acting_nation_id;
                 const gaffeNation = gaffeNationId === issue.nation_a_id ? nationA : nationB;
 
@@ -25463,10 +25451,20 @@ async function processIssueTick(supabase, nationList, currentTick) {
                 newTension = Math.max(0, Math.min(10, newTension + 1));
 
                 // ── COUNTER-PLAY BONUS ──
-                // If the opponent used a unilateral or threatening action this tick while
-                // this nation tried diplomacy, the opponent gets rewarded for exploiting it.
+                // Check if the opponent used a unilateral or threatening action during
+                // the 3-tick window while this nation's diplomatic action was pending.
                 const opponentNationId = gaffeNationId === issue.nation_a_id ? issue.nation_b_id : issue.nation_a_id;
-                const opponentAction = (executedThisTick || []).find(a => a.acting_nation_id === opponentNationId);
+                const { data: opponentWindowActions } = await supabase
+                    .from('bilateral_issue_actions_taken')
+                    .select('acting_nation_id, acting_faction_id, action_key, action_category')
+                    .eq('issue_id', issue.id)
+                    .eq('acting_nation_id', opponentNationId)
+                    .eq('status', 'executed')
+                    .in('action_category', ['unilateral', 'threatening'])
+                    .gte('submitted_tick', sa.submitted_tick)
+                    .lte('submitted_tick', sa.submitted_tick + DIPLOMATIC_WINDOW);
+
+                const opponentAction = (opponentWindowActions || [])[0];
                 let counterPlayApplied = false;
 
                 if (opponentAction) {
@@ -25514,9 +25512,10 @@ async function processIssueTick(supabase, nationList, currentTick) {
                     gaffe: true,
                     gov_approval_penalty: -3,
                     tension_delta: 1,
+                    window_ticks: DIPLOMATIC_WINDOW,
                     reason: counterPlayApplied
                         ? 'Opponent exploited your diplomatic overture with a forceful action.'
-                        : 'No matching diplomatic action from other nation.',
+                        : `No matching diplomatic action within ${DIPLOMATIC_WINDOW} ticks.`,
                 };
                 if (counterPlayApplied) {
                     gaffeEffects.counter_play_opponent = opponentNationId;
@@ -25532,7 +25531,7 @@ async function processIssueTick(supabase, nationList, currentTick) {
                 const dipAction = ACTIONS[sa.action_key];
                 const gaffeText = counterPlayApplied
                     ? `Political Gaffe: ${dipAction?.name || sa.action_key} — opponent exploited your diplomacy! Gov Approval -3, Tension +1.`
-                    : `Political Gaffe: ${dipAction?.name || sa.action_key} — unmatched diplomatic action. Gov Approval -3, Tension +1.`;
+                    : `Political Gaffe: ${dipAction?.name || sa.action_key} — unmatched after ${DIPLOMATIC_WINDOW} ticks. Gov Approval -3, Tension +1.`;
                 await insertHistory(supabase, issue.id, currentTick, 'diplomatic_gaffe',
                     gaffeText,
                     { action_key: sa.action_key, acting_nation_id: gaffeNationId,

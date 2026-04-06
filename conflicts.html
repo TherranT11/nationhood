@@ -151,6 +151,9 @@
                 <!-- Header -->
                 <div class="issues-header" id="issues-header"></div>
 
+                <!-- Action notification banner (opponent took action / your diplomatic pending) -->
+                <div class="issues-action-notification" id="issues-action-notification" style="display:none;"></div>
+
                 <!-- Status bar: Tension / Favor / Status -->
                 <div class="issues-status-bar" id="issues-status-bar"></div>
 
@@ -486,6 +489,7 @@ async function selectIssue(issueId) {
     const actionsTaken = actionsResult.status === 'fulfilled' ? (actionsResult.value.data || []) : [];
 
     renderIssueHeader(issue);
+    renderActionNotification(issue, actionsTaken);
     renderIssueStatusBar(issue);
     renderIssueModifiers(issue, modifiers);
     renderIssueEffects(issue, modifiers);
@@ -520,6 +524,88 @@ function renderIssueHeader(issue) {
         <div class="issues-type">Economic / Sea Border / Since Tick ${issue.created_tick}</div>
         <div class="issues-desc">Fishing vessels from both nations routinely operate in overlapping waters. No formal agreement governs who can fish where, how much, or when. Coastal communities on both sides depend on the same declining fish stocks.</div>
     `;
+}
+
+
+// ==================== ACTION NOTIFICATION BANNER ====================
+
+const DIPLOMATIC_WINDOW = 3; // must match backend
+
+function renderActionNotification(issue, actionsTaken) {
+    const el = document.getElementById('issues-action-notification');
+    const isYours = issue.nation_a_id === currentNation.id || issue.nation_b_id === currentNation.id;
+
+    if (!isYours || issue.status === 'escalated' || issue.status === 'resolved') {
+        el.style.display = 'none';
+        return;
+    }
+
+    const opponentNationId = issue.nation_a_id === currentNation.id
+        ? issue.nation_b_id : issue.nation_a_id;
+    const opponentName = issue.nation_a_id === currentNation.id
+        ? (issue.nation_b?.name || 'Other Nation') : (issue.nation_a?.name || 'Other Nation');
+
+    const notifications = [];
+
+    // 1. Check: opponent took an action recently (within last 3 ticks) — alert player to respond
+    const recentOpponentActions = actionsTaken.filter(a =>
+        a.acting_nation_id === opponentNationId &&
+        (a.status === 'executed' || a.status === 'submitted') &&
+        a.submitted_tick >= currentTick - DIPLOMATIC_WINDOW &&
+        a.submitted_tick <= currentTick
+    );
+
+    if (recentOpponentActions.length > 0) {
+        const mostRecent = recentOpponentActions.reduce((a, b) =>
+            a.submitted_tick > b.submitted_tick ? a : b);
+        const ticksAgo = currentTick - mostRecent.submitted_tick;
+        const ticksLeft = DIPLOMATIC_WINDOW - ticksAgo;
+        const actionDef = typeof ACTIONS !== 'undefined' ? ACTIONS[mostRecent.action_key] : null;
+        const actionName = actionDef?.name || mostRecent.action_key;
+        const categoryLabel = mostRecent.action_category === 'diplomatic' ? 'Diplomatic'
+            : mostRecent.action_category === 'threatening' ? 'Threatening' : 'Unilateral';
+
+        if (ticksLeft > 0) {
+            notifications.push({
+                type: 'opponent_acted',
+                html: `<strong>${escapeHtml(opponentName)}</strong> took action: <em>${escapeHtml(actionName)}</em> (${categoryLabel})`
+                    + ` &mdash; <strong>${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} to respond</strong>`,
+            });
+        }
+    }
+
+    // 2. Check: you have a pending diplomatic submission awaiting match
+    const myPending = actionsTaken.filter(a =>
+        a.acting_nation_id === currentNation.id &&
+        a.status === 'submitted' &&
+        a.action_category === 'diplomatic'
+    );
+
+    for (const pending of myPending) {
+        const ticksAgo = currentTick - pending.submitted_tick;
+        const ticksLeft = DIPLOMATIC_WINDOW - ticksAgo;
+        const actionDef = typeof ACTIONS !== 'undefined' ? ACTIONS[pending.action_key] : null;
+        const actionName = actionDef?.name || pending.action_key;
+
+        if (ticksLeft > 0) {
+            notifications.push({
+                type: 'your_pending',
+                html: `Your <em>${escapeHtml(actionName)}</em> awaiting match &mdash; `
+                    + `<strong>${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} remaining</strong>`,
+            });
+        }
+    }
+
+    if (notifications.length === 0) {
+        el.style.display = 'none';
+        return;
+    }
+
+    el.style.display = '';
+    el.innerHTML = notifications.map(n => {
+        const icon = n.type === 'opponent_acted' ? '&#9888;' : '&#9203;';
+        return `<div class="issue-notif-row issue-notif--${n.type}">${icon} ${n.html}</div>`;
+    }).join('');
 }
 
 
