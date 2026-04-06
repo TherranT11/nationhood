@@ -2354,6 +2354,47 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                             .select('*')
                             .eq('vote_id', vote.id);
 
+                        // Leadership elections use candidate-based voting (ballot = faction_id)
+                        if (vote.vote_type === 'leadership_election') {
+                            const voteTally = {};
+                            for (const b of (ballots || [])) {
+                                if (b.ballot && b.ballot !== 'abstain') {
+                                    voteTally[b.ballot] = (voteTally[b.ballot] || 0) + 1;
+                                }
+                            }
+                            // Find candidate with most votes
+                            let winnerId = null;
+                            let maxVotes = 0;
+                            for (const [candidateId, count] of Object.entries(voteTally)) {
+                                if (count > maxVotes) {
+                                    maxVotes = count;
+                                    winnerId = candidateId;
+                                }
+                            }
+                            // Fallback: if no votes cast, current president stays
+                            if (!winnerId) winnerId = org.president_id;
+
+                            await supabase.from('international_orgs')
+                                .update({ president_id: winnerId, president_term_start_tick: newTick })
+                                .eq('id', org.id);
+
+                            const winnerMember = fullMembers.find(m => m.faction_id === winnerId);
+                            const winnerName = winnerMember?.factions?.faction_name || 'Unknown';
+                            const totalVotes = (ballots || []).length;
+
+                            await supabase.from('ipo_votes')
+                                .update({ status: 'passed', result: { tally: voteTally, winner: winnerId, total_ballots: totalVotes }, resolved_at_tick: newTick })
+                                .eq('id', vote.id);
+
+                            await supabase.from('ipo_chat').insert({
+                                org_id: org.id, faction_id: null, is_system: true,
+                                message_text: `Leadership Election Result: ${winnerName} elected president with ${maxVotes} vote${maxVotes !== 1 ? 's' : ''} (${totalVotes} total ballots cast).`,
+                                tick_posted: newTick
+                            });
+                            console.log(`[advanceTick] IPO ${org.name}: ${winnerName} elected president (${maxVotes}/${totalVotes} votes)`);
+                            continue; // skip standard yes/no resolution
+                        }
+
                         const yes = (ballots || []).filter(b => b.ballot === 'yes').length;
                         const no = (ballots || []).filter(b => b.ballot === 'no').length;
                         const abstain = (ballots || []).filter(b => b.ballot === 'abstain').length;
@@ -2431,7 +2472,46 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     let newPresidentId = null;
                     const successionType = leadership.type || 'rotation';
 
-                    if (successionType === 'rotation') {
+                    if (successionType === 'vote') {
+                        // Check if a leadership election vote is already open
+                        const { data: existingElection } = await supabase
+                            .from('ipo_votes')
+                            .select('id')
+                            .eq('org_id', org.id)
+                            .eq('vote_type', 'leadership_election')
+                            .eq('status', 'open')
+                            .limit(1);
+
+                        if (!existingElection || existingElection.length === 0) {
+                            // Create a leadership election vote — 3 ticks to vote
+                            const candidates = fullMembers.map(m => ({
+                                faction_id: m.faction_id,
+                                faction_name: m.factions?.faction_name || 'Unknown',
+                            }));
+                            await supabase.from('ipo_votes').insert({
+                                org_id: org.id,
+                                title: 'Leadership Election — Choose Next President',
+                                vote_type: 'leadership_election',
+                                meta: { candidates },
+                                status: 'open',
+                                opened_at_tick: newTick,
+                                closes_at_tick: newTick + 3,
+                                proposed_by: org.president_id,
+                            });
+                            await supabase.from('ipo_chat').insert({
+                                org_id: org.id, faction_id: null, is_system: true,
+                                message_text: 'Presidential term has ended. A leadership election has been called — vote within 3 ticks.',
+                                tick_posted: newTick,
+                            });
+                            console.log(`[advanceTick] IPO ${org.name}: leadership election opened`);
+
+                            // Extend current president's term until election resolves
+                            await supabase.from('international_orgs')
+                                .update({ president_term_start_tick: newTick })
+                                .eq('id', org.id);
+                        }
+                        // Skip immediate succession — election will resolve via vote auto-resolution
+                    } else if (successionType === 'rotation') {
                         // Rotate to next member (by join order / faction_id sort)
                         const sortedMembers = [...fullMembers].sort((a, b) => a.faction_id.localeCompare(b.faction_id));
                         const currentIdx = sortedMembers.findIndex(m => m.faction_id === org.president_id);
