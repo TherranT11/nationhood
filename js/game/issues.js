@@ -997,6 +997,28 @@ export async function processIssueTick(supabase, nationList, currentTick) {
             }
 
             // ── UNMATCHED: political gaffe penalty ──
+            // Also check for counter-play: if opponent used unilateral/threatening while
+            // this nation tried diplomacy, opponent gets +3 gov_approval and +3 party momentum.
+
+            // Pre-fetch all executed (unilateral/threatening) actions on this tick for this issue
+            const { data: executedThisTick } = await supabase
+                .from('bilateral_issue_actions_taken')
+                .select('acting_nation_id, acting_faction_id, action_key, action_category')
+                .eq('issue_id', issue.id)
+                .eq('submitted_tick', currentTick)
+                .eq('status', 'executed')
+                .in('action_category', ['unilateral', 'threatening']);
+
+            // Role → ministry_key mapping for looking up which party's minister used the action
+            const ROLE_TO_MINISTRY = {
+                'foreign_minister': 'foreign',
+                'minister_of_trade': 'trade',
+                'minister_of_defense': 'defense',
+                'minister_of_finance': 'finance',
+                'head_of_government': 'prime_minister',
+                'ambassador': null, // ambassador is not a ministry
+            };
+
             for (const sa of submittedDipActions) {
                 if (matchedIds.has(sa.id)) continue;
 
@@ -1013,24 +1035,81 @@ export async function processIssueTick(supabase, nationList, currentTick) {
                 // +1 tension
                 newTension = Math.max(0, Math.min(10, newTension + 1));
 
+                // ── COUNTER-PLAY BONUS ──
+                // If the opponent used a unilateral or threatening action this tick while
+                // this nation tried diplomacy, the opponent gets rewarded for exploiting it.
+                const opponentNationId = gaffeNationId === issue.nation_a_id ? issue.nation_b_id : issue.nation_a_id;
+                const opponentAction = (executedThisTick || []).find(a => a.acting_nation_id === opponentNationId);
+                let counterPlayApplied = false;
+
+                if (opponentAction) {
+                    counterPlayApplied = true;
+                    const opponentNation = opponentNationId === issue.nation_a_id ? nationA : nationB;
+
+                    // +3 gov_approval for the opponent
+                    if (opponentNation) {
+                        await applyIssueStatEffects(supabase, opponentNationId, opponentNation,
+                            [{ stat_key: 'gov_approval', delta: 3 }]);
+                    }
+
+                    // +3 momentum for the party of the minister who used the action
+                    const oppActionDef = ACTIONS[opponentAction.action_key];
+                    const ministryKey = oppActionDef ? ROLE_TO_MINISTRY[oppActionDef.role] : null;
+                    if (ministryKey) {
+                        const { data: ministry } = await supabase
+                            .from('ministries')
+                            .select('party_id')
+                            .eq('nation_id', opponentNationId)
+                            .eq('ministry_key', ministryKey)
+                            .eq('is_active', true)
+                            .maybeSingle();
+                        if (ministry?.party_id) {
+                            await supabase.rpc('adjust_momentum', {
+                                p_faction_id: ministry.party_id,
+                                p_delta: 3,
+                                p_label: `Counter-play: ${oppActionDef.name} exploited opponent diplomacy`,
+                                p_tick: currentTick,
+                            });
+                        }
+                    }
+
+                    const oppActionName = oppActionDef?.name || opponentAction.action_key;
+                    await insertHistory(supabase, issue.id, currentTick, 'counter_play',
+                        `Counter-Play: ${oppActionName} exploited diplomatic overture. Gov Approval +3, Party Momentum +3.`,
+                        { action_key: opponentAction.action_key, acting_nation_id: opponentNationId,
+                          counter_play: true, gov_approval_bonus: 3, momentum_bonus: 3,
+                          exploited_action: sa.action_key },
+                        opponentNationId);
+                }
+
                 // Mark as gaffe
+                const gaffeEffects = {
+                    gaffe: true,
+                    gov_approval_penalty: -3,
+                    tension_delta: 1,
+                    reason: counterPlayApplied
+                        ? 'Opponent exploited your diplomatic overture with a forceful action.'
+                        : 'No matching diplomatic action from other nation.',
+                };
+                if (counterPlayApplied) {
+                    gaffeEffects.counter_play_opponent = opponentNationId;
+                }
+
                 const { error: gaffeErr } = await supabase.from('bilateral_issue_actions_taken').update({
                     status: 'gaffe',
                     response_tick: currentTick,
-                    effects_applied: {
-                        gaffe: true,
-                        gov_approval_penalty: -3,
-                        tension_delta: 1,
-                        reason: 'No matching diplomatic action from other nation.',
-                    },
+                    effects_applied: gaffeEffects,
                 }).eq('id', sa.id);
                 if (gaffeErr) console.error('[Issues] Failed to mark action as gaffe:', gaffeErr.message);
 
                 const dipAction = ACTIONS[sa.action_key];
+                const gaffeText = counterPlayApplied
+                    ? `Political Gaffe: ${dipAction?.name || sa.action_key} — opponent exploited your diplomacy! Gov Approval -3, Tension +1.`
+                    : `Political Gaffe: ${dipAction?.name || sa.action_key} — unmatched diplomatic action. Gov Approval -3, Tension +1.`;
                 await insertHistory(supabase, issue.id, currentTick, 'diplomatic_gaffe',
-                    `Political Gaffe: ${dipAction?.name || sa.action_key} — unmatched diplomatic action. Gov Approval -3, Tension +1.`,
+                    gaffeText,
                     { action_key: sa.action_key, acting_nation_id: gaffeNationId,
-                      gov_approval_penalty: -3, tension_delta: 1 },
+                      gov_approval_penalty: -3, tension_delta: 1, counter_play: counterPlayApplied },
                     gaffeNationId);
             }
         }
