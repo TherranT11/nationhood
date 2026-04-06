@@ -949,9 +949,9 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, _,
         const ideoColor = pillarColor(p.ideology);
 
         // Weighted contributions (weights: GOV 35%, MOM 25%, IDEO 30%, APPROVAL 10%)
-        const govW = (p.governance * 0.35).toFixed(1);
-        const momW = (p.pillarMomentum * 0.25).toFixed(1);
-        const ideoW = (p.ideology * 0.30).toFixed(1);
+        const govW = ((p.governance || 0) * 0.35).toFixed(1);
+        const momW = ((p.pillarMomentum || 0) * 0.25).toFixed(1);
+        const ideoW = ((p.ideology || 0) * 0.30).toFixed(1);
 
         return `<div class="pol-fc-party">
             <div class="pol-fc-party-header">
