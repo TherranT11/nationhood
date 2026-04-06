@@ -1093,6 +1093,11 @@
 }
 .issue-effect-value--neg { color: var(--red); }
 .issue-effect-value--pos { color: var(--green); }
+.issue-effect-favor {
+    color: var(--teal);
+    font-size: 7px;
+    font-style: italic;
+}
 
 /* History */
 .issue-history-entry {

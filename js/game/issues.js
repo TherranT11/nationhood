@@ -721,6 +721,11 @@ export async function processIssueTick(supabase, nationList, currentTick) {
         }
 
         // ── 1. Apply modifier stat effects ──
+        // Favored nation gets effects reduced to 1/10th
+        const favoredNationId = issue.favor > 0 ? issue.nation_b_id
+                              : issue.favor < 0 ? issue.nation_a_id
+                              : null;
+
         for (const mod of (modifiers || [])) {
             const config = MODIFIERS[mod.modifier_key];
             if (!config || !config.stat_effects || config.stat_effects.length === 0) continue;
@@ -731,7 +736,11 @@ export async function processIssueTick(supabase, nationList, currentTick) {
             // Resolve which nation(s) the effects apply to
             const targets = resolveTargets(mod.applies_to, issue, nationA, nationB);
             for (const target of targets) {
-                await applyIssueStatEffects(supabase, target.id, target, config.stat_effects);
+                const isFavored = favoredNationId && target.id === favoredNationId;
+                const effects = isFavored
+                    ? config.stat_effects.map(e => ({ ...e, delta: e.delta * 0.1 }))
+                    : config.stat_effects;
+                await applyIssueStatEffects(supabase, target.id, target, effects);
                 results.modifiersApplied++;
             }
 
