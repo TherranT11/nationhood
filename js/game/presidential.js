@@ -4,7 +4,7 @@
  */
 
 import { GAME_CONFIG, getPresidentialTermLimit } from './config.js';
-import { hasElectedPresident, hasParliamentaryPM } from './government-types.js';
+import { hasElectedPresident, hasParliamentaryPM, isSemiPresidential } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { enactBill, failBill } from './bills.js';
 import { getWeightedIdeologies, weightedRandomPick, autoAppointPartyLeaderAsPM } from './political-actions.js';
@@ -705,6 +705,37 @@ export async function rejectOwnNomination(supabase, billId, nomineePartyId) {
 
     console.log(`Nominee self-rejection: party ${nomineePartyId} declined nomination for ${mKey} (bill ${billId}). -2 gov approval applied.`);
     return { rejected: true, ministryKey: mKey };
+}
+
+/**
+ * Semi-Presidential PM Nomination: President nominates a PM candidate for parliamentary confirmation.
+ * Reuses the minister confirmation pattern with ministry_key = 'prime_minister'.
+ * Max 3 attempts — after 3 rejections the tick processor auto-selects the largest party leader.
+ *
+ * @param {object} supabase
+ * @param {string} nationId
+ * @param {string} presidentFactionId - The president's faction
+ * @param {object} nominee - { partyId, partyName, firstName, lastName, age }
+ * @returns {{ bill, nominee, attemptsUsed }}
+ */
+export async function nominatePMCandidate(supabase, nationId, presidentFactionId, nominee) {
+    // Validate: must be Semi-Presidential system
+    const { data: nation } = await supabase.from('nations')
+        .select('name, government_type, total_seats, pm_nomination_attempts')
+        .eq('id', nationId).single();
+    if (!isSemiPresidential(nation)) throw new Error('PM nomination only applies to Semi-Presidential systems');
+
+    const attempts = nation.pm_nomination_attempts || 0;
+    if (attempts >= 3) throw new Error('Maximum PM nomination attempts reached — parliament will auto-select a PM');
+
+    // Verify no active PM exists
+    const { data: existingHOG } = await supabase.from('head_of_government')
+        .select('id').eq('nation_id', nationId).eq('active', true).maybeSingle();
+    if (existingHOG) throw new Error('A Prime Minister is already in office');
+
+    // Delegate to the existing minister nomination flow
+    const result = await nominateMinister(supabase, nationId, presidentFactionId, 'prime_minister', nominee);
+    return { ...result, attemptsUsed: attempts + 1 };
 }
 
 // Tick lock and tick mutation are intentionally Edge Function only.

@@ -7214,6 +7214,69 @@ async function resolveExpiredVotes(supabase, nationId) {
                                 console.log(`[resolveExpiredVotes] Updated government_formations PM assignment to ${pm.party_id}`);
                             }
                         } catch (gfErr) { console.warn('[resolveExpiredVotes] Failed to update government_formations PM:', gfErr); }
+
+                        // Semi-Presidential: also install as Head of Government
+                        if (isSemiPresidential(nation)) {
+                            try {
+                                // Deactivate any current HOG
+                                await supabase.from('head_of_government')
+                                    .update({ active: false })
+                                    .eq('nation_id', bill.nation_id).eq('active', true);
+
+                                // Load faction data for HOG record
+                                const { data: pmFaction } = await supabase.from('factions')
+                                    .select('id, faction_name, leader_first_name, leader_last_name, leader_age, leader_ideology, leader_positive_traits')
+                                    .eq('id', pm.party_id).single();
+
+                                let pmIdeology = pmFaction?.leader_ideology
+                                    ? (IDEOLOGY_OPTIONS.find(o => o.tag === pmFaction.leader_ideology.toUpperCase()) || IDEOLOGY_OPTIONS[0])
+                                    : IDEOLOGY_OPTIONS[0];
+                                const pmTraitKey = (pmFaction?.leader_positive_traits?.length > 0)
+                                    ? pmFaction.leader_positive_traits[0] : null;
+
+                                await supabase.from('head_of_government').upsert({
+                                    nation_id: bill.nation_id,
+                                    faction_id: pm.party_id,
+                                    candidate_id: null,
+                                    first_name: pm.first_name,
+                                    last_name: pm.last_name,
+                                    age: pm.age || pmFaction?.leader_age || 50,
+                                    ideology: pmIdeology.tag,
+                                    trait_key: pmTraitKey,
+                                    appointed_tick: currentTick,
+                                    active: true
+                                }, { onConflict: 'nation_id' });
+
+                                // Update administration record
+                                const pmName = `${pm.first_name} ${pm.last_name}`;
+                                await supabase.from('administrations').update({
+                                    prime_minister: pmName,
+                                    updated_at: new Date().toISOString()
+                                }).eq('nation_id', bill.nation_id).is('ended_at_tick', null);
+
+                                // Reset nomination attempts on successful confirmation
+                                await supabase.from('nations').update({ pm_nomination_attempts: 0 }).eq('id', bill.nation_id);
+
+                                // Fire PM appointed event
+                                try {
+                                    await supabase.rpc('fire_system_event', {
+                                        p_trigger_key: 'pm_appointed',
+                                        p_nation_id: bill.nation_id,
+                                        p_tick: currentTick,
+                                        p_placeholders: {
+                                            nation: nation?.name || '',
+                                            pm_name: pmName,
+                                            party: pmFaction?.faction_name || '',
+                                            trait: pmTraitKey || 'None'
+                                        }
+                                    });
+                                } catch (evtErr) { /* non-blocking */ }
+
+                                console.log(`[resolveExpiredVotes] Semi-Presidential PM confirmed: ${pmName} for nation ${bill.nation_id}`);
+                            } catch (hogErr) {
+                                console.error(`[resolveExpiredVotes] Failed to create HOG for confirmed PM:`, hogErr);
+                            }
+                        }
                     }
                 }
 
@@ -7228,6 +7291,33 @@ async function resolveExpiredVotes(supabase, nationId) {
                         confirmation_status: ministry.is_acting ? 'acting' : 'rejected',
                         pending_minister: null
                     }).eq('id', ministry.id);
+                }
+
+                // Semi-Presidential PM rejection penalties
+                if (mKey === 'prime_minister' && isSemiPresidential(nation)) {
+                    try {
+                        // -3 Government Approval
+                        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, -3, 'pm_nomination_rejected', currentTick);
+                        // -5 Momentum to nominating party
+                        const { data: nominatingFaction } = await supabase.from('factions')
+                            .select('id, momentum').eq('id', bill.proposed_by).single();
+                        if (nominatingFaction) {
+                            const newMomentum = Math.max(-100, (nominatingFaction.momentum || 0) - 5);
+                            await supabase.from('factions').update({ momentum: newMomentum }).eq('id', nominatingFaction.id);
+                        }
+                        // Increment pm_nomination_attempts
+                        await supabase.rpc('increment_column', {
+                            p_table: 'nations', p_column: 'pm_nomination_attempts',
+                            p_id: bill.nation_id, p_amount: 1
+                        }).then(null, async () => {
+                            // Fallback if RPC doesn't exist: manual increment
+                            const { data: nRow } = await supabase.from('nations').select('pm_nomination_attempts').eq('id', bill.nation_id).single();
+                            await supabase.from('nations').update({ pm_nomination_attempts: (nRow?.pm_nomination_attempts || 0) + 1 }).eq('id', bill.nation_id);
+                        });
+                        console.log(`[resolveExpiredVotes] Semi-Presidential PM nomination rejected for nation ${bill.nation_id}`);
+                    } catch (penErr) {
+                        console.error(`[resolveExpiredVotes] Failed to apply PM rejection penalties:`, penErr);
+                    }
                 }
 
                 await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
@@ -12132,8 +12222,8 @@ async function processElections(supabase, nation, currentTick) {
             }
 
             await processPresidentialElectionResult(supabase, nation, completedElection, currentTick, election.id);
-        } else if (isPresidential && electionType === 'parliamentary') {
-            // Midterm parliamentary election — seats reshuffled, president stays, desk bills remain
+        } else if (isPresidential && electionType === 'parliamentary' && !isSemiPresidential(nation)) {
+            // Pure Presidential midterm parliamentary election — seats reshuffled, president stays, desk bills remain
             console.log(`Midterm parliamentary election for ${nation.name} — president stays in office`);
         } else {
             // === PARLIAMENTARY DEMOCRACY: dissolve existing government after election ===
@@ -12749,7 +12839,7 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
 
     // 3. Reset government approval to 50 — new administration starts with clean slate
     const { error: approvalResetErr } = await supabase.from('nations')
-        .update({ gov_approval: 50, gov_approval_events: 0 })
+        .update({ gov_approval: 50, gov_approval_events: 0, pm_nomination_attempts: 0 })
         .eq('id', nationId);
     if (approvalResetErr) {
         console.error(`[inauguratePresident] Failed to reset gov_approval:`, approvalResetErr.message);
@@ -13457,6 +13547,81 @@ async function processPresidentialTermEnd(supabase, nation, currentTick) {
             status: 'scheduled'
         });
         console.log(`Emergency presidential election scheduled for ${nation.name} at tick ${currentTick + leadTicks} (term expired, ${leadTicks} tick lead time for candidates)`);
+    }
+}
+
+/**
+ * Semi-Presidential emergency PM fallback: after 3 rejected PM nominations,
+ * parliament auto-selects the largest party leader as PM to prevent deadlock.
+ */
+async function processSemiPresPMFallback(supabase, nation, currentTick) {
+    if (!isSemiPresidential(nation)) return;
+
+    // Check if we've hit the 3-attempt limit
+    const { data: nationRow } = await supabase.from('nations')
+        .select('pm_nomination_attempts').eq('id', nation.id).single();
+    if (!nationRow || (nationRow.pm_nomination_attempts || 0) < 3) return;
+
+    // Verify there's actually no active PM (another path may have installed one)
+    const { data: existingHOG } = await supabase.from('head_of_government')
+        .select('id').eq('nation_id', nation.id).eq('active', true).maybeSingle();
+    if (existingHOG) return;
+
+    // Verify no pending PM confirmation bill is on the floor
+    const { data: pendingPMBill } = await supabase.from('bills')
+        .select('id').eq('nation_id', nation.id)
+        .eq('bill_type', 'minister_confirmation').eq('ministry_key', 'prime_minister')
+        .eq('status', 'floor').maybeSingle();
+    if (pendingPMBill) return;
+
+    // Find the largest party by seats
+    const { data: parties } = await supabase.from('factions')
+        .select('id, faction_name, seats')
+        .eq('nation_id', nation.id).eq('is_active', true)
+        .order('seats', { ascending: false })
+        .order('id', { ascending: true })
+        .limit(1);
+    const largestParty = parties?.[0];
+    if (!largestParty) return;
+
+    console.log(`[processSemiPresPMFallback] 3 PM nominations rejected for ${nation.name}. Auto-selecting largest party leader (${largestParty.faction_name}) as PM.`);
+
+    try {
+        // Ensure a coalition exists (create emergency one if needed)
+        let coalition = await fetchActiveCoalition(supabase, nation.id);
+        if (!coalition) {
+            const { data: newFormation } = await supabase.from('government_formations').insert({
+                nation_id: nation.id,
+                lead_party_id: largestParty.id,
+                status: 'formed',
+                formation_type: 'emergency_minority',
+                formed_at: new Date().toISOString(),
+                ministry_assignments: { prime_minister: largestParty.id }
+            }).select().single();
+            coalition = newFormation;
+        }
+
+        await autoAppointPartyLeaderAsPM(supabase, nation.id, largestParty.id, currentTick);
+
+        // Reset nomination attempts
+        await supabase.from('nations').update({ pm_nomination_attempts: 0 }).eq('id', nation.id);
+
+        // Fire system event
+        try {
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: 'pm_emergency_fallback',
+                p_nation_id: nation.id,
+                p_tick: currentTick,
+                p_placeholders: {
+                    nation: nation.name || '',
+                    party: largestParty.faction_name
+                }
+            });
+        } catch (evtErr) { /* non-blocking */ }
+
+        console.log(`[processSemiPresPMFallback] Emergency PM installed: ${largestParty.faction_name} for ${nation.name}`);
+    } catch (e) {
+        console.error(`[processSemiPresPMFallback] Failed for ${nation.name}:`, e);
     }
 }
 
@@ -30231,6 +30396,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         await triggerPresidentialCandidateSelection(supabase, nation, newTick);
         await processPresidentialTermEnd(supabase, nation, newTick);
         await processParliamentaryPMTimeout(supabase, nation, newTick);
+        await processSemiPresPMFallback(supabase, nation, newTick);
 
         // Incumbent campaign bonuses (+2 approval/tick during pre-election window)
         await processIncumbentCampaignBonuses(supabase, nation, newTick);
