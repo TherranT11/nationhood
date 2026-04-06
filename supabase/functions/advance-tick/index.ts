@@ -28195,6 +28195,19 @@ async function processMigrationFlows(supabase, nationList, currentTick) {
     const ns = (nation, key) => Number(nation[key] ?? 50);
     const clamp = (v) => Math.max(0, Math.min(100, v));
 
+    // Fetch proximity data for gravity-model weighting
+    // proximity: 0 = bordering, 100 = distant
+    const { data: relRows } = await supabase.from('diplomatic_relations')
+        .select('nation_a_id, nation_b_id, proximity');
+    const proximityMap = {};
+    if (relRows) {
+        for (const r of relRows) {
+            const p = r.proximity != null ? Number(r.proximity) : 50;
+            proximityMap[r.nation_a_id + '|' + r.nation_b_id] = p;
+            proximityMap[r.nation_b_id + '|' + r.nation_a_id] = p;
+        }
+    }
+
     // ── Push score: why people leave (0-100, higher = more emigration pressure) ──
     function calcPushScore(nation) {
         const poverty     = ns(nation, 'poverty_rate');         // high = push
@@ -28304,7 +28317,8 @@ async function processMigrationFlows(supabase, nationList, currentTick) {
 
         if (totalEmigrants <= 0) continue;
 
-        // Calculate pull scores for all other nations
+        // Calculate pull scores for all other nations, weighted by proximity
+        // Proximity multiplier: bordering (0) → 2.0x, mid-range (50) → 1.0x, distant (100) → 0.5x
         const pullResults = [];
         let totalPullScore = 0;
 
@@ -28312,8 +28326,14 @@ async function processMigrationFlows(supabase, nationList, currentTick) {
             if (dest.id === origin.id) continue;
             const { score, reasons } = calcPullScore(origin, dest);
             if (score > 0) {
-                pullResults.push({ dest, score, reasons });
-                totalPullScore += score;
+                const prox = proximityMap[origin.id + '|' + dest.id] ?? 50;
+                const proxMultiplier = 0.5 + 1.5 * ((100 - prox) / 100); // 0→2.0, 50→1.25, 100→0.5
+                const weightedScore = score * proxMultiplier;
+                pullResults.push({ dest, score: weightedScore, reasons });
+                totalPullScore += weightedScore;
+                if (proxMultiplier > 1.3) {
+                    reasons.push({ factor: 'Geographic proximity', direction: 'pull', strength: Math.round(proxMultiplier * 3) });
+                }
             }
         }
 

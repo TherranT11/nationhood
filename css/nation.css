@@ -1250,7 +1250,7 @@ body.light-mode .loading-spinner {
     background: var(--n-bg-card);
     border-radius: 8px;
     padding: 16px;
-    margin: 0 16px 20px;
+    margin: 0 16px 40px;
 }
 .imm-pull-grid {
     display: grid;
