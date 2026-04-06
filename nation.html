@@ -1584,17 +1584,22 @@ window.switchNationTab = switchNationTab;
 // ===== IMMIGRATION TAB =====
 
 function renderImmigrationTab(nation) {
-    var imm = Number(nation.immigration ?? 50);
-    var emi = Number(nation.emigration ?? 50);
-    var illegal = Number(nation.illegal_immigration ?? 50);
-    var academic = Number(nation.academic_immigration ?? 50);
-    var pop = Number(nation.population ?? 5000000);
-
-    // Net migration: (immigration + academic_immigration - emigration - illegal_immigration * 0.3)
-    // scaled by population. Higher immigration/academic = inflow; higher emigration = outflow;
-    // illegal immigration is a partial outflow pressure (strains capacity but adds some people)
-    var netFactor = (imm + academic - emi - illegal * 0.3) / 100;
-    var netMigration = Math.round(pop * netFactor * 0.005); // ~0.5% of pop per factor unit
+    // Calculate net migration from actual flow data (not fake formula)
+    var totalInflow = 0;
+    var totalOutflow = 0;
+    if (migrationFlowData && migrationFlowData.length > 0) {
+        var latestTick = 0;
+        for (var fi = 0; fi < migrationFlowData.length; fi++) {
+            if (migrationFlowData[fi].tick > latestTick) latestTick = migrationFlowData[fi].tick;
+        }
+        for (var fi = 0; fi < migrationFlowData.length; fi++) {
+            var f = migrationFlowData[fi];
+            if (f.tick !== latestTick) continue;
+            if (f.dest_nation_id === nation.id) totalInflow += f.flow_count;
+            if (f.origin_nation_id === nation.id) totalOutflow += f.flow_count;
+        }
+    }
+    var netMigration = totalInflow - totalOutflow;
 
     // Capacity: how much room for growth (based on infrastructure, healthcare, etc.)
     var infra = Number(nation.physical_infrastructure ?? 50);
@@ -1843,16 +1848,13 @@ async function renderNationPage(nation) {
         loadMigrationFlows(nation.id).then(function() {
             var immPanel = document.getElementById('nation-tab-immigration');
             if (immPanel) {
-                var flowHtml = '<div class="imm-panels-grid">'
+                // Re-render entire immigration tab now that flow data is available
+                immPanel.innerHTML = renderImmigrationTab(nation)
+                    + '<div id="migration-flow-panels">'
+                    + '<div class="imm-panels-grid">'
                     + renderMigrationSourcesPanel(nation)
                     + renderMigrationDestsPanel(nation)
-                    + '</div>';
-                var flowContainer = document.getElementById('migration-flow-panels');
-                if (flowContainer) {
-                    flowContainer.innerHTML = flowHtml;
-                } else {
-                    immPanel.insertAdjacentHTML('beforeend', flowHtml);
-                }
+                    + '</div></div>';
             }
         }).catch(function(err) { console.warn('[nation] Migration flow load failed:', err); });
     } catch (e) { console.warn('[nation] Migration flows not available:', e); }
