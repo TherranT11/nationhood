@@ -883,6 +883,34 @@
     padding: 14px 20px 10px;
     border-bottom: 1px solid var(--border-hair);
 }
+
+/* Action notification banner */
+.issues-action-notification {
+    padding: 0;
+}
+.issue-notif-row {
+    padding: 8px 20px;
+    font-size: 11px;
+    line-height: 1.5;
+    border-bottom: 1px solid var(--border-hair);
+}
+.issue-notif--opponent_acted {
+    background: var(--amber-faint);
+    border-left: 3px solid var(--amber);
+    color: var(--amber);
+}
+.issue-notif--opponent_acted strong {
+    color: var(--text-primary);
+}
+.issue-notif--your_pending {
+    background: var(--blue-faint);
+    border-left: 3px solid var(--blue);
+    color: var(--blue);
+}
+.issue-notif--your_pending strong {
+    color: var(--text-primary);
+}
+
 .issues-title-row {
     display: flex;
     align-items: center;
@@ -1093,6 +1121,11 @@
 }
 .issue-effect-value--neg { color: var(--red); }
 .issue-effect-value--pos { color: var(--green); }
+.issue-effect-favor {
+    color: var(--teal);
+    font-size: 7px;
+    font-style: italic;
+}
 
 /* History */
 .issue-history-entry {

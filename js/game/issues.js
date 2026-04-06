@@ -290,6 +290,16 @@ const MODIFIERS = {
     },
 };
 
+// Role → ministry_key mapping for looking up which party's minister used an action
+const ROLE_TO_MINISTRY = {
+    'foreign_minister': 'foreign',
+    'minister_of_trade': 'trade',
+    'minister_of_defense': 'defense',
+    'minister_of_finance': 'finance',
+    'head_of_government': 'prime_minister',
+    'ambassador': null,
+};
+
 // ==================== MARITIME FISHING RIGHTS — 18 ACTIONS ====================
 
 const ACTIONS = {
@@ -721,6 +731,11 @@ export async function processIssueTick(supabase, nationList, currentTick) {
         }
 
         // ── 1. Apply modifier stat effects ──
+        // Favored nation gets effects reduced to 1/10th
+        const favoredNationId = issue.favor > 0 ? issue.nation_b_id
+                              : issue.favor < 0 ? issue.nation_a_id
+                              : null;
+
         for (const mod of (modifiers || [])) {
             const config = MODIFIERS[mod.modifier_key];
             if (!config || !config.stat_effects || config.stat_effects.length === 0) continue;
@@ -731,7 +746,11 @@ export async function processIssueTick(supabase, nationList, currentTick) {
             // Resolve which nation(s) the effects apply to
             const targets = resolveTargets(mod.applies_to, issue, nationA, nationB);
             for (const target of targets) {
-                await applyIssueStatEffects(supabase, target.id, target, config.stat_effects);
+                const isFavored = favoredNationId && target.id === favoredNationId;
+                const effects = isFavored
+                    ? config.stat_effects.map(e => ({ ...e, delta: e.delta * 0.1 }))
+                    : config.stat_effects;
+                await applyIssueStatEffects(supabase, target.id, target, effects);
                 results.modifiersApplied++;
             }
 
@@ -862,25 +881,19 @@ export async function processIssueTick(supabase, nationList, currentTick) {
             }
         }
 
-        // ── 4d. Resolve submitted diplomatic actions (simultaneous matching) ──
-        // Both nations must submit the same diplomatic action key on the same tick.
-        // Matched → apply effects. Unmatched → political gaffe penalty.
+        // ── 4d. Resolve submitted diplomatic actions (3-tick matching window) ──
+        // Nations have 3 ticks to match a diplomatic action. On the tick the window
+        // expires (submitted_tick + 3), unmatched submissions become a gaffe.
+        // Counter-play: if the opponent used a unilateral/threatening action during
+        // the 3-tick window, they get +3 gov_approval and +3 party momentum.
 
-        // Sweep stale submissions from prior ticks (crash recovery)
-        await supabase
-            .from('bilateral_issue_actions_taken')
-            .update({ status: 'gaffe', response_tick: currentTick,
-                effects_applied: { gaffe: true, reason: 'Stale submission — tick processor did not match in time.' } })
-            .eq('issue_id', issue.id)
-            .eq('action_category', 'diplomatic')
-            .eq('status', 'submitted')
-            .lt('submitted_tick', currentTick);
+        const DIPLOMATIC_WINDOW = 3; // ticks to match
 
+        // Fetch ALL pending diplomatic submissions for this issue (any tick)
         const { data: submittedDipActions, error: dipQueryErr } = await supabase
             .from('bilateral_issue_actions_taken')
             .select('*')
             .eq('issue_id', issue.id)
-            .eq('submitted_tick', currentTick)
             .eq('action_category', 'diplomatic')
             .eq('status', 'submitted');
         if (dipQueryErr) console.error('[Issues] Failed to query submitted diplomatic actions:', dipQueryErr.message);
@@ -899,7 +912,7 @@ export async function processIssueTick(supabase, nationList, currentTick) {
             const matchedIds = new Set();
 
             for (const [actionKey, submissions] of Object.entries(byKey)) {
-                // Check if both nations submitted the same action
+                // Check if both nations submitted the same action (within window)
                 const fromA = submissions.find(s => s.acting_nation_id === issue.nation_a_id);
                 const fromB = submissions.find(s => s.acting_nation_id === issue.nation_b_id);
 
@@ -987,11 +1000,30 @@ export async function processIssueTick(supabase, nationList, currentTick) {
                 }
             }
 
-            // ── UNMATCHED: political gaffe penalty ──
+            // ── EXPIRED (3-tick window): gaffe penalty + counter-play check ──
+            // Only process submissions whose window has expired (submitted 3+ ticks ago)
+
+            // Pre-fetch all executed (unilateral/threatening) actions for this issue
+            // to check counter-play without per-gaffe queries (avoids N+1).
+            const earliestSubmission = submittedDipActions.reduce(
+                (min, sa) => Math.min(min, sa.submitted_tick), currentTick);
+            const { data: executedActions, error: execErr } = await supabase
+                .from('bilateral_issue_actions_taken')
+                .select('acting_nation_id, acting_faction_id, action_key, action_category, submitted_tick')
+                .eq('issue_id', issue.id)
+                .eq('status', 'executed')
+                .in('action_category', ['unilateral', 'threatening'])
+                .gte('submitted_tick', earliestSubmission);
+            if (execErr) console.error('[Issues] Failed to fetch executed actions for counter-play:', execErr.message);
+
             for (const sa of submittedDipActions) {
                 if (matchedIds.has(sa.id)) continue;
 
-                // This nation submitted a diplomatic action but the other didn't match
+                // Only expire if the 3-tick window has passed
+                const ticksElapsed = currentTick - sa.submitted_tick;
+                if (ticksElapsed < DIPLOMATIC_WINDOW) continue; // still within window
+
+                // This nation's diplomatic action expired without a match
                 const gaffeNationId = sa.acting_nation_id;
                 const gaffeNation = gaffeNationId === issue.nation_a_id ? nationA : nationB;
 
@@ -1004,24 +1036,86 @@ export async function processIssueTick(supabase, nationList, currentTick) {
                 // +1 tension
                 newTension = Math.max(0, Math.min(10, newTension + 1));
 
+                // ── COUNTER-PLAY BONUS ──
+                // Check if the opponent used a unilateral or threatening action during
+                // the 3-tick window while this nation's diplomatic action was pending.
+                const opponentNationId = gaffeNationId === issue.nation_a_id ? issue.nation_b_id : issue.nation_a_id;
+                const opponentAction = (executedActions || []).find(a =>
+                    a.acting_nation_id === opponentNationId &&
+                    a.submitted_tick >= sa.submitted_tick &&
+                    a.submitted_tick < sa.submitted_tick + DIPLOMATIC_WINDOW
+                );
+                let counterPlayApplied = false;
+
+                if (opponentAction) {
+                    counterPlayApplied = true;
+                    const opponentNation = opponentNationId === issue.nation_a_id ? nationA : nationB;
+
+                    // +3 gov_approval for the opponent
+                    if (opponentNation) {
+                        await applyIssueStatEffects(supabase, opponentNationId, opponentNation,
+                            [{ stat_key: 'gov_approval', delta: 3 }]);
+                    }
+
+                    // +3 momentum for the party of the minister who used the action
+                    const oppActionDef = ACTIONS[opponentAction.action_key];
+                    const ministryKey = oppActionDef ? ROLE_TO_MINISTRY[oppActionDef.role] : null;
+                    if (ministryKey) {
+                        const { data: ministry } = await supabase
+                            .from('ministries')
+                            .select('party_id')
+                            .eq('nation_id', opponentNationId)
+                            .eq('ministry_key', ministryKey)
+                            .eq('is_active', true)
+                            .maybeSingle();
+                        if (ministry?.party_id) {
+                            await supabase.rpc('adjust_momentum', {
+                                p_faction_id: ministry.party_id,
+                                p_delta: 3,
+                                p_label: `Counter-play: ${oppActionDef.name} exploited opponent diplomacy`,
+                                p_tick: currentTick,
+                            });
+                        }
+                    }
+
+                    const oppActionName = oppActionDef?.name || opponentAction.action_key;
+                    await insertHistory(supabase, issue.id, currentTick, 'counter_play',
+                        `Counter-Play: ${oppActionName} exploited diplomatic overture. Gov Approval +3, Party Momentum +3.`,
+                        { action_key: opponentAction.action_key, acting_nation_id: opponentNationId,
+                          counter_play: true, gov_approval_bonus: 3, momentum_bonus: 3,
+                          exploited_action: sa.action_key },
+                        opponentNationId);
+                }
+
                 // Mark as gaffe
+                const gaffeEffects = {
+                    gaffe: true,
+                    gov_approval_penalty: -3,
+                    tension_delta: 1,
+                    window_ticks: DIPLOMATIC_WINDOW,
+                    reason: counterPlayApplied
+                        ? 'Opponent exploited your diplomatic overture with a forceful action.'
+                        : `No matching diplomatic action within ${DIPLOMATIC_WINDOW} ticks.`,
+                };
+                if (counterPlayApplied) {
+                    gaffeEffects.counter_play_opponent = opponentNationId;
+                }
+
                 const { error: gaffeErr } = await supabase.from('bilateral_issue_actions_taken').update({
                     status: 'gaffe',
                     response_tick: currentTick,
-                    effects_applied: {
-                        gaffe: true,
-                        gov_approval_penalty: -3,
-                        tension_delta: 1,
-                        reason: 'No matching diplomatic action from other nation.',
-                    },
+                    effects_applied: gaffeEffects,
                 }).eq('id', sa.id);
                 if (gaffeErr) console.error('[Issues] Failed to mark action as gaffe:', gaffeErr.message);
 
                 const dipAction = ACTIONS[sa.action_key];
+                const gaffeText = counterPlayApplied
+                    ? `Political Gaffe: ${dipAction?.name || sa.action_key} — opponent exploited your diplomacy! Gov Approval -3, Tension +1.`
+                    : `Political Gaffe: ${dipAction?.name || sa.action_key} — unmatched after ${DIPLOMATIC_WINDOW} ticks. Gov Approval -3, Tension +1.`;
                 await insertHistory(supabase, issue.id, currentTick, 'diplomatic_gaffe',
-                    `Political Gaffe: ${dipAction?.name || sa.action_key} — unmatched diplomatic action. Gov Approval -3, Tension +1.`,
+                    gaffeText,
                     { action_key: sa.action_key, acting_nation_id: gaffeNationId,
-                      gov_approval_penalty: -3, tension_delta: 1 },
+                      gov_approval_penalty: -3, tension_delta: 1, counter_play: counterPlayApplied },
                     gaffeNationId);
             }
         }
@@ -1074,6 +1168,60 @@ export async function processIssueTick(supabase, nationList, currentTick) {
                 'This issue has escalated to an incident.',
                 { tension: newTension, favor: issue.favor, leverage,
                   incident_id: incidentResult?.incidentId });
+
+            // ── ESCALATION FAVOR BONUS/PENALTY ──
+            // Favored nation: +7 gov_approval, +6 momentum to all government parties
+            // Disfavored nation: -7 gov_approval, -10 momentum to all government parties
+            // Neutral (favor === 0): no bonus/penalty
+            const currentFavor = Number(issue.favor) || 0;
+            if (currentFavor !== 0) {
+                const favoredNationId = currentFavor > 0 ? issue.nation_b_id : issue.nation_a_id;
+                const disfavoredNationId = currentFavor > 0 ? issue.nation_a_id : issue.nation_b_id;
+                const favoredNation = favoredNationId === issue.nation_a_id ? nationA : nationB;
+                const disfavoredNation = disfavoredNationId === issue.nation_a_id ? nationA : nationB;
+
+                // +7 gov_approval for favored nation
+                if (favoredNation) {
+                    await applyIssueStatEffects(supabase, favoredNationId, favoredNation,
+                        [{ stat_key: 'gov_approval', delta: 7 }]);
+                }
+                // -7 gov_approval for disfavored nation
+                if (disfavoredNation) {
+                    await applyIssueStatEffects(supabase, disfavoredNationId, disfavoredNation,
+                        [{ stat_key: 'gov_approval', delta: -7 }]);
+                }
+
+                // Momentum: +6 for favored government parties, -10 for disfavored
+                for (const [nId, delta] of [[favoredNationId, 6], [disfavoredNationId, -10]]) {
+                    const { data: govMinistries } = await supabase
+                        .from('ministries')
+                        .select('party_id')
+                        .eq('nation_id', nId)
+                        .eq('is_active', true)
+                        .not('party_id', 'is', null);
+                    if (govMinistries) {
+                        const uniquePartyIds = [...new Set(govMinistries.map(m => m.party_id))];
+                        for (const partyId of uniquePartyIds) {
+                            await supabase.rpc('adjust_momentum', {
+                                p_faction_id: partyId,
+                                p_delta: delta,
+                                p_label: delta > 0
+                                    ? 'Issue escalated in our favor'
+                                    : 'Issue escalated against us',
+                                p_tick: currentTick,
+                            });
+                        }
+                    }
+                }
+
+                const favoredName = favoredNation?.name || 'Unknown';
+                const disfavoredName = disfavoredNation?.name || 'Unknown';
+                await insertHistory(supabase, issue.id, currentTick, 'escalation_favor',
+                    `Escalation Favor: ${favoredName} benefits (+7 Gov Approval, +6 Momentum). ${disfavoredName} penalized (-7 Gov Approval, -10 Momentum).`,
+                    { favored_nation_id: favoredNationId, disfavored_nation_id: disfavoredNationId,
+                      favor: currentFavor, gov_approval_favored: 7, gov_approval_disfavored: -7,
+                      momentum_favored: 6, momentum_disfavored: -10 });
+            }
         }
 
         // Log tension changes
@@ -1201,6 +1349,7 @@ async function checkAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, 
                 .from('bilateral_issue_modifiers')
                 .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
                 .eq('id', mod.id);
+            mod.is_active = false; // sync in-memory so tension drift uses accurate state
             results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'international_attention' });
             await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
                 'International attention has subsided as tensions eased.',
@@ -1216,6 +1365,7 @@ async function checkAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, 
                 .from('bilateral_issue_modifiers')
                 .update({ is_active: false, resolved_by: 'auto:favor_normalized', resolved_tick: currentTick })
                 .eq('id', mod.id);
+            mod.is_active = false; // sync in-memory so tension drift uses accurate state
             results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'coastal_community_decline' });
             await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
                 'Coastal community decline has eased as the dispute became more balanced.',
@@ -1231,6 +1381,7 @@ async function checkAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, 
                 .from('bilateral_issue_modifiers')
                 .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
                 .eq('id', mod.id);
+            mod.is_active = false; // sync in-memory so tension drift uses accurate state
             results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'public_hostility' });
             await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
                 'Public hostility has cooled as tensions decreased.',

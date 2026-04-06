@@ -4915,7 +4915,10 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
 // Formula: monthlyChange% = ((gdp_growth - 50) / 50) * 1  →  0=-1%, 50=0%, 100=+1%
 // Includes diminishing returns (GDP < 50% of starting) and hard floor (20% of starting → Economic Collapse)
 async function applyGdpGrowth(supabase, nation, currentTick) {
-    const gdpGrowth = Number(nation.gdp_growth ?? 50);
+    // Construction GDP boost: +0.1 gdp_growth per $100M actively being built
+    // Calculated by advance-corp-tick and stored on nation
+    const constructionBoost = Number(nation.construction_gdp_boost ?? 0);
+    const gdpGrowth = Math.min(100, Number(nation.gdp_growth ?? 50) + constructionBoost);
     const currentGdp = Number(nation.gdp ?? 0);
     const startingGdp = Number(nation.starting_gdp ?? currentGdp);
     if (currentGdp <= 0 || startingGdp <= 0) return;
@@ -22937,12 +22940,6 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
         supabase.from('election_candidates').delete().eq('faction_id', factionId),
         supabase.from('presidential_candidates').delete().eq('faction_id', factionId),
         supabase.from('protests').update({ faction_id: null }).eq('faction_id', factionId),
-        // Transfer IPO founder status to president — prevents new faction with same UUID from inheriting veto
-        supabase.from('international_orgs').select('id, president_id').eq('founding_party_id', factionId).then(async ({ data: orgs }) => {
-            for (const org of (orgs || [])) {
-                if (org.president_id) await supabase.from('international_orgs').update({ founding_party_id: org.president_id }).eq('id', org.id);
-            }
-        }),
     ]);
     for (const r of fkResults) {
         if (r.status === 'rejected') console.warn('disbandParty: FK cleanup error:', r.reason);
@@ -22995,7 +22992,82 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
     if (logErr) console.warn('disbandParty: could not log action:', logErr);
 
     // 10. Clean up all faction-related data from the old nation
-    // IPO tables (each wrapped to skip if table doesn't exist)
+    // IPO: remove from all International Party Organisations, handle leadership succession
+    const handledOrgIds = new Set();
+    try {
+        // Find all IPOs where this faction is president
+        const { data: presidedOrgs } = await supabase
+            .from('international_orgs')
+            .select('id, name, founding_party_id')
+            .eq('president_id', factionId)
+            .eq('is_active', true);
+
+        for (const org of (presidedOrgs || [])) {
+            handledOrgIds.add(org.id);
+
+            // Find remaining active full members (excluding this faction)
+            const { data: remainingMembers } = await supabase
+                .from('ipo_members')
+                .select('faction_id, joined_at_tick')
+                .eq('org_id', org.id)
+                .eq('is_active', true)
+                .eq('role', 'member')
+                .neq('faction_id', factionId)
+                .order('joined_at_tick', { ascending: true });
+
+            if (remainingMembers && remainingMembers.length > 0) {
+                // Appoint longest-serving member as new president
+                const newPresidentId = remainingMembers[0].faction_id;
+                const updates = { president_id: newPresidentId, president_term_start_tick: currentTick };
+                if (org.founding_party_id === factionId) updates.founding_party_id = newPresidentId;
+                const { error: presErr } = await supabase.from('international_orgs').update(updates).eq('id', org.id);
+                if (presErr) console.warn(`disbandParty: failed to appoint new IPO president for ${org.name}:`, presErr.message);
+
+                await supabase.from('ipo_chat').insert({
+                    org_id: org.id, faction_id: null, is_system: true,
+                    message_text: `${faction?.faction_name || 'A party'} has disbanded and been removed from the organisation. A new president has been automatically appointed.`,
+                    tick_posted: currentTick,
+                });
+            } else {
+                // No remaining members — dissolve the org
+                await supabase.from('international_orgs')
+                    .update({ is_active: false, dissolved_at_tick: currentTick })
+                    .eq('id', org.id);
+            }
+        }
+
+        // Transfer founding_party_id for orgs where this faction is founder but NOT president
+        const { data: foundedOrgs } = await supabase
+            .from('international_orgs')
+            .select('id, president_id')
+            .eq('founding_party_id', factionId)
+            .neq('president_id', factionId)
+            .eq('is_active', true);
+        for (const org of (foundedOrgs || [])) {
+            if (org.president_id) {
+                await supabase.from('international_orgs').update({ founding_party_id: org.president_id }).eq('id', org.id);
+            }
+        }
+
+        // Post system message for non-presided orgs (skip orgs already handled above)
+        const { data: memberships } = await supabase
+            .from('ipo_members')
+            .select('org_id')
+            .eq('faction_id', factionId)
+            .eq('is_active', true);
+        for (const m of (memberships || [])) {
+            if (handledOrgIds.has(m.org_id)) continue;
+            await supabase.from('ipo_chat').insert({
+                org_id: m.org_id, faction_id: null, is_system: true,
+                message_text: `${faction?.faction_name || 'A party'} has disbanded and been removed from the organisation.`,
+                tick_posted: currentTick,
+            });
+        }
+    } catch (ipoSuccessionErr) {
+        console.warn('disbandParty: IPO leadership succession failed (non-fatal):', ipoSuccessionErr);
+    }
+
+    // IPO table cleanup (each wrapped to skip if table doesn't exist)
     const ipoCleanup = [
         () => supabase.from('ipo_fund_transactions').delete().eq('faction_id', factionId),
         () => supabase.from('ipo_votes').delete().eq('proposed_by', factionId),
@@ -23006,9 +23078,8 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
         () => supabase.from('ipo_ballots').delete().eq('faction_id', factionId),
         () => supabase.from('ipo_chat').delete().eq('faction_id', factionId),
         () => supabase.from('ipo_invitations').delete().eq('target_faction_id', factionId),
-        () => supabase.from('ipo_invitations').delete().eq('invited_by_faction_id', factionId),
+        () => supabase.from('ipo_invitations').delete().eq('invited_by', factionId),
         () => supabase.from('ipo_members').delete().eq('faction_id', factionId),
-        () => supabase.from('ipo_organisations').update({ president_id: null }).eq('president_id', factionId),
     ];
     for (const fn of ipoCleanup) { try { await fn(); } catch (_) { /* table may not exist */ } }
 
@@ -24773,6 +24844,16 @@ const MODIFIERS = {
     },
 };
 
+// Role → ministry_key mapping for looking up which party's minister used an action
+const ROLE_TO_MINISTRY = {
+    'foreign_minister': 'foreign',
+    'minister_of_trade': 'trade',
+    'minister_of_defense': 'defense',
+    'minister_of_finance': 'finance',
+    'head_of_government': 'prime_minister',
+    'ambassador': null,
+};
+
 // ==================== MARITIME FISHING RIGHTS — 18 ACTIONS ====================
 
 const ACTIONS = {
@@ -25204,6 +25285,11 @@ async function processIssueTick(supabase, nationList, currentTick) {
         }
 
         // ── 1. Apply modifier stat effects ──
+        // Favored nation gets effects reduced to 1/10th
+        const favoredNationId = issue.favor > 0 ? issue.nation_b_id
+                              : issue.favor < 0 ? issue.nation_a_id
+                              : null;
+
         for (const mod of (modifiers || [])) {
             const config = MODIFIERS[mod.modifier_key];
             if (!config || !config.stat_effects || config.stat_effects.length === 0) continue;
@@ -25214,7 +25300,11 @@ async function processIssueTick(supabase, nationList, currentTick) {
             // Resolve which nation(s) the effects apply to
             const targets = resolveTargets(mod.applies_to, issue, nationA, nationB);
             for (const target of targets) {
-                await applyIssueStatEffects(supabase, target.id, target, config.stat_effects);
+                const isFavored = favoredNationId && target.id === favoredNationId;
+                const effects = isFavored
+                    ? config.stat_effects.map(e => ({ ...e, delta: e.delta * 0.1 }))
+                    : config.stat_effects;
+                await applyIssueStatEffects(supabase, target.id, target, effects);
                 results.modifiersApplied++;
             }
 
@@ -25345,25 +25435,19 @@ async function processIssueTick(supabase, nationList, currentTick) {
             }
         }
 
-        // ── 4d. Resolve submitted diplomatic actions (simultaneous matching) ──
-        // Both nations must submit the same diplomatic action key on the same tick.
-        // Matched → apply effects. Unmatched → political gaffe penalty.
+        // ── 4d. Resolve submitted diplomatic actions (3-tick matching window) ──
+        // Nations have 3 ticks to match a diplomatic action. On the tick the window
+        // expires (submitted_tick + 3), unmatched submissions become a gaffe.
+        // Counter-play: if the opponent used a unilateral/threatening action during
+        // the 3-tick window, they get +3 gov_approval and +3 party momentum.
 
-        // Sweep stale submissions from prior ticks (crash recovery)
-        await supabase
-            .from('bilateral_issue_actions_taken')
-            .update({ status: 'gaffe', response_tick: currentTick,
-                effects_applied: { gaffe: true, reason: 'Stale submission — tick processor did not match in time.' } })
-            .eq('issue_id', issue.id)
-            .eq('action_category', 'diplomatic')
-            .eq('status', 'submitted')
-            .lt('submitted_tick', currentTick);
+        const DIPLOMATIC_WINDOW = 3; // ticks to match
 
+        // Fetch ALL pending diplomatic submissions for this issue (any tick)
         const { data: submittedDipActions, error: dipQueryErr } = await supabase
             .from('bilateral_issue_actions_taken')
             .select('*')
             .eq('issue_id', issue.id)
-            .eq('submitted_tick', currentTick)
             .eq('action_category', 'diplomatic')
             .eq('status', 'submitted');
         if (dipQueryErr) console.error('[Issues] Failed to query submitted diplomatic actions:', dipQueryErr.message);
@@ -25382,7 +25466,7 @@ async function processIssueTick(supabase, nationList, currentTick) {
             const matchedIds = new Set();
 
             for (const [actionKey, submissions] of Object.entries(byKey)) {
-                // Check if both nations submitted the same action
+                // Check if both nations submitted the same action (within window)
                 const fromA = submissions.find(s => s.acting_nation_id === issue.nation_a_id);
                 const fromB = submissions.find(s => s.acting_nation_id === issue.nation_b_id);
 
@@ -25470,11 +25554,30 @@ async function processIssueTick(supabase, nationList, currentTick) {
                 }
             }
 
-            // ── UNMATCHED: political gaffe penalty ──
+            // ── EXPIRED (3-tick window): gaffe penalty + counter-play check ──
+            // Only process submissions whose window has expired (submitted 3+ ticks ago)
+
+            // Pre-fetch all executed (unilateral/threatening) actions for this issue
+            // to check counter-play without per-gaffe queries (avoids N+1).
+            const earliestSubmission = submittedDipActions.reduce(
+                (min, sa) => Math.min(min, sa.submitted_tick), currentTick);
+            const { data: executedActions, error: execErr } = await supabase
+                .from('bilateral_issue_actions_taken')
+                .select('acting_nation_id, acting_faction_id, action_key, action_category, submitted_tick')
+                .eq('issue_id', issue.id)
+                .eq('status', 'executed')
+                .in('action_category', ['unilateral', 'threatening'])
+                .gte('submitted_tick', earliestSubmission);
+            if (execErr) console.error('[Issues] Failed to fetch executed actions for counter-play:', execErr.message);
+
             for (const sa of submittedDipActions) {
                 if (matchedIds.has(sa.id)) continue;
 
-                // This nation submitted a diplomatic action but the other didn't match
+                // Only expire if the 3-tick window has passed
+                const ticksElapsed = currentTick - sa.submitted_tick;
+                if (ticksElapsed < DIPLOMATIC_WINDOW) continue; // still within window
+
+                // This nation's diplomatic action expired without a match
                 const gaffeNationId = sa.acting_nation_id;
                 const gaffeNation = gaffeNationId === issue.nation_a_id ? nationA : nationB;
 
@@ -25487,24 +25590,86 @@ async function processIssueTick(supabase, nationList, currentTick) {
                 // +1 tension
                 newTension = Math.max(0, Math.min(10, newTension + 1));
 
+                // ── COUNTER-PLAY BONUS ──
+                // Check if the opponent used a unilateral or threatening action during
+                // the 3-tick window while this nation's diplomatic action was pending.
+                const opponentNationId = gaffeNationId === issue.nation_a_id ? issue.nation_b_id : issue.nation_a_id;
+                const opponentAction = (executedActions || []).find(a =>
+                    a.acting_nation_id === opponentNationId &&
+                    a.submitted_tick >= sa.submitted_tick &&
+                    a.submitted_tick < sa.submitted_tick + DIPLOMATIC_WINDOW
+                );
+                let counterPlayApplied = false;
+
+                if (opponentAction) {
+                    counterPlayApplied = true;
+                    const opponentNation = opponentNationId === issue.nation_a_id ? nationA : nationB;
+
+                    // +3 gov_approval for the opponent
+                    if (opponentNation) {
+                        await applyIssueStatEffects(supabase, opponentNationId, opponentNation,
+                            [{ stat_key: 'gov_approval', delta: 3 }]);
+                    }
+
+                    // +3 momentum for the party of the minister who used the action
+                    const oppActionDef = ACTIONS[opponentAction.action_key];
+                    const ministryKey = oppActionDef ? ROLE_TO_MINISTRY[oppActionDef.role] : null;
+                    if (ministryKey) {
+                        const { data: ministry } = await supabase
+                            .from('ministries')
+                            .select('party_id')
+                            .eq('nation_id', opponentNationId)
+                            .eq('ministry_key', ministryKey)
+                            .eq('is_active', true)
+                            .maybeSingle();
+                        if (ministry?.party_id) {
+                            await supabase.rpc('adjust_momentum', {
+                                p_faction_id: ministry.party_id,
+                                p_delta: 3,
+                                p_label: `Counter-play: ${oppActionDef.name} exploited opponent diplomacy`,
+                                p_tick: currentTick,
+                            });
+                        }
+                    }
+
+                    const oppActionName = oppActionDef?.name || opponentAction.action_key;
+                    await insertHistory(supabase, issue.id, currentTick, 'counter_play',
+                        `Counter-Play: ${oppActionName} exploited diplomatic overture. Gov Approval +3, Party Momentum +3.`,
+                        { action_key: opponentAction.action_key, acting_nation_id: opponentNationId,
+                          counter_play: true, gov_approval_bonus: 3, momentum_bonus: 3,
+                          exploited_action: sa.action_key },
+                        opponentNationId);
+                }
+
                 // Mark as gaffe
+                const gaffeEffects = {
+                    gaffe: true,
+                    gov_approval_penalty: -3,
+                    tension_delta: 1,
+                    window_ticks: DIPLOMATIC_WINDOW,
+                    reason: counterPlayApplied
+                        ? 'Opponent exploited your diplomatic overture with a forceful action.'
+                        : `No matching diplomatic action within ${DIPLOMATIC_WINDOW} ticks.`,
+                };
+                if (counterPlayApplied) {
+                    gaffeEffects.counter_play_opponent = opponentNationId;
+                }
+
                 const { error: gaffeErr } = await supabase.from('bilateral_issue_actions_taken').update({
                     status: 'gaffe',
                     response_tick: currentTick,
-                    effects_applied: {
-                        gaffe: true,
-                        gov_approval_penalty: -3,
-                        tension_delta: 1,
-                        reason: 'No matching diplomatic action from other nation.',
-                    },
+                    effects_applied: gaffeEffects,
                 }).eq('id', sa.id);
                 if (gaffeErr) console.error('[Issues] Failed to mark action as gaffe:', gaffeErr.message);
 
                 const dipAction = ACTIONS[sa.action_key];
+                const gaffeText = counterPlayApplied
+                    ? `Political Gaffe: ${dipAction?.name || sa.action_key} — opponent exploited your diplomacy! Gov Approval -3, Tension +1.`
+                    : `Political Gaffe: ${dipAction?.name || sa.action_key} — unmatched after ${DIPLOMATIC_WINDOW} ticks. Gov Approval -3, Tension +1.`;
                 await insertHistory(supabase, issue.id, currentTick, 'diplomatic_gaffe',
-                    `Political Gaffe: ${dipAction?.name || sa.action_key} — unmatched diplomatic action. Gov Approval -3, Tension +1.`,
+                    gaffeText,
                     { action_key: sa.action_key, acting_nation_id: gaffeNationId,
-                      gov_approval_penalty: -3, tension_delta: 1 },
+                      gov_approval_penalty: -3, tension_delta: 1, counter_play: counterPlayApplied },
                     gaffeNationId);
             }
         }
@@ -25557,6 +25722,60 @@ async function processIssueTick(supabase, nationList, currentTick) {
                 'This issue has escalated to an incident.',
                 { tension: newTension, favor: issue.favor, leverage,
                   incident_id: incidentResult?.incidentId });
+
+            // ── ESCALATION FAVOR BONUS/PENALTY ──
+            // Favored nation: +7 gov_approval, +6 momentum to all government parties
+            // Disfavored nation: -7 gov_approval, -10 momentum to all government parties
+            // Neutral (favor === 0): no bonus/penalty
+            const currentFavor = Number(issue.favor) || 0;
+            if (currentFavor !== 0) {
+                const favoredNationId = currentFavor > 0 ? issue.nation_b_id : issue.nation_a_id;
+                const disfavoredNationId = currentFavor > 0 ? issue.nation_a_id : issue.nation_b_id;
+                const favoredNation = favoredNationId === issue.nation_a_id ? nationA : nationB;
+                const disfavoredNation = disfavoredNationId === issue.nation_a_id ? nationA : nationB;
+
+                // +7 gov_approval for favored nation
+                if (favoredNation) {
+                    await applyIssueStatEffects(supabase, favoredNationId, favoredNation,
+                        [{ stat_key: 'gov_approval', delta: 7 }]);
+                }
+                // -7 gov_approval for disfavored nation
+                if (disfavoredNation) {
+                    await applyIssueStatEffects(supabase, disfavoredNationId, disfavoredNation,
+                        [{ stat_key: 'gov_approval', delta: -7 }]);
+                }
+
+                // Momentum: +6 for favored government parties, -10 for disfavored
+                for (const [nId, delta] of [[favoredNationId, 6], [disfavoredNationId, -10]]) {
+                    const { data: govMinistries } = await supabase
+                        .from('ministries')
+                        .select('party_id')
+                        .eq('nation_id', nId)
+                        .eq('is_active', true)
+                        .not('party_id', 'is', null);
+                    if (govMinistries) {
+                        const uniquePartyIds = [...new Set(govMinistries.map(m => m.party_id))];
+                        for (const partyId of uniquePartyIds) {
+                            await supabase.rpc('adjust_momentum', {
+                                p_faction_id: partyId,
+                                p_delta: delta,
+                                p_label: delta > 0
+                                    ? 'Issue escalated in our favor'
+                                    : 'Issue escalated against us',
+                                p_tick: currentTick,
+                            });
+                        }
+                    }
+                }
+
+                const favoredName = favoredNation?.name || 'Unknown';
+                const disfavoredName = disfavoredNation?.name || 'Unknown';
+                await insertHistory(supabase, issue.id, currentTick, 'escalation_favor',
+                    `Escalation Favor: ${favoredName} benefits (+7 Gov Approval, +6 Momentum). ${disfavoredName} penalized (-7 Gov Approval, -10 Momentum).`,
+                    { favored_nation_id: favoredNationId, disfavored_nation_id: disfavoredNationId,
+                      favor: currentFavor, gov_approval_favored: 7, gov_approval_disfavored: -7,
+                      momentum_favored: 6, momentum_disfavored: -10 });
+            }
         }
 
         // Log tension changes
@@ -25684,6 +25903,7 @@ async function checkAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, 
                 .from('bilateral_issue_modifiers')
                 .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
                 .eq('id', mod.id);
+            mod.is_active = false; // sync in-memory so tension drift uses accurate state
             results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'international_attention' });
             await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
                 'International attention has subsided as tensions eased.',
@@ -25699,6 +25919,7 @@ async function checkAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, 
                 .from('bilateral_issue_modifiers')
                 .update({ is_active: false, resolved_by: 'auto:favor_normalized', resolved_tick: currentTick })
                 .eq('id', mod.id);
+            mod.is_active = false; // sync in-memory so tension drift uses accurate state
             results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'coastal_community_decline' });
             await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
                 'Coastal community decline has eased as the dispute became more balanced.',
@@ -25714,6 +25935,7 @@ async function checkAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, 
                 .from('bilateral_issue_modifiers')
                 .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
                 .eq('id', mod.id);
+            mod.is_active = false; // sync in-memory so tension drift uses accurate state
             results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'public_hostility' });
             await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
                 'Public hostility has cooled as tensions decreased.',
@@ -27955,6 +28177,238 @@ async function processTariffRelationsPenalty(supabase, nation) {
 }
 
 // ==================== POPULATION GROWTH ====================
+// ════════════════════════════════════════════════════════════════════════════════
+//  CROSS-NATION MIGRATION FLOWS
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// Each tick, for every nation:
+// 1. Calculate PUSH score (why people leave) from poverty, unemployment, unrest, etc.
+// 2. Calculate PULL score for every OTHER nation (why people go there)
+// 3. Distribute emigrants across destinations proportional to pull scores
+// 4. Split into categories: academic, legal, illegal
+// 5. Insert migration_flows rows
+// 6. Update immigration/emigration/illegal_immigration/academic_immigration stats
+
+async function processMigrationFlows(supabase, nationList, currentTick) {
+    if (!nationList || nationList.length < 2) return;
+
+    const ns = (nation, key) => Number(nation[key] ?? 50);
+    const clamp = (v) => Math.max(0, Math.min(100, v));
+
+    // ── Push score: why people leave (0-100, higher = more emigration pressure) ──
+    function calcPushScore(nation) {
+        const poverty     = ns(nation, 'poverty_rate');         // high = push
+        const unemployment = ns(nation, 'unemployment');        // high = push
+        const unrest      = ns(nation, 'civil_unrest');         // high = push
+        const violence    = ns(nation, 'political_violence');   // high = push
+        const terrorism   = ns(nation, 'terrorism');            // high = push
+        const freedom     = ns(nation, 'freedom_index');        // low = push
+        const healthcare  = ns(nation, 'healthcare_quality');   // low = push
+        const education   = ns(nation, 'education_accessibility'); // low = push
+        const tax         = ns(nation, 'income_tax');           // high = push (moderate)
+
+        // Weighted composite: higher = more people want to leave
+        const push = (poverty * 0.20)
+                   + (unemployment * 0.20)
+                   + (unrest * 0.15)
+                   + (violence * 0.10)
+                   + (terrorism * 0.05)
+                   + ((100 - freedom) * 0.10)
+                   + ((100 - healthcare) * 0.08)
+                   + ((100 - education) * 0.07)
+                   + (Math.max(0, tax - 30) * 0.05); // only extreme tax pushes people
+
+        return clamp(push);
+    }
+
+    // ── Pull score: why people choose a destination (relative to origin) ──
+    function calcPullScore(origin, dest) {
+        const reasons = [];
+
+        // Economic opportunity (gdp_growth, low unemployment)
+        const econPull = (ns(dest, 'gdp_growth') - ns(origin, 'gdp_growth')) * 0.3
+                       + (ns(origin, 'unemployment') - ns(dest, 'unemployment')) * 0.2;
+        if (econPull > 3) reasons.push({ factor: 'Economic opportunity', direction: 'pull', strength: Math.min(10, econPull) });
+
+        // Freedom & safety
+        const freedomPull = (ns(dest, 'freedom_index') - ns(origin, 'freedom_index')) * 0.15
+                          + (ns(origin, 'civil_unrest') - ns(dest, 'civil_unrest')) * 0.10
+                          + (ns(origin, 'political_violence') - ns(dest, 'political_violence')) * 0.10;
+        if (freedomPull > 3) reasons.push({ factor: 'Political freedom', direction: 'pull', strength: Math.min(10, freedomPull) });
+
+        // Quality of life
+        const qolPull = (ns(dest, 'healthcare_quality') - ns(origin, 'healthcare_quality')) * 0.10
+                      + (ns(dest, 'education_accessibility') - ns(origin, 'education_accessibility')) * 0.08
+                      + (ns(dest, 'standard_of_living') - ns(origin, 'standard_of_living')) * 0.10;
+        if (qolPull > 2) reasons.push({ factor: 'Quality of life', direction: 'pull', strength: Math.min(10, qolPull) });
+
+        // Immigration openness (higher immigration stat = easier to enter)
+        const openness = ns(dest, 'immigration') * 0.15;
+        if (ns(dest, 'immigration') > 60) reasons.push({ factor: 'Open immigration policy', direction: 'pull', strength: Math.round((ns(dest, 'immigration') - 50) / 5) });
+
+        // Safety
+        const safetyPull = (ns(origin, 'terrorism') - ns(dest, 'terrorism')) * 0.05;
+        if (safetyPull > 3) reasons.push({ factor: 'Safety & stability', direction: 'pull', strength: Math.min(10, safetyPull) });
+
+        const totalPull = Math.max(0, econPull + freedomPull + qolPull + openness + safetyPull);
+
+        // Sort reasons by strength, keep top 3
+        reasons.sort((a, b) => b.strength - a.strength);
+
+        return { score: totalPull, reasons: reasons.slice(0, 3) };
+    }
+
+    // ── Category split: academic vs legal vs illegal ──
+    function splitCategory(origin, dest, count) {
+        const originEdu = (ns(origin, 'higher_education') + ns(origin, 'literacy')) / 200; // 0-1
+        const destAcademic = ns(dest, 'academic_immigration') / 100; // 0-1
+        const destOpenness = ns(dest, 'immigration') / 100; // 0-1
+
+        // Academic: educated origin + destination welcomes scholars
+        const academicPct = Math.min(0.4, originEdu * destAcademic * 0.6);
+
+        // Legal: proportional to destination's immigration openness
+        const legalPct = Math.min(0.9 - academicPct, destOpenness * (1 - academicPct) * 0.8);
+
+        // Illegal: the remainder — restrictive policy doesn't stop people, makes them illegal
+        const illegalPct = Math.max(0, 1 - academicPct - legalPct);
+
+        return {
+            academic: Math.round(count * academicPct),
+            legal: Math.round(count * legalPct),
+            illegal: Math.max(0, count - Math.round(count * academicPct) - Math.round(count * legalPct))
+        };
+    }
+
+    // ── Main loop: calculate flows for all nation pairs ──
+    const flowRows = [];
+    // Track aggregated stats per nation for updating immigration stats
+    const nationInflows = {};  // nationId → { legal, illegal, academic, total }
+    const nationOutflows = {}; // nationId → total emigrants
+
+    for (const nation of nationList) {
+        nationInflows[nation.id] = { legal: 0, illegal: 0, academic: 0, total: 0 };
+        nationOutflows[nation.id] = 0;
+    }
+
+    for (const origin of nationList) {
+        const pushScore = calcPushScore(origin);
+        const population = Number(origin.population ?? 0);
+
+        // Total emigrants this tick: push score drives volume
+        // At push=50 (neutral), ~0.01% of pop emigrates per tick
+        // At push=100 (crisis), ~0.1% of pop emigrates per tick
+        // At push=0 (paradise), ~0.001% of pop emigrates
+        const emigrationRate = Math.max(0.00001, ((pushScore / 100) ** 2) * 0.001);
+        const totalEmigrants = Math.round(population * emigrationRate);
+
+        if (totalEmigrants <= 0) continue;
+
+        // Calculate pull scores for all other nations
+        const pullResults = [];
+        let totalPullScore = 0;
+
+        for (const dest of nationList) {
+            if (dest.id === origin.id) continue;
+            const { score, reasons } = calcPullScore(origin, dest);
+            if (score > 0) {
+                pullResults.push({ dest, score, reasons });
+                totalPullScore += score;
+            }
+        }
+
+        if (totalPullScore <= 0 || pullResults.length === 0) continue;
+
+        // Distribute emigrants proportionally to pull scores
+        nationOutflows[origin.id] += totalEmigrants;
+
+        for (const pr of pullResults) {
+            const share = pr.score / totalPullScore;
+            const flowCount = Math.max(1, Math.round(totalEmigrants * share));
+            const split = splitCategory(origin, pr.dest, flowCount);
+
+            // Add push reasons from origin
+            const pushReasons = [];
+            if (ns(origin, 'poverty_rate') > 60) pushReasons.push({ factor: 'Poverty', direction: 'push', strength: Math.round((ns(origin, 'poverty_rate') - 50) / 5) });
+            if (ns(origin, 'unemployment') > 60) pushReasons.push({ factor: 'Unemployment', direction: 'push', strength: Math.round((ns(origin, 'unemployment') - 50) / 5) });
+            if (ns(origin, 'civil_unrest') > 60) pushReasons.push({ factor: 'Civil unrest', direction: 'push', strength: Math.round((ns(origin, 'civil_unrest') - 50) / 5) });
+            if (ns(origin, 'freedom_index') < 30) pushReasons.push({ factor: 'Political repression', direction: 'push', strength: Math.round((50 - ns(origin, 'freedom_index')) / 5) });
+
+            const allReasons = [...pushReasons, ...pr.reasons].sort((a, b) => b.strength - a.strength).slice(0, 4);
+
+            if (split.legal > 0) {
+                flowRows.push({ tick: currentTick, origin_nation_id: origin.id, dest_nation_id: pr.dest.id, category: 'legal', flow_count: split.legal, pull_score: Math.round(pr.score * 100) / 100, reasons: allReasons });
+            }
+            if (split.illegal > 0) {
+                flowRows.push({ tick: currentTick, origin_nation_id: origin.id, dest_nation_id: pr.dest.id, category: 'illegal', flow_count: split.illegal, pull_score: Math.round(pr.score * 100) / 100, reasons: allReasons });
+            }
+            if (split.academic > 0) {
+                flowRows.push({ tick: currentTick, origin_nation_id: origin.id, dest_nation_id: pr.dest.id, category: 'academic', flow_count: split.academic, pull_score: Math.round(pr.score * 100) / 100, reasons: allReasons });
+            }
+
+            // Accumulate inflows for destination
+            nationInflows[pr.dest.id].legal += split.legal;
+            nationInflows[pr.dest.id].illegal += split.illegal;
+            nationInflows[pr.dest.id].academic += split.academic;
+            nationInflows[pr.dest.id].total += flowCount;
+        }
+    }
+
+    // ── Insert flow rows (batch) ──
+    if (flowRows.length > 0) {
+        // Delete old flows (keep last 24 ticks)
+        await supabase.from('migration_flows').delete().lt('tick', currentTick - 24);
+
+        // Insert in batches of 100
+        for (let i = 0; i < flowRows.length; i += 100) {
+            const batch = flowRows.slice(i, i + 100);
+            const { error } = await supabase.from('migration_flows').insert(batch);
+            if (error) console.warn('[Migration] Insert batch failed:', error.message);
+        }
+        console.log(`[Migration] ${flowRows.length} flow rows for tick ${currentTick}`);
+    }
+
+    // ── Update immigration stats based on actual flows ──
+    // Stats are nudged toward values driven by real migration patterns
+    for (const nation of nationList) {
+        const inflow = nationInflows[nation.id];
+        const outflowTotal = nationOutflows[nation.id];
+        const population = Math.max(1, Number(nation.population ?? 1));
+
+        // Normalize flows to per-million-pop rate, then scale to 0-100 stat range
+        // 1000 immigrants per million pop per tick → ~50 (moderate)
+        const inflowRate = (inflow.total / population) * 1_000_000;
+        const outflowRate = (outflowTotal / population) * 1_000_000;
+        const illegalRate = (inflow.illegal / population) * 1_000_000;
+        const academicRate = (inflow.academic / population) * 1_000_000;
+
+        // Convert rates to stat nudges (gentle — 0.1 per 100 people per million)
+        // Immigration stat nudge: based on total inflow rate
+        const immNudge = clamp(inflowRate / 20) - ns(nation, 'immigration');
+        const emigNudge = clamp(outflowRate / 20) - ns(nation, 'emigration');
+        const illegalNudge = clamp(illegalRate / 10) - ns(nation, 'illegal_immigration');
+        const academicNudge = clamp(academicRate / 10) - ns(nation, 'academic_immigration');
+
+        // Apply gentle drift toward flow-driven values (10% per tick)
+        const driftRate = 0.1;
+        const updates = {};
+        const newImm = Math.round(clamp(ns(nation, 'immigration') + immNudge * driftRate) * 10) / 10;
+        const newEmig = Math.round(clamp(ns(nation, 'emigration') + emigNudge * driftRate) * 10) / 10;
+        const newIllegal = Math.round(clamp(ns(nation, 'illegal_immigration') + illegalNudge * driftRate) * 10) / 10;
+        const newAcademic = Math.round(clamp(ns(nation, 'academic_immigration') + academicNudge * driftRate) * 10) / 10;
+
+        if (Math.abs(newImm - ns(nation, 'immigration')) >= 0.05) updates.immigration = newImm;
+        if (Math.abs(newEmig - ns(nation, 'emigration')) >= 0.05) updates.emigration = newEmig;
+        if (Math.abs(newIllegal - ns(nation, 'illegal_immigration')) >= 0.05) updates.illegal_immigration = newIllegal;
+        if (Math.abs(newAcademic - ns(nation, 'academic_immigration')) >= 0.05) updates.academic_immigration = newAcademic;
+
+        if (Object.keys(updates).length > 0) {
+            const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
+            if (!error) Object.assign(nation, updates);
+        }
+    }
+}
+
 //
 // population_growth is a standalone 0-100 stat driven by policy effects and decay.
 //
@@ -27962,10 +28416,28 @@ async function processTariffRelationsPenalty(supabase, nation) {
 //   0   → -1% per tick (max decline)
 //   50  → 0% per tick (equilibrium)
 //   100 → +1% per tick (max growth)
+//
+// Immigration inputs (per tick nudge to population_growth):
+//   immigration:          ±0.005 per point from 50 (max ±0.25)
+//   emigration:           ±0.005 per point from 50, inverted (max ±0.25)
+//   academic_immigration: ±0.003 per point from 50 (max ±0.15)
+//   illegal_immigration:  ±0.002 per point from 50 (max ±0.10)
 
 async function processPopulationGrowth(supabase: any, nation: any) {
-    // population_growth is now standalone — just use the current value directly
-    const currentPG = Number(nation.population_growth ?? 50);
+    let currentPG = Number(nation.population_growth ?? 50);
+
+    // Immigration/emigration nudges — each stat is 0-100, baseline 50
+    const imm     = Number(nation.immigration ?? 50);
+    const emig    = Number(nation.emigration ?? 50);
+    const acadImm = Number(nation.academic_immigration ?? 50);
+    const illegImm = Number(nation.illegal_immigration ?? 50);
+
+    const immNudge = (imm - 50) * 0.005        // high immigration → growth
+                   - (emig - 50) * 0.005        // high emigration → decline
+                   + (acadImm - 50) * 0.003     // academic immigration → growth (smaller)
+                   + (illegImm - 50) * 0.002;   // illegal immigration → growth (smallest)
+
+    currentPG += immNudge;
     const finalPG = Math.round(Math.max(0, Math.min(100, currentPG)) * 10) / 10;
 
     // Population change: linear mapping from 0-100 to -1%..+1% per tick
@@ -29181,6 +29653,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Diplomatic relations decay failed (non-fatal):', relDecayErr);
     }
 
+    // 3b. Cross-nation migration flows
+    // Calculates emigration push, destination pull scores, category splits,
+    // inserts rows into migration_flows, and updates immigration stats.
+    try {
+        await processMigrationFlows(supabase, nationList, newTick);
+    } catch (migErr) {
+        console.error('[advanceTick] Migration flows failed (non-fatal):', migErr);
+    }
+
     // 4. Process each nation
     for (const nation of nationList) {
       try {
@@ -30135,6 +30616,48 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                             .select('*')
                             .eq('vote_id', vote.id);
 
+                        // Leadership elections use candidate-based voting (ballot = faction_id)
+                        if (vote.vote_type === 'leadership_election') {
+                            const voteTally = {};
+                            for (const b of (ballots || [])) {
+                                if (b.ballot && b.ballot !== 'abstain') {
+                                    voteTally[b.ballot] = (voteTally[b.ballot] || 0) + 1;
+                                }
+                            }
+                            // Find candidate with most votes (tie-break: current president wins ties)
+                            let winnerId = null;
+                            let maxVotes = 0;
+                            for (const [candidateId, count] of Object.entries(voteTally)) {
+                                if (count > maxVotes || (count === maxVotes && candidateId === org.president_id)) {
+                                    maxVotes = count;
+                                    winnerId = candidateId;
+                                }
+                            }
+                            // Fallback: if no votes cast, current president stays
+                            if (!winnerId) winnerId = org.president_id;
+
+                            const { error: presUpdateErr } = await supabase.from('international_orgs')
+                                .update({ president_id: winnerId, president_term_start_tick: newTick })
+                                .eq('id', org.id);
+                            if (presUpdateErr) console.error(`[advanceTick] IPO president update failed:`, presUpdateErr);
+
+                            const winnerMember = fullMembers.find(m => m.faction_id === winnerId);
+                            const winnerName = winnerMember?.factions?.faction_name || 'Unknown';
+                            const totalVotes = (ballots || []).length;
+
+                            await supabase.from('ipo_votes')
+                                .update({ status: 'passed', result: { tally: voteTally, winner: winnerId, total_ballots: totalVotes }, resolved_at_tick: newTick })
+                                .eq('id', vote.id);
+
+                            await supabase.from('ipo_chat').insert({
+                                org_id: org.id, faction_id: null, is_system: true,
+                                message_text: `Leadership Election Result: ${winnerName} elected president with ${maxVotes} vote${maxVotes !== 1 ? 's' : ''} (${totalVotes} total ballots cast).`,
+                                tick_posted: newTick
+                            });
+                            console.log(`[advanceTick] IPO ${org.name}: ${winnerName} elected president (${maxVotes}/${totalVotes} votes)`);
+                            continue; // skip standard yes/no resolution
+                        }
+
                         const yes = (ballots || []).filter(b => b.ballot === 'yes').length;
                         const no = (ballots || []).filter(b => b.ballot === 'no').length;
                         const abstain = (ballots || []).filter(b => b.ballot === 'abstain').length;
@@ -30212,7 +30735,50 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     let newPresidentId = null;
                     const successionType = leadership.type || 'rotation';
 
-                    if (successionType === 'rotation') {
+                    if (successionType === 'vote') {
+                        // Check if a leadership election vote is already open
+                        const { data: existingElection } = await supabase
+                            .from('ipo_votes')
+                            .select('id')
+                            .eq('org_id', org.id)
+                            .eq('vote_type', 'leadership_election')
+                            .eq('status', 'open')
+                            .limit(1);
+
+                        if (!existingElection || existingElection.length === 0) {
+                            // Create a leadership election vote — 3 ticks to vote
+                            const candidates = fullMembers.map(m => ({
+                                faction_id: m.faction_id,
+                                faction_name: m.factions?.faction_name || 'Unknown',
+                            }));
+                            const { error: electionInsertErr } = await supabase.from('ipo_votes').insert({
+                                org_id: org.id,
+                                title: 'Leadership Election — Choose Next President',
+                                vote_type: 'leadership_election',
+                                meta: { candidates },
+                                status: 'open',
+                                opened_at_tick: newTick,
+                                closes_at_tick: newTick + 3,
+                                proposed_by: org.president_id,
+                            });
+                            if (electionInsertErr) {
+                                console.error(`[advanceTick] IPO ${org.name}: failed to create election vote:`, electionInsertErr);
+                            } else {
+                                await supabase.from('ipo_chat').insert({
+                                    org_id: org.id, faction_id: null, is_system: true,
+                                    message_text: 'Presidential term has ended. A leadership election has been called — vote within 3 ticks.',
+                                    tick_posted: newTick,
+                                });
+                                console.log(`[advanceTick] IPO ${org.name}: leadership election opened`);
+                            }
+
+                            // Extend current president's term until election resolves
+                            await supabase.from('international_orgs')
+                                .update({ president_term_start_tick: newTick })
+                                .eq('id', org.id);
+                        }
+                        // Skip immediate succession — election will resolve via vote auto-resolution
+                    } else if (successionType === 'rotation') {
                         // Rotate to next member (by join order / faction_id sort)
                         const sortedMembers = [...fullMembers].sort((a, b) => a.faction_id.localeCompare(b.faction_id));
                         const currentIdx = sortedMembers.findIndex(m => m.faction_id === org.president_id);
