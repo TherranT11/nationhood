@@ -745,7 +745,7 @@ async function processSubsidiaryRevenue(supabase, nation, corps, currentTick) {
 
         // Operating overhead: scales with GDP (bad GDP = higher costs)
         // At GDP 50 (average): 1.0x overhead. At GDP 10: 1.4x. At GDP 80: 0.7x.
-        const overheadMult = 1 + (50 - gdpGrowth) / 100;
+        const overheadMult = Math.max(0.1, 1 + (50 - gdpGrowth) / 100);
         const overhead = Math.round(SUB_OPERATING_OVERHEAD * overheadMult);
 
         let revenue = investReturn - overhead;
@@ -1152,7 +1152,7 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
 
         // Corporate tax: applied to positive monthly income (profit only)
         // corporate_tax is 0-100 scale on the nation, treated as percentage
-        const corpTaxRate = Number(nation.corporate_tax ?? 0) / 100;
+        const corpTaxRate = Math.max(0, Math.min(1, (Number(nation.corporate_tax ?? 0) / 100) || 0));
         const taxableIncome = Math.max(0, monthlyIncome);
         const taxAmount = Math.round(taxableIncome * corpTaxRate);
 

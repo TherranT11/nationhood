@@ -290,6 +290,16 @@ const MODIFIERS = {
     },
 };
 
+// Role → ministry_key mapping for looking up which party's minister used an action
+const ROLE_TO_MINISTRY = {
+    'foreign_minister': 'foreign',
+    'minister_of_trade': 'trade',
+    'minister_of_defense': 'defense',
+    'minister_of_finance': 'finance',
+    'head_of_government': 'prime_minister',
+    'ambassador': null,
+};
+
 // ==================== MARITIME FISHING RIGHTS — 18 ACTIONS ====================
 
 const ACTIONS = {
@@ -993,15 +1003,18 @@ export async function processIssueTick(supabase, nationList, currentTick) {
             // ── EXPIRED (3-tick window): gaffe penalty + counter-play check ──
             // Only process submissions whose window has expired (submitted 3+ ticks ago)
 
-            // Role → ministry_key mapping for looking up which party's minister used the action
-            const ROLE_TO_MINISTRY = {
-                'foreign_minister': 'foreign',
-                'minister_of_trade': 'trade',
-                'minister_of_defense': 'defense',
-                'minister_of_finance': 'finance',
-                'head_of_government': 'prime_minister',
-                'ambassador': null, // ambassador is not a ministry
-            };
+            // Pre-fetch all executed (unilateral/threatening) actions for this issue
+            // to check counter-play without per-gaffe queries (avoids N+1).
+            const earliestSubmission = submittedDipActions.reduce(
+                (min, sa) => Math.min(min, sa.submitted_tick), currentTick);
+            const { data: executedActions, error: execErr } = await supabase
+                .from('bilateral_issue_actions_taken')
+                .select('acting_nation_id, acting_faction_id, action_key, action_category, submitted_tick')
+                .eq('issue_id', issue.id)
+                .eq('status', 'executed')
+                .in('action_category', ['unilateral', 'threatening'])
+                .gte('submitted_tick', earliestSubmission);
+            if (execErr) console.error('[Issues] Failed to fetch executed actions for counter-play:', execErr.message);
 
             for (const sa of submittedDipActions) {
                 if (matchedIds.has(sa.id)) continue;
@@ -1027,17 +1040,11 @@ export async function processIssueTick(supabase, nationList, currentTick) {
                 // Check if the opponent used a unilateral or threatening action during
                 // the 3-tick window while this nation's diplomatic action was pending.
                 const opponentNationId = gaffeNationId === issue.nation_a_id ? issue.nation_b_id : issue.nation_a_id;
-                const { data: opponentWindowActions } = await supabase
-                    .from('bilateral_issue_actions_taken')
-                    .select('acting_nation_id, acting_faction_id, action_key, action_category')
-                    .eq('issue_id', issue.id)
-                    .eq('acting_nation_id', opponentNationId)
-                    .eq('status', 'executed')
-                    .in('action_category', ['unilateral', 'threatening'])
-                    .gte('submitted_tick', sa.submitted_tick)
-                    .lte('submitted_tick', sa.submitted_tick + DIPLOMATIC_WINDOW);
-
-                const opponentAction = (opponentWindowActions || [])[0];
+                const opponentAction = (executedActions || []).find(a =>
+                    a.acting_nation_id === opponentNationId &&
+                    a.submitted_tick >= sa.submitted_tick &&
+                    a.submitted_tick < sa.submitted_tick + DIPLOMATIC_WINDOW
+                );
                 let counterPlayApplied = false;
 
                 if (opponentAction) {
@@ -1166,7 +1173,7 @@ export async function processIssueTick(supabase, nationList, currentTick) {
             // Favored nation: +7 gov_approval, +6 momentum to all government parties
             // Disfavored nation: -7 gov_approval, -10 momentum to all government parties
             // Neutral (favor === 0): no bonus/penalty
-            const currentFavor = Number(issue.favor);
+            const currentFavor = Number(issue.favor) || 0;
             if (currentFavor !== 0) {
                 const favoredNationId = currentFavor > 0 ? issue.nation_b_id : issue.nation_a_id;
                 const disfavoredNationId = currentFavor > 0 ? issue.nation_a_id : issue.nation_b_id;

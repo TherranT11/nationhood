@@ -258,11 +258,9 @@ initPage('conflicts', async (state) => {
     // Event delegation for issue action items — single handler on parent container.
     // Survives innerHTML changes, no timing issues.
     document.getElementById('issues-actions-panel').addEventListener('click', (e) => {
-        console.log('[Issues] Panel click:', e.target.tagName, e.target.className);
         const item = e.target.closest('.ia-item:not(.ia-item--used):not(.ia-item--locked)');
         if (!item) return;
         const actionKey = item.dataset.actionKey;
-        console.log('[Issues] Action clicked:', actionKey, '_actionIssue:', !!_actionIssue);
         if (actionKey && _actionIssue) {
             try {
                 showIssueActionModal(actionKey, _actionIssue, _actionMods || []);
@@ -533,9 +531,11 @@ const DIPLOMATIC_WINDOW = 3; // must match backend
 
 function renderActionNotification(issue, actionsTaken) {
     const el = document.getElementById('issues-action-notification');
+    if (!el) return;
+    const actions = actionsTaken || [];
     const isYours = issue.nation_a_id === currentNation.id || issue.nation_b_id === currentNation.id;
 
-    if (!isYours || issue.status === 'escalated' || issue.status === 'resolved') {
+    if (!isYours || issue.status === 'escalated' || issue.status === 'resolved' || !currentTick) {
         el.style.display = 'none';
         return;
     }
@@ -548,7 +548,7 @@ function renderActionNotification(issue, actionsTaken) {
     const notifications = [];
 
     // 1. Check: opponent took an action recently (within last 3 ticks) — alert player to respond
-    const recentOpponentActions = actionsTaken.filter(a =>
+    const recentOpponentActions = actions.filter(a =>
         a.acting_nation_id === opponentNationId &&
         (a.status === 'executed' || a.status === 'submitted') &&
         a.submitted_tick >= currentTick - DIPLOMATIC_WINDOW &&
@@ -571,7 +571,7 @@ function renderActionNotification(issue, actionsTaken) {
     }
 
     // 2. Check: you have a pending diplomatic submission awaiting match
-    const myPending = actionsTaken.filter(a =>
+    const myPending = actions.filter(a =>
         a.acting_nation_id === currentNation.id &&
         a.status === 'submitted' &&
         a.action_category === 'diplomatic'
@@ -990,14 +990,12 @@ window._switchIssueActionTab = function(tabEl, category) {
 // ==================== ISSUE ACTION MODAL ====================
 
 function showIssueActionModal(actionKey, issue, modifiers) {
-    console.log('[Issues] showIssueActionModal called:', actionKey, 'executing:', issueActionExecuting);
-    if (issueActionExecuting) { console.log('[Issues] BLOCKED: issueActionExecuting is true'); return; }
+    if (issueActionExecuting) return;
     const action = ACTIONS[actionKey];
-    if (!action) { console.log('[Issues] BLOCKED: action not found for key:', actionKey); return; }
+    if (!action) return;
 
     const modal = document.getElementById('action-modal');
-    console.log('[Issues] Modal element:', modal ? 'found' : 'NOT FOUND');
-    if (!modal) { alert('Modal element #action-modal not found in DOM'); return; }
+    if (!modal) return;
     const header = document.getElementById('modal-header');
     const body = document.getElementById('modal-body');
     const confirmBtn = document.getElementById('modal-confirm');
@@ -1026,7 +1024,7 @@ function showIssueActionModal(actionKey, issue, modifiers) {
     bodyHtml += '</div>';
 
     if (action.category === 'diplomatic') {
-        bodyHtml += '<div class="modal-info">This will only work if the other nation uses this exact same action on this tick. If they don\'t, you suffer a Political Gaffe: -3 Gov Approval, +1 Tension.</div>';
+        bodyHtml += '<div class="modal-info">The other nation has 3 ticks to match this action. If they don\'t, you suffer a Political Gaffe: -3 Gov Approval, +1 Tension.</div>';
         confirmBtn.textContent = 'Submit';
         confirmBtn.className = 'modal-btn modal-btn--confirm';
     } else if (action.category === 'threatening') {
@@ -1044,7 +1042,6 @@ function showIssueActionModal(actionKey, issue, modifiers) {
 
     body.innerHTML = bodyHtml;
     modal.style.display = '';
-    console.log('[Issues] Modal shown. display:', modal.style.display, 'computed:', getComputedStyle(modal).display);
 
     // Wire buttons (clone to avoid stacking listeners)
     const newCancel = document.getElementById('modal-cancel').cloneNode(true);
