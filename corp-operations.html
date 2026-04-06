@@ -7913,7 +7913,12 @@ function renderCreateSubsidiaryCard() {
             ${costHtml}
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <span style="font-family:${mono};font-size:8px;color:${C.dim}">IMMEDIATE PAYMENT</span>
-                <div onclick="subCreate()" style="padding:5px 18px;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:${canCreate ? '#000' : C.dim};background:${canCreate ? C.gold : 'transparent'};border:1px solid ${canCreate ? C.gold : C.border};cursor:${canCreate ? 'pointer' : 'default'};opacity:${canCreate ? 1 : 0.4}">CREATE SUBSIDIARY</div>
+                <div onclick="subCreate()"
+                    onmouseover="this.style.filter='brightness(1.2)';this.style.transform='scale(1.02)'"
+                    onmouseout="this.style.filter='';this.style.transform=''"
+                    onmousedown="this.style.transform='scale(0.97)'"
+                    onmouseup="this.style.transform='scale(1.02)'"
+                    style="padding:6px 22px;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:${canCreate ? '#000' : C.dim};background:${canCreate ? C.gold : C.surface};border:1px solid ${canCreate ? C.gold : C.border};cursor:pointer;opacity:${canCreate ? 1 : 0.5};transition:all 0.1s ease;user-select:none">CREATE SUBSIDIARY</div>
             </div>
         </div>
     </div>`;
