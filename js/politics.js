@@ -943,9 +943,15 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, _,
         const majLinePct = totalSeats > 0 ? (majority / totalSeats) * 100 : 50;
 
         // 3-pillar score colors (0-100 scale)
-        const govColor = p.governance >= 60 ? 'var(--dgreen)' : p.governance >= 35 ? 'var(--damber)' : 'var(--dred)';
-        const pmColor = p.pillarMomentum >= 60 ? 'var(--dgreen)' : p.pillarMomentum >= 35 ? 'var(--damber)' : 'var(--dred)';
-        const ideoColor = p.ideology >= 60 ? 'var(--dgreen)' : p.ideology >= 35 ? 'var(--damber)' : 'var(--dred)';
+        const pillarColor = v => v >= 60 ? 'var(--dgreen)' : v >= 35 ? 'var(--damber)' : 'var(--dred)';
+        const govColor = pillarColor(p.governance);
+        const pmColor = pillarColor(p.pillarMomentum);
+        const ideoColor = pillarColor(p.ideology);
+
+        // Weighted contributions (weights: GOV 35%, MOM 25%, IDEO 30%, APPROVAL 10%)
+        const govW = (p.governance * 0.35).toFixed(1);
+        const momW = (p.pillarMomentum * 0.25).toFixed(1);
+        const ideoW = (p.ideology * 0.30).toFixed(1);
 
         return `<div class="pol-fc-party">
             <div class="pol-fc-party-header">
@@ -960,11 +966,32 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, _,
                     <span class="pol-fc-seats-label">seats</span>
                 </div>
             </div>
-            <div class="pol-fc-pillars">
-                <span class="pol-fc-pillar" title="Governance (35%)"><span class="pol-fc-pillar-label">GOV</span> <span style="color:${govColor}">${p.governance}</span></span>
-                <span class="pol-fc-pillar" title="Momentum (25%)"><span class="pol-fc-pillar-label">MOM</span> <span style="color:${pmColor}">${p.pillarMomentum}</span></span>
-                <span class="pol-fc-pillar" title="Ideology (30%)"><span class="pol-fc-pillar-label">IDEO</span> <span style="color:${ideoColor}">${p.ideology}</span></span>
-                <span class="pol-fc-pillar pol-fc-pillar--appeal" title="Combined election score"><span class="pol-fc-pillar-label">SCORE</span> <span>${p.rawAppeal}</span></span>
+            <div class="pol-fc-3p">
+                <div class="pol-fc-3p-row">
+                    <span class="pol-fc-3p-label">GOV</span>
+                    <span class="pol-fc-3p-pct">35%</span>
+                    <div class="pol-fc-3p-bar"><div class="pol-fc-3p-fill" style="width:${p.governance}%;background:${govColor}"></div></div>
+                    <span class="pol-fc-3p-val" style="color:${govColor}">${p.governance}</span>
+                    <span class="pol-fc-3p-contrib">${govW}</span>
+                </div>
+                <div class="pol-fc-3p-row">
+                    <span class="pol-fc-3p-label">MOM</span>
+                    <span class="pol-fc-3p-pct">25%</span>
+                    <div class="pol-fc-3p-bar"><div class="pol-fc-3p-fill" style="width:${p.pillarMomentum}%;background:${pmColor}"></div></div>
+                    <span class="pol-fc-3p-val" style="color:${pmColor}">${p.pillarMomentum}</span>
+                    <span class="pol-fc-3p-contrib">${momW}</span>
+                </div>
+                <div class="pol-fc-3p-row">
+                    <span class="pol-fc-3p-label">IDEO</span>
+                    <span class="pol-fc-3p-pct">30%</span>
+                    <div class="pol-fc-3p-bar"><div class="pol-fc-3p-fill" style="width:${p.ideology}%;background:${ideoColor}"></div></div>
+                    <span class="pol-fc-3p-val" style="color:${ideoColor}">${p.ideology}</span>
+                    <span class="pol-fc-3p-contrib">${ideoW}</span>
+                </div>
+                <div class="pol-fc-3p-score">
+                    <span class="pol-fc-3p-score-label">SCORE</span>
+                    <span class="pol-fc-3p-score-val">${p.rawAppeal}</span>
+                </div>
             </div>
             <div class="pol-fc-band">
                 <div class="pol-fc-band-fill" style="left:${loPct.toFixed(1)}%;width:${(hiPct - loPct).toFixed(1)}%;background:${color}22;border-color:${color}33"></div>
