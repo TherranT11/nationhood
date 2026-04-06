@@ -252,6 +252,24 @@ initPage('conflicts', async (state) => {
         }
     });
 
+    // Event delegation for issue action items — single handler on parent container.
+    // Survives innerHTML changes, no timing issues.
+    document.getElementById('issues-actions-panel').addEventListener('click', (e) => {
+        console.log('[Issues] Panel click:', e.target.tagName, e.target.className);
+        const item = e.target.closest('.ia-item:not(.ia-item--used):not(.ia-item--locked)');
+        if (!item) return;
+        const actionKey = item.dataset.actionKey;
+        console.log('[Issues] Action clicked:', actionKey, '_actionIssue:', !!_actionIssue);
+        if (actionKey && _actionIssue) {
+            try {
+                showIssueActionModal(actionKey, _actionIssue, _actionMods || []);
+            } catch (err) {
+                console.error('[Issues] Modal error:', err);
+                alert('Action error: ' + err.message);
+            }
+        }
+    });
+
     await loadIncidents();
 
     // Default to issues tab
@@ -726,15 +744,8 @@ function renderIssueHistory(issue, history) {
 // ==================== ISSUE ACTIONS PANEL ====================
 
 let issueActionExecuting = false;
-let _actionIssue = null;    // current issue for action click handler
-let _actionMods = null;     // current modifiers for action click handler
-
-// Global click handler for issue action items (inline onclick is more reliable than addEventListener)
-window._onIssueActionClick = function(actionKey) {
-    if (_actionIssue && _actionMods !== null) {
-        showIssueActionModal(actionKey, _actionIssue, _actionMods);
-    }
-};
+let _actionIssue = null;    // current issue for action click delegation
+let _actionMods = null;     // current modifiers for action click delegation
 
 const ACTION_ROLE_LABELS = {
     foreign_minister: 'FM',
@@ -845,8 +856,7 @@ function renderActionList(category, actions, usedActions, actedThisTick, hasFric
         if (action.special === 'incident_trigger_50') tags += `<span class="ia-tag ia-tag--danger">50% triggers Incident</span>`;
         if (action.special === 'incident_trigger_25') tags += `<span class="ia-tag ia-tag--danger">25% triggers Incident</span>`;
 
-        const clickAttr = (!isUsed && !isLocked) ? `onclick="window._onIssueActionClick('${action.key}')"` : '';
-        html += `<div class="ia-item ${cls}" data-action-key="${action.key}" ${clickAttr}>
+        html += `<div class="ia-item ${cls}" data-action-key="${action.key}">
             <div class="ia-icon ia-icon--${color}">${idx}</div>
             <div class="ia-info">
                 <div class="ia-name ia-name--${color}">${escapeHtml(action.name)}</div>
