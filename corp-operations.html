@@ -6889,8 +6889,8 @@ function renderConstructionModal() {
                 <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Type</div>
                 <div style="display:flex;gap:4px;">
                     ${['Regional HQ', 'Office Building', ...(faction?.corp_sector === 'Construction' ? ['Warehouse'] : [])].map(t => `<span onclick="cpSetField('type','${t}')" style="flex:1;text-align:center;padding:5px 0;font-family:${mono};font-size:9px;font-weight:700;cursor:pointer;color:${_cpData.type === t ? '#000' : C.dim};background:${_cpData.type === t ? (t === 'Warehouse' ? C.orange : C.accent) : 'transparent'};border:1px solid ${_cpData.type === t ? (t === 'Warehouse' ? C.orange : C.accent) : C.border}">${t}</span>`).join('')}
-                    ${faction?.corp_sector === 'Construction' ? `<div style="font-family:${mono};font-size:7px;color:${C.orange};margin-top:3px;">Construction: Warehouse available (75% cost, stores up to $20M materials)</div>` : ''}
                 </div>
+                ${_cpData.type === 'Warehouse' ? `<div style="font-family:${mono};font-size:7px;color:${C.orange};margin-top:4px;">Warehouse: 75% construction cost, stores up to $20M in materials</div>` : ''}
             </div>
 
             <div style="margin-bottom:12px;">
