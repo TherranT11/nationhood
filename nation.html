@@ -2250,29 +2250,6 @@ function renderPullFactorScore(nation) {
 // ===== MAIN RENDER =====
 
 async function renderNationPage(nation) {
-    // Load migration flows in parallel with render, append below immigration tab when ready
-    try {
-        loadMigrationFlows(nation.id).then(function() {
-            var immPanel = document.getElementById('nation-tab-immigration');
-            if (immPanel) {
-                immPanel.innerHTML = renderImmigrationTab(nation)
-                    + '<div id="migration-flow-panels">'
-                    + '<div class="imm-panels-grid">'
-                    + renderMigrationSourcesPanel(nation)
-                    + renderMigrationDestsPanel(nation)
-                    + '</div>'
-                    + renderMigrationMatrix(nation)
-                    + renderPullFactorScore(nation)
-                    + '</div>';
-            }
-            // Re-render illegal immigration tab with flow data
-            var illPanel = document.getElementById('nation-tab-illegal');
-            if (illPanel) {
-                illPanel.innerHTML = renderIllegalImmigrationTab(nation);
-            }
-        }).catch(function(err) { console.warn('[nation] Migration flow load failed:', err); });
-    } catch (e) { console.warn('[nation] Migration flows not available:', e); }
-
     var h = '';
 
     // ---- Tab bar ----
@@ -2308,6 +2285,39 @@ async function renderNationPage(nation) {
 
     document.getElementById('content-area').innerHTML = h;
     attachHandlers();
+
+    // Load migration flows AFTER DOM is set so .then() can find the tab elements
+    try {
+        loadMigrationFlows(nation.id).then(function() {
+            try {
+                var immPanel = document.getElementById('nation-tab-immigration');
+                if (immPanel) {
+                    immPanel.innerHTML = renderImmigrationTab(nation)
+                        + '<div id="migration-flow-panels">'
+                        + '<div class="imm-panels-grid">'
+                        + renderMigrationSourcesPanel(nation)
+                        + renderMigrationDestsPanel(nation)
+                        + '</div>'
+                        + renderMigrationMatrix(nation)
+                        + renderPullFactorScore(nation)
+                        + '</div>';
+                }
+            } catch (renderErr) {
+                console.error('[nation] Immigration tab render failed:', renderErr);
+                var immPanel = document.getElementById('nation-tab-immigration');
+                if (immPanel) immPanel.innerHTML = renderImmigrationTab(nation);
+            }
+            // Re-render illegal immigration tab with flow data
+            try {
+                var illPanel = document.getElementById('nation-tab-illegal');
+                if (illPanel) {
+                    illPanel.innerHTML = renderIllegalImmigrationTab(nation);
+                }
+            } catch (illErr) {
+                console.error('[nation] Illegal immigration tab render failed:', illErr);
+            }
+        }).catch(function(err) { console.warn('[nation] Migration flow load failed:', err); });
+    } catch (e) { console.warn('[nation] Migration flows not available:', e); }
 }
 
 // ===== CLICK HANDLERS =====

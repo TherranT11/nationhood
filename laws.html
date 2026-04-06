@@ -1735,17 +1735,12 @@ function renderFoundationalOptions() {
         ${(() => {
             const parlTermEstablished = currentNation.parliamentary_term_established_tick != null;
             const parlTermYears = (currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS) / (GAME_CONFIG.TICKS_PER_YEAR || 12);
-            if (parlTermEstablished) {
-                // Law is active — show current value and repeal option
-                return `<div class="policy-option${selectedFoundationalType === 'repeal_parliamentary_term' ? ' selected' : ''}" style="${selectedFoundationalType === 'repeal_parliamentary_term' ? 'border-color:var(--purple);' : ''}" onclick="selectFoundationalType('repeal_parliamentary_term')" data-foundational-type="repeal_parliamentary_term">
-                    <div class="policy-option-name">🗓 Legislative Term Length <span class="article-ideology" style="background:var(--purple);color:#fff;">FOUNDATIONAL</span> <span style="background:var(--green,#5cb85c);color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">ACTIVE</span></div>
-                    <div class="policy-option-desc">Current term: <strong>${parlTermYears} Years</strong>. To change the term length, this law must first be repealed. Repeal requires 2/3 supermajority (${required} seats).</div>
-                </div>`;
-            }
-            // Law not active — show proposal form
+            // Both active and inactive use the same parliamentary_term_length flow — just different descriptions
             return `<div class="policy-option${selectedFoundationalType === 'parliamentary_term_length' ? ' selected' : ''}" style="${selectedFoundationalType === 'parliamentary_term_length' ? 'border-color:var(--purple);' : ''}" onclick="selectFoundationalType('parliamentary_term_length')" data-foundational-type="parliamentary_term_length">
-                <div class="policy-option-name">🗓 Legislative Term Length <span class="article-ideology" style="background:var(--purple);color:#fff;">FOUNDATIONAL</span></div>
-                <div class="policy-option-desc">Set how often legislative elections occur. Requires 2/3 supermajority (${required} seats) to pass. ${GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS} tick cooldown between changes.</div>
+                <div class="policy-option-name">🗓 Legislative Term Length <span class="article-ideology" style="background:var(--purple);color:#fff;">FOUNDATIONAL</span>${parlTermEstablished ? ' <span style="background:var(--green,#5cb85c);color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">ACTIVE</span>' : ''}</div>
+                <div class="policy-option-desc">${parlTermEstablished
+                    ? 'Current term: <strong>' + parlTermYears + ' Years</strong>. Select a different term length to propose a change. Requires 2/3 supermajority (' + required + ' seats). ' + GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS + ' tick cooldown.'
+                    : 'Set how often legislative elections occur. Requires 2/3 supermajority (' + required + ' seats) to pass. ' + GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS + ' tick cooldown between changes.'}</div>
                 <div id="foundational-parl-term-config" style="margin-top:12px;${selectedFoundationalType === 'parliamentary_term_length' ? '' : 'display:none;'}">
                     <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-bottom:6px;">Current term: <strong>${parlTermYears} Years</strong> — Select new term length:</label>
                     <select id="foundational-parl-term-select" style="background:var(--bg-card);border:1px solid var(--purple);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:220px;">
@@ -2469,6 +2464,29 @@ function renderDraftArticles() {
                         <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
                         <div class="draft-article-name">📜 Constitutional Amendment Streamlining</div>
                         <div class="draft-article-meta">Foundational bills need only 55% (down from 67%). Legitimacy -8, polarization +5, freedom index -5. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'parliamentary_term_length') {
+                const years = art.proposedParliamentaryTermLength / (GAME_CONFIG.TICKS_PER_YEAR || 12);
+                const currentYears = (currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS) / (GAME_CONFIG.TICKS_PER_YEAR || 12);
+                return `<div class="draft-article-card" style="border-left:3px solid var(--purple);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--purple);">Foundational</span></div>
+                        <div class="draft-article-name">🗓 Legislative Term Length</div>
+                        <div class="draft-article-meta">Change term: ${currentYears} Years → ${years} Years · Requires 2/3 supermajority · ${GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS} tick cooldown</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'repeal_parliamentary_term') {
+                const currentYears = (currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS) / (GAME_CONFIG.TICKS_PER_YEAR || 12);
+                return `<div class="draft-article-card" style="border-left:3px solid var(--purple);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--purple);">Foundational</span></div>
+                        <div class="draft-article-name">🗓 Repeal: Legislative Term Length</div>
+                        <div class="draft-article-meta">Repeal the ${currentYears}-Year legislative term law · Requires 2/3 supermajority · ${GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS} tick cooldown</div>
                     </div>
                     <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
                 </div>`;
