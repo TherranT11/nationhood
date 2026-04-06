@@ -1066,7 +1066,7 @@ async function init() {
         }
         const hasParty = allUserFactions.some(f => f.faction_type === 'party');
         if (!hasParty) {
-            ddHtml += `<div class="corp-dd-item corp-dd-item--create" onclick="window.location.href='select-nation.html'">
+            ddHtml += `<div class="corp-dd-item corp-dd-item--create" onclick="sessionStorage.setItem('pending_faction_type','party'); window.location.href='select-nation.html'">
                 <span class="corp-dd-type" style="color:var(--amber)">+</span>
                 <span class="corp-dd-name">Found a Political Party</span>
             </div>`;
