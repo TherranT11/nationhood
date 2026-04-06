@@ -1179,6 +1179,242 @@ body.light-mode .loading-spinner {
     border-top: 1px solid var(--n-border);
 }
 
+/* ===== Illegal Immigration Tab ===== */
+.ill-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    background: var(--n-bg-card);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+    border-left: 3px solid var(--n-red);
+}
+.ill-hero-label {
+    font-family: var(--n-font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--n-tertiary);
+    margin-bottom: 4px;
+}
+.ill-hero-value {
+    font-family: var(--n-font-mono);
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1.1;
+}
+.ill-hero-delta {
+    font-family: var(--n-font-mono);
+    font-size: 13px;
+    margin-top: 4px;
+}
+.ill-hero-badge {
+    font-family: var(--n-font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 4px 12px;
+    border: 1px solid;
+    border-radius: 3px;
+    margin-top: 4px;
+}
+.ill-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.ill-panel {
+    background: var(--n-bg-card);
+    border-radius: 8px;
+    padding: 16px;
+}
+.ill-panel-title {
+    font-family: var(--n-font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--n-secondary);
+    margin-bottom: 14px;
+}
+.ill-empty {
+    font-family: var(--n-font-sans);
+    font-size: 12px;
+    color: var(--n-tertiary);
+    padding: 8px 0;
+}
+/* Push Factors */
+.ill-factor-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 10px;
+    align-items: baseline;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--n-border);
+}
+.ill-factor-row:last-of-type {
+    border-bottom: none;
+}
+.ill-factor-label {
+    font-family: var(--n-font-sans);
+    font-size: 13px;
+    color: var(--n-primary);
+}
+.ill-factor-val {
+    font-family: var(--n-font-mono);
+    font-size: 12px;
+    color: var(--n-secondary);
+    text-align: right;
+}
+.ill-factor-rate {
+    font-family: var(--n-font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: right;
+    min-width: 70px;
+}
+.ill-net-pressure {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: var(--n-bg-card-hi);
+    border-radius: 4px;
+}
+.ill-net-label {
+    font-family: var(--n-font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--n-green);
+}
+.ill-net-val {
+    font-family: var(--n-font-mono);
+    font-size: 13px;
+    font-weight: 700;
+}
+/* Stat Drag Effects */
+.ill-drag-section-label {
+    font-family: var(--n-font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--n-secondary);
+    margin-bottom: 8px;
+}
+.ill-drag-inactive-label {
+    color: var(--n-tertiary);
+    margin-top: 14px;
+}
+.ill-drag-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 10px;
+    align-items: baseline;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--n-border);
+}
+.ill-drag-row:last-of-type {
+    border-bottom: none;
+}
+.ill-drag-row--inactive {
+    opacity: 0.5;
+}
+.ill-drag-stat {
+    font-family: var(--n-font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--n-primary);
+}
+.ill-drag-thresh {
+    font-family: var(--n-font-mono);
+    font-size: 10px;
+    color: var(--n-tertiary);
+}
+.ill-drag-effect {
+    font-family: var(--n-font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: right;
+    min-width: 70px;
+}
+/* By Origin */
+.ill-origins {
+    background: var(--n-bg-card);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+.ill-origin-row {
+    display: grid;
+    grid-template-columns: 110px 1fr auto auto;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 0;
+}
+.ill-origin-name {
+    font-family: var(--n-font-sans);
+    font-size: 13px;
+    font-weight: 700;
+    text-align: right;
+}
+.ill-origin-bar-wrap {
+    height: 10px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.ill-origin-bar {
+    height: 100%;
+    border-radius: 3px;
+    opacity: 0.8;
+}
+.ill-origin-pct {
+    font-family: var(--n-font-mono);
+    font-size: 11px;
+    color: var(--n-secondary);
+    text-align: right;
+    min-width: 30px;
+}
+.ill-origin-count {
+    font-family: var(--n-font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--n-primary);
+    text-align: right;
+    min-width: 50px;
+}
+/* Disclaimer */
+.ill-disclaimer {
+    display: flex;
+    gap: 12px;
+    align-items: stretch;
+    background: var(--n-bg-card);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 40px;
+}
+.ill-disclaimer-bar {
+    width: 3px;
+    border-radius: 2px;
+    background: var(--n-red);
+    flex-shrink: 0;
+}
+.ill-disclaimer-text {
+    font-family: var(--n-font-sans);
+    font-size: 12px;
+    font-style: italic;
+    color: var(--n-secondary);
+    line-height: 1.5;
+}
+@media (max-width: 768px) {
+    .ill-columns { grid-template-columns: 1fr; }
+    .ill-origin-row { grid-template-columns: 80px 1fr auto auto; }
+}
+
 /* Migration Matrix */
 .imm-matrix {
     background: var(--n-bg-card);
