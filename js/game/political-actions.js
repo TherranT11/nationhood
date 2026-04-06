@@ -3519,12 +3519,6 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         supabase.from('election_candidates').delete().eq('faction_id', factionId),
         supabase.from('presidential_candidates').delete().eq('faction_id', factionId),
         supabase.from('protests').update({ faction_id: null }).eq('faction_id', factionId),
-        // Transfer IPO founder status to president — prevents new faction with same UUID from inheriting veto
-        supabase.from('international_orgs').select('id, president_id').eq('founding_party_id', factionId).then(async ({ data: orgs }) => {
-            for (const org of (orgs || [])) {
-                if (org.president_id) await supabase.from('international_orgs').update({ founding_party_id: org.president_id }).eq('id', org.id);
-            }
-        }),
     ]);
     for (const r of fkResults) {
         if (r.status === 'rejected') console.warn('disbandParty: FK cleanup error:', r.reason);
@@ -3577,7 +3571,77 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     if (logErr) console.warn('disbandParty: could not log action:', logErr);
 
     // 10. Clean up all faction-related data from the old nation
-    // IPO tables (each wrapped to skip if table doesn't exist)
+    // IPO: remove from all International Party Organisations, handle leadership succession
+    try {
+        // Find all IPOs where this faction is president
+        const { data: presidedOrgs } = await supabase
+            .from('international_orgs')
+            .select('id, name, founding_party_id')
+            .eq('president_id', factionId)
+            .eq('is_active', true);
+
+        for (const org of (presidedOrgs || [])) {
+            // Find remaining active full members (excluding this faction)
+            const { data: remainingMembers } = await supabase
+                .from('ipo_members')
+                .select('faction_id, joined_at_tick')
+                .eq('org_id', org.id)
+                .eq('is_active', true)
+                .eq('role', 'member')
+                .neq('faction_id', factionId)
+                .order('joined_at_tick', { ascending: true });
+
+            if (remainingMembers && remainingMembers.length > 0) {
+                // Appoint longest-serving member as new president
+                const newPresidentId = remainingMembers[0].faction_id;
+                const updates = { president_id: newPresidentId, president_term_start_tick: currentTick };
+                if (org.founding_party_id === factionId) updates.founding_party_id = newPresidentId;
+                await supabase.from('international_orgs').update(updates).eq('id', org.id);
+
+                await supabase.from('ipo_chat').insert({
+                    org_id: org.id, faction_id: null, is_system: true,
+                    message_text: `${faction?.faction_name || 'A party'} has disbanded and been removed from the organisation. A new president has been automatically appointed.`,
+                    tick_posted: currentTick,
+                });
+            } else {
+                // No remaining members — dissolve the org
+                await supabase.from('international_orgs')
+                    .update({ is_active: false, dissolved_at_tick: currentTick })
+                    .eq('id', org.id);
+            }
+        }
+
+        // Transfer founding_party_id for orgs where this faction is founder but NOT president
+        const { data: foundedOrgs } = await supabase
+            .from('international_orgs')
+            .select('id, president_id')
+            .eq('founding_party_id', factionId)
+            .neq('president_id', factionId)
+            .eq('is_active', true);
+        for (const org of (foundedOrgs || [])) {
+            if (org.president_id) {
+                await supabase.from('international_orgs').update({ founding_party_id: org.president_id }).eq('id', org.id);
+            }
+        }
+
+        // Post system message and deactivate membership for non-presided orgs
+        const { data: memberships } = await supabase
+            .from('ipo_members')
+            .select('org_id')
+            .eq('faction_id', factionId)
+            .eq('is_active', true);
+        for (const m of (memberships || [])) {
+            await supabase.from('ipo_chat').insert({
+                org_id: m.org_id, faction_id: null, is_system: true,
+                message_text: `${faction?.faction_name || 'A party'} has disbanded and been removed from the organisation.`,
+                tick_posted: currentTick,
+            });
+        }
+    } catch (ipoSuccessionErr) {
+        console.warn('disbandParty: IPO leadership succession failed (non-fatal):', ipoSuccessionErr);
+    }
+
+    // IPO table cleanup (each wrapped to skip if table doesn't exist)
     const ipoCleanup = [
         () => supabase.from('ipo_fund_transactions').delete().eq('faction_id', factionId),
         () => supabase.from('ipo_votes').delete().eq('proposed_by', factionId),
@@ -3588,9 +3652,8 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         () => supabase.from('ipo_ballots').delete().eq('faction_id', factionId),
         () => supabase.from('ipo_chat').delete().eq('faction_id', factionId),
         () => supabase.from('ipo_invitations').delete().eq('target_faction_id', factionId),
-        () => supabase.from('ipo_invitations').delete().eq('invited_by_faction_id', factionId),
+        () => supabase.from('ipo_invitations').delete().eq('invited_by', factionId),
         () => supabase.from('ipo_members').delete().eq('faction_id', factionId),
-        () => supabase.from('ipo_organisations').update({ president_id: null }).eq('president_id', factionId),
     ];
     for (const fn of ipoCleanup) { try { await fn(); } catch (_) { /* table may not exist */ } }
 
