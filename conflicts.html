@@ -884,11 +884,14 @@ window._switchIssueActionTab = function(tabEl, category) {
 // ==================== ISSUE ACTION MODAL ====================
 
 function showIssueActionModal(actionKey, issue, modifiers) {
-    if (issueActionExecuting) return;
+    console.log('[Issues] showIssueActionModal called:', actionKey, 'executing:', issueActionExecuting);
+    if (issueActionExecuting) { console.log('[Issues] BLOCKED: issueActionExecuting is true'); return; }
     const action = ACTIONS[actionKey];
-    if (!action) return;
+    if (!action) { console.log('[Issues] BLOCKED: action not found for key:', actionKey); return; }
 
     const modal = document.getElementById('action-modal');
+    console.log('[Issues] Modal element:', modal ? 'found' : 'NOT FOUND');
+    if (!modal) { alert('Modal element #action-modal not found in DOM'); return; }
     const header = document.getElementById('modal-header');
     const body = document.getElementById('modal-body');
     const confirmBtn = document.getElementById('modal-confirm');
@@ -935,6 +938,7 @@ function showIssueActionModal(actionKey, issue, modifiers) {
 
     body.innerHTML = bodyHtml;
     modal.style.display = '';
+    console.log('[Issues] Modal shown. display:', modal.style.display, 'computed:', getComputedStyle(modal).display);
 
     // Wire buttons (clone to avoid stacking listeners)
     const newCancel = document.getElementById('modal-cancel').cloneNode(true);
