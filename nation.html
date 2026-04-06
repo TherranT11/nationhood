@@ -1563,22 +1563,267 @@ function renderFeaturedCategory(cat, nation) {
     return h;
 }
 
+// ===== SUBTAB STATE =====
+var activeNationSubtab = 'statistics';
+var migrationFlowData = null;
+
+function switchNationSubtab(tab) {
+    activeNationSubtab = tab;
+    document.querySelectorAll('.nation-subtab').forEach(function(t) { t.classList.toggle('nation-subtab--active', t.dataset.tab === tab); });
+    document.querySelectorAll('.nation-subtab-panel').forEach(function(p) { p.classList.toggle('nation-subtab-panel--active', p.id === 'nation-panel-' + tab); });
+}
+window.switchNationSubtab = switchNationSubtab;
+
+async function loadMigrationFlows(nationId) {
+    const { data } = await _supabase
+        .from('migration_flows')
+        .select('*, origin:origin_nation_id(id, name), dest:dest_nation_id(id, name)')
+        .or('origin_nation_id.eq.' + nationId + ',dest_nation_id.eq.' + nationId)
+        .order('tick', { ascending: false })
+        .limit(200);
+    migrationFlowData = data || [];
+}
+
+function renderImmigrationHeroStats(nation) {
+    var stats = [
+        { label: 'IMMIGRATION', key: 'immigration', color: 'var(--n-green)' },
+        { label: 'EMIGRATION', key: 'emigration', color: 'var(--n-blue, #4a9eff)' },
+        { label: 'ILLEGAL IMMIGRATION', key: 'illegal_immigration', color: 'var(--n-red)' },
+        { label: 'ACADEMIC IMMIGRATION', key: 'academic_immigration', color: 'var(--n-teal, #2dd4bf)' }
+    ];
+
+    var h = '<div class="imm-hero-row">';
+    for (var i = 0; i < stats.length; i++) {
+        var s = stats[i];
+        var val = Number(nation[s.key] ?? 50);
+        var delta = '';
+        if (previousTickData && previousTickData[s.key] != null) {
+            var d = val - Number(previousTickData[s.key]);
+            if (Math.abs(d) >= 0.01) {
+                var dir = d >= 0 ? '\u25B2' : '\u25BC';
+                var col = d >= 0 ? 'var(--n-green)' : 'var(--n-red)';
+                if (s.key === 'emigration' || s.key === 'illegal_immigration') col = d <= 0 ? 'var(--n-green)' : 'var(--n-red)';
+                delta = '<div class="imm-hero-delta" style="color:' + col + ';">' + dir + ' ' + Math.abs(d).toFixed(1) + '</div>';
+            }
+        }
+        if (!delta) delta = '<div class="imm-hero-delta" style="color:var(--text-dim);">\u2013 0</div>';
+        h += '<div class="imm-hero-card" style="border-left:3px solid ' + s.color + ';">';
+        h += '<div class="imm-hero-label" style="color:' + s.color + ';">' + s.label + '</div>';
+        h += '<div class="imm-hero-value">' + val.toFixed(1) + '</div>';
+        h += delta;
+        h += '</div>';
+    }
+    h += '</div>';
+    return h;
+}
+
+function renderMigrationSourcesPanel(nation) {
+    if (!migrationFlowData || migrationFlowData.length === 0) {
+        return '<div class="imm-section"><div class="imm-section-title">Immigration Sources</div><div class="imm-empty">No migration data yet. Data will appear after the next tick.</div></div>';
+    }
+
+    // Get latest tick in data
+    var latestTick = 0;
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        if (migrationFlowData[i].tick > latestTick) latestTick = migrationFlowData[i].tick;
+    }
+
+    // Aggregate inflows TO this nation from the latest tick
+    var sources = {};
+    var totalInflow = 0;
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        var f = migrationFlowData[i];
+        if (f.tick !== latestTick || f.dest_nation_id !== nation.id) continue;
+        var originName = f.origin?.name || 'Unknown';
+        if (!sources[originName]) sources[originName] = { legal: 0, illegal: 0, academic: 0, total: 0, reasons: [] };
+        sources[originName][f.category] += f.flow_count;
+        sources[originName].total += f.flow_count;
+        totalInflow += f.flow_count;
+        if (f.reasons && f.reasons.length > 0 && sources[originName].reasons.length === 0) {
+            sources[originName].reasons = f.reasons;
+        }
+    }
+
+    if (totalInflow === 0) {
+        return '<div class="imm-section"><div class="imm-section-title">Immigration Sources</div><div class="imm-empty">No significant immigration this tick.</div></div>';
+    }
+
+    // Sort by total descending
+    var sorted = Object.entries(sources).sort(function(a, b) { return b[1].total - a[1].total; });
+
+    var h = '<div class="imm-section">';
+    h += '<div class="imm-section-title">Immigration Sources</div>';
+
+    for (var i = 0; i < sorted.length; i++) {
+        var name = sorted[i][0];
+        var s = sorted[i][1];
+        var pct = totalInflow > 0 ? Math.round((s.total / totalInflow) * 100) : 0;
+
+        h += '<div class="imm-flow-row">';
+        h += '<div class="imm-flow-header">';
+        h += '<span class="imm-flow-name">' + escapeHtml(name) + '</span>';
+        h += '<span class="imm-flow-pct">' + pct + '%</span>';
+        h += '<span class="imm-flow-count">' + formatNumber(s.total) + '</span>';
+        h += '</div>';
+
+        // Bar
+        h += '<div class="imm-flow-bar">';
+        var legalPct = s.total > 0 ? (s.legal / s.total * 100) : 0;
+        var illegalPct = s.total > 0 ? (s.illegal / s.total * 100) : 0;
+        var academicPct = s.total > 0 ? (s.academic / s.total * 100) : 0;
+        h += '<div class="imm-flow-seg imm-flow-seg--legal" style="width:' + legalPct + '%" title="Legal: ' + formatNumber(s.legal) + '"></div>';
+        h += '<div class="imm-flow-seg imm-flow-seg--academic" style="width:' + academicPct + '%" title="Academic: ' + formatNumber(s.academic) + '"></div>';
+        h += '<div class="imm-flow-seg imm-flow-seg--illegal" style="width:' + illegalPct + '%" title="Illegal: ' + formatNumber(s.illegal) + '"></div>';
+        h += '</div>';
+
+        // Category badges
+        h += '<div class="imm-flow-cats">';
+        if (s.legal > 0) h += '<span class="imm-cat-badge imm-cat--legal">Legal ' + formatNumber(s.legal) + '</span>';
+        if (s.academic > 0) h += '<span class="imm-cat-badge imm-cat--academic">Academic ' + formatNumber(s.academic) + '</span>';
+        if (s.illegal > 0) h += '<span class="imm-cat-badge imm-cat--illegal">Illegal ' + formatNumber(s.illegal) + '</span>';
+        h += '</div>';
+
+        // Reasons
+        if (s.reasons && s.reasons.length > 0) {
+            h += '<div class="imm-flow-reasons">';
+            for (var ri = 0; ri < s.reasons.length; ri++) {
+                var r = s.reasons[ri];
+                var arrow = r.direction === 'pull' ? '\u2191' : '\u2193';
+                h += '<span class="imm-reason imm-reason--' + r.direction + '">' + arrow + ' ' + escapeHtml(r.factor) + '</span>';
+            }
+            h += '</div>';
+        }
+
+        h += '</div>';
+    }
+
+    h += '<div class="imm-flow-total">Total: ' + formatNumber(totalInflow) + ' immigrants this tick</div>';
+    h += '</div>';
+    return h;
+}
+
+function renderMigrationDestsPanel(nation) {
+    if (!migrationFlowData || migrationFlowData.length === 0) {
+        return '<div class="imm-section"><div class="imm-section-title">Emigration Destinations</div><div class="imm-empty">No migration data yet.</div></div>';
+    }
+
+    var latestTick = 0;
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        if (migrationFlowData[i].tick > latestTick) latestTick = migrationFlowData[i].tick;
+    }
+
+    // Aggregate outflows FROM this nation
+    var dests = {};
+    var totalOutflow = 0;
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        var f = migrationFlowData[i];
+        if (f.tick !== latestTick || f.origin_nation_id !== nation.id) continue;
+        var destName = f.dest?.name || 'Unknown';
+        if (!dests[destName]) dests[destName] = { legal: 0, illegal: 0, academic: 0, total: 0, reasons: [] };
+        dests[destName][f.category] += f.flow_count;
+        dests[destName].total += f.flow_count;
+        totalOutflow += f.flow_count;
+        if (f.reasons && f.reasons.length > 0 && dests[destName].reasons.length === 0) {
+            dests[destName].reasons = f.reasons;
+        }
+    }
+
+    if (totalOutflow === 0) {
+        return '<div class="imm-section"><div class="imm-section-title">Emigration Destinations</div><div class="imm-empty">No significant emigration this tick.</div></div>';
+    }
+
+    var sorted = Object.entries(dests).sort(function(a, b) { return b[1].total - a[1].total; });
+
+    var h = '<div class="imm-section">';
+    h += '<div class="imm-section-title">Emigration Destinations</div>';
+
+    for (var i = 0; i < sorted.length; i++) {
+        var name = sorted[i][0];
+        var s = sorted[i][1];
+        var pct = totalOutflow > 0 ? Math.round((s.total / totalOutflow) * 100) : 0;
+
+        h += '<div class="imm-flow-row">';
+        h += '<div class="imm-flow-header">';
+        h += '<span class="imm-flow-name">\u2192 ' + escapeHtml(name) + '</span>';
+        h += '<span class="imm-flow-pct">' + pct + '%</span>';
+        h += '<span class="imm-flow-count">' + formatNumber(s.total) + '</span>';
+        h += '</div>';
+
+        h += '<div class="imm-flow-bar">';
+        var legalPct = s.total > 0 ? (s.legal / s.total * 100) : 0;
+        var illegalPct = s.total > 0 ? (s.illegal / s.total * 100) : 0;
+        var academicPct = s.total > 0 ? (s.academic / s.total * 100) : 0;
+        h += '<div class="imm-flow-seg imm-flow-seg--legal" style="width:' + legalPct + '%"></div>';
+        h += '<div class="imm-flow-seg imm-flow-seg--academic" style="width:' + academicPct + '%"></div>';
+        h += '<div class="imm-flow-seg imm-flow-seg--illegal" style="width:' + illegalPct + '%"></div>';
+        h += '</div>';
+
+        h += '<div class="imm-flow-cats">';
+        if (s.legal > 0) h += '<span class="imm-cat-badge imm-cat--legal">Legal ' + formatNumber(s.legal) + '</span>';
+        if (s.academic > 0) h += '<span class="imm-cat-badge imm-cat--academic">Academic ' + formatNumber(s.academic) + '</span>';
+        if (s.illegal > 0) h += '<span class="imm-cat-badge imm-cat--illegal">Illegal ' + formatNumber(s.illegal) + '</span>';
+        h += '</div>';
+
+        if (s.reasons && s.reasons.length > 0) {
+            h += '<div class="imm-flow-reasons">';
+            for (var ri = 0; ri < s.reasons.length; ri++) {
+                var r = s.reasons[ri];
+                var arrow = r.direction === 'pull' ? '\u2191' : '\u2193';
+                h += '<span class="imm-reason imm-reason--' + r.direction + '">' + arrow + ' ' + escapeHtml(r.factor) + '</span>';
+            }
+            h += '</div>';
+        }
+
+        h += '</div>';
+    }
+
+    h += '<div class="imm-flow-total">Total: ' + formatNumber(totalOutflow) + ' emigrants this tick</div>';
+    h += '</div>';
+    return h;
+}
+
 // ===== MAIN RENDER =====
 
 async function renderNationPage(nation) {
+    // Load migration flows in parallel with render
+    loadMigrationFlows(nation.id).then(function() {
+        var immPanel = document.getElementById('nation-panel-immigration');
+        if (immPanel) {
+            immPanel.innerHTML = renderImmigrationHeroStats(nation)
+                + '<div class="imm-panels-grid">'
+                + renderMigrationSourcesPanel(nation)
+                + renderMigrationDestsPanel(nation)
+                + '</div>';
+        }
+    });
+
     var h = '';
-    // ---- Body ----
+    // ---- Subtabs ----
+    h += '<div class="nation-subtab-bar">';
+    h += '<button class="nation-subtab nation-subtab--active" data-tab="statistics" onclick="switchNationSubtab(\'statistics\')">Statistics</button>';
+    h += '<button class="nation-subtab" data-tab="immigration" onclick="switchNationSubtab(\'immigration\')">Immigration</button>';
+    h += '</div>';
+
+    // ---- Statistics Panel ----
+    h += '<div class="nation-subtab-panel nation-subtab-panel--active" id="nation-panel-statistics">';
     h += '<div class="nation-body">';
 
     // Revolution banner
     h += await renderRevolutionBanner(nation);
 
-    // ---- Category sections ----
+    // Category sections
     for (var ci = 0; ci < STAT_CATEGORIES.length; ci++) {
         h += renderFeaturedCategory(STAT_CATEGORIES[ci], nation);
     }
 
     h += '</div>'; // end nation-body
+    h += '</div>'; // end statistics panel
+
+    // ---- Immigration Panel ----
+    h += '<div class="nation-subtab-panel" id="nation-panel-immigration">';
+    h += '<div class="imm-loading">Loading migration data...</div>';
+    h += '</div>'; // end immigration panel
+
     document.getElementById('content-area').innerHTML = h;
     attachHandlers();
 }

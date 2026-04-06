@@ -28177,6 +28177,238 @@ async function processTariffRelationsPenalty(supabase, nation) {
 }
 
 // ==================== POPULATION GROWTH ====================
+// ════════════════════════════════════════════════════════════════════════════════
+//  CROSS-NATION MIGRATION FLOWS
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// Each tick, for every nation:
+// 1. Calculate PUSH score (why people leave) from poverty, unemployment, unrest, etc.
+// 2. Calculate PULL score for every OTHER nation (why people go there)
+// 3. Distribute emigrants across destinations proportional to pull scores
+// 4. Split into categories: academic, legal, illegal
+// 5. Insert migration_flows rows
+// 6. Update immigration/emigration/illegal_immigration/academic_immigration stats
+
+async function processMigrationFlows(supabase, nationList, currentTick) {
+    if (!nationList || nationList.length < 2) return;
+
+    const ns = (nation, key) => Number(nation[key] ?? 50);
+    const clamp = (v) => Math.max(0, Math.min(100, v));
+
+    // ── Push score: why people leave (0-100, higher = more emigration pressure) ──
+    function calcPushScore(nation) {
+        const poverty     = ns(nation, 'poverty_rate');         // high = push
+        const unemployment = ns(nation, 'unemployment');        // high = push
+        const unrest      = ns(nation, 'civil_unrest');         // high = push
+        const violence    = ns(nation, 'political_violence');   // high = push
+        const terrorism   = ns(nation, 'terrorism');            // high = push
+        const freedom     = ns(nation, 'freedom_index');        // low = push
+        const healthcare  = ns(nation, 'healthcare_quality');   // low = push
+        const education   = ns(nation, 'education_accessibility'); // low = push
+        const tax         = ns(nation, 'income_tax');           // high = push (moderate)
+
+        // Weighted composite: higher = more people want to leave
+        const push = (poverty * 0.20)
+                   + (unemployment * 0.20)
+                   + (unrest * 0.15)
+                   + (violence * 0.10)
+                   + (terrorism * 0.05)
+                   + ((100 - freedom) * 0.10)
+                   + ((100 - healthcare) * 0.08)
+                   + ((100 - education) * 0.07)
+                   + (Math.max(0, tax - 30) * 0.05); // only extreme tax pushes people
+
+        return clamp(push);
+    }
+
+    // ── Pull score: why people choose a destination (relative to origin) ──
+    function calcPullScore(origin, dest) {
+        const reasons = [];
+
+        // Economic opportunity (gdp_growth, low unemployment)
+        const econPull = (ns(dest, 'gdp_growth') - ns(origin, 'gdp_growth')) * 0.3
+                       + (ns(origin, 'unemployment') - ns(dest, 'unemployment')) * 0.2;
+        if (econPull > 3) reasons.push({ factor: 'Economic opportunity', direction: 'pull', strength: Math.min(10, econPull) });
+
+        // Freedom & safety
+        const freedomPull = (ns(dest, 'freedom_index') - ns(origin, 'freedom_index')) * 0.15
+                          + (ns(origin, 'civil_unrest') - ns(dest, 'civil_unrest')) * 0.10
+                          + (ns(origin, 'political_violence') - ns(dest, 'political_violence')) * 0.10;
+        if (freedomPull > 3) reasons.push({ factor: 'Political freedom', direction: 'pull', strength: Math.min(10, freedomPull) });
+
+        // Quality of life
+        const qolPull = (ns(dest, 'healthcare_quality') - ns(origin, 'healthcare_quality')) * 0.10
+                      + (ns(dest, 'education_accessibility') - ns(origin, 'education_accessibility')) * 0.08
+                      + (ns(dest, 'standard_of_living') - ns(origin, 'standard_of_living')) * 0.10;
+        if (qolPull > 2) reasons.push({ factor: 'Quality of life', direction: 'pull', strength: Math.min(10, qolPull) });
+
+        // Immigration openness (higher immigration stat = easier to enter)
+        const openness = ns(dest, 'immigration') * 0.15;
+        if (ns(dest, 'immigration') > 60) reasons.push({ factor: 'Open immigration policy', direction: 'pull', strength: Math.round((ns(dest, 'immigration') - 50) / 5) });
+
+        // Safety
+        const safetyPull = (ns(origin, 'terrorism') - ns(dest, 'terrorism')) * 0.05;
+        if (safetyPull > 3) reasons.push({ factor: 'Safety & stability', direction: 'pull', strength: Math.min(10, safetyPull) });
+
+        const totalPull = Math.max(0, econPull + freedomPull + qolPull + openness + safetyPull);
+
+        // Sort reasons by strength, keep top 3
+        reasons.sort((a, b) => b.strength - a.strength);
+
+        return { score: totalPull, reasons: reasons.slice(0, 3) };
+    }
+
+    // ── Category split: academic vs legal vs illegal ──
+    function splitCategory(origin, dest, count) {
+        const originEdu = (ns(origin, 'higher_education') + ns(origin, 'literacy')) / 200; // 0-1
+        const destAcademic = ns(dest, 'academic_immigration') / 100; // 0-1
+        const destOpenness = ns(dest, 'immigration') / 100; // 0-1
+
+        // Academic: educated origin + destination welcomes scholars
+        const academicPct = Math.min(0.4, originEdu * destAcademic * 0.6);
+
+        // Legal: proportional to destination's immigration openness
+        const legalPct = Math.min(0.9 - academicPct, destOpenness * (1 - academicPct) * 0.8);
+
+        // Illegal: the remainder — restrictive policy doesn't stop people, makes them illegal
+        const illegalPct = Math.max(0, 1 - academicPct - legalPct);
+
+        return {
+            academic: Math.round(count * academicPct),
+            legal: Math.round(count * legalPct),
+            illegal: Math.max(0, count - Math.round(count * academicPct) - Math.round(count * legalPct))
+        };
+    }
+
+    // ── Main loop: calculate flows for all nation pairs ──
+    const flowRows = [];
+    // Track aggregated stats per nation for updating immigration stats
+    const nationInflows = {};  // nationId → { legal, illegal, academic, total }
+    const nationOutflows = {}; // nationId → total emigrants
+
+    for (const nation of nationList) {
+        nationInflows[nation.id] = { legal: 0, illegal: 0, academic: 0, total: 0 };
+        nationOutflows[nation.id] = 0;
+    }
+
+    for (const origin of nationList) {
+        const pushScore = calcPushScore(origin);
+        const population = Number(origin.population ?? 0);
+
+        // Total emigrants this tick: push score drives volume
+        // At push=50 (neutral), ~0.01% of pop emigrates per tick
+        // At push=100 (crisis), ~0.1% of pop emigrates per tick
+        // At push=0 (paradise), ~0.001% of pop emigrates
+        const emigrationRate = Math.max(0.00001, ((pushScore / 100) ** 2) * 0.001);
+        const totalEmigrants = Math.round(population * emigrationRate);
+
+        if (totalEmigrants <= 0) continue;
+
+        // Calculate pull scores for all other nations
+        const pullResults = [];
+        let totalPullScore = 0;
+
+        for (const dest of nationList) {
+            if (dest.id === origin.id) continue;
+            const { score, reasons } = calcPullScore(origin, dest);
+            if (score > 0) {
+                pullResults.push({ dest, score, reasons });
+                totalPullScore += score;
+            }
+        }
+
+        if (totalPullScore <= 0 || pullResults.length === 0) continue;
+
+        // Distribute emigrants proportionally to pull scores
+        nationOutflows[origin.id] += totalEmigrants;
+
+        for (const pr of pullResults) {
+            const share = pr.score / totalPullScore;
+            const flowCount = Math.max(1, Math.round(totalEmigrants * share));
+            const split = splitCategory(origin, pr.dest, flowCount);
+
+            // Add push reasons from origin
+            const pushReasons = [];
+            if (ns(origin, 'poverty_rate') > 60) pushReasons.push({ factor: 'Poverty', direction: 'push', strength: Math.round((ns(origin, 'poverty_rate') - 50) / 5) });
+            if (ns(origin, 'unemployment') > 60) pushReasons.push({ factor: 'Unemployment', direction: 'push', strength: Math.round((ns(origin, 'unemployment') - 50) / 5) });
+            if (ns(origin, 'civil_unrest') > 60) pushReasons.push({ factor: 'Civil unrest', direction: 'push', strength: Math.round((ns(origin, 'civil_unrest') - 50) / 5) });
+            if (ns(origin, 'freedom_index') < 30) pushReasons.push({ factor: 'Political repression', direction: 'push', strength: Math.round((50 - ns(origin, 'freedom_index')) / 5) });
+
+            const allReasons = [...pushReasons, ...pr.reasons].sort((a, b) => b.strength - a.strength).slice(0, 4);
+
+            if (split.legal > 0) {
+                flowRows.push({ tick: currentTick, origin_nation_id: origin.id, dest_nation_id: pr.dest.id, category: 'legal', flow_count: split.legal, pull_score: Math.round(pr.score * 100) / 100, reasons: allReasons });
+            }
+            if (split.illegal > 0) {
+                flowRows.push({ tick: currentTick, origin_nation_id: origin.id, dest_nation_id: pr.dest.id, category: 'illegal', flow_count: split.illegal, pull_score: Math.round(pr.score * 100) / 100, reasons: allReasons });
+            }
+            if (split.academic > 0) {
+                flowRows.push({ tick: currentTick, origin_nation_id: origin.id, dest_nation_id: pr.dest.id, category: 'academic', flow_count: split.academic, pull_score: Math.round(pr.score * 100) / 100, reasons: allReasons });
+            }
+
+            // Accumulate inflows for destination
+            nationInflows[pr.dest.id].legal += split.legal;
+            nationInflows[pr.dest.id].illegal += split.illegal;
+            nationInflows[pr.dest.id].academic += split.academic;
+            nationInflows[pr.dest.id].total += flowCount;
+        }
+    }
+
+    // ── Insert flow rows (batch) ──
+    if (flowRows.length > 0) {
+        // Delete old flows (keep last 24 ticks)
+        await supabase.from('migration_flows').delete().lt('tick', currentTick - 24);
+
+        // Insert in batches of 100
+        for (let i = 0; i < flowRows.length; i += 100) {
+            const batch = flowRows.slice(i, i + 100);
+            const { error } = await supabase.from('migration_flows').insert(batch);
+            if (error) console.warn('[Migration] Insert batch failed:', error.message);
+        }
+        console.log(`[Migration] ${flowRows.length} flow rows for tick ${currentTick}`);
+    }
+
+    // ── Update immigration stats based on actual flows ──
+    // Stats are nudged toward values driven by real migration patterns
+    for (const nation of nationList) {
+        const inflow = nationInflows[nation.id];
+        const outflowTotal = nationOutflows[nation.id];
+        const population = Math.max(1, Number(nation.population ?? 1));
+
+        // Normalize flows to per-million-pop rate, then scale to 0-100 stat range
+        // 1000 immigrants per million pop per tick → ~50 (moderate)
+        const inflowRate = (inflow.total / population) * 1_000_000;
+        const outflowRate = (outflowTotal / population) * 1_000_000;
+        const illegalRate = (inflow.illegal / population) * 1_000_000;
+        const academicRate = (inflow.academic / population) * 1_000_000;
+
+        // Convert rates to stat nudges (gentle — 0.1 per 100 people per million)
+        // Immigration stat nudge: based on total inflow rate
+        const immNudge = clamp(inflowRate / 20) - ns(nation, 'immigration');
+        const emigNudge = clamp(outflowRate / 20) - ns(nation, 'emigration');
+        const illegalNudge = clamp(illegalRate / 10) - ns(nation, 'illegal_immigration');
+        const academicNudge = clamp(academicRate / 10) - ns(nation, 'academic_immigration');
+
+        // Apply gentle drift toward flow-driven values (10% per tick)
+        const driftRate = 0.1;
+        const updates = {};
+        const newImm = Math.round(clamp(ns(nation, 'immigration') + immNudge * driftRate) * 10) / 10;
+        const newEmig = Math.round(clamp(ns(nation, 'emigration') + emigNudge * driftRate) * 10) / 10;
+        const newIllegal = Math.round(clamp(ns(nation, 'illegal_immigration') + illegalNudge * driftRate) * 10) / 10;
+        const newAcademic = Math.round(clamp(ns(nation, 'academic_immigration') + academicNudge * driftRate) * 10) / 10;
+
+        if (Math.abs(newImm - ns(nation, 'immigration')) >= 0.05) updates.immigration = newImm;
+        if (Math.abs(newEmig - ns(nation, 'emigration')) >= 0.05) updates.emigration = newEmig;
+        if (Math.abs(newIllegal - ns(nation, 'illegal_immigration')) >= 0.05) updates.illegal_immigration = newIllegal;
+        if (Math.abs(newAcademic - ns(nation, 'academic_immigration')) >= 0.05) updates.academic_immigration = newAcademic;
+
+        if (Object.keys(updates).length > 0) {
+            const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
+            if (!error) Object.assign(nation, updates);
+        }
+    }
+}
+
 //
 // population_growth is a standalone 0-100 stat driven by policy effects and decay.
 //
@@ -29419,6 +29651,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (relDecayErr) {
         console.error('[advanceTick] Diplomatic relations decay failed (non-fatal):', relDecayErr);
+    }
+
+    // 3b. Cross-nation migration flows
+    // Calculates emigration push, destination pull scores, category splits,
+    // inserts rows into migration_flows, and updates immigration stats.
+    try {
+        await processMigrationFlows(supabase, nationList, newTick);
+    } catch (migErr) {
+        console.error('[advanceTick] Migration flows failed (non-fatal):', migErr);
     }
 
     // 4. Process each nation
