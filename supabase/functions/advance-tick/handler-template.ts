@@ -2362,11 +2362,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                                     voteTally[b.ballot] = (voteTally[b.ballot] || 0) + 1;
                                 }
                             }
-                            // Find candidate with most votes
+                            // Find candidate with most votes (tie-break: current president wins ties)
                             let winnerId = null;
                             let maxVotes = 0;
                             for (const [candidateId, count] of Object.entries(voteTally)) {
-                                if (count > maxVotes) {
+                                if (count > maxVotes || (count === maxVotes && candidateId === org.president_id)) {
                                     maxVotes = count;
                                     winnerId = candidateId;
                                 }
@@ -2374,9 +2374,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                             // Fallback: if no votes cast, current president stays
                             if (!winnerId) winnerId = org.president_id;
 
-                            await supabase.from('international_orgs')
+                            const { error: presUpdateErr } = await supabase.from('international_orgs')
                                 .update({ president_id: winnerId, president_term_start_tick: newTick })
                                 .eq('id', org.id);
+                            if (presUpdateErr) console.error(`[advanceTick] IPO president update failed:`, presUpdateErr);
 
                             const winnerMember = fullMembers.find(m => m.faction_id === winnerId);
                             const winnerName = winnerMember?.factions?.faction_name || 'Unknown';
@@ -2488,7 +2489,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                                 faction_id: m.faction_id,
                                 faction_name: m.factions?.faction_name || 'Unknown',
                             }));
-                            await supabase.from('ipo_votes').insert({
+                            const { error: electionInsertErr } = await supabase.from('ipo_votes').insert({
                                 org_id: org.id,
                                 title: 'Leadership Election — Choose Next President',
                                 vote_type: 'leadership_election',
@@ -2498,12 +2499,16 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                                 closes_at_tick: newTick + 3,
                                 proposed_by: org.president_id,
                             });
-                            await supabase.from('ipo_chat').insert({
-                                org_id: org.id, faction_id: null, is_system: true,
-                                message_text: 'Presidential term has ended. A leadership election has been called — vote within 3 ticks.',
-                                tick_posted: newTick,
-                            });
-                            console.log(`[advanceTick] IPO ${org.name}: leadership election opened`);
+                            if (electionInsertErr) {
+                                console.error(`[advanceTick] IPO ${org.name}: failed to create election vote:`, electionInsertErr);
+                            } else {
+                                await supabase.from('ipo_chat').insert({
+                                    org_id: org.id, faction_id: null, is_system: true,
+                                    message_text: 'Presidential term has ended. A leadership election has been called — vote within 3 ticks.',
+                                    tick_posted: newTick,
+                                });
+                                console.log(`[advanceTick] IPO ${org.name}: leadership election opened`);
+                            }
 
                             // Extend current president's term until election resolves
                             await supabase.from('international_orgs')

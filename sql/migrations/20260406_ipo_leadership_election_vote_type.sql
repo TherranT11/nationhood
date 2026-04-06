@@ -15,3 +15,7 @@ ALTER TABLE ipo_votes ADD CONSTRAINT chk_vote_type CHECK (
         'leadership_election'
     )
 );
+
+-- Leadership election ballots store a faction_id (UUID) as the ballot value
+-- instead of 'yes'/'no'/'abstain'. Drop the restrictive CHECK constraint.
+ALTER TABLE ipo_ballots DROP CONSTRAINT IF EXISTS chk_ballot_value;

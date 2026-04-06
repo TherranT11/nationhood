@@ -16325,6 +16325,29 @@ async function loadIPOVotes(orgId) {
 /**
  * Render the votes panel content.
  */
+/**
+ * Tally an election's ballots by candidate. Returns { voteTally, abstainCount, winnerId, maxVotes }.
+ * Tie-break: current president wins ties; else first candidate alphabetically.
+ */
+function tallyElectionBallots(ballots, currentPresidentId) {
+    const voteTally = {};
+    let abstainCount = 0;
+    for (const b of ballots) {
+        if (b.ballot === 'abstain') { abstainCount++; continue; }
+        voteTally[b.ballot] = (voteTally[b.ballot] || 0) + 1;
+    }
+    let winnerId = null;
+    let maxVotes = 0;
+    for (const [candidateId, count] of Object.entries(voteTally)) {
+        if (count > maxVotes || (count === maxVotes && candidateId === currentPresidentId)) {
+            maxVotes = count;
+            winnerId = candidateId;
+        }
+    }
+    if (!winnerId) winnerId = currentPresidentId;
+    return { voteTally, abstainCount, winnerId, maxVotes };
+}
+
 function renderIPOVotesPanel() {
     const container = document.getElementById('ipo-votes-body');
     if (!container) return;
@@ -16364,14 +16387,10 @@ function renderIPOVotesPanel() {
         let tallyBar = '';
 
         if (isElection) {
-            // Candidate-based tally
-            const candidateTally = {};
-            for (const c of candidates) candidateTally[c.faction_id] = 0;
-            let abstainCount = 0;
-            for (const b of ballots) {
-                if (b.ballot === 'abstain') { abstainCount++; continue; }
-                if (candidateTally[b.ballot] !== undefined) candidateTally[b.ballot]++;
-            }
+            // Candidate-based tally (use shared helper for counts)
+            const { voteTally: candidateTally, abstainCount } = tallyElectionBallots(ballots, null);
+            // Ensure all candidates appear even if they got 0 votes
+            for (const c of candidates) { if (candidateTally[c.faction_id] === undefined) candidateTally[c.faction_id] = 0; }
             const totalCast = ballots.length;
             const candidateRows = candidates.map(c => {
                 const count = candidateTally[c.faction_id] || 0;
@@ -17043,19 +17062,8 @@ async function resolveIPOVote(voteId) {
     let result, newStatus;
 
     if (isElection) {
-        // Candidate-based tally
-        const voteTally = {};
-        let abstainCount = 0;
-        for (const b of ballots) {
-            if (b.ballot === 'abstain') { abstainCount++; continue; }
-            voteTally[b.ballot] = (voteTally[b.ballot] || 0) + 1;
-        }
-        let winnerId = null;
-        let maxVotes = 0;
-        for (const [candidateId, count] of Object.entries(voteTally)) {
-            if (count > maxVotes) { maxVotes = count; winnerId = candidateId; }
-        }
-        if (!winnerId) winnerId = org.president_id;
+        // Candidate-based tally (shared helper)
+        const { voteTally, abstainCount, winnerId, maxVotes } = tallyElectionBallots(ballots, org.president_id);
 
         result = { tally: voteTally, winner: winnerId, abstain: abstainCount, total_ballots: ballots.length };
         newStatus = 'passed'; // Elections always "pass" — they produce a winner
@@ -17081,9 +17089,13 @@ async function resolveIPOVote(voteId) {
             }
 
             // Update president
-            await _supabase.from('international_orgs')
+            // NOTE: RLS on international_orgs may block client-side updates if
+            // president_id column doesn't match auth.uid(). The auto-resolution
+            // in advance-tick (service role) handles this reliably as a fallback.
+            const { error: presErr } = await _supabase.from('international_orgs')
                 .update({ president_id: winnerId, president_term_start_tick: shardTick })
                 .eq('id', org.id);
+            if (presErr) console.error('[IPO Vote] President update error (may be RLS):', presErr);
 
             const candidates = (vote.meta && vote.meta.candidates) || [];
             const winnerCandidate = candidates.find(c => c.faction_id === winnerId);
