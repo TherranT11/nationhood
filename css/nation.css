@@ -26,6 +26,138 @@
     --n-font-sans: 'IBM Plex Sans','Segoe UI',system-ui,sans-serif;
 }
 
+/* ---------- Nation Tab Bar ---------- */
+.nation-tab-bar {
+    display: flex;
+    gap: 0;
+    padding: 12px 24px 0;
+    background: var(--n-bg);
+    border-bottom: 1px solid var(--n-border);
+}
+.nation-tab {
+    background: transparent;
+    border: 1px solid var(--n-border-hi);
+    border-bottom: none;
+    color: var(--n-secondary);
+    font-family: var(--n-font-mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 6px 20px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border-radius: 4px 4px 0 0;
+    margin-bottom: -1px;
+}
+.nation-tab.active {
+    background: var(--n-bg-card);
+    color: var(--n-primary);
+    border-color: var(--n-border-hi);
+    border-bottom: 1px solid var(--n-bg-card);
+}
+.nation-tab:hover:not(.active) {
+    background: rgba(255,255,255,0.03);
+    color: var(--n-primary);
+}
+
+/* ---------- Immigration Tab ---------- */
+.imm-hero {
+    background: var(--n-bg-card);
+    border: 1px solid var(--n-border);
+    border-radius: 6px;
+    padding: 24px 28px;
+    margin: 16px 24px;
+}
+.imm-hero__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+.imm-hero__label {
+    font-family: var(--n-font-mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--n-secondary);
+    margin-bottom: 4px;
+}
+.imm-hero__value {
+    font-family: var(--n-font-mono);
+    font-size: 2.4rem;
+    font-weight: 700;
+    line-height: 1.1;
+}
+.imm-hero__unit {
+    font-size: 0.9rem;
+    font-weight: 400;
+    color: var(--n-secondary);
+}
+.imm-hero__badges {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+.imm-badge {
+    font-family: var(--n-font-mono);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid;
+    white-space: nowrap;
+}
+
+/* 4-column stat cards row */
+.imm-stats-row {
+    display: flex;
+    gap: 0;
+    margin: 0 24px 24px;
+    border: 1px solid var(--n-border);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.imm-stat-card {
+    flex: 1;
+    background: var(--n-bg-card);
+    padding: 18px 20px;
+    border-left: 3px solid var(--n-secondary);
+    position: relative;
+}
+.imm-stat-card + .imm-stat-card {
+    border-left-width: 3px;
+    box-shadow: -1px 0 0 var(--n-border);
+}
+.imm-stat__label {
+    font-family: var(--n-font-mono);
+    font-size: 0.58rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--n-secondary);
+    margin-bottom: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.imm-stat__value {
+    font-family: var(--n-font-mono);
+    font-size: 1.8rem;
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 6px;
+}
+.imm-stat__delta {
+    font-family: var(--n-font-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+}
+
 /* ---------- Page root ---------- */
 #content-area {
     background: var(--n-bg);
