@@ -560,15 +560,11 @@ function renderActionNotification(issue, actionsTaken) {
             a.submitted_tick > b.submitted_tick ? a : b);
         const ticksAgo = currentTick - mostRecent.submitted_tick;
         const ticksLeft = DIPLOMATIC_WINDOW - ticksAgo;
-        const actionDef = typeof ACTIONS !== 'undefined' ? ACTIONS[mostRecent.action_key] : null;
-        const actionName = actionDef?.name || mostRecent.action_key;
-        const categoryLabel = mostRecent.action_category === 'diplomatic' ? 'Diplomatic'
-            : mostRecent.action_category === 'threatening' ? 'Threatening' : 'Unilateral';
 
         if (ticksLeft > 0) {
             notifications.push({
                 type: 'opponent_acted',
-                html: `<strong>${escapeHtml(opponentName)}</strong> took action: <em>${escapeHtml(actionName)}</em> (${categoryLabel})`
+                html: `<strong>${escapeHtml(opponentName)}</strong> took an action`
                     + ` &mdash; <strong>${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} to respond</strong>`,
             });
         }
@@ -835,6 +831,7 @@ function renderIssueHistory(issue, history) {
         favor_changed: 'var(--blue)',
         status_changed: 'var(--teal)',
         escalated: 'var(--crimson)',
+        escalation_favor: 'var(--crimson)',
     };
 
     let html = '';

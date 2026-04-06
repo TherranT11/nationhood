@@ -1161,6 +1161,60 @@ export async function processIssueTick(supabase, nationList, currentTick) {
                 'This issue has escalated to an incident.',
                 { tension: newTension, favor: issue.favor, leverage,
                   incident_id: incidentResult?.incidentId });
+
+            // ── ESCALATION FAVOR BONUS/PENALTY ──
+            // Favored nation: +7 gov_approval, +6 momentum to all government parties
+            // Disfavored nation: -7 gov_approval, -10 momentum to all government parties
+            // Neutral (favor === 0): no bonus/penalty
+            const currentFavor = Number(issue.favor);
+            if (currentFavor !== 0) {
+                const favoredNationId = currentFavor > 0 ? issue.nation_b_id : issue.nation_a_id;
+                const disfavoredNationId = currentFavor > 0 ? issue.nation_a_id : issue.nation_b_id;
+                const favoredNation = favoredNationId === issue.nation_a_id ? nationA : nationB;
+                const disfavoredNation = disfavoredNationId === issue.nation_a_id ? nationA : nationB;
+
+                // +7 gov_approval for favored nation
+                if (favoredNation) {
+                    await applyIssueStatEffects(supabase, favoredNationId, favoredNation,
+                        [{ stat_key: 'gov_approval', delta: 7 }]);
+                }
+                // -7 gov_approval for disfavored nation
+                if (disfavoredNation) {
+                    await applyIssueStatEffects(supabase, disfavoredNationId, disfavoredNation,
+                        [{ stat_key: 'gov_approval', delta: -7 }]);
+                }
+
+                // Momentum: +6 for favored government parties, -10 for disfavored
+                for (const [nId, delta] of [[favoredNationId, 6], [disfavoredNationId, -10]]) {
+                    const { data: govMinistries } = await supabase
+                        .from('ministries')
+                        .select('party_id')
+                        .eq('nation_id', nId)
+                        .eq('is_active', true)
+                        .not('party_id', 'is', null);
+                    if (govMinistries) {
+                        const uniquePartyIds = [...new Set(govMinistries.map(m => m.party_id))];
+                        for (const partyId of uniquePartyIds) {
+                            await supabase.rpc('adjust_momentum', {
+                                p_faction_id: partyId,
+                                p_delta: delta,
+                                p_label: delta > 0
+                                    ? 'Issue escalated in our favor'
+                                    : 'Issue escalated against us',
+                                p_tick: currentTick,
+                            });
+                        }
+                    }
+                }
+
+                const favoredName = favoredNation?.name || 'Unknown';
+                const disfavoredName = disfavoredNation?.name || 'Unknown';
+                await insertHistory(supabase, issue.id, currentTick, 'escalation_favor',
+                    `Escalation Favor: ${favoredName} benefits (+7 Gov Approval, +6 Momentum). ${disfavoredName} penalized (-7 Gov Approval, -10 Momentum).`,
+                    { favored_nation_id: favoredNationId, disfavored_nation_id: disfavoredNationId,
+                      favor: currentFavor, gov_approval_favored: 7, gov_approval_disfavored: -7,
+                      momentum_favored: 6, momentum_disfavored: -10 });
+            }
         }
 
         // Log tension changes
