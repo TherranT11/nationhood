@@ -1576,20 +1576,26 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 }
 
                 // ── Construction GDP Boost ──
-                // +0.1 gdp_growth per $100M of active (non-stalled) construction budget
-                // Stored on nation for advance-tick to incorporate into GDP calculation
+                // Per-project: (budget / $100M) × 0.1 / timeline_ticks
+                // Spreads the 0.1-per-$100M impact evenly across the project lifetime.
+                // Multiple projects stack additively.
                 const { data: activeForGdp } = await supabase
                     .from('construction_contracts')
-                    .select('budget_ceiling')
+                    .select('budget_ceiling, timeline_ticks')
                     .eq('nation_id', nation.id)
                     .eq('status', 'in_progress');
-                const totalActiveValue = (activeForGdp || []).reduce((sum, c) => sum + Number(c.budget_ceiling || 0), 0);
-                const gdpBoost = Math.round((totalActiveValue / 100_000_000) * 0.1 * 100) / 100; // 0.1 per $100M
+                let gdpBoost = 0;
+                for (const c of (activeForGdp || [])) {
+                    const budget = Number(c.budget_ceiling || 0);
+                    const ticks = Number(c.timeline_ticks || 1);
+                    gdpBoost += (budget / 100_000_000) * 0.1 / ticks;
+                }
+                gdpBoost = Math.round(gdpBoost * 1000) / 1000; // 3 decimal places
                 await supabase.from('nations')
                     .update({ construction_gdp_boost: gdpBoost })
                     .eq('id', nation.id);
                 if (gdpBoost > 0) {
-                    console.log(`[Construction GDP] ${nation.name}: +${gdpBoost} gdp_growth from $${(totalActiveValue / 1e6).toFixed(0)}M active construction`);
+                    console.log(`[Construction GDP] ${nation.name}: +${gdpBoost}/tick gdp_growth from ${(activeForGdp || []).length} active project(s)`);
                 }
             } catch (constructionErr) {
                 console.error(`[advance-corp-tick] Construction failed for ${nation.name} (non-fatal):`, constructionErr);
