@@ -1957,6 +1957,7 @@ var PULL_FACTORS = [
 ];
 
 function renderPullFactorScore(nation) {
+    if (!allNations || allNations.length === 0) return '';
     var h = '<div class="imm-pull">';
     h += '<div class="imm-section-title">' + escapeHtml(nation.name) + ' Pull Factor Score</div>';
 
