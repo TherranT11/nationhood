@@ -15800,7 +15800,7 @@ function renderIPOCharterPanel(charter, org) {
     // Article II — Leadership
     if (charter.leadership) {
         const l = charter.leadership;
-        const typeLabels = { rotation: 'Rotation', most_seats: 'Most Seats', random: 'Random' };
+        const typeLabels = { vote: 'Vote', rotation: 'Rotation', most_seats: 'Most Seats', random: 'Random' };
         const weightLabels = { equal: 'Equal (one vote per member)', seat_share: 'By Seat Share' };
         const passLabels = { majority: 'Majority (>50%)', unanimous: 'Unanimous' };
         sections.push(renderCharterSection('Article II — Leadership', `
@@ -16223,7 +16223,8 @@ const IPO_VOTE_TYPE_LABELS = {
     fund_draw:           'Fund Draw',
     charter_amendment:   'Charter Amendment',
     change_headquarters: 'Change Headquarters',
-    symposium:           'Symposium'
+    symposium:           'Symposium',
+    leadership_election: 'Leadership Election'
 };
 
 const IPO_VOTE_TYPE_DESCRIPTIONS = {
@@ -16233,7 +16234,8 @@ const IPO_VOTE_TYPE_DESCRIPTIONS = {
     fund_draw:           'Vote to withdraw AP from the solidarity fund.',
     charter_amendment:   'Vote to amend the organisation charter.',
     change_headquarters: 'Vote to relocate the organisation headquarters.',
-    symposium:           'Vote to hold a symposium influencing a nation\'s ideology.'
+    symposium:           'Vote to hold a symposium influencing a nation\'s ideology.',
+    leadership_election: 'Elect a new president from the member parties.'
 };
 
 /**
@@ -16323,6 +16325,29 @@ async function loadIPOVotes(orgId) {
 /**
  * Render the votes panel content.
  */
+/**
+ * Tally an election's ballots by candidate. Returns { voteTally, abstainCount, winnerId, maxVotes }.
+ * Tie-break: current president wins ties; else first candidate alphabetically.
+ */
+function tallyElectionBallots(ballots, currentPresidentId) {
+    const voteTally = {};
+    let abstainCount = 0;
+    for (const b of ballots) {
+        if (b.ballot === 'abstain') { abstainCount++; continue; }
+        voteTally[b.ballot] = (voteTally[b.ballot] || 0) + 1;
+    }
+    let winnerId = null;
+    let maxVotes = 0;
+    for (const [candidateId, count] of Object.entries(voteTally)) {
+        if (count > maxVotes || (count === maxVotes && candidateId === currentPresidentId)) {
+            maxVotes = count;
+            winnerId = candidateId;
+        }
+    }
+    if (!winnerId) winnerId = currentPresidentId;
+    return { voteTally, abstainCount, winnerId, maxVotes };
+}
+
 function renderIPOVotesPanel() {
     const container = document.getElementById('ipo-votes-body');
     if (!container) return;
@@ -16354,30 +16379,45 @@ function renderIPOVotesPanel() {
         const isPassed = vote.status === 'passed';
         const typeLabel = IPO_VOTE_TYPE_LABELS[vote.vote_type] || vote.vote_type;
 
+        const isElection = vote.vote_type === 'leadership_election';
+        const candidates = (vote.meta && vote.meta.candidates) || [];
+
         // Tally
-        const yes = ballots.filter(b => b.ballot === 'yes').length;
-        const no = ballots.filter(b => b.ballot === 'no').length;
-        const abstain = ballots.filter(b => b.ballot === 'abstain').length;
         const totalEligible = ipoVoteMembers.length;
-        const totalCast = yes + no + abstain;
+        let tallyBar = '';
 
-        // Status badge
-        let statusBadge;
-        if (isOpen) {
-            const ticksLeft = vote.closes_at_tick - shardTick;
-            statusBadge = `<span class="ipo-vote-badge ipo-vote-badge--open">OPEN · ${ticksLeft > 0 ? ticksLeft + ' ticks left' : 'closing...'}</span>`;
-        } else if (isPassed) {
-            statusBadge = '<span class="ipo-vote-badge ipo-vote-badge--passed">PASSED</span>';
+        if (isElection) {
+            // Candidate-based tally (use shared helper for counts)
+            const { voteTally: candidateTally, abstainCount } = tallyElectionBallots(ballots, null);
+            // Ensure all candidates appear even if they got 0 votes
+            for (const c of candidates) { if (candidateTally[c.faction_id] === undefined) candidateTally[c.faction_id] = 0; }
+            const totalCast = ballots.length;
+            const candidateRows = candidates.map(c => {
+                const count = candidateTally[c.faction_id] || 0;
+                const pct = totalCast > 0 ? (count / totalCast * 100) : 0;
+                return `<div class="ipo-election-candidate-row">
+                    <span class="ipo-election-candidate-name">${escapeHtml(c.faction_name)}</span>
+                    <div class="ipo-election-candidate-bar"><div class="ipo-election-candidate-fill" style="width:${pct}%"></div></div>
+                    <span class="ipo-election-candidate-count">${count}</span>
+                </div>`;
+            }).join('');
+            tallyBar = `<div class="ipo-vote-tally ipo-election-tally">
+                ${candidateRows}
+                <div class="ipo-vote-tally-labels">
+                    <span class="ipo-vote-tally-label--abstain">${abstainCount} Abstain</span>
+                    <span class="ipo-vote-tally-label--total">${totalCast}/${totalEligible}</span>
+                </div>
+            </div>`;
         } else {
-            statusBadge = '<span class="ipo-vote-badge ipo-vote-badge--failed">FAILED</span>';
-        }
-
-        // Tally bar
-        const yPct = totalCast > 0 ? (yes / totalCast * 100) : 0;
-        const nPct = totalCast > 0 ? (no / totalCast * 100) : 0;
-        const aPct = totalCast > 0 ? (abstain / totalCast * 100) : 0;
-        const tallyBar = `
-            <div class="ipo-vote-tally">
+            // Standard yes/no/abstain tally
+            const yes = ballots.filter(b => b.ballot === 'yes').length;
+            const no = ballots.filter(b => b.ballot === 'no').length;
+            const abstain = ballots.filter(b => b.ballot === 'abstain').length;
+            const totalCast = yes + no + abstain;
+            const yPct = totalCast > 0 ? (yes / totalCast * 100) : 0;
+            const nPct = totalCast > 0 ? (no / totalCast * 100) : 0;
+            const aPct = totalCast > 0 ? (abstain / totalCast * 100) : 0;
+            tallyBar = `<div class="ipo-vote-tally">
                 <div class="ipo-vote-tally-bar">
                     <div class="ipo-vote-tally-seg ipo-vote-tally-seg--yes" style="width:${yPct}%"></div>
                     <div class="ipo-vote-tally-seg ipo-vote-tally-seg--no" style="width:${nPct}%"></div>
@@ -16390,6 +16430,18 @@ function renderIPOVotesPanel() {
                     <span class="ipo-vote-tally-label--total">${totalCast}/${totalEligible}</span>
                 </div>
             </div>`;
+        }
+
+        // Status badge
+        let statusBadge;
+        if (isOpen) {
+            const ticksLeft = vote.closes_at_tick - shardTick;
+            statusBadge = `<span class="ipo-vote-badge ipo-vote-badge--open">OPEN · ${ticksLeft > 0 ? ticksLeft + ' ticks left' : 'closing...'}</span>`;
+        } else if (isPassed) {
+            statusBadge = '<span class="ipo-vote-badge ipo-vote-badge--passed">PASSED</span>';
+        } else {
+            statusBadge = '<span class="ipo-vote-badge ipo-vote-badge--failed">FAILED</span>';
+        }
 
         // Meta summary
         const metaSummary = renderVoteMetaSummary(vote);
@@ -16398,7 +16450,27 @@ function renderIPOVotesPanel() {
         let ballotHtml = '';
         if (isOpen && !isObserver) {
             if (myBallot) {
-                ballotHtml = `<div class="ipo-vote-my-ballot">Your vote: <strong>${myBallot.ballot.toUpperCase()}</strong></div>`;
+                if (isElection) {
+                    const chosenCandidate = candidates.find(c => c.faction_id === myBallot.ballot);
+                    const chosenLabel = myBallot.ballot === 'abstain' ? 'ABSTAIN' : (chosenCandidate?.faction_name || myBallot.ballot);
+                    ballotHtml = `<div class="ipo-vote-my-ballot">Your vote: <strong>${escapeHtml(chosenLabel)}</strong></div>`;
+                } else {
+                    ballotHtml = `<div class="ipo-vote-my-ballot">Your vote: <strong>${myBallot.ballot.toUpperCase()}</strong></div>`;
+                }
+            } else if (isElection) {
+                const candidateBtns = candidates.map(c =>
+                    `<button class="ipo-vote-btn ipo-vote-btn--candidate" onclick="selectIPOBallot('${vote.id}','${c.faction_id}')" data-candidate-name="${escapeHtml(c.faction_name)}">${escapeHtml(c.faction_name)}</button>`
+                ).join('');
+                ballotHtml = `
+                    <div class="ipo-vote-ballot-row ipo-election-ballot-row" id="ipo-ballot-row-${vote.id}">
+                        ${candidateBtns}
+                        <button class="ipo-vote-btn ipo-vote-btn--abstain" onclick="selectIPOBallot('${vote.id}','abstain')">Abstain</button>
+                    </div>
+                    <div class="ipo-vote-confirm-row" id="ipo-ballot-confirm-${vote.id}" style="display:none">
+                        <span class="ipo-vote-confirm-label">Vote for <strong id="ipo-ballot-choice-${vote.id}"></strong>?</span>
+                        <button class="ipo-vote-btn ipo-vote-btn--confirm" onclick="confirmIPOBallot('${vote.id}')">Confirm</button>
+                        <button class="ipo-vote-btn ipo-vote-btn--cancel" onclick="cancelIPOBallot('${vote.id}')">Cancel</button>
+                    </div>`;
             } else {
                 ballotHtml = `
                     <div class="ipo-vote-ballot-row" id="ipo-ballot-row-${vote.id}">
@@ -16417,11 +16489,24 @@ function renderIPOVotesPanel() {
         // Voter breakdown (public ballot only, for resolved or if voted)
         let voterBreakdown = '';
         if (!isSecret && ballots.length > 0 && (!isOpen || myBallot)) {
-            voterBreakdown = '<div class="ipo-vote-voters">' + ballots.map(b => {
-                const member = ipoVoteMembers.find(m => m.faction_id === b.faction_id);
-                const name = member?.factions?.faction_name || 'Unknown';
-                return `<span class="ipo-vote-voter ipo-vote-voter--${b.ballot}">${escapeHtml(name)}: ${b.ballot}</span>`;
-            }).join('') + '</div>';
+            if (isElection) {
+                voterBreakdown = '<div class="ipo-vote-voters">' + ballots.map(b => {
+                    const member = ipoVoteMembers.find(m => m.faction_id === b.faction_id);
+                    const voterName = member?.factions?.faction_name || 'Unknown';
+                    if (b.ballot === 'abstain') {
+                        return `<span class="ipo-vote-voter ipo-vote-voter--abstain">${escapeHtml(voterName)}: Abstain</span>`;
+                    }
+                    const chosenCandidate = candidates.find(c => c.faction_id === b.ballot);
+                    const candidateName = chosenCandidate?.faction_name || 'Unknown';
+                    return `<span class="ipo-vote-voter ipo-vote-voter--yes">${escapeHtml(voterName)} → ${escapeHtml(candidateName)}</span>`;
+                }).join('') + '</div>';
+            } else {
+                voterBreakdown = '<div class="ipo-vote-voters">' + ballots.map(b => {
+                    const member = ipoVoteMembers.find(m => m.faction_id === b.faction_id);
+                    const name = member?.factions?.faction_name || 'Unknown';
+                    return `<span class="ipo-vote-voter ipo-vote-voter--${b.ballot}">${escapeHtml(name)}: ${b.ballot}</span>`;
+                }).join('') + '</div>';
+            }
         }
 
         // Resolve button — show if open and all members voted OR closes_at_tick reached
@@ -16491,6 +16576,11 @@ function renderVoteMetaSummary(vote) {
         case 'symposium':
             text = `Hold symposium in <strong>${escapeHtml(meta.target_nation_name || 'a nation')}</strong> (${meta.axis || 'ideology'} ${meta.direction || ''}).`;
             break;
+        case 'leadership_election': {
+            const numCandidates = (meta.candidates || []).length;
+            text = `Elect the next president from <strong>${numCandidates}</strong> candidate${numCandidates !== 1 ? 's' : ''}.`;
+            break;
+        }
     }
     return text ? `<div class="ipo-vote-meta-summary">${text}</div>` : '';
 }
@@ -16818,8 +16908,11 @@ function selectIPOBallot(voteId, ballotValue) {
     if (row) row.style.display = 'none';
     if (confirm) confirm.style.display = 'flex';
     if (choiceEl) {
-        choiceEl.textContent = ballotValue.toUpperCase();
-        choiceEl.className = `ipo-vote-choice--${ballotValue}`;
+        // For leadership elections, show candidate name instead of raw ID
+        const btn = row?.querySelector(`[onclick*="'${ballotValue}'"]`);
+        const candidateName = btn?.getAttribute('data-candidate-name');
+        choiceEl.textContent = candidateName || ballotValue.toUpperCase();
+        choiceEl.className = candidateName ? 'ipo-vote-choice--candidate' : `ipo-vote-choice--${ballotValue}`;
     }
 }
 
@@ -16877,9 +16970,16 @@ async function castIPOBallot(voteId, ballotValue) {
         }
 
         // Post ballot to chat (secret ballots show "a member voted", public show faction name)
-        const ballotLabel = ballotValue === 'yes' ? 'YES' : ballotValue === 'no' ? 'NO' : 'ABSTAIN';
         const voteForChat = ipoVotes.find(v => v.id === voteId);
         const voteTitle = voteForChat?.title || 'a vote';
+        let ballotLabel;
+        if (voteForChat?.vote_type === 'leadership_election' && ballotValue !== 'abstain') {
+            const candidates = (voteForChat.meta && voteForChat.meta.candidates) || [];
+            const chosen = candidates.find(c => c.faction_id === ballotValue);
+            ballotLabel = `for ${chosen?.faction_name || 'a candidate'}`;
+        } else {
+            ballotLabel = ballotValue === 'yes' ? 'YES' : ballotValue === 'no' ? 'NO' : 'ABSTAIN';
+        }
         if (isSecret) {
             await _supabase.from('ipo_chat').insert({
                 org_id: ipoSelectedOrgId, faction_id: null, is_system: true,
@@ -16956,21 +17056,80 @@ async function resolveIPOVote(voteId) {
 
     // Tally ballots
     const ballots = ipoVoteBallots[voteId] || [];
+    const totalEligible = ipoVoteMembers.length;
+    const isElection = vote.vote_type === 'leadership_election';
+
+    let result, newStatus;
+
+    if (isElection) {
+        // Candidate-based tally (shared helper)
+        const { voteTally, abstainCount, winnerId, maxVotes } = tallyElectionBallots(ballots, org.president_id);
+
+        result = { tally: voteTally, winner: winnerId, abstain: abstainCount, total_ballots: ballots.length };
+        newStatus = 'passed'; // Elections always "pass" — they produce a winner
+
+        _ipoActionLock = true;
+        try {
+            const { error, data } = await _supabase
+                .from('ipo_votes')
+                .update({ status: newStatus, result, resolved_at_tick: shardTick })
+                .eq('id', voteId)
+                .eq('status', 'open')
+                .select();
+
+            if (error) {
+                console.error('[IPO Vote] Resolve error:', error);
+                alert('Failed to resolve vote: ' + error.message);
+                return;
+            }
+            if (!data || data.length === 0) {
+                alert('Could not resolve vote. It may have already been resolved, or you may lack permission.');
+                await loadIPOVotes(ipoSelectedOrgId);
+                return;
+            }
+
+            // Update president
+            // NOTE: RLS on international_orgs may block client-side updates if
+            // president_id column doesn't match auth.uid(). The auto-resolution
+            // in advance-tick (service role) handles this reliably as a fallback.
+            const { error: presErr } = await _supabase.from('international_orgs')
+                .update({ president_id: winnerId, president_term_start_tick: shardTick })
+                .eq('id', org.id);
+            if (presErr) console.error('[IPO Vote] President update error (may be RLS):', presErr);
+
+            const candidates = (vote.meta && vote.meta.candidates) || [];
+            const winnerCandidate = candidates.find(c => c.faction_id === winnerId);
+            const winnerName = winnerCandidate?.faction_name || 'Unknown';
+
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId, faction_id: null, is_system: true,
+                message_text: `Leadership Election Result: ${winnerName} elected president with ${maxVotes} vote${maxVotes !== 1 ? 's' : ''} (${ballots.length} total ballots).`,
+                tick_posted: shardTick
+            });
+
+            await loadIPOVotes(ipoSelectedOrgId);
+        } catch (e) {
+            console.error('[IPO Vote] Resolve exception:', e);
+            alert('Failed to resolve vote.');
+        } finally {
+            _ipoActionLock = false;
+        }
+        return;
+    }
+
+    // Standard yes/no/abstain tally
     const yes = ballots.filter(b => b.ballot === 'yes').length;
     const no = ballots.filter(b => b.ballot === 'no').length;
     const abstain = ballots.filter(b => b.ballot === 'abstain').length;
-    const totalEligible = ipoVoteMembers.length;
 
     // Determine if passed
     const totalCast = yes + no + abstain;
     let passed = false;
     if (totalCast === 0) {
-        passed = false; // No votes cast = cannot pass
+        passed = false;
     } else if (votePass === 'unanimous') {
-        // Unanimous: every member who voted must vote yes, no "no" votes
         passed = yes === totalCast && no === 0;
     } else {
-        // Majority: yes > 50% of votes cast (abstains count in denominator, non-voters don't)
         passed = (yes / totalCast) > 0.5;
     }
 
@@ -16993,12 +17152,11 @@ async function resolveIPOVote(voteId) {
         }
     }
 
-    const result = { yes, no, abstain, passed };
-    const newStatus = passed ? 'passed' : 'failed';
+    result = { yes, no, abstain, passed };
+    newStatus = passed ? 'passed' : 'failed';
 
     _ipoActionLock = true;
     try {
-        // Use .eq('status', 'open') to prevent double-resolution race
         const { error, data } = await _supabase
             .from('ipo_votes')
             .update({ status: newStatus, result: result, resolved_at_tick: shardTick })
@@ -17012,29 +17170,30 @@ async function resolveIPOVote(voteId) {
             return;
         }
 
-        // If no rows updated, either already resolved or missing UPDATE RLS policy
         if (!data || data.length === 0) {
             alert('Could not resolve vote. It may have already been resolved, or you may lack permission. Please refresh the page and try again.');
             await loadIPOVotes(ipoSelectedOrgId);
             return;
         }
 
-        // Apply effects if passed (wrapped in try/catch to avoid partial state)
         if (passed) {
             try {
                 await applyVoteEffects(vote, org);
             } catch (effectErr) {
                 console.error('[IPO Vote] Effect application error:', effectErr);
-                // Vote status is already updated; log but don't revert
             }
         }
 
-        // System chat message
+        // Reject membership invite if vote failed
+        if (!passed && vote.vote_type === 'membership' && vote.meta?.invite_id) {
+            await _supabase.from('ipo_invitations')
+                .update({ status: 'declined', responded_at_tick: shardTick })
+                .eq('id', vote.meta.invite_id);
+        }
+
         const outcomeText = passed ? 'PASSED' : 'FAILED';
         await _supabase.from('ipo_chat').insert({
-            org_id: ipoSelectedOrgId,
-            faction_id: null,
-            is_system: true,
+            org_id: ipoSelectedOrgId, faction_id: null, is_system: true,
             message_text: `Vote "${vote.title}" has ${outcomeText} (${yes}Y / ${no}N / ${abstain}A).`,
             tick_posted: shardTick
         });
@@ -18585,6 +18744,7 @@ function renderLeadershipFields(art, idx) {
     const c = art.config;
     return `
         ${ipoRadioGroup('Leadership Type', idx, 'type', [
+            { value: 'vote', label: 'Vote', hint: 'Members elect the president' },
             { value: 'rotation', label: 'Rotation', hint: 'Presidency rotates in fixed order' },
             { value: 'most_seats', label: 'Most Seats', hint: 'Party with most seats leads' },
             { value: 'random', label: 'Random', hint: 'Randomly assigned each term' }

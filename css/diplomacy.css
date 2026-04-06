@@ -4751,6 +4751,56 @@ img.ipo-logo-img.ipo-header-logo {
 .ipo-vote-choice--yes   { color: #5cb85c; }
 .ipo-vote-choice--no    { color: #d9534f; }
 .ipo-vote-choice--abstain { color: #6b6a5e; }
+.ipo-vote-choice--candidate { color: #c8a64e; }
+
+/* Leadership Election — candidate buttons & tally */
+.ipo-vote-btn--candidate {
+  color: #c8a64e;
+  background: rgba(200,166,78,0.08);
+  border-color: rgba(200,166,78,0.25);
+}
+.ipo-vote-btn--candidate:hover { background: rgba(200,166,78,0.2); }
+
+.ipo-election-ballot-row {
+  flex-wrap: wrap;
+}
+
+.ipo-election-tally { gap: 4px; }
+
+.ipo-election-candidate-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #e8e6d9;
+}
+.ipo-election-candidate-name {
+  min-width: 100px;
+  text-align: right;
+  color: #c8a64e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ipo-election-candidate-bar {
+  flex: 1;
+  height: 10px;
+  background: rgba(200,166,78,0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.ipo-election-candidate-fill {
+  height: 100%;
+  background: #c8a64e;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.ipo-election-candidate-count {
+  min-width: 20px;
+  text-align: center;
+  color: #6b6a5e;
+}
 .ipo-vote-btn--confirm {
   color: #5cb85c;
   background: rgba(92,184,92,0.1);
