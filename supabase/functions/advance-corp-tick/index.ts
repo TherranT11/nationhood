@@ -602,7 +602,7 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
         // Load owned properties for this corp in this nation
         const { data: properties, error: propErr } = await supabase
             .from('corp_properties')
-            .select('id, monthly_maintenance, condition, capacity')
+            .select('id, monthly_maintenance, condition, capacity, refurbish_until_tick, refurbish_condition')
             .eq('faction_id', corp.id)
             .eq('nation_id', nation.id)
             .eq('is_active', true);
@@ -615,6 +615,24 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
         for (const prop of properties) {
             // Sum maintenance
             totalMaintenance += Number(prop.monthly_maintenance || 0);
+
+            // Check if refurbishment is complete
+            if (prop.refurbish_until_tick && currentTick >= prop.refurbish_until_tick) {
+                const restoredCondition = Math.min(100, Number(prop.refurbish_condition || 100));
+                conditionUpdates.push({
+                    id: prop.id,
+                    condition: restoredCondition,
+                    refurbish_until_tick: null,
+                    refurbish_condition: null,
+                });
+                console.log(`[PropertyEffects] ${corp.faction_name}: refurbishment complete on ${prop.id}, condition → ${restoredCondition}%`);
+                continue; // skip degradation this tick
+            }
+
+            // Skip degradation for properties currently being refurbished
+            if (prop.refurbish_until_tick && currentTick < prop.refurbish_until_tick) {
+                continue;
+            }
 
             // Condition degrades 0.5-1.5 per corp tick (random)
             // Heritage properties degrade faster (×1.3), Sustainable slower (×0.7)
@@ -649,7 +667,12 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
 
         // Batch update conditions (non-fatal per-property)
         for (const upd of conditionUpdates) {
-            const { error: condErr } = await supabase.from('corp_properties').update({ condition: upd.condition }).eq('id', upd.id);
+            const updateObj = { condition: upd.condition };
+            if ('refurbish_until_tick' in upd) {
+                updateObj.refurbish_until_tick = upd.refurbish_until_tick;
+                updateObj.refurbish_condition = upd.refurbish_condition;
+            }
+            const { error: condErr } = await supabase.from('corp_properties').update(updateObj).eq('id', upd.id);
             if (condErr) console.warn(`[PropertyEffects] Condition update failed for property ${upd.id}:`, condErr.message);
         }
 
@@ -1325,6 +1348,23 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (incomeErr) {
                 console.error(`[advance-corp-tick] Corp income failed for ${nation.name} (non-fatal):`, incomeErr);
                 summary.errors.push({ nation: nation.name, sector: 'income', error: String(incomeErr) });
+            }
+
+            // ── Reputation Decay ─────────────────────────────────────────
+            // All corps lose -0.25 reputation per tick (floor at 0)
+            try {
+                for (const corp of corps) {
+                    const currentRep = Number(corp.corp_reputation ?? 65);
+                    const newRep = Math.max(0, Math.round((currentRep - 0.25) * 100) / 100);
+                    if (newRep !== currentRep) {
+                        const { error: repErr } = await supabase.from('factions')
+                            .update({ corp_reputation: newRep })
+                            .eq('id', corp.id);
+                        if (repErr) console.warn(`[RepDecay] Failed for ${corp.faction_name}:`, repErr.message);
+                    }
+                }
+            } catch (repDecayErr) {
+                console.error(`[advance-corp-tick] Reputation decay failed for ${nation.name} (non-fatal):`, repDecayErr);
             }
 
             // ── Energy Sector ────────────────────────────────────────────

@@ -569,6 +569,38 @@ body.light-mode .corp-nav__tab.active { color: #1a1a17; border-bottom-color: #1a
 }
 .prop-total__value { font-family: var(--font-mono); font-size: 16px; font-weight: 700; color: var(--teal); }
 
+/* ── Property Action Buttons ── */
+.prop-action-btn {
+  flex: 1; padding: 4px 0; border: 1px solid var(--border-0);
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 1px; cursor: pointer; text-align: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.prop-action-btn--sell {
+  background: var(--bg-3); color: var(--red, #a65d5d); border-color: rgba(166,93,93,0.25);
+}
+.prop-action-btn--sell:hover { background: rgba(166,93,93,0.12); border-color: rgba(166,93,93,0.4); }
+.prop-action-btn--sell:active { transform: scale(0.97); }
+.prop-action-btn--refurbish {
+  background: var(--bg-3); color: var(--amber, #b09a5b); border-color: rgba(176,154,91,0.25);
+}
+.prop-action-btn--refurbish:hover { background: rgba(176,154,91,0.12); border-color: rgba(176,154,91,0.4); }
+.prop-action-btn--refurbish:active { transform: scale(0.97); }
+.prop-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Property Modal ── */
+.prop-modal-btn {
+  flex: 1; padding: 6px 0; border: 1px solid var(--border-0);
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.5px; cursor: pointer; text-align: center;
+  transition: background 0.15s;
+}
+.prop-modal-btn--cancel { background: var(--bg-3); color: var(--text-dim); }
+.prop-modal-btn--cancel:hover { background: var(--bg-4); }
+.prop-modal-btn--confirm { background: rgba(91,154,139,0.12); color: var(--teal); border-color: var(--teal-border); }
+.prop-modal-btn--confirm:hover { background: rgba(91,154,139,0.2); }
+.prop-modal-btn--confirm:disabled { opacity: 0.4; cursor: not-allowed; }
+
 /* ── Loading ── */
 /* ── Valuation card — fixed 380×450 ── */
 .val-card {
@@ -902,6 +934,11 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
   </div>
 </div>
 
+<!-- Property Sell/Refurbish Modal Overlay -->
+<div id="prop-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;justify-content:center;align-items:center;">
+    <div id="prop-modal-content" style="background:var(--bg-2, #1a1a17);border:1px solid var(--border-hair, rgba(200,196,184,0.08));padding:16px;max-width:360px;width:90%;"></div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
@@ -1103,6 +1140,8 @@ async function init() {
     // Store for save handler
     window._corpFactionId = faction.id;
     window._currentTick = currentTick;
+    window._nationStats = nationStats;
+    window._factionData = faction;
 
     // ── Render all dashboard cards ──
     const wfData = renderWorkforce(nationStats, nationName, faction);
@@ -1599,6 +1638,12 @@ async function renderProperty(nation, nationName, factionData, shard) {
                 <span style="color:${condColor}">${prop.condition}%</span>
             </div>
             <div style="width:100%;height:3px;background:var(--bg-2);margin-top:2px;"><div style="width:${prop.condition}%;height:100%;background:${condColor};"></div></div>
+            ${prop.refurbish_until_tick && prop.refurbish_until_tick > (shard?.current_tick || 0)
+                ? `<div style="margin-top:4px;padding:3px 6px;background:var(--amber-faint, rgba(176,154,91,0.08));border:1px solid var(--amber-border, rgba(176,154,91,0.2));font-size:8px;font-family:var(--font-mono);color:var(--amber, #b09a5b);text-align:center;">REFURBISHING — ${prop.refurbish_until_tick - (shard?.current_tick || 0)} tick${prop.refurbish_until_tick - (shard?.current_tick || 0) !== 1 ? 's' : ''} remaining</div>`
+                : `<div style="display:flex;gap:4px;margin-top:4px;">
+                <button class="prop-action-btn prop-action-btn--sell" onclick="showSellModal('${prop.id}','${escapeHtml(prop.name).replace(/'/g, "\\'")}',${prop.purchase_price || 0},${prop.condition})">SELL</button>
+                <button class="prop-action-btn prop-action-btn--refurbish" onclick="showRefurbishModal('${prop.id}','${escapeHtml(prop.name).replace(/'/g, "\\'")}',${prop.condition},${propCap})">REFURBISH</button>
+            </div>`}
         </div>`;
     }
 
@@ -1922,6 +1967,228 @@ async function dissolveCorporation() {
 }
 
 window.dissolveCorporation = dissolveCorporation;
+
+// ==================== SELL PROPERTY ====================
+
+let _sellInProgress = false;
+
+function showSellModal(propId, propName, purchasePrice, condition) {
+    if (_sellInProgress) return;
+    const nation = window._nationStats;
+    const inflation = getNationStat(nation, 'inflation');
+
+    // Sale price = purchase_price × inflation modifier × (condition / 100)
+    // Inflation modifier: at 50 (neutral) = 1.0x, at 75 = 1.075x, at 25 = 0.925x
+    const inflationMod = 1 + (inflation - 50) / 100 * 0.3;
+    const conditionMod = Math.max(0.1, condition / 100);
+    const salePrice = Math.round(purchasePrice * inflationMod * conditionMod);
+
+    const overlay = document.getElementById('prop-modal-overlay');
+    const content = document.getElementById('prop-modal-content');
+
+    content.innerHTML = `
+        <div style="font-size:14px;font-weight:700;margin-bottom:8px;color:var(--text-primary);">Sell Property</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-bottom:12px;">${escapeHtml(propName)}</div>
+        <div style="background:var(--bg-3);border:1px solid var(--border-hair);padding:8px;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);margin-bottom:4px;">
+                <span style="color:var(--text-dim);">Purchase Price</span>
+                <span style="color:var(--text-primary);">${fmtMoney(purchasePrice)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);margin-bottom:4px;">
+                <span style="color:var(--text-dim);">Inflation Modifier</span>
+                <span style="color:var(--amber, #b09a5b);">${inflationMod.toFixed(3)}x</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);margin-bottom:4px;">
+                <span style="color:var(--text-dim);">Condition</span>
+                <span style="color:${condition >= 75 ? 'var(--green)' : condition >= 50 ? 'var(--amber)' : 'var(--red)'};">${condition}%</span>
+            </div>
+            <div style="border-top:1px solid var(--border-hair);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-size:11px;font-family:var(--font-mono);font-weight:700;">
+                <span style="color:var(--text-primary);">Sale Price</span>
+                <span style="color:var(--gold, #c8a832);">${fmtMoney(salePrice)}</span>
+            </div>
+        </div>
+        <div style="display:flex;gap:6px;">
+            <button class="prop-modal-btn prop-modal-btn--cancel" onclick="closePropModal()">Cancel</button>
+            <button class="prop-modal-btn prop-modal-btn--confirm" id="prop-sell-confirm" onclick="confirmSellProperty('${propId}', ${salePrice})">Confirm Sale</button>
+        </div>
+    `;
+
+    overlay.style.display = 'flex';
+}
+
+async function confirmSellProperty(propId, salePrice) {
+    if (_sellInProgress) return;
+    _sellInProgress = true;
+    const btn = document.getElementById('prop-sell-confirm');
+    if (btn) { btn.disabled = true; btn.textContent = 'Selling...'; }
+
+    try {
+        const factionId = window._corpFactionId;
+        if (!factionId) throw new Error('No faction');
+
+        // Deactivate the property
+        const { error: propErr } = await _supabase
+            .from('corp_properties')
+            .update({ is_active: false })
+            .eq('id', propId)
+            .eq('faction_id', factionId);
+        if (propErr) throw new Error('Failed to sell property: ' + propErr.message);
+
+        // Credit cash reserves
+        const { data: fData } = await _supabase
+            .from('factions')
+            .select('corp_cash_reserves')
+            .eq('id', factionId)
+            .single();
+        const currentCash = Number(fData?.corp_cash_reserves ?? 0);
+        const { error: cashErr } = await _supabase
+            .from('factions')
+            .update({ corp_cash_reserves: currentCash + salePrice })
+            .eq('id', factionId);
+        if (cashErr) console.error('[Property] Failed to credit cash:', cashErr.message);
+
+        closePropModal();
+        alert('Property sold for ' + fmtMoney(salePrice) + '. Cash credited.');
+        location.reload();
+    } catch (err) {
+        alert('Sale failed: ' + err.message);
+    } finally {
+        _sellInProgress = false;
+        if (btn) { btn.disabled = false; btn.textContent = 'Confirm Sale'; }
+    }
+}
+
+// ==================== REFURBISH PROPERTY ====================
+
+let _refurbInProgress = false;
+
+function showRefurbishModal(propId, propName, condition, capacity) {
+    if (_refurbInProgress) return;
+    const nation = window._nationStats;
+    const faction = window._factionData;
+    const inflation = getNationStat(nation, 'inflation');
+
+    // Cost: $2M base per 1000 capacity × inflation modifier
+    const inflationMod = 1 + (inflation - 50) / 100 * 0.3;
+    const baseCost = Math.round(2_000_000 * (capacity / 1000));
+    const refurbishCost = Math.round(baseCost * inflationMod);
+
+    // Workforce required: 10% of property capacity (general workers)
+    const workforceNeeded = Math.max(50, Math.round(capacity * 0.10));
+    const availableGeneral = Number(faction?.corp_general_workforce ?? 0);
+    const hasWorkforce = availableGeneral >= workforceNeeded;
+
+    // Cash check
+    const cashReserves = Number(faction?.corp_cash_reserves ?? 0);
+    const hasCash = cashReserves >= refurbishCost;
+
+    // Duration: 1d6 ticks (shown as range since roll happens on confirm)
+    // Outcome: condition restored to 94-100% (1d6: roll of 1 = 94%, roll of 6 = 100%)
+
+    const overlay = document.getElementById('prop-modal-overlay');
+    const content = document.getElementById('prop-modal-content');
+    const canRefurbish = hasWorkforce && hasCash && condition < 100;
+
+    let warningHtml = '';
+    if (condition >= 100) warningHtml = '<div style="color:var(--green);font-size:9px;margin-bottom:8px;">Property is already at 100% condition.</div>';
+    else if (!hasCash) warningHtml = '<div style="color:var(--red);font-size:9px;margin-bottom:8px;">Insufficient cash reserves.</div>';
+    else if (!hasWorkforce) warningHtml = '<div style="color:var(--red);font-size:9px;margin-bottom:8px;">Insufficient general workforce (need ' + workforceNeeded.toLocaleString() + ', have ' + availableGeneral.toLocaleString() + ').</div>';
+
+    content.innerHTML = `
+        <div style="font-size:14px;font-weight:700;margin-bottom:8px;color:var(--text-primary);">Refurbish Property</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-bottom:12px;">${escapeHtml(propName)} — Current Condition: ${condition}%</div>
+        ${warningHtml}
+        <div style="background:var(--bg-3);border:1px solid var(--border-hair);padding:8px;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);margin-bottom:4px;">
+                <span style="color:var(--text-dim);">Cost</span>
+                <span style="color:${hasCash ? 'var(--gold, #c8a832)' : 'var(--red)'};">${fmtMoney(refurbishCost)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);margin-bottom:4px;">
+                <span style="color:var(--text-dim);">Workforce Required</span>
+                <span style="color:${hasWorkforce ? 'var(--blue)' : 'var(--red)'};">${workforceNeeded.toLocaleString()} General</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);margin-bottom:4px;">
+                <span style="color:var(--text-dim);">Duration</span>
+                <span style="color:var(--amber, #b09a5b);">1–6 ticks</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);">
+                <span style="color:var(--text-dim);">Outcome</span>
+                <span style="color:var(--green);">Condition → 94–100%</span>
+            </div>
+        </div>
+        <div style="display:flex;gap:6px;">
+            <button class="prop-modal-btn prop-modal-btn--cancel" onclick="closePropModal()">Cancel</button>
+            <button class="prop-modal-btn prop-modal-btn--confirm" id="prop-refurb-confirm" onclick="confirmRefurbish('${propId}', ${refurbishCost}, ${workforceNeeded})" ${canRefurbish ? '' : 'disabled'}>Begin Refurbishment</button>
+        </div>
+    `;
+
+    overlay.style.display = 'flex';
+}
+
+async function confirmRefurbish(propId, cost, workforceNeeded) {
+    if (_refurbInProgress) return;
+    _refurbInProgress = true;
+    const btn = document.getElementById('prop-refurb-confirm');
+    if (btn) { btn.disabled = true; btn.textContent = 'Starting...'; }
+
+    try {
+        const factionId = window._corpFactionId;
+        const currentTick = window._currentTick;
+        if (!factionId) throw new Error('No faction');
+
+        // Roll 1d6 for duration and condition outcome
+        const durationRoll = Math.floor(Math.random() * 6) + 1; // 1-6
+        const conditionRoll = Math.floor(Math.random() * 6) + 1; // 1-6
+        const newCondition = 94 + conditionRoll; // 95-100 (1→95, 6→100)... wait, 94 + 1 = 95, 94 + 6 = 100
+        const untilTick = currentTick + durationRoll;
+
+        // Deduct cash
+        const { data: fData } = await _supabase
+            .from('factions')
+            .select('corp_cash_reserves')
+            .eq('id', factionId)
+            .single();
+        const currentCash = Number(fData?.corp_cash_reserves ?? 0);
+        if (currentCash < cost) throw new Error('Insufficient cash');
+
+        const { error: cashErr } = await _supabase
+            .from('factions')
+            .update({ corp_cash_reserves: currentCash - cost })
+            .eq('id', factionId);
+        if (cashErr) throw new Error('Failed to deduct cost: ' + cashErr.message);
+
+        // Set refurbish fields on property
+        const { error: propErr } = await _supabase
+            .from('corp_properties')
+            .update({
+                refurbish_until_tick: untilTick,
+                refurbish_condition: newCondition,
+            })
+            .eq('id', propId)
+            .eq('faction_id', factionId);
+        if (propErr) throw new Error('Failed to start refurbishment: ' + propErr.message);
+
+        closePropModal();
+        alert('Refurbishment started! Duration: ' + durationRoll + ' tick' + (durationRoll !== 1 ? 's' : '') + '. Condition will be restored to ' + Math.min(100, newCondition) + '% when complete.');
+        location.reload();
+    } catch (err) {
+        alert('Refurbishment failed: ' + err.message);
+    } finally {
+        _refurbInProgress = false;
+        if (btn) { btn.disabled = false; btn.textContent = 'Begin Refurbishment'; }
+    }
+}
+
+function closePropModal() {
+    const overlay = document.getElementById('prop-modal-overlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+window.showSellModal = showSellModal;
+window.confirmSellProperty = confirmSellProperty;
+window.showRefurbishModal = showRefurbishModal;
+window.confirmRefurbish = confirmRefurbish;
+window.closePropModal = closePropModal;
 
 init();
 </script>
