@@ -2256,7 +2256,6 @@ const PROPOSAL_TYPES = {
         label: 'Embargo/Sanctions',
         description: 'Economic warfare — tanks target trade stats, also hurts your own.',
         stat_effects: [
-            { stat_key: 'trade_balance', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 },
             { stat_key: 'international_reputation', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
@@ -2275,8 +2274,7 @@ const PROPOSAL_TYPES = {
         label: 'Open Borders',
         description: 'Major immigration and security implications — open borders between nations.',
         stat_effects: [
-            { stat_key: 'immigration', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 },
-            { stat_key: 'trade_balance', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 0 }
+            { stat_key: 'immigration', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
     close_embassy: {
@@ -3782,7 +3780,7 @@ const STAT_DECAY_CONFIG = {
     political_violence:  { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
     happiness:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     foreign_investment:  { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    trade_balance:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    // trade_balance: computed by processTradeFlows from real export/import data, not decayed
     gdp_growth:          { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     immigration:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     illegal_immigration: { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
@@ -24785,9 +24783,7 @@ const MODIFIERS = {
         name: 'Active Vessel Expulsion Order',
         category: 'escalation',
         applies_to: 'both',
-        stat_effects: [
-            { stat_key: 'trade_balance', delta: -0.2 },
-        ],
+        stat_effects: [],
         duration: 15,
         removed_by: [], // any diplomatic acceptance or expiry
         special: 'relations_bleed', // Relations -0.3/tick handled separately
