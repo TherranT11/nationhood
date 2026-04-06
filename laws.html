@@ -828,8 +828,8 @@ async function loadArchiveData() {
     const { data } = await _supabase.from('bills')
         .select('*, factions(faction_name, abbreviation, party_color), bill_articles(*, policies(*)), bill_support(*, factions(faction_name, abbreviation, party_color))')
         .eq('nation_id', nid)
-        .in('status', ['passed', 'failed'])
-        .order('passed_tick', { ascending: false });
+        .in('status', ['passed', 'failed', 'ratification_failed'])
+        .order('passed_tick', { ascending: false, nullsFirst: false });
     archiveBills = data || [];
 }
 
@@ -864,7 +864,7 @@ function renderPassedLawsContent() {
         return;
     }
     const passedCount = archiveBills.filter(b => b.status === 'passed').length;
-    const failedCount = archiveBills.filter(b => b.status === 'failed').length;
+    const failedCount = archiveBills.filter(b => b.status !== 'passed').length;
     panel.innerHTML = `<button class="all-laws-back" onclick="togglePassedLaws()">\u2190 Back to ${termBills}</button>
         <div class="section-header" style="font-size:1rem;">Legislative Record</div>
         <div class="archive-summary">
