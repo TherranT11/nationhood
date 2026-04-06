@@ -4162,14 +4162,16 @@ function renderActiveProjects() {
         const quality = bid?.estimated_quality || 0;
         const budget = p.budget_ceiling || 0;
 
-        // Timeline
+        // Timeline (accounts for stalled ticks — no progress when understaffed)
         const awardedTick = p.awarded_at_tick || currentTick;
-        const deadlineTick = awardedTick + (p.timeline_ticks || 8);
-        const ticksRemaining = Math.max(0, deadlineTick - currentTick);
+        const stalledTicks = p.stalled_ticks || 0;
         const ticksElapsed = Math.max(0, currentTick - awardedTick);
+        const effectiveProgress = Math.max(0, ticksElapsed - stalledTicks);
         const totalTicks = p.timeline_ticks || 8;
-        const progressPct = Math.min(100, Math.round((ticksElapsed / totalTicks) * 100));
-        const isLate = currentTick > deadlineTick;
+        const ticksRemaining = Math.max(0, totalTicks - effectiveProgress);
+        const progressPct = Math.min(100, Math.round((effectiveProgress / totalTicks) * 100));
+        const isLate = effectiveProgress > totalTicks;
+        const isStalled = stalledTicks > 0;
 
         const specCls = sectorClass(p.sector);
         const specLbl = sectorLabel(p.sector);
@@ -4187,13 +4189,13 @@ function renderActiveProjects() {
             </div>
             <div class="ap-budget">
                 <div class="ap-budget__header">
-                    <span class="ap-budget__label">PROGRESS</span>
-                    <span class="ap-budget__values" style="color:${isLate ? 'var(--red)' : 'var(--teal)'}">
-                        ${ticksElapsed}/${totalTicks} ticks ${isLate ? '<span style="color:var(--red);font-weight:700;"> OVERDUE</span>' : ''}
+                    <span class="ap-budget__label">PROGRESS${isStalled ? ' <span style="color:var(--orange);font-weight:700;font-size:7px;">⚠ STALLED ('+stalledTicks+' ticks — hire more workers)</span>' : ''}</span>
+                    <span class="ap-budget__values" style="color:${isLate ? 'var(--red)' : isStalled ? 'var(--orange)' : 'var(--teal)'}">
+                        ${effectiveProgress}/${totalTicks} ticks ${isLate ? '<span style="color:var(--red);font-weight:700;"> OVERDUE</span>' : ''}
                     </span>
                 </div>
                 <div class="ap-budget__bar">
-                    <div class="ap-budget__fill" style="width:${progressPct}%;background:${isLate ? 'var(--red)' : 'var(--teal)'}"></div>
+                    <div class="ap-budget__fill" style="width:${progressPct}%;background:${isLate ? 'var(--red)' : isStalled ? 'var(--orange)' : 'var(--teal)'}"></div>
                 </div>
             </div>
             <div class="ap-details">
@@ -8393,6 +8395,16 @@ function renderBidAssembly() {
                     <div style="display:flex;justify-content:space-between;">
                         <span style="font-family:${mono};font-size:8px;color:${C.dim}">${_bidWorkers} × $${wageRate.toLocaleString()}/tick × ${estCompletionTicks} ticks</span>
                         <span style="font-family:${mono};font-size:11px;font-weight:700;color:${C.text}">${hfFmtBig(laborCost)}</span>
+                    </div>
+                    <div style="margin-top:6px;padding-top:6px;border-top:1px solid ${C.border};">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                            <span style="font-family:${mono};font-size:8px;color:${C.dim}">WORKFORCE REQUIRED</span>
+                        </div>
+                        <div style="display:flex;gap:12px;">
+                            <span style="font-family:${mono};font-size:7px;color:#8b9a6b">General: ${Math.ceil(_bidWorkers * 0.80)}</span>
+                            <span style="font-family:${mono};font-size:7px;color:#c8a832">Skilled: ${Math.ceil(_bidWorkers * 0.15)}</span>
+                            <span style="font-family:${mono};font-size:7px;color:#c84">Innovative: ${Math.ceil(_bidWorkers * 0.05)}</span>
+                        </div>
                     </div>
                     <div style="display:flex;justify-content:space-between;margin-top:6px;padding-top:6px;border-top:1px solid ${C.border};">
                         <span style="font-family:${mono};font-size:8px;color:${C.dim}">COMPLETION TIMELINE</span>

@@ -856,31 +856,85 @@ async function processActiveProjects(supabase, nationId, currentTick) {
     // 2. Process in_progress contracts
     const { data: activeContracts } = await supabase
         .from('construction_contracts')
-        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick')
+        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks')
         .eq('nation_id', nationId)
         .eq('status', 'in_progress');
 
     if (!activeContracts || activeContracts.length === 0) return [];
 
+    // 3. Load ALL winning bids for active contracts to check workforce
+    const contractIds = activeContracts.map(c => c.id);
+    let allBids = [];
+    if (contractIds.length === 1) {
+        const { data } = await supabase.from('contract_bids')
+            .select('contract_id, faction_id, labor_count, estimated_cost, bid_price, estimated_quality, material_grades')
+            .eq('contract_id', contractIds[0]).eq('status', 'won');
+        allBids = data || [];
+    } else {
+        const { data } = await supabase.from('contract_bids')
+            .select('contract_id, faction_id, labor_count, estimated_cost, bid_price, estimated_quality, material_grades')
+            .in('contract_id', contractIds).eq('status', 'won');
+        allBids = data || [];
+    }
+
+    const bidMap = {};
+    for (const b of allBids) bidMap[b.contract_id] = b;
+
+    // 4. Sum workforce needs per faction across all active projects
+    //    Workforce composition: General 80%, Skilled 15%, Innovative 5%
+    const factionNeeds = {};
+    for (const contract of activeContracts) {
+        const bid = bidMap[contract.id];
+        if (!bid) continue;
+        const labor = bid.labor_count || 0;
+        if (!factionNeeds[bid.faction_id]) factionNeeds[bid.faction_id] = { general: 0, skilled: 0, innovative: 0 };
+        factionNeeds[bid.faction_id].general += Math.ceil(labor * 0.80);
+        factionNeeds[bid.faction_id].skilled += Math.ceil(labor * 0.15);
+        factionNeeds[bid.faction_id].innovative += Math.ceil(labor * 0.05);
+    }
+
+    // 5. Fetch each faction's workforce and determine if they can staff all projects
+    const factionStaffed = {};
+    for (const fId of Object.keys(factionNeeds)) {
+        const { data: corp } = await supabase.from('factions')
+            .select('corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
+            .eq('id', fId).single();
+        const has = {
+            general: Number(corp?.corp_general_workforce ?? 0),
+            skilled: Number(corp?.corp_skilled_workforce ?? 0),
+            innovative: Number(corp?.corp_innovative_workforce ?? 0),
+        };
+        const need = factionNeeds[fId];
+        factionStaffed[fId] = has.general >= need.general && has.skilled >= need.skilled && has.innovative >= need.innovative;
+        if (!factionStaffed[fId]) {
+            console.log(`[Projects] Faction ${fId} understaffed: need G${need.general}/S${need.skilled}/I${need.innovative}, have G${has.general}/S${has.skilled}/I${has.innovative}`);
+        }
+    }
+
+    // 6. Process each contract
     const results = [];
 
     for (const contract of activeContracts) {
+        const bid = bidMap[contract.id];
+        if (!bid) continue;
+
         const awardedTick = contract.awarded_at_tick || currentTick;
         const ticksElapsed = currentTick - awardedTick;
         const totalTicks = contract.timeline_ticks || 8;
+        const stalledTicks = contract.stalled_ticks || 0;
+        const effectiveProgress = ticksElapsed - stalledTicks;
 
-        // Load the winning bid for cost calculations
-        const { data: bid } = await supabase
-            .from('contract_bids')
-            .select('estimated_cost, bid_price, estimated_quality, material_grades, faction_id')
-            .eq('contract_id', contract.id)
-            .eq('status', 'won')
-            .maybeSingle();
-
-        if (!bid) continue;
+        // Workforce gate: if faction can't staff all its projects, this one stalls
+        if (!factionStaffed[bid.faction_id]) {
+            await supabase.from('construction_contracts')
+                .update({ stalled_ticks: stalledTicks + 1 })
+                .eq('id', contract.id);
+            console.log(`[Projects] ${contract.name}: STALLED (tick ${currentTick}, stalled ${stalledTicks + 1} total)`);
+            // No cost deduction — no work done this tick
+            continue;
+        }
 
         // Per-tick cost deduction from corp cash (skip award tick to avoid off-by-one)
-        // Known limitation: corps can complete projects even with 0 cash (no bankruptcy system yet)
         const perTickCost = Math.round((bid.estimated_cost || 0) / totalTicks);
         if (perTickCost > 0 && ticksElapsed > 0) {
             const { data: corp } = await supabase
@@ -896,8 +950,8 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             }
         }
 
-        // Check if project is complete
-        if (ticksElapsed >= totalTicks) {
+        // Check if project is complete (effective progress, not wall clock)
+        if (effectiveProgress >= totalTicks) {
             const payment = bid.bid_price || 0;
 
             // Generate inspection report & delivery record
@@ -917,8 +971,8 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             const actualPayment = payment + qualityBonus - penalties;
             const estCost = bid.estimated_cost || 0;
             const netProfit = actualPayment - estCost;
-            const actualTicks = ticksElapsed;
-            const onTime = actualTicks <= totalTicks;
+            const actualTicks = ticksElapsed; // wall clock ticks (includes stalled)
+            const onTime = effectiveProgress <= totalTicks; // on-time based on actual work ticks
 
             const inspCat = (base) => {
                 const score = Math.max(0, Math.min(100, base + Math.floor(Math.random() * 15) - 7));
