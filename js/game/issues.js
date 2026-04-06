@@ -1201,6 +1201,7 @@ async function checkAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, 
                 .from('bilateral_issue_modifiers')
                 .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
                 .eq('id', mod.id);
+            mod.is_active = false; // sync in-memory so tension drift uses accurate state
             results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'international_attention' });
             await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
                 'International attention has subsided as tensions eased.',
@@ -1216,6 +1217,7 @@ async function checkAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, 
                 .from('bilateral_issue_modifiers')
                 .update({ is_active: false, resolved_by: 'auto:favor_normalized', resolved_tick: currentTick })
                 .eq('id', mod.id);
+            mod.is_active = false; // sync in-memory so tension drift uses accurate state
             results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'coastal_community_decline' });
             await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
                 'Coastal community decline has eased as the dispute became more balanced.',
@@ -1231,6 +1233,7 @@ async function checkAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, 
                 .from('bilateral_issue_modifiers')
                 .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
                 .eq('id', mod.id);
+            mod.is_active = false; // sync in-memory so tension drift uses accurate state
             results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'public_hostility' });
             await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
                 'Public hostility has cooled as tensions decreased.',
