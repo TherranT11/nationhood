@@ -2561,6 +2561,7 @@ async function loadCorpWorldEvents() {
     const container = document.getElementById('corp-events-list');
     if (!container || !_corpEventsCtx) return;
     const { nationId } = _corpEventsCtx;
+    if (!nationId) { container.innerHTML = '<div class="subs-card__empty">No nation linked.</div>'; return; }
 
     container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.7rem;text-align:center;">Loading world events\u2026</div>';
     try {

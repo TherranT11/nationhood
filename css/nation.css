@@ -74,6 +74,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 20px;
+    flex-wrap: wrap;
 }
 .imm-hero__label {
     font-family: var(--n-font-mono);
@@ -140,6 +141,9 @@
     text-transform: uppercase;
     color: var(--n-secondary);
     margin-bottom: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .imm-stat__value {
     font-family: var(--n-font-mono);
