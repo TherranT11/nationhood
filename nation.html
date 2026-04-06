@@ -1666,6 +1666,18 @@ function renderImmigrationTab(nation) {
 // ===== MAIN RENDER =====
 
 async function renderNationPage(nation) {
+    // Load migration flows in parallel with render
+    loadMigrationFlows(nation.id).then(function() {
+        var immPanel = document.getElementById('nation-panel-immigration');
+        if (immPanel) {
+            immPanel.innerHTML = renderImmigrationHeroStats(nation)
+                + '<div class="imm-panels-grid">'
+                + renderMigrationSourcesPanel(nation)
+                + renderMigrationDestsPanel(nation)
+                + '</div>';
+        }
+    });
+
     var h = '';
 
     // ---- Tab bar ----
@@ -1681,7 +1693,7 @@ async function renderNationPage(nation) {
     // Revolution banner
     h += await renderRevolutionBanner(nation);
 
-    // ---- Category sections ----
+    // Category sections
     for (var ci = 0; ci < STAT_CATEGORIES.length; ci++) {
         h += renderFeaturedCategory(STAT_CATEGORIES[ci], nation);
     }
