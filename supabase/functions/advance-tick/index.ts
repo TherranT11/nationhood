@@ -24556,6 +24556,10 @@ function formatDebtToGDP(ratio) {
 
 // ────────── issues ──────────
 
+/**
+ * issues.js — Bilateral issues system (modifier engine + actions)
+ * Extracted from game-common.js
+ */
 
 // ==================== TENSION THRESHOLDS ====================
 
