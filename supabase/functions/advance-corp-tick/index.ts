@@ -703,45 +703,60 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
 
 // ==================== SUBSIDIARY REVENUE ====================
 // Each corp tick: subsidiaries gain or lose cash based on nation GDP Growth.
-// Revenue = sub_cash × 0.02 × (1 + (gdpGrowth - 30)/100) × (reputation/100)
-// GDP Growth < 30 → net loss (bleeding cash)
-// GDP Growth > 30 → net gain (growing)
-// Reputation scales returns (25 = 0.25x, 50 = 0.50x, 100 = 1.0x)
-// Losses clamped to max 5% of sub_cash per tick to prevent wipeout.
+// Investment return = sub_cash × 0.02 × (1 + (gdpGrowth - 30)/100) × (reputation/100)
+// Operating overhead = $200K/month base cost per subsidiary (scaled by GDP)
+// Revenue = investment return - operating overhead
+// GDP Growth < 30 → investment returns go negative, PLUS overhead → bleeds fast
+// GDP Growth > 30 → investment returns grow, offset overhead
+// Reputation scales investment returns (25 = 0.25x, 50 = 0.50x, 100 = 1.0x)
+// sub_cash CAN go negative (subsidiary in debt — needs capital injection or dissolution)
+// Losses clamped to max 5% of |sub_cash| per tick to prevent instant wipeout.
 
 const SUB_REVENUE_BASE = 0.02;
 const SUB_GDP_NEUTRAL = 30;
 const SUB_DEFAULT_REPUTATION = 25;
 const SUB_MAX_LOSS_RATE = 0.05;
+const SUB_OPERATING_OVERHEAD = 200_000; // $200K/month base cost per subsidiary
 
 async function processSubsidiaryRevenue(supabase, nation, corps, currentTick) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
     const corpIds = corps.map(c => c.id);
     const corpMap = Object.fromEntries(corps.map(c => [c.id, c]));
 
-    // Single query for all corps in this nation
+    // All active regional HQs in this nation (including those with 0 or negative cash)
     const { data: hqs, error: hqErr } = await supabase
         .from('corp_properties')
         .select('id, sub_cash, name, faction_id')
         .in('faction_id', corpIds)
         .eq('nation_id', nation.id)
         .eq('type', 'regional_hq')
-        .eq('is_active', true)
-        .gt('sub_cash', 0);
+        .eq('is_active', true);
 
     if (hqErr || !hqs || hqs.length === 0) return;
 
     const repMult = SUB_DEFAULT_REPUTATION / 100;
     for (const hq of hqs) {
-        const subCash = Number(hq.sub_cash);
-        const base = subCash * SUB_REVENUE_BASE;
-        const gdpMod = (gdpGrowth - SUB_GDP_NEUTRAL) / 100;
-        let revenue = Math.round(base * (1 + gdpMod) * repMult);
+        const subCash = Number(hq.sub_cash ?? 0);
 
-        if (revenue < 0) revenue = Math.max(revenue, -Math.round(subCash * SUB_MAX_LOSS_RATE));
+        // Investment return: based on positive cash balance × GDP × reputation
+        const investCash = Math.max(0, subCash);
+        const gdpMod = (gdpGrowth - SUB_GDP_NEUTRAL) / 100;
+        const investReturn = Math.round(investCash * SUB_REVENUE_BASE * (1 + gdpMod) * repMult);
+
+        // Operating overhead: scales with GDP (bad GDP = higher costs)
+        // At GDP 50 (average): 1.0x overhead. At GDP 10: 1.4x. At GDP 80: 0.7x.
+        const overheadMult = Math.max(0.1, 1 + (50 - gdpGrowth) / 100);
+        const overhead = Math.round(SUB_OPERATING_OVERHEAD * overheadMult);
+
+        let revenue = investReturn - overhead;
+
+        // Clamp losses to prevent instant wipeout
+        const maxLoss = Math.max(SUB_OPERATING_OVERHEAD, Math.round(Math.abs(subCash) * SUB_MAX_LOSS_RATE));
+        if (revenue < 0) revenue = Math.max(revenue, -maxLoss);
         if (revenue === 0) continue;
 
-        const newSubCash = Math.max(0, subCash + revenue);
+        // sub_cash can go negative (subsidiary in debt)
+        const newSubCash = subCash + revenue;
         const { error: updErr } = await supabase
             .from('corp_properties')
             .update({ sub_cash: newSubCash })
@@ -751,7 +766,7 @@ async function processSubsidiaryRevenue(supabase, nation, corps, currentTick) {
         if (updErr) {
             console.warn(`[SubRevenue] Failed to update sub_cash for ${hq.name}:`, updErr.message);
         } else {
-            console.log(`[SubRevenue] ${corp?.faction_name || '?'} → ${hq.name}: ${revenue >= 0 ? '+' : ''}${revenue.toLocaleString()} (GDP:${gdpGrowth}, cash:${subCash.toLocaleString()} → ${newSubCash.toLocaleString()})`);
+            console.log(`[SubRevenue] ${corp?.faction_name || '?'} → ${hq.name}: ${revenue >= 0 ? '+' : ''}${revenue.toLocaleString()} (GDP:${gdpGrowth}, overhead:${overhead.toLocaleString()}, cash:${subCash.toLocaleString()} → ${newSubCash.toLocaleString()})`);
         }
     }
 }
@@ -856,31 +871,85 @@ async function processActiveProjects(supabase, nationId, currentTick) {
     // 2. Process in_progress contracts
     const { data: activeContracts } = await supabase
         .from('construction_contracts')
-        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick')
+        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks')
         .eq('nation_id', nationId)
         .eq('status', 'in_progress');
 
     if (!activeContracts || activeContracts.length === 0) return [];
 
+    // 3. Load ALL winning bids for active contracts to check workforce
+    const contractIds = activeContracts.map(c => c.id);
+    let allBids = [];
+    if (contractIds.length === 1) {
+        const { data } = await supabase.from('contract_bids')
+            .select('contract_id, faction_id, labor_count, estimated_cost, bid_price, estimated_quality, material_grades')
+            .eq('contract_id', contractIds[0]).eq('status', 'won');
+        allBids = data || [];
+    } else {
+        const { data } = await supabase.from('contract_bids')
+            .select('contract_id, faction_id, labor_count, estimated_cost, bid_price, estimated_quality, material_grades')
+            .in('contract_id', contractIds).eq('status', 'won');
+        allBids = data || [];
+    }
+
+    const bidMap = {};
+    for (const b of allBids) bidMap[b.contract_id] = b;
+
+    // 4. Sum workforce needs per faction across all active projects
+    //    Workforce composition: General 80%, Skilled 15%, Innovative 5%
+    const factionNeeds = {};
+    for (const contract of activeContracts) {
+        const bid = bidMap[contract.id];
+        if (!bid) continue;
+        const labor = bid.labor_count || 0;
+        if (!factionNeeds[bid.faction_id]) factionNeeds[bid.faction_id] = { general: 0, skilled: 0, innovative: 0 };
+        factionNeeds[bid.faction_id].general += Math.ceil(labor * 0.80);
+        factionNeeds[bid.faction_id].skilled += Math.ceil(labor * 0.15);
+        factionNeeds[bid.faction_id].innovative += Math.ceil(labor * 0.05);
+    }
+
+    // 5. Fetch each faction's workforce and determine if they can staff all projects
+    const factionStaffed = {};
+    for (const fId of Object.keys(factionNeeds)) {
+        const { data: corp } = await supabase.from('factions')
+            .select('corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
+            .eq('id', fId).single();
+        const has = {
+            general: Number(corp?.corp_general_workforce ?? 0),
+            skilled: Number(corp?.corp_skilled_workforce ?? 0),
+            innovative: Number(corp?.corp_innovative_workforce ?? 0),
+        };
+        const need = factionNeeds[fId];
+        factionStaffed[fId] = has.general >= need.general && has.skilled >= need.skilled && has.innovative >= need.innovative;
+        if (!factionStaffed[fId]) {
+            console.log(`[Projects] Faction ${fId} understaffed: need G${need.general}/S${need.skilled}/I${need.innovative}, have G${has.general}/S${has.skilled}/I${has.innovative}`);
+        }
+    }
+
+    // 6. Process each contract
     const results = [];
 
     for (const contract of activeContracts) {
+        const bid = bidMap[contract.id];
+        if (!bid) continue;
+
         const awardedTick = contract.awarded_at_tick || currentTick;
         const ticksElapsed = currentTick - awardedTick;
         const totalTicks = contract.timeline_ticks || 8;
+        const stalledTicks = contract.stalled_ticks || 0;
+        const effectiveProgress = ticksElapsed - stalledTicks;
 
-        // Load the winning bid for cost calculations
-        const { data: bid } = await supabase
-            .from('contract_bids')
-            .select('estimated_cost, bid_price, estimated_quality, material_grades, faction_id')
-            .eq('contract_id', contract.id)
-            .eq('status', 'won')
-            .maybeSingle();
-
-        if (!bid) continue;
+        // Workforce gate: if faction can't staff all its projects, this one stalls
+        if (!factionStaffed[bid.faction_id]) {
+            await supabase.from('construction_contracts')
+                .update({ stalled_ticks: stalledTicks + 1 })
+                .eq('id', contract.id);
+            console.log(`[Projects] ${contract.name}: STALLED (tick ${currentTick}, stalled ${stalledTicks + 1} total)`);
+            // No cost deduction — no work done this tick
+            continue;
+        }
 
         // Per-tick cost deduction from corp cash (skip award tick to avoid off-by-one)
-        // Known limitation: corps can complete projects even with 0 cash (no bankruptcy system yet)
         const perTickCost = Math.round((bid.estimated_cost || 0) / totalTicks);
         if (perTickCost > 0 && ticksElapsed > 0) {
             const { data: corp } = await supabase
@@ -896,8 +965,8 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             }
         }
 
-        // Check if project is complete
-        if (ticksElapsed >= totalTicks) {
+        // Check if project is complete (effective progress, not wall clock)
+        if (effectiveProgress >= totalTicks) {
             const payment = bid.bid_price || 0;
 
             // Generate inspection report & delivery record
@@ -917,8 +986,8 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             const actualPayment = payment + qualityBonus - penalties;
             const estCost = bid.estimated_cost || 0;
             const netProfit = actualPayment - estCost;
-            const actualTicks = ticksElapsed;
-            const onTime = actualTicks <= totalTicks;
+            const actualTicks = ticksElapsed; // wall clock ticks (includes stalled)
+            const onTime = effectiveProgress <= totalTicks; // on-time based on actual work ticks
 
             const inspCat = (base) => {
                 const score = Math.max(0, Math.min(100, base + Math.floor(Math.random() * 15) - 7));
@@ -1081,7 +1150,13 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
             debtPayment = monthlyPayment;
         }
 
-        const netChange = monthlyIncome - debtPayment;
+        // Corporate tax: applied to positive monthly income (profit only)
+        // corporate_tax is 0-100 scale on the nation, treated as percentage
+        const corpTaxRate = Math.max(0, Math.min(1, (Number(nation.corporate_tax ?? 0) / 100) || 0));
+        const taxableIncome = Math.max(0, monthlyIncome);
+        const taxAmount = Math.round(taxableIncome * corpTaxRate);
+
+        const netChange = monthlyIncome - debtPayment - taxAmount;
         const newCash = Math.max(0, currentCash + netChange);
         const newLoans = Math.max(0, currentLoans - principalPaid);
 
@@ -1093,7 +1168,7 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
             .eq('id', corp.id);
         if (updateErr) console.error(`[advance-corp-tick] Income update failed for ${corp.faction_name}:`, updateErr.message);
     }
-    console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}`);
+    console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}, tax rate=${ns('corporate_tax')}%`);
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
