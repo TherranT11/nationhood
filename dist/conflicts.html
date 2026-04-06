@@ -11,11 +11,12 @@
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Shared Styles -->
-  <script type="module" crossorigin src="/assets/conflicts-CF2gATry.js"></script>
+  <script type="module" crossorigin src="/assets/conflicts-Kt0mmeKP.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
   <link rel="modulepreload" crossorigin href="/assets/common-DC6iDOio.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
-  <link rel="stylesheet" crossorigin href="/assets/conflicts-rsc-9-0a.css">
+  <link rel="modulepreload" crossorigin href="/assets/issues-5_tuOC3r.js">
+  <link rel="stylesheet" crossorigin href="/assets/conflicts-DazAbR5-.css">
   <link rel="stylesheet" crossorigin href="/assets/dashboard-Bk9Ly0o-.css">
 </head>
 <body>
@@ -25,8 +26,8 @@
 
 <!-- ===== SUB-TABS ===== -->
 <div class="conflicts-subtabs">
-    <button class="subtab" data-tab="issues" id="subtab-issues">Issues <span class="subtab-badge" id="issues-count-badge"></span></button>
-    <button class="subtab active" data-tab="incidents" id="subtab-incidents">Incidents <span class="subtab-badge" id="incidents-count-badge"></span></button>
+    <button class="subtab active" data-tab="issues" id="subtab-issues">Issues <span class="subtab-badge" id="issues-count-badge"></span><span class="subtab-action-badge" id="issues-action-badge"></span></button>
+    <button class="subtab" data-tab="incidents" id="subtab-incidents">Incidents <span class="subtab-badge" id="incidents-count-badge"></span></button>
     <button class="subtab" data-tab="conflicts" id="subtab-conflicts">Conflicts <span class="subtab-badge" id="conflicts-count-badge"></span></button>
 </div>
 
@@ -120,6 +121,76 @@
     <div class="empty-icon">&#9876;</div>
     <div class="empty-title">No Active Incidents</div>
     <div class="empty-subtitle">The continent is at peace — for now. Incidents will appear here when diplomatic crises emerge between nations.</div>
+</div>
+
+<!-- ===== ISSUES LAYOUT (2-column: sidebar + detail) ===== -->
+<div class="issues-layout" id="issues-layout" style="display:none;">
+
+    <!-- LEFT: ISSUE LIST -->
+    <div class="issues-sidebar" id="issues-sidebar">
+        <div class="sidebar-section">
+            <div class="sidebar-section-header">Your Issues</div>
+            <div class="sidebar-list" id="issues-your-list"></div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-section-header">International Issues</div>
+            <div class="sidebar-list" id="issues-intl-list"></div>
+        </div>
+    </div>
+
+    <!-- CENTER: ISSUE DETAIL -->
+    <div class="issues-center" id="issues-center">
+        <!-- Empty state -->
+        <div class="conflicts-empty" id="issues-empty-state">
+            <div class="empty-icon">&#9878;</div>
+            <div class="empty-title">No Issue Selected</div>
+            <div class="empty-subtitle">Select an issue from the sidebar to view details.</div>
+        </div>
+
+        <!-- Issue detail (hidden until selected) -->
+        <div class="issues-detail" id="issues-detail" style="display:none;">
+
+            <!-- Scrollable top section -->
+            <div class="issues-scroll" id="issues-scroll">
+
+                <!-- Header -->
+                <div class="issues-header" id="issues-header"></div>
+
+                <!-- Status bar: Tension / Favor / Status -->
+                <div class="issues-status-bar" id="issues-status-bar"></div>
+
+                <!-- Active modifiers -->
+                <div class="issues-section" id="issues-modifiers-section">
+                    <div class="issues-section-label">Active Modifiers</div>
+                    <div id="issues-modifiers-list"></div>
+                </div>
+
+                <!-- Current effects summary -->
+                <div class="issues-section" id="issues-effects-section">
+                    <div class="issues-section-label">Current Effects (per tick)</div>
+                    <div id="issues-effects-list"></div>
+                </div>
+
+                <!-- History -->
+                <div class="issues-section" id="issues-history-section">
+                    <div class="issues-section-label">History</div>
+                    <div id="issues-history-list"></div>
+                </div>
+
+            </div>
+
+            <!-- Actions panel (bottom, fixed) -->
+            <div class="issues-actions-panel" id="issues-actions-panel"></div>
+
+        </div>
+    </div>
+</div>
+
+<!-- ===== ISSUES EMPTY STATE (no issues at all) ===== -->
+<div class="conflicts-global-empty" id="issues-global-empty" style="display:none;">
+    <div class="empty-icon">&#9878;</div>
+    <div class="empty-title">No Active Issues</div>
+    <div class="empty-subtitle">No bilateral issues are currently active. Issues emerge from diplomatic relationships between nations.</div>
 </div>
 
 <!-- ===== ACTION CONFIRMATION MODAL ===== -->
