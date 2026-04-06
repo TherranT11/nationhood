@@ -1135,7 +1135,13 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
             debtPayment = monthlyPayment;
         }
 
-        const netChange = monthlyIncome - debtPayment;
+        // Corporate tax: applied to positive monthly income (profit only)
+        // corporate_tax is 0-100 scale on the nation, treated as percentage
+        const corpTaxRate = Number(nation.corporate_tax ?? 0) / 100;
+        const taxableIncome = Math.max(0, monthlyIncome);
+        const taxAmount = Math.round(taxableIncome * corpTaxRate);
+
+        const netChange = monthlyIncome - debtPayment - taxAmount;
         const newCash = Math.max(0, currentCash + netChange);
         const newLoans = Math.max(0, currentLoans - principalPaid);
 
@@ -1147,7 +1153,7 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
             .eq('id', corp.id);
         if (updateErr) console.error(`[advance-corp-tick] Income update failed for ${corp.faction_name}:`, updateErr.message);
     }
-    console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}`);
+    console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}, tax rate=${ns('corporate_tax')}%`);
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
