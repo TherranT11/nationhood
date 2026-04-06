@@ -3647,8 +3647,6 @@ function buildEducationActionRows(isMyMinistry) {
     const currAction = config.actions.find(a => a.id === 'standardisedCurriculum');
     const currActionId = 'education-standardisedCurriculum';
     const currActive = activeMinistryActions[currActionId] || false;
-    const currCountKey = 'education:standardisedCurriculum';
-    const currUseCount = ministryActionUseCounts[currCountKey] || 0;
     const currApCost = 6;
     const currTagsHtml = currAction.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
     // Budget cost: ~$1M per million pop per year, ÷12 for per-tick

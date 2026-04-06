@@ -3572,6 +3572,7 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
 
     // 10. Clean up all faction-related data from the old nation
     // IPO: remove from all International Party Organisations, handle leadership succession
+    const handledOrgIds = new Set();
     try {
         // Find all IPOs where this faction is president
         const { data: presidedOrgs } = await supabase
@@ -3581,6 +3582,8 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
             .eq('is_active', true);
 
         for (const org of (presidedOrgs || [])) {
+            handledOrgIds.add(org.id);
+
             // Find remaining active full members (excluding this faction)
             const { data: remainingMembers } = await supabase
                 .from('ipo_members')
@@ -3596,7 +3599,8 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
                 const newPresidentId = remainingMembers[0].faction_id;
                 const updates = { president_id: newPresidentId, president_term_start_tick: currentTick };
                 if (org.founding_party_id === factionId) updates.founding_party_id = newPresidentId;
-                await supabase.from('international_orgs').update(updates).eq('id', org.id);
+                const { error: presErr } = await supabase.from('international_orgs').update(updates).eq('id', org.id);
+                if (presErr) console.warn(`disbandParty: failed to appoint new IPO president for ${org.name}:`, presErr.message);
 
                 await supabase.from('ipo_chat').insert({
                     org_id: org.id, faction_id: null, is_system: true,
@@ -3624,13 +3628,14 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
             }
         }
 
-        // Post system message and deactivate membership for non-presided orgs
+        // Post system message for non-presided orgs (skip orgs already handled above)
         const { data: memberships } = await supabase
             .from('ipo_members')
             .select('org_id')
             .eq('faction_id', factionId)
             .eq('is_active', true);
         for (const m of (memberships || [])) {
+            if (handledOrgIds.has(m.org_id)) continue;
             await supabase.from('ipo_chat').insert({
                 org_id: m.org_id, faction_id: null, is_system: true,
                 message_text: `${faction?.faction_name || 'A party'} has disbanded and been removed from the organisation.`,
