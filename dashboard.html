@@ -721,6 +721,11 @@
       </div>
     </div>
 
+    <div class="dash-card dash-card-tall" id="issue-effects-card" style="display:none;flex-direction:column;">
+      <div class="dash-card-header">ACTIVE ISSUE EFFECTS</div>
+      <div class="crises-scroll" id="issue-effects-body"></div>
+    </div>
+
     <div class="dash-card dash-card-tall" id="crises-card" style="display:flex;flex-direction:column;">
       <div class="dash-card-header">ACTIVE CRISES</div>
       <div class="crises-scroll" id="crises-card-body">
@@ -734,6 +739,7 @@
 <script type="module">
 import { initPage, formatNumber } from './js/common.js';
 import { _supabase } from './js/supabase-client.js';
+import { MODIFIERS } from './js/game/issues.js';
 import { fetchActiveCoalition } from './js/game/government-structure.js';
 import { isPresidentialRepublic, isParliamentaryDemocracy } from './js/game/government-types.js';
 import { tickToDate, MONTHS } from './js/utils.js';
@@ -1167,6 +1173,7 @@ initPage('home', async (state) => {
   // ── Active Crises Card ──
   // ══════════════════════════════════════
   loadActiveCrises(nation.id, currentTick);
+  loadActiveIssueEffects(nation.id);
 });
 
 // ══════════════════════════════════════
@@ -1549,6 +1556,94 @@ async function loadWorldEvents(excludeNationId, currentTick) {
   } catch (e) {
     console.error('World events feed error:', e);
     container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.75rem;">Failed to load world events.</div>';
+  }
+}
+
+// ══════════════════════════════════════
+// ── Active Issue Effects ──
+// ══════════════════════════════════════
+
+const ISSUE_TYPE_LABELS = {
+  maritime_fishing_rights: 'Maritime Fishing Rights',
+};
+
+async function loadActiveIssueEffects(nationId) {
+  const card = document.getElementById('issue-effects-card');
+  const body = document.getElementById('issue-effects-body');
+  if (!card || !body) return;
+
+  try {
+    // Fetch issues involving this nation
+    const { data: issues, error: issErr } = await _supabase
+      .from('bilateral_issues')
+      .select('id, issue_type, nation_a_id, nation_b_id, tension, status')
+      .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
+      .in('status', ['active', 'partial']);
+
+    if (issErr) throw issErr;
+    if (!issues || issues.length === 0) return; // card stays hidden
+
+    // Fetch active modifiers for these issues
+    const issueIds = issues.map(i => i.id);
+    const { data: mods, error: modErr } = await _supabase
+      .from('bilateral_issue_modifiers')
+      .select('issue_id, modifier_key, applies_to, is_active, is_periodic, is_periodic_active')
+      .in('issue_id', issueIds)
+      .eq('is_active', true);
+
+    if (modErr) throw modErr;
+
+    // Aggregate effects per issue
+    let html = '';
+    for (const issue of issues) {
+      const isNationA = issue.nation_a_id === nationId;
+      const side = isNationA ? 'nation_a' : 'nation_b';
+      const issueMods = (mods || []).filter(m =>
+        m.issue_id === issue.id &&
+        (!m.is_periodic || m.is_periodic_active)
+      );
+
+      // Aggregate stat deltas from modifiers that apply to this nation
+      const statMap = {};
+      for (const mod of issueMods) {
+        const config = MODIFIERS[mod.modifier_key];
+        if (!config || !config.stat_effects) continue;
+
+        // Check if this modifier applies to our nation
+        const applies = mod.applies_to;
+        if (applies !== 'both' && applies !== side) continue;
+
+        for (const eff of config.stat_effects) {
+          if (!statMap[eff.stat_key]) statMap[eff.stat_key] = 0;
+          statMap[eff.stat_key] += eff.delta;
+        }
+      }
+
+      const effects = Object.entries(statMap);
+      if (effects.length === 0) continue;
+
+      const typeName = ISSUE_TYPE_LABELS[issue.issue_type] || issue.issue_type.replace(/_/g, ' ');
+      const tensionCls = issue.tension <= 2 ? 'crisis-effect-up' : issue.tension <= 5 ? '' : 'crisis-effect-down';
+
+      html += `<div class="crisis-item">
+        <div class="crisis-item-name">ISSUE: ${esc(typeName)}</div>
+        <div class="crisis-item-desc" style="margin-top:2px;">Tension: <span class="${tensionCls}">${Number(issue.tension).toFixed(1)}/10</span> &middot; ${issueMods.length} active modifier${issueMods.length !== 1 ? 's' : ''}</div>
+        <div class="crisis-item-effects" style="margin-top:4px;">
+          ${effects.map(([stat, delta]) => {
+            const label = stat.replace(/_/g, ' ');
+            const sign = delta > 0 ? '+' : '';
+            return `<span class="crisis-effect-down">${label} ${sign}${delta.toFixed(2)}/tick</span>`;
+          }).join('')}
+        </div>
+      </div>`;
+    }
+
+    if (html) {
+      body.innerHTML = html;
+      card.style.display = 'flex';
+    }
+  } catch (e) {
+    console.error('Issue effects card error:', e);
   }
 }
 
