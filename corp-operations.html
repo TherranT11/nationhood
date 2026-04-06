@@ -7386,14 +7386,16 @@ async function _subLiquidate(propId, mode) {
     _subActionLock = true;
     try {
         const propIds = nationProps.map(p => p.id);
-        // Use .eq() for single property, .in() for multiple — avoids Supabase .in() 400 on single-element arrays
+        // Deactivate properties — use .eq() for single, .in() for multiple (avoids Supabase .in() 400 on single-element arrays)
         if (propIds.length === 1) {
-            const { error: propErr } = await _supabase.from('corp_properties').update({ is_active: false, sub_cash: 0 }).eq('id', propIds[0]);
+            const { error: propErr } = await _supabase.from('corp_properties').update({ is_active: false }).eq('id', propIds[0]);
             if (propErr) throw propErr;
         } else if (propIds.length > 1) {
-            const { error: propErr } = await _supabase.from('corp_properties').update({ is_active: false, sub_cash: 0 }).in('id', propIds);
+            const { error: propErr } = await _supabase.from('corp_properties').update({ is_active: false }).in('id', propIds);
             if (propErr) throw propErr;
         }
+        // Zero out subsidiary cash on the HQ (separate update in case migration not yet applied)
+        await _supabase.from('corp_properties').update({ sub_cash: 0 }).eq('id', propId).then(() => {}).catch(() => {});
         const newCash = Number(faction?.corp_cash_reserves ?? 0) + totalReturn;
         await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
         faction.corp_cash_reserves = newCash;
