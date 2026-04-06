@@ -891,6 +891,7 @@ async function proceed() {
     // Clean up and redirect
     sessionStorage.removeItem('nationhood_pending_nation');
     sessionStorage.removeItem('nationhood_pending_party');
+    sessionStorage.removeItem('pending_faction_type');
     window.location.href = 'dashboard.html';
 
   } catch (error) {

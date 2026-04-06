@@ -781,7 +781,7 @@ async function init() {
     const pendingParty = sessionStorage.getItem('pending_faction_type') === 'party';
     const { data: faction } = await _supabase
       .from('factions').select('id, nation_id, faction_type').eq('id', user.id).maybeSingle();
-    if (faction && faction.nation_id && !pendingParty) {
+    if (faction && faction.nation_id && !(pendingParty && faction.faction_type === 'corporation')) {
       window.location.href = 'dashboard.html';
       return;
     }

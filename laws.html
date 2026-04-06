@@ -544,6 +544,7 @@ function filterAllLaws() {
         if (n.party_registration_threshold > 0) foundationalLaws.push({ name: 'Political Party Registration Act', icon: '🚫', desc: `Parties below ${n.party_registration_threshold}% of seats have their seats reallocated. Affected parties cannot sponsor bills, vote, or hold ministries.`, value: `${n.party_registration_threshold}% threshold` });
         if (n.legislative_quorum_override > 0) foundationalLaws.push({ name: 'Legislative Quorum Reform Act', icon: '📋', desc: `Quorum requirement for standard bills lowered from 50% to ${n.legislative_quorum_override}%.`, value: `${n.legislative_quorum_override}% quorum` });
         if (n.constitutional_amendment_streamlining) foundationalLaws.push({ name: 'Constitutional Amendment Streamlining', icon: '📜', desc: 'Supermajority threshold for foundational bills lowered from 67% to 55%. The constitution is far easier to rewrite.', value: 'Enacted' });
+        if (n.anti_disinformation_act) foundationalLaws.push({ name: 'Anti-Disinformation Act', icon: '🔇', desc: 'The government defines what constitutes disinformation. Independent journalists, academics, and opposition figures can be sanctioned. Press freedom ceiling permanently reduced.', value: 'Enacted' });
 
         let filteredFoundational = foundationalLaws;
         if (search) {
@@ -775,7 +776,7 @@ function renderFloorBill(bill, isVetoed) {
                 (bill.bill_type === 'confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--blue);">🏛 Ambassador Confirmation Vote</span><div class="article-desc">Requires quorum (50%) + simple majority to confirm.</div></div></div>' :
                 (bill.bill_type === 'minister_confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--orange);">🏛 Cabinet Confirmation Vote</span><div class="article-desc">Requires quorum (50%) + simple majority to confirm.</div></div></div>' :
                 (bill.bill_type === 'veto_override' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">⚖ Veto Override Vote</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD) + ' seats) to override presidential veto.</div></div></div>' :
-                (bill.bill_type === 'foundational' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--purple);">' + (bill.proposed_term_length != null ? '📅 Term Length — Proposed: ' + (bill.proposed_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_parliamentary_term_length != null ? '🗓 Legislative Term — Proposed: ' + (bill.proposed_parliamentary_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_term_limit != null ? '🔒 Term Limits — Proposed: ' + (bill.proposed_term_limit === 0 ? 'No Term Limits' : bill.proposed_term_limit + ' Term' + (bill.proposed_term_limit !== 1 ? 's' : '')) : bill.proposed_hos_title ? '👑 Head of State Title — Proposed: ' + bill.proposed_hos_title : bill.proposed_abolish_term_limits ? '⛓ Abolish Term Limits' : bill.proposed_state_media_control ? '📺 State Media Control Act' : bill.proposed_emergency_powers_act ? '🚨 Emergency Powers Act' : '🏛 Electoral Makeup — Proposed: ' + (bill.proposed_seats || '?') + ' seats') + '</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
+                (bill.bill_type === 'foundational' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--purple);">' + (bill.proposed_term_length != null ? '📅 Term Length — Proposed: ' + (bill.proposed_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_parliamentary_term_length != null ? '🗓 Legislative Term — Proposed: ' + (bill.proposed_parliamentary_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_term_limit != null ? '🔒 Term Limits — Proposed: ' + (bill.proposed_term_limit === 0 ? 'No Term Limits' : bill.proposed_term_limit + ' Term' + (bill.proposed_term_limit !== 1 ? 's' : '')) : bill.proposed_hos_title ? '👑 Head of State Title — Proposed: ' + bill.proposed_hos_title : bill.proposed_abolish_term_limits ? '⛓ Abolish Term Limits' : bill.proposed_state_media_control ? '📺 State Media Control Act' : bill.proposed_emergency_powers_act ? '🚨 Emergency Powers Act' : bill.proposed_anti_disinformation_act ? '🔇 Anti-Disinformation Act' : '🏛 Electoral Makeup — Proposed: ' + (bill.proposed_seats || '?') + ' seats') + '</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
                 (bill.bill_type === 'default_resolution' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">💀 Sovereign Default Resolution</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
                 (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">🗑️ Proposes to rescind an active law</span></div></div>' :
                 (bill.bill_type === 'ratification' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--green);">🌐 Diplomatic Ratification Vote</span><div class="article-desc">Requires quorum (50%) + simple majority to ratify.</div></div></div>' :
@@ -994,7 +995,7 @@ function renderCommitteeBill(bill) {
             </div>
             <div class="support-bar-track"><div class="threshold-marker"></div><div class="support-bar-fill ${support.percent >= 51 ? 'enough' : ''}" style="width:${support.percent}%"></div></div>
             <div class="bill-articles">
-                ${bill.bill_type === 'foundational' ? `<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--purple);">${bill.proposed_term_length != null ? '📅 Term Length — Proposed: ' + (bill.proposed_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_parliamentary_term_length != null ? '🗓 Legislative Term — Proposed: ' + (bill.proposed_parliamentary_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_term_limit != null ? '🔒 Term Limits — Proposed: ' + (bill.proposed_term_limit === 0 ? 'No Term Limits' : bill.proposed_term_limit + ' Term' + (bill.proposed_term_limit !== 1 ? 's' : '')) : bill.proposed_hos_title ? '👑 Head of State Title — Proposed: ' + bill.proposed_hos_title : bill.proposed_abolish_term_limits ? '⛓ Abolish Term Limits' : bill.proposed_state_media_control ? '📺 State Media Control Act' : bill.proposed_emergency_powers_act ? '🚨 Emergency Powers Act' : '🏛 Electoral Makeup — Proposed: ' + (bill.proposed_seats || '?') + ' seats'}</span><div class="article-desc">Requires 2/3 supermajority to pass. Co-sponsor required.</div></div></div>` :
+                ${bill.bill_type === 'foundational' ? `<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--purple);">${bill.proposed_term_length != null ? '📅 Term Length — Proposed: ' + (bill.proposed_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_parliamentary_term_length != null ? '🗓 Legislative Term — Proposed: ' + (bill.proposed_parliamentary_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_term_limit != null ? '🔒 Term Limits — Proposed: ' + (bill.proposed_term_limit === 0 ? 'No Term Limits' : bill.proposed_term_limit + ' Term' + (bill.proposed_term_limit !== 1 ? 's' : '')) : bill.proposed_hos_title ? '👑 Head of State Title — Proposed: ' + bill.proposed_hos_title : bill.proposed_abolish_term_limits ? '⛓ Abolish Term Limits' : bill.proposed_state_media_control ? '📺 State Media Control Act' : bill.proposed_emergency_powers_act ? '🚨 Emergency Powers Act' : bill.proposed_anti_disinformation_act ? '🔇 Anti-Disinformation Act' : '🏛 Electoral Makeup — Proposed: ' + (bill.proposed_seats || '?') + ' seats'}</span><div class="article-desc">Requires 2/3 supermajority to pass. Co-sponsor required.</div></div></div>` :
                 (bill.bill_type === 'default_resolution' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">💀 Sovereign Default Resolution</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
                 (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">🗑️ Proposes to rescind an active law</span></div></div>' :
                 (bill.bill_type === 'ratification' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--green);">🌐 Diplomatic Ratification Vote</span><div class="article-desc">Requires simple majority (' + GAME_CONFIG.MAJORITY_SEATS + ' seats) to ratify.</div></div></div>' :
@@ -1838,6 +1839,12 @@ function renderFoundationalOptions() {
             <div class="policy-option-desc">${currentNation.constitutional_amendment_streamlining
                 ? 'Already enacted — foundational bills now require only 55% to pass.'
                 : 'Lowers the supermajority threshold for all future foundational bills from 67% to 55%. This law itself requires the full 67% to pass. Once enacted, the constitution becomes far easier to rewrite. Legitimacy -8, polarization +5, freedom index -5. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'anti_disinformation_act' ? ' selected' : ''}" style="${selectedFoundationalType === 'anti_disinformation_act' ? 'border-color:var(--red);' : ''}${currentNation.anti_disinformation_act ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('anti_disinformation_act')" data-foundational-type="anti_disinformation_act">
+            <div class="policy-option-name">🔇 Anti-Disinformation Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.anti_disinformation_act
+                ? 'Already enacted — the government defines what constitutes disinformation.'
+                : 'The government defines what constitutes "disinformation." Independent journalists, academics, and opposition figures can be sanctioned. Press freedom ceiling -5 permanently, freedom index -0.2/tick for 20 ticks, government approval +7, legitimacy -4, polarization +4. -5 relations with all nations. Requires 2/3 supermajority (' + required + ' seats).'}</div>
         </div>`;
     selectedFoundationalType = null;
     selectedPolicy = null;
@@ -1868,7 +1875,7 @@ function selectFoundationalType(type) {
     document.querySelectorAll('[data-foundational-type]').forEach(el => {
         const isSelected = el.dataset.foundationalType === type;
         el.classList.toggle('selected', isSelected);
-        const authTypes = ['abolish_term_limits', 'state_media_control', 'emergency_powers', 'judicial_appointment_politicization', 'electoral_commission_reform', 'party_registration_act', 'legislative_quorum_reform', 'constitutional_amendment_streamlining'];
+        const authTypes = ['abolish_term_limits', 'state_media_control', 'emergency_powers', 'judicial_appointment_politicization', 'electoral_commission_reform', 'party_registration_act', 'legislative_quorum_reform', 'constitutional_amendment_streamlining', 'anti_disinformation_act'];
         el.style.borderColor = isSelected ? (authTypes.includes(type) ? 'var(--red)' : 'var(--purple)') : '';
     });
     const seatsConfig = document.getElementById('foundational-seats-config');
@@ -2065,23 +2072,6 @@ async function addArticle() {
             });
             renderDraftArticles(); hideAddArticleForm();
             document.getElementById('bill-name-input').value = `Presidential Term Length Act (${years} Years)`;
-            document.getElementById('bill-name-section').style.display = 'block';
-            document.getElementById('submit-bill-btn').disabled = false;
-            _hideAllArticleButtons();
-            return;
-        } else if (selectedFoundationalType === 'repeal_parliamentary_term') {
-            // Repeal the active Legislative Term Length law
-            const parlTermYears = (currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS) / (GAME_CONFIG.TICKS_PER_YEAR || 12);
-            draftArticles = [];
-            draftArticles.push({
-                articleNumber: 2,
-                isFoundational: true,
-                foundationalSubtype: 'repeal_parliamentary_term',
-                isFoundationalRepeal: true,
-                policy: null
-            });
-            renderDraftArticles(); hideAddArticleForm();
-            document.getElementById('bill-name-input').value = `Repeal: Legislative Term Length Act (${parlTermYears} Years)`;
             document.getElementById('bill-name-section').style.display = 'block';
             document.getElementById('submit-bill-btn').disabled = false;
             _hideAllArticleButtons();
@@ -2288,6 +2278,20 @@ async function addArticle() {
             document.getElementById('submit-bill-btn').disabled = false;
             _hideAllArticleButtons();
             return;
+        } else if (selectedFoundationalType === 'anti_disinformation_act') {
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'anti_disinformation_act',
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = 'Anti-Disinformation Act';
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
         } else {
             alert('Please select a foundational option first.');
             return;
@@ -2464,6 +2468,16 @@ function renderDraftArticles() {
                         <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
                         <div class="draft-article-name">📜 Constitutional Amendment Streamlining</div>
                         <div class="draft-article-meta">Foundational bills need only 55% (down from 67%). Legitimacy -8, polarization +5, freedom index -5. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'anti_disinformation_act') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">🔇 Anti-Disinformation Act</div>
+                        <div class="draft-article-meta">Press freedom ceiling -5 permanently. Freedom index -0.2/tick (20 ticks). Gov approval +7. Legitimacy -4, polarization +4. -5 relations with all nations. Requires 2/3 supermajority.</div>
                     </div>
                     <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
                 </div>`;
@@ -2996,6 +3010,8 @@ async function submitToCommittee() {
                     ? `This foundational law lowers the legislative quorum to ${draftArticles.find(a => a.isFoundational).proposedQuorumOverride || 30}% in ${currentNation.name}. The ruling coalition can pass bills with fewer participants. Requires a two-thirds supermajority to pass.`
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'constitutional_amendment_streamlining'
                     ? `This foundational law lowers the supermajority threshold for all future foundational bills from 67% to 55% in ${currentNation.name}. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'anti_disinformation_act'
+                    ? `This foundational law empowers the government of ${currentNation.name} to define what constitutes "disinformation." Independent journalists, academics, and opposition figures may be sanctioned. Press freedom ceiling permanently reduced by 5. Freedom index drains -0.2/tick for 20 ticks. +7 government approval. Legitimacy -4, polarization +4. -5 relations with all nations. Requires a two-thirds supermajority to pass.`
                     : `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the number of legislative seats in ${currentNation.name} from ${GAME_CONFIG.TOTAL_SEATS} to ${draftArticles.find(a => a.isFoundational).proposedSeats}. Requires a two-thirds supermajority to pass.`)
                 : `This ${'bill'}, put forth in the ${'legislature'} of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to enact the following provisions.`
         };
@@ -3034,6 +3050,8 @@ async function submitToCommittee() {
                 billInsert.proposed_legislative_quorum_override = fArt.proposedQuorumOverride || 30;
             } else if (fArt.foundationalSubtype === 'constitutional_amendment_streamlining') {
                 billInsert.proposed_constitutional_amendment_streamlining = true;
+            } else if (fArt.foundationalSubtype === 'anti_disinformation_act') {
+                billInsert.proposed_anti_disinformation_act = true;
             } else {
                 billInsert.proposed_seats = fArt.proposedSeats;
             }
