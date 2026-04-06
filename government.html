@@ -443,15 +443,15 @@ const MINISTRY_ACTIONS = {
                 desc: 'Set the national curriculum to reflect a specific ideological orientation, shaping the values of future voters.',
                 apCosts: [6, 6, 6, 6], // flat 6 AP
                 budgetPerCapita: 0,
-                delay: 160, duration: 12,
+                delay: 0, duration: 12,
                 decayTicks: 0,
                 useResetInterval: 999, // never resets
                 cooldownTicks: 12,
                 customFlow: 'curriculum', // signals custom modal instead of standard confirm
                 tags: [
                     { label: 'ELECTORATE DRIFT', cls: 'neutral' },
-                    { label: '+0.2 / TICK', cls: 'neutral' },
-                    { label: 'NO BUDGET COST', cls: 'neutral' }
+                    { label: '+0.1 / TICK', cls: 'neutral' },
+                    { label: '2 AXES', cls: 'neutral' }
                 ],
                 baseEffects: [] // drift is handled via curriculum_drift table, not stat_effects
             },
@@ -3603,7 +3603,7 @@ const CURRICULUM_AXES = [
       tip: 'The degree to which citizens identify with and support international engagement versus national sovereignty and domestic priority.' }
 ];
 
-let _curriculumSelection = null; // { axisId, direction: +1/-1, label }
+let _curriculumSelections = []; // array of { axisId, direction: +1/-1, label } — max 2
 let _curriculumCooldownUntil = 0; // tick when cooldown expires
 let _activeCurriculumDrift = null; // loaded from DB
 
@@ -3651,6 +3651,10 @@ function buildEducationActionRows(isMyMinistry) {
     const currUseCount = ministryActionUseCounts[currCountKey] || 0;
     const currApCost = 6;
     const currTagsHtml = currAction.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
+    // Budget cost: ~$1M per million pop per year, ÷12 for per-tick
+    const currBudgetPerTick = Math.round((pop / 1_000_000) * 1_000_000 / 12);
+    const currBudgetFmt = currBudgetPerTick >= 1_000_000 ? '$' + (currBudgetPerTick / 1_000_000).toFixed(1) + 'M' : currBudgetPerTick >= 1000 ? '$' + (currBudgetPerTick / 1000).toFixed(0) + 'K' : '$' + currBudgetPerTick;
+    const currBudgetTag = `<span class="tag tag--negative">${currBudgetFmt}/TICK</span>`;
     // Check cooldown
     const inCooldown = currentTick < _curriculumCooldownUntil;
     const cooldownRemaining = inCooldown ? _curriculumCooldownUntil - currentTick : 0;
@@ -3660,10 +3664,12 @@ function buildEducationActionRows(isMyMinistry) {
     if (currActive || _activeCurriculumDrift) {
         const drift = _activeCurriculumDrift;
         if (drift) {
-            if (currentTick < drift.activates_at_tick) {
-                currDescExtra = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--amber);margin-top:3px;">Drift toward ${escapeHtml(drift.direction_label)} on ${escapeHtml(_curriculumAxisLabel(drift.axis))}. Activates Tick ${drift.activates_at_tick}.</div>`;
-            } else if (drift.drift_ticks_remaining > 0) {
-                currDescExtra = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--amber);margin-top:3px;">Drifting ${escapeHtml(drift.direction_label)} on ${escapeHtml(_curriculumAxisLabel(drift.axis))}. ${drift.drift_ticks_remaining} ticks remaining.</div>`;
+            const axis1Desc = `${escapeHtml(drift.direction_label)} on ${escapeHtml(_curriculumAxisLabel(drift.axis))}`;
+            const axis2Desc = drift.axis2 && drift.direction_label2
+                ? ` & ${escapeHtml(drift.direction_label2)} on ${escapeHtml(_curriculumAxisLabel(drift.axis2))}`
+                : '';
+            if (drift.drift_ticks_remaining > 0) {
+                currDescExtra = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--amber);margin-top:3px;">Drifting ${axis1Desc}${axis2Desc}. ${drift.drift_ticks_remaining} ticks remaining.</div>`;
             }
         }
         currBtnHtml = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
@@ -3686,7 +3692,7 @@ function buildEducationActionRows(isMyMinistry) {
         </div>
         <div class="ministry-action__desc">${escapeHtml(currAction.desc)}${currDescExtra}</div>
         <div class="ministry-action__bottom">
-            <div class="ministry-action__tags">${currTagsHtml}${_activeCurriculumDrift ? `<span class="tag tag--neutral">ACTIVATES TICK ${_activeCurriculumDrift.activates_at_tick}</span>` : ''}</div>
+            <div class="ministry-action__tags">${currTagsHtml}${currBudgetTag}</div>
             <div id="${currActionId}-btns">${currBtnHtml}</div>
         </div>
     </div>`;
@@ -5197,7 +5203,7 @@ let _curriculumModalOpen = false;
 function openCurriculumModal() {
     if (_curriculumModalOpen) return;
     if (!isMyMinistryByKey('education')) return;
-    _curriculumSelection = null;
+    _curriculumSelections = [];
     _curriculumModalOpen = true;
     renderCurriculumModal();
 }
@@ -5209,7 +5215,25 @@ function closeCurriculumModal() {
 }
 
 function selectCurriculumDirection(axisId, direction, label) {
-    _curriculumSelection = { axisId, direction, label };
+    // Toggle: if already selected with same axis+direction, remove it
+    const existingIdx = _curriculumSelections.findIndex(s => s.axisId === axisId && s.direction === direction);
+    if (existingIdx !== -1) {
+        _curriculumSelections.splice(existingIdx, 1);
+        renderCurriculumModal();
+        return;
+    }
+    // If same axis but different direction, replace it
+    const sameAxisIdx = _curriculumSelections.findIndex(s => s.axisId === axisId);
+    if (sameAxisIdx !== -1) {
+        _curriculumSelections[sameAxisIdx] = { axisId, direction, label };
+        renderCurriculumModal();
+        return;
+    }
+    // If already have 2 selections, replace the oldest
+    if (_curriculumSelections.length >= 2) {
+        _curriculumSelections.shift();
+    }
+    _curriculumSelections.push({ axisId, direction, label });
     renderCurriculumModal();
 }
 
@@ -5223,13 +5247,15 @@ function renderCurriculumModal() {
         document.body.appendChild(overlay);
     }
 
-    const sel = _curriculumSelection;
-    const activationTick = (currentTick || 0) + 160;
+    const sels = _curriculumSelections;
+    const pop = currentNation?.population || 20_000_000;
+    const budgetPerTick = Math.round((pop / 1_000_000) * 1_000_000 / 12);
+    const budgetFmt = budgetPerTick >= 1_000_000 ? '$' + (budgetPerTick / 1_000_000).toFixed(1) + 'M' : budgetPerTick >= 1000 ? '$' + (budgetPerTick / 1000).toFixed(0) + 'K' : '$' + budgetPerTick;
 
     let axisRowsHtml = '';
     CURRICULUM_AXES.forEach(axis => {
-        const leftSelected = sel && sel.axisId === axis.id && sel.direction === -1;
-        const rightSelected = sel && sel.axisId === axis.id && sel.direction === 1;
+        const leftSelected = sels.some(s => s.axisId === axis.id && s.direction === -1);
+        const rightSelected = sels.some(s => s.axisId === axis.id && s.direction === 1);
 
         const leftStyle = leftSelected
             ? 'background:var(--amber-faint);border:1px solid var(--amber-border);color:var(--accent);'
@@ -5248,16 +5274,17 @@ function renderCurriculumModal() {
             </div>`;
     });
 
+    const selCount = sels.length;
     let confirmHtml;
-    if (!sel) {
+    if (selCount === 0) {
         confirmHtml = `
-            <div style="font-family:'IBM Plex Sans',sans-serif;font-size:10px;color:var(--text-muted);margin-bottom:8px;">Select an axis and direction above.</div>
+            <div style="font-family:'IBM Plex Sans',sans-serif;font-size:10px;color:var(--text-muted);margin-bottom:8px;">Select up to 2 ideology directions from different axes.</div>
             <div style="padding:8px 12px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:var(--bg-card);border:1px solid var(--border-0);color:var(--text-dim);cursor:not-allowed;">CONFIRM — 6 AP</div>`;
     } else {
-        const axisLabel = _curriculumAxisLabel(sel.axisId);
+        const descriptions = sels.map(s => `<span style="color:var(--accent);">${escapeHtml(s.label)}</span> on ${escapeHtml(_curriculumAxisLabel(s.axisId))}`);
         confirmHtml = `
-            <div style="font-family:'IBM Plex Sans',sans-serif;font-size:10px;color:var(--text-muted);margin-bottom:8px;">Curriculum will drift toward <span style="color:var(--accent);">${escapeHtml(sel.label)}</span> on ${escapeHtml(axisLabel)} axis.<br>Drift begins Tick ${activationTick}.</div>
-            <div onclick="confirmCurriculum()" style="padding:8px 12px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#c8a64e;border:1px solid rgba(200,166,78,0.5);color:#1a0808;cursor:pointer;">CONFIRM — 6 AP</div>`;
+            <div style="font-family:'IBM Plex Sans',sans-serif;font-size:10px;color:var(--text-muted);margin-bottom:8px;">Curriculum will drift toward ${descriptions.join(' and ')}.<br>+0.1 per tick for 12 ticks. Cost: ${budgetFmt}/tick.</div>
+            <div onclick="confirmCurriculum()" style="padding:8px 12px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#c8a64e;border:1px solid rgba(200,166,78,0.5);color:#1a0808;cursor:pointer;">CONFIRM — 6 AP · ${budgetFmt}/TICK</div>`;
     }
 
     overlay.innerHTML = `
@@ -5266,7 +5293,7 @@ function renderCurriculumModal() {
                 <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;color:var(--accent);letter-spacing:0.06em;">SET CURRICULUM ORIENTATION</div>
                 <div onclick="closeCurriculumModal()" style="cursor:pointer;color:var(--text-muted);font-size:14px;line-height:1;">&times;</div>
             </div>
-            <div style="font-family:'IBM Plex Sans',sans-serif;font-size:10px;color:var(--text-muted);margin-bottom:14px;">Select one axis and one direction. Drift begins in 160 ticks.</div>
+            <div style="font-family:'IBM Plex Sans',sans-serif;font-size:10px;color:var(--text-muted);margin-bottom:14px;">Select up to 2 ideology directions from different axes. Drift of +0.1 per tick for 12 ticks. Costs ~$1M per million population per year.</div>
             ${axisRowsHtml}
             <div style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);">
                 ${confirmHtml}
@@ -5279,13 +5306,14 @@ let _confirmCurriculumLock = false;
 async function confirmCurriculum() {
     if (_confirmCurriculumLock) return;
     _confirmCurriculumLock = true;
-    if (!_curriculumSelection) { _confirmCurriculumLock = false; return; }
+    if (!_curriculumSelections || _curriculumSelections.length === 0) { _confirmCurriculumLock = false; return; }
     if (!isMyMinistryByKey('education')) { _confirmCurriculumLock = false; return; }
-    const sel = _curriculumSelection;
+    const sels = [..._curriculumSelections]; // 1 or 2 selections
     const apCost = 6;
 
     if ((currentFaction?.action_points || 0) < apCost) {
         alert('Not enough AP.');
+        _confirmCurriculumLock = false;
         return;
     }
 
@@ -5298,24 +5326,47 @@ async function confirmCurriculum() {
     const btns = document.getElementById(actionId + '-btns');
     if (btns) btns.innerHTML = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
 
-    const activationTick = (currentTick || 0) + 160;
+    const pop = currentNation?.population || 20_000_000;
+    const budgetPerTick = Math.round((pop / 1_000_000) * 1_000_000 / 12);
+    const activationTick = currentTick || 0;
 
     try {
-        // 1. Insert curriculum drift record
-        const { error: driftErr } = await _supabase.from('curriculum_drift').insert({
+        // 1. Insert curriculum drift record (supports 2 axes)
+        const driftRow = {
             nation_id: currentNation.id,
             faction_id: currentFaction.id,
-            axis: sel.axisId,
-            direction: sel.direction,
-            direction_label: sel.label,
+            axis: sels[0].axisId,
+            direction: sels[0].direction,
+            direction_label: sels[0].label,
             set_at_tick: currentTick,
             activates_at_tick: activationTick,
             drift_ticks_remaining: 12,
-            drift_per_tick: 0.2
-        });
+            drift_per_tick: 0.1,
+            budget_per_tick: budgetPerTick
+        };
+        if (sels.length > 1) {
+            driftRow.axis2 = sels[1].axisId;
+            driftRow.direction2 = sels[1].direction;
+            driftRow.direction_label2 = sels[1].label;
+        }
+        const { error: driftErr } = await _supabase.from('curriculum_drift').insert(driftRow);
         if (driftErr) throw driftErr;
 
         // 2. Execute as ministry action (AP deduction + action log)
+        const actionData = {
+            axis: sels[0].axisId,
+            direction: sels[0].direction,
+            direction_label: sels[0].label,
+            use_count: ministryActionUseCounts['education:standardisedCurriculum'] || 0,
+            scale: 1.0,
+            budget_per_tick: budgetPerTick
+        };
+        if (sels.length > 1) {
+            actionData.axis2 = sels[1].axisId;
+            actionData.direction2 = sels[1].direction;
+            actionData.direction_label2 = sels[1].label;
+        }
+
         const { error: rpcErr } = await _supabase.rpc('execute_ministry_action', {
             p_nation_id: currentNation.id,
             p_faction_id: currentFaction.id,
@@ -5324,15 +5375,7 @@ async function confirmCurriculum() {
             p_ap_cost: apCost,
             p_applied_at_tick: currentTick,
             p_stat_effects: [], // drift handled separately
-            p_action_data: {
-                axis: sel.axisId,
-                direction: sel.direction,
-                direction_label: sel.label,
-                activates_at_tick: activationTick,
-                use_count: ministryActionUseCounts['education:standardisedCurriculum'] || 0,
-                scale: 1.0,
-                budget_per_tick: 0
-            }
+            p_action_data: actionData
         });
         if (rpcErr) throw rpcErr;
 
@@ -5341,9 +5384,12 @@ async function confirmCurriculum() {
         ministryActionUseCounts['education:standardisedCurriculum'] = (ministryActionUseCounts['education:standardisedCurriculum'] || 0) + 1;
         activeMinistryActions[actionId] = true;
         _activeCurriculumDrift = {
-            axis: sel.axisId,
-            direction: sel.direction,
-            direction_label: sel.label,
+            axis: sels[0].axisId,
+            direction: sels[0].direction,
+            direction_label: sels[0].label,
+            axis2: sels[1]?.axisId || null,
+            direction2: sels[1]?.direction || null,
+            direction_label2: sels[1]?.label || null,
             activates_at_tick: activationTick,
             drift_ticks_remaining: 12
         };
@@ -5361,13 +5407,13 @@ async function confirmCurriculum() {
 
             const ministerName = ministry ? `${ministry.minister_first_name} ${ministry.minister_last_name}` : 'Education Minister';
             const partyName = ministry?.factions?.faction_name || currentFaction?.faction_name || 'Government';
-            const axisLabel = _curriculumAxisLabel(sel.axisId);
+            const dirLabels = sels.map(s => s.label).join(' & ');
 
             const templates = [
-                `${ministerName} sets national curriculum toward ${sel.label} on the ${axisLabel} axis.`,
-                `Education Ministry confirms new curriculum orientation: ${sel.label}.`,
-                `${currentNation.name} curriculum standardised. Electorate drift begins Tick ${activationTick}.`,
-                `${partyName} government locks in curriculum direction. Effects arrive in 160 ticks.`
+                `${ministerName} sets national curriculum toward ${dirLabels}.`,
+                `Education Ministry confirms new curriculum orientation: ${dirLabels}.`,
+                `${currentNation.name} curriculum standardised toward ${dirLabels}.`,
+                `${partyName} government locks in curriculum direction: ${dirLabels}.`
             ];
             const headline = templates[Math.floor(Math.random() * templates.length)];
 
@@ -5377,7 +5423,10 @@ async function confirmCurriculum() {
                 event_type: 'ministry_standardised_curriculum',
                 category: 'education',
                 headline,
-                details: { axis: sel.axisId, direction: sel.direction, direction_label: sel.label, activates_at_tick: activationTick },
+                details: {
+                    selections: sels.map(s => ({ axis: s.axisId, direction: s.direction, direction_label: s.label })),
+                    budget_per_tick: budgetPerTick
+                },
                 severity: 'info'
             });
         } catch (e) { console.warn('[Education] Event log failed:', e); }
@@ -9200,6 +9249,11 @@ window.confirmLaborPolicyAction = confirmLaborPolicyAction;
 window.laborActionSelect = laborActionSelect;
 window.laborActionDeselect = laborActionDeselect;
 window.confirmLaborWorkforceAction = confirmLaborWorkforceAction;
+// Education curriculum modal exports
+window.openCurriculumModal = openCurriculumModal;
+window.closeCurriculumModal = closeCurriculumModal;
+window.selectCurriculumDirection = selectCurriculumDirection;
+window.confirmCurriculum = confirmCurriculum;
 })();
 </script>
 </body>
