@@ -214,6 +214,103 @@ body.light-mode .corp-nav__tab.active { color: #1a1a17; border-bottom-color: #1a
   font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
   letter-spacing: 0.04em; text-align: center;
 }
+
+/* ── Events tab bar & rows ── */
+.corp-events-tab-bar {
+  display: flex;
+  gap: 2px;
+}
+.corp-events-tab {
+  background: transparent;
+  border: 1px solid var(--border-0);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.corp-events-tab:first-child { border-radius: 3px 0 0 3px; }
+.corp-events-tab:last-child  { border-radius: 0 3px 3px 0; }
+.corp-events-tab.active {
+  background: var(--text-primary);
+  color: var(--bg-0);
+  border-color: var(--text-primary);
+}
+.corp-events-tab:hover:not(.active) {
+  background: rgba(255,255,255,0.05);
+}
+.corp-events-scroll {
+  overflow-y: auto;
+  padding: 0 10px 10px;
+  flex: 1;
+}
+.corp-ev-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 4px;
+  border-bottom: 1px solid var(--border-0);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+}
+.corp-ev-date {
+  color: var(--text-dim);
+  min-width: 60px;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+.corp-ev-icon {
+  flex-shrink: 0;
+  font-size: 0.66rem;
+}
+.corp-ev-text {
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 0.74rem;
+  flex: 1;
+  line-height: 1.35;
+}
+.corp-ev-cat {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  border: 1px solid;
+}
+.corp-ev-date-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.corp-ev-nation-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  flex-shrink: 0;
+  border: 1px solid;
+}
+.corp-ev-nation-badge img {
+  width: 12px; height: 8px; object-fit: cover; border-radius: 1px;
+}
+
 /* ── Workforce card — fixed 380×450 ── */
 .wf-card {
   width: 380px; height: 450px;
@@ -884,15 +981,20 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
     </div>
 
     <!-- Events card -->
-    <div class="subs-card">
+    <div class="subs-card" id="events-card" style="display:flex;flex-direction:column;">
       <div class="fin-card__header">
         <div class="fin-card__header-left">
           <span style="font-size:8px;color:var(--amber);">●</span>
           <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text-muted);text-transform:uppercase;">Events</span>
         </div>
-        <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">0 EVENTS</span>
+        <div class="corp-events-tab-bar">
+          <button class="corp-events-tab active" data-tab="corporate" onclick="switchCorpEventsTab('corporate')">Corporate</button>
+          <button class="corp-events-tab" data-tab="political" onclick="switchCorpEventsTab('political')">Political</button>
+          <button class="corp-events-tab" data-tab="nation" onclick="switchCorpEventsTab('nation')">Nation</button>
+          <button class="corp-events-tab" data-tab="world" onclick="switchCorpEventsTab('world')">World</button>
+        </div>
       </div>
-      <div class="subs-card__body">
+      <div class="corp-events-scroll" id="corp-events-list">
         <div class="subs-card__empty">No events.<br>Corporate events will appear here as your company grows.</div>
       </div>
     </div>
@@ -941,7 +1043,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { escapeHtml } from './js/utils.js';
+import { escapeHtml, tickToDate } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { calculateTotalMaintenance } from './js/game/equipment.js';
 
@@ -1164,7 +1266,9 @@ async function init() {
     // Messaging bubble
     initMessaging(faction, nationStats, shard);
 
-    // Dissolve button — no cooldown, always available
+    // Events feed
+    _corpEventsCtx = { nationId: faction.nation_id };
+    loadCorpEvents();
 
     // Show page
     document.getElementById('loading').style.display = 'none';
@@ -2189,6 +2293,340 @@ window.confirmSellProperty = confirmSellProperty;
 window.showRefurbishModal = showRefurbishModal;
 window.confirmRefurbish = confirmRefurbish;
 window.closePropModal = closePropModal;
+
+// ══════════════════════════════════════
+// ── Events Feed ──
+// ══════════════════════════════════════
+
+const CORP_EVENT_STYLES = {
+    crisis:          { icon: '\u26A0', color: '#e74c3c', bg: 'rgba(231,76,60,0.12)', label: 'CRISIS' },
+    government:      { icon: '\u2696', color: '#f1c40f', bg: 'rgba(241,196,15,0.10)', label: 'GOV' },
+    executive_order: { icon: '\u270D', color: '#e67e22', bg: 'rgba(230,126,34,0.12)', label: 'EXEC ORDER' },
+    political:       { icon: '\u2605', color: '#3498db', bg: 'rgba(52,152,219,0.12)', label: 'POLITICAL' },
+    trade:           { icon: '\u2693', color: '#2ecc71', bg: 'rgba(46,204,113,0.12)', label: 'TRADE' },
+    diplomatic:      { icon: '\uD83C\uDF10', color: '#9b59b6', bg: 'rgba(155,89,182,0.12)', label: 'DIPLOMATIC' },
+    bill:            { icon: '\uD83D\uDCDC', color: '#3498db', bg: 'rgba(52,152,219,0.10)', label: 'BILL' },
+    new_party:       { icon: '\uD83C\uDFF3', color: '#9b59b6', bg: 'rgba(155,89,182,0.10)', label: 'NEW PARTY' },
+    protest:         { icon: '\u270A', color: '#e67e22', bg: 'rgba(230,126,34,0.10)', label: 'PROTEST' },
+    military:        { icon: '\u2694', color: '#b07a4a', bg: 'rgba(176,122,74,0.12)', label: 'MILITARY' },
+    economy:         { icon: '\uD83D\uDCB0', color: '#7a9a5b', bg: 'rgba(122,154,91,0.12)', label: 'ECONOMY' },
+    corporate:       { icon: '\uD83C\uDFE2', color: '#c8a64e', bg: 'rgba(200,166,78,0.10)', label: 'CORP' },
+};
+const CORP_EVENT_DEFAULT = { icon: '\u2022', color: '#888', bg: 'rgba(136,136,136,0.08)', label: '' };
+
+const PROTEST_TIER_LABELS = { 1:'Embarrassing Backfire', 2:'Protests Don\'t Materialise', 3:'Modest Turnout', 4:'Respectable Protest', 5:'Strong Demonstration', 6:'Nationwide Protests', 7:'The Big One' };
+
+let _activeCorpEventsTab = 'corporate';
+let _corpEventsCtx = null;
+
+function formatEventName(raw) {
+    if (!raw) return '';
+    return raw.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function partyHtml(name, color) {
+    if (!name) return '<em>Unknown</em>';
+    const safe = escapeHtml(name);
+    return color ? `<span style="color:${color.replace(/[^a-zA-Z0-9#(),.\s%]/g, '')};font-weight:600">${safe}</span>` : `<strong>${safe}</strong>`;
+}
+
+function billToCorpEvent(b, nationId, extra) {
+    const factionMatchesNation = b.factions?.nation_id === (b.nation_id || nationId);
+    const displayName = b.proposer_name || (factionMatchesNation ? b.factions?.faction_name : null) || 'A former party';
+    const displayColor = b.proposer_color || (factionMatchesNation ? b.factions?.party_color : null);
+    return {
+        fired_at_tick: b.proposed_tick,
+        event_name: b.bill_name,
+        _desc_html: `${partyHtml(displayName, displayColor)} proposed "${escapeHtml(b.bill_name)}"`,
+        category: 'bill',
+        _synthetic: true,
+        ...extra
+    };
+}
+
+function factionToCorpEvent(f, extra) {
+    const leaderName = (f.leader_first_name && f.leader_last_name)
+        ? `${f.leader_first_name} ${f.leader_last_name}` : null;
+    const leaderPart = leaderName ? ` led by <strong>${escapeHtml(leaderName)}</strong>` : '';
+    return {
+        fired_at_tick: 0,
+        event_name: f.faction_name,
+        _desc_html: `${partyHtml(f.faction_name, f.party_color)} founded${leaderPart}`,
+        category: 'new_party',
+        _synthetic: true,
+        _created_at: f.created_at,
+        ...extra
+    };
+}
+
+function protestToCorpEvent(p, extra) {
+    const tierLabel = PROTEST_TIER_LABELS[p.tier] || `Tier ${p.tier}`;
+    const demandPart = p.demand_label ? ` demanding "${escapeHtml(p.demand_label)}"` : '';
+    const isCrisis = p.status === 'crisis_active';
+    const tierColor = (p.tier >= 6) ? '#e74c3c' : (p.tier >= 4) ? '#f39c12' : '';
+    const tierHtml = tierColor
+        ? `<span style="color:${tierColor};font-weight:600">${escapeHtml(tierLabel)}</span>`
+        : `<strong>${escapeHtml(tierLabel)}</strong>`;
+    return {
+        fired_at_tick: p.tick_resolved || p.tick_called,
+        event_name: tierLabel,
+        _desc_html: `${partyHtml(p.factions?.faction_name, p.factions?.party_color)} organised a protest${demandPart} — ${tierHtml}${isCrisis ? ' <span style="color:#e74c3c;font-weight:700;">(CRISIS)</span>' : ''}`,
+        category: 'protest',
+        _synthetic: true,
+        ...extra
+    };
+}
+
+function mergeAndSortCorpEvents(events, billEvents, factionEvents, protestEvents, limit) {
+    return [
+        ...events.map(ev => ({ ...ev, _synthetic: false })),
+        ...billEvents,
+        ...factionEvents,
+        ...protestEvents
+    ].sort((a, b) => {
+        const tickDiff = (b.fired_at_tick || 0) - (a.fired_at_tick || 0);
+        if (tickDiff !== 0) return tickDiff;
+        const aTime = a._created_at || a.created_at || '';
+        const bTime = b._created_at || b.created_at || '';
+        return bTime > aTime ? 1 : bTime < aTime ? -1 : 0;
+    }).slice(0, limit);
+}
+
+function renderCorpEventRows(merged) {
+    return merged.map(ev => {
+        const dateStr = tickToDate(ev.fired_at_tick);
+        const cat = CORP_EVENT_STYLES[(ev.category || '').toLowerCase()] || CORP_EVENT_DEFAULT;
+
+        let displayText;
+        if (ev._synthetic && ev._desc_html) {
+            displayText = ev._desc_html;
+        } else {
+            const desc = ev.description_chosen || ev.description_used || '';
+            const eventName = formatEventName(ev.event_name);
+            const headline = eventName ? `<strong>${escapeHtml(eventName)}</strong>` : '';
+            const body = desc ? escapeHtml(desc) : '';
+            displayText = headline && body ? `${headline} — ${body}` : (body || headline || 'Event');
+        }
+
+        return `<div class="corp-ev-row">
+            <span class="corp-ev-date">${escapeHtml(dateStr)}</span>
+            <span class="corp-ev-icon" style="color:${cat.color}">${cat.icon}</span>
+            <span class="corp-ev-text">${displayText}</span>
+            ${cat.label ? `<span class="corp-ev-cat" style="color:${cat.color};background:${cat.bg}">${cat.label}</span>` : ''}
+        </div>`;
+    }).join('');
+}
+
+const NATION_BADGE_COLORS = [
+    { color: '#6b8cae', bg: 'rgba(107,140,174,0.10)', border: 'rgba(107,140,174,0.3)' },
+    { color: '#7a9a5b', bg: 'rgba(122,154,91,0.10)', border: 'rgba(122,154,91,0.3)' },
+    { color: '#b07a4a', bg: 'rgba(176,122,74,0.10)', border: 'rgba(176,122,74,0.3)' },
+    { color: '#8b7ec8', bg: 'rgba(139,126,200,0.10)', border: 'rgba(139,126,200,0.3)' },
+    { color: '#5b9a8b', bg: 'rgba(91,154,139,0.10)', border: 'rgba(91,154,139,0.3)' },
+    { color: '#a65d5d', bg: 'rgba(166,93,93,0.10)', border: 'rgba(166,93,93,0.3)' },
+];
+function nationBadgeColor(name) {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = ((h << 5) - h + name.charCodeAt(i)) | 0;
+    return NATION_BADGE_COLORS[Math.abs(h) % NATION_BADGE_COLORS.length];
+}
+
+function renderWorldEventRows(merged) {
+    return merged.map(ev => {
+        const dateStr = tickToDate(ev.fired_at_tick);
+        const cat = CORP_EVENT_STYLES[(ev.category || '').toLowerCase()] || CORP_EVENT_DEFAULT;
+        const nationName = ev.nations?.name || 'Unknown';
+        const np = ev.nations?.nation_profiles;
+        const flagUrl = Array.isArray(np) ? np[0]?.flag_url : np?.flag_url;
+        const nc = nationBadgeColor(nationName);
+
+        let displayText;
+        if (ev._synthetic && ev._desc_html) {
+            displayText = ev._desc_html;
+        } else {
+            const desc = ev.description_chosen || ev.description_used || '';
+            const eventName = formatEventName(ev.event_name);
+            const headline = eventName ? `<strong>${escapeHtml(eventName)}</strong>` : '';
+            const body = desc ? escapeHtml(desc) : '';
+            displayText = headline && body ? `${headline} — ${body}` : (body || headline || 'Event');
+        }
+
+        const flagHtml = flagUrl ? `<img src="${escapeHtml(flagUrl)}" alt="">` : '';
+
+        return `<div class="corp-ev-row">
+            <span class="corp-ev-date-col">
+                <span class="corp-ev-date">${escapeHtml(dateStr)}</span>
+                <span class="corp-ev-nation-badge" style="color:${nc.color};background:${nc.bg};border-color:${nc.border};">${flagHtml}${escapeHtml(nationName)}</span>
+            </span>
+            <span class="corp-ev-text">${displayText}</span>
+            ${cat.label ? `<span class="corp-ev-cat" style="color:${cat.color};background:${cat.bg}">${cat.label}</span>` : ''}
+        </div>`;
+    }).join('');
+}
+
+// ── Corporate Events (placeholder for now — no corp_events table yet) ──
+async function loadCorpEvents() {
+    const container = document.getElementById('corp-events-list');
+    if (!container) return;
+    // Corporate events will come from a future corp_events table.
+    // For now show a placeholder.
+    container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No corporate events yet.<br>Events will appear here as your company grows.</div>';
+}
+
+// ── Political Events (nation-scoped: event_log + bills + factions + protests) ──
+async function loadPoliticalEvents() {
+    const container = document.getElementById('corp-events-list');
+    if (!container || !_corpEventsCtx) return;
+    const { nationId } = _corpEventsCtx;
+    if (!nationId) { container.innerHTML = '<div class="subs-card__empty">No nation linked.</div>'; return; }
+
+    container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.7rem;text-align:center;">Loading\u2026</div>';
+    try {
+        const [evRes, billRes, facRes, proRes] = await Promise.all([
+            _supabase.from('event_log').select('*')
+                .eq('nation_id', nationId)
+                .in('category', ['political', 'bill', 'new_party', 'protest'])
+                .order('fired_at_tick', { ascending: false }).limit(40),
+            _supabase.from('bills')
+                .select('bill_name, proposed_tick, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id)')
+                .eq('nation_id', nationId)
+                .not('bill_type', 'in', '("no_confidence","confirmation","minister_confirmation","veto_override","impeachment_conviction")')
+                .order('proposed_tick', { ascending: false }).limit(20),
+            _supabase.from('factions')
+                .select('faction_name, party_color, leader_first_name, leader_last_name, created_at')
+                .eq('nation_id', nationId)
+                .order('created_at', { ascending: false }).limit(15),
+            _supabase.from('protest_log')
+                .select('id, tick_called, tick_resolved, tier, status, demand_label, faction_id, factions(faction_name, party_color)')
+                .eq('nation_id', nationId)
+                .in('status', ['resolved', 'crisis_active'])
+                .order('tick_called', { ascending: false }).limit(15),
+        ]);
+        const events = evRes.data || [];
+        const merged = mergeAndSortCorpEvents(
+            events,
+            (billRes.data || []).map(b => billToCorpEvent(b, nationId)),
+            (facRes.data || []).map(f => factionToCorpEvent(f)),
+            (proRes.data || []).map(p => protestToCorpEvent(p)),
+            50
+        );
+        if (merged.length === 0) {
+            container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No political events recorded yet.</div>';
+            return;
+        }
+        container.innerHTML = renderCorpEventRows(merged);
+    } catch (e) {
+        console.error('Political events error:', e);
+        container.innerHTML = '<div class="subs-card__empty">Failed to load events.</div>';
+    }
+}
+
+// ── Nation Events (all event_log categories for this nation) ──
+async function loadNationEvents() {
+    const container = document.getElementById('corp-events-list');
+    if (!container || !_corpEventsCtx) return;
+    const { nationId } = _corpEventsCtx;
+    if (!nationId) { container.innerHTML = '<div class="subs-card__empty">No nation linked.</div>'; return; }
+
+    container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.7rem;text-align:center;">Loading\u2026</div>';
+    try {
+        const [evRes, billRes, facRes, proRes] = await Promise.all([
+            _supabase.from('event_log').select('*')
+                .eq('nation_id', nationId)
+                .order('fired_at_tick', { ascending: false }).limit(50),
+            _supabase.from('bills')
+                .select('bill_name, proposed_tick, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id)')
+                .eq('nation_id', nationId)
+                .not('bill_type', 'in', '("no_confidence","confirmation","minister_confirmation","veto_override","impeachment_conviction")')
+                .order('proposed_tick', { ascending: false }).limit(30),
+            _supabase.from('factions')
+                .select('faction_name, party_color, leader_first_name, leader_last_name, created_at')
+                .eq('nation_id', nationId)
+                .order('created_at', { ascending: false }).limit(20),
+            _supabase.from('protest_log')
+                .select('id, tick_called, tick_resolved, tier, status, demand_label, faction_id, factions(faction_name, party_color)')
+                .eq('nation_id', nationId)
+                .in('status', ['resolved', 'crisis_active'])
+                .order('tick_called', { ascending: false }).limit(20),
+        ]);
+        const events = evRes.data || [];
+        const merged = mergeAndSortCorpEvents(
+            events,
+            (billRes.data || []).map(b => billToCorpEvent(b, nationId)),
+            (facRes.data || []).map(f => factionToCorpEvent(f)),
+            (proRes.data || []).map(p => protestToCorpEvent(p)),
+            60
+        );
+        if (merged.length === 0) {
+            container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No nation events recorded yet.</div>';
+            return;
+        }
+        container.innerHTML = renderCorpEventRows(merged);
+    } catch (e) {
+        console.error('Nation events error:', e);
+        container.innerHTML = '<div class="subs-card__empty">Failed to load events.</div>';
+    }
+}
+
+// ── World Events (all nations except current) ──
+async function loadCorpWorldEvents() {
+    const container = document.getElementById('corp-events-list');
+    if (!container || !_corpEventsCtx) return;
+    const { nationId } = _corpEventsCtx;
+
+    container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.7rem;text-align:center;">Loading world events\u2026</div>';
+    try {
+        const [evRes, billRes, facRes, proRes] = await Promise.all([
+            _supabase.from('event_log')
+                .select('*, nations!inner(name, nation_profiles(flag_url))')
+                .neq('nation_id', nationId)
+                .order('fired_at_tick', { ascending: false }).limit(60),
+            _supabase.from('bills')
+                .select('bill_name, proposed_tick, nation_id, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id), nations!inner(name, nation_profiles(flag_url))')
+                .neq('nation_id', nationId)
+                .not('bill_type', 'in', '("no_confidence","confirmation","minister_confirmation","veto_override","impeachment_conviction")')
+                .order('proposed_tick', { ascending: false }).limit(20),
+            _supabase.from('factions')
+                .select('faction_name, party_color, leader_first_name, leader_last_name, nation_id, created_at, nations!inner(name, nation_profiles(flag_url))')
+                .neq('nation_id', nationId)
+                .order('created_at', { ascending: false }).limit(15),
+            _supabase.from('protest_log')
+                .select('id, tick_called, tick_resolved, tier, status, demand_label, faction_id, nation_id, factions(faction_name, party_color), nations!inner(name, nation_profiles(flag_url))')
+                .neq('nation_id', nationId)
+                .in('status', ['resolved', 'crisis_active'])
+                .order('tick_called', { ascending: false }).limit(15),
+        ]);
+        const events = evRes.data || [];
+        const merged = mergeAndSortCorpEvents(
+            events,
+            (billRes.data || []).map(b => billToCorpEvent(b, null, { nations: b.nations })),
+            (facRes.data || []).map(f => factionToCorpEvent(f, { nations: f.nations })),
+            (proRes.data || []).map(p => protestToCorpEvent(p, { nations: p.nations })),
+            60
+        );
+        if (merged.length === 0) {
+            container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No world events recorded yet.</div>';
+            return;
+        }
+        container.innerHTML = renderWorldEventRows(merged);
+    } catch (e) {
+        console.error('World events error:', e);
+        container.innerHTML = '<div class="subs-card__empty">Failed to load events.</div>';
+    }
+}
+
+function switchCorpEventsTab(tab) {
+    if (tab === _activeCorpEventsTab) return;
+    _activeCorpEventsTab = tab;
+    document.querySelectorAll('.corp-events-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tab);
+    });
+    if (tab === 'corporate') loadCorpEvents();
+    else if (tab === 'political') loadPoliticalEvents();
+    else if (tab === 'nation') loadNationEvents();
+    else if (tab === 'world') loadCorpWorldEvents();
+}
+window.switchCorpEventsTab = switchCorpEventsTab;
 
 init();
 </script>
