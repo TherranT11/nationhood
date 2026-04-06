@@ -16404,6 +16404,7 @@ function renderIPOVotesPanel() {
 
         // Tally
         const totalEligible = ipoVoteMembers.length;
+        const totalCast = ballots.length;
         let tallyBar = '';
 
         if (isElection) {
@@ -16411,7 +16412,6 @@ function renderIPOVotesPanel() {
             const { voteTally: candidateTally, abstainCount } = tallyElectionBallots(ballots, null);
             // Ensure all candidates appear even if they got 0 votes
             for (const c of candidates) { if (candidateTally[c.faction_id] === undefined) candidateTally[c.faction_id] = 0; }
-            const totalCast = ballots.length;
             const candidateRows = candidates.map(c => {
                 const count = candidateTally[c.faction_id] || 0;
                 const pct = totalCast > 0 ? (count / totalCast * 100) : 0;
@@ -16433,7 +16433,6 @@ function renderIPOVotesPanel() {
             const yes = ballots.filter(b => b.ballot === 'yes').length;
             const no = ballots.filter(b => b.ballot === 'no').length;
             const abstain = ballots.filter(b => b.ballot === 'abstain').length;
-            const totalCast = yes + no + abstain;
             const yPct = totalCast > 0 ? (yes / totalCast * 100) : 0;
             const nPct = totalCast > 0 ? (no / totalCast * 100) : 0;
             const aPct = totalCast > 0 ? (abstain / totalCast * 100) : 0;
