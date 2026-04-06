@@ -1603,6 +1603,12 @@ async function loadActiveIssueEffects(nationId) {
         (!m.is_periodic || m.is_periodic_active)
       );
 
+      // Favored nation gets effects reduced to 1/10th
+      const favoredNationId = issue.favor > 0 ? issue.nation_b_id
+                            : issue.favor < 0 ? issue.nation_a_id
+                            : null;
+      const isFavored = favoredNationId && nationId === favoredNationId;
+
       // Aggregate stat deltas from modifiers that apply to this nation
       const statMap = {};
       for (const mod of issueMods) {
@@ -1611,11 +1617,15 @@ async function loadActiveIssueEffects(nationId) {
 
         // Check if this modifier applies to our nation
         const applies = mod.applies_to;
-        if (applies !== 'both' && applies !== side) continue;
+        const appliesToUs = applies === 'both' || applies === side
+            || (applies === 'disfavored' && !isFavored && issue.favor !== 0)
+            || (applies === 'favored' && isFavored);
+        if (!appliesToUs) continue;
 
+        const scale = isFavored ? 0.1 : 1;
         for (const eff of config.stat_effects) {
           if (!statMap[eff.stat_key]) statMap[eff.stat_key] = 0;
-          statMap[eff.stat_key] += eff.delta;
+          statMap[eff.stat_key] += eff.delta * scale;
         }
       }
 

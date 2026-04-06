@@ -662,13 +662,37 @@ function renderIssueEffects(issue, modifiers) {
     const el = document.getElementById('issues-effects-list');
     const active = modifiers.filter(m => m.is_active && (!m.is_periodic || m.is_periodic_active));
 
-    // Aggregate effects by stat+appliesTo
+    // Determine favored nation (gets 1/10th stat effects)
+    const favoredNationId = issue.favor > 0 ? issue.nation_b_id
+                          : issue.favor < 0 ? issue.nation_a_id
+                          : null;
+
+    // Aggregate effects per nation (split 'both' into separate entries per nation)
     const effectMap = {};
     for (const mod of active) {
         for (const eff of (mod.stat_effects || [])) {
-            const key = `${eff.stat_key}::${mod.applies_to}`;
-            if (!effectMap[key]) effectMap[key] = { stat_key: eff.stat_key, applies_to: mod.applies_to, delta: 0 };
-            effectMap[key].delta += eff.delta;
+            const targets = [];
+            if (mod.applies_to === 'both') {
+                targets.push({ nationId: issue.nation_a_id, name: issue.nation_a?.name || 'A' });
+                targets.push({ nationId: issue.nation_b_id, name: issue.nation_b?.name || 'B' });
+            } else if (mod.applies_to === 'nation_a') {
+                targets.push({ nationId: issue.nation_a_id, name: issue.nation_a?.name || 'A' });
+            } else if (mod.applies_to === 'nation_b') {
+                targets.push({ nationId: issue.nation_b_id, name: issue.nation_b?.name || 'B' });
+            } else if (mod.applies_to === 'disfavored') {
+                if (issue.favor > 0) targets.push({ nationId: issue.nation_a_id, name: issue.nation_a?.name || 'A' });
+                else if (issue.favor < 0) targets.push({ nationId: issue.nation_b_id, name: issue.nation_b?.name || 'B' });
+            } else if (mod.applies_to === 'favored') {
+                if (issue.favor > 0) targets.push({ nationId: issue.nation_b_id, name: issue.nation_b?.name || 'B' });
+                else if (issue.favor < 0) targets.push({ nationId: issue.nation_a_id, name: issue.nation_a?.name || 'A' });
+            }
+
+            for (const t of targets) {
+                const scale = (favoredNationId && t.nationId === favoredNationId) ? 0.1 : 1;
+                const key = `${eff.stat_key}::${t.nationId}`;
+                if (!effectMap[key]) effectMap[key] = { stat_key: eff.stat_key, nationName: t.name, nationId: t.nationId, delta: 0 };
+                effectMap[key].delta += eff.delta * scale;
+            }
         }
     }
 
@@ -681,10 +705,8 @@ function renderIssueEffects(issue, modifiers) {
     let html = '';
     for (const eff of effects) {
         const statLabel = eff.stat_key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        const appliesLabel = eff.applies_to === 'both' ? 'Both' :
-            eff.applies_to === 'nation_a' ? (issue.nation_a?.name || 'A') :
-            eff.applies_to === 'nation_b' ? (issue.nation_b?.name || 'B') :
-            eff.applies_to === 'disfavored' ? 'Disfavored' : eff.applies_to;
+        const isFavored = favoredNationId && eff.nationId === favoredNationId;
+        const favorTag = isFavored ? ' <span class="issue-effect-favor">(favored ×0.1)</span>' : '';
         const isNeg = (eff.stat_key === 'pollution' || eff.stat_key === 'crime_rate' ||
             eff.stat_key === 'civil_unrest' || eff.stat_key === 'cost_of_living' ||
             eff.stat_key === 'corruption' || eff.stat_key === 'polarization' ||
@@ -694,7 +716,7 @@ function renderIssueEffects(issue, modifiers) {
             : (eff.delta < 0 ? 'neg' : 'pos');
 
         html += `<div class="issue-effect-row">
-            <div><span class="issue-effect-stat">${escapeHtml(statLabel)}</span><span class="issue-effect-nation">${escapeHtml(appliesLabel)}</span></div>
+            <div><span class="issue-effect-stat">${escapeHtml(statLabel)}</span><span class="issue-effect-nation">${escapeHtml(eff.nationName)}${favorTag}</span></div>
             <span class="issue-effect-value issue-effect-value--${isNeg}">${eff.delta > 0 ? '+' : ''}${eff.delta.toFixed(2)}</span>
         </div>`;
     }
@@ -884,11 +906,14 @@ window._switchIssueActionTab = function(tabEl, category) {
 // ==================== ISSUE ACTION MODAL ====================
 
 function showIssueActionModal(actionKey, issue, modifiers) {
-    if (issueActionExecuting) return;
+    console.log('[Issues] showIssueActionModal called:', actionKey, 'executing:', issueActionExecuting);
+    if (issueActionExecuting) { console.log('[Issues] BLOCKED: issueActionExecuting is true'); return; }
     const action = ACTIONS[actionKey];
-    if (!action) return;
+    if (!action) { console.log('[Issues] BLOCKED: action not found for key:', actionKey); return; }
 
     const modal = document.getElementById('action-modal');
+    console.log('[Issues] Modal element:', modal ? 'found' : 'NOT FOUND');
+    if (!modal) { alert('Modal element #action-modal not found in DOM'); return; }
     const header = document.getElementById('modal-header');
     const body = document.getElementById('modal-body');
     const confirmBtn = document.getElementById('modal-confirm');
@@ -935,6 +960,7 @@ function showIssueActionModal(actionKey, issue, modifiers) {
 
     body.innerHTML = bodyHtml;
     modal.style.display = '';
+    console.log('[Issues] Modal shown. display:', modal.style.display, 'computed:', getComputedStyle(modal).display);
 
     // Wire buttons (clone to avoid stacking listeners)
     const newCancel = document.getElementById('modal-cancel').cloneNode(true);
