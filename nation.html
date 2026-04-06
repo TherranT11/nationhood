@@ -1673,12 +1673,12 @@ function renderImmigrationTab(nation) {
 var migrationFlowData = null;
 
 async function loadMigrationFlows(nationId) {
+    // Fetch ALL migration flows (not just this nation) for the matrix view
     var { data } = await _supabase
         .from('migration_flows')
         .select('*, origin:origin_nation_id(id, name), dest:dest_nation_id(id, name)')
-        .or('origin_nation_id.eq.' + nationId + ',dest_nation_id.eq.' + nationId)
         .order('tick', { ascending: false })
-        .limit(200);
+        .limit(500);
     migrationFlowData = data || [];
 }
 
@@ -1840,6 +1840,169 @@ function renderMigrationDestsPanel(nation) {
     return h;
 }
 
+// ===== MIGRATION MATRIX =====
+
+var NATION_MATRIX_COLORS = ['#22d3ee','#f472b6','#a78bfa','#4ade80','#facc15','#f97316','#60a5fa','#c084fc'];
+
+function renderMigrationMatrix(nation) {
+    if (!migrationFlowData || migrationFlowData.length === 0) return '';
+
+    // Find latest tick in ALL data
+    var latestTick = 0;
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        if (migrationFlowData[i].tick > latestTick) latestTick = migrationFlowData[i].tick;
+    }
+
+    // Collect unique nations from flows
+    var nationMap = {};
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        var f = migrationFlowData[i];
+        if (f.tick !== latestTick) continue;
+        if (f.origin && !nationMap[f.origin.id]) nationMap[f.origin.id] = f.origin.name;
+        if (f.dest && !nationMap[f.dest.id]) nationMap[f.dest.id] = f.dest.name;
+    }
+
+    var nationIds = Object.keys(nationMap).sort(function(a, b) {
+        // Current nation first, then alphabetical
+        if (a === nation.id) return -1;
+        if (b === nation.id) return 1;
+        return nationMap[a].localeCompare(nationMap[b]);
+    });
+    if (nationIds.length < 2) return '';
+
+    // Build flow lookup: matrix[originId][destId] = total flow
+    var matrix = {};
+    for (var i = 0; i < nationIds.length; i++) {
+        matrix[nationIds[i]] = {};
+        for (var j = 0; j < nationIds.length; j++) {
+            matrix[nationIds[i]][nationIds[j]] = 0;
+        }
+    }
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        var f = migrationFlowData[i];
+        if (f.tick !== latestTick) continue;
+        if (matrix[f.origin_nation_id] && matrix[f.origin_nation_id][f.dest_nation_id] !== undefined) {
+            matrix[f.origin_nation_id][f.dest_nation_id] += f.flow_count;
+        }
+    }
+
+    // Assign colors
+    var colorMap = {};
+    for (var i = 0; i < nationIds.length; i++) {
+        colorMap[nationIds[i]] = NATION_MATRIX_COLORS[i % NATION_MATRIX_COLORS.length];
+    }
+
+    // Build table
+    var h = '<div class="imm-matrix">';
+    h += '<div class="imm-section-title">Migration Matrix — People Per Tick</div>';
+    h += '<div class="imm-matrix-scroll"><table class="imm-matrix-table">';
+
+    // Header row
+    h += '<thead><tr><th class="imm-matrix-corner">FROM \\ TO</th>';
+    for (var j = 0; j < nationIds.length; j++) {
+        var shortName = nationMap[nationIds[j]].length > 10 ? nationMap[nationIds[j]].substring(0, 10) : nationMap[nationIds[j]];
+        h += '<th class="imm-matrix-col-head" style="color:' + colorMap[nationIds[j]] + '">' + escapeHtml(shortName) + '</th>';
+    }
+    h += '<th class="imm-matrix-col-head imm-matrix-total-head">TOTAL OUT</th></tr></thead>';
+
+    // Data rows
+    h += '<tbody>';
+    var colTotals = {};
+    for (var j = 0; j < nationIds.length; j++) colTotals[nationIds[j]] = 0;
+
+    for (var i = 0; i < nationIds.length; i++) {
+        var originId = nationIds[i];
+        var rowTotal = 0;
+        h += '<tr>';
+        h += '<td class="imm-matrix-row-head" style="color:' + colorMap[originId] + '">' + escapeHtml(nationMap[originId]) + '</td>';
+        for (var j = 0; j < nationIds.length; j++) {
+            var destId = nationIds[j];
+            if (originId === destId) {
+                h += '<td class="imm-matrix-cell imm-matrix-self">—</td>';
+            } else {
+                var val = matrix[originId][destId];
+                rowTotal += val;
+                colTotals[destId] += val;
+                // Highlight cells where current nation is origin or dest
+                var cellCls = 'imm-matrix-cell';
+                if (originId === nation.id || destId === nation.id) cellCls += ' imm-matrix-highlight';
+                h += '<td class="' + cellCls + '">' + formatNumber(val) + '</td>';
+            }
+        }
+        h += '<td class="imm-matrix-cell imm-matrix-row-total">' + formatNumber(rowTotal) + '</td>';
+        h += '</tr>';
+    }
+
+    // Total IN row
+    h += '<tr class="imm-matrix-total-row"><td class="imm-matrix-row-head imm-matrix-total-head">TOTAL IN</td>';
+    for (var j = 0; j < nationIds.length; j++) {
+        h += '<td class="imm-matrix-cell imm-matrix-col-total">' + formatNumber(colTotals[nationIds[j]]) + '</td>';
+    }
+    h += '<td class="imm-matrix-cell"></td></tr>';
+
+    h += '</tbody></table></div></div>';
+    return h;
+}
+
+// ===== PULL FACTOR SCORE =====
+
+var PULL_FACTORS = [
+    { label: 'Standard of Living', key: 'standard_of_living', weight: 0.25 },
+    { label: 'Stability', key: 'stability', weight: 0.20 },
+    { label: 'Freedom Index', key: 'freedom_index', weight: 0.15 },
+    { label: 'GDP Growth', key: 'gdp_growth', weight: 0.10 },
+    { label: 'Happiness', key: 'happiness', weight: 0.10 },
+    { label: 'Healthcare Access', key: 'healthcare_accessibility', weight: 0.10 },
+    { label: 'Benefits', key: 'welfare_spending', weight: 0.10 }
+];
+
+function renderPullFactorScore(nation) {
+    var h = '<div class="imm-pull">';
+    h += '<div class="imm-section-title">' + escapeHtml(nation.name) + ' Pull Factor Score</div>';
+
+    h += '<div class="imm-pull-grid">';
+    var compositeScore = 0;
+    for (var i = 0; i < PULL_FACTORS.length; i++) {
+        var pf = PULL_FACTORS[i];
+        var rawVal = Math.round(Number(nation[pf.key] ?? 50));
+        var weighted = Math.round(rawVal * pf.weight * 10) / 10;
+        compositeScore += weighted;
+
+        h += '<div class="imm-pull-row">';
+        h += '<span class="imm-pull-label">' + escapeHtml(pf.label) + '</span>';
+        h += '<span class="imm-pull-raw">' + rawVal + '</span>';
+        h += '<span class="imm-pull-weight">x' + pf.weight + '</span>';
+        h += '<span class="imm-pull-weighted">' + weighted.toFixed(1) + '</span>';
+        h += '</div>';
+    }
+    h += '</div>';
+
+    compositeScore = Math.round(compositeScore * 10) / 10;
+
+    // Rank among all nations
+    var rank = 1;
+    var nCount = allNations.length;
+    for (var n = 0; n < allNations.length; n++) {
+        var other = allNations[n];
+        if (other.id === nation.id) continue;
+        var otherScore = 0;
+        for (var i = 0; i < PULL_FACTORS.length; i++) {
+            otherScore += Math.round(Number(other[PULL_FACTORS[i].key] ?? 50) * PULL_FACTORS[i].weight * 10) / 10;
+        }
+        if (Math.round(otherScore * 10) / 10 > compositeScore) rank++;
+    }
+
+    var scoreColor = compositeScore >= 60 ? 'var(--n-green)' : compositeScore >= 40 ? 'var(--n-yellow)' : 'var(--n-red)';
+
+    h += '<div class="imm-pull-footer">';
+    h += '<div class="imm-pull-composite"><span class="imm-pull-composite-label">COMPOSITE SCORE</span><span class="imm-pull-composite-val" style="color:' + scoreColor + '">' + compositeScore.toFixed(1) + '</span></div>';
+    h += '<div class="imm-pull-rank">RANK: #' + rank + ' OF ' + nCount + ' NATIONS</div>';
+    h += '</div>';
+
+    h += '</div>';
+    return h;
+}
+
 // ===== MAIN RENDER =====
 
 async function renderNationPage(nation) {
@@ -1854,7 +2017,10 @@ async function renderNationPage(nation) {
                     + '<div class="imm-panels-grid">'
                     + renderMigrationSourcesPanel(nation)
                     + renderMigrationDestsPanel(nation)
-                    + '</div></div>';
+                    + '</div>'
+                    + renderMigrationMatrix(nation)
+                    + renderPullFactorScore(nation)
+                    + '</div>';
             }
         }).catch(function(err) { console.warn('[nation] Migration flow load failed:', err); });
     } catch (e) { console.warn('[nation] Migration flows not available:', e); }
