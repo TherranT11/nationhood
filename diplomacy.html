@@ -1646,6 +1646,15 @@ async function withdrawTradeAgreement(agreementId) {
         return;
     }
 
+    // UTR: only the issuer can withdraw — the target nation cannot cancel it
+    if (ta.agreement_type === 'unilateral_tariff_reduction') {
+        const utrArt = (ta.articles || [])[0];
+        if (utrArt?.data?.issuer_nation_id && utrArt.data.issuer_nation_id !== currentNation.id) {
+            alert('Only the nation that issued this tariff reduction can withdraw it.');
+            return;
+        }
+    }
+
     if (ta.status !== 'active') {
         alert('This agreement is not active (status: ' + ta.status + ').');
         return;
@@ -1653,7 +1662,7 @@ async function withdrawTradeAgreement(agreementId) {
 
     const isRetaliatory = ta.agreement_type === 'retaliatory_tariff';
     const isEmbargo = ta.agreement_type === 'impose_embargo';
-    const isUnilateral = isRetaliatory || isEmbargo || ta.agreement_type === 'export_subsidy';
+    const isUnilateral = isRetaliatory || isEmbargo || ta.agreement_type === 'export_subsidy' || ta.agreement_type === 'unilateral_tariff_reduction';
     const noticeTicks = isUnilateral ? 0 : (ta.withdrawal_notice_ticks || 3);
     const articles = ta.articles || [];
 
@@ -10269,8 +10278,12 @@ async function renderNegotiationsBox() {
                 const withdrawalPending = ta.withdrawn_at_tick != null && ta.withdrawn_at_tick > shardTick;
 
                 let withdrawBtn = '';
-                const canWithdraw = diplomaticRoles.isFM || diplomaticRoles.isHoG ||
-                    (diplomaticRoles.isMoT && (ta.agreement_type === 'impose_embargo' || ta.agreement_type === 'retaliatory_tariff' || ta.agreement_type === 'export_subsidy'));
+                // For UTR, only the issuer nation can withdraw
+                const utrIssuer = ta.agreement_type === 'unilateral_tariff_reduction'
+                    ? ((ta.articles || [])[0]?.data?.issuer_nation_id || null) : null;
+                const isUtrTarget = ta.agreement_type === 'unilateral_tariff_reduction' && utrIssuer !== currentNation.id;
+                const canWithdraw = !isUtrTarget && (diplomaticRoles.isFM || diplomaticRoles.isHoG ||
+                    (diplomaticRoles.isMoT && (ta.agreement_type === 'impose_embargo' || ta.agreement_type === 'retaliatory_tariff' || ta.agreement_type === 'export_subsidy' || ta.agreement_type === 'unilateral_tariff_reduction')));
                 if (withdrawalPending) {
                     withdrawBtn = '<span style="font-size:10px;color:var(--amber);">Withdrawing in ' + (ta.withdrawn_at_tick - shardTick) + ' ticks</span>';
                 } else if (canWithdraw) {
@@ -11622,16 +11635,23 @@ async function renderUTRDraftPanel(body, statusEl) {
         return;
     }
 
-    // Check for existing active UTR with this target
+    // Check for existing active UTR ISSUED BY US with this target
+    // Uses canonical ordering (nation_a_id < nation_b_id) — issuer tracked in articles JSONB
     const { data: existingUtr } = await _supabase
         .from('trade_agreements')
-        .select('id')
+        .select('id, articles')
         .eq('status', 'active')
         .eq('agreement_type', 'unilateral_tariff_reduction')
         .or('and(nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + activeDraftTarget.id + '),' +
             'and(nation_a_id.eq.' + activeDraftTarget.id + ',nation_b_id.eq.' + currentNation.id + ')');
 
-    if (existingUtr && existingUtr.length > 0) {
+    // Only block if WE are the issuer — the target nation can issue their own UTR independently
+    const ourExistingUtr = (existingUtr || []).filter(function(u) {
+        var art = (u.articles || [])[0];
+        return art && art.data && art.data.issuer_nation_id === currentNation.id;
+    });
+
+    if (ourExistingUtr.length > 0) {
         html += '<div class="trade-info-box warning" style="margin:12px 14px;">You already have an active tariff reduction for ' + escapeHtml(activeDraftTarget.name) + '. Withdraw it first to issue a new one.</div></div>';
         body.innerHTML = html;
         return;
@@ -16384,6 +16404,7 @@ function renderIPOVotesPanel() {
 
         // Tally
         const totalEligible = ipoVoteMembers.length;
+        const totalCast = ballots.length;
         let tallyBar = '';
 
         if (isElection) {
@@ -16391,7 +16412,6 @@ function renderIPOVotesPanel() {
             const { voteTally: candidateTally, abstainCount } = tallyElectionBallots(ballots, null);
             // Ensure all candidates appear even if they got 0 votes
             for (const c of candidates) { if (candidateTally[c.faction_id] === undefined) candidateTally[c.faction_id] = 0; }
-            const totalCast = ballots.length;
             const candidateRows = candidates.map(c => {
                 const count = candidateTally[c.faction_id] || 0;
                 const pct = totalCast > 0 ? (count / totalCast * 100) : 0;
@@ -16413,7 +16433,6 @@ function renderIPOVotesPanel() {
             const yes = ballots.filter(b => b.ballot === 'yes').length;
             const no = ballots.filter(b => b.ballot === 'no').length;
             const abstain = ballots.filter(b => b.ballot === 'abstain').length;
-            const totalCast = yes + no + abstain;
             const yPct = totalCast > 0 ? (yes / totalCast * 100) : 0;
             const nPct = totalCast > 0 ? (no / totalCast * 100) : 0;
             const aPct = totalCast > 0 ? (abstain / totalCast * 100) : 0;
