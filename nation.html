@@ -46,6 +46,7 @@ let allNations = [];
 let totalNations = 0;
 let previousTickData = null;
 var statEffectsByKey = {};
+var rawStatConnections = []; // cached for illegal immigration tab
 let sparklineHistory = {}; // statKey → array of last 10 values
 
 // Collapsed state for sections (persisted in sessionStorage)
@@ -421,7 +422,8 @@ async function loadStatEffectSources(nationId, nation) {
     parseLeaderTraitEffects(results[4], map);
     parseInstitutionEffects(results[6].data || [], results[7].data || [], nation, map);
     parseDebtPressureEffects(nation, map);
-    parseStatConnectionEffects(results[5].data || [], nation, map);
+    rawStatConnections = results[5].data || [];
+    parseStatConnectionEffects(rawStatConnections, nation, map);
     parseTradeSystemEffects(nation, map);
     parseDecayEffects(nation, map);
 
@@ -1588,10 +1590,7 @@ function renderImmigrationTab(nation) {
     var totalInflow = 0;
     var totalOutflow = 0;
     if (migrationFlowData && migrationFlowData.length > 0) {
-        var latestTick = 0;
-        for (var fi = 0; fi < migrationFlowData.length; fi++) {
-            if (migrationFlowData[fi].tick > latestTick) latestTick = migrationFlowData[fi].tick;
-        }
+        var latestTick = getLatestMigrationTick();
         for (var fi = 0; fi < migrationFlowData.length; fi++) {
             var f = migrationFlowData[fi];
             if (f.tick !== latestTick) continue;
@@ -1672,6 +1671,15 @@ function renderImmigrationTab(nation) {
 
 var migrationFlowData = null;
 
+function getLatestMigrationTick() {
+    if (!migrationFlowData || migrationFlowData.length === 0) return 0;
+    var t = 0;
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        if (migrationFlowData[i].tick > t) t = migrationFlowData[i].tick;
+    }
+    return t;
+}
+
 async function loadMigrationFlows(nationId) {
     // Fetch ALL migration flows (not just this nation) for the matrix view
     var { data } = await _supabase
@@ -1687,10 +1695,7 @@ function renderMigrationSourcesPanel(nation) {
         return '<div class="imm-section"><div class="imm-section-title">Immigration Sources</div><div class="imm-empty">No migration data yet. Data will appear after the next tick.</div></div>';
     }
 
-    var latestTick = 0;
-    for (var i = 0; i < migrationFlowData.length; i++) {
-        if (migrationFlowData[i].tick > latestTick) latestTick = migrationFlowData[i].tick;
-    }
+    var latestTick = getLatestMigrationTick();
 
     var sources = {};
     var totalInflow = 0;
@@ -1766,10 +1771,7 @@ function renderMigrationDestsPanel(nation) {
         return '<div class="imm-section"><div class="imm-section-title">Emigration Destinations</div><div class="imm-empty">No migration data yet.</div></div>';
     }
 
-    var latestTick = 0;
-    for (var i = 0; i < migrationFlowData.length; i++) {
-        if (migrationFlowData[i].tick > latestTick) latestTick = migrationFlowData[i].tick;
-    }
+    var latestTick = getLatestMigrationTick();
 
     var dests = {};
     var totalOutflow = 0;
@@ -1840,6 +1842,250 @@ function renderMigrationDestsPanel(nation) {
     return h;
 }
 
+// ===== ILLEGAL IMMIGRATION TAB =====
+
+function getIllegalTier(val) {
+    if (val >= 70) return { label: 'CRITICAL', color: 'var(--n-red)' };
+    if (val >= 50) return { label: 'HIGH', color: 'var(--n-orange)' };
+    if (val >= 30) return { label: 'ELEVATED', color: 'var(--n-yellow)' };
+    if (val >= 15) return { label: 'MODERATE', color: 'var(--n-cyan)' };
+    return { label: 'LOW', color: 'var(--n-green)' };
+}
+
+function renderIllegalImmigrationTab(nation) {
+    var illegalVal = Number(nation.illegal_immigration ?? 0);
+    var tier = getIllegalTier(illegalVal);
+    var h = '';
+
+    // Delta from previous tick
+    var deltaHtml = '';
+    if (previousTickData && previousTickData.illegal_immigration != null) {
+        var delta = illegalVal - Number(previousTickData.illegal_immigration);
+        if (Math.abs(delta) >= 0.01) {
+            var dColor = delta > 0 ? 'var(--n-red)' : 'var(--n-green)';
+            var dArrow = delta > 0 ? '\u25B2' : '\u25BC';
+            deltaHtml = '<span class="ill-hero-delta" style="color:' + dColor + ';">' + dArrow + ' ' + Math.abs(delta).toFixed(1) + '</span>';
+        }
+    }
+
+    // ── Hero ──
+    h += '<div class="ill-hero">';
+    h += '<div class="ill-hero-left">';
+    h += '<div class="ill-hero-label">ILLEGAL IMMIGRATION</div>';
+    h += '<div class="ill-hero-value" style="color:' + tier.color + ';">' + illegalVal.toFixed(1) + '</div>';
+    h += deltaHtml;
+    h += '</div>';
+    h += '<div class="ill-hero-badge" style="color:' + tier.color + ';border-color:' + tier.color + ';background:' + tier.color + '15;">' + tier.label + '</div>';
+    h += '</div>';
+
+    // ── Two-column: Push Factors + Stat Drag ──
+    h += '<div class="ill-columns">';
+
+    // Left: Push Factors (why they come)
+    h += '<div class="ill-panel">';
+    h += '<div class="ill-panel-title">Push Factors (Why They Come)</div>';
+    h += renderIllegalPushFactors(nation);
+    h += '</div>';
+
+    // Right: Stat Drag Effects
+    h += '<div class="ill-panel">';
+    h += '<div class="ill-panel-title">Stat Drag Effects</div>';
+    h += renderIllegalStatDrag(nation, illegalVal);
+    h += '</div>';
+
+    h += '</div>'; // end columns
+
+    // ── By Origin breakdown ──
+    h += renderIllegalByOrigin(nation);
+
+    // ── Footer disclaimer ──
+    h += '<div class="ill-disclaimer">';
+    h += '<div class="ill-disclaimer-bar"></div>';
+    h += '<div class="ill-disclaimer-text">Illegal immigrants do not naturalize, do not vote, and are not assigned to voter blocs. They affect economic and social stats only.</div>';
+    h += '</div>';
+
+    return h;
+}
+
+function renderIllegalPushFactors(nation) {
+    // Compute push factors from neighboring nations that send illegal immigrants
+    if (!migrationFlowData || migrationFlowData.length === 0 || !allNations || allNations.length === 0) {
+        return '<div class="ill-empty">Waiting for migration data...</div>';
+    }
+
+    var latestTick = getLatestMigrationTick();
+
+    // Find nations sending illegal immigrants to us
+    var originIds = {};
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        var f = migrationFlowData[i];
+        if (f.tick !== latestTick || f.category !== 'illegal' || f.dest_nation_id !== nation.id) continue;
+        if (!originIds[f.origin_nation_id]) originIds[f.origin_nation_id] = 0;
+        originIds[f.origin_nation_id] += f.flow_count;
+    }
+
+    // Build push factor rows from origin nations
+    var factors = [];
+    var nationLookup = {};
+    for (var i = 0; i < allNations.length; i++) nationLookup[allNations[i].id] = allNations[i];
+
+    for (var oid in originIds) {
+        var origin = nationLookup[oid];
+        if (!origin) continue;
+        // Emigration pressure from this origin
+        var poverty = Number(origin.poverty_rate ?? 50);
+        var unemployment = Number(origin.unemployment ?? 50);
+        var unrest = Number(origin.civil_unrest ?? 50);
+        var pressure = Math.round((poverty * 0.4 + unemployment * 0.35 + unrest * 0.25));
+        if (pressure > 20) {
+            factors.push({ label: origin.name + ' Emigration Pressure', value: pressure, rate: (pressure / 500).toFixed(2) });
+        }
+    }
+
+    // Destination pull factors
+    var sol = Number(nation.standard_of_living ?? 50);
+    if (sol > 40) factors.push({ label: 'Your Standard of Living', value: sol, rate: (sol / 500).toFixed(2) });
+    var tariffs = Number(nation.tariffs ?? 50);
+    if (tariffs < 30) factors.push({ label: 'Low Tariffs (Open Borders)', value: 100 - tariffs, rate: ((100 - tariffs) / 2000).toFixed(2) });
+
+    factors.sort(function(a, b) { return parseFloat(b.rate) - parseFloat(a.rate); });
+
+    var h = '';
+    var netPressure = 0;
+    for (var i = 0; i < factors.length; i++) {
+        var pf = factors[i];
+        netPressure += parseFloat(pf.rate);
+        h += '<div class="ill-factor-row">';
+        h += '<span class="ill-factor-label">' + escapeHtml(pf.label) + '</span>';
+        h += '<span class="ill-factor-val">' + pf.value + '</span>';
+        h += '<span class="ill-factor-rate" style="color:var(--n-red);">+' + pf.rate + '/tick</span>';
+        h += '</div>';
+    }
+    if (factors.length === 0) {
+        h += '<div class="ill-empty">No significant push factors detected.</div>';
+    }
+    h += '<div class="ill-net-pressure">';
+    h += '<span class="ill-net-label">NET PRESSURE</span>';
+    h += '<span class="ill-net-val" style="color:var(--n-red);">+' + netPressure.toFixed(2) + '/tick</span>';
+    h += '</div>';
+    return h;
+}
+
+function renderIllegalStatDrag(nation, illegalVal) {
+    if (!rawStatConnections || rawStatConnections.length === 0) {
+        return '<div class="ill-empty">Loading stat effects...</div>';
+    }
+    // Show stat_connections where source_stat = 'illegal_immigration'
+    var connections = rawStatConnections.filter(function(c) {
+        return c.source_stat === 'illegal_immigration';
+    });
+
+    if (connections.length === 0) {
+        return '<div class="ill-empty">No stat connections configured for illegal immigration.</div>';
+    }
+
+    var active = [];
+    var inactive = [];
+    for (var i = 0; i < connections.length; i++) {
+        var conn = connections[i];
+        var triggered = conn.source_dir === 'above'
+            ? illegalVal > conn.threshold
+            : illegalVal < conn.threshold;
+        if (triggered) {
+            active.push(conn);
+        } else {
+            inactive.push(conn);
+        }
+    }
+
+    var h = '';
+
+    // Active effects
+    if (active.length > 0) {
+        h += '<div class="ill-drag-section-label">ACTIVE AT CURRENT LEVEL (' + illegalVal.toFixed(1) + ')</div>';
+        for (var i = 0; i < active.length; i++) {
+            var c = active[i];
+            var dir = c.target_dir === 'up' ? '+' : '-';
+            var effectColor = c.target_dir === 'up' ? 'var(--n-red)' : 'var(--n-green)';
+            // For "bad" stats going up, show red; for good stats going down, show red
+            var statName = prettyStatName(c.target_stat);
+            h += '<div class="ill-drag-row">';
+            h += '<span class="ill-drag-stat">' + escapeHtml(statName) + '</span>';
+            var threshDir = c.source_dir === 'above' ? '&gt;' : '&lt;';
+            h += '<span class="ill-drag-thresh">' + threshDir + ' ' + c.threshold + ' threshold</span>';
+            h += '<span class="ill-drag-effect" style="color:' + effectColor + ';">' + dir + c.magnitude.toFixed(2) + '/tick</span>';
+            h += '</div>';
+        }
+    }
+
+    // Inactive effects
+    if (inactive.length > 0) {
+        h += '<div class="ill-drag-section-label ill-drag-inactive-label">INACTIVE — TRIGGERED IF STAT CROSSES THRESHOLD</div>';
+        for (var i = 0; i < inactive.length; i++) {
+            var c = inactive[i];
+            var dir = c.target_dir === 'up' ? '+' : '-';
+            var threshDir = c.source_dir === 'above' ? '&gt;' : '&lt;';
+            var statName = prettyStatName(c.target_stat);
+            h += '<div class="ill-drag-row ill-drag-row--inactive">';
+            h += '<span class="ill-drag-stat">' + escapeHtml(statName) + '</span>';
+            h += '<span class="ill-drag-thresh">' + threshDir + ' ' + c.threshold + ' threshold</span>';
+            h += '<span class="ill-drag-effect">' + dir + c.magnitude.toFixed(2) + '/tick</span>';
+            h += '</div>';
+        }
+    }
+
+    return h;
+}
+
+function renderIllegalByOrigin(nation) {
+    if (!migrationFlowData || migrationFlowData.length === 0) {
+        return '';
+    }
+
+    var latestTick = getLatestMigrationTick();
+
+    // Aggregate illegal flows by origin
+    var origins = {};
+    var totalIllegal = 0;
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        var f = migrationFlowData[i];
+        if (f.tick !== latestTick || f.category !== 'illegal' || f.dest_nation_id !== nation.id) continue;
+        var name = f.origin?.name || 'Unknown';
+        if (!origins[name]) origins[name] = { count: 0, color: '' };
+        origins[name].count += f.flow_count;
+        totalIllegal += f.flow_count;
+    }
+
+    if (totalIllegal === 0) {
+        return '<div class="ill-panel" style="margin:0 0 20px;"><div class="ill-panel-title">Illegal Immigration By Origin</div><div class="ill-empty">No illegal immigration detected this tick.</div></div>';
+    }
+
+    // Sort by count descending
+    var sorted = Object.keys(origins).map(function(name) {
+        return { name: name, count: origins[name].count };
+    }).sort(function(a, b) { return b.count - a.count; });
+
+    // Assign colors
+    var barColors = ['#a78bfa', '#ef4444', '#4ade80', '#f97316', '#f472b6', '#22d3ee', '#facc15', '#60a5fa'];
+
+    var h = '<div class="ill-origins">';
+    h += '<div class="ill-panel-title">Illegal Immigration By Origin</div>';
+    for (var i = 0; i < sorted.length; i++) {
+        var o = sorted[i];
+        var pct = Math.round((o.count / totalIllegal) * 100);
+        var barWidth = Math.max(2, pct);
+        var color = barColors[i % barColors.length];
+        h += '<div class="ill-origin-row">';
+        h += '<span class="ill-origin-name" style="color:' + color + ';">' + escapeHtml(o.name) + '</span>';
+        h += '<div class="ill-origin-bar-wrap"><div class="ill-origin-bar" style="width:' + barWidth + '%;background:' + color + ';"></div></div>';
+        h += '<span class="ill-origin-pct">' + pct + '%</span>';
+        h += '<span class="ill-origin-count">' + formatNumber(o.count) + '</span>';
+        h += '</div>';
+    }
+    h += '</div>';
+    return h;
+}
+
 // ===== MIGRATION MATRIX =====
 
 var NATION_MATRIX_COLORS = ['#22d3ee','#f472b6','#a78bfa','#4ade80','#facc15','#f97316','#60a5fa','#c084fc'];
@@ -1848,10 +2094,7 @@ function renderMigrationMatrix(nation) {
     if (!migrationFlowData || migrationFlowData.length === 0) return '';
 
     // Find latest tick in ALL data
-    var latestTick = 0;
-    for (var i = 0; i < migrationFlowData.length; i++) {
-        if (migrationFlowData[i].tick > latestTick) latestTick = migrationFlowData[i].tick;
-    }
+    var latestTick = getLatestMigrationTick();
 
     // Collect unique nations from flows
     var nationMap = {};
@@ -2012,7 +2255,6 @@ async function renderNationPage(nation) {
         loadMigrationFlows(nation.id).then(function() {
             var immPanel = document.getElementById('nation-tab-immigration');
             if (immPanel) {
-                // Re-render entire immigration tab now that flow data is available
                 immPanel.innerHTML = renderImmigrationTab(nation)
                     + '<div id="migration-flow-panels">'
                     + '<div class="imm-panels-grid">'
@@ -2023,20 +2265,25 @@ async function renderNationPage(nation) {
                     + renderPullFactorScore(nation)
                     + '</div>';
             }
+            // Re-render illegal immigration tab with flow data
+            var illPanel = document.getElementById('nation-tab-illegal');
+            if (illPanel) {
+                illPanel.innerHTML = renderIllegalImmigrationTab(nation);
+            }
         }).catch(function(err) { console.warn('[nation] Migration flow load failed:', err); });
     } catch (e) { console.warn('[nation] Migration flows not available:', e); }
 
     var h = '';
 
     // ---- Tab bar ----
-    var statActive = _activeNationTab === 'statistics';
     h += '<div class="nation-tab-bar">';
-    h += '<button class="nation-tab' + (statActive ? ' active' : '') + '" data-tab="statistics" onclick="switchNationTab(\'statistics\')">Statistics</button>';
-    h += '<button class="nation-tab' + (!statActive ? ' active' : '') + '" data-tab="immigration" onclick="switchNationTab(\'immigration\')">Immigration</button>';
+    h += '<button class="nation-tab' + (_activeNationTab === 'statistics' ? ' active' : '') + '" data-tab="statistics" onclick="switchNationTab(\'statistics\')">Statistics</button>';
+    h += '<button class="nation-tab' + (_activeNationTab === 'immigration' ? ' active' : '') + '" data-tab="immigration" onclick="switchNationTab(\'immigration\')">Immigration</button>';
+    h += '<button class="nation-tab' + (_activeNationTab === 'illegal' ? ' active' : '') + '" data-tab="illegal" onclick="switchNationTab(\'illegal\')">Illegal Immigration</button>';
     h += '</div>';
 
     // ---- Statistics tab ----
-    h += '<div class="nation-body nation-tab-content" id="nation-tab-statistics"' + (statActive ? '' : ' style="display:none;"') + '>';
+    h += '<div class="nation-body nation-tab-content" id="nation-tab-statistics"' + (_activeNationTab === 'statistics' ? '' : ' style="display:none;"') + '>';
 
     // Revolution banner
     h += await renderRevolutionBanner(nation);
@@ -2049,10 +2296,15 @@ async function renderNationPage(nation) {
     h += '</div>'; // end statistics tab
 
     // ---- Immigration tab ----
-    h += '<div class="nation-body nation-tab-content" id="nation-tab-immigration"' + (!statActive ? '' : ' style="display:none;"') + '>';
+    h += '<div class="nation-body nation-tab-content" id="nation-tab-immigration"' + (_activeNationTab === 'immigration' ? '' : ' style="display:none;"') + '>';
     h += renderImmigrationTab(nation);
     h += '<div id="migration-flow-panels"><div class="imm-loading">Loading migration data...</div></div>';
     h += '</div>'; // end immigration tab
+
+    // ---- Illegal Immigration tab ----
+    h += '<div class="nation-body nation-tab-content" id="nation-tab-illegal"' + (_activeNationTab === 'illegal' ? '' : ' style="display:none;"') + '>';
+    h += renderIllegalImmigrationTab(nation);
+    h += '</div>'; // end illegal immigration tab
 
     document.getElementById('content-area').innerHTML = h;
     attachHandlers();
