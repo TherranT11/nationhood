@@ -855,7 +855,7 @@ export function updateTopBarInfo(faction, shard, nation) {
         // "Found a Party" option if no party exists
         const hasParty = _userFactions.some(f => f.faction_type === 'party');
         if (!hasParty) {
-            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="window.location.href='select-nation.html'">
+            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="sessionStorage.setItem('pending_faction_type','party'); window.location.href='select-nation.html'">
                 <span class="faction-dropdown__type" style="color:var(--amber)">+</span>
                 <span class="faction-dropdown__name">Found a Political Party</span>
             </div>`;

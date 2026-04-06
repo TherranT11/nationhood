@@ -366,17 +366,21 @@ async function init() {
     return;
   }
 
-  // Check if user has an active corporation
-  const { data: corpFaction, error: corpErr } = await _supabase
-    .from('factions').select('id, nation_id, abandoned_at')
-    .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
-    .eq('faction_type', 'corporation')
-    .is('abandoned_at', null)
-    .maybeSingle();
-  if (corpErr) console.warn('Corp check failed:', corpErr.message);
-  if (corpFaction && corpFaction.nation_id) {
-    window.location.href = 'corp-dashboard.html';
-    return;
+  // Check if user has an active corporation — only redirect if they're NOT
+  // explicitly trying to found a party (pending_faction_type === 'party')
+  const pendingType = sessionStorage.getItem('pending_faction_type');
+  if (pendingType !== 'party') {
+    const { data: corpFaction, error: corpErr } = await _supabase
+      .from('factions').select('id, nation_id, abandoned_at')
+      .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+      .eq('faction_type', 'corporation')
+      .is('abandoned_at', null)
+      .maybeSingle();
+    if (corpErr) console.warn('Corp check failed:', corpErr.message);
+    if (corpFaction && corpFaction.nation_id) {
+      window.location.href = 'corp-dashboard.html';
+      return;
+    }
   }
 
   // Load pending nation from sessionStorage (set by select-nation.html)
