@@ -46,6 +46,7 @@ BEGIN
             WHEN 'bill_passed'              THEN 'Bill Passed'
             WHEN 'bill_failed'              THEN 'Bill Failed'
             WHEN 'quorum_failed'            THEN 'Quorum Failed'
+            WHEN 'caucus_defection'         THEN 'Caucus Defection'
             WHEN 'trade_agreement_proposed' THEN 'Trade Agreement Proposed'
             WHEN 'trade_agreement_accepted' THEN 'Trade Agreement Accepted'
             WHEN 'trade_agreement_rejected' THEN 'Trade Agreement Rejected'
@@ -78,7 +79,8 @@ BEGIN
                 'vonc_passed', 'vonc_failed', 'snap_election_called', 'coup_attempt',
                 'minister_resigned', 'minister_purged', 'party_leader_replaced',
                 'minority_government_formed', 'coalition_formation_started',
-                'incumbent_lockin', 'bill_passed', 'bill_failed', 'quorum_failed') THEN 'government'
+                'incumbent_lockin', 'bill_passed', 'bill_failed', 'quorum_failed',
+                'caucus_defection') THEN 'government'
             WHEN p_trigger_key IN ('ministry_ability_used') THEN 'executive_order'
             WHEN p_trigger_key IN ('ministry_stimulus_package', 'ministry_austerity_measures',
                 'ministry_debt_restructuring', 'ministry_debt_restructuring_success',
