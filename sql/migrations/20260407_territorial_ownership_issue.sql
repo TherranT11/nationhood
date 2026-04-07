@@ -10,6 +10,14 @@ CREATE INDEX IF NOT EXISTS idx_bilateral_issues_admin_nation
 ON bilateral_issues (administering_nation_id)
 WHERE administering_nation_id IS NOT NULL;
 
+-- Expand the applies_to check constraint to include administering/non_administering
+ALTER TABLE bilateral_issue_modifiers
+DROP CONSTRAINT IF EXISTS bilateral_issue_modifiers_applies_to_check;
+
+ALTER TABLE bilateral_issue_modifiers
+ADD CONSTRAINT bilateral_issue_modifiers_applies_to_check
+CHECK (applies_to IN ('both', 'nation_a', 'nation_b', 'disfavored', 'favored', 'administering', 'non_administering'));
+
 -- Update the admin_spawn_bilateral_issue RPC to accept administering_nation_id.
 -- Drop and recreate to add the new parameter.
 DROP FUNCTION IF EXISTS admin_spawn_bilateral_issue(UUID, UUID, TEXT, NUMERIC, NUMERIC, TEXT, JSONB, TEXT);
