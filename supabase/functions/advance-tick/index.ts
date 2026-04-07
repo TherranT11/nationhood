@@ -12904,6 +12904,33 @@ async function processElections(supabase, nation, currentTick) {
         // which could return a different election type processed earlier in this tick)
         const completedElection = { id: election.id, results: data };
 
+        // Political Party Registration Act: reallocate seats from parties below threshold (parliamentary only)
+        const regThreshold = Number(nation.party_registration_threshold || 0);
+        if (regThreshold > 0 && electionType === 'parliamentary' && completedElection?.results?.seats) {
+            const totalSeats = GAME_CONFIG.TOTAL_SEATS;
+            const minSeats = Math.ceil(totalSeats * regThreshold / 100);
+            const seatResults = completedElection.results.seats;
+            const belowThreshold = seatResults.filter(r => r.seats > 0 && r.seats < minSeats);
+            if (belowThreshold.length > 0) {
+                let seatsFreed = 0;
+                for (const r of belowThreshold) {
+                    seatsFreed += r.seats;
+                    r.seats = 0;
+                }
+                // Redistribute freed seats proportionally to surviving parties
+                const survivors = seatResults.filter(r => r.seats > 0);
+                const totalSurvivorSeats = survivors.reduce((sum, r) => sum + r.seats, 0);
+                let distributed = 0;
+                for (let i = 0; i < survivors.length; i++) {
+                    const share = totalSurvivorSeats > 0 ? survivors[i].seats / totalSurvivorSeats : 1 / survivors.length;
+                    const gain = (i === survivors.length - 1) ? (seatsFreed - distributed) : Math.round(seatsFreed * share);
+                    survivors[i].seats += gain;
+                    distributed += gain;
+                }
+                console.log(`[Election] Party Registration Act: ${belowThreshold.length} parties below ${regThreshold}% threshold (${minSeats} seats min), ${seatsFreed} seats reallocated for ${nation.name}`);
+            }
+        }
+
         if (completedElection?.results?.seats) {
             for (const r of completedElection.results.seats) {
                 await supabase
