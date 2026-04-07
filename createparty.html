@@ -569,11 +569,32 @@ const AVELIA_LAST = [
   'Castellani','Madrigal','Giacomo','Solano'
 ];
 
+// Vostia names (Serbian/Slavic)
+const VOSTIA_FIRST = [
+  'Dragan','Goran','Vuk','Zoran','Dušan','Nemanja','Bogdan','Slobodan',
+  'Vlastimir','Milorad','Gvozden','Radomir','Branislav','Jovan','Dimitrije',
+  'Ognjen','Lazar','Miodrag','Zdravko','Nebojša','Predrag','Stojan',
+  'Vojislav','Darko','Borislav','Momčilo','Uroš','Radoš','Božidar',
+  'Gavrilo','Vasilije','Đorđe','Radovan','Blagoje','Veljko','Živko',
+  'Krsto','Miloš','Draško','Balša',
+  'Dragana','Svetlana','Jelena','Milica','Danica','Zora','Radmila','Snežana','Vesna'
+];
+const VOSTIA_LAST = [
+  'Jovanović','Petrović','Đorđević','Marković','Nikolić','Popović',
+  'Stojanović','Ilić','Lukić','Babić','Ristić','Kostić','Vuković',
+  'Lazarević','Kovačević','Simić','Milošević','Stevanović','Tomić',
+  'Savić','Radović','Dimitrijević','Vasić','Bogdanović','Jović',
+  'Krstić','Mladenović','Filipović','Gajić','Cvetković','Mitić',
+  'Todorović','Milosavljević','Živković','Knežević','Pantić','Stanković',
+  'Marić','Mihajlović','Tasić','Pavlović','Kuzmanović','Milanović'
+];
+
 // Nation-aware name selection
 const NATION_NAMES = {
   'Calveth': { first: CALVETH_FIRST, last: CALVETH_LAST },
   'Avelia': { first: AVELIA_FIRST, last: AVELIA_LAST },
-  'Flandis': { first: FLANDIS_FIRST, last: FLANDIS_LAST }
+  'Flandis': { first: FLANDIS_FIRST, last: FLANDIS_LAST },
+  'Vostia': { first: VOSTIA_FIRST, last: VOSTIA_LAST }
 };
 function getNamePool(nationName) {
   const pool = NATION_NAMES[nationName];
