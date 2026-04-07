@@ -25924,6 +25924,49 @@ const MODIFIERS = {
         duration: 15,
         removed_by: [], // tension dropping below High or expiry
     },
+
+    // ── Territorial Ownership Dispute modifiers ──
+    competing_sovereignty_claims: { key: 'competing_sovereignty_claims', name: 'Competing Sovereignty Claims', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'stability', delta: -0.05 }], relations_delta: -0.1, duration: null },
+    no_international_adjudication: { key: 'no_international_adjudication', name: 'No International Adjudication', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'gov_approval', delta: -0.1 }], duration: null },
+    domestic_political_significance: { key: 'domestic_political_significance', name: 'Domestic Political Significance', category: 'structural', applies_to: 'both', stat_effects: [{ stat_key: 'gov_approval', delta: -0.1 }, { stat_key: 'polarization', delta: 0.05 }], duration: null },
+    resource_potential: { key: 'resource_potential', name: 'Resource Potential', category: 'structural', applies_to: 'administering', stat_effects: [{ stat_key: 'gdp_growth', delta: 0.1 }], duration: null },
+    historical_grievance_attached: { key: 'historical_grievance_attached', name: 'Historical Grievance Attached', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'civil_unrest', delta: 0.1 }, { stat_key: 'happiness', delta: -0.05 }], duration: null },
+    settler_population_growing: { key: 'settler_population_growing', name: 'Settler Population Growing', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'polarization', delta: 0.15 }, { stat_key: 'civil_unrest', delta: 0.1 }], duration: 25 },
+    competing_development_projects: { key: 'competing_development_projects', name: 'Competing Development Projects', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'debt_growth', delta: 0.15 }, { stat_key: 'efficiency', delta: -0.1 }], duration: 20 },
+    resource_exploitation_conflict: { key: 'resource_exploitation_conflict', name: 'Resource Exploitation Conflict', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'pollution', delta: 0.2 }, { stat_key: 'arable_land', delta: -0.1 }], duration: 20 },
+    diaspora_mobilization: { key: 'diaspora_mobilization', name: 'Diaspora Mobilization', category: 'competitive', applies_to: 'non_administering', stat_effects: [{ stat_key: 'polarization', delta: 0.1 }, { stat_key: 'gov_approval', delta: 0.1 }, { stat_key: 'emigration', delta: -0.1 }], duration: 20 },
+    international_legal_precedent: { key: 'international_legal_precedent', name: 'International Legal Precedent', category: 'competitive', applies_to: null, stat_effects: [{ stat_key: 'international_reputation', delta: -0.1 }], duration: 15 },
+    cultural_erasure_accusations: { key: 'cultural_erasure_accusations', name: 'Cultural Erasure Accusations', category: 'competitive', applies_to: 'administering', stat_effects: [{ stat_key: 'international_reputation', delta: -0.15 }, { stat_key: 'freedom_index', delta: -0.1 }], duration: 20 },
+    territory_election_issue: { key: 'territory_election_issue', name: 'Territory as Election Issue', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'gov_approval', delta: -0.3 }, { stat_key: 'polarization', delta: 0.2 }], duration: 8 },
+    memorial_anniversary_tension: { key: 'memorial_anniversary_tension', name: 'Memorial / Anniversary Tension', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'civil_unrest', delta: 0.2 }, { stat_key: 'political_violence', delta: 0.1 }, { stat_key: 'polarization', delta: 0.1 }], duration: null, is_periodic: true, periodic_interval: 20, periodic_duration: 4 },
+    military_occupation: { key: 'military_occupation', name: 'Military Occupation in Effect', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'civil_unrest', delta: 0.2 }], duration: 30 },
+    forced_population_transfer: { key: 'forced_population_transfer', name: 'Forced Population Transfer', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'civil_unrest', delta: 0.3 }, { stat_key: 'political_violence', delta: 0.2 }], duration: null },
+    resource_extraction_underway: { key: 'resource_extraction_underway', name: 'Resource Extraction Underway', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'pollution', delta: 0.15 }], relations_delta: -0.15, duration: 25 },
+    military_exercises_conducted: { key: 'military_exercises_conducted', name: 'Military Exercises Conducted', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'stability', delta: -0.2 }], duration: 10 },
+    citizen_expulsion: { key: 'citizen_expulsion', name: 'Citizen Expulsion in Progress', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'civil_unrest', delta: 0.2 }], duration: 15 },
+    sovereignty_declared: { key: 'sovereignty_declared', name: 'Sovereignty Declared', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'polarization', delta: 0.15 }], relations_delta: -0.2, duration: null },
+    nationalist_territorial_movement: { key: 'nationalist_territorial_movement', name: 'Nationalist Territorial Movement', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'polarization', delta: 0.2 }, { stat_key: 'civil_unrest', delta: 0.15 }, { stat_key: 'terrorism', delta: 0.1 }], duration: 15 },
+
+    // ── Chronic Trade Imbalance modifiers ──
+    persistent_trade_deficit: { key: 'persistent_trade_deficit', name: 'Persistent Trade Deficit', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'manufacturing_output', delta: -0.1 }, { stat_key: 'gdp_growth', delta: -0.05 }], duration: null },
+    no_trade_rebalancing_mechanism: { key: 'no_trade_rebalancing_mechanism', name: 'No Trade Rebalancing Mechanism', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'gov_approval', delta: -0.1 }], duration: null },
+    domestic_industries_losing_share: { key: 'domestic_industries_losing_share', name: 'Domestic Industries Losing Market Share', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'manufacturing_output', delta: -0.1 }, { stat_key: 'unemployment', delta: 0.1 }], duration: null },
+    no_import_substitution_strategy: { key: 'no_import_substitution_strategy', name: 'No Import Substitution Strategy', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'cost_of_living', delta: 0.05 }], duration: null },
+    currency_misalignment_suspected: { key: 'currency_misalignment_suspected', name: 'Currency Misalignment Suspected', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'foreign_investment', delta: -0.05 }, { stat_key: 'currency_strength', delta: -0.05 }], duration: null },
+    factory_closures_deficit: { key: 'factory_closures_deficit', name: 'Factory Closures', category: 'competitive', applies_to: 'non_administering', stat_effects: [{ stat_key: 'unemployment', delta: 0.2 }, { stat_key: 'poverty_rate', delta: 0.1 }, { stat_key: 'emigration', delta: 0.1 }, { stat_key: 'civil_unrest', delta: 0.1 }], duration: 25 },
+    surplus_market_dependency: { key: 'surplus_market_dependency', name: 'Surplus Market Dependency', category: 'competitive', applies_to: 'administering', stat_effects: [], duration: null },
+    protectionist_movement: { key: 'protectionist_movement', name: 'Protectionist Movement', category: 'competitive', applies_to: 'non_administering', stat_effects: [{ stat_key: 'polarization', delta: 0.15 }, { stat_key: 'gov_approval', delta: -0.15 }], duration: 20 },
+    dumping_accusations: { key: 'dumping_accusations', name: 'Dumping Accusations', category: 'competitive', applies_to: 'administering', stat_effects: [{ stat_key: 'international_reputation', delta: -0.1 }], relations_delta: -0.1, duration: 20 },
+    supply_chain_dependency: { key: 'supply_chain_dependency', name: 'Supply Chain Dependency', category: 'competitive', applies_to: 'non_administering', stat_effects: [{ stat_key: 'cost_of_living', delta: 0.1 }, { stat_key: 'manufacturing_output', delta: -0.05 }], duration: 30 },
+    intellectual_property_friction: { key: 'intellectual_property_friction', name: 'IP Friction', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'gdp_growth', delta: -0.1 }], relations_delta: -0.05, duration: 20 },
+    consumer_import_dependency: { key: 'consumer_import_dependency', name: 'Consumer Dependency on Imports', category: 'competitive', applies_to: 'non_administering', stat_effects: [{ stat_key: 'happiness', delta: -0.05 }], duration: 15 },
+    seasonal_trade_friction: { key: 'seasonal_trade_friction', name: 'Seasonal Trade Friction', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'manufacturing_output', delta: -0.1 }], duration: null, is_periodic: true, periodic_interval: 18, periodic_duration: 6 },
+    tariff_wall_erected: { key: 'tariff_wall_erected', name: 'Tariff Wall Erected', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'cost_of_living', delta: 0.15 }, { stat_key: 'manufacturing_output', delta: -0.1 }], duration: 20 },
+    import_ban_in_effect: { key: 'import_ban_in_effect', name: 'Import Ban in Effect', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'cost_of_living', delta: 0.2 }, { stat_key: 'manufacturing_output', delta: -0.15 }], duration: 15 },
+    investment_restrictions_active: { key: 'investment_restrictions_active', name: 'Investment Restrictions', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'foreign_investment', delta: -0.15 }], duration: 20 },
+    retaliatory_measures_trade: { key: 'retaliatory_measures_trade', name: 'Retaliatory Measures', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'gdp_growth', delta: -0.1 }], relations_delta: -0.15, duration: 15 },
+    credit_downgrade_pressure: { key: 'credit_downgrade_pressure', name: 'Credit Downgrade Pressure', category: 'escalation', applies_to: 'non_administering', stat_effects: [{ stat_key: 'credit', delta: -0.15 }, { stat_key: 'debt_growth', delta: 0.1 }, { stat_key: 'interest_rates', delta: 0.05 }], duration: 15 },
+    economic_nationalism_trade: { key: 'economic_nationalism_trade', name: 'Economic Nationalism Surge', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'polarization', delta: 0.2 }, { stat_key: 'immigration', delta: -0.1 }], duration: 15 },
 };
 
 // Role → ministry_key mapping for looking up which party's minister used an action
@@ -26218,6 +26261,46 @@ const ACTIONS = {
         stat_effects_opponent: [{ stat_key: 'stability', delta: -0.2, duration: 15 }],
         special: 'incident_trigger_25',
     },
+
+    // ── Territorial Ownership Dispute actions ──
+    propose_joint_sovereignty: { key: 'propose_joint_sovereignty', category: 'diplomatic', role: 'head_of_government', ap_cost: 3, favor_delta: 0, tension_delta: -3, modifiers_removed: ['competing_sovereignty_claims', 'settler_population_growing'], modifiers_added: [], treasury_cost: 0, special: 'favor_reset', issue_type: 'territorial_ownership' },
+    offer_economic_concession: { key: 'offer_economic_concession', category: 'diplomatic', role: 'minister_of_trade', ap_cost: 3, favor_delta: -3, tension_delta: -3, modifiers_removed: [], modifiers_added: [], treasury_cost: 0, special: 'resolve_issue', issue_type: 'territorial_ownership' },
+    submit_to_international_court: { key: 'submit_to_international_court', category: 'diplomatic', role: 'foreign_minister', ap_cost: 3, favor_delta: 0, tension_delta: -3, modifiers_removed: ['no_international_adjudication'], modifiers_added: [], treasury_cost: 0, special: 'court_ruling', issue_type: 'territorial_ownership' },
+    propose_condominium_administration: { key: 'propose_condominium_administration', category: 'diplomatic', role: 'foreign_minister', ap_cost: 2, favor_delta: 0, tension_delta: -2, modifiers_removed: ['no_international_adjudication'], modifiers_added: [], treasury_cost: 0, issue_type: 'territorial_ownership' },
+    cultural_heritage_preservation: { key: 'cultural_heritage_preservation', category: 'diplomatic', role: 'ambassador', ap_cost: 1, favor_delta: 0, tension_delta: -1, modifiers_removed: ['historical_grievance_attached', 'cultural_erasure_accusations', 'memorial_anniversary_tension'], modifiers_added: [], treasury_cost: 0, issue_type: 'territorial_ownership' },
+    resource_sharing_framework: { key: 'resource_sharing_framework', category: 'diplomatic', role: 'minister_of_trade', ap_cost: 2, favor_delta: 0, tension_delta: -2, modifiers_removed: ['resource_potential', 'resource_exploitation_conflict', 'resource_extraction_underway'], modifiers_added: [], treasury_cost: 0, special: 'requires_modifier', requires_modifier: 'resource_potential', issue_type: 'territorial_ownership' },
+    build_infrastructure_territory: { key: 'build_infrastructure_territory', category: 'unilateral', role: 'minister_of_finance', ap_cost: 3, favor_delta: 2, tension_delta: 1, modifiers_removed: [], modifiers_added: [], treasury_cost: 25000000, issue_type: 'territorial_ownership' },
+    settle_citizens_territory: { key: 'settle_citizens_territory', category: 'unilateral', role: 'head_of_government', ap_cost: 2, favor_delta: 1, tension_delta: 2, modifiers_removed: [], modifiers_added: ['settler_population_growing'], treasury_cost: 10000000, issue_type: 'territorial_ownership' },
+    commission_legal_claim: { key: 'commission_legal_claim', category: 'unilateral', role: 'foreign_minister', ap_cost: 1, favor_delta: 0, tension_delta: 0, modifiers_removed: [], modifiers_added: [], treasury_cost: 0, special: 'reputation_check_territorial', issue_type: 'territorial_ownership' },
+    name_territory_on_maps: { key: 'name_territory_on_maps', category: 'unilateral', role: 'head_of_government', ap_cost: 1, favor_delta: 0.5, tension_delta: 0.5, modifiers_removed: [], modifiers_added: [], treasury_cost: 0, issue_type: 'territorial_ownership' },
+    economic_development_program: { key: 'economic_development_program', category: 'unilateral', role: 'minister_of_finance', ap_cost: 2, favor_delta: 1, tension_delta: 0, modifiers_removed: [], modifiers_added: [], treasury_cost: 20000000, issue_type: 'territorial_ownership' },
+    establish_administrative_presence: { key: 'establish_administrative_presence', category: 'unilateral', role: 'head_of_government', ap_cost: 2, favor_delta: 1, tension_delta: 1, modifiers_removed: [], modifiers_added: [], treasury_cost: 10000000, issue_type: 'territorial_ownership' },
+    military_occupation_territory: { key: 'military_occupation_territory', category: 'threatening', role: 'minister_of_defense', ap_cost: 4, favor_delta: 3, tension_delta: 4, modifiers_removed: [], modifiers_added: ['military_occupation'], treasury_cost: 0, relations_delta: -8, special: 'incident_trigger_60', issue_type: 'territorial_ownership' },
+    forced_population_transfer_action: { key: 'forced_population_transfer_action', category: 'threatening', role: 'head_of_government', ap_cost: 3, favor_delta: 2, tension_delta: 4, modifiers_removed: [], modifiers_added: ['forced_population_transfer'], treasury_cost: 0, relations_delta: -8, issue_type: 'territorial_ownership' },
+    resource_extraction_without_agreement: { key: 'resource_extraction_without_agreement', category: 'threatening', role: 'minister_of_trade', ap_cost: 2, favor_delta: 1, tension_delta: 2, modifiers_removed: [], modifiers_added: ['resource_extraction_underway', 'resource_exploitation_conflict'], treasury_cost: 0, relations_delta: -3, special: 'requires_modifier', requires_modifier: 'resource_potential', issue_type: 'territorial_ownership' },
+    military_exercise_territory: { key: 'military_exercise_territory', category: 'threatening', role: 'minister_of_defense', ap_cost: 2, favor_delta: 2, tension_delta: 3, modifiers_removed: [], modifiers_added: ['military_exercises_conducted'], treasury_cost: 0, relations_delta: -5, issue_type: 'territorial_ownership' },
+    expel_other_nations_citizens: { key: 'expel_other_nations_citizens', category: 'threatening', role: 'head_of_government', ap_cost: 2, favor_delta: 1, tension_delta: 3, modifiers_removed: [], modifiers_added: ['citizen_expulsion', 'diaspora_mobilization'], treasury_cost: 0, relations_delta: -5, modifier_target_map: { citizen_expulsion: 'opponent', diaspora_mobilization: 'opponent' }, issue_type: 'territorial_ownership' },
+    declare_sovereignty: { key: 'declare_sovereignty', category: 'threatening', role: 'head_of_government', ap_cost: 2, favor_delta: 2, tension_delta: 3, modifiers_removed: [], modifiers_added: ['sovereignty_declared'], treasury_cost: 0, relations_delta: -5, special: 'sovereignty_nationalism_30', issue_type: 'territorial_ownership' },
+
+    // ── Chronic Trade Imbalance actions ──
+    negotiate_trade_rebalancing: { key: 'negotiate_trade_rebalancing', category: 'diplomatic', role: 'minister_of_trade', ap_cost: 2, favor_delta: 0, tension_delta: -2, modifiers_removed: ['persistent_trade_deficit', 'no_trade_rebalancing_mechanism'], modifiers_added: [], treasury_cost: 0, issue_type: 'chronic_trade_imbalance' },
+    negotiate_voluntary_export_restraints: { key: 'negotiate_voluntary_export_restraints', category: 'diplomatic', role: 'minister_of_trade', ap_cost: 2, favor_delta: 0, tension_delta: -1, modifiers_removed: ['domestic_industries_losing_share', 'dumping_accusations'], modifiers_added: [], treasury_cost: 0, issue_type: 'chronic_trade_imbalance' },
+    propose_currency_alignment: { key: 'propose_currency_alignment', category: 'diplomatic', role: 'minister_of_finance', ap_cost: 2, favor_delta: 0, tension_delta: -1, modifiers_removed: ['currency_misalignment_suspected'], modifiers_added: [], treasury_cost: 0, special: 'requires_modifier', requires_modifier: 'currency_misalignment_suspected', issue_type: 'chronic_trade_imbalance' },
+    joint_economic_development_fund: { key: 'joint_economic_development_fund', category: 'diplomatic', role: 'minister_of_finance', ap_cost: 3, favor_delta: 0, tension_delta: -2, modifiers_removed: ['factory_closures_deficit'], modifiers_added: [], treasury_cost: 0, issue_type: 'chronic_trade_imbalance' },
+    bilateral_free_trade_restructuring: { key: 'bilateral_free_trade_restructuring', category: 'diplomatic', role: 'head_of_government', ap_cost: 4, favor_delta: 0, tension_delta: -3, modifiers_removed: ['intellectual_property_friction', 'seasonal_trade_friction', 'surplus_market_dependency'], modifiers_added: [], treasury_cost: 0, special: 'trade_restructuring', issue_type: 'chronic_trade_imbalance' },
+    negotiate_supply_chain_diversification: { key: 'negotiate_supply_chain_diversification', category: 'diplomatic', role: 'minister_of_trade', ap_cost: 2, favor_delta: 0, tension_delta: -1, modifiers_removed: ['supply_chain_dependency'], modifiers_added: [], treasury_cost: 0, special: 'requires_modifier', requires_modifier: 'supply_chain_dependency', issue_type: 'chronic_trade_imbalance' },
+    domestic_industry_subsidy: { key: 'domestic_industry_subsidy', category: 'unilateral', role: 'minister_of_finance', ap_cost: 2, favor_delta: 0.5, tension_delta: 0.5, modifiers_removed: ['domestic_industries_losing_share', 'factory_closures_deficit'], modifiers_added: [], treasury_cost: 25000000, modifier_remove_target: 'acting', issue_type: 'chronic_trade_imbalance' },
+    launch_import_substitution: { key: 'launch_import_substitution', category: 'unilateral', role: 'minister_of_trade', ap_cost: 3, favor_delta: 0.5, tension_delta: 0.5, modifiers_removed: ['no_import_substitution_strategy'], modifiers_added: [], treasury_cost: 30000000, modifier_remove_target: 'acting', issue_type: 'chronic_trade_imbalance' },
+    file_anti_dumping_complaint: { key: 'file_anti_dumping_complaint', category: 'unilateral', role: 'foreign_minister', ap_cost: 1, favor_delta: 0.5, tension_delta: 0.5, modifiers_removed: [], modifiers_added: ['dumping_accusations'], treasury_cost: 0, modifier_target: 'opponent', issue_type: 'chronic_trade_imbalance' },
+    buy_domestic_campaign: { key: 'buy_domestic_campaign', category: 'unilateral', role: 'head_of_government', ap_cost: 1, favor_delta: 0.5, tension_delta: 0, modifiers_removed: [], modifiers_added: [], treasury_cost: 0, issue_type: 'chronic_trade_imbalance' },
+    attract_alternative_partners: { key: 'attract_alternative_partners', category: 'unilateral', role: 'minister_of_trade', ap_cost: 2, favor_delta: -0.5, tension_delta: -0.5, modifiers_removed: [], modifiers_added: [], treasury_cost: 0, issue_type: 'chronic_trade_imbalance' },
+    advocate_central_bank_shift: { key: 'advocate_central_bank_shift', category: 'unilateral', role: 'minister_of_finance', ap_cost: 1, favor_delta: 0, tension_delta: 0, modifiers_removed: [], modifiers_added: [], treasury_cost: 0, special: 'central_bank_30', issue_type: 'chronic_trade_imbalance' },
+    impose_targeted_tariffs: { key: 'impose_targeted_tariffs', category: 'threatening', role: 'minister_of_trade', ap_cost: 2, favor_delta: 1, tension_delta: 2, modifiers_removed: [], modifiers_added: ['tariff_wall_erected'], treasury_cost: 0, relations_delta: -3, special: 'incident_trigger_50', issue_type: 'chronic_trade_imbalance' },
+    ban_key_imports: { key: 'ban_key_imports', category: 'threatening', role: 'minister_of_trade', ap_cost: 3, favor_delta: 2, tension_delta: 3, modifiers_removed: [], modifiers_added: ['import_ban_in_effect'], treasury_cost: 0, relations_delta: -5, issue_type: 'chronic_trade_imbalance' },
+    restrict_foreign_investment_trade: { key: 'restrict_foreign_investment_trade', category: 'threatening', role: 'foreign_minister', ap_cost: 2, favor_delta: 1, tension_delta: 2, modifiers_removed: [], modifiers_added: ['investment_restrictions_active'], treasury_cost: 0, relations_delta: -3, issue_type: 'chronic_trade_imbalance' },
+    public_trade_ultimatum: { key: 'public_trade_ultimatum', category: 'threatening', role: 'head_of_government', ap_cost: 2, favor_delta: 1.5, tension_delta: 2, modifiers_removed: [], modifiers_added: [], treasury_cost: 0, relations_delta: -3, special: 'trade_ultimatum_4', issue_type: 'chronic_trade_imbalance' },
+    asset_freeze_sanctions: { key: 'asset_freeze_sanctions', category: 'threatening', role: 'foreign_minister', ap_cost: 2, favor_delta: 1, tension_delta: 2, modifiers_removed: [], modifiers_added: ['investment_restrictions_active'], treasury_cost: 0, relations_delta: -5, issue_type: 'chronic_trade_imbalance' },
+    publicly_blame_surplus: { key: 'publicly_blame_surplus', category: 'threatening', role: 'head_of_government', ap_cost: 1, favor_delta: 1, tension_delta: 2, modifiers_removed: [], modifiers_added: ['economic_nationalism_trade', 'dumping_accusations'], treasury_cost: 0, relations_delta: -3, modifier_target_map: { economic_nationalism_trade: 'both', dumping_accusations: 'opponent' }, issue_type: 'chronic_trade_imbalance' },
 };
 
 // ==================== ISSUE TYPE DEFINITIONS ====================
@@ -26237,6 +26320,22 @@ const ISSUE_TYPES = {
             'no_joint_enforcement',
             'no_dispute_resolution_mechanism',
         ],
+    },
+    territorial_ownership: {
+        key: 'territorial_ownership',
+        name: 'Territorial Ownership Dispute',
+        category: 'Military',
+        incident_type: 'border_military_incursion',
+        incident_type_alt: 'fishing_dispute',
+        incident_type_alt_weight: 0.33,
+        has_administering_nation: true,
+    },
+    chronic_trade_imbalance: {
+        key: 'chronic_trade_imbalance',
+        name: 'Chronic Trade Imbalance',
+        category: 'Economic',
+        incident_type: 'trade_war_escalation',
+        has_administering_nation: true,
     },
 };
 
@@ -26693,8 +26792,12 @@ async function processIssueTick(supabase, nationList, currentTick) {
         const activeKeys = new Set((modifiers || []).filter(m => m.is_active).map(m => m.modifier_key));
         await checkAutoSpawns(supabase, issue, activeKeys, modifiers || [], nationA, nationB, currentTick, results);
 
-        // ── 4a. Process arbitration rulings ──
+        // ── 4a. Process timed specials (arbitration, trade restructuring, ultimatums) ──
         await processArbitration(supabase, issue.id, currentTick);
+        if (issue.issue_type === 'chronic_trade_imbalance') {
+            await processTradeRestructuring(supabase, issue.id, currentTick);
+            await processTradeUltimatum(supabase, issue, nationA, nationB, currentTick);
+        }
 
         // ── 4b. Tension drift ──
         // Tension drifts based on active modifier severity:
@@ -27523,7 +27626,11 @@ async function spawnIncidentFromIssue(supabase, issue, nationA, nationB, leverag
         return null;
     }
 
-    const incidentType = issueType.incident_type; // 'fishing_dispute'
+    // Select incident type — some issues have weighted alternatives
+    let incidentType = issueType.incident_type;
+    if (issueType.incident_type_alt && Math.random() < (issueType.incident_type_alt_weight || 0.33)) {
+        incidentType = issueType.incident_type_alt;
+    }
 
     // Check caps — same as processIncidentTriggers
     const { count: globalActive } = await supabase
@@ -27795,18 +27902,32 @@ async function executeIssueAction(supabase, params) {
         return { success: false, error: 'Only one action per tick per nation.' };
     }
 
-    // Calculate AP cost (check for diplomatic friction modifier — +1 AP on diplomatic actions)
+    // Calculate AP cost (check for diplomatic friction / territory election issue — +1 AP on diplomatic actions)
     let apCost = action.ap_cost;
     if (action.category === 'diplomatic') {
         const { data: frictionMod } = await supabase
             .from('bilateral_issue_modifiers')
             .select('id')
             .eq('issue_id', issueId)
-            .eq('modifier_key', 'diplomatic_friction')
+            .in('modifier_key', ['diplomatic_friction', 'territory_election_issue'])
             .eq('is_active', true)
             .limit(1);
         if (frictionMod && frictionMod.length > 0) {
             apCost += 1;
+        }
+    }
+
+    // Check requires_modifier (e.g. resource_extraction requires resource_potential)
+    if (action.requires_modifier) {
+        const { data: reqMod } = await supabase
+            .from('bilateral_issue_modifiers')
+            .select('id')
+            .eq('issue_id', issueId)
+            .eq('modifier_key', action.requires_modifier)
+            .eq('is_active', true)
+            .limit(1);
+        if (!reqMod || reqMod.length === 0) {
+            return { success: false, error: `Requires active ${MODIFIERS[action.requires_modifier]?.name || action.requires_modifier} modifier.` };
         }
     }
 
@@ -27924,12 +28045,15 @@ async function executeIssueAction(supabase, params) {
         const modConfig = MODIFIERS[modKey];
         if (!modConfig) continue;
 
-        // Determine who the modifier applies to
+        // Determine who the modifier applies to (per-modifier map overrides global target)
         let appliesTo = modConfig.applies_to || 'both';
-        if (action.modifier_target === 'acting') {
+        const perModTarget = action.modifier_target_map?.[modKey] || action.modifier_target;
+        if (perModTarget === 'acting') {
             appliesTo = isNationA ? 'nation_a' : 'nation_b';
-        } else if (action.modifier_target === 'opponent') {
+        } else if (perModTarget === 'opponent') {
             appliesTo = isNationA ? 'nation_b' : 'nation_a';
+        } else if (perModTarget === 'both') {
+            appliesTo = 'both';
         }
 
         await spawnModifier(supabase, issue, modKey, appliesTo, currentTick,
@@ -27974,14 +28098,72 @@ async function executeIssueAction(supabase, params) {
         }
     }
 
+    // Special: territorial legal claim — +1 if int'l rep > opponent, +0.5 if equal
+    if (action.special === 'reputation_check_territorial') {
+        const { data: actNation } = await supabase
+            .from('nations').select('international_reputation').eq('id', actingNationId).single();
+        const { data: oppNation } = await supabase
+            .from('nations').select('international_reputation').eq('id', opponentNationId).single();
+        const actRep = Number(actNation?.international_reputation ?? 50);
+        const oppRep = Number(oppNation?.international_reputation ?? 50);
+        if (actRep > oppRep) {
+            const favorShift = isNationA ? -1 : 1;
+            newFavor = Math.max(-5, Math.min(5, newFavor + favorShift));
+        } else if (actRep === oppRep) {
+            const favorShift = isNationA ? -0.5 : 0.5;
+            newFavor = Math.max(-5, Math.min(5, newFavor + favorShift));
+        }
+    }
+
+    // Special: central bank advocacy — 30% chance of currency_strength -0.1 for 8 ticks
+    if (action.special === 'central_bank_30' && Math.random() < 0.30) {
+        const { data: actNation } = await supabase
+            .from('nations').select('currency_strength').eq('id', actingNationId).single();
+        if (actNation) {
+            const newVal = Math.max(0, Math.min(100, Number(actNation.currency_strength ?? 50) - 0.1));
+            await supabase.from('nations').update({ currency_strength: newVal }).eq('id', actingNationId);
+        }
+    }
+
+    // Special: trade restructuring — 8-tick process, removes all structural on completion
+    if (action.special === 'trade_restructuring') {
+        await supabase.from('bilateral_issue_history').insert({
+            issue_id: issueId,
+            tick: currentTick,
+            event_type: 'action_accepted',
+            event_text: `Bilateral Free Trade Restructuring agreed. Ratification expected in 8 ticks (Tick ${currentTick + 8}).`,
+            metadata: { trade_restructuring_resolve_tick: currentTick + 8 },
+        });
+    }
+
+    // Special: trade ultimatum — 4-tick deadline
+    if (action.special === 'trade_ultimatum_4') {
+        await supabase.from('bilateral_issue_history').insert({
+            issue_id: issueId,
+            tick: currentTick,
+            event_type: 'action_executed',
+            event_text: `Public trade ultimatum issued. Deadline: Tick ${currentTick + 4}.`,
+            metadata: { trade_ultimatum_deadline_tick: currentTick + 4, issuing_nation_id: actingNationId },
+        });
+    }
+
     // Special: incident trigger rolls (threatening actions)
     let incidentTriggered = false;
-    if (action.special === 'incident_trigger_50' && Math.random() < 0.50) {
+    if (action.special === 'incident_trigger_60' && Math.random() < 0.60) {
+        incidentTriggered = true;
+        newTension = 10;
+    } else if (action.special === 'incident_trigger_50' && Math.random() < 0.50) {
         incidentTriggered = true;
         newTension = 10; // force escalation
     } else if (action.special === 'incident_trigger_25' && Math.random() < 0.25) {
         incidentTriggered = true;
         newTension = 10;
+    }
+
+    // Special: declare_sovereignty — 30% chance of spawning nationalist_territorial_movement
+    if (action.special === 'sovereignty_nationalism_30' && Math.random() < 0.30) {
+        await spawnModifier(supabase, issue, 'nationalist_territorial_movement', 'both', currentTick,
+            `action:${actionKey}:30pct_roll`, { modifiersSpawned: [] });
     }
 
     // Insert action record
@@ -28119,6 +28301,144 @@ async function processArbitration(supabase, issueId, currentTick) {
         }
     }
     return false;
+}
+
+/**
+ * Process pending trade restructuring rulings (8-tick process).
+ * Same pattern as processArbitration — removes all structural modifiers on completion.
+ */
+async function processTradeRestructuring(supabase, issueId, currentTick) {
+    const { data: events } = await supabase
+        .from('bilateral_issue_history')
+        .select('metadata')
+        .eq('issue_id', issueId)
+        .eq('event_type', 'action_accepted')
+        .not('metadata', 'is', null);
+
+    if (!events) return false;
+
+    for (const evt of events) {
+        const resolveTick = evt.metadata?.trade_restructuring_resolve_tick;
+        if (!resolveTick || currentTick < resolveTick) continue;
+
+        // Idempotency: check if already resolved
+        const { data: alreadyDone } = await supabase
+            .from('bilateral_issue_history')
+            .select('id')
+            .eq('issue_id', issueId)
+            .eq('event_type', 'action_executed')
+            .contains('metadata', { reason: 'trade_restructuring_ratified' })
+            .limit(1);
+        if (alreadyDone && alreadyDone.length > 0) continue;
+
+        // Remove ALL remaining structural modifiers
+        const { data: structMods } = await supabase
+            .from('bilateral_issue_modifiers')
+            .select('id, modifier_key')
+            .eq('issue_id', issueId)
+            .eq('category', 'structural')
+            .eq('is_active', true);
+
+        if (structMods && structMods.length > 0) {
+            for (const mod of structMods) {
+                await supabase.from('bilateral_issue_modifiers')
+                    .update({ is_active: false, resolved_by: 'trade_restructuring_ratified', resolved_tick: currentTick })
+                    .eq('id', mod.id);
+                await insertHistory(supabase, issueId, currentTick, 'modifier_removed',
+                    `${MODIFIERS[mod.modifier_key]?.name || mod.modifier_key} resolved by Bilateral Free Trade Restructuring.`,
+                    { modifier_key: mod.modifier_key, reason: 'trade_restructuring_ratified' });
+            }
+        }
+
+        // Also remove specific competitive/escalation modifiers named in the action
+        for (const modKey of ['intellectual_property_friction', 'seasonal_trade_friction', 'surplus_market_dependency']) {
+            await supabase.from('bilateral_issue_modifiers')
+                .update({ is_active: false, resolved_by: 'trade_restructuring_ratified', resolved_tick: currentTick })
+                .eq('issue_id', issueId)
+                .eq('modifier_key', modKey)
+                .eq('is_active', true);
+        }
+
+        await insertHistory(supabase, issueId, currentTick, 'action_executed',
+            'Bilateral Free Trade Restructuring ratified. All structural disputes resolved.',
+            { reason: 'trade_restructuring_ratified', modifiers_resolved: (structMods || []).map(m => m.modifier_key) });
+
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Process pending trade ultimatum deadlines (4-tick deadline).
+ * If the opponent hasn't taken a diplomatic action within 4 ticks:
+ *   - Favor +2 for the issuing nation
+ *   - Economic Nationalism Surge (#20) auto-fires
+ * If opponent DID take a diplomatic action: resolves peacefully, Relations +1.
+ */
+async function processTradeUltimatum(supabase, issue, nationA, nationB, currentTick) {
+    const { data: events } = await supabase
+        .from('bilateral_issue_history')
+        .select('metadata')
+        .eq('issue_id', issue.id)
+        .eq('event_type', 'action_executed')
+        .not('metadata', 'is', null);
+
+    if (!events) return;
+
+    for (const evt of events) {
+        const deadlineTick = evt.metadata?.trade_ultimatum_deadline_tick;
+        const issuingNationId = evt.metadata?.issuing_nation_id;
+        if (!deadlineTick || !issuingNationId || currentTick < deadlineTick) continue;
+
+        // Idempotency
+        const { data: alreadyProcessed } = await supabase
+            .from('bilateral_issue_history')
+            .select('id')
+            .eq('issue_id', issue.id)
+            .eq('event_type', 'ultimatum_resolved')
+            .contains('metadata', { deadline_tick: deadlineTick })
+            .limit(1);
+        if (alreadyProcessed && alreadyProcessed.length > 0) continue;
+
+        // Check if opponent took a diplomatic action during the window
+        const opponentId = issuingNationId === issue.nation_a_id ? issue.nation_b_id : issue.nation_a_id;
+        const windowStart = deadlineTick - 4;
+        const { data: dipAction } = await supabase
+            .from('bilateral_issue_actions_taken')
+            .select('id')
+            .eq('issue_id', issue.id)
+            .eq('acting_nation_id', opponentId)
+            .eq('action_category', 'diplomatic')
+            .gte('submitted_tick', windowStart)
+            .lte('submitted_tick', deadlineTick)
+            .limit(1);
+
+        if (dipAction && dipAction.length > 0) {
+            // Opponent responded — peaceful resolution
+            await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, 1);
+            await insertHistory(supabase, issue.id, currentTick, 'ultimatum_resolved',
+                'Trade ultimatum deadline met. Diplomatic response received. Relations +1.',
+                { deadline_tick: deadlineTick, outcome: 'responded', relations_delta: 1 });
+        } else {
+            // Deadline passed without response — escalation
+            const isNationA = issuingNationId === issue.nation_a_id;
+            const favorShift = isNationA ? -2 : 2;
+            const newFavor = Math.max(-5, Math.min(5, Number(issue.favor) + favorShift));
+            await supabase.from('bilateral_issues').update({ favor: newFavor }).eq('id', issue.id);
+
+            // Spawn economic nationalism if not active
+            const { data: existingNat } = await supabase.from('bilateral_issue_modifiers')
+                .select('id').eq('issue_id', issue.id).eq('modifier_key', 'economic_nationalism_trade').eq('is_active', true).limit(1);
+            if (!existingNat || existingNat.length === 0) {
+                await spawnModifier(supabase, issue, 'economic_nationalism_trade', 'both', currentTick,
+                    'auto:ultimatum_expired', { modifiersSpawned: [] });
+            }
+
+            await insertHistory(supabase, issue.id, currentTick, 'ultimatum_resolved',
+                'Trade ultimatum deadline expired without response. Favor shifts, economic nationalism surges.',
+                { deadline_tick: deadlineTick, outcome: 'expired', favor_shift: favorShift });
+        }
+    }
 }
 
 
