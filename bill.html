@@ -539,9 +539,19 @@ function renderBill() {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--red);">⚖ Impeachment</span>';
     } else if (bill.bill_type === 'impeachment_conviction') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--red);">⚖ Impeachment Trial</span>';
+    } else if (bill.bill_type === 'entrenchment_upgrade') {
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--purple);">🛡 Entrenchment</span>';
     }
     if (isFrozen) {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--orange);color:#000;">FROZEN</span>';
+    }
+
+    // Entrenchment badge
+    if (bill.entrenchment_tier) {
+        const _eBadgeColors = { protected: 'var(--blue)', entrenched: 'var(--purple)', enshrined: 'var(--amber)' };
+        const _eBadgeLabels = { protected: '🛡 Protected', entrenched: '🔒 Entrenched', enshrined: '⭐ Enshrined' };
+        const _eColor = _eBadgeColors[bill.entrenchment_tier] || 'var(--blue)';
+        document.getElementById('bill-title').innerHTML += ' <span class="bill-type-badge repeal" style="background:' + _eColor + ';">' + (_eBadgeLabels[bill.entrenchment_tier] || bill.entrenchment_tier) + '</span>';
     }
 
     // Presidential action badges
@@ -1352,6 +1362,26 @@ function renderArticles() {
                     '</div>' +
                     '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
                     fundingActions +
+                '</div>';
+            }
+
+            // Entrenchment clause article
+            if (art.entrenchment_tier) {
+                const _tierLabels = { protected: 'Protected Law', entrenched: 'Entrenched Law', enshrined: 'Constitutional Law' };
+                const _tierColors = { protected: 'var(--blue)', entrenched: 'var(--purple)', enshrined: 'var(--amber)' };
+                const _tierIcons = { protected: '🛡', entrenched: '🔒', enshrined: '⭐' };
+                const _tierDescs = {
+                    protected: 'Requires 60% supermajority to repeal or amend.',
+                    entrenched: 'Requires 67% supermajority to repeal or amend. ' + GAME_CONFIG.ENTRENCHED_COOLDOWN_TICKS + '-tick cooldown before repeal can be filed.',
+                    enshrined: 'Can only be repealed via foundational bill (67% + co-sponsor).'
+                };
+                const _t = art.entrenchment_tier;
+                const _tc = _tierColors[_t] || 'var(--blue)';
+                return '<div class="article" style="border-left:3px solid ' + _tc + ';">' +
+                    '<div class="article-number">Article ' + art.article_number + ' <span style="color:' + _tc + ';font-size:0.7rem;">ENTRENCHMENT</span></div>' +
+                    '<div class="article-title">' + (_tierIcons[_t] || '') + ' ' + (_tierLabels[_t] || _t) + '</div>' +
+                    '<div class="article-description">' + (_tierDescs[_t] || '') + '</div>' +
+                    '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
                 '</div>';
             }
 

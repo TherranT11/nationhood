@@ -77,6 +77,11 @@ export const GAME_CONFIG = {
     // ── Constitutional Reform (Foundational) ──
     CONSTITUTIONAL_REFORM_COOLDOWN_TICKS: 240,
     CONSTITUTIONAL_REFORM_ELECTION_PROXIMITY_TICKS: 6,
+
+    // ── Entrenchment Clauses ──
+    PROTECTED_THRESHOLD: 0.60,          // 60% of seats (72 of 120)
+    ENTRENCHED_THRESHOLD: 2/3,          // 67% of seats (same as foundational)
+    ENTRENCHED_COOLDOWN_TICKS: 60,      // ticks before repeal can be filed
 };
 
 export const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;

@@ -136,6 +136,11 @@ const GAME_CONFIG = {
     // ── Constitutional Reform (Foundational) ──
     CONSTITUTIONAL_REFORM_COOLDOWN_TICKS: 240,
     CONSTITUTIONAL_REFORM_ELECTION_PROXIMITY_TICKS: 6,
+
+    // ── Entrenchment Clauses ──
+    PROTECTED_THRESHOLD: 0.60,          // 60% of seats (72 of 120)
+    ENTRENCHED_THRESHOLD: 2/3,          // 67% of seats (same as foundational)
+    ENTRENCHED_COOLDOWN_TICKS: 60,      // ticks before repeal can be filed
 };
 
 const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;
@@ -6503,7 +6508,7 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
 
     // Only legislative bills affect ideology
     const legislativeBills = bills.filter(b =>
-        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
+        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override', 'entrenchment_upgrade'].includes(b.bill_type)
     );
     if (legislativeBills.length === 0) return;
 
@@ -6754,7 +6759,7 @@ function getRequiredSeats(billType, votesAgainst) {
  * @param {object} [nationFlags] - Optional nation flags affecting thresholds
  * @param {boolean} [nationFlags.judicial_appointment_politicization] - If true, raises impeachment conviction to 75% and no confidence to 60%
  */
-function evaluateBillVote(bill, totalSeats, nationFlags = {}) {
+function evaluateBillVote(bill: any, totalSeats: number, nationFlags: any = {}) {
     const forSeats = bill.votes_for || 0;
     const againstSeats = bill.votes_against || 0;
     const abstainSeats = bill.votes_abstain || 0;
@@ -6764,6 +6769,21 @@ function evaluateBillVote(bill, totalSeats, nationFlags = {}) {
     const quorumPct = (nationFlags.legislative_quorum_override > 0) ? (nationFlags.legislative_quorum_override / 100) : GAME_CONFIG.QUORUM_THRESHOLD;
     const quorumThreshold = Math.ceil(totalSeats * quorumPct);
     const judicialPoliticized = !!nationFlags.judicial_appointment_politicization;
+
+    // ── Entrenchment clause: elevates ordinary bills to supermajority thresholds ──
+    if (bill.entrenchment_tier && bill.bill_type !== 'foundational') {
+        let ratio: number;
+        if (bill.entrenchment_tier === 'protected') ratio = GAME_CONFIG.PROTECTED_THRESHOLD; // 60%
+        else ratio = GAME_CONFIG.SUPERMAJORITY_THRESHOLD; // 67% for entrenched & enshrined
+        const threshold = Math.ceil(totalSeats * ratio);
+        if (forSeats >= threshold) {
+            return { status: 'will_pass', reason: 'supermajority_reached', thresholdNeeded: threshold, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating, entrenchmentTier: bill.entrenchment_tier };
+        }
+        if (forSeats + undeclaredSeats < threshold) {
+            return { status: 'will_fail', reason: 'supermajority_impossible', thresholdNeeded: threshold, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating, entrenchmentTier: bill.entrenchment_tier };
+        }
+        return { status: 'pending', reason: 'supermajority_in_progress', thresholdNeeded: threshold, neededFor: threshold - forSeats, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating, entrenchmentTier: bill.entrenchment_tier };
+    }
 
     // ── Foundational / default_resolution / veto_override / impeachment_conviction: supermajority, no quorum ──
     if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
@@ -8813,6 +8833,23 @@ async function enactBill(supabase, bill, currentTick) {
             targetLawId: repealResult.targetLawId,
             policyName: repealResult.policyName
         });
+    } else if (bill.bill_type === 'entrenchment_upgrade' && bill.entrenchment_upgrade_law_id) {
+        // Entrenchment upgrade: update the target active_law's entrenchment tier
+        const targetTier = bill.entrenchment_tier;
+        const updateData: any = { entrenchment_tier: targetTier };
+        if (targetTier === 'entrenched') {
+            updateData.entrenchment_cooldown_until_tick = currentTick + GAME_CONFIG.ENTRENCHED_COOLDOWN_TICKS;
+        } else if (targetTier === 'enshrined') {
+            updateData.entrenchment_cooldown_until_tick = null;
+        }
+        const { error: upgradeErr } = await supabase.from('active_laws')
+            .update(updateData)
+            .eq('id', bill.entrenchment_upgrade_law_id);
+        if (upgradeErr) {
+            console.error('[enactBill] stage=entrenchment_upgrade result=failed', { ...logContext, error: upgradeErr.message });
+            return { success: false, error: `Entrenchment upgrade failed: ${upgradeErr.message}` };
+        }
+        console.log('[enactBill] stage=entrenchment_upgrade result=success', { ...logContext, targetTier, lawId: bill.entrenchment_upgrade_law_id });
     } else {
         const articles = (bill.bill_articles || []).filter(a => a.policy_id);
 
@@ -8882,14 +8919,22 @@ async function enactBill(supabase, bill, currentTick) {
                 policyId: policy.id,
                 policyName: policy.policy_name
             });
-            const { error: activeLawError } = await supabase.from('active_laws')
-                .upsert({
+            const activeLawRow: any = {
                     nation_id: bill.nation_id,
                     policy_id: policy.id,
                     passed_tick: currentTick,
                     proposed_by: bill.proposed_by,
                     effects_applied_through_tick: currentTick - 1
-                }, { onConflict: 'nation_id,policy_id' });
+                };
+            // Stamp entrenchment from bill
+            if (bill.entrenchment_tier) {
+                activeLawRow.entrenchment_tier = bill.entrenchment_tier;
+                if (bill.entrenchment_tier === 'entrenched') {
+                    activeLawRow.entrenchment_cooldown_until_tick = currentTick + GAME_CONFIG.ENTRENCHED_COOLDOWN_TICKS;
+                }
+            }
+            const { error: activeLawError } = await supabase.from('active_laws')
+                .upsert(activeLawRow, { onConflict: 'nation_id,policy_id' });
             if (activeLawError) {
                 console.error('[enactBill] stage=upsert_active_law result=rls_blocked', {
                     ...logContext,
