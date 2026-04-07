@@ -176,6 +176,12 @@ export function calculateExportCapacity(nation, sector, opts) {
 
     // ── Sector-specific modifiers ──
 
+    // Food: tighter supply — farming feeds your people first, only surplus is exported.
+    // Reduces export capacity by ~83% (equivalent to normalizing by /30 instead of /5).
+    if (sector.key === 'food_agriculture') {
+        capacity *= 0.167;
+    }
+
     // Arms: requires meaningful defense spending to have an arms industry
     if (sector.key === 'arms') {
         var defensePct = (opts && opts.defense_pct) || 0;
@@ -277,13 +283,13 @@ export function calculateImportDemand(nation, sector, opts) {
     // Demand: population-driven (everyone eats). Scales with standard of living
     // (wealthier populations consume more varied/imported food).
     // Uses population scaling, NOT GDP — even poor nations need food.
-    // Domestic offset: arable_land (max 70%).
+    // Domestic offset: arable_land (no cap — large populations outstrip local farming).
     else if (sector.key === 'food_agriculture') {
         var sol = (Number(nation.standard_of_living ?? 50)) / 100;
         grossDemand = popNorm * (1 + sol * 0.5) * cfg.BASE_TRADE_MULTIPLIER * 0.8;
 
         var arableLand = (Number(nation.arable_land) || 0) / 100;
-        domesticCoverage = Math.min(0.70, arableLand / Math.max(0.2, popNorm * 0.3));
+        domesticCoverage = arableLand / Math.max(0.2, popNorm * 1.2);
     }
 
     // ── MANUFACTURED GOODS ──
@@ -393,7 +399,7 @@ export function calculatePriceModifier(totalSupply, totalDemand) {
  * @returns {number} affinity score (0 floor, no upper cap)
  */
 export function calculateTradeAffinity(nationA, nationB, relation, opts) {
-    var base = 50;
+    var base = 30;
 
     // Diplomatic relations: -100 to +100 score → -30 to +30 affinity
     var relScore = (relation && Number(relation.relation_score)) || 0;
@@ -446,6 +452,19 @@ export function calculateTradeAffinity(nationA, nationB, relation, opts) {
     var creditBonus = bestCredit > 50 ? ((bestCredit - 50) / 50) * 10 : 0;
 
     var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + fdiBonus + reputationBonus + creditPenalty + creditBonus;
+
+    // Poor relations cliff: nations that dislike each other barely trade organically.
+    // Relations below 25 → affinity scaled to 30% (trade agreements can still override).
+    if (relScore < 25) {
+        affinity *= 0.3;
+    }
+
+    // Distance cliff: very distant nations have weak organic trade links.
+    // Distance above 75 → affinity scaled to 40%.
+    if (proximity > 75) {
+        affinity *= 0.4;
+    }
+
     return Math.round(Math.max(0, affinity));
 }
 
