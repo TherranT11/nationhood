@@ -4955,10 +4955,7 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
 // Formula: monthlyChange% = ((gdp_growth - 50) / 50) * 1  →  0=-1%, 50=0%, 100=+1%
 // Includes diminishing returns (GDP < 50% of starting) and hard floor (20% of starting → Economic Collapse)
 async function applyGdpGrowth(supabase, nation, currentTick) {
-    // Construction GDP boost: +0.1 gdp_growth per $100M actively being built
-    // Calculated by advance-corp-tick and stored on nation
-    const constructionBoost = Number(nation.construction_gdp_boost ?? 0);
-    const gdpGrowth = Math.min(100, Number(nation.gdp_growth ?? 50) + constructionBoost);
+    const gdpGrowth = Number(nation.gdp_growth ?? 50);
     const currentGdp = Number(nation.gdp ?? 0);
     const startingGdp = Number(nation.starting_gdp ?? currentGdp);
     if (currentGdp <= 0 || startingGdp <= 0) return;
@@ -29213,6 +29210,7 @@ async function processTariffRelationsPenalty(supabase, nation) {
 }
 
 // ==================== POPULATION GROWTH ====================
+<<<<<<< Updated upstream
 // ════════════════════════════════════════════════════════════════════════════════
 //  CROSS-NATION MIGRATION FLOWS
 // ════════════════════════════════════════════════════════════════════════════════
@@ -29465,6 +29463,8 @@ async function processMigrationFlows(supabase, nationList, currentTick) {
     }
 }
 
+=======
+>>>>>>> Stashed changes
 //
 // population_growth is a standalone 0-100 stat driven by policy effects and decay.
 //
@@ -30707,15 +30707,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (relDecayErr) {
         console.error('[advanceTick] Diplomatic relations decay failed (non-fatal):', relDecayErr);
-    }
-
-    // 3b. Cross-nation migration flows
-    // Calculates emigration push, destination pull scores, category splits,
-    // inserts rows into migration_flows, and updates immigration stats.
-    try {
-        await processMigrationFlows(supabase, nationList, newTick);
-    } catch (migErr) {
-        console.error('[advanceTick] Migration flows failed (non-fatal):', migErr);
     }
 
     // 4. Process each nation
