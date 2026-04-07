@@ -555,6 +555,253 @@ const MODIFIERS = {
         duration: 15,
         removed_by: [], // tension dropping below High or expiry
     },
+
+
+    // ==================== CHRONIC TRADE IMBALANCE — 19 MODIFIERS ====================
+    // Surplus nation = administering, Deficit nation = non_administering
+    // trade_balance is computed by trade engine — all effects use upstream stats instead
+    // #19 (Trade War Collateral Damage) deferred — requires third-party effect architecture
+
+    // ── STRUCTURAL (5) ──
+
+    persistent_trade_deficit: {
+        key: 'persistent_trade_deficit',
+        name: 'Persistent Trade Deficit',
+        category: 'structural',
+        applies_to: 'non_administering',
+        stat_effects: [
+            { stat_key: 'manufacturing_output', delta: -0.1 },
+            { stat_key: 'gdp_growth', delta: -0.05 },
+        ],
+        duration: null,
+        removed_by: ['negotiate_trade_rebalancing'],
+        spawn_chance: 1.0,
+    },
+
+    no_trade_rebalancing_mechanism: {
+        key: 'no_trade_rebalancing_mechanism',
+        name: 'No Bilateral Trade Rebalancing Mechanism',
+        category: 'structural',
+        applies_to: 'non_administering',
+        stat_effects: [{ stat_key: 'gov_approval', delta: -0.1 }],
+        duration: null,
+        removed_by: ['negotiate_trade_rebalancing', 'bilateral_free_trade_restructuring'],
+        spawn_chance: 1.0,
+    },
+
+    domestic_industries_losing_share: {
+        key: 'domestic_industries_losing_share',
+        name: 'Domestic Industries Losing Market Share',
+        category: 'structural',
+        applies_to: 'non_administering',
+        stat_effects: [
+            { stat_key: 'manufacturing_output', delta: -0.1 },
+            { stat_key: 'unemployment', delta: 0.1 },
+        ],
+        duration: null,
+        removed_by: ['negotiate_voluntary_export_restraints', 'domestic_industry_subsidy'],
+        spawn_chance: 1.0,
+    },
+
+    no_import_substitution_strategy: {
+        key: 'no_import_substitution_strategy',
+        name: 'No Import Substitution Strategy',
+        category: 'structural',
+        applies_to: 'non_administering',
+        stat_effects: [{ stat_key: 'cost_of_living', delta: 0.05 }],
+        duration: null,
+        removed_by: ['launch_import_substitution'],
+        spawn_chance: 0.6,
+    },
+
+    currency_misalignment_suspected: {
+        key: 'currency_misalignment_suspected',
+        name: 'Currency Misalignment Suspected',
+        category: 'structural',
+        applies_to: 'non_administering',
+        stat_effects: [
+            { stat_key: 'foreign_investment', delta: -0.05 },
+            { stat_key: 'currency_strength', delta: -0.05 },
+        ],
+        duration: null,
+        removed_by: ['propose_currency_alignment'],
+        spawn_chance: 0.4,
+    },
+
+    // ── COMPETITIVE (8) ──
+
+    factory_closures_deficit: {
+        key: 'factory_closures_deficit',
+        name: 'Factory Closures in Deficit Nation',
+        category: 'competitive',
+        applies_to: 'non_administering',
+        stat_effects: [
+            { stat_key: 'unemployment', delta: 0.2 },
+            { stat_key: 'poverty_rate', delta: 0.1 },
+            { stat_key: 'emigration', delta: 0.1 },
+            { stat_key: 'civil_unrest', delta: 0.1 },
+        ],
+        duration: 25,
+        removed_by: ['domestic_industry_subsidy', 'joint_economic_development_fund'],
+        auto_trigger: { type: 'modifier_age', requires: 'domestic_industries_losing_share', ticks_active: 15 },
+    },
+
+    surplus_market_dependency: {
+        key: 'surplus_market_dependency',
+        name: 'Surplus Nation Market Dependency',
+        category: 'competitive',
+        applies_to: 'administering',
+        stat_effects: [], // latent — activates via auto-spawn when deficit takes threatening action
+        duration: null,
+        removed_by: ['bilateral_free_trade_restructuring'],
+    },
+
+    protectionist_movement: {
+        key: 'protectionist_movement',
+        name: 'Protectionist Political Movement',
+        category: 'competitive',
+        applies_to: 'non_administering',
+        stat_effects: [
+            { stat_key: 'polarization', delta: 0.15 },
+            { stat_key: 'gov_approval', delta: -0.15 },
+        ],
+        duration: 20,
+        removed_by: [], // tension dropping to Low or expiry
+    },
+
+    dumping_accusations: {
+        key: 'dumping_accusations',
+        name: 'Dumping Accusations',
+        category: 'competitive',
+        applies_to: 'administering',
+        stat_effects: [{ stat_key: 'international_reputation', delta: -0.1 }],
+        relations_delta: -0.1,
+        duration: 20,
+        removed_by: ['negotiate_voluntary_export_restraints'],
+    },
+
+    supply_chain_dependency: {
+        key: 'supply_chain_dependency',
+        name: 'Supply Chain Dependency',
+        category: 'competitive',
+        applies_to: 'non_administering',
+        stat_effects: [
+            { stat_key: 'cost_of_living', delta: 0.1 },
+            { stat_key: 'manufacturing_output', delta: -0.05 },
+        ],
+        duration: 30,
+        removed_by: ['launch_import_substitution', 'negotiate_supply_chain_diversification'],
+    },
+
+    intellectual_property_friction: {
+        key: 'intellectual_property_friction',
+        name: 'Intellectual Property Friction',
+        category: 'competitive',
+        applies_to: 'both',
+        stat_effects: [{ stat_key: 'gdp_growth', delta: -0.1 }],
+        relations_delta: -0.05,
+        duration: 20,
+        removed_by: ['bilateral_free_trade_restructuring'],
+    },
+
+    consumer_import_dependency: {
+        key: 'consumer_import_dependency',
+        name: 'Consumer Dependency on Imports',
+        category: 'competitive',
+        applies_to: 'non_administering',
+        stat_effects: [{ stat_key: 'happiness', delta: -0.05 }],
+        duration: 15,
+        removed_by: ['launch_import_substitution'],
+    },
+
+    seasonal_trade_friction: {
+        key: 'seasonal_trade_friction',
+        name: 'Seasonal Trade Friction',
+        category: 'competitive',
+        applies_to: 'both',
+        stat_effects: [{ stat_key: 'manufacturing_output', delta: -0.1 }],
+        duration: null,
+        removed_by: ['bilateral_free_trade_restructuring'],
+        is_periodic: true,
+        periodic_interval: 18,
+        periodic_duration: 6,
+    },
+
+    // ── ESCALATION (6) — #19 collateral damage deferred ──
+
+    tariff_wall_erected: {
+        key: 'tariff_wall_erected',
+        name: 'Tariff Wall Erected',
+        category: 'escalation',
+        applies_to: 'both',
+        stat_effects: [
+            { stat_key: 'cost_of_living', delta: 0.15 },
+            { stat_key: 'manufacturing_output', delta: -0.1 },
+        ],
+        duration: 20,
+        removed_by: [], // any diplomatic acceptance
+    },
+
+    import_ban_in_effect: {
+        key: 'import_ban_in_effect',
+        name: 'Import Ban in Effect',
+        category: 'escalation',
+        applies_to: 'both',
+        stat_effects: [
+            { stat_key: 'cost_of_living', delta: 0.2 },
+            { stat_key: 'manufacturing_output', delta: -0.15 },
+        ],
+        duration: 15,
+        removed_by: [], // diplomatic acceptance or expiry
+    },
+
+    investment_restrictions_active: {
+        key: 'investment_restrictions_active',
+        name: 'Investment Restrictions Active',
+        category: 'escalation',
+        applies_to: 'both',
+        stat_effects: [{ stat_key: 'foreign_investment', delta: -0.15 }],
+        duration: 20,
+        removed_by: [], // diplomatic acceptance or expiry
+    },
+
+    retaliatory_measures_trade: {
+        key: 'retaliatory_measures_trade',
+        name: 'Retaliatory Measures in Effect',
+        category: 'escalation',
+        applies_to: 'both',
+        stat_effects: [{ stat_key: 'gdp_growth', delta: -0.1 }],
+        relations_delta: -0.15,
+        duration: 15,
+        removed_by: [], // diplomatic acceptance or expiry
+    },
+
+    credit_downgrade_pressure: {
+        key: 'credit_downgrade_pressure',
+        name: 'Credit Downgrade Pressure',
+        category: 'escalation',
+        applies_to: 'non_administering',
+        stat_effects: [
+            { stat_key: 'credit', delta: -0.15 },
+            { stat_key: 'debt_growth', delta: 0.1 },
+            { stat_key: 'interest_rates', delta: 0.05 },
+        ],
+        duration: 15,
+        removed_by: [], // tension dropping below Moderate or expiry
+    },
+
+    economic_nationalism_trade: {
+        key: 'economic_nationalism_trade',
+        name: 'Economic Nationalism Surge',
+        category: 'escalation',
+        applies_to: 'both',
+        stat_effects: [
+            { stat_key: 'polarization', delta: 0.2 },
+            { stat_key: 'immigration', delta: -0.1 },
+        ],
+        duration: 15,
+        removed_by: [], // tension dropping below High or expiry
+    },
 };
 
 // Role → ministry_key mapping for looking up which party's minister used an action
@@ -1165,6 +1412,327 @@ const ACTIONS = {
         special: 'sovereignty_nationalism_30', // 30% chance of also spawning nationalist_territorial_movement
         issue_type: 'territorial_ownership',
     },
+
+
+    // ==================== CHRONIC TRADE IMBALANCE — 18 ACTIONS ====================
+    // Surplus = administering, Deficit = non_administering
+    // Actions #12 and #17 use democracy-only versions (autocracy system not implemented)
+
+    // ── DIPLOMATIC (6) ──
+
+    negotiate_trade_rebalancing: {
+        key: 'negotiate_trade_rebalancing',
+        name: 'Negotiate Trade Rebalancing Agreement',
+        category: 'diplomatic',
+        role: 'minister_of_trade',
+        ap_cost: 2,
+        favor_delta: 0,
+        tension_delta: -2,
+        modifiers_removed: ['persistent_trade_deficit', 'no_trade_rebalancing_mechanism'],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'Negotiate a structured rebalancing plan. The surplus nation agrees to reduce export volume and purchase goods from the deficit nation.',
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    negotiate_voluntary_export_restraints: {
+        key: 'negotiate_voluntary_export_restraints',
+        name: 'Negotiate Voluntary Export Restraints',
+        category: 'diplomatic',
+        role: 'minister_of_trade',
+        ap_cost: 2,
+        favor_delta: 0,
+        tension_delta: -1,
+        modifiers_removed: ['domestic_industries_losing_share', 'dumping_accusations'],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'The surplus nation voluntarily limits export volumes in specific sectors. Technically voluntary. Practically coerced.',
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    propose_currency_alignment: {
+        key: 'propose_currency_alignment',
+        name: 'Propose Currency Alignment Talks',
+        category: 'diplomatic',
+        role: 'minister_of_finance',
+        ap_cost: 2,
+        favor_delta: 0,
+        tension_delta: -1,
+        modifiers_removed: ['currency_misalignment_suspected'],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'Open formal talks between both nations\' central banks to address currency valuation and prevent competitive devaluation.',
+        special: 'requires_modifier',
+        requires_modifier: 'currency_misalignment_suspected',
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    joint_economic_development_fund: {
+        key: 'joint_economic_development_fund',
+        name: 'Joint Economic Development Fund',
+        category: 'diplomatic',
+        role: 'minister_of_finance',
+        ap_cost: 3,
+        favor_delta: 0,
+        tension_delta: -2,
+        modifiers_removed: ['factory_closures_deficit'],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'The surplus nation invests directly in the deficit nation\'s economy. Build factories, create two-way supply chains. Not charity — strategic investment.',
+        stat_effects_opponent: [
+            { stat_key: 'gdp_growth', delta: 0.1, duration: 20 },
+            { stat_key: 'foreign_investment', delta: 0.1, duration: 20 },
+        ],
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    bilateral_free_trade_restructuring: {
+        key: 'bilateral_free_trade_restructuring',
+        name: 'Bilateral Free Trade Restructuring',
+        category: 'diplomatic',
+        role: 'head_of_government',
+        ap_cost: 4,
+        favor_delta: 0, // resets to 0
+        tension_delta: -3,
+        modifiers_removed: ['intellectual_property_friction', 'seasonal_trade_friction', 'surplus_market_dependency'],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'Renegotiate the entire trade relationship from scratch. Both sides make concessions. 8-tick process + parliamentary ratification.',
+        special: 'trade_restructuring', // 8-tick process, removes ALL structural on ratification
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    negotiate_supply_chain_diversification: {
+        key: 'negotiate_supply_chain_diversification',
+        name: 'Negotiate Supply Chain Diversification',
+        category: 'diplomatic',
+        role: 'minister_of_trade',
+        ap_cost: 2,
+        favor_delta: 0,
+        tension_delta: -1,
+        modifiers_removed: ['supply_chain_dependency'],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'Both nations agree to reduce supply chain concentration so neither is critically dependent on the other for essential inputs.',
+        special: 'requires_modifier',
+        requires_modifier: 'supply_chain_dependency',
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    // ── UNILATERAL (6) ──
+
+    domestic_industry_subsidy: {
+        key: 'domestic_industry_subsidy',
+        name: 'Domestic Industry Subsidy Program',
+        category: 'unilateral',
+        role: 'minister_of_finance',
+        ap_cost: 2,
+        favor_delta: 0.5,
+        tension_delta: 0.5,
+        modifiers_removed: ['domestic_industries_losing_share', 'factory_closures_deficit'],
+        modifiers_added: [],
+        treasury_cost: 25_000_000,
+        description: 'Fund your domestic industries directly. Subsidies, tax breaks, low-interest loans. Expensive but keeps the lights on. $25M.',
+        stat_effects_acting: [
+            { stat_key: 'manufacturing_output', delta: 0.15, duration: 20 },
+            { stat_key: 'debt_growth', delta: 0.3, duration: 20 },
+        ],
+        modifier_remove_target: 'acting',
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    launch_import_substitution: {
+        key: 'launch_import_substitution',
+        name: 'Launch Import Substitution Program',
+        category: 'unilateral',
+        role: 'minister_of_trade',
+        ap_cost: 3,
+        favor_delta: 0.5,
+        tension_delta: 0.5,
+        modifiers_removed: ['no_import_substitution_strategy'],
+        modifiers_added: [],
+        treasury_cost: 30_000_000,
+        description: 'Develop domestic alternatives to imported goods. Expensive, slow, but structurally transformative. $30M.',
+        stat_effects_acting: [
+            { stat_key: 'manufacturing_output', delta: 0.1, duration: 20 },
+            { stat_key: 'cost_of_living', delta: 0.1, duration: 10 },
+        ],
+        modifier_remove_target: 'acting',
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    file_anti_dumping_complaint: {
+        key: 'file_anti_dumping_complaint',
+        name: 'File Anti-Dumping Complaint',
+        category: 'unilateral',
+        role: 'foreign_minister',
+        ap_cost: 1,
+        favor_delta: 0.5,
+        tension_delta: 0.5,
+        modifiers_removed: [],
+        modifiers_added: ['dumping_accusations'],
+        treasury_cost: 0,
+        description: 'File a formal anti-dumping complaint. Accuse the surplus nation of selling below cost. The accusation does damage regardless of truth.',
+        modifier_target: 'opponent',
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    buy_domestic_campaign: {
+        key: 'buy_domestic_campaign',
+        name: '"Buy Domestic" Campaign',
+        category: 'unilateral',
+        role: 'head_of_government',
+        ap_cost: 1,
+        favor_delta: 0.5,
+        tension_delta: 0,
+        modifiers_removed: [],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'Launch a public campaign encouraging citizens to buy domestically produced goods. Government leads by example. Symbolic but meaningful.',
+        stat_effects_acting: [
+            { stat_key: 'gov_approval', delta: 0.05, duration: 15 },
+            { stat_key: 'manufacturing_output', delta: 0.05, duration: 15 },
+        ],
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    attract_alternative_partners: {
+        key: 'attract_alternative_partners',
+        name: 'Attract Alternative Trading Partners',
+        category: 'unilateral',
+        role: 'minister_of_trade',
+        ap_cost: 2,
+        favor_delta: -0.5,
+        tension_delta: -0.5,
+        modifiers_removed: [],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'Pursue trade deals with third-party nations to reduce dependence on the surplus nation. Don\'t fix the relationship — go around it.',
+        stat_effects_acting: [{ stat_key: 'foreign_investment', delta: 0.05, duration: 15 }],
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    advocate_central_bank_shift: {
+        key: 'advocate_central_bank_shift',
+        name: 'Advocate for Central Bank Policy Shift',
+        category: 'unilateral',
+        role: 'minister_of_finance',
+        ap_cost: 1,
+        favor_delta: 0,
+        tension_delta: 0,
+        modifiers_removed: [],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'Publicly urge the central bank to consider monetary policy adjustment. Democratic independence means 30% chance of effect.',
+        special: 'central_bank_30', // 30% chance of currency_strength -0.1 for 8 ticks
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    // ── THREATENING (6) ──
+
+    impose_targeted_tariffs: {
+        key: 'impose_targeted_tariffs',
+        name: 'Impose Targeted Tariffs',
+        category: 'threatening',
+        role: 'minister_of_trade',
+        ap_cost: 2,
+        favor_delta: 1,
+        tension_delta: 2,
+        modifiers_removed: [],
+        modifiers_added: ['tariff_wall_erected'],
+        treasury_cost: 0,
+        description: 'Impose 15-25% tariffs on the surplus nation\'s key exports. The line that turns a trade imbalance into a trade war.',
+        relations_delta: -3,
+        special: 'incident_trigger_50',
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    ban_key_imports: {
+        key: 'ban_key_imports',
+        name: 'Ban Key Imports',
+        category: 'threatening',
+        role: 'minister_of_trade',
+        ap_cost: 3,
+        favor_delta: 2,
+        tension_delta: 3,
+        modifiers_removed: [],
+        modifiers_added: ['import_ban_in_effect'],
+        treasury_cost: 0,
+        description: 'Ban imports of specific product categories entirely. Not tariffs — a full prohibition. Economic warfare.',
+        relations_delta: -5,
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    restrict_foreign_investment_trade: {
+        key: 'restrict_foreign_investment_trade',
+        name: 'Restrict Foreign Investment',
+        category: 'threatening',
+        role: 'foreign_minister',
+        ap_cost: 2,
+        favor_delta: 1,
+        tension_delta: 2,
+        modifiers_removed: [],
+        modifiers_added: ['investment_restrictions_active'],
+        treasury_cost: 0,
+        description: 'Block the surplus nation from investing in critical sectors. Frame it as national security.',
+        relations_delta: -3,
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    public_trade_ultimatum: {
+        key: 'public_trade_ultimatum',
+        name: 'Public Trade Ultimatum',
+        category: 'threatening',
+        role: 'head_of_government',
+        ap_cost: 2,
+        favor_delta: 1.5,
+        tension_delta: 2,
+        modifiers_removed: [],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'Give a public address setting a 4-tick deadline. If ignored, economic nationalism surges and favor shifts dramatically.',
+        relations_delta: -3,
+        stat_effects_acting: [{ stat_key: 'gov_approval', delta: 0.1, duration: 6 }],
+        special: 'trade_ultimatum_4', // 4-tick deadline tracked via history metadata
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    asset_freeze_sanctions: {
+        key: 'asset_freeze_sanctions',
+        name: 'Asset Freeze via Sanctions',
+        category: 'threatening',
+        role: 'foreign_minister',
+        ap_cost: 2,
+        favor_delta: 1,
+        tension_delta: 2,
+        modifiers_removed: [],
+        modifiers_added: ['investment_restrictions_active'],
+        treasury_cost: 0,
+        description: 'Freeze surplus nation assets through legal channels. Every foreign investor gets nervous.',
+        relations_delta: -5,
+        stat_effects_acting: [{ stat_key: 'foreign_investment', delta: -0.1, duration: 15 }],
+        stat_effects_opponent: [{ stat_key: 'foreign_investment', delta: -0.1, duration: 15 }],
+        issue_type: 'chronic_trade_imbalance',
+    },
+
+    publicly_blame_surplus: {
+        key: 'publicly_blame_surplus',
+        name: 'Publicly Blame Surplus Nation',
+        category: 'threatening',
+        role: 'head_of_government',
+        ap_cost: 1,
+        favor_delta: 1,
+        tension_delta: 2,
+        modifiers_removed: [],
+        modifiers_added: ['economic_nationalism_trade', 'dumping_accusations'],
+        treasury_cost: 0,
+        description: 'Hold a press conference. Display charts showing job losses. Point the finger. Channel domestic anger outward.',
+        relations_delta: -3,
+        stat_effects_acting: [{ stat_key: 'gov_approval', delta: 0.1, duration: 10 }],
+        stat_effects_opponent: [{ stat_key: 'international_reputation', delta: -0.1, duration: 15 }],
+        modifier_target_map: { economic_nationalism_trade: 'both', dumping_accusations: 'opponent' },
+        issue_type: 'chronic_trade_imbalance',
+    },
 };
 
 // ==================== ISSUE TYPE DEFINITIONS ====================
@@ -1203,6 +1771,31 @@ const ISSUE_TYPES = {
             'domestic_political_significance',
             'resource_potential',
             'historical_grievance_attached',
+        ],
+    },
+
+    chronic_trade_imbalance: {
+        key: 'chronic_trade_imbalance',
+        name: 'Chronic Trade Imbalance',
+        required_border: null, // any distance — trade crosses oceans
+        description: 'One nation consistently exports far more to the other than it imports. The deficit nation\'s domestic industries are being undercut by cheaper foreign goods.',
+        category: 'Economic',
+        incident_type: 'trade_war_escalation',
+        has_administering_nation: true, // surplus = administering, deficit = non_administering
+        auto_spawn: true, // spawned by trade engine, not admin
+        auto_spawn_config: {
+            imbalance_pct_threshold: 50,
+            sustained_ticks: 5,
+            spawn_chance: 0.5,
+            max_per_nation: 2,
+            cooldown_after_resolution: 60,
+        },
+        starter_modifiers: [
+            'persistent_trade_deficit',
+            'no_trade_rebalancing_mechanism',
+            'domestic_industries_losing_share',
+            'no_import_substitution_strategy',
+            'currency_misalignment_suspected',
         ],
     },
 };
@@ -1849,6 +2442,14 @@ export async function processIssueTick(supabase, nationList, currentTick) {
             if (newStatus === 'resolved') issueUpdate.resolved_tick = currentTick;
             if (newStatus === 'escalated') issueUpdate.escalated_tick = currentTick;
 
+            // Deactivate all remaining active modifiers when issue resolves or escalates
+            if (newStatus === 'resolved' || newStatus === 'escalated') {
+                await supabase.from('bilateral_issue_modifiers')
+                    .update({ is_active: false, resolved_by: `issue_${newStatus}`, resolved_tick: currentTick })
+                    .eq('issue_id', issue.id)
+                    .eq('is_active', true);
+            }
+
             if (newStatus !== 'escalated') {
                 await insertHistory(supabase, issue.id, currentTick, 'status_changed',
                     `Issue status changed to ${newStatus}.`,
@@ -1871,6 +2472,9 @@ async function checkAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, 
     // Dispatch to issue-type-specific auto-spawn logic
     if (issue.issue_type === 'territorial_ownership') {
         return checkTerritorialAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, nationB, currentTick, results);
+    }
+    if (issue.issue_type === 'chronic_trade_imbalance') {
+        return checkTradeImbalanceAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, nationB, currentTick, results);
     }
 
     // ── Maritime Fishing Rights auto-spawns ──
@@ -2146,6 +2750,184 @@ async function checkTerritorialAutoSpawns(supabase, issue, activeKeys, modifiers
             await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
                 'Nationalist territorial movement has subsided as tensions eased.',
                 { modifier_key: 'nationalist_territorial_movement', reason: 'tension_dropped' });
+        }
+    }
+}
+
+/**
+ * Chronic Trade Imbalance — auto-spawn competitive/escalation modifiers and auto-removals.
+ * Mirrors checkTradeImbalanceModifierAutoSpawns in the tick processor.
+ */
+async function checkTradeImbalanceAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, nationB, currentTick, results) {
+
+    // #6 Factory Closures — #3 active 15+ ticks without diplomatic/unilateral action
+    if (!activeKeys.has('factory_closures_deficit') && !wasResolved(modifiers, 'factory_closures_deficit')) {
+        if (activeKeys.has('domestic_industries_losing_share')) {
+            const mod3 = modifiers.find(m => m.modifier_key === 'domestic_industries_losing_share' && m.is_active);
+            if (mod3 && (currentTick - mod3.created_tick) >= 15) {
+                const { data: anyAction } = await supabase
+                    .from('bilateral_issue_actions_taken').select('id')
+                    .eq('issue_id', issue.id).in('action_category', ['diplomatic', 'unilateral'])
+                    .in('status', ['executed', 'matched', 'submitted']).limit(1);
+                if (!anyAction || anyAction.length === 0) {
+                    await spawnModifier(supabase, issue, 'factory_closures_deficit', 'non_administering', currentTick,
+                        'auto:industries_losing_share_15t_no_action', results);
+                }
+            }
+        }
+    }
+
+    // #8 Protectionist Movement — #6 active 5+ ticks OR tension High
+    if (!activeKeys.has('protectionist_movement') && !wasResolved(modifiers, 'protectionist_movement')) {
+        let shouldSpawn = false;
+        if (activeKeys.has('factory_closures_deficit')) {
+            const mod6 = modifiers.find(m => m.modifier_key === 'factory_closures_deficit' && m.is_active);
+            if (mod6 && (currentTick - mod6.created_tick) >= 5) shouldSpawn = true;
+        }
+        if (issue.tension >= 6) shouldSpawn = true;
+        if (shouldSpawn) {
+            await spawnModifier(supabase, issue, 'protectionist_movement', 'non_administering', currentTick,
+                'auto:factory_closures_or_tension_high', results);
+        }
+    }
+
+    // #9 Dumping Accusations — tension Moderate+ with #3 still active
+    if (!activeKeys.has('dumping_accusations') && !wasResolved(modifiers, 'dumping_accusations')) {
+        if (issue.tension >= 3 && activeKeys.has('domestic_industries_losing_share')) {
+            await spawnModifier(supabase, issue, 'dumping_accusations', 'administering', currentTick,
+                'auto:tension_moderate_with_industry_loss', results);
+        }
+    }
+
+    // #10 Supply Chain Dependency — issue active 15+ ticks with moderate+ tension
+    if (!activeKeys.has('supply_chain_dependency') && !wasResolved(modifiers, 'supply_chain_dependency')) {
+        const issueAge = currentTick - (issue.created_tick || 0);
+        if (issueAge >= 15 && issue.tension >= 5) {
+            await spawnModifier(supabase, issue, 'supply_chain_dependency', 'non_administering', currentTick,
+                'auto:deep_trade_integration_15t', results);
+        }
+    }
+
+    // #11 IP Friction — 30% chance every 15 ticks with corporate tax mismatch
+    if (!activeKeys.has('intellectual_property_friction') && !wasResolved(modifiers, 'intellectual_property_friction')) {
+        const issueAge = currentTick - (issue.created_tick || 0);
+        if (issueAge >= 15 && issueAge % 15 === 0 && Math.random() < 0.30) {
+            const surplusNation = issue.administering_nation_id === issue.nation_a_id ? nationA : nationB;
+            const deficitNation = issue.administering_nation_id === issue.nation_a_id ? nationB : nationA;
+            if (Number(surplusNation?.corporate_tax ?? 50) < Number(deficitNation?.corporate_tax ?? 50)) {
+                await spawnModifier(supabase, issue, 'intellectual_property_friction', 'both', currentTick,
+                    'auto:ip_friction_tax_mismatch', results);
+            }
+        }
+    }
+
+    // #12 Consumer Dependency — 20+ ticks unresolved
+    if (!activeKeys.has('consumer_import_dependency') && !wasResolved(modifiers, 'consumer_import_dependency')) {
+        if ((currentTick - (issue.created_tick || 0)) >= 20) {
+            await spawnModifier(supabase, issue, 'consumer_import_dependency', 'non_administering', currentTick,
+                'auto:unresolved_20_ticks', results);
+        }
+    }
+
+    // #7 Surplus Dependency — issue active 10+ ticks (latent)
+    if (!activeKeys.has('surplus_market_dependency') && !wasResolved(modifiers, 'surplus_market_dependency')) {
+        if ((currentTick - (issue.created_tick || 0)) >= 10) {
+            await spawnModifier(supabase, issue, 'surplus_market_dependency', 'administering', currentTick,
+                'auto:trade_dependency_10t', results);
+        }
+    }
+
+    // #17 Retaliatory Measures — both sides taken threatening actions
+    if (!activeKeys.has('retaliatory_measures_trade') && !wasResolved(modifiers, 'retaliatory_measures_trade')) {
+        const { data: threatA } = await supabase.from('bilateral_issue_actions_taken').select('id')
+            .eq('issue_id', issue.id).eq('acting_nation_id', issue.nation_a_id)
+            .eq('action_category', 'threatening').eq('status', 'executed').limit(1);
+        const { data: threatB } = await supabase.from('bilateral_issue_actions_taken').select('id')
+            .eq('issue_id', issue.id).eq('acting_nation_id', issue.nation_b_id)
+            .eq('action_category', 'threatening').eq('status', 'executed').limit(1);
+        if (threatA?.length > 0 && threatB?.length > 0) {
+            await spawnModifier(supabase, issue, 'retaliatory_measures_trade', 'both', currentTick,
+                'auto:both_sides_threatened', results);
+        }
+    }
+
+    // #18 Credit Downgrade — tension High + any active escalation modifier
+    if (!activeKeys.has('credit_downgrade_pressure') && !wasResolved(modifiers, 'credit_downgrade_pressure')) {
+        if (issue.tension >= 6) {
+            const hasEscalation = (modifiers || []).some(m =>
+                m.is_active && m.category === 'escalation' &&
+                m.modifier_key !== 'credit_downgrade_pressure' &&
+                m.modifier_key !== 'economic_nationalism_trade');
+            if (hasEscalation) {
+                await spawnModifier(supabase, issue, 'credit_downgrade_pressure', 'non_administering', currentTick,
+                    'auto:tension_high_escalation_active', results);
+            }
+        }
+    }
+
+    // #20 Economic Nationalism — tension Critical OR 2+ threatening by same nation
+    if (!activeKeys.has('economic_nationalism_trade') && !wasResolved(modifiers, 'economic_nationalism_trade')) {
+        let shouldSpawn = false;
+        if (issue.tension >= 9) {
+            shouldSpawn = true;
+        } else {
+            for (const nId of [issue.nation_a_id, issue.nation_b_id]) {
+                const { data: threats } = await supabase.from('bilateral_issue_actions_taken').select('id')
+                    .eq('issue_id', issue.id).eq('acting_nation_id', nId)
+                    .eq('action_category', 'threatening').eq('status', 'executed');
+                if (threats && threats.length >= 2) { shouldSpawn = true; break; }
+            }
+        }
+        if (shouldSpawn) {
+            await spawnModifier(supabase, issue, 'economic_nationalism_trade', 'both', currentTick,
+                'auto:tension_critical_or_double_threat', results);
+        }
+    }
+
+    // ── AUTO-REMOVALS ──
+
+    // #8 Protectionist Movement — removed when tension drops to Low
+    if (activeKeys.has('protectionist_movement') && issue.tension <= 2) {
+        const mod = modifiers.find(m => m.modifier_key === 'protectionist_movement' && m.is_active);
+        if (mod) {
+            await supabase.from('bilateral_issue_modifiers')
+                .update({ is_active: false, resolved_by: 'auto:tension_low', resolved_tick: currentTick })
+                .eq('id', mod.id);
+            mod.is_active = false;
+            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'protectionist_movement' });
+            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
+                'Protectionist political movement has subsided as tensions eased.',
+                { modifier_key: 'protectionist_movement', reason: 'tension_low' });
+        }
+    }
+
+    // #18 Credit Downgrade — removed when tension drops below Moderate
+    if (activeKeys.has('credit_downgrade_pressure') && issue.tension < 3) {
+        const mod = modifiers.find(m => m.modifier_key === 'credit_downgrade_pressure' && m.is_active);
+        if (mod) {
+            await supabase.from('bilateral_issue_modifiers')
+                .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
+                .eq('id', mod.id);
+            mod.is_active = false;
+            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'credit_downgrade_pressure' });
+            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
+                'Credit downgrade pressure has eased as trade tensions cooled.',
+                { modifier_key: 'credit_downgrade_pressure', reason: 'tension_dropped' });
+        }
+    }
+
+    // #20 Economic Nationalism — removed when tension drops below High
+    if (activeKeys.has('economic_nationalism_trade') && issue.tension < 6) {
+        const mod = modifiers.find(m => m.modifier_key === 'economic_nationalism_trade' && m.is_active);
+        if (mod) {
+            await supabase.from('bilateral_issue_modifiers')
+                .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
+                .eq('id', mod.id);
+            mod.is_active = false;
+            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'economic_nationalism_trade' });
+            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
+                'Economic nationalism surge has subsided as tensions decreased.',
+                { modifier_key: 'economic_nationalism_trade', reason: 'tension_dropped' });
         }
     }
 }
