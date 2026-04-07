@@ -288,6 +288,273 @@ const MODIFIERS = {
         duration: 15,
         removed_by: [], // tension dropping below High or expiry
     },
+
+
+    // ==================== TERRITORIAL OWNERSHIP DISPUTE — 20 MODIFIERS ====================
+
+    // ── STRUCTURAL (assigned at issue creation) ──
+
+    competing_sovereignty_claims: {
+        key: 'competing_sovereignty_claims',
+        name: 'Competing Sovereignty Claims',
+        category: 'structural',
+        applies_to: 'non_administering',
+        stat_effects: [{ stat_key: 'stability', delta: -0.05 }],
+        relations_delta: -0.1,
+        duration: null,
+        removed_by: ['propose_joint_sovereignty', 'submit_to_international_court'],
+        spawn_chance: 1.0,
+    },
+
+    no_international_adjudication: {
+        key: 'no_international_adjudication',
+        name: 'No International Adjudication',
+        category: 'structural',
+        applies_to: 'non_administering',
+        stat_effects: [{ stat_key: 'gov_approval', delta: -0.1 }],
+        duration: null,
+        removed_by: ['submit_to_international_court', 'propose_condominium_administration'],
+        spawn_chance: 1.0,
+    },
+
+    domestic_political_significance: {
+        key: 'domestic_political_significance',
+        name: 'Domestic Political Significance',
+        category: 'structural',
+        applies_to: 'both',
+        stat_effects: [
+            { stat_key: 'gov_approval', delta: -0.1 },
+            { stat_key: 'polarization', delta: 0.05 },
+        ],
+        duration: null,
+        removed_by: [], // CANNOT be directly removed — persists until issue resolves
+        spawn_chance: 1.0,
+    },
+
+    resource_potential: {
+        key: 'resource_potential',
+        name: 'Resource Potential',
+        category: 'structural',
+        applies_to: 'administering',
+        stat_effects: [{ stat_key: 'gdp_growth', delta: 0.1 }],
+        duration: null,
+        removed_by: ['resource_sharing_framework'],
+        spawn_chance: 0.6,
+    },
+
+    historical_grievance_attached: {
+        key: 'historical_grievance_attached',
+        name: 'Historical Grievance Attached',
+        category: 'structural',
+        applies_to: 'non_administering',
+        stat_effects: [
+            { stat_key: 'civil_unrest', delta: 0.1 },
+            { stat_key: 'happiness', delta: -0.05 },
+        ],
+        duration: null,
+        removed_by: ['cultural_heritage_preservation'],
+        spawn_chance: 0.4,
+    },
+
+    // ── COMPETITIVE (emerge from gameplay) ──
+
+    settler_population_growing: {
+        key: 'settler_population_growing',
+        name: 'Settler Population Growing',
+        category: 'competitive',
+        applies_to: 'both',
+        stat_effects: [
+            { stat_key: 'polarization', delta: 0.15 },
+            { stat_key: 'civil_unrest', delta: 0.1 },
+        ],
+        duration: 25,
+        removed_by: ['propose_joint_sovereignty'],
+        auto_trigger: { type: 'action_combo', requires: ['build_infrastructure_territory', 'establish_administrative_presence'] },
+    },
+
+    competing_development_projects: {
+        key: 'competing_development_projects',
+        name: 'Competing Development Projects',
+        category: 'competitive',
+        applies_to: 'both',
+        stat_effects: [
+            { stat_key: 'debt_growth', delta: 0.15 },
+            { stat_key: 'efficiency', delta: -0.1 },
+        ],
+        duration: 20,
+        removed_by: ['propose_condominium_administration', 'propose_joint_sovereignty'],
+    },
+
+    resource_exploitation_conflict: {
+        key: 'resource_exploitation_conflict',
+        name: 'Resource Exploitation Conflict',
+        category: 'competitive',
+        applies_to: 'both',
+        stat_effects: [
+            { stat_key: 'pollution', delta: 0.2 },
+            { stat_key: 'arable_land', delta: -0.1 },
+        ],
+        duration: 20,
+        removed_by: ['resource_sharing_framework'],
+    },
+
+    diaspora_mobilization: {
+        key: 'diaspora_mobilization',
+        name: 'Diaspora Mobilization',
+        category: 'competitive',
+        applies_to: 'non_administering',
+        stat_effects: [
+            { stat_key: 'polarization', delta: 0.1 },
+            { stat_key: 'gov_approval', delta: 0.1 },
+            { stat_key: 'emigration', delta: -0.1 },
+        ],
+        duration: 20,
+        removed_by: [],
+        auto_trigger: { type: 'favor_threshold', threshold: 3 },
+    },
+
+    international_legal_precedent: {
+        key: 'international_legal_precedent',
+        name: 'International Legal Precedent Forming',
+        category: 'competitive',
+        applies_to: null, // set dynamically — applies to legally weaker nation
+        stat_effects: [{ stat_key: 'international_reputation', delta: -0.1 }],
+        duration: 15,
+        removed_by: [], // expires or court ruling
+    },
+
+    cultural_erasure_accusations: {
+        key: 'cultural_erasure_accusations',
+        name: 'Cultural Erasure Accusations',
+        category: 'competitive',
+        applies_to: 'administering',
+        stat_effects: [
+            { stat_key: 'international_reputation', delta: -0.15 },
+            { stat_key: 'freedom_index', delta: -0.1 },
+        ],
+        duration: 20,
+        removed_by: ['cultural_heritage_preservation'],
+    },
+
+    territory_election_issue: {
+        key: 'territory_election_issue',
+        name: 'Territory as Election Issue',
+        category: 'competitive',
+        applies_to: 'both',
+        stat_effects: [
+            { stat_key: 'gov_approval', delta: -0.3 },
+            { stat_key: 'polarization', delta: 0.2 },
+        ],
+        duration: 8,
+        removed_by: [], // expires only — cannot be manually removed
+        special: 'diplomatic_ap_penalty', // +1 AP cost on diplomatic actions
+    },
+
+    memorial_anniversary_tension: {
+        key: 'memorial_anniversary_tension',
+        name: 'Memorial / Anniversary Tension',
+        category: 'competitive',
+        applies_to: 'both',
+        stat_effects: [
+            { stat_key: 'civil_unrest', delta: 0.2 },
+            { stat_key: 'political_violence', delta: 0.1 },
+            { stat_key: 'polarization', delta: 0.1 },
+        ],
+        duration: null, // periodic
+        removed_by: ['cultural_heritage_preservation'],
+        is_periodic: true,
+        periodic_interval: 20,
+        periodic_duration: 4,
+    },
+
+    // ── ESCALATION (created by threatening actions) ──
+
+    military_occupation: {
+        key: 'military_occupation',
+        name: 'Military Occupation in Effect',
+        category: 'escalation',
+        applies_to: 'both',
+        stat_effects: [
+            { stat_key: 'civil_unrest', delta: 0.2 },
+        ],
+        duration: 30,
+        removed_by: [], // issue resolution or withdrawal only
+    },
+
+    forced_population_transfer: {
+        key: 'forced_population_transfer',
+        name: 'Forced Population Transfer in Progress',
+        category: 'escalation',
+        applies_to: 'both',
+        stat_effects: [
+            { stat_key: 'civil_unrest', delta: 0.3 },
+            { stat_key: 'political_violence', delta: 0.2 },
+        ],
+        duration: null, // permanent until issue resolves
+        removed_by: [], // issue resolution ONLY
+    },
+
+    resource_extraction_underway: {
+        key: 'resource_extraction_underway',
+        name: 'Resource Extraction Underway',
+        category: 'escalation',
+        applies_to: 'both',
+        stat_effects: [
+            { stat_key: 'pollution', delta: 0.15 },
+        ],
+        relations_delta: -0.15,
+        duration: 25,
+        removed_by: ['resource_sharing_framework'],
+    },
+
+    military_exercises_conducted: {
+        key: 'military_exercises_conducted',
+        name: 'Military Exercises Conducted',
+        category: 'escalation',
+        applies_to: 'both',
+        stat_effects: [{ stat_key: 'stability', delta: -0.2 }],
+        duration: 10,
+        removed_by: [], // expires only
+    },
+
+    citizen_expulsion: {
+        key: 'citizen_expulsion',
+        name: 'Citizen Expulsion in Progress',
+        category: 'escalation',
+        applies_to: 'both',
+        stat_effects: [
+            { stat_key: 'civil_unrest', delta: 0.2 },
+        ],
+        duration: 15,
+        removed_by: [], // expires, leaves diaspora_mobilization
+    },
+
+    sovereignty_declared: {
+        key: 'sovereignty_declared',
+        name: 'Sovereignty Declared',
+        category: 'escalation',
+        applies_to: 'both',
+        stat_effects: [
+            { stat_key: 'polarization', delta: 0.15 },
+        ],
+        relations_delta: -0.2,
+        duration: null, // permanent until issue resolves
+        removed_by: [], // issue resolution ONLY
+    },
+
+    nationalist_territorial_movement: {
+        key: 'nationalist_territorial_movement',
+        name: 'Nationalist Territorial Movement',
+        category: 'escalation',
+        applies_to: 'both',
+        stat_effects: [
+            { stat_key: 'polarization', delta: 0.2 },
+            { stat_key: 'civil_unrest', delta: 0.15 },
+            { stat_key: 'terrorism', delta: 0.1 },
+        ],
+        duration: 15,
+        removed_by: [], // tension dropping below High or expiry
+    },
 };
 
 // Role → ministry_key mapping for looking up which party's minister used an action
@@ -582,6 +849,322 @@ const ACTIONS = {
         stat_effects_opponent: [{ stat_key: 'stability', delta: -0.2, duration: 15 }],
         special: 'incident_trigger_25',
     },
+
+
+    // ==================== TERRITORIAL OWNERSHIP DISPUTE — 18 ACTIONS ====================
+
+    // ── DIPLOMATIC (6) ──
+
+    propose_joint_sovereignty: {
+        key: 'propose_joint_sovereignty',
+        name: 'Propose Joint Sovereignty',
+        category: 'diplomatic',
+        role: 'head_of_government',
+        ap_cost: 3,
+        favor_delta: 0, // resets to 0
+        tension_delta: -3,
+        modifiers_removed: ['competing_sovereignty_claims', 'settler_population_growing'],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'Propose that both nations exercise joint sovereignty over the territory. Both flags, both languages, shared tax revenue.',
+        special: 'favor_reset', // resets favor to 0 on acceptance
+        issue_type: 'territorial_ownership',
+    },
+
+    offer_economic_concession: {
+        key: 'offer_economic_concession',
+        name: 'Offer Economic Concession for Claim',
+        category: 'diplomatic',
+        role: 'minister_of_trade',
+        ap_cost: 3,
+        favor_delta: -3, // massive concession
+        tension_delta: -3,
+        modifiers_removed: [], // removes ALL on acceptance (special handling)
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'Offer a comprehensive trade package in exchange for the other nation renouncing their territorial claim. You\'re buying peace with money.',
+        special: 'resolve_issue', // resolves the issue entirely on acceptance
+        issue_type: 'territorial_ownership',
+    },
+
+    submit_to_international_court: {
+        key: 'submit_to_international_court',
+        name: 'Submit to International Court',
+        category: 'diplomatic',
+        role: 'foreign_minister',
+        ap_cost: 3,
+        favor_delta: 0, // resets to 0
+        tension_delta: -3,
+        modifiers_removed: ['no_international_adjudication'],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'Submit the dispute to binding international court. 10-tick process. Ruling may resolve the issue entirely.',
+        special: 'court_ruling', // 10-tick process, stat-weighted outcome
+        issue_type: 'territorial_ownership',
+    },
+
+    propose_condominium_administration: {
+        key: 'propose_condominium_administration',
+        name: 'Propose Condominium Administration',
+        category: 'diplomatic',
+        role: 'foreign_minister',
+        ap_cost: 2,
+        favor_delta: 0,
+        tension_delta: -2,
+        modifiers_removed: ['no_international_adjudication'],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'Propose a formal condominium — the territory is administered jointly under an agreed framework. Practical shared management.',
+        stat_effects_acting: [{ stat_key: 'efficiency', delta: 0.05, duration: 20 }],
+        stat_effects_opponent: [{ stat_key: 'efficiency', delta: 0.05, duration: 20 }],
+        issue_type: 'territorial_ownership',
+    },
+
+    cultural_heritage_preservation: {
+        key: 'cultural_heritage_preservation',
+        name: 'Cultural Heritage Preservation Agreement',
+        category: 'diplomatic',
+        role: 'ambassador',
+        ap_cost: 1,
+        favor_delta: 0,
+        tension_delta: -1,
+        modifiers_removed: ['historical_grievance_attached', 'cultural_erasure_accusations', 'memorial_anniversary_tension'],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'Both nations agree to preserve the cultural heritage of both communities in the territory. Neither side erases the other\'s history.',
+        issue_type: 'territorial_ownership',
+    },
+
+    resource_sharing_framework: {
+        key: 'resource_sharing_framework',
+        name: 'Resource-Sharing Framework',
+        category: 'diplomatic',
+        role: 'minister_of_trade',
+        ap_cost: 2,
+        favor_delta: 0,
+        tension_delta: -2,
+        modifiers_removed: ['resource_potential', 'resource_exploitation_conflict', 'resource_extraction_underway'],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'Agree to jointly exploit the territory\'s resources regardless of who owns the land. Revenue split 50/50.',
+        special: 'requires_modifier', // only available if resource_potential is active
+        requires_modifier: 'resource_potential',
+        issue_type: 'territorial_ownership',
+    },
+
+    // ── UNILATERAL (6) ──
+
+    build_infrastructure_territory: {
+        key: 'build_infrastructure_territory',
+        name: 'Build Infrastructure in Territory',
+        category: 'unilateral',
+        role: 'minister_of_finance',
+        ap_cost: 3,
+        favor_delta: 2,
+        tension_delta: 1,
+        modifiers_removed: [],
+        modifiers_added: [], // competing_development_projects added if both nations build (handled in auto-spawn)
+        treasury_cost: 25_000_000,
+        description: 'Build roads, bridges, schools, hospitals. Every building is a claim. $25M.',
+        stat_effects_acting: [{ stat_key: 'physical_infrastructure', delta: 0.1, duration: 15 }],
+        issue_type: 'territorial_ownership',
+    },
+
+    settle_citizens_territory: {
+        key: 'settle_citizens_territory',
+        name: 'Settle Citizens in Territory',
+        category: 'unilateral',
+        role: 'head_of_government',
+        ap_cost: 2,
+        favor_delta: 1,
+        tension_delta: 2,
+        modifiers_removed: [],
+        modifiers_added: ['settler_population_growing'],
+        treasury_cost: 10_000_000,
+        description: 'Offer tax breaks, free land, subsidized housing. Change the demographic balance. $10M.',
+        issue_type: 'territorial_ownership',
+    },
+
+    commission_legal_claim: {
+        key: 'commission_legal_claim',
+        name: 'Commission Legal Claim Document',
+        category: 'unilateral',
+        role: 'foreign_minister',
+        ap_cost: 1,
+        favor_delta: 0, // +1 if int'l reputation > opponent's, +0.5 if equal
+        tension_delta: 0,
+        modifiers_removed: [],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'Hire international lawyers to produce a legal document supporting your claim. Positioning move.',
+        special: 'reputation_check_territorial', // favor only shifts based on reputation comparison
+        issue_type: 'territorial_ownership',
+    },
+
+    name_territory_on_maps: {
+        key: 'name_territory_on_maps',
+        name: 'Name Territory on Official Maps',
+        category: 'unilateral',
+        role: 'head_of_government',
+        ap_cost: 1,
+        favor_delta: 0.5,
+        tension_delta: 0.5,
+        modifiers_removed: [],
+        modifiers_added: [],
+        treasury_cost: 0,
+        description: 'Update all official maps to refer to the territory exclusively by your name. A quiet, persistent assertion of ownership.',
+        issue_type: 'territorial_ownership',
+    },
+
+    economic_development_program: {
+        key: 'economic_development_program',
+        name: 'Economic Development Program',
+        category: 'unilateral',
+        role: 'minister_of_finance',
+        ap_cost: 2,
+        favor_delta: 1,
+        tension_delta: 0,
+        modifiers_removed: [],
+        modifiers_added: [],
+        treasury_cost: 20_000_000,
+        description: 'Invest in the territory\'s economy. Local businesses, tourism, agriculture. Make it prosperous under your administration. $20M.',
+        stat_effects_acting: [
+            { stat_key: 'gdp_growth', delta: 0.05, duration: 20 },
+            { stat_key: 'standard_of_living', delta: 0.1, duration: 20 },
+        ],
+        issue_type: 'territorial_ownership',
+    },
+
+    establish_administrative_presence: {
+        key: 'establish_administrative_presence',
+        name: 'Establish Administrative Presence',
+        category: 'unilateral',
+        role: 'head_of_government',
+        ap_cost: 2,
+        favor_delta: 1,
+        tension_delta: 1,
+        modifiers_removed: [],
+        modifiers_added: [], // competing_development_projects if both establish (auto-spawn)
+        treasury_cost: 10_000_000,
+        description: 'Open government offices in the territory. Post office, tax office, courts. The bureaucratic assertion of sovereignty. $10M.',
+        stat_effects_acting: [{ stat_key: 'efficiency', delta: 0.1, duration: 15 }],
+        issue_type: 'territorial_ownership',
+    },
+
+    // ── THREATENING (6) ──
+
+    military_occupation_territory: {
+        key: 'military_occupation_territory',
+        name: 'Military Occupation of Territory',
+        category: 'threatening',
+        role: 'minister_of_defense',
+        ap_cost: 4,
+        favor_delta: 3,
+        tension_delta: 4,
+        modifiers_removed: [],
+        modifiers_added: ['military_occupation'],
+        treasury_cost: 0,
+        description: 'Send the army. Occupy the territory with military force. 60% triggers Border Incursion.',
+        relations_delta: -8,
+        stat_effects_acting: [{ stat_key: 'military_readiness', delta: 0.2, duration: 30 }],
+        stat_effects_opponent: [{ stat_key: 'stability', delta: -0.3, duration: 30 }],
+        special: 'incident_trigger_60',
+        issue_type: 'territorial_ownership',
+    },
+
+    forced_population_transfer_action: {
+        key: 'forced_population_transfer_action',
+        name: 'Forced Population Transfer',
+        category: 'threatening',
+        role: 'head_of_government',
+        ap_cost: 3,
+        favor_delta: 2,
+        tension_delta: 4,
+        modifiers_removed: [],
+        modifiers_added: ['forced_population_transfer'],
+        treasury_cost: 0,
+        description: 'Forcibly relocate the other nation\'s ethnic community from the territory. Ethnic cleansing by another name.',
+        relations_delta: -8,
+        stat_effects_acting: [
+            { stat_key: 'international_reputation', delta: -2 },
+            { stat_key: 'freedom_index', delta: -0.3, duration: 30 },
+        ],
+        issue_type: 'territorial_ownership',
+    },
+
+    resource_extraction_without_agreement: {
+        key: 'resource_extraction_without_agreement',
+        name: 'Resource Extraction Without Agreement',
+        category: 'threatening',
+        role: 'minister_of_trade',
+        ap_cost: 2,
+        favor_delta: 1,
+        tension_delta: 2,
+        modifiers_removed: [],
+        modifiers_added: ['resource_extraction_underway', 'resource_exploitation_conflict'],
+        treasury_cost: 0,
+        description: 'Begin extracting resources without agreement. You profit. They watch.',
+        relations_delta: -3,
+        stat_effects_acting: [{ stat_key: 'gdp_growth', delta: 0.2, duration: 25 }],
+        special: 'requires_modifier',
+        requires_modifier: 'resource_potential',
+        issue_type: 'territorial_ownership',
+    },
+
+    military_exercise_territory: {
+        key: 'military_exercise_territory',
+        name: 'Military Exercise in Territory',
+        category: 'threatening',
+        role: 'minister_of_defense',
+        ap_cost: 2,
+        favor_delta: 2,
+        tension_delta: 3,
+        modifiers_removed: [],
+        modifiers_added: ['military_exercises_conducted'],
+        treasury_cost: 0,
+        description: 'Conduct live-fire military exercises in the territory. Tanks, artillery, air assets. Intimidation campaign.',
+        relations_delta: -5,
+        stat_effects_acting: [{ stat_key: 'military_readiness', delta: 0.1, duration: 10 }],
+        stat_effects_opponent: [{ stat_key: 'stability', delta: -0.2, duration: 10 }],
+        issue_type: 'territorial_ownership',
+    },
+
+    expel_other_nations_citizens: {
+        key: 'expel_other_nations_citizens',
+        name: 'Expel Other Nation\'s Citizens',
+        category: 'threatening',
+        role: 'head_of_government',
+        ap_cost: 2,
+        favor_delta: 1,
+        tension_delta: 3,
+        modifiers_removed: [],
+        modifiers_added: ['citizen_expulsion', 'diaspora_mobilization'],
+        treasury_cost: 0,
+        description: 'Order all citizens of the other nation to leave the territory. 30-day deadline.',
+        relations_delta: -5,
+        stat_effects_acting: [{ stat_key: 'international_reputation', delta: -0.15, duration: 15 }],
+        modifier_target_map: { citizen_expulsion: 'opponent', diaspora_mobilization: 'opponent' },
+        issue_type: 'territorial_ownership',
+    },
+
+    declare_sovereignty: {
+        key: 'declare_sovereignty',
+        name: 'Declare Sovereignty',
+        category: 'threatening',
+        role: 'head_of_government',
+        ap_cost: 2,
+        favor_delta: 2,
+        tension_delta: 3,
+        modifiers_removed: [],
+        modifiers_added: ['sovereignty_declared'],
+        treasury_cost: 0,
+        description: 'Formal declaration that the territory is sovereign national territory. Political point of no return.',
+        relations_delta: -5,
+        stat_effects_acting: [{ stat_key: 'international_reputation', delta: -0.1, duration: 20 }],
+        stat_effects_opponent: [{ stat_key: 'stability', delta: -0.1, duration: 20 }],
+        special: 'sovereignty_nationalism_30', // 30% chance of also spawning nationalist_territorial_movement
+        issue_type: 'territorial_ownership',
+    },
 };
 
 // ==================== ISSUE TYPE DEFINITIONS ====================
@@ -600,6 +1183,26 @@ const ISSUE_TYPES = {
             'no_defined_quotas',
             'no_joint_enforcement',
             'no_dispute_resolution_mechanism',
+        ],
+    },
+
+    territorial_ownership: {
+        key: 'territorial_ownership',
+        name: 'Territorial Ownership Dispute',
+        required_border: null, // bordering or nearby (distance 0-20), checked at spawn
+        required_proximity: 20,
+        description: 'A specific named territory is claimed by both nations based on historical, ethnic, or treaty grounds. One nation administers it. The other wants it.',
+        category: 'Military',
+        incident_type: 'border_military_incursion', // 66% — or fishing_dispute at 33% if maritime
+        incident_type_alt: 'fishing_dispute',
+        incident_type_alt_weight: 0.33,
+        has_administering_nation: true,
+        starter_modifiers: [
+            'competing_sovereignty_claims',
+            'no_international_adjudication',
+            'domestic_political_significance',
+            'resource_potential',
+            'historical_grievance_attached',
         ],
     },
 };
@@ -1265,6 +1868,12 @@ export async function processIssueTick(supabase, nationList, currentTick) {
  * Check conditions for auto-spawning competitive modifiers.
  */
 async function checkAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, nationB, currentTick, results) {
+    // Dispatch to issue-type-specific auto-spawn logic
+    if (issue.issue_type === 'territorial_ownership') {
+        return checkTerritorialAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, nationB, currentTick, results);
+    }
+
+    // ── Maritime Fishing Rights auto-spawns ──
 
     // #6 Overfishing — 10 ticks with no diplomatic action
     if (!activeKeys.has('overfishing') && !wasResolved(modifiers, 'overfishing')) {
@@ -1391,6 +2000,157 @@ async function checkAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, 
 }
 
 /**
+ * Territorial Ownership Dispute — auto-spawn competitive modifiers and auto-removals.
+ */
+async function checkTerritorialAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, nationB, currentTick, results) {
+
+    // #9 Diaspora Mobilization — favor reaches ±3 against non-administering
+    if (!activeKeys.has('diaspora_mobilization') && !wasResolved(modifiers, 'diaspora_mobilization')) {
+        if (Math.abs(issue.favor) >= 3) {
+            await spawnModifier(supabase, issue, 'diaspora_mobilization', 'non_administering', currentTick,
+                'auto:favor_threshold_3', results);
+        }
+    }
+
+    // #10 International Legal Precedent — commission_legal_claim used + higher int'l rep
+    // (spawned by action, but auto-spawns if submit_to_international_court is pending)
+    if (!activeKeys.has('international_legal_precedent') && !wasResolved(modifiers, 'international_legal_precedent')) {
+        const { data: courtPending, error: courtErr } = await supabase
+            .from('bilateral_issue_actions_taken')
+            .select('id')
+            .eq('issue_id', issue.id)
+            .eq('action_key', 'submit_to_international_court')
+            .eq('status', 'submitted')
+            .limit(1);
+        if (courtErr) console.error('[Issues] Court pending query failed:', courtErr.message);
+        if (courtPending && courtPending.length > 0) {
+            // Determine legally weaker nation by international_reputation
+            const repA = Number(nationA.international_reputation ?? 50);
+            const repB = Number(nationB.international_reputation ?? 50);
+            const weakerSide = repA < repB ? 'nation_a' : repA > repB ? 'nation_b' : null;
+            if (weakerSide) {
+                await spawnModifier(supabase, issue, 'international_legal_precedent', weakerSide, currentTick,
+                    'auto:court_submission_pending', results);
+            }
+        }
+    }
+
+    // #12 Territory as Election Issue — election within 6 ticks
+    if (!activeKeys.has('territory_election_issue') && !wasResolved(modifiers, 'territory_election_issue')) {
+        const { data: upcomingElections } = await supabase
+            .from('elections')
+            .select('id')
+            .in('nation_id', [issue.nation_a_id, issue.nation_b_id])
+            .eq('status', 'scheduled')
+            .lte('election_tick', currentTick + 6)
+            .gte('election_tick', currentTick)
+            .limit(1);
+        if (upcomingElections && upcomingElections.length > 0) {
+            await spawnModifier(supabase, issue, 'territory_election_issue', 'both', currentTick,
+                'auto:election_within_6_ticks', results);
+        }
+    }
+
+    // #7 Competing Development Projects — both nations used build/establish/economic_development
+    if (!activeKeys.has('competing_development_projects') && !wasResolved(modifiers, 'competing_development_projects')) {
+        const buildActions = ['build_infrastructure_territory', 'economic_development_program', 'establish_administrative_presence'];
+        const { data: aBuild } = await supabase
+            .from('bilateral_issue_actions_taken')
+            .select('id')
+            .eq('issue_id', issue.id)
+            .eq('acting_nation_id', issue.nation_a_id)
+            .in('action_key', buildActions)
+            .eq('status', 'executed')
+            .limit(1);
+        const { data: bBuild } = await supabase
+            .from('bilateral_issue_actions_taken')
+            .select('id')
+            .eq('issue_id', issue.id)
+            .eq('acting_nation_id', issue.nation_b_id)
+            .in('action_key', buildActions)
+            .eq('status', 'executed')
+            .limit(1);
+        if (aBuild?.length > 0 && bBuild?.length > 0) {
+            await spawnModifier(supabase, issue, 'competing_development_projects', 'both', currentTick,
+                'auto:both_nations_invested', results);
+        }
+    }
+
+    // #11 Cultural Erasure Accusations — administering used maps + settlers + expel/transfer
+    if (!activeKeys.has('cultural_erasure_accusations') && !wasResolved(modifiers, 'cultural_erasure_accusations')) {
+        const adminId = issue.administering_nation_id;
+        if (adminId) {
+            const erasureActions = ['name_territory_on_maps', 'settle_citizens_territory'];
+            const escalationActions = ['expel_other_nations_citizens', 'forced_population_transfer_action'];
+            const { data: adminActions } = await supabase
+                .from('bilateral_issue_actions_taken')
+                .select('action_key')
+                .eq('issue_id', issue.id)
+                .eq('acting_nation_id', adminId)
+                .eq('status', 'executed');
+            const usedKeys = new Set((adminActions || []).map(a => a.action_key));
+            const hasAll = erasureActions.every(k => usedKeys.has(k)) &&
+                           escalationActions.some(k => usedKeys.has(k));
+            if (hasAll) {
+                await spawnModifier(supabase, issue, 'cultural_erasure_accusations', 'administering', currentTick,
+                    'auto:cultural_erasure_combo', results);
+            }
+        }
+    }
+
+    // #20 Nationalist Territorial Movement — tension Critical, or sovereignty_declared 5+ ticks
+    if (!activeKeys.has('nationalist_territorial_movement') && !wasResolved(modifiers, 'nationalist_territorial_movement')) {
+        let shouldSpawn = false;
+        if (issue.tension >= 9) {
+            shouldSpawn = true;
+        } else if (activeKeys.has('sovereignty_declared')) {
+            const sovMod = modifiers.find(m => m.modifier_key === 'sovereignty_declared' && m.is_active);
+            if (sovMod && (currentTick - sovMod.created_tick) >= 5) {
+                shouldSpawn = true;
+            }
+        } else if (activeKeys.has('forced_population_transfer')) {
+            shouldSpawn = true;
+        }
+        if (shouldSpawn) {
+            await spawnModifier(supabase, issue, 'nationalist_territorial_movement', 'both', currentTick,
+                'auto:escalation_conditions', results);
+        }
+    }
+
+    // ── Auto-REMOVALS ──
+
+    // #9 Diaspora Mobilization removed when favor returns to ±1 or below
+    if (activeKeys.has('diaspora_mobilization') && Math.abs(issue.favor) <= 1) {
+        const mod = modifiers.find(m => m.modifier_key === 'diaspora_mobilization' && m.is_active);
+        if (mod) {
+            await supabase.from('bilateral_issue_modifiers')
+                .update({ is_active: false, resolved_by: 'auto:favor_normalized', resolved_tick: currentTick })
+                .eq('id', mod.id);
+            mod.is_active = false;
+            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'diaspora_mobilization' });
+            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
+                'Diaspora mobilization has subsided as the dispute became more balanced.',
+                { modifier_key: 'diaspora_mobilization', reason: 'favor_normalized' });
+        }
+    }
+
+    // #20 Nationalist Territorial Movement removed when tension drops below High
+    if (activeKeys.has('nationalist_territorial_movement') && issue.tension < 6) {
+        const mod = modifiers.find(m => m.modifier_key === 'nationalist_territorial_movement' && m.is_active);
+        if (mod) {
+            await supabase.from('bilateral_issue_modifiers')
+                .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
+                .eq('id', mod.id);
+            mod.is_active = false;
+            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'nationalist_territorial_movement' });
+            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
+                'Nationalist territorial movement has subsided as tensions eased.',
+                { modifier_key: 'nationalist_territorial_movement', reason: 'tension_dropped' });
+        }
+    }
+}
+
+/**
  * Check if a modifier was previously resolved (prevent re-spawning).
  */
 function wasResolved(modifiers, key) {
@@ -1457,7 +2217,11 @@ async function spawnIncidentFromIssue(supabase, issue, nationA, nationB, leverag
         return null;
     }
 
-    const incidentType = issueType.incident_type; // 'fishing_dispute'
+    // Select incident type — some issues have weighted alternatives
+    let incidentType = issueType.incident_type;
+    if (issueType.incident_type_alt && Math.random() < (issueType.incident_type_alt_weight || 0.33)) {
+        incidentType = issueType.incident_type_alt;
+    }
 
     // Check caps — same as processIncidentTriggers
     const { count: globalActive } = await supabase
@@ -1646,6 +2410,14 @@ function resolveTargets(appliesTo, issue, nationA, nationB) {
             if (side === 'nation_b') return [nationA];
             return [];
         }
+        case 'administering': {
+            if (!issue.administering_nation_id) return [];
+            return [issue.administering_nation_id === issue.nation_a_id ? nationA : nationB];
+        }
+        case 'non_administering': {
+            if (!issue.administering_nation_id) return [];
+            return [issue.administering_nation_id === issue.nation_a_id ? nationB : nationA];
+        }
         default: return [];
     }
 }
@@ -1729,18 +2501,32 @@ export async function executeIssueAction(supabase, params) {
         return { success: false, error: 'Only one action per tick per nation.' };
     }
 
-    // Calculate AP cost (check for diplomatic friction modifier — +1 AP on diplomatic actions)
+    // Calculate AP cost (check for diplomatic friction / territory election issue — +1 AP on diplomatic actions)
     let apCost = action.ap_cost;
     if (action.category === 'diplomatic') {
         const { data: frictionMod } = await supabase
             .from('bilateral_issue_modifiers')
             .select('id')
             .eq('issue_id', issueId)
-            .eq('modifier_key', 'diplomatic_friction')
+            .in('modifier_key', ['diplomatic_friction', 'territory_election_issue'])
             .eq('is_active', true)
             .limit(1);
         if (frictionMod && frictionMod.length > 0) {
             apCost += 1;
+        }
+    }
+
+    // Check requires_modifier (e.g. resource_extraction requires resource_potential)
+    if (action.requires_modifier) {
+        const { data: reqMod } = await supabase
+            .from('bilateral_issue_modifiers')
+            .select('id')
+            .eq('issue_id', issueId)
+            .eq('modifier_key', action.requires_modifier)
+            .eq('is_active', true)
+            .limit(1);
+        if (!reqMod || reqMod.length === 0) {
+            return { success: false, error: `Requires active ${MODIFIERS[action.requires_modifier]?.name || action.requires_modifier} modifier.` };
         }
     }
 
@@ -1858,11 +2644,12 @@ export async function executeIssueAction(supabase, params) {
         const modConfig = MODIFIERS[modKey];
         if (!modConfig) continue;
 
-        // Determine who the modifier applies to
+        // Determine who the modifier applies to (per-modifier map overrides global target)
         let appliesTo = modConfig.applies_to || 'both';
-        if (action.modifier_target === 'acting') {
+        const perModTarget = action.modifier_target_map?.[modKey] || action.modifier_target;
+        if (perModTarget === 'acting') {
             appliesTo = isNationA ? 'nation_a' : 'nation_b';
-        } else if (action.modifier_target === 'opponent') {
+        } else if (perModTarget === 'opponent') {
             appliesTo = isNationA ? 'nation_b' : 'nation_a';
         }
 
@@ -1908,14 +2695,40 @@ export async function executeIssueAction(supabase, params) {
         }
     }
 
+    // Special: territorial legal claim — +1 if int'l rep > opponent, +0.5 if equal
+    if (action.special === 'reputation_check_territorial') {
+        const { data: actNation } = await supabase
+            .from('nations').select('international_reputation').eq('id', actingNationId).single();
+        const { data: oppNation } = await supabase
+            .from('nations').select('international_reputation').eq('id', opponentNationId).single();
+        const actRep = Number(actNation?.international_reputation ?? 50);
+        const oppRep = Number(oppNation?.international_reputation ?? 50);
+        if (actRep > oppRep) {
+            const favorShift = isNationA ? -1 : 1;
+            newFavor = Math.max(-5, Math.min(5, newFavor + favorShift));
+        } else if (actRep === oppRep) {
+            const favorShift = isNationA ? -0.5 : 0.5;
+            newFavor = Math.max(-5, Math.min(5, newFavor + favorShift));
+        }
+    }
+
     // Special: incident trigger rolls (threatening actions)
     let incidentTriggered = false;
-    if (action.special === 'incident_trigger_50' && Math.random() < 0.50) {
+    if (action.special === 'incident_trigger_60' && Math.random() < 0.60) {
+        incidentTriggered = true;
+        newTension = 10;
+    } else if (action.special === 'incident_trigger_50' && Math.random() < 0.50) {
         incidentTriggered = true;
         newTension = 10; // force escalation
     } else if (action.special === 'incident_trigger_25' && Math.random() < 0.25) {
         incidentTriggered = true;
         newTension = 10;
+    }
+
+    // Special: declare_sovereignty — 30% chance of spawning nationalist_territorial_movement
+    if (action.special === 'sovereignty_nationalism_30' && Math.random() < 0.30) {
+        await spawnModifier(supabase, issue, 'nationalist_territorial_movement', 'both', currentTick,
+            `action:${actionKey}:30pct_roll`, { modifiersSpawned: [] });
     }
 
     // Insert action record
