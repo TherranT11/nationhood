@@ -1162,6 +1162,7 @@ const ACTIONS = {
         relations_delta: -5,
         stat_effects_acting: [{ stat_key: 'international_reputation', delta: -0.1, duration: 20 }],
         stat_effects_opponent: [{ stat_key: 'stability', delta: -0.1, duration: 20 }],
+        special: 'sovereignty_nationalism_30', // 30% chance of also spawning nationalist_territorial_movement
         issue_type: 'territorial_ownership',
     },
 };
@@ -2014,13 +2015,14 @@ async function checkTerritorialAutoSpawns(supabase, issue, activeKeys, modifiers
     // #10 International Legal Precedent — commission_legal_claim used + higher int'l rep
     // (spawned by action, but auto-spawns if submit_to_international_court is pending)
     if (!activeKeys.has('international_legal_precedent') && !wasResolved(modifiers, 'international_legal_precedent')) {
-        const { data: courtPending } = await supabase
+        const { data: courtPending, error: courtErr } = await supabase
             .from('bilateral_issue_actions_taken')
             .select('id')
             .eq('issue_id', issue.id)
             .eq('action_key', 'submit_to_international_court')
             .eq('status', 'submitted')
             .limit(1);
+        if (courtErr) console.error('[Issues] Court pending query failed:', courtErr.message);
         if (courtPending && courtPending.length > 0) {
             // Determine legally weaker nation by international_reputation
             const repA = Number(nationA.international_reputation ?? 50);
@@ -2642,11 +2644,12 @@ export async function executeIssueAction(supabase, params) {
         const modConfig = MODIFIERS[modKey];
         if (!modConfig) continue;
 
-        // Determine who the modifier applies to
+        // Determine who the modifier applies to (per-modifier map overrides global target)
         let appliesTo = modConfig.applies_to || 'both';
-        if (action.modifier_target === 'acting') {
+        const perModTarget = action.modifier_target_map?.[modKey] || action.modifier_target;
+        if (perModTarget === 'acting') {
             appliesTo = isNationA ? 'nation_a' : 'nation_b';
-        } else if (action.modifier_target === 'opponent') {
+        } else if (perModTarget === 'opponent') {
             appliesTo = isNationA ? 'nation_b' : 'nation_a';
         }
 
@@ -2720,6 +2723,12 @@ export async function executeIssueAction(supabase, params) {
     } else if (action.special === 'incident_trigger_25' && Math.random() < 0.25) {
         incidentTriggered = true;
         newTension = 10;
+    }
+
+    // Special: declare_sovereignty — 30% chance of spawning nationalist_territorial_movement
+    if (action.special === 'sovereignty_nationalism_30' && Math.random() < 0.30) {
+        await spawnModifier(supabase, issue, 'nationalist_territorial_movement', 'both', currentTick,
+            `action:${actionKey}:30pct_roll`, { modifiersSpawned: [] });
     }
 
     // Insert action record

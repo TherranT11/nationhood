@@ -3635,12 +3635,40 @@ function renderIssueSpawner() {
     onIssueTypeChange();
 }
 
+// Modifier keys per issue type — used to filter the modifier checkboxes
+const ISSUE_MODIFIER_KEYS = {
+    maritime_fishing_rights: new Set([
+        'no_defined_maritime_territories', 'no_regulatory_framework', 'no_defined_quotas',
+        'no_joint_enforcement', 'no_dispute_resolution_mechanism', 'overfishing',
+        'fish_stock_depletion', 'foreign_vessels_in_waters', 'domestic_fleet_expansion',
+        'coastal_community_decline', 'illegal_fishing_surge', 'diplomatic_friction',
+        'international_attention', 'seasonal_fishing_conflict', 'environmental_damage',
+        'active_vessel_expulsion', 'naval_presence', 'seized_vessel_held',
+        'fishing_ban_in_effect', 'public_hostility',
+    ]),
+    territorial_ownership: new Set([
+        'competing_sovereignty_claims', 'no_international_adjudication',
+        'domestic_political_significance', 'resource_potential', 'historical_grievance_attached',
+        'settler_population_growing', 'competing_development_projects', 'resource_exploitation_conflict',
+        'diaspora_mobilization', 'international_legal_precedent', 'cultural_erasure_accusations',
+        'territory_election_issue', 'memorial_anniversary_tension',
+        'military_occupation', 'forced_population_transfer', 'resource_extraction_underway',
+        'military_exercises_conducted', 'citizen_expulsion', 'sovereignty_declared',
+        'nationalist_territorial_movement',
+    ]),
+};
+
 function renderModifierCheckboxes() {
     const container = document.getElementById('is-modifiers');
     if (!container) return;
 
+    // Filter modifiers to only show those relevant to the selected issue type
+    const typeKey = document.getElementById('is-issue-type')?.value || 'maritime_fishing_rights';
+    const allowedKeys = ISSUE_MODIFIER_KEYS[typeKey];
+
     const groups = { structural: [], competitive: [], escalation: [] };
     for (const [key, mod] of Object.entries(ISSUE_SPAWNER_MODIFIERS)) {
+        if (allowedKeys && !allowedKeys.has(key)) continue;
         groups[mod.category] = groups[mod.category] || [];
         groups[mod.category].push({ key, ...mod });
     }
