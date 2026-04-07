@@ -2747,15 +2747,181 @@ async function checkTerritorialAutoSpawns(supabase, issue, activeKeys, modifiers
 }
 
 /**
- * Chronic Trade Imbalance — auto-spawn competitive modifiers and auto-removals.
- * Phase 2 implementation — stub for now, auto-spawn logic added in Phase 2.
+ * Chronic Trade Imbalance — auto-spawn competitive/escalation modifiers and auto-removals.
+ * Mirrors checkTradeImbalanceModifierAutoSpawns in the tick processor.
  */
 async function checkTradeImbalanceAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, nationB, currentTick, results) {
-    // Phase 2: Factory closures (#6), surplus dependency (#7), protectionist movement (#8),
-    // dumping accusations (#9), supply chain dependency (#10), IP friction (#11),
-    // consumer dependency (#12), seasonal friction (#13 - periodic),
-    // retaliatory measures (#17), credit downgrade (#18), economic nationalism (#20)
-    // Auto-removals: protectionist movement when tension Low, economic nationalism when tension < High
+
+    // #6 Factory Closures — #3 active 15+ ticks without diplomatic/unilateral action
+    if (!activeKeys.has('factory_closures_deficit') && !wasResolved(modifiers, 'factory_closures_deficit')) {
+        if (activeKeys.has('domestic_industries_losing_share')) {
+            const mod3 = modifiers.find(m => m.modifier_key === 'domestic_industries_losing_share' && m.is_active);
+            if (mod3 && (currentTick - mod3.created_tick) >= 15) {
+                const { data: anyAction } = await supabase
+                    .from('bilateral_issue_actions_taken').select('id')
+                    .eq('issue_id', issue.id).in('action_category', ['diplomatic', 'unilateral'])
+                    .in('status', ['executed', 'matched', 'submitted']).limit(1);
+                if (!anyAction || anyAction.length === 0) {
+                    await spawnModifier(supabase, issue, 'factory_closures_deficit', 'non_administering', currentTick,
+                        'auto:industries_losing_share_15t_no_action', results);
+                }
+            }
+        }
+    }
+
+    // #8 Protectionist Movement — #6 active 5+ ticks OR tension High
+    if (!activeKeys.has('protectionist_movement') && !wasResolved(modifiers, 'protectionist_movement')) {
+        let shouldSpawn = false;
+        if (activeKeys.has('factory_closures_deficit')) {
+            const mod6 = modifiers.find(m => m.modifier_key === 'factory_closures_deficit' && m.is_active);
+            if (mod6 && (currentTick - mod6.created_tick) >= 5) shouldSpawn = true;
+        }
+        if (issue.tension >= 6) shouldSpawn = true;
+        if (shouldSpawn) {
+            await spawnModifier(supabase, issue, 'protectionist_movement', 'non_administering', currentTick,
+                'auto:factory_closures_or_tension_high', results);
+        }
+    }
+
+    // #9 Dumping Accusations — tension Moderate+ with #3 still active
+    if (!activeKeys.has('dumping_accusations') && !wasResolved(modifiers, 'dumping_accusations')) {
+        if (issue.tension >= 3 && activeKeys.has('domestic_industries_losing_share')) {
+            await spawnModifier(supabase, issue, 'dumping_accusations', 'administering', currentTick,
+                'auto:tension_moderate_with_industry_loss', results);
+        }
+    }
+
+    // #10 Supply Chain Dependency — issue active 15+ ticks with moderate+ tension
+    if (!activeKeys.has('supply_chain_dependency') && !wasResolved(modifiers, 'supply_chain_dependency')) {
+        const issueAge = currentTick - (issue.created_tick || 0);
+        if (issueAge >= 15 && issue.tension >= 5) {
+            await spawnModifier(supabase, issue, 'supply_chain_dependency', 'non_administering', currentTick,
+                'auto:deep_trade_integration_15t', results);
+        }
+    }
+
+    // #11 IP Friction — 30% chance every 15 ticks with corporate tax mismatch
+    if (!activeKeys.has('intellectual_property_friction') && !wasResolved(modifiers, 'intellectual_property_friction')) {
+        const issueAge = currentTick - (issue.created_tick || 0);
+        if (issueAge >= 15 && issueAge % 15 === 0 && Math.random() < 0.30) {
+            const surplusNation = issue.administering_nation_id === issue.nation_a_id ? nationA : nationB;
+            const deficitNation = issue.administering_nation_id === issue.nation_a_id ? nationB : nationA;
+            if (Number(surplusNation?.corporate_tax ?? 50) < Number(deficitNation?.corporate_tax ?? 50)) {
+                await spawnModifier(supabase, issue, 'intellectual_property_friction', 'both', currentTick,
+                    'auto:ip_friction_tax_mismatch', results);
+            }
+        }
+    }
+
+    // #12 Consumer Dependency — 20+ ticks unresolved
+    if (!activeKeys.has('consumer_import_dependency') && !wasResolved(modifiers, 'consumer_import_dependency')) {
+        if ((currentTick - (issue.created_tick || 0)) >= 20) {
+            await spawnModifier(supabase, issue, 'consumer_import_dependency', 'non_administering', currentTick,
+                'auto:unresolved_20_ticks', results);
+        }
+    }
+
+    // #7 Surplus Dependency — issue active 10+ ticks (latent)
+    if (!activeKeys.has('surplus_market_dependency') && !wasResolved(modifiers, 'surplus_market_dependency')) {
+        if ((currentTick - (issue.created_tick || 0)) >= 10) {
+            await spawnModifier(supabase, issue, 'surplus_market_dependency', 'administering', currentTick,
+                'auto:trade_dependency_10t', results);
+        }
+    }
+
+    // #17 Retaliatory Measures — both sides taken threatening actions
+    if (!activeKeys.has('retaliatory_measures_trade') && !wasResolved(modifiers, 'retaliatory_measures_trade')) {
+        const { data: threatA } = await supabase.from('bilateral_issue_actions_taken').select('id')
+            .eq('issue_id', issue.id).eq('acting_nation_id', issue.nation_a_id)
+            .eq('action_category', 'threatening').eq('status', 'executed').limit(1);
+        const { data: threatB } = await supabase.from('bilateral_issue_actions_taken').select('id')
+            .eq('issue_id', issue.id).eq('acting_nation_id', issue.nation_b_id)
+            .eq('action_category', 'threatening').eq('status', 'executed').limit(1);
+        if (threatA?.length > 0 && threatB?.length > 0) {
+            await spawnModifier(supabase, issue, 'retaliatory_measures_trade', 'both', currentTick,
+                'auto:both_sides_threatened', results);
+        }
+    }
+
+    // #18 Credit Downgrade — tension High + any active escalation modifier
+    if (!activeKeys.has('credit_downgrade_pressure') && !wasResolved(modifiers, 'credit_downgrade_pressure')) {
+        if (issue.tension >= 6) {
+            const hasEscalation = (modifiers || []).some(m =>
+                m.is_active && m.category === 'escalation' &&
+                m.modifier_key !== 'credit_downgrade_pressure' &&
+                m.modifier_key !== 'economic_nationalism_trade');
+            if (hasEscalation) {
+                await spawnModifier(supabase, issue, 'credit_downgrade_pressure', 'non_administering', currentTick,
+                    'auto:tension_high_escalation_active', results);
+            }
+        }
+    }
+
+    // #20 Economic Nationalism — tension Critical OR 2+ threatening by same nation
+    if (!activeKeys.has('economic_nationalism_trade') && !wasResolved(modifiers, 'economic_nationalism_trade')) {
+        let shouldSpawn = false;
+        if (issue.tension >= 9) {
+            shouldSpawn = true;
+        } else {
+            for (const nId of [issue.nation_a_id, issue.nation_b_id]) {
+                const { data: threats } = await supabase.from('bilateral_issue_actions_taken').select('id')
+                    .eq('issue_id', issue.id).eq('acting_nation_id', nId)
+                    .eq('action_category', 'threatening').eq('status', 'executed');
+                if (threats && threats.length >= 2) { shouldSpawn = true; break; }
+            }
+        }
+        if (shouldSpawn) {
+            await spawnModifier(supabase, issue, 'economic_nationalism_trade', 'both', currentTick,
+                'auto:tension_critical_or_double_threat', results);
+        }
+    }
+
+    // ── AUTO-REMOVALS ──
+
+    // #8 Protectionist Movement — removed when tension drops to Low
+    if (activeKeys.has('protectionist_movement') && issue.tension <= 2) {
+        const mod = modifiers.find(m => m.modifier_key === 'protectionist_movement' && m.is_active);
+        if (mod) {
+            await supabase.from('bilateral_issue_modifiers')
+                .update({ is_active: false, resolved_by: 'auto:tension_low', resolved_tick: currentTick })
+                .eq('id', mod.id);
+            mod.is_active = false;
+            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'protectionist_movement' });
+            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
+                'Protectionist political movement has subsided as tensions eased.',
+                { modifier_key: 'protectionist_movement', reason: 'tension_low' });
+        }
+    }
+
+    // #18 Credit Downgrade — removed when tension drops below Moderate
+    if (activeKeys.has('credit_downgrade_pressure') && issue.tension < 3) {
+        const mod = modifiers.find(m => m.modifier_key === 'credit_downgrade_pressure' && m.is_active);
+        if (mod) {
+            await supabase.from('bilateral_issue_modifiers')
+                .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
+                .eq('id', mod.id);
+            mod.is_active = false;
+            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'credit_downgrade_pressure' });
+            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
+                'Credit downgrade pressure has eased as trade tensions cooled.',
+                { modifier_key: 'credit_downgrade_pressure', reason: 'tension_dropped' });
+        }
+    }
+
+    // #20 Economic Nationalism — removed when tension drops below High
+    if (activeKeys.has('economic_nationalism_trade') && issue.tension < 6) {
+        const mod = modifiers.find(m => m.modifier_key === 'economic_nationalism_trade' && m.is_active);
+        if (mod) {
+            await supabase.from('bilateral_issue_modifiers')
+                .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
+                .eq('id', mod.id);
+            mod.is_active = false;
+            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'economic_nationalism_trade' });
+            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
+                'Economic nationalism surge has subsided as tensions decreased.',
+                { modifier_key: 'economic_nationalism_trade', reason: 'tension_dropped' });
+        }
+    }
 }
 
 /**
