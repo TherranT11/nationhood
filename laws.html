@@ -650,7 +650,9 @@ function filterAllLaws() {
         const fmtC = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + Math.round(m) + 'M';
         const costHTML = [];
         if (upCost > 0) costHTML.push(`Up: ${fmtC(upCost)}`);
+        else if (upCost < 0) costHTML.push(`<span style="color:var(--green)">Rev: ${fmtC(Math.abs(upCost))}</span>`);
         if (onCost > 0) costHTML.push(`On: ${fmtC(onCost)}/t`);
+        else if (onCost < 0) costHTML.push(`<span style="color:var(--green)">Relief: ${fmtC(Math.abs(onCost))}/t</span>`);
 
         return `<div class="law-card ${isActive ? 'law-active' : 'law-inactive'}">
             <div class="law-card-header">
@@ -2899,7 +2901,22 @@ function renderDraftArticles() {
         }).join(' ');
         const opposedBadge = art.isOpposed ? ' <span class="opposed-badge">⚠ Opposed</span>' : '';
         const borderColor = art.isOpposed ? 'border-left:3px solid var(--red);' : '';
-        return `<div class="draft-article-card" style="${borderColor}"><div class="draft-article-info"><div class="draft-article-num">Article ${art.articleNumber}${_costBadge}</div><div class="draft-article-name">${art.policy.policy_name} ${ideoHTML}${opposedBadge}</div><div class="draft-article-meta">${art.policy.description || ''}</div></div><button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button></div>`;
+        // Policy cost/revenue badge for draft articles
+        let _policyCostBadge = '';
+        if (art.policy) {
+            const _fmtC = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + Math.round(m) + 'M';
+            const _upRaw = art.policy.upfront_cost || 0;
+            const _onRaw = art.policy.ongoing_base_cost || art.policy.ongoing_cost_per_tick || 0;
+            const _upCost = scaleLawCost(_upRaw, art.policy.upfront_scaling_stat);
+            const _onCost = scaleLawCost(_onRaw, art.policy.ongoing_scaling_stat);
+            const _parts = [];
+            if (_upCost > 0) _parts.push(`Up: ${_fmtC(_upCost)}`);
+            else if (_upCost < 0) _parts.push(`<span style="color:var(--green)">Rev: ${_fmtC(Math.abs(_upCost))}</span>`);
+            if (_onCost > 0) _parts.push(`On: ${_fmtC(_onCost)}/t`);
+            else if (_onCost < 0) _parts.push(`<span style="color:var(--green)">Relief: ${_fmtC(Math.abs(_onCost))}/t</span>`);
+            if (_parts.length > 0) _policyCostBadge = ' <span style="font-size:0.7rem;color:var(--text-secondary);margin-left:6px;">' + _parts.join(' · ') + '</span>';
+        }
+        return `<div class="draft-article-card" style="${borderColor}"><div class="draft-article-info"><div class="draft-article-num">Article ${art.articleNumber}${_costBadge}${_policyCostBadge}</div><div class="draft-article-name">${art.policy.policy_name} ${ideoHTML}${opposedBadge}</div><div class="draft-article-meta">${art.policy.description || ''}</div></div><button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button></div>`;
     }).join('') + penaltySummary;
 }
 
