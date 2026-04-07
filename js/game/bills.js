@@ -4,7 +4,7 @@
  */
 
 import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPresidentialTermLimit } from './config.js';
-import { isPresidentialRepublic } from './government-types.js';
+import { hasElectedPresident, getCurrentConstitutionalSystem } from './government-types.js';
 import { DIPLOMACY_CONFIG } from './diplomacy-constants.js';
 import { IDEOLOGY_AXES, IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology, loadNationIdeologies } from './ideology.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility, round2 } from './momentum.js';
@@ -552,6 +552,21 @@ export function evaluateBillVote(bill, totalSeats, nationFlags = {}) {
     const quorumThreshold = Math.ceil(totalSeats * quorumPct);
     const judicialPoliticized = !!nationFlags.judicial_appointment_politicization;
 
+    // ── Entrenchment clause: elevates ordinary bills to supermajority thresholds ──
+    if (bill.entrenchment_tier && bill.bill_type !== 'foundational') {
+        let ratio;
+        if (bill.entrenchment_tier === 'protected') ratio = GAME_CONFIG.PROTECTED_THRESHOLD; // 60%
+        else ratio = GAME_CONFIG.SUPERMAJORITY_THRESHOLD; // 67% for entrenched & enshrined
+        const threshold = Math.ceil(totalSeats * ratio);
+        if (forSeats >= threshold) {
+            return { status: 'will_pass', reason: 'supermajority_reached', thresholdNeeded: threshold, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating, entrenchmentTier: bill.entrenchment_tier };
+        }
+        if (forSeats + undeclaredSeats < threshold) {
+            return { status: 'will_fail', reason: 'supermajority_impossible', thresholdNeeded: threshold, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating, entrenchmentTier: bill.entrenchment_tier };
+        }
+        return { status: 'pending', reason: 'supermajority_in_progress', thresholdNeeded: threshold, neededFor: threshold - forSeats, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating, entrenchmentTier: bill.entrenchment_tier };
+    }
+
     // ── Foundational / default_resolution / veto_override / impeachment_conviction: supermajority, no quorum ──
     if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
         // Determine supermajority ratio:
@@ -636,6 +651,13 @@ export function resolveBillVote(bill, totalSeats, nationFlags = {}) {
     const quorumPct = (nationFlags.legislative_quorum_override > 0) ? (nationFlags.legislative_quorum_override / 100) : GAME_CONFIG.QUORUM_THRESHOLD;
     const quorumThreshold = Math.ceil(totalSeats * quorumPct);
     const judicialPoliticized = !!nationFlags.judicial_appointment_politicization;
+
+    // Entrenchment clause: elevates ordinary bills to supermajority thresholds
+    if (bill.entrenchment_tier && bill.bill_type !== 'foundational') {
+        const ratio = bill.entrenchment_tier === 'protected' ? GAME_CONFIG.PROTECTED_THRESHOLD : GAME_CONFIG.SUPERMAJORITY_THRESHOLD;
+        const threshold = Math.ceil(totalSeats * ratio);
+        return forSeats >= threshold ? 'passed' : 'failed';
+    }
 
     // Foundational / default_resolution / veto_override / impeachment_conviction: supermajority
     if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
@@ -2004,7 +2026,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
 
         } else if (passed) {
             // Presidential systems: route regular/repeal bills to president's desk
-            if (isPresidentialRepublic(nation)) {
+            if (hasElectedPresident(nation)) {
                 await supabase.from('bills').update({
                     status: 'president_desk',
                     passed_tick: currentTick,
@@ -2370,7 +2392,7 @@ export async function resolveStuckFloorBills(supabase, nationId) {
 
         const passed = resolution === 'passed';
         if (passed) {
-            if (isPresidentialRepublic(nation)) {
+            if (hasElectedPresident(nation)) {
                 await supabase.from('bills').update({
                     status: 'president_desk',
                     passed_tick: currentTick,
@@ -2510,6 +2532,23 @@ export async function enactBill(supabase, bill, currentTick) {
             targetLawId: repealResult.targetLawId,
             policyName: repealResult.policyName
         });
+    } else if (bill.bill_type === 'entrenchment_upgrade' && bill.entrenchment_upgrade_law_id) {
+        // Entrenchment upgrade: update the target active_law's entrenchment tier
+        const targetTier = bill.entrenchment_tier;
+        const updateData = { entrenchment_tier: targetTier };
+        if (targetTier === 'entrenched') {
+            updateData.entrenchment_cooldown_until_tick = currentTick + GAME_CONFIG.ENTRENCHED_COOLDOWN_TICKS;
+        } else if (targetTier === 'enshrined') {
+            updateData.entrenchment_cooldown_until_tick = null;
+        }
+        const { error: upgradeErr } = await supabase.from('active_laws')
+            .update(updateData)
+            .eq('id', bill.entrenchment_upgrade_law_id);
+        if (upgradeErr) {
+            console.error('[enactBill] stage=entrenchment_upgrade result=failed', { ...logContext, error: upgradeErr.message });
+            return { success: false, error: `Entrenchment upgrade failed: ${upgradeErr.message}` };
+        }
+        console.log('[enactBill] stage=entrenchment_upgrade result=success', { ...logContext, targetTier, lawId: bill.entrenchment_upgrade_law_id });
     } else {
         const articles = (bill.bill_articles || []).filter(a => a.policy_id);
 
@@ -2579,14 +2618,22 @@ export async function enactBill(supabase, bill, currentTick) {
                 policyId: policy.id,
                 policyName: policy.policy_name
             });
-            const { error: activeLawError } = await supabase.from('active_laws')
-                .upsert({
+            const activeLawRow = {
                     nation_id: bill.nation_id,
                     policy_id: policy.id,
                     passed_tick: currentTick,
                     proposed_by: bill.proposed_by,
                     effects_applied_through_tick: currentTick - 1
-                }, { onConflict: 'nation_id,policy_id' });
+                };
+            // Stamp entrenchment from bill
+            if (bill.entrenchment_tier) {
+                activeLawRow.entrenchment_tier = bill.entrenchment_tier;
+                if (bill.entrenchment_tier === 'entrenched') {
+                    activeLawRow.entrenchment_cooldown_until_tick = currentTick + GAME_CONFIG.ENTRENCHED_COOLDOWN_TICKS;
+                }
+            }
+            const { error: activeLawError } = await supabase.from('active_laws')
+                .upsert(activeLawRow, { onConflict: 'nation_id,policy_id' });
             if (activeLawError) {
                 console.error('[enactBill] stage=upsert_active_law result=rls_blocked', {
                     ...logContext,
@@ -3250,7 +3297,310 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         return true;
     }
 
-    // ── Head of State Election Method subtype ──
+    // ── Constitutional Reform subtype (unified government-type switch) ──
+    if (bill.proposed_constitutional_reform) {
+        const targetSystem = bill.proposed_constitutional_reform;
+        const validSystems = ['parliamentary', 'constitutional_monarchy', 'presidential', 'semi_presidential'];
+        if (!validSystems.includes(targetSystem)) {
+            console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_constitutional_reform: ${targetSystem}. Marking as failed.`);
+            const { error: failErr } = await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
+            if (failErr) console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as failed:`, failErr.message);
+            return false;
+        }
+
+        // Mark bill as passed
+        const { error: billErr } = await supabase.from('bills').update({
+            status: 'passed',
+            passed_tick: currentTick
+        }).eq('id', bill.id);
+        if (billErr) {
+            console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
+            return false;
+        }
+
+        // Get current nation data
+        const { data: nation, error: nationFetchErr } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+        if (nationFetchErr || !nation) {
+            console.error(`[enactFoundationalBill] Failed to fetch nation ${bill.nation_id} for constitutional reform:`, nationFetchErr?.message);
+            return false;
+        }
+        const currentSystem = getCurrentConstitutionalSystem(nation);
+
+        if (currentSystem === targetSystem) {
+            console.warn(`[enactFoundationalBill] Nation ${bill.nation_id} is already ${targetSystem}. No-op.`);
+            return true;
+        }
+
+        // NOTE: Active floor bills (no-confidence, impeachment, etc.) are NOT cancelled during
+        // a constitutional transition. They resolve under the new government type's rules.
+        // This is a known edge case — same pattern as the legacy hos_election_method block.
+        console.log(`[enactFoundationalBill] Constitutional reform: ${currentSystem} → ${targetSystem} for nation ${bill.nation_id}`);
+
+        // Determine structural changes
+        const currentHasPresident = currentSystem === 'presidential' || currentSystem === 'semi_presidential';
+        const targetHasPresident = targetSystem === 'presidential' || targetSystem === 'semi_presidential';
+        const currentHasPM = currentSystem === 'parliamentary' || currentSystem === 'constitutional_monarchy' || currentSystem === 'semi_presidential';
+        const targetHasPM = targetSystem === 'parliamentary' || targetSystem === 'constitutional_monarchy' || targetSystem === 'semi_presidential';
+        const currentIsMonarchy = currentSystem === 'constitutional_monarchy';
+        const targetIsMonarchy = targetSystem === 'constitutional_monarchy';
+
+        // Build nation update
+        const nationUpdate = {
+            last_constitutional_reform_tick: currentTick
+        };
+
+        // Set target government_type and hos_election_method
+        switch (targetSystem) {
+            case 'parliamentary':
+                nationUpdate.government_type = 'Democracy';
+                nationUpdate.hos_election_method = 'appointed';
+                break;
+            case 'constitutional_monarchy':
+                nationUpdate.government_type = 'Democracy';
+                nationUpdate.hos_election_method = 'hereditary';
+                break;
+            case 'presidential':
+                nationUpdate.government_type = 'Presidential';
+                nationUpdate.hos_election_method = 'direct_vote';
+                break;
+            case 'semi_presidential':
+                nationUpdate.government_type = 'Semi-Presidential';
+                nationUpdate.hos_election_method = 'direct_vote';
+                break;
+        }
+
+        // ── Losing president (Presidential/Semi-Pres → Parliamentary/CM) ──
+        if (currentHasPresident && !targetHasPresident) {
+            const { error: presErr } = await supabase.from('presidents')
+                .update({ is_active: false })
+                .eq('nation_id', bill.nation_id)
+                .eq('is_active', true);
+            if (presErr) console.error('[enactFoundationalBill] Failed to deactivate president:', presErr.message);
+
+            const { error: delPresElErr } = await supabase.from('elections').delete()
+                .eq('nation_id', bill.nation_id)
+                .eq('status', 'scheduled')
+                .eq('election_type', 'presidential');
+            if (delPresElErr) console.error('[enactFoundationalBill] Failed to clear presidential elections:', delPresElErr.message);
+
+            const { error: candErr } = await supabase.from('pm_candidates').delete()
+                .eq('nation_id', bill.nation_id)
+                .eq('candidate_type', 'presidential');
+            if (candErr) console.error('[enactFoundationalBill] Failed to clean presidential candidates:', candErr.message);
+
+            // Close administration
+            const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+            const dateStr = shardData?.current_date || '';
+            const { error: adminErr } = await supabase.from('administrations')
+                .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'constitutional_transition' })
+                .eq('nation_id', bill.nation_id)
+                .is('ended_at_tick', null);
+            if (adminErr) console.error('[enactFoundationalBill] Failed to close administration:', adminErr.message);
+
+            // Fail bills on president's desk (orphaned without a president)
+            const { error: deskErr } = await supabase.from('bills')
+                .update({ status: 'failed', passed_tick: currentTick })
+                .eq('nation_id', bill.nation_id)
+                .eq('status', 'president_desk');
+            if (deskErr) console.error('[enactFoundationalBill] Failed to clear president desk bills:', deskErr.message);
+
+            // Fail pending impeachment bills and resolve proceedings
+            const { error: impeachBillErr } = await supabase.from('bills')
+                .update({ status: 'failed', passed_tick: currentTick })
+                .eq('nation_id', bill.nation_id)
+                .in('bill_type', ['impeachment_motion', 'impeachment_conviction'])
+                .in('status', ['committee', 'floor']);
+            if (impeachBillErr) console.error('[enactFoundationalBill] Failed to clear impeachment bills:', impeachBillErr.message);
+
+            const { error: impeachProcErr } = await supabase.from('impeachment_proceedings')
+                .update({ phase: 'resolved', resolved_tick: currentTick, outcome: 'dismissed_constitutional_transition' })
+                .eq('nation_id', bill.nation_id)
+                .neq('phase', 'resolved');
+            if (impeachProcErr) console.error('[enactFoundationalBill] Failed to resolve impeachment proceedings:', impeachProcErr.message);
+
+            console.log(`[enactFoundationalBill] President deactivated, presidential elections cleared`);
+        }
+
+        // ── Losing PM (Parliamentary/CM/Semi-Pres → Presidential) ──
+        if (currentHasPM && !targetHasPM) {
+            // Dissolve coalition (formed + caretaker)
+            const { error: coalErr } = await supabase.from('government_formations')
+                .update({ status: 'dissolved' })
+                .eq('nation_id', bill.nation_id)
+                .in('status', ['formed', 'caretaker']);
+            if (coalErr) console.error('[enactFoundationalBill] Failed to dissolve coalition:', coalErr.message);
+
+            // Also expire any in-progress formations
+            const { error: formingErr } = await supabase.from('government_formations')
+                .update({ status: 'expired' })
+                .eq('nation_id', bill.nation_id)
+                .eq('status', 'forming');
+            if (formingErr) console.error('[enactFoundationalBill] Failed to expire forming coalitions:', formingErr.message);
+
+            const { error: hogErr } = await supabase.from('head_of_government')
+                .update({ active: false })
+                .eq('nation_id', bill.nation_id)
+                .eq('active', true);
+            if (hogErr) console.error('[enactFoundationalBill] Failed to deactivate PM:', hogErr.message);
+
+            // Fail pending PM confirmation bills (orphaned without parliamentary system)
+            const { error: pmBillErr } = await supabase.from('bills')
+                .update({ status: 'failed', passed_tick: currentTick })
+                .eq('nation_id', bill.nation_id)
+                .eq('bill_type', 'minister_confirmation')
+                .eq('ministry_key', 'prime_minister')
+                .in('status', ['committee', 'floor']);
+            if (pmBillErr) console.error('[enactFoundationalBill] Failed to clear PM confirmation bills:', pmBillErr.message);
+
+            const { error: delParlElErr } = await supabase.from('elections').delete()
+                .eq('nation_id', bill.nation_id)
+                .eq('status', 'scheduled')
+                .eq('election_type', 'parliamentary');
+            if (delParlElErr) console.error('[enactFoundationalBill] Failed to clear parliamentary elections:', delParlElErr.message);
+
+            nationUpdate.gov_approval = 50;
+            nationUpdate.gov_approval_events = 0;
+
+            console.log(`[enactFoundationalBill] PM deactivated, coalition dissolved`);
+        }
+
+        // ── Gaining president (Parliamentary/CM → Presidential/Semi-Pres) ──
+        if (!currentHasPresident && targetHasPresident) {
+            // Check for existing scheduled presidential election before inserting
+            const { data: existingPresEl } = await supabase.from('elections')
+                .select('id')
+                .eq('nation_id', bill.nation_id)
+                .eq('status', 'scheduled')
+                .eq('election_type', 'presidential')
+                .limit(1);
+
+            if (!existingPresEl || existingPresEl.length === 0) {
+                const { error: presElErr } = await supabase.from('elections').insert({
+                    nation_id: bill.nation_id,
+                    election_tick: currentTick + 3,
+                    status: 'scheduled',
+                    election_type: 'presidential'
+                });
+                if (presElErr) console.error('[enactFoundationalBill] Failed to schedule presidential election:', presElErr.message);
+                else console.log(`[enactFoundationalBill] Presidential election scheduled at tick ${currentTick + 3}`);
+            } else {
+                console.log(`[enactFoundationalBill] Presidential election already scheduled, skipping`);
+            }
+
+            if (targetSystem === 'presidential') {
+                const parlTermTicks = Number(nation?.parliamentary_term_ticks) || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS;
+                const { error: midtermErr } = await supabase.from('elections').insert({
+                    nation_id: bill.nation_id,
+                    election_tick: currentTick + parlTermTicks,
+                    status: 'scheduled',
+                    election_type: 'parliamentary'
+                });
+                if (midtermErr) console.error('[enactFoundationalBill] Failed to schedule midterm:', midtermErr.message);
+            }
+        }
+
+        // ── Gaining PM (Presidential → Semi-Pres or Parliamentary/CM) ──
+        if (!currentHasPM && targetHasPM) {
+            nationUpdate.pm_nomination_attempts = 0;
+
+            const { data: existingParlEl } = await supabase.from('elections')
+                .select('id')
+                .eq('nation_id', bill.nation_id)
+                .eq('status', 'scheduled')
+                .eq('election_type', 'parliamentary')
+                .limit(1);
+
+            if (!existingParlEl || existingParlEl.length === 0) {
+                const { error: parlElErr } = await supabase.from('elections').insert({
+                    nation_id: bill.nation_id,
+                    election_tick: currentTick + 3,
+                    status: 'scheduled',
+                    election_type: 'parliamentary'
+                });
+                if (parlElErr) console.error('[enactFoundationalBill] Failed to schedule parliamentary election:', parlElErr.message);
+                else console.log(`[enactFoundationalBill] Parliamentary election scheduled at tick ${currentTick + 3}`);
+            }
+
+            console.log(`[enactFoundationalBill] PM formation triggered`);
+        }
+
+        // ── Gaining monarchy (→ Constitutional Monarchy) ──
+        if (!currentIsMonarchy && targetIsMonarchy) {
+            const { firstNames } = getNationNames(nation?.name);
+            const monarchFirstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+            const dynastyName = bill.proposed_dynasty_name || 'Royal House';
+            const dynastyLastName = dynastyName.split(/\s+/).pop() || 'Royal';
+            const monarchAge = 36 + Math.floor(Math.random() * 25);
+
+            nationUpdate.dynasty_name = dynastyName;
+            nationUpdate.dynasty_established_tick = currentTick;
+            if (bill.proposed_dynasty_crest_url) {
+                nationUpdate.dynasty_crest_url = bill.proposed_dynasty_crest_url;
+            }
+            nationUpdate.head_of_state_first_name = monarchFirstName;
+            nationUpdate.head_of_state_last_name = dynastyLastName;
+            nationUpdate.head_of_state_age = monarchAge;
+            nationUpdate.head_of_state_title = isFemaleName(monarchFirstName) ? 'Queen' : 'King';
+
+            console.log(`[enactFoundationalBill] Monarch generated: ${nationUpdate.head_of_state_title} ${monarchFirstName} ${dynastyLastName}, age ${monarchAge}`);
+        }
+
+        // ── Losing monarchy (Constitutional Monarchy → anything) ──
+        if (currentIsMonarchy && !targetIsMonarchy) {
+            nationUpdate.dynasty_name = null;
+            nationUpdate.dynasty_established_tick = null;
+            nationUpdate.dynasty_crest_url = null;
+            console.log(`[enactFoundationalBill] Monarchy abolished, dynasty cleared`);
+        }
+
+        // ── Stat effects based on target system ──
+        const stability = nation?.stability || 50;
+        const legitimacy = nation?.legitimacy || 50;
+        const politicalEngagement = nation?.political_engagement || 50;
+        const polarization = nation?.polarization || 0;
+        const civilUnrest = nation?.civil_unrest || 0;
+
+        switch (targetSystem) {
+            case 'parliamentary':
+                nationUpdate.stability = Math.min(100, stability + 3);
+                nationUpdate.legitimacy = Math.min(100, legitimacy + 2);
+                break;
+            case 'constitutional_monarchy':
+                nationUpdate.stability = Math.min(100, stability + 5);
+                nationUpdate.legitimacy = Math.max(0, legitimacy - 5);
+                break;
+            case 'presidential':
+                nationUpdate.legitimacy = Math.min(100, legitimacy + 3);
+                nationUpdate.political_engagement = Math.min(100, politicalEngagement + 3);
+                nationUpdate.polarization = Math.min(100, polarization + 2);
+                break;
+            case 'semi_presidential':
+                nationUpdate.legitimacy = Math.min(100, legitimacy + 2);
+                nationUpdate.political_engagement = Math.min(100, politicalEngagement + 2);
+                nationUpdate.polarization = Math.min(100, polarization + 3);
+                break;
+        }
+
+        // Major reform always causes some civil unrest
+        nationUpdate.civil_unrest = Math.min(100, civilUnrest + 5);
+
+        // Apply all nation updates
+        const { error: nationErr } = await supabase.from('nations').update(nationUpdate).eq('id', bill.nation_id);
+        if (nationErr) {
+            console.error(`[enactFoundationalBill] Failed to update nation for constitutional reform:`, nationErr.message);
+        }
+
+        const systemLabels = {
+            parliamentary: 'Parliamentary Democracy',
+            constitutional_monarchy: 'Constitutional Monarchy',
+            presidential: 'Presidential Republic',
+            semi_presidential: 'Semi-Presidential Republic'
+        };
+        console.log(`[enactFoundationalBill] Nation ${bill.nation_id} constitutional system changed to "${systemLabels[targetSystem]}".`);
+        return true;
+    }
+
+    // ── Head of State Election Method subtype (legacy — superseded by constitutional reform) ──
     if (bill.proposed_hos_election_method) {
         const newMethod = bill.proposed_hos_election_method;
         const validMethods = ['direct_vote', 'appointed', 'hereditary'];
@@ -3469,7 +3819,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
         const updates = { term_limits_abolished: true };
         // Also remove presidential term limit if applicable
-        if (isPresidentialRepublic(nation)) updates.presidential_term_limit = 0;
+        if (hasElectedPresident(nation)) updates.presidential_term_limit = 0;
 
         // One-time stat effects: legitimacy -5, stability +2
         updates.legitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
@@ -3585,7 +3935,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         }).eq('id', bill.nation_id);
         if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for judicial politicization:`, nationErr.message);
 
-        const isPres = isPresidentialRepublic(nation);
+        const isPres = hasElectedPresident(nation);
         const mechanicDesc = isPres
             ? 'Impeachment conviction now requires 75% (up from 67%). The courts no longer serve as a check on executive power.'
             : 'Votes of no confidence now require 60% (up from 50%+1). The ruling coalition is shielded from parliamentary removal.';

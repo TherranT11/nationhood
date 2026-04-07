@@ -771,17 +771,18 @@ async function init() {
     if (!user) { window.location.href = 'login.html'; return; }
     currentUser = user;
 
-    // Check if user already has a faction
-    const { data: faction } = await _supabase
-      .from('factions').select('id, nation_id, faction_type').eq('id', user.id).maybeSingle();
-    if (faction && faction.nation_id) {
-      window.location.href = 'dashboard.html';
-      return;
-    }
-
     // Corporation flow — redirect to corp setup if pending
     if (sessionStorage.getItem('pending_faction_type') === 'corp') {
       window.location.href = 'corp-setup.html';
+      return;
+    }
+
+    // Check if user already has a faction — but allow corp users founding a party to proceed
+    const pendingParty = sessionStorage.getItem('pending_faction_type') === 'party';
+    const { data: faction } = await _supabase
+      .from('factions').select('id, nation_id, faction_type').eq('id', user.id).maybeSingle();
+    if (faction && faction.nation_id && !(pendingParty && faction.faction_type === 'corporation')) {
+      window.location.href = 'dashboard.html';
       return;
     }
 
@@ -839,7 +840,7 @@ async function loadNations() {
 }
 
 function getGovTypeClass(govType) {
-  if (govType === 'Presidential') return 'gov-presidential';
+  if (govType === 'Presidential' || govType === 'Semi-Presidential') return 'gov-presidential';
   return 'gov-democracy';
 }
 
@@ -847,6 +848,7 @@ function getGovTypeLabel(govTypeOrNation) {
   const govType = typeof govTypeOrNation === 'string' ? govTypeOrNation : govTypeOrNation?.government_type;
   const hosMethod = typeof govTypeOrNation === 'object' ? govTypeOrNation?.hos_election_method : null;
   if (govType === 'Presidential') return 'PRESIDENTIAL';
+  if (govType === 'Semi-Presidential') return 'SEMI-PRESIDENTIAL';
   if (hosMethod === 'hereditary') return 'CONSTITUTIONAL MONARCHY';
   return 'PARLIAMENTARY';
 }

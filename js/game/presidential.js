@@ -4,7 +4,7 @@
  */
 
 import { GAME_CONFIG, getPresidentialTermLimit } from './config.js';
-import { isParliamentaryDemocracy, isPresidentialRepublic } from './government-types.js';
+import { hasElectedPresident, hasParliamentaryPM, isSemiPresidential, isPresidentialDomainMinistry } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { enactBill, failBill } from './bills.js';
 import { getWeightedIdeologies, weightedRandomPick, autoAppointPartyLeaderAsPM } from './political-actions.js';
@@ -122,7 +122,7 @@ async function computeDominantIdeologyAxis(supabase, factionId) {
 export async function nominateMinister(supabase, nationId, presidentFactionId, ministryKey, nominee) {
     // Validate: must be Presidential system
     const { data: nation } = await supabase.from('nations').select('name, government_type, total_seats').eq('id', nationId).single();
-    if (!isPresidentialRepublic(nation)) throw new Error('Minister nominations only apply to Presidential systems');
+    if (!hasElectedPresident(nation)) throw new Error('Minister nominations only apply to Presidential systems');
     const nationTotalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
 
     // Validate: caller must be president's party
@@ -130,7 +130,25 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
         .select('id, faction_id')
         .eq('nation_id', nationId).eq('is_active', true)
         .limit(1).maybeSingle();
-    if (!president || president.faction_id !== presidentFactionId) throw new Error('Only the President\'s party can nominate ministers');
+    // Semi-Presidential: PM nominates ministers (not president)
+    if (isSemiPresidential(nation)) {
+        const { data: hog } = await supabase.from('head_of_government')
+            .select('faction_id').eq('nation_id', nationId).eq('active', true).maybeSingle();
+        if (!hog || hog.faction_id !== presidentFactionId) {
+            throw new Error('Only the PM\'s party can nominate ministers in Semi-Presidential systems');
+        }
+        // Presidential-domain ministries must be from president's party
+        if (isPresidentialDomainMinistry(ministryKey)) {
+            if (nominee.partyId !== president.faction_id) {
+                throw new Error(`${ministryKey} minister must be from the President's party in Semi-Presidential systems`);
+            }
+        }
+    } else {
+        // Pure Presidential: caller must be president's party
+        if (!president || president.faction_id !== presidentFactionId) {
+            throw new Error('Only the President\'s party can nominate ministers');
+        }
+    }
 
     // Validate: no existing pending confirmation for this slot
     const { data: existingMinistry } = await supabase.from('ministries')
@@ -195,7 +213,8 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
 
     const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministerTitle}`;
     const majoritySeats = Math.ceil(nationTotalSeats * 0.5) + 1;
-    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${majoritySeats} of ${nationTotalSeats} seats) is required for confirmation.`;
+    const nominatorTitle = isSemiPresidential(nation) ? 'Prime Minister' : 'President';
+    const preamble = `The ${nominatorTitle} nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${majoritySeats} of ${nationTotalSeats} seats) is required for confirmation.`;
 
     const { data: bill, error: billErr } = await supabase.from('bills').insert({
         nation_id: nationId,
@@ -340,8 +359,8 @@ export async function vetoPresidentialBill(supabase, billId, presidentFactionId)
  * Called during advanceTick().
  */
 export async function processPresidentDesk(supabase, nation, currentTick) {
-    console.log(`[processPresidentDesk] nation=${nation.name} gov=${nation.government_type} isPres=${isPresidentialRepublic(nation)} tick=${currentTick}`);
-    if (!isPresidentialRepublic(nation)) return [];
+    console.log(`[processPresidentDesk] nation=${nation.name} gov=${nation.government_type} isPres=${hasElectedPresident(nation)} tick=${currentTick}`);
+    if (!hasElectedPresident(nation)) return [];
 
     const { data: expiredDesks, error: deskErr } = await supabase.from('bills')
         .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
@@ -391,7 +410,7 @@ export async function processPresidentDesk(supabase, nation, currentTick) {
  * and selected = true.
  */
 export async function triggerPresidentialCandidateSelection(supabase, nation, currentTick) {
-    if (!isPresidentialRepublic(nation)) return;
+    if (!hasElectedPresident(nation)) return;
 
     const leadTicks = GAME_CONFIG.PRESIDENTIAL_CANDIDATE_LEAD_TICKS;
 
@@ -514,7 +533,7 @@ export async function triggerPresidentialCandidateSelection(supabase, nation, cu
  * has expired and a new president was already elected (shouldn't happen, but guards).
  */
 export async function processPresidentialTermEnd(supabase, nation, currentTick) {
-    if (!isPresidentialRepublic(nation)) return;
+    if (!hasElectedPresident(nation)) return;
 
     const { data: president } = await supabase
         .from('presidents')
@@ -628,7 +647,7 @@ export async function autoSelectPresidentialCandidates(supabase, nation, current
  * formation, auto-appoint the PM party's leader.
  */
 export async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
-    if (!isParliamentaryDemocracy(nation)) return;
+    if (!hasParliamentaryPM(nation)) return;
 
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     if (!coalition || coalition.status !== 'formed') return;
@@ -705,6 +724,37 @@ export async function rejectOwnNomination(supabase, billId, nomineePartyId) {
 
     console.log(`Nominee self-rejection: party ${nomineePartyId} declined nomination for ${mKey} (bill ${billId}). -2 gov approval applied.`);
     return { rejected: true, ministryKey: mKey };
+}
+
+/**
+ * Semi-Presidential PM Nomination: President nominates a PM candidate for parliamentary confirmation.
+ * Reuses the minister confirmation pattern with ministry_key = 'prime_minister'.
+ * Max 3 attempts — after 3 rejections the tick processor auto-selects the largest party leader.
+ *
+ * @param {object} supabase
+ * @param {string} nationId
+ * @param {string} presidentFactionId - The president's faction
+ * @param {object} nominee - { partyId, partyName, firstName, lastName, age }
+ * @returns {{ bill, nominee, attemptsUsed }}
+ */
+export async function nominatePMCandidate(supabase, nationId, presidentFactionId, nominee) {
+    // Validate: must be Semi-Presidential system
+    const { data: nation } = await supabase.from('nations')
+        .select('name, government_type, total_seats, pm_nomination_attempts')
+        .eq('id', nationId).single();
+    if (!isSemiPresidential(nation)) throw new Error('PM nomination only applies to Semi-Presidential systems');
+
+    const attempts = nation.pm_nomination_attempts || 0;
+    if (attempts >= 3) throw new Error('Maximum PM nomination attempts reached — parliament will auto-select a PM');
+
+    // Verify no active PM exists
+    const { data: existingHOG } = await supabase.from('head_of_government')
+        .select('id').eq('nation_id', nationId).eq('active', true).maybeSingle();
+    if (existingHOG) throw new Error('A Prime Minister is already in office');
+
+    // Delegate to the existing minister nomination flow
+    const result = await nominateMinister(supabase, nationId, presidentFactionId, 'prime_minister', nominee);
+    return { ...result, attemptsUsed: attempts + 1 };
 }
 
 // Tick lock and tick mutation are intentionally Edge Function only.

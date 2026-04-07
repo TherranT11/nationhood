@@ -3,7 +3,7 @@
  * Extracted from game-common.js
  */
 
-import { isPresidentialRepublic } from './government-types.js';
+import { isPresidentialRepublic, hasElectedPresident } from './government-types.js';
 import { IDEOLOGY_OPPOSITES } from './ideology.js';
 
 // ==================== SEAT LOADING ====================

@@ -87,7 +87,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import { escapeHtml, tickToDate, fmtBudgetCurrency } from './js/utils.js';
 import { getPartyLogoHTML } from './js/party-icons.js';
-import { isGovernmentPresidential, getGovDisplayLabel } from './js/game/government-types.js';
+import { isGovernmentPresidential, hasElectedPresident, hasParliamentaryPM, getGovDisplayLabel } from './js/game/government-types.js';
 import { fetchActiveCoalition, detectHeadFaction, loadSeats } from './js/game/government-structure.js';
 import { GAME_CONFIG, deductAP } from './js/game/config.js';
 import { DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkCreditForTradeAgreement } from './js/game/diplomacy-constants.js';
@@ -486,12 +486,12 @@ const WN_IDEOLOGY_COLORS = {
 };
 
 function wnGetGovClass(nation) {
-    if (nation.government_type === 'Presidential') return 'wn-card__gov--presidential';
+    if (hasElectedPresident(nation)) return 'wn-card__gov--presidential';
     if (nation.hos_election_method === 'hereditary') return 'wn-card__gov--monarchy';
     return 'wn-card__gov--parliamentary';
 }
 function wnGetGovLabel(nation) {
-    if (nation.government_type === 'Presidential') return 'PRESIDENTIAL';
+    if (hasElectedPresident(nation)) return 'PRESIDENTIAL';
     if (nation.hos_election_method === 'hereditary') return 'CONSTITUTIONAL MONARCHY';
     return 'PARLIAMENTARY';
 }
@@ -631,7 +631,7 @@ async function renderWorldNations() {
             const govLabel = wnGetGovLabel(nation);
             const flagUrl = nation.flag_url || FLAG_URLS[nation.name] || '';
             const isMonarchy = nation.hos_election_method === 'hereditary';
-            const isPres = nation.government_type === 'Presidential';
+            const isPres = hasElectedPresident(nation);
 
             // Head of state
             const hosName = ((nation.head_of_state_first_name || '') + ' ' + (nation.head_of_state_last_name || '')).trim();
@@ -1542,8 +1542,8 @@ async function renderAgreementsTab() {
                     const theirBillStatus = theirBillId ? (billStatusMap[theirBillId] || 'unknown') : 'unknown';
 
                     // Build status lines for each nation
-                    const ourIsPresidential = (ourInfo.government_type === 'Presidential');
-                    const theirIsPresidential = (partnerInfo.government_type === 'Presidential');
+                    const ourIsPresidential = hasElectedPresident(ourInfo);
+                    const theirIsPresidential = hasElectedPresident(partnerInfo);
 
                     function ratifyStatusLine(billStatus, nationName, isPresidential, isOurs) {
                         const label = isOurs ? 'Your' : escapeHtml(nationName) + "'s";

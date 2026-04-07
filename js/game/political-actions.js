@@ -4,7 +4,7 @@
  */
 
 import { deductAP, GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './config.js';
-import { CANONICAL_GOVERNMENT_TYPES, isPresidentialRepublic } from './government-types.js';
+import { CANONICAL_GOVERNMENT_TYPES, hasParliamentaryPM } from './government-types.js';
 import { RAW_SCALING_DIVISORS, STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
 import { IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, loadFactionIdeology } from './ideology.js';
 import { MINISTER_APPROVAL_CONFIG, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, statDirectionSign, buildFundingPctMap, getInstFundingPct } from './stats.js';
@@ -1952,7 +1952,7 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
  * Returns { collapsed, penalized } or null if no government or not in danger zone.
  */
 export async function processGovernmentCollapseCheck(supabase, nation, currentTick) {
-    if (isPresidentialRepublic(nation)) return null;
+    if (!hasParliamentaryPM(nation)) return null;
     const govApproval = Number(nation.gov_approval ?? 50);
     if (govApproval > 5) return null;
 
@@ -3175,7 +3175,7 @@ export async function processPMTraitEffects(supabase, nation, currentTick) {
     // Future: implement mechanical effects from POSITIVE_TRAITS if desired.
     return;
 
-    if (isPresidentialRepublic(nation)) {
+    if (!hasParliamentaryPM(nation)) {
         // For presidential systems, use the active president's trait
         const { data: president } = await supabase
             .from('presidents')

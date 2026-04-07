@@ -132,6 +132,14 @@ const GAME_CONFIG = {
 
     // ── Head of State Election Method (Foundational) ──
     HOS_ELECTION_COOLDOWN_TICKS: 360,
+
+    // ── Constitutional Reform (Foundational) ──
+    CONSTITUTIONAL_REFORM_COOLDOWN_TICKS: 240,
+    CONSTITUTIONAL_REFORM_ELECTION_PROXIMITY_TICKS: 6,
+
+    // ── Entrenchment Clauses ──
+    PROTECTED_THRESHOLD: 0.60,          // 60% of seats (72 of 120)
+    ENTRENCHED_COOLDOWN_TICKS: 60,      // ticks before repeal can be filed
 };
 
 const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;
@@ -299,7 +307,8 @@ async function switchPartyEndorsement(supabase, endorsingPartyId, newEndorsedPar
  */
 const CANONICAL_GOVERNMENT_TYPES = Object.freeze({
     PARLIAMENTARY_DEMOCRACY: 'Democracy',
-    PRESIDENTIAL_REPUBLIC: 'Presidential'
+    PRESIDENTIAL_REPUBLIC: 'Presidential',
+    SEMI_PRESIDENTIAL: 'Semi-Presidential'
 });
 
 const GOVERNMENT_TYPE_ALIASES = Object.freeze({
@@ -310,7 +319,10 @@ const GOVERNMENT_TYPE_ALIASES = Object.freeze({
     'parliamentary democracy': CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
     presidential: CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC,
     'presidential republic': CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC,
-    'executive presidency': CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC
+    'executive presidency': CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC,
+    'semi-presidential': CANONICAL_GOVERNMENT_TYPES.SEMI_PRESIDENTIAL,
+    'semi presidential': CANONICAL_GOVERNMENT_TYPES.SEMI_PRESIDENTIAL,
+    semipresidential: CANONICAL_GOVERNMENT_TYPES.SEMI_PRESIDENTIAL
 });
 
 function getCanonicalGovernmentType(input, fallbackType = CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY) {
@@ -321,11 +333,16 @@ function getCanonicalGovernmentType(input, fallbackType = CANONICAL_GOVERNMENT_T
 
 function isParliamentaryDemocracy(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY; }
 function isPresidentialRepublic(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC; }
+function isSemiPresidential(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.SEMI_PRESIDENTIAL; }
 
-function isGovernmentPresidential(nation) { return isPresidentialRepublic(nation); }
+/** Capability helpers — semi-presidential has BOTH an elected president AND a parliamentary PM. */
+function hasElectedPresident(input) { return isPresidentialRepublic(input) || isSemiPresidential(input); }
+function hasParliamentaryPM(input) { return isParliamentaryDemocracy(input) || isSemiPresidential(input); }
+
+function isGovernmentPresidential(nation) { return hasElectedPresident(nation); }
 
 // Canonical government types used by nations and ministry event templates.
-const canonicalNationGovTypes = ['Parliamentary Republic', 'Presidential'];
+const canonicalNationGovTypes = ['Parliamentary Republic', 'Presidential', 'Semi-Presidential'];
 
 // Temporary aliases to support migration from legacy gov-type strings.
 // TODO(next migration stub): remove aliases and require strict canonical-only values.
@@ -346,10 +363,35 @@ function canonicalizeNationGovType(govType) {
  * @returns {string} e.g. "Parliamentary Democracy", "Constitutional Monarchy", "Presidential Republic"
  */
 function getGovDisplayLabel(nation) {
+    if (isSemiPresidential(nation)) return 'Semi-Presidential Republic';
     if (isPresidentialRepublic(nation)) return 'Presidential Republic';
     if (nation?.hos_election_method === 'hereditary') return 'Constitutional Monarchy';
     return 'Parliamentary Democracy';
 }
+
+const CONSTITUTIONAL_SYSTEMS = {
+    PARLIAMENTARY: 'parliamentary',
+    CONSTITUTIONAL_MONARCHY: 'constitutional_monarchy',
+    PRESIDENTIAL: 'presidential',
+    SEMI_PRESIDENTIAL: 'semi_presidential'
+};
+function getCurrentConstitutionalSystem(nation) {
+    if (isSemiPresidential(nation)) return CONSTITUTIONAL_SYSTEMS.SEMI_PRESIDENTIAL;
+    if (isPresidentialRepublic(nation)) return CONSTITUTIONAL_SYSTEMS.PRESIDENTIAL;
+    if (nation?.hos_election_method === 'hereditary') return CONSTITUTIONAL_SYSTEMS.CONSTITUTIONAL_MONARCHY;
+    return CONSTITUTIONAL_SYSTEMS.PARLIAMENTARY;
+}
+
+const MINISTRY_DOMAINS = {
+    foreign: 'presidential', defense: 'presidential', trade: 'presidential',
+    prime_minister: 'domestic', interior: 'domestic', finance: 'domestic',
+    education: 'domestic', healthcare: 'domestic', labor: 'domestic',
+    justice: 'domestic', energy: 'domestic', transportation: 'domestic',
+    security: 'domestic'
+};
+const PRESIDENTIAL_DOMAIN_MINISTRIES = ['foreign', 'defense', 'trade'];
+function isPresidentialDomainMinistry(key) { return PRESIDENTIAL_DOMAIN_MINISTRIES.includes(key); }
+function getMinistryDomain(key) { return MINISTRY_DOMAINS[key] || 'domestic'; }
 
 // ────────── trade-constants ──────────
 
@@ -2256,7 +2298,6 @@ const PROPOSAL_TYPES = {
         label: 'Embargo/Sanctions',
         description: 'Economic warfare — tanks target trade stats, also hurts your own.',
         stat_effects: [
-            { stat_key: 'trade_balance', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 },
             { stat_key: 'international_reputation', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
@@ -2275,8 +2316,7 @@ const PROPOSAL_TYPES = {
         label: 'Open Borders',
         description: 'Major immigration and security implications — open borders between nations.',
         stat_effects: [
-            { stat_key: 'immigration', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 },
-            { stat_key: 'trade_balance', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 0 }
+            { stat_key: 'immigration', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
     close_embassy: {
@@ -3782,7 +3822,7 @@ const STAT_DECAY_CONFIG = {
     political_violence:  { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
     happiness:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     foreign_investment:  { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    trade_balance:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    // trade_balance: computed by processTradeFlows from real export/import data, not decayed
     gdp_growth:          { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     immigration:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     illegal_immigration: { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
@@ -5282,6 +5322,9 @@ const CAUCUS_CONFIG = {
     REL_DECAY_TICK_WINDOW: 10,    // no positive bills in last N ticks
     // Relationship = 0 means permanently opposed on any touching bill
     REL_VOLATILE_THRESHOLD: 30,
+    // Defection: caucus members leave to join ideologically compatible opposition
+    DEFECTION_THRESHOLD: 20,       // relationship_score at or below this triggers defection
+    DEFECTION_SEATS_PER_TICK: 2,   // seats lost per tick while below threshold
 };
 
 /** Wing names per axis, keyed by dominant_axis */
@@ -5410,34 +5453,51 @@ async function assignCaucusFactions(supabase, party, nationId, totalFactionCount
 
     // Sort by spread descending, take the top axes we need
     axisSpreads.sort((a, b) => b.spread - a.spread);
-    // Each axis produces 2 factions (one per wing)
-    const axesNeeded = Math.ceil(totalFactionCount / 2);
-    const newAxesCount = axesNeeded - existingAxes.size;
-    const selectedAxes = axisSpreads.slice(0, Math.max(newAxesCount, 0));
 
-    // Create two caucus factions per selected axis
-    for (const axis of selectedAxes) {
+    // Determine how many axes and wings to create.
+    // Each axis can produce 1 wing (dominant side) or 2 wings (both sides).
+    // We prioritize diversity: spread across more axes first, then fill with second wings.
+    const totalNew = totalFactionCount - existingAxes.size * 2;
+    const availableAxes = axisSpreads.slice(0, Math.min(axisSpreads.length, totalNew));
+
+    // Phase 1: assign 1 wing per axis (dominant wing) across as many axes as we have slots
+    const assignments: Array<{ axis: typeof axisSpreads[0], wing: string }> = [];
+    for (const axis of availableAxes) {
+        if (assignments.length >= totalNew) break;
+        const dominantWing = axis.leftWeight >= axis.rightWeight ? 'left' : 'right';
+        assignments.push({ axis, wing: dominantWing });
+    }
+
+    // Phase 2: if we still need more caucuses, go back and add the opposite wing
+    if (assignments.length < totalNew) {
+        for (const axis of availableAxes) {
+            if (assignments.length >= totalNew) break;
+            const existingWing = assignments.find(a => a.axis.axisKey === axis.axisKey)?.wing;
+            if (!existingWing) continue;
+            const oppositeWing = existingWing === 'left' ? 'right' : 'left';
+            assignments.push({ axis, wing: oppositeWing });
+        }
+    }
+
+    // Create caucus factions from assignments
+    for (const { axis, wing } of assignments) {
         const wingNames = CAUCUS_WING_NAMES[axis.axisKey];
         if (!wingNames) continue;
 
         const totalWingWeight = axis.leftWeight + axis.rightWeight || 1;
+        const wingWeight = wing === 'left' ? axis.leftWeight : axis.rightWeight;
+        const seatShare = Math.max(0.12, Math.min(0.40, wingWeight / totalWingWeight * 0.50));
 
-        for (const wing of ['left', 'right']) {
-            const wingWeight = wing === 'left' ? axis.leftWeight : axis.rightWeight;
-            // Seat share: proportional to wing weight, minimum 0.12 (~10-15% of party seats)
-            const seatShare = Math.max(0.12, Math.min(0.40, wingWeight / totalWingWeight * 0.50));
-
-            await supabase.from('caucus_factions').insert({
-                party_id: party.id,
-                nation_id: nationId,
-                name: wingNames[wing],
-                dominant_axis: axis.axisKey,
-                wing_end: wing,
-                seat_share: Math.round(seatShare * 1000) / 1000,
-                relationship_score: CAUCUS_CONFIG.DEFAULT_RELATIONSHIP,
-                is_active: true,
-            });
-        }
+        await supabase.from('caucus_factions').insert({
+            party_id: party.id,
+            nation_id: nationId,
+            name: wingNames[wing],
+            dominant_axis: axis.axisKey,
+            wing_end: wing,
+            seat_share: Math.round(seatShare * 1000) / 1000,
+            relationship_score: CAUCUS_CONFIG.DEFAULT_RELATIONSHIP,
+            is_active: true,
+        });
     }
 }
 
@@ -5762,6 +5822,149 @@ async function decayCaucusRelationships(supabase, nationId, currentTick) {
                 .update({ relationship_score: newScore })
                 .eq('id', caucus.id);
         }
+    }
+}
+
+/**
+ * Process caucus defections for a nation. Called once per tick after decay.
+ * When relationship_score drops to DEFECTION_THRESHOLD or below,
+ * members defect (DEFECTION_SEATS_PER_TICK per tick) to the
+ * ideologically closest opposition party on the caucus's dominant axis.
+ */
+async function processCaucusDefections(supabase: any, nationId: string, currentTick: number) {
+    const { data: caucuses, error } = await supabase
+        .from('caucus_factions')
+        .select('id, party_id, name, dominant_axis, wing_end, seat_share, relationship_score')
+        .eq('nation_id', nationId)
+        .eq('is_active', true)
+        .lte('relationship_score', CAUCUS_CONFIG.DEFECTION_THRESHOLD);
+
+    if (error || !caucuses || caucuses.length === 0) return;
+
+    // Load all parties with seats and ideology
+    const { data: parties } = await supabase
+        .from('factions')
+        .select('id, faction_name, seats, faction_type')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+    if (!parties || parties.length === 0) return;
+
+    const partyMap: Record<string, any> = {};
+    for (const p of parties) partyMap[p.id] = p;
+
+    const partyIds = parties.map((p: any) => p.id);
+    const { data: ideologies } = await supabase
+        .from('faction_ideology')
+        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+        .in('faction_id', partyIds);
+
+    const ideoMap: Record<string, any> = {};
+    for (const ideo of (ideologies || [])) ideoMap[ideo.faction_id] = ideo;
+
+    const { data: nation } = await supabase.from('nations').select('name, total_seats').eq('id', nationId).single();
+
+    for (const caucus of caucuses) {
+        const sourceParty = partyMap[caucus.party_id];
+        if (!sourceParty || sourceParty.seats <= 0) continue;
+
+        const seatsToLose = Math.min(CAUCUS_CONFIG.DEFECTION_SEATS_PER_TICK, sourceParty.seats);
+        if (seatsToLose <= 0) continue;
+
+        // Find best ideological match on the caucus's axis among OTHER parties
+        const axisKey = caucus.dominant_axis;
+        const favorsHigh = caucus.wing_end === 'right';
+        let bestParty: any = null;
+        let bestScore = -Infinity;
+
+        for (const party of parties) {
+            if (party.id === caucus.party_id) continue;
+            const ideo = ideoMap[party.id];
+            if (!ideo) continue;
+
+            const axisValue = ideo[axisKey] ?? 50;
+            const score = favorsHigh ? axisValue : (100 - axisValue);
+            if (score > bestScore) {
+                bestScore = score;
+                bestParty = party;
+            }
+        }
+
+        // Remove seats from source
+        const { error: srcErr } = await supabase
+            .from('factions')
+            .update({ seats: sourceParty.seats - seatsToLose })
+            .eq('id', sourceParty.id);
+        if (srcErr) {
+            console.error(`[Caucus Defection] Failed to remove seats from ${sourceParty.faction_name}:`, srcErr.message);
+            continue;
+        }
+        sourceParty.seats -= seatsToLose;
+
+        let targetName = 'independents';
+        if (bestParty && bestScore > 40) {
+            const { error: tgtErr } = await supabase
+                .from('factions')
+                .update({ seats: bestParty.seats + seatsToLose })
+                .eq('id', bestParty.id);
+            if (tgtErr) {
+                console.error(`[Caucus Defection] Failed to add seats to ${bestParty.faction_name}:`, tgtErr.message);
+            } else {
+                bestParty.seats += seatsToLose;
+                targetName = bestParty.faction_name;
+            }
+        }
+
+        // Reduce caucus seat_share
+        const newSeatShare = Math.max(0, caucus.seat_share - (seatsToLose / (nation?.total_seats || 100)));
+        await supabase
+            .from('caucus_factions')
+            .update({ seat_share: Math.round(newSeatShare * 1000) / 1000 })
+            .eq('id', caucus.id);
+
+        const axisInfo = IDEOLOGY_AXES.find((a: any) => a.key === axisKey);
+        const wingLabel = caucus.wing_end === 'left' ? axisInfo?.leftLabel : axisInfo?.rightLabel;
+
+        console.log(`[Caucus Defection] ${seatsToLose} seat(s) defected from ${sourceParty.faction_name} (${caucus.name}) to ${targetName}`);
+
+        // Nation political event
+        try {
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: 'caucus_defection',
+                p_nation_id: nationId,
+                p_tick: currentTick,
+                p_placeholders: {
+                    caucus_name: caucus.name,
+                    source_party: sourceParty.faction_name,
+                    target_party: targetName,
+                    seats_lost: seatsToLose,
+                    wing: wingLabel || caucus.wing_end,
+                    relationship_score: caucus.relationship_score
+                }
+            });
+        } catch (e) { /* non-blocking */ }
+
+        // World event log
+        const desc = targetName === 'independents'
+            ? `${seatsToLose} member${seatsToLose !== 1 ? 's' : ''} of the ${caucus.name} wing defected from ${sourceParty.faction_name} in ${nation?.name || 'a nation'}, leaving parliament as independents.`
+            : `${seatsToLose} member${seatsToLose !== 1 ? 's' : ''} of the ${caucus.name} wing defected from ${sourceParty.faction_name} to ${targetName} in ${nation?.name || 'a nation'} over ideological disagreements.`;
+
+        try {
+            await supabase.from('event_log').insert({
+                nation_id: nationId,
+                event_name: 'Caucus Defection',
+                trigger_key: 'caucus_defection',
+                description_chosen: desc,
+                category: 'government',
+                effects_applied: {
+                    caucus: caucus.name,
+                    source: sourceParty.faction_name,
+                    target: targetName,
+                    seats: seatsToLose,
+                    relationship: caucus.relationship_score
+                },
+                fired_at_tick: currentTick
+            });
+        } catch (e) { /* non-blocking */ }
     }
 }
 
@@ -6304,7 +6507,7 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
 
     // Only legislative bills affect ideology
     const legislativeBills = bills.filter(b =>
-        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
+        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override', 'entrenchment_upgrade'].includes(b.bill_type)
     );
     if (legislativeBills.length === 0) return;
 
@@ -6555,7 +6758,7 @@ function getRequiredSeats(billType, votesAgainst) {
  * @param {object} [nationFlags] - Optional nation flags affecting thresholds
  * @param {boolean} [nationFlags.judicial_appointment_politicization] - If true, raises impeachment conviction to 75% and no confidence to 60%
  */
-function evaluateBillVote(bill, totalSeats, nationFlags = {}) {
+function evaluateBillVote(bill: any, totalSeats: number, nationFlags: any = {}) {
     const forSeats = bill.votes_for || 0;
     const againstSeats = bill.votes_against || 0;
     const abstainSeats = bill.votes_abstain || 0;
@@ -6565,6 +6768,21 @@ function evaluateBillVote(bill, totalSeats, nationFlags = {}) {
     const quorumPct = (nationFlags.legislative_quorum_override > 0) ? (nationFlags.legislative_quorum_override / 100) : GAME_CONFIG.QUORUM_THRESHOLD;
     const quorumThreshold = Math.ceil(totalSeats * quorumPct);
     const judicialPoliticized = !!nationFlags.judicial_appointment_politicization;
+
+    // ── Entrenchment clause: elevates ordinary bills to supermajority thresholds ──
+    if (bill.entrenchment_tier && bill.bill_type !== 'foundational') {
+        let ratio: number;
+        if (bill.entrenchment_tier === 'protected') ratio = GAME_CONFIG.PROTECTED_THRESHOLD; // 60%
+        else ratio = GAME_CONFIG.SUPERMAJORITY_THRESHOLD; // 67% for entrenched & enshrined
+        const threshold = Math.ceil(totalSeats * ratio);
+        if (forSeats >= threshold) {
+            return { status: 'will_pass', reason: 'supermajority_reached', thresholdNeeded: threshold, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating, entrenchmentTier: bill.entrenchment_tier };
+        }
+        if (forSeats + undeclaredSeats < threshold) {
+            return { status: 'will_fail', reason: 'supermajority_impossible', thresholdNeeded: threshold, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating, entrenchmentTier: bill.entrenchment_tier };
+        }
+        return { status: 'pending', reason: 'supermajority_in_progress', thresholdNeeded: threshold, neededFor: threshold - forSeats, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating, entrenchmentTier: bill.entrenchment_tier };
+    }
 
     // ── Foundational / default_resolution / veto_override / impeachment_conviction: supermajority, no quorum ──
     if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
@@ -6650,6 +6868,13 @@ function resolveBillVote(bill, totalSeats, nationFlags = {}) {
     const quorumPct = (nationFlags.legislative_quorum_override > 0) ? (nationFlags.legislative_quorum_override / 100) : GAME_CONFIG.QUORUM_THRESHOLD;
     const quorumThreshold = Math.ceil(totalSeats * quorumPct);
     const judicialPoliticized = !!nationFlags.judicial_appointment_politicization;
+
+    // Entrenchment clause: elevates ordinary bills to supermajority thresholds
+    if (bill.entrenchment_tier && bill.bill_type !== 'foundational') {
+        const ratio = bill.entrenchment_tier === 'protected' ? GAME_CONFIG.PROTECTED_THRESHOLD : GAME_CONFIG.SUPERMAJORITY_THRESHOLD;
+        const threshold = Math.ceil(totalSeats * ratio);
+        return forSeats >= threshold ? 'passed' : 'failed';
+    }
 
     // Foundational / default_resolution / veto_override / impeachment_conviction: supermajority
     if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
@@ -7206,6 +7431,69 @@ async function resolveExpiredVotes(supabase, nationId) {
                                 console.log(`[resolveExpiredVotes] Updated government_formations PM assignment to ${pm.party_id}`);
                             }
                         } catch (gfErr) { console.warn('[resolveExpiredVotes] Failed to update government_formations PM:', gfErr); }
+
+                        // Semi-Presidential: also install as Head of Government
+                        if (isSemiPresidential(nation)) {
+                            try {
+                                // Deactivate any current HOG
+                                await supabase.from('head_of_government')
+                                    .update({ active: false })
+                                    .eq('nation_id', bill.nation_id).eq('active', true);
+
+                                // Load faction data for HOG record
+                                const { data: pmFaction } = await supabase.from('factions')
+                                    .select('id, faction_name, leader_first_name, leader_last_name, leader_age, leader_ideology, leader_positive_traits')
+                                    .eq('id', pm.party_id).single();
+
+                                let pmIdeology = pmFaction?.leader_ideology
+                                    ? (IDEOLOGY_OPTIONS.find(o => o.tag === pmFaction.leader_ideology.toUpperCase()) || IDEOLOGY_OPTIONS[0])
+                                    : IDEOLOGY_OPTIONS[0];
+                                const pmTraitKey = (pmFaction?.leader_positive_traits?.length > 0)
+                                    ? pmFaction.leader_positive_traits[0] : null;
+
+                                await supabase.from('head_of_government').upsert({
+                                    nation_id: bill.nation_id,
+                                    faction_id: pm.party_id,
+                                    candidate_id: null,
+                                    first_name: pm.first_name,
+                                    last_name: pm.last_name,
+                                    age: pm.age || pmFaction?.leader_age || 50,
+                                    ideology: pmIdeology.tag,
+                                    trait_key: pmTraitKey,
+                                    appointed_tick: currentTick,
+                                    active: true
+                                }, { onConflict: 'nation_id' });
+
+                                // Update administration record
+                                const pmName = `${pm.first_name} ${pm.last_name}`;
+                                await supabase.from('administrations').update({
+                                    prime_minister: pmName,
+                                    updated_at: new Date().toISOString()
+                                }).eq('nation_id', bill.nation_id).is('ended_at_tick', null);
+
+                                // Reset nomination attempts and clear vonc penalty window on successful confirmation
+                                await supabase.from('nations').update({ pm_nomination_attempts: 0, last_vonc_tick: null }).eq('id', bill.nation_id);
+
+                                // Fire PM appointed event
+                                try {
+                                    await supabase.rpc('fire_system_event', {
+                                        p_trigger_key: 'pm_appointed',
+                                        p_nation_id: bill.nation_id,
+                                        p_tick: currentTick,
+                                        p_placeholders: {
+                                            nation: nation?.name || '',
+                                            pm_name: pmName,
+                                            party: pmFaction?.faction_name || '',
+                                            trait: pmTraitKey || 'None'
+                                        }
+                                    });
+                                } catch (evtErr) { /* non-blocking */ }
+
+                                console.log(`[resolveExpiredVotes] Semi-Presidential PM confirmed: ${pmName} for nation ${bill.nation_id}`);
+                            } catch (hogErr) {
+                                console.error(`[resolveExpiredVotes] Failed to create HOG for confirmed PM:`, hogErr);
+                            }
+                        }
                     }
                 }
 
@@ -7220,6 +7508,33 @@ async function resolveExpiredVotes(supabase, nationId) {
                         confirmation_status: ministry.is_acting ? 'acting' : 'rejected',
                         pending_minister: null
                     }).eq('id', ministry.id);
+                }
+
+                // Semi-Presidential PM rejection penalties
+                if (mKey === 'prime_minister' && isSemiPresidential(nation)) {
+                    try {
+                        // -3 Government Approval
+                        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, -3, 'pm_nomination_rejected', currentTick);
+                        // -5 Momentum to nominating party
+                        const { data: nominatingFaction } = await supabase.from('factions')
+                            .select('id, momentum').eq('id', bill.proposed_by).single();
+                        if (nominatingFaction) {
+                            const newMomentum = Math.max(-100, (nominatingFaction.momentum || 0) - 5);
+                            await supabase.from('factions').update({ momentum: newMomentum }).eq('id', nominatingFaction.id);
+                        }
+                        // Increment pm_nomination_attempts
+                        await supabase.rpc('increment_column', {
+                            p_table: 'nations', p_column: 'pm_nomination_attempts',
+                            p_id: bill.nation_id, p_amount: 1
+                        }).then(null, async () => {
+                            // Fallback if RPC doesn't exist: manual increment
+                            const { data: nRow } = await supabase.from('nations').select('pm_nomination_attempts').eq('id', bill.nation_id).single();
+                            await supabase.from('nations').update({ pm_nomination_attempts: (nRow?.pm_nomination_attempts || 0) + 1 }).eq('id', bill.nation_id);
+                        });
+                        console.log(`[resolveExpiredVotes] Semi-Presidential PM nomination rejected for nation ${bill.nation_id}`);
+                    } catch (penErr) {
+                        console.error(`[resolveExpiredVotes] Failed to apply PM rejection penalties:`, penErr);
+                    }
                 }
 
                 await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
@@ -8018,7 +8333,7 @@ async function resolveExpiredVotes(supabase, nationId) {
 
         } else if (passed) {
             // Presidential systems: route regular/repeal bills to president's desk
-            if (isPresidentialRepublic(nation)) {
+            if (hasElectedPresident(nation)) {
                 await supabase.from('bills').update({
                     status: 'president_desk',
                     passed_tick: currentTick,
@@ -8384,7 +8699,7 @@ async function resolveStuckFloorBills(supabase, nationId) {
 
         const passed = resolution === 'passed';
         if (passed) {
-            if (isPresidentialRepublic(nation)) {
+            if (hasElectedPresident(nation)) {
                 await supabase.from('bills').update({
                     status: 'president_desk',
                     passed_tick: currentTick,
@@ -8524,6 +8839,23 @@ async function enactBill(supabase, bill, currentTick) {
             targetLawId: repealResult.targetLawId,
             policyName: repealResult.policyName
         });
+    } else if (bill.bill_type === 'entrenchment_upgrade' && bill.entrenchment_upgrade_law_id) {
+        // Entrenchment upgrade: update the target active_law's entrenchment tier
+        const targetTier = bill.entrenchment_tier;
+        const updateData: any = { entrenchment_tier: targetTier };
+        if (targetTier === 'entrenched') {
+            updateData.entrenchment_cooldown_until_tick = currentTick + GAME_CONFIG.ENTRENCHED_COOLDOWN_TICKS;
+        } else if (targetTier === 'enshrined') {
+            updateData.entrenchment_cooldown_until_tick = null;
+        }
+        const { error: upgradeErr } = await supabase.from('active_laws')
+            .update(updateData)
+            .eq('id', bill.entrenchment_upgrade_law_id);
+        if (upgradeErr) {
+            console.error('[enactBill] stage=entrenchment_upgrade result=failed', { ...logContext, error: upgradeErr.message });
+            return { success: false, error: `Entrenchment upgrade failed: ${upgradeErr.message}` };
+        }
+        console.log('[enactBill] stage=entrenchment_upgrade result=success', { ...logContext, targetTier, lawId: bill.entrenchment_upgrade_law_id });
     } else {
         const articles = (bill.bill_articles || []).filter(a => a.policy_id);
 
@@ -8593,14 +8925,22 @@ async function enactBill(supabase, bill, currentTick) {
                 policyId: policy.id,
                 policyName: policy.policy_name
             });
-            const { error: activeLawError } = await supabase.from('active_laws')
-                .upsert({
+            const activeLawRow: any = {
                     nation_id: bill.nation_id,
                     policy_id: policy.id,
                     passed_tick: currentTick,
                     proposed_by: bill.proposed_by,
                     effects_applied_through_tick: currentTick - 1
-                }, { onConflict: 'nation_id,policy_id' });
+                };
+            // Stamp entrenchment from bill
+            if (bill.entrenchment_tier) {
+                activeLawRow.entrenchment_tier = bill.entrenchment_tier;
+                if (bill.entrenchment_tier === 'entrenched') {
+                    activeLawRow.entrenchment_cooldown_until_tick = currentTick + GAME_CONFIG.ENTRENCHED_COOLDOWN_TICKS;
+                }
+            }
+            const { error: activeLawError } = await supabase.from('active_laws')
+                .upsert(activeLawRow, { onConflict: 'nation_id,policy_id' });
             if (activeLawError) {
                 console.error('[enactBill] stage=upsert_active_law result=rls_blocked', {
                     ...logContext,
@@ -9264,7 +9604,330 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
         return true;
     }
 
-    // ── Head of State Election Method subtype ──
+    // ── Constitutional Reform subtype (unified government-type switch) ──
+    if (bill.proposed_constitutional_reform) {
+        const targetSystem = bill.proposed_constitutional_reform;
+        const validSystems = ['parliamentary', 'constitutional_monarchy', 'presidential', 'semi_presidential'];
+        if (!validSystems.includes(targetSystem)) {
+            console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_constitutional_reform: ${targetSystem}. Marking as failed.`);
+            const { error: failMarkErr } = await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
+            if (failMarkErr) console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as failed:`, failMarkErr.message);
+            return false;
+        }
+
+        // Mark bill as passed
+        const { error: billErr } = await supabase.from('bills').update({
+            status: 'passed',
+            passed_tick: currentTick
+        }).eq('id', bill.id);
+        if (billErr) {
+            console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
+            return false;
+        }
+
+        // Get current nation data
+        const { data: nation, error: nationFetchErr } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+        if (nationFetchErr || !nation) {
+            console.error(`[enactFoundationalBill] Failed to fetch nation ${bill.nation_id} for constitutional reform:`, nationFetchErr?.message);
+            return false;
+        }
+        const currentSystem = getCurrentConstitutionalSystem(nation);
+
+        if (currentSystem === targetSystem) {
+            console.warn(`[enactFoundationalBill] Nation ${bill.nation_id} is already ${targetSystem}. No-op.`);
+            return true; // Bill passed but no structural change needed
+        }
+
+        // NOTE: Active floor bills (no-confidence, impeachment, etc.) are NOT cancelled during
+        // a constitutional transition. They will resolve under the new government type's rules.
+        // This is a known edge case — the same pattern applies to the legacy hos_election_method block.
+        // Foundational bills already require supermajority, and only one can be on the floor at a time,
+        // so overlap with other government-type-sensitive bills is rare.
+        console.log(`[enactFoundationalBill] Constitutional reform: ${currentSystem} → ${targetSystem} for nation ${bill.nation_id}`);
+
+        // Determine structural changes
+        const currentHasPresident = currentSystem === 'presidential' || currentSystem === 'semi_presidential';
+        const targetHasPresident = targetSystem === 'presidential' || targetSystem === 'semi_presidential';
+        const currentHasPM = currentSystem === 'parliamentary' || currentSystem === 'constitutional_monarchy' || currentSystem === 'semi_presidential';
+        const targetHasPM = targetSystem === 'parliamentary' || targetSystem === 'constitutional_monarchy' || targetSystem === 'semi_presidential';
+        const currentIsMonarchy = currentSystem === 'constitutional_monarchy';
+        const targetIsMonarchy = targetSystem === 'constitutional_monarchy';
+
+        // Build nation update
+        const nationUpdate: Record<string, any> = {
+            last_constitutional_reform_tick: currentTick
+        };
+
+        // Set target government_type and hos_election_method
+        switch (targetSystem) {
+            case 'parliamentary':
+                nationUpdate.government_type = 'Democracy';
+                nationUpdate.hos_election_method = 'appointed';
+                break;
+            case 'constitutional_monarchy':
+                nationUpdate.government_type = 'Democracy';
+                nationUpdate.hos_election_method = 'hereditary';
+                break;
+            case 'presidential':
+                nationUpdate.government_type = 'Presidential';
+                nationUpdate.hos_election_method = 'direct_vote';
+                break;
+            case 'semi_presidential':
+                nationUpdate.government_type = 'Semi-Presidential';
+                nationUpdate.hos_election_method = 'direct_vote';
+                break;
+        }
+
+        // ── Losing president (Presidential/Semi-Pres → Parliamentary/CM) ──
+        if (currentHasPresident && !targetHasPresident) {
+            // Deactivate president
+            const { error: presErr } = await supabase.from('presidents')
+                .update({ is_active: false })
+                .eq('nation_id', bill.nation_id)
+                .eq('is_active', true);
+            if (presErr) console.error('[enactFoundationalBill] Failed to deactivate president:', presErr.message);
+
+            // Clear presidential elections
+            const { error: delPresElErr } = await supabase.from('elections').delete()
+                .eq('nation_id', bill.nation_id)
+                .eq('status', 'scheduled')
+                .eq('election_type', 'presidential');
+            if (delPresElErr) console.error('[enactFoundationalBill] Failed to clear presidential elections:', delPresElErr.message);
+
+            // Clean up presidential candidates
+            const { error: candErr } = await supabase.from('pm_candidates').delete()
+                .eq('nation_id', bill.nation_id)
+                .eq('candidate_type', 'presidential');
+            if (candErr) console.error('[enactFoundationalBill] Failed to clean presidential candidates:', candErr.message);
+
+            // Close administration for transition
+            const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+            const dateStr = shardData?.current_date || '';
+            const { error: adminErr } = await supabase.from('administrations')
+                .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'constitutional_transition' })
+                .eq('nation_id', bill.nation_id)
+                .is('ended_at_tick', null);
+            if (adminErr) console.error('[enactFoundationalBill] Failed to close administration:', adminErr.message);
+
+            // Fail bills on president's desk (orphaned without a president)
+            const { error: deskErr } = await supabase.from('bills')
+                .update({ status: 'failed', passed_tick: currentTick })
+                .eq('nation_id', bill.nation_id)
+                .eq('status', 'president_desk');
+            if (deskErr) console.error('[enactFoundationalBill] Failed to clear president desk bills:', deskErr.message);
+
+            // Fail pending impeachment bills and resolve proceedings
+            const { error: impeachBillErr } = await supabase.from('bills')
+                .update({ status: 'failed', passed_tick: currentTick })
+                .eq('nation_id', bill.nation_id)
+                .in('bill_type', ['impeachment_motion', 'impeachment_conviction'])
+                .in('status', ['committee', 'floor']);
+            if (impeachBillErr) console.error('[enactFoundationalBill] Failed to clear impeachment bills:', impeachBillErr.message);
+
+            const { error: impeachProcErr } = await supabase.from('impeachment_proceedings')
+                .update({ phase: 'resolved', resolved_tick: currentTick, outcome: 'dismissed_constitutional_transition' })
+                .eq('nation_id', bill.nation_id)
+                .neq('phase', 'resolved');
+            if (impeachProcErr) console.error('[enactFoundationalBill] Failed to resolve impeachment proceedings:', impeachProcErr.message);
+
+            console.log(`[enactFoundationalBill] President deactivated, presidential elections cleared`);
+        }
+
+        // ── Losing PM (Parliamentary/CM/Semi-Pres → Presidential) ──
+        if (currentHasPM && !targetHasPM) {
+            // Dissolve coalition (formed + caretaker)
+            const { error: coalErr } = await supabase.from('government_formations')
+                .update({ status: 'dissolved' })
+                .eq('nation_id', bill.nation_id)
+                .in('status', ['formed', 'caretaker']);
+            if (coalErr) console.error('[enactFoundationalBill] Failed to dissolve coalition:', coalErr.message);
+
+            // Also expire any in-progress formations
+            const { error: formingErr } = await supabase.from('government_formations')
+                .update({ status: 'expired' })
+                .eq('nation_id', bill.nation_id)
+                .eq('status', 'forming');
+            if (formingErr) console.error('[enactFoundationalBill] Failed to expire forming coalitions:', formingErr.message);
+
+            // Deactivate PM
+            const { error: hogErr } = await supabase.from('head_of_government')
+                .update({ active: false })
+                .eq('nation_id', bill.nation_id)
+                .eq('active', true);
+            if (hogErr) console.error('[enactFoundationalBill] Failed to deactivate PM:', hogErr.message);
+
+            // Fail pending PM confirmation bills (orphaned without parliamentary system)
+            const { error: pmBillErr } = await supabase.from('bills')
+                .update({ status: 'failed', passed_tick: currentTick })
+                .eq('nation_id', bill.nation_id)
+                .eq('bill_type', 'minister_confirmation')
+                .eq('ministry_key', 'prime_minister')
+                .in('status', ['committee', 'floor']);
+            if (pmBillErr) console.error('[enactFoundationalBill] Failed to clear PM confirmation bills:', pmBillErr.message);
+
+            // Clear parliamentary elections (presidential system only uses presidential elections + legislative midterms)
+            const { error: delParlElErr } = await supabase.from('elections').delete()
+                .eq('nation_id', bill.nation_id)
+                .eq('status', 'scheduled')
+                .eq('election_type', 'parliamentary');
+            if (delParlElErr) console.error('[enactFoundationalBill] Failed to clear parliamentary elections:', delParlElErr.message);
+
+            // Reset government approval for transition
+            nationUpdate.gov_approval = 50;
+            nationUpdate.gov_approval_events = 0;
+
+            console.log(`[enactFoundationalBill] PM deactivated, coalition dissolved`);
+        }
+
+        // ── Gaining president (Parliamentary/CM → Presidential/Semi-Pres) ──
+        if (!currentHasPresident && targetHasPresident) {
+            // Check for existing scheduled presidential election before inserting
+            const { data: existingPresEl } = await supabase.from('elections')
+                .select('id')
+                .eq('nation_id', bill.nation_id)
+                .eq('status', 'scheduled')
+                .eq('election_type', 'presidential')
+                .limit(1);
+
+            if (!existingPresEl || existingPresEl.length === 0) {
+                // Schedule presidential election 3 ticks out (allows endorsement window)
+                const { error: presElErr } = await supabase.from('elections').insert({
+                    nation_id: bill.nation_id,
+                    election_tick: currentTick + 3,
+                    status: 'scheduled',
+                    election_type: 'presidential'
+                });
+                if (presElErr) console.error('[enactFoundationalBill] Failed to schedule presidential election:', presElErr.message);
+                else console.log(`[enactFoundationalBill] Presidential election scheduled at tick ${currentTick + 3}`);
+            } else {
+                console.log(`[enactFoundationalBill] Presidential election already scheduled, skipping`);
+            }
+
+            // If going to full Presidential (no PM), also schedule a parliamentary midterm for seats
+            if (targetSystem === 'presidential') {
+                const parlTermTicks = Number(nation?.parliamentary_term_ticks) || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS;
+                const { error: midtermErr } = await supabase.from('elections').insert({
+                    nation_id: bill.nation_id,
+                    election_tick: currentTick + parlTermTicks,
+                    status: 'scheduled',
+                    election_type: 'parliamentary'
+                });
+                if (midtermErr) console.error('[enactFoundationalBill] Failed to schedule midterm:', midtermErr.message);
+            }
+        }
+
+        // ── Gaining PM (Presidential → Semi-Pres or Parliamentary/CM) ──
+        if (!currentHasPM && targetHasPM) {
+            // Trigger government formation — reset nomination attempts so tick processor picks it up
+            nationUpdate.pm_nomination_attempts = 0;
+
+            // If no parliamentary election is scheduled, schedule one for government formation
+            const { data: existingParlEl } = await supabase.from('elections')
+                .select('id')
+                .eq('nation_id', bill.nation_id)
+                .eq('status', 'scheduled')
+                .eq('election_type', 'parliamentary')
+                .limit(1);
+
+            if (!existingParlEl || existingParlEl.length === 0) {
+                // For Presidential → Parliamentary/CM, we need a fresh parliamentary election
+                // For Presidential → Semi-Pres, we also need one for government formation
+                const { error: parlElErr } = await supabase.from('elections').insert({
+                    nation_id: bill.nation_id,
+                    election_tick: currentTick + 3,
+                    status: 'scheduled',
+                    election_type: 'parliamentary'
+                });
+                if (parlElErr) console.error('[enactFoundationalBill] Failed to schedule parliamentary election:', parlElErr.message);
+                else console.log(`[enactFoundationalBill] Parliamentary election scheduled at tick ${currentTick + 3}`);
+            }
+
+            console.log(`[enactFoundationalBill] PM formation triggered`);
+        }
+
+        // ── Gaining monarchy (→ Constitutional Monarchy) ──
+        if (!currentIsMonarchy && targetIsMonarchy) {
+            // Generate a new monarch
+            const { firstNames } = getNationNames(nation?.name);
+            const monarchFirstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+            const dynastyName = bill.proposed_dynasty_name || 'Royal House';
+            const dynastyLastName = dynastyName.split(/\s+/).pop() || 'Royal';
+            const monarchAge = 36 + Math.floor(Math.random() * 25); // 36-60
+
+            nationUpdate.dynasty_name = dynastyName;
+            nationUpdate.dynasty_established_tick = currentTick;
+            if (bill.proposed_dynasty_crest_url) {
+                nationUpdate.dynasty_crest_url = bill.proposed_dynasty_crest_url;
+            }
+            nationUpdate.head_of_state_first_name = monarchFirstName;
+            nationUpdate.head_of_state_last_name = dynastyLastName;
+            nationUpdate.head_of_state_age = monarchAge;
+            nationUpdate.head_of_state_title = isFemaleName(monarchFirstName) ? 'Queen' : 'King';
+
+            console.log(`[enactFoundationalBill] Monarch generated: ${nationUpdate.head_of_state_title} ${monarchFirstName} ${dynastyLastName}, age ${monarchAge}`);
+        }
+
+        // ── Losing monarchy (Constitutional Monarchy → anything) ──
+        if (currentIsMonarchy && !targetIsMonarchy) {
+            nationUpdate.dynasty_name = null;
+            nationUpdate.dynasty_established_tick = null;
+            nationUpdate.dynasty_crest_url = null;
+            // HoS name/title will be set by presidential election or parliamentary appointment
+            console.log(`[enactFoundationalBill] Monarchy abolished, dynasty cleared`);
+        }
+
+        // ── Apply stat effects based on target system ──
+        const stability = nation?.stability || 50;
+        const legitimacy = nation?.legitimacy || 50;
+        const politicalEngagement = nation?.political_engagement || 50;
+        const polarization = nation?.polarization || 0;
+        const civilUnrest = nation?.civil_unrest || 0;
+
+        switch (targetSystem) {
+            case 'parliamentary':
+                // Return to parliamentary norm: stability +3, legitimacy +2
+                nationUpdate.stability = Math.min(100, stability + 3);
+                nationUpdate.legitimacy = Math.min(100, legitimacy + 2);
+                break;
+            case 'constitutional_monarchy':
+                // Tradition over democracy: stability +5, legitimacy -5
+                nationUpdate.stability = Math.min(100, stability + 5);
+                nationUpdate.legitimacy = Math.max(0, legitimacy - 5);
+                break;
+            case 'presidential':
+                // Direct democracy, more partisan: legitimacy +3, political_engagement +3, polarization +2
+                nationUpdate.legitimacy = Math.min(100, legitimacy + 3);
+                nationUpdate.political_engagement = Math.min(100, politicalEngagement + 3);
+                nationUpdate.polarization = Math.min(100, polarization + 2);
+                break;
+            case 'semi_presidential':
+                // Complex power sharing: legitimacy +2, political_engagement +2, polarization +3
+                nationUpdate.legitimacy = Math.min(100, legitimacy + 2);
+                nationUpdate.political_engagement = Math.min(100, politicalEngagement + 2);
+                nationUpdate.polarization = Math.min(100, polarization + 3);
+                break;
+        }
+
+        // Major reform always causes some civil unrest
+        nationUpdate.civil_unrest = Math.min(100, civilUnrest + 5);
+
+        // Apply all nation updates
+        const { error: nationErr } = await supabase.from('nations').update(nationUpdate).eq('id', bill.nation_id);
+        if (nationErr) {
+            console.error(`[enactFoundationalBill] Failed to update nation for constitutional reform:`, nationErr.message);
+        }
+
+        const systemLabels: Record<string, string> = {
+            parliamentary: 'Parliamentary Democracy',
+            constitutional_monarchy: 'Constitutional Monarchy',
+            presidential: 'Presidential Republic',
+            semi_presidential: 'Semi-Presidential Republic'
+        };
+        console.log(`[enactFoundationalBill] Nation ${bill.nation_id} constitutional system changed to "${systemLabels[targetSystem]}".`);
+        return true;
+    }
+
+    // ── Head of State Election Method subtype (legacy — superseded by constitutional reform) ──
     if (bill.proposed_hos_election_method) {
         const newMethod = bill.proposed_hos_election_method;
         const validMethods = ['direct_vote', 'appointed', 'hereditary'];
@@ -9483,7 +10146,7 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
         const updates = { term_limits_abolished: true };
         // Also remove presidential term limit if applicable
-        if (isPresidentialRepublic(nation)) updates.presidential_term_limit = 0;
+        if (hasElectedPresident(nation)) updates.presidential_term_limit = 0;
 
         // One-time stat effects: legitimacy -5, stability +2
         updates.legitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
@@ -9599,8 +10262,11 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
         }).eq('id', bill.nation_id);
         if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for judicial politicization:`, nationErr.message);
 
-        const isPres = isPresidentialRepublic(nation);
-        const mechanicDesc = isPres
+        const isPres = hasElectedPresident(nation);
+        const isPM = hasParliamentaryPM(nation);
+        const mechanicDesc = (isPres && isPM)
+            ? 'Impeachment conviction now requires 75% (up from 67%) and votes of no confidence now require 60% (up from 50%+1). The courts no longer serve as a check on executive power.'
+            : isPres
             ? 'Impeachment conviction now requires 75% (up from 67%). The courts no longer serve as a check on executive power.'
             : 'Votes of no confidence now require 60% (up from 50%+1). The ruling coalition is shielded from parliamentary removal.';
 
@@ -9775,6 +10441,52 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
         await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
         console.log(`[enactFoundationalBill] Constitutional Amendment Streamlining enacted for nation ${bill.nation_id}`);
+        return true;
+    }
+
+    // ── Anti-Disinformation Act subtype ──
+    if (bill.proposed_anti_disinformation_act) {
+        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+        // Press freedom ceiling -5: reduce current press_freedom by 5 (ongoing cap enforced per tick)
+        const currentPF = Number(nation?.press_freedom ?? 50);
+        const newPF = Math.max(0, currentPF - 5);
+
+        await supabase.from('nations').update({
+            anti_disinformation_act: true,
+            anti_disinformation_act_enacted_tick: currentTick,
+            press_freedom: newPF,
+            legitimacy: Math.max(0, (nation?.legitimacy ?? 50) - 4),
+            polarization: Math.min(100, (nation?.polarization ?? 0) + 4)
+        }).eq('id', bill.nation_id);
+
+        // Government approval: +7 one-time (perceived stability)
+        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, 7, 'anti_disinformation_act');
+
+        // -5 relations with all nations
+        const { data: allRels } = await supabase.from('diplomatic_relations')
+            .select('id, nation_a_id, nation_b_id, relation_score')
+            .or(`nation_a_id.eq.${bill.nation_id},nation_b_id.eq.${bill.nation_id}`);
+        if (allRels && allRels.length > 0) {
+            for (const rel of allRels) {
+                const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) - 5));
+                await supabase.from('diplomatic_relations').update({ relation_score: Math.round(newScore) }).eq('id', rel.id);
+            }
+        }
+
+        await supabase.from('event_log').insert({
+            nation_id: bill.nation_id,
+            event_name: 'FOUNDATIONAL_LAW_PASSED',
+            trigger_key: 'anti_disinformation_act',
+            description_used: 'The Anti-Disinformation Act has passed. The government now defines what constitutes disinformation. Independent journalists, academics, and opposition figures can be sanctioned. Press freedom ceiling permanently reduced. Freedom index will drain for 20 ticks. Relations with all nations worsened.',
+            category: 'POLITICAL',
+            effects_applied: { law: 'anti_disinformation_act', press_freedom_ceiling: -5, freedom_index_drain: { per_tick: -0.2, ticks: 20 }, gov_approval: 7, legitimacy: -4, polarization: 4, relations: -5 },
+            fired_at_tick: currentTick
+        });
+
+        console.log(`[enactFoundationalBill] Anti-Disinformation Act enacted for nation ${bill.nation_id}`);
         return true;
     }
 
@@ -10897,7 +11609,9 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
         .single();
 
     // Presidential systems do not have votes of no confidence
-    if (isPresidentialRepublic(nation)) return;
+    if (!hasParliamentaryPM(nation)) return;
+
+    const semiPres = isSemiPresidential(nation);
 
     // Get PM's last name for event text
     const { data: hog } = await supabase
@@ -10911,6 +11625,48 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
     const pmFactionId = hog?.faction_id || null;
 
     if (passed) {
+        // Semi-Presidential: president survives, only PM is removed
+        if (semiPres) {
+            // Record vonc tick for dissolution penalty tracking
+            await supabase.from('nations').update({ last_vonc_tick: currentTick, pm_nomination_attempts: 0 }).eq('id', nationId);
+
+            // Deactivate PM
+            await supabase.from('head_of_government')
+                .update({ active: false })
+                .eq('nation_id', nationId).eq('active', true);
+
+            // Calling party gets approval boost
+            await supabase.rpc('adjust_momentum', { p_faction_id: callingPartyId, p_delta: 2, p_label: 'No confidence called (+2)', p_tick: currentTick });
+
+            // PM's party takes hit
+            if (pmFactionId) {
+                await supabase.rpc('adjust_momentum', { p_faction_id: pmFactionId, p_delta: -3, p_label: 'No confidence — PM party (-3)', p_tick: currentTick });
+                await adjustCredibility(supabase, pmFactionId, nationId, -0.05);
+            }
+            await adjustGovernmentApprovalEvent(supabase, nationId, -5, 'no_confidence:success');
+
+            // If PM was from president's party, president's party takes additional approval hit
+            const { data: president } = await supabase.from('presidents')
+                .select('faction_id').eq('nation_id', nationId).eq('is_active', true).maybeSingle();
+            if (president && pmFactionId && president.faction_id === pmFactionId) {
+                await adjustFactionMomentum(supabase, president.faction_id, nationId, -3, { source: 'vonc:own_pm_removed', tick: currentTick });
+            }
+
+            // Log event — president survives, must re-nominate
+            const samePartyPenalty = president && pmFactionId && president.faction_id === pmFactionId;
+            await supabase.from('event_log').insert({
+                nation_id: nationId,
+                event_name: 'No Confidence — PM Removed',
+                trigger_key: 'vonc_passed',
+                fired_at_tick: currentTick,
+                category: 'government',
+                description_chosen: `Prime Minister ${pmLastName} has been removed by a vote of no confidence (${votesFor} to ${votesAgainst}). The President must nominate a new PM.`,
+                effects_applied: { pm_removed: true, president_survives: true, caller_approval: +2, pm_party_approval: samePartyPenalty ? -6 : -3, gov_approval: -5, same_party_penalty: samePartyPenalty }
+            });
+            return;
+        }
+
+        // === Parliamentary: full government dissolution ===
         // Get coalition party IDs before dissolving
         const coalition = await fetchActiveCoalition(supabase, nationId);
         const coalitionPartyIds = coalition?.party_ids || [];
@@ -10942,8 +11698,9 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
             await adjustGovernmentApprovalEvent(supabase, nationId, -5, 'no_confidence:success');
 
             // Schedule snap election (same pattern as early elections)
+            // Only cancel parliamentary elections (preserve presidential for safety)
             await supabase.from('elections').delete()
-                .eq('nation_id', nationId).eq('status', 'scheduled');
+                .eq('nation_id', nationId).eq('status', 'scheduled').eq('election_type', 'parliamentary');
             await supabase.from('elections').insert({
                 nation_id: nationId,
                 election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
@@ -11182,6 +11939,135 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
     });
 
     return { success: true, electionTick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS };
+}
+
+/**
+ * Semi-Presidential exclusive: President dissolves parliament, triggering snap elections.
+ * Cooldown: cannot dissolve within 24 ticks of last dissolution or 12 ticks of parliament forming.
+ * Effects: stability -3, PM's party +5 momentum (sympathy effect).
+ */
+async function dissolveParliamentAction(supabase, nationId, presidentFactionId) {
+    const { data: nation } = await supabase.from('nations')
+        .select('name, government_type, stability, legitimacy, last_dissolution_tick, parliament_formed_tick, last_vonc_tick')
+        .eq('id', nationId).single();
+    if (!isSemiPresidential(nation)) throw new Error('Dissolve Parliament is only available in Semi-Presidential systems');
+
+    // Fetch current tick
+    const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Cooldown: 24 ticks since last dissolution
+    if (nation.last_dissolution_tick && (currentTick - nation.last_dissolution_tick) < 24) {
+        const remaining = 24 - (currentTick - nation.last_dissolution_tick);
+        throw new Error(`Cannot dissolve parliament — ${remaining} tick(s) remaining on dissolution cooldown`);
+    }
+
+    // Cooldown: 12 ticks since parliament formed
+    if (nation.parliament_formed_tick && (currentTick - nation.parliament_formed_tick) < 12) {
+        const remaining = 12 - (currentTick - nation.parliament_formed_tick);
+        throw new Error(`Cannot dissolve parliament — new parliament must serve at least 12 ticks (${remaining} remaining)`);
+    }
+
+    // Verify president's party
+    const { data: president } = await supabase.from('presidents')
+        .select('faction_id').eq('nation_id', nationId).eq('is_active', true).maybeSingle();
+    if (!president || president.faction_id !== presidentFactionId) {
+        throw new Error('Only the President\'s party can dissolve parliament');
+    }
+
+    // Get PM faction for sympathy effect
+    const { data: hog } = await supabase.from('head_of_government')
+        .select('faction_id').eq('nation_id', nationId).eq('active', true).maybeSingle();
+    const pmFactionId = hog?.faction_id;
+
+    // Check if dissolving after a recent no-confidence vote (authoritarian overreach)
+    const voncPenalty = nation.last_vonc_tick && (currentTick - nation.last_vonc_tick) <= 6;
+
+    // === EFFECTS ===
+
+    // 1. Stability -3 (+ legitimacy -5 if post-vonc)
+    const newStability = Math.max(0, Number(nation.stability ?? 50) - 3);
+    const nationUpdate: Record<string, any> = {
+        stability: newStability,
+        last_dissolution_tick: currentTick
+    };
+    if (voncPenalty) {
+        nationUpdate.legitimacy = Math.max(0, Number(nation.legitimacy ?? 50) - 5);
+    }
+    await supabase.from('nations').update(nationUpdate).eq('id', nationId);
+
+    // 2. PM's party gets +5 momentum (sympathy effect)
+    if (pmFactionId) {
+        try {
+            await supabase.rpc('adjust_momentum', {
+                p_faction_id: pmFactionId,
+                p_delta: 5,
+                p_label: 'Parliament dissolved — sympathy effect (+5)',
+                p_tick: currentTick
+            });
+        } catch (momErr) {
+            // Fallback: direct update
+            const { data: pmFaction } = await supabase.from('factions')
+                .select('momentum').eq('id', pmFactionId).single();
+            if (pmFaction) {
+                await supabase.from('factions').update({
+                    momentum: Math.min(100, (pmFaction.momentum || 0) + 5)
+                }).eq('id', pmFactionId);
+            }
+        }
+    }
+
+    // 3. Set government to caretaker
+    await supabase.from('government_formations')
+        .update({ status: 'caretaker' })
+        .eq('nation_id', nationId)
+        .in('status', ['formed', 'active']);
+
+    // 4. Deactivate PM
+    await supabase.from('head_of_government')
+        .update({ active: false })
+        .eq('nation_id', nationId).eq('active', true);
+
+    // 5. Freeze all pending bills
+    await supabase.from('bills')
+        .update({ status: 'frozen' })
+        .eq('nation_id', nationId)
+        .in('status', ['committee', 'floor']);
+
+    // 6. Schedule snap election (2 ticks from now)
+    const EARLY_ELECTION_TICKS = 2;
+    await supabase.from('elections').insert({
+        nation_id: nationId,
+        election_type: 'parliamentary',
+        election_tick: currentTick + EARLY_ELECTION_TICKS,
+        status: 'scheduled'
+    });
+
+    // 7. Fire system event
+    try {
+        await supabase.rpc('fire_system_event', {
+            p_trigger_key: 'parliament_dissolved',
+            p_nation_id: nationId,
+            p_tick: currentTick,
+            p_placeholders: { nation: nation.name || '' }
+        });
+    } catch (e) { /* non-blocking */ }
+
+    // 8. If dissolving after a vonc, fire additional legitimacy penalty event
+    if (voncPenalty) {
+        await supabase.from('event_log').insert({
+            nation_id: nationId,
+            event_name: 'Authoritarian Overreach — Post-VoNC Dissolution',
+            trigger_key: 'vonc_dissolution_penalty',
+            fired_at_tick: currentTick,
+            category: 'government',
+            description_chosen: `The President dissolved parliament shortly after a vote of no confidence passed. This is widely seen as an authoritarian overreach. Legitimacy -5.`,
+            effects_applied: { legitimacy_penalty: -5 }
+        });
+    }
+
+    console.log(`[dissolveParliamentAction] President dissolved parliament in ${nation.name}. Snap election in ${EARLY_ELECTION_TICKS} ticks.${voncPenalty ? ' Post-VoNC penalty applied.' : ''}`);
+    return { success: true, electionTick: currentTick + EARLY_ELECTION_TICKS };
 }
 
 
@@ -11692,7 +12578,7 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
     }
 
     const context = await resolveManualElectionContext(supabase, nation, currentTick, options.electionType);
-    const isPresidential = context.governmentType === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC;
+    const isPresidential = context.governmentType === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC || context.governmentType === CANONICAL_GOVERNMENT_TYPES.SEMI_PRESIDENTIAL;
     const normalizedElectionType = context.electionType || 'parliamentary';
 
     // Resolve the target election record up-front so presidential endorsement snapshots
@@ -11881,7 +12767,7 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
 }
 
 async function processElections(supabase, nation, currentTick) {
-    const isPresidential = isPresidentialRepublic(nation);
+    const isPresidential = hasElectedPresident(nation);
     const results = [];
 
     const { data: dueElections } = await supabase
@@ -12012,6 +12898,11 @@ async function processElections(supabase, nation, currentTick) {
             .update({ status: 'completed', results: data, election_tick: currentTick })
             .eq('id', election.id);
 
+        // Track parliament formation tick for dissolution cooldown
+        if (electionType === 'parliamentary') {
+            await supabase.from('nations').update({ parliament_formed_tick: currentTick }).eq('id', nation.id);
+        }
+
         // Use the specific election we just completed (not a generic "most recent" query
         // which could return a different election type processed earlier in this tick)
         const completedElection = { id: election.id, results: data };
@@ -12075,8 +12966,8 @@ async function processElections(supabase, nation, currentTick) {
             }
 
             await processPresidentialElectionResult(supabase, nation, completedElection, currentTick, election.id);
-        } else if (isPresidential && electionType === 'parliamentary') {
-            // Midterm parliamentary election — seats reshuffled, president stays, desk bills remain
+        } else if (isPresidential && electionType === 'parliamentary' && !isSemiPresidential(nation)) {
+            // Pure Presidential midterm parliamentary election — seats reshuffled, president stays, desk bills remain
             console.log(`Midterm parliamentary election for ${nation.name} — president stays in office`);
         } else {
             // === PARLIAMENTARY DEMOCRACY: dissolve existing government after election ===
@@ -12692,7 +13583,7 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
 
     // 3. Reset government approval to 50 — new administration starts with clean slate
     const { error: approvalResetErr } = await supabase.from('nations')
-        .update({ gov_approval: 50, gov_approval_events: 0 })
+        .update({ gov_approval: 50, gov_approval_events: 0, pm_nomination_attempts: 0 })
         .eq('id', nationId);
     if (approvalResetErr) {
         console.error(`[inauguratePresident] Failed to reset gov_approval:`, approvalResetErr.message);
@@ -12830,8 +13721,8 @@ async function ensureElectionsScheduled(supabase, nation, currentTick) {
         else console.log(`Scheduled next parliamentary election for ${nation.name}`);
     }
 
-    // Presidential systems also need presidential elections
-    if (isPresidentialRepublic(nation)) {
+    // Presidential and semi-presidential systems also need presidential elections
+    if (hasElectedPresident(nation)) {
         const { data: futurePres } = await supabase
             .from('elections')
             .select('id')
@@ -12972,7 +13863,7 @@ async function computeDominantIdeologyAxis(supabase, factionId) {
 async function nominateMinister(supabase, nationId, presidentFactionId, ministryKey, nominee) {
     // Validate: must be Presidential system
     const { data: nation } = await supabase.from('nations').select('name, government_type, total_seats').eq('id', nationId).single();
-    if (!isPresidentialRepublic(nation)) throw new Error('Minister nominations only apply to Presidential systems');
+    if (!hasElectedPresident(nation)) throw new Error('Minister nominations only apply to Presidential systems');
     const nationTotalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
 
     // Validate: caller must be president's party
@@ -12980,7 +13871,25 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
         .select('id, faction_id')
         .eq('nation_id', nationId).eq('is_active', true)
         .limit(1).maybeSingle();
-    if (!president || president.faction_id !== presidentFactionId) throw new Error('Only the President\'s party can nominate ministers');
+    // Semi-Presidential: PM nominates ministers (not president)
+    if (isSemiPresidential(nation)) {
+        const { data: hog } = await supabase.from('head_of_government')
+            .select('faction_id').eq('nation_id', nationId).eq('active', true).maybeSingle();
+        if (!hog || hog.faction_id !== presidentFactionId) {
+            throw new Error('Only the PM\'s party can nominate ministers in Semi-Presidential systems');
+        }
+        // Presidential-domain ministries must be from president's party
+        if (isPresidentialDomainMinistry(ministryKey)) {
+            if (nominee.partyId !== president.faction_id) {
+                throw new Error(`${ministryKey} minister must be from the President's party in Semi-Presidential systems`);
+            }
+        }
+    } else {
+        // Pure Presidential: caller must be president's party
+        if (!president || president.faction_id !== presidentFactionId) {
+            throw new Error('Only the President\'s party can nominate ministers');
+        }
+    }
 
     // Validate: no existing pending confirmation for this slot
     const { data: existingMinistry } = await supabase.from('ministries')
@@ -13045,7 +13954,8 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
 
     const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministerTitle}`;
     const majoritySeats = Math.ceil(nationTotalSeats * 0.5) + 1;
-    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${majoritySeats} of ${nationTotalSeats} seats) is required for confirmation.`;
+    const nominatorTitle = isSemiPresidential(nation) ? 'Prime Minister' : 'President';
+    const preamble = `The ${nominatorTitle} nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${majoritySeats} of ${nationTotalSeats} seats) is required for confirmation.`;
 
     const { data: bill, error: billErr } = await supabase.from('bills').insert({
         nation_id: nationId,
@@ -13190,8 +14100,8 @@ async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
  * Called during advanceTick().
  */
 async function processPresidentDesk(supabase, nation, currentTick) {
-    console.log(`[processPresidentDesk] nation=${nation.name} gov=${nation.government_type} isPres=${isPresidentialRepublic(nation)} tick=${currentTick}`);
-    if (!isPresidentialRepublic(nation)) return [];
+    console.log(`[processPresidentDesk] nation=${nation.name} gov=${nation.government_type} isPres=${hasElectedPresident(nation)} tick=${currentTick}`);
+    if (!hasElectedPresident(nation)) return [];
 
     const { data: expiredDesks, error: deskErr } = await supabase.from('bills')
         .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
@@ -13241,7 +14151,7 @@ async function processPresidentDesk(supabase, nation, currentTick) {
  * and selected = true.
  */
 async function triggerPresidentialCandidateSelection(supabase, nation, currentTick) {
-    if (!isPresidentialRepublic(nation)) return;
+    if (!hasElectedPresident(nation)) return;
 
     const leadTicks = GAME_CONFIG.PRESIDENTIAL_CANDIDATE_LEAD_TICKS;
 
@@ -13364,7 +14274,7 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
  * has expired and a new president was already elected (shouldn't happen, but guards).
  */
 async function processPresidentialTermEnd(supabase, nation, currentTick) {
-    if (!isPresidentialRepublic(nation)) return;
+    if (!hasElectedPresident(nation)) return;
 
     const { data: president } = await supabase
         .from('presidents')
@@ -13401,6 +14311,116 @@ async function processPresidentialTermEnd(supabase, nation, currentTick) {
         });
         console.log(`Emergency presidential election scheduled for ${nation.name} at tick ${currentTick + leadTicks} (term expired, ${leadTicks} tick lead time for candidates)`);
     }
+}
+
+/**
+ * Semi-Presidential emergency PM fallback: after 3 rejected PM nominations,
+ * parliament auto-selects the largest party leader as PM to prevent deadlock.
+ */
+async function processSemiPresPMFallback(supabase, nation, currentTick) {
+    if (!isSemiPresidential(nation)) return;
+
+    // Check if we've hit the 3-attempt limit
+    const { data: nationRow } = await supabase.from('nations')
+        .select('pm_nomination_attempts').eq('id', nation.id).single();
+    if (!nationRow || (nationRow.pm_nomination_attempts || 0) < 3) return;
+
+    // Verify there's actually no active PM (another path may have installed one)
+    const { data: existingHOG } = await supabase.from('head_of_government')
+        .select('id').eq('nation_id', nation.id).eq('active', true).maybeSingle();
+    if (existingHOG) return;
+
+    // Verify no pending PM confirmation bill is on the floor
+    const { data: pendingPMBill } = await supabase.from('bills')
+        .select('id').eq('nation_id', nation.id)
+        .eq('bill_type', 'minister_confirmation').eq('ministry_key', 'prime_minister')
+        .eq('status', 'floor').maybeSingle();
+    if (pendingPMBill) return;
+
+    // Find the largest party by seats
+    const { data: parties } = await supabase.from('factions')
+        .select('id, faction_name, seats')
+        .eq('nation_id', nation.id).eq('is_active', true)
+        .order('seats', { ascending: false })
+        .order('id', { ascending: true })
+        .limit(1);
+    const largestParty = parties?.[0];
+    if (!largestParty) return;
+
+    console.log(`[processSemiPresPMFallback] 3 PM nominations rejected for ${nation.name}. Auto-selecting largest party leader (${largestParty.faction_name}) as PM.`);
+
+    try {
+        // Ensure a coalition exists (create emergency one if needed)
+        let coalition = await fetchActiveCoalition(supabase, nation.id);
+        if (!coalition) {
+            const { data: newFormation } = await supabase.from('government_formations').insert({
+                nation_id: nation.id,
+                lead_party_id: largestParty.id,
+                status: 'formed',
+                formation_type: 'emergency_minority',
+                formed_at: new Date().toISOString(),
+                ministry_assignments: { prime_minister: largestParty.id }
+            }).select().single();
+            coalition = newFormation;
+        }
+
+        await autoAppointPartyLeaderAsPM(supabase, nation.id, largestParty.id, currentTick);
+
+        // Reset nomination attempts and clear vonc penalty window
+        await supabase.from('nations').update({ pm_nomination_attempts: 0, last_vonc_tick: null }).eq('id', nation.id);
+
+        // Fire system event
+        try {
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: 'pm_emergency_fallback',
+                p_nation_id: nation.id,
+                p_tick: currentTick,
+                p_placeholders: {
+                    nation: nation.name || '',
+                    party: largestParty.faction_name
+                }
+            });
+        } catch (evtErr) { /* non-blocking */ }
+
+        console.log(`[processSemiPresPMFallback] Emergency PM installed: ${largestParty.faction_name} for ${nation.name}`);
+    } catch (e) {
+        console.error(`[processSemiPresPMFallback] Failed for ${nation.name}:`, e);
+    }
+}
+
+/**
+ * Semi-Presidential cohabitation: when President and PM are from different parties,
+ * apply ongoing friction effects each tick.
+ * efficiency -0.1/tick, polarization +0.1/tick, legitimacy -0.1/tick
+ */
+async function processCohabitationEffects(supabase, nation, currentTick) {
+    if (!isSemiPresidential(nation)) return;
+
+    // Fetch president faction
+    const { data: president } = await supabase.from('presidents')
+        .select('faction_id').eq('nation_id', nation.id).eq('is_active', true).maybeSingle();
+    if (!president) return;
+
+    // Fetch PM faction
+    const { data: hog } = await supabase.from('head_of_government')
+        .select('faction_id').eq('nation_id', nation.id).eq('active', true).maybeSingle();
+    if (!hog) return;
+
+    // Cohabitation = different parties
+    if (president.faction_id === hog.faction_id) return;
+
+    // Apply friction effects
+    const eff = Math.max(0, Number(nation.efficiency ?? 50) - 0.1);
+    const pol = Math.min(100, Number(nation.polarization ?? 50) + 0.1);
+    const leg = Math.max(0, Number(nation.legitimacy ?? 50) - 0.1);
+
+    await supabase.from('nations').update({
+        efficiency: Math.round(eff * 100) / 100,
+        polarization: Math.round(pol * 100) / 100,
+        legitimacy: Math.round(leg * 100) / 100
+    }).eq('id', nation.id);
+
+    console.log(`[processCohabitationEffects] Cohabitation friction for ${nation.name}: eff=${eff.toFixed(2)} pol=${pol.toFixed(2)} leg=${leg.toFixed(2)}`);
 }
 
 /**
@@ -13478,7 +14498,7 @@ async function autoSelectPresidentialCandidates(supabase, nation, currentTick) {
  * formation, auto-appoint the PM party's leader.
  */
 async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
-    if (!isParliamentaryDemocracy(nation)) return;
+    if (!hasParliamentaryPM(nation)) return;
 
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     if (!coalition || coalition.status !== 'formed') return;
@@ -19568,6 +20588,20 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
         const pf = nationUpdates.press_freedom ?? Number(nation.press_freedom ?? 50);
         if (pf > 40) nationUpdates.press_freedom = 40;
     }
+    // Anti-Disinformation Act: press freedom ceiling -5 (cap at 95, stacks with state media cap)
+    if (nation.anti_disinformation_act) {
+        const pfCap = nation.state_media_control ? 35 : 95;
+        const pf = nationUpdates.press_freedom ?? Number(nation.press_freedom ?? 50);
+        if (pf > pfCap) nationUpdates.press_freedom = pfCap;
+    }
+    // Anti-Disinformation Act: freedom_index -0.2/tick for 20 ticks after enactment
+    if (nation.anti_disinformation_act && nation.anti_disinformation_act_enacted_tick != null) {
+        const ticksSinceEnacted = currentTick - nation.anti_disinformation_act_enacted_tick;
+        if (ticksSinceEnacted >= 0 && ticksSinceEnacted < 20) {
+            const fi = nationUpdates.freedom_index ?? Number(nation.freedom_index ?? 50);
+            nationUpdates.freedom_index = Math.max(0, fi - 0.2);
+        }
+    }
 
     if (Object.keys(nationUpdates).length > 0) {
         const { error } = await supabase
@@ -22596,7 +23630,7 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
     // Future: implement mechanical effects from POSITIVE_TRAITS if desired.
     return;
 
-    if (isPresidentialRepublic(nation)) {
+    if (hasElectedPresident(nation)) {
         // For presidential systems, use the active president's trait
         const { data: president } = await supabase
             .from('presidents')
@@ -24785,9 +25819,7 @@ const MODIFIERS = {
         name: 'Active Vessel Expulsion Order',
         category: 'escalation',
         applies_to: 'both',
-        stat_effects: [
-            { stat_key: 'trade_balance', delta: -0.2 },
-        ],
+        stat_effects: [],
         duration: 15,
         removed_by: [], // any diplomatic acceptance or expiry
         special: 'relations_bleed', // Relations -0.3/tick handled separately
@@ -28170,7 +29202,7 @@ async function processTariffRelationsPenalty(supabase, nation) {
     for (const rel of relations) {
         const currentScore = Number(rel.relation_score ?? 50);
         if (currentScore <= FLOOR) continue;
-        const newScore = Math.max(FLOOR, Math.round((currentScore - PENALTY) * 10) / 10);
+        const newScore = Math.max(FLOOR, Math.round(currentScore - PENALTY));
         if (newScore !== currentScore) {
             const { error } = await supabase.from('diplomatic_relations')
                 .update({ relation_score: newScore })
@@ -28198,6 +29230,19 @@ async function processMigrationFlows(supabase, nationList, currentTick) {
 
     const ns = (nation, key) => Number(nation[key] ?? 50);
     const clamp = (v) => Math.max(0, Math.min(100, v));
+
+    // Fetch proximity data for gravity-model weighting
+    // proximity: 0 = bordering, 100 = distant
+    const { data: relRows } = await supabase.from('diplomatic_relations')
+        .select('nation_a_id, nation_b_id, proximity');
+    const proximityMap = {};
+    if (relRows) {
+        for (const r of relRows) {
+            const p = r.proximity != null ? Number(r.proximity) : 50;
+            proximityMap[r.nation_a_id + '|' + r.nation_b_id] = p;
+            proximityMap[r.nation_b_id + '|' + r.nation_a_id] = p;
+        }
+    }
 
     // ── Push score: why people leave (0-100, higher = more emigration pressure) ──
     function calcPushScore(nation) {
@@ -28308,7 +29353,8 @@ async function processMigrationFlows(supabase, nationList, currentTick) {
 
         if (totalEmigrants <= 0) continue;
 
-        // Calculate pull scores for all other nations
+        // Calculate pull scores for all other nations, weighted by proximity
+        // Proximity multiplier: bordering (0) → 2.0x, mid-range (50) → 1.0x, distant (100) → 0.5x
         const pullResults = [];
         let totalPullScore = 0;
 
@@ -28316,8 +29362,14 @@ async function processMigrationFlows(supabase, nationList, currentTick) {
             if (dest.id === origin.id) continue;
             const { score, reasons } = calcPullScore(origin, dest);
             if (score > 0) {
-                pullResults.push({ dest, score, reasons });
-                totalPullScore += score;
+                const prox = proximityMap[origin.id + '|' + dest.id] ?? 50;
+                const proxMultiplier = 0.5 + 1.5 * ((100 - prox) / 100); // 0→2.0, 50→1.25, 100→0.5
+                const weightedScore = score * proxMultiplier;
+                pullResults.push({ dest, score: weightedScore, reasons });
+                totalPullScore += weightedScore;
+                if (proxMultiplier > 1.3) {
+                    reasons.push({ factor: 'Geographic proximity', direction: 'pull', strength: Math.round(proxMultiplier * 3) });
+                }
             }
         }
 
@@ -28476,7 +29528,7 @@ async function processPopulationGrowth(supabase: any, nation: any) {
 
 
 async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
-    if (!isPresidentialRepublic(nation)) return;
+    if (!hasElectedPresident(nation)) return;
 
     const { data: president } = await supabase
         .from('presidents')
@@ -29640,7 +30692,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 } else {
                     newScore = Math.min(0, score + decayRate);
                 }
-                newScore = Math.round(newScore * 100) / 100;
+                newScore = Math.round(newScore);
 
                 if (newScore !== score) {
                     await supabase.from('diplomatic_relations')
@@ -29900,6 +30952,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         try {
             await evaluateCaucusActivation(supabase, nation.id, GAME_CONFIG.TOTAL_SEATS);
             await decayCaucusRelationships(supabase, nation.id, newTick);
+            await processCaucusDefections(supabase, nation.id, newTick);
         } catch (caucusErr) {
             console.error(`[advanceTick] Caucus processing failed for ${nation.name} (non-fatal):`, caucusErr);
         }
@@ -29943,8 +30996,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] resolveStuckRatifications failed for ${nation.name} (non-fatal):`, ratErr);
         }
 
-        // ── Impeachment processing (Presidential systems) ──
-        if (isPresidentialRepublic(nation)) {
+        // ── Impeachment processing (Presidential and Semi-Presidential systems) ──
+        if (hasElectedPresident(nation)) {
             try {
                 // 1. Auto-transition committee impeachment bills to floor
                 const { data: committeeImpeach } = await supabase
@@ -30142,6 +31195,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         await triggerPresidentialCandidateSelection(supabase, nation, newTick);
         await processPresidentialTermEnd(supabase, nation, newTick);
         await processParliamentaryPMTimeout(supabase, nation, newTick);
+        await processSemiPresPMFallback(supabase, nation, newTick);
+        await processCohabitationEffects(supabase, nation, newTick);
 
         // Incumbent campaign bonuses (+2 approval/tick during pre-election window)
         await processIncumbentCampaignBonuses(supabase, nation, newTick);
