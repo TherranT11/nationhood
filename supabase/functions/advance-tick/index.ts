@@ -12912,31 +12912,43 @@ async function processElections(supabase, nation, currentTick) {
             const seatResults = completedElection.results.seats;
             const belowThreshold = seatResults.filter(r => r.seats > 0 && r.seats < minSeats);
             if (belowThreshold.length > 0) {
-                let seatsFreed = 0;
-                for (const r of belowThreshold) {
-                    seatsFreed += r.seats;
-                    r.seats = 0;
-                }
-                // Redistribute freed seats proportionally to surviving parties
-                const survivors = seatResults.filter(r => r.seats > 0);
-                const totalSurvivorSeats = survivors.reduce((sum, r) => sum + r.seats, 0);
-                let distributed = 0;
-                for (let i = 0; i < survivors.length; i++) {
-                    const share = totalSurvivorSeats > 0 ? survivors[i].seats / totalSurvivorSeats : 1 / survivors.length;
-                    const gain = (i === survivors.length - 1) ? (seatsFreed - distributed) : Math.round(seatsFreed * share);
-                    survivors[i].seats += gain;
-                    distributed += gain;
-                }
-                console.log(`[Election] Party Registration Act: ${belowThreshold.length} parties below ${regThreshold}% threshold (${minSeats} seats min), ${seatsFreed} seats reallocated for ${nation.name}`);
-
-                // Flag affected factions so the UI shows a dismissable notification
-                for (const r of belowThreshold) {
-                    if (r.party_id) {
-                        await supabase.from('factions').update({
-                            registration_act_disbanded: true,
-                            registration_act_dismissed: false,
-                        }).eq('id', r.party_id);
+                // Safety: skip if ALL parties would be eliminated (threshold too high)
+                const wouldSurvive = seatResults.some(r => r.seats >= minSeats);
+                if (!wouldSurvive) {
+                    console.warn(`[Election] Party Registration Act: ALL parties below ${regThreshold}% threshold — skipping redistribution to avoid zero-seat parliament for ${nation.name}`);
+                } else {
+                    let seatsFreed = 0;
+                    for (const r of belowThreshold) {
+                        seatsFreed += r.seats;
+                        r.seats = 0;
                     }
+                    // Redistribute freed seats proportionally to surviving parties
+                    const survivors = seatResults.filter(r => r.seats > 0);
+                    const totalSurvivorSeats = survivors.reduce((sum, r) => sum + r.seats, 0);
+                    let distributed = 0;
+                    for (let i = 0; i < survivors.length; i++) {
+                        const share = totalSurvivorSeats > 0 ? survivors[i].seats / totalSurvivorSeats : 1 / survivors.length;
+                        const gain = (i === survivors.length - 1) ? (seatsFreed - distributed) : Math.round(seatsFreed * share);
+                        survivors[i].seats += gain;
+                        distributed += gain;
+                    }
+                    console.log(`[Election] Party Registration Act: ${belowThreshold.length} parties below ${regThreshold}% threshold (${minSeats} seats min), ${seatsFreed} seats reallocated for ${nation.name}`);
+
+                    // Flag affected factions so the UI shows a dismissable notification
+                    for (const r of belowThreshold) {
+                        if (r.party_id) {
+                            const { error: flagErr } = await supabase.from('factions').update({
+                                registration_act_disbanded: true,
+                                registration_act_dismissed: false,
+                            }).eq('id', r.party_id);
+                            if (flagErr) console.error(`[Election] Failed to flag faction ${r.party_id} as disbanded:`, flagErr.message);
+                        }
+                    }
+
+                    // Update election record with post-threshold results
+                    await supabase.from('elections')
+                        .update({ results: completedElection.results })
+                        .eq('id', election.id);
                 }
             }
         }
