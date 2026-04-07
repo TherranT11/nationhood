@@ -221,6 +221,27 @@ let allIssues = [];
 let selectedIssueId = null;
 let issuesLoaded = false;
 let issueActionFlags = {};  // { issueId: true } — issues with recent actions
+let issueActionExecuting = false;
+let _actionIssue = null;    // current issue for action click delegation
+let _actionMods = null;     // current modifiers for action click delegation
+
+// Expose click handlers on window immediately so inline onclick works even if later code errors
+window._handleIssueActionClick = function(actionKey) {
+    if (!actionKey || !_actionIssue) return;
+    try {
+        showIssueActionModal(actionKey, _actionIssue, _actionMods || []);
+    } catch (err) {
+        console.error('[Issues] Action click error:', err);
+        alert('Action error: ' + err.message);
+    }
+};
+window._switchIssueActionTab = function(tabEl, category) {
+    document.querySelectorAll('.ia-tab').forEach(t => t.classList.remove('ia-tab--active'));
+    tabEl.classList.add('ia-tab--active');
+    document.querySelectorAll('.ia-list').forEach(l => l.style.display = 'none');
+    const list = document.getElementById('ia-list-' + category);
+    if (list) list.style.display = '';
+};
 
 // ==================== INIT ====================
 
@@ -898,10 +919,6 @@ function renderIssueHistory(issue, history) {
 
 // ==================== ISSUE ACTIONS PANEL ====================
 
-let issueActionExecuting = false;
-let _actionIssue = null;    // current issue for action click delegation
-let _actionMods = null;     // current modifiers for action click delegation
-
 const ACTION_ROLE_LABELS = {
     foreign_minister: 'FM',
     minister_of_trade: 'MoT',
@@ -1030,27 +1047,6 @@ function renderActionList(category, actions, usedActions, actedThisTick, hasFric
     html += '</div>';
     return html;
 }
-
-// Tab switching for action categories
-window._handleIssueActionClick = function(actionKey) {
-    if (!actionKey || !_actionIssue) return;
-    try {
-        showIssueActionModal(actionKey, _actionIssue, _actionMods || []);
-    } catch (err) {
-        console.error('[Issues] Action click error:', err);
-        alert('Action error: ' + err.message);
-    }
-};
-
-window._switchIssueActionTab = function(tabEl, category) {
-    document.querySelectorAll('.ia-tab').forEach(t => {
-        t.classList.remove('ia-tab--active');
-    });
-    tabEl.classList.add('ia-tab--active');
-    document.querySelectorAll('.ia-list').forEach(l => l.style.display = 'none');
-    const list = document.getElementById('ia-list-' + category);
-    if (list) list.style.display = '';
-};
 
 // ==================== ISSUE ACTION MODAL ====================
 
