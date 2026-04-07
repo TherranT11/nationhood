@@ -27819,6 +27819,14 @@ function resolveTargets(appliesTo, issue, nationA, nationB) {
             if (side === 'nation_b') return [nationA];
             return [];
         }
+        case 'administering': {
+            if (!issue.administering_nation_id) return [];
+            return [issue.administering_nation_id === issue.nation_a_id ? nationA : nationB];
+        }
+        case 'non_administering': {
+            if (!issue.administering_nation_id) return [];
+            return [issue.administering_nation_id === issue.nation_a_id ? nationB : nationA];
+        }
         default: return [];
     }
 }
