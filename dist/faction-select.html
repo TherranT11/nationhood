@@ -255,7 +255,7 @@ body {
   padding: 80px 20px;
 }
 </style>
-  <script type="module" crossorigin src="/assets/faction-select-BSiHPg_-.js"></script>
+  <script type="module" crossorigin src="/assets/faction-select-bgl4kEu5.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
 </head>
 <body>
@@ -264,6 +264,7 @@ body {
 
 <!-- Faction type chooser (shown when user has no factions and no pending nation) -->
 <div id="faction-chooser" style="display:none; width:100%; flex-direction:column; align-items:center;">
+  <button id="fs-logout-btn" onclick="logoutUser()" style="position:fixed;top:16px;right:16px;z-index:100;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;background:transparent;color:var(--text-muted);border:1px solid var(--border-1);padding:6px 16px;cursor:pointer;transition:color 0.15s,border-color 0.15s;" onmouseover="this.style.color='var(--red)';this.style.borderColor='var(--red)'" onmouseout="this.style.color='var(--text-muted)';this.style.borderColor='var(--border-1)'">Logout</button>
   <div class="page-header">
     <h1>Nationhood</h1>
     <div class="title">Choose Your Faction Path</div>
