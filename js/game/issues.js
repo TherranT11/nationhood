@@ -2442,6 +2442,14 @@ export async function processIssueTick(supabase, nationList, currentTick) {
             if (newStatus === 'resolved') issueUpdate.resolved_tick = currentTick;
             if (newStatus === 'escalated') issueUpdate.escalated_tick = currentTick;
 
+            // Deactivate all remaining active modifiers when issue resolves or escalates
+            if (newStatus === 'resolved' || newStatus === 'escalated') {
+                await supabase.from('bilateral_issue_modifiers')
+                    .update({ is_active: false, resolved_by: `issue_${newStatus}`, resolved_tick: currentTick })
+                    .eq('issue_id', issue.id)
+                    .eq('is_active', true);
+            }
+
             if (newStatus !== 'escalated') {
                 await insertHistory(supabase, issue.id, currentTick, 'status_changed',
                     `Issue status changed to ${newStatus}.`,
