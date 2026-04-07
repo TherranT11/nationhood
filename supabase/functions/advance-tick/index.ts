@@ -4525,17 +4525,18 @@ function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
 
         let annualCost = 0;
         const ongoingBase = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
-        if (ongoingBase > 0) {
+        if (ongoingBase !== 0) {
             let scaled = ongoingBase;
             if (policy.ongoing_scaling_stat && nation[policy.ongoing_scaling_stat] !== undefined) {
                 const statVal = Number(nation[policy.ongoing_scaling_stat]) || 1;
                 const divisor = RAW_SCALING_DIVISORS[policy.ongoing_scaling_stat] || 50;
                 scaled = ongoingBase * (statVal / divisor);
             }
+            // Positive = spending, negative = revenue (taxes, fees)
             annualCost = scaled * GAME_CONFIG.TICKS_PER_YEAR * 1_000_000;
         }
 
-        if (annualCost > 0) {
+        if (annualCost !== 0) {
             policies.push({ policy_id: policy.id, policy_name: policy.policy_name, cost: annualCost });
             total += annualCost;
         }

@@ -440,16 +440,24 @@ function renderPolicyTable() {
             effectsHTML = `<span class="tag ${cls}">${fmtStat(p.target_stat)} ${arrow} ${p.stat_change_per_tick || '?'}/t</span>`;
         }
 
-        // Costs
+        // Costs (negative = revenue/relief)
       const costs = [];
         if (p.upfront_cost > 0) {
             const upScaling = p.upfront_scaling_stat;
             costs.push(upScaling ? `${fmtCost(p.upfront_cost)}×${fmtStat(upScaling)} up` : `${fmtCost(p.upfront_cost)} up`);
+        } else if (p.upfront_cost < 0) {
+            const upScaling = p.upfront_scaling_stat;
+            const revLabel = upScaling ? `<span style="color:#5cb85c">${fmtCost(Math.abs(p.upfront_cost))}×${fmtStat(upScaling)} rev</span>` : `<span style="color:#5cb85c">${fmtCost(Math.abs(p.upfront_cost))} rev</span>`;
+            costs.push(revLabel);
         }
-        if ((p.ongoing_base_cost || p.ongoing_cost_per_tick || 0) > 0) {
-            const base = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
+        const onBase = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
+        if (onBase > 0) {
             const scaling = p.ongoing_scaling_stat;
-            costs.push(scaling ? `${fmtCost(base)}×${fmtStat(scaling)}/t` : `${fmtCost(base)}/t`);
+            costs.push(scaling ? `${fmtCost(onBase)}×${fmtStat(scaling)}/t` : `${fmtCost(onBase)}/t`);
+        } else if (onBase < 0) {
+            const scaling = p.ongoing_scaling_stat;
+            const relLabel = scaling ? `<span style="color:#5cb85c">${fmtCost(Math.abs(onBase))}×${fmtStat(scaling)}/t relief</span>` : `<span style="color:#5cb85c">${fmtCost(Math.abs(onBase))}/t relief</span>`;
+            costs.push(relLabel);
         }
         const costHTML = costs.length > 0 ? costs.join('<br>') : '—';
 
