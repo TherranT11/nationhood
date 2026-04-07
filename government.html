@@ -1264,11 +1264,13 @@ async function renderGovernmentPage() {
         // Government approval
         let governmentApproval = await calculateGovernmentApproval();
 
-        // Fetch recent gov approval events for display
+        // Fetch recent gov approval events for display (only last 10 ticks —
+        // older entries have largely decayed and would misleadingly show resolved crises)
         const { data: govApprovalEvents } = await _supabase
             .from('gov_approval_log')
             .select('amount, source, tick')
             .eq('nation_id', currentNation.id)
+            .gte('tick', currentTick - 10)
             .order('tick', { ascending: false })
             .limit(8);
         currentNation._govApprovalEvents = govApprovalEvents || [];
