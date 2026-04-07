@@ -1303,6 +1303,8 @@
     cursor: pointer;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    word-wrap: break-word;
+    white-space: normal;
 }
 .ia-confirm-btn--diplomatic { background: var(--teal); color: #000; }
 .ia-confirm-btn--diplomatic:hover { filter: brightness(1.15); }

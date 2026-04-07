@@ -283,21 +283,12 @@ initPage('conflicts', async (state) => {
         // Confirm button
         if (e.target.closest('#ia-confirm-btn') || e.target.closest('.ia-confirm-btn')) {
             e.stopPropagation();
-            if (!_selectedActionKey || !_actionIssue) {
-                alert('No action selected or no issue loaded.');
-                return;
-            }
+            if (issueActionExecuting) return;
+            if (!_selectedActionKey || !_actionIssue) return;
             const action = ACTIONS[_selectedActionKey];
-            if (!action) {
-                alert('Action not found: ' + _selectedActionKey);
-                return;
-            }
-            // Show modal directly — build and display inline
+            if (!action) return;
             const modal = document.getElementById('action-modal');
-            if (!modal) {
-                alert('Modal element not found in DOM.');
-                return;
-            }
+            if (!modal) return;
             const ap = currentFaction?.action_points || 0;
             let apCost = action.ap_cost;
             const hasFriction = (_actionMods || []).some(m => m.modifier_key === 'diplomatic_friction' && m.is_active);
