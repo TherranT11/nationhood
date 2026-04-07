@@ -1632,7 +1632,9 @@ async function renderAgreementsTab() {
 }
 
 // ── Renew expired trade agreement ──
+let _renewTradeLock = false;
 async function renewTradeAgreement(agreementId) {
+    if (_renewTradeLock) return;
     if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG && !diplomaticRoles.isMoT) {
         alert('Only the Foreign Minister, Head of Government, or Minister of Trade can renew agreements.');
         return;
@@ -1646,6 +1648,9 @@ async function renewTradeAgreement(agreementId) {
     const partnerName = partnerNation?.name || 'Unknown';
 
     if (!confirm(`Renew "${ta.agreement_name}" with ${partnerName}?\n\nThis will reactivate the agreement with a new duration. The other nation will need to confirm the renewal.`)) return;
+
+    _renewTradeLock = true;
+    try {
 
     // Get current tick
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -1677,10 +1682,14 @@ async function renewTradeAgreement(agreementId) {
 
     alert(`"${ta.agreement_name}" has been renewed for ${ta.duration_ticks || 48} ticks.`);
     renderAgreementsTab();
+
+    } finally { _renewTradeLock = false; }
 }
 
 // ── Renew expired diplomatic agreement ──
+let _renewDiploLock = false;
 async function renewDiplomaticAgreement(agreementId) {
+    if (_renewDiploLock) return;
     if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
         alert('Only the Foreign Minister or Head of Government can renew agreements.');
         return;
@@ -1696,6 +1705,9 @@ async function renewDiplomaticAgreement(agreementId) {
     const agName = pd.name || 'Unnamed Agreement';
 
     if (!confirm(`Renew "${agName}" with ${partnerName}?\n\nThis will reactivate the agreement with a new duration.`)) return;
+
+    _renewDiploLock = true;
+    try {
 
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
@@ -1725,6 +1737,8 @@ async function renewDiplomaticAgreement(agreementId) {
 
     alert(`"${agName}" has been renewed for ${durationYears} year(s).`);
     renderAgreementsTab();
+
+    } finally { _renewDiploLock = false; }
 }
 
 async function withdrawTradeAgreement(agreementId) {
