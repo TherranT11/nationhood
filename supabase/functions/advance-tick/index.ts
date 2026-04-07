@@ -9396,7 +9396,8 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
         const validSystems = ['parliamentary', 'constitutional_monarchy', 'presidential', 'semi_presidential'];
         if (!validSystems.includes(targetSystem)) {
             console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_constitutional_reform: ${targetSystem}. Marking as failed.`);
-            await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
+            const { error: failMarkErr } = await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
+            if (failMarkErr) console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as failed:`, failMarkErr.message);
             return false;
         }
 
@@ -9411,7 +9412,11 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
         }
 
         // Get current nation data
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+        const { data: nation, error: nationFetchErr } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+        if (nationFetchErr || !nation) {
+            console.error(`[enactFoundationalBill] Failed to fetch nation ${bill.nation_id} for constitutional reform:`, nationFetchErr?.message);
+            return false;
+        }
         const currentSystem = getCurrentConstitutionalSystem(nation);
 
         if (currentSystem === targetSystem) {
@@ -9479,10 +9484,11 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             // Close administration for transition
             const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
             const dateStr = shardData?.current_date || '';
-            await supabase.from('administrations')
+            const { error: adminErr } = await supabase.from('administrations')
                 .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'constitutional_transition' })
                 .eq('nation_id', bill.nation_id)
                 .is('ended_at_tick', null);
+            if (adminErr) console.error('[enactFoundationalBill] Failed to close administration:', adminErr.message);
 
             console.log(`[enactFoundationalBill] President deactivated, presidential elections cleared`);
         }
