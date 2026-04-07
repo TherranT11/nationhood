@@ -131,7 +131,7 @@ SELECT n.id,
     'scheduled'
 FROM nations n WHERE LOWER(n.name) = 'vostia';
 
--- Step 6: Create 8 ministry slots (vacant — filled after first election)
+-- Step 6: Create 12 ministry slots (vacant — filled after first election)
 INSERT INTO ministries (nation_id, ministry_key, ministry_name, is_active, party_id)
 SELECT n.id, m.key, m.name, true, NULL
 FROM nations n,
@@ -143,7 +143,11 @@ FROM nations n,
     ('finance', 'Ministry of Finance'),
     ('education', 'Ministry of Education'),
     ('healthcare', 'Ministry of Healthcare'),
-    ('trade', 'Ministry of Trade')
+    ('labor', 'Ministry of Labor'),
+    ('justice', 'Ministry of Justice'),
+    ('trade', 'Ministry of Trade'),
+    ('energy', 'Ministry of Energy'),
+    ('transportation', 'Ministry of Transportation')
 ) AS m(key, name)
 WHERE LOWER(n.name) = 'vostia'
 ON CONFLICT DO NOTHING;
