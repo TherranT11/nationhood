@@ -1853,17 +1853,19 @@ function renderDissolveParliamentButton() {
 }
 
 async function handleDissolveParliament() {
+    if (_govActionLock) return;
     const lastVonc = currentNation.last_vonc_tick;
     const voncPenalty = lastVonc && (currentTick - lastVonc) <= 6;
     const voncWarning = voncPenalty ? '\n\n⚠ WARNING: Dissolving parliament after a recent no-confidence vote will cost -5 Legitimacy (authoritarian overreach).' : '';
     if (!confirm(`Dissolve Parliament? This will trigger snap elections, cost -3 Stability, and give the PM\'s party +5 momentum. This cannot be undone.${voncWarning}`)) return;
+    _govActionLock = true;
     try {
         await dissolveParliament(_supabase, currentNation.id, currentFaction.id);
         alert('Parliament dissolved — snap elections scheduled.');
         await renderGovernmentPage();
     } catch (e) {
         alert('Failed: ' + (e.message || e));
-    }
+    } finally { _govActionLock = false; }
 }
 
 window.handleDissolveParliament = handleDissolveParliament;
@@ -7337,8 +7339,7 @@ async function denyRequest(requestId) {
 function renderSemiPresNoConfidenceButton() {
     if (!currentFaction || !isSemiPresidential(currentNation)) return '';
 
-    // Must not be the president's party filing against their own PM... actually any opposition can file
-    // Check if current faction is the PM's party — PM's own party can't file no-confidence
+    // PM's own party cannot file no-confidence
     if (pmFactionId && currentFaction.id === pmFactionId) return '';
 
     // President's party also can't file (they can just nominate a new PM if PM is vacant)

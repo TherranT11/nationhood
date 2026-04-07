@@ -11099,6 +11099,7 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
             }
 
             // Log event — president survives, must re-nominate
+            const samePartyPenalty = president && pmFactionId && president.faction_id === pmFactionId;
             await supabase.from('event_log').insert({
                 nation_id: nationId,
                 event_name: 'No Confidence — PM Removed',
@@ -11106,7 +11107,7 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
                 fired_at_tick: currentTick,
                 category: 'government',
                 description_chosen: `Prime Minister ${pmLastName} has been removed by a vote of no confidence (${votesFor} to ${votesAgainst}). The President must nominate a new PM.`,
-                effects_applied: { pm_removed: true, president_survives: true, caller_approval: +2, pm_party_approval: -3, gov_approval: -5 }
+                effects_applied: { pm_removed: true, president_survives: true, caller_approval: +2, pm_party_approval: samePartyPenalty ? -6 : -3, gov_approval: -5, same_party_penalty: samePartyPenalty }
             });
             return;
         }
@@ -11512,7 +11513,7 @@ async function dissolveParliamentAction(supabase, nationId, presidentFactionId) 
     }
 
     console.log(`[dissolveParliamentAction] President dissolved parliament in ${nation.name}. Snap election in ${EARLY_ELECTION_TICKS} ticks.${voncPenalty ? ' Post-VoNC penalty applied.' : ''}`);
-    return { success: true, electionTick: currentTick + EARLY_ELECTION_TICKS, voncPenalty };
+    return { success: true, electionTick: currentTick + EARLY_ELECTION_TICKS };
 }
 
 

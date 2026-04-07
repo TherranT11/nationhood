@@ -799,6 +799,7 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
             }
 
             // Log event — president survives, must re-nominate
+            const samePartyPenalty = president && pmFactionId && president.faction_id === pmFactionId;
             await supabase.from('event_log').insert({
                 nation_id: nationId,
                 event_name: 'No Confidence — PM Removed',
@@ -806,7 +807,7 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
                 fired_at_tick: currentTick,
                 category: 'government',
                 description_chosen: `Prime Minister ${pmLastName} has been removed by a vote of no confidence (${votesFor} to ${votesAgainst}). The President must nominate a new PM.`,
-                effects_applied: { pm_removed: true, president_survives: true, caller_approval: +2, pm_party_approval: -3, gov_approval: -5 }
+                effects_applied: { pm_removed: true, president_survives: true, caller_approval: +2, pm_party_approval: samePartyPenalty ? -6 : -3, gov_approval: -5, same_party_penalty: samePartyPenalty }
             });
             return;
         }
@@ -1029,17 +1030,14 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
     // Bust coalition cache after caretaker transition
     if (typeof qCacheBust === 'function') qCacheBust('coalition_' + nationId);
 
-    // 4. Cancel any existing scheduled parliamentary elections
+    // 4. Cancel any existing scheduled elections
     // (preserve presidential elections for semi-presidential systems)
-    const deleteQuery = supabase
-        .from('elections')
-        .delete()
-        .eq('nation_id', nationId)
-        .eq('status', 'scheduled');
     if (isSemiPresidential(nationCheck)) {
-        await deleteQuery.eq('election_type', 'parliamentary');
+        await supabase.from('elections').delete()
+            .eq('nation_id', nationId).eq('status', 'scheduled').eq('election_type', 'parliamentary');
     } else {
-        await deleteQuery;
+        await supabase.from('elections').delete()
+            .eq('nation_id', nationId).eq('status', 'scheduled');
     }
 
     // 5. Schedule early election
@@ -1215,7 +1213,7 @@ export async function dissolveParliament(supabase, nationId, presidentFactionId)
         });
     }
 
-    return { success: true, electionTick: currentTick + EARLY_ELECTION_TICKS, voncPenalty };
+    return { success: true, electionTick: currentTick + EARLY_ELECTION_TICKS };
 }
 
 
