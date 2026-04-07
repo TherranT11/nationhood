@@ -2944,6 +2944,36 @@ export const FLANDIS_LAST_NAMES = [
 
 const FLANDIS_NATIONS = ['Flandis'];
 
+// Vostia names (Serbian/Montenegrin)
+export const VOSTIA_FIRST_NAMES = [
+    'Dragan', 'Goran', 'Vuk', 'Zoran', 'Dušan', 'Nemanja', 'Bogdan', 'Slobodan',
+    'Vlastimir', 'Milorad', 'Gvozden', 'Radomir', 'Branislav', 'Jovan', 'Dimitrije',
+    'Ognjen', 'Lazar', 'Miodrag', 'Zdravko', 'Nebojša', 'Predrag', 'Stojan',
+    'Vojislav', 'Darko', 'Borislav', 'Momčilo', 'Uroš', 'Radoš', 'Božidar',
+    'Gavrilo', 'Vasilije', 'Đorđe', 'Radovan', 'Blagoje', 'Veljko', 'Živko',
+    'Krsto', 'Miloš', 'Draško', 'Balša',
+    'Dragana', 'Svetlana', 'Jelena', 'Milica', 'Danica', 'Zora', 'Radmila',
+    'Snežana', 'Vesna'
+];
+
+export const VOSTIA_LAST_NAMES = [
+    'Jovanović', 'Petrović', 'Đorđević', 'Marković', 'Nikolić', 'Popović',
+    'Stojanović', 'Ilić', 'Lukić', 'Babić', 'Ristić', 'Kostić', 'Vuković',
+    'Lazarević', 'Kovačević', 'Simić', 'Milošević', 'Stevanović', 'Tomić',
+    'Savić', 'Radović', 'Dimitrijević', 'Vasić', 'Bogdanović', 'Jović',
+    'Krstić', 'Mladenović', 'Filipović', 'Gajić', 'Cvetković', 'Mitić',
+    'Todorović', 'Milosavljević', 'Živković', 'Knežević', 'Pantić', 'Stanković',
+    'Marić', 'Mihajlović', 'Tasić', 'Pavlović', 'Kuzmanović', 'Milanović',
+    'Grbić', 'Obradović', 'Sekulić', 'Mašić', 'Bulatović', 'Krivokapić',
+    'Đukanović', 'Ivanović', 'Pešić', 'Milovanović', 'Mitrović', 'Antić',
+    'Perić', 'Blagojević', 'Drašković', 'Božić', 'Nedić', 'Vukotić',
+    'Vujović', 'Radulović', 'Matić', 'Damjanović', 'Krsmanović', 'Urošević',
+    'Šćepanović', 'Gojković', 'Zlatković', 'Arsić', 'Aleksić', 'Vidaković',
+    'Vasiljević', 'Janković'
+];
+
+const VOSTIA_NATIONS = ['Vostia'];
+
 // Female first names from both name pools (used for gendered title selection)
 const FEMALE_NAMES = new Set([
     // Crucera
@@ -2956,7 +2986,10 @@ const FEMALE_NAMES = new Set([
     'Maja', 'Agnes',
     // Flandis
     'Anneliese', 'Bregje', 'Clasien', 'Dymphna', 'Elske', 'Fenna', 'Grietje',
-    'Hanneke', 'Ilse', 'Jobke', 'Karlijn', 'Lieselotte', 'Maaike', 'Nienke', 'Roos'
+    'Hanneke', 'Ilse', 'Jobke', 'Karlijn', 'Lieselotte', 'Maaike', 'Nienke', 'Roos',
+    // Vostia
+    'Dragana', 'Svetlana', 'Jelena', 'Milica', 'Danica', 'Zora', 'Radmila',
+    'Snežana', 'Vesna'
 ]);
 
 export function isFemaleName(firstName) {
@@ -2972,6 +3005,9 @@ export function getNationNames(nationName) {
     }
     if (FLANDIS_NATIONS.includes(nationName)) {
         return { firstNames: FLANDIS_FIRST_NAMES, lastNames: FLANDIS_LAST_NAMES };
+    }
+    if (VOSTIA_NATIONS.includes(nationName)) {
+        return { firstNames: VOSTIA_FIRST_NAMES, lastNames: VOSTIA_LAST_NAMES };
     }
     return { firstNames: PM_FIRST_NAMES, lastNames: PM_LAST_NAMES };
 }
