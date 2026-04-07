@@ -1458,26 +1458,26 @@ async function loadWorldEvents(excludeNationId, currentTick) {
   try {
     const [evResult, billResult, factionResult, protestResult] = await Promise.all([
       _supabase.from('event_log')
-        .select('*, nations!inner(name, nation_profiles(flag_url))')
+        .select('*, nations!inner(name, flag_url)')
         .neq('nation_id', excludeNationId)
         .order('fired_at_tick', { ascending: false })
         .limit(80),
       // World bill proposals (other nations)
       _supabase.from('bills')
-        .select('bill_name, proposed_tick, nation_id, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id), nations!inner(name, nation_profiles(flag_url))')
+        .select('bill_name, proposed_tick, nation_id, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id), nations!inner(name, flag_url)')
         .neq('nation_id', excludeNationId)
         .not('bill_type', 'in', '("no_confidence","confirmation","minister_confirmation","veto_override","impeachment_conviction")')
         .order('proposed_tick', { ascending: false })
         .limit(30),
       // World new parties (other nations)
       _supabase.from('factions')
-        .select('faction_name, party_color, leader_first_name, leader_last_name, nation_id, created_at, faction_ideology(liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism), nations!inner(name, nation_profiles(flag_url))')
+        .select('faction_name, party_color, leader_first_name, leader_last_name, nation_id, created_at, faction_ideology(liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism), nations!inner(name, flag_url)')
         .neq('nation_id', excludeNationId)
         .order('created_at', { ascending: false })
         .limit(20),
       // World protests (other nations)
       _supabase.from('protest_log')
-        .select('id, tick_called, tick_resolved, tier, status, grievance_type, demand_label, faction_id, nation_id, factions(faction_name, party_color), nations!inner(name, nation_profiles(flag_url))')
+        .select('id, tick_called, tick_resolved, tier, status, grievance_type, demand_label, faction_id, nation_id, factions(faction_name, party_color), nations!inner(name, flag_url)')
         .neq('nation_id', excludeNationId)
         .in('status', ['resolved', 'crisis_active'])
         .order('tick_called', { ascending: false })
@@ -1521,8 +1521,7 @@ async function loadWorldEvents(excludeNationId, currentTick) {
       const dateStr = tickToDate(ev.fired_at_tick);
       const cat = EVENT_CATEGORY_STYLES[(ev.category || '').toLowerCase()] || EVENT_CATEGORY_DEFAULT;
       const nationName = ev.nations?.name || 'Unknown';
-      const np = ev.nations?.nation_profiles;
-      const flagUrl = Array.isArray(np) ? np[0]?.flag_url : np?.flag_url;
+      const flagUrl = ev.nations?.flag_url || (nationName !== 'Unknown' ? `assets/flags/${nationName}.png` : '');
       const nc = nationColor(nationName);
 
       let displayText;
