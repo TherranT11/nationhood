@@ -12928,6 +12928,16 @@ async function processElections(supabase, nation, currentTick) {
                     distributed += gain;
                 }
                 console.log(`[Election] Party Registration Act: ${belowThreshold.length} parties below ${regThreshold}% threshold (${minSeats} seats min), ${seatsFreed} seats reallocated for ${nation.name}`);
+
+                // Flag affected factions so the UI shows a dismissable notification
+                for (const r of belowThreshold) {
+                    if (r.party_id) {
+                        await supabase.from('factions').update({
+                            registration_act_disbanded: true,
+                            registration_act_dismissed: false,
+                        }).eq('id', r.party_id);
+                    }
+                }
             }
         }
 

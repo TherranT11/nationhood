@@ -377,11 +377,10 @@ export async function checkRegistrationActDisbanded(faction) {
     const modal = document.createElement('div');
     modal.style.cssText = 'background:#1a1a16;border:2px solid #c55;border-radius:8px;padding:32px 40px;max-width:520px;text-align:center;font-family:"IBM Plex Sans",sans-serif;';
     modal.innerHTML = `
-        <div style="font-size:1.4rem;font-weight:bold;color:#c55;margin-bottom:16px;">⚠️ Party Has Been Disbanded</div>
-        <div style="font-size:1rem;color:#c55;font-weight:600;margin-bottom:12px;">Political Party Registration Act</div>
+        <div style="font-size:1.4rem;font-weight:bold;color:#c55;margin-bottom:16px;">Message from the Electoral Commission</div>
         <div style="font-size:0.9rem;color:#e8e4dc;line-height:1.6;margin-bottom:24px;">
-            Due to this controversial bill, your party did not meet the required threshold to hold seats in the legislature.
-            Your party continues to exist as a political force in the nation and you should continue to fight and campaign to regain seats in the next election.
+            Due to new laws, your party did not meet the threshold for seats in the legislature.
+            You should continue to fight and campaign as opposition until you can be seated in the legislature.
         </div>
         <button id="registration-act-ok-btn" style="padding:10px 40px;font-family:'JetBrains Mono',monospace;font-size:0.85rem;font-weight:bold;letter-spacing:2px;background:#c55;color:#000;border:none;cursor:pointer;">OK</button>
     `;
