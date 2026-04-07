@@ -126,3 +126,58 @@ export function getGovDisplayLabel(nation) {
     if (nation?.hos_election_method === 'hereditary') return 'Constitutional Monarchy';
     return 'Parliamentary Democracy';
 }
+
+/**
+ * Constitutional Reform system identifiers.
+ * Maps to the proposed_constitutional_reform column values on the bills table.
+ */
+export const CONSTITUTIONAL_SYSTEMS = Object.freeze({
+    PARLIAMENTARY: 'parliamentary',
+    CONSTITUTIONAL_MONARCHY: 'constitutional_monarchy',
+    PRESIDENTIAL: 'presidential',
+    SEMI_PRESIDENTIAL: 'semi_presidential'
+});
+
+/**
+ * Returns the current constitutional system identifier for a nation.
+ * Used to determine which reform options are available (can't reform to current system).
+ *
+ * @param {object} nation - Nation row (needs government_type, hos_election_method)
+ * @returns {'parliamentary'|'constitutional_monarchy'|'presidential'|'semi_presidential'}
+ */
+export function getCurrentConstitutionalSystem(nation) {
+    if (isSemiPresidential(nation)) return CONSTITUTIONAL_SYSTEMS.SEMI_PRESIDENTIAL;
+    if (isPresidentialRepublic(nation)) return CONSTITUTIONAL_SYSTEMS.PRESIDENTIAL;
+    if (nation?.hos_election_method === 'hereditary') return CONSTITUTIONAL_SYSTEMS.CONSTITUTIONAL_MONARCHY;
+    return CONSTITUTIONAL_SYSTEMS.PARLIAMENTARY;
+}
+
+/**
+ * Returns the display label for a constitutional system identifier.
+ * @param {string} system - One of CONSTITUTIONAL_SYSTEMS values
+ * @returns {string} Human-readable label
+ */
+export function getConstitutionalSystemLabel(system) {
+    switch (system) {
+        case CONSTITUTIONAL_SYSTEMS.PARLIAMENTARY: return 'Parliamentary Democracy';
+        case CONSTITUTIONAL_SYSTEMS.CONSTITUTIONAL_MONARCHY: return 'Constitutional Monarchy';
+        case CONSTITUTIONAL_SYSTEMS.PRESIDENTIAL: return 'Presidential Republic';
+        case CONSTITUTIONAL_SYSTEMS.SEMI_PRESIDENTIAL: return 'Semi-Presidential Republic';
+        default: return 'Unknown';
+    }
+}
+
+/**
+ * Returns a short description of what each constitutional system entails.
+ * @param {string} system - One of CONSTITUTIONAL_SYSTEMS values
+ * @returns {string}
+ */
+export function getConstitutionalSystemDescription(system) {
+    switch (system) {
+        case CONSTITUTIONAL_SYSTEMS.PARLIAMENTARY: return 'Head of State appointed by parliament. Prime Minister holds executive power.';
+        case CONSTITUTIONAL_SYSTEMS.CONSTITUTIONAL_MONARCHY: return 'Hereditary monarch as Head of State. Prime Minister holds executive power.';
+        case CONSTITUTIONAL_SYSTEMS.PRESIDENTIAL: return 'Directly elected President as sole executive. No Prime Minister.';
+        case CONSTITUTIONAL_SYSTEMS.SEMI_PRESIDENTIAL: return 'Directly elected President shares power with a Prime Minister appointed by parliament.';
+        default: return '';
+    }
+}

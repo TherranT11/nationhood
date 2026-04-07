@@ -73,6 +73,10 @@ export const GAME_CONFIG = {
 
     // ── Head of State Election Method (Foundational) ──
     HOS_ELECTION_COOLDOWN_TICKS: 360,
+
+    // ── Constitutional Reform (Foundational) ──
+    CONSTITUTIONAL_REFORM_COOLDOWN_TICKS: 240,
+    CONSTITUTIONAL_REFORM_ELECTION_PROXIMITY_TICKS: 6,
 };
 
 export const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;

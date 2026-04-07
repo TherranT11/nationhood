@@ -132,6 +132,10 @@ const GAME_CONFIG = {
 
     // ── Head of State Election Method (Foundational) ──
     HOS_ELECTION_COOLDOWN_TICKS: 360,
+
+    // ── Constitutional Reform (Foundational) ──
+    CONSTITUTIONAL_REFORM_COOLDOWN_TICKS: 240,
+    CONSTITUTIONAL_REFORM_ELECTION_PROXIMITY_TICKS: 6,
 };
 
 const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;
@@ -359,6 +363,19 @@ function getGovDisplayLabel(nation) {
     if (isPresidentialRepublic(nation)) return 'Presidential Republic';
     if (nation?.hos_election_method === 'hereditary') return 'Constitutional Monarchy';
     return 'Parliamentary Democracy';
+}
+
+const CONSTITUTIONAL_SYSTEMS = {
+    PARLIAMENTARY: 'parliamentary',
+    CONSTITUTIONAL_MONARCHY: 'constitutional_monarchy',
+    PRESIDENTIAL: 'presidential',
+    SEMI_PRESIDENTIAL: 'semi_presidential'
+};
+function getCurrentConstitutionalSystem(nation) {
+    if (isSemiPresidential(nation)) return CONSTITUTIONAL_SYSTEMS.SEMI_PRESIDENTIAL;
+    if (isPresidentialRepublic(nation)) return CONSTITUTIONAL_SYSTEMS.PRESIDENTIAL;
+    if (nation?.hos_election_method === 'hereditary') return CONSTITUTIONAL_SYSTEMS.CONSTITUTIONAL_MONARCHY;
+    return CONSTITUTIONAL_SYSTEMS.PARLIAMENTARY;
 }
 
 const MINISTRY_DOMAINS = {
