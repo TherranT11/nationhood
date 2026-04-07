@@ -232,9 +232,11 @@ export function getCompatiblePolicies(sector, allPolicies, faction, excludePolic
                 }
             }
 
-            // Structural policies that are already active laws cannot be enacted again
-            const alreadyEnacted = activePolicyIds && activePolicyIds.has(p.id) && p.policy_type === 'structural';
+            // Structural policies that are already active laws can be repealed; levers cannot
+            const isActive = activePolicyIds && activePolicyIds.has(p.id);
+            const alreadyEnacted = isActive && p.policy_type === 'structural';
+            const alreadyEnactedLever = isActive && p.policy_type === 'lever';
 
-            return { ...p, isOpposed, prerequisiteMissing, prerequisiteName, alreadyEnacted };
+            return { ...p, isOpposed, prerequisiteMissing, prerequisiteName, alreadyEnacted, alreadyEnactedLever };
         });
 }

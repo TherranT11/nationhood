@@ -2144,12 +2144,14 @@ function renderPolicyOptions(policies, containerId, buttonId) {
         }).join(' ');
         const isPending = pendingPolicyIds.has(policy.id);
         const isEnacted = policy.alreadyEnacted;
+        const isActiveLever = policy.alreadyEnactedLever;
         const opposedClass = policy.isOpposed ? ' opposed' : '';
         const pendingClass = isPending ? ' pending' : '';
-        const enactedClass = isEnacted ? ' enacted-repealable' : '';
+        const enactedClass = isEnacted ? ' enacted-repealable' : (isActiveLever ? ' pending' : '');
         const opposedBadge = policy.isOpposed ? '<span class="opposed-badge">⚠ Opposed</span>' : '';
         const pendingBadge = isPending ? '<span class="opposed-badge" style="background:var(--text-muted);color:var(--text-primary);">⏳ In Active Bill</span>' : '';
         const enactedBadge = isEnacted ? '<span class="opposed-badge" style="background:var(--red);color:#fff;">Click to Repeal</span>' : '';
+        const leverBadge = isActiveLever ? '<span class="opposed-badge" style="background:var(--green);color:#fff;">ACTIVE LEVER</span>' : '';
         const opposedWarn = policy.isOpposed ? '<div class="opposed-warning">Ideologically opposed — approval penalty if proposed</div>' : '';
         let effectHTML = '';
         if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
@@ -2163,10 +2165,10 @@ function renderPolicyOptions(policies, containerId, buttonId) {
             const cls = policy.stat_direction === 'UP' ? 'effect-up' : 'effect-down';
             effectHTML = `${formatStatName(policy.target_stat)} <span class="${cls}">${dir}</span>`;
         }
-        // Enacted policies can be clicked to add a repeal article; pending ones stay disabled
+        // Enacted structural policies can be clicked to add a repeal article; levers and pending ones stay disabled
         const clickAction = isEnacted
             ? `selectRepealPolicy('${policy.id}')`
-            : (isPending ? '' : `selectPolicyOption('${policy.id}','${buttonId}')`);
+            : (isPending || isActiveLever ? '' : `selectPolicyOption('${policy.id}','${buttonId}')`);
         // Show reversed stat effects and cost savings for enacted policies
         let repealInfoHTML = '';
         if (isEnacted) {
@@ -2187,7 +2189,7 @@ function renderPolicyOptions(policies, containerId, buttonId) {
                 repealInfoHTML += `<div style="margin-top:2px;font-size:0.75rem;color:var(--green);">Saves ${fmtC(onCostScaled)}/tick if repealed</div>`;
             }
         }
-        return `<div class="policy-option${opposedClass}${pendingClass}${enactedClass}" data-policy-id="${policy.id}" onclick="${clickAction}"><div class="policy-option-name">${escapeHtml(policy.policy_name)} ${ideoHTML} ${opposedBadge}${pendingBadge}${enactedBadge}</div><div class="policy-option-desc">${escapeHtml(policy.description || '')}</div><div class="policy-option-effects">${effectHTML}</div>${repealInfoHTML}${opposedWarn}</div>`;
+        return `<div class="policy-option${opposedClass}${pendingClass}${enactedClass}" data-policy-id="${policy.id}" onclick="${clickAction}"><div class="policy-option-name">${escapeHtml(policy.policy_name)} ${ideoHTML} ${opposedBadge}${pendingBadge}${enactedBadge}${leverBadge}</div><div class="policy-option-desc">${escapeHtml(policy.description || '')}</div><div class="policy-option-effects">${effectHTML}</div>${repealInfoHTML}${opposedWarn}</div>`;
     }).join('');
 }
 

@@ -422,7 +422,7 @@ async function loadBillData() {
 
         // Load active laws for repeal article support
         const { data: activeLawRows } = await _supabase.from('active_laws')
-            .select('*, policies(id, policy_name, description, major_sector, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat, stat_effects, target_stat, stat_direction, ideologies, ideology)')
+            .select('*, policies(id, policy_name, description, major_sector, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat, stat_effects, target_stat, stat_direction, ideologies, ideology, policy_type)')
             .eq('nation_id', bill.nation_id)
             .eq('is_reversal', false);
         nationActiveLaws = (activeLawRows || []).filter(l => l.policies);
@@ -3028,9 +3028,9 @@ function onSponsorAddSectorChange() {
     // Existing repeal law IDs already in bill (to exclude duplicates)
     const existingRepealLawIds = new Set((currentBill?.bill_articles || []).filter(a => a.repeal_active_law_id).map(a => a.repeal_active_law_id));
 
-    // Active laws in this sector that can be repealed
+    // Active laws in this sector that can be repealed (exclude levers — one-time policies can't be repealed)
     const sectorActiveLaws = nationActiveLaws.filter(l =>
-        l.policies?.major_sector === sector && !existingRepealLawIds.has(l.id)
+        l.policies?.major_sector === sector && !existingRepealLawIds.has(l.id) && l.policies?.policy_type !== 'lever'
     );
 
     // Build active laws (repeal) section
