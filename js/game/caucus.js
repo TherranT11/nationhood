@@ -168,34 +168,53 @@ export async function assignCaucusFactions(supabase, party, nationId, totalFacti
 
     // Sort by spread descending, take the top axes we need
     axisSpreads.sort((a, b) => b.spread - a.spread);
-    // Each axis produces 2 factions (one per wing)
-    const axesNeeded = Math.ceil(totalFactionCount / 2);
-    const newAxesCount = axesNeeded - existingAxes.size;
-    const selectedAxes = axisSpreads.slice(0, Math.max(newAxesCount, 0));
 
-    // Create two caucus factions per selected axis
-    for (const axis of selectedAxes) {
+    // Determine how many axes and wings to create.
+    // Each axis can produce 1 wing (dominant side) or 2 wings (both sides).
+    // We prioritize diversity: spread across more axes first, then fill with second wings.
+    const totalNew = totalFactionCount - existingAxes.size * 2;
+    const availableAxes = axisSpreads.slice(0, Math.min(axisSpreads.length, totalNew));
+
+    // Phase 1: assign 1 wing per axis (dominant wing) across as many axes as we have slots
+    const assignments = []; // { axis, wing }
+    for (const axis of availableAxes) {
+        if (assignments.length >= totalNew) break;
+        // Pick the dominant wing (more internal tension = higher weight)
+        const dominantWing = axis.leftWeight >= axis.rightWeight ? 'left' : 'right';
+        assignments.push({ axis, wing: dominantWing });
+    }
+
+    // Phase 2: if we still need more caucuses, go back and add the opposite wing
+    if (assignments.length < totalNew) {
+        for (const axis of availableAxes) {
+            if (assignments.length >= totalNew) break;
+            const existingWing = assignments.find(a => a.axis.axisKey === axis.axisKey)?.wing;
+            if (!existingWing) continue;
+            const oppositeWing = existingWing === 'left' ? 'right' : 'left';
+            assignments.push({ axis, wing: oppositeWing });
+        }
+    }
+
+    // Create caucus factions from assignments
+    for (const { axis, wing } of assignments) {
         const wingNames = CAUCUS_WING_NAMES[axis.axisKey];
         if (!wingNames) continue;
 
         const totalWingWeight = axis.leftWeight + axis.rightWeight || 1;
+        const wingWeight = wing === 'left' ? axis.leftWeight : axis.rightWeight;
+        // Seat share: proportional to wing weight, minimum 0.12 (~10-15% of party seats)
+        const seatShare = Math.max(0.12, Math.min(0.40, wingWeight / totalWingWeight * 0.50));
 
-        for (const wing of ['left', 'right']) {
-            const wingWeight = wing === 'left' ? axis.leftWeight : axis.rightWeight;
-            // Seat share: proportional to wing weight, minimum 0.12 (~10-15% of party seats)
-            const seatShare = Math.max(0.12, Math.min(0.40, wingWeight / totalWingWeight * 0.50));
-
-            await supabase.from('caucus_factions').insert({
-                party_id: party.id,
-                nation_id: nationId,
-                name: wingNames[wing],
-                dominant_axis: axis.axisKey,
-                wing_end: wing,
-                seat_share: Math.round(seatShare * 1000) / 1000,
-                relationship_score: CAUCUS_CONFIG.DEFAULT_RELATIONSHIP,
-                is_active: true,
-            });
-        }
+        await supabase.from('caucus_factions').insert({
+            party_id: party.id,
+            nation_id: nationId,
+            name: wingNames[wing],
+            dominant_axis: axis.axisKey,
+            wing_end: wing,
+            seat_share: Math.round(seatShare * 1000) / 1000,
+            relationship_score: CAUCUS_CONFIG.DEFAULT_RELATIONSHIP,
+            is_active: true,
+        });
     }
 }
 
