@@ -437,6 +437,7 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 import { getNationNames } from './js/game/political-actions.js';
 import { getStartingEquipment } from './js/game/equipment.js';
+import { hasElectedPresident } from './js/game/government-types.js';
 
 const FLAG_URLS = {
     'Melizea': 'assets/flags/Melizea.png',
@@ -531,11 +532,11 @@ function getDemand(nationId) {
 
 // ── Gov helpers ──
 function getGovClass(nation) {
-    if (nation.government_type === 'Presidential') return 'gov-presidential';
+    if (hasElectedPresident(nation)) return 'gov-presidential';
     return 'gov-democracy';
 }
 function getGovLabel(nation) {
-    if (nation.government_type === 'Presidential') return 'Presidential';
+    if (hasElectedPresident(nation)) return 'Presidential';
     if (nation.hos_election_method === 'hereditary') return 'Constitutional Monarchy';
     return 'Parliamentary';
 }

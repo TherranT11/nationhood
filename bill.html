@@ -238,7 +238,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, deductAP } from './js/game/config.js';
-import { isGovernmentPresidential } from './js/game/government-types.js';
+import { isGovernmentPresidential, hasElectedPresident } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
 import { loadFactionIdeology, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, getIdeologyChipClass, calculateBillDynamicPenalty } from './js/game/ideology.js';
 import { calculateBillSupport, syncVoteTallies, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote } from './js/game/bills.js';
@@ -539,9 +539,19 @@ function renderBill() {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--red);">⚖ Impeachment</span>';
     } else if (bill.bill_type === 'impeachment_conviction') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--red);">⚖ Impeachment Trial</span>';
+    } else if (bill.bill_type === 'entrenchment_upgrade') {
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--purple);">🛡 Entrenchment</span>';
     }
     if (isFrozen) {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--orange);color:#000;">FROZEN</span>';
+    }
+
+    // Entrenchment badge
+    if (bill.entrenchment_tier) {
+        const _eBadgeColors = { protected: 'var(--blue)', entrenched: 'var(--purple)', enshrined: 'var(--amber)' };
+        const _eBadgeLabels = { protected: '🛡 Protected', entrenched: '🔒 Entrenched', enshrined: '⭐ Enshrined' };
+        const _eColor = _eBadgeColors[bill.entrenchment_tier] || 'var(--blue)';
+        document.getElementById('bill-title').innerHTML += ' <span class="bill-type-badge repeal" style="background:' + _eColor + ';">' + (_eBadgeLabels[bill.entrenchment_tier] || bill.entrenchment_tier) + '</span>';
     }
 
     // Presidential action badges
@@ -920,8 +930,36 @@ function renderArticles() {
                             : 'Adding/tightening limits: legitimacy +5, press freedom +2, judicial independence +2.') +
                     '</div>' +
                 '</div>';
+        } else if (bill.proposed_constitutional_reform) {
+            // Constitutional Reform subtype
+            const systemLabels = { parliamentary: 'Parliamentary Democracy', constitutional_monarchy: 'Constitutional Monarchy', presidential: 'Presidential Republic', semi_presidential: 'Semi-Presidential Republic' };
+            const systemLabel = systemLabels[bill.proposed_constitutional_reform] || bill.proposed_constitutional_reform;
+            const effects = {
+                parliamentary: 'Stability +3, Legitimacy +2, Civil Unrest +5.<br>Presidential system will be deactivated if applicable. PM formation triggered.',
+                constitutional_monarchy: 'Stability +5, Legitimacy -5, Civil Unrest +5.<br>A hereditary monarch will be established as Head of State.' +
+                    (bill.proposed_dynasty_name ? '<br>Dynasty: <strong>' + escapeHtml(bill.proposed_dynasty_name) + '</strong>' : ''),
+                presidential: 'Legitimacy +3, Political Engagement +3, Polarization +2, Civil Unrest +5.<br>A presidential election will be scheduled. PM and coalition dissolved if applicable.',
+                semi_presidential: 'Legitimacy +2, Political Engagement +2, Polarization +3, Civil Unrest +5.<br>President and PM coexist. Presidential election and PM formation triggered as needed.'
+            };
+            const effectsHTML = effects[bill.proposed_constitutional_reform] || '';
+            const cooldownYears = GAME_CONFIG.CONSTITUTIONAL_REFORM_COOLDOWN_TICKS / GAME_CONFIG.TICKS_PER_YEAR;
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--purple);">' +
+                    '<div class="article-number" style="color:var(--purple);">FOUNDATIONAL LAW</div>' +
+                    '<div class="article-title">Constitutional Reform</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill proposes to reform the system of government.') + '</div>' +
+                '</div>' +
+                '<div class="repeal-notice" style="border-color:var(--purple);">' +
+                    '<div class="repeal-notice-icon">🏛</div>' +
+                    '<div class="repeal-notice-text">Proposed System: ' + escapeHtml(systemLabel) + '</div>' +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        'Requires <strong style="color:var(--purple);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                        effectsHTML + '<br>' +
+                        cooldownYears + '-year cooldown between constitutional reforms.' +
+                    '</div>' +
+                '</div>';
         } else if (bill.proposed_hos_election_method) {
-            // HoS Election Method subtype
+            // HoS Election Method subtype (legacy)
             const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Constitutional Monarchy' };
             const methodLabel = methodLabels[bill.proposed_hos_election_method] || bill.proposed_hos_election_method;
             let effectsHTML = '';
@@ -1017,7 +1055,7 @@ function renderArticles() {
                     '</div>' +
                 '</div>';
         } else if (bill.proposed_judicial_appointment_politicization) {
-            const isPres = isPresidentialRepublic(currentNation);
+            const isPres = hasElectedPresident(currentNation);
             foundationalHTML =
                 '<div class="article preamble" style="border-left-color:var(--red);">' +
                     '<div class="article-number" style="color:var(--red);">FOUNDATIONAL LAW — AUTHORITARIAN</div>' +
@@ -1324,6 +1362,26 @@ function renderArticles() {
                     '</div>' +
                     '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
                     fundingActions +
+                '</div>';
+            }
+
+            // Entrenchment clause article
+            if (art.entrenchment_tier) {
+                const _tierLabels = { protected: 'Protected Law', entrenched: 'Entrenched Law', enshrined: 'Constitutional Law' };
+                const _tierColors = { protected: 'var(--blue)', entrenched: 'var(--purple)', enshrined: 'var(--amber)' };
+                const _tierIcons = { protected: '🛡', entrenched: '🔒', enshrined: '⭐' };
+                const _tierDescs = {
+                    protected: 'Requires 60% supermajority to repeal or amend.',
+                    entrenched: 'Requires 67% supermajority to repeal or amend. ' + GAME_CONFIG.ENTRENCHED_COOLDOWN_TICKS + '-tick cooldown before repeal can be filed.',
+                    enshrined: 'Can only be repealed via foundational bill (67% + co-sponsor).'
+                };
+                const _t = art.entrenchment_tier;
+                const _tc = _tierColors[_t] || 'var(--blue)';
+                return '<div class="article" style="border-left:3px solid ' + _tc + ';">' +
+                    '<div class="article-number">Article ' + art.article_number + ' <span style="color:' + _tc + ';font-size:0.7rem;">ENTRENCHMENT</span></div>' +
+                    '<div class="article-title">' + (_tierIcons[_t] || '') + ' ' + (_tierLabels[_t] || _t) + '</div>' +
+                    '<div class="article-description">' + (_tierDescs[_t] || '') + '</div>' +
+                    '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
                 '</div>';
             }
 
@@ -1994,9 +2052,9 @@ async function renderSidebar() {
         // ── Determine if this is an absolute-threshold bill (no quorum, fixed target) ──
         const isAbsoluteThreshold = bill.bill_type === 'foundational' || bill.bill_type === 'veto_override'
             || bill.bill_type === 'impeachment_conviction' || bill.bill_type === 'no_confidence'
-            || bill.bill_type === 'impeachment_motion';
+            || bill.bill_type === 'impeachment_motion' || !!bill.entrenchment_tier;
         const isSupermajority = bill.bill_type === 'foundational' || bill.bill_type === 'veto_override'
-            || bill.bill_type === 'impeachment_conviction';
+            || bill.bill_type === 'impeachment_conviction' || !!bill.entrenchment_tier;
 
         // ── Build status label and color ──
         let statusLabel, statusColor;

@@ -56,13 +56,13 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, deductAP } from './js/game/config.js';
-import { isGovernmentPresidential, CANONICAL_GOVERNMENT_TYPES } from './js/game/government-types.js';
+import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, isPresidentialDomainMinistry, getMinistryDomain, isCohabitation, PRESIDENTIAL_DOMAIN_MINISTRIES, CANONICAL_GOVERNMENT_TYPES } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition } from './js/game/government-structure.js';
 import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, buildMinistryBaselines } from './js/game/stats.js';
 import { formatStatName, autoAppointPartyLeaderAsPM, getNationNames, resignPM } from './js/game/political-actions.js';
 import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
-import { callEarlyElectionsAction, closeAdministration, rolloverAdministration, dissolveCoalition } from './js/game/elections.js';
-import { nominateMinister } from './js/game/presidential.js';
+import { callEarlyElectionsAction, closeAdministration, rolloverAdministration, dissolveCoalition, dissolveParliament } from './js/game/elections.js';
+import { nominateMinister, nominatePMCandidate } from './js/game/presidential.js';
 import { EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder } from './js/game/executive-orders.js';
 import { PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game/protest.js';
 import { POSITIVE_TRAITS } from './js/game/party-leadership.js';
@@ -911,6 +911,8 @@ let _energyReleaseAmount = 0; // slider value for release confirm
 let currentTick = 0;
 let lastElectionTick = null;
 let _protestCrisisData = null; // active protest crisis (T6/T7) for crisis card
+let pmFactionId = null;
+let isPMParty = false;
 
 // Assign modal state
 let assignMinistryKey = null;
@@ -1147,7 +1149,7 @@ async function renderGovernmentPage() {
             fetchActiveCoalition(_supabase, currentNation.id),
             fetchMinistries(),
             _supabase.from('factions')
-                .select('id, faction_name, abbreviation, seats, loyalty, action_points, party_color, party_logo, custom_logo_url, leader_ideology, leader_positive_traits, leader_negative_traits')
+                .select('id, faction_name, abbreviation, seats, loyalty, action_points, party_color, party_logo, custom_logo_url, leader_first_name, leader_last_name, leader_age, leader_ideology, leader_positive_traits, leader_negative_traits')
                 .eq('nation_id', currentNation.id).eq('faction_type', 'party')
         ]);
 
@@ -1164,6 +1166,11 @@ async function renderGovernmentPage() {
             activeHOG._resolvedIdeology = activeHOG.ideology
                 || activeHOG.factions?.leader_ideology
                 || null;
+        }
+
+        if (isSemiPresidential(currentNation) && activeHOG) {
+            pmFactionId = activeHOG.faction_id || null;
+            isPMParty = (currentFaction?.id === pmFactionId);
         }
 
         coalitionData = coalition;
@@ -1404,6 +1411,7 @@ async function renderGovernmentPage() {
             currentNation._activeParliamentaryEmergency = !!activeEmergency;
         }
 
+        await loadPendingPMBill();
         const revolutionBannerHtml = await renderRevolutionBannerGov();
         const administrationBoxHtml = await renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress, allPartySeats);
         const protestCrisisCardHtml = renderProtestCrisisCard();
@@ -1668,7 +1676,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                 <div class="administration-header">
                     <div>
                         <div class="administration-title">${escapeHtml(presidentData.last_name)} Administration</div>
-                        <div class="administration-subtitle">Presidential Government · <span style="color:${govStatusColor};font-weight:bold;">${govStatus}</span></div>
+                        <div class="administration-subtitle">${isSemiPresidential(currentNation) ? 'Semi-Presidential Government' : 'Presidential Government'} · <span style="color:${govStatusColor};font-weight:bold;">${govStatus}</span></div>
                     </div>
                     ${approvalHTML}
                 </div>
@@ -1694,6 +1702,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                             <div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div>
                             <div class="admin-person-details">Age ${hosAge}</div>
                         </div>
+                        ${isSemiPresidential(currentNation) ? renderSemiPresPMSection(activeHOG) : ''}
                     </div>
                     ${renderAdminChat()}
                 </div>
@@ -1701,6 +1710,8 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                     <div class="coalition-party-tag" style="border-left:3px solid ${getPartyColorById(presidentFactionId)};padding-left:8px;">${getPartyLogoById(presidentFactionId) || getPartyCustomLogoById(presidentFactionId) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyLogoHTML({ customLogoUrl: getPartyCustomLogoById(presidentFactionId), iconKey: getPartyLogoById(presidentFactionId), size: 16, color: getPartyColorById(presidentFactionId) })}</span>` : ''}${escapeHtml(presPartyName)}<span class="seats">${presPartySeats} Seats</span></div>
                 </div>
                 ${renderImpeachmentButton()}
+                ${isSemiPresidential(currentNation) && isPresidentParty ? renderDissolveParliamentButton() : ''}
+                ${isSemiPresidential(currentNation) && activeHOG ? renderSemiPresNoConfidenceButton() : ''}
             </div>`;
     }
 
@@ -1813,6 +1824,210 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         ${renderCaretakerBanner()}
     </div>`;
 }
+
+// ==================== DISSOLVE PARLIAMENT (SEMI-PRESIDENTIAL) ====================
+
+function renderDissolveParliamentButton() {
+    // Check cooldowns
+    const lastDissolution = currentNation.last_dissolution_tick;
+    const parlFormed = currentNation.parliament_formed_tick;
+    const dissolutionCooldown = lastDissolution ? Math.max(0, 24 - (currentTick - lastDissolution)) : 0;
+    const parlAgeCooldown = parlFormed ? Math.max(0, 12 - (currentTick - parlFormed)) : 0;
+    const cooldownLeft = Math.max(dissolutionCooldown, parlAgeCooldown);
+    const onCooldown = cooldownLeft > 0;
+
+    // Check if dissolving after a recent no-confidence (penalty warning)
+    const lastVonc = currentNation.last_vonc_tick;
+    const voncPenalty = lastVonc && (currentTick - lastVonc) <= 6;
+
+    return `
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-main);">
+            <button class="btn btn--danger" style="width:100%;font-size:0.75rem;padding:8px 12px;${onCooldown ? 'opacity:0.5;cursor:not-allowed;' : ''}"
+                    onclick="handleDissolveParliament()" ${onCooldown ? 'disabled' : ''}>
+                DISSOLVE PARLIAMENT
+            </button>
+            ${onCooldown ? `<div style="font-size:0.65rem;color:var(--text-tertiary);margin-top:4px;text-align:center;">${cooldownLeft} tick(s) until dissolution available</div>` : ''}
+            <div style="font-size:0.65rem;color:var(--red);margin-top:4px;text-align:center;opacity:0.7;">Triggers snap elections · Stability -3 · PM party +5 momentum</div>
+            ${voncPenalty ? `<div style="font-size:0.65rem;color:var(--red);margin-top:2px;text-align:center;font-weight:bold;">⚠ Post-VoNC penalty: Legitimacy -5 (authoritarian overreach)</div>` : ''}
+        </div>`;
+}
+
+async function handleDissolveParliament() {
+    if (_govActionLock) return;
+    const lastVonc = currentNation.last_vonc_tick;
+    const voncPenalty = lastVonc && (currentTick - lastVonc) <= 6;
+    const voncWarning = voncPenalty ? '\n\n⚠ WARNING: Dissolving parliament after a recent no-confidence vote will cost -5 Legitimacy (authoritarian overreach).' : '';
+    if (!confirm(`Dissolve Parliament? This will trigger snap elections, cost -3 Stability, and give the PM\'s party +5 momentum. This cannot be undone.${voncWarning}`)) return;
+    _govActionLock = true;
+    try {
+        await dissolveParliament(_supabase, currentNation.id, currentFaction.id);
+        alert('Parliament dissolved — snap elections scheduled.');
+        await renderGovernmentPage();
+    } catch (e) {
+        alert('Failed: ' + (e.message || e));
+    } finally { _govActionLock = false; }
+}
+
+window.handleDissolveParliament = handleDissolveParliament;
+
+// ==================== SEMI-PRESIDENTIAL PM NOMINATION ====================
+
+function renderSemiPresPMSection(activeHOG) {
+    if (activeHOG) {
+        // PM is installed — show PM details
+        const pmParty = allParties.find(p => p.id === activeHOG.faction_id);
+        const pmPartyName = pmParty?.faction_name || '—';
+        const cohabitation = isCohabitation(currentNation, presidentFactionId, activeHOG.faction_id);
+        const pmTrait = activeHOG.trait_key ? POSITIVE_TRAITS.find(t => t.key === activeHOG.trait_key) : null;
+        let pmTraitHTML = '';
+        if (pmTrait) {
+            const catColors = { 'AP': '#c8a832', 'Electoral': '#a3b07e', 'Legislative': '#5b9bd5', 'Governance': '#c88444', 'Diplomatic': '#5aafa5', 'Voter Blocs': '#b07ea3' };
+            const cc = catColors[pmTrait.category] || 'var(--accent)';
+            pmTraitHTML = `
+                <div style="margin-top:8px;">
+                    ${activeHOG._resolvedIdeology ? `<div class="pres-ideology-bar" style="background:${ideologyBg(activeHOG._resolvedIdeology)};">${escapeHtml(activeHOG._resolvedIdeology)}</div>` : ''}
+                    <div class="pres-trait-name">&#x1F3F7; ${escapeHtml(pmTrait.name)} <span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:${cc}22;color:${cc};border:1px solid ${cc}44;margin-left:4px;">${pmTrait.category.toUpperCase()}</span></div>
+                    <div style="font-size:0.75rem;color:var(--green);margin-top:4px;">&#x25B2; ${escapeHtml(pmTrait.effect)}</div>
+                </div>`;
+        }
+        const cohabBadge = cohabitation
+            ? ' <span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:rgba(255,180,0,0.1);color:var(--amber);border:1px solid rgba(255,180,0,0.3);margin-left:6px;">COHABITATION</span>'
+            : '';
+        return `
+            <div class="admin-section" style="border-top:1px solid var(--border-main);padding-top:12px;">
+                <div class="admin-section-title">Prime Minister <span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:var(--teal-bg,rgba(0,200,180,0.1));color:var(--teal);border:1px solid var(--teal)33;margin-left:6px;">SEMI-PRESIDENTIAL</span>${cohabBadge}</div>
+                <div class="admin-person-name">${escapeHtml(activeHOG.first_name)} ${escapeHtml(activeHOG.last_name)}</div>
+                <div class="admin-person-details">Age ${activeHOG.age || '—'} · <span class="admin-person-party">${escapeHtml(pmPartyName)}</span></div>
+                ${pmTraitHTML}
+            </div>`;
+    }
+
+    // No PM — show nomination UI
+    const attempts = currentNation.pm_nomination_attempts || 0;
+    const attemptsLeft = Math.max(0, 3 - attempts);
+
+    // Check for pending PM confirmation bill
+    const pendingPMBill = window._pendingPMConfirmationBill || null;
+    if (pendingPMBill) {
+        const ticksLeft = pendingPMBill.voting_ends_tick - currentTick;
+        return `
+            <div class="admin-section" style="border-top:1px solid var(--border-main);padding-top:12px;">
+                <div class="admin-section-title">Prime Minister <span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:var(--amber-bg,rgba(255,180,0,0.1));color:var(--amber);border:1px solid var(--amber)33;margin-left:6px;">AWAITING CONFIRMATION</span></div>
+                <div class="admin-person-name" style="color:var(--amber);">${escapeHtml(pendingPMBill._nomineeName || 'Nominee')}</div>
+                <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:6px;">Parliament is voting on confirmation. ${ticksLeft > 0 ? `${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} remaining.` : 'Vote resolving...'}</div>
+                <div style="font-size:0.7rem;color:var(--text-tertiary);margin-top:4px;">Nomination attempt ${attempts} of 3</div>
+            </div>`;
+    }
+
+    if (attempts >= 3) {
+        return `
+            <div class="admin-section" style="border-top:1px solid var(--border-main);padding-top:12px;">
+                <div class="admin-section-title">Prime Minister <span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:var(--red-bg,rgba(255,60,60,0.1));color:var(--red);border:1px solid var(--red)33;margin-left:6px;">EMERGENCY FALLBACK</span></div>
+                <div style="font-size:0.8rem;color:var(--red);margin-top:6px;">3 nominations rejected — parliament will auto-select the largest party leader as PM.</div>
+            </div>`;
+    }
+
+    // President's party can nominate
+    const nominateBtn = isPresidentParty
+        ? `<button class="ministry-card__mgmt-btn ministry-card__mgmt-btn--nominate" style="margin-top:10px;cursor:pointer;" onclick="openNominatePMModal()">NOMINATE PM</button>`
+        : '';
+
+    return `
+        <div class="admin-section" style="border-top:1px solid var(--border-main);padding-top:12px;">
+            <div class="admin-section-title">Prime Minister <span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:var(--red-bg,rgba(255,60,60,0.1));color:var(--red);border:1px solid var(--red)33;margin-left:6px;">VACANT</span></div>
+            <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:6px;">The President must nominate a PM candidate for parliamentary confirmation.</div>
+            ${attemptsLeft < 3 ? `<div style="font-size:0.7rem;color:var(--amber);margin-top:4px;">${attemptsLeft} nomination attempt${attemptsLeft !== 1 ? 's' : ''} remaining before emergency fallback.</div>` : ''}
+            ${nominateBtn}
+        </div>`;
+}
+
+let _pmNomineeSelected = null;
+
+function openNominatePMModal() {
+    const modal = document.getElementById('assign-modal');
+    if (!modal) return;
+    document.getElementById('assign-modal-title').textContent = 'Nominate Prime Minister';
+
+    // Use party leaders as candidates (only parties with seats)
+    const candidates = allParties
+        .filter(p => (p.seats || 0) > 0 && p.leader_first_name && p.leader_last_name)
+        .sort((a, b) => (b.seats || 0) - (a.seats || 0));
+
+    const html = candidates.map(p => {
+        const isPresParty = p.id === presidentFactionId;
+        const pColor = p.party_color || '#888';
+        const candLogo = p.party_logo;
+        const candCustomLogo = p.custom_logo_url;
+        const candLogoHtml = candLogo || candCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: candCustomLogo, iconKey: candLogo, size: 14, color: pColor })}</span>` : '';
+        return `<div class="candidate-card" data-party-id="${p.id}" data-first="${escapeHtml(p.leader_first_name)}" data-last="${escapeHtml(p.leader_last_name)}" data-age="${p.leader_age || 50}" data-party-name="${escapeHtml(p.faction_name)}" onclick="selectPMCandidate(this)" style="border-left:3px solid ${pColor};cursor:pointer;">
+            <div><div class="candidate-name">${escapeHtml(p.leader_first_name)} ${escapeHtml(p.leader_last_name)}</div>
+            <div class="candidate-details">Age ${p.leader_age || '?'} · <span class="candidate-party-tag ${isPresParty ? 'ruling' : 'other'}">${candLogoHtml}${escapeHtml(p.faction_name)}</span> (${p.seats} seats)</div></div>
+            ${isPresParty ? '<span class="ruling-label">PRESIDENT\'S PARTY</span>' : ''}
+        </div>`;
+    }).join('');
+
+    document.getElementById('assign-candidates').innerHTML = html || '<div style="padding:12px;color:var(--text-secondary);">No eligible party leaders found.</div>';
+    _pmNomineeSelected = null;
+
+    // Set confirm button
+    const confirmBtn = document.getElementById('assign-confirm-btn');
+    if (confirmBtn) {
+        confirmBtn.textContent = 'Nominate for Confirmation';
+        confirmBtn.onclick = confirmPMNomination;
+        confirmBtn.disabled = true;
+    }
+
+    modal.classList.add('active');
+}
+
+function selectPMCandidate(card) {
+    document.querySelectorAll('#assign-candidates .candidate-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    _pmNomineeSelected = {
+        partyId: card.dataset.partyId,
+        partyName: card.dataset.partyName,
+        firstName: card.dataset.first,
+        lastName: card.dataset.last,
+        age: parseInt(card.dataset.age) || 50
+    };
+    const confirmBtn = document.getElementById('assign-confirm-btn');
+    if (confirmBtn) confirmBtn.disabled = false;
+}
+
+async function confirmPMNomination() {
+    if (!_pmNomineeSelected || !currentFaction || !currentNation) return;
+    try {
+        await nominatePMCandidate(_supabase, currentNation.id, currentFaction.id, _pmNomineeSelected);
+        alert(`PM nomination submitted — parliament will vote on ${_pmNomineeSelected.firstName} ${_pmNomineeSelected.lastName}.`);
+        closeAssignModal();
+        await renderGovernmentPage();
+    } catch (e) {
+        alert('Nomination failed: ' + (e.message || e));
+    }
+}
+
+// Pre-fetch pending PM confirmation bill for UI
+async function loadPendingPMBill() {
+    if (!currentNation || !isSemiPresidential(currentNation)) return;
+    const { data: bill } = await _supabase.from('bills')
+        .select('id, bill_name, voting_ends_tick, proposed_by')
+        .eq('nation_id', currentNation.id)
+        .eq('bill_type', 'minister_confirmation')
+        .eq('ministry_key', 'prime_minister')
+        .eq('status', 'floor')
+        .maybeSingle();
+    if (bill) {
+        // Extract nominee name from bill_name: "Confirmation of First Last as Prime Minister"
+        const match = bill.bill_name?.match(/Confirmation of (.+) as Prime Minister/);
+        bill._nomineeName = match ? match[1] : 'Nominee';
+    }
+    window._pendingPMConfirmationBill = bill || null;
+}
+
+// Expose nomination functions to global scope for onclick handlers
+window.openNominatePMModal = openNominatePMModal;
+window.selectPMCandidate = selectPMCandidate;
+window.confirmPMNomination = confirmPMNomination;
 
 // ==================== ADMINISTRATIVE COMMUNICATIONS ====================
 
@@ -3286,6 +3501,15 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
 
 // --- Shared card builder helpers ---
 
+function getDomainBadge(ministryKey) {
+    if (!isSemiPresidential(currentNation)) return '';
+    const domain = getMinistryDomain(ministryKey);
+    if (domain === 'presidential') {
+        return ' <span style="font-size:0.55rem;padding:1px 4px;border-radius:2px;background:rgba(90,175,165,0.1);color:var(--teal);border:1px solid rgba(90,175,165,0.3);vertical-align:middle;">PRES</span>';
+    }
+    return ' <span style="font-size:0.55rem;padding:1px 4px;border-radius:2px;background:rgba(100,100,200,0.1);color:var(--blue,#5b9bd5);border:1px solid rgba(100,100,200,0.3);vertical-align:middle;">PM</span>';
+}
+
 function buildCardHeader(title, badgeHtml, requestCount) {
     const reqBadge = requestCount > 0
         ? `<span class="ministry-card__badge" style="background:rgba(91,155,213,0.1);border-color:rgba(91,155,213,0.25);color:#5b9bd5;">${requestCount}</span>`
@@ -3343,6 +3567,20 @@ function buildMgmtButtons(key, ministry, govContext) {
         }
         if (!isFilled && govContext.canAppoint) {
             btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--appoint" onclick="event.stopPropagation();openAssignModal('${key}')">APPOINT</div>`;
+        }
+    } else if (govContext.type === 'semi-presidential') {
+        if (govContext.isMyMinistry && !govContext.isPMParty) {
+            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--resign" onclick="event.stopPropagation();resignMinistry('${key}')">RESIGN</div>`;
+        }
+        if (govContext.isPMParty && isFilled) {
+            if (noAP) {
+                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" ${disabledStyle} title="Need 1 AP">DISMISS<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
+            } else {
+                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" onclick="event.stopPropagation();fireMinister('${key}')">DISMISS<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
+            }
+        }
+        if (!isFilled && govContext.isPMParty) {
+            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--nominate" onclick="event.stopPropagation();openNominateModal('${key}')">NOMINATE</div>`;
         }
     } else if (govContext.type === 'presidential') {
         if (govContext.isMyMinistry && !govContext.isPresidentParty) {
@@ -6462,11 +6700,12 @@ function renderCabinet(ministries, coalition) {
     const isCaretaker = coalition && coalition.status === 'caretaker';
     const pmMinistry = ministries?.find(m => m.ministry_key === 'prime_minister');
     const pmFilled = pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name;
-    const isPMParty = currentFaction && coalition && currentFaction.id === coalition.lead_party_id;
-    const canAppoint = isPMParty && pmFilled && !isCaretaker;
+    const isPMPartyLocal = currentFaction && coalition && currentFaction.id === coalition.lead_party_id;
+    const canAppoint = isPMPartyLocal && pmFilled && !isCaretaker;
 
     let govType = 'parliamentary';
-    if (isPresidential) govType = 'presidential';
+    if (isPresidential && isSemiPresidential(currentNation)) govType = 'semi-presidential';
+    else if (isPresidential) govType = 'presidential';
 
     // Determine which keys to show (presidential/parliamentary skip PM)
     const keys = MINISTRY_KEYS_CABINET.filter(k => k !== 'prime_minister');
@@ -6493,7 +6732,7 @@ function renderCabinet(ministries, coalition) {
 
     const cards = keys.map(key => {
         const m = ministryMap[key];
-        const title = MINISTRY_NAMES[key] || m?.ministry_name || key;
+        const title = (MINISTRY_NAMES[key] || m?.ministry_name || key) + getDomainBadge(key);
         const isFilled = m && m.minister_first_name;
         const requests = [];
         const myRequest = requests.find(r => r.faction_id === currentFaction?.id);
@@ -6504,7 +6743,7 @@ function renderCabinet(ministries, coalition) {
             isRuling: isRulingFaction,
             isMyMinistry,
             canAppoint,
-            isPMParty,
+            isPMParty: isPMParty || (currentFaction && coalitionData && currentFaction.id === coalitionData.lead_party_id),
             isPresidentParty: typeof isPresidentParty !== 'undefined' ? isPresidentParty : false,
             isCaretaker,
             requests,
@@ -6587,8 +6826,12 @@ function openNominateModal(ministryKey) {
     document.getElementById('assign-confirm-btn').textContent = 'Nominate for Confirmation';
     document.getElementById('assign-modal-title').textContent = 'Nominate — ' + (MINISTRY_NAMES[ministryKey] || ministryKey);
 
-    // Generate one candidate per party
-    generatedCandidates = allParties
+    // Semi-Presidential domain constraint: presidential-domain ministries must be from president's party
+    const isSemiPres = isSemiPresidential(currentNation);
+    const isPresDomain = isSemiPres && isPresidentialDomainMinistry(ministryKey);
+
+    // Generate one candidate per party (filtered for domain constraints)
+    generatedCandidates = (isPresDomain ? allParties.filter(p => p.id === presidentFactionId) : allParties)
         .map(party => ({
             partyId: party.id,
             partyName: party.faction_name,
@@ -7089,6 +7332,39 @@ async function denyRequest(requestId) {
 
 // ==================== VOTE OF NO CONFIDENCE ====================
 
+/**
+ * Semi-Presidential specific: no-confidence targets the PM only (president survives).
+ * Shown in the presidential admin box when a PM is active.
+ */
+function renderSemiPresNoConfidenceButton() {
+    if (!currentFaction || !isSemiPresidential(currentNation)) return '';
+
+    // PM's own party cannot file no-confidence
+    if (pmFactionId && currentFaction.id === pmFactionId) return '';
+
+    // President's party also can't file (they can just nominate a new PM if PM is vacant)
+    if (isPresidentParty) return '';
+
+    const mySeats = allPartySeats[currentFaction.id] || currentFaction.seats || 0;
+    if (mySeats < 1) {
+        return `
+            <div id="no-confidence" style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
+                <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" disabled>
+                    ⚡ Vote of No Confidence (PM)
+                </button>
+                <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">Need at least 1 seat in the legislature.</div>
+            </div>`;
+    }
+
+    return `
+        <div id="no-confidence" style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
+            <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="fileNoConfidence()" id="no-confidence-btn">
+                ⚡ Vote of No Confidence (PM) <span class="ap-cost">${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP</span>
+            </button>
+            <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">Remove the PM — President must re-nominate</div>
+        </div>`;
+}
+
 function renderNoConfidenceButton(coalition) {
     if (!currentFaction || isPresidential) return '';
 
@@ -7118,7 +7394,25 @@ function renderNoConfidenceButton(coalition) {
 }
 
 async function fileNoConfidence() {
-    if (_govActionLock || !currentFaction || !currentNation || !coalitionData) return;
+    const isSemiPresNation = isSemiPresidential(currentNation);
+    if (_govActionLock || !currentFaction || !currentNation) return;
+
+    // Semi-presidential: need active PM, not coalition
+    if (isSemiPresNation) {
+        const { data: activeHOGCheck } = await _supabase.from('head_of_government')
+            .select('id, faction_id').eq('nation_id', currentNation.id).eq('active', true).maybeSingle();
+        if (!activeHOGCheck) {
+            alert('No active PM to file no-confidence against.');
+            return;
+        }
+        // PM's own party can't file
+        if (currentFaction.id === activeHOGCheck.faction_id) {
+            alert('The PM\'s own party cannot file a vote of no confidence.');
+            return;
+        }
+    } else {
+        if (!coalitionData) return;
+    }
 
     // Must have at least 1 seat
     const mySeatsCheck = allPartySeats[currentFaction.id] || currentFaction.seats || 0;
@@ -7128,13 +7422,13 @@ async function fileNoConfidence() {
     }
 
     // Cannot file no-confidence against a caretaker government
-    if (coalitionData.status === 'caretaker') {
+    if (!isSemiPresNation && coalitionData?.status === 'caretaker') {
         alert('Cannot file a vote of no confidence against a caretaker government. Elections are already scheduled.');
         return;
     }
 
-    // Check: must not be in coalition
-    if (coalitionData.party_ids.includes(currentFaction.id)) {
+    // Check: must not be in coalition (parliamentary only)
+    if (!isSemiPresNation && coalitionData?.party_ids?.includes(currentFaction.id)) {
         alert('Only opposition parties can file a vote of no confidence.');
         return;
     }
@@ -7184,7 +7478,7 @@ async function fileNoConfidence() {
 
     const pmLastName = hog?.last_name || null;
     const motionName = pmLastName
-        ? `Motion of No Confidence in the ${pmLastName} Government`
+        ? (isSemiPresNation ? `Motion of No Confidence in PM ${pmLastName}` : `Motion of No Confidence in the ${pmLastName} Government`)
         : `Motion of No Confidence in the Government`;
 
     // Pre-calculate trait-modified AP cost for display in confirm dialog
@@ -7200,16 +7494,17 @@ async function fileNoConfidence() {
         }
     } catch (_) { /* use base cost */ }
 
+    const passConsequences = isSemiPresNation
+        ? `IF IT PASSES:\n• PM removed — President must nominate a new PM\n• Your party: +2 Momentum\n• PM's party: -3 Momentum, -5 Government Approval`
+        : `IF IT PASSES:\n• Coalition dissolved, PM removed, all ministries vacated\n• Your party: +3 Approval\n• Coalition parties: -5 Approval each`;
+
     if (!confirm(
         `⚡ FILE VOTE OF NO CONFIDENCE?\n\n` +
         `"${motionName}"\n\n` +
         `Cost: ${voncDisplayCost} AP${voncDisplayCost !== GAME_CONFIG.NO_CONFIDENCE_AP_COST ? ' (modified by PM traits)' : ''}\n` +
         `Voting period: ${GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS} ticks\n` +
         `Needs simple majority (YES > NO) to pass.\n\n` +
-        `IF IT PASSES:\n` +
-        `• Coalition dissolved, PM removed, all ministries vacated\n` +
-        `• Your party: +3 Approval\n` +
-        `• Coalition parties: -5 Approval each\n\n` +
+        `${passConsequences}\n\n` +
         `IF IT FAILS:\n` +
         `• Your party: -5 Approval\n` +
         `• PM's party: +3 Approval\n` +
@@ -7234,7 +7529,9 @@ async function fileNoConfidence() {
             voting_ends_tick: tick + GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS,
             proposer_name: currentFaction.faction_name,
             proposer_color: currentFaction.party_color,
-            preamble: `This motion, filed by the ${currentFaction.faction_name}, calls for a vote of no confidence in the current government. If passed by simple majority, the coalition will be immediately dissolved.`
+            preamble: isSemiPresNation
+                ? `This motion, filed by the ${currentFaction.faction_name}, calls for a vote of no confidence in the Prime Minister. If passed by simple majority, the PM will be removed and the President must nominate a replacement.`
+                : `This motion, filed by the ${currentFaction.faction_name}, calls for a vote of no confidence in the current government. If passed by simple majority, the coalition will be immediately dissolved.`
         }).select().single();
 
         if (billError) throw billError;
@@ -7255,6 +7552,8 @@ async function fileNoConfidence() {
         // Deduct AP only after bill creation succeeds (cost pre-calculated above with trait modifiers)
         const apResult = await deductAP(_supabase, currentFaction.id, voncDisplayCost);
         if (!apResult.success) {
+            // Roll back the bill — player can't afford it
+            await _supabase.from('bills').delete().eq('id', bill.id);
             if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
             alert('Not enough AP. Need ' + GAME_CONFIG.NO_CONFIDENCE_AP_COST + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
             return;
@@ -8941,7 +9240,7 @@ function renderAdminCard(admin, isCurrent) {
     let detailHTML = '';
 
     // Info grid — adapt labels for presidential vs parliamentary
-    const isPres = admin.government_type === 'Presidential';
+    const isPres = hasElectedPresident(admin);
 
     let hogLabel, hogName, hogParty;
     let govLeaderLabel, govLeaderName, govLeaderSub;

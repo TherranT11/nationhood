@@ -29,6 +29,7 @@ BEGIN
             WHEN 'bill_passed'              THEN 'Bill Passed'
             WHEN 'bill_failed'              THEN 'Bill Failed'
             WHEN 'quorum_failed'            THEN 'Quorum Failed'
+            WHEN 'caucus_defection'         THEN 'Caucus Defection'
             WHEN 'election_held'            THEN 'Election Held'
             WHEN 'pm_appointed'             THEN 'PM Appointed'
             WHEN 'government_formed'        THEN 'Government Formed'
@@ -77,7 +78,7 @@ BEGIN
         END,
         CASE
             WHEN p_trigger_key IN ('crisis_started', 'crisis_ended') THEN 'crisis'
-            WHEN p_trigger_key IN ('bill_passed', 'bill_failed', 'quorum_failed') THEN 'government'
+            WHEN p_trigger_key IN ('bill_passed', 'bill_failed', 'quorum_failed', 'caucus_defection') THEN 'government'
             WHEN p_trigger_key IN ('election_held', 'pm_appointed', 'government_formed', 'incumbent_lockin') THEN 'government'
             WHEN p_trigger_key IN ('ministry_pharmaceutical_increased', 'ministry_pharmaceutical_decreased',
                 'ministry_pharmaceutical_direction_changed') THEN 'HEALTHCARE'
