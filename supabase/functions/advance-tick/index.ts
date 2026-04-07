@@ -11055,7 +11055,9 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
         .single();
 
     // Presidential systems do not have votes of no confidence
-    if (isPresidentialRepublic(nation)) return;
+    if (!hasParliamentaryPM(nation)) return;
+
+    const semiPres = isSemiPresidential(nation);
 
     // Get PM's last name for event text
     const { data: hog } = await supabase
@@ -11069,6 +11071,47 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
     const pmFactionId = hog?.faction_id || null;
 
     if (passed) {
+        // Semi-Presidential: president survives, only PM is removed
+        if (semiPres) {
+            // Record vonc tick for dissolution penalty tracking
+            await supabase.from('nations').update({ last_vonc_tick: currentTick, pm_nomination_attempts: 0 }).eq('id', nationId);
+
+            // Deactivate PM
+            await supabase.from('head_of_government')
+                .update({ active: false })
+                .eq('nation_id', nationId).eq('active', true);
+
+            // Calling party gets approval boost
+            await supabase.rpc('adjust_momentum', { p_faction_id: callingPartyId, p_delta: 2, p_label: 'No confidence called (+2)', p_tick: currentTick });
+
+            // PM's party takes hit
+            if (pmFactionId) {
+                await supabase.rpc('adjust_momentum', { p_faction_id: pmFactionId, p_delta: -3, p_label: 'No confidence — PM party (-3)', p_tick: currentTick });
+                await adjustCredibility(supabase, pmFactionId, nationId, -0.05);
+            }
+            await adjustGovernmentApprovalEvent(supabase, nationId, -5, 'no_confidence:success');
+
+            // If PM was from president's party, president's party takes additional approval hit
+            const { data: president } = await supabase.from('presidents')
+                .select('faction_id').eq('nation_id', nationId).eq('is_active', true).maybeSingle();
+            if (president && pmFactionId && president.faction_id === pmFactionId) {
+                await adjustFactionMomentum(supabase, president.faction_id, nationId, -3, { source: 'vonc:own_pm_removed', tick: currentTick });
+            }
+
+            // Log event — president survives, must re-nominate
+            await supabase.from('event_log').insert({
+                nation_id: nationId,
+                event_name: 'No Confidence — PM Removed',
+                trigger_key: 'vonc_passed',
+                fired_at_tick: currentTick,
+                category: 'government',
+                description_chosen: `Prime Minister ${pmLastName} has been removed by a vote of no confidence (${votesFor} to ${votesAgainst}). The President must nominate a new PM.`,
+                effects_applied: { pm_removed: true, president_survives: true, caller_approval: +2, pm_party_approval: -3, gov_approval: -5 }
+            });
+            return;
+        }
+
+        // === Parliamentary: full government dissolution ===
         // Get coalition party IDs before dissolving
         const coalition = await fetchActiveCoalition(supabase, nationId);
         const coalitionPartyIds = coalition?.party_ids || [];
@@ -11100,8 +11143,9 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
             await adjustGovernmentApprovalEvent(supabase, nationId, -5, 'no_confidence:success');
 
             // Schedule snap election (same pattern as early elections)
+            // Only cancel parliamentary elections (preserve presidential for safety)
             await supabase.from('elections').delete()
-                .eq('nation_id', nationId).eq('status', 'scheduled');
+                .eq('nation_id', nationId).eq('status', 'scheduled').eq('election_type', 'parliamentary');
             await supabase.from('elections').insert({
                 nation_id: nationId,
                 election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
@@ -11349,7 +11393,7 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
  */
 async function dissolveParliamentAction(supabase, nationId, presidentFactionId) {
     const { data: nation } = await supabase.from('nations')
-        .select('name, government_type, stability, last_dissolution_tick, parliament_formed_tick')
+        .select('name, government_type, stability, legitimacy, last_dissolution_tick, parliament_formed_tick, last_vonc_tick')
         .eq('id', nationId).single();
     if (!isSemiPresidential(nation)) throw new Error('Dissolve Parliament is only available in Semi-Presidential systems');
 
@@ -11381,14 +11425,21 @@ async function dissolveParliamentAction(supabase, nationId, presidentFactionId) 
         .select('faction_id').eq('nation_id', nationId).eq('active', true).maybeSingle();
     const pmFactionId = hog?.faction_id;
 
+    // Check if dissolving after a recent no-confidence vote (authoritarian overreach)
+    const voncPenalty = nation.last_vonc_tick && (currentTick - nation.last_vonc_tick) <= 6;
+
     // === EFFECTS ===
 
-    // 1. Stability -3
+    // 1. Stability -3 (+ legitimacy -5 if post-vonc)
     const newStability = Math.max(0, Number(nation.stability ?? 50) - 3);
-    await supabase.from('nations').update({
+    const nationUpdate: Record<string, any> = {
         stability: newStability,
         last_dissolution_tick: currentTick
-    }).eq('id', nationId);
+    };
+    if (voncPenalty) {
+        nationUpdate.legitimacy = Math.max(0, Number(nation.legitimacy ?? 50) - 5);
+    }
+    await supabase.from('nations').update(nationUpdate).eq('id', nationId);
 
     // 2. PM's party gets +5 momentum (sympathy effect)
     if (pmFactionId) {
@@ -11447,8 +11498,21 @@ async function dissolveParliamentAction(supabase, nationId, presidentFactionId) 
         });
     } catch (e) { /* non-blocking */ }
 
-    console.log(`[dissolveParliamentAction] President dissolved parliament in ${nation.name}. Snap election in ${EARLY_ELECTION_TICKS} ticks.`);
-    return { success: true, electionTick: currentTick + EARLY_ELECTION_TICKS };
+    // 8. If dissolving after a vonc, fire additional legitimacy penalty event
+    if (voncPenalty) {
+        await supabase.from('event_log').insert({
+            nation_id: nationId,
+            event_name: 'Authoritarian Overreach — Post-VoNC Dissolution',
+            trigger_key: 'vonc_dissolution_penalty',
+            fired_at_tick: currentTick,
+            category: 'government',
+            description_chosen: `The President dissolved parliament shortly after a vote of no confidence passed. This is widely seen as an authoritarian overreach. Legitimacy -5.`,
+            effects_applied: { legitimacy_penalty: -5 }
+        });
+    }
+
+    console.log(`[dissolveParliamentAction] President dissolved parliament in ${nation.name}. Snap election in ${EARLY_ELECTION_TICKS} ticks.${voncPenalty ? ' Post-VoNC penalty applied.' : ''}`);
+    return { success: true, electionTick: currentTick + EARLY_ELECTION_TICKS, voncPenalty };
 }
 
 

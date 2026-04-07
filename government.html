@@ -1711,6 +1711,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                 </div>
                 ${renderImpeachmentButton()}
                 ${isSemiPresidential(currentNation) && isPresidentParty ? renderDissolveParliamentButton() : ''}
+                ${isSemiPresidential(currentNation) && activeHOG ? renderSemiPresNoConfidenceButton() : ''}
             </div>`;
     }
 
@@ -1835,6 +1836,10 @@ function renderDissolveParliamentButton() {
     const cooldownLeft = Math.max(dissolutionCooldown, parlAgeCooldown);
     const onCooldown = cooldownLeft > 0;
 
+    // Check if dissolving after a recent no-confidence (penalty warning)
+    const lastVonc = currentNation.last_vonc_tick;
+    const voncPenalty = lastVonc && (currentTick - lastVonc) <= 6;
+
     return `
         <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-main);">
             <button class="btn btn--danger" style="width:100%;font-size:0.75rem;padding:8px 12px;${onCooldown ? 'opacity:0.5;cursor:not-allowed;' : ''}"
@@ -1843,11 +1848,15 @@ function renderDissolveParliamentButton() {
             </button>
             ${onCooldown ? `<div style="font-size:0.65rem;color:var(--text-tertiary);margin-top:4px;text-align:center;">${cooldownLeft} tick(s) until dissolution available</div>` : ''}
             <div style="font-size:0.65rem;color:var(--red);margin-top:4px;text-align:center;opacity:0.7;">Triggers snap elections · Stability -3 · PM party +5 momentum</div>
+            ${voncPenalty ? `<div style="font-size:0.65rem;color:var(--red);margin-top:2px;text-align:center;font-weight:bold;">⚠ Post-VoNC penalty: Legitimacy -5 (authoritarian overreach)</div>` : ''}
         </div>`;
 }
 
 async function handleDissolveParliament() {
-    if (!confirm('Dissolve Parliament? This will trigger snap elections, cost -3 Stability, and give the PM\'s party +5 momentum. This cannot be undone.')) return;
+    const lastVonc = currentNation.last_vonc_tick;
+    const voncPenalty = lastVonc && (currentTick - lastVonc) <= 6;
+    const voncWarning = voncPenalty ? '\n\n⚠ WARNING: Dissolving parliament after a recent no-confidence vote will cost -5 Legitimacy (authoritarian overreach).' : '';
+    if (!confirm(`Dissolve Parliament? This will trigger snap elections, cost -3 Stability, and give the PM\'s party +5 momentum. This cannot be undone.${voncWarning}`)) return;
     try {
         await dissolveParliament(_supabase, currentNation.id, currentFaction.id);
         alert('Parliament dissolved — snap elections scheduled.');
@@ -7321,6 +7330,40 @@ async function denyRequest(requestId) {
 
 // ==================== VOTE OF NO CONFIDENCE ====================
 
+/**
+ * Semi-Presidential specific: no-confidence targets the PM only (president survives).
+ * Shown in the presidential admin box when a PM is active.
+ */
+function renderSemiPresNoConfidenceButton() {
+    if (!currentFaction || !isSemiPresidential(currentNation)) return '';
+
+    // Must not be the president's party filing against their own PM... actually any opposition can file
+    // Check if current faction is the PM's party — PM's own party can't file no-confidence
+    if (pmFactionId && currentFaction.id === pmFactionId) return '';
+
+    // President's party also can't file (they can just nominate a new PM if PM is vacant)
+    if (isPresidentParty) return '';
+
+    const mySeats = allPartySeats[currentFaction.id] || currentFaction.seats || 0;
+    if (mySeats < 1) {
+        return `
+            <div id="no-confidence" style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
+                <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" disabled>
+                    ⚡ Vote of No Confidence (PM)
+                </button>
+                <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">Need at least 1 seat in the legislature.</div>
+            </div>`;
+    }
+
+    return `
+        <div id="no-confidence" style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
+            <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="fileNoConfidence()" id="no-confidence-btn">
+                ⚡ Vote of No Confidence (PM) <span class="ap-cost">${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP</span>
+            </button>
+            <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">Remove the PM — President must re-nominate</div>
+        </div>`;
+}
+
 function renderNoConfidenceButton(coalition) {
     if (!currentFaction || isPresidential) return '';
 
@@ -7350,7 +7393,25 @@ function renderNoConfidenceButton(coalition) {
 }
 
 async function fileNoConfidence() {
-    if (_govActionLock || !currentFaction || !currentNation || !coalitionData) return;
+    const isSemiPresNation = isSemiPresidential(currentNation);
+    if (_govActionLock || !currentFaction || !currentNation) return;
+
+    // Semi-presidential: need active PM, not coalition
+    if (isSemiPresNation) {
+        const { data: activeHOGCheck } = await _supabase.from('head_of_government')
+            .select('id, faction_id').eq('nation_id', currentNation.id).eq('active', true).maybeSingle();
+        if (!activeHOGCheck) {
+            alert('No active PM to file no-confidence against.');
+            return;
+        }
+        // PM's own party can't file
+        if (currentFaction.id === activeHOGCheck.faction_id) {
+            alert('The PM\'s own party cannot file a vote of no confidence.');
+            return;
+        }
+    } else {
+        if (!coalitionData) return;
+    }
 
     // Must have at least 1 seat
     const mySeatsCheck = allPartySeats[currentFaction.id] || currentFaction.seats || 0;
@@ -7360,13 +7421,13 @@ async function fileNoConfidence() {
     }
 
     // Cannot file no-confidence against a caretaker government
-    if (coalitionData.status === 'caretaker') {
+    if (!isSemiPresNation && coalitionData?.status === 'caretaker') {
         alert('Cannot file a vote of no confidence against a caretaker government. Elections are already scheduled.');
         return;
     }
 
-    // Check: must not be in coalition
-    if (coalitionData.party_ids.includes(currentFaction.id)) {
+    // Check: must not be in coalition (parliamentary only)
+    if (!isSemiPresNation && coalitionData?.party_ids?.includes(currentFaction.id)) {
         alert('Only opposition parties can file a vote of no confidence.');
         return;
     }
@@ -7416,7 +7477,7 @@ async function fileNoConfidence() {
 
     const pmLastName = hog?.last_name || null;
     const motionName = pmLastName
-        ? `Motion of No Confidence in the ${pmLastName} Government`
+        ? (isSemiPresNation ? `Motion of No Confidence in PM ${pmLastName}` : `Motion of No Confidence in the ${pmLastName} Government`)
         : `Motion of No Confidence in the Government`;
 
     // Pre-calculate trait-modified AP cost for display in confirm dialog
@@ -7432,16 +7493,17 @@ async function fileNoConfidence() {
         }
     } catch (_) { /* use base cost */ }
 
+    const passConsequences = isSemiPresNation
+        ? `IF IT PASSES:\n• PM removed — President must nominate a new PM\n• Your party: +2 Momentum\n• PM's party: -3 Momentum, -5 Government Approval`
+        : `IF IT PASSES:\n• Coalition dissolved, PM removed, all ministries vacated\n• Your party: +3 Approval\n• Coalition parties: -5 Approval each`;
+
     if (!confirm(
         `⚡ FILE VOTE OF NO CONFIDENCE?\n\n` +
         `"${motionName}"\n\n` +
         `Cost: ${voncDisplayCost} AP${voncDisplayCost !== GAME_CONFIG.NO_CONFIDENCE_AP_COST ? ' (modified by PM traits)' : ''}\n` +
         `Voting period: ${GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS} ticks\n` +
         `Needs simple majority (YES > NO) to pass.\n\n` +
-        `IF IT PASSES:\n` +
-        `• Coalition dissolved, PM removed, all ministries vacated\n` +
-        `• Your party: +3 Approval\n` +
-        `• Coalition parties: -5 Approval each\n\n` +
+        `${passConsequences}\n\n` +
         `IF IT FAILS:\n` +
         `• Your party: -5 Approval\n` +
         `• PM's party: +3 Approval\n` +
@@ -7466,7 +7528,9 @@ async function fileNoConfidence() {
             voting_ends_tick: tick + GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS,
             proposer_name: currentFaction.faction_name,
             proposer_color: currentFaction.party_color,
-            preamble: `This motion, filed by the ${currentFaction.faction_name}, calls for a vote of no confidence in the current government. If passed by simple majority, the coalition will be immediately dissolved.`
+            preamble: isSemiPresNation
+                ? `This motion, filed by the ${currentFaction.faction_name}, calls for a vote of no confidence in the Prime Minister. If passed by simple majority, the PM will be removed and the President must nominate a replacement.`
+                : `This motion, filed by the ${currentFaction.faction_name}, calls for a vote of no confidence in the current government. If passed by simple majority, the coalition will be immediately dissolved.`
         }).select().single();
 
         if (billError) throw billError;
