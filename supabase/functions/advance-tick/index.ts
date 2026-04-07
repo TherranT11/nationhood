@@ -9424,6 +9424,11 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             return true; // Bill passed but no structural change needed
         }
 
+        // NOTE: Active floor bills (no-confidence, impeachment, etc.) are NOT cancelled during
+        // a constitutional transition. They will resolve under the new government type's rules.
+        // This is a known edge case — the same pattern applies to the legacy hos_election_method block.
+        // Foundational bills already require supermajority, and only one can be on the floor at a time,
+        // so overlap with other government-type-sensitive bills is rare.
         console.log(`[enactFoundationalBill] Constitutional reform: ${currentSystem} → ${targetSystem} for nation ${bill.nation_id}`);
 
         // Determine structural changes
