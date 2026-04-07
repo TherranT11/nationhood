@@ -224,24 +224,7 @@ let issueActionFlags = {};  // { issueId: true } — issues with recent actions
 let issueActionExecuting = false;
 let _actionIssue = null;    // current issue for action click delegation
 let _actionMods = null;     // current modifiers for action click delegation
-
-// Expose click handlers on window immediately so inline onclick works even if later code errors
-window._handleIssueActionClick = function(actionKey) {
-    if (!actionKey || !_actionIssue) return;
-    try {
-        showIssueActionModal(actionKey, _actionIssue, _actionMods || []);
-    } catch (err) {
-        console.error('[Issues] Action click error:', err);
-        alert('Action error: ' + err.message);
-    }
-};
-window._switchIssueActionTab = function(tabEl, category) {
-    document.querySelectorAll('.ia-tab').forEach(t => t.classList.remove('ia-tab--active'));
-    tabEl.classList.add('ia-tab--active');
-    document.querySelectorAll('.ia-list').forEach(l => l.style.display = 'none');
-    const list = document.getElementById('ia-list-' + category);
-    if (list) list.style.display = '';
-};
+let _selectedActionKey = null; // currently highlighted action
 
 // ==================== INIT ====================
 
@@ -276,18 +259,62 @@ initPage('conflicts', async (state) => {
         }
     });
 
-    // Event delegation for issue action items — single handler on parent container.
-    // Survives innerHTML changes, no timing issues.
-    document.getElementById('issues-actions-panel').addEventListener('click', (e) => {
+    // Event delegation for issue actions — highlight on click, confirm via button
+    const actionsPanel = document.getElementById('issues-actions-panel');
+    actionsPanel.addEventListener('click', (e) => {
+        // Tab switching
+        const tab = e.target.closest('.ia-tab');
+        if (tab) {
+            const category = tab.dataset.cat;
+            if (!category) return;
+            actionsPanel.querySelectorAll('.ia-tab').forEach(t => t.classList.remove('ia-tab--active'));
+            tab.classList.add('ia-tab--active');
+            actionsPanel.querySelectorAll('.ia-list').forEach(l => l.style.display = 'none');
+            const list = document.getElementById('ia-list-' + category);
+            if (list) list.style.display = '';
+            // Clear selection when switching tabs
+            _selectedActionKey = null;
+            actionsPanel.querySelectorAll('.ia-item').forEach(i => i.classList.remove('ia-item--selected'));
+            const confirmBar = document.getElementById('ia-confirm-bar');
+            if (confirmBar) confirmBar.style.display = 'none';
+            return;
+        }
+
+        // Confirm button
+        if (e.target.closest('#ia-confirm-btn')) {
+            if (_selectedActionKey && _actionIssue) {
+                try {
+                    showIssueActionModal(_selectedActionKey, _actionIssue, _actionMods || []);
+                } catch (err) {
+                    console.error('[Issues] Modal error:', err);
+                    alert('Action error: ' + err.message);
+                }
+            }
+            return;
+        }
+
+        // Action item selection
         const item = e.target.closest('.ia-item:not(.ia-item--used):not(.ia-item--locked)');
         if (!item) return;
         const actionKey = item.dataset.actionKey;
-        if (actionKey && _actionIssue) {
-            try {
-                showIssueActionModal(actionKey, _actionIssue, _actionMods || []);
-            } catch (err) {
-                console.error('[Issues] Modal error:', err);
-                alert('Action error: ' + err.message);
+        if (!actionKey || !_actionIssue) return;
+
+        // Toggle highlight
+        const wasSelected = item.classList.contains('ia-item--selected');
+        actionsPanel.querySelectorAll('.ia-item').forEach(i => i.classList.remove('ia-item--selected'));
+
+        const confirmBar = document.getElementById('ia-confirm-bar');
+        if (wasSelected) {
+            _selectedActionKey = null;
+            if (confirmBar) confirmBar.style.display = 'none';
+        } else {
+            item.classList.add('ia-item--selected');
+            _selectedActionKey = actionKey;
+            const action = ACTIONS[actionKey];
+            if (confirmBar && action) {
+                const btnLabel = action.category === 'diplomatic' ? 'Submit Action' : 'Execute Action';
+                confirmBar.innerHTML = `<button id="ia-confirm-btn" class="ia-confirm-btn ia-confirm-btn--${action.category}">${btnLabel}: ${escapeHtml(action.name)}</button>`;
+                confirmBar.style.display = '';
             }
         }
     });
@@ -985,9 +1012,9 @@ function renderIssueActions(issue, modifiers, actionsTaken) {
 
     // Action category tabs
     html += `<div class="ia-tabs">
-        <div class="ia-tab ia-tab--active ia-tab--teal" data-cat="diplomatic" onclick="window._switchIssueActionTab(this,'diplomatic')">Diplomatic</div>
-        <div class="ia-tab ia-tab--amber" data-cat="unilateral" onclick="window._switchIssueActionTab(this,'unilateral')">Unilateral</div>
-        <div class="ia-tab ia-tab--red" data-cat="threatening" onclick="window._switchIssueActionTab(this,'threatening')">Threatening</div>
+        <div class="ia-tab ia-tab--active ia-tab--teal" data-cat="diplomatic">Diplomatic</div>
+        <div class="ia-tab ia-tab--amber" data-cat="unilateral">Unilateral</div>
+        <div class="ia-tab ia-tab--red" data-cat="threatening">Threatening</div>
     </div>`;
 
     // Action lists
@@ -995,9 +1022,13 @@ function renderIssueActions(issue, modifiers, actionsTaken) {
     html += renderActionList('unilateral', unilateral, myUsedActions, actedThisTick, false, issue);
     html += renderActionList('threatening', threatening, myUsedActions, actedThisTick, false, issue);
 
-    // Store for global click handler
+    // Confirm bar (hidden until an action is selected)
+    html += '<div class="ia-confirm-bar" id="ia-confirm-bar" style="display:none;"></div>';
+
+    // Store for event delegation handler
     _actionIssue = issue;
     _actionMods = modifiers;
+    _selectedActionKey = null;
 
     el.innerHTML = html;
 }
@@ -1033,8 +1064,7 @@ function renderActionList(category, actions, usedActions, actedThisTick, hasFric
         if (action.special === 'incident_trigger_50') tags += `<span class="ia-tag ia-tag--danger">50% triggers Incident</span>`;
         if (action.special === 'incident_trigger_25') tags += `<span class="ia-tag ia-tag--danger">25% triggers Incident</span>`;
 
-        const clickHandler = (!isUsed && !isLocked) ? `onclick="window._handleIssueActionClick('${action.key}')"` : '';
-        html += `<div class="ia-item ${cls}" data-action-key="${action.key}" ${clickHandler} style="${(!isUsed && !isLocked) ? 'cursor:pointer;' : ''}">
+        html += `<div class="ia-item ${cls}" data-action-key="${action.key}" style="${(!isUsed && !isLocked) ? 'cursor:pointer;' : ''}">
             <div class="ia-icon ia-icon--${color}">${idx}</div>
             <div class="ia-info">
                 <div class="ia-name ia-name--${color}">${escapeHtml(action.name)}</div>

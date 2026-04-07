@@ -1289,6 +1289,27 @@
 .ia-item:last-child { border-bottom: none; }
 .ia-item--used { opacity: 0.3; pointer-events: none; }
 .ia-item--locked { opacity: 0.5; pointer-events: none; }
+.ia-item--selected { background: rgba(100, 200, 180, 0.1); border-left: 3px solid var(--teal); }
+
+.ia-confirm-bar { padding: 10px 14px; border-top: 1px solid var(--border-subtle); }
+.ia-confirm-btn {
+    width: 100%;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 4px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.ia-confirm-btn--diplomatic { background: var(--teal); color: #000; }
+.ia-confirm-btn--diplomatic:hover { filter: brightness(1.15); }
+.ia-confirm-btn--unilateral { background: var(--amber); color: #000; }
+.ia-confirm-btn--unilateral:hover { filter: brightness(1.15); }
+.ia-confirm-btn--threatening { background: var(--red); color: #fff; }
+.ia-confirm-btn--threatening:hover { filter: brightness(1.15); }
 
 .ia-icon {
     width: 22px;
