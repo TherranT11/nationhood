@@ -7,17 +7,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/laws-B01gl6Mx.js"></script>
+  <script type="module" crossorigin src="/assets/laws-BQsskMIJ.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
   <link rel="modulepreload" crossorigin href="/assets/common-Ool9bHq4.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
-  <link rel="modulepreload" crossorigin href="/assets/config-BIsh65GI.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-types-BgK4qZvD.js">
+  <link rel="modulepreload" crossorigin href="/assets/config-fKhFNVuq.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-types-BwzErBjP.js">
   <link rel="modulepreload" crossorigin href="/assets/ideology-DgnKVc_l.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-structure-DNHtD0-3.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-structure-C6CQ8K_6.js">
   <link rel="modulepreload" crossorigin href="/assets/stats-DqgGwtpW.js">
-  <link rel="modulepreload" crossorigin href="/assets/elections-UqGvuZ1W.js">
-  <link rel="modulepreload" crossorigin href="/assets/budget-CdtK5EYd.js">
+  <link rel="modulepreload" crossorigin href="/assets/elections-CFC87mOS.js">
+  <link rel="modulepreload" crossorigin href="/assets/budget-C8a2Ocsi.js">
   <link rel="modulepreload" crossorigin href="/assets/sovereign-default-DRjRiSGP.js">
   <link rel="stylesheet" crossorigin href="/assets/laws-DKGoqldg.css">
   <link rel="stylesheet" crossorigin href="/assets/dashboard-Bk9Ly0o-.css">
@@ -48,6 +48,9 @@
         </div>
         <div class="add-text-article-section" id="add-funding-article-section" onclick="showFundingArticleForm()">
             <span class="add-text-article-btn-text">+ Funding Article</span>
+        </div>
+        <div class="add-text-article-section" id="add-entrenchment-section" onclick="showEntrenchmentForm()">
+            <span class="add-text-article-btn-text">+ Add Entrenchment</span>
         </div>
         <div id="add-article-form" style="display:none;">
             <div class="form-group">
@@ -107,6 +110,41 @@
             <div style="display:flex;gap:8px;margin-top:12px;">
                 <button class="btn-cancel" onclick="hideFundingArticleForm()">Cancel</button>
                 <button class="btn-add" id="add-funding-btn" disabled onclick="addFundingArticle()">Add to Bill</button>
+            </div>
+        </div>
+        <div id="add-entrenchment-form" style="display:none;">
+            <div class="form-group">
+                <label class="form-label">Entrenchment Level</label>
+                <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:10px;">
+                    Determines how difficult this law will be to repeal or amend once passed. The bill itself must pass at the entrenchment threshold.
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                    <label class="entrenchment-option" style="display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--border-main);border-radius:4px;cursor:pointer;">
+                        <input type="radio" name="entrenchment-tier" value="protected" style="margin-top:3px;">
+                        <div>
+                            <div style="font-weight:600;color:var(--blue);">Protected Law</div>
+                            <div style="font-size:0.75rem;color:var(--text-secondary);">Requires 60% supermajority to repeal or amend. This bill must also pass with 60%.</div>
+                        </div>
+                    </label>
+                    <label class="entrenchment-option" style="display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--border-main);border-radius:4px;cursor:pointer;">
+                        <input type="radio" name="entrenchment-tier" value="entrenched" style="margin-top:3px;">
+                        <div>
+                            <div style="font-weight:600;color:var(--purple);">Entrenched Law</div>
+                            <div style="font-size:0.75rem;color:var(--text-secondary);">Requires 67% supermajority to repeal or amend. ${GAME_CONFIG.ENTRENCHED_COOLDOWN_TICKS}-tick cooldown before repeal can be filed. This bill must also pass with 67%.</div>
+                        </div>
+                    </label>
+                    <label class="entrenchment-option" style="display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--border-main);border-radius:4px;cursor:pointer;">
+                        <input type="radio" name="entrenchment-tier" value="enshrined" style="margin-top:3px;">
+                        <div>
+                            <div style="font-weight:600;color:var(--amber);">Enshrined as Constitutional Law</div>
+                            <div style="font-size:0.75rem;color:var(--text-secondary);">Can only be repealed via a foundational bill (67% + co-sponsor). This bill must pass with foundational supermajority.</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="btn-cancel" onclick="hideEntrenchmentForm()">Cancel</button>
+                <button class="btn-add" id="add-entrenchment-btn" disabled onclick="addEntrenchmentArticle()">Add to Bill</button>
             </div>
         </div>
         <div class="bill-name-section" id="bill-name-section" style="display:none;">
