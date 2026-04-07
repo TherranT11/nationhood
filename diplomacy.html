@@ -1161,12 +1161,6 @@ async function renderAgreementsTab() {
                 ? signedTick0 + (durationYears0 * (GAME_CONFIG.TICKS_PER_YEAR || 12)) : null;
             const isEffectivelyExpired = ag.status === 'active' && expiresTick0 != null && expiresTick0 <= shardTick;
 
-            // Hide expired/withdrawn agreements after 6 ticks
-            if (isExpiredOrWithdrawn) {
-                const endTick = ag.terminated_at_tick || 0;
-                if (shardTick - endTick > 6) continue;
-            }
-
             const articles = pd.articles || [];
             const struckIndices = new Set(pd.struck_articles || []);
 
@@ -1284,6 +1278,14 @@ async function renderAgreementsTab() {
                 withdrawHTML = '<button class="agreement-withdraw-btn" onclick="withdrawAgreement(\'' + ag.id + '\')" title="' + escapeHtml(penaltyStr) + '">Withdraw</button>';
             }
 
+            // Renew button for expired diplomatic proposals (not state visits or withdrawn)
+            let renewDiploHTML = '';
+            if ((isExpiredOrWithdrawn || isEffectivelyExpired) && ag.status !== 'withdrawn' && ag.proposal_type !== 'state_visit') {
+                if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
+                    renewDiploHTML = `<button class="agreement-withdraw-btn" style="background:rgba(92,184,92,0.15);color:#5cb85c;border-color:rgba(92,184,92,0.3);" onclick="renewDiplomaticAgreement('${ag.id}')">Renew</button>`;
+                }
+            }
+
             // Classification badge
             const classBadge = classification
                 ? '<span class="classification-badge classification-' + classification.toLowerCase() + '">' + classification + '</span>'
@@ -1353,6 +1355,7 @@ async function renderAgreementsTab() {
                             ${statusBadge}
                             ${classBadge}
                             ${withdrawHTML}
+                            ${renewDiploHTML}
                         </div>
                     </div>
                     <div class="agreement-card-meta">
@@ -1406,12 +1409,7 @@ async function renderAgreementsTab() {
 
                 for (const ta of tradeAgs) {
                     const taIsExpired = ta.status === 'expired' || ta.status === 'withdrawn';
-
-                    // Hide expired/withdrawn trade agreements after 6 ticks
-                    if (taIsExpired) {
-                        const endTick = ta.expires_at_tick || ta.withdrawn_at_tick || 0;
-                        if (shardTick - endTick > 6) continue;
-                    }
+                    const taEffExpired = ta.status === 'active' && ta.expires_at_tick && ta.expires_at_tick <= shardTick;
 
                     const typeInfo = TRADE_AGREEMENT_TYPES[ta.agreement_type];
                     const partnerId = ta.nation_a_id === currentNation.id ? ta.nation_b_id : ta.nation_a_id;
@@ -1446,8 +1444,16 @@ async function renderAgreementsTab() {
                         }
                     }
 
+                    // Renew button for expired trade agreements (FM, HoG, or MoT can renew)
+                    let renewBtn = '';
+                    if ((taIsExpired || taEffExpired) && ta.status !== 'withdrawn') {
+                        const canRenew = diplomaticRoles.isFM || diplomaticRoles.isHoG || diplomaticRoles.isMoT;
+                        if (canRenew) {
+                            renewBtn = `<button class="agreement-withdraw-btn" style="background:rgba(92,184,92,0.15);color:#5cb85c;border-color:rgba(92,184,92,0.3);" onclick="renewTradeAgreement('${ta.id}')">Renew</button>`;
+                        }
+                    }
+
                     // Status badge for trade agreements
-                    const taEffExpired = ta.status === 'active' && ta.expires_at_tick && ta.expires_at_tick <= shardTick;
                     let taStatusBadge = '';
                     if (ta.status === 'withdrawn') {
                         taStatusBadge = '<span class="badge" style="background:rgba(217,83,79,0.15);color:#d9534f;border:1px solid rgba(217,83,79,0.3);font-size:0.6rem;font-weight:700;">WITHDRAWN</span>';
@@ -1469,6 +1475,7 @@ async function renderAgreementsTab() {
                                     ${taStatusBadge}
                                     <span class="trade-type-short">${typeInfo ? escapeHtml(typeInfo.shortLabel) : ''}</span>
                                     ${withdrawBtn}
+                                    ${renewBtn}
                                 </div>
                             </div>
                             <div class="agreement-card-meta">
@@ -1622,6 +1629,102 @@ async function renderAgreementsTab() {
         console.error('Error rendering agreements tab:', err);
         panel.innerHTML = '<p style="color:#f44;text-align:center;padding:20px;">Error loading agreements.</p>';
     }
+}
+
+// ── Renew expired trade agreement ──
+async function renewTradeAgreement(agreementId) {
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG && !diplomaticRoles.isMoT) {
+        alert('Only the Foreign Minister, Head of Government, or Minister of Trade can renew agreements.');
+        return;
+    }
+
+    const { data: ta } = await _supabase.from('trade_agreements').select('*').eq('id', agreementId).single();
+    if (!ta) { alert('Could not load agreement.'); return; }
+
+    const partnerNationId = ta.nation_a_id === currentNation.id ? ta.nation_b_id : ta.nation_a_id;
+    const { data: partnerNation } = await _supabase.from('nations').select('name').eq('id', partnerNationId).single();
+    const partnerName = partnerNation?.name || 'Unknown';
+
+    if (!confirm(`Renew "${ta.agreement_name}" with ${partnerName}?\n\nThis will reactivate the agreement with a new duration. The other nation will need to confirm the renewal.`)) return;
+
+    // Get current tick
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Reactivate with new duration
+    const newExpiry = currentTick + (ta.duration_ticks || 48);
+    const { error } = await _supabase.from('trade_agreements').update({
+        status: 'active',
+        enacted_at_tick: currentTick,
+        expires_at_tick: newExpiry,
+        withdrawn_at_tick: null,
+    }).eq('id', agreementId);
+
+    if (error) {
+        alert('Failed to renew: ' + error.message);
+        return;
+    }
+
+    // Log event
+    await _supabase.from('event_log').insert({
+        nation_id: currentNation.id,
+        event_name: 'Agreement Renewed',
+        trigger_key: 'trade_agreement_renewed',
+        description_chosen: `${currentNation.name} renewed "${ta.agreement_name}" with ${partnerName}.`,
+        category: 'government',
+        fired_at_tick: currentTick,
+    });
+
+    alert(`"${ta.agreement_name}" has been renewed for ${ta.duration_ticks || 48} ticks.`);
+    renderAgreementsTab();
+}
+
+// ── Renew expired diplomatic agreement ──
+async function renewDiplomaticAgreement(agreementId) {
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('Only the Foreign Minister or Head of Government can renew agreements.');
+        return;
+    }
+
+    const { data: ag } = await _supabase.from('diplomatic_proposals').select('*').eq('id', agreementId).single();
+    if (!ag) { alert('Could not load agreement.'); return; }
+
+    const pd = ag.proposal_data || {};
+    const partnerNationId = ag.proposing_nation_id === currentNation.id ? ag.target_nation_id : ag.proposing_nation_id;
+    const { data: partnerNation } = await _supabase.from('nations').select('name').eq('id', partnerNationId).single();
+    const partnerName = partnerNation?.name || 'Unknown';
+    const agName = pd.name || 'Unnamed Agreement';
+
+    if (!confirm(`Renew "${agName}" with ${partnerName}?\n\nThis will reactivate the agreement with a new duration.`)) return;
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Reactivate
+    const durationYears = pd.duration_years || 5;
+    const newActivatedTick = currentTick;
+    const { error } = await _supabase.from('diplomatic_proposals').update({
+        status: 'active',
+        activated_at_tick: newActivatedTick,
+        terminated_at_tick: null,
+    }).eq('id', agreementId);
+
+    if (error) {
+        alert('Failed to renew: ' + error.message);
+        return;
+    }
+
+    await _supabase.from('event_log').insert({
+        nation_id: currentNation.id,
+        event_name: 'Agreement Renewed',
+        trigger_key: 'diplomatic_agreement_renewed',
+        description_chosen: `${currentNation.name} renewed "${agName}" with ${partnerName}.`,
+        category: 'government',
+        fired_at_tick: currentTick,
+    });
+
+    alert(`"${agName}" has been renewed for ${durationYears} year(s).`);
+    renderAgreementsTab();
 }
 
 async function withdrawTradeAgreement(agreementId) {
@@ -14289,6 +14392,8 @@ window.updateSubsidyWarning = updateSubsidyWarning;
 window.renderInitiativeWizard = renderInitiativeWizard;
 window.renderDraftBox = renderDraftBox;
 window.withdrawTradeAgreement = withdrawTradeAgreement;
+window.renewTradeAgreement = renewTradeAgreement;
+window.renewDiplomaticAgreement = renewDiplomaticAgreement;
 window.updateSurchargeWarning = updateSurchargeWarning;
 // Phase 3 exports
 window.acceptTradeNegotiation = acceptTradeNegotiation;
