@@ -3446,6 +3446,21 @@ const ISSUE_SPAWNER_TYPES = {
             'no_dispute_resolution_mechanism',
         ],
     },
+    territorial_ownership: {
+        key: 'territorial_ownership',
+        name: 'Territorial Ownership Dispute',
+        required_border: null,
+        required_proximity: 20,
+        description: 'A named territory is claimed by both nations. One administers it. The other wants it.',
+        has_administering_nation: true,
+        starter_modifiers: [
+            'competing_sovereignty_claims',
+            'no_international_adjudication',
+            'domestic_political_significance',
+            'resource_potential',
+            'historical_grievance_attached',
+        ],
+    },
 };
 
 const ISSUE_SPAWNER_MODIFIERS = {
@@ -3472,6 +3487,30 @@ const ISSUE_SPAWNER_MODIFIERS = {
     seized_vessel_held: { name: 'Seized Vessel Held', category: 'escalation', applies_to: 'disfavored', stat_effects: [{ stat_key: 'gov_approval', delta: -0.3 }, { stat_key: 'civil_unrest', delta: 0.2 }], duration: 10 },
     fishing_ban_in_effect: { name: 'Fishing Ban in Effect', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'cost_of_living', delta: 0.2 }, { stat_key: 'manufacturing_output', delta: -0.1 }], duration: 20 },
     public_hostility: { name: 'Public Hostility', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'polarization', delta: 0.1 }, { stat_key: 'civil_unrest', delta: 0.1 }, { stat_key: 'immigration', delta: -0.1 }], duration: 15 },
+    // ── Territorial Ownership Dispute modifiers ──
+    // Structural
+    competing_sovereignty_claims: { name: 'Competing Sovereignty Claims', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'stability', delta: -0.05 }], duration: null, spawn_chance: 1.0 },
+    no_international_adjudication: { name: 'No International Adjudication', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'gov_approval', delta: -0.1 }], duration: null, spawn_chance: 1.0 },
+    domestic_political_significance: { name: 'Domestic Political Significance', category: 'structural', applies_to: 'both', stat_effects: [{ stat_key: 'gov_approval', delta: -0.1 }, { stat_key: 'polarization', delta: 0.05 }], duration: null, spawn_chance: 1.0 },
+    resource_potential: { name: 'Resource Potential', category: 'structural', applies_to: 'administering', stat_effects: [{ stat_key: 'gdp_growth', delta: 0.1 }], duration: null, spawn_chance: 0.6 },
+    historical_grievance_attached: { name: 'Historical Grievance Attached', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'civil_unrest', delta: 0.1 }, { stat_key: 'happiness', delta: -0.05 }], duration: null, spawn_chance: 0.4 },
+    // Competitive
+    settler_population_growing: { name: 'Settler Population Growing', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'polarization', delta: 0.15 }, { stat_key: 'civil_unrest', delta: 0.1 }], duration: 25 },
+    competing_development_projects: { name: 'Competing Development Projects', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'debt_growth', delta: 0.15 }, { stat_key: 'efficiency', delta: -0.1 }], duration: 20 },
+    resource_exploitation_conflict: { name: 'Resource Exploitation Conflict', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'pollution', delta: 0.2 }, { stat_key: 'arable_land', delta: -0.1 }], duration: 20 },
+    diaspora_mobilization: { name: 'Diaspora Mobilization', category: 'competitive', applies_to: 'non_administering', stat_effects: [{ stat_key: 'polarization', delta: 0.1 }, { stat_key: 'gov_approval', delta: 0.1 }, { stat_key: 'emigration', delta: -0.1 }], duration: 20 },
+    international_legal_precedent: { name: 'International Legal Precedent', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'international_reputation', delta: -0.1 }], duration: 15 },
+    cultural_erasure_accusations: { name: 'Cultural Erasure Accusations', category: 'competitive', applies_to: 'administering', stat_effects: [{ stat_key: 'international_reputation', delta: -0.15 }, { stat_key: 'freedom_index', delta: -0.1 }], duration: 20 },
+    territory_election_issue: { name: 'Territory as Election Issue', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'gov_approval', delta: -0.3 }, { stat_key: 'polarization', delta: 0.2 }], duration: 8 },
+    memorial_anniversary_tension: { name: 'Memorial / Anniversary Tension', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'civil_unrest', delta: 0.2 }, { stat_key: 'political_violence', delta: 0.1 }, { stat_key: 'polarization', delta: 0.1 }], duration: null, is_periodic: true, periodic_interval: 20, periodic_duration: 4 },
+    // Escalation
+    military_occupation: { name: 'Military Occupation in Effect', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'civil_unrest', delta: 0.2 }], duration: 30 },
+    forced_population_transfer: { name: 'Forced Population Transfer', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'civil_unrest', delta: 0.3 }, { stat_key: 'political_violence', delta: 0.2 }], duration: null },
+    resource_extraction_underway: { name: 'Resource Extraction Underway', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'pollution', delta: 0.15 }], duration: 25 },
+    military_exercises_conducted: { name: 'Military Exercises Conducted', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'stability', delta: -0.2 }], duration: 10 },
+    citizen_expulsion: { name: 'Citizen Expulsion in Progress', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'civil_unrest', delta: 0.2 }], duration: 15 },
+    sovereignty_declared: { name: 'Sovereignty Declared', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'polarization', delta: 0.15 }], duration: null },
+    nationalist_territorial_movement: { name: 'Nationalist Territorial Movement', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'polarization', delta: 0.2 }, { stat_key: 'civil_unrest', delta: 0.15 }, { stat_key: 'terrorism', delta: 0.1 }], duration: 15 },
 };
 
 let _issueNations = [];
@@ -3534,6 +3573,13 @@ function renderIssueSpawner() {
             </select>
             <div id="is-type-desc" style="color:#888;font-size:12px;margin-top:4px;font-style:italic;"></div>
             <div id="is-border-warning" style="color:#d9534f;font-size:12px;margin-top:4px;display:none;"></div>
+        </div>
+        <div id="is-admin-nation-row" style="margin-bottom:16px;display:none;">
+            <label style="color:#999;font-size:12px;display:block;margin-bottom:4px;">Administering Nation (who currently controls the territory)</label>
+            <select id="is-admin-nation" style="width:100%;padding:8px;background:#333;color:#eee;border:1px solid #555;border-radius:4px;">
+                <option value="a">Nation A</option>
+                <option value="b">Nation B</option>
+            </select>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
             <div>
@@ -3649,7 +3695,12 @@ function onIssueTypeChange() {
     const typeKey = document.getElementById('is-issue-type').value;
     const typeDef = ISSUE_SPAWNER_TYPES[typeKey];
     document.getElementById('is-type-desc').textContent = typeDef?.description || '';
+    // Show/hide administering nation selector
+    const adminRow = document.getElementById('is-admin-nation-row');
+    if (adminRow) adminRow.style.display = typeDef?.has_administering_nation ? 'block' : 'none';
     checkBorderRequirement();
+    // Filter modifier checkboxes to show only relevant modifiers for this issue type
+    renderModifierCheckboxes();
 }
 
 function checkBorderRequirement() {
@@ -3739,6 +3790,14 @@ async function spawnBilateralIssue() {
 
     status.textContent = 'Spawning...'; status.style.color = '#ffcc00';
 
+    // Determine administering nation for territorial issues
+    const typeDef = ISSUE_SPAWNER_TYPES[issueType];
+    let adminNationId = null;
+    if (typeDef?.has_administering_nation) {
+        const adminSide = document.getElementById('is-admin-nation')?.value || 'a';
+        adminNationId = adminSide === 'a' ? nationA : nationB;
+    }
+
     const { data, error } = await _supabase.rpc('admin_spawn_bilateral_issue', {
         p_nation_a_id: nationA,
         p_nation_b_id: nationB,
@@ -3748,6 +3807,7 @@ async function spawnBilateralIssue() {
         p_favor_nation: favorSide,
         p_modifiers: modifiers,
         p_status: issueStatus,
+        p_administering_nation_id: adminNationId,
     });
 
     if (error) {
