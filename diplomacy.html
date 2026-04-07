@@ -221,7 +221,7 @@ const TRADE_TYPE_ICONS = {
 // Flag URLs (shared across all rendering functions)
 const FLAG_URLS = {
     'Melizea': 'assets/flags/Melizea.png',
-    'Avelia': 'assets/flags/Avelia1.png',
+    'Avelia': 'assets/flags/Avelia.png',
     'Sangreza': 'assets/flags/sangreza.png',
     'Montequilla': 'assets/flags/Montequilla.png',
     'San Estrella': 'assets/flags/sanestrella.png',
@@ -342,15 +342,9 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
         roles.isHoG = alloc.prime_minister === faction.id;
     }
 
-    // Foreign Minister: check coalition allocation first, then fall back to ministries table
-    const alloc = coalition?.ministry_allocations || {};
-    roles.isFM = alloc.foreign === faction.id;
-
-    // Minister of Trade: check coalition allocation first, then fall back to ministries table
-    roles.isMoT = alloc.trade === faction.id;
-
-    // Fall back to ministries table if coalition allocations don't have the role
-    if (!roles.isFM || !roles.isMoT) {
+    // Foreign Minister and Minister of Trade: use ministries table as source of truth
+    // (coalition ministry_allocations is a snapshot from formation, not updated on reshuffles)
+    {
         const { data: ministryEntries } = await _supabase
             .from('ministries')
             .select('ministry_key, party_id')
