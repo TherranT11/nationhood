@@ -1100,6 +1100,28 @@ async function confirmNation() {
     confirmBtn.textContent = 'CONTINUE';
   }
 
+  // Block if player's corporation is in the same nation
+  const { data: corpInSameNation } = await _supabase
+      .from('factions')
+      .select('id, faction_name')
+      .eq('linked_user_id', currentUser.id)
+      .eq('faction_type', 'corporation')
+      .eq('nation_id', selectedNationId)
+      .is('abandoned_at', null)
+      .maybeSingle();
+  if (corpInSameNation) {
+      const modalError = document.getElementById('alpha-code-error') || document.createElement('div');
+      if (!modalError.id) {
+          modalError.id = 'corp-nation-error';
+          modalError.style.cssText = 'font-family:var(--font-mono);font-size:10px;color:#d9534f;margin-top:8px;';
+          document.querySelector('.modal-body')?.appendChild(modalError);
+      }
+      modalError.textContent = `Your corporation "${corpInSameNation.faction_name}" is in ${nation.name}. Political parties cannot operate in the same nation as your corporation.`;
+      modalError.style.display = 'block';
+      confirmInFlight = false;
+      return;
+  }
+
   // Store selected nation in sessionStorage for the next pages
   sessionStorage.setItem('nationhood_pending_nation', JSON.stringify({
     id: nation.id,
