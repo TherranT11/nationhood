@@ -940,8 +940,11 @@ function renderIssueActions(issue, modifiers, actionsTaken) {
     const hasFriction = modifiers.some(m => m.modifier_key === 'diplomatic_friction' && m.is_active);
 
     // Group actions by category, filtered to this issue's type
+    // Actions without issue_type are fishing rights (original set) — only show for maritime_fishing_rights
     const issueType = issue.issue_type || 'maritime_fishing_rights';
-    const allRelevant = Object.values(ACTIONS).filter(a => !a.issue_type || a.issue_type === issueType);
+    const allRelevant = Object.values(ACTIONS).filter(a =>
+        a.issue_type === issueType || (!a.issue_type && issueType === 'maritime_fishing_rights')
+    );
     const diplomatic = allRelevant.filter(a => a.category === 'diplomatic');
     const unilateral = allRelevant.filter(a => a.category === 'unilateral');
     const threatening = allRelevant.filter(a => a.category === 'threatening');
