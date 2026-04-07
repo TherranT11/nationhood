@@ -9,6 +9,7 @@
 import { GAME_CONFIG } from './config.js';
 import { IDEOLOGY_AXES, IDEOLOGY_TO_AXIS } from './ideology.js';
 import { fetchActiveCoalition } from './government-structure.js';
+import { fireBillEvent } from './event-helpers.js';
 
 // ==================== CONSTANTS ====================
 
@@ -40,6 +41,9 @@ export const CAUCUS_CONFIG = {
     REL_DECAY_TICK_WINDOW: 10,    // no positive bills in last N ticks
     // Relationship = 0 means permanently opposed on any touching bill
     REL_VOLATILE_THRESHOLD: 30,
+    // Defection: caucus members leave to join ideologically compatible opposition
+    DEFECTION_THRESHOLD: 20,       // relationship_score at or below this triggers defection
+    DEFECTION_SEATS_PER_TICK: 2,   // seats lost per tick while below threshold
 };
 
 /** Wing names per axis, keyed by dominant_axis */
@@ -538,6 +542,167 @@ export async function decayCaucusRelationships(supabase, nationId, currentTick) 
                 .from('caucus_factions')
                 .update({ relationship_score: newScore })
                 .eq('id', caucus.id);
+        }
+    }
+}
+
+
+// ==================== DEFECTION ====================
+
+/**
+ * Process caucus defections for a nation. Called once per tick after decay.
+ * When a caucus relationship_score drops to DEFECTION_THRESHOLD or below,
+ * members begin defecting (DEFECTION_SEATS_PER_TICK per tick) to the
+ * ideologically closest opposition party on the caucus's dominant axis.
+ * If no compatible party exists, seats are simply lost (independents).
+ */
+export async function processCaucusDefections(supabase, nationId, currentTick) {
+    const { data: caucuses, error } = await supabase
+        .from('caucus_factions')
+        .select('id, party_id, name, dominant_axis, wing_end, seat_share, relationship_score')
+        .eq('nation_id', nationId)
+        .eq('is_active', true)
+        .lte('relationship_score', CAUCUS_CONFIG.DEFECTION_THRESHOLD);
+
+    if (error || !caucuses || caucuses.length === 0) return;
+
+    // Load all parties in the nation with their seats and ideology
+    const { data: parties } = await supabase
+        .from('factions')
+        .select('id, faction_name, seats, faction_type')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+    if (!parties || parties.length === 0) return;
+
+    const partyMap = {};
+    for (const p of parties) partyMap[p.id] = p;
+
+    // Load faction ideologies for axis matching
+    const partyIds = parties.map(p => p.id);
+    const { data: ideologies } = await supabase
+        .from('faction_ideology')
+        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+        .in('faction_id', partyIds);
+
+    const ideoMap = {};
+    for (const ideo of (ideologies || [])) ideoMap[ideo.faction_id] = ideo;
+
+    // Load nation name for event log
+    const { data: nation } = await supabase.from('nations').select('name, total_seats').eq('id', nationId).single();
+
+    for (const caucus of caucuses) {
+        const sourceParty = partyMap[caucus.party_id];
+        if (!sourceParty || sourceParty.seats <= 0) continue;
+
+        const seatsToLose = Math.min(CAUCUS_CONFIG.DEFECTION_SEATS_PER_TICK, sourceParty.seats);
+        if (seatsToLose <= 0) continue;
+
+        // Find the best ideological match among OTHER parties on this caucus's axis
+        // wing_end='left' → caucus favors low axis scores (left pole)
+        // wing_end='right' → caucus favors high axis scores (right pole)
+        const axisKey = caucus.dominant_axis;
+        const favorsHigh = caucus.wing_end === 'right';
+        let bestParty = null;
+        let bestScore = -Infinity;
+
+        for (const party of parties) {
+            if (party.id === caucus.party_id) continue; // skip source party
+            const ideo = ideoMap[party.id];
+            if (!ideo) continue;
+
+            const axisValue = ideo[axisKey] ?? 50;
+            // How well does this party match the caucus wing's preferred direction?
+            // Right wing: higher axis value = better match
+            // Left wing: lower axis value = better match (invert)
+            const score = favorsHigh ? axisValue : (100 - axisValue);
+            if (score > bestScore) {
+                bestScore = score;
+                bestParty = party;
+            }
+        }
+
+        // Transfer seats
+        const { error: srcErr } = await supabase
+            .from('factions')
+            .update({ seats: sourceParty.seats - seatsToLose })
+            .eq('id', sourceParty.id);
+        if (srcErr) {
+            console.error(`[Caucus Defection] Failed to remove seats from ${sourceParty.faction_name}:`, srcErr.message);
+            continue;
+        }
+        sourceParty.seats -= seatsToLose; // update local cache
+
+        let targetName = 'independents';
+        if (bestParty && bestScore > 40) {
+            // Transfer to compatible party (threshold: axis score > 40 means at least some alignment)
+            const { error: tgtErr } = await supabase
+                .from('factions')
+                .update({ seats: bestParty.seats + seatsToLose })
+                .eq('id', bestParty.id);
+            if (tgtErr) {
+                console.error(`[Caucus Defection] Failed to add seats to ${bestParty.faction_name}:`, tgtErr.message);
+            } else {
+                bestParty.seats += seatsToLose;
+                targetName = bestParty.faction_name;
+            }
+        }
+        // If no compatible party (or score <= 40), seats are simply lost — independents
+
+        // Reduce caucus seat_share proportionally
+        const newSeatShare = Math.max(0, caucus.seat_share - (seatsToLose / (nation?.total_seats || 100)));
+        await supabase
+            .from('caucus_factions')
+            .update({ seat_share: Math.round(newSeatShare * 1000) / 1000 })
+            .eq('id', caucus.id);
+
+        // Get wing label for event
+        const axisInfo = IDEOLOGY_AXES.find(a => a.key === axisKey);
+        const wingLabel = caucus.wing_end === 'left' ? axisInfo?.leftLabel : axisInfo?.rightLabel;
+
+        console.log(`[Caucus Defection] ${seatsToLose} seat(s) defected from ${sourceParty.faction_name} (${caucus.name}) to ${targetName}`);
+
+        // Fire nation political event
+        try {
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: 'caucus_defection',
+                p_nation_id: nationId,
+                p_tick: currentTick,
+                p_placeholders: {
+                    caucus_name: caucus.name,
+                    source_party: sourceParty.faction_name,
+                    target_party: targetName,
+                    seats_lost: seatsToLose,
+                    wing: wingLabel || caucus.wing_end,
+                    relationship_score: caucus.relationship_score
+                }
+            });
+        } catch (e) {
+            console.error('[Caucus Defection] Failed to fire political event:', e);
+        }
+
+        // Fire world event log
+        const desc = targetName === 'independents'
+            ? `${seatsToLose} member${seatsToLose !== 1 ? 's' : ''} of the ${caucus.name} wing defected from ${sourceParty.faction_name} in ${nation?.name || 'a nation'}, leaving parliament as independents.`
+            : `${seatsToLose} member${seatsToLose !== 1 ? 's' : ''} of the ${caucus.name} wing defected from ${sourceParty.faction_name} to ${targetName} in ${nation?.name || 'a nation'} over ideological disagreements.`;
+
+        try {
+            await supabase.from('event_log').insert({
+                nation_id: nationId,
+                event_name: 'Caucus Defection',
+                trigger_key: 'caucus_defection',
+                description_chosen: desc,
+                category: 'government',
+                effects_applied: {
+                    caucus: caucus.name,
+                    source: sourceParty.faction_name,
+                    target: targetName,
+                    seats: seatsToLose,
+                    relationship: caucus.relationship_score
+                },
+                fired_at_tick: currentTick
+            });
+        } catch (e) {
+            console.error('[Caucus Defection] Failed to insert event_log:', e);
         }
     }
 }
