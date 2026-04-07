@@ -9495,17 +9495,45 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
                 .is('ended_at_tick', null);
             if (adminErr) console.error('[enactFoundationalBill] Failed to close administration:', adminErr.message);
 
+            // Fail bills on president's desk (orphaned without a president)
+            const { error: deskErr } = await supabase.from('bills')
+                .update({ status: 'failed', passed_tick: currentTick })
+                .eq('nation_id', bill.nation_id)
+                .eq('status', 'president_desk');
+            if (deskErr) console.error('[enactFoundationalBill] Failed to clear president desk bills:', deskErr.message);
+
+            // Fail pending impeachment bills and resolve proceedings
+            const { error: impeachBillErr } = await supabase.from('bills')
+                .update({ status: 'failed', passed_tick: currentTick })
+                .eq('nation_id', bill.nation_id)
+                .in('bill_type', ['impeachment_motion', 'impeachment_conviction'])
+                .in('status', ['committee', 'floor']);
+            if (impeachBillErr) console.error('[enactFoundationalBill] Failed to clear impeachment bills:', impeachBillErr.message);
+
+            const { error: impeachProcErr } = await supabase.from('impeachment_proceedings')
+                .update({ phase: 'resolved', resolved_tick: currentTick, outcome: 'dismissed_constitutional_transition' })
+                .eq('nation_id', bill.nation_id)
+                .neq('phase', 'resolved');
+            if (impeachProcErr) console.error('[enactFoundationalBill] Failed to resolve impeachment proceedings:', impeachProcErr.message);
+
             console.log(`[enactFoundationalBill] President deactivated, presidential elections cleared`);
         }
 
         // ── Losing PM (Parliamentary/CM/Semi-Pres → Presidential) ──
         if (currentHasPM && !targetHasPM) {
-            // Dissolve coalition
+            // Dissolve coalition (formed + caretaker)
             const { error: coalErr } = await supabase.from('government_formations')
                 .update({ status: 'dissolved' })
                 .eq('nation_id', bill.nation_id)
                 .in('status', ['formed', 'caretaker']);
             if (coalErr) console.error('[enactFoundationalBill] Failed to dissolve coalition:', coalErr.message);
+
+            // Also expire any in-progress formations
+            const { error: formingErr } = await supabase.from('government_formations')
+                .update({ status: 'expired' })
+                .eq('nation_id', bill.nation_id)
+                .eq('status', 'forming');
+            if (formingErr) console.error('[enactFoundationalBill] Failed to expire forming coalitions:', formingErr.message);
 
             // Deactivate PM
             const { error: hogErr } = await supabase.from('head_of_government')
@@ -9513,6 +9541,15 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
                 .eq('nation_id', bill.nation_id)
                 .eq('active', true);
             if (hogErr) console.error('[enactFoundationalBill] Failed to deactivate PM:', hogErr.message);
+
+            // Fail pending PM confirmation bills (orphaned without parliamentary system)
+            const { error: pmBillErr } = await supabase.from('bills')
+                .update({ status: 'failed', passed_tick: currentTick })
+                .eq('nation_id', bill.nation_id)
+                .eq('bill_type', 'minister_confirmation')
+                .eq('ministry_key', 'prime_minister')
+                .in('status', ['committee', 'floor']);
+            if (pmBillErr) console.error('[enactFoundationalBill] Failed to clear PM confirmation bills:', pmBillErr.message);
 
             // Clear parliamentary elections (presidential system only uses presidential elections + legislative midterms)
             const { error: delParlElErr } = await supabase.from('elections').delete()
@@ -9530,15 +9567,27 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
         // ── Gaining president (Parliamentary/CM → Presidential/Semi-Pres) ──
         if (!currentHasPresident && targetHasPresident) {
-            // Schedule presidential election 3 ticks out (allows endorsement window)
-            const { error: presElErr } = await supabase.from('elections').insert({
-                nation_id: bill.nation_id,
-                election_tick: currentTick + 3,
-                status: 'scheduled',
-                election_type: 'presidential'
-            });
-            if (presElErr) console.error('[enactFoundationalBill] Failed to schedule presidential election:', presElErr.message);
-            else console.log(`[enactFoundationalBill] Presidential election scheduled at tick ${currentTick + 3}`);
+            // Check for existing scheduled presidential election before inserting
+            const { data: existingPresEl } = await supabase.from('elections')
+                .select('id')
+                .eq('nation_id', bill.nation_id)
+                .eq('status', 'scheduled')
+                .eq('election_type', 'presidential')
+                .limit(1);
+
+            if (!existingPresEl || existingPresEl.length === 0) {
+                // Schedule presidential election 3 ticks out (allows endorsement window)
+                const { error: presElErr } = await supabase.from('elections').insert({
+                    nation_id: bill.nation_id,
+                    election_tick: currentTick + 3,
+                    status: 'scheduled',
+                    election_type: 'presidential'
+                });
+                if (presElErr) console.error('[enactFoundationalBill] Failed to schedule presidential election:', presElErr.message);
+                else console.log(`[enactFoundationalBill] Presidential election scheduled at tick ${currentTick + 3}`);
+            } else {
+                console.log(`[enactFoundationalBill] Presidential election already scheduled, skipping`);
+            }
 
             // If going to full Presidential (no PM), also schedule a parliamentary midterm for seats
             if (targetSystem === 'presidential') {
