@@ -748,6 +748,9 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
     const callingPartyId = bill.proposed_by;
     const nationId = bill.nation_id;
 
+    // NOTE: government_type is fetched at resolution time, not bill creation time.
+    // If a foundational bill changes the government type while a vonc is on the floor,
+    // it will resolve under the new type's rules. This is a known edge case.
     const { data: nation } = await supabase
         .from('nations')
         .select('name, government_type')

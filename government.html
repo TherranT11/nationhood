@@ -7552,6 +7552,8 @@ async function fileNoConfidence() {
         // Deduct AP only after bill creation succeeds (cost pre-calculated above with trait modifiers)
         const apResult = await deductAP(_supabase, currentFaction.id, voncDisplayCost);
         if (!apResult.success) {
+            // Roll back the bill — player can't afford it
+            await _supabase.from('bills').delete().eq('id', bill.id);
             if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
             alert('Not enough AP. Need ' + GAME_CONFIG.NO_CONFIDENCE_AP_COST + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
             return;

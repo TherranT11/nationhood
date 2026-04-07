@@ -7265,8 +7265,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                                     updated_at: new Date().toISOString()
                                 }).eq('nation_id', bill.nation_id).is('ended_at_tick', null);
 
-                                // Reset nomination attempts on successful confirmation
-                                await supabase.from('nations').update({ pm_nomination_attempts: 0 }).eq('id', bill.nation_id);
+                                // Reset nomination attempts and clear vonc penalty window on successful confirmation
+                                await supabase.from('nations').update({ pm_nomination_attempts: 0, last_vonc_tick: null }).eq('id', bill.nation_id);
 
                                 // Fire PM appointed event
                                 try {
@@ -13812,8 +13812,8 @@ async function processSemiPresPMFallback(supabase, nation, currentTick) {
 
         await autoAppointPartyLeaderAsPM(supabase, nation.id, largestParty.id, currentTick);
 
-        // Reset nomination attempts
-        await supabase.from('nations').update({ pm_nomination_attempts: 0 }).eq('id', nation.id);
+        // Reset nomination attempts and clear vonc penalty window
+        await supabase.from('nations').update({ pm_nomination_attempts: 0, last_vonc_tick: null }).eq('id', nation.id);
 
         // Fire system event
         try {
