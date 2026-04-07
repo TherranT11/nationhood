@@ -281,15 +281,70 @@ initPage('conflicts', async (state) => {
         }
 
         // Confirm button
-        if (e.target.closest('#ia-confirm-btn')) {
-            if (_selectedActionKey && _actionIssue) {
-                try {
-                    showIssueActionModal(_selectedActionKey, _actionIssue, _actionMods || []);
-                } catch (err) {
-                    console.error('[Issues] Modal error:', err);
-                    alert('Action error: ' + err.message);
-                }
+        if (e.target.closest('#ia-confirm-btn') || e.target.closest('.ia-confirm-btn')) {
+            e.stopPropagation();
+            if (!_selectedActionKey || !_actionIssue) {
+                alert('No action selected or no issue loaded.');
+                return;
             }
+            const action = ACTIONS[_selectedActionKey];
+            if (!action) {
+                alert('Action not found: ' + _selectedActionKey);
+                return;
+            }
+            // Show modal directly — build and display inline
+            const modal = document.getElementById('action-modal');
+            if (!modal) {
+                alert('Modal element not found in DOM.');
+                return;
+            }
+            const ap = currentFaction?.action_points || 0;
+            let apCost = action.ap_cost;
+            const hasFriction = (_actionMods || []).some(m => m.modifier_key === 'diplomatic_friction' && m.is_active);
+            if (action.category === 'diplomatic' && hasFriction) apCost += 1;
+
+            document.getElementById('modal-header').innerHTML = `<span class="modal-action-name">${escapeHtml(action.name)}</span>`;
+
+            const roleLabel = ACTION_ROLE_LABELS[action.role] || action.role;
+            let bodyHtml = `<div class="modal-description">${escapeHtml(action.description)}</div>`;
+            bodyHtml += '<div class="modal-stats">';
+            bodyHtml += `<div class="modal-stat-row"><span>AP Cost:</span><span>${apCost}</span></div>`;
+            bodyHtml += `<div class="modal-stat-row"><span>Your AP:</span><span>${ap}</span></div>`;
+            bodyHtml += `<div class="modal-stat-row"><span>Category:</span><span style="text-transform:capitalize">${action.category}</span></div>`;
+            bodyHtml += `<div class="modal-stat-row"><span>Role:</span><span>${roleLabel}</span></div>`;
+            if (action.tension_delta !== 0) bodyHtml += `<div class="modal-stat-row"><span>Tension:</span><span>${action.tension_delta > 0 ? '+' : ''}${action.tension_delta}</span></div>`;
+            if (action.favor_delta !== 0) bodyHtml += `<div class="modal-stat-row"><span>Favor:</span><span>${action.favor_delta > 0 ? '+' : ''}${action.favor_delta}</span></div>`;
+            if (action.treasury_cost > 0) bodyHtml += `<div class="modal-stat-row"><span>Cost:</span><span>$${(action.treasury_cost / 1_000_000).toFixed(0)}M from treasury</span></div>`;
+            if (action.relations_delta) bodyHtml += `<div class="modal-stat-row"><span>Relations:</span><span>${action.relations_delta}</span></div>`;
+            bodyHtml += '</div>';
+
+            if (action.category === 'diplomatic') {
+                bodyHtml += '<div class="modal-info">The other nation has 3 ticks to match this action. If they don\'t, you suffer a Political Gaffe: -3 Gov Approval, +1 Tension.</div>';
+            } else if (action.category === 'threatening') {
+                if (action.special === 'incident_trigger_50') bodyHtml += '<div class="modal-risk">WARNING: 50% chance this directly triggers an incident.</div>';
+                else if (action.special === 'incident_trigger_25') bodyHtml += '<div class="modal-risk">WARNING: 25% chance this directly triggers an incident.</div>';
+            }
+
+            document.getElementById('modal-body').innerHTML = bodyHtml;
+
+            const confirmBtn = document.getElementById('modal-confirm');
+            confirmBtn.textContent = action.category === 'diplomatic' ? 'Submit' : 'Execute';
+            confirmBtn.className = action.category === 'threatening' ? 'modal-btn modal-btn--danger' : 'modal-btn modal-btn--confirm';
+
+            modal.style.display = '';
+
+            // Wire modal buttons
+            const cancelBtn = document.getElementById('modal-cancel');
+            const newCancel = cancelBtn.cloneNode(true);
+            cancelBtn.replaceWith(newCancel);
+            newCancel.addEventListener('click', () => { modal.style.display = 'none'; });
+
+            const newConfirm = confirmBtn.cloneNode(true);
+            confirmBtn.replaceWith(newConfirm);
+            newConfirm.addEventListener('click', async () => {
+                modal.style.display = 'none';
+                await executeIssueActionFromUI(_selectedActionKey, _actionIssue);
+            });
             return;
         }
 
@@ -1077,76 +1132,6 @@ function renderActionList(category, actions, usedActions, actedThisTick, hasFric
     html += '</div>';
     return html;
 }
-
-// ==================== ISSUE ACTION MODAL ====================
-
-function showIssueActionModal(actionKey, issue, modifiers) {
-    if (issueActionExecuting) return;
-    const action = ACTIONS[actionKey];
-    if (!action) return;
-
-    const modal = document.getElementById('action-modal');
-    if (!modal) return;
-    const header = document.getElementById('modal-header');
-    const body = document.getElementById('modal-body');
-    const confirmBtn = document.getElementById('modal-confirm');
-
-    const ap = currentFaction?.action_points || 0;
-
-    // Check friction — diplomatic friction modifier adds +1 AP cost
-    let apCost = action.ap_cost;
-    const hasFriction = (modifiers || []).some(m => m.modifier_key === 'diplomatic_friction' && m.is_active);
-    if (action.category === 'diplomatic' && hasFriction) {
-        apCost += 1;
-    }
-
-    header.innerHTML = `<span class="modal-action-name">${escapeHtml(action.name)}</span>`;
-
-    let bodyHtml = `<div class="modal-description">${escapeHtml(action.description)}</div>`;
-    bodyHtml += '<div class="modal-stats">';
-    bodyHtml += `<div class="modal-stat-row"><span>AP Cost:</span><span>${apCost}</span></div>`;
-    bodyHtml += `<div class="modal-stat-row"><span>Your AP:</span><span>${ap}</span></div>`;
-    bodyHtml += `<div class="modal-stat-row"><span>Category:</span><span style="text-transform:capitalize">${action.category}</span></div>`;
-    bodyHtml += `<div class="modal-stat-row"><span>Role:</span><span>${ACTION_ROLE_LABELS[action.role] || action.role}</span></div>`;
-    if (action.tension_delta !== 0) bodyHtml += `<div class="modal-stat-row"><span>Tension:</span><span>${action.tension_delta > 0 ? '+' : ''}${action.tension_delta}</span></div>`;
-    if (action.favor_delta !== 0) bodyHtml += `<div class="modal-stat-row"><span>Favor:</span><span>${action.favor_delta > 0 ? '+' : ''}${action.favor_delta}</span></div>`;
-    if (action.treasury_cost > 0) bodyHtml += `<div class="modal-stat-row"><span>Cost:</span><span>$${(action.treasury_cost / 1_000_000).toFixed(0)}M from treasury</span></div>`;
-    if (action.relations_delta) bodyHtml += `<div class="modal-stat-row"><span>Relations:</span><span>${action.relations_delta}</span></div>`;
-    bodyHtml += '</div>';
-
-    if (action.category === 'diplomatic') {
-        bodyHtml += '<div class="modal-info">The other nation has 3 ticks to match this action. If they don\'t, you suffer a Political Gaffe: -3 Gov Approval, +1 Tension.</div>';
-        confirmBtn.textContent = 'Submit';
-        confirmBtn.className = 'modal-btn modal-btn--confirm';
-    } else if (action.category === 'threatening') {
-        if (action.special === 'incident_trigger_50') {
-            bodyHtml += '<div class="modal-risk">WARNING: 50% chance this directly triggers an incident.</div>';
-        } else if (action.special === 'incident_trigger_25') {
-            bodyHtml += '<div class="modal-risk">WARNING: 25% chance this directly triggers an incident.</div>';
-        }
-        confirmBtn.textContent = 'Execute';
-        confirmBtn.className = 'modal-btn modal-btn--danger';
-    } else {
-        confirmBtn.textContent = 'Execute';
-        confirmBtn.className = 'modal-btn modal-btn--confirm';
-    }
-
-    body.innerHTML = bodyHtml;
-    modal.style.display = '';
-
-    // Wire buttons (clone to avoid stacking listeners)
-    const newCancel = document.getElementById('modal-cancel').cloneNode(true);
-    document.getElementById('modal-cancel').replaceWith(newCancel);
-    newCancel.addEventListener('click', () => { modal.style.display = 'none'; });
-
-    const newConfirm = confirmBtn.cloneNode(true);
-    confirmBtn.replaceWith(newConfirm);
-    newConfirm.addEventListener('click', async () => {
-        modal.style.display = 'none';
-        await executeIssueActionFromUI(actionKey, issue);
-    });
-}
-
 
 // ==================== EXECUTE ACTION FROM UI ====================
 
