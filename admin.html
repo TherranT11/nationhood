@@ -3446,6 +3446,35 @@ const ISSUE_SPAWNER_TYPES = {
             'no_dispute_resolution_mechanism',
         ],
     },
+    territorial_ownership: {
+        key: 'territorial_ownership',
+        name: 'Territorial Ownership Dispute',
+        required_border: null,
+        required_proximity: 20,
+        description: 'A named territory is claimed by both nations. One administers it. The other wants it.',
+        has_administering_nation: true,
+        starter_modifiers: [
+            'competing_sovereignty_claims',
+            'no_international_adjudication',
+            'domestic_political_significance',
+            'resource_potential',
+            'historical_grievance_attached',
+        ],
+    },
+    chronic_trade_imbalance: {
+        key: 'chronic_trade_imbalance',
+        name: 'Chronic Trade Imbalance',
+        required_border: null,
+        description: 'One nation exports far more to the other. The deficit nation bleeds jobs and industry.',
+        has_administering_nation: true,
+        starter_modifiers: [
+            'persistent_trade_deficit',
+            'no_trade_rebalancing_mechanism',
+            'domestic_industries_losing_share',
+            'no_import_substitution_strategy',
+            'currency_misalignment_suspected',
+        ],
+    },
 };
 
 const ISSUE_SPAWNER_MODIFIERS = {
@@ -3472,6 +3501,53 @@ const ISSUE_SPAWNER_MODIFIERS = {
     seized_vessel_held: { name: 'Seized Vessel Held', category: 'escalation', applies_to: 'disfavored', stat_effects: [{ stat_key: 'gov_approval', delta: -0.3 }, { stat_key: 'civil_unrest', delta: 0.2 }], duration: 10 },
     fishing_ban_in_effect: { name: 'Fishing Ban in Effect', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'cost_of_living', delta: 0.2 }, { stat_key: 'manufacturing_output', delta: -0.1 }], duration: 20 },
     public_hostility: { name: 'Public Hostility', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'polarization', delta: 0.1 }, { stat_key: 'civil_unrest', delta: 0.1 }, { stat_key: 'immigration', delta: -0.1 }], duration: 15 },
+    // ── Territorial Ownership Dispute modifiers ──
+    // Structural
+    competing_sovereignty_claims: { name: 'Competing Sovereignty Claims', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'stability', delta: -0.05 }], duration: null, spawn_chance: 1.0 },
+    no_international_adjudication: { name: 'No International Adjudication', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'gov_approval', delta: -0.1 }], duration: null, spawn_chance: 1.0 },
+    domestic_political_significance: { name: 'Domestic Political Significance', category: 'structural', applies_to: 'both', stat_effects: [{ stat_key: 'gov_approval', delta: -0.1 }, { stat_key: 'polarization', delta: 0.05 }], duration: null, spawn_chance: 1.0 },
+    resource_potential: { name: 'Resource Potential', category: 'structural', applies_to: 'administering', stat_effects: [{ stat_key: 'gdp_growth', delta: 0.1 }], duration: null, spawn_chance: 0.6 },
+    historical_grievance_attached: { name: 'Historical Grievance Attached', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'civil_unrest', delta: 0.1 }, { stat_key: 'happiness', delta: -0.05 }], duration: null, spawn_chance: 0.4 },
+    // Competitive
+    settler_population_growing: { name: 'Settler Population Growing', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'polarization', delta: 0.15 }, { stat_key: 'civil_unrest', delta: 0.1 }], duration: 25 },
+    competing_development_projects: { name: 'Competing Development Projects', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'debt_growth', delta: 0.15 }, { stat_key: 'efficiency', delta: -0.1 }], duration: 20 },
+    resource_exploitation_conflict: { name: 'Resource Exploitation Conflict', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'pollution', delta: 0.2 }, { stat_key: 'arable_land', delta: -0.1 }], duration: 20 },
+    diaspora_mobilization: { name: 'Diaspora Mobilization', category: 'competitive', applies_to: 'non_administering', stat_effects: [{ stat_key: 'polarization', delta: 0.1 }, { stat_key: 'gov_approval', delta: 0.1 }, { stat_key: 'emigration', delta: -0.1 }], duration: 20 },
+    international_legal_precedent: { name: 'International Legal Precedent', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'international_reputation', delta: -0.1 }], duration: 15 },
+    cultural_erasure_accusations: { name: 'Cultural Erasure Accusations', category: 'competitive', applies_to: 'administering', stat_effects: [{ stat_key: 'international_reputation', delta: -0.15 }, { stat_key: 'freedom_index', delta: -0.1 }], duration: 20 },
+    territory_election_issue: { name: 'Territory as Election Issue', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'gov_approval', delta: -0.3 }, { stat_key: 'polarization', delta: 0.2 }], duration: 8 },
+    memorial_anniversary_tension: { name: 'Memorial / Anniversary Tension', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'civil_unrest', delta: 0.2 }, { stat_key: 'political_violence', delta: 0.1 }, { stat_key: 'polarization', delta: 0.1 }], duration: null, is_periodic: true, periodic_interval: 20, periodic_duration: 4 },
+    // Escalation
+    military_occupation: { name: 'Military Occupation in Effect', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'civil_unrest', delta: 0.2 }], duration: 30 },
+    forced_population_transfer: { name: 'Forced Population Transfer', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'civil_unrest', delta: 0.3 }, { stat_key: 'political_violence', delta: 0.2 }], duration: null },
+    resource_extraction_underway: { name: 'Resource Extraction Underway', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'pollution', delta: 0.15 }], duration: 25 },
+    military_exercises_conducted: { name: 'Military Exercises Conducted', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'stability', delta: -0.2 }], duration: 10 },
+    citizen_expulsion: { name: 'Citizen Expulsion in Progress', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'civil_unrest', delta: 0.2 }], duration: 15 },
+    sovereignty_declared: { name: 'Sovereignty Declared', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'polarization', delta: 0.15 }], duration: null },
+    nationalist_territorial_movement: { name: 'Nationalist Territorial Movement', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'polarization', delta: 0.2 }, { stat_key: 'civil_unrest', delta: 0.15 }, { stat_key: 'terrorism', delta: 0.1 }], duration: 15 },
+    // ── Chronic Trade Imbalance modifiers ──
+    // Structural
+    persistent_trade_deficit: { name: 'Persistent Trade Deficit', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'manufacturing_output', delta: -0.1 }, { stat_key: 'gdp_growth', delta: -0.05 }], duration: null, spawn_chance: 1.0 },
+    no_trade_rebalancing_mechanism: { name: 'No Trade Rebalancing Mechanism', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'gov_approval', delta: -0.1 }], duration: null, spawn_chance: 1.0 },
+    domestic_industries_losing_share: { name: 'Domestic Industries Losing Market Share', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'manufacturing_output', delta: -0.1 }, { stat_key: 'unemployment', delta: 0.1 }], duration: null, spawn_chance: 1.0 },
+    no_import_substitution_strategy: { name: 'No Import Substitution Strategy', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'cost_of_living', delta: 0.05 }], duration: null, spawn_chance: 0.6 },
+    currency_misalignment_suspected: { name: 'Currency Misalignment Suspected', category: 'structural', applies_to: 'non_administering', stat_effects: [{ stat_key: 'foreign_investment', delta: -0.05 }, { stat_key: 'currency_strength', delta: -0.05 }], duration: null, spawn_chance: 0.4 },
+    // Competitive
+    factory_closures_deficit: { name: 'Factory Closures in Deficit Nation', category: 'competitive', applies_to: 'non_administering', stat_effects: [{ stat_key: 'unemployment', delta: 0.2 }, { stat_key: 'poverty_rate', delta: 0.1 }, { stat_key: 'emigration', delta: 0.1 }, { stat_key: 'civil_unrest', delta: 0.1 }], duration: 25 },
+    surplus_market_dependency: { name: 'Surplus Nation Market Dependency', category: 'competitive', applies_to: 'administering', stat_effects: [], duration: null },
+    protectionist_movement: { name: 'Protectionist Political Movement', category: 'competitive', applies_to: 'non_administering', stat_effects: [{ stat_key: 'polarization', delta: 0.15 }, { stat_key: 'gov_approval', delta: -0.15 }], duration: 20 },
+    dumping_accusations: { name: 'Dumping Accusations', category: 'competitive', applies_to: 'administering', stat_effects: [{ stat_key: 'international_reputation', delta: -0.1 }], duration: 20 },
+    supply_chain_dependency: { name: 'Supply Chain Dependency', category: 'competitive', applies_to: 'non_administering', stat_effects: [{ stat_key: 'cost_of_living', delta: 0.1 }, { stat_key: 'manufacturing_output', delta: -0.05 }], duration: 30 },
+    intellectual_property_friction: { name: 'Intellectual Property Friction', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'gdp_growth', delta: -0.1 }], duration: 20 },
+    consumer_import_dependency: { name: 'Consumer Dependency on Imports', category: 'competitive', applies_to: 'non_administering', stat_effects: [{ stat_key: 'happiness', delta: -0.05 }], duration: 15 },
+    seasonal_trade_friction: { name: 'Seasonal Trade Friction', category: 'competitive', applies_to: 'both', stat_effects: [{ stat_key: 'manufacturing_output', delta: -0.1 }], duration: null, is_periodic: true, periodic_interval: 18, periodic_duration: 6 },
+    // Escalation
+    tariff_wall_erected: { name: 'Tariff Wall Erected', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'cost_of_living', delta: 0.15 }, { stat_key: 'manufacturing_output', delta: -0.1 }], duration: 20 },
+    import_ban_in_effect: { name: 'Import Ban in Effect', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'cost_of_living', delta: 0.2 }, { stat_key: 'manufacturing_output', delta: -0.15 }], duration: 15 },
+    investment_restrictions_active: { name: 'Investment Restrictions Active', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'foreign_investment', delta: -0.15 }], duration: 20 },
+    retaliatory_measures_trade: { name: 'Retaliatory Measures in Effect', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'gdp_growth', delta: -0.1 }], duration: 15 },
+    credit_downgrade_pressure: { name: 'Credit Downgrade Pressure', category: 'escalation', applies_to: 'non_administering', stat_effects: [{ stat_key: 'credit', delta: -0.15 }, { stat_key: 'debt_growth', delta: 0.1 }, { stat_key: 'interest_rates', delta: 0.05 }], duration: 15 },
+    economic_nationalism_trade: { name: 'Economic Nationalism Surge', category: 'escalation', applies_to: 'both', stat_effects: [{ stat_key: 'polarization', delta: 0.2 }, { stat_key: 'immigration', delta: -0.1 }], duration: 15 },
 };
 
 let _issueNations = [];
@@ -3535,6 +3611,13 @@ function renderIssueSpawner() {
             <div id="is-type-desc" style="color:#888;font-size:12px;margin-top:4px;font-style:italic;"></div>
             <div id="is-border-warning" style="color:#d9534f;font-size:12px;margin-top:4px;display:none;"></div>
         </div>
+        <div id="is-admin-nation-row" style="margin-bottom:16px;display:none;">
+            <label style="color:#999;font-size:12px;display:block;margin-bottom:4px;">Administering Nation (who currently controls the territory)</label>
+            <select id="is-admin-nation" style="width:100%;padding:8px;background:#333;color:#eee;border:1px solid #555;border-radius:4px;">
+                <option value="a">Nation A</option>
+                <option value="b">Nation B</option>
+            </select>
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
             <div>
                 <label style="color:#999;font-size:12px;display:block;margin-bottom:4px;">Starting Tension: <span id="is-tension-val" style="color:#ffcc00;">0</span></label>
@@ -3589,12 +3672,50 @@ function renderIssueSpawner() {
     onIssueTypeChange();
 }
 
+// Modifier keys per issue type — used to filter the modifier checkboxes
+const ISSUE_MODIFIER_KEYS = {
+    maritime_fishing_rights: new Set([
+        'no_defined_maritime_territories', 'no_regulatory_framework', 'no_defined_quotas',
+        'no_joint_enforcement', 'no_dispute_resolution_mechanism', 'overfishing',
+        'fish_stock_depletion', 'foreign_vessels_in_waters', 'domestic_fleet_expansion',
+        'coastal_community_decline', 'illegal_fishing_surge', 'diplomatic_friction',
+        'international_attention', 'seasonal_fishing_conflict', 'environmental_damage',
+        'active_vessel_expulsion', 'naval_presence', 'seized_vessel_held',
+        'fishing_ban_in_effect', 'public_hostility',
+    ]),
+    territorial_ownership: new Set([
+        'competing_sovereignty_claims', 'no_international_adjudication',
+        'domestic_political_significance', 'resource_potential', 'historical_grievance_attached',
+        'settler_population_growing', 'competing_development_projects', 'resource_exploitation_conflict',
+        'diaspora_mobilization', 'international_legal_precedent', 'cultural_erasure_accusations',
+        'territory_election_issue', 'memorial_anniversary_tension',
+        'military_occupation', 'forced_population_transfer', 'resource_extraction_underway',
+        'military_exercises_conducted', 'citizen_expulsion', 'sovereignty_declared',
+        'nationalist_territorial_movement',
+    ]),
+    chronic_trade_imbalance: new Set([
+        'persistent_trade_deficit', 'no_trade_rebalancing_mechanism',
+        'domestic_industries_losing_share', 'no_import_substitution_strategy',
+        'currency_misalignment_suspected',
+        'factory_closures_deficit', 'surplus_market_dependency', 'protectionist_movement',
+        'dumping_accusations', 'supply_chain_dependency', 'intellectual_property_friction',
+        'consumer_import_dependency', 'seasonal_trade_friction',
+        'tariff_wall_erected', 'import_ban_in_effect', 'investment_restrictions_active',
+        'retaliatory_measures_trade', 'credit_downgrade_pressure', 'economic_nationalism_trade',
+    ]),
+};
+
 function renderModifierCheckboxes() {
     const container = document.getElementById('is-modifiers');
     if (!container) return;
 
+    // Filter modifiers to only show those relevant to the selected issue type
+    const typeKey = document.getElementById('is-issue-type')?.value || 'maritime_fishing_rights';
+    const allowedKeys = ISSUE_MODIFIER_KEYS[typeKey];
+
     const groups = { structural: [], competitive: [], escalation: [] };
     for (const [key, mod] of Object.entries(ISSUE_SPAWNER_MODIFIERS)) {
+        if (allowedKeys && !allowedKeys.has(key)) continue;
         groups[mod.category] = groups[mod.category] || [];
         groups[mod.category].push({ key, ...mod });
     }
@@ -3649,7 +3770,12 @@ function onIssueTypeChange() {
     const typeKey = document.getElementById('is-issue-type').value;
     const typeDef = ISSUE_SPAWNER_TYPES[typeKey];
     document.getElementById('is-type-desc').textContent = typeDef?.description || '';
+    // Show/hide administering nation selector
+    const adminRow = document.getElementById('is-admin-nation-row');
+    if (adminRow) adminRow.style.display = typeDef?.has_administering_nation ? 'block' : 'none';
     checkBorderRequirement();
+    // Filter modifier checkboxes to show only relevant modifiers for this issue type
+    renderModifierCheckboxes();
 }
 
 function checkBorderRequirement() {
@@ -3739,6 +3865,14 @@ async function spawnBilateralIssue() {
 
     status.textContent = 'Spawning...'; status.style.color = '#ffcc00';
 
+    // Determine administering nation for territorial issues
+    const typeDef = ISSUE_SPAWNER_TYPES[issueType];
+    let adminNationId = null;
+    if (typeDef?.has_administering_nation) {
+        const adminSide = document.getElementById('is-admin-nation')?.value || 'a';
+        adminNationId = adminSide === 'a' ? nationA : nationB;
+    }
+
     const { data, error } = await _supabase.rpc('admin_spawn_bilateral_issue', {
         p_nation_a_id: nationA,
         p_nation_b_id: nationB,
@@ -3748,6 +3882,7 @@ async function spawnBilateralIssue() {
         p_favor_nation: favorSide,
         p_modifiers: modifiers,
         p_status: issueStatus,
+        p_administering_nation_id: adminNationId,
     });
 
     if (error) {

@@ -715,9 +715,11 @@
 
     <!-- ── Row 2: World Map (spans 3 columns) + Active Crises ── -->
     <div class="dash-card" id="world-map-card">
-      <div class="dash-card-header">WORLD MAP</div>
-      <div class="dash-card-body" id="world-map-body" style="padding:0; overflow:hidden;">
-        <img src="./assets/World Map Crucera3.svg" alt="World Map" style="width:100%; height:auto; object-fit:contain; display:block;">
+      <div class="dash-card-header">WORLD MAP <span style="font-size:0.6rem;color:var(--text-dim);font-weight:400;margin-left:8px;">scroll to zoom · drag to pan</span></div>
+      <div class="dash-card-body" id="world-map-body" style="padding:0; overflow:hidden; cursor:grab; position:relative; user-select:none;">
+        <img id="world-map-img" src="./assets/map/World Map Crucera 2.2.svg" alt="World Map"
+          style="width:100%; height:auto; display:block; transform-origin:0 0; pointer-events:none;"
+          draggable="false">
       </div>
     </div>
 
@@ -1458,26 +1460,26 @@ async function loadWorldEvents(excludeNationId, currentTick) {
   try {
     const [evResult, billResult, factionResult, protestResult] = await Promise.all([
       _supabase.from('event_log')
-        .select('*, nations!inner(name, nation_profiles(flag_url))')
+        .select('*, nations!inner(name, flag_url)')
         .neq('nation_id', excludeNationId)
         .order('fired_at_tick', { ascending: false })
         .limit(80),
       // World bill proposals (other nations)
       _supabase.from('bills')
-        .select('bill_name, proposed_tick, nation_id, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id), nations!inner(name, nation_profiles(flag_url))')
+        .select('bill_name, proposed_tick, nation_id, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id), nations!inner(name, flag_url)')
         .neq('nation_id', excludeNationId)
         .not('bill_type', 'in', '("no_confidence","confirmation","minister_confirmation","veto_override","impeachment_conviction")')
         .order('proposed_tick', { ascending: false })
         .limit(30),
       // World new parties (other nations)
       _supabase.from('factions')
-        .select('faction_name, party_color, leader_first_name, leader_last_name, nation_id, created_at, faction_ideology(liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism), nations!inner(name, nation_profiles(flag_url))')
+        .select('faction_name, party_color, leader_first_name, leader_last_name, nation_id, created_at, faction_ideology(liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism), nations!inner(name, flag_url)')
         .neq('nation_id', excludeNationId)
         .order('created_at', { ascending: false })
         .limit(20),
       // World protests (other nations)
       _supabase.from('protest_log')
-        .select('id, tick_called, tick_resolved, tier, status, grievance_type, demand_label, faction_id, nation_id, factions(faction_name, party_color), nations!inner(name, nation_profiles(flag_url))')
+        .select('id, tick_called, tick_resolved, tier, status, grievance_type, demand_label, faction_id, nation_id, factions(faction_name, party_color), nations!inner(name, flag_url)')
         .neq('nation_id', excludeNationId)
         .in('status', ['resolved', 'crisis_active'])
         .order('tick_called', { ascending: false })
@@ -1521,8 +1523,7 @@ async function loadWorldEvents(excludeNationId, currentTick) {
       const dateStr = tickToDate(ev.fired_at_tick);
       const cat = EVENT_CATEGORY_STYLES[(ev.category || '').toLowerCase()] || EVENT_CATEGORY_DEFAULT;
       const nationName = ev.nations?.name || 'Unknown';
-      const np = ev.nations?.nation_profiles;
-      const flagUrl = Array.isArray(np) ? np[0]?.flag_url : np?.flag_url;
+      const flagUrl = ev.nations?.flag_url || (nationName !== 'Unknown' ? `assets/flags/${nationName}.png` : '');
       const nc = nationColor(nationName);
 
       let displayText;
@@ -1785,6 +1786,103 @@ function generateMotto(name) {
   for (let i = 0; i < name.length; i++) sum += name.charCodeAt(i);
   return mottos[sum % mottos.length];
 }
+
+// ── World Map pan & zoom ──
+(function initMapPanZoom() {
+    const container = document.getElementById('world-map-body');
+    const img = document.getElementById('world-map-img');
+    if (!container || !img) return;
+
+    let scale = 1, panX = 0, panY = 0;
+    let isDragging = false, startX = 0, startY = 0, startPanX = 0, startPanY = 0;
+    const MIN_SCALE = 1, MAX_SCALE = 5, ZOOM_SPEED = 0.15;
+
+    function applyTransform() {
+        // Clamp pan so map doesn't fly off-screen
+        const cw = container.clientWidth, ch = container.clientHeight;
+        const iw = img.naturalWidth || img.clientWidth, ih = img.naturalHeight || img.clientHeight;
+        const scaledW = (iw / iw) * cw * scale, scaledH = (ih / iw) * cw * scale;
+        const minX = Math.min(0, cw - scaledW), minY = Math.min(0, ch - scaledH);
+        panX = Math.max(minX, Math.min(0, panX));
+        panY = Math.max(minY, Math.min(0, panY));
+        img.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    }
+
+    // Wheel zoom
+    container.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect = container.getBoundingClientRect();
+        const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        const prevScale = scale;
+        scale *= e.deltaY < 0 ? (1 + ZOOM_SPEED) : (1 - ZOOM_SPEED);
+        scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, Math.round(scale * 100) / 100));
+        // Zoom toward cursor
+        const ratio = scale / prevScale;
+        panX = mx - (mx - panX) * ratio;
+        panY = my - (my - panY) * ratio;
+        applyTransform();
+    }, { passive: false });
+
+    // Mouse drag
+    container.addEventListener('mousedown', (e) => {
+        if (scale <= 1) return;
+        isDragging = true;
+        startX = e.clientX; startY = e.clientY;
+        startPanX = panX; startPanY = panY;
+        container.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        panX = startPanX + (e.clientX - startX);
+        panY = startPanY + (e.clientY - startY);
+        applyTransform();
+    });
+    window.addEventListener('mouseup', () => {
+        isDragging = false;
+        container.style.cursor = scale > 1 ? 'grab' : 'grab';
+    });
+
+    // Touch pinch zoom + drag
+    let lastTouchDist = 0, lastTouchMid = null;
+    container.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            lastTouchDist = Math.sqrt(dx * dx + dy * dy);
+            lastTouchMid = { x: (e.touches[0].clientX + e.touches[1].clientX) / 2, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 };
+        } else if (e.touches.length === 1 && scale > 1) {
+            isDragging = true;
+            startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+            startPanX = panX; startPanY = panY;
+        }
+    }, { passive: true });
+    container.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2 && lastTouchDist > 0) {
+            e.preventDefault();
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const prevScale = scale;
+            scale *= dist / lastTouchDist;
+            scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+            const rect = container.getBoundingClientRect();
+            const mid = { x: (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top };
+            const ratio = scale / prevScale;
+            panX = mid.x - (mid.x - panX) * ratio;
+            panY = mid.y - (mid.y - panY) * ratio;
+            lastTouchDist = dist;
+            applyTransform();
+        } else if (e.touches.length === 1 && isDragging) {
+            panX = startPanX + (e.touches[0].clientX - startX);
+            panY = startPanY + (e.touches[0].clientY - startY);
+            applyTransform();
+        }
+    }, { passive: false });
+    container.addEventListener('touchend', () => { isDragging = false; lastTouchDist = 0; });
+
+    // Double-click to reset
+    container.addEventListener('dblclick', () => { scale = 1; panX = 0; panY = 0; applyTransform(); });
+})();
 </script>
 
 </body>

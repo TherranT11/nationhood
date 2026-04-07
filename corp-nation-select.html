@@ -441,13 +441,14 @@ import { hasElectedPresident } from './js/game/government-types.js';
 
 const FLAG_URLS = {
     'Melizea': 'assets/flags/Melizea.png',
-    'Avelia': 'assets/flags/Avelia1.png',
+    'Avelia': 'assets/flags/Avelia.png',
     'Sangreza': 'assets/flags/sangreza.png',
     'Montequilla': 'assets/flags/Montequilla.png',
     'San Estrella': 'assets/flags/sanestrella.png',
     'Palvera': 'assets/flags/Palvera.png',
     'Calveth': 'assets/flags/Calveth.png',
-    'Flandis': 'assets/flags/Flandis.png'
+    'Flandis': 'assets/flags/Flandis.png',
+    'Vostia': 'assets/flags/Vostia.png'
 };
 
 const NATION_CULTURE = {
@@ -720,6 +721,22 @@ async function confirmNation() {
 
     try {
         const nation = allNations.find(n => n.id === selectedNationId);
+
+        // Block if player's political party is in the same nation
+        const { data: partyInSameNation } = await _supabase
+            .from('factions')
+            .select('id, faction_name')
+            .eq('id', currentUser.id)
+            .eq('faction_type', 'party')
+            .eq('nation_id', selectedNationId)
+            .is('abandoned_at', null)
+            .maybeSingle();
+        if (partyInSameNation) {
+            errEl.textContent = `Your political party "${partyInSameNation.faction_name}" is in ${nation.name}. Corporations cannot operate in the same nation as your party.`;
+            btn.disabled = false;
+            btn.textContent = 'Confirm ▶';
+            return;
+        }
 
         // Get current tick
         const { data: shardData } = await _supabase
