@@ -1538,7 +1538,13 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
             // ── Construction Sector ──────────────────────────────────────
             try {
-                // Project execution: advance in_progress, deduct costs, complete
+                // Bid resolution FIRST: expired bidding windows → award winners
+                const bidResults = await resolveExpiredBids(supabase, nation.id, currentTick);
+                if (bidResults.length > 0) {
+                    summary.construction.push({ nation: nation.name, type: 'bids', data: bidResults });
+                }
+
+                // Project execution: advance awarded → in_progress, deduct costs, complete
                 const projectResults = await processActiveProjects(supabase, nation.id, currentTick);
                 if (projectResults.length > 0) {
                     summary.construction.push({ nation: nation.name, type: 'completions', data: projectResults });
@@ -1548,12 +1554,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 const genResults = await generateConstructionContracts(supabase, nation, currentTick);
                 if (genResults.length > 0) {
                     summary.construction.push({ nation: nation.name, type: 'generated', data: genResults });
-                }
-
-                // Bid resolution: expired bidding windows → cheapest wins
-                const bidResults = await resolveExpiredBids(supabase, nation.id, currentTick);
-                if (bidResults.length > 0) {
-                    summary.construction.push({ nation: nation.name, type: 'bids', data: bidResults });
                 }
 
                 // Project events: generate random events on in_progress projects
