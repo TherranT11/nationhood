@@ -935,10 +935,12 @@ function renderIssueActions(issue, modifiers, actionsTaken) {
     // Check diplomatic friction (adds +1 AP to diplomatic actions)
     const hasFriction = modifiers.some(m => m.modifier_key === 'diplomatic_friction' && m.is_active);
 
-    // Group actions by category
-    const diplomatic = Object.values(ACTIONS).filter(a => a.category === 'diplomatic');
-    const unilateral = Object.values(ACTIONS).filter(a => a.category === 'unilateral');
-    const threatening = Object.values(ACTIONS).filter(a => a.category === 'threatening');
+    // Group actions by category, filtered to this issue's type
+    const issueType = issue.issue_type || 'maritime_fishing_rights';
+    const allRelevant = Object.values(ACTIONS).filter(a => !a.issue_type || a.issue_type === issueType);
+    const diplomatic = allRelevant.filter(a => a.category === 'diplomatic');
+    const unilateral = allRelevant.filter(a => a.category === 'unilateral');
+    const threatening = allRelevant.filter(a => a.category === 'threatening');
 
     let html = '';
 
@@ -1007,7 +1009,8 @@ function renderActionList(category, actions, usedActions, actedThisTick, hasFric
         if (action.special === 'incident_trigger_50') tags += `<span class="ia-tag ia-tag--danger">50% triggers Incident</span>`;
         if (action.special === 'incident_trigger_25') tags += `<span class="ia-tag ia-tag--danger">25% triggers Incident</span>`;
 
-        html += `<div class="ia-item ${cls}" data-action-key="${action.key}">
+        const clickHandler = (!isUsed && !isLocked) ? `onclick="window._handleIssueActionClick('${action.key}')"` : '';
+        html += `<div class="ia-item ${cls}" data-action-key="${action.key}" ${clickHandler} style="${(!isUsed && !isLocked) ? 'cursor:pointer;' : ''}">
             <div class="ia-icon ia-icon--${color}">${idx}</div>
             <div class="ia-info">
                 <div class="ia-name ia-name--${color}">${escapeHtml(action.name)}</div>
@@ -1022,6 +1025,16 @@ function renderActionList(category, actions, usedActions, actedThisTick, hasFric
 }
 
 // Tab switching for action categories
+window._handleIssueActionClick = function(actionKey) {
+    if (!actionKey || !_actionIssue) return;
+    try {
+        showIssueActionModal(actionKey, _actionIssue, _actionMods || []);
+    } catch (err) {
+        console.error('[Issues] Action click error:', err);
+        alert('Action error: ' + err.message);
+    }
+};
+
 window._switchIssueActionTab = function(tabEl, category) {
     document.querySelectorAll('.ia-tab').forEach(t => {
         t.classList.remove('ia-tab--active');
