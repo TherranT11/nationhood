@@ -80,7 +80,6 @@ export const GAME_CONFIG = {
 
     // ── Entrenchment Clauses ──
     PROTECTED_THRESHOLD: 0.60,          // 60% of seats (72 of 120)
-    ENTRENCHED_THRESHOLD: 2/3,          // 67% of seats (same as foundational)
     ENTRENCHED_COOLDOWN_TICKS: 60,      // ticks before repeal can be filed
 };
 

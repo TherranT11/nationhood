@@ -139,7 +139,6 @@ const GAME_CONFIG = {
 
     // ── Entrenchment Clauses ──
     PROTECTED_THRESHOLD: 0.60,          // 60% of seats (72 of 120)
-    ENTRENCHED_THRESHOLD: 2/3,          // 67% of seats (same as foundational)
     ENTRENCHED_COOLDOWN_TICKS: 60,      // ticks before repeal can be filed
 };
 
@@ -6869,6 +6868,13 @@ function resolveBillVote(bill, totalSeats, nationFlags = {}) {
     const quorumPct = (nationFlags.legislative_quorum_override > 0) ? (nationFlags.legislative_quorum_override / 100) : GAME_CONFIG.QUORUM_THRESHOLD;
     const quorumThreshold = Math.ceil(totalSeats * quorumPct);
     const judicialPoliticized = !!nationFlags.judicial_appointment_politicization;
+
+    // Entrenchment clause: elevates ordinary bills to supermajority thresholds
+    if (bill.entrenchment_tier && bill.bill_type !== 'foundational') {
+        const ratio = bill.entrenchment_tier === 'protected' ? GAME_CONFIG.PROTECTED_THRESHOLD : GAME_CONFIG.SUPERMAJORITY_THRESHOLD;
+        const threshold = Math.ceil(totalSeats * ratio);
+        return forSeats >= threshold ? 'passed' : 'failed';
+    }
 
     // Foundational / default_resolution / veto_override / impeachment_conviction: supermajority
     if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {

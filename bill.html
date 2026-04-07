@@ -2052,9 +2052,9 @@ async function renderSidebar() {
         // ── Determine if this is an absolute-threshold bill (no quorum, fixed target) ──
         const isAbsoluteThreshold = bill.bill_type === 'foundational' || bill.bill_type === 'veto_override'
             || bill.bill_type === 'impeachment_conviction' || bill.bill_type === 'no_confidence'
-            || bill.bill_type === 'impeachment_motion';
+            || bill.bill_type === 'impeachment_motion' || !!bill.entrenchment_tier;
         const isSupermajority = bill.bill_type === 'foundational' || bill.bill_type === 'veto_override'
-            || bill.bill_type === 'impeachment_conviction';
+            || bill.bill_type === 'impeachment_conviction' || !!bill.entrenchment_tier;
 
         // ── Build status label and color ──
         let statusLabel, statusColor;

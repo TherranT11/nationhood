@@ -652,6 +652,13 @@ export function resolveBillVote(bill, totalSeats, nationFlags = {}) {
     const quorumThreshold = Math.ceil(totalSeats * quorumPct);
     const judicialPoliticized = !!nationFlags.judicial_appointment_politicization;
 
+    // Entrenchment clause: elevates ordinary bills to supermajority thresholds
+    if (bill.entrenchment_tier && bill.bill_type !== 'foundational') {
+        const ratio = bill.entrenchment_tier === 'protected' ? GAME_CONFIG.PROTECTED_THRESHOLD : GAME_CONFIG.SUPERMAJORITY_THRESHOLD;
+        const threshold = Math.ceil(totalSeats * ratio);
+        return forSeats >= threshold ? 'passed' : 'failed';
+    }
+
     // Foundational / default_resolution / veto_override / impeachment_conviction: supermajority
     if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
         let ratio = 2 / 3;

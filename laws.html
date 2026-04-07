@@ -1269,7 +1269,7 @@ async function fileEntrenchmentUpgrade(activeLawId, policyName, targetTier) {
         if (billError) throw billError;
 
         // Insert entrenchment article
-        await _supabase.from('bill_articles').insert({
+        const { error: artErr } = await _supabase.from('bill_articles').insert({
             bill_id: bill.id,
             policy_id: null,
             article_number: 1,
@@ -1278,6 +1278,7 @@ async function fileEntrenchmentUpgrade(activeLawId, policyName, targetTier) {
             article_text: 'Entrenchment clause — elevate to ' + tierLabels[targetTier] + ' status.',
             entrenchment_tier: targetTier
         });
+        if (artErr) console.error('Failed to insert entrenchment article:', artErr.message);
 
         // Auto-add sponsor support
         const mySeats = currentFaction.seats || 0;
@@ -1298,7 +1299,7 @@ let _draftArticleLock = false; // Prevents double-fire on async article add/remo
 
 /** Count non-text draft articles (these are the ones that count toward the free limit). */
 function countBillableArticles(articles) {
-    return articles.filter(a => !a.isText).length;
+    return articles.filter(a => !a.isText && !a.isEntrenchment).length;
 }
 
 /** Check if adding a non-text article would exceed the free limit and charge 1 AP if so.
@@ -1636,7 +1637,7 @@ function addEntrenchmentArticle() {
         draftArticles.push({ isEntrenchment: true, entrenchmentTier: tier, articleNumber: nextNum });
         hideEntrenchmentForm();
         renderDraftArticles();
-        updateSubmitState();
+        updateSubmitButtonCost();
     } finally { _draftArticleLock = false; }
 }
 
