@@ -412,7 +412,7 @@ export function renderTopBar(activeTab) {
                     </div>
                 </div>
             </div>
-            <div class="top-bar-version" style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.5px;opacity:0.6;">Alpha 2.0.0.2</div>
+            <div class="top-bar-version" style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.5px;opacity:0.6;">Alpha 2.0.0.3</div>
             <div class="top-bar-right">
                 <button class="guide-btn" id="guide-btn" title="Page Guide" style="display:none;"></button>
                 ${activeTab === 'home' ? '<a href="how-to.html" class="guide-btn" style="text-decoration:none;">HOW TO</a>' : ''}
