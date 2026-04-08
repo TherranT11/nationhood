@@ -882,8 +882,8 @@ async function proceed() {
           declared_axis_2: m2.axis,
           declared_direction_2: m2.dir
         };
-        row[m1.axis] = 30 * m1.dir;
-        row[m2.axis] = 30 * m2.dir;
+        row[m1.axis] = 20 * m1.dir;
+        row[m2.axis] = 20 * m2.dir;
 
         const { error: ideoErr } = await _supabase.from('faction_ideology').upsert(row, { onConflict: 'faction_id' });
         if (ideoErr) console.error('Ideology upsert failed:', ideoErr);
