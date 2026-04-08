@@ -23524,6 +23524,47 @@ async function processCrises(supabase, nation, currentTick) {
         }
     }
 
+    // 6. Crisis Fatigue — every 12 ticks a crisis persists, governing coalition loses momentum
+    // Coalition parties: -7 momentum. PM/President's party: additional -3 momentum.
+    if (activeCrisisRecords && activeCrisisRecords.length > 0) {
+        let fatigueTriggered = false;
+        for (const ac of activeCrisisRecords) {
+            const ticksActive = currentTick - ac.started_at_tick;
+            if (ticksActive > 0 && ticksActive % 12 === 0) {
+                fatigueTriggered = true;
+                break; // only need to know if ANY crisis hits a 12-tick boundary
+            }
+        }
+
+        if (fatigueTriggered) {
+            try {
+                const _fatigueCoalition = await fetchActiveCoalition(supabase, nation.id);
+                if (_fatigueCoalition && _fatigueCoalition.party_ids && _fatigueCoalition.party_ids.length > 0) {
+                    for (const partyId of _fatigueCoalition.party_ids) {
+                        await supabase.rpc('adjust_momentum', {
+                            p_faction_id: partyId,
+                            p_delta: -7,
+                            p_label: 'crisis_fatigue (-7 coalition)',
+                            p_tick: currentTick
+                        });
+                    }
+                    // PM/President's party takes additional -3
+                    if (_fatigueCoalition.lead_party_id) {
+                        await supabase.rpc('adjust_momentum', {
+                            p_faction_id: _fatigueCoalition.lead_party_id,
+                            p_delta: -3,
+                            p_label: 'crisis_fatigue (-3 lead party)',
+                            p_tick: currentTick
+                        });
+                    }
+                    console.log(`[processCrises] Crisis fatigue applied in ${nation.name}: -7 momentum to ${_fatigueCoalition.party_ids.length} coalition parties, -3 additional to lead party`);
+                }
+            } catch (fatigueErr) {
+                console.error(`[processCrises] Crisis fatigue failed for ${nation.name} (non-fatal):`, fatigueErr);
+            }
+        }
+    }
+
     return crisisEvents;
 }
 
