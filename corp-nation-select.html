@@ -469,7 +469,7 @@ let corpsByNation = {};  // nation_id → array of corp factions in this subsect
 let selectedNationId = null;
 let activeContinent = 'Crucera';
 // Company details state (filled after nation selection)
-let companyType = null;
+let companyType = 'Private'; // Public corps not yet implemented
 let corpName = '';
 let ticker = '';
 
@@ -616,12 +616,11 @@ function showCompanyDetails() {
                 <span class="section-label">Company Type</span>
             </div>
             <div class="section-body" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;align-items:stretch;">
-                <div class="option-card${companyType === 'Public' ? ' selected' : ''}"
-                     data-type="Public" onclick="selectCompanyType(this)" style="margin-bottom:0;display:flex;flex-direction:column;">
-                    <div class="option-card__name">Public</div>
+                <div class="option-card" style="margin-bottom:0;display:flex;flex-direction:column;opacity:0.35;cursor:not-allowed;pointer-events:none;">
+                    <div class="option-card__name">Public <span style="font-size:0.6rem;color:var(--text-dim);font-weight:400;">COMING SOON</span></div>
                     <div class="option-card__desc" style="flex:1;">Your stock is listed on the market. Shareholders influence decisions, but IPO capital fuels rapid growth. Transparent financials required.</div>
                 </div>
-                <div class="option-card${companyType === 'Private' ? ' selected' : ''}"
+                <div class="option-card selected"
                      data-type="Private" onclick="selectCompanyType(this)" style="margin-bottom:0;display:flex;flex-direction:column;">
                     <div class="option-card__name">Private</div>
                     <div class="option-card__desc" style="flex:1;">Full control, no shareholders. Slower growth but total autonomy over strategy. Financials stay behind closed doors.</div>
