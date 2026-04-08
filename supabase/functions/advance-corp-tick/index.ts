@@ -369,6 +369,13 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
     // Only generate every 3 ticks
     if (currentTick % 3 !== 0) return [];
 
+    // Load building modifier definitions once
+    let _buildingModifiers = null;
+    try {
+        const { data: modDefs } = await supabase.from('building_modifiers').select('*');
+        _buildingModifiers = modDefs || [];
+    } catch (_) { /* table may not exist yet */ }
+
     const gdp = Number(nation.gdp_growth ?? 50);
 
     // Determine how many contracts this GDP tier generates
@@ -506,6 +513,41 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
         // Issuer: auto-generated contracts are private sector offerings
         const issuerName = PRIVATE_ISSUERS[Math.floor(Math.random() * PRIVATE_ISSUERS.length)];
 
+        // Roll building modifiers based on nation stats (0-3 per contract)
+        const contractModifiers = [];
+        if (_buildingModifiers) {
+            const eligible = _buildingModifiers.filter(m =>
+                m.category === 'site' || m.category === 'nation'
+            ).filter(m => {
+                // Check sector applicability
+                const appliesTo = m.applies_to || [];
+                if (!appliesTo.includes(sector)) return false;
+                // Check stat threshold
+                if (m.probability_stat) {
+                    const statVal = Number(nation[m.probability_stat] ?? 50);
+                    // For seismic_zone: low stability = higher chance (below threshold)
+                    if (m.modifier_key === 'seismic_zone') return statVal < m.probability_threshold;
+                    return statVal >= m.probability_threshold;
+                }
+                return m.probability_base > 0;
+            });
+            for (const mod of eligible) {
+                if (contractModifiers.length >= 3) break; // max 3 modifiers
+                if (Math.random() < (mod.probability_base || 0.1)) {
+                    contractModifiers.push(mod.modifier_key);
+                }
+            }
+        }
+
+        // Apply cost multiplier from modifiers
+        let modifiedBudget = budget;
+        if (_buildingModifiers && contractModifiers.length > 0) {
+            for (const mk of contractModifiers) {
+                const mod = _buildingModifiers.find(m => m.modifier_key === mk);
+                if (mod) modifiedBudget = Math.round(modifiedBudget * mod.cost_multiplier);
+            }
+        }
+
         const { data: contract, error } = await supabase.from('construction_contracts').insert({
             nation_id: nation.id,
             template_key: key,
@@ -513,11 +555,12 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
             name: tmpl.name,
             description: tmpl.desc,
             project_code: projectId,
-            budget_ceiling: budget,
+            budget_ceiling: modifiedBudget,
             timeline_ticks: timeline,
             required_materials: requiredMats,
             required_equipment: CC_REQUIREMENTS[key]?.equip || [],
             required_workforce: requiredWf,
+            modifiers: contractModifiers,
             status: 'open',
             generated_at_tick: currentTick,
             bidding_ends_tick: currentTick + 3,
