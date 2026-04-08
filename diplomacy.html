@@ -17713,7 +17713,7 @@ function renderIPOActionsPanel() {
         desc: 'Spend AP to rally support for another member party.',
         cost: IPO_ACTION_COSTS.hold_rally,
         icon: '📢',
-        available: ipoVoteMembers.filter(m => m.faction_id !== currentFaction.id).length > 0 && currentAp >= IPO_ACTION_COSTS.hold_rally
+        available: ipoAllMembers.filter(m => m.faction_id !== currentFaction.id && m.is_active).length > 0 && currentAp >= IPO_ACTION_COSTS.hold_rally
     });
 
     // Rally All Members — president only
@@ -17971,7 +17971,7 @@ async function executeHoldRally() {
     const cost = IPO_ACTION_COSTS.hold_rally;
 
     // Build list of other members to target
-    const otherMembers = ipoVoteMembers.filter(m => m.faction_id !== currentFaction.id);
+    const otherMembers = ipoAllMembers.filter(m => m.faction_id !== currentFaction.id && m.is_active);
     if (otherMembers.length === 0) {
         alert('No other members in this organisation to rally for.');
         return;
@@ -18158,7 +18158,7 @@ function openBackChannelModal() {
     backChannelTargetId = null;
     backChannelAmount = 1;
 
-    const otherMembers = ipoVoteMembers.filter(m => m.faction_id !== currentFaction.id);
+    const otherMembers = ipoAllMembers.filter(m => m.faction_id !== currentFaction.id && m.is_active);
     if (otherMembers.length === 0) { alert('No other members to transfer to.'); return; }
 
     const memberOpts = otherMembers.map(m =>
