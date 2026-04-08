@@ -332,11 +332,16 @@ body {
 
 .error-msg {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   color: var(--red);
   text-align: center;
-  margin-top: 10px;
+  padding: 10px 16px;
+  margin: 12px 0;
+  background: rgba(217,83,79,0.08);
+  border: 1px solid rgba(217,83,79,0.25);
+  border-radius: 4px;
 }
+.error-msg:empty { display: none; }
 
 /* ── Company details phase ── */
 .details-panel {
@@ -423,13 +428,13 @@ body {
   <!-- Company details (shown after nation selected) -->
   <div class="details-panel" id="details-panel"></div>
 
+  <div class="error-msg" id="error-message"></div>
+
   <!-- Navigation -->
   <div class="action-bar">
     <button class="btn-next" onclick="goBack()">&#x25C0; Back</button>
     <button class="btn-next" id="btn-confirm" disabled onclick="confirmNation()">Confirm &#x25B6;</button>
   </div>
-
-  <div class="error-msg" id="error-message"></div>
 </div>
 
 <script type="module">
