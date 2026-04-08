@@ -6720,6 +6720,7 @@ function renderCabinet(ministries, coalition) {
                 .map(([key, partyId]) => {
                     const party = partyData.find(p => p.party_id === partyId);
                     const title = MINISTRY_NAMES[key] || key;
+                    const domainBadge = getDomainBadge(key);
                     return `<div class="ministry-card vacant">${buildCardHeader(title, '', 0, domainBadge)}
                         <div class="ministry-card__minister">
                             <div class="ministry-card__minister-name" style="color:#3a3a2e;">To be appointed</div>
