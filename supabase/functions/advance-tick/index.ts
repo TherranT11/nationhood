@@ -13328,7 +13328,15 @@ async function processElections(supabase, nation, currentTick) {
 async function processPresidentialElectionResult(supabase, nation, completedElection, currentTick, electionId = null) {
     let candidateResults = completedElection?.results?.presidential_candidates || [];
     if (candidateResults.length === 0) {
-        console.warn(`No candidate vote data for presidential election in ${nation.name}`);
+        // No candidates — schedule recovery election so the nation doesn't stay vacant
+        console.error(`[processPresidentialElectionResult] No candidates for presidential election in ${nation.name} — scheduling recovery election`);
+        const leadTicks = GAME_CONFIG.PRESIDENTIAL_CANDIDATE_LEAD_TICKS + 1;
+        await supabase.from('elections').insert({
+            nation_id: nation.id,
+            election_tick: currentTick + leadTicks,
+            election_type: 'presidential',
+            status: 'scheduled'
+        });
         return;
     }
 
@@ -13748,7 +13756,9 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
     const { data: nationForTerm, error: nationTermErr } = await supabase.from('nations').select('presidential_term_ticks, presidential_term_limit').eq('id', nationId).single();
     if (nationTermErr) console.error(`[inauguratePresident] Failed to fetch nation term data:`, nationTermErr.message);
 
-    // Trait is now resolved from POSITIVE_TRAITS at display time (leader_traits table removed)
+    // Resolve trait data from POSITIVE_TRAITS using candidate's trait_key
+    const _presTrait = candidate.trait_key
+        ? POSITIVE_TRAITS.find(t => t.key === candidate.trait_key) : null;
 
     // Determine terms_served: if re-elected (same person), increment; otherwise start at 1
     let termsServed = 1;
@@ -13760,7 +13770,7 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         console.log(`President re-elected: ${candidate.first_name} ${candidate.last_name} — term ${termsServed}`);
     }
 
-    // Insert president record (with trait_upside / trait_downside populated)
+    // Insert president record
     const { error: presErr } = await supabase.from('presidents').insert({
         nation_id: nationId,
         faction_id: factionId,
@@ -13769,8 +13779,8 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         age: candidate.age,
         ideology: candidate.ideology,
         trait: candidate.trait_key,
-        trait_upside: trait?.upside || null,
-        trait_downside: trait?.downside || null,
+        trait_upside: _presTrait?.effect || null,
+        trait_downside: null,
         elected_tick: currentTick,
         term_ends_tick: currentTick + getPresidentialTermTicks(nationForTerm),
         is_active: true,
@@ -14487,7 +14497,10 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
                 if (isIncumbentParty && isTermLimited) {
                     console.log(`TERM LIMIT: President ${incumbentPresident.first_name} ${incumbentPresident.last_name} has served ${incumbentPresident.terms_served} term(s) (limit: ${termLimit}). ${party.faction_name}'s party leader will be the candidate. (${nation.name})`);
                 }
-                await registerPartyLeaderAsCandidate(supabase, nation.id, party.id, currentTick);
+                const _regResult = await registerPartyLeaderAsCandidate(supabase, nation.id, party.id, currentTick);
+                if (!_regResult) {
+                    console.warn(`[triggerPresidentialCandidateSelection] Party ${party.faction_name} has no leader — no candidate registered for ${nation.name}`);
+                }
             }
         } catch (partyErr) {
             console.error(`Error registering presidential candidate for party ${party.faction_name} (${party.id}) in ${nation.name}:`, partyErr);
