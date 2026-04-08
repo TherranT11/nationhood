@@ -778,8 +778,9 @@ async function submitTaxBill(nation) {
 // ==================== OVERVIEW TAB ====================
 function computeBudgetSummary(nation) {
     var budget = calculateNationalBudget(nation);
-    if (tradeData && tradeData.summary) {
-        applyTradeTariffOverride(budget, Number(tradeData.summary.tariff_revenue), Number(nation.gdp ?? nation.GDP ?? 0));
+    var cappedTariff = getCappedTariffRevenue(nation);
+    if (cappedTariff > 0) {
+        applyTradeTariffOverride(budget, cappedTariff, Number(nation.gdp ?? nation.GDP ?? 0));
     }
     var aidReceived = aidData ? Number(aidData.received || 0) : 0;
     var aidGivenAmt = aidData ? Number(aidData.given || 0) : 0;
@@ -1286,8 +1287,9 @@ function getSliderColorClass(rate, maxRate) {
 
 function renderTaxationTab(nation) {
     var budget = calculateNationalBudget(nation);
-    if (tradeData && tradeData.summary && Number(tradeData.summary.tariff_revenue) > 0) {
-        applyTradeTariffOverride(budget, tradeData.summary.tariff_revenue, Number(nation.gdp ?? nation.GDP ?? 0));
+    var cappedTariff = getCappedTariffRevenue(nation);
+    if (cappedTariff > 0) {
+        applyTradeTariffOverride(budget, cappedTariff, Number(nation.gdp ?? nation.GDP ?? 0));
     }
 
     var incomeTax = Math.round(Number(nation.income_tax || 0));
@@ -1601,9 +1603,10 @@ var MINISTRY_DESCRIPTIONS = {
 function renderBudgetTab(nation) {
     var budget = calculateNationalBudget(nation);
 
-    // Apply tariff override with GDP cap (same as Overview tab — single source of truth)
-    if (tradeData && tradeData.summary) {
-        applyTradeTariffOverride(budget, Number(tradeData.summary.tariff_revenue), Number(nation.gdp ?? nation.GDP ?? 0));
+    // Apply tariff override using getCappedTariffRevenue (single source of truth)
+    var cappedTariff = getCappedTariffRevenue(nation);
+    if (cappedTariff > 0) {
+        applyTradeTariffOverride(budget, cappedTariff, Number(nation.gdp ?? nation.GDP ?? 0));
     }
 
     var aidReceived = aidData ? Number(aidData.received || 0) : 0;
