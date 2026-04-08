@@ -3023,14 +3023,25 @@ async function openProjectModal(projectId) {
         };
     });
 
-    // Build equipment from contract required_equipment
+    // Build equipment from contract required_equipment + real corp_equipment data
     const reqEquip = project.required_equipment || [];
-    const equipment = reqEquip.map(eqKey => ({
-        key: eqKey,
-        name: eqKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-        qty: 1 + Math.floor(Math.random() * 3),
-        condition: 55 + Math.floor(Math.random() * 40),
-    }));
+    const equipCondition = project.equipment_condition || {};
+    const equipment = reqEquip.map(eqKey => {
+        const owned = equipmentData.find(e => e.equipment_key === eqKey);
+        // Check if this equipment is assigned to THIS project
+        const assignments = owned?.assigned_projects || [];
+        const thisAssignment = assignments.find(a => a.contract_id === project.id);
+        const assignedUnits = thisAssignment ? thisAssignment.units : 0;
+        return {
+            key: eqKey,
+            name: eqKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+            ownedTotal: owned?.owned || 0,
+            deployed: owned?.deployed || 0,
+            available: Math.max(0, (owned?.owned || 0) - (owned?.deployed || 0)),
+            assignedToProject: assignedUnits,
+            condition: equipCondition[eqKey] ?? (owned?.condition || 100),
+        };
+    });
 
     // Build budget/spend data
     const budget = project.budget_ceiling || 0;
@@ -3119,6 +3130,71 @@ async function pmDeallocateMaterial(materialKey, qualityTier, qty) {
         await openProjectModal(pmState.project.id);
     } catch (e) {
         alert('Return error: ' + e.message);
+    } finally {
+        _pmAllocLock = false;
+    }
+}
+
+async function pmDeployEquipment(equipmentKey, units) {
+    if (_pmAllocLock || !pmState || !faction) return;
+    _pmAllocLock = true;
+    try {
+        const eqRow = equipmentData.find(e => e.equipment_key === equipmentKey);
+        if (!eqRow) { alert('Equipment not found in inventory.'); return; }
+        const available = Math.max(0, (eqRow.owned || 0) - (eqRow.deployed || 0));
+        if (available < units) { alert('Not enough available ' + equipmentKey + ' (' + available + ' available).'); return; }
+
+        // Update deployed count
+        const newDeployed = (eqRow.deployed || 0) + units;
+        // Add to assigned_projects JSONB
+        const assignments = [...(eqRow.assigned_projects || [])];
+        const existing = assignments.find(a => a.contract_id === pmState.project.id);
+        if (existing) {
+            existing.units += units;
+        } else {
+            assignments.push({ contract_id: pmState.project.id, contract_name: pmState.project.name, units });
+        }
+
+        const { error } = await _supabase.from('corp_equipment')
+            .update({ deployed: newDeployed, assigned_projects: assignments })
+            .eq('faction_id', faction.id)
+            .eq('equipment_key', equipmentKey);
+        if (error) { alert('Deploy failed: ' + error.message); return; }
+
+        await loadEquipment();
+        await openProjectModal(pmState.project.id);
+    } catch (e) {
+        alert('Deploy error: ' + e.message);
+    } finally {
+        _pmAllocLock = false;
+    }
+}
+
+async function pmUndeployEquipment(equipmentKey) {
+    if (_pmAllocLock || !pmState || !faction) return;
+    _pmAllocLock = true;
+    try {
+        const eqRow = equipmentData.find(e => e.equipment_key === equipmentKey);
+        if (!eqRow) { alert('Equipment not found.'); return; }
+
+        const assignments = [...(eqRow.assigned_projects || [])];
+        const idx = assignments.findIndex(a => a.contract_id === pmState.project.id);
+        if (idx === -1) { alert('Equipment not deployed to this project.'); return; }
+
+        const unitsToReturn = assignments[idx].units;
+        assignments.splice(idx, 1);
+        const newDeployed = Math.max(0, (eqRow.deployed || 0) - unitsToReturn);
+
+        const { error } = await _supabase.from('corp_equipment')
+            .update({ deployed: newDeployed, assigned_projects: assignments })
+            .eq('faction_id', faction.id)
+            .eq('equipment_key', equipmentKey);
+        if (error) { alert('Undeploy failed: ' + error.message); return; }
+
+        await loadEquipment();
+        await openProjectModal(pmState.project.id);
+    } catch (e) {
+        alert('Undeploy error: ' + e.message);
     } finally {
         _pmAllocLock = false;
     }
@@ -3497,27 +3573,48 @@ function renderPmMaterials(s) {
 
 function renderPmEquipment(s) {
     if (s.equipment.length === 0) {
-        return '<div class="pm-evt-empty">No equipment deployed to this project.</div>';
+        return '<div class="pm-evt-empty">No equipment required for this project.</div>';
     }
 
-    let html = '<div class="pm-tab-header">Deployed Equipment</div>';
+    let html = '<div class="pm-tab-header">Project Equipment</div>';
     for (const eq of s.equipment) {
         const cc = eq.condition >= 75 ? 'var(--green)' : eq.condition >= 50 ? 'var(--amber)' : eq.condition >= 25 ? 'var(--orange)' : 'var(--red)';
-        const showWear = eq.condition < 60;
+        const isAssigned = eq.assignedToProject > 0;
+        const statusColor = isAssigned ? 'var(--green)' : eq.ownedTotal > 0 ? 'var(--amber)' : 'var(--red)';
+        const statusText = isAssigned ? 'DEPLOYED' : eq.ownedTotal > 0 ? 'NOT DEPLOYED' : 'NOT OWNED';
 
-        html += `<div class="pm-eq">
+        html += `<div class="pm-eq" style="margin-bottom:12px;">
             <div class="pm-eq__info">
                 <div class="pm-eq__left">
                     <span class="pm-eq__name">${escapeHtml(eq.name)}</span>
-                    <span class="pm-eq__qty">×${eq.qty}</span>
-                    ${showWear ? '<span class="pm-eq__wear">WEAR</span>' : ''}
+                    <span style="font-family:var(--font-mono);font-size:0.6rem;font-weight:700;color:${statusColor};margin-left:8px;">${statusText}</span>
                 </div>
-            </div>
-            <div class="pm-eq__cond">
+            </div>`;
+
+        // Condition bar (only if assigned)
+        if (isAssigned) {
+            html += `<div class="pm-eq__cond">
                 <div class="pm-eq__cond-bar"><div class="pm-eq__cond-fill" style="width:${eq.condition}%;background:${cc}"></div></div>
                 <span class="pm-eq__cond-val" style="color:${cc}">${eq.condition}%</span>
-            </div>
-        </div>`;
+            </div>`;
+        }
+
+        // Assignment info + controls
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;font-size:0.7rem;">`;
+        html += `<span style="color:var(--text-dim);">Owned: <strong style="color:var(--text-primary);">${eq.ownedTotal}</strong>`;
+        html += ` · Deployed: <strong style="color:var(--text-primary);">${eq.deployed}</strong>`;
+        html += ` · Available: <strong style="color:var(--text-primary);">${eq.available}</strong></span>`;
+
+        html += `<div style="display:flex;gap:4px;">`;
+        if (!isAssigned && eq.available > 0) {
+            html += `<button onclick="pmDeployEquipment('${eq.key}',1)" style="font-size:0.6rem;padding:2px 8px;border:1px solid var(--green);color:var(--green);background:rgba(92,184,92,0.08);border-radius:3px;cursor:pointer;">Deploy</button>`;
+        }
+        if (isAssigned) {
+            html += `<button onclick="pmUndeployEquipment('${eq.key}')" style="font-size:0.6rem;padding:2px 8px;border:1px solid var(--orange);color:var(--orange);background:rgba(232,114,74,0.08);border-radius:3px;cursor:pointer;">Undeploy</button>`;
+        }
+        html += `</div></div>`;
+
+        html += `</div>`;
     }
     return html;
 }
@@ -3535,6 +3632,8 @@ window.pmToggleEvent = pmToggleEvent;
 window.pmSelectResponse = pmSelectResponse;
 window.pmAllocateMaterial = pmAllocateMaterial;
 window.pmDeallocateMaterial = pmDeallocateMaterial;
+window.pmDeployEquipment = pmDeployEquipment;
+window.pmUndeployEquipment = pmUndeployEquipment;
 
 async function loadProjectEvents(contractId) {
     if (!pmState) return;
