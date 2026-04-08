@@ -5202,7 +5202,13 @@ async function flushMomentumBatch(supabase) {
         const combinedLabel = labelParts.length <= 3
             ? labelParts.join(', ')
             : labelParts.slice(0, 2).join(', ') + ' +' + (labelParts.length - 2) + ' more';
-        batchMomentum(factionId, netDelta, combinedLabel, tick);
+        // Call RPC directly — NOT batchMomentum (that would re-add to the batch)
+        await supabase.rpc('adjust_momentum', {
+            p_faction_id: factionId,
+            p_delta: netDelta,
+            p_label: combinedLabel,
+            p_tick: tick
+        });
     }
     _momentumBatch.clear();
 }
