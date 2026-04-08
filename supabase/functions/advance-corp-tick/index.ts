@@ -1030,11 +1030,18 @@ async function processActiveProjects(supabase, nationId, currentTick) {
     // 2. Process in_progress contracts
     const { data: activeContracts } = await supabase
         .from('construction_contracts')
-        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks, current_phase, sector, required_materials, required_equipment, required_workforce, materials_consumed, equipment_condition, workers_assigned')
+        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks, current_phase, sector, required_materials, required_equipment, required_workforce, materials_consumed, equipment_condition, workers_assigned, modifiers')
         .eq('nation_id', nationId)
         .eq('status', 'in_progress');
 
     if (!activeContracts || activeContracts.length === 0) return [];
+
+    // Load building modifier definitions for reputation/permit enforcement
+    let _modifierDefs = {};
+    try {
+        const { data: modRows } = await supabase.from('building_modifiers').select('modifier_key, name, reputation_bonus, required_permits, cost_multiplier');
+        for (const m of (modRows || [])) _modifierDefs[m.modifier_key] = m;
+    } catch (_) { /* table may not exist */ }
 
     // 3. Load ALL winning bids for active contracts to check workforce
     const contractIds = activeContracts.map(c => c.id);
@@ -1258,6 +1265,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
 
             // Missing required permits: additional inspection penalties
             let missingPermitPenalty = 0;
+            let heldKeysDelivery = new Set();
             try {
                 const { data: reqLawsDelivery } = await supabase
                     .from('active_laws')
@@ -1267,7 +1275,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                 const reqKeysDelivery = new Set((reqLawsDelivery || []).map(l => l.policies?.permit_key).filter(Boolean));
                 const { data: heldAtDelivery } = await supabase.from('corp_permits')
                     .select('permit_key').eq('faction_id', bid.faction_id).eq('status', 'active');
-                const heldKeysDelivery = new Set((heldAtDelivery || []).map(p => p.permit_key));
+                heldKeysDelivery = new Set((heldAtDelivery || []).map(p => p.permit_key));
 
                 for (const reqKey of reqKeysDelivery) {
                     if (!heldKeysDelivery.has(reqKey)) {
@@ -1279,7 +1287,20 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                 }
             } catch (_mppErr) { /* non-fatal */ }
 
-            const qualityScore = Math.max(0, Math.min(100, baseQuality + qualityVariance + permitQualityBonus + materialQualityPenalty + missingPermitPenalty));
+            // Modifier-required permits: check permits demanded by this contract's modifiers
+            let modifierPermitPenalty = 0;
+            const contractModifiers = contract.modifiers || [];
+            for (const mk of contractModifiers) {
+                const mdef = _modifierDefs[mk];
+                if (!mdef) continue;
+                for (const pk of (mdef.required_permits || [])) {
+                    if (!heldKeysDelivery.has(pk)) {
+                        modifierPermitPenalty -= 5; // missing modifier-required permit
+                    }
+                }
+            }
+
+            const qualityScore = Math.max(0, Math.min(100, baseQuality + qualityVariance + permitQualityBonus + materialQualityPenalty + missingPermitPenalty + modifierPermitPenalty));
 
             let deliveryResult = 'PASS';
             let repChange = 2;
@@ -1289,6 +1310,14 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             else if (qualityScore >= 60) { deliveryResult = 'PASS'; repChange = 2; }
             else if (qualityScore >= 40) { deliveryResult = 'CONDITIONAL'; repChange = 0; penalties = Math.round(payment * 0.20); }
             else { deliveryResult = 'FAIL'; repChange = -3; penalties = Math.round(payment * 0.40); }
+
+            // Apply building modifier reputation bonuses/penalties at delivery
+            let modifierRepBonus = 0;
+            for (const mk of contractModifiers) {
+                const mdef = _modifierDefs[mk];
+                if (mdef) modifierRepBonus += mdef.reputation_bonus || 0;
+            }
+            repChange += modifierRepBonus;
 
             const actualPayment = payment + qualityBonus - penalties;
             const estCost = bid.estimated_cost || 0;
