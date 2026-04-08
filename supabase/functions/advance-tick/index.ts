@@ -9962,6 +9962,17 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             console.log(`[enactFoundationalBill] PM deactivated, coalition dissolved`);
         }
 
+        // ── Losing monarchy (CM → Presidential/Semi-Pres/Parliamentary) ──
+        if (currentIsMonarchy && !targetIsMonarchy) {
+            // Clear hereditary head of state — will be replaced by elected president or appointed HoS
+            nationUpdate.head_of_state_title = targetHasPresident ? 'President' : 'Head of State';
+            nationUpdate.head_of_state_first_name = null;
+            nationUpdate.head_of_state_last_name = null;
+            nationUpdate.head_of_state_age = null;
+            nationUpdate.head_of_state_dynasty = null;
+            console.log(`[enactFoundationalBill] Monarchy abolished — hereditary head of state cleared`);
+        }
+
         // ── Gaining president (Parliamentary/CM → Presidential/Semi-Pres) ──
         if (!currentHasPresident && targetHasPresident) {
             // Check for existing scheduled presidential election before inserting
@@ -13763,6 +13774,15 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         terms_served: termsServed
     });
     if (presErr) throw presErr;
+
+    // Update nation head_of_state fields to reflect the elected president
+    await supabase.from('nations').update({
+        head_of_state_title: 'President',
+        head_of_state_first_name: candidate.first_name,
+        head_of_state_last_name: candidate.last_name,
+        head_of_state_age: candidate.age,
+        head_of_state_dynasty: null
+    }).eq('id', nationId);
 
     // Apply ideology shift (+15 on candidate's axis)
     const axisKey = candidate.ideology_axis;
