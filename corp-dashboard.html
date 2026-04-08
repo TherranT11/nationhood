@@ -1142,9 +1142,9 @@ async function init() {
         const cashStr = cash >= 1e9 ? '$' + (cash / 1e9).toFixed(1) + 'B' : cash >= 1e6 ? '$' + (cash / 1e6).toFixed(1) + 'M' : '$' + Math.round(cash / 1000) + 'k';
         cashEl.textContent = 'CASH: ' + cashStr;
     }
-    const ap = faction.action_points ?? 0;
-    document.getElementById('topbar-ap').innerHTML =
-        '<span class="topbar-ap__count">' + ap + ' AP</span>';
+    // AP not used for corporations — hide the display
+    const apEl = document.getElementById('topbar-ap');
+    if (apEl) apEl.style.display = 'none';
 
     // Populate faction dropdown
     const dd = document.getElementById('corp-faction-dropdown');

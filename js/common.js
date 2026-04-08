@@ -412,7 +412,7 @@ export function renderTopBar(activeTab) {
                     </div>
                 </div>
             </div>
-            <div class="top-bar-version" style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.5px;opacity:0.6;">Alpha 2.0.2</div>
+            <div class="top-bar-version" style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.5px;opacity:0.6;">Alpha 2.0.7</div>
             <div class="top-bar-right">
                 <button class="guide-btn" id="guide-btn" title="Page Guide" style="display:none;"></button>
                 ${activeTab === 'home' ? '<a href="how-to.html" class="guide-btn" style="text-decoration:none;">HOW TO</a>' : ''}
@@ -854,8 +854,12 @@ export function updateTopBarInfo(faction, shard, nation) {
 
     const apEl = document.getElementById('topbar-ap');
     if (apEl && faction) {
-        const ap = faction.action_points ?? 0;
-        renderApDisplay(apEl, ap);
+        if (faction.faction_type === 'corporation') {
+            apEl.style.display = 'none'; // Corporations don't use AP
+        } else {
+            const ap = faction.action_points ?? 0;
+            renderApDisplay(apEl, ap);
+        }
     }
     
     const nationFlag = document.getElementById('nation-flag');
