@@ -1847,13 +1847,28 @@ async function addPermitArticle() {
         const canAdd = await chargeArticleAP();
         if (!canAdd) return;
         const nextNum = draftArticles.length > 0 ? Math.max(...draftArticles.map(a => a.articleNumber)) + 1 : 2;
-        draftArticles.push({
+        const artEntry = {
             articleNumber: nextNum,
             isPermit: true,
             permitPolicy: _selectedPermitPolicy,
             permitAction: _selectedPermitPolicy._action, // 'enact' or 'repeal'
             policy: _selectedPermitPolicy // for normalization compatibility
-        });
+        };
+        // For repeal: look up the active_laws row now so normalization can set repeal_active_law_id
+        if (_selectedPermitPolicy._action === 'repeal') {
+            try {
+                const { data: activeLaw } = await _supabase
+                    .from('active_laws')
+                    .select('id')
+                    .eq('nation_id', currentNation.id)
+                    .eq('policy_id', _selectedPermitPolicy.id)
+                    .is('is_reversal', false)
+                    .limit(1)
+                    .maybeSingle();
+                if (activeLaw) artEntry.repealActiveLawId = activeLaw.id;
+            } catch (_) { /* non-fatal */ }
+        }
+        draftArticles.push(artEntry);
         hidePermitForm();
         renderDraftArticles();
         if (draftArticles.length > 0) {
@@ -3520,10 +3535,9 @@ async function submitToCommittee() {
             if (art.isRepeal && art.repealActiveLawId) {
                 articleRow.repeal_active_law_id = art.repealActiveLawId;
             }
-            // Permit repeal articles need the repeal flag so the enactment
-            // system removes the active law instead of enacting a new one
-            if (art.isPermit && art.permitAction === 'repeal') {
-                articleRow.is_repeal = true;
+            // Permit repeal articles use repeal_active_law_id (looked up at draft time)
+            if (art.isPermit && art.permitAction === 'repeal' && art.repealActiveLawId) {
+                articleRow.repeal_active_law_id = art.repealActiveLawId;
             }
             return articleRow;
         });
