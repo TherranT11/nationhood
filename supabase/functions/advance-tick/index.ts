@@ -9469,19 +9469,14 @@ async function resolveReferendums(supabase, nation, currentTick) {
         console.log(`[resolveReferendums] ${bill.bill_name}: YES=${yesPct}% NO=${noPct}% turnout=${turnout}% → ${passed ? 'APPROVED' : 'REJECTED'} (govApproval=${govApproval}, unrest=${civilUnrest}, crises=${crisisCount}, proposerApproval=${proposerApproval})`);
 
         if (passed) {
-            // Referendum approved — enact the foundational bill
+            // Referendum approved — bill returns to sponsor who can now send it to the floor
             await supabase.from('bills').update({
-                status: 'passed',
+                status: 'referendum_approved',
                 referendum_status: 'resolved',
                 referendum_yes_pct: yesPct,
                 referendum_no_pct: noPct,
                 referendum_turnout_pct: turnout
             }).eq('id', bill.id);
-
-            var enacted = await enactFoundationalBill(supabase, bill, currentTick);
-            if (!enacted) {
-                await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
-            }
 
             await fireBillEvent(supabase, 'referendum_approved', bill, {
                 currentTick, nationName: nation.name,
@@ -9510,24 +9505,6 @@ async function resolveReferendums(supabase, nation, currentTick) {
             result: passed ? 'approved' : 'rejected',
             yesPct, noPct, turnout
         });
-    }
-
-    // ── Enact skipped referendums (override path — bill set to 'passed' by client) ──
-    const { data: skippedBills } = await supabase
-        .from('bills')
-        .select('id, bill_name, proposed_by, bill_type, proposed_seats, proposed_term_length, proposed_constitutional_reform, proposed_constitutional_amendment_streamlining, entrenchment_tier, bill_articles(*, policies(*))')
-        .eq('nation_id', nation.id)
-        .eq('status', 'passed')
-        .eq('bill_type', 'foundational')
-        .eq('referendum_status', 'skipped');
-
-    for (const bill of (skippedBills || [])) {
-        console.log(`[resolveReferendums] Enacting overridden bill: ${bill.bill_name}`);
-        var enacted = await enactFoundationalBill(supabase, bill, currentTick);
-        if (!enacted) {
-            await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
-        }
-        results.push({ billId: bill.id, billName: bill.bill_name, result: enacted ? 'override_enacted' : 'override_failed' });
     }
 
     return results;

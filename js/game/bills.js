@@ -1061,22 +1061,20 @@ export async function resolveExpiredVotes(supabase, nationId) {
             await resolveNoConfidence(supabase, bill, passed, votesFor, votesAgainst, currentTick);
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'no_confidence', earlyResolution: bill.early_resolution_status || null });
         } else if (isFoundational) {
-            // Foundational bills require a constitutional referendum before enactment.
-            // Route to referendum_pending instead of immediate enactment.
+            // Handle foundational bill resolution (electoral makeup, etc.)
+            let enacted = false;
             if (passed) {
-                await supabase.from('bills').update({
-                    status: 'referendum_pending',
-                    passed_tick: currentTick,
-                    referendum_status: 'pending',
-                    referendum_start_tick: currentTick
-                }).eq('id', bill.id);
-                await fireBillEvent(supabase, 'referendum_called', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'referendum_pending', votesFor, votesAgainst, type: 'foundational', earlyResolution: bill.early_resolution_status || null });
-            } else {
-                await failBill(supabase, bill);
-                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'foundational', earlyResolution: bill.early_resolution_status || null });
+                enacted = await enactFoundationalBill(supabase, bill, currentTick);
             }
+            if (!passed || !enacted) {
+                if (!enacted && passed) {
+                    console.warn(`[resolveExpiredVotes] Foundational bill ${bill.id} had enough votes but enactment failed.`);
+                } else {
+                    await failBill(supabase, bill);
+                }
+            }
+            await fireBillEvent(supabase, enacted ? 'bill_passed' : 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+            results.push({ billId: bill.id, billName: bill.bill_name, result: enacted ? 'passed' : 'failed', votesFor, votesAgainst, type: 'foundational', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'default_resolution') {
             // ── Sovereign Default Resolution ──
             // Full enactment logic lives in handler-template.ts (enactSovereignDefault /
