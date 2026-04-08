@@ -280,6 +280,75 @@ PHASE_WINDOW_LOOKUP.EARLY_MID = [...new Set([...PHASE_WINDOWS.EARLY, ...PHASE_WI
 // ── CHOICE EVENTS (E1-E10): Placeholder — Phase 2 will add these ──
 const CHOICE_EVENTS = [];
 
+// ── REGULATORY & MATERIAL QUALITY EVENTS ──
+// These fire based on missing permits and low-quality material usage.
+// They are checked separately from the probability-based notification events
+// because they require permit and material data not available in the template system.
+const REGULATORY_EVENTS = {
+    // Missing permits
+    regulatory_inspection: {
+        key: 'regulatory_inspection',
+        name: 'Regulatory Compliance Inspection',
+        severity: 'MODERATE',
+        description: 'A government inspector found the project operating without required permits.',
+        cost: 100000,
+        delay: 1,
+        quality: -2,
+        reputation: 0,
+    },
+    stop_work_order: {
+        key: 'stop_work_order',
+        name: 'Government Stop-Work Order',
+        severity: 'HIGH',
+        description: 'Multiple missing permits triggered an immediate stop-work order from the government.',
+        cost: 250000,
+        delay: 2,
+        quality: -5,
+        reputation: -3,
+    },
+    worker_whistleblower: {
+        key: 'worker_whistleblower',
+        name: 'Worker Safety Whistleblower',
+        severity: 'MODERATE',
+        description: 'Workers reported unsafe conditions due to missing safety permits. An investigation has been launched.',
+        cost: 50000,
+        delay: 1,
+        quality: -3,
+        reputation: -2,
+    },
+    // Material quality
+    material_defect_recall: {
+        key: 'material_defect_recall',
+        name: 'Material Defect Recall',
+        severity: 'MODERATE',
+        description: 'A supplier issued a recall on a batch of low-grade materials. Replacement required.',
+        cost: 150000,
+        delay: 1,
+        quality: -3,
+        reputation: 0,
+    },
+    foundation_subsidence: {
+        key: 'foundation_subsidence',
+        name: 'Foundation Subsidence',
+        severity: 'HIGH',
+        description: 'Low-grade concrete cracked under structural load, causing foundation settlement. Emergency remediation required.',
+        cost: 300000,
+        delay: 2,
+        quality: -8,
+        reputation: -1,
+    },
+    structural_integrity_failure: {
+        key: 'structural_integrity_failure',
+        name: 'Structural Integrity Failure',
+        severity: 'CRITICAL',
+        description: 'Widespread use of low-grade materials has compromised structural integrity. Emergency engineering review and reinforcement required.',
+        cost: 500000,
+        delay: 3,
+        quality: -15,
+        reputation: -5,
+    },
+};
+
 // Combined list for generation
 const ALL_EVENT_TEMPLATES = [...NOTIFICATION_EVENTS, ...CHOICE_EVENTS];
 
@@ -1133,7 +1202,41 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                 }
             } catch (_pqErr) { /* non-fatal */ }
 
-            const qualityScore = Math.max(0, Math.min(100, baseQuality + qualityVariance + permitQualityBonus));
+            // Apply material quality penalties based on LOW grade usage
+            let materialQualityPenalty = 0;
+            const bidGradesForQuality = bid.material_grades || {};
+            const gradeVals = Object.values(bidGradesForQuality);
+            const totalGrades = gradeVals.length;
+            const lowGradeCount = gradeVals.filter(g => g === 'LOW').length;
+            const lowGradePct = totalGrades > 0 ? lowGradeCount / totalGrades : 0;
+            if (lowGradePct >= 1.0) materialQualityPenalty = -25;       // 100% LOW
+            else if (lowGradePct >= 0.75) materialQualityPenalty = -20; // 75%+ LOW
+            else if (lowGradePct >= 0.5) materialQualityPenalty = -10;  // 50%+ LOW
+
+            // Missing required permits: additional inspection penalties
+            let missingPermitPenalty = 0;
+            try {
+                const { data: reqLawsDelivery } = await supabase
+                    .from('active_laws')
+                    .select('policies(permit_key)')
+                    .eq('nation_id', nationId)
+                    .not('policies.permit_key', 'is', null);
+                const reqKeysDelivery = new Set((reqLawsDelivery || []).map(l => l.policies?.permit_key).filter(Boolean));
+                const { data: heldAtDelivery } = await supabase.from('corp_permits')
+                    .select('permit_key').eq('faction_id', bid.faction_id).eq('status', 'active');
+                const heldKeysDelivery = new Set((heldAtDelivery || []).map(p => p.permit_key));
+
+                for (const reqKey of reqKeysDelivery) {
+                    if (!heldKeysDelivery.has(reqKey)) {
+                        if (reqKey === 'municipal_zoning') missingPermitPenalty -= 100; // auto-FAIL
+                        else if (reqKey === 'structural_engineering') missingPermitPenalty -= 10;
+                        else if (reqKey === 'fire_safety') missingPermitPenalty -= 5;
+                        else missingPermitPenalty -= 2; // generic missing permit
+                    }
+                }
+            } catch (_mppErr) { /* non-fatal */ }
+
+            const qualityScore = Math.max(0, Math.min(100, baseQuality + qualityVariance + permitQualityBonus + materialQualityPenalty + missingPermitPenalty));
 
             let deliveryResult = 'PASS';
             let repChange = 2;
@@ -1245,7 +1348,62 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                 netProfit,
             });
 
-            console.log(`[Projects] ${contract.name}: ${deliveryResult} (quality=${qualityScore}, net=${netProfit > 0 ? '+' : ''}$${(netProfit / 1e6).toFixed(1)}M, rep=${repChange > 0 ? '+' : ''}${repChange})`);
+            console.log(`[Projects] ${contract.name}: ${deliveryResult} (quality=${qualityScore}, mat_penalty=${materialQualityPenalty}, permit_penalty=${missingPermitPenalty}, net=${netProfit > 0 ? '+' : ''}$${(netProfit / 1e6).toFixed(1)}M, rep=${repChange > 0 ? '+' : ''}${repChange})`);
+
+            // ── Post-Delivery: Catastrophic Building Collapse ──
+            // 100% LOW materials + quality < 40 = 10% chance the building collapses
+            // 75%+ LOW materials + quality < 30 = 5% chance
+            if (lowGradePct >= 1.0 && qualityScore < 40 && Math.random() < 0.10) {
+                console.log(`[Projects] *** BUILDING COLLAPSE *** ${contract.name} — 100% LOW materials, quality ${qualityScore}`);
+                // Refund contract value back to nation (corp must pay)
+                const collapseRefund = payment;
+                await supabase.from('factions').update({
+                    corp_cash_reserves: Math.max(0, Number((await supabase.from('factions').select('corp_cash_reserves').eq('id', bid.faction_id).single()).data?.corp_cash_reserves ?? 0) - collapseRefund),
+                    corp_reputation: Math.max(0, Number((await supabase.from('factions').select('corp_reputation').eq('id', bid.faction_id).single()).data?.corp_reputation ?? 65) - 10)
+                }).eq('id', bid.faction_id);
+
+                // Nation stat impact
+                await supabase.from('nations').update({
+                    stability: Math.max(2, Number(nation?.stability ?? 50) - 2),
+                    happiness: Math.max(2, Number(nation?.happiness ?? 50) - 3),
+                }).eq('id', nationId);
+
+                // Log the collapse as a construction event
+                await supabase.from('construction_events').insert({
+                    contract_id: contract.id,
+                    faction_id: bid.faction_id,
+                    nation_id: nationId,
+                    event_key: 'building_collapse',
+                    type: 'CATASTROPHIC',
+                    severity: 'CRITICAL',
+                    title: 'Catastrophic Building Collapse',
+                    description: `${contract.name} has collapsed due to widespread use of substandard materials. The contractor must refund the full contract value. Criminal investigation pending.`,
+                    impact: 'Building destroyed. Full refund required. Reputation devastated. Nation stability and happiness impacted.',
+                    responses: [{ key: 'acknowledge', label: 'Acknowledged', tag: 'CRITICAL', detail: 'Building collapsed', cost: collapseRefund, delay: 0, qualityImpact: -100 }],
+                    status: 'RESOLVED',
+                    fired_at_tick: currentTick,
+                    expires_at_tick: currentTick,
+                });
+
+                results[results.length - 1].collapsed = true;
+                results[results.length - 1].result = 'COLLAPSED';
+            } else if (lowGradePct >= 0.75 && qualityScore < 30 && Math.random() < 0.05) {
+                console.log(`[Projects] *** BUILDING COLLAPSE *** ${contract.name} — 75%+ LOW materials, quality ${qualityScore}`);
+                await supabase.from('factions').update({
+                    corp_reputation: Math.max(0, Number((await supabase.from('factions').select('corp_reputation').eq('id', bid.faction_id).single()).data?.corp_reputation ?? 65) - 8)
+                }).eq('id', bid.faction_id);
+
+                await supabase.from('construction_events').insert({
+                    contract_id: contract.id, faction_id: bid.faction_id, nation_id: nationId,
+                    event_key: 'building_collapse', type: 'CATASTROPHIC', severity: 'CRITICAL',
+                    title: 'Post-Delivery Structural Failure',
+                    description: `${contract.name} has experienced critical structural failure due to extensive use of low-grade materials.`,
+                    impact: 'Major structural damage. Reputation devastated.',
+                    responses: [{ key: 'acknowledge', label: 'Acknowledged', tag: 'CRITICAL', detail: 'Structural failure', cost: 0, delay: 0, qualityImpact: -50 }],
+                    status: 'RESOLVED', fired_at_tick: currentTick, expires_at_tick: currentTick,
+                });
+                results[results.length - 1].collapsed = true;
+            }
         }
     }
 
@@ -1395,6 +1553,100 @@ async function generateProjectEvents(supabase, nationId, currentTick) {
 
             // Max 1 event per project per tick
             break;
+        }
+
+        // ── Regulatory & Material Quality Events (only if no event fired above) ──
+        if (!results.some(r => r.contract === contract.name)) {
+            try {
+                // Load required permits for this nation (from active laws with permit_key)
+                const { data: reqLaws } = await supabase
+                    .from('active_laws')
+                    .select('policies(permit_key)')
+                    .eq('nation_id', nationId)
+                    .not('policies.permit_key', 'is', null);
+                const requiredKeys = new Set((reqLaws || []).map(l => l.policies?.permit_key).filter(Boolean));
+
+                // Load corp's active permits
+                const corpPermitKeys = new Set();
+                if (_permitEventMods && _permitEventMods[contract.awarded_to_faction]) {
+                    // Already loaded — reuse
+                } else {
+                    const { data: ap } = await supabase.from('corp_permits')
+                        .select('permit_key').eq('faction_id', contract.awarded_to_faction).eq('status', 'active');
+                    for (const p of (ap || [])) corpPermitKeys.add(p.permit_key);
+                }
+                // Combine — check what's in _permitEventMods keys OR corpPermitKeys
+                const heldPermits = new Set([...corpPermitKeys]);
+                if (_permitEventMods && _permitEventMods[contract.awarded_to_faction]) {
+                    // If permit event mods exist, those permits are active
+                    // (loaded earlier in this function)
+                }
+
+                // Count missing required permits
+                const missingPermits = [...requiredKeys].filter(k => !heldPermits.has(k));
+                const missingCount = missingPermits.length;
+
+                // Regulatory events based on missing permits
+                let regEvent = null;
+                if (missingCount >= 3 && Math.random() < 0.25) {
+                    regEvent = REGULATORY_EVENTS.stop_work_order;
+                } else if (missingPermits.includes('ohs_compliance') || missingPermits.includes('working_hours')) {
+                    if (Math.random() < 0.15) regEvent = REGULATORY_EVENTS.worker_whistleblower;
+                } else if (missingCount >= 1 && Math.random() < 0.12) {
+                    regEvent = REGULATORY_EVENTS.regulatory_inspection;
+                }
+
+                // Material quality events (check bid material grades)
+                if (!regEvent) {
+                    const { data: bidData } = await supabase.from('contract_bids')
+                        .select('material_grades').eq('contract_id', contract.id).eq('status', 'won').limit(1).maybeSingle();
+                    const grades = bidData?.material_grades || {};
+                    const gradeValues = Object.values(grades);
+                    const totalMats = gradeValues.length;
+                    const lowCount = gradeValues.filter(g => g === 'LOW').length;
+                    const lowPct = totalMats > 0 ? lowCount / totalMats : 0;
+
+                    if (lowPct >= 0.6 && !heldPermits.has('structural_engineering') && Math.random() < 0.12) {
+                        regEvent = REGULATORY_EVENTS.structural_integrity_failure;
+                    } else if (grades.concrete === 'LOW' && !heldPermits.has('environmental_impact') && Math.random() < 0.10) {
+                        regEvent = REGULATORY_EVENTS.foundation_subsidence;
+                    } else if (lowCount > 0 && Math.random() < 0.08) {
+                        regEvent = REGULATORY_EVENTS.material_defect_recall;
+                    }
+                }
+
+                if (regEvent) {
+                    const responses = [{
+                        key: 'acknowledge', label: 'Acknowledged', tag: regEvent.severity,
+                        detail: regEvent.description,
+                        cost: regEvent.cost, delay: regEvent.delay, qualityImpact: regEvent.quality,
+                    }];
+                    await supabase.from('construction_events').insert({
+                        contract_id: contract.id,
+                        faction_id: contract.awarded_to_faction,
+                        nation_id: nationId,
+                        event_key: regEvent.key,
+                        type: 'REGULATORY',
+                        severity: regEvent.severity,
+                        title: regEvent.name,
+                        description: regEvent.description,
+                        impact: regEvent.description,
+                        responses,
+                        status: 'ACTIVE',
+                        fired_at_tick: currentTick,
+                        expires_at_tick: currentTick + 3,
+                    });
+                    results.push({ contract: contract.name, event: regEvent.name, severity: regEvent.severity });
+                    console.log(`[Events] ${contract.name}: ${regEvent.name} (${regEvent.severity}) — regulatory/material`);
+
+                    // Apply reputation penalty immediately
+                    if (regEvent.reputation && regEvent.reputation < 0) {
+                        await supabase.from('factions').update({
+                            corp_reputation: Math.max(0, Number((await supabase.from('factions').select('corp_reputation').eq('id', contract.awarded_to_faction).single()).data?.corp_reputation ?? 65) + regEvent.reputation)
+                        }).eq('id', contract.awarded_to_faction);
+                    }
+                }
+            } catch (_regErr) { /* non-fatal */ }
         }
     }
 
