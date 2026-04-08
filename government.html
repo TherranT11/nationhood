@@ -3512,14 +3512,14 @@ function getDomainBadge(ministryKey) {
     return ' <span style="font-size:0.55rem;padding:1px 4px;border-radius:2px;background:rgba(100,100,200,0.1);color:var(--blue,#5b9bd5);border:1px solid rgba(100,100,200,0.3);vertical-align:middle;">PM</span>';
 }
 
-function buildCardHeader(title, badgeHtml, requestCount) {
+function buildCardHeader(title, badgeHtml, requestCount, domainBadge) {
     const reqBadge = requestCount > 0
         ? `<span class="ministry-card__badge" style="background:rgba(91,155,213,0.1);border-color:rgba(91,155,213,0.25);color:#5b9bd5;">${requestCount}</span>`
         : '';
     return `<div class="ministry-card__header">
         <div class="ministry-card__header-left">
             <div class="ministry-card__dot"></div>
-            <div class="ministry-card__title">${escapeHtml(title)}</div>
+            <div class="ministry-card__title">${escapeHtml(title)}${domainBadge || ''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:6px;">${reqBadge}${badgeHtml || ''}</div>
     </div>`;
@@ -6720,7 +6720,7 @@ function renderCabinet(ministries, coalition) {
                 .map(([key, partyId]) => {
                     const party = partyData.find(p => p.party_id === partyId);
                     const title = MINISTRY_NAMES[key] || key;
-                    return `<div class="ministry-card vacant">${buildCardHeader(title, '', 0)}
+                    return `<div class="ministry-card vacant">${buildCardHeader(title, '', 0, domainBadge)}
                         <div class="ministry-card__minister">
                             <div class="ministry-card__minister-name" style="color:#3a3a2e;">To be appointed</div>
                             <div class="ministry-card__minister-meta"><span class="party">${escapeHtml(party?.party_name || 'Unknown')}</span></div>
@@ -6734,7 +6734,8 @@ function renderCabinet(ministries, coalition) {
 
     const cards = keys.map(key => {
         const m = ministryMap[key];
-        const title = (MINISTRY_NAMES[key] || m?.ministry_name || key) + getDomainBadge(key);
+        const title = MINISTRY_NAMES[key] || m?.ministry_name || key;
+        const domainBadge = getDomainBadge(key);
         const isFilled = m && m.minister_first_name;
         const requests = [];
         const myRequest = requests.find(r => r.faction_id === currentFaction?.id);
@@ -6756,7 +6757,7 @@ function renderCabinet(ministries, coalition) {
         if (isPresidential && m && m.confirmation_status === 'pending' && m.pending_minister) {
             const pm = m.pending_minister;
             const nomineeParty = allParties.find(p => p.id === pm.party_id);
-            return `<div class="ministry-card">${buildCardHeader(title, '', 0)}
+            return `<div class="ministry-card">${buildCardHeader(title, '', 0, domainBadge)}
                 <div class="ministry-card__minister">
                     <div class="ministry-card__minister-name" style="color:var(--amber);">${escapeHtml(pm.first_name)} ${escapeHtml(pm.last_name)}</div>
                     <div class="ministry-card__minister-meta">Age ${pm.age || '?'} · <span class="party">${escapeHtml(nomineeParty?.faction_name || 'Unknown')}</span></div>
@@ -6770,7 +6771,7 @@ function renderCabinet(ministries, coalition) {
         // Presidential acting minister (appointed by executive order)
         if (isPresidential && isFilled && m.confirmation_status === 'acting') {
             const actingParty = allParties.find(p => p.id === m.party_id);
-            const headerHtml = buildCardHeader(title, '', requests.length);
+            const headerHtml = buildCardHeader(title, '', requests.length, domainBadge);
             const mgmtHtml = buildMgmtButtons(key, m, govContext);
             const requestListHtml = (govContext.isRuling && requests.length > 0) ? buildRequestList(requests) : '';
             const statsHtml = renderMinistryStatBreakdown(key, m);
@@ -6796,7 +6797,7 @@ function renderCabinet(ministries, coalition) {
         }
 
         // Filled card
-        const headerHtml = buildCardHeader(title, '', requests.length);
+        const headerHtml = buildCardHeader(title, '', requests.length, domainBadge);
         const identityHtml = buildMinisterIdentity(m);
         const mgmtHtml = buildMgmtButtons(key, m, govContext);
         const requestListHtml = (govContext.isRuling && requests.length > 0) ? buildRequestList(requests) : '';
@@ -6810,7 +6811,7 @@ function renderCabinet(ministries, coalition) {
 }
 
 function renderVacantCard(key, title, govContext, requests) {
-    const headerHtml = buildCardHeader(title, '', requests.length);
+    const headerHtml = buildCardHeader(title, '', requests.length, domainBadge);
     const mgmtHtml = buildMgmtButtons(key, null, govContext);
     const requestListHtml = (govContext.isRuling && requests.length > 0) ? buildRequestList(requests) : '';
     return `<div class="ministry-card vacant">${headerHtml}
