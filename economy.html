@@ -1797,7 +1797,10 @@ function renderTradeTab(nation) {
     var balCls = surplus >= 0 ? 'surplus' : 'deficit';
     var balSign = surplus >= 0 ? '+' : '';
     h += renderOverviewCard('Trade Balance', balSign + formatBudgetCurrency(surplus), balCls, null);
-    h += renderOverviewCard('Tariff Revenue', formatBudgetCurrency(tariffRev), tariffRev > 0 ? 'surplus' : 'neutral', 'Per Tick');
+    // Cap tariff display to match budget (0.2% of GDP) — raw trade engine value is much higher
+    var gdpVal = Number(nation.gdp ?? nation.GDP ?? 0);
+    var cappedTariffRev = gdpVal > 0 ? Math.min(tariffRev, gdpVal * 0.002) : tariffRev;
+    h += renderOverviewCard('Tariff Revenue', formatBudgetCurrency(cappedTariffRev), cappedTariffRev > 0 ? 'surplus' : 'neutral', 'Per Tick');
     h += '</div>';
     h += '</div>';
 
