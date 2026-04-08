@@ -14530,7 +14530,29 @@ async function processPresidentialTermEnd(supabase, nation, currentTick) {
         .limit(1)
         .maybeSingle();
 
-    if (!president) return;
+    // No active president — check if we need to schedule an election (vacancy safety net)
+    if (!president) {
+        const { data: scheduledPres } = await supabase
+            .from('elections')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('status', 'scheduled')
+            .eq('election_type', 'presidential')
+            .limit(1)
+            .maybeSingle();
+
+        if (!scheduledPres) {
+            const leadTicks = GAME_CONFIG.PRESIDENTIAL_CANDIDATE_LEAD_TICKS + 1;
+            await supabase.from('elections').insert({
+                nation_id: nation.id,
+                election_tick: currentTick + leadTicks,
+                election_type: 'presidential',
+                status: 'scheduled'
+            });
+            console.log(`[processPresidentialTermEnd] No active president and no election scheduled for ${nation.name} — scheduling emergency election at tick ${currentTick + leadTicks}`);
+        }
+        return;
+    }
 
     // Term hasn't expired yet
     if (president.term_ends_tick > currentTick) return;
