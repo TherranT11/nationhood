@@ -17769,13 +17769,18 @@ function renderIPOActionsPanel() {
     // (emergencyUsedTick === 0 means never used → always available)
     const emergencyAvailable = hasEmergencyPowers && isPresident && (emergencyUsedTick === 0 || emergencyUsedTick < termStartTick);
 
+    // Actions with no vote equivalent — always allow direct execution regardless of governance mode
+    const directOnlyActions = new Set(['hold_rally', 'rally_all', 'back_channel']);
+
     for (const a of actions) {
         if (!a.available || a.key === 'fund_draw') continue;
 
         let blocked = false;
         let blockReason = '';
 
-        if (actionMode === 'committee') {
+        if (directOnlyActions.has(a.key)) {
+            // These actions have no vote pathway — always allow direct execution
+        } else if (actionMode === 'committee') {
             blocked = true;
             blockReason = 'Charter requires a vote — use Votes panel';
         } else if (actionMode === 'presidential' && !isPresident) {
