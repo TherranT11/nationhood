@@ -13781,7 +13781,7 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         head_of_state_first_name: candidate.first_name,
         head_of_state_last_name: candidate.last_name,
         head_of_state_age: candidate.age,
-        head_of_state_dynasty: null
+        dynasty_name: null
     }).eq('id', nationId);
 
     // Apply ideology shift (+15 on candidate's axis)
