@@ -2550,6 +2550,7 @@ let prPurchaseQty = 500;
 
 // Equipment state
 let equipmentData = [];   // rows from corp_equipment
+let modifierDefs = {};    // { modifier_key: { name, icon, cost_multiplier, reputation_bonus, required_permits, ... } }
 let eqExpandedTier = 0;   // which tier is expanded (-1 = none)
 
 // Equipment Market state
@@ -2579,6 +2580,17 @@ function fmtTimeline(ticks) {
         return m > 0 ? y + 'y ' + m + 'mo' : y + 'y';
     }
     return ticks + ' ticks';
+}
+
+function renderModifierBadges(modifierKeys) {
+    if (!modifierKeys || modifierKeys.length === 0) return '';
+    return modifierKeys.map(key => {
+        const def = modifierDefs[key];
+        if (!def) return '';
+        const repColor = def.reputation_bonus > 0 ? 'var(--green)' : def.reputation_bonus < 0 ? 'var(--red)' : 'var(--text-dim)';
+        const repStr = def.reputation_bonus > 0 ? '+' + def.reputation_bonus : def.reputation_bonus < 0 ? String(def.reputation_bonus) : '';
+        return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;font-family:var(--font-mono);font-size:7px;color:var(--text-secondary);">${def.icon || '📍'} ${escapeHtml(def.name)}${repStr ? ` <span style="color:${repColor};font-weight:700;">${repStr} REP</span>` : ''}</span>`;
+    }).filter(Boolean).join(' ');
 }
 
 function fmtBudget(n) {
@@ -2736,6 +2748,7 @@ function renderContracts() {
                     ${qualified ? `<button class="bid-btn bid-btn--submit" style="padding:3px 10px;font-size:8px;margin-left:auto;" onclick="event.stopPropagation();openContractDetail(contracts.find(x=>x.id==='${c.id}'))">VIEW</button>` : ''}
                 </div>
                 ${c.description ? `<div style="font-size:9px;color:var(--text-dim);padding:4px 0 0;font-style:italic;">${escapeHtml(c.description)}</div>` : ''}
+                ${(c.modifiers && c.modifiers.length > 0) ? `<div style="display:flex;flex-wrap:wrap;gap:3px;padding:4px 0 0;">${renderModifierBadges(c.modifiers)}</div>` : ''}
             </div>`;
     }
 
@@ -2818,6 +2831,35 @@ function openContractDetail(contract) {
                 <div class="cd-section-label">Brief Description</div>
                 <div class="cd-desc__text">${escapeHtml(contract.description)}</div>
             </div>`;
+    }
+
+    // Building modifiers
+    const contractMods = contract.modifiers || [];
+    if (contractMods.length > 0) {
+        contentHtml += `<div class="cd-items">
+            <div class="cd-section-label">Building Modifiers</div>
+            <div style="display:flex;flex-direction:column;gap:6px;">`;
+        for (const mk of contractMods) {
+            const mdef = modifierDefs[mk];
+            if (!mdef) continue;
+            const repColor = mdef.reputation_bonus > 0 ? 'var(--green)' : mdef.reputation_bonus < 0 ? 'var(--red)' : 'var(--text-dim)';
+            const costLabel = mdef.cost_multiplier > 1 ? '+' + Math.round((mdef.cost_multiplier - 1) * 100) + '% cost' : mdef.cost_multiplier < 1 ? Math.round((1 - mdef.cost_multiplier) * 100) + '% cheaper' : '';
+            const repLabel = mdef.reputation_bonus !== 0 ? (mdef.reputation_bonus > 0 ? '+' : '') + mdef.reputation_bonus + ' rep' : '';
+            const reqPermits = mdef.required_permits || [];
+            contentHtml += `<div style="padding:6px 10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:4px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-weight:600;font-size:0.78rem;color:var(--text-primary);">${mdef.icon || '📍'} ${escapeHtml(mdef.name)}</span>
+                    <span style="font-family:var(--font-mono);font-size:0.6rem;">
+                        ${costLabel ? `<span style="color:var(--amber);">${costLabel}</span>` : ''}
+                        ${costLabel && repLabel ? ' · ' : ''}
+                        ${repLabel ? `<span style="color:${repColor};font-weight:700;">${repLabel}</span>` : ''}
+                    </span>
+                </div>
+                <div style="font-size:0.65rem;color:var(--text-dim);margin-top:2px;">${escapeHtml(mdef.description || '')}</div>
+                ${reqPermits.length > 0 ? `<div style="font-size:0.6rem;color:var(--amber);margin-top:3px;font-family:var(--font-mono);">Requires permits: ${reqPermits.map(p => escapeHtml(p.replace(/_/g, ' '))).join(', ')}</div>` : ''}
+            </div>`;
+        }
+        contentHtml += `</div></div>`;
     }
 
     // Detail rows
@@ -3429,6 +3471,16 @@ function renderPmOverview(s, p, budgetColor, budgetPct, remaining, ticksRemainin
             <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary)">Deadline: <span style="color:${isLate ? 'var(--red)' : 'var(--text-bright)'};font-weight:700">${deadlineDate}</span></span>
         </div>
     </div></div>`;
+
+    // Building Modifiers
+    const projMods = p.modifiers || [];
+    if (projMods.length > 0) {
+        html += '<div style="padding:0 16px"><div class="pm-section">';
+        html += '<div class="pm-section__title">Building Modifiers</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:4px;">';
+        html += renderModifierBadges(projMods);
+        html += '</div></div></div>';
+    }
 
     // Permits (from contract if available)
     const permits = [];
@@ -5864,6 +5916,13 @@ async function init() {
     }
 
     // Load contracts (loadOwnedProperties needed for subsidiary eligibility checks)
+    // Load building modifier definitions (reference data)
+    try {
+        const { data: modDefs } = await _supabase.from('building_modifiers').select('*');
+        modifierDefs = {};
+        for (const m of (modDefs || [])) modifierDefs[m.modifier_key] = m;
+    } catch (_) { /* table may not exist yet */ }
+
     await Promise.all([loadContracts(), loadActiveProjects(), loadWarehouse(), loadEquipment(), loadPermits(), loadDeliveries(), loadOwnedProperties()]);
 
     // Load all nations for equipment market nation switcher
