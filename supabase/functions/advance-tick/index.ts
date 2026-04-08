@@ -31658,9 +31658,20 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     const { data: nations } = await supabase.from('nations').select('*');
     const nationList = nations || [];
 
-    // Lazy-loaded once per tick for all nations
-    let _statConnections = null;
-    let _institutionConfig = null;
+    // Pre-load global tables once (same data for every nation, no need to lazy-load inside the loop)
+    let _statConnections = [];
+    let _institutionConfig = [];
+    try {
+        const [scRes, icRes] = await Promise.all([
+            supabase.from('stat_connections').select('*').eq('enabled', true),
+            supabase.from('ministry_institution_config').select('*')
+        ]);
+        _statConnections = scRes.data || [];
+        _institutionConfig = icRes.data || [];
+        console.log(`[advanceTick] Pre-loaded ${_statConnections.length} stat connections, ${_institutionConfig.length} institution configs`);
+    } catch (preloadErr) {
+        console.error('[advanceTick] Failed to pre-load global tables (non-fatal):', preloadErr);
+    }
 
     const summary = {
         tick: newTick,
@@ -31944,10 +31955,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Stat decay (equilibrium drift + erosion, modified by institution funding)
         try {
-            if (!_institutionConfig) {
-                const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
-                _institutionConfig = icRows || [];
-            }
             const { data: _fundingRows } = await supabase.from('budget_item_allocations')
                 .select('item_id, item_type, allocation_amount, needed_amount')
                 .eq('nation_id', nation.id)
@@ -31966,10 +31973,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Stat connections (threshold-triggered ripple effects)
         try {
-            if (!_statConnections) {
-                const { data: scRows } = await supabase.from('stat_connections').select('*').eq('enabled', true);
-                _statConnections = scRows || [];
-            }
             const connResults = await processStatConnections(supabase, nation, newTick, _statConnections);
             if (connResults.length > 0) {
                 summary.statConnections = summary.statConnections || [];
