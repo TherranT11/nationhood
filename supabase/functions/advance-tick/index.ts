@@ -9355,9 +9355,12 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
  * YES > 50% → enact the foundational bill. NO ≥ 50% → bill fails.
  */
 async function resolveReferendums(supabase, nation, currentTick) {
+    // Simplified query: removed bill_articles(*, policies(*)) nested join that caused
+    // silent PostgREST failures — same documented issue as resolveExpiredVotes.
+    // bill_articles are not used in referendum resolution logic.
     const { data: pendingBills, error } = await supabase
         .from('bills')
-        .select('id, bill_name, proposed_by, referendum_start_tick, bill_type, proposed_seats, proposed_term_length, proposed_constitutional_reform, proposed_constitutional_amendment_streamlining, entrenchment_tier, bill_articles(*, policies(*))')
+        .select('id, bill_name, proposed_by, referendum_start_tick, bill_type, proposed_seats, proposed_term_length, proposed_constitutional_reform, proposed_constitutional_amendment_streamlining, entrenchment_tier')
         .eq('nation_id', nation.id)
         .eq('status', 'referendum_pending')
         .eq('referendum_status', 'pending')

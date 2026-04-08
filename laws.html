@@ -789,12 +789,18 @@ function renderReferendumBill(bill) {
     const metaText = isApproved
         ? `Referendum passed (${Number(bill.referendum_yes_pct || 0).toFixed(1)}% YES) · Awaiting floor vote`
         : `Filed by ${escapeHtml(sponsorName)} · ${articleCount} article${articleCount !== 1 ? 's' : ''} · Awaiting popular vote`;
+    // Results available next tick after referendum_start_tick
+    const resultsDate = !isApproved && bill.referendum_start_tick != null
+        ? tickToDate(bill.referendum_start_tick + 1) : null;
+    const resultsLine = resultsDate
+        ? `<div style="font-family:var(--font-mono);font-size:0.68rem;color:var(--purple);margin-top:4px;padding:0 6px;">Referendum results available <span style="font-weight:600;">${resultsDate}</span></div>` : '';
     return `<div class="bill-card" onclick="window.location='bill.html?id=${bill.id}'" style="cursor:pointer;border-left:3px solid ${badgeColor};">
         <div class="bill-card-top">
             <span class="bill-card-title">${escapeHtml(bill.bill_name || 'Unnamed')}</span>
             <span style="background:${badgeColor};color:#fff;padding:2px 8px;border-radius:3px;font-size:0.6rem;font-weight:bold;text-transform:uppercase;">${badgeText}</span>
         </div>
         <div class="bill-card-meta">${metaText}</div>
+        ${resultsLine}
     </div>`;
 }
 

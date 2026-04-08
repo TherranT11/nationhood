@@ -743,6 +743,20 @@ function renderBill() {
     renderIdeologyWarning();
     renderSidebar();
 
+    // ── Referendum pending banner (awaiting results) ──
+    if (bill.status === 'referendum_pending' && bill.referendum_status === 'pending' && bill.referendum_start_tick != null) {
+        document.querySelectorAll('.referendum-pending-banner').forEach(el => el.remove());
+        const pendBanner = document.createElement('div');
+        pendBanner.className = 'referendum-pending-banner';
+        pendBanner.style.cssText = 'background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.3);padding:18px;margin:16px 0;border-radius:4px;text-align:center;';
+        const resultsDate = tickToDate(bill.referendum_start_tick + 1);
+        pendBanner.innerHTML = '<div style="font-size:0.95rem;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:1.5px;">🗳 Constitutional Referendum In Progress</div>' +
+            '<div style="font-size:0.82rem;color:var(--text-secondary);margin-top:6px;">The people are voting on this constitutional change.</div>' +
+            '<div style="font-family:var(--font-mono);font-size:0.78rem;color:var(--purple);margin-top:8px;font-weight:600;">Referendum results available ' + resultsDate + '</div>';
+        const header = document.getElementById('bill-header');
+        header.parentNode.insertBefore(pendBanner, header.nextSibling);
+    }
+
     // ── Referendum results banner (for resolved or skipped referendums) ──
     if (bill.referendum_status === 'resolved' || bill.referendum_status === 'skipped') {
         document.querySelectorAll('.referendum-results-banner').forEach(el => el.remove());
