@@ -694,6 +694,58 @@ function renderBill() {
     renderIdeologyWarning();
     renderSidebar();
 
+    // ── Referendum results banner (for resolved or skipped referendums) ──
+    if (bill.referendum_status === 'resolved' || bill.referendum_status === 'skipped') {
+        document.querySelectorAll('.referendum-results-banner').forEach(el => el.remove());
+        const resBanner = document.createElement('div');
+        resBanner.className = 'referendum-results-banner';
+
+        if (bill.referendum_status === 'skipped') {
+            resBanner.style.cssText = 'background:rgba(217,83,79,0.1);border:1px solid rgba(217,83,79,0.3);padding:18px;margin:16px 0;border-radius:4px;';
+            resBanner.innerHTML = `
+                <div style="font-size:0.95rem;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:1.5px;text-align:center;">⚠ Referendum Bypassed</div>
+                <div style="font-size:0.82rem;color:var(--text-secondary);text-align:center;margin-top:6px;">
+                    The sponsoring party overrode the constitutional referendum and forced this bill through without popular approval.
+                </div>
+            `;
+        } else {
+            const yesPct = Number(bill.referendum_yes_pct || 0);
+            const noPct = Number(bill.referendum_no_pct || 0);
+            const turnout = Number(bill.referendum_turnout_pct || 0);
+            const passed = yesPct > 50;
+            const accentColor = passed ? 'var(--green)' : 'var(--red)';
+            const bgColor = passed ? 'rgba(92,184,92,0.1)' : 'rgba(217,83,79,0.1)';
+            const borderColor = passed ? 'rgba(92,184,92,0.3)' : 'rgba(217,83,79,0.3)';
+
+            resBanner.style.cssText = `background:${bgColor};border:1px solid ${borderColor};padding:18px;margin:16px 0;border-radius:4px;`;
+            resBanner.innerHTML = `
+                <div style="font-size:0.95rem;font-weight:700;color:${accentColor};text-transform:uppercase;letter-spacing:1.5px;text-align:center;">
+                    🗳 Constitutional Referendum — ${passed ? 'Approved' : 'Rejected'}
+                </div>
+                <div style="display:flex;justify-content:center;gap:32px;margin-top:14px;">
+                    <div style="text-align:center;">
+                        <div style="font-family:var(--font-mono);font-size:1.4rem;font-weight:700;color:var(--green);">${yesPct.toFixed(1)}%</div>
+                        <div style="font-size:0.72rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;">Yes</div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-family:var(--font-mono);font-size:1.4rem;font-weight:700;color:var(--red);">${noPct.toFixed(1)}%</div>
+                        <div style="font-size:0.72rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;">No</div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-family:var(--font-mono);font-size:1.4rem;font-weight:700;color:var(--text-secondary);">${turnout.toFixed(1)}%</div>
+                        <div style="font-size:0.72rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;">Turnout</div>
+                    </div>
+                </div>
+                <div style="margin-top:12px;height:6px;background:var(--bg-3);border-radius:3px;overflow:hidden;display:flex;">
+                    <div style="width:${yesPct}%;background:var(--green);"></div>
+                    <div style="width:${noPct}%;background:var(--red);"></div>
+                </div>
+            `;
+        }
+        const header = document.getElementById('bill-header');
+        header.parentNode.insertBefore(resBanner, header.nextSibling);
+    }
+
     if (isFloor) {
         document.getElementById('voting-section').style.display = 'block';
         renderCurrentVote();

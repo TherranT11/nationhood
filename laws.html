@@ -326,6 +326,16 @@ initPage('laws', async (state) => {
         const msgs = recentlyResolved.map(r => {
             const earlyTag = (r.early_resolution_status === 'majority_reached' || r.early_resolution_status === 'quorum_reached') ? ' (Early Majority)'
                 : (r.early_resolution_status === 'majority_opposed' || r.early_resolution_status === 'quorum_opposed') ? ' (Majority Opposed)' : '';
+            if (r.referendum_status === 'resolved') {
+                const yes = Number(r.referendum_yes_pct || 0).toFixed(1);
+                const no = Number(r.referendum_no_pct || 0).toFixed(1);
+                return r.status === 'passed'
+                    ? `🗳 ${r.bill_name || 'Bill'} — Referendum APPROVED (${yes}% YES)`
+                    : `🗳 ${r.bill_name || 'Bill'} — Referendum REJECTED (${no}% NO)`;
+            }
+            if (r.referendum_status === 'skipped') {
+                return `⚠ ${r.bill_name || 'Bill'} — FORCED THROUGH (referendum bypassed)`;
+            }
             return r.status === 'passed'
                 ? '✅ ' + (r.bill_name || 'Bill') + ' PASSED' + earlyTag
                 : '❌ ' + (r.bill_name || 'Bill') + ' FAILED' + earlyTag;
@@ -365,7 +375,7 @@ async function loadLawsData() {
             cachedPolicies ? Promise.resolve({ data: cachedPolicies }) : _supabase.from('policies').select('*').eq('is_active', true),
             _supabase.from('active_laws').select('*, policies(*)').eq('nation_id', nid),
             _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), factions(faction_name)), bill_support(*)').eq('nation_id', nid).eq('status', 'committee'),
-            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)').eq('nation_id', nid).in('status', ['floor', 'vetoed']),
+            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)').eq('nation_id', nid).in('status', ['floor', 'vetoed', 'referendum_pending']),
             _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).eq('status', 'frozen'),
             isPresidential ? _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).eq('status', 'president_desk') : Promise.resolve({ data: [] }),
             _supabase.from('bills').select('*, factions(faction_name)').eq('nation_id', nid).in('status', ['passed', 'failed']).order('passed_tick', { ascending: false }).limit(10)
@@ -762,10 +772,24 @@ async function vetoBill(billId) {
 function renderFloorBills() {
     const activeFloor = floorBills.filter(b => b.status === 'floor');
     const vetoedFloor = floorBills.filter(b => b.status === 'vetoed');
+    const referendumBills = floorBills.filter(b => b.status === 'referendum_pending');
     let html = '';
+    if (referendumBills.length > 0) html += `<div class="section-header" style="color:var(--purple);">🗳 Constitutional Referendum</div>${referendumBills.map(bill => renderReferendumBill(bill)).join('')}`;
     if (activeFloor.length > 0) html += `<div class="section-header" style="color:var(--green);">On The Floor</div>${activeFloor.map(bill => renderFloorBill(bill, false)).join('')}`;
     if (vetoedFloor.length > 0) html += `<div class="section-header" style="color:var(--red);">Vetoed ${termBills}</div>${vetoedFloor.map(bill => renderFloorBill(bill, true)).join('')}`;
     return html;
+}
+
+function renderReferendumBill(bill) {
+    const sponsorName = bill.factions?.faction_name || 'Unknown';
+    const articleCount = (bill.bill_articles || []).length;
+    return `<div class="bill-card" onclick="window.location='bill.html?id=${bill.id}'" style="cursor:pointer;border-left:3px solid var(--purple);">
+        <div class="bill-card-top">
+            <span class="bill-card-title">${escapeHtml(bill.bill_name || 'Unnamed')}</span>
+            <span style="background:var(--purple);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.6rem;font-weight:bold;text-transform:uppercase;">REFERENDUM</span>
+        </div>
+        <div class="bill-card-meta">Filed by ${escapeHtml(sponsorName)} · ${articleCount} article${articleCount !== 1 ? 's' : ''} · Awaiting popular vote</div>
+    </div>`;
 }
 
 function renderFloorBill(bill, isVetoed) {
