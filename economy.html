@@ -2785,6 +2785,9 @@ function renderTariffsTab(nation) {
     if (tradeData && tradeData.summary) {
         tariffRev = Number(tradeData.summary.tariff_revenue) || 0;
     }
+    // Cap tariff revenue to match budget (0.2% of GDP)
+    var gdpForTariff = Number(nation.gdp ?? nation.GDP ?? 0);
+    var cappedTariffRevTariffs = gdpForTariff > 0 ? Math.min(tariffRev, gdpForTariff * 0.002) : tariffRev;
 
     // --- Tariff Overview ---
     h += '<div class="econ-section">';
@@ -2793,7 +2796,7 @@ function renderTariffsTab(nation) {
 
     h += '<div class="econ-cards-row econ-cards-4">';
     h += renderOverviewCard('Tariff Rate', tariffRate.toFixed(0) + '%', 'neutral', null);
-    h += renderOverviewCard('Tariff Revenue', formatBudgetCurrency(tariffRev), tariffRev > 0 ? 'surplus' : 'neutral', 'Per Tick');
+    h += renderOverviewCard('Tariff Revenue', formatBudgetCurrency(cappedTariffRevTariffs), cappedTariffRevTariffs > 0 ? 'surplus' : 'neutral', 'Per Tick');
     var dampener = (1 - tariffRate / 200) * 100;
     h += renderOverviewCard('Import Dampener', dampener.toFixed(0) + '%', 'neutral', 'of full demand');
     var agreementCount = tradeAgreements ? tradeAgreements.length : 0;
@@ -2909,6 +2912,12 @@ function renderTariffProjections(currentRate, simRate, currentDampener, totalCur
 
     var projectedTotalImports = Math.round(totalCurrentImports * dampenerRatio);
     var projectedTariffRev = Math.round(projectedTotalImports * (simRate / 100) * collectionRate);
+    // Cap projected tariff revenue at 0.2% of GDP (matches budget)
+    var gdpForProj = Number(nation.gdp ?? nation.GDP ?? 0);
+    if (gdpForProj > 0) {
+        projectedTariffRev = Math.min(projectedTariffRev, Math.round(gdpForProj * 0.002));
+        currentTariffRev = Math.min(currentTariffRev, Math.round(gdpForProj * 0.002));
+    }
 
     var importDelta = projectedTotalImports - totalCurrentImports;
     var revDelta = projectedTariffRev - currentTariffRev;
