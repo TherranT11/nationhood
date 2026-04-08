@@ -533,7 +533,8 @@ export const MAJOR_SECTORS = [
     { key: 'GOVERNANCE',    label: 'Governance',          icon: '🏛️' },
     { key: 'IMMIGRATION',   label: 'Immigration',         icon: '🌍' },
     { key: 'INTERNATIONAL', label: 'International',       icon: '🌐' },
-    { key: 'TRADE',         label: 'Trade',               icon: '📦' }
+    { key: 'TRADE',         label: 'Trade',               icon: '📦' },
+    { key: 'PERMITS',       label: 'Construction Permits', icon: '🔨' }
 ];
 
 // Policy Platform stances — each sector has 4 stances, each leaning toward 2 ideology poles.
