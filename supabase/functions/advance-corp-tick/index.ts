@@ -1114,7 +1114,26 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             // Generate inspection report & delivery record
             const baseQuality = bid.estimated_quality || 65;
             const qualityVariance = Math.floor(Math.random() * 21) - 10;
-            const qualityScore = Math.max(0, Math.min(100, baseQuality + qualityVariance));
+
+            // Apply permit quality bonuses from active permits held by this corp
+            let permitQualityBonus = 0;
+            try {
+                const { data: corpActivePermits } = await supabase
+                    .from('corp_permits')
+                    .select('permit_key')
+                    .eq('faction_id', bid.faction_id)
+                    .eq('status', 'active');
+                if (corpActivePermits) {
+                    const { data: permitDefs } = await supabase.from('construction_permits')
+                        .select('permit_key, quality_bonus')
+                        .in('permit_key', corpActivePermits.map(p => p.permit_key));
+                    for (const d of (permitDefs || [])) {
+                        permitQualityBonus += d.quality_bonus || 0;
+                    }
+                }
+            } catch (_pqErr) { /* non-fatal */ }
+
+            const qualityScore = Math.max(0, Math.min(100, baseQuality + qualityVariance + permitQualityBonus));
 
             let deliveryResult = 'PASS';
             let repChange = 2;
@@ -1263,6 +1282,37 @@ async function generateProjectEvents(supabase, nationId, currentTick) {
         .single();
     const ns = (key) => Number(nation?.[key] ?? 50);
 
+    // Load permit event modifiers for all corps with active projects
+    // Build: { factionId: { event_key: probability_multiplier } }
+    const _permitEventMods = {};
+    try {
+        const factionIds = [...new Set(contracts.map(c => c.awarded_to_faction).filter(Boolean))];
+        if (factionIds.length > 0) {
+            const { data: activePermits } = await supabase
+                .from('corp_permits')
+                .select('faction_id, permit_key')
+                .in('faction_id', factionIds)
+                .eq('status', 'active');
+            if (activePermits && activePermits.length > 0) {
+                const permitKeys = [...new Set(activePermits.map(p => p.permit_key))];
+                const { data: defs } = await supabase.from('construction_permits')
+                    .select('permit_key, event_modifiers')
+                    .in('permit_key', permitKeys);
+                const defModMap = {};
+                for (const d of (defs || [])) defModMap[d.permit_key] = d.event_modifiers || {};
+                for (const p of activePermits) {
+                    if (!_permitEventMods[p.faction_id]) _permitEventMods[p.faction_id] = {};
+                    const mods = defModMap[p.permit_key] || {};
+                    for (const [eventKey, multiplier] of Object.entries(mods)) {
+                        // Use lowest multiplier if multiple permits affect same event
+                        const current = _permitEventMods[p.faction_id][eventKey];
+                        _permitEventMods[p.faction_id][eventKey] = current !== undefined ? Math.min(current, multiplier) : multiplier;
+                    }
+                }
+            }
+        }
+    } catch (_pemErr) { /* non-fatal */ }
+
     // Check existing active events to avoid duplicates (max 1 active per project)
     const contractIds = contracts.map(c => c.id);
     const { data: activeEvents } = await supabase
@@ -1298,6 +1348,14 @@ async function generateProjectEvents(supabase, nationId, currentTick) {
                 }
             }
             prob = Math.max(0, Math.min(0.5, prob)); // Cap at 50%
+
+            // Apply permit event modifiers — active permits reduce event probability
+            if (_permitEventMods && _permitEventMods[contract.awarded_to_faction]) {
+                const mods = _permitEventMods[contract.awarded_to_faction];
+                if (mods[template.key] !== undefined) {
+                    prob *= mods[template.key]; // e.g. 0.5 = halve probability
+                }
+            }
 
             if (Math.random() > prob) continue;
 
@@ -1639,7 +1697,86 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     summary.construction.push({ nation: nation.name, type: 'expired_events', data: expiredResults });
                 }
 
-                // ── Construction GDP Boost ──
+                // ── Permit Lifecycle (pending→active, expiry) ─────────────
+            try {
+                // Advance pending permits to active
+                const { data: pendingPermits } = await supabase
+                    .from('corp_permits')
+                    .select('id, faction_id, permit_key, applied_at_tick')
+                    .eq('nation_id', nation.id)
+                    .eq('status', 'pending');
+
+                if (pendingPermits && pendingPermits.length > 0) {
+                    const { data: permitDefs } = await supabase.from('construction_permits').select('permit_key, processing_ticks, duration_ticks');
+                    const defMap = {};
+                    for (const d of (permitDefs || [])) defMap[d.permit_key] = d;
+
+                    for (const p of pendingPermits) {
+                        const def = defMap[p.permit_key];
+                        if (!def) continue;
+                        const elapsed = currentTick - p.applied_at_tick;
+                        if (elapsed >= def.processing_ticks) {
+                            const expiresAt = def.duration_ticks ? currentTick + def.duration_ticks : null;
+                            await supabase.from('corp_permits').update({
+                                status: 'active',
+                                granted_at_tick: currentTick,
+                                expires_at_tick: expiresAt,
+                                updated_at: new Date().toISOString()
+                            }).eq('id', p.id);
+                            console.log(`[Permits] ${p.permit_key} granted to faction ${p.faction_id} (expires tick ${expiresAt || 'never'})`);
+                        }
+                    }
+                }
+
+                // Expire active permits past their duration
+                const { data: expiredCount } = await supabase
+                    .from('corp_permits')
+                    .update({ status: 'expired', updated_at: new Date().toISOString() })
+                    .eq('nation_id', nation.id)
+                    .eq('status', 'active')
+                    .not('expires_at_tick', 'is', null)
+                    .lte('expires_at_tick', currentTick)
+                    .select('id');
+                if (expiredCount && expiredCount.length > 0) {
+                    console.log(`[Permits] Expired ${expiredCount.length} permit(s) in ${nation.name}`);
+                }
+
+                // Charge maintenance for active permits with maintenance_per_tick > 0
+                const { data: activePermitsForMaint } = await supabase
+                    .from('corp_permits')
+                    .select('id, faction_id, permit_key')
+                    .eq('nation_id', nation.id)
+                    .eq('status', 'active');
+
+                if (activePermitsForMaint && activePermitsForMaint.length > 0) {
+                    const { data: maintDefs } = await supabase.from('construction_permits')
+                        .select('permit_key, maintenance_per_tick')
+                        .gt('maintenance_per_tick', 0);
+                    const maintMap = {};
+                    for (const d of (maintDefs || [])) maintMap[d.permit_key] = Number(d.maintenance_per_tick);
+
+                    // Group maintenance costs by faction
+                    const factionMaint = {};
+                    for (const p of activePermitsForMaint) {
+                        const cost = maintMap[p.permit_key] || 0;
+                        if (cost > 0) {
+                            factionMaint[p.faction_id] = (factionMaint[p.faction_id] || 0) + cost;
+                        }
+                    }
+                    for (const [fId, totalMaint] of Object.entries(factionMaint)) {
+                        const { data: corp } = await supabase.from('factions').select('corp_cash_reserves').eq('id', fId).single();
+                        if (corp) {
+                            await supabase.from('factions').update({
+                                corp_cash_reserves: Math.max(0, Number(corp.corp_cash_reserves || 0) - totalMaint)
+                            }).eq('id', fId);
+                        }
+                    }
+                }
+            } catch (permitErr) {
+                console.error(`[advance-corp-tick] Permit lifecycle failed for ${nation.name} (non-fatal):`, permitErr);
+            }
+
+            // ── Construction GDP Boost ──
                 // Per-project: (budget / $100M) × 0.1 / timeline_ticks
                 // Spreads the 0.1-per-$100M impact evenly across the project lifetime.
                 // Multiple projects stack additively.
