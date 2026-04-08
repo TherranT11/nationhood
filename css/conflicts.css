@@ -1370,11 +1370,29 @@
 
 .ia-role {
     font-family: var(--font-mono);
-    font-size: 7px;
-    color: var(--text-faint);
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--text-primary);
     flex-shrink: 0;
     margin-top: 3px;
     text-align: right;
+    letter-spacing: 0.5px;
+}
+.ia-item--wrong-role .ia-role {
+    color: var(--amber);
+}
+.ia-item--wrong-role {
+    opacity: 0.45;
+    cursor: not-allowed !important;
+}
+.ia-item--wrong-role::after {
+    content: 'Requires this role';
+    display: block;
+    font-size: 8px;
+    color: var(--amber);
+    font-family: var(--font-mono);
+    text-align: right;
+    margin-top: 2px;
 }
 
 /* ── AMBER ACTION NOTIFICATIONS ── */

@@ -1110,10 +1110,64 @@ function normalizeMinorKey(p) {
 }
 
 function renderMajorSector(sector) {
+    // Foundational laws are nation-level settings, not policies — render them specially
+    if (sector.key === 'FOUNDATIONAL') return renderFoundationalSector(sector);
+
     const sectorPolicies = allPolicies.filter(p => p.major_sector === sector.key);
     const minorSectors = [...new Set(sectorPolicies.map(normalizeMinorKey))].filter(Boolean);
     if (minorSectors.length === 0) return '';
     return `<div class="major-sector" id="sector-${sector.key}"><div class="major-sector-header" onclick="toggleMajorSector('${sector.key}')"><div class="major-sector-title">${sector.icon} ${sector.label}</div><div class="major-sector-arrow">▶</div></div><div class="major-sector-content">${minorSectors.map(minor => renderMinorSector(sector.key, minor)).join('')}</div></div>`;
+}
+
+function renderFoundationalSector(sector) {
+    const n = currentNation;
+    if (!n) return '';
+    const ticksPerYear = GAME_CONFIG.TICKS_PER_YEAR || 12;
+    const parlTermTicks = n.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS || 48;
+    const parlTermYears = parlTermTicks / ticksPerYear;
+    const hosMethod = n.hos_election_method === 'hereditary' ? 'Hereditary Monarchy' : n.hos_election_method === 'direct_vote' ? 'Direct Popular Vote' : 'Parliamentary Appointment';
+    const isPresidential = hasElectedPresident(n);
+    const termLimit = n.presidential_term_limit !== null && n.presidential_term_limit !== undefined ? n.presidential_term_limit : GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT;
+    const presTermTicks = n.presidential_term_ticks || GAME_CONFIG.PRESIDENTIAL_TERM_TICKS || 48;
+    const presTermYears = presTermTicks / ticksPerYear;
+    const currentGovSystem = getCurrentConstitutionalSystem(n);
+    const govSystemLabel = getConstitutionalSystemLabel(currentGovSystem);
+
+    const items = [
+        { label: 'System of Government', value: govSystemLabel },
+        { label: 'Parliament Size', value: (n.total_seats || '?') + ' seats' },
+        { label: 'Head of State', value: (n.head_of_state_title || 'President') + ' — ' + hosMethod },
+        { label: 'Legislative Term', value: parlTermYears + ' year' + (parlTermYears !== 1 ? 's' : '') + ' (' + parlTermTicks + ' ticks)' },
+    ];
+    if (isPresidential) {
+        items.push({ label: 'Presidential Term', value: presTermYears + ' year' + (presTermYears !== 1 ? 's' : '') });
+        items.push({ label: 'Term Limits', value: termLimit === 0 ? 'None (unlimited)' : termLimit + ' term' + (termLimit !== 1 ? 's' : '') });
+    }
+    // Authoritarian / special foundational laws
+    if (n.term_limits_abolished) items.push({ label: 'Term Limits Abolished', value: 'Active', cls: 'foundational--auth' });
+    if (n.state_media_control) items.push({ label: 'State Media Control', value: 'Active', cls: 'foundational--auth' });
+    if (n.emergency_powers_act) items.push({ label: 'Emergency Powers Act', value: 'Active', cls: 'foundational--auth' });
+    if (n.judicial_appointment_politicization) items.push({ label: 'Judicial Politicization', value: 'Active', cls: 'foundational--auth' });
+    if (n.electoral_commission_reform) items.push({ label: 'Electoral Commission Reform', value: 'Active', cls: 'foundational--auth' });
+    if (n.party_registration_threshold > 0) items.push({ label: 'Party Registration Act', value: n.party_registration_threshold + '% threshold', cls: 'foundational--auth' });
+    if (n.legislative_quorum_override > 0) items.push({ label: 'Quorum Reform', value: n.legislative_quorum_override + '% quorum' });
+    if (n.constitutional_amendment_streamlining) items.push({ label: 'Amendment Streamlining', value: '55% threshold' });
+    if (n.anti_disinformation_act) items.push({ label: 'Anti-Disinformation Act', value: 'Active', cls: 'foundational--auth' });
+
+    const content = items.map(i =>
+        '<div class="foundational-row' + (i.cls ? ' ' + i.cls : '') + '">' +
+            '<span class="foundational-label">' + escapeHtml(i.label) + '</span>' +
+            '<span class="foundational-value">' + escapeHtml(i.value) + '</span>' +
+        '</div>'
+    ).join('');
+
+    return '<div class="major-sector" id="sector-FOUNDATIONAL">' +
+        '<div class="major-sector-header" onclick="toggleMajorSector(\'FOUNDATIONAL\')">' +
+            '<div class="major-sector-title">' + sector.icon + ' ' + sector.label + '</div>' +
+            '<div class="major-sector-arrow">▶</div>' +
+        '</div>' +
+        '<div class="major-sector-content">' + content + '</div>' +
+    '</div>';
 }
 
 function renderMinorSector(majorKey, minorKey) {

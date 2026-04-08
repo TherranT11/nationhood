@@ -144,6 +144,12 @@
         .major-sector.expanded .major-sector-arrow { transform:rotate(90deg); }
         .major-sector-content { display:none; padding:0 20px 16px; }
         .major-sector.expanded .major-sector-content { display:block; }
+        .foundational-row { display:flex; justify-content:space-between; align-items:center; padding:8px 14px; border-bottom:1px solid var(--border-hair); }
+        .foundational-row:last-child { border-bottom:none; }
+        .foundational-label { font-family:var(--font-mono); font-size:0.78rem; color:var(--text-muted); }
+        .foundational-value { font-family:var(--font-mono); font-size:0.78rem; color:var(--text-bright); font-weight:600; }
+        .foundational--auth .foundational-label { color:var(--crimson); }
+        .foundational--auth .foundational-value { color:var(--crimson); }
         .minor-sector { background:var(--bg-card); border-radius:3px; margin-bottom:8px; overflow:hidden; border:1px solid var(--border-main); }
         .minor-sector-header { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; cursor:pointer; transition:background 0.2s; }
         .minor-sector-header:hover { background:var(--bg-hover); }
