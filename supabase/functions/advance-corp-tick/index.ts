@@ -973,7 +973,25 @@ async function processActiveProjects(supabase, nationId, currentTick) {
         }
     }
 
-    // 6. Process each contract
+    // 6. Load material allocations for all active contracts (one batch query)
+    let allAllocations = [];
+    if (contractIds.length > 0) {
+        const allocQuery = contractIds.length === 1
+            ? supabase.from('project_material_allocations').select('contract_id, material_key, quality_tier, quantity, consumed').eq('contract_id', contractIds[0])
+            : supabase.from('project_material_allocations').select('contract_id, material_key, quality_tier, quantity, consumed').in('contract_id', contractIds);
+        const { data: allocData } = await allocQuery;
+        allAllocations = allocData || [];
+    }
+    // Build allocation map: contractId → { materialKey → { totalAllocated, totalConsumed } }
+    const allocMap = {};
+    for (const a of allAllocations) {
+        if (!allocMap[a.contract_id]) allocMap[a.contract_id] = {};
+        if (!allocMap[a.contract_id][a.material_key]) allocMap[a.contract_id][a.material_key] = { allocated: 0, consumed: 0 };
+        allocMap[a.contract_id][a.material_key].allocated += a.quantity;
+        allocMap[a.contract_id][a.material_key].consumed += a.consumed;
+    }
+
+    // 7. Process each contract
     const results = [];
 
     for (const contract of activeContracts) {
@@ -991,8 +1009,34 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             await supabase.from('construction_contracts')
                 .update({ stalled_ticks: stalledTicks + 1 })
                 .eq('id', contract.id);
-            console.log(`[Projects] ${contract.name}: STALLED (tick ${currentTick}, stalled ${stalledTicks + 1} total)`);
-            // No cost deduction — no work done this tick
+            console.log(`[Projects] ${contract.name}: STALLED — understaffed (tick ${currentTick}, stalled ${stalledTicks + 1} total)`);
+            continue;
+        }
+
+        // Material gate: check if allocated materials meet requirements for next tick of progress
+        const reqMaterials = contract.required_materials || {};
+        const contractAllocs = allocMap[contract.id] || {};
+        const matKeys = Object.keys(reqMaterials);
+        let materialsReady = true;
+        if (matKeys.length > 0) {
+            // Calculate how many units should be consumed by next tick
+            const nextProgressPct = Math.min(1, (effectiveProgress + 1) / totalTicks);
+            for (const mat of matKeys) {
+                const required = Number(reqMaterials[mat]) || 0;
+                const neededByNextTick = Math.min(required, Math.floor(required * nextProgressPct));
+                const alloc = contractAllocs[mat];
+                const totalAllocated = alloc ? alloc.allocated : 0;
+                if (totalAllocated < neededByNextTick) {
+                    materialsReady = false;
+                    break;
+                }
+            }
+        }
+        if (!materialsReady) {
+            await supabase.from('construction_contracts')
+                .update({ stalled_ticks: stalledTicks + 1 })
+                .eq('id', contract.id);
+            console.log(`[Projects] ${contract.name}: STALLED — insufficient materials allocated (tick ${currentTick}, stalled ${stalledTicks + 1} total)`);
             continue;
         }
 
@@ -1023,14 +1067,42 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             console.log(`[Projects] ${contract.name}: phase → ${newPhase} (${Math.round(progressPct * 100)}%)`);
         }
 
-        // Material consumption: proportional to progress
-        const reqMaterials = contract.required_materials || {};
+        // Material consumption: consume from allocations proportional to progress.
+        // Each tick, calculate how many units SHOULD be consumed by this point,
+        // then mark the delta as newly consumed in project_material_allocations.
         const prevConsumed = contract.materials_consumed || {};
         const newConsumed = {};
         for (const [mat, total] of Object.entries(reqMaterials)) {
-            newConsumed[mat] = Math.min(Number(total), Math.floor(Number(total) * progressPct));
+            const targetConsumed = Math.min(Number(total), Math.floor(Number(total) * progressPct));
+            const prevMatConsumed = Number(prevConsumed[mat] || 0);
+            const delta = targetConsumed - prevMatConsumed;
+            newConsumed[mat] = targetConsumed;
+
+            // Update allocation consumed counts if delta > 0
+            if (delta > 0) {
+                // Distribute consumption across quality tiers (consume STD first, then LOW, then HIGH)
+                const tierOrder = ['STD', 'LOW', 'HIGH'];
+                let remaining = delta;
+                for (const tier of tierOrder) {
+                    if (remaining <= 0) break;
+                    const allocRows = allAllocations.filter(a =>
+                        a.contract_id === contract.id && a.material_key === mat && a.quality_tier === tier);
+                    for (const row of allocRows) {
+                        if (remaining <= 0) break;
+                        const available = row.quantity - row.consumed;
+                        if (available <= 0) continue;
+                        const consume = Math.min(remaining, available);
+                        await supabase.from('project_material_allocations')
+                            .update({ consumed: row.consumed + consume })
+                            .eq('contract_id', contract.id)
+                            .eq('material_key', mat)
+                            .eq('quality_tier', tier);
+                        row.consumed += consume; // update in-memory too
+                        remaining -= consume;
+                    }
+                }
+            }
         }
-        // Only update if changed
         if (JSON.stringify(newConsumed) !== JSON.stringify(prevConsumed)) {
             tickUpdates.materials_consumed = newConsumed;
         }
