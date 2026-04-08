@@ -9368,6 +9368,18 @@ async function resolveReferendums(supabase, nation, currentTick) {
     const results = [];
 
     for (const bill of pendingBills) {
+        // ── Edge case: proposer disbanded during referendum → auto-fail ──
+        if (bill.proposed_by) {
+            const { data: proposer } = await supabase.from('factions').select('id').eq('id', bill.proposed_by).maybeSingle();
+            if (!proposer) {
+                console.log(`[resolveReferendums] Proposer ${bill.proposed_by} disbanded — auto-failing ${bill.bill_name}`);
+                await supabase.from('bills').update({ status: 'failed', referendum_status: 'resolved', referendum_yes_pct: 0, referendum_no_pct: 100, referendum_turnout_pct: 0 }).eq('id', bill.id);
+                await fireBillEvent(supabase, 'referendum_rejected', bill, { currentTick, nationName: nation.name, yesPct: 0, noPct: 100, turnout: 0 });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_proposer_disbanded' });
+                continue;
+            }
+        }
+
         // ── Gather nation stats ──
         var govApproval = Number(nation.gov_approval ?? 50);
         var civilUnrest = Number(nation.civil_unrest ?? 30);

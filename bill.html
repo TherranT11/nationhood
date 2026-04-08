@@ -302,7 +302,11 @@ function _getCompatiblePolicies(sector) {
     // Also exclude policies already enacted as active laws (can't propose what's already law)
     const activeLawPolicyIds = nationActiveLaws.map(l => l.policy_id).filter(Boolean);
     const allExcluded = [...excludeIds, ...struckIds, ...activeLawPolicyIds];
-    return getCompatiblePolicies(sector, allPolicies, currentFaction, allExcluded);
+    let policies = getCompatiblePolicies(sector, allPolicies, currentFaction, allExcluded);
+    // Foundational bills can only contain structural articles; non-foundational bills cannot contain structural articles
+    const isFoundational = currentBill?.bill_type === 'foundational';
+    policies = policies.filter(p => isFoundational ? p.policy_type === 'structural' : p.policy_type !== 'structural');
+    return policies;
 }
 
 initPage('laws', async (state) => {
@@ -782,7 +786,11 @@ function renderBill() {
         : '<div style="color:var(--red);font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or a simple majority of seats to send this to the floor.</div>');
 
     const retractBtn = '<button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>';
-    el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">Send to Floor</button>${retractBtn}` + reason;
+    let referendumNote = '';
+    if (isFoundational) {
+        referendumNote = '<div style="color:var(--purple);font-size:0.78rem;margin-top:10px;text-align:center;">🗳 If passed, this bill will go to a <strong>Constitutional Referendum</strong> — the electorate must approve it.</div>';
+    }
+    el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">${isFoundational ? 'Send to Floor → Referendum' : 'Send to Floor'}</button>${retractBtn}` + reason + referendumNote;
 }
     }
 
@@ -3214,6 +3222,16 @@ async function submitSponsorAddArticle() {
     if ((!sponsorSelectedPolicy && !selectedRepealLaw) || !currentFaction) return;
     if (sponsorSelectedPolicy && (currentBill.struck_policy_ids || []).includes(sponsorSelectedPolicy.id)) {
         alert('This policy was struck from the bill and cannot be re-added.'); return;
+    }
+    // Foundational bills can only contain structural policies; non-foundational cannot contain structural
+    if (sponsorSelectedPolicy) {
+        const isFoundational = currentBill?.bill_type === 'foundational';
+        if (isFoundational && sponsorSelectedPolicy.policy_type !== 'structural') {
+            alert('Foundational bills can only contain structural articles.'); return;
+        }
+        if (!isFoundational && sponsorSelectedPolicy.policy_type === 'structural') {
+            alert('Structural policies can only be added to foundational bills.'); return;
+        }
     }
     _billArticleLock = true;
     let paidArticleAP = false;
