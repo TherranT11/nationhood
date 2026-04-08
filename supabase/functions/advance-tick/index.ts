@@ -13202,8 +13202,8 @@ async function processElections(supabase, nation, currentTick) {
             }
 
             await processPresidentialElectionResult(supabase, nation, completedElection, currentTick, election.id);
-        } else if (isPresidential && electionType === 'parliamentary' && !isSemiPresidential(nation)) {
-            // Pure Presidential midterm parliamentary election — seats reshuffled, president stays, desk bills remain
+        } else if (isPresidential && electionType === 'parliamentary') {
+            // Presidential/Semi-Presidential midterm parliamentary election — seats reshuffled, president stays, desk bills remain
             console.log(`Midterm parliamentary election for ${nation.name} — president stays in office`);
         } else {
             // === PARLIAMENTARY DEMOCRACY: dissolve existing government after election ===
