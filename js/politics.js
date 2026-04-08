@@ -2525,12 +2525,13 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
     const f = faction;
     const n = nation;
 
-    // Refresh faction AP
+    // Refresh faction AP and last_action_tick (for Quick Study trait discount accuracy)
     const { data: freshF } = await _supabase.from('factions')
-        .select('action_points, party_funds').eq('id', f.id).single();
+        .select('action_points, party_funds, last_action_tick').eq('id', f.id).single();
     if (freshF) {
         f.action_points = freshF.action_points;
         f.party_funds = freshF.party_funds;
+        f.last_action_tick = freshF.last_action_tick;
     }
     const ap = f.action_points ?? 0;
 
@@ -2762,7 +2763,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
 
             let displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'outreach' ? (3 + (_caOutreachEscalation || 0)) : act.id === 'rally' ? (RALLY_CONFIG.AP_COST + (_caRallyEscalation || 0)) : act.id === 'press_conference' ? (1 + (_caPressEscalation || 0)) : act.ap;
             // Apply leader trait modifiers to displayed cost
-            if (['outreach', 'press_conference', 'rally'].includes(act.id) && f.leader_positive_traits) {
+            if (['outreach', 'press_conference', 'rally', 'attack'].includes(act.id) && f.leader_positive_traits) {
                 displayCost = Math.max(1, displayCost + getTraitAPModifier(act.id, f, tick));
             }
             const dbActionType = act.id;
@@ -4073,8 +4074,10 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
             // Escalating cost: base 1 AP + escalation (+1 per use, -1 per tick)
             const { deductAP } = await import('./game/config.js');
             const { getTraitAPModifier: _getTraitModPC } = await import('./game/party-leadership.js');
-            const pressCost = Math.max(1, 1 + (_caPressEscalation || 0) + _getTraitModPC('press_conference', f, tick));
-            const apResult = await deductAP(_supabase, f.id, pressCost, { reason: 'press_conference', detail: 'Press Conference', tick });
+            const _pcTraitMod = _getTraitModPC('press_conference', f, tick);
+            const pressCost = Math.max(1, 1 + (_caPressEscalation || 0) + _pcTraitMod);
+            const pressDetail = 'Press Conference' + (_pcTraitMod !== 0 ? ' (trait ' + (_pcTraitMod > 0 ? '+' : '') + _pcTraitMod + ')' : '');
+            const apResult = await deductAP(_supabase, f.id, pressCost, { reason: 'press_conference', detail: pressDetail, tick });
             if (!apResult.success) { result = { success: false, error: apResult.error || 'Insufficient AP' }; }
             else {
                 let baseRoll = Math.floor(Math.random() * 5) - 2; // -2 to +2
