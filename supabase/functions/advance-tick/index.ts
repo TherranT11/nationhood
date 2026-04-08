@@ -4443,8 +4443,7 @@ async function adjustGovernmentApprovalEvent(supabase, nationId, amount, source)
 
     // Audit log (non-fatal — table may not exist if migration not applied)
     try {
-        const { data: shard } = await supabase
-            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const shard = _shardCache;
         await supabase.from('gov_approval_log').insert({
             nation_id: nationId,
             amount,
@@ -7041,11 +7040,7 @@ async function expireCommitteeBills(supabase, nationId, currentTick) {
  * Must run BEFORE resolveExpiredVotes each tick.
  */
 async function checkEarlyMajority(supabase, nationId) {
-    const { data: shard } = await supabase
-        .from('shard')
-        .select('current_tick')
-        .eq('name', 'Alpha Shard')
-        .single();
+    const shard = _shardCache;
     if (!shard) return [];
     const currentTick = shard.current_tick;
 
@@ -7191,11 +7186,7 @@ async function checkEarlyMajority(supabase, nationId) {
 }
 
 async function resolveExpiredVotes(supabase, nationId) {
-    const { data: shard } = await supabase
-        .from('shard')
-        .select('current_tick')
-        .eq('name', 'Alpha Shard')
-        .single();
+    const shard = _shardCache;
     if (!shard) return [];
     const currentTick = shard.current_tick;
 
@@ -8530,7 +8521,7 @@ async function resolveStuckRatifications(supabase, nationId) {
 
         if (!stuckNegs || stuckNegs.length === 0) return;
 
-        const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const shard = _shardCache;
         const currentTick = shard?.current_tick || 0;
 
         for (const neg of stuckNegs) {
@@ -8596,11 +8587,7 @@ async function resolveStuckRatifications(supabase, nationId) {
  * block all bills.
  */
 async function resolveStuckFloorBills(supabase, nationId) {
-    const { data: shard } = await supabase
-        .from('shard')
-        .select('current_tick')
-        .eq('name', 'Alpha Shard')
-        .single();
+    const shard = _shardCache;
     if (!shard) return [];
     const currentTick = shard.current_tick;
 
@@ -9693,7 +9680,7 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             if (candErr) console.error('[enactFoundationalBill] Failed to clean presidential candidates:', candErr.message);
 
             // Close administration
-            const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+            const shardData = _shardCache;
             const dateStr = shardData?.current_date || '';
             const { error: adminErr } = await supabase.from('administrations')
                 .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'constitutional_transition' })
@@ -10069,7 +10056,7 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
                 if (candErr) console.error('[enactFoundationalBill] Failed to clean presidential candidates:', candErr.message);
 
                 // Close administration for transition
-                const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                const shardData = _shardCache;
                 const dateStr = shardData?.current_date || '';
                 await supabase.from('administrations')
                     .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'constitutional_transition' })
@@ -11605,7 +11592,7 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
             // Close the current administration before dissolving
             try {
                 const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
-                const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                const shard = _shardCache;
                 if (fullNation) {
                     await closeAdministration(supabase, nationId, fullNation, 'coalition_collapse', currentTick, shard?.current_date || '', null);
                 }
@@ -11733,11 +11720,7 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
     }
 
     // 1. Get current tick
-    const { data: shard } = await supabase
-        .from('shard')
-        .select('current_tick')
-        .eq('name', 'Alpha Shard')
-        .single();
+    const shard = _shardCache;
     const currentTick = shard?.current_tick || 0;
 
     // 1b. Cooldown: can't call within 6 ticks of the last election
@@ -11882,7 +11865,7 @@ async function dissolveParliament(supabase, nationId, presidentFactionId) {
 
     if (!isSemiPresidential(nation)) throw new Error('Dissolve Parliament is only available in Semi-Presidential systems');
 
-    const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const shard = _shardCache;
     const currentTick = shard?.current_tick || 0;
 
     // Cooldown: 24 ticks since last dissolution
@@ -12500,7 +12483,7 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
     if (Number.isInteger(options.currentTick)) {
         currentTick = options.currentTick;
     } else {
-        const { data: _shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const _shard = _shardCache;
         currentTick = _shard?.current_tick || 0;
     }
 
@@ -12643,7 +12626,7 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
 
             try {
                 const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
-                const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                const shardData = _shardCache;
                 if (fullNation) {
                     await closeAdministration(supabase, nation.id, fullNation, 'dissolved', currentTick, shardData?.current_date || '', null);
                 }
@@ -12953,7 +12936,7 @@ async function processElections(supabase, nation, currentTick) {
                 // Close the administration
                 try {
                     const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
-                    const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                    const shardData = _shardCache;
                     if (fullNation) {
                         await closeAdministration(supabase, nation.id, fullNation, 'dissolved', currentTick, shardData?.current_date || '', null);
                     }
@@ -13543,7 +13526,7 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
 
     // Get faction info for administration record
     const { data: faction } = await supabase.from('factions').select('faction_name, seats, approval_rating').eq('id', factionId).single();
-    const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+    const shardData = _shardCache;
     const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
 
     // For presidential systems, fetch latest parliamentary election seats (more reliable than faction.seats)
@@ -13820,7 +13803,7 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
     }
 
     // Get current tick
-    const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const shard = _shardCache;
     const currentTick = shard?.current_tick || 0;
 
     // Write pending minister data to the ministry row
@@ -13982,7 +13965,7 @@ async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
     const { data: nationData } = await supabase.from('nations').select('total_seats').eq('id', bill.nation_id).single();
     const nationTotalSeats = nationData?.total_seats || GAME_CONFIG.TOTAL_SEATS;
 
-    const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const shard = _shardCache;
     const currentTick = shard?.current_tick || 0;
 
     // Mark bill as vetoed
@@ -14377,7 +14360,7 @@ async function rejectOwnNomination(supabase, billId, nomineePartyId) {
 
     // 4. Fire system event
     try {
-        const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const shard = _shardCache;
         await fireBillEvent(supabase, 'bill_failed', bill, { currentTick: shard?.current_tick || 0, votesFor: 0, votesAgainst: 0, votesAbstain: 0, sponsor: 'President', billNameOverride: bill.bill_name + ' (Nominee declined)' });
     } catch (e) { /* non-blocking */ }
 
@@ -22262,7 +22245,7 @@ async function processGovernmentCollapseCheck(supabase, nation, currentTick) {
 
         // Close administration
         try {
-            const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+            const shard = _shardCache;
             await closeAdministration(supabase, nation.id, nation, 'collapsed', currentTick, shard?.current_date || '', null);
         } catch (e) { console.warn('[GovCollapse] closeAdministration failed:', e); }
 
@@ -23651,7 +23634,7 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
     console.log('PM resignation — dissolving coalition and scheduling immediate election');
     try {
         const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
-        const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+        const shard = _shardCache;
         if (fullNation) {
             await closeAdministration(supabase, nationId, fullNation, 'pm_resignation', currentTick, shard?.current_date || '', null);
         }
@@ -24283,9 +24266,7 @@ async function runElectionPreview(supabase, nationId) {
     const eligibleVoters = nation.eligible_voters || 0;
 
     // 2. Load parties (exclude inactive ≥12 ticks)
-    const { data: shard } = await supabase
-        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = _shardCache.current_tick || 0;
     const { data: allFactions } = await supabase
         .from('factions')
         .select('id, faction_name, seats, electability, last_seen_tick, founded_tick, abandoned_at')
@@ -24543,9 +24524,7 @@ async function runPresidentialElectionPreview(supabase, nationId) {
 
     // 3. Load faction data + ideology axes for each candidate's party
     //    Filter out candidates whose factions are inactive ≥12 ticks
-    const { data: shardData } = await supabase
-        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const presTick = shardData?.current_tick || 0;
+    const presTick = _shardCache.current_tick || 0;
     const allFactionIds = [...new Set(candidates.map(c => c.faction_id))];
     const { data: factions } = await supabase
         .from('factions')
@@ -31630,6 +31609,10 @@ async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
 
 // ==================== ADVANCE TICK ====================
 
+// Module-level shard cache — set once at start of advanceTick(), used by all functions
+// to avoid re-querying the shard table. Saves 20+ queries per tick.
+let _shardCache = { current_tick: 0, current_date: '' };
+
 async function advanceTick(supabase, { force = false, reprocess = false } = {}) {
     // 1. Pre-compute next tick metadata
     const { data: shard } = await supabase
@@ -31653,6 +31636,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
         'July', 'August', 'September', 'October', 'November', 'December'];
     const newDate = `${MONTHS[newTick % 12]}, ${2000 + Math.floor(newTick / 12)}`;
+
+    // Set module-level shard cache so all functions can use it without re-querying
+    _shardCache = { current_tick: newTick, current_date: newDate };
 
     // 2. Load all nations
     const { data: nations } = await supabase.from('nations').select('*');
@@ -32114,7 +32100,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         .select('first_name, last_name, faction_id, appointed_tick')
                         .eq('nation_id', nation.id).eq('active', true).maybeSingle();
                     if (hog) {
-                        const { data: shardDate } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                        const shardDate = _shardCache;
                         await supabase.from('administrations').insert({
                             nation_id: nation.id,
                             admin_name: (hog.last_name || 'Interim') + ' Administration',
@@ -32270,7 +32256,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
                     // Close current administration
                     try {
-                        const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                        const shard = _shardCache;
                         await closeAdministration(supabase, nation.id, nation, 'impeachment', newTick, shard?.current_date || '', null);
                     } catch (adminErr) { console.warn('Could not close administration on impeachment:', adminErr); }
 
