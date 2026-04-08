@@ -9347,6 +9347,162 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
     }
 }
 
+// ==================== CONSTITUTIONAL REFERENDUM RESOLUTION ====================
+
+/**
+ * Resolve pending constitutional referendums (1 tick after referendum_start_tick).
+ * Calculates YES/NO based on nation stats, proposer credibility, and crises.
+ * YES > 50% → enact the foundational bill. NO ≥ 50% → bill fails.
+ */
+async function resolveReferendums(supabase, nation, currentTick) {
+    const { data: pendingBills, error } = await supabase
+        .from('bills')
+        .select('id, bill_name, proposed_by, referendum_start_tick, bill_type, proposed_seats, proposed_term_length, proposed_constitutional_reform, proposed_constitutional_amendment_streamlining, entrenchment_tier, bill_articles(*, policies(*))')
+        .eq('nation_id', nation.id)
+        .eq('status', 'referendum_pending')
+        .eq('referendum_status', 'pending')
+        .lte('referendum_start_tick', currentTick - 1);
+
+    if (error || !pendingBills || pendingBills.length === 0) return [];
+
+    const results = [];
+
+    for (const bill of pendingBills) {
+        // ── Gather nation stats ──
+        var govApproval = Number(nation.gov_approval ?? 50);
+        var civilUnrest = Number(nation.civil_unrest ?? 30);
+        var polarization = Number(nation.polarization ?? 50);
+        var happiness = Number(nation.happiness ?? 50);
+        var stability = Number(nation.stability ?? 50);
+        var sol = Number(nation.standard_of_living ?? 50);
+        var gdpGrowth = Number(nation.gdp_growth ?? 0);
+
+        // ── Count active crises (incidents) ──
+        var crisisCount = 0;
+        try {
+            const { count } = await supabase
+                .from('incidents')
+                .select('id', { count: 'exact', head: true })
+                .or(`nation_a_id.eq.${nation.id},nation_b_id.eq.${nation.id}`)
+                .in('status', ['active', 'mediating']);
+            crisisCount = count || 0;
+        } catch (_) {}
+
+        // ── Proposer approval ──
+        var proposerApproval = 50;
+        if (bill.proposed_by) {
+            try {
+                const { data: standing } = await supabase
+                    .from('faction_electoral_standing')
+                    .select('party_approval')
+                    .eq('faction_id', bill.proposed_by)
+                    .maybeSingle();
+                if (standing) proposerApproval = Number(standing.party_approval ?? 50);
+            } catch (_) {}
+        }
+
+        // ── Recent referendum fatigue ──
+        var fatiguePenalty = 0;
+        try {
+            const { count: recentCount } = await supabase
+                .from('bills')
+                .select('id', { count: 'exact', head: true })
+                .eq('nation_id', nation.id)
+                .eq('referendum_status', 'resolved')
+                .gte('referendum_start_tick', currentTick - 24);
+            if (recentCount && recentCount > 0) fatiguePenalty = 10;
+        } catch (_) {}
+
+        // ── Calculate YES percentage ──
+        // Base 50%, modified by nation conditions
+        var yesPct = 50;
+
+        // Dissatisfaction → want change (YES)
+        yesPct += Math.max(0, (50 - govApproval)) * 0.3;       // low approval: max +15
+        yesPct += Math.max(0, (civilUnrest - 50)) * 0.2;        // high unrest: max +10
+        yesPct += crisisCount * 5;                                // each crisis: +5
+        yesPct += Math.max(0, (polarization - 50)) * 0.15;      // high polarization: max +7.5
+        yesPct += Math.max(0, (50 - happiness)) * 0.15;         // low happiness: max +7.5
+
+        // Proposer credibility
+        yesPct += (proposerApproval - 50) * 0.2;                // popular proposer: max +10
+
+        // Stability → resist change (NO)
+        yesPct -= Math.max(0, (stability - 50)) * 0.2;          // high stability: max -10
+        yesPct -= Math.max(0, (sol - 50)) * 0.15;               // high SOL: max -7.5
+        yesPct -= Math.max(0, gdpGrowth) * 5;                   // growing economy: max -5
+
+        // Fatigue penalty
+        yesPct -= fatiguePenalty;                                  // recent referendum: -10
+
+        // Clamp and add noise
+        yesPct = Math.max(15, Math.min(85, yesPct));
+        yesPct += (Math.random() - 0.5) * 10;                   // ±5 noise
+        yesPct = Math.round(Math.max(5, Math.min(95, yesPct)) * 10) / 10;
+
+        var noPct = Math.round((100 - yesPct) * 10) / 10;
+
+        // ── Calculate turnout ──
+        var turnout = 30;
+        turnout += Math.max(0, (polarization - 50)) * 0.2;      // max +10
+        turnout += crisisCount * 3;                               // each crisis: +3
+        turnout += Math.max(0, (civilUnrest - 50)) * 0.1;       // max +5
+        turnout = Math.max(20, Math.min(45, turnout));
+        turnout = Math.round((turnout + (Math.random() - 0.5) * 4) * 10) / 10;
+        turnout = Math.max(15, Math.min(50, turnout));
+
+        // ── Determine outcome ──
+        var passed = yesPct > 50;
+
+        console.log(`[resolveReferendums] ${bill.bill_name}: YES=${yesPct}% NO=${noPct}% turnout=${turnout}% → ${passed ? 'APPROVED' : 'REJECTED'} (govApproval=${govApproval}, unrest=${civilUnrest}, crises=${crisisCount}, proposerApproval=${proposerApproval})`);
+
+        if (passed) {
+            // Referendum approved — enact the foundational bill
+            await supabase.from('bills').update({
+                status: 'passed',
+                referendum_status: 'resolved',
+                referendum_yes_pct: yesPct,
+                referendum_no_pct: noPct,
+                referendum_turnout_pct: turnout
+            }).eq('id', bill.id);
+
+            var enacted = await enactFoundationalBill(supabase, bill, currentTick);
+            if (!enacted) {
+                await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
+            }
+
+            await fireBillEvent(supabase, 'referendum_approved', bill, {
+                currentTick, nationName: nation.name,
+                yesPct, noPct, turnout,
+                articleCount: (bill.bill_articles || []).length
+            });
+        } else {
+            // Referendum rejected — bill fails
+            await supabase.from('bills').update({
+                status: 'failed',
+                referendum_status: 'resolved',
+                referendum_yes_pct: yesPct,
+                referendum_no_pct: noPct,
+                referendum_turnout_pct: turnout
+            }).eq('id', bill.id);
+
+            await fireBillEvent(supabase, 'referendum_rejected', bill, {
+                currentTick, nationName: nation.name,
+                yesPct, noPct, turnout
+            });
+        }
+
+        results.push({
+            billId: bill.id,
+            billName: bill.bill_name,
+            result: passed ? 'approved' : 'rejected',
+            yesPct, noPct, turnout
+        });
+    }
+
+    return results;
+}
+
 // ==================== FOUNDATIONAL BILL ENACTMENT ====================
 
 async function enactFoundationalBill(supabase, bill, currentTick) {
@@ -31827,6 +31983,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
         } catch (resolveErr) {
             console.error(`[advanceTick] resolveExpiredVotes failed for ${nation.name} (non-fatal):`, resolveErr);
+        }
+
+        // Resolve constitutional referendums (1 tick after referendum_start_tick)
+        try {
+            const referendumResults = await resolveReferendums(supabase, nation, currentTick);
+            if (referendumResults.length > 0) {
+                summary.referendums = summary.referendums || [];
+                summary.referendums.push({ nation: nation.name, results: referendumResults });
+            }
+        } catch (refErr) {
+            console.error(`[advanceTick] resolveReferendums failed for ${nation.name} (non-fatal):`, refErr);
         }
 
         // Safety net: catch any floor bills that resolveExpiredVotes missed
