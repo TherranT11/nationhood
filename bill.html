@@ -515,11 +515,12 @@ function renderBill() {
     const isFloor = bill.status === 'floor';
     const isFrozen = bill.status === 'frozen';
     const isPresidentDesk = bill.status === 'president_desk';
+    const isReferendum = bill.status === 'referendum_pending';
 
-    document.getElementById('bill-header').className = `bill-header ${bill.status === 'president_desk' ? 'floor' : bill.status}`;
+    document.getElementById('bill-header').className = `bill-header ${bill.status === 'president_desk' ? 'floor' : isReferendum ? 'floor' : bill.status}`;
     const statusEl = document.getElementById('bill-status');
-    statusEl.textContent = isPresidentDesk ? "PRESIDENT'S DESK" : bill.status.toUpperCase();
-    statusEl.className = `bill-status ${isPresidentDesk ? 'president_desk' : bill.status}`;
+    statusEl.textContent = isPresidentDesk ? "PRESIDENT'S DESK" : isReferendum ? 'REFERENDUM' : bill.status.toUpperCase();
+    statusEl.className = `bill-status ${isPresidentDesk ? 'president_desk' : isReferendum ? 'referendum_pending' : bill.status}`;
     document.getElementById('bill-title').textContent = bill.bill_name || 'Unnamed Bill';
     if (bill.bill_type === 'no_confidence') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal">⚡ No Confidence</span>';
@@ -650,6 +651,43 @@ function renderBill() {
         renderArticles();
         renderSidebar();
         return; // No voting on desk bills
+    }
+
+    // ── Constitutional Referendum pending ──
+    if (isReferendum) {
+        // Remove any stale referendum banner
+        document.querySelectorAll('.referendum-banner').forEach(el => el.remove());
+
+        const refBanner = document.createElement('div');
+        refBanner.className = 'referendum-banner';
+        refBanner.style.cssText = 'background:rgba(128,90,213,0.12);border:1px solid rgba(128,90,213,0.3);padding:20px;margin:16px 0;text-align:center;border-radius:4px;';
+
+        let refHtml = `
+            <div style="font-size:1.1rem;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:1.5px;">🗳 Constitutional Referendum</div>
+            <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:8px;">
+                This foundational law has passed the legislature and now goes to a popular vote.<br>
+                The electorate will decide next tick. Results based on national conditions.
+            </div>
+        `;
+
+        if (isSponsor) {
+            refHtml += `
+                <div style="margin-top:16px;border-top:1px solid rgba(128,90,213,0.2);padding-top:14px;">
+                    <div style="font-size:0.78rem;color:var(--red);margin-bottom:10px;">
+                        <strong>Override Referendum:</strong> Force this bill through without popular approval.<br>
+                        Cost: <strong>-10 Momentum</strong> (you), <strong>-8 Gov Approval</strong>, <strong>-7 Momentum</strong> (all YES voters). No passage momentum awarded.
+                    </div>
+                    <button onclick="overrideReferendum()" style="padding:10px 28px;background:var(--red);color:#fff;border:none;border-radius:3px;font-weight:bold;font-size:0.85rem;cursor:pointer;">⚠ Override Referendum — Bypass Popular Vote</button>
+                </div>
+            `;
+        }
+
+        const header = document.getElementById('bill-header');
+        header.parentNode.insertBefore(refBanner, header.nextSibling);
+
+        renderArticles();
+        renderSidebar();
+        return; // No voting during referendum
     }
 
     renderArticles();
@@ -3539,6 +3577,80 @@ window.signBillAction = signBillAction;
 window.vetoBillAction = vetoBillAction;
 window.retractBill = retractBill;
 window.sendToFloor = sendToFloor;
+window.overrideReferendum = overrideReferendum;
+
+// ── Override Referendum: bypass popular vote at massive political cost ──
+async function overrideReferendum() {
+    const bill = currentBill;
+    if (!bill || bill.status !== 'referendum_pending') return;
+    if (bill.proposed_by !== currentFaction?.id) {
+        alert('Only the sponsoring party can override the referendum.');
+        return;
+    }
+
+    if (!confirm(
+        'OVERRIDE REFERENDUM\n\n' +
+        'This will bypass the popular vote and force the bill through.\n\n' +
+        'Costs:\n' +
+        '  • You: -10 Momentum\n' +
+        '  • Your nation: -8 Government Approval\n' +
+        '  • Every YES voter: -7 Momentum\n' +
+        '  • No momentum awarded for passage\n\n' +
+        'This cannot be undone. Proceed?'
+    )) return;
+
+    try {
+        const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shardData?.current_tick || 0;
+
+        // 1. Proposer loses 10 momentum
+        await _supabase.rpc('adjust_momentum', {
+            p_faction_id: bill.proposed_by,
+            p_delta: -10,
+            p_label: 'Referendum override — sponsor penalty (-10)',
+            p_tick: tick
+        });
+
+        // 2. Nation loses 8 government approval
+        const currentApproval = Number(currentNation?.gov_approval ?? 50);
+        const newApproval = Math.max(0, currentApproval - 8);
+        await _supabase.from('nations').update({ gov_approval: newApproval }).eq('id', bill.nation_id);
+
+        // 3. Every YES voter loses 7 momentum
+        const yesVoters = (bill.bill_support || []).filter(s => s.stance === 'accept' && s.faction_id !== bill.proposed_by);
+        for (const v of yesVoters) {
+            await _supabase.rpc('adjust_momentum', {
+                p_faction_id: v.faction_id,
+                p_delta: -7,
+                p_label: 'Referendum override — YES voter penalty (-7)',
+                p_tick: tick
+            });
+        }
+
+        // 4. Mark bill as passed with referendum skipped (no momentum awarded)
+        await _supabase.from('bills').update({
+            status: 'passed',
+            passed_tick: tick,
+            referendum_status: 'skipped'
+        }).eq('id', bill.id);
+
+        // 5. Fire news event
+        await _supabase.from('events').insert({
+            nation_id: bill.nation_id,
+            event_type: 'referendum_overridden',
+            event_text: `${currentFaction.faction_name} forced "${bill.bill_name}" through without referendum — democratic process bypassed.`,
+            tick: tick,
+            metadata: { bill_id: bill.id, sponsor_id: bill.proposed_by }
+        });
+
+        alert('Referendum overridden. The bill will be enacted at the next tick.\n\nPolitical costs applied.');
+        window.location.reload();
+
+    } catch (err) {
+        console.error('[overrideReferendum] Error:', err);
+        alert('Override failed: ' + (err.message || 'Unknown error'));
+    }
+}
 window.respondToAmendment = respondToAmendment;
 window.withdrawConditionalSupport = withdrawConditionalSupport;
 window.setCommitteeStance = setCommitteeStance;

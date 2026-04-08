@@ -9500,6 +9500,24 @@ async function resolveReferendums(supabase, nation, currentTick) {
         });
     }
 
+    // ── Enact skipped referendums (override path — bill set to 'passed' by client) ──
+    const { data: skippedBills } = await supabase
+        .from('bills')
+        .select('id, bill_name, proposed_by, bill_type, proposed_seats, proposed_term_length, proposed_constitutional_reform, proposed_constitutional_amendment_streamlining, entrenchment_tier, bill_articles(*, policies(*))')
+        .eq('nation_id', nation.id)
+        .eq('status', 'passed')
+        .eq('bill_type', 'foundational')
+        .eq('referendum_status', 'skipped');
+
+    for (const bill of (skippedBills || [])) {
+        console.log(`[resolveReferendums] Enacting overridden bill: ${bill.bill_name}`);
+        var enacted = await enactFoundationalBill(supabase, bill, currentTick);
+        if (!enacted) {
+            await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
+        }
+        results.push({ billId: bill.id, billName: bill.bill_name, result: enacted ? 'override_enacted' : 'override_failed' });
+    }
+
     return results;
 }
 
