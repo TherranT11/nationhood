@@ -325,20 +325,9 @@ export async function loadGameState(requireFaction = true) {
         if (nation) faction.nation = nation.name;
     }
 
-    // Inject admin viewing banner when any override is active
+    // Admin override banner removed — admin viewing is logged in console only
     if (overrideNationId || overrideFactionId) {
-        setTimeout(() => {
-            if (!document.getElementById('admin-override-banner')) {
-                const banner = document.createElement('div');
-                banner.id = 'admin-override-banner';
-                banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#8B0000,#cc3300);color:#fff;text-align:center;padding:6px 12px;font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.9;pointer-events:none;';
-                const parts = [];
-                if (nation) parts.push('Nation: ' + nation.name);
-                if (overrideFactionId && faction) parts.push('Faction: ' + faction.faction_name);
-                banner.textContent = '⚠ ADMIN VIEWING — ' + parts.join(' · ') + ' — DO NOT TAKE ACTIONS';
-                document.body.prepend(banner);
-            }
-        }, 100);
+        console.log('Admin override:', overrideNationId ? 'nation=' + (nation?.name || overrideNationId) : '', overrideFactionId ? 'faction=' + (faction?.faction_name || overrideFactionId) : '');
     }
 
     // Update last_seen_tick for inactivity tracking (fire-and-forget)
