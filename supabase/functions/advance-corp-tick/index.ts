@@ -280,6 +280,75 @@ PHASE_WINDOW_LOOKUP.EARLY_MID = [...new Set([...PHASE_WINDOWS.EARLY, ...PHASE_WI
 // ── CHOICE EVENTS (E1-E10): Placeholder — Phase 2 will add these ──
 const CHOICE_EVENTS = [];
 
+// ── REGULATORY & MATERIAL QUALITY EVENTS ──
+// These fire based on missing permits and low-quality material usage.
+// They are checked separately from the probability-based notification events
+// because they require permit and material data not available in the template system.
+const REGULATORY_EVENTS = {
+    // Missing permits
+    regulatory_inspection: {
+        key: 'regulatory_inspection',
+        name: 'Regulatory Compliance Inspection',
+        severity: 'MODERATE',
+        description: 'A government inspector found the project operating without required permits.',
+        cost: 100000,
+        delay: 1,
+        quality: -2,
+        reputation: 0,
+    },
+    stop_work_order: {
+        key: 'stop_work_order',
+        name: 'Government Stop-Work Order',
+        severity: 'HIGH',
+        description: 'Multiple missing permits triggered an immediate stop-work order from the government.',
+        cost: 250000,
+        delay: 2,
+        quality: -5,
+        reputation: -3,
+    },
+    worker_whistleblower: {
+        key: 'worker_whistleblower',
+        name: 'Worker Safety Whistleblower',
+        severity: 'MODERATE',
+        description: 'Workers reported unsafe conditions due to missing safety permits. An investigation has been launched.',
+        cost: 50000,
+        delay: 1,
+        quality: -3,
+        reputation: -2,
+    },
+    // Material quality
+    material_defect_recall: {
+        key: 'material_defect_recall',
+        name: 'Material Defect Recall',
+        severity: 'MODERATE',
+        description: 'A supplier issued a recall on a batch of low-grade materials. Replacement required.',
+        cost: 150000,
+        delay: 1,
+        quality: -3,
+        reputation: 0,
+    },
+    foundation_subsidence: {
+        key: 'foundation_subsidence',
+        name: 'Foundation Subsidence',
+        severity: 'HIGH',
+        description: 'Low-grade concrete cracked under structural load, causing foundation settlement. Emergency remediation required.',
+        cost: 300000,
+        delay: 2,
+        quality: -8,
+        reputation: -1,
+    },
+    structural_integrity_failure: {
+        key: 'structural_integrity_failure',
+        name: 'Structural Integrity Failure',
+        severity: 'CRITICAL',
+        description: 'Widespread use of low-grade materials has compromised structural integrity. Emergency engineering review and reinforcement required.',
+        cost: 500000,
+        delay: 3,
+        quality: -15,
+        reputation: -5,
+    },
+};
+
 // Combined list for generation
 const ALL_EVENT_TEMPLATES = [...NOTIFICATION_EVENTS, ...CHOICE_EVENTS];
 
@@ -299,6 +368,13 @@ function getPhaseForProgress(progressPct) {
 async function generateConstructionContracts(supabase, nation, currentTick) {
     // Only generate every 3 ticks
     if (currentTick % 3 !== 0) return [];
+
+    // Load building modifier definitions once
+    let _buildingModifiers = null;
+    try {
+        const { data: modDefs } = await supabase.from('building_modifiers').select('*');
+        _buildingModifiers = modDefs || [];
+    } catch (_) { /* table may not exist yet */ }
 
     const gdp = Number(nation.gdp_growth ?? 50);
 
@@ -437,6 +513,41 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
         // Issuer: auto-generated contracts are private sector offerings
         const issuerName = PRIVATE_ISSUERS[Math.floor(Math.random() * PRIVATE_ISSUERS.length)];
 
+        // Roll building modifiers based on nation stats (0-3 per contract)
+        const contractModifiers = [];
+        if (_buildingModifiers) {
+            const eligible = _buildingModifiers.filter(m =>
+                m.category === 'site' || m.category === 'nation'
+            ).filter(m => {
+                // Check sector applicability
+                const appliesTo = m.applies_to || [];
+                if (!appliesTo.includes(sector)) return false;
+                // Check stat threshold
+                if (m.probability_stat) {
+                    const statVal = Number(nation[m.probability_stat] ?? 50);
+                    // For seismic_zone: low stability = higher chance (below threshold)
+                    if (m.modifier_key === 'seismic_zone') return statVal < m.probability_threshold;
+                    return statVal >= m.probability_threshold;
+                }
+                return m.probability_base > 0;
+            });
+            for (const mod of eligible) {
+                if (contractModifiers.length >= 3) break; // max 3 modifiers
+                if (Math.random() < (mod.probability_base || 0.1)) {
+                    contractModifiers.push(mod.modifier_key);
+                }
+            }
+        }
+
+        // Apply cost multiplier from modifiers
+        let modifiedBudget = budget;
+        if (_buildingModifiers && contractModifiers.length > 0) {
+            for (const mk of contractModifiers) {
+                const mod = _buildingModifiers.find(m => m.modifier_key === mk);
+                if (mod) modifiedBudget = Math.round(modifiedBudget * mod.cost_multiplier);
+            }
+        }
+
         const { data: contract, error } = await supabase.from('construction_contracts').insert({
             nation_id: nation.id,
             template_key: key,
@@ -444,11 +555,12 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
             name: tmpl.name,
             description: tmpl.desc,
             project_code: projectId,
-            budget_ceiling: budget,
+            budget_ceiling: modifiedBudget,
             timeline_ticks: timeline,
             required_materials: requiredMats,
             required_equipment: CC_REQUIREMENTS[key]?.equip || [],
             required_workforce: requiredWf,
+            modifiers: contractModifiers,
             status: 'open',
             generated_at_tick: currentTick,
             bidding_ends_tick: currentTick + 3,
@@ -918,11 +1030,18 @@ async function processActiveProjects(supabase, nationId, currentTick) {
     // 2. Process in_progress contracts
     const { data: activeContracts } = await supabase
         .from('construction_contracts')
-        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks, current_phase, sector, required_materials, required_equipment, required_workforce, materials_consumed, equipment_condition, workers_assigned')
+        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks, current_phase, sector, required_materials, required_equipment, required_workforce, materials_consumed, equipment_condition, workers_assigned, modifiers')
         .eq('nation_id', nationId)
         .eq('status', 'in_progress');
 
     if (!activeContracts || activeContracts.length === 0) return [];
+
+    // Load building modifier definitions for reputation/permit enforcement
+    let _modifierDefs = {};
+    try {
+        const { data: modRows } = await supabase.from('building_modifiers').select('modifier_key, name, reputation_bonus, required_permits, cost_multiplier');
+        for (const m of (modRows || [])) _modifierDefs[m.modifier_key] = m;
+    } catch (_) { /* table may not exist */ }
 
     // 3. Load ALL winning bids for active contracts to check workforce
     const contractIds = activeContracts.map(c => c.id);
@@ -1114,7 +1233,74 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             // Generate inspection report & delivery record
             const baseQuality = bid.estimated_quality || 65;
             const qualityVariance = Math.floor(Math.random() * 21) - 10;
-            const qualityScore = Math.max(0, Math.min(100, baseQuality + qualityVariance));
+
+            // Apply permit quality bonuses from active permits held by this corp
+            let permitQualityBonus = 0;
+            try {
+                const { data: corpActivePermits } = await supabase
+                    .from('corp_permits')
+                    .select('permit_key')
+                    .eq('faction_id', bid.faction_id)
+                    .eq('status', 'active');
+                if (corpActivePermits) {
+                    const { data: permitDefs } = await supabase.from('construction_permits')
+                        .select('permit_key, quality_bonus')
+                        .in('permit_key', corpActivePermits.map(p => p.permit_key));
+                    for (const d of (permitDefs || [])) {
+                        permitQualityBonus += d.quality_bonus || 0;
+                    }
+                }
+            } catch (_pqErr) { /* non-fatal */ }
+
+            // Apply material quality penalties based on LOW grade usage
+            let materialQualityPenalty = 0;
+            const bidGradesForQuality = bid.material_grades || {};
+            const gradeVals = Object.values(bidGradesForQuality);
+            const totalGrades = gradeVals.length;
+            const lowGradeCount = gradeVals.filter(g => g === 'LOW').length;
+            const lowGradePct = totalGrades > 0 ? lowGradeCount / totalGrades : 0;
+            if (lowGradePct >= 1.0) materialQualityPenalty = -25;       // 100% LOW
+            else if (lowGradePct >= 0.75) materialQualityPenalty = -20; // 75%+ LOW
+            else if (lowGradePct >= 0.5) materialQualityPenalty = -10;  // 50%+ LOW
+
+            // Missing required permits: additional inspection penalties
+            let missingPermitPenalty = 0;
+            let heldKeysDelivery = new Set();
+            try {
+                const { data: reqLawsDelivery } = await supabase
+                    .from('active_laws')
+                    .select('policies(permit_key)')
+                    .eq('nation_id', nationId)
+                    .not('policies.permit_key', 'is', null);
+                const reqKeysDelivery = new Set((reqLawsDelivery || []).map(l => l.policies?.permit_key).filter(Boolean));
+                const { data: heldAtDelivery } = await supabase.from('corp_permits')
+                    .select('permit_key').eq('faction_id', bid.faction_id).eq('status', 'active');
+                heldKeysDelivery = new Set((heldAtDelivery || []).map(p => p.permit_key));
+
+                for (const reqKey of reqKeysDelivery) {
+                    if (!heldKeysDelivery.has(reqKey)) {
+                        if (reqKey === 'municipal_zoning') missingPermitPenalty -= 100; // auto-FAIL
+                        else if (reqKey === 'structural_engineering') missingPermitPenalty -= 10;
+                        else if (reqKey === 'fire_safety') missingPermitPenalty -= 5;
+                        else missingPermitPenalty -= 2; // generic missing permit
+                    }
+                }
+            } catch (_mppErr) { /* non-fatal */ }
+
+            // Modifier-required permits: check permits demanded by this contract's modifiers
+            let modifierPermitPenalty = 0;
+            const contractModifiers = contract.modifiers || [];
+            for (const mk of contractModifiers) {
+                const mdef = _modifierDefs[mk];
+                if (!mdef) continue;
+                for (const pk of (mdef.required_permits || [])) {
+                    if (!heldKeysDelivery.has(pk)) {
+                        modifierPermitPenalty -= 5; // missing modifier-required permit
+                    }
+                }
+            }
+
+            const qualityScore = Math.max(0, Math.min(100, baseQuality + qualityVariance + permitQualityBonus + materialQualityPenalty + missingPermitPenalty + modifierPermitPenalty));
 
             let deliveryResult = 'PASS';
             let repChange = 2;
@@ -1124,6 +1310,14 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             else if (qualityScore >= 60) { deliveryResult = 'PASS'; repChange = 2; }
             else if (qualityScore >= 40) { deliveryResult = 'CONDITIONAL'; repChange = 0; penalties = Math.round(payment * 0.20); }
             else { deliveryResult = 'FAIL'; repChange = -3; penalties = Math.round(payment * 0.40); }
+
+            // Apply building modifier reputation bonuses/penalties at delivery
+            let modifierRepBonus = 0;
+            for (const mk of contractModifiers) {
+                const mdef = _modifierDefs[mk];
+                if (mdef) modifierRepBonus += mdef.reputation_bonus || 0;
+            }
+            repChange += modifierRepBonus;
 
             const actualPayment = payment + qualityBonus - penalties;
             const estCost = bid.estimated_cost || 0;
@@ -1226,7 +1420,62 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                 netProfit,
             });
 
-            console.log(`[Projects] ${contract.name}: ${deliveryResult} (quality=${qualityScore}, net=${netProfit > 0 ? '+' : ''}$${(netProfit / 1e6).toFixed(1)}M, rep=${repChange > 0 ? '+' : ''}${repChange})`);
+            console.log(`[Projects] ${contract.name}: ${deliveryResult} (quality=${qualityScore}, mat_penalty=${materialQualityPenalty}, permit_penalty=${missingPermitPenalty}, net=${netProfit > 0 ? '+' : ''}$${(netProfit / 1e6).toFixed(1)}M, rep=${repChange > 0 ? '+' : ''}${repChange})`);
+
+            // ── Post-Delivery: Catastrophic Building Collapse ──
+            // 100% LOW materials + quality < 40 = 10% chance the building collapses
+            // 75%+ LOW materials + quality < 30 = 5% chance
+            if (lowGradePct >= 1.0 && qualityScore < 40 && Math.random() < 0.10) {
+                console.log(`[Projects] *** BUILDING COLLAPSE *** ${contract.name} — 100% LOW materials, quality ${qualityScore}`);
+                // Refund contract value back to nation (corp must pay)
+                const collapseRefund = payment;
+                await supabase.from('factions').update({
+                    corp_cash_reserves: Math.max(0, Number((await supabase.from('factions').select('corp_cash_reserves').eq('id', bid.faction_id).single()).data?.corp_cash_reserves ?? 0) - collapseRefund),
+                    corp_reputation: Math.max(0, Number((await supabase.from('factions').select('corp_reputation').eq('id', bid.faction_id).single()).data?.corp_reputation ?? 65) - 10)
+                }).eq('id', bid.faction_id);
+
+                // Nation stat impact
+                await supabase.from('nations').update({
+                    stability: Math.max(2, Number(nation?.stability ?? 50) - 2),
+                    happiness: Math.max(2, Number(nation?.happiness ?? 50) - 3),
+                }).eq('id', nationId);
+
+                // Log the collapse as a construction event
+                await supabase.from('construction_events').insert({
+                    contract_id: contract.id,
+                    faction_id: bid.faction_id,
+                    nation_id: nationId,
+                    event_key: 'building_collapse',
+                    type: 'CATASTROPHIC',
+                    severity: 'CRITICAL',
+                    title: 'Catastrophic Building Collapse',
+                    description: `${contract.name} has collapsed due to widespread use of substandard materials. The contractor must refund the full contract value. Criminal investigation pending.`,
+                    impact: 'Building destroyed. Full refund required. Reputation devastated. Nation stability and happiness impacted.',
+                    responses: [{ key: 'acknowledge', label: 'Acknowledged', tag: 'CRITICAL', detail: 'Building collapsed', cost: collapseRefund, delay: 0, qualityImpact: -100 }],
+                    status: 'RESOLVED',
+                    fired_at_tick: currentTick,
+                    expires_at_tick: currentTick,
+                });
+
+                results[results.length - 1].collapsed = true;
+                results[results.length - 1].result = 'COLLAPSED';
+            } else if (lowGradePct >= 0.75 && qualityScore < 30 && Math.random() < 0.05) {
+                console.log(`[Projects] *** BUILDING COLLAPSE *** ${contract.name} — 75%+ LOW materials, quality ${qualityScore}`);
+                await supabase.from('factions').update({
+                    corp_reputation: Math.max(0, Number((await supabase.from('factions').select('corp_reputation').eq('id', bid.faction_id).single()).data?.corp_reputation ?? 65) - 8)
+                }).eq('id', bid.faction_id);
+
+                await supabase.from('construction_events').insert({
+                    contract_id: contract.id, faction_id: bid.faction_id, nation_id: nationId,
+                    event_key: 'building_collapse', type: 'CATASTROPHIC', severity: 'CRITICAL',
+                    title: 'Post-Delivery Structural Failure',
+                    description: `${contract.name} has experienced critical structural failure due to extensive use of low-grade materials.`,
+                    impact: 'Major structural damage. Reputation devastated.',
+                    responses: [{ key: 'acknowledge', label: 'Acknowledged', tag: 'CRITICAL', detail: 'Structural failure', cost: 0, delay: 0, qualityImpact: -50 }],
+                    status: 'RESOLVED', fired_at_tick: currentTick, expires_at_tick: currentTick,
+                });
+                results[results.length - 1].collapsed = true;
+            }
         }
     }
 
@@ -1263,6 +1512,37 @@ async function generateProjectEvents(supabase, nationId, currentTick) {
         .single();
     const ns = (key) => Number(nation?.[key] ?? 50);
 
+    // Load permit event modifiers for all corps with active projects
+    // Build: { factionId: { event_key: probability_multiplier } }
+    const _permitEventMods = {};
+    try {
+        const factionIds = [...new Set(contracts.map(c => c.awarded_to_faction).filter(Boolean))];
+        if (factionIds.length > 0) {
+            const { data: activePermits } = await supabase
+                .from('corp_permits')
+                .select('faction_id, permit_key')
+                .in('faction_id', factionIds)
+                .eq('status', 'active');
+            if (activePermits && activePermits.length > 0) {
+                const permitKeys = [...new Set(activePermits.map(p => p.permit_key))];
+                const { data: defs } = await supabase.from('construction_permits')
+                    .select('permit_key, event_modifiers')
+                    .in('permit_key', permitKeys);
+                const defModMap = {};
+                for (const d of (defs || [])) defModMap[d.permit_key] = d.event_modifiers || {};
+                for (const p of activePermits) {
+                    if (!_permitEventMods[p.faction_id]) _permitEventMods[p.faction_id] = {};
+                    const mods = defModMap[p.permit_key] || {};
+                    for (const [eventKey, multiplier] of Object.entries(mods)) {
+                        // Use lowest multiplier if multiple permits affect same event
+                        const current = _permitEventMods[p.faction_id][eventKey];
+                        _permitEventMods[p.faction_id][eventKey] = current !== undefined ? Math.min(current, multiplier) : multiplier;
+                    }
+                }
+            }
+        }
+    } catch (_pemErr) { /* non-fatal */ }
+
     // Check existing active events to avoid duplicates (max 1 active per project)
     const contractIds = contracts.map(c => c.id);
     const { data: activeEvents } = await supabase
@@ -1298,6 +1578,14 @@ async function generateProjectEvents(supabase, nationId, currentTick) {
                 }
             }
             prob = Math.max(0, Math.min(0.5, prob)); // Cap at 50%
+
+            // Apply permit event modifiers — active permits reduce event probability
+            if (_permitEventMods && _permitEventMods[contract.awarded_to_faction]) {
+                const mods = _permitEventMods[contract.awarded_to_faction];
+                if (mods[template.key] !== undefined) {
+                    prob *= mods[template.key]; // e.g. 0.5 = halve probability
+                }
+            }
 
             if (Math.random() > prob) continue;
 
@@ -1337,6 +1625,89 @@ async function generateProjectEvents(supabase, nationId, currentTick) {
 
             // Max 1 event per project per tick
             break;
+        }
+
+        // ── Regulatory & Material Quality Events (only if no event fired above) ──
+        if (!results.some(r => r.contract === contract.name)) {
+            try {
+                // Load required permits for this nation (from active laws with permit_key)
+                const { data: reqLaws } = await supabase
+                    .from('active_laws')
+                    .select('policies(permit_key)')
+                    .eq('nation_id', nationId)
+                    .not('policies.permit_key', 'is', null);
+                const requiredKeys = new Set((reqLaws || []).map(l => l.policies?.permit_key).filter(Boolean));
+
+                // Load corp's active permits
+                const { data: _corpActivePerms } = await supabase.from('corp_permits')
+                    .select('permit_key').eq('faction_id', contract.awarded_to_faction).eq('status', 'active');
+                const heldPermits = new Set((_corpActivePerms || []).map(p => p.permit_key));
+
+                // Count missing required permits
+                const missingPermits = [...requiredKeys].filter(k => !heldPermits.has(k));
+                const missingCount = missingPermits.length;
+
+                // Regulatory events based on missing permits
+                let regEvent = null;
+                if (missingCount >= 3 && Math.random() < 0.25) {
+                    regEvent = REGULATORY_EVENTS.stop_work_order;
+                } else if (missingPermits.includes('ohs_compliance') || missingPermits.includes('working_hours')) {
+                    if (Math.random() < 0.15) regEvent = REGULATORY_EVENTS.worker_whistleblower;
+                } else if (missingCount >= 1 && Math.random() < 0.12) {
+                    regEvent = REGULATORY_EVENTS.regulatory_inspection;
+                }
+
+                // Material quality events (check bid material grades)
+                if (!regEvent) {
+                    const { data: bidData } = await supabase.from('contract_bids')
+                        .select('material_grades').eq('contract_id', contract.id).eq('status', 'won').limit(1).maybeSingle();
+                    const grades = bidData?.material_grades || {};
+                    const gradeValues = Object.values(grades);
+                    const totalMats = gradeValues.length;
+                    const lowCount = gradeValues.filter(g => g === 'LOW').length;
+                    const lowPct = totalMats > 0 ? lowCount / totalMats : 0;
+
+                    if (lowPct >= 0.6 && !heldPermits.has('structural_engineering') && Math.random() < 0.12) {
+                        regEvent = REGULATORY_EVENTS.structural_integrity_failure;
+                    } else if (grades.concrete === 'LOW' && !heldPermits.has('environmental_impact') && Math.random() < 0.10) {
+                        regEvent = REGULATORY_EVENTS.foundation_subsidence;
+                    } else if (lowCount > 0 && Math.random() < 0.08) {
+                        regEvent = REGULATORY_EVENTS.material_defect_recall;
+                    }
+                }
+
+                if (regEvent) {
+                    const responses = [{
+                        key: 'acknowledge', label: 'Acknowledged', tag: regEvent.severity,
+                        detail: regEvent.description,
+                        cost: regEvent.cost, delay: regEvent.delay, qualityImpact: regEvent.quality,
+                    }];
+                    await supabase.from('construction_events').insert({
+                        contract_id: contract.id,
+                        faction_id: contract.awarded_to_faction,
+                        nation_id: nationId,
+                        event_key: regEvent.key,
+                        type: 'REGULATORY',
+                        severity: regEvent.severity,
+                        title: regEvent.name,
+                        description: regEvent.description,
+                        impact: regEvent.description,
+                        responses,
+                        status: 'ACTIVE',
+                        fired_at_tick: currentTick,
+                        expires_at_tick: currentTick + 3,
+                    });
+                    results.push({ contract: contract.name, event: regEvent.name, severity: regEvent.severity });
+                    console.log(`[Events] ${contract.name}: ${regEvent.name} (${regEvent.severity}) — regulatory/material`);
+
+                    // Apply reputation penalty immediately
+                    if (regEvent.reputation && regEvent.reputation < 0) {
+                        await supabase.from('factions').update({
+                            corp_reputation: Math.max(0, Number((await supabase.from('factions').select('corp_reputation').eq('id', contract.awarded_to_faction).single()).data?.corp_reputation ?? 65) + regEvent.reputation)
+                        }).eq('id', contract.awarded_to_faction);
+                    }
+                }
+            } catch (_regErr) { /* non-fatal */ }
         }
     }
 
@@ -1639,7 +2010,86 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     summary.construction.push({ nation: nation.name, type: 'expired_events', data: expiredResults });
                 }
 
-                // ── Construction GDP Boost ──
+                // ── Permit Lifecycle (pending→active, expiry) ─────────────
+            try {
+                // Advance pending permits to active
+                const { data: pendingPermits } = await supabase
+                    .from('corp_permits')
+                    .select('id, faction_id, permit_key, applied_at_tick')
+                    .eq('nation_id', nation.id)
+                    .eq('status', 'pending');
+
+                if (pendingPermits && pendingPermits.length > 0) {
+                    const { data: permitDefs } = await supabase.from('construction_permits').select('permit_key, processing_ticks, duration_ticks');
+                    const defMap = {};
+                    for (const d of (permitDefs || [])) defMap[d.permit_key] = d;
+
+                    for (const p of pendingPermits) {
+                        const def = defMap[p.permit_key];
+                        if (!def) continue;
+                        const elapsed = currentTick - p.applied_at_tick;
+                        if (elapsed >= def.processing_ticks) {
+                            const expiresAt = def.duration_ticks ? currentTick + def.duration_ticks : null;
+                            await supabase.from('corp_permits').update({
+                                status: 'active',
+                                granted_at_tick: currentTick,
+                                expires_at_tick: expiresAt,
+                                updated_at: new Date().toISOString()
+                            }).eq('id', p.id);
+                            console.log(`[Permits] ${p.permit_key} granted to faction ${p.faction_id} (expires tick ${expiresAt || 'never'})`);
+                        }
+                    }
+                }
+
+                // Expire active permits past their duration
+                const { data: expiredCount } = await supabase
+                    .from('corp_permits')
+                    .update({ status: 'expired', updated_at: new Date().toISOString() })
+                    .eq('nation_id', nation.id)
+                    .eq('status', 'active')
+                    .not('expires_at_tick', 'is', null)
+                    .lte('expires_at_tick', currentTick)
+                    .select('id');
+                if (expiredCount && expiredCount.length > 0) {
+                    console.log(`[Permits] Expired ${expiredCount.length} permit(s) in ${nation.name}`);
+                }
+
+                // Charge maintenance for active permits with maintenance_per_tick > 0
+                const { data: activePermitsForMaint } = await supabase
+                    .from('corp_permits')
+                    .select('id, faction_id, permit_key')
+                    .eq('nation_id', nation.id)
+                    .eq('status', 'active');
+
+                if (activePermitsForMaint && activePermitsForMaint.length > 0) {
+                    const { data: maintDefs } = await supabase.from('construction_permits')
+                        .select('permit_key, maintenance_per_tick')
+                        .gt('maintenance_per_tick', 0);
+                    const maintMap = {};
+                    for (const d of (maintDefs || [])) maintMap[d.permit_key] = Number(d.maintenance_per_tick);
+
+                    // Group maintenance costs by faction
+                    const factionMaint = {};
+                    for (const p of activePermitsForMaint) {
+                        const cost = maintMap[p.permit_key] || 0;
+                        if (cost > 0) {
+                            factionMaint[p.faction_id] = (factionMaint[p.faction_id] || 0) + cost;
+                        }
+                    }
+                    for (const [fId, totalMaint] of Object.entries(factionMaint)) {
+                        const { data: corp } = await supabase.from('factions').select('corp_cash_reserves').eq('id', fId).single();
+                        if (corp) {
+                            await supabase.from('factions').update({
+                                corp_cash_reserves: Math.max(0, Number(corp.corp_cash_reserves || 0) - totalMaint)
+                            }).eq('id', fId);
+                        }
+                    }
+                }
+            } catch (permitErr) {
+                console.error(`[advance-corp-tick] Permit lifecycle failed for ${nation.name} (non-fatal):`, permitErr);
+            }
+
+            // ── Construction GDP Boost ──
                 // Per-project: (budget / $100M) × 0.1 / timeline_ticks
                 // Spreads the 0.1-per-$100M impact evenly across the project lifetime.
                 // Multiple projects stack additively.

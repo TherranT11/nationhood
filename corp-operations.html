@@ -2550,6 +2550,7 @@ let prPurchaseQty = 500;
 
 // Equipment state
 let equipmentData = [];   // rows from corp_equipment
+let modifierDefs = {};    // { modifier_key: { name, icon, cost_multiplier, reputation_bonus, required_permits, ... } }
 let eqExpandedTier = 0;   // which tier is expanded (-1 = none)
 
 // Equipment Market state
@@ -2579,6 +2580,17 @@ function fmtTimeline(ticks) {
         return m > 0 ? y + 'y ' + m + 'mo' : y + 'y';
     }
     return ticks + ' ticks';
+}
+
+function renderModifierBadges(modifierKeys) {
+    if (!modifierKeys || modifierKeys.length === 0) return '';
+    return modifierKeys.map(key => {
+        const def = modifierDefs[key];
+        if (!def) return '';
+        const repColor = def.reputation_bonus > 0 ? 'var(--green)' : def.reputation_bonus < 0 ? 'var(--red)' : 'var(--text-dim)';
+        const repStr = def.reputation_bonus > 0 ? '+' + def.reputation_bonus : def.reputation_bonus < 0 ? String(def.reputation_bonus) : '';
+        return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;font-family:var(--font-mono);font-size:7px;color:var(--text-secondary);">${def.icon || '📍'} ${escapeHtml(def.name)}${repStr ? ` <span style="color:${repColor};font-weight:700;">${repStr} REP</span>` : ''}</span>`;
+    }).filter(Boolean).join(' ');
 }
 
 function fmtBudget(n) {
@@ -2736,6 +2748,7 @@ function renderContracts() {
                     ${qualified ? `<button class="bid-btn bid-btn--submit" style="padding:3px 10px;font-size:8px;margin-left:auto;" onclick="event.stopPropagation();openContractDetail(contracts.find(x=>x.id==='${c.id}'))">VIEW</button>` : ''}
                 </div>
                 ${c.description ? `<div style="font-size:9px;color:var(--text-dim);padding:4px 0 0;font-style:italic;">${escapeHtml(c.description)}</div>` : ''}
+                ${(c.modifiers && c.modifiers.length > 0) ? `<div style="display:flex;flex-wrap:wrap;gap:3px;padding:4px 0 0;">${renderModifierBadges(c.modifiers)}</div>` : ''}
             </div>`;
     }
 
@@ -2818,6 +2831,35 @@ function openContractDetail(contract) {
                 <div class="cd-section-label">Brief Description</div>
                 <div class="cd-desc__text">${escapeHtml(contract.description)}</div>
             </div>`;
+    }
+
+    // Building modifiers
+    const contractMods = contract.modifiers || [];
+    if (contractMods.length > 0) {
+        contentHtml += `<div class="cd-items">
+            <div class="cd-section-label">Building Modifiers</div>
+            <div style="display:flex;flex-direction:column;gap:6px;">`;
+        for (const mk of contractMods) {
+            const mdef = modifierDefs[mk];
+            if (!mdef) continue;
+            const repColor = mdef.reputation_bonus > 0 ? 'var(--green)' : mdef.reputation_bonus < 0 ? 'var(--red)' : 'var(--text-dim)';
+            const costLabel = mdef.cost_multiplier > 1 ? '+' + Math.round((mdef.cost_multiplier - 1) * 100) + '% cost' : mdef.cost_multiplier < 1 ? Math.round((1 - mdef.cost_multiplier) * 100) + '% cheaper' : '';
+            const repLabel = mdef.reputation_bonus !== 0 ? (mdef.reputation_bonus > 0 ? '+' : '') + mdef.reputation_bonus + ' rep' : '';
+            const reqPermits = mdef.required_permits || [];
+            contentHtml += `<div style="padding:6px 10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:4px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-weight:600;font-size:0.78rem;color:var(--text-primary);">${mdef.icon || '📍'} ${escapeHtml(mdef.name)}</span>
+                    <span style="font-family:var(--font-mono);font-size:0.6rem;">
+                        ${costLabel ? `<span style="color:var(--amber);">${costLabel}</span>` : ''}
+                        ${costLabel && repLabel ? ' · ' : ''}
+                        ${repLabel ? `<span style="color:${repColor};font-weight:700;">${repLabel}</span>` : ''}
+                    </span>
+                </div>
+                <div style="font-size:0.65rem;color:var(--text-dim);margin-top:2px;">${escapeHtml(mdef.description || '')}</div>
+                ${reqPermits.length > 0 ? `<div style="font-size:0.6rem;color:var(--amber);margin-top:3px;font-family:var(--font-mono);">Requires permits: ${reqPermits.map(p => escapeHtml(p.replace(/_/g, ' '))).join(', ')}</div>` : ''}
+            </div>`;
+        }
+        contentHtml += `</div></div>`;
     }
 
     // Detail rows
@@ -3429,6 +3471,16 @@ function renderPmOverview(s, p, budgetColor, budgetPct, remaining, ticksRemainin
             <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary)">Deadline: <span style="color:${isLate ? 'var(--red)' : 'var(--text-bright)'};font-weight:700">${deadlineDate}</span></span>
         </div>
     </div></div>`;
+
+    // Building Modifiers
+    const projMods = p.modifiers || [];
+    if (projMods.length > 0) {
+        html += '<div style="padding:0 16px"><div class="pm-section">';
+        html += '<div class="pm-section__title">Building Modifiers</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:4px;">';
+        html += renderModifierBadges(projMods);
+        html += '</div></div></div>';
+    }
 
     // Permits (from contract if available)
     const permits = [];
@@ -5111,7 +5163,7 @@ function renderPermits() {
                     html += `<div class="pm-note"><span class="pm-note__text">${escapeHtml(p.note)}</span></div>`;
                 }
                 if (p.expiring_soon && p.renewable) {
-                    html += `<div class="pm-btn-row"><button class="pm-btn pm-btn--renew">RENEW — ${fmtPermitCost(p.cost || 0)}</button></div>`;
+                    html += `<div class="pm-btn-row"><button class="pm-btn pm-btn--renew" onclick="event.stopPropagation(); pmApplyForPermit('${p.permit_key}');">RENEW — ${fmtPermitCost(p.cost || 0)}</button></div>`;
                 }
                 html += `</div>`;
             }
@@ -5214,7 +5266,7 @@ function renderPermits() {
                             <span class="pm-detail__val">${p.duration} ticks from approval</span>
                         </div>
                     </div>
-                    <div class="pm-btn-row"><button class="pm-btn pm-btn--apply" onclick="event.stopPropagation();">APPLY — ${fmtPermitCost(p.cost || 0)}</button></div>
+                    <div class="pm-btn-row"><button class="pm-btn pm-btn--apply" onclick="event.stopPropagation(); pmApplyForPermit('${p.permit_key}');">APPLY — ${fmtPermitCost(p.cost || 0)}</button></div>
                 </div>`;
             }
             html += `</div></div>`;
@@ -5224,12 +5276,143 @@ function renderPermits() {
     }
 }
 
-function loadPermits() {
-    // Empty for now — no permits exist in game yet.
-    // Future: fetch from Supabase and populate pmActivePermits, pmPendingPermits, pmAvailablePermits
-    pmActivePermits = [];
-    pmPendingPermits = [];
-    pmAvailablePermits = [];
+let _pmApplyLock = false;
+
+async function pmApplyForPermit(permitKey) {
+    if (_pmApplyLock || !faction || !nation) return;
+    _pmApplyLock = true;
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shard?.current_tick || 0;
+
+        const { data, error } = await _supabase.rpc('apply_for_permit', {
+            p_faction_id: faction.id,
+            p_nation_id: nation.id,
+            p_permit_key: permitKey,
+            p_current_tick: tick
+        });
+        if (error) { alert('Application failed: ' + error.message); return; }
+        if (data && !data.success) { alert(data.error || 'Application failed'); return; }
+
+        alert('Permit application submitted! Processing: ' + (data.processing_ticks || 0) + ' ticks.');
+        await loadPermits();
+    } catch (e) {
+        alert('Error: ' + e.message);
+    } finally {
+        _pmApplyLock = false;
+    }
+}
+window.pmApplyForPermit = pmApplyForPermit;
+
+async function loadPermits() {
+    if (!faction || !nation) {
+        pmActivePermits = [];
+        pmPendingPermits = [];
+        pmAvailablePermits = [];
+        renderPermits();
+        return;
+    }
+
+    // 1. Load all permit reference data
+    const { data: allPermitDefs } = await _supabase
+        .from('construction_permits')
+        .select('*');
+    const permitDefs = allPermitDefs || [];
+    const permitMap = {};
+    for (const p of permitDefs) permitMap[p.permit_key] = p;
+
+    // 2. Load this corp's held/pending permits
+    const { data: corpPermitRows } = await _supabase
+        .from('corp_permits')
+        .select('*')
+        .eq('faction_id', faction.id)
+        .eq('nation_id', nation.id);
+    const heldPermits = corpPermitRows || [];
+
+    // 3. Load nation's active laws that have permit_key (determines which permits are required)
+    const { data: activeLawRows } = await _supabase
+        .from('active_laws')
+        .select('policy_id, policies(permit_key, policy_name)')
+        .eq('nation_id', nation.id)
+        .not('policies.permit_key', 'is', null);
+    const requiredPermitKeys = new Set();
+    const policyNameByPermit = {};
+    for (const law of (activeLawRows || [])) {
+        if (law.policies?.permit_key) {
+            requiredPermitKeys.add(law.policies.permit_key);
+            policyNameByPermit[law.policies.permit_key] = law.policies.policy_name;
+        }
+    }
+
+    // 4. Get current tick for expiry calculations
+    const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shardData?.current_tick || 0;
+
+    // 5. Build active permits
+    pmActivePermits = heldPermits
+        .filter(p => p.status === 'active')
+        .map(p => {
+            const def = permitMap[p.permit_key] || {};
+            const ticksLeft = p.expires_at_tick ? Math.max(0, p.expires_at_tick - currentTick) : 999;
+            const totalTicks = def.duration_ticks || 24;
+            return {
+                name: def.name || p.permit_key,
+                permit_key: p.permit_key,
+                nation: nation.name,
+                policy: policyNameByPermit[p.permit_key] || '—',
+                issued: p.granted_at_tick != null ? tickToDate(p.granted_at_tick) : '—',
+                expires: p.expires_at_tick ? tickToDate(p.expires_at_tick) : 'Single-use',
+                cost: p.cost_paid || 0,
+                ticks_left: ticksLeft,
+                total_ticks: totalTicks,
+                expiring_soon: ticksLeft <= 3 && ticksLeft > 0,
+                renewable: def.duration_ticks != null,
+                projects: [],
+            };
+        });
+
+    // 6. Build pending permits
+    pmPendingPermits = heldPermits
+        .filter(p => p.status === 'pending')
+        .map(p => {
+            const def = permitMap[p.permit_key] || {};
+            const procTotal = def.processing_ticks || 2;
+            const elapsed = currentTick - p.applied_at_tick;
+            const remaining = Math.max(0, procTotal - elapsed);
+            return {
+                name: def.name || p.permit_key,
+                permit_key: p.permit_key,
+                nation: nation.name,
+                applied: tickToDate(p.applied_at_tick),
+                status: 'PROCESSING',
+                processing_total: procTotal,
+                ticks_remaining: remaining,
+                est_approval: tickToDate(p.applied_at_tick + procTotal),
+                cost: p.cost_paid || 0,
+                required_by: policyNameByPermit[p.permit_key] || '—',
+            };
+        });
+
+    // 7. Build available permits (required by law but not held/pending)
+    const heldKeys = new Set(heldPermits.filter(p => p.status === 'active' || p.status === 'pending').map(p => p.permit_key));
+    pmAvailablePermits = [...requiredPermitKeys]
+        .filter(key => !heldKeys.has(key))
+        .map(key => {
+            const def = permitMap[key] || {};
+            return {
+                name: def.name || key,
+                permit_key: key,
+                nation: nation.name,
+                description: def.description || '',
+                policy: policyNameByPermit[key] || '—',
+                cost: def.cost_is_percentage ? 150000 : (def.cost || 0),
+                processing_time: def.processing_ticks || 2,
+                duration: def.duration_ticks ? (def.duration_ticks + ' ticks') : 'Single-use',
+                category: def.category || '',
+                difficulty: def.difficulty || 'EASY',
+            };
+        });
+
     renderPermits();
 }
 
@@ -5733,6 +5916,13 @@ async function init() {
     }
 
     // Load contracts (loadOwnedProperties needed for subsidiary eligibility checks)
+    // Load building modifier definitions (reference data)
+    try {
+        const { data: modDefs } = await _supabase.from('building_modifiers').select('*');
+        modifierDefs = {};
+        for (const m of (modDefs || [])) modifierDefs[m.modifier_key] = m;
+    } catch (_) { /* table may not exist yet */ }
+
     await Promise.all([loadContracts(), loadActiveProjects(), loadWarehouse(), loadEquipment(), loadPermits(), loadDeliveries(), loadOwnedProperties()]);
 
     // Load all nations for equipment market nation switcher

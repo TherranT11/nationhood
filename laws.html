@@ -40,6 +40,22 @@
         <div class="add-text-article-section" id="add-entrenchment-section" onclick="showEntrenchmentForm()">
             <span class="add-text-article-btn-text">+ Add Entrenchment</span>
         </div>
+        <div class="add-text-article-section" id="add-permit-section" onclick="showPermitForm()">
+            <span class="add-text-article-btn-text">+ Add Permit</span>
+        </div>
+        <div id="add-permit-form" style="display:none;">
+            <div class="form-group">
+                <label class="form-label" style="color:var(--amber);">Select Permit Policy</label>
+                <select class="form-select" id="permit-policy-select" onchange="onPermitPolicyChange()">
+                    <option value="">-- Choose a permit to enact or repeal --</option>
+                </select>
+            </div>
+            <div id="permit-detail-preview" style="display:none;margin:8px 0;padding:10px;background:var(--bg-card);border:1px solid var(--border-main);border-radius:4px;font-size:0.75rem;color:var(--text-muted);line-height:1.5;"></div>
+            <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="btn-cancel" onclick="hidePermitForm()">Cancel</button>
+                <button class="btn-add" id="add-permit-btn" disabled onclick="addPermitArticle()">Add to Bill</button>
+            </div>
+        </div>
         <div id="add-article-form" style="display:none;">
             <div class="form-group">
                 <label class="form-label">Select Sector</label>
@@ -1530,21 +1546,23 @@ function _hideAllArticleForms() {
     document.getElementById('add-text-article-form').style.display = 'none';
     document.getElementById('add-funding-article-form').style.display = 'none';
     document.getElementById('add-entrenchment-form').style.display = 'none';
+    document.getElementById('add-permit-form').style.display = 'none';
 }
 function _showAllArticleButtons() {
     document.getElementById('add-article-section').style.display = 'block';
     document.getElementById('add-text-article-section').style.display = 'block';
     document.getElementById('add-funding-article-section').style.display = 'block';
-    // Only show entrenchment button if no entrenchment article exists yet and bill is not foundational
     const hasEntrenchment = draftArticles.some(a => a.isEntrenchment);
     const hasFoundational = draftArticles.some(a => a.isFoundational);
     document.getElementById('add-entrenchment-section').style.display = (hasEntrenchment || hasFoundational) ? 'none' : 'block';
+    document.getElementById('add-permit-section').style.display = 'block';
 }
 function _hideAllArticleButtons() {
     document.getElementById('add-article-section').style.display = 'none';
     document.getElementById('add-text-article-section').style.display = 'none';
     document.getElementById('add-funding-article-section').style.display = 'none';
     document.getElementById('add-entrenchment-section').style.display = 'none';
+    document.getElementById('add-permit-section').style.display = 'none';
 }
 
 function showAddArticleForm() {
@@ -1731,6 +1749,139 @@ function addEntrenchmentArticle() {
         renderDraftArticles();
         updateSubmitButtonCost();
     } finally { _draftArticleLock = false; }
+}
+
+// ── Permit Article ──
+
+let _permitPolicies = null; // cached from DB
+let _selectedPermitPolicy = null;
+
+async function showPermitForm() {
+    _hideAllArticleButtons(); _hideAllArticleForms();
+    document.getElementById('add-permit-form').style.display = 'block';
+    document.getElementById('permit-detail-preview').style.display = 'none';
+    document.getElementById('add-permit-btn').disabled = true;
+    _selectedPermitPolicy = null;
+
+    // Load permit policies if not cached
+    if (!_permitPolicies) {
+        const { data } = await _supabase
+            .from('policies')
+            .select('id, policy_name, description, permit_key, ideologies, stat_effects, ongoing_base_cost')
+            .not('permit_key', 'is', null)
+            .eq('is_active', true);
+        _permitPolicies = data || [];
+    }
+
+    // Check which permits are already active laws in this nation
+    const { data: activeLawRows } = await _supabase
+        .from('active_laws')
+        .select('policy_id, is_reversal, policies(permit_key)')
+        .eq('nation_id', currentNation.id);
+    const enactedPermitKeys = new Set();
+    for (const law of (activeLawRows || [])) {
+        if (!law.is_reversal && law.policies?.permit_key) enactedPermitKeys.add(law.policies.permit_key);
+    }
+
+    // Filter out permits already in this bill draft
+    const usedPermitKeys = new Set(draftArticles.filter(a => a.isPermit).map(a => a.permitPolicy.permit_key));
+
+    const sel = document.getElementById('permit-policy-select');
+    sel.innerHTML = '<option value="">-- Choose a permit to enact or repeal --</option>';
+
+    // Group: available to enact (not yet law)
+    const toEnact = _permitPolicies.filter(p => !enactedPermitKeys.has(p.permit_key) && !usedPermitKeys.has(p.permit_key));
+    const toRepeal = _permitPolicies.filter(p => enactedPermitKeys.has(p.permit_key) && !usedPermitKeys.has(p.permit_key));
+
+    if (toEnact.length > 0) {
+        sel.innerHTML += '<optgroup label="── Enact (not yet law) ──">';
+        for (const p of toEnact) {
+            sel.innerHTML += `<option value="enact:${p.id}">${escapeHtml(p.policy_name)}</option>`;
+        }
+        sel.innerHTML += '</optgroup>';
+    }
+    if (toRepeal.length > 0) {
+        sel.innerHTML += '<optgroup label="── Repeal (currently active) ──">';
+        for (const p of toRepeal) {
+            sel.innerHTML += `<option value="repeal:${p.id}">${escapeHtml(p.policy_name)} — REPEAL</option>`;
+        }
+        sel.innerHTML += '</optgroup>';
+    }
+}
+
+function onPermitPolicyChange() {
+    const val = document.getElementById('permit-policy-select').value;
+    const preview = document.getElementById('permit-detail-preview');
+    if (!val) {
+        preview.style.display = 'none';
+        document.getElementById('add-permit-btn').disabled = true;
+        _selectedPermitPolicy = null;
+        return;
+    }
+    const [action, policyId] = val.split(':');
+    const policy = (_permitPolicies || []).find(p => p.id === policyId);
+    if (!policy) return;
+
+    _selectedPermitPolicy = { ...policy, _action: action };
+
+    const actionLabel = action === 'repeal' ? '⚠ REPEAL — removes this permit requirement from all corporations' : '✓ ENACT — corporations will need this permit to operate';
+    const effects = (policy.stat_effects || []).map(e => {
+        const dir = e.direction === 'up' ? '↑' : '↓';
+        return `${formatStatName(e.stat_key)} ${dir}`;
+    }).join(', ');
+
+    preview.innerHTML = `
+        <div style="font-weight:600;color:var(--text-primary);margin-bottom:4px;">${escapeHtml(policy.policy_name)}</div>
+        <div style="margin-bottom:6px;">${escapeHtml(policy.description || '')}</div>
+        <div style="font-family:var(--font-mono);font-size:0.65rem;color:${action === 'repeal' ? 'var(--red)' : 'var(--green)'};">${actionLabel}</div>
+        ${effects ? '<div style="margin-top:4px;font-size:0.65rem;color:var(--text-dim);">Effects: ' + effects + '</div>' : ''}
+    `;
+    preview.style.display = 'block';
+    document.getElementById('add-permit-btn').disabled = false;
+}
+
+async function addPermitArticle() {
+    if (_draftArticleLock || !_selectedPermitPolicy) return;
+    _draftArticleLock = true;
+    try {
+        const canAdd = await chargeArticleAP();
+        if (!canAdd) return;
+        const nextNum = draftArticles.length > 0 ? Math.max(...draftArticles.map(a => a.articleNumber)) + 1 : 2;
+        const artEntry = {
+            articleNumber: nextNum,
+            isPermit: true,
+            permitPolicy: _selectedPermitPolicy,
+            permitAction: _selectedPermitPolicy._action, // 'enact' or 'repeal'
+            policy: _selectedPermitPolicy // for normalization compatibility
+        };
+        // For repeal: look up the active_laws row now so normalization can set repeal_active_law_id
+        if (_selectedPermitPolicy._action === 'repeal') {
+            try {
+                const { data: activeLaw } = await _supabase
+                    .from('active_laws')
+                    .select('id')
+                    .eq('nation_id', currentNation.id)
+                    .eq('policy_id', _selectedPermitPolicy.id)
+                    .is('is_reversal', false)
+                    .limit(1)
+                    .maybeSingle();
+                if (activeLaw) artEntry.repealActiveLawId = activeLaw.id;
+            } catch (_) { /* non-fatal */ }
+        }
+        draftArticles.push(artEntry);
+        hidePermitForm();
+        renderDraftArticles();
+        if (draftArticles.length > 0) {
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+        }
+        updateSubmitButtonCost();
+    } finally { _draftArticleLock = false; }
+}
+
+function hidePermitForm() {
+    _showAllArticleButtons(); _hideAllArticleForms();
+    _selectedPermitPolicy = null;
 }
 
 function onFundingMinistryChange() {
@@ -2893,6 +3044,18 @@ function renderDraftArticles() {
                 <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
             </div>`;
         }
+        if (art.isPermit) {
+            const pAction = art.permitAction === 'repeal' ? 'Repeal' : 'Enact';
+            const pColor = art.permitAction === 'repeal' ? 'var(--red)' : 'var(--amber)';
+            return `<div class="draft-article-card" style="border-left:3px solid ${pColor};">
+                <div class="draft-article-info">
+                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:${pColor};">Permit (${pAction})</span>${_costBadge}</div>
+                    <div class="draft-article-name">🔨 ${escapeHtml(art.permitPolicy.policy_name)}</div>
+                    <div class="draft-article-meta">${pAction === 'Repeal' ? 'Removes this permit requirement from all corporations' : 'Corporations will need this permit to operate'}</div>
+                </div>
+                <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+            </div>`;
+        }
         if (art.isText) {
             return `<div class="draft-article-card" style="border-left:3px solid var(--blue);">
                 <div class="draft-article-info">
@@ -3370,6 +3533,10 @@ async function submitToCommittee() {
                 added_by: currentFaction.id
             };
             if (art.isRepeal && art.repealActiveLawId) {
+                articleRow.repeal_active_law_id = art.repealActiveLawId;
+            }
+            // Permit repeal articles use repeal_active_law_id (looked up at draft time)
+            if (art.isPermit && art.permitAction === 'repeal' && art.repealActiveLawId) {
                 articleRow.repeal_active_law_id = art.repealActiveLawId;
             }
             return articleRow;
@@ -4043,6 +4210,10 @@ window.hideFundingArticleForm = hideFundingArticleForm;
 window.showEntrenchmentForm = showEntrenchmentForm;
 window.hideEntrenchmentForm = hideEntrenchmentForm;
 window.addEntrenchmentArticle = addEntrenchmentArticle;
+window.showPermitForm = showPermitForm;
+window.hidePermitForm = hidePermitForm;
+window.addPermitArticle = addPermitArticle;
+window.onPermitPolicyChange = onPermitPolicyChange;
 window.onFundingMinistryChange = onFundingMinistryChange;
 window.onInstSliderChange = onInstSliderChange;
 window.addFundingArticle = addFundingArticle;
