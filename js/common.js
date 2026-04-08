@@ -854,8 +854,12 @@ export function updateTopBarInfo(faction, shard, nation) {
 
     const apEl = document.getElementById('topbar-ap');
     if (apEl && faction) {
-        const ap = faction.action_points ?? 0;
-        renderApDisplay(apEl, ap);
+        if (faction.faction_type === 'corporation') {
+            apEl.style.display = 'none'; // Corporations don't use AP
+        } else {
+            const ap = faction.action_points ?? 0;
+            renderApDisplay(apEl, ap);
+        }
     }
     
     const nationFlag = document.getElementById('nation-flag');
