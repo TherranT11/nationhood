@@ -1567,20 +1567,9 @@ async function generateProjectEvents(supabase, nationId, currentTick) {
                 const requiredKeys = new Set((reqLaws || []).map(l => l.policies?.permit_key).filter(Boolean));
 
                 // Load corp's active permits
-                const corpPermitKeys = new Set();
-                if (_permitEventMods && _permitEventMods[contract.awarded_to_faction]) {
-                    // Already loaded — reuse
-                } else {
-                    const { data: ap } = await supabase.from('corp_permits')
-                        .select('permit_key').eq('faction_id', contract.awarded_to_faction).eq('status', 'active');
-                    for (const p of (ap || [])) corpPermitKeys.add(p.permit_key);
-                }
-                // Combine — check what's in _permitEventMods keys OR corpPermitKeys
-                const heldPermits = new Set([...corpPermitKeys]);
-                if (_permitEventMods && _permitEventMods[contract.awarded_to_faction]) {
-                    // If permit event mods exist, those permits are active
-                    // (loaded earlier in this function)
-                }
+                const { data: _corpActivePerms } = await supabase.from('corp_permits')
+                    .select('permit_key').eq('faction_id', contract.awarded_to_faction).eq('status', 'active');
+                const heldPermits = new Set((_corpActivePerms || []).map(p => p.permit_key));
 
                 // Count missing required permits
                 const missingPermits = [...requiredKeys].filter(k => !heldPermits.has(k));
