@@ -31911,6 +31911,106 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Timed momentum effects failed for ${nation.name} (non-fatal):`, timedMomErr);
         }
 
+        // ── Momentum decay scaled by seat dominance ──
+        // Dominant parties decay faster — models voter fatigue and "establishment drag".
+        // decayMultiplier = 1 + (seatShare - 0.3) * 2
+        //   At 10% seats: 0.6x (underdogs sustain momentum easily)
+        //   At 30% seats: 1.0x (baseline)
+        //   At 50% seats: 1.4x (moderate drag)
+        //   At 70% seats: 1.8x (hard to sustain)
+        //   At 95% seats: 2.3x (constant uphill battle)
+        try {
+            const { data: _decayFactions } = await supabase
+                .from('factions')
+                .select('id, seats, momentum')
+                .eq('nation_id', nation.id)
+                .eq('faction_type', 'party')
+                .is('abandoned_at', null);
+
+            if (_decayFactions && _decayFactions.length > 0) {
+                const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS || 120;
+                const BASE_DECAY = 0.5; // base momentum lost per tick
+
+                for (const fac of _decayFactions) {
+                    if ((fac.momentum || 0) <= 0) continue; // nothing to decay
+                    const seatShare = (fac.seats || 0) / totalSeats;
+                    const multiplier = Math.max(0.3, 1 + (seatShare - 0.3) * 2);
+                    const decay = -(BASE_DECAY * multiplier);
+                    await supabase.rpc('adjust_momentum', {
+                        p_faction_id: fac.id,
+                        p_delta: Math.round(decay * 100) / 100,
+                        p_label: 'dominance_decay (' + Math.round(seatShare * 100) + '% seats, ' + multiplier.toFixed(1) + 'x)',
+                        p_tick: newTick
+                    });
+                }
+            }
+        } catch (decayErr) {
+            console.error(`[advanceTick] Momentum dominance decay failed for ${nation.name} (non-fatal):`, decayErr);
+        }
+
+        // ── Accountability tax — governing coalition loses momentum when nation stats decline ──
+        // blameShare = partySeatShare / coalitionSeatShare
+        // momentumPenalty = netDecline * blameShare * 0.5
+        // Tracked stats: happiness, stability, standard_of_living, gdp_growth (decline = bad)
+        //                unemployment, inflation, crime_rate (increase = bad)
+        try {
+            const _acctCoalition = await fetchActiveCoalition(supabase, nation.id);
+            if (_acctCoalition && _acctCoalition.party_ids && _acctCoalition.party_ids.length > 0) {
+                // Get previous tick snapshot
+                const { data: _prevSnap } = await supabase
+                    .from('nations_history')
+                    .select('happiness, stability, standard_of_living, gdp_growth, unemployment, inflation, crime_rate')
+                    .eq('nation_id', nation.id)
+                    .eq('tick', newTick - 1)
+                    .maybeSingle();
+
+                if (_prevSnap) {
+                    // Compute net decline: positive stats declining is bad, negative stats rising is bad
+                    let netDecline = 0;
+                    const positiveStats = ['happiness', 'stability', 'standard_of_living', 'gdp_growth'];
+                    const negativeStats = ['unemployment', 'inflation', 'crime_rate'];
+
+                    for (const stat of positiveStats) {
+                        const delta = (Number(nation[stat]) || 0) - (Number(_prevSnap[stat]) || 0);
+                        if (delta < 0) netDecline += Math.abs(delta); // stat went down = bad
+                    }
+                    for (const stat of negativeStats) {
+                        const delta = (Number(nation[stat]) || 0) - (Number(_prevSnap[stat]) || 0);
+                        if (delta > 0) netDecline += delta; // stat went up = bad
+                    }
+
+                    // Only apply if there's meaningful decline (threshold: 0.5 cumulative)
+                    if (netDecline > 0.5) {
+                        // Get coalition parties' seats for blame distribution
+                        const { data: _coalFacs } = await supabase
+                            .from('factions')
+                            .select('id, seats')
+                            .in('id', _acctCoalition.party_ids);
+
+                        if (_coalFacs && _coalFacs.length > 0) {
+                            const coalitionSeats = _coalFacs.reduce((s, f) => s + (f.seats || 0), 0);
+                            if (coalitionSeats > 0) {
+                                for (const fac of _coalFacs) {
+                                    const blameShare = (fac.seats || 0) / coalitionSeats;
+                                    const penalty = -(netDecline * blameShare * 0.5);
+                                    if (penalty < -0.01) {
+                                        await supabase.rpc('adjust_momentum', {
+                                            p_faction_id: fac.id,
+                                            p_delta: Math.round(penalty * 100) / 100,
+                                            p_label: 'accountability_tax (decline: ' + netDecline.toFixed(1) + ', blame: ' + Math.round(blameShare * 100) + '%)',
+                                            p_tick: newTick
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (acctErr) {
+            console.error(`[advanceTick] Accountability tax failed for ${nation.name} (non-fatal):`, acctErr);
+        }
+
         // Protest resolution (resolve protests that have been in 'resolving' for 1+ ticks)
         try {
             const { data: resolvingProtests } = await supabase
