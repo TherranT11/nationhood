@@ -1410,11 +1410,22 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
         const generalCount = Number(corp.corp_general_workforce ?? 0);
         const skilledCount = Number(corp.corp_skilled_workforce ?? 0);
         const innovativeCount = Number(corp.corp_innovative_workforce ?? 0);
+        const totalEmployees = generalCount + skilledCount + innovativeCount;
         const annualWages = (generalCount * calcWage(GENERAL_MULT))
                           + (skilledCount * calcWage(SKILLED_MULT))
                           + (innovativeCount * calcWage(INNOVATIVE_MULT));
         const monthlyWages = Math.round(annualWages / 12);
-        const monthlyIncome = monthlyMarketRev - monthlyWages;
+
+        // Scale market revenue by workforce utilization — 0 employees = 0 revenue
+        const WORKFORCE_TARGET = 3000; // default corp workforce capacity
+        const workforceUtil = Math.min(1, totalEmployees / WORKFORCE_TARGET);
+        const corpMonthlyRev = Math.round(monthlyMarketRev * workforceUtil);
+
+        // Fixed overhead: minimum operating costs even with 0 employees
+        // Property maintenance, admin, insurance, utilities
+        const FIXED_OVERHEAD_MONTHLY = 75_000;
+
+        const monthlyIncome = corpMonthlyRev - monthlyWages - FIXED_OVERHEAD_MONTHLY;
 
         // Compute monthly loan payment (amortized) and split into interest + principal
         let debtPayment = 0;
@@ -1519,7 +1530,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // Load corporation factions for this nation (exclude dissolved corps)
             const { data: corpFactions, error: corpErr } = await supabase
                 .from('factions')
-                .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_loans, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
+                .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_loans, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce, corp_reputation')
                 .eq('nation_id', nation.id)
                 .eq('faction_type', 'corporation')
                 .is('abandoned_at', null);
@@ -1627,11 +1638,16 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             }
 
             // ── Reputation Decay ─────────────────────────────────────────
-            // All corps lose -0.25 reputation per tick (floor at 0)
+            // Base: -0.25/tick. Accelerated to -1.0/tick when workforce is 0 (company is a shell).
+            // Uses integer-safe rounding: multiply by 100, round, divide by 100.
             try {
                 for (const corp of corps) {
+                    const totalWf = Number(corp.corp_general_workforce ?? 0)
+                                  + Number(corp.corp_skilled_workforce ?? 0)
+                                  + Number(corp.corp_innovative_workforce ?? 0);
+                    const repDecayRate = totalWf === 0 ? 1.0 : 0.25;
                     const currentRep = Number(corp.corp_reputation ?? 65);
-                    const newRep = Math.max(0, Math.round((currentRep - 0.25) * 100) / 100);
+                    const newRep = Math.max(0, Math.round((currentRep - repDecayRate) * 100) / 100);
                     if (newRep !== currentRep) {
                         const { error: repErr } = await supabase.from('factions')
                             .update({ corp_reputation: newRep })
