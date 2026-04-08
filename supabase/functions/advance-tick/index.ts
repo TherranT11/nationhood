@@ -10617,19 +10617,9 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
                         }
                     }
                 } else {
-                    // All parties at 0 seats — distribute evenly
-                    const perParty = Math.floor(newTotalSeats / factions.length);
-                    let remainder = newTotalSeats - perParty * factions.length;
-                    for (const f of factions) {
-                        const seats = perParty + (remainder > 0 ? 1 : 0);
-                        if (remainder > 0) remainder--;
-                        const { error: seatErr } = await supabase.from('factions').update({ seats }).eq('id', f.id);
-                        if (seatErr) {
-                            console.error(`[enactFoundationalBill] Failed to update seats for faction ${f.id}:`, seatErr);
-                            await supabase.from('nations').update({ total_seats: currentTotalSeats }).eq('id', bill.nation_id);
-                            return false;
-                        }
-                    }
+                    // All parties at 0 seats — no election has occurred yet, leave seats at 0.
+                    // Seats will be distributed when the first election completes.
+                    console.log(`[enactFoundationalBill] All parties at 0 seats — skipping distribution (no election yet).`);
                 }
             }
         }
