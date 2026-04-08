@@ -389,7 +389,7 @@ available_budget   = gross_revenue - debt_service
 
 ### GDP Growth
 ```
-monthly_change%    = ((gdp_growth - 50) / 50) x 3
+monthly_change%    = ((gdp_growth - 50) / 50) x 1
 yearly_growth%     = (1 + monthly_change/100)^12 - 1
 ```
 

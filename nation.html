@@ -32,154 +32,22 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, refreshGameState, qCache, qCacheSet, qCacheBust, formatNumber, scaleRawToDollars, assertRawEconomicValue } from './js/common.js';
-import './js/guide.js';
 import { formatCurrencyShort, escapeHtml } from './js/utils.js';
-import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
-import { formatInflationRate, getInflationLabel, inflationColorClass, inflationRate } from './js/game/stats.js';
+import { CANONICAL_GOVERNMENT_TYPES, hasElectedPresident } from './js/game/government-types.js';
+import { normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game/stats.js';
+import { formatInflationRate, getInflationLabel, inflationColorClass, inflationRate, formatFuelPrice, getFuelPriceLabel, fuelPriceColorClass, fuelPricePerGallon } from './js/game/stats.js';
 /**
  * Nation Page - Comprehensive Stats Display
  * With Rankings and Trend Arrows
  */
-
-// ===== SPARKLINE HISTORY DIAGNOSTIC =====
-// Run in browser console: debugSparklines()
-// Uses _nationId stashed during page init to avoid auth re-query
-var _nationId = null;
-window.debugSparklines = async function() {
-    if (!_nationId) { console.error('Nation ID not set — page may not have loaded yet'); return; }
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const tick = shard?.current_tick || 0;
-    console.log('%c=== SPARKLINE HISTORY AUDIT ===', 'font-weight:bold;font-size:14px;color:#0af');
-    console.log('Nation ID:', _nationId, '| Current tick:', tick);
-    const { data: rows, error } = await _supabase.from('nations_history')
-        .select('tick').eq('nation_id', _nationId).order('tick', { ascending: false }).limit(10);
-    if (error) { console.error('Query error:', error.message); return; }
-    if (!rows || rows.length === 0) {
-        console.error('%cNO history rows found for this nation! Snapshots are not being written.', 'color:#f44;font-weight:bold');
-    } else {
-        console.log('Latest history ticks:', rows.map(r => r.tick));
-        console.log('History rows found:', rows.length, '| Most recent tick:', rows[0].tick, '| Gap from current:', tick - rows[0].tick);
-    }
-};
-
-// ===== STAT DELTA DIAGNOSTIC =====
-// Run in browser console: debugStatDelta('education_accessibility')
-window.debugStatDelta = async function(statKey) {
-    const sk = statKey || 'education_accessibility';
-    console.log(`%c=== STAT DELTA AUDIT: ${sk} ===`, 'font-weight:bold;font-size:14px;color:#0af');
-
-    // 1. Get nation + shard
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const tick = shard?.current_tick || 0;
-    const { data: { user } } = await _supabase.auth.getUser();
-    const { data: faction } = await _supabase.from('factions').select('nation_id').eq('user_id', user.id).single();
-    const nationId = faction?.nation_id;
-    if (!nationId) { console.error('No nation found'); return; }
-
-    const { data: nation } = await _supabase.from('nations').select('*').eq('id', nationId).single();
-    console.log(`Nation: ${nation.name} | Tick: ${tick} | Current ${sk}: ${nation[sk]}`);
-
-    // 2. Previous tick value from history
-    const { data: hist } = await _supabase.from('nations_history')
-        .select(sk + ', tick').eq('nation_id', nationId)
-        .lte('tick', tick).order('tick', { ascending: false }).limit(3);
-    if (hist?.length) {
-        console.log('%cHistory:', 'font-weight:bold');
-        hist.forEach(h => console.log(`  tick ${h.tick}: ${h[sk]}`));
-        const prev = hist.find(h => h.tick < tick);
-        if (prev) console.log(`  Delta (tick ${prev.tick} → now): ${(Number(nation[sk]) - Number(prev[sk])).toFixed(1)}`);
-    }
-
-    // 3. Active laws affecting this stat
-    const { data: laws } = await _supabase.from('active_laws')
-        .select('id, bill_id, is_reversal, passed_tick, effects_applied_through_tick, reversal_effects, policies(policy_name, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)')
-        .eq('nation_id', nationId);
-    const hitLaws = (laws || []).filter(l => {
-        const p = l.policies;
-        if (!p) return false;
-        if (p.target_stat === sk) return true;
-        if (p.stat_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)) return true;
-        if (l.is_reversal && l.reversal_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)) return true;
-        return false;
-    });
-    console.log(`%cActive laws affecting ${sk}: ${hitLaws.length}`, 'font-weight:bold');
-    hitLaws.forEach(l => {
-        const p = l.policies;
-        const effs = l.is_reversal ? l.reversal_effects : p.stat_effects;
-        const relevant = (effs || []).filter(e => normalizeNationStatKey(e.stat_key) === sk);
-        relevant.forEach(e => {
-            const ticksSince = tick - (l.passed_tick || 0);
-            const delay = Number(e.delay_ticks) || 0;
-            const dur = Number(e.duration_ticks) || 12;
-            const active = ticksSince > delay && ticksSince <= delay + dur;
-            console.log(`  [${active ? 'ACTIVE' : 'dormant'}] "${p.policy_name}" | dir=${e.direction} rate=${e.rate}/tick | delay=${delay} dur=${dur} | ticksSince=${ticksSince} | passedTick=${l.passed_tick} lastApplied=${l.effects_applied_through_tick}`);
-        });
-        if (relevant.length === 0 && p.target_stat === sk) {
-            console.log(`  [legacy] "${p.policy_name}" | dir=${p.stat_direction} rate=${p.stat_change_per_tick}/tick dur=${p.duration_months}`);
-        }
-    });
-
-    // 4. Stat connections
-    const { data: conns } = await _supabase.from('stat_connections')
-        .select('*').eq('enabled', true).eq('target_stat', sk);
-    console.log(`%cStat connections targeting ${sk}: ${(conns||[]).length}`, 'font-weight:bold');
-    (conns || []).forEach(c => {
-        const sourceVal = Number(nation[c.source_stat] ?? 50);
-        const triggered = c.source_dir === 'above' ? sourceVal > c.threshold : sourceVal < c.threshold;
-        console.log(`  [${triggered ? 'TRIGGERED' : 'inactive'}] ${c.source_stat} ${c.source_dir} ${c.threshold} (current: ${sourceVal}) → ${c.target_dir} ${c.magnitude} | dampening=${c.dampening}`);
-        if (triggered && c.dampening) {
-            const targetVal = Number(nation[sk] ?? 50);
-            const eff = c.target_dir === 'up' ? c.magnitude * (1 - targetVal/100) : c.magnitude * (targetVal/100);
-            console.log(`    effective magnitude after dampening: ${eff.toFixed(3)}`);
-        }
-    });
-
-    // 5. Active crises
-    const { data: crises } = await _supabase.from('active_crises')
-        .select('crisis_id, started_tick, crisis_templates(name, crisis_effects(stat_key, change_per_tick, target))')
-        .eq('nation_id', nationId);
-    const hitCrises = (crises || []).filter(c =>
-        c.crisis_templates?.crisis_effects?.some(e => e.target === 'nation' && normalizeNationStatKey(e.stat_key) === sk)
-    );
-    console.log(`%cActive crises affecting ${sk}: ${hitCrises.length}`, 'font-weight:bold');
-    hitCrises.forEach(c => {
-        const effs = c.crisis_templates.crisis_effects.filter(e => e.target === 'nation' && normalizeNationStatKey(e.stat_key) === sk);
-        effs.forEach(e => console.log(`  "${c.crisis_templates.name}" | change_per_tick=${e.change_per_tick} | started tick ${c.started_tick}`));
-    });
-
-    // 6. Unprocessed ministry actions
-    const { data: mActions } = await _supabase.from('ministry_action_log')
-        .select('action_key, stat_effects, effects_applied_through_tick, applied_at_tick')
-        .eq('nation_id', nationId).eq('processed', false);
-    const hitMA = (mActions || []).filter(a =>
-        a.stat_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)
-    );
-    console.log(`%cMinistry actions affecting ${sk}: ${hitMA.length}`, 'font-weight:bold');
-    hitMA.forEach(a => {
-        const effs = a.stat_effects.filter(e => normalizeNationStatKey(e.stat_key) === sk);
-        effs.forEach(e => console.log(`  "${a.action_key}" | dir=${e.direction} rate=${e.rate} | applied tick ${a.applied_at_tick} lastApplied=${a.effects_applied_through_tick}`));
-    });
-
-    // 7. Decay config
-    const dc = STAT_DECAY_CONFIG[sk];
-    if (dc) {
-        console.log(`%cDecay config: type=${dc.type} target=${dc.target} speed=${dc.speed}/tick`, 'font-weight:bold');
-        const delta = Number(nation[sk]) > dc.target ? -dc.speed : dc.speed;
-        console.log(`  Natural decay this tick: ${delta > 0 ? '+' : ''}${delta}`);
-    } else {
-        console.log(`%cNo decay config for ${sk}`, 'font-weight:bold');
-    }
-
-    console.log(`%c=== END AUDIT ===`, 'font-weight:bold;font-size:14px;color:#0af');
-};
 
 // All nations data for rankings
 let allNations = [];
 let totalNations = 0;
 let previousTickData = null;
 var statEffectsByKey = {};
+var rawStatConnections = []; // cached for illegal immigration tab
 let sparklineHistory = {}; // statKey → array of last 10 values
-let activeCrises = [];
 
 // Collapsed state for sections (persisted in sessionStorage)
 var sectionState = JSON.parse(sessionStorage.getItem('nationSectionState') || '{}');
@@ -211,7 +79,7 @@ var STAT_CATEGORIES = [
     ]},
     { id: 'labor', label: 'Labor & Employment', icon: '\u{1F464}', blocs: ['Urban Workers', 'Business Owners'],
       stats: [
-        { name: 'Unemployment', key: 'unemployment', desc: 'Percentage without work', inverted: true },
+        { name: 'Unemployment', key: 'unemployment', desc: 'Percentage without work', inverted: true, format: 'unemployment' },
         { name: 'Labor Participation', key: 'labor_force_participation', desc: 'Working-age adults employed' },
         { name: 'Minimum Wage', key: 'minimum_wage', desc: 'Lowest legal hourly wage' },
         { name: 'Union Strength', key: 'union_strength', desc: 'Power of labor unions' },
@@ -255,7 +123,7 @@ var STAT_CATEGORIES = [
         { name: 'Arable Land', key: 'arable_land', desc: 'Farmable territory' },
         { name: 'Rare Minerals', key: 'rare_minerals', desc: 'Valuable mineral deposits' },
         { name: 'Oil & Gas', key: 'oil_and_gas', desc: 'Fossil fuel reserves' },
-        { name: 'Fuel Prices', key: 'fuel_prices', desc: 'Cost of energy', inverted: true }
+        { name: 'Fuel Prices', key: 'fuel_prices', desc: 'Cost of energy', inverted: true, format: 'fuel' }
     ]},
     { id: 'environment', label: 'Environment', icon: '\u{1F30D}', blocs: ['Urban Progressives'],
       stats: [
@@ -313,12 +181,16 @@ function healthColor(val, inverted) {
     return 'var(--n-red)';
 }
 
+// Resolve a CSS variable to its computed hex value (for SVG attributes that can't use var())
+function getCSSColor(varName) {
+    return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+}
 function healthColorRaw(val, inverted) {
     var v = inverted ? 100 - val : val;
-    if (v >= 65) return '#4ade80';
-    if (v >= 45) return '#facc15';
-    if (v >= 25) return '#f97316';
-    return '#ef4444';
+    if (v >= 65) return getCSSColor('--n-green');
+    if (v >= 45) return getCSSColor('--n-yellow');
+    if (v >= 25) return getCSSColor('--n-orange');
+    return getCSSColor('--n-red');
 }
 
 function catHealth(cat, nation) {
@@ -338,20 +210,6 @@ function catHealth(cat, nation) {
     }
     return sum / scored.length;
 }
-
-function buildSparklineSVG(data, color, w, h) {
-    w = w || 48; h = h || 14;
-    if (!data || data.length < 2) return '<span style="font-family:var(--n-font-mono);font-size:9px;color:var(--n-tertiary);">\u2014</span>';
-    var mn = Math.min.apply(null, data), mx = Math.max.apply(null, data), r = mx - mn || 1;
-    var pts = data.map(function(v, i) {
-        return ((i / (data.length - 1)) * w).toFixed(1) + ',' + (h - ((v - mn) / r) * h).toFixed(1);
-    }).join(' ');
-    var lastY = (h - ((data[data.length - 1] - mn) / r) * h).toFixed(1);
-    return '<svg width="' + w + '" height="' + h + '" style="display:block;flex-shrink:0;">' +
-        '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linejoin="round"/>' +
-        '<circle cx="' + w + '" cy="' + lastY + '" r="1.5" fill="' + color + '"/></svg>';
-}
-
 
 function isSectionOpen(catId) {
     if (sectionState[catId] !== undefined) return sectionState[catId];
@@ -377,8 +235,6 @@ function toggleSection(catId) {
 // Initialize page
 initPage('nation', async (state) => {
     const { nation, faction } = state;
-    _nationId = nation?.id || null;
-
     if (!nation) {
         document.getElementById('content-area').innerHTML = '<div class="loading-container"><div style="font-size:24px">No Nation</div><div>Your party is not assigned to a nation yet.</div></div>';
         return;
@@ -386,49 +242,46 @@ initPage('nation', async (state) => {
 
     // Fix placeholder government_type values from DB
     if (!nation.government_type || nation.government_type.toLowerCase().includes('your_gov_here')) {
-        if (nation.name === 'San Estrella') nation.government_type = CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC;
+        nation.government_type = CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY;
     }
 
     await Promise.all([
         loadAllNations(),
         loadPreviousTickData(nation.id),
         loadStatEffectSources(nation.id, nation),
-        loadSparklineHistory(nation.id),
-        loadActiveCrises(nation.id)
+        loadSparklineHistory(nation.id)
     ]);
     await renderNationPage(nation);
 
-    // Auto-refresh when a tick advances
+    // Auto-refresh when a tick advances (debounced to prevent concurrent renders)
+    let _isRefreshing = false;
     window.addEventListener('tick-advanced', async () => {
+        if (_isRefreshing) return;
+        _isRefreshing = true;
         try {
-            // Bust stale caches for this nation
             qCacheBust('prev_tick_');
             qCacheBust('sparkline_');
             qCacheBust('stat_effects_');
             qCacheBust('all_nations');
-            qCacheBust('crises_');
             previousTickData = null;
             sparklineHistory = {};
             statEffectsByKey = {};
-            activeCrises = [];
 
-            // Re-fetch fresh nation data
             const freshState = await refreshGameState();
             const freshNation = freshState?.nation;
             if (!freshNation) return;
 
-            _nationId = freshNation.id;
             await Promise.all([
                 loadAllNations(),
                 loadPreviousTickData(freshNation.id),
                 loadStatEffectSources(freshNation.id, freshNation),
-                loadSparklineHistory(freshNation.id),
-                loadActiveCrises(freshNation.id)
+                loadSparklineHistory(freshNation.id)
             ]);
             await renderNationPage(freshNation);
-            console.log('[nation.html] Refreshed after tick advance');
         } catch (e) {
             console.error('[nation.html] Error refreshing after tick:', e);
+        } finally {
+            _isRefreshing = false;
         }
     });
 });
@@ -444,10 +297,10 @@ async function loadPreviousTickData(nationId) {
     const cacheKey = 'prev_tick_' + nationId;
     const cached = qCache(cacheKey);
     if (cached) { previousTickData = cached; return; }
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    if (!shard) { console.warn('[loadPreviousTickData] Shard not found — stat deltas unavailable'); return; }
-    const previousTick = shard.current_tick - 1;
-    if (previousTick < 0) { console.warn('[loadPreviousTickData] current_tick is', shard.current_tick, '— no previous tick yet'); return; }
+    const currentTick = await getShardTick();
+    if (!currentTick) return;
+    const previousTick = currentTick - 1;
+    if (previousTick < 0) { console.warn('[loadPreviousTickData] current_tick is', currentTick, '— no previous tick yet'); return; }
 
     // Use .limit(1) instead of .maybeSingle() — maybeSingle sends an Accept header
     // that causes PostgREST to return HTTP 406 when 0 rows match, which logs a
@@ -472,8 +325,8 @@ async function loadPreviousTickData(nationId) {
         '— falling back to most recent snapshot (max age:', MAX_FALLBACK_AGE, 'ticks).');
     const { data: fallbackRows } = await _supabase.from('nations_history')
         .select('*').eq('nation_id', nationId)
-        .gte('tick', shard.current_tick - MAX_FALLBACK_AGE - 1)
-        .lt('tick', shard.current_tick)
+        .gte('tick', currentTick - MAX_FALLBACK_AGE - 1)
+        .lt('tick', currentTick)
         .order('tick', { ascending: false }).limit(1);
     if (fallbackRows && fallbackRows.length > 0) {
         previousTickData = fallbackRows[0];
@@ -488,12 +341,13 @@ async function loadSparklineHistory(nationId) {
     var cacheKey = 'sparkline_' + nationId;
     var cached = qCache(cacheKey);
     if (cached) { sparklineHistory = cached; return; }
-    var { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    if (!shard) return;
-    var fromTick = Math.max(0, shard.current_tick - 10);
-    var { data: rows } = await _supabase.from('nations_history')
+    var currentTick = await getShardTick();
+    if (!currentTick) return;
+    var fromTick = Math.max(0, currentTick - 10);
+    var { data: rows, error: histErr } = await _supabase.from('nations_history')
         .select('*').eq('nation_id', nationId)
         .gte('tick', fromTick).order('tick', { ascending: true });
+    if (histErr) { console.warn('[loadSparklineHistory] Query error:', histErr.message); return; }
     if (!rows || rows.length === 0) return;
     // Build per-stat arrays
     var allKeys = [];
@@ -518,20 +372,6 @@ async function loadSparklineHistory(nationId) {
     qCacheSet(cacheKey, map, 2 * 60 * 1000);
 }
 
-async function loadActiveCrises(nationId) {
-    var cacheKey = 'crises_' + nationId;
-    var cached = qCache(cacheKey);
-    if (cached) { activeCrises = cached; return; }
-    var res = await _supabase
-        .from('active_crises')
-        .select('crisis_id, crisis_templates(name, description, crisis_end_triggers(stat_key), crisis_effects(stat_key, change_per_tick, target))')
-        .eq('nation_id', nationId);
-    if (!res.error && res.data) {
-        activeCrises = res.data;
-        qCacheSet(cacheKey, res.data, 2 * 60 * 1000);
-    }
-}
-
 // ===== Affected-By: Data Fetching =====
 
 async function loadStatEffectSources(nationId, nation) {
@@ -539,7 +379,9 @@ async function loadStatEffectSources(nationId, nation) {
     var cached = qCache(cacheKey);
     if (cached) { statEffectsByKey = cached; return; }
 
-    var results = await Promise.all([
+    var results;
+    try {
+    results = await Promise.all([
         _supabase.from('active_laws')
             .select('is_reversal, passed_tick, effects_applied_through_tick, policies(policy_name, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)')
             .eq('nation_id', nationId),
@@ -547,11 +389,11 @@ async function loadStatEffectSources(nationId, nation) {
             .select('crisis_id, crisis_templates(name, crisis_effects(stat_key, change_per_tick, target))')
             .eq('nation_id', nationId),
         _supabase.from('ministry_action_log')
-            .select('action_key, stat_effects')
+            .select('action_key, stat_effects, applied_at_tick')
             .eq('nation_id', nationId)
             .eq('processed', false),
         _supabase.from('diplomatic_action_log')
-            .select('action_type, stat_effects')
+            .select('action_type, stat_effects, applied_at_tick')
             .eq('nation_id', nationId)
             .eq('processed', false),
         loadLeaderTraitEffects(nationId, nation),
@@ -563,19 +405,25 @@ async function loadStatEffectSources(nationId, nation) {
             .eq('nation_id', nationId)
             .eq('item_type', 'institution')
             .order('created_at', { ascending: true }),
-        _supabase.from('institutions')
-            .select('id, name, primary_stat, secondary_stat')
+        _supabase.from('ministry_institution_config')
+            .select('id, institution_name, primary_stat, secondary_stat, growth_stat, growth_ceiling')
     ]);
+    } catch (e) {
+        console.warn('[loadStatEffectSources] Failed to fetch effect sources:', e.message);
+        return;
+    }
 
     var currentTick = await getShardTick();
     var map = {};
     parsePolicyEffects(results[0].data || [], map, currentTick);
     parseCrisisEffects(results[1].data || [], map);
-    parseMinistryEffects(results[2].data || [], map);
-    parseDiplomaticEffects(results[3].data || [], map);
+    parseMinistryEffects(results[2].data || [], map, currentTick);
+    parseDiplomaticEffects(results[3].data || [], map, currentTick);
     parseLeaderTraitEffects(results[4], map);
-    parseStatConnectionEffects(results[5].data || [], nation, map);
     parseInstitutionEffects(results[6].data || [], results[7].data || [], nation, map);
+    parseDebtPressureEffects(nation, map);
+    rawStatConnections = results[5].data || [];
+    parseStatConnectionEffects(rawStatConnections, nation, map);
     parseTradeSystemEffects(nation, map);
     parseDecayEffects(nation, map);
 
@@ -584,8 +432,10 @@ async function loadStatEffectSources(nationId, nation) {
 }
 
 async function loadLeaderTraitEffects(nationId, nation) {
+    // Old leader_traits effect system removed — trait is display-only now
+    return null;
     try {
-        if (isPresidentialRepublic(nation)) {
+        if (hasElectedPresident(nation)) {
             var res = await _supabase.from('presidents')
                 .select('trait, first_name, last_name')
                 .eq('nation_id', nationId)
@@ -616,22 +466,27 @@ async function loadLeaderTraitEffects(nationId, nation) {
     }
 }
 
-function addEffectToMap(map, statKey, name, direction, type, rate) {
+function addEffectToMap(map, statKey, name, direction, type, rate, remainingTicks, extras) {
     var key = normalizeNationStatKey(statKey);
     if (!key) return;
     if (!map[key]) map[key] = [];
     var parsedRate = (rate === null || rate === undefined || rate === '') ? null : Number(rate);
     if (!Number.isFinite(parsedRate)) parsedRate = null;
+    var parsedRemaining = (remainingTicks === null || remainingTicks === undefined) ? null : Number(remainingTicks);
+    if (!Number.isFinite(parsedRemaining) || parsedRemaining < 0) parsedRemaining = null;
     // Deduplicate and backfill missing rate where available
     for (var i = 0; i < map[key].length; i++) {
         if (map[key][i].name === name && map[key][i].direction === direction && map[key][i].type === type) {
             if ((map[key][i].rate === null || map[key][i].rate === undefined) && parsedRate !== null) {
                 map[key][i].rate = parsedRate;
             }
+            if ((map[key][i].remainingTicks === null || map[key][i].remainingTicks === undefined) && parsedRemaining !== null) {
+                map[key][i].remainingTicks = parsedRemaining;
+            }
             return;
         }
     }
-    map[key].push({ name: name, direction: direction, type: type, rate: parsedRate });
+    map[key].push({ name: name, direction: direction, type: type, rate: parsedRate, remainingTicks: parsedRemaining, extras: extras || null });
 }
 
 function parsePolicyEffects(laws, map, currentTick) {
@@ -657,7 +512,8 @@ function parsePolicyEffects(laws, map, currentTick) {
                 var rate = Number(eff.rate);
                 if (!Number.isFinite(rate)) rate = Number(policy.stat_change_per_tick);
                 if (!Number.isFinite(rate)) rate = 1;
-                addEffectToMap(map, eff.stat_key, label, dir, 'Policy', rate);
+                var remaining = (delay + dur) - ticksSince;
+                addEffectToMap(map, eff.stat_key, label, dir, 'Policy', rate, remaining);
             }
             continue;
         }
@@ -670,7 +526,8 @@ function parsePolicyEffects(laws, map, currentTick) {
         if (law.is_reversal) legacyDir = (legacyDir === 'up') ? 'down' : 'up';
         var legacyRate = Number(policy.stat_change_per_tick);
         if (!Number.isFinite(legacyRate)) legacyRate = 1;
-        addEffectToMap(map, policy.target_stat, label, legacyDir, 'Policy', legacyRate);
+        var legacyRemaining = legacyDur - ticksSince;
+        addEffectToMap(map, policy.target_stat, label, legacyDir, 'Policy', legacyRate, legacyRemaining);
     }
 }
 
@@ -689,31 +546,39 @@ function parseCrisisEffects(crises, map) {
     }
 }
 
-function parseMinistryEffects(actions, map) {
+function parseMinistryEffects(actions, map, currentTick) {
     for (var i = 0; i < actions.length; i++) {
         var action = actions[i];
         var effects = action.stat_effects;
         if (!effects || !Array.isArray(effects)) continue;
+        var ticksSince = currentTick - (action.applied_at_tick || 0);
         for (var j = 0; j < effects.length; j++) {
             var eff = effects[j];
             if (eff.target && eff.target !== 'nation') continue;
             if (!eff.stat_key) continue;
             var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
-            addEffectToMap(map, eff.stat_key, prettyStatName(action.action_key), dir, 'Ministry Action');
+            var delay = Number(eff.delay_ticks) || 0;
+            var dur = Number(eff.duration_ticks) || 4;
+            var remaining = (delay + dur) - ticksSince;
+            addEffectToMap(map, eff.stat_key, prettyStatName(action.action_key), dir, 'Ministry Action', eff.rate || null, remaining);
         }
     }
 }
 
-function parseDiplomaticEffects(actions, map) {
+function parseDiplomaticEffects(actions, map, currentTick) {
     for (var i = 0; i < actions.length; i++) {
         var action = actions[i];
         var effects = action.stat_effects;
         if (!effects || !Array.isArray(effects)) continue;
+        var ticksSince = currentTick - (action.applied_at_tick || 0);
         for (var j = 0; j < effects.length; j++) {
             var eff = effects[j];
             if (!eff.stat_key) continue;
             var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
-            addEffectToMap(map, eff.stat_key, prettyStatName(action.action_type), dir, 'Diplomatic Action');
+            var delay = Number(eff.delay_ticks) || 0;
+            var dur = Number(eff.duration_ticks) || 4;
+            var remaining = (delay + dur) - ticksSince;
+            addEffectToMap(map, eff.stat_key, prettyStatName(action.action_type), dir, 'Diplomatic Action', eff.rate || null, remaining);
         }
     }
 }
@@ -745,6 +610,39 @@ function parseStatConnectionEffects(connections, nation, map) {
     }
 }
 
+var INSTITUTION_TIER_LABELS = [
+    { minPct: 100, label: 'Fully Funded', color: '#4ade80' },
+    { minPct: 90,  label: 'Stretched',    color: '#a3e635' },
+    { minPct: 75,  label: 'Strained',     color: '#fbbf24' },
+    { minPct: 50,  label: 'Underfunded',  color: '#f97316' },
+    { minPct: 25,  label: 'Critical',     color: '#ef4444' },
+    { minPct: 0,   label: 'Collapsed',    color: '#f43f5e' },
+];
+
+function getInstitutionTier(pct) {
+    for (var i = 0; i < INSTITUTION_TIER_LABELS.length; i++) {
+        if (pct >= INSTITUTION_TIER_LABELS[i].minPct) return INSTITUTION_TIER_LABELS[i];
+    }
+    return INSTITUTION_TIER_LABELS[INSTITUTION_TIER_LABELS.length - 1];
+}
+
+// Decay rates matching INSTITUTION_DECAY_TIERS in stats.js
+var INST_DECAY_RATES = [
+    { minPct: 100, primary: 0,   secondary: 0   },
+    { minPct: 90,  primary: 0.3, secondary: 0   },
+    { minPct: 75,  primary: 0.5, secondary: 0.2 },
+    { minPct: 50,  primary: 0.9, secondary: 0.5 },
+    { minPct: 25,  primary: 1.7, secondary: 0.9 },
+    { minPct: 0,   primary: 2.7, secondary: 1.7 },
+];
+
+function getInstDecayRate(pct, role) {
+    for (var i = 0; i < INST_DECAY_RATES.length; i++) {
+        if (pct >= INST_DECAY_RATES[i].minPct) return INST_DECAY_RATES[i][role];
+    }
+    return INST_DECAY_RATES[INST_DECAY_RATES.length - 1][role];
+}
+
 function parseInstitutionEffects(allocations, institutions, nation, map) {
     // Build funding pct map
     var fundingMap = {};
@@ -755,23 +653,106 @@ function parseInstitutionEffects(allocations, institutions, nation, map) {
             ? Math.min(200, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
             : 100;
     }
-    // For each institution, if underfunded, show effect on its covered stats
+    // Show every institution on its covered stats — regardless of funding level
     for (var j = 0; j < institutions.length; j++) {
         var inst = institutions[j];
         var pct = fundingMap[inst.id] !== undefined ? fundingMap[inst.id] : 100;
-        if (pct >= 100) continue; // fully funded = no decay effect
-        var roles = ['primary_stat', 'secondary_stat'];
+        var tier = getInstitutionTier(pct);
+        var isFullyFunded = pct >= 100;
+        var isCollapsed = pct < 25;
+        var hasGrowth = !!inst.growth_stat;
+
+        var roles = ['primary', 'secondary'];
         for (var r = 0; r < roles.length; r++) {
-            var statKey = inst[roles[r]];
+            var statKey = inst[roles[r] + '_stat'];
             if (!statKey) continue;
-            var config = STAT_DECAY_CONFIG[statKey];
-            if (!config) continue;
-            var currentVal = nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50;
-            if (currentVal === config.target) continue;
-            var dir = currentVal > config.target ? 'down' : 'up';
-            var label = inst.name + ' (' + pct + '% funded)';
-            addEffectToMap(map, statKey, label, dir, 'Institution');
+
+            var rate = null;
+            var dir = 'up';
+            var badge = tier.label;
+
+            if (isFullyFunded) {
+                // Check if this institution has a growth stat that matches this stat key
+                if (hasGrowth && inst.growth_stat === statKey) {
+                    // Actively growing: +0.25/tick toward ceiling
+                    var currentVal = nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 0;
+                    var ceiling = Number(inst.growth_ceiling || 30);
+                    if (currentVal < ceiling) {
+                        dir = 'up';
+                        rate = 0.25;
+                    } else {
+                        // At ceiling — holding
+                        dir = 'up';
+                        rate = null;
+                    }
+                } else {
+                    // Fully funded, no growth on this stat — holding (no decay)
+                    dir = 'up';
+                    rate = null;
+                }
+            } else {
+                // Underfunded — decaying
+                var decayRate = getInstDecayRate(pct, roles[r]);
+                if (decayRate > 0) {
+                    dir = 'down';
+                    rate = decayRate;
+                } else {
+                    // e.g. Stretched secondary = 0 decay
+                    dir = 'up';
+                    rate = null;
+                    badge = tier.label;
+                }
+            }
+
+            var label = inst.institution_name || inst.name;
+            addEffectToMap(map, statKey, label, dir, 'Institution', rate, null, {
+                fundingPct: pct,
+                tierLabel: badge,
+                tierColor: tier.color,
+                isCollapsed: isCollapsed,
+                isFullyFunded: isFullyFunded,
+                hasGrowthEffect: isFullyFunded && hasGrowth && inst.growth_stat === statKey,
+            });
         }
+    }
+}
+
+// ── Debt Pressure: graduated stat effects from debt-to-GDP ratio ──
+var DEBT_PRESSURE_TIERS_CLIENT = [
+    { maxRatio: 0.60, label: 'Healthy',     color: '#4ade80', effects: {} },
+    { maxRatio: 0.80, label: 'Elevated',    color: '#a3e635', effects: { interest_rates: 0.05 } },
+    { maxRatio: 1.00, label: 'Concerning',  color: '#fbbf24', effects: { interest_rates: 0.1, foreign_investment: -0.1, currency_strength: -0.05 } },
+    { maxRatio: 1.50, label: 'Dangerous',   color: '#f97316', effects: { interest_rates: 0.2, foreign_investment: -0.2, currency_strength: -0.15 } },
+    { maxRatio: 2.00, label: 'Severe',      color: '#ef4444', effects: { interest_rates: 0.4, foreign_investment: -0.4, currency_strength: -0.3 } },
+    { maxRatio: Infinity, label: 'Crisis',  color: '#f43f5e', effects: { interest_rates: 0.7, foreign_investment: -0.7, currency_strength: -0.5 } },
+];
+
+function parseDebtPressureEffects(nation, map) {
+    var debt = Number(nation.debt || 0);
+    var gdp = Number(nation.gdp || 0);
+    if (gdp <= 0 || debt <= 0) return;
+    var ratio = debt / gdp;
+
+    var tier = DEBT_PRESSURE_TIERS_CLIENT[0];
+    for (var i = 0; i < DEBT_PRESSURE_TIERS_CLIENT.length; i++) {
+        if (ratio <= DEBT_PRESSURE_TIERS_CLIENT[i].maxRatio) { tier = DEBT_PRESSURE_TIERS_CLIENT[i]; break; }
+    }
+
+    // Only show entries for stats that have nonzero effects at this tier
+    var effects = tier.effects;
+    var pctLabel = Math.round(ratio * 100) + '% Debt-to-GDP';
+    for (var statKey in effects) {
+        if (!effects.hasOwnProperty(statKey)) continue;
+        var delta = effects[statKey];
+        if (delta === 0) continue;
+        var dir = delta > 0 ? 'up' : 'down';
+        // interest_rates going UP is bad; foreign_investment/currency going DOWN is bad
+        // So for display: interest_rates up = red arrow, others down = red arrow
+        addEffectToMap(map, statKey, pctLabel, dir, 'Debt Pressure', Math.abs(delta), null, {
+            tierLabel: tier.label,
+            tierColor: tier.color,
+            isDebtPressure: true,
+        });
     }
 }
 
@@ -841,20 +822,20 @@ async function getShardTick() {
 
 async function renderRevolutionBanner(nation) {
     var currentTick = await getShardTick();
-    var revRes = await _supabase
+    var revRows = await _supabase
         .from('event_log')
         .select('fired_at_tick, description_used')
         .eq('nation_id', nation.id)
         .eq('event_name', 'DEMOCRATIC_REVOLUTION')
         .order('fired_at_tick', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-    if (revRes.data && (currentTick - revRes.data.fired_at_tick) <= 5) {
-        var electionTick = revRes.data.fired_at_tick + 3;
+        .limit(1);
+    var revData = (revRows.data && revRows.data.length > 0) ? revRows.data[0] : null;
+    if (revData && (currentTick - revData.fired_at_tick) <= 5) {
+        var electionTick = revData.fired_at_tick + 3;
         var ticksUntilElection = Math.max(0, electionTick - currentTick);
         var h = '<div class="revolution-complete-banner">';
         h += '<div class="revolution-banner__title">Revolution in the Streets!</div>';
-        h += '<div class="revolution-banner__subtitle">' + escapeHtml(revRes.data.description_used) + '</div>';
+        h += '<div class="revolution-banner__subtitle">' + escapeHtml(revData.description_used) + '</div>';
         h += '<div class="revolution-banner__tags">';
         if (ticksUntilElection > 0) {
             h += '<span class="revolution-tag revolution-tag--green">Emergency Elections in ' + ticksUntilElection + ' tick' + (ticksUntilElection !== 1 ? 's' : '') + '</span>';
@@ -864,16 +845,6 @@ async function renderRevolutionBanner(nation) {
         h += '<span class="revolution-tag revolution-tag--green">Democracy Established</span></div></div>';
         return h;
     }
-    if (isAutocracy(nation) && nation.revolution_started_tick != null && nation.revolution_duration != null) {
-        var elapsed = currentTick - nation.revolution_started_tick;
-        var remaining = Math.max(0, nation.revolution_duration - elapsed);
-        var h = '<div class="revolution-banner">';
-        h += '<div class="revolution-banner__title">Democratic Revolution</div>';
-        h += '<div class="revolution-banner__subtitle">The people demand democracy. Pro-democracy protests grow stronger each day.</div>';
-        h += '<div class="revolution-banner__countdown">' + remaining + ' tick' + (remaining !== 1 ? 's' : '') + ' until revolution</div>';
-        h += '</div>';
-        return h;
-    }
     return '';
 }
 
@@ -881,7 +852,7 @@ async function renderRevolutionBanner(nation) {
 
 function formatGdpGrowth(rawValue) {
     var v = Number(rawValue ?? 50);
-    var pct = ((v - 50) / 50) * 3;
+    var pct = (v - 50) / 50;
     return (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
 }
 
@@ -900,6 +871,10 @@ function isMisscaledMonetary(key, val) {
     return RAW_DOLLAR_KEYS[key] && val != null && Number(val) >= 0 && Number(val) <= 100000;
 }
 
+function formatUnemploymentPct(stat) {
+    return (0.7 + (stat - 1) * 34.3 / 99).toFixed(1) + '%';
+}
+
 function getDisplayValue(stat, nation) {
     var raw = nation[stat.key];
     var format = stat.format;
@@ -911,12 +886,13 @@ function getDisplayValue(stat, nation) {
         return '$' + Math.round(Number(raw));
     }
     if (format === 'count') return formatNumber(raw);
-    if (format === 'gdp') return formatCurrencyShort(scaleRawToDollars(raw));
-    if (format === 'currency') return formatCurrencyShort(scaleRawToDollars(raw));
+    if (format === 'gdp' || format === 'currency') return formatCurrencyShort(scaleRawToDollars(raw));
     if (format === 'gdpgrowth') return formatGdpGrowth(raw);
     if (format === 'trade') return formatTradeBalance(raw);
     if (format === 'inflation') return formatInflationRate(raw);
+    if (format === 'fuel') return formatFuelPrice(raw, nation.currency_strength, nation.inflation);
     if (format === 'years') return (Math.round(Number(raw) * 10) / 10) + ' yrs';
+    if (format === 'unemployment') return formatUnemploymentPct(Number(raw));
     return Math.round(Number(raw) * 10) / 10;
 }
 
@@ -946,26 +922,94 @@ function buildFeaturedAbpHTML(statKey) {
     var h = '<div class="featured-card__abp-title">Affected By</div>';
     for (var i = 0; i < effects.length; i++) {
         var eff = effects[i];
-        var arrow = eff.direction === 'up' ? '&#9650;' : '&#9660;';
-        var arrowClass = eff.direction === 'up' ? 'featured-card__abp-arrow--up' : 'featured-card__abp-arrow--down';
-        var typeClass = 'featured-card__abp-type--' + eff.type.toLowerCase().replace(/ /g, '-');
-        h += '<div class="featured-card__abp-row">';
-        h += '<span class="featured-card__abp-name">' + escapeHtml(eff.name) + '</span>';
-        h += '<span class="featured-card__abp-arrow ' + arrowClass + '">' + arrow + '</span>';
+        var ext = eff.extras;
+        var isInst = eff.type === 'Institution' && ext;
+        var isDebtP = ext && ext.isDebtPressure;
+        var hasTierColor = isInst || isDebtP;
+
+        // Row class — collapsed institutions get warning background
+        var rowClass = 'featured-card__abp-row';
+        if (isInst && ext.isCollapsed) rowClass += ' featured-card__abp-row--collapsed';
+        h += '<div class="' + rowClass + '">';
+
+        // Name — collapsed gets warning icon prefix
+        if (isInst && ext.isCollapsed) {
+            h += '<span class="featured-card__abp-name"><span class="featured-card__abp-warn">&#9888;</span>' + escapeHtml(eff.name) + '</span>';
+        } else {
+            h += '<span class="featured-card__abp-name">' + escapeHtml(eff.name) + '</span>';
+        }
+
+        // Arrow and rate
+        if (isInst && ext.isFullyFunded && !ext.hasGrowthEffect) {
+            // Holding entry — flat indicator, no rate
+            h += '<span class="featured-card__abp-arrow featured-card__abp-arrow--hold">&#9644;</span>';
+        } else {
+            var arrow = eff.direction === 'up' ? '&#9650;' : '&#9660;';
+            var arrowClass = eff.direction === 'up' ? 'featured-card__abp-arrow--up' : 'featured-card__abp-arrow--down';
+            if (hasTierColor) arrowClass += ' featured-card__abp-arrow--inst';
+            h += '<span class="featured-card__abp-arrow ' + arrowClass + '"' + (hasTierColor ? ' style="color:' + ext.tierColor + '"' : '') + '>' + arrow + '</span>';
+        }
+
         if (eff.rate !== null && eff.rate !== undefined) {
             var sign = eff.direction === 'up' ? '+' : '-';
-            h += '<span class="featured-card__abp-rate">' + sign + (Math.round(Math.abs(Number(eff.rate)) * 100) / 100) + '/tick</span>';
+            var rateStyle = hasTierColor ? ' style="color:' + ext.tierColor + '"' : '';
+            h += '<span class="featured-card__abp-rate"' + rateStyle + '>' + sign + (Math.round(Math.abs(Number(eff.rate)) * 100) / 100) + '/tick</span>';
         }
-        h += '<span class="featured-card__abp-type ' + typeClass + '">' + escapeHtml(eff.type) + '</span>';
+
+        // Type badge — institutions and debt pressure get tier-specific badges
+        if (isInst) {
+            h += '<span class="featured-card__abp-type featured-card__abp-type--institution" style="background:' + ext.tierColor + '18;color:' + ext.tierColor + '">' + escapeHtml(ext.tierLabel) + '</span>';
+        } else if (isDebtP) {
+            h += '<span class="featured-card__abp-type featured-card__abp-type--debt-pressure" style="background:' + ext.tierColor + '18;color:' + ext.tierColor + '">' + escapeHtml(ext.tierLabel) + '</span>';
+        } else {
+            var typeClass = 'featured-card__abp-type--' + eff.type.toLowerCase().replace(/ /g, '-');
+            h += '<span class="featured-card__abp-type ' + typeClass + '">' + escapeHtml(eff.type) + '</span>';
+        }
+
+        if (eff.remainingTicks !== null && eff.remainingTicks !== undefined) {
+            h += '<span class="featured-card__abp-ticks">' + eff.remainingTicks + ' tick' + (eff.remainingTicks !== 1 ? 's' : '') + '</span>';
+        }
         h += '</div>';
     }
     return h;
 }
 
+function getGdpGrowthLabel(monthlyPct) {
+    if (monthlyPct < -0.33) return 'Recession';
+    if (monthlyPct < 0) return 'Stagnant';
+    if (monthlyPct < 0.17) return 'No Growth';
+    if (monthlyPct < 1) return 'Growing';
+    return 'Booming';
+}
+
+function getGdpGrowthScaleItems(monthlyPct) {
+    return [
+        { label: 'Recession', range: '< -0.33%', active: monthlyPct < -0.33 },
+        { label: 'Stagnant', range: '-0.33% to 0%', active: monthlyPct >= -0.33 && monthlyPct < 0 },
+        { label: 'No Growth', range: '0% to 0.17%', active: monthlyPct >= 0 && monthlyPct < 0.17 },
+        { label: 'Growing', range: '0.17% to 1%', active: monthlyPct >= 0.17 && monthlyPct < 1 },
+        { label: 'Booming', range: '> 1%', active: monthlyPct >= 1 }
+    ];
+}
+
+function buildRankingPipsHTML(rank, total) {
+    if (!rank) return '';
+    total = total || 6;
+    var pipColor = rank <= 2 ? 'var(--n-green)' : rank <= 4 ? 'var(--n-yellow)' : 'var(--n-red)';
+    var h = '<div class="compact-bottom__rank">';
+    for (var i = 0; i < total; i++) {
+        h += i < rank
+            ? '<div class="compact-bottom__rank-pip" style="background:' + pipColor + ';"></div>'
+            : '<div class="compact-bottom__rank-pip compact-bottom__rank-pip--empty"></div>';
+    }
+    h += '<span class="compact-bottom__rank-label">#' + rank + '</span></div>';
+    return h;
+}
+
 function renderFeaturedGDP(nation) {
-    var gdpRaw = nation.gdp;
+    var gdpRaw = nation.gdp ?? 0;
     var gdpGrowthRaw = Number(nation.gdp_growth ?? 50);
-    var monthlyPct = ((gdpGrowthRaw - 50) / 50) * 3;
+    var monthlyPct = ((gdpGrowthRaw - 50) / 50) * 1;
     var yearlyPct = (Math.pow(1 + monthlyPct / 100, 12) - 1) * 100;
     var gdpDisplay = formatCurrencyShort(scaleRawToDollars(gdpRaw));
     // Split "$88.7 Billion" into value + unit
@@ -989,29 +1033,20 @@ function renderFeaturedGDP(nation) {
     var yearlyStr = (yearlyPct >= 0 ? '+' : '') + yearlyPct.toFixed(2) + '%';
 
     // GDP growth label
-    var gdpLabel, tagColor, tagBorder;
-    if (monthlyPct < -1) { gdpLabel = 'Recession'; tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; }
-    else if (monthlyPct < 0) { gdpLabel = 'Stagnant'; tagColor = 'var(--n-orange)'; tagBorder = 'rgba(249,115,22,0.3)'; }
-    else if (monthlyPct < 0.5) { gdpLabel = 'No Growth'; tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; }
-    else if (monthlyPct < 3) { gdpLabel = 'Growing'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
-    else { gdpLabel = 'Booming'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
+    var gdpLabel = getGdpGrowthLabel(monthlyPct);
+    var tagColor, tagBorder;
+    if (monthlyPct < -0.33) { tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red)'; }
+    else if (monthlyPct < 0) { tagColor = 'var(--n-orange)'; tagBorder = 'var(--n-orange)'; }
+    else if (monthlyPct < 0.17) { tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow)'; }
+    else { tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green)'; }
 
-    // Dot color matches tag
     var dotColor = tagColor;
-
-    // Scale items
-    var scaleItems = [
-        { label: 'Recession', range: '< -1%', active: monthlyPct < -1 },
-        { label: 'Stagnant', range: '-1% to 0%', active: monthlyPct >= -1 && monthlyPct < 0 },
-        { label: 'No Growth', range: '0% to 0.5%', active: monthlyPct >= 0 && monthlyPct < 0.5 },
-        { label: 'Growing', range: '0.5% to 3%', active: monthlyPct >= 0.5 && monthlyPct < 3 },
-        { label: 'Booming', range: '> 3%', active: monthlyPct >= 3 }
-    ];
+    var scaleItems = getGdpGrowthScaleItems(monthlyPct);
 
     // Sparkline
     var sparkData = sparklineHistory['gdp'] ? sparklineHistory['gdp'].slice() : [];
     if (gdpRaw != null) sparkData.push(Number(gdpRaw));
-    var chartColor = monthlyPct >= 0 ? '#4ade80' : '#ef4444';
+    var chartColor = monthlyPct >= 0 ? getCSSColor('--n-green') : getCSSColor('--n-red');
     var chartSVG = buildFeaturedSparkSVG(sparkData, chartColor);
 
     var h = '<div class="featured-card featured-card--gdp">';
@@ -1068,7 +1103,7 @@ function renderFeaturedGDP(nation) {
 }
 
 function renderFeaturedInflation(nation) {
-    var inflRaw = Number(nation.inflation ?? 0);
+    var inflRaw = Number(nation.inflation ?? 50);
     var rate = inflationRate(inflRaw);
     var rateStr = formatInflationRate(inflRaw);
     var label = getInflationLabel(inflRaw);
@@ -1076,9 +1111,9 @@ function renderFeaturedInflation(nation) {
     // Tag color
     var iClass = inflationColorClass(inflRaw);
     var tagColor, tagBorder, dotColor;
-    if (iClass === 'good') { tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; dotColor = 'var(--n-green)'; }
-    else if (iClass === 'medium') { tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; dotColor = 'var(--n-yellow)'; }
-    else { tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; dotColor = 'var(--n-red)'; }
+    if (iClass === 'good') { tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green)'; dotColor = 'var(--n-green)'; }
+    else if (iClass === 'medium') { tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow)'; dotColor = 'var(--n-yellow)'; }
+    else { tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red)'; dotColor = 'var(--n-red)'; }
 
     // Delta per tick
     var deltaStr = '';
@@ -1093,18 +1128,18 @@ function renderFeaturedInflation(nation) {
 
     // Scale items
     var scaleItems = [
-        { label: 'Minimal', range: '<0.25%', active: rate < 0.25 },
-        { label: 'Low', range: '0.25-1%', active: rate >= 0.25 && rate < 1 },
-        { label: 'Moderate', range: '1-3%', active: rate >= 1 && rate < 3 },
-        { label: 'High', range: '3-8%', active: rate >= 3 && rate < 8 },
-        { label: 'Hyper', range: '8%+', active: rate >= 8 }
+        { label: 'Deflation', range: '<0%', active: rate < 0 },
+        { label: 'Low', range: '0-1%', active: rate >= 0 && rate < 1 },
+        { label: 'Stable', range: '1-3%', active: rate >= 1 && rate < 3 },
+        { label: 'High', range: '3-6%', active: rate >= 3 && rate < 6 },
+        { label: 'Hyper', range: '6%+', active: rate >= 6 }
     ];
 
     // Sparkline — for inflation, invert visually: down line = good
     var sparkData = sparklineHistory['inflation'] ? sparklineHistory['inflation'].slice() : [];
     if (inflRaw != null) sparkData.push(inflRaw);
     // Color: green if good/stable, red if bad
-    var chartColor = iClass === 'good' ? '#4ade80' : iClass === 'medium' ? '#facc15' : '#ef4444';
+    var chartColor = iClass === 'good' ? getCSSColor('--n-green') : iClass === 'medium' ? getCSSColor('--n-yellow') : getCSSColor('--n-red');
     var chartSVG = buildFeaturedSparkSVG(sparkData, chartColor);
 
     var h = '<div class="featured-card featured-card--inflation">';
@@ -1149,26 +1184,20 @@ function renderFeaturedInflation(nation) {
 
 function renderFeaturedGDPGrowth(nation) {
     var gdpGrowthRaw = Number(nation.gdp_growth ?? 50);
-    var monthlyPct = ((gdpGrowthRaw - 50) / 50) * 3;
+    var monthlyPct = ((gdpGrowthRaw - 50) / 50) * 1;
     var yearlyPct = (Math.pow(1 + monthlyPct / 100, 12) - 1) * 100;
     var growthStr = (monthlyPct >= 0 ? '+' : '') + monthlyPct.toFixed(2) + '%';
     var yearlyStr = (yearlyPct >= 0 ? '+' : '') + yearlyPct.toFixed(2) + '%';
 
     // Color based on growth
     var growthColor, borderColor, dotColor, tagColor, tagBorder;
-    if (monthlyPct >= 0.5) { growthColor = '#4ade80'; borderColor = '#4ade80'; dotColor = 'var(--n-green)'; tagColor = 'var(--n-green)'; tagBorder = 'rgba(74,222,128,0.3)'; }
-    else if (monthlyPct >= 0) { growthColor = '#facc15'; borderColor = '#facc15'; dotColor = 'var(--n-yellow)'; tagColor = 'var(--n-yellow)'; tagBorder = 'rgba(250,204,21,0.3)'; }
-    else { growthColor = '#ef4444'; borderColor = '#ef4444'; dotColor = 'var(--n-red)'; tagColor = 'var(--n-red)'; tagBorder = 'rgba(239,68,68,0.3)'; }
+    if (monthlyPct >= 0.17) { growthColor = getCSSColor('--n-green'); borderColor = 'var(--n-green)'; dotColor = 'var(--n-green)'; tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green)'; }
+    else if (monthlyPct >= 0) { growthColor = getCSSColor('--n-yellow'); borderColor = 'var(--n-yellow)'; dotColor = 'var(--n-yellow)'; tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow)'; }
+    else { growthColor = getCSSColor('--n-red'); borderColor = 'var(--n-red)'; dotColor = 'var(--n-red)'; tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red)'; }
 
     var yearlyColor = yearlyPct >= 0 ? 'var(--n-green)' : 'var(--n-red)';
 
-    // Growth label
-    var gdpLabel;
-    if (monthlyPct < -1) { gdpLabel = 'Recession'; }
-    else if (monthlyPct < 0) { gdpLabel = 'Stagnant'; }
-    else if (monthlyPct < 0.5) { gdpLabel = 'No Growth'; }
-    else if (monthlyPct < 3) { gdpLabel = 'Growing'; }
-    else { gdpLabel = 'Booming'; }
+    var gdpLabel = getGdpGrowthLabel(monthlyPct);
 
     // Delta per tick
     var deltaStr = '';
@@ -1178,18 +1207,11 @@ function renderFeaturedGDPGrowth(nation) {
         if (Math.abs(delta) >= 0.01) {
             var deltaDir = delta > 0 ? '\u25B2' : '\u25BC';
             var deltaColor = delta > 0 ? 'var(--n-green)' : 'var(--n-red)';
-            deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">' + deltaDir + ' ' + Math.abs(((delta) / 50) * 3).toFixed(2) + '% per tick</span>';
+            deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">' + deltaDir + ' ' + Math.abs((delta) / 50).toFixed(2) + '% per tick</span>';
         }
     }
 
-    // Scale items
-    var scaleItems = [
-        { label: 'Recession', range: '< -1%', active: monthlyPct < -1 },
-        { label: 'Stagnant', range: '-1% to 0%', active: monthlyPct >= -1 && monthlyPct < 0 },
-        { label: 'No Growth', range: '0% to 0.5%', active: monthlyPct >= 0 && monthlyPct < 0.5 },
-        { label: 'Growing', range: '0.5% to 3%', active: monthlyPct >= 0.5 && monthlyPct < 3 },
-        { label: 'Booming', range: '> 3%', active: monthlyPct >= 3 }
-    ];
+    var scaleItems = getGdpGrowthScaleItems(monthlyPct);
 
     // Sparkline (large chart)
     var sparkData = sparklineHistory['gdp_growth'] ? sparklineHistory['gdp_growth'].slice() : [];
@@ -1246,7 +1268,7 @@ function renderFeaturedGDPGrowth(nation) {
 }
 
 function renderFeaturedDebt(nation) {
-    var debtRaw = nation.debt;
+    var debtRaw = nation.debt ?? 0;
     var debtDisplay = formatCurrencyShort(scaleRawToDollars(debtRaw));
     // Split "$81.0 Billion" into value + unit
     var parts = debtDisplay.match(/^(\$[\d,.]+)\s*(.*)$/);
@@ -1254,11 +1276,11 @@ function renderFeaturedDebt(nation) {
     var debtUnit = parts ? parts[2] : '';
 
     // Debt is inverted: higher = worse → red
-    var hcRaw = '#ef4444';
-    var borderColor = hcRaw;
+    var hcRaw = getCSSColor('--n-red');
+    var borderColor = 'var(--n-red)';
     var dotColor = 'var(--n-red)';
     var tagColor = 'var(--n-red)';
-    var tagBorder = 'rgba(239,68,68,0.3)';
+    var tagBorder = 'var(--n-red)';
 
     // Delta per tick
     var deltaStr = '';
@@ -1277,20 +1299,7 @@ function renderFeaturedDebt(nation) {
 
     // Ranking (debt is inverted — lower is better)
     var rank = calculateRanking('debt', debtRaw, true);
-    var rankHTML = '';
-    if (rank) {
-        var total = totalNations || 6;
-        var pipColor = rank <= 2 ? '#4ade80' : rank <= 4 ? '#facc15' : '#ef4444';
-        rankHTML = '<div class="compact-bottom__rank">';
-        for (var i = 0; i < total; i++) {
-            if (i < rank) {
-                rankHTML += '<div class="compact-bottom__rank-pip" style="background:' + pipColor + ';"></div>';
-            } else {
-                rankHTML += '<div class="compact-bottom__rank-pip compact-bottom__rank-pip--empty"></div>';
-            }
-        }
-        rankHTML += '<span class="compact-bottom__rank-label">#' + rank + '</span></div>';
-    }
+    var rankHTML = buildRankingPipsHTML(rank, totalNations || 6);
 
     // Effects
     var effects = statEffectsByKey['debt'] || [];
@@ -1340,7 +1349,7 @@ function renderFeaturedStatCard(stat, nation) {
     var hc = healthColor(numVal, inv);
     var hcRaw = healthColorRaw(numVal, inv);
     var displayVal = getDisplayValue(stat, nation);
-    var borderColor = hcRaw;
+    var borderColor = hc;
     var dotColor = hc;
 
     // Delta per tick
@@ -1364,20 +1373,7 @@ function renderFeaturedStatCard(stat, nation) {
 
     // Ranking
     var rank = calculateRanking(stat.key, raw, inv);
-    var rankHTML = '';
-    if (rank) {
-        var total = totalNations || 6;
-        var pipColor = rank <= 2 ? '#4ade80' : rank <= 4 ? '#facc15' : '#ef4444';
-        rankHTML = '<div class="compact-bottom__rank">';
-        for (var ri = 0; ri < total; ri++) {
-            if (ri < rank) {
-                rankHTML += '<div class="compact-bottom__rank-pip" style="background:' + pipColor + ';"></div>';
-            } else {
-                rankHTML += '<div class="compact-bottom__rank-pip compact-bottom__rank-pip--empty"></div>';
-            }
-        }
-        rankHTML += '<span class="compact-bottom__rank-label">#' + rank + '</span></div>';
-    }
+    var rankHTML = buildRankingPipsHTML(rank, totalNations || 6);
 
     // Scale tiers (generic 0-100 scale)
     var effective = inv ? 100 - numVal : numVal;
@@ -1435,12 +1431,86 @@ function renderFeaturedStatCard(stat, nation) {
     return h;
 }
 
+function renderFeaturedFuelPrices(nation) {
+    var fuelRaw = Number(nation.fuel_prices ?? 50);
+    var currRaw = Number(nation.currency_strength ?? 50);
+    var inflRaw = Number(nation.inflation ?? 50);
+    var price = fuelPricePerGallon(fuelRaw, currRaw, inflRaw);
+    var priceStr = formatFuelPrice(fuelRaw, currRaw, inflRaw);
+    var label = getFuelPriceLabel(fuelRaw, currRaw, inflRaw);
+
+    // Tag color
+    var fClass = fuelPriceColorClass(fuelRaw, currRaw, inflRaw);
+    var tagColor, tagBorder, dotColor;
+    if (fClass === 'good') { tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green)'; dotColor = 'var(--n-green)'; }
+    else if (fClass === 'medium') { tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow)'; dotColor = 'var(--n-yellow)'; }
+    else { tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red)'; dotColor = 'var(--n-red)'; }
+
+    // Delta per tick (based on price change)
+    var deltaStr = '';
+    if (previousTickData && previousTickData.fuel_prices != null) {
+        var prevPrice = fuelPricePerGallon(
+            Number(previousTickData.fuel_prices),
+            Number(previousTickData.currency_strength ?? currRaw),
+            Number(previousTickData.inflation ?? inflRaw)
+        );
+        var priceDelta = price - prevPrice;
+        if (Math.abs(priceDelta) >= 0.01) {
+            // For fuel prices, down is good
+            var deltaDir = priceDelta >= 0 ? '\u25B2' : '\u25BC';
+            var deltaColor = priceDelta <= 0 ? 'var(--n-green)' : 'var(--n-red)';
+            deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">$' + Math.abs(priceDelta).toFixed(2) + ' ' + deltaDir + ' per tick</span>';
+        }
+    }
+
+    // Scale items
+    var scaleItems = [
+        { label: 'Cheap', range: '<$2', active: price < 2.00 },
+        { label: 'Normal', range: '$2-4', active: price >= 2.00 && price < 4.00 },
+        { label: 'Elevated', range: '$4-5.50', active: price >= 4.00 && price < 5.50 },
+        { label: 'Expensive', range: '$5.50-7', active: price >= 5.50 && price < 7.00 },
+        { label: 'Crisis', range: '$7+', active: price >= 7.00 }
+    ];
+
+    // Sparkline
+    var sparkData = sparklineHistory['fuel_prices'] ? sparklineHistory['fuel_prices'].slice() : [];
+    if (fuelRaw != null) sparkData.push(fuelRaw);
+    var chartColor = fClass === 'good' ? getCSSColor('--n-green') : fClass === 'medium' ? getCSSColor('--n-yellow') : getCSSColor('--n-red');
+    var chartSVG = buildFeaturedSparkSVG(sparkData, chartColor);
+
+    var h = '<div class="featured-card featured-card--fuel">';
+    h += '<div class="featured-card__header">';
+    h += '<div class="featured-card__dot" style="background:' + dotColor + ';"></div>';
+    h += '<span class="featured-card__title">Fuel Prices</span>';
+    h += '<span class="featured-card__tag" style="color:' + tagColor + ';border-color:' + tagBorder + ';">' + escapeHtml(label) + '</span>';
+    h += '</div>';
+    h += '<div class="featured-card__desc">Cost of energy — adjusted for currency strength &amp; inflation</div>';
+    h += '<div class="featured-card__value-row">';
+    h += '<div><span class="featured-card__big-value" style="color:' + tagColor + ';">' + priceStr + '</span></div>';
+    h += '</div>';
+    if (deltaStr) h += deltaStr;
+    h += '<div class="featured-card__chart">' + chartSVG + '</div>';
+    h += '<div class="featured-card__scale">';
+    for (var i = 0; i < scaleItems.length; i++) {
+        var si = scaleItems[i];
+        h += '<div class="featured-card__scale-item' + (si.active ? ' featured-card__scale-item--active' : '') + '">';
+        h += escapeHtml(si.label);
+        h += '<span class="featured-card__scale-range">' + escapeHtml(si.range) + '</span>';
+        h += '</div>';
+    }
+    h += '</div>';
+    h += buildFeaturedAbpHTML('fuel_prices');
+    h += '</div>';
+    return h;
+}
+
 // Map of stat keys to their custom featured renderers
 var FEATURED_RENDERERS = {
     gdp: renderFeaturedGDP,
     gdp_growth: renderFeaturedGDPGrowth,
     inflation: renderFeaturedInflation,
-    debt: renderFeaturedDebt
+    debt: renderFeaturedDebt,
+    fuel_prices: renderFeaturedFuelPrices
 };
 
 function renderFeaturedCategory(cat, nation) {
@@ -1495,24 +1565,759 @@ function renderFeaturedCategory(cat, nation) {
     return h;
 }
 
+// ===== TAB SWITCHING =====
+
+var _activeNationTab = 'statistics';
+
+function switchNationTab(tab) {
+    if (tab === _activeNationTab) return;
+    _activeNationTab = tab;
+    document.querySelectorAll('.nation-tab').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.tab === tab);
+    });
+    document.querySelectorAll('.nation-tab-content').forEach(function(el) {
+        el.style.display = 'none';
+    });
+    var target = document.getElementById('nation-tab-' + tab);
+    if (target) target.style.display = '';
+}
+window.switchNationTab = switchNationTab;
+
+// ===== IMMIGRATION TAB =====
+
+function renderImmigrationTab(nation) {
+    // Calculate net migration from actual flow data (not fake formula)
+    var totalInflow = 0;
+    var totalOutflow = 0;
+    if (migrationFlowData && migrationFlowData.length > 0) {
+        var latestTick = getLatestMigrationTick();
+        for (var fi = 0; fi < migrationFlowData.length; fi++) {
+            var f = migrationFlowData[fi];
+            if (f.tick !== latestTick) continue;
+            if (f.dest_nation_id === nation.id) totalInflow += f.flow_count;
+            if (f.origin_nation_id === nation.id) totalOutflow += f.flow_count;
+        }
+    }
+    var netMigration = totalInflow - totalOutflow;
+
+    // Capacity: how much room for growth (based on infrastructure, healthcare, etc.)
+    var infra = Number(nation.physical_infrastructure ?? 50);
+    var housing = Number(nation.urbanization ?? 50);
+    var healthcare = Number(nation.healthcare_quality ?? 50);
+    var capacity = Math.round((infra + housing + healthcare) / 3);
+
+    var isPositive = netMigration >= 0;
+    var migSign = isPositive ? '+' : '\u2212';
+    var migColor = isPositive ? 'var(--n-green)' : 'var(--n-red)';
+    var migLabel = isPositive ? 'NET POSITIVE' : 'NET NEGATIVE';
+    var migLabelBg = isPositive ? 'var(--n-green-dim)' : 'var(--n-red-dim)';
+    var capColor = capacity >= 60 ? 'var(--n-green)' : capacity >= 40 ? 'var(--n-yellow)' : 'var(--n-red)';
+    var capBg = capacity >= 60 ? 'var(--n-green-dim)' : capacity >= 40 ? 'var(--n-yellow-dim)' : 'var(--n-red-dim)';
+
+    var h = '';
+
+    // ── Net Migration hero ──
+    h += '<div class="imm-hero">';
+    h += '<div class="imm-hero__top">';
+    h += '<div class="imm-hero__left">';
+    h += '<div class="imm-hero__label">NET MIGRATION THIS TICK</div>';
+    h += '<div class="imm-hero__value" style="color:' + migColor + ';">' + migSign + formatNumber(Math.abs(netMigration)) + ' <span class="imm-hero__unit">people</span></div>';
+    h += '</div>';
+    h += '<div class="imm-hero__badges">';
+    h += '<span class="imm-badge" style="color:' + migColor + ';background:' + migLabelBg + ';border-color:' + migColor + ';">' + migLabel + '</span>';
+    h += '<span class="imm-badge" style="color:' + capColor + ';background:' + capBg + ';border-color:' + capColor + ';">CAPACITY: ' + capacity + '%</span>';
+    h += '</div>';
+    h += '</div>';
+    h += '</div>';
+
+    // ── 4 Immigration stat cards ──
+    var stats = [
+        { name: 'Immigration', key: 'immigration', desc: 'People entering legally', inverted: false },
+        { name: 'Emigration', key: 'emigration', desc: 'Citizens leaving (brain drain)', inverted: true },
+        { name: 'Illegal Immigration', key: 'illegal_immigration', desc: 'Undocumented arrivals', inverted: true },
+        { name: 'Academic Immigration', key: 'academic_immigration', desc: 'Scholars attracted to nation', inverted: false }
+    ];
+
+    h += '<div class="imm-stats-row">';
+    for (var i = 0; i < stats.length; i++) {
+        var s = stats[i];
+        var val = Number(nation[s.key] ?? 50);
+        var hc = healthColor(val, s.inverted);
+
+        // Delta
+        var deltaHtml = '<span class="imm-stat__delta" style="color:var(--n-secondary);">&mdash; 0</span>';
+        if (previousTickData && previousTickData[s.key] != null && nation[s.key] != null) {
+            var delta = Number(nation[s.key]) - Number(previousTickData[s.key]);
+            if (Math.abs(delta) >= 0.01) {
+                var deltaGood = s.inverted ? delta <= 0 : delta >= 0;
+                var dColor = deltaGood ? 'var(--n-green)' : 'var(--n-red)';
+                var dDir = delta >= 0 ? '\u25B2' : '\u25BC';
+                deltaHtml = '<span class="imm-stat__delta" style="color:' + dColor + ';">' + dDir + ' ' + Math.abs(delta).toFixed(1) + '</span>';
+            }
+        }
+
+        h += '<div class="imm-stat-card" style="border-left:3px solid ' + hc + ';">';
+        h += '<div class="imm-stat__label">' + escapeHtml(s.name.toUpperCase()) + '</div>';
+        h += '<div class="imm-stat__value" style="color:' + hc + ';">' + val.toFixed(1) + '</div>';
+        h += deltaHtml;
+        h += '</div>';
+    }
+    h += '</div>';
+
+    return h;
+}
+
+// ===== MIGRATION FLOW DATA =====
+
+var migrationFlowData = null;
+
+function getLatestMigrationTick() {
+    if (!migrationFlowData || migrationFlowData.length === 0) return 0;
+    var t = 0;
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        if (migrationFlowData[i].tick > t) t = migrationFlowData[i].tick;
+    }
+    return t;
+}
+
+async function loadMigrationFlows(nationId) {
+    // Fetch ALL migration flows (not just this nation) for the matrix view
+    var { data } = await _supabase
+        .from('migration_flows')
+        .select('*, origin:origin_nation_id(id, name), dest:dest_nation_id(id, name)')
+        .order('tick', { ascending: false })
+        .limit(500);
+    migrationFlowData = data || [];
+}
+
+function renderMigrationSourcesPanel(nation) {
+    if (!migrationFlowData || migrationFlowData.length === 0) {
+        return '<div class="imm-section"><div class="imm-section-title">Immigration Sources</div><div class="imm-empty">No migration data yet. Data will appear after the next tick.</div></div>';
+    }
+
+    var latestTick = getLatestMigrationTick();
+
+    var sources = {};
+    var totalInflow = 0;
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        var f = migrationFlowData[i];
+        if (f.tick !== latestTick || f.dest_nation_id !== nation.id) continue;
+        var originName = f.origin?.name || 'Unknown';
+        if (!sources[originName]) sources[originName] = { legal: 0, illegal: 0, academic: 0, total: 0, reasons: [] };
+        sources[originName][f.category] += f.flow_count;
+        sources[originName].total += f.flow_count;
+        totalInflow += f.flow_count;
+        if (f.reasons && f.reasons.length > 0 && sources[originName].reasons.length === 0) {
+            sources[originName].reasons = f.reasons;
+        }
+    }
+
+    if (totalInflow === 0) {
+        return '<div class="imm-section"><div class="imm-section-title">Immigration Sources</div><div class="imm-empty">No significant immigration this tick.</div></div>';
+    }
+
+    var sorted = Object.entries(sources).sort(function(a, b) { return b[1].total - a[1].total; });
+
+    var h = '<div class="imm-section">';
+    h += '<div class="imm-section-title">Immigration Sources</div>';
+
+    for (var i = 0; i < sorted.length; i++) {
+        var name = sorted[i][0];
+        var s = sorted[i][1];
+        var pct = totalInflow > 0 ? Math.round((s.total / totalInflow) * 100) : 0;
+
+        h += '<div class="imm-flow-row">';
+        h += '<div class="imm-flow-header">';
+        h += '<span class="imm-flow-name">' + escapeHtml(name) + '</span>';
+        h += '<span class="imm-flow-pct">' + pct + '%</span>';
+        h += '<span class="imm-flow-count">' + formatNumber(s.total) + '</span>';
+        h += '</div>';
+
+        h += '<div class="imm-flow-bar">';
+        var legalPct = s.total > 0 ? (s.legal / s.total * 100) : 0;
+        var illegalPct = s.total > 0 ? (s.illegal / s.total * 100) : 0;
+        var academicPct = s.total > 0 ? (s.academic / s.total * 100) : 0;
+        h += '<div class="imm-flow-seg imm-flow-seg--legal" style="width:' + legalPct + '%" title="Legal: ' + formatNumber(s.legal) + '"></div>';
+        h += '<div class="imm-flow-seg imm-flow-seg--academic" style="width:' + academicPct + '%" title="Academic: ' + formatNumber(s.academic) + '"></div>';
+        h += '<div class="imm-flow-seg imm-flow-seg--illegal" style="width:' + illegalPct + '%" title="Illegal: ' + formatNumber(s.illegal) + '"></div>';
+        h += '</div>';
+
+        h += '<div class="imm-flow-cats">';
+        if (s.legal > 0) h += '<span class="imm-cat-badge imm-cat--legal">Legal ' + formatNumber(s.legal) + '</span>';
+        if (s.academic > 0) h += '<span class="imm-cat-badge imm-cat--academic">Academic ' + formatNumber(s.academic) + '</span>';
+        if (s.illegal > 0) h += '<span class="imm-cat-badge imm-cat--illegal">Illegal ' + formatNumber(s.illegal) + '</span>';
+        h += '</div>';
+
+        if (s.reasons && s.reasons.length > 0) {
+            h += '<div class="imm-flow-reasons">';
+            for (var ri = 0; ri < s.reasons.length; ri++) {
+                var r = s.reasons[ri];
+                var arrow = r.direction === 'pull' ? '\u2191' : '\u2193';
+                h += '<span class="imm-reason imm-reason--' + r.direction + '">' + arrow + ' ' + escapeHtml(r.factor) + '</span>';
+            }
+            h += '</div>';
+        }
+
+        h += '</div>';
+    }
+
+    h += '<div class="imm-flow-total">Total: ' + formatNumber(totalInflow) + ' immigrants this tick</div>';
+    h += '</div>';
+    return h;
+}
+
+function renderMigrationDestsPanel(nation) {
+    if (!migrationFlowData || migrationFlowData.length === 0) {
+        return '<div class="imm-section"><div class="imm-section-title">Emigration Destinations</div><div class="imm-empty">No migration data yet.</div></div>';
+    }
+
+    var latestTick = getLatestMigrationTick();
+
+    var dests = {};
+    var totalOutflow = 0;
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        var f = migrationFlowData[i];
+        if (f.tick !== latestTick || f.origin_nation_id !== nation.id) continue;
+        var destName = f.dest?.name || 'Unknown';
+        if (!dests[destName]) dests[destName] = { legal: 0, illegal: 0, academic: 0, total: 0, reasons: [] };
+        dests[destName][f.category] += f.flow_count;
+        dests[destName].total += f.flow_count;
+        totalOutflow += f.flow_count;
+        if (f.reasons && f.reasons.length > 0 && dests[destName].reasons.length === 0) {
+            dests[destName].reasons = f.reasons;
+        }
+    }
+
+    if (totalOutflow === 0) {
+        return '<div class="imm-section"><div class="imm-section-title">Emigration Destinations</div><div class="imm-empty">No significant emigration this tick.</div></div>';
+    }
+
+    var sorted = Object.entries(dests).sort(function(a, b) { return b[1].total - a[1].total; });
+
+    var h = '<div class="imm-section">';
+    h += '<div class="imm-section-title">Emigration Destinations</div>';
+
+    for (var i = 0; i < sorted.length; i++) {
+        var name = sorted[i][0];
+        var s = sorted[i][1];
+        var pct = totalOutflow > 0 ? Math.round((s.total / totalOutflow) * 100) : 0;
+
+        h += '<div class="imm-flow-row">';
+        h += '<div class="imm-flow-header">';
+        h += '<span class="imm-flow-name">\u2192 ' + escapeHtml(name) + '</span>';
+        h += '<span class="imm-flow-pct">' + pct + '%</span>';
+        h += '<span class="imm-flow-count">' + formatNumber(s.total) + '</span>';
+        h += '</div>';
+
+        h += '<div class="imm-flow-bar">';
+        var legalPct = s.total > 0 ? (s.legal / s.total * 100) : 0;
+        var illegalPct = s.total > 0 ? (s.illegal / s.total * 100) : 0;
+        var academicPct = s.total > 0 ? (s.academic / s.total * 100) : 0;
+        h += '<div class="imm-flow-seg imm-flow-seg--legal" style="width:' + legalPct + '%"></div>';
+        h += '<div class="imm-flow-seg imm-flow-seg--academic" style="width:' + academicPct + '%"></div>';
+        h += '<div class="imm-flow-seg imm-flow-seg--illegal" style="width:' + illegalPct + '%"></div>';
+        h += '</div>';
+
+        h += '<div class="imm-flow-cats">';
+        if (s.legal > 0) h += '<span class="imm-cat-badge imm-cat--legal">Legal ' + formatNumber(s.legal) + '</span>';
+        if (s.academic > 0) h += '<span class="imm-cat-badge imm-cat--academic">Academic ' + formatNumber(s.academic) + '</span>';
+        if (s.illegal > 0) h += '<span class="imm-cat-badge imm-cat--illegal">Illegal ' + formatNumber(s.illegal) + '</span>';
+        h += '</div>';
+
+        if (s.reasons && s.reasons.length > 0) {
+            h += '<div class="imm-flow-reasons">';
+            for (var ri = 0; ri < s.reasons.length; ri++) {
+                var r = s.reasons[ri];
+                var arrow = r.direction === 'pull' ? '\u2191' : '\u2193';
+                h += '<span class="imm-reason imm-reason--' + r.direction + '">' + arrow + ' ' + escapeHtml(r.factor) + '</span>';
+            }
+            h += '</div>';
+        }
+
+        h += '</div>';
+    }
+
+    h += '<div class="imm-flow-total">Total: ' + formatNumber(totalOutflow) + ' emigrants this tick</div>';
+    h += '</div>';
+    return h;
+}
+
+// ===== ILLEGAL IMMIGRATION TAB =====
+
+function getIllegalTier(val) {
+    if (val >= 70) return { label: 'CRITICAL', color: 'var(--n-red)' };
+    if (val >= 50) return { label: 'HIGH', color: 'var(--n-orange)' };
+    if (val >= 30) return { label: 'ELEVATED', color: 'var(--n-yellow)' };
+    if (val >= 15) return { label: 'MODERATE', color: 'var(--n-cyan)' };
+    return { label: 'LOW', color: 'var(--n-green)' };
+}
+
+function renderIllegalImmigrationTab(nation) {
+    var illegalVal = Number(nation.illegal_immigration ?? 0);
+    var tier = getIllegalTier(illegalVal);
+    var h = '';
+
+    // Delta from previous tick
+    var deltaHtml = '';
+    if (previousTickData && previousTickData.illegal_immigration != null) {
+        var delta = illegalVal - Number(previousTickData.illegal_immigration);
+        if (Math.abs(delta) >= 0.01) {
+            var dColor = delta > 0 ? 'var(--n-red)' : 'var(--n-green)';
+            var dArrow = delta > 0 ? '\u25B2' : '\u25BC';
+            deltaHtml = '<span class="ill-hero-delta" style="color:' + dColor + ';">' + dArrow + ' ' + Math.abs(delta).toFixed(1) + '</span>';
+        }
+    }
+
+    // ── Hero ──
+    h += '<div class="ill-hero">';
+    h += '<div class="ill-hero-left">';
+    h += '<div class="ill-hero-label">ILLEGAL IMMIGRATION</div>';
+    h += '<div class="ill-hero-value" style="color:' + tier.color + ';">' + illegalVal.toFixed(1) + '</div>';
+    h += deltaHtml;
+    h += '</div>';
+    h += '<div class="ill-hero-badge" style="color:' + tier.color + ';border-color:' + tier.color + ';background:' + tier.color + '15;">' + tier.label + '</div>';
+    h += '</div>';
+
+    // ── Two-column: Push Factors + Stat Drag ──
+    h += '<div class="ill-columns">';
+
+    // Left: Push Factors (why they come)
+    h += '<div class="ill-panel">';
+    h += '<div class="ill-panel-title">Push Factors (Why They Come)</div>';
+    h += renderIllegalPushFactors(nation);
+    h += '</div>';
+
+    // Right: Stat Drag Effects
+    h += '<div class="ill-panel">';
+    h += '<div class="ill-panel-title">Stat Drag Effects</div>';
+    h += renderIllegalStatDrag(nation, illegalVal);
+    h += '</div>';
+
+    h += '</div>'; // end columns
+
+    // ── By Origin breakdown ──
+    h += renderIllegalByOrigin(nation);
+
+    // ── Footer disclaimer ──
+    h += '<div class="ill-disclaimer">';
+    h += '<div class="ill-disclaimer-bar"></div>';
+    h += '<div class="ill-disclaimer-text">Illegal immigrants do not naturalize, do not vote, and are not assigned to voter blocs. They affect economic and social stats only.</div>';
+    h += '</div>';
+
+    return h;
+}
+
+function renderIllegalPushFactors(nation) {
+    // Compute push factors from neighboring nations that send illegal immigrants
+    if (!migrationFlowData || migrationFlowData.length === 0 || !allNations || allNations.length === 0) {
+        return '<div class="ill-empty">Waiting for migration data...</div>';
+    }
+
+    var latestTick = getLatestMigrationTick();
+
+    // Find nations sending illegal immigrants to us
+    var originIds = {};
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        var f = migrationFlowData[i];
+        if (f.tick !== latestTick || f.category !== 'illegal' || f.dest_nation_id !== nation.id) continue;
+        if (!originIds[f.origin_nation_id]) originIds[f.origin_nation_id] = 0;
+        originIds[f.origin_nation_id] += f.flow_count;
+    }
+
+    // Build push factor rows from origin nations
+    var factors = [];
+    var nationLookup = {};
+    for (var i = 0; i < allNations.length; i++) nationLookup[allNations[i].id] = allNations[i];
+
+    for (var oid in originIds) {
+        var origin = nationLookup[oid];
+        if (!origin) continue;
+        // Emigration pressure from this origin
+        var poverty = Number(origin.poverty_rate ?? 50);
+        var unemployment = Number(origin.unemployment ?? 50);
+        var unrest = Number(origin.civil_unrest ?? 50);
+        var pressure = Math.round((poverty * 0.4 + unemployment * 0.35 + unrest * 0.25));
+        if (pressure > 20) {
+            factors.push({ label: origin.name + ' Emigration Pressure', value: pressure, rate: (pressure / 500).toFixed(2) });
+        }
+    }
+
+    // Destination pull factors
+    var sol = Number(nation.standard_of_living ?? 50);
+    if (sol > 40) factors.push({ label: 'Your Standard of Living', value: sol, rate: (sol / 500).toFixed(2) });
+    var tariffs = Number(nation.tariffs ?? 50);
+    if (tariffs < 30) factors.push({ label: 'Low Tariffs (Open Borders)', value: 100 - tariffs, rate: ((100 - tariffs) / 2000).toFixed(2) });
+
+    factors.sort(function(a, b) { return parseFloat(b.rate) - parseFloat(a.rate); });
+
+    var h = '';
+    var netPressure = 0;
+    for (var i = 0; i < factors.length; i++) {
+        var pf = factors[i];
+        netPressure += parseFloat(pf.rate);
+        h += '<div class="ill-factor-row">';
+        h += '<span class="ill-factor-label">' + escapeHtml(pf.label) + '</span>';
+        h += '<span class="ill-factor-val">' + pf.value + '</span>';
+        h += '<span class="ill-factor-rate" style="color:var(--n-red);">+' + pf.rate + '/tick</span>';
+        h += '</div>';
+    }
+    if (factors.length === 0) {
+        h += '<div class="ill-empty">No significant push factors detected.</div>';
+    }
+    h += '<div class="ill-net-pressure">';
+    h += '<span class="ill-net-label">NET PRESSURE</span>';
+    h += '<span class="ill-net-val" style="color:var(--n-red);">+' + netPressure.toFixed(2) + '/tick</span>';
+    h += '</div>';
+    return h;
+}
+
+function renderIllegalStatDrag(nation, illegalVal) {
+    if (!rawStatConnections || rawStatConnections.length === 0) {
+        return '<div class="ill-empty">Loading stat effects...</div>';
+    }
+    // Show stat_connections where source_stat = 'illegal_immigration'
+    var connections = rawStatConnections.filter(function(c) {
+        return c.source_stat === 'illegal_immigration';
+    });
+
+    if (connections.length === 0) {
+        return '<div class="ill-empty">No stat connections configured for illegal immigration.</div>';
+    }
+
+    var active = [];
+    var inactive = [];
+    for (var i = 0; i < connections.length; i++) {
+        var conn = connections[i];
+        var triggered = conn.source_dir === 'above'
+            ? illegalVal > conn.threshold
+            : illegalVal < conn.threshold;
+        if (triggered) {
+            active.push(conn);
+        } else {
+            inactive.push(conn);
+        }
+    }
+
+    var h = '';
+
+    // Active effects
+    if (active.length > 0) {
+        h += '<div class="ill-drag-section-label">ACTIVE AT CURRENT LEVEL (' + illegalVal.toFixed(1) + ')</div>';
+        for (var i = 0; i < active.length; i++) {
+            var c = active[i];
+            var dir = c.target_dir === 'up' ? '+' : '-';
+            var effectColor = c.target_dir === 'up' ? 'var(--n-red)' : 'var(--n-green)';
+            // For "bad" stats going up, show red; for good stats going down, show red
+            var statName = prettyStatName(c.target_stat);
+            h += '<div class="ill-drag-row">';
+            h += '<span class="ill-drag-stat">' + escapeHtml(statName) + '</span>';
+            var threshDir = c.source_dir === 'above' ? '&gt;' : '&lt;';
+            h += '<span class="ill-drag-thresh">' + threshDir + ' ' + c.threshold + ' threshold</span>';
+            h += '<span class="ill-drag-effect" style="color:' + effectColor + ';">' + dir + c.magnitude.toFixed(2) + '/tick</span>';
+            h += '</div>';
+        }
+    }
+
+    // Inactive effects
+    if (inactive.length > 0) {
+        h += '<div class="ill-drag-section-label ill-drag-inactive-label">INACTIVE — TRIGGERED IF STAT CROSSES THRESHOLD</div>';
+        for (var i = 0; i < inactive.length; i++) {
+            var c = inactive[i];
+            var dir = c.target_dir === 'up' ? '+' : '-';
+            var threshDir = c.source_dir === 'above' ? '&gt;' : '&lt;';
+            var statName = prettyStatName(c.target_stat);
+            h += '<div class="ill-drag-row ill-drag-row--inactive">';
+            h += '<span class="ill-drag-stat">' + escapeHtml(statName) + '</span>';
+            h += '<span class="ill-drag-thresh">' + threshDir + ' ' + c.threshold + ' threshold</span>';
+            h += '<span class="ill-drag-effect">' + dir + c.magnitude.toFixed(2) + '/tick</span>';
+            h += '</div>';
+        }
+    }
+
+    return h;
+}
+
+function renderIllegalByOrigin(nation) {
+    if (!migrationFlowData || migrationFlowData.length === 0) {
+        return '';
+    }
+
+    var latestTick = getLatestMigrationTick();
+
+    // Aggregate illegal flows by origin
+    var origins = {};
+    var totalIllegal = 0;
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        var f = migrationFlowData[i];
+        if (f.tick !== latestTick || f.category !== 'illegal' || f.dest_nation_id !== nation.id) continue;
+        var name = f.origin?.name || 'Unknown';
+        if (!origins[name]) origins[name] = { count: 0, color: '' };
+        origins[name].count += f.flow_count;
+        totalIllegal += f.flow_count;
+    }
+
+    if (totalIllegal === 0) {
+        return '<div class="ill-panel" style="margin:0 0 20px;"><div class="ill-panel-title">Illegal Immigration By Origin</div><div class="ill-empty">No illegal immigration detected this tick.</div></div>';
+    }
+
+    // Sort by count descending
+    var sorted = Object.keys(origins).map(function(name) {
+        return { name: name, count: origins[name].count };
+    }).sort(function(a, b) { return b.count - a.count; });
+
+    // Assign colors
+    var barColors = ['#a78bfa', '#ef4444', '#4ade80', '#f97316', '#f472b6', '#22d3ee', '#facc15', '#60a5fa'];
+
+    var h = '<div class="ill-origins">';
+    h += '<div class="ill-panel-title">Illegal Immigration By Origin</div>';
+    for (var i = 0; i < sorted.length; i++) {
+        var o = sorted[i];
+        var pct = Math.round((o.count / totalIllegal) * 100);
+        var barWidth = Math.max(2, pct);
+        var color = barColors[i % barColors.length];
+        h += '<div class="ill-origin-row">';
+        h += '<span class="ill-origin-name" style="color:' + color + ';">' + escapeHtml(o.name) + '</span>';
+        h += '<div class="ill-origin-bar-wrap"><div class="ill-origin-bar" style="width:' + barWidth + '%;background:' + color + ';"></div></div>';
+        h += '<span class="ill-origin-pct">' + pct + '%</span>';
+        h += '<span class="ill-origin-count">' + formatNumber(o.count) + '</span>';
+        h += '</div>';
+    }
+    h += '</div>';
+    return h;
+}
+
+// ===== MIGRATION MATRIX =====
+
+var NATION_MATRIX_COLORS = ['#22d3ee','#f472b6','#a78bfa','#4ade80','#facc15','#f97316','#60a5fa','#c084fc'];
+
+function renderMigrationMatrix(nation) {
+    if (!migrationFlowData || migrationFlowData.length === 0) return '';
+
+    // Find latest tick in ALL data
+    var latestTick = getLatestMigrationTick();
+
+    // Collect unique nations from flows
+    var nationMap = {};
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        var f = migrationFlowData[i];
+        if (f.tick !== latestTick) continue;
+        if (f.origin && !nationMap[f.origin.id]) nationMap[f.origin.id] = f.origin.name;
+        if (f.dest && !nationMap[f.dest.id]) nationMap[f.dest.id] = f.dest.name;
+    }
+
+    var nationIds = Object.keys(nationMap).sort(function(a, b) {
+        // Current nation first, then alphabetical
+        if (a === nation.id) return -1;
+        if (b === nation.id) return 1;
+        return nationMap[a].localeCompare(nationMap[b]);
+    });
+    if (nationIds.length < 2) return '';
+
+    // Build flow lookup: matrix[originId][destId] = total flow
+    var matrix = {};
+    for (var i = 0; i < nationIds.length; i++) {
+        matrix[nationIds[i]] = {};
+        for (var j = 0; j < nationIds.length; j++) {
+            matrix[nationIds[i]][nationIds[j]] = 0;
+        }
+    }
+    for (var i = 0; i < migrationFlowData.length; i++) {
+        var f = migrationFlowData[i];
+        if (f.tick !== latestTick) continue;
+        if (matrix[f.origin_nation_id] && matrix[f.origin_nation_id][f.dest_nation_id] !== undefined) {
+            matrix[f.origin_nation_id][f.dest_nation_id] += f.flow_count;
+        }
+    }
+
+    // Assign colors
+    var colorMap = {};
+    for (var i = 0; i < nationIds.length; i++) {
+        colorMap[nationIds[i]] = NATION_MATRIX_COLORS[i % NATION_MATRIX_COLORS.length];
+    }
+
+    // Build table
+    var h = '<div class="imm-matrix">';
+    h += '<div class="imm-section-title">Migration Matrix — People Per Tick</div>';
+    h += '<div class="imm-matrix-scroll"><table class="imm-matrix-table">';
+
+    // Header row
+    h += '<thead><tr><th class="imm-matrix-corner">FROM \\ TO</th>';
+    for (var j = 0; j < nationIds.length; j++) {
+        var shortName = nationMap[nationIds[j]].length > 10 ? nationMap[nationIds[j]].substring(0, 10) : nationMap[nationIds[j]];
+        h += '<th class="imm-matrix-col-head" style="color:' + colorMap[nationIds[j]] + '">' + escapeHtml(shortName) + '</th>';
+    }
+    h += '<th class="imm-matrix-col-head imm-matrix-total-head">TOTAL OUT</th></tr></thead>';
+
+    // Data rows
+    h += '<tbody>';
+    var colTotals = {};
+    for (var j = 0; j < nationIds.length; j++) colTotals[nationIds[j]] = 0;
+
+    for (var i = 0; i < nationIds.length; i++) {
+        var originId = nationIds[i];
+        var rowTotal = 0;
+        h += '<tr>';
+        h += '<td class="imm-matrix-row-head" style="color:' + colorMap[originId] + '">' + escapeHtml(nationMap[originId]) + '</td>';
+        for (var j = 0; j < nationIds.length; j++) {
+            var destId = nationIds[j];
+            if (originId === destId) {
+                h += '<td class="imm-matrix-cell imm-matrix-self">—</td>';
+            } else {
+                var val = matrix[originId][destId];
+                rowTotal += val;
+                colTotals[destId] += val;
+                // Highlight cells where current nation is origin or dest
+                var cellCls = 'imm-matrix-cell';
+                if (originId === nation.id || destId === nation.id) cellCls += ' imm-matrix-highlight';
+                h += '<td class="' + cellCls + '">' + formatNumber(val) + '</td>';
+            }
+        }
+        h += '<td class="imm-matrix-cell imm-matrix-row-total">' + formatNumber(rowTotal) + '</td>';
+        h += '</tr>';
+    }
+
+    // Total IN row
+    h += '<tr class="imm-matrix-total-row"><td class="imm-matrix-row-head imm-matrix-total-head">TOTAL IN</td>';
+    for (var j = 0; j < nationIds.length; j++) {
+        h += '<td class="imm-matrix-cell imm-matrix-col-total">' + formatNumber(colTotals[nationIds[j]]) + '</td>';
+    }
+    h += '<td class="imm-matrix-cell"></td></tr>';
+
+    h += '</tbody></table></div></div>';
+    return h;
+}
+
+// ===== PULL FACTOR SCORE =====
+
+var PULL_FACTORS = [
+    { label: 'Standard of Living', key: 'standard_of_living', weight: 0.25 },
+    { label: 'Stability', key: 'stability', weight: 0.20 },
+    { label: 'Freedom Index', key: 'freedom_index', weight: 0.15 },
+    { label: 'GDP Growth', key: 'gdp_growth', weight: 0.10 },
+    { label: 'Happiness', key: 'happiness', weight: 0.10 },
+    { label: 'Healthcare Access', key: 'healthcare_accessibility', weight: 0.10 },
+    { label: 'Benefits', key: 'welfare_spending', weight: 0.10 }
+];
+
+function renderPullFactorScore(nation) {
+    if (!allNations || allNations.length === 0) return '';
+    var h = '<div class="imm-pull">';
+    h += '<div class="imm-section-title">' + escapeHtml(nation.name) + ' Pull Factor Score</div>';
+
+    h += '<div class="imm-pull-grid">';
+    var compositeScore = 0;
+    for (var i = 0; i < PULL_FACTORS.length; i++) {
+        var pf = PULL_FACTORS[i];
+        var rawVal = Math.round(Number(nation[pf.key] ?? 50));
+        var weighted = Math.round(rawVal * pf.weight * 10) / 10;
+        compositeScore += weighted;
+
+        h += '<div class="imm-pull-row">';
+        h += '<span class="imm-pull-label">' + escapeHtml(pf.label) + '</span>';
+        h += '<span class="imm-pull-raw">' + rawVal + '</span>';
+        h += '<span class="imm-pull-weight">x' + pf.weight + '</span>';
+        h += '<span class="imm-pull-weighted">' + weighted.toFixed(1) + '</span>';
+        h += '</div>';
+    }
+    h += '</div>';
+
+    compositeScore = Math.round(compositeScore * 10) / 10;
+
+    // Rank among all nations
+    var rank = 1;
+    var nCount = allNations.length;
+    for (var n = 0; n < allNations.length; n++) {
+        var other = allNations[n];
+        if (other.id === nation.id) continue;
+        var otherScore = 0;
+        for (var i = 0; i < PULL_FACTORS.length; i++) {
+            otherScore += Math.round(Number(other[PULL_FACTORS[i].key] ?? 50) * PULL_FACTORS[i].weight * 10) / 10;
+        }
+        if (Math.round(otherScore * 10) / 10 > compositeScore) rank++;
+    }
+
+    var scoreColor = compositeScore >= 60 ? 'var(--n-green)' : compositeScore >= 40 ? 'var(--n-yellow)' : 'var(--n-red)';
+
+    h += '<div class="imm-pull-footer">';
+    h += '<div class="imm-pull-composite"><span class="imm-pull-composite-label">COMPOSITE SCORE</span><span class="imm-pull-composite-val" style="color:' + scoreColor + '">' + compositeScore.toFixed(1) + '</span></div>';
+    h += '<div class="imm-pull-rank">RANK: #' + rank + ' OF ' + nCount + ' NATIONS</div>';
+    h += '</div>';
+
+    h += '</div>';
+    return h;
+}
+
 // ===== MAIN RENDER =====
 
 async function renderNationPage(nation) {
     var h = '';
-    // ---- Body ----
-    h += '<div class="nation-body">';
+
+    // ---- Tab bar ----
+    h += '<div class="nation-tab-bar">';
+    h += '<button class="nation-tab' + (_activeNationTab === 'statistics' ? ' active' : '') + '" data-tab="statistics" onclick="switchNationTab(\'statistics\')">Statistics</button>';
+    h += '<button class="nation-tab' + (_activeNationTab === 'immigration' ? ' active' : '') + '" data-tab="immigration" onclick="switchNationTab(\'immigration\')">Immigration</button>';
+    h += '<button class="nation-tab' + (_activeNationTab === 'illegal' ? ' active' : '') + '" data-tab="illegal" onclick="switchNationTab(\'illegal\')">Illegal Immigration</button>';
+    h += '</div>';
+
+    // ---- Statistics tab ----
+    h += '<div class="nation-body nation-tab-content" id="nation-tab-statistics"' + (_activeNationTab === 'statistics' ? '' : ' style="display:none;"') + '>';
 
     // Revolution banner
     h += await renderRevolutionBanner(nation);
 
-    // ---- Category sections ----
+    // Category sections
     for (var ci = 0; ci < STAT_CATEGORIES.length; ci++) {
         h += renderFeaturedCategory(STAT_CATEGORIES[ci], nation);
     }
 
-    h += '</div>'; // end nation-body
+    h += '</div>'; // end statistics tab
+
+    // ---- Immigration tab ----
+    h += '<div class="nation-body nation-tab-content" id="nation-tab-immigration"' + (_activeNationTab === 'immigration' ? '' : ' style="display:none;"') + '>';
+    h += renderImmigrationTab(nation);
+    h += '<div id="migration-flow-panels"><div class="imm-loading">Loading migration data...</div></div>';
+    h += '</div>'; // end immigration tab
+
+    // ---- Illegal Immigration tab ----
+    h += '<div class="nation-body nation-tab-content" id="nation-tab-illegal"' + (_activeNationTab === 'illegal' ? '' : ' style="display:none;"') + '>';
+    h += renderIllegalImmigrationTab(nation);
+    h += '</div>'; // end illegal immigration tab
+
     document.getElementById('content-area').innerHTML = h;
     attachHandlers();
+
+    // Load migration flows AFTER DOM is set so .then() can find the tab elements
+    try {
+        loadMigrationFlows(nation.id).then(function() {
+            try {
+                var immPanel = document.getElementById('nation-tab-immigration');
+                if (immPanel) {
+                    immPanel.innerHTML = renderImmigrationTab(nation)
+                        + '<div id="migration-flow-panels">'
+                        + '<div class="imm-panels-grid">'
+                        + renderMigrationSourcesPanel(nation)
+                        + renderMigrationDestsPanel(nation)
+                        + '</div>'
+                        + renderMigrationMatrix(nation)
+                        + renderPullFactorScore(nation)
+                        + '</div>';
+                }
+            } catch (renderErr) {
+                console.error('[nation] Immigration tab render failed:', renderErr);
+                var immPanel = document.getElementById('nation-tab-immigration');
+                if (immPanel) immPanel.innerHTML = renderImmigrationTab(nation);
+            }
+            // Re-render illegal immigration tab with flow data
+            try {
+                var illPanel = document.getElementById('nation-tab-illegal');
+                if (illPanel) {
+                    illPanel.innerHTML = renderIllegalImmigrationTab(nation);
+                }
+            } catch (illErr) {
+                console.error('[nation] Illegal immigration tab render failed:', illErr);
+            }
+        }).catch(function(err) { console.warn('[nation] Migration flow load failed:', err); });
+    } catch (e) { console.warn('[nation] Migration flows not available:', e); }
 }
 
 // ===== CLICK HANDLERS =====

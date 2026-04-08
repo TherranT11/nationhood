@@ -1,61 +1,34 @@
 /**
- * momentum.js — Momentum and government approval event adjustments
- * Extracted from game-common.js
+ * momentum.js — Electorate engine helpers for party_approval, credibility, and gov_approval_events.
+ * Originally housed the legacy momentum system; now provides shared helpers used across game modules.
  */
 
-/**
- * Adjust momentum for a faction, optionally targeting a specific voter bloc.
- * Clamps to [-50, +50]. Writes an audit row to momentum_log.
- *
- * @param {object} supabase
- * @param {string} nationId  - nation UUID (for audit log)
- * @param {string} factionId - faction UUID
- * @param {string|null} blocId - specific bloc UUID, or null for all blocs
- * @param {number} amount    - positive = boost, negative = penalty
- * @param {string} source    - audit tag, e.g. 'legislation:veto'
- */
-export async function adjustMomentum(supabase, nationId, factionId, blocId, amount, source) {
-    if (amount === 0) return;
+// ── Constants (must match advance-tick CFG) ──
+const APPROVAL_MIN = 10;
+const APPROVAL_MAX = 90;
+const DEFAULT_PARTY_APPROVAL = 25;
+const CREDIBILITY_MIN = 0.5;
+const CREDIBILITY_MAX = 1.5;
 
-    const query = supabase
-        .from('faction_bloc_approval')
-        .select('id, bloc_id, momentum')
-        .eq('faction_id', factionId);
-    if (blocId) query.eq('bloc_id', blocId);
+export function round2(v) { return Math.round(v * 100) / 100; }
+export function round3(v) { return Math.round(v * 1000) / 1000; }
 
-    const { data: rows } = await query;
-    if (!rows || rows.length === 0) return;
+// ── Legacy stubs (kept for any remaining callers — both are no-ops) ──
 
-    for (const row of rows) {
-        const old = Number(row.momentum ?? 0);
-        const clamped = Math.round(Math.max(-50, Math.min(50, old + amount)) * 100) / 100;
-        await supabase.from('faction_bloc_approval')
-            .update({ momentum: clamped })
-            .eq('id', row.id);
-    }
-
-    // Audit log (best-effort — don't fail the caller)
-    const { data: shard } = await supabase
-        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    await supabase.from('momentum_log').insert({
-        nation_id: nationId,
-        faction_id: factionId,
-        bloc_id: blocId || null,
-        amount,
-        source: source || 'unknown',
-        tick: shard?.current_tick || 0
-    });
-
-    console.log(`[Momentum] ${amount > 0 ? '+' : ''}${amount} for faction ${factionId}${blocId ? ` bloc ${blocId}` : ` (${rows.length} blocs)`} — ${source}`);
+export async function adjustMomentum(supabase, factionId, nationId, source, delta, reason) {
+    // Legacy momentum system removed — electorate engine handles vote share now
+    return;
 }
 
-/**
- * Convenience wrapper: adjust momentum uniformly across ALL blocs for a faction.
- * Use this for events that affect a party's overall standing (crises, elections, etc.).
- */
-export async function adjustMomentumAll(supabase, nationId, factionId, amount, source) {
-    await adjustMomentum(supabase, nationId, factionId, null, amount, source);
+export async function adjustMomentumAll(supabase, nationId, source, delta, reason) {
+    // Legacy momentum system removed — electorate engine handles vote share now
+    return;
 }
+
+// adjustCredibility is defined in electorate.js. Re-export here so
+// existing imports from momentum.js keep working.
+export { adjustCredibility } from './electorate.js';
+
 /**
  * Apply a one-time event modifier to the government approval event modifier.
  * The modifier decays 10% per tick, so transient shocks fade naturally.

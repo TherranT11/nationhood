@@ -4,12 +4,11 @@
  */
 
 import { calculateNationalBudget } from './budget.js';
-import { isAutocracy } from './government-types.js';
 
 // ==================== TRADE SYSTEM CONSTANTS ====================
 
 export var TRADE_CONFIG = {
-    BASE_TRADE_MULTIPLIER: 50000000,       // base dollar value per unit of export capacity
+    BASE_TRADE_MULTIPLIER: 500000000,      // base dollar value per unit of export capacity
     BASELINE_GDP: 100000000000,            // 100B — the "average" GDP for scaling
     HISTORY_TICKS: 24,                     // keep 2 game-years of trade history
 };
@@ -29,7 +28,7 @@ export var TRADE_SECTORS = [
         key: 'fuel_energy',
         label: 'Fuel & Energy',
         export_only: false,
-        export_stat: 'oil_and_gas',
+        export_stats: ['oil_and_gas', 'energy_generation'],
         export_threshold: 15
     },
     {
@@ -44,7 +43,7 @@ export var TRADE_SECTORS = [
         label: 'Food & Agriculture',
         export_only: false,
         export_stat: 'arable_land',
-        export_threshold: 20
+        export_threshold: 10
     },
     {
         key: 'manufactured_goods',
@@ -88,6 +87,48 @@ export var TRADE_SECTOR_MAP = {};
 for (var _tsi = 0; _tsi < TRADE_SECTORS.length; _tsi++) {
     TRADE_SECTOR_KEYS.push(TRADE_SECTORS[_tsi].key);
     TRADE_SECTOR_MAP[TRADE_SECTORS[_tsi].key] = TRADE_SECTORS[_tsi];
+}
+
+// ==================== SECTOR DISPLAY UNITS ====================
+// Maps sector keys to real-world commodity units for human-readable volume display.
+// Technology and services_finance are intentionally omitted — they display in currency.
+//
+// Calibration basis (BASE_TRADE_MULTIPLIER = $500M, BASELINE_GDP = $100B):
+//   A typical mid-GDP nation with stat=50 produces ~$5B capacity per sector.
+//   fuel_energy $2.5B → 1 million barrels a day  (Saudi Arabia ≈ 10 Mbbl/d)
+//   others      $100M → 1 unit                   (mid-tier exporter ≈ 50 units)
+export var SECTOR_DISPLAY_UNITS = {
+    fuel_energy:        { baseUnit: 'barrels per day',    scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 2500000000 },
+    food_agriculture:   { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
+    minerals:           { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
+    manufactured_goods: { baseUnit: 'TEU/year',           scaleLabel: 'thousand', scaleFactor: 1e3,  factor: 1 / 100000000  },
+    arms:               { baseUnit: 'units/year',         scaleLabel: 'thousand', scaleFactor: 1e3,  factor: 1 / 100000000  },
+    tourism:            { baseUnit: 'visitor-days/year',   scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
+};
+
+/**
+ * Format a trade volume in real-world commodity units.
+ * Returns null for sectors that use currency display (technology, services_finance).
+ * Values below the scale threshold (e.g. < 1 million) are shown as raw numbers
+ * with commas (e.g. "340,000 barrels per day").
+ * @param {number} val       - internal dollar value
+ * @param {string} sectorKey - sector key
+ * @returns {string|null}
+ */
+export function formatSectorVolume(val, sectorKey) {
+    var def = SECTOR_DISPLAY_UNITS[sectorKey];
+    if (!def) return null;
+    var scaled = (Number(val) || 0) * def.factor;  // value in scaled units (e.g. millions)
+    var abs = Math.abs(scaled);
+    var sign = scaled < 0 ? '-' : '';
+    if (abs >= 1) {
+        // Show with scale label: "4.00 million barrels per day"
+        var str = abs >= 100 ? abs.toFixed(0) : abs >= 10 ? abs.toFixed(1) : abs.toFixed(2);
+        return sign + str + '\u00a0' + def.scaleLabel + ' ' + def.baseUnit;
+    }
+    // Below scale threshold: show raw number with commas: "340,000 barrels per day"
+    var raw = Math.round(abs * def.scaleFactor);
+    return sign + raw.toLocaleString() + '\u00a0' + def.baseUnit;
 }
 
 // ==================== TRADE CALCULATION FUNCTIONS (STUBS) ====================
@@ -135,6 +176,12 @@ export function calculateExportCapacity(nation, sector, opts) {
 
     // ── Sector-specific modifiers ──
 
+    // Food: tighter supply — farming feeds your people first, only surplus is exported.
+    // Reduces export capacity by ~83% (equivalent to normalizing by /30 instead of /5).
+    if (sector.key === 'food_agriculture') {
+        capacity *= 0.167;
+    }
+
     // Arms: requires meaningful defense spending to have an arms industry
     if (sector.key === 'arms') {
         var defensePct = (opts && opts.defense_pct) || 0;
@@ -157,7 +204,7 @@ export function calculateExportCapacity(nation, sector, opts) {
     // Political instability disrupts production across all sectors.
     // Below 40 stability, export capacity starts degrading.
     // At stability 20, capacity is halved. At 0, no exports at all.
-    var stability = Number(nation.stability) || 50;
+    var stability = Number(nation.stability ?? 50);
     var stabilityMod = Math.min(1.0, stability / 40);
     capacity *= stabilityMod;
 
@@ -165,11 +212,13 @@ export function calculateExportCapacity(nation, sector, opts) {
     // Affects export VALUE (what appears on trade page).
     // Weak currency = exports are cheaper = lower value per unit.
     // currency_strength 50 = 1.0 (neutral), 25 = 0.5 (cheap), 75 = 1.5 (premium)
-    var currencyStrength = Number(nation.currency_strength) || 50;
+    var currencyStrength = Number(nation.currency_strength ?? 50);
     var currencyModifier = currencyStrength / 50;
     capacity *= currencyModifier;
 
-    return Math.round(capacity);
+    // Floor: even distressed nations maintain some organic trade (5% of GDP-scaled baseline)
+    var minCapacity = Math.round(0.05 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
+    return Math.max(minCapacity, Math.round(capacity));
 }
 
 /**
@@ -192,87 +241,104 @@ export function calculateImportDemand(nation, sector, opts) {
     var cfg = TRADE_CONFIG;
     var gdp = Number(nation.gdp) || 0;
     var gdpModifier = gdp / cfg.BASELINE_GDP;
-
-    // Normalize stats from 0-100 codebase scale to 0-20 spec scale
+    var popNorm = (Number(nation.population) || 1) / 5000000;
     var SN = 5;   // stat normalizer: divide 0-100 stats by 5
-    var PN = 5000000;  // population normalizer: raw pop / 5M ≈ 0-20 equivalent
 
-    var rawDemand = 0;
+    // Domestic production covers a FRACTION of demand (60-70%), never 100%.
+    // Even nations with strong domestic industries import for variety,
+    // specialization, quality, and competitive pricing.
+    var grossDemand = 0;
+    var domesticCoverage = 0;  // 0.0–0.7: how much domestic production offsets
 
     // ── FUEL & ENERGY ──
-    // Import fuel if you don't produce enough domestically.
-    // Driven by inverse of (oil_and_gas + energy_generation).
+    // Demand: population + manufacturing + urbanization + transport needs.
+    // Domestic offset: oil/gas + energy generation (max 70%).
     if (sector.key === 'fuel_energy') {
-        var oilGas = (Number(nation.oil_and_gas) || 0) / SN;
-        var energyGen = (Number(nation.energy_generation) || 0) / SN;
-        var domesticEnergy = (oilGas + energyGen) / 2;
-        var deficiency = Math.max(0, 15 - domesticEnergy);
-        rawDemand = deficiency * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+        var manufNorm = (Number(nation.manufacturing_output) || 0) / SN;
+        var urbanNorm = (Number(nation.urbanization) || 0) / SN;
+        var colNorm = (Number(nation.cost_of_living) || 0) / SN;
+        var railNorm = (Number(nation.rail_network) || 0) / SN;
+        var transportNeed = Math.max(0, 12 - railNorm) * 0.15;
+        grossDemand = (popNorm * 2 + manufNorm * 0.3 + urbanNorm * 0.2 + colNorm * 0.15 + transportNeed) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+
+        var oilGas = (Number(nation.oil_and_gas) || 0) / 100;
+        var energyGen = (Number(nation.energy_generation) || 0) / 100;
+        domesticCoverage = Math.min(0.70, (oilGas + energyGen) / 2);
     }
 
     // ── MINERALS & RAW MATERIALS ──
-    // Import if you lack domestic minerals but have manufacturing that needs inputs.
-    // Manufacturing creates demand for raw material imports.
+    // Demand: manufacturing needs + infrastructure development + technology production.
+    // Domestic offset: rare_minerals (max 65%).
     else if (sector.key === 'minerals') {
-        var minerals = (Number(nation.rare_minerals) || 0) / SN;
         var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
-        var deficiency = Math.max(0, 12 - minerals);
-        rawDemand = deficiency * (manufScore / 10) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+        var infraScore = (Number(nation.physical_infrastructure) || 0) / SN;
+        var techScore = (Number(nation.digital_infrastructure) || 0) / SN;
+        grossDemand = (manufScore * 0.4 + infraScore * 0.15 + techScore * 0.1) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+
+        var minerals = (Number(nation.rare_minerals) || 0) / 100;
+        domesticCoverage = Math.min(0.65, minerals * 0.8);
     }
 
     // ── FOOD & AGRICULTURE ──
-    // Everyone needs food. Import based on what you can't grow domestically.
-    // Uses population as scaling factor (not GDP) — even poor nations need to eat.
+    // Demand: population-driven (everyone eats). Scales with standard of living
+    // (wealthier populations consume more varied/imported food).
+    // Uses population scaling, NOT GDP — even poor nations need food.
+    // Domestic offset: arable_land (no cap — large populations outstrip local farming).
     else if (sector.key === 'food_agriculture') {
-        var arableLand = (Number(nation.arable_land) || 0) / SN;
-        var popNorm = (Number(nation.population) || 1) / PN;
-        var sufficiency = arableLand / Math.max(0.1, popNorm * 1.5);
-        var deficit = Math.max(0, 1 - sufficiency);
-        rawDemand = deficit * popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.8;
+        var sol = (Number(nation.standard_of_living ?? 50)) / 100;
+        grossDemand = popNorm * (1 + sol * 0.5) * cfg.BASE_TRADE_MULTIPLIER * 0.8;
+
+        var arableLand = (Number(nation.arable_land) || 0) / 100;
+        domesticCoverage = arableLand / Math.max(0.2, popNorm * 1.2);
     }
 
     // ── MANUFACTURED GOODS ──
-    // Import what you can't make. Consumer demand (population × standard of living)
-    // minus domestic production capacity.
+    // Demand: population × standard of living (consumer purchasing power).
+    // Domestic offset: manufacturing_output (max 60% — even industrial nations
+    // import cars, electronics, clothing from abroad).
     else if (sector.key === 'manufactured_goods') {
-        var popNorm = (Number(nation.population) || 1) / PN;
-        var sol = (Number(nation.standard_of_living) || 50) / SN;
-        var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
-        var consumerDemand = popNorm * (sol / 10);
-        var domesticManuf = manufScore / 10;
-        var deficit = Math.max(0, consumerDemand - domesticManuf);
-        rawDemand = deficit * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
+        var sol = (Number(nation.standard_of_living ?? 50)) / SN;
+        grossDemand = popNorm * (sol / 8) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.7;
+
+        var manufScore = (Number(nation.manufacturing_output) || 0) / 100;
+        domesticCoverage = Math.min(0.60, manufScore * 0.7);
     }
 
     // ── TECHNOLOGY & ELECTRONICS ──
-    // Digital infrastructure needs minus domestic tech production.
+    // Demand: standard of living (wealthy populations buy tech) + digital
+    // infrastructure needs + population base.
+    // Domestic offset: higher_education + digital_infrastructure (max 60%).
     else if (sector.key === 'technology') {
-        var popNorm = (Number(nation.population) || 1) / PN;
+        var sol = (Number(nation.standard_of_living ?? 50)) / SN;
         var digi = (Number(nation.digital_infrastructure) || 0) / SN;
-        var edu = Number(nation.higher_education) || 0;
-        var techScore = ((Number(nation.digital_infrastructure) || 0) + edu) / 2 / SN;
-        var techDemand = popNorm * (digi / 10) * 0.5;
-        var domesticTech = techScore / 10;
-        var deficit = Math.max(0, techDemand - domesticTech);
-        rawDemand = deficit * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.5;
+        grossDemand = popNorm * ((sol + digi) / 16) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
+
+        var edu = (Number(nation.higher_education) || 0) / 100;
+        var digiProd = (Number(nation.digital_infrastructure) || 0) / 100;
+        domesticCoverage = Math.min(0.60, (edu + digiProd) / 2 * 0.7);
     }
 
     // ── ARMS & MILITARY EQUIPMENT ──
-    // Driven by defense spending minus domestic arms production.
-    // 15% of defense budget goes to equipment purchases.
-    // Nations with domestic arms industries import less (only 40% of that 15%).
+    // Demand: defense budget + instability premium (unstable nations arm up).
+    // Domestic offset: nations with arms exports cover 60% internally.
     else if (sector.key === 'arms') {
         var defenseBudget = (opts && opts.defense_budget) || 0;
-        var domesticArms = (opts && opts.has_arms_exports) ? 0.6 : 0;
-        rawDemand = defenseBudget * 0.15 * (1 - domesticArms);
+        var stability = Number(nation.stability ?? 50);
+        var instabilityPremium = Math.max(0, (50 - stability) / 50) * 0.3;
+        grossDemand = defenseBudget * (0.15 + instabilityPremium);
+
+        domesticCoverage = (opts && opts.has_arms_exports) ? 0.60 : 0;
     }
+
+    // Apply domestic coverage: domestic production offsets demand but never fully
+    var rawDemand = grossDemand * (1 - domesticCoverage);
 
     if (rawDemand <= 0) return 0;
 
     // ── Currency strength on imports ──
     // Weak currency makes imports MORE expensive → you can afford LESS.
     // currency_strength 50 = 1.0, 25 = 0.5 (can only afford half), 75 = 1.5
-    var currencyStrength = Number(nation.currency_strength) || 50;
+    var currencyStrength = Number(nation.currency_strength ?? 50);
     var affordability = currencyStrength / 50;
     rawDemand *= affordability;
 
@@ -283,7 +349,9 @@ export function calculateImportDemand(nation, sector, opts) {
     var tariffDampener = 1 - (tariffs / 200);
     rawDemand *= tariffDampener;
 
-    return Math.round(rawDemand);
+    // Floor: even distressed nations import essential goods (5% of GDP-scaled baseline)
+    var minDemand = Math.round(0.05 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
+    return Math.max(minDemand, Math.round(rawDemand));
 }
 
 /**
@@ -321,16 +389,17 @@ export function calculatePriceModifier(totalSupply, totalDemand) {
  *   trade_agreement       +15 to +25 depending on agreement type
  *   embargo_penalty       -40 if active embargo/sanctions between nations
  *   proximity_bonus       +10 if same region (future)
- *   autocracy_penalty     -10 per autocratic nation in the pair
+ *   fdi_bonus             avg foreign_investment → -15 to +15 (high FDI = attractive market)
+ *   reputation_bonus      avg int'l reputation   → -10 to +10 (good standing = trustworthy partner)
  *
  * @param {Object} nationA   – nation row
  * @param {Object} nationB   – nation row
  * @param {Object} relation  – diplomatic_relations row { relation_score, active_treaties }
  * @param {Object} [opts]    – { has_trade_agreement, has_fta, has_pta, has_rsc, has_embargo, same_region }
- * @returns {number} affinity score 0-100
+ * @returns {number} affinity score (0 floor, no upper cap)
  */
 export function calculateTradeAffinity(nationA, nationB, relation, opts) {
-    var base = 50;
+    var base = 30;
 
     // Diplomatic relations: -100 to +100 score → -30 to +30 affinity
     var relScore = (relation && Number(relation.relation_score)) || 0;
@@ -349,18 +418,54 @@ export function calculateTradeAffinity(nationA, nationB, relation, opts) {
     // Active embargo/sanctions between these two nations: major penalty
     var embargoPenalty = (opts && opts.has_embargo) ? -40 : 0;
 
-    // Geographic proximity: continuous bonus scaled from proximity 0-100.
-    // Bordering (100) → +20, same region (50) → +10, distant (20) → +4.
+    // Geographic proximity: continuous bonus scaled from distance 0-100.
+    // Bordering (0) → +20, same region (50) → +10, distant (80) → +4.
     var proximity = (opts && opts.proximity != null) ? Number(opts.proximity) : 50;
-    var proximityBonus = (proximity / 100) * 20;
+    var proximityBonus = ((100 - proximity) / 100) * 20;
 
-    // Autocracy penalty: other nations are less willing to trade with autocratic regimes
-    var autocracyPenalty = 0;
-    if (isAutocracy(nationA)) autocracyPenalty -= 10;
-    if (isAutocracy(nationB)) autocracyPenalty -= 10;
+    // Foreign investment: high-FDI nations are integrated into global capital flows
+    // Average of both nations' FDI: 50 (neutral) = +0, 80 = +9, 20 = -9
+    var fdiA = Number(nationA.foreign_investment ?? 50);
+    var fdiB = Number(nationB.foreign_investment ?? 50);
+    var avgFdi = (fdiA + fdiB) / 2;
+    var fdiBonus = ((avgFdi - 50) / 50) * 15;
 
-    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + autocracyPenalty;
-    return Math.round(Math.max(0, Math.min(100, affinity)));
+    // International reputation: nations with good standing are trusted trade partners
+    // Average of both nations' reputation: 50 (neutral) = +0, 80 = +6, 20 = -6
+    var repA = Number(nationA.international_reputation ?? 50);
+    var repB = Number(nationB.international_reputation ?? 50);
+    var avgRep = (repA + repB) / 2;
+    var reputationBonus = ((avgRep - 50) / 50) * 10;
+
+    // Credit rating: nations with poor credit are unreliable trade partners; high credit signals trustworthiness
+    // Penalty uses WORSE credit of the two nations (weakest-link): credit 50+ = no penalty, scales linearly to -20 at credit 0, floor -25 for negative
+    // Bonus uses BETTER credit of the two nations (best-link): credit 50 = +0, scales linearly to +10 at credit 100
+    var creditA = Number(nationA.credit ?? 50);
+    var creditB = Number(nationB.credit ?? 50);
+    var worstCredit = Math.min(creditA, creditB);
+    var bestCredit = Math.max(creditA, creditB);
+    var creditPenalty = 0;
+    if (worstCredit < 50) {
+        if (worstCredit < 0) creditPenalty = -25;
+        else creditPenalty = -((50 - worstCredit) / 50) * 20;
+    }
+    var creditBonus = bestCredit > 50 ? ((bestCredit - 50) / 50) * 10 : 0;
+
+    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + fdiBonus + reputationBonus + creditPenalty + creditBonus;
+
+    // Poor relations cliff: nations that dislike each other barely trade organically.
+    // Relations below 25 → affinity scaled to 30% (trade agreements can still override).
+    if (relScore < 25) {
+        affinity *= 0.3;
+    }
+
+    // Distance cliff: very distant nations have weak organic trade links.
+    // Distance above 75 → affinity scaled to 40%.
+    if (proximity > 75) {
+        affinity *= 0.4;
+    }
+
+    return Math.round(Math.max(0, affinity));
 }
 
 /**
@@ -574,9 +679,11 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
     // Fetch previous tick's price modifiers for smoothing
     var prevTick = currentTick - 1;
     if (prevTick > 0) {
+        // Fetch one nation's rows — price_modifier is identical across nations per sector
         var { data: prevFlows } = await supabase.from('trade_flows')
             .select('sector, price_modifier')
             .eq('tick', prevTick)
+            .eq('nation_id', nationList[0].id)
             .limit(sectors.length);
         if (prevFlows) {
             for (var i = 0; i < prevFlows.length; i++) {
@@ -875,7 +982,74 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
-    // ── Simultaneous proportional distribution ──
+    // ── Export-only sector pass (Tourism, Services & Finance) ──
+    // These sectors don't have bilateral importers — revenue comes from world
+    // demand (tourists visiting, foreign businesses using services). We calculate
+    // revenue based on export capacity weighted by average world affinity toward
+    // the exporting nation, then distribute proportionally across trading partners.
+    for (var si = 0; si < sectors.length; si++) {
+        var eoSector = sectors[si];
+        if (!eoSector.export_only) continue;
+
+        for (var ei = 0; ei < nationCount; ei++) {
+            var eoExporter = nationList[ei];
+            var eoExpCap = nationFlows[eoExporter.id][eoSector.key].exportCapacity;
+            if (eoExpCap <= 0) continue;
+
+            // Calculate world demand: sum of (other nation GDP × affinity) / baseline
+            // This represents how many tourists/clients this nation attracts
+            var worldDemandScore = 0;
+            var partnerContributions = [];
+            for (var ii = 0; ii < nationCount; ii++) {
+                if (ii === ei) continue;
+                var eoImporter = nationList[ii];
+
+                // Check embargoes
+                var eoPairFlags = flagsMap[eoExporter.id + '|' + eoImporter.id];
+                if (eoPairFlags && eoPairFlags.has_embargo) continue;
+
+                var eoAff = affinityMap[eoImporter.id + '|' + eoExporter.id] || 0;
+                if (eoAff <= 0) continue;
+
+                var eoPartnerGdp = Number(eoImporter.gdp) || 0;
+                var contribution = (eoPartnerGdp / TRADE_CONFIG.BASELINE_GDP) * eoAff;
+                worldDemandScore += contribution;
+                partnerContributions.push({
+                    nationId: eoImporter.id,
+                    contribution: contribution,
+                    affinity: eoAff
+                });
+            }
+
+            if (worldDemandScore <= 0 || partnerContributions.length === 0) continue;
+
+            // Revenue = capacity × min(worldDemandFactor, 1.0) — capped at full capacity
+            // worldDemandFactor normalized: avg affinity 50 + avg GDP ratio 1.0 → factor ~1.0
+            var avgContribution = worldDemandScore / partnerContributions.length;
+            var worldDemandFactor = Math.min(1.0, avgContribution / 50);
+            var eoRevenue = Math.round(eoExpCap * worldDemandFactor);
+            if (eoRevenue <= 0) continue;
+
+            actualExports[eoExporter.id][eoSector.key] += eoRevenue;
+
+            // Distribute revenue proportionally across contributing partners
+            for (var ci = 0; ci < partnerContributions.length; ci++) {
+                var pc = partnerContributions[ci];
+                var partnerShare = Math.round(eoRevenue * (pc.contribution / worldDemandScore));
+                if (partnerShare <= 0) continue;
+                partnerRows.push({
+                    tick: currentTick,
+                    exporter_nation_id: eoExporter.id,
+                    importer_nation_id: pc.nationId,
+                    sector: eoSector.key,
+                    trade_volume: partnerShare,
+                    affinity_score: pc.affinity
+                });
+            }
+        }
+    }
+
+    // ── Simultaneous proportional distribution (goods sectors only) ──
     // Instead of iterating exporters sequentially (which lets the first exporter
     // saturate all demand), we collect ALL bilateral (exporter→importer) pairs per
     // sector and allocate simultaneously using a gravity-model weight:
@@ -885,6 +1059,7 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
 
     for (var si = 0; si < sectors.length; si++) {
         var sector = sectors[si];
+        if (sector.export_only) continue; // Already handled above
         var priceMod = priceModifiers[sector.key];
         var priceDampener = 1 / Math.sqrt(priceMod);
 
@@ -926,6 +1101,12 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                 if (remainingDem <= 0) continue;
 
                 var aff = affinityMap[exporter.id + '|' + importer.id] || 0;
+                // Strategic necessity: fuel & energy trades even through poor relations
+                // Floor scales with exporter capacity — major producers always find buyers
+                if (sector.key === 'fuel_energy' && !(pairFlags && pairFlags.has_embargo)) {
+                    var strategicFloor = Math.min(15, Math.round(nationFlows[exporter.id][sector.key].exportCapacity / 6));
+                    if (aff < strategicFloor) aff = strategicFloor;
+                }
                 if (aff <= 0) continue;
 
                 // Gravity-model weight: supply × demand × affinity
@@ -970,13 +1151,14 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
             // Allocate each pair: min of (exporter's share, importer's share)
             for (var pi = 0; pi < pairs.length; pi++) {
                 var p = pairs[pi];
-                if (p.weight <= 0) { p.volume = 0; continue; }
+                if (p.weight <= 0) continue; // preserve prior-pass volume for exhausted pairs
 
                 // Share of this exporter's capacity going to this importer
                 var expShare = (expBudget[p.expId] || 0) * (p.weight / (expWeightSum[p.expId] || 1));
                 // Share of this importer's demand filled by this exporter
                 var impShare = (impBudget[p.impId] || 0) * (p.weight / (impWeightSum[p.impId] || 1));
-                p.volume = Math.round(Math.min(expShare, impShare));
+                // Accumulate across passes: pass 0 sets base, pass 1+ adds remaining
+                p.volume += Math.round(Math.min(expShare, impShare));
             }
 
             // Update budgets: subtract allocated volumes, zero out fully-allocated pairs
@@ -1116,13 +1298,13 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         var tradeVolumeRatio = gdp > 0 ? tradeVolume / gdp : 0;
         var tradeGdpNudge = Math.max(-0.2, Math.min(0.2, (tradeVolumeRatio - 0.5) * 0.4));
         if (Math.abs(tradeGdpNudge) >= 0.01) {
-            var currentGdpGrowth = Number(n.gdp_growth) || 50;
+            var currentGdpGrowth = Number(n.gdp_growth ?? 50);
             nationUpdates.gdp_growth = Math.round(Math.max(0, Math.min(100, currentGdpGrowth + tradeGdpNudge)) * 10) / 10;
         }
 
         // Currency strength: trade surplus strengthens currency, deficit weakens it
         // Gentler than GDP nudge: (tradeBalance - 50) / 100 → range -0.5 to +0.5 per tick
-        var currentCurrency = Number(n.currency_strength) || 50;
+        var currentCurrency = Number(n.currency_strength ?? 50);
         var currencyNudge = (tradeBalanceIdx - 50) / 100;
         if (Math.abs(currencyNudge) >= 0.01) {
             nationUpdates.currency_strength = Math.round(Math.max(0, Math.min(100, currentCurrency + currencyNudge)) * 10) / 10;
@@ -1142,7 +1324,7 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         }
         var avgImportPrice = totalImpForPrice > 0 ? importWeightedPrice / totalImpForPrice : 1.0;
         // Nudge inflation: (avgPrice - 1.0) scaled to ±0.5 per tick
-        var currentInflation = Number(n.inflation) || 50;
+        var currentInflation = Number(n.inflation ?? 50);
         var inflationNudge = (avgImportPrice - 1.0) * 1.0; // price 1.5 → +0.5 nudge, price 0.7 → -0.3
         if (Math.abs(inflationNudge) >= 0.01) {
             nationUpdates.inflation = Math.round(Math.max(0, Math.min(100, currentInflation + inflationNudge)) * 10) / 10;
@@ -1158,8 +1340,59 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
             // Negative ratio = net exporter in job sectors → unemployment nudge down (job creation)
             var unemploymentNudge = Math.max(-0.5, Math.min(0.5, displacementRatio * 100));
             if (Math.abs(unemploymentNudge) >= 0.01) {
-                var currentUnemployment = Number(n.unemployment) || 50;
+                var currentUnemployment = Number(n.unemployment ?? 50);
                 nationUpdates.unemployment = Math.round(Math.max(0, Math.min(100, currentUnemployment + unemploymentNudge)) * 10) / 10;
+            }
+        }
+
+        // ── Unmet import demand consequences ──
+        // When a nation needs imports but can't get them, critical sectors suffer.
+        // Penalty scales with the unmet ratio: (demand - actual) / demand
+        // Self-sufficient nations (demand = 0) are never penalized.
+        for (var si3 = 0; si3 < sectors.length; si3++) {
+            var sKey3 = sectors[si3].key;
+            var demand3 = nationFlows[n.id][sKey3].importDemand;
+            var actual3 = actualImports[n.id][sKey3] || 0;
+            if (demand3 <= 0) continue;
+            var unmetRatio = Math.max(0, (demand3 - actual3) / demand3);
+            if (unmetRatio < 0.05) continue;
+
+            var severity = unmetRatio * unmetRatio;
+
+            if (sKey3 === 'fuel_energy') {
+                var fuelEnergyPen = severity * 1.5;
+                var fuelManufPen = severity * 1.0;
+                var fuelInflation = severity * 1.0;
+                var fuelCol = severity * 0.8;
+                nationUpdates.energy_generation = Math.round(Math.max(0, (Number(n.energy_generation ?? 50)) - fuelEnergyPen) * 10) / 10;
+                nationUpdates.manufacturing_output = Math.round(Math.max(0, (Number(n.manufacturing_output ?? 50)) - fuelManufPen) * 10) / 10;
+                nationUpdates.inflation = Math.round(Math.min(100, (nationUpdates.inflation != null ? nationUpdates.inflation : (Number(n.inflation ?? 50))) + fuelInflation) * 10) / 10;
+                nationUpdates.cost_of_living = Math.round(Math.min(100, (Number(n.cost_of_living ?? 50)) + fuelCol) * 10) / 10;
+            } else if (sKey3 === 'food_agriculture') {
+                var foodHappiness = severity * 1.2;
+                var foodUnrest = severity * 1.5;
+                var foodHealth = severity * 0.8;
+                nationUpdates.happiness = Math.round(Math.max(0, (Number(n.happiness ?? 50)) - foodHappiness) * 10) / 10;
+                nationUpdates.civil_unrest = Math.round(Math.min(100, (Number(n.civil_unrest) || 0) + foodUnrest) * 10) / 10;
+                nationUpdates.healthcare_quality = Math.round(Math.max(0, (Number(n.healthcare_quality ?? 50)) - foodHealth) * 10) / 10;
+            } else if (sKey3 === 'minerals') {
+                var minManuf = severity * 1.0;
+                var minInfra = severity * 0.7;
+                nationUpdates.manufacturing_output = Math.round(Math.max(0, (nationUpdates.manufacturing_output != null ? nationUpdates.manufacturing_output : (Number(n.manufacturing_output ?? 50))) - minManuf) * 10) / 10;
+                nationUpdates.infrastructure = Math.round(Math.max(0, (Number(n.infrastructure ?? 50)) - minInfra) * 10) / 10;
+            } else if (sKey3 === 'manufactured_goods') {
+                var mfgSol = severity * 1.0;
+                var mfgCol = severity * 0.8;
+                nationUpdates.standard_of_living = Math.round(Math.max(0, (Number(n.standard_of_living ?? 50)) - mfgSol) * 10) / 10;
+                nationUpdates.cost_of_living = Math.round(Math.min(100, (nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living ?? 50))) + mfgCol) * 10) / 10;
+            } else if (sKey3 === 'technology') {
+                var techDigi = severity * 0.8;
+                var techInnov = severity * 0.8;
+                nationUpdates.digital_infrastructure = Math.round(Math.max(0, (Number(n.digital_infrastructure ?? 50)) - techDigi) * 10) / 10;
+                nationUpdates.innovation_index = Math.round(Math.max(0, (Number(n.innovation_index ?? 50)) - techInnov) * 10) / 10;
+            } else if (sKey3 === 'arms') {
+                var armsMil = severity * 1.0;
+                nationUpdates.military_strength = Math.round(Math.max(0, (Number(n.military_strength ?? 50)) - armsMil) * 10) / 10;
             }
         }
 

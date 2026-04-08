@@ -63,7 +63,7 @@
 .diplo-role-badge {
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.04em;
   padding: 3px 10px;
   border-radius: 3px;
@@ -92,28 +92,28 @@
 .diplo-role-badge.role-none {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-dim);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-mid);
 }
 .page-title {
   font-family: var(--font-serif);
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
   letter-spacing: -0.01em;
 }
 .page-subtitle {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   color: var(--text-dim);
 }
 .page-ap {
   margin-left: auto;
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--teal);
 }
 .dashboard {
@@ -163,9 +163,9 @@
 .box-label {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   color: var(--text-muted);
 }
 .box-header-right {
@@ -246,7 +246,7 @@
 .embassy-tag {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-dim);
@@ -257,7 +257,7 @@
 .agreements-count {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-dim);
 }
 .expand-arrow {
@@ -283,7 +283,7 @@
 .detail-label {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-dim);
@@ -320,7 +320,7 @@
 .relation-bar-label {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   display: flex;
   justify-content: space-between;
   color: var(--text-dim);
@@ -339,7 +339,7 @@
 .detail-btn {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 4px 10px;
@@ -361,10 +361,10 @@
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   color: var(--text-dim);
   padding: 12px 14px 6px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid var(--border-main);
   margin-bottom: 2px;
 }
 .action-item {
@@ -413,13 +413,13 @@
 .action-cost {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-dim);
 }
 .action-type {
   font-family: var(--font-mono);
   font-size: 7.5px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-faint);
@@ -591,7 +591,7 @@
 .draft-field-label {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-dim);
@@ -658,7 +658,7 @@
 .draft-article-remove {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--red);
@@ -684,7 +684,7 @@
 .action-bar-info {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -823,7 +823,7 @@
 .appoint-status-label {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-dim);
@@ -848,7 +848,7 @@
   padding: 4px 0;
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-dim);
@@ -939,12 +939,12 @@
 .trade-radio-option:hover { border-color: var(--border-subtle); }
 .trade-radio-option.selected { border-color: var(--accent); background: rgba(200,166,78,0.08); }
 .trade-radio-option input[type="radio"] { display: none; }
-.trade-radio-label { font-size: 0.78rem; font-weight: 600; color: var(--text-primary); }
+.trade-radio-label { font-size: 0.78rem; font-weight: 500; color: var(--text-primary); }
 .trade-radio-hint { font-size: 0.68rem; color: var(--text-muted); }
 
 /* ── Trade Field & Article Builder ── */
 .trade-field { margin-bottom: 10px; }
-.trade-field label { display: block; font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+.trade-field label { display: block; font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em; }
 .trade-field input[type="text"],
 .trade-field input[type="number"],
 .trade-field select {
@@ -974,7 +974,7 @@
 .trade-article-title {
   font-family: var(--font-sans);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
 }
 .trade-article-card {
@@ -1127,7 +1127,7 @@
 .type-card-title {
   font-family: var(--font-sans);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
 }
 .type-card-desc {
@@ -1205,7 +1205,7 @@
 .trade-type-label {
   font-family: var(--font-sans);
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
 }
 .trade-type-short {
@@ -1241,7 +1241,7 @@
 .agreement-card-name {
   font-family: var(--font-sans);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
   flex: 1;
   min-width: 0;
@@ -1520,7 +1520,7 @@
   color: var(--teal);
   border-color: var(--teal-border);
 }
-.agreement-tab-label { font-weight: 600; }
+.agreement-tab-label { font-weight: 500; }
 .agreement-tab-count {
   font-size: 0.65rem;
   color: var(--text-dim);
@@ -1544,7 +1544,7 @@
 .config-label {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-dim);
@@ -1581,7 +1581,7 @@
 .toggle-opt {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 3px 8px;
   border: 1px solid var(--border-subtle);
   background: transparent;
@@ -1604,7 +1604,7 @@
 .check-opt {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 3px 8px;
   border: 1px solid var(--border-subtle);
   background: transparent;
@@ -1654,7 +1654,7 @@
 .range-value {
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--teal);
   min-width: 36px;
   text-align: right;
@@ -1664,7 +1664,7 @@
 .sector-tag {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 3px 8px;
   border: 1px solid var(--border-subtle);
   background: var(--bg-4);
@@ -1695,7 +1695,7 @@
   font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   color: var(--text-dim);
   margin-bottom: 6px;
 }
@@ -1713,7 +1713,7 @@
 .stat-value {
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .stat-value--positive { color: var(--green); }
 .stat-value--negative { color: var(--red); }
@@ -1775,7 +1775,7 @@
 .sector-bar-label {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   min-width: 30px;
   text-align: right;
 }
@@ -1968,7 +1968,7 @@
 .initiative-article-remove {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--red);
@@ -2020,7 +2020,7 @@
 .config-label {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-dim);
@@ -2036,7 +2036,7 @@
 .toggle-opt {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 3px 8px;
   border: 1px solid var(--border-subtle);
   background: transparent;
@@ -2065,7 +2065,7 @@
 .check-opt {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 3px 8px;
   border: 1px solid var(--border-subtle);
   background: transparent;
@@ -2285,9 +2285,9 @@
 .sv-box-label {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   color: var(--text-muted);
 }
 .sv-box-header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
@@ -2324,7 +2324,7 @@
 .sv-draft-label {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-dim);
@@ -2346,7 +2346,7 @@
 .sv-ap-cost {
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-dim);
 }
 
@@ -2362,7 +2362,7 @@
 .sv-config-label {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-dim);
@@ -2379,7 +2379,7 @@
 .sv-toggle-opt {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 3px 8px;
   border: 1px solid var(--border-subtle);
   background: transparent;
@@ -2404,7 +2404,7 @@
   font-size: 8.5px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   color: var(--text-dim);
 }
 .sv-agenda-area {
@@ -2478,7 +2478,7 @@
 .sv-agenda-remove {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--red);
   cursor: pointer;
   opacity: 0.4;
@@ -2502,6 +2502,7 @@
 .sv-effect-tag--cost     { color: var(--amber); background: var(--amber-faint); border: 1px solid var(--amber-border); }
 .sv-effect-tag--risk     { color: var(--red);   background: var(--red-faint);   border: 1px solid var(--red-border); }
 .sv-effect-tag--info     { color: var(--blue);  background: var(--blue-faint);  border: 1px solid var(--blue-border); }
+.sv-effect-tag--discount { color: var(--teal);  background: var(--teal-faint);  border: 1px solid var(--teal-border); font-weight: 700; }
 
 /* Action bar */
 .sv-action-bar {
@@ -2515,7 +2516,7 @@
 .sv-action-bar-info {
   font-family: var(--font-mono);
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -2562,7 +2563,7 @@
   font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   color: var(--text-dim);
   margin-bottom: 6px;
 }
@@ -2580,7 +2581,7 @@
 .sv-stat-value {
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .sv-stat-value--positive { color: var(--green); }
 .sv-stat-value--negative { color: var(--red); }
@@ -2616,7 +2617,7 @@
 .sv-delegation-role {
   font-family: var(--font-mono);
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-dim);
@@ -2638,7 +2639,7 @@
   display: inline-block;
   color: #ef4444;
   font-size: 0.7rem;
-  font-weight: 600;
+  font-weight: 500;
   font-family: var(--font-mono);
   letter-spacing: 0.3px;
   animation: diplo-msg-pulse 2s ease-in-out infinite;
@@ -2647,4 +2648,2544 @@
 @keyframes diplo-msg-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LIGHT MODE
+   ══════════════════════════════════════════════════════════════ */
+
+body.light-mode {
+  /* ── Background tokens ── */
+  --bg-1: #f0f1f4;
+  --bg-2: #ffffff;
+  --bg-3: #f5f5f2;
+  --bg-4: #eaeae6;
+  --bg-hover: #e4e4e0;
+
+  /* ── Text tokens ── */
+  --text-primary: #1a1a18;
+  --text-muted: #6b6a5e;
+  --text-dim: #8a8778;
+  --text-faint: #b5b3a8;
+
+  /* ── Status colors (darker for white backgrounds) ── */
+  --teal: #3a7d6e;
+  --teal-faint: rgba(58,125,110,0.08);
+  --teal-border: rgba(58,125,110,0.22);
+  --blue: #3a6a8e;
+  --blue-faint: rgba(58,106,142,0.08);
+  --blue-border: rgba(58,106,142,0.22);
+  --green: #3a7a3e;
+  --green-faint: rgba(58,122,62,0.07);
+  --green-border: rgba(58,122,62,0.2);
+  --amber: #8a7020;
+  --amber-faint: rgba(138,112,32,0.08);
+  --amber-border: rgba(138,112,32,0.22);
+  --red: #a03030;
+  --red-faint: rgba(160,48,48,0.06);
+  --red-border: rgba(160,48,48,0.2);
+  --orange: #9a5a20;
+  --orange-faint: rgba(154,90,32,0.08);
+  --orange-border: rgba(154,90,32,0.2);
+
+  /* ── Border tokens ── */
+  --border-hair: rgba(0,0,0,0.08);
+  --border-subtle: rgba(0,0,0,0.12);
+}
+
+/* ── Role badges: swap pastel-on-dark → saturated-on-light ── */
+body.light-mode .diplo-role-badge.role-hog {
+  background: rgba(200,120,0,0.1);
+  color: #a06800;
+  border-color: rgba(200,120,0,0.25);
+}
+body.light-mode .diplo-role-badge.role-fm {
+  background: rgba(30,100,180,0.1);
+  color: #1e64b4;
+  border-color: rgba(30,100,180,0.25);
+}
+body.light-mode .diplo-role-badge.role-mot {
+  background: rgba(40,140,50,0.1);
+  color: #288c32;
+  border-color: rgba(40,140,50,0.25);
+}
+body.light-mode .diplo-role-badge.role-amb {
+  background: rgba(120,50,150,0.1);
+  color: #783296;
+  border-color: rgba(120,50,150,0.25);
+}
+body.light-mode .diplo-role-badge.role-none {
+  background: rgba(0,0,0,0.04);
+  color: #888;
+  border-color: rgba(0,0,0,0.1);
+}
+
+/* ── Role headers ── */
+body.light-mode .role-header.role-header-hog { color: #a06800; }
+body.light-mode .role-header.role-header-fm  { color: #1e64b4; }
+body.light-mode .role-header.role-header-mot { color: #288c32; }
+body.light-mode .role-header.role-header-amb { color: #783296; }
+body.light-mode .role-header { border-bottom-color: rgba(0,0,0,0.06); }
+
+/* ── Hardcoded dark borders ── */
+body.light-mode .recall-warning { background: rgba(200,120,0,0.06); border-color: #c87800; }
+body.light-mode .recall-reason-card.recall-reason-selected { background: rgba(160,48,48,0.05); }
+body.light-mode .appoint-row-selected { background: rgba(58,125,110,0.06); }
+body.light-mode .neg-row--unseen { background: rgba(138,112,32,0.06); }
+
+/* ── Trade info boxes ── */
+body.light-mode .trade-info-box.info    { background: rgba(30,100,180,0.06); color: #1e64b4; border-color: rgba(30,100,180,0.18); }
+body.light-mode .trade-info-box.warning { background: rgba(200,120,0,0.06);  color: #a06800; border-color: rgba(200,120,0,0.18); }
+body.light-mode .trade-info-box.danger  { background: rgba(160,48,48,0.06);  color: #a03030; border-color: rgba(160,48,48,0.18); }
+
+/* ── Inputs & selects ── */
+body.light-mode .draft-field-input,
+body.light-mode .sv-draft-input {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.12);
+}
+body.light-mode .trade-field input[type="text"],
+body.light-mode .trade-field input[type="number"],
+body.light-mode .trade-field select {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.12);
+}
+body.light-mode .initiative-text-area {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.12);
+}
+body.light-mode .selector-dropdown {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.12);
+}
+body.light-mode .selector-dropdown option {
+  background: #ffffff;
+  color: #1a1a18;
+}
+body.light-mode .config-value {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.12);
+}
+body.light-mode .trade-add-article-bar select {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.12);
+}
+
+/* ── Scrollbar ── */
+body.light-mode .box-body::-webkit-scrollbar-thumb,
+body.light-mode .draft-articles::-webkit-scrollbar-thumb,
+body.light-mode .sv-agenda-area::-webkit-scrollbar-thumb,
+body.light-mode .sv-summary-body::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.15);
+}
+
+/* ── Badge dim / pill neutral hardcoded rgba ── */
+body.light-mode .badge--dim {
+  color: #888;
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.1);
+}
+body.light-mode .pill--neutral {
+  color: #888;
+  background: rgba(0,0,0,0.03);
+  border-color: rgba(0,0,0,0.08);
+}
+
+/* ── Classification minor ── */
+body.light-mode .classification-minor {
+  color: #888;
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.1);
+}
+
+/* ── Effect tag neutral ── */
+body.light-mode .effect-tag--neutral {
+  color: #888;
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.1);
+}
+
+/* ── Compliance violation ── */
+body.light-mode .compliance-violation {
+  color: #888;
+  background: rgba(0,0,0,0.04);
+}
+
+/* ── Sovereignty notice ── */
+body.light-mode .sovereignty-sector {
+  background: rgba(0,0,0,0.06);
+}
+
+/* ── Range thumb border ── */
+body.light-mode .range-thumb { border-color: #f5f5f2; }
+
+/* ── State visit hardcoded fallbacks ── */
+body.light-mode .sv-toggle-opt:hover:not(.is-selected) { background: #e4e4e0; }
+body.light-mode .sv-btn--dim:hover { background: #e4e4e0; }
+body.light-mode .sv-badge--dim {
+  color: #888;
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.1);
+}
+
+/* ── Trade radio selected ── */
+body.light-mode .trade-radio-option.selected {
+  background: rgba(184,150,10,0.08);
+  border-color: #b8960a;
+}
+
+/* ── Action badge (notification count) ── */
+body.light-mode .action-badge {
+  background: #d32f2f;
+}
+
+/* ═══════════════════════════════════════════════════════
+   WORLD NATIONS VIEW
+   ═══════════════════════════════════════════════════════ */
+
+/* ── View toggle in header ── */
+.diplo-view-toggle {
+  display: flex;
+  margin-left: 12px;
+}
+.diplo-view-btn {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  padding: 6px 16px;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid rgba(200,196,184,0.08);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.diplo-view-btn:not(:last-child) { border-right: none; }
+.diplo-view-btn:hover { color: var(--text-muted); background: var(--bg-3); }
+.diplo-view-btn.is-active {
+  color: var(--teal);
+  background: var(--teal-faint);
+  border-color: var(--teal-border);
+}
+.diplo-view-btn.is-active + .diplo-view-btn { border-left-color: var(--teal-border); }
+
+/* ── Nations grid ── */
+.wn-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+  padding: 20px 24px;
+}
+.wn-grid--hidden { display: none; }
+
+/* ── Nation card ── */
+.wn-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-hair);
+  transition: border-color 0.15s;
+}
+.wn-card:hover { border-color: var(--border-subtle); }
+
+/* Card header */
+.wn-card__header {
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--border-hair);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.wn-card__flag {
+  width: 36px;
+  height: 24px;
+  object-fit: cover;
+  border: 1px solid var(--border-hair);
+}
+.wn-card__name {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wn-card__gov {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.wn-card__gov--parliamentary { background: var(--green-faint); color: var(--green); border: 1px solid var(--green-border); }
+.wn-card__gov--presidential  { background: var(--blue-faint);  color: var(--blue);  border: 1px solid var(--blue-border);  }
+.wn-card__gov--autocracy     { background: var(--red-faint);   color: var(--red);   border: 1px solid var(--red-border);   }
+.wn-card__gov--monarchy      { background: rgba(200,166,78,0.1); color: #c8a64e; border: 1px solid rgba(200,166,78,0.3); }
+
+/* Card body — stats */
+.wn-card__body {
+  padding: 10px 12px;
+}
+.wn-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+.wn-stat-row__label { color: var(--text-muted); }
+.wn-stat-row__value { font-weight: 500; color: var(--text-primary); }
+
+/* Seat bar (reuses diplomacy tokens) */
+.wn-seat-bar { margin: 8px 0; }
+.wn-seat-bar__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.wn-seat-bar__track {
+  display: flex;
+  height: 6px;
+  gap: 2px;
+  overflow: hidden;
+}
+.wn-seat-bar__segment { height: 100%; }
+.wn-seat-bar__empty { flex: 1; height: 100%; background: var(--bg-4); }
+.wn-seat-bar__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.wn-seat-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.wn-seat-legend-dot { width: 6px; height: 6px; }
+
+/* Party list */
+.wn-party-list { margin-top: 8px; }
+.wn-party-list__header {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--border-hair);
+}
+.wn-party-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-hair);
+}
+.wn-party-row:last-child { border-bottom: none; }
+.wn-party-row__dot { width: 6px; height: 6px; flex-shrink: 0; }
+.wn-party-row__name {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+  flex: 1;
+}
+.wn-party-row__abbr {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 4px;
+  color: var(--text-muted);
+  background: var(--bg-4);
+  border: 1px solid var(--border-hair);
+}
+.wn-party-row__ideo {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--text-dim);
+}
+.wn-party-row__seats {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  min-width: 30px;
+  text-align: right;
+}
+
+/* Crisis section */
+.wn-crisis-section { margin-top: 8px; }
+.wn-crisis-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+.wn-crisis-pip {
+  width: 3px;
+  height: 14px;
+  background: var(--red);
+  flex-shrink: 0;
+}
+.wn-crisis-name {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--red);
+}
+.wn-no-crisis {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  padding: 2px 0;
+  font-style: italic;
+}
+
+/* Relation footer */
+.wn-card__footer {
+  background: var(--bg-3);
+  border-top: 1px solid var(--border-hair);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.wn-relation-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.wn-relation-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+}
+.wn-relation-score {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+}
+.wn-embassy-tag {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 500;
+  padding: 2px 6px;
+  letter-spacing: 0.04em;
+}
+.wn-embassy-tag--open  { color: var(--green); background: var(--green-faint); border: 1px solid var(--green-border); }
+.wn-embassy-tag--closed { color: var(--amber); background: var(--amber-faint); border: 1px solid var(--amber-border); }
+.wn-embassy-tag--none  { color: var(--text-dim); background: transparent; border: 1px solid var(--border-hair); }
+
+/* ── Light mode overrides ── */
+body.light-mode .wn-card { background: #fff; border-color: rgba(0,0,0,0.08); }
+body.light-mode .wn-card:hover { border-color: rgba(0,0,0,0.15); }
+body.light-mode .wn-card__header { background: #fafaf8; }
+body.light-mode .wn-card__footer { background: #fafaf8; }
+body.light-mode .diplo-view-btn { color: #999; border-color: rgba(0,0,0,0.1); }
+body.light-mode .diplo-view-btn:hover { color: #666; background: rgba(0,0,0,0.03); }
+body.light-mode .diplo-view-btn.is-active {
+  color: var(--teal);
+  background: rgba(91,154,139,0.06);
+  border-color: rgba(91,154,139,0.25);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   INTERNATIONAL PARTY ORGANISATIONS (IPO)
+   Teal accent: #5b9a8b (aligned with diplomacy base tab)
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── IPO Design Tokens — aligned with diplomacy base tab ── */
+:root {
+  --ipo-accent: var(--teal, #5aafa5);
+  --ipo-accent-faint: rgba(90,175,165,0.06);
+  --ipo-accent-hover: rgba(90,175,165,0.1);
+  --ipo-accent-border: rgba(90,175,165,0.25);
+}
+
+/* ── IPO View Container ── */
+.ipo-view {
+  display: flex;
+  min-height: calc(100vh - 80px);
+  padding: 16px 24px 24px;
+  gap: 0;
+}
+.ipo-view--hidden { display: none !important; }
+
+/* ── IPO Sidebar ── */
+.ipo-sidebar {
+  width: 220px;
+  min-width: 220px;
+  background: var(--bg-2, #1a1a17);
+  border-right: 1px solid var(--border-hair, rgba(255,255,255,0.04));
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.ipo-sidebar-header {
+  height: 38px;
+  min-height: 38px;
+  background: var(--bg-3, #1e1e1a);
+  border-bottom: 1px solid var(--border-hair, rgba(255,255,255,0.04));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+}
+
+.ipo-sidebar-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--teal, #5aafa5);
+  flex-shrink: 0;
+}
+
+.ipo-sidebar-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #6b6a5e);
+}
+
+.ipo-sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ── Sidebar Org Items ── */
+.ipo-sidebar-item {
+  padding: 9px 14px;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.1s;
+}
+.ipo-sidebar-item:hover {
+  background: rgba(255,255,255,0.02);
+}
+.ipo-sidebar-item.is-active {
+  border-left-color: var(--ipo-accent);
+  background: var(--ipo-accent-faint);
+}
+
+.ipo-sidebar-logo {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ipo-accent);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.ipo-sidebar-logo.is-active {
+  color: #e2d9b4;
+}
+
+.ipo-sidebar-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ipo-sidebar-name {
+  font-family: var(--font-ui, 'IBM Plex Sans', sans-serif);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #8a8778);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ipo-sidebar-name.is-active {
+  color: var(--text-bright, #e8e4d9);
+}
+
+.ipo-sidebar-meta {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim, #5c5a50);
+}
+
+/* ── Sidebar Invitation Items ── */
+.ipo-sidebar-invite {
+  padding: 9px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  border-left: 3px solid var(--ipo-accent-border);
+  background: var(--ipo-accent-faint);
+}
+.ipo-sidebar-invite-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.ipo-sidebar-invite-from {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim, #5c5a50);
+  display: block;
+  margin-bottom: 6px;
+}
+.ipo-sidebar-invite-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* ── View button for invite preview ── */
+.ipo-btn--view {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  background: rgba(100,140,200,0.12);
+  color: #7baadc;
+  border: 1px solid rgba(100,140,200,0.3);
+}
+.ipo-btn--view:hover { background: rgba(100,140,200,0.22); }
+
+/* ── Org preview panel (from invite [View]) ── */
+.ipo-preview { padding: 20px; }
+.ipo-preview-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.ipo-preview-header-info { flex: 1; }
+.ipo-preview-desc {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted, #8a8778);
+  line-height: 1.5;
+  margin-bottom: 16px;
+  padding: 10px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 4px;
+  border: 1px solid var(--border-hair, rgba(255,255,255,0.04));
+}
+.ipo-preview-section-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--amber, #c8a64e);
+  margin-bottom: 8px;
+}
+.ipo-preview-members {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.ipo-preview-member {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.02);
+}
+.ipo-preview-member-name { color: var(--text-primary, #c8c4b8); }
+.ipo-preview-member-nation { color: var(--text-dim, #5c5a50); font-size: 11px; flex: 1; }
+.ipo-preview-member-role { color: var(--amber, #c8a64e); font-size: 10px; margin-left: auto; }
+.ipo-preview-member-role--president { color: #facc15; font-weight: 600; }
+
+/* ── Create Organisation Button (sidebar bottom) ── */
+.ipo-btn--create {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 700;
+  background: #5aafa5;
+  border: 1px solid #6ec4ba;
+  color: #0a2422;
+  width: 100%;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ipo-btn--create:hover {
+  background: #6ec4ba;
+}
+
+/* ── Shared IPO Buttons ── */
+.ipo-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid;
+  transition: opacity 0.15s;
+}
+.ipo-btn:hover { opacity: 0.85; }
+
+.ipo-btn--accept {
+  background: rgba(92,184,92,0.12);
+  border-color: rgba(92,184,92,0.3);
+  color: #5cb85c;
+}
+.ipo-btn--decline {
+  background: rgba(217,83,79,0.1);
+  border-color: rgba(217,83,79,0.25);
+  color: #d9534f;
+}
+
+/* ── IPO Main Panel ── */
+.ipo-main {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-2, #1a1a17);
+  border: 1px solid var(--border-hair, rgba(255,255,255,0.04));
+  border-left: none;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Empty State ── */
+.ipo-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 40px;
+  text-align: center;
+}
+.ipo-empty-icon {
+  font-size: 42px;
+  color: var(--ipo-accent);
+  opacity: 0.4;
+  margin-bottom: 6px;
+}
+.ipo-empty-title {
+  font-family: var(--font-sans);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary, #c8c4b8);
+}
+.ipo-empty-desc {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text-dim, #5c5a50);
+  line-height: 1.5;
+  max-width: 420px;
+}
+.ipo-btn--create-large {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 700;
+  background: #5aafa5;
+  border: 1px solid #6ec4ba;
+  color: #0a2422;
+  padding: 8px 18px;
+  margin-top: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ipo-btn--create-large:hover {
+  background: #6ec4ba;
+}
+
+/* ── Main Placeholder (before Phase 3 fills in detail) ── */
+.ipo-main-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ipo-main-placeholder-text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint, #3d3b34);
+  letter-spacing: 0.03em;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   IPO MAIN PANEL — Header, Chat, Bottom Panels, Footer
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Org Header (matching sv-box-header from diplomacy base) ── */
+.ipo-header {
+  height: 52px;
+  min-height: 52px;
+  background: var(--bg-3, #1e1e1a);
+  border-bottom: 1px solid var(--border-hair, rgba(255,255,255,0.04));
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ipo-header-logo {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ipo-accent);
+  background: var(--ipo-accent-hover);
+  border: 1px solid var(--ipo-accent-border);
+  padding: 3px 8px;
+  border-radius: 2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ipo-header-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ipo-header-name {
+  font-family: var(--font-ui, 'IBM Plex Sans', sans-serif);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary, #c8c4b8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ipo-header-meta {
+  display: flex;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim, #5c5a50);
+}
+.ipo-header-meta span {
+  white-space: nowrap;
+}
+
+.ipo-header-right {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.ipo-header-fund {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(200,166,78,0.1);
+  border: 1px solid rgba(200,166,78,0.25);
+  color: #c8a64e;
+  padding: 3px 8px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+.ipo-header-president {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--ipo-accent-hover);
+  border: 1px solid var(--ipo-accent-border);
+  color: var(--ipo-accent);
+  padding: 3px 8px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+/* ── Chat Area ── */
+.ipo-chat-area {
+  max-height: 360px;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1, #141412);
+  border-bottom: 1px solid var(--border-hair, rgba(255,255,255,0.04));
+}
+
+.ipo-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Message rows */
+.ipo-chat-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 3px 0;
+}
+.ipo-chat-msg-party {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 80px;
+  flex-shrink: 0;
+  text-align: right;
+  padding-top: 1px;
+}
+.ipo-chat-msg-text {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-muted, #8a8778);
+  flex: 1;
+  word-break: break-word;
+  line-height: 1.4;
+}
+.ipo-chat-msg-time {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-faint, #3d3b34);
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+/* System event lines */
+.ipo-chat-system {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-primary);
+  text-align: center;
+  padding: 4px 0;
+  letter-spacing: 0.05em;
+}
+
+/* Chat input row */
+.ipo-chat-input-row {
+  background: var(--bg-2, #1a1a17);
+  border-top: 1px solid var(--border-hair, rgba(255,255,255,0.04));
+  padding: 8px 18px;
+  display: flex;
+  gap: 6px;
+}
+.ipo-chat-input {
+  flex: 1;
+  background: var(--bg-1, #141412);
+  border: 1px solid var(--border-subtle, rgba(200,196,184,0.1));
+  color: var(--text-primary, #c8c4b8);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  padding: 7px 12px;
+  border-radius: 0;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.ipo-chat-input:focus {
+  border-color: var(--teal-border, rgba(91,154,139,0.2));
+}
+.ipo-chat-input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ipo-btn--send {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 700;
+  background: var(--teal, #5b9a8b);
+  border: 1px solid rgba(91,154,139,0.4);
+  color: #0a2422;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ipo-btn--send:hover { background: #6ec4ba; }
+.ipo-btn--send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Bottom Panels (Charter / Votes / Actions) ── */
+.ipo-bottom-panels {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  max-height: 520px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.ipo-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+.ipo-panel + .ipo-panel {
+  border-left: 1px solid rgba(255,255,255,0.04);
+}
+
+.ipo-panel-header {
+  height: 38px;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  background: var(--bg-3, #1e1e1a);
+  border-bottom: 1px solid var(--border-hair, rgba(255,255,255,0.04));
+}
+
+.ipo-panel-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ipo-panel-dot--teal   { background: var(--teal, #5aafa5); }
+.ipo-panel-dot--amber  { background: var(--amber, #c8a64e); }
+.ipo-panel-dot--purple { background: var(--teal, #5aafa5); }
+
+.ipo-panel-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b6a5e;
+}
+
+.ipo-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+.ipo-panel-body::-webkit-scrollbar { width: 4px; }
+.ipo-panel-body::-webkit-scrollbar-track { background: transparent; }
+.ipo-panel-body::-webkit-scrollbar-thumb { background: var(--text-faint); border-radius: 2px; }
+
+/* Actions panel: override body padding when split layout is used */
+.ipo-panel-body:has(.ipo-actions-split) {
+  padding: 0;
+}
+
+/* Actions panel split layout: cards top, event log bottom */
+.ipo-actions-split {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.ipo-actions-cards {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 12px 16px;
+}
+.ipo-actions-cards::-webkit-scrollbar { width: 4px; }
+.ipo-actions-cards::-webkit-scrollbar-track { background: transparent; }
+.ipo-actions-cards::-webkit-scrollbar-thumb { background: var(--text-faint); border-radius: 2px; }
+
+/* ── Footer ── */
+.ipo-footer {
+  height: 46px;
+  min-height: 46px;
+  background: var(--bg-2, #1a1a17);
+  border-top: 1px solid var(--border-hair, rgba(255,255,255,0.04));
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ipo-footer-members {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ipo-footer-badge--you {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  background: rgba(91,155,213,0.1);
+  border: 1px solid rgba(91,155,213,0.25);
+  color: #5b9bd5;
+  padding: 2px 6px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.ipo-footer-badge--other {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  color: #4a4840;
+  padding: 2px 6px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.ipo-footer-badge--president {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  background: rgba(250,204,21,0.08);
+  border: 1px solid rgba(250,204,21,0.25);
+  color: #facc15;
+  padding: 2px 6px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.ipo-president-star {
+  color: #facc15;
+  margin-right: 2px;
+}
+
+.ipo-footer-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ipo-btn--invite {
+  background: rgba(91,154,139,0.12);
+  border-color: rgba(91,154,139,0.3);
+  color: var(--teal, #5b9a8b);
+}
+.ipo-btn--amend {
+  background: rgba(200,166,78,0.1);
+  border-color: rgba(200,166,78,0.25);
+  color: #c8a64e;
+}
+.ipo-btn--leave {
+  background: rgba(217,83,79,0.08);
+  border-color: rgba(217,83,79,0.2);
+  color: #d9534f;
+}
+.ipo-btn--expel {
+  background: rgba(217,83,79,0.06);
+  border-color: rgba(217,83,79,0.18);
+  color: #d97a35;
+}
+
+/* ── Light mode ── */
+body.light-mode .ipo-sidebar { background: #f8f8f6; border-right-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-sidebar-header { background: #f0f0ec; }
+body.light-mode .ipo-sidebar-item.is-active { background: rgba(91,154,139,0.06); }
+body.light-mode .ipo-sidebar-name { color: #666; }
+body.light-mode .ipo-sidebar-name.is-active { color: #333; }
+body.light-mode .ipo-main { background: #fff; }
+body.light-mode .ipo-empty-title { color: #333; }
+body.light-mode .ipo-empty-desc { color: #888; }
+body.light-mode .ipo-chat-area { background: #fafaf8; }
+body.light-mode .ipo-chat-input-row { background: #f4f4f0; }
+body.light-mode .ipo-chat-input { background: #fff; border-color: rgba(0,0,0,0.1); color: #333; }
+body.light-mode .ipo-chat-msg-text { color: #555; }
+body.light-mode .ipo-footer { background: #f4f4f0; border-top-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-modal-content { background: #fff; border-color: rgba(0,0,0,0.1); }
+/* ══════════════════════════════════════════════════════════════
+   IPO CHARTER DISPLAY
+   ══════════════════════════════════════════════════════════════ */
+
+.ipo-charter-section {
+  margin-bottom: 8px;
+}
+.ipo-charter-article-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #5aafa5;
+  margin-bottom: 6px;
+}
+.ipo-charter-text {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-dim, #5c5a50);
+  line-height: 1.5;
+}
+.ipo-charter-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 3px 0;
+}
+.ipo-charter-row-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim, #5c5a50);
+  flex-shrink: 0;
+}
+.ipo-charter-row-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted, #8a8778);
+  text-align: right;
+}
+.ipo-charter-tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: var(--teal-faint, rgba(91,154,139,0.08));
+  border: 1px solid var(--teal-border, rgba(91,154,139,0.2));
+  color: var(--teal, #5b9a8b);
+  margin: 0 2px;
+}
+.ipo-charter-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.04);
+  margin: 8px 0;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   IPO VOTES PANEL (Phase 7)
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Propose Vote button ── */
+.ipo-votes-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.ipo-btn--propose {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  text-transform: uppercase;
+  font-weight: 700;
+  background: rgba(200,166,78,0.12);
+  border: 1px solid rgba(200,166,78,0.3);
+  color: #c8a64e;
+  padding: 3px 8px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.ipo-btn--propose:hover { opacity: 0.85; }
+.ipo-btn--propose:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── Vote cards ── */
+.ipo-vote-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ipo-vote-card {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 3px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.ipo-vote-card:hover {
+  background: rgba(255,255,255,0.04);
+}
+.ipo-vote-card.is-expanded {
+  background: rgba(200,166,78,0.04);
+  border-color: rgba(200,166,78,0.15);
+}
+
+.ipo-vote-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ipo-vote-type-badge {
+  font-family: var(--font-mono);
+  font-size: 6.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.ipo-vote-type-badge--membership    { background: rgba(92,184,92,0.1);  border: 1px solid rgba(92,184,92,0.25);  color: #5cb85c; }
+.ipo-vote-type-badge--expulsion     { background: rgba(217,83,79,0.1);  border: 1px solid rgba(217,83,79,0.25);  color: #d9534f; }
+.ipo-vote-type-badge--charter       { background: rgba(90,175,165,0.1); border: 1px solid rgba(90,175,165,0.25); color: #5aafa5; }
+.ipo-vote-type-badge--statement     { background: var(--teal-faint, rgba(91,154,139,0.08)); border: 1px solid var(--teal-border, rgba(91,154,139,0.2)); color: var(--teal, #5b9a8b); }
+.ipo-vote-type-badge--fund          { background: rgba(200,166,78,0.1); border: 1px solid rgba(200,166,78,0.25); color: #c8a64e; }
+.ipo-vote-type-badge--hq            { background: rgba(91,155,213,0.1); border: 1px solid rgba(91,155,213,0.25); color: #5b9bd5; }
+.ipo-vote-type-badge--symposium     { background: rgba(200,130,78,0.1); border: 1px solid rgba(200,130,78,0.25); color: #c8824e; }
+
+.ipo-vote-title {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted, #8a8778);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ipo-vote-meta {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  color: var(--text-dim, #5c5a50);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.ipo-vote-result-tag {
+  font-family: var(--font-mono);
+  font-size: 6.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.ipo-vote-result-tag--passed {
+  background: rgba(92,184,92,0.12);
+  border: 1px solid rgba(92,184,92,0.25);
+  color: #5cb85c;
+}
+.ipo-vote-result-tag--failed {
+  background: rgba(217,83,79,0.1);
+  border: 1px solid rgba(217,83,79,0.2);
+  color: #d9534f;
+}
+.ipo-vote-result-tag--vetoed {
+  background: rgba(200,166,78,0.1);
+  border: 1px solid rgba(200,166,78,0.2);
+  color: #c8a64e;
+}
+
+/* ── Vote detail (expanded) ── */
+.ipo-vote-detail {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+
+.ipo-vote-description {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--text-dim, #5c5a50);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+/* Tally bar */
+.ipo-vote-tally {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.ipo-vote-tally-item {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+}
+.ipo-vote-tally-item--yes     { color: #5cb85c; }
+.ipo-vote-tally-item--no      { color: #d9534f; }
+.ipo-vote-tally-item--abstain { color: #6b6a5e; }
+
+/* Progress bar */
+.ipo-vote-bar {
+  height: 4px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 2px;
+  overflow: hidden;
+  display: flex;
+  margin-bottom: 8px;
+}
+.ipo-vote-bar-yes     { background: #5cb85c; height: 100%; }
+.ipo-vote-bar-no      { background: #d9534f; height: 100%; }
+.ipo-vote-bar-abstain { background: #3a3830; height: 100%; }
+
+/* Ballot buttons */
+.ipo-vote-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.ipo-ballot-btn {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid;
+  transition: opacity 0.15s;
+}
+.ipo-ballot-btn:hover { opacity: 0.85; }
+.ipo-ballot-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.ipo-ballot-btn--yes {
+  background: rgba(92,184,92,0.12);
+  border-color: rgba(92,184,92,0.3);
+  color: #5cb85c;
+}
+.ipo-ballot-btn--yes.is-cast {
+  background: rgba(92,184,92,0.25);
+  border-color: #5cb85c;
+}
+.ipo-ballot-btn--no {
+  background: rgba(217,83,79,0.1);
+  border-color: rgba(217,83,79,0.25);
+  color: #d9534f;
+}
+.ipo-ballot-btn--no.is-cast {
+  background: rgba(217,83,79,0.2);
+  border-color: #d9534f;
+}
+.ipo-ballot-btn--abstain {
+  background: rgba(255,255,255,0.03);
+  border-color: rgba(255,255,255,0.1);
+  color: #6b6a5e;
+}
+.ipo-ballot-btn--abstain.is-cast {
+  background: rgba(255,255,255,0.08);
+  border-color: #6b6a5e;
+}
+
+.ipo-vote-actions-spacer {
+  flex: 1;
+}
+
+.ipo-btn--veto {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+  background: rgba(200,166,78,0.12);
+  border: 1px solid rgba(200,166,78,0.3);
+  color: #c8a64e;
+  transition: opacity 0.15s;
+}
+.ipo-btn--veto:hover { opacity: 0.85; }
+
+/* Public ballot voter list */
+.ipo-vote-ballots {
+  margin-top: 6px;
+}
+.ipo-vote-ballot-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+.ipo-vote-ballot-name {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--text-dim, #5c5a50);
+  min-width: 80px;
+}
+.ipo-vote-ballot-choice {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.ipo-vote-ballot-choice--yes     { color: #5cb85c; }
+.ipo-vote-ballot-choice--no      { color: #d9534f; }
+.ipo-vote-ballot-choice--abstain { color: #4a4840; }
+
+/* Section labels within votes panel */
+.ipo-votes-section-label {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint, #3d3b34);
+  margin: 10px 0 6px;
+}
+.ipo-votes-section-label:first-child { margin-top: 0; }
+
+.ipo-votes-empty {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-faint, #3d3b34);
+  text-align: center;
+  padding: 16px 0;
+}
+
+/* ── Propose Vote Modal ── */
+.ipo-propose-field {
+  margin-bottom: 10px;
+}
+.ipo-propose-field label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-dim, #5c5a50);
+  display: block;
+  margin-bottom: 4px;
+}
+.ipo-propose-field select,
+.ipo-propose-field input,
+.ipo-propose-field textarea {
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-family: var(--font-sans);
+  background: var(--bg-1, #141412);
+  border: 1px solid var(--border-subtle, rgba(200,196,184,0.1));
+  color: var(--text-primary, #c8c4b8);
+  border-radius: 2px;
+  outline: none;
+}
+.ipo-propose-field textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+.ipo-propose-field select:focus,
+.ipo-propose-field input:focus,
+.ipo-propose-field textarea:focus {
+  border-color: var(--teal-border, rgba(91,154,139,0.2));
+}
+
+/* Light mode overrides for votes */
+body.light-mode .ipo-vote-card { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-vote-card:hover { background: rgba(0,0,0,0.04); }
+body.light-mode .ipo-vote-card.is-expanded { background: rgba(200,166,78,0.04); border-color: rgba(200,166,78,0.15); }
+body.light-mode .ipo-vote-title { color: #555; }
+body.light-mode .ipo-vote-description { color: #888; }
+body.light-mode .ipo-propose-field select,
+body.light-mode .ipo-propose-field input,
+body.light-mode .ipo-propose-field textarea { background: #f8f8f6; border-color: rgba(0,0,0,0.1); color: #333; }
+
+/* ══════════════════════════════════════════════════════════════
+   IPO CREATION MODAL
+   ══════════════════════════════════════════════════════════════ */
+
+.ipo-modal-content {
+  background: var(--bg-2, #1a1a17);
+  border: 1px solid var(--border-subtle, rgba(200,196,184,0.1));
+  border-radius: 4px;
+  padding: 24px;
+  max-width: 680px;
+  width: 92%;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.ipo-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-hair, rgba(255,255,255,0.04));
+}
+
+.ipo-modal-title {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ipo-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+#ipo-create-modal .modal-close {
+  background: none;
+  border: none;
+  color: #6b6a5e;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+#ipo-create-modal .modal-close:hover { color: #e2d9b4; }
+
+.ipo-modal-body {
+  margin-top: 12px;
+}
+
+/* ── Wizard step indicators (shared with initiative wizard) ── */
+.wizard-steps {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.wizard-step {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 6px 14px;
+  color: #4a4840;
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 2px;
+  background: transparent;
+}
+.wizard-step.active {
+  color: var(--ipo-accent);
+  border-color: var(--ipo-accent-border);
+  background: var(--ipo-accent-faint);
+}
+.wizard-step.completed {
+  color: #5aafa5;
+  border-color: rgba(90,175,165,0.2);
+  background: rgba(90,175,165,0.06);
+}
+.wizard-step-num {
+  font-weight: 700;
+  margin-right: 3px;
+}
+
+/* ── Symbol selector ── */
+.ipo-symbol-row {
+  display: flex;
+  gap: 6px;
+}
+.ipo-symbol-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  background: var(--bg-1, #141412);
+  border: 1px solid var(--border-subtle, rgba(200,196,184,0.1));
+  color: var(--teal, #5b9a8b);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ipo-symbol-btn:hover {
+  border-color: var(--ipo-accent-border);
+  background: var(--ipo-accent-faint);
+}
+.ipo-symbol-btn.selected {
+  border-color: var(--ipo-accent);
+  background: var(--ipo-accent-hover);
+}
+
+/* ── Logo image (custom upload) ── */
+img.ipo-logo-img.ipo-sidebar-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid var(--ipo-accent-border);
+  flex-shrink: 0;
+}
+img.ipo-logo-img.ipo-header-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid var(--ipo-accent-border);
+  flex-shrink: 0;
+}
+.ipo-logo-upload-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 160px;
+  height: 80px;
+  border: 1px dashed var(--teal-border, rgba(91,154,139,0.2));
+  border-radius: 4px;
+  background: var(--bg-1, #141412);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ipo-logo-upload-zone:hover {
+  border-color: var(--teal, #5b9a8b);
+  background: var(--teal-faint, rgba(91,154,139,0.08));
+}
+.ipo-logo-upload-preview {
+  max-width: 56px;
+  max-height: 56px;
+  object-fit: contain;
+  border-radius: 3px;
+}
+
+/* ── Charter info bar ── */
+.ipo-charter-info {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted, #8a8778);
+  padding: 8px 12px;
+  background: var(--teal-faint, rgba(91,154,139,0.08));
+  border: 1px solid var(--teal-border, rgba(91,154,139,0.2));
+  border-radius: 3px;
+  margin-bottom: 12px;
+}
+
+/* ── Article cards ── */
+.ipo-article-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ipo-article-card {
+  background: #141410;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 3px;
+  border-left: 3px solid var(--ipo-accent-border);
+}
+
+.ipo-article-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  background: var(--teal-faint, rgba(91,154,139,0.08));
+  border-bottom: 1px solid var(--border-hair, rgba(255,255,255,0.04));
+}
+
+.ipo-article-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #5aafa5;
+}
+
+.ipo-article-remove {
+  background: none;
+  border: none;
+  color: #d9534f;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.ipo-article-remove:hover { opacity: 0.7; }
+
+.ipo-article-card-body {
+  padding: 12px 14px;
+}
+
+/* ── Add article row ── */
+.ipo-add-article-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+/* ── Toggle button ── */
+.ipo-toggle-btn {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 12px;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.03);
+  color: #4a4840;
+  transition: all 0.15s;
+  min-width: 36px;
+}
+.ipo-toggle-btn.is-on {
+  background: rgba(92,184,92,0.12);
+  border-color: rgba(92,184,92,0.3);
+  color: #5cb85c;
+}
+
+/* ── Ideology checkbox grid ── */
+.ipo-ideology-grid {
+  margin: 6px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ipo-ideology-axis {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.ipo-ideology-axis-name {
+  width: 160px;
+  flex-shrink: 0;
+  color: #6b6a5e;
+  font-size: 10px;
+}
+.ipo-ideology-check {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: #a89880;
+  font-size: 10px;
+  cursor: pointer;
+}
+.ipo-ideology-check.ipo-disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.ipo-ideology-check input[type="checkbox"] {
+  width: 12px;
+  height: 12px;
+  accent-color: var(--ipo-accent);
+}
+
+/* ── Confirm step ── */
+.ipo-confirm-preview {
+  margin-bottom: 16px;
+}
+.ipo-confirm-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.ipo-confirm-articles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.ipo-confirm-article {
+  padding: 6px 10px;
+  background: #141410;
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 2px;
+}
+.ipo-confirm-article-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #5aafa5;
+  display: block;
+  margin-bottom: 2px;
+}
+.ipo-confirm-article-detail {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-muted, #8a8778);
+}
+.ipo-confirm-cost {
+  background: rgba(200,166,78,0.06);
+  border: 1px solid rgba(200,166,78,0.15);
+  border-radius: 3px;
+  padding: 8px 12px;
+}
+.ipo-confirm-cost-row {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted, #8a8778);
+  padding: 2px 0;
+}
+.ipo-confirm-cost-total {
+  border-top: 1px solid rgba(200,166,78,0.2);
+  margin-top: 4px;
+  padding-top: 4px;
+  color: #c8a64e;
+  font-weight: 700;
+}
+
+/* ══ IPO VOTING SYSTEM (Phase 7a) ══ */
+
+/* Panel header action button */
+.ipo-panel-action-btn {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #c8a64e;
+  background: rgba(200,166,78,0.08);
+  border: 1px solid rgba(200,166,78,0.2);
+  border-radius: 2px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ipo-panel-action-btn:hover { background: rgba(200,166,78,0.18); }
+
+/* Empty state */
+.ipo-votes-empty {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+  text-align: center;
+  padding: 24px 12px;
+}
+.ipo-votes-empty strong { color: #c8a64e; }
+
+/* Vote card */
+.ipo-vote-card {
+  background: rgba(255,255,255,0.015);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 3px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.ipo-vote-card--open { border-left: 2px solid #c8a64e; }
+.ipo-vote-card--passed { border-left: 2px solid #5cb85c; }
+.ipo-vote-card--failed { border-left: 2px solid #d9534f; }
+
+.ipo-vote-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.ipo-vote-type-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #c8a64e;
+  background: rgba(200,166,78,0.08);
+  border: 1px solid rgba(200,166,78,0.15);
+  border-radius: 2px;
+  padding: 1px 5px;
+}
+
+.ipo-vote-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 2px;
+  margin-left: auto;
+}
+.ipo-vote-badge--open    { color: #c8a64e; background: rgba(200,166,78,0.1); }
+.ipo-vote-badge--passed  { color: #5cb85c; background: rgba(92,184,92,0.1); }
+.ipo-vote-badge--failed  { color: #d9534f; background: rgba(217,83,79,0.1); }
+
+.ipo-vote-card-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ipo-vote-meta-summary {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+.ipo-vote-meta-summary strong { color: var(--text-primary); font-weight: 600; }
+
+/* Collapsible joint-statement text */
+.ipo-statement-text .ipo-statement-full { display: none; }
+.ipo-statement-text.expanded .ipo-statement-preview { display: none; }
+.ipo-statement-text.expanded .ipo-statement-full { display: inline; }
+.ipo-statement-toggle {
+  display: inline;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 4px;
+  font-family: var(--font-mono);
+  font-size: inherit;
+  color: var(--teal, #5b9a8b);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ipo-statement-toggle:hover { opacity: 0.8; }
+
+/* Tally bar */
+.ipo-vote-tally { margin: 6px 0; }
+
+.ipo-vote-tally-bar {
+  display: flex;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.04);
+}
+
+.ipo-vote-tally-seg--yes     { background: #5cb85c; }
+.ipo-vote-tally-seg--no      { background: #d9534f; }
+.ipo-vote-tally-seg--abstain { background: #6b6a5e; }
+
+.ipo-vote-tally-labels {
+  display: flex;
+  gap: 8px;
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+.ipo-vote-tally-label--yes     { color: #5cb85c; }
+.ipo-vote-tally-label--no      { color: #d9534f; }
+.ipo-vote-tally-label--abstain { color: #6b6a5e; }
+.ipo-vote-tally-label--total   { color: #6b6a5e; margin-left: auto; }
+
+/* Voter breakdown (public ballot) */
+.ipo-vote-voters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 4px 0;
+}
+.ipo-vote-voter {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.ipo-vote-voter--yes     { color: #5cb85c; border-color: rgba(92,184,92,0.2); }
+.ipo-vote-voter--no      { color: #d9534f; border-color: rgba(217,83,79,0.2); }
+.ipo-vote-voter--abstain { color: #6b6a5e; }
+
+/* My ballot status */
+.ipo-vote-my-ballot {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+  margin-top: 6px;
+}
+.ipo-vote-my-ballot strong { color: var(--text-primary); }
+
+/* Ballot buttons */
+.ipo-vote-ballot-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.ipo-vote-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ipo-vote-btn--yes {
+  color: #5cb85c;
+  background: rgba(92,184,92,0.06);
+  border-color: rgba(92,184,92,0.25);
+}
+.ipo-vote-btn--yes:hover { background: rgba(92,184,92,0.18); }
+
+.ipo-vote-btn--no {
+  color: #d9534f;
+  background: rgba(217,83,79,0.06);
+  border-color: rgba(217,83,79,0.25);
+}
+.ipo-vote-btn--no:hover { background: rgba(217,83,79,0.18); }
+
+.ipo-vote-btn--abstain {
+  color: #6b6a5e;
+  background: rgba(107,106,94,0.06);
+  border-color: rgba(107,106,94,0.25);
+}
+.ipo-vote-btn--abstain:hover { background: rgba(107,106,94,0.18); }
+
+.ipo-vote-btn--resolve {
+  color: #c8a64e;
+  background: rgba(200,166,78,0.08);
+  border-color: rgba(200,166,78,0.25);
+  margin-top: 6px;
+}
+.ipo-vote-btn--resolve:hover { background: rgba(200,166,78,0.2); }
+
+/* Ballot confirmation row */
+.ipo-vote-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.ipo-vote-confirm-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+  margin-right: auto;
+}
+.ipo-vote-choice--yes   { color: #5cb85c; }
+.ipo-vote-choice--no    { color: #d9534f; }
+.ipo-vote-choice--abstain { color: #6b6a5e; }
+.ipo-vote-choice--candidate { color: #c8a64e; }
+
+/* Leadership Election — candidate buttons & tally */
+.ipo-vote-btn--candidate {
+  color: #c8a64e;
+  background: rgba(200,166,78,0.08);
+  border-color: rgba(200,166,78,0.25);
+}
+.ipo-vote-btn--candidate:hover { background: rgba(200,166,78,0.2); }
+
+.ipo-election-ballot-row {
+  flex-wrap: wrap;
+}
+
+.ipo-election-tally { gap: 4px; }
+
+.ipo-election-candidate-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #e8e6d9;
+}
+.ipo-election-candidate-name {
+  min-width: 100px;
+  text-align: right;
+  color: #c8a64e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ipo-election-candidate-bar {
+  flex: 1;
+  height: 10px;
+  background: rgba(200,166,78,0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.ipo-election-candidate-fill {
+  height: 100%;
+  background: #c8a64e;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.ipo-election-candidate-count {
+  min-width: 20px;
+  text-align: center;
+  color: #6b6a5e;
+}
+.ipo-vote-btn--confirm {
+  color: #5cb85c;
+  background: rgba(92,184,92,0.1);
+  border-color: rgba(92,184,92,0.3);
+}
+.ipo-vote-btn--confirm:hover { background: rgba(92,184,92,0.22); }
+.ipo-vote-btn--cancel {
+  color: #6b6a5e;
+  background: rgba(107,106,94,0.06);
+  border-color: rgba(107,106,94,0.2);
+}
+.ipo-vote-btn--cancel:hover { background: rgba(107,106,94,0.15); }
+
+/* Vote type selection grid */
+.ipo-vote-type-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ipo-vote-type-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 3px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ipo-vote-type-card:hover {
+  background: rgba(200,166,78,0.06);
+  border-color: rgba(200,166,78,0.25);
+}
+
+.ipo-vote-type-card-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ipo-vote-type-card-desc {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+}
+
+/* Vote form elements */
+.ipo-vote-form-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b6a5e;
+  margin-top: 12px;
+  margin-bottom: 4px;
+}
+
+.ipo-vote-form-select,
+.ipo-vote-form-input,
+.ipo-vote-form-textarea {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 7px 12px;
+  background: var(--bg-1);
+  color: var(--text-primary);
+  border: 1px solid var(--border-hair);
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+.ipo-vote-form-textarea { resize: vertical; min-height: 60px; }
+.ipo-vote-form-select:focus,
+.ipo-vote-form-input:focus,
+.ipo-vote-form-textarea:focus { outline: none; border-color: rgba(200,166,78,0.4); }
+
+.ipo-invite-item {
+  padding: 8px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-left: 3px solid transparent;
+  transition: background 0.12s, border-color 0.12s;
+}
+.ipo-invite-item:last-child { border-bottom: none; }
+.ipo-invite-item:not(.disabled):hover { background: rgba(255,255,255,0.06); }
+.ipo-invite-item.selected { background: rgba(200,166,78,0.18); border-left-color: rgba(200,166,78,0.8); }
+.ipo-invite-item.disabled { opacity: 0.55; cursor: default; }
+body.light-mode .ipo-invite-item { border-bottom-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-invite-item:not(.disabled):hover { background: rgba(0,0,0,0.04); }
+body.light-mode .ipo-invite-item.selected { background: rgba(200,166,78,0.12); border-left-color: rgba(180,140,50,0.6); }
+
+.ipo-invite-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ipo-invite-badge--accepted { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+.ipo-invite-badge--invited { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); }
+.ipo-invite-badge--rejected { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+
+.ipo-ideo-filter-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  opacity: 0.6;
+}
+.ipo-ideo-filter-btn:hover { opacity: 0.85; }
+.ipo-ideo-filter-btn.active { opacity: 1; filter: brightness(1.3); box-shadow: 0 0 0 1px currentColor; }
+
+.ipo-vote-form-note {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+  font-style: italic;
+  padding: 8px 0;
+}
+
+/* ══ IPO ACTIONS PANEL (Phase 8) ══ */
+
+.ipo-actions-empty {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+  text-align: center;
+  padding: 24px 12px;
+}
+
+.ipo-action-card {
+  background: rgba(255,255,255,0.015);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 3px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  transition: border-color 0.15s;
+}
+.ipo-action-card:hover { border-color: var(--teal-border, rgba(91,154,139,0.2)); }
+.ipo-action-card--disabled { opacity: 0.45; pointer-events: none; }
+
+.ipo-action-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ipo-action-icon { font-size: 14px; flex-shrink: 0; line-height: 1; }
+
+.ipo-action-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ipo-action-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ipo-action-desc {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim, #5c5a50);
+  line-height: 1.3;
+}
+
+.ipo-action-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ipo-action-cost {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: #c8a64e;
+}
+
+.ipo-action-exec-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 12px;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--teal, #5b9a8b);
+  background: var(--teal-faint, rgba(91,154,139,0.08));
+  border: 1px solid var(--teal-border, rgba(91,154,139,0.2));
+  transition: background 0.15s;
+}
+.ipo-action-exec-btn:hover:not(:disabled) { background: rgba(91,154,139,0.18); }
+.ipo-action-exec-btn:disabled { color: #6b6a5e; border-color: rgba(107,106,94,0.2); cursor: not-allowed; }
+
+/* Action result modal */
+.ipo-action-result-icon {
+  font-size: 42px;
+  margin-bottom: 8px;
+}
+.ipo-action-result-name {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.ipo-action-result-effect {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.ipo-action-result-desc {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+}
+
+/* Multi-result (rally all) */
+.ipo-action-multi-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ipo-action-multi-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 3px;
+}
+.ipo-action-multi-icon { font-size: 12px; flex-shrink: 0; }
+.ipo-action-multi-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ipo-action-multi-outcome {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+}
+.ipo-action-multi-change {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  min-width: 30px;
+  text-align: right;
+}
+
+/* ══ IPO EVENT LOG (Phase 10) ══ */
+
+.ipo-event-log {
+  flex-shrink: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  border-top: 1px solid rgba(255,255,255,0.04);
+  padding: 8px 16px 12px;
+}
+.ipo-event-log::-webkit-scrollbar { width: 4px; }
+.ipo-event-log::-webkit-scrollbar-track { background: transparent; }
+.ipo-event-log::-webkit-scrollbar-thumb { background: var(--text-faint); border-radius: 2px; }
+
+.ipo-event-log-header {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b6a5e;
+  margin-bottom: 6px;
+}
+
+.ipo-event-log-empty {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #3a3830;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.ipo-event-log-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 3px 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #6b6a5e;
+  line-height: 1.3;
+}
+
+.ipo-event-log-icon { flex-shrink: 0; font-size: 10px; line-height: 1; }
+
+.ipo-event-log-text {
+  flex: 1;
+  min-width: 0;
+}
+.ipo-event-log-text strong { color: var(--text-primary); font-weight: 600; }
+
+.ipo-event-log-tick {
+  flex-shrink: 0;
+  font-size: 9px;
+  color: #3a3830;
+}
+
+/* ── Light mode overrides ── */
+body.light-mode .ipo-modal-content { background: #fff; border-color: rgba(0,0,0,0.1); }
+body.light-mode .ipo-article-card { background: #fafaf8; border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-symbol-btn { background: #f8f8f6; border-color: rgba(0,0,0,0.08); }
+
+body.light-mode .ipo-header { background: #f0f0ec; }
+body.light-mode .ipo-header-name { color: #333; }
+body.light-mode .ipo-chat-area { background: #fff; }
+body.light-mode .ipo-chat-input-row { background: #fafaf8; }
+body.light-mode .ipo-chat-input { background: #fff; border-color: rgba(0,0,0,0.1); color: #333; }
+body.light-mode .ipo-panel-header { background: #fafaf8; }
+body.light-mode .ipo-footer { background: #fafaf8; }
+body.light-mode .ipo-vote-card { background: rgba(0,0,0,0.015); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-vote-card-title { color: #333; }
+body.light-mode .ipo-vote-type-card { background: rgba(0,0,0,0.015); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-vote-type-card-label { color: #333; }
+body.light-mode .ipo-vote-tally-bar { background: rgba(0,0,0,0.06); }
+body.light-mode .ipo-vote-voter { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-vote-form-select,
+body.light-mode .ipo-vote-form-input,
+body.light-mode .ipo-vote-form-textarea { background: #fff; border-color: rgba(0,0,0,0.12); color: #333; }
+body.light-mode .ipo-action-card { background: rgba(0,0,0,0.015); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-action-label { color: #333; }
+body.light-mode .ipo-action-multi-row { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-action-multi-name { color: #333; }
+body.light-mode .ipo-event-log { border-top-color: rgba(0,0,0,0.06); }
+body.light-mode .ipo-event-log-text strong { color: #333; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .wn-grid { grid-template-columns: 1fr; padding: 14px; gap: 12px; }
+  .diplo-view-toggle { margin-left: 0; margin-top: 4px; }
+  .ipo-view { flex-direction: column; padding: 10px; }
+  .ipo-sidebar { width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid rgba(255,255,255,0.06); border-radius: 4px 4px 0 0; max-height: 200px; }
+  .ipo-main { border-radius: 0 0 4px 4px; }
+  .ipo-header { height: auto; min-height: 42px; padding: 8px 12px; flex-wrap: wrap; }
+  .ipo-header-meta { flex-wrap: wrap; gap: 6px; }
+  .ipo-header-right { margin-left: 0; margin-top: 4px; width: 100%; }
+  .ipo-bottom-panels { flex-direction: column; max-height: none; }
+  .ipo-panel + .ipo-panel { border-left: none; border-top: 1px solid rgba(255,255,255,0.04); }
+  .ipo-panel-body { max-height: 350px; }
+  .ipo-footer { height: auto; min-height: 36px; padding: 6px 12px; flex-wrap: wrap; }
+  .ipo-footer-members { gap: 3px; }
+  .ipo-footer-actions { width: 100%; justify-content: flex-end; margin-top: 4px; flex-wrap: wrap; }
+  .ipo-vote-card { padding: 8px 10px; }
+  .ipo-action-card { padding: 6px 8px; }
+  .ipo-vote-ballot-row { flex-wrap: wrap; }
+  .ipo-vote-type-grid { gap: 4px; }
+  .ipo-vote-type-card { padding: 8px 10px; }
+  .ipo-action-result-icon { font-size: 32px; }
+  .ipo-action-result-name { font-size: 13px; }
+  .ipo-action-result-effect { font-size: 18px; }
+  .ipo-modal-content { max-width: 95vw; max-height: 90vh; }
+  .ipo-empty-state { padding: 30px 20px; }
+  .ipo-empty-title { font-size: 16px; }
+  .ipo-empty-desc { font-size: 12px; }
 }

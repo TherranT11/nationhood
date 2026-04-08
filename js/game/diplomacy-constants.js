@@ -75,6 +75,12 @@ export const DIPLOMACY_CONFIG = {
     NEGOTIATION_MAX_EXTENSIONS: 3,        // max times negotiations can be extended
     TRADE_RATIFICATION_VOTING_TICKS: 6,   // ticks for parliament to vote on trade bill
 
+    // Credit requirements for trade agreements (proposing nation must meet these)
+    CREDIT_MIN_FOR_FTA: 25,               // FTA requires credit >= 25
+    CREDIT_MIN_FOR_RSC: 15,               // RSC requires credit >= 15
+    CREDIT_MIN_FOR_PTA: 10,               // PTA requires credit >= 10
+    CREDIT_MIN_FOR_AID_DONOR: 20,         // Donating aid requires credit >= 20 (receiving always ok)
+
     // Economic Aid
     AID_MAX_GDP_PCT: 25,                  // max annual aid as % of donor's GDP
     AID_MIN_AMOUNT: 1000000000,           // min $1B annual aid (to prevent trivial agreements)
@@ -84,6 +90,29 @@ export const DIPLOMACY_CONFIG = {
     AID_ANNUAL_REVIEW_INTERVAL: 12,       // check conditions every 12 ticks (1 year)
     AID_RELATION_BONUS: 8                 // relation boost when aid agreement is ratified
 };
+
+/**
+ * Check if a nation's credit rating allows proposing a specific trade agreement type.
+ * Returns { allowed: true } or { allowed: false, required: number, reason: string }.
+ */
+export function checkCreditForTradeAgreement(nationCredit, agreementType, isAidDonor) {
+    var credit = Number(nationCredit ?? 50);
+    var thresholds = {
+        fta: DIPLOMACY_CONFIG.CREDIT_MIN_FOR_FTA,
+        pta: DIPLOMACY_CONFIG.CREDIT_MIN_FOR_PTA,
+        resource_supply: DIPLOMACY_CONFIG.CREDIT_MIN_FOR_RSC,
+        economic_aid: isAidDonor ? DIPLOMACY_CONFIG.CREDIT_MIN_FOR_AID_DONOR : 0
+    };
+    var required = thresholds[agreementType];
+    if (required === undefined) return { allowed: true };
+    if (credit >= required) return { allowed: true };
+    return {
+        allowed: false,
+        required: required,
+        current: credit,
+        reason: 'Credit rating too low (' + credit + '/' + required + '). Other nations won\'t negotiate this deal with a nation that can\'t pay its bills.'
+    };
+}
 
 /**
  * Curated list of nation stats that can be used as conditions in Economic Aid agreements.
@@ -268,7 +297,7 @@ export const TRADE_ARTICLE_TYPES = {
         key: 'supply_commitment',
         label: 'Supply Commitment',
         description: 'Guaranteed purchase commitment for a raw resource.',
-        repeatable: false,
+        repeatable: true,
         applies_to: ['resource_supply'],
         schema: {
             sector: 'string',                   // must be raw_resource sector
@@ -282,7 +311,7 @@ export const TRADE_ARTICLE_TYPES = {
         key: 'price_terms',
         label: 'Price Terms',
         description: 'How the resource price is determined.',
-        repeatable: false,
+        repeatable: true,
         applies_to: ['resource_supply'],
         schema: {
             price_type: 'market|fixed|discounted|premium',
@@ -493,6 +522,7 @@ export const WAR_JUSTIFICATIONS = {
 };
 
 export const MAJOR_SECTORS = [
+    { key: 'FOUNDATIONAL',  label: 'Foundational',        icon: '📜' },
     { key: 'ECONOMICS',     label: 'Economics',           icon: '💰' },
     { key: 'LABOR',         label: 'Labor',               icon: '👷' },
     { key: 'EDUCATION',     label: 'Education',           icon: '📚' },
@@ -1001,9 +1031,9 @@ export const STATE_VISIT_AGENDA_ITEMS = [
     {
         key: 'bilateral_talks', day: 2, slot: 'Evening',
         title: 'Private Bilateral Talks',
-        desc: 'Closed-door meeting between senior officials. No press, no public record. Can discuss sensitive topics and build trust for future negotiations. The content remains private.',
+        desc: 'Closed-door meeting between senior officials. No press, no public record. Opens diplomatic channels — all other actions with this nation cost 1 less AP this tick.',
         effects: { relations: 5 },
-        tags: ['Trust Threshold', 'Enables Initiatives'], costs: {}, risks: {}
+        tags: ['Trust Threshold', 'Enables Initiatives', 'Diplomatic Discount'], costs: {}, risks: {}
     },
     {
         key: 'military_review', day: 3, slot: 'Morning',

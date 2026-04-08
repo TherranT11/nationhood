@@ -104,7 +104,30 @@ const STATE_TTL = 5 * 60 * 1000; // 5 minutes
 // Admin inspector overrides: ?nation_id= and ?faction_id= in URL
 // Falls back to sessionStorage so overrides survive in-page navigations
 // (e.g. Appoint Ambassador link) that may lose URL params.
+// Admin overrides are gated behind server-side admin role verification.
+// The _admin_verified flag is set ONLY after verify_admin_access() RPC succeeds.
+let _admin_verified = false;
+
+// Multi-faction support: all factions owned by the current user
+let _userFactions = [];
+export function getUserFactions() { return _userFactions; }
+export function switchFaction(factionId) {
+    sessionStorage.setItem('active_faction_id', factionId);
+    sessionStorage.removeItem(STATE_KEY); // Clear cached state to force reload
+    window.location.reload();
+}
+
+export async function verifyAdminOverrides() {
+    if (_admin_verified) return true;
+    try {
+        const { data } = await _supabase.rpc('verify_admin_access');
+        _admin_verified = !!(data?.authorized);
+    } catch (e) { _admin_verified = false; }
+    return _admin_verified;
+}
+
 export function getAdminNationOverride() {
+    if (!_admin_verified) return null; // Block unless server-verified admin
     try {
         const params = new URLSearchParams(window.location.search);
         const fromUrl = params.get('nation_id') || null;
@@ -114,6 +137,7 @@ export function getAdminNationOverride() {
 }
 
 export function getAdminFactionOverride() {
+    if (!_admin_verified) return null; // Block unless server-verified admin
     try {
         const params = new URLSearchParams(window.location.search);
         const fromUrl = params.get('faction_id') || null;
@@ -137,7 +161,14 @@ export function getAdminFactionOverride() {
 })();
 
 export function getCachedState() {
-    // Skip cache entirely when admin override is active — always fetch fresh
+    // Skip cache entirely when admin override is active — always fetch fresh.
+    // Check URL params AND sessionStorage (for in-iframe navigation without params).
+    // _admin_verified is false at this point so we can't use getAdminNationOverride().
+    try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('nation_id') || params.has('faction_id')) return null;
+        if (sessionStorage.getItem('_admin_nation') || sessionStorage.getItem('_admin_faction')) return null;
+    } catch (_) {}
     if (getAdminNationOverride() || getAdminFactionOverride()) return null;
     try {
         const cached = sessionStorage.getItem(STATE_KEY);
@@ -145,6 +176,12 @@ export function getCachedState() {
         const state = JSON.parse(cached);
         const age = Date.now() - state.timestamp;
         if (age > STATE_TTL) { console.log('State cache expired, will refresh'); return null; }
+        // Invalidate cache if active faction changed (e.g. switched from corp to party)
+        const activeFactionId = sessionStorage.getItem('active_faction_id');
+        if (activeFactionId && state.faction && state.faction.id !== activeFactionId) {
+            console.log('Active faction changed, invalidating cache');
+            return null;
+        }
         return state;
     } catch (e) { console.error('Error reading cached state:', e); return null; }
 }
@@ -187,6 +224,18 @@ async function refreshCachedNation(cached) {
 export async function loadGameState(requireFaction = true) {
     const cached = getCachedState();
     if (cached) {
+        // Always load factions for the dropdown switcher (cache doesn't store _userFactions)
+        if (_userFactions.length === 0 && cached.faction?.id) {
+            try {
+                const userId = (await _supabase.auth.getUser())?.data?.user?.id;
+                if (userId) {
+                    const { data: allFactions } = await _supabase
+                        .from('factions').select('*')
+                        .or(`id.eq.${userId},linked_user_id.eq.${userId}`);
+                    _userFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
+                }
+            } catch (_) { /* dropdown will just show current faction */ }
+        }
         if (shouldRefreshNationForPage()) {
             console.log('Using cached user/faction/shard with fresh nation for current page');
             return await refreshCachedNation(cached);
@@ -198,8 +247,17 @@ export async function loadGameState(requireFaction = true) {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return null; }
 
+    // Verify admin overrides server-side before allowing inspection.
+    // Check both URL params (initial load) and sessionStorage (in-iframe navigation).
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasAdminContext = urlParams.has('faction_id') || urlParams.has('nation_id')
+        || sessionStorage.getItem('_admin_nation') || sessionStorage.getItem('_admin_faction');
+    if (hasAdminContext) {
+        await verifyAdminOverrides();
+    }
+
     // === ADMIN FACTION OVERRIDE ===
-    // If ?faction_id= is in the URL, load that faction instead of the user's own.
+    // If ?faction_id= is in the URL and user is a server-verified admin, load that faction.
     const overrideFactionId = getAdminFactionOverride();
     let faction = null;
 
@@ -216,16 +274,28 @@ export async function loadGameState(requireFaction = true) {
             faction = factionData;
         }
     } else {
-        const { data: userFaction, error: factionError } = await _supabase
-            .from('factions').select('*').eq('id', user.id).single();
-        if (factionError || !userFaction) {
+        // Load ALL factions owned by this user (primary + linked)
+        const { data: allFactions } = await _supabase
+            .from('factions').select('*')
+            .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
+
+        const ownedFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
+        // Store all factions for the dropdown switcher
+        _userFactions = ownedFactions;
+
+        if (ownedFactions.length === 0) {
             if (requireFaction) {
                 sessionStorage.removeItem(STATE_KEY);
-                window.location.href = 'select-nation.html';
+                window.location.href = 'faction-select.html';
                 return null;
             }
+        } else {
+            // Pick the active faction from sessionStorage, or default to primary
+            const activeFactionId = sessionStorage.getItem('active_faction_id');
+            faction = ownedFactions.find(f => f.id === activeFactionId)
+                || ownedFactions.find(f => f.id === user.id)
+                || ownedFactions[0];
         }
-        faction = userFaction;
     }
 
     // === ADMIN NATION OVERRIDE ===
@@ -255,20 +325,9 @@ export async function loadGameState(requireFaction = true) {
         if (nation) faction.nation = nation.name;
     }
 
-    // Inject admin viewing banner when any override is active
+    // Admin override banner removed — admin viewing is logged in console only
     if (overrideNationId || overrideFactionId) {
-        setTimeout(() => {
-            if (!document.getElementById('admin-override-banner')) {
-                const banner = document.createElement('div');
-                banner.id = 'admin-override-banner';
-                banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#8B0000,#cc3300);color:#fff;text-align:center;padding:6px 12px;font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.9;pointer-events:none;';
-                const parts = [];
-                if (nation) parts.push('Nation: ' + nation.name);
-                if (overrideFactionId && faction) parts.push('Faction: ' + faction.faction_name);
-                banner.textContent = '⚠ ADMIN VIEWING — ' + parts.join(' · ') + ' — DO NOT TAKE ACTIONS';
-                document.body.prepend(banner);
-            }
-        }, 100);
+        console.log('Admin override:', overrideNationId ? 'nation=' + (nation?.name || overrideNationId) : '', overrideFactionId ? 'faction=' + (faction?.faction_name || overrideFactionId) : '');
     }
 
     // Update last_seen_tick for inactivity tracking (fire-and-forget)
@@ -281,12 +340,49 @@ export async function loadGameState(requireFaction = true) {
     }
 
     setCachedState(user, faction, nation, shard);
+
+    // Check if player's party was disbanded by Party Registration Act
+    checkRegistrationActDisbanded(faction);
+
     return { user, faction, nation, shard };
 }
 
 export async function refreshGameState() {
     sessionStorage.removeItem(STATE_KEY);
     return await loadGameState();
+}
+
+// ===== PARTY REGISTRATION ACT POPUP =====
+// Shows a persistent modal if the player's party was disbanded by the Political Party
+// Registration Act. Persists across page loads until [OK] is clicked, then never again.
+export async function checkRegistrationActDisbanded(faction) {
+    if (!faction) return;
+    if (!faction.registration_act_disbanded) return;
+    if (faction.registration_act_dismissed) return;
+
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;';
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:#1a1a16;border:2px solid #c55;border-radius:8px;padding:32px 40px;max-width:520px;text-align:center;font-family:"IBM Plex Sans",sans-serif;';
+    modal.innerHTML = `
+        <div style="font-size:1.4rem;font-weight:bold;color:#c55;margin-bottom:16px;">Message from the Electoral Commission</div>
+        <div style="font-size:0.9rem;color:#e8e4dc;line-height:1.6;margin-bottom:24px;">
+            Due to new laws, your party did not meet the threshold for seats in the legislature.
+            You should continue to fight and campaign as opposition until you can be seated in the legislature.
+        </div>
+        <button id="registration-act-ok-btn" style="padding:10px 40px;font-family:'JetBrains Mono',monospace;font-size:0.85rem;font-weight:bold;letter-spacing:2px;background:#c55;color:#000;border:none;cursor:pointer;">OK</button>
+    `;
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    document.getElementById('registration-act-ok-btn').addEventListener('click', async () => {
+        overlay.remove();
+        // Mark as dismissed so it never shows again
+        try {
+            await _supabase.from('factions').update({ registration_act_dismissed: true }).eq('id', faction.id);
+        } catch (e) { console.warn('Failed to dismiss registration act popup:', e); }
+    });
 }
 
 
@@ -316,9 +412,14 @@ export function renderTopBar(activeTab) {
                     </div>
                 </div>
             </div>
+            <div class="top-bar-version" style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.5px;opacity:0.6;">Alpha 2.0.0.6</div>
             <div class="top-bar-right">
                 <button class="guide-btn" id="guide-btn" title="Page Guide" style="display:none;"></button>
-                <span class="party-badge" id="party-badge">--</span>
+                ${activeTab === 'home' ? '<a href="how-to.html" class="guide-btn" style="text-decoration:none;">HOW TO</a>' : ''}
+                <div class="faction-switcher" id="faction-switcher">
+                    <span class="party-badge" id="party-badge" onclick="toggleFactionDropdown()" style="cursor:pointer;">--</span>
+                    <div class="faction-dropdown" id="faction-dropdown"></div>
+                </div>
                 <span class="topbar-ap" id="topbar-ap"></span>
                 <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle" title="Toggle light/dark mode">Light</button>
                 <button class="logout-btn" onclick="handleLogout()">Logout</button>
@@ -353,6 +454,8 @@ export function renderNavTabs(activeTab) {
         { id: 'politics', label: 'Politics', href: 'politics.html' },
         { id: 'laws', label: 'Bills', href: 'laws.html' },
         { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
+        { id: 'news', label: 'News', href: 'news.html' },
+        { id: 'conflicts', label: 'Conflicts', href: 'conflicts.html' },
         { id: 'economy', label: 'Economy', href: 'economy.html' },
         { id: 'wiki', label: 'Wiki', href: 'wiki.html' }
     ];
@@ -374,6 +477,9 @@ export function renderNavTabs(activeTab) {
         }
         if (tab.id === 'diplomacy') {
             badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>';
+        }
+        if (tab.id === 'conflicts') {
+            badgeHtml = '<span class="nav-badge nav-badge--amber" id="conflicts-badge" style="display:none;"></span>';
         }
         return `
             <a href="${href}"
@@ -411,15 +517,16 @@ async function updateBillsBadge(faction, nation, shard) {
     const badge = document.getElementById('bills-badge');
     if (!badge || !faction || !nation) return;
     try {
-        const { data: floorBills } = await _supabase
+        // Count committee + floor bills the player hasn't voted on
+        const { data: activeBills } = await _supabase
             .from('bills')
-            .select('id, bill_support(faction_id)')
+            .select('id, status, bill_support(faction_id)')
             .eq('nation_id', nation.id)
-            .eq('status', 'floor');
+            .in('status', ['committee', 'floor']);
 
         const seenBills = getSeenBills();
         let count = 0;
-        for (const bill of (floorBills || [])) {
+        for (const bill of (activeBills || [])) {
             const hasVoted = (bill.bill_support || []).some(s => s.faction_id === faction.id);
             const hasSeen = seenBills.includes(bill.id);
             if (!hasVoted && !hasSeen) count++;
@@ -437,24 +544,105 @@ async function updateBillsBadge(faction, nation, shard) {
 }
 
 
-// ===== DIPLOMACY BADGE (unread diplomatic messages) =====
+// ===== DIPLOMACY ROLE DETECTION (for badge gating) =====
 
-async function updateDiplomacyBadge(faction, nation) {
+/**
+ * Lightweight role check: is this faction the FM, MoT, or ambassador to specific nations?
+ * Used by the nav-bar badge functions so only relevant players see notifications.
+ */
+async function getDiploBadgeRoles(faction, nation) {
+    const roles = { isFM: false, isMoT: false, ambassadorTargetIds: [] };
+    if (!faction || !nation) return roles;
+
+    try {
+        const [minRes, ambRes] = await Promise.all([
+            _supabase.from('ministries').select('ministry_key, party_id')
+                .eq('nation_id', nation.id).in('ministry_key', ['foreign', 'trade']).eq('is_active', true),
+            _supabase.from('ambassadors').select('target_nation_id')
+                .eq('nation_id', nation.id).eq('faction_id', faction.id)
+                .eq('is_active', true).eq('status', 'active')
+        ]);
+
+        (minRes.data || []).forEach(m => {
+            if (m.party_id === faction.id) {
+                if (m.ministry_key === 'foreign') roles.isFM = true;
+                if (m.ministry_key === 'trade') roles.isMoT = true;
+            }
+        });
+
+        roles.ambassadorTargetIds = (ambRes.data || []).map(a => a.target_nation_id);
+    } catch (e) {
+        console.warn('Error fetching diplo badge roles:', e);
+    }
+
+    return roles;
+}
+
+// ===== DIPLOMACY BADGE (unread messages + pending proposals, single red badge) =====
+
+async function updateDiplomacyBadge(faction, nation, roles) {
     const badge = document.getElementById('diplomacy-badge');
     if (!badge || !faction || !nation) return;
     try {
-        // Fetch messages sent TO our nation that our faction hasn't read yet.
-        // We only care about messages FROM other nations (not our own).
+        if (!roles) roles = await getDiploBadgeRoles(faction, nation);
+
+        // No diplomatic role → no badge
+        if (!roles.isFM && !roles.isMoT && roles.ambassadorTargetIds.length === 0) {
+            badge.style.display = 'none';
+            return;
+        }
+
+        let count = 0;
+
+        // 1. Unread diplomatic messages
         const { data: msgs } = await _supabase
             .from('diplomatic_messages')
-            .select('id, read_by_factions')
+            .select('id, from_nation_id, read_by_factions')
             .eq('to_nation_id', nation.id)
             .neq('from_nation_id', nation.id);
 
-        let count = 0;
         for (const msg of (msgs || [])) {
             const readBy = msg.read_by_factions || [];
-            if (!readBy.includes(faction.id)) count++;
+            if (readBy.includes(faction.id)) continue;
+            if (roles.isFM || roles.ambassadorTargetIds.includes(msg.from_nation_id)) {
+                count++;
+            }
+        }
+
+        // 2. Incoming diplomatic proposals needing attention
+        const { data: proposals } = await _supabase
+            .from('diplomatic_proposals')
+            .select('status, proposing_nation_id, target_nation_id, proposal_data')
+            .in('status', ['proposed', 'revised'])
+            .eq('target_nation_id', nation.id);
+
+        for (const p of (proposals || [])) {
+            if (p.status === 'proposed') {
+                if (roles.isFM || roles.ambassadorTargetIds.includes(p.proposing_nation_id)) {
+                    count++;
+                }
+            } else if (p.status === 'revised') {
+                const pd = p.proposal_data || {};
+                const revisedByUs = pd.revised_by_nation_id === nation.id;
+                if (!revisedByUs && (roles.isFM || roles.ambassadorTargetIds.includes(p.proposing_nation_id))) {
+                    count++;
+                }
+            }
+        }
+
+        // 3. Open trade negotiations
+        const { data: tradeNegs } = await _supabase
+            .from('trade_negotiations')
+            .select('initiated_by_nation, nation_a_id, nation_b_id, status')
+            .eq('status', 'open')
+            .or('nation_a_id.eq.' + nation.id + ',nation_b_id.eq.' + nation.id)
+            .neq('initiated_by_nation', nation.id);
+
+        for (const n of (tradeNegs || [])) {
+            const otherNationId = n.initiated_by_nation;
+            if (roles.isFM || roles.isMoT || roles.ambassadorTargetIds.includes(otherNationId)) {
+                count++;
+            }
         }
 
         if (count > 0) {
@@ -469,6 +657,150 @@ async function updateDiplomacyBadge(faction, nation) {
 }
 
 
+// ===== CONFLICTS BADGE + GLOBAL INCIDENT NOTIFICATION =====
+
+const FISHING_DISPUTE_NOTIFICATIONS = [
+    '{nationA} seized a {nationB} fishing vessel in disputed waters. Crew detained, catch confiscated.',
+    '{nationA} coast guard intercepted {nationB} fishermen operating in contested maritime territory.',
+    'A maritime dispute has erupted after {nationA} enforced exclusion zone claims against {nationB} vessels.'
+];
+
+function getIncidentNotificationText(incident) {
+    const nameA = incident.nation_a?.name || incident._nameA || 'Unknown';
+    const nameB = incident.nation_b?.name || incident._nameB || 'Unknown';
+    if (incident.incident_type === 'fishing_dispute') {
+        const template = FISHING_DISPUTE_NOTIFICATIONS[Math.floor(Math.random() * FISHING_DISPUTE_NOTIFICATIONS.length)];
+        // Nation A role is aggrieved (vessel seized), Nation B is enforcer (seized it)
+        // So the enforcer (B) acts against the aggrieved (A)
+        return template.replace(/\{nationA\}/g, nameB).replace(/\{nationB\}/g, nameA);
+    }
+    return `A ${incident.incident_type.replace(/_/g, ' ')} incident has been triggered between ${nameA} and ${nameB}.`;
+}
+
+function showConflictNotification(text) {
+    const existing = document.getElementById('conflict-notification');
+    if (existing) existing.remove();
+    const el = document.createElement('div');
+    el.id = 'conflict-notification';
+    el.style.cssText = 'position:fixed;top:48px;left:50%;transform:translateX(-50%);z-index:9999;padding:10px 20px;border-radius:3px;font-size:11px;font-family:var(--font-sans,sans-serif);max-width:560px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.4);background:rgba(176,154,91,0.12);color:#b09a5b;border:1px solid rgba(176,154,91,0.3);transition:opacity 0.4s;';
+    el.textContent = text;
+    document.body.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 400); }, 6000);
+}
+
+async function updateConflictsBadge(faction, nation) {
+    const badge = document.getElementById('conflicts-badge');
+    if (!badge || !faction || !nation) return;
+    try {
+        // Count ALL active incidents globally (not just yours) for the amber badge
+        const { count } = await _supabase
+            .from('incidents')
+            .select('id', { count: 'exact', head: true })
+            .in('status', ['active', 'mediating']);
+
+        if (count && count > 0) {
+            badge.textContent = count;
+            badge.style.display = '';
+        } else {
+            badge.style.display = 'none';
+        }
+
+        // Check for NEW incidents since last visit (notification toast)
+        const lastSeenKey = 'nationhood_last_seen_incident_tick';
+        const lastSeenTick = parseInt(localStorage.getItem(lastSeenKey) || '0', 10);
+
+        const { data: newIncidents } = await _supabase
+            .from('incidents')
+            .select('incident_type, nation_a_id, nation_b_id, started_tick, nation_a:nations!incidents_nation_a_id_fkey(name), nation_b:nations!incidents_nation_b_id_fkey(name)')
+            .gt('started_tick', lastSeenTick)
+            .in('status', ['active', 'mediating'])
+            .order('started_tick', { ascending: false })
+            .limit(1);
+
+        if (newIncidents && newIncidents.length > 0) {
+            const incident = newIncidents[0];
+            const text = getIncidentNotificationText(incident);
+            showConflictNotification(text);
+        }
+
+        // Update last seen tick to current shard tick
+        const { data: shard } = await _supabase
+            .from('shard')
+            .select('current_tick')
+            .eq('name', 'Alpha Shard')
+            .single();
+        if (shard?.current_tick) {
+            localStorage.setItem(lastSeenKey, String(shard.current_tick));
+        }
+    } catch (e) {
+        console.error('Error updating conflicts badge:', e);
+    }
+}
+
+
+// ===== IPO INVITE BADGE (pending org invitations) =====
+
+async function updateIPOInviteBadge(faction, roles) {
+    const dipBadge = document.getElementById('diplomacy-badge');
+    if (!faction) return;
+    try {
+        // Count pending invites
+        const { data: invites, error } = await _supabase
+            .from('ipo_invitations')
+            .select('id')
+            .eq('target_faction_id', faction.id)
+            .eq('status', 'pending');
+        if (error) return;
+        const inviteCount = (invites || []).length;
+        window._ipoPendingInviteCount = inviteCount;
+
+        // Count open IPO votes where player hasn't voted (shows for ALL members)
+        let pendingVoteCount = 0;
+        try {
+            const { data: myOrgs } = await _supabase
+                .from('ipo_members')
+                .select('org_id')
+                .eq('faction_id', faction.id)
+                .eq('is_active', true)
+                .eq('role', 'member');
+            if (myOrgs && myOrgs.length > 0) {
+                const orgIds = myOrgs.map(m => m.org_id);
+                const { data: openVotes } = await _supabase
+                    .from('ipo_votes')
+                    .select('id')
+                    .in('org_id', orgIds)
+                    .eq('status', 'open');
+                if (openVotes && openVotes.length > 0) {
+                    const voteIds = openVotes.map(v => v.id);
+                    const { data: myBallots } = await _supabase
+                        .from('ipo_ballots')
+                        .select('vote_id')
+                        .in('vote_id', voteIds)
+                        .eq('faction_id', faction.id);
+                    const votedSet = new Set((myBallots || []).map(b => b.vote_id));
+                    pendingVoteCount = openVotes.filter(v => !votedSet.has(v.id)).length;
+                }
+            }
+        } catch (_) {}
+
+        const totalIPO = inviteCount + pendingVoteCount;
+        window._ipoPendingVoteCount = pendingVoteCount;
+
+        // Show badge: IPO votes show for ALL players, invites only for diplomatic roles
+        if (dipBadge) {
+            const hasDiploRole = roles && (roles.isFM || roles.isMoT || roles.ambassadorTargetIds.length > 0);
+            const badgeCount = pendingVoteCount + (hasDiploRole ? inviteCount : 0);
+            if (badgeCount > 0) {
+                const existing = parseInt(dipBadge.textContent) || 0;
+                dipBadge.textContent = existing + badgeCount;
+                dipBadge.style.display = '';
+            }
+        }
+    } catch (e) {
+        console.error('Error updating IPO invite badge:', e);
+    }
+}
+
 // ===== TICK COUNTDOWN =====
 
 let tickInterval = null;
@@ -476,19 +808,54 @@ let nextTickAt = null;
 let tickPoller = null;
 
 export function updateTopBarInfo(faction, shard, nation) {
+    // Store faction type for poller access
+    window._currentFactionType = faction?.faction_type || 'party';
     const badge = document.getElementById('party-badge');
     if (badge) {
         if (faction && faction.nation_id) {
-            badge.textContent = faction.faction_name + ' [' + (faction.abbreviation || '—') + ']';
+            badge.textContent = (faction.abbreviation || faction.faction_name) + ' ▾';
         } else {
-            badge.textContent = '[No Party]';
+            badge.textContent = '[No Faction] ▾';
         }
+    }
+
+    // Populate faction switcher dropdown
+    const dropdown = document.getElementById('faction-dropdown');
+    if (dropdown && _userFactions.length > 0) {
+        let html = '';
+        for (const f of _userFactions) {
+            const isActive = faction && f.id === faction.id;
+            const typeLabel = f.faction_type === 'corporation' ? 'CORP' : 'PARTY';
+            const typeColor = f.faction_type === 'corporation' ? 'var(--teal)' : 'var(--amber)';
+            html += `<div class="faction-dropdown__item${isActive ? ' active' : ''}" onclick="handleFactionSwitch('${f.id}', '${f.faction_type}')">
+                <span class="faction-dropdown__type" style="color:${typeColor}">${typeLabel}</span>
+                <span class="faction-dropdown__name">${f.faction_name || 'Unnamed'}</span>
+                <span class="faction-dropdown__abbr">[${f.abbreviation || '—'}]</span>
+            </div>`;
+        }
+        // "Found a Corporation" option if no corp exists
+        const hasCorp = _userFactions.some(f => f.faction_type === 'corporation');
+        if (!hasCorp) {
+            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="sessionStorage.setItem('pending_faction_type','corp'); window.location.href='corp-setup.html'">
+                <span class="faction-dropdown__type" style="color:var(--teal)">+</span>
+                <span class="faction-dropdown__name">Found a Corporation</span>
+            </div>`;
+        }
+        // "Found a Party" option if no party exists
+        const hasParty = _userFactions.some(f => f.faction_type === 'party');
+        if (!hasParty) {
+            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="sessionStorage.setItem('pending_faction_type','party'); window.location.href='select-nation.html'">
+                <span class="faction-dropdown__type" style="color:var(--amber)">+</span>
+                <span class="faction-dropdown__name">Found a Political Party</span>
+            </div>`;
+        }
+        dropdown.innerHTML = html;
     }
 
     const apEl = document.getElementById('topbar-ap');
     if (apEl && faction) {
         const ap = faction.action_points ?? 0;
-        apEl.innerHTML = '<span class="topbar-ap__count">' + ap + ' AP</span>';
+        renderApDisplay(apEl, ap);
     }
     
     const nationFlag = document.getElementById('nation-flag');
@@ -496,19 +863,45 @@ export function updateTopBarInfo(faction, shard, nation) {
     
     if (nation) {
         if (nationName) nationName.textContent = nation.name || 'Unknown Nation';
-        if (nationFlag && nation.flag_url) {
-            nationFlag.src = nation.flag_url;
+        if (nationFlag) {
+            const flagSrc = nation.flag_url || `assets/flags/${nation.name}.png`;
+            nationFlag.src = flagSrc;
             nationFlag.alt = nation.name + ' flag';
             nationFlag.style.display = 'block';
+            nationFlag.onerror = () => { nationFlag.style.display = 'none'; };
         }
 
-        // Rename tabs for autocracies
-        if (nation.government_type === 'Autocracy') {
-            const electionsTab = document.querySelector('.nav-tab[data-tab="elections"]');
-            if (electionsTab) electionsTab.textContent = 'Regime';
-        }
     } else {
         if (nationName) nationName.textContent = 'No Nation';
+    }
+
+    // Corporation faction on shared pages — show full corp nav
+    if (faction?.faction_type === 'corporation') {
+        const navEl = document.querySelector('.nav-tabs');
+        if (navEl) {
+            const currentTab = window.__currentTab || '';
+            const corpTabs = [
+                { id: 'home', label: 'Home', href: 'corp-dashboard.html' },
+                { id: 'operations', label: 'Operations' },
+                { id: 'workforce', label: 'Workforce' },
+                { id: 'expansion', label: 'Expansion' },
+                { id: 'industries', label: 'Industries' },
+                { id: 'innovation', label: 'Innovation' },
+                { id: 'lobbying', label: 'Lobbying' },
+                { id: 'news', label: 'News', href: 'news.html' },
+                { id: 'wiki', label: 'Wiki', href: 'wiki.html' },
+            ];
+            navEl.innerHTML = corpTabs.map(t => {
+                const isActive = t.id === currentTab;
+                if (t.href) {
+                    return `<a href="${t.href}" class="nav-tab ${isActive ? 'active' : ''}" data-tab="${t.id}">${t.label}</a>`;
+                }
+                return `<a href="#" class="nav-tab" data-tab="${t.id}" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">${t.label}</a>`;
+            }).join('');
+        }
+        // Update nation badge to show corp name instead
+        if (nationName) nationName.textContent = faction.faction_name || 'Corporation';
+        if (nationFlag) nationFlag.style.display = 'none';
     }
     
     if (shard) {
@@ -517,11 +910,137 @@ export function updateTopBarInfo(faction, shard, nation) {
         if (gameDate) gameDate.textContent = shard.current_date || '—';
         if (tickNumber) tickNumber.textContent = shard.current_tick || '—';
         if (shard.next_tick_at) {
-            nextTickAt = new Date(shard.next_tick_at);
+            const isCorp = faction?.faction_type === 'corporation';
+            if (isCorp) {
+                // Corp tick fires at the midpoint of the political tick interval
+                const intervalMs = (Number(shard.tick_interval_hours) || 8) * 3600000;
+                const politicalTickAt = new Date(shard.next_tick_at).getTime();
+                const lastAdvanceAt = politicalTickAt - intervalMs;
+                const corpDueAt = lastAdvanceAt + (intervalMs / 2);
+                // If corp tick is past, next one is half-interval after next political tick
+                nextTickAt = new Date(corpDueAt > Date.now() ? corpDueAt : politicalTickAt + (intervalMs / 2));
+            } else {
+                nextTickAt = new Date(shard.next_tick_at);
+            }
+            // Update label
+            const tickLabel = document.querySelector('#tick-countdown')?.closest('.tick-item')?.querySelector('.tick-label');
+            if (tickLabel) tickLabel.textContent = isCorp ? 'Next Corp Tick' : 'Next Tick';
             startTickCountdown();
         }
     }
 }
+
+/**
+ * Fetch fresh AP from the database, update the topbar display, and sync the session cache.
+ * Call this after any AP-spending action to ensure the UI is always accurate.
+ */
+export async function refreshAP(factionId) {
+    if (!factionId) return;
+    try {
+        const { data, error } = await _supabase
+            .from('factions')
+            .select('action_points')
+            .eq('id', factionId)
+            .single();
+        if (error || !data) return;
+        const ap = data.action_points ?? 0;
+
+        // Update topbar — preserve the AP ledger dropdown
+        const apEl = document.getElementById('topbar-ap');
+        if (apEl) renderApDisplay(apEl, ap);
+
+        // Sync session cache so page navigations show correct AP
+        try {
+            const cached = sessionStorage.getItem(STATE_KEY);
+            if (cached) {
+                const state = JSON.parse(cached);
+                if (state.faction) {
+                    state.faction.action_points = ap;
+                    state.timestamp = Date.now();
+                    sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
+                }
+            }
+        } catch (e) { /* non-blocking */ }
+
+        return ap;
+    } catch (e) { console.warn('[refreshAP] Failed:', e); }
+}
+
+function renderApDisplay(el, ap) {
+    el.innerHTML = '<span class="topbar-ap__count" onclick="toggleApLedger(event)" style="cursor:pointer;">' + ap + ' AP</span>'
+        + '<div class="ap-ledger-dropdown" id="ap-ledger-dropdown"></div>';
+}
+
+// ===== AP LEDGER DROPDOWN =====
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function tickToShortDate(tick) {
+    return MONTHS[tick % 12] + ' ' + (2000 + Math.floor(tick / 12));
+}
+
+async function toggleApLedger(e) {
+    e?.stopPropagation();
+    const dropdown = document.getElementById('ap-ledger-dropdown');
+    if (!dropdown) return;
+    if (dropdown.classList.contains('active')) {
+        dropdown.classList.remove('active');
+        return;
+    }
+
+    dropdown.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:0.75rem;">Loading...</div>';
+    dropdown.classList.add('active');
+
+    // Close on outside click
+    const close = (ev) => { if (!dropdown.contains(ev.target) && !ev.target.closest('.topbar-ap__count')) { dropdown.classList.remove('active'); document.removeEventListener('click', close); } };
+    setTimeout(() => document.addEventListener('click', close), 0);
+
+    try {
+        const cached = sessionStorage.getItem('nationhood_state');
+        const factionId = cached ? JSON.parse(cached)?.faction?.id : null;
+        if (!factionId) { dropdown.innerHTML = '<div style="padding:12px;color:var(--text-muted);">No faction</div>'; return; }
+
+        const { data: rows } = await _supabase
+            .from('ap_ledger')
+            .select('tick, delta, reason, detail')
+            .eq('faction_id', factionId)
+            .order('tick', { ascending: false })
+            .order('created_at', { ascending: true })
+            .limit(50);
+
+        if (!rows || rows.length === 0) {
+            dropdown.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:0.75rem;">No AP history yet. History will appear after the next tick.</div>';
+            return;
+        }
+
+        // Group by tick
+        const byTick = {};
+        for (const r of rows) {
+            if (!byTick[r.tick]) byTick[r.tick] = [];
+            byTick[r.tick].push(r);
+        }
+
+        let html = '<div class="ap-ledger-title">AP History</div>';
+        for (const tick of Object.keys(byTick).sort((a, b) => b - a)) {
+            const entries = byTick[tick];
+            const net = entries.reduce((s, e) => s + e.delta, 0);
+            const netCls = net > 0 ? 'ap-pos' : net < 0 ? 'ap-neg' : '';
+            const netStr = (net > 0 ? '+' : '') + net;
+
+            html += '<div class="ap-ledger-tick">';
+            html += '<div class="ap-ledger-tick-header"><span>' + tickToShortDate(Number(tick)) + '</span><span class="' + netCls + '">' + netStr + ' AP</span></div>';
+            for (const e of entries) {
+                const sign = e.delta > 0 ? '+' : '';
+                const cls = e.delta > 0 ? 'ap-pos' : 'ap-neg';
+                html += '<div class="ap-ledger-row"><span class="ap-ledger-detail">' + (e.detail || e.reason) + '</span><span class="' + cls + '">' + sign + e.delta + '</span></div>';
+            }
+            html += '</div>';
+        }
+        dropdown.innerHTML = html;
+    } catch (err) {
+        dropdown.innerHTML = '<div style="padding:12px;color:var(--red);font-size:0.75rem;">Failed to load AP history</div>';
+    }
+}
+window.toggleApLedger = toggleApLedger;
 
 function startTickCountdown() {
     if (tickInterval) clearInterval(tickInterval);
@@ -571,7 +1090,7 @@ function pollForNewTick() {
         try {
             const { data: shard } = await _supabase
                 .from('shard')
-                .select('next_tick_at, current_tick, current_date')
+                .select('next_tick_at, current_tick, current_date, tick_interval_hours')
                 .eq('name', 'Alpha Shard')
                 .single();
 
@@ -583,7 +1102,17 @@ function pollForNewTick() {
                     clearInterval(tickPoller);
                     tickPoller = null;
 
-                    nextTickAt = new Date(shard.next_tick_at);
+                    // Recalculate target based on faction type
+                    const isCorp = window._currentFactionType === 'corporation';
+                    if (isCorp) {
+                        const intervalMs = (Number(shard.tick_interval_hours) || 8) * 3600000;
+                        const politicalTickAt = new Date(shard.next_tick_at).getTime();
+                        const lastAdvanceAt = politicalTickAt - intervalMs;
+                        const corpDueAt = lastAdvanceAt + (intervalMs / 2);
+                        nextTickAt = new Date(corpDueAt > Date.now() ? corpDueAt : politicalTickAt + (intervalMs / 2));
+                    } else {
+                        nextTickAt = new Date(shard.next_tick_at);
+                    }
 
                     // Update tick number and game date in the top bar
                     const tickEl = document.getElementById('tick-number');
@@ -653,7 +1182,7 @@ export function scaleRawToDollars(val) {
  * on the next page load rather than silently displaying "$100".
  */
 export function assertRawEconomicValue(value, fieldName) {
-    if (value !== null && value !== undefined && Number(value) >= 0 && Number(value) <= 100_000) {
+    if (value !== null && value !== undefined && Number(value) > 0 && Number(value) <= 100_000) {
         console.error(
             `[ECONOMIC DISPLAY BUG] ${fieldName} = ${value} — ` +
             `this looks like a 0-100 stat score instead of a raw monetary value. ` +
@@ -760,9 +1289,32 @@ export function updateThemeButton() {
 
 // ===== PAGE INITIALIZATION =====
 
+// Guide button label map + hidden tabs (lightweight — avoids loading guide.js eagerly)
+const _GUIDE_TAB_LABELS = {
+    dashboard: 'Home', nation: 'Nation', government: 'Government',
+    politics: 'Politics', laws: 'Bills', diplomacy: 'Diplomacy',
+    economy: 'Economy', events: 'Events', elections: 'Elections'
+};
+const _GUIDE_HIDDEN_TABS = ['dashboard', 'home'];
+
+let _guideModule = null;
+function setupGuideButton(tab) {
+    const btn = document.getElementById('guide-btn');
+    if (!btn) return;
+    if (_GUIDE_HIDDEN_TABS.includes(tab)) { btn.style.display = 'none'; return; }
+    const label = _GUIDE_TAB_LABELS[tab] || tab.charAt(0).toUpperCase() + tab.slice(1);
+    btn.textContent = label + ' Guide';
+    btn.style.display = '';
+    btn.addEventListener('click', async () => {
+        if (!_guideModule) _guideModule = await import('./guide.js');
+        _guideModule.openGuide();
+    });
+}
+
 export async function initPage(activeTab, onReady, requireFaction = true) {
     renderTopBar(activeTab);
     window.__currentTab = activeTab;
+    setupGuideButton(activeTab);
     updateThemeButton();
 
     // Ban enforcement — check before loading any game state
@@ -771,7 +1323,21 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
 
     const state = await loadGameState(requireFaction);
     if (!state) return;
+
+    // Corporation faction on a party page — redirect to corp dashboard
+    // (except shared pages like news and wiki which both factions can use)
+    const SHARED_TABS = ['news', 'wiki'];
+    if (state.faction?.faction_type === 'corporation' && !SHARED_TABS.includes(activeTab)) {
+        window.location.href = 'corp-dashboard.html';
+        return;
+    }
+
     updateTopBarInfo(state.faction, state.shard, state.nation);
+
+    // Always fetch fresh AP from DB — cached AP can be minutes stale
+    if (state.faction?.id) {
+        refreshAP(state.faction.id);
+    }
 
     // Record fingerprint (fire-and-forget, non-blocking)
     recordFingerprint();
@@ -780,15 +1346,54 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     if (activeTab !== 'laws') {
         updateBillsBadge(state.faction, state.nation, state.shard);
     }
-    // Update diplomacy badge (non-blocking, skip on diplomacy page since it marks read)
+    // Update diplomacy badge (role-gated: only FM, MoT, or ambassadors see it)
+    const diploRoles = await getDiploBadgeRoles(state.faction, state.nation);
     if (activeTab !== 'diplomacy') {
-        updateDiplomacyBadge(state.faction, state.nation);
+        updateDiplomacyBadge(state.faction, state.nation, diploRoles);
     }
+    updateIPOInviteBadge(state.faction, diploRoles);
+    // Update conflicts badge (active incidents involving your nation)
+    if (activeTab !== 'conflicts') {
+        updateConflictsBadge(state.faction, state.nation);
+    }
+
+    // Lazy-load messaging bubble (deferred — not needed for initial render)
+    const _msgState = state;
+    (typeof requestIdleCallback === 'function' ? requestIdleCallback : setTimeout)(() => {
+        import('./messaging.js').then(m => m.initMessaging(_msgState.faction, _msgState.nation, _msgState.shard));
+    });
+
     if (onReady) {
         await onReady(state);
     }
 }
 
+// Faction switcher dropdown toggle
+function toggleFactionDropdown() {
+    const dd = document.getElementById('faction-dropdown');
+    if (dd) dd.classList.toggle('open');
+}
+function handleFactionSwitch(factionId, factionType) {
+    const dd = document.getElementById('faction-dropdown');
+    if (dd) dd.classList.remove('open');
+    sessionStorage.setItem('active_faction_id', factionId);
+    sessionStorage.removeItem(STATE_KEY);
+    // Route to the right dashboard
+    if (factionType === 'corporation') {
+        window.location.href = 'corp-dashboard.html';
+    } else {
+        window.location.href = 'dashboard.html';
+    }
+}
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+    const switcher = document.getElementById('faction-switcher');
+    const dd = document.getElementById('faction-dropdown');
+    if (dd && switcher && !switcher.contains(e.target)) dd.classList.remove('open');
+});
+
 // Expose onclick handlers used by renderTopBar() HTML templates
 window.handleLogout = handleLogout;
 window.toggleTheme = toggleTheme;
+window.toggleFactionDropdown = toggleFactionDropdown;
+window.handleFactionSwitch = handleFactionSwitch;

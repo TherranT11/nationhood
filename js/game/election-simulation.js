@@ -28,7 +28,7 @@ export function getPartyAlignment(partyAxes, tag) {
 /**
  * Distribute a voter bloc's votes among ALL parties using the Weighted Competition Model.
  *
- * weight = bloc_approval × ideology_multiplier
+ * weight = approval × ideology_multiplier
  * ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
  *
  * No cascade steps. No leakage. All parties compete simultaneously.
@@ -191,13 +191,16 @@ export function allocateSeatsByVotes(voteTotals, totalSeats = GAME_CONFIG.TOTAL_
  * Run a full election simulation using the Weighted Competition Model.
  *
  * All parties compete simultaneously for each bloc's voters:
- *   weight = bloc_approval × ideology_multiplier
+ *   weight = approval × ideology_multiplier
  *   ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
  *
- * @param {object[]} blocs    - Rows from voter_blocs: { id, bloc_name, voter_count, ideology_1..5, is_active }
+ * NOTE: The blocs parameter is a legacy holdover; the electorate engine now
+ * supplies voter data externally, so callers pass an empty array.
+ *
+ * @param {object[]} blocs    - Electorate bloc objects (legacy, pass [])
  * @param {object[]} parties  - Array of { id, faction_name, axes: { liberty_equality, ... } }
  * @param {number}   [totalSeats=120]
- * @param {object}   [allBlocApprovals] - { blocId: { partyId: approval } } from faction_bloc_approval
+ * @param {object}   [allBlocApprovals] - Unused legacy parameter (pass null)
  * @returns {{ votes: object, seats: object, totalAbstentions: number, totalVotesCast: number, details: object[] }}
  */
 export function runElectionSimulation(blocs, parties, totalSeats = GAME_CONFIG.TOTAL_SEATS, allBlocApprovals = null) {
@@ -280,131 +283,207 @@ export async function runElectionPreview(supabase, nationId) {
     // 1. Load nation
     const { data: nation } = await supabase
         .from('nations')
-        .select('id, name, total_seats, eligible_voters')
+        .select('id, name, total_seats, eligible_voters, electoral_commission_reform, ruling_faction_id')
         .eq('id', nationId)
         .single();
     if (!nation) throw new Error('Nation not found');
 
     const totalSeats = nation.total_seats || 120;
-
-    // 2. Load voter blocs
-    const { data: blocs } = await supabase
-        .from('voter_blocs')
-        .select('*')
-        .eq('nation_id', nationId)
-        .eq('is_active', true);
-    if (!blocs || blocs.length === 0) throw new Error('No voter blocs found for this nation');
-
-    // 2b. Scale bloc voter_counts so total matches eligible_voters (blocs are generated from population)
     const eligibleVoters = nation.eligible_voters || 0;
-    const totalBlocVoters = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
-    if (totalBlocVoters > 0 && eligibleVoters > 0) {
-        const scale = eligibleVoters / totalBlocVoters;
-        let scaledSum = 0;
-        for (const b of blocs) {
-            b.voter_count = Math.round((b.voter_count || 0) * scale);
-            scaledSum += b.voter_count;
-        }
-        // Fix rounding drift on the largest bloc
-        const diff = eligibleVoters - scaledSum;
-        if (diff !== 0) {
-            const largest = blocs.reduce((a, b) => (b.voter_count > a.voter_count ? b : a), blocs[0]);
-            largest.voter_count += diff;
-        }
-    }
 
-    // 3. Load parties + their ideology axes (exclude inactive ≥12 ticks)
+    // 2. Load parties (exclude inactive ≥12 ticks)
     const { data: shard } = await supabase
         .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
     const { data: allFactions } = await supabase
         .from('factions')
-        .select('id, faction_name, seats, electability, last_seen_tick, abandoned_at')
+        .select('id, faction_name, seats, electability, last_seen_tick, founded_tick, abandoned_at')
         .eq('nation_id', nationId)
         .eq('faction_type', 'party')
         .is('abandoned_at', null);
-    const factions = (allFactions || []).filter(f =>
-        f.last_seen_tick == null || (currentTick - f.last_seen_tick) < 12
-    );
+    const factions = (allFactions || []).filter(f => {
+        if (f.last_seen_tick != null) return (currentTick - f.last_seen_tick) < 12;
+        // Never logged in — use founded_tick; exclude if founded 12+ ticks ago
+        return (currentTick - (f.founded_tick || 0)) < 12;
+    });
     if (!factions || factions.length === 0) throw new Error('No eligible parties found for this nation');
 
+    // 3. Load electoral standings from 3-pillar election engine
+    // Columns repurposed: party_approval → governance score, visibility → momentum, raw_appeal → election score
     const factionIds = factions.map(f => f.id);
-    const { data: ideologies } = await supabase
-        .from('faction_ideology')
-        .select('*')
+    const { data: standings } = await supabase
+        .from('faction_electoral_standing')
+        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval, ideological_alignment, visibility, raw_appeal')
+        .eq('nation_id', nationId)
         .in('faction_id', factionIds);
 
-    const ideoMap = {};
-    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
+    const standingMap = {};
+    for (const s of (standings || [])) standingMap[s.faction_id] = s;
 
-    // Build party objects with axes and electability
-    const parties = factions.map(f => ({
-        id: f.id,
-        faction_name: f.faction_name,
-        electability: f.electability ?? 50,
-        axes: ideoMap[f.id] || {
-            liberty_equality: 0, tradition_progress: 0, security_freedom: 0,
-            globalism_nationalism: 0, individualism_collectivism: 0
-        }
-    }));
+    // 4. Convert vote shares to actual votes
+    // Use contested_vote_share × turnout_rate (NOT realized_vote_share which is
+    // renormalized to sum=1.0 and would produce ~100% turnout).
+    // contested_vote_share = how voters split if everyone voted (sums to ~1.0)
+    // turnout_rate = fraction of each party's supporters who actually show up (0.3-0.95)
+    // actual_share = contested × turnout → sums to < 1.0 → remainder = abstentions
+    const tally = {};
+    let totalVotesCast = 0;
+    let totalAbstentions = 0;
 
-    // 3b. Load per-bloc preference data from faction_bloc_approval (Three-Pillar system)
-    const { data: fbaRows } = await supabase
-        .from('faction_bloc_approval')
-        .select('faction_id, bloc_id, preference_score')
-        .in('faction_id', factionIds);
-
-    // Build allBlocApprovals map: { blocId: { partyId: preference_score } }
-    const allBlocApprovals = {};
-    for (const row of (fbaRows || [])) {
-        if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
-        allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? 40;
+    let totalActualShare = 0;
+    const voteExacts = [];
+    for (const f of factions) {
+        const s = standingMap[f.id];
+        const contested = Number(s?.contested_vote_share || 0);
+        const turnout = Number(s?.turnout_rate || 0.65);
+        const actualShare = contested * turnout;
+        totalActualShare += actualShare;
+        const exactVotes = eligibleVoters * actualShare;
+        voteExacts.push({ id: f.id, exact: exactVotes, floored: Math.floor(exactVotes) });
+        tally[f.id] = Math.floor(exactVotes);
+        totalVotesCast += Math.floor(exactVotes);
     }
 
-    // 4. Run simulation with per-bloc approvals
-    const result = runElectionSimulation(blocs, parties, totalSeats, allBlocApprovals);
-
-    // 5. Build friendly results with weighted average approval per party
-    const totalBlocWeight = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
-    const partyResults = parties.map(p => {
-        let weightedApproval = 40;
-        if (totalBlocWeight > 0) {
-            let wSum = 0;
-            for (const bloc of blocs) {
-                const ba = allBlocApprovals[bloc.id];
-                const approval = (ba && ba[p.id] != null) ? ba[p.id] : 40;
-                wSum += approval * (bloc.voter_count || 0);
-            }
-            weightedApproval = Math.round(wSum / totalBlocWeight * 100) / 100;
+    // Distribute remainder votes via largest remainder
+    const targetVotes = Math.round(eligibleVoters * Math.min(1, totalActualShare));
+    let remainder = targetVotes - totalVotesCast;
+    if (remainder > 0) {
+        voteExacts.sort((a, b) => (b.exact - b.floored) - (a.exact - a.floored));
+        for (let i = 0; i < remainder && i < voteExacts.length; i++) {
+            tally[voteExacts[i].id] += 1;
+            totalVotesCast += 1;
         }
+    }
+
+    totalAbstentions = Math.max(0, eligibleVoters - totalVotesCast);
+
+    // 5. Allocate seats
+    const seats = allocateSeatsByVotes(tally, totalSeats);
+
+    // 5b. Electoral Commission Reform: ruling coalition gets +5-10% seat bonus
+    if (nation.electoral_commission_reform) {
+        // Load active coalition to identify governing parties
+        const { data: coalition } = await supabase
+            .from('government_formations')
+            .select('party_ids')
+            .eq('nation_id', nationId)
+            .in('status', ['formed', 'caretaker'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        const coalitionIds = new Set(coalition?.party_ids || []);
+        if (coalitionIds.size > 0) {
+            // Random bonus: 5-10% of total seats
+            const bonusPct = 0.05 + Math.random() * 0.05;
+            const bonusSeats = Math.round(totalSeats * bonusPct);
+            if (bonusSeats > 0) {
+                // Collect opposition parties and their current seats
+                const oppositionIds = Object.keys(seats).filter(id => !coalitionIds.has(id) && seats[id] > 0);
+                const totalOppSeats = oppositionIds.reduce((s, id) => s + seats[id], 0);
+                if (totalOppSeats > 0) {
+                    // Subtract proportionally from opposition
+                    let seatsToTransfer = Math.min(bonusSeats, totalOppSeats);
+                    let transferred = 0;
+                    for (const id of oppositionIds) {
+                        const share = seats[id] / totalOppSeats;
+                        const loss = Math.round(seatsToTransfer * share);
+                        const actualLoss = Math.min(loss, seats[id]); // can't go below 0
+                        seats[id] -= actualLoss;
+                        transferred += actualLoss;
+                    }
+                    // Add transferred seats to coalition parties proportionally
+                    const coalitionArr = [...coalitionIds].filter(id => seats[id] !== undefined);
+                    const totalCoalSeats = coalitionArr.reduce((s, id) => s + (seats[id] || 0), 0);
+                    let distributed = 0;
+                    for (let i = 0; i < coalitionArr.length; i++) {
+                        const id = coalitionArr[i];
+                        const share = totalCoalSeats > 0 ? (seats[id] || 0) / totalCoalSeats : 1 / coalitionArr.length;
+                        const gain = (i === coalitionArr.length - 1) ? (transferred - distributed) : Math.round(transferred * share);
+                        seats[id] = (seats[id] || 0) + gain;
+                        distributed += gain;
+                    }
+                    console.log(`[Election] Electoral Commission Reform: ${transferred} seats transferred to coalition (${(bonusPct * 100).toFixed(1)}% bonus)`);
+                }
+            }
+        }
+    }
+
+    // 5c. Political Party Registration Act: reallocate seats from parties below threshold
+    const regThreshold = Number(nation.party_registration_threshold || 0);
+    const disbandedPartyIds = [];
+    if (regThreshold > 0) {
+        const minSeats = Math.ceil(totalSeats * regThreshold / 100);
+        const belowThreshold = Object.entries(seats).filter(([id, s]) => s > 0 && s < minSeats);
+        if (belowThreshold.length > 0) {
+            let seatsFreed = 0;
+            for (const [id, s] of belowThreshold) {
+                seatsFreed += s;
+                seats[id] = 0;
+                disbandedPartyIds.push(id);
+            }
+            // Redistribute freed seats proportionally to surviving parties
+            const survivors = Object.entries(seats).filter(([id, s]) => s > 0);
+            const totalSurvivorSeats = survivors.reduce((sum, [, s]) => sum + s, 0);
+            let distributed = 0;
+            for (let i = 0; i < survivors.length; i++) {
+                const [id, s] = survivors[i];
+                const share = totalSurvivorSeats > 0 ? s / totalSurvivorSeats : 1 / survivors.length;
+                const gain = (i === survivors.length - 1) ? (seatsFreed - distributed) : Math.round(seatsFreed * share);
+                seats[id] += gain;
+                distributed += gain;
+            }
+            console.log(`[Election] Party Registration Act: ${belowThreshold.length} parties below ${regThreshold}% threshold (${minSeats} seats), ${seatsFreed} seats reallocated`);
+        }
+    }
+
+    // 6. Build friendly results
+    // Determine governing party IDs for governance/opposition label
+    const { data: coalitionRow } = await supabase
+        .from('government_formations')
+        .select('party_ids')
+        .eq('nation_id', nationId)
+        .in('status', ['formed', 'active', 'caretaker'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    const govIds = new Set(coalitionRow?.party_ids || []);
+
+    const partyResults = factions.map(f => {
+        const s = standingMap[f.id];
+        const isGov = govIds.has(f.id);
         return {
-            party_id: p.id,
-            party_name: p.faction_name,
-            approval: weightedApproval,
-            votes: result.votes[p.id] || 0,
-            vote_percentage: result.totalVotesCast > 0
-                ? Math.round(((result.votes[p.id] || 0) / result.totalVotesCast) * 10000) / 100
+            party_id: f.id,
+            party_name: f.faction_name,
+            approval: Math.round(Number(s?.party_approval || 0)),
+            governance: Math.round(Number(s?.party_approval || 0)),
+            momentum: Math.round(Number(s?.visibility || 0)),
+            ideology: Math.round(Number(s?.ideological_alignment || 0)),
+            raw_appeal: Math.round(Number(s?.raw_appeal || 0) * 10) / 10,
+            is_governing: isGov,
+            votes: tally[f.id] || 0,
+            vote_percentage: totalVotesCast > 0
+                ? Math.round(((tally[f.id] || 0) / totalVotesCast) * 10000) / 100
                 : 0,
-            seats: result.seats[p.id] || 0
+            seats: seats[f.id] || 0
         };
     }).sort((a, b) => b.seats - a.seats);
 
-    // Build party name lookup for UI
     const partyNames = {};
-    for (const p of parties) partyNames[p.id] = p.faction_name;
+    for (const f of factions) partyNames[f.id] = f.faction_name;
 
     return {
         nation: nation.name,
         total_seats: totalSeats,
-        eligible_voters: nation.eligible_voters || 0,
-        total_votes_cast: result.totalVotesCast,
-        total_abstentions: result.totalAbstentions,
-        turnout_pct: nation.eligible_voters
-            ? Math.round((result.totalVotesCast / nation.eligible_voters) * 10000) / 100
+        eligible_voters: eligibleVoters,
+        total_votes_cast: totalVotesCast,
+        total_abstentions: totalAbstentions,
+        turnout_pct: eligibleVoters
+            ? Math.round((totalVotesCast / eligibleVoters) * 10000) / 100
             : 0,
         results: partyResults,
-        bloc_details: result.details,
-        partyNames
+        bloc_details: [],
+        partyNames,
+        disbandedPartyIds
     };
 }
 
@@ -423,42 +502,55 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
         .single();
     if (!nation) throw new Error('Nation not found');
 
-    // 2. Load voter blocs
-    const { data: blocs } = await supabase
-        .from('voter_blocs')
-        .select('*')
-        .eq('nation_id', nationId)
-        .eq('is_active', true);
-    if (!blocs || blocs.length === 0) throw new Error('No voter blocs found for this nation');
-
-    // Scale bloc voter_counts so total matches actual eligible voter count
-    // eligible_voters is a raw count (same as parliamentary preview)
     const eligibleVoters = nation.eligible_voters || 0;
-    const totalBlocVoters = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
-    if (totalBlocVoters > 0 && eligibleVoters > 0) {
-        const scale = eligibleVoters / totalBlocVoters;
-        let scaledSum = 0;
-        for (const b of blocs) {
-            b.voter_count = Math.round((b.voter_count || 0) * scale);
-            scaledSum += b.voter_count;
-        }
-        const diff = eligibleVoters - scaledSum;
-        if (diff !== 0) {
-            const largest = blocs.reduce((a, b) => (b.voter_count > a.voter_count ? b : a), blocs[0]);
-            largest.voter_count += diff;
-        }
-    }
 
-    // 3. Load selected presidential candidates
-    const { data: candidates } = await supabase
+    // 2. Load selected presidential candidates — or synthesize from party leaders
+    let { data: candidates } = await supabase
         .from('pm_candidates')
         .select('id, first_name, last_name, faction_id, ideology, ideology_axis, ideology_direction, trait_key')
         .eq('nation_id', nationId)
         .eq('candidate_type', 'presidential')
         .eq('selected', true);
-    if (!candidates || candidates.length === 0) throw new Error('No selected presidential candidates found. Generate and select candidates first.');
 
-    // 4. Load faction data + ideology axes for each candidate's party
+    // If no candidates registered, build synthetic ones from party leaders
+    // (mirrors autoSelectPresidentialCandidates in the tick handler)
+    if (!candidates || candidates.length === 0) {
+        const { data: parties } = await supabase
+            .from('factions')
+            .select('id, faction_name, leader_first_name, leader_last_name, leader_positive_traits, leader_negative_traits')
+            .eq('nation_id', nationId)
+            .eq('faction_type', 'party')
+            .is('abandoned_at', null);
+        const { data: ideos } = await supabase
+            .from('faction_ideology')
+            .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+            .in('faction_id', (parties || []).map(p => p.id));
+        const ideoLookup = {};
+        for (const r of (ideos || [])) ideoLookup[r.faction_id] = r;
+
+        candidates = (parties || []).filter(p => p.leader_first_name).map(p => {
+            const ideo = ideoLookup[p.id] || {};
+            const axes = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
+            let bestAxis = 'tradition_progress', bestDir = 1, maxAbs = 0;
+            for (const axis of axes) {
+                const val = Math.abs(ideo[axis] || 0);
+                if (val > maxAbs) { maxAbs = val; bestAxis = axis; bestDir = (ideo[axis] || 0) >= 0 ? 1 : -1; }
+            }
+            return {
+                id: p.id, // use faction id as synthetic candidate id
+                first_name: p.leader_first_name,
+                last_name: p.leader_last_name,
+                faction_id: p.id,
+                ideology: bestDir > 0 ? bestAxis.split('_').pop() : bestAxis.split('_')[0],
+                ideology_axis: bestAxis,
+                ideology_direction: bestDir,
+                trait_key: (p.leader_positive_traits || [])[0] || null
+            };
+        });
+    }
+    if (!candidates || candidates.length === 0) throw new Error('No parties with leaders found for presidential preview.');
+
+    // 3. Load faction data + ideology axes for each candidate's party
     //    Filter out candidates whose factions are inactive ≥12 ticks
     const { data: shardData } = await supabase
         .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -466,11 +558,14 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
     const allFactionIds = [...new Set(candidates.map(c => c.faction_id))];
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, faction_name, last_seen_tick, abandoned_at')
+        .select('id, faction_name, last_seen_tick, founded_tick, abandoned_at')
         .in('id', allFactionIds)
         .is('abandoned_at', null);
     const activeFactionIds = new Set((factions || [])
-        .filter(f => f.last_seen_tick == null || (presTick - f.last_seen_tick) < 12)
+        .filter(f => {
+            if (f.last_seen_tick != null) return (presTick - f.last_seen_tick) < 12;
+            return (presTick - (f.founded_tick || 0)) < 12;
+        })
         .map(f => f.id));
     const eligibleCandidates = candidates.filter(c => activeFactionIds.has(c.faction_id));
     if (eligibleCandidates.length === 0) throw new Error('No eligible presidential candidates (all factions inactive)');
@@ -485,7 +580,17 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
     const ideoMap = {};
     for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
 
-    // 5. Build "virtual party" objects per candidate (mirrors SQL RPC logic)
+    // 4. Load electoral standings for each candidate's faction
+    // party_approval column repurposed: now stores governance score (3-pillar system)
+    const { data: standings } = await supabase
+        .from('faction_electoral_standing')
+        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval, ideological_alignment, visibility, raw_appeal')
+        .eq('nation_id', nationId)
+        .in('faction_id', factionIds);
+    const standingMap = {};
+    for (const s of (standings || [])) standingMap[s.faction_id] = s;
+
+    // 5. Build "virtual party" objects per candidate
     const AXES = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
     function buildCandidateParty(cand) {
         const factionIdeo = ideoMap[cand.faction_id] || {};
@@ -493,8 +598,6 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
         for (const axis of AXES) {
             let val = factionIdeo[axis] || 0;
             if (cand.ideology_axis === axis) {
-                // Candidate gets +15 bonus on their personal axis
-                // For globalism_nationalism, negate direction (convention mismatch)
                 const dir = axis === 'globalism_nationalism' ? cand.ideology_direction * -1 : cand.ideology_direction;
                 val += 15 * dir;
             }
@@ -513,39 +616,50 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
     }
     const allCandidateParties = eligibleCandidates.map(buildCandidateParty);
 
-    // 6. Load per-bloc approval data (keyed by faction, same as parliamentary)
-    const { data: fbaRows } = await supabase
-        .from('faction_bloc_approval')
-        .select('faction_id, bloc_id, preference_score')
-        .in('faction_id', factionIds);
-    const allBlocApprovals = {};
-    for (const row of (fbaRows || [])) {
-        if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
-        // Map faction approval to candidate id (candidate inherits faction approval)
-        for (const cand of eligibleCandidates) {
-            if (cand.faction_id === row.faction_id) {
-                allBlocApprovals[row.bloc_id][cand.id] = row.preference_score ?? 40;
-            }
+    // 6. Run Round 1 using faction vote shares from the electorate engine
+    //    Distribute each faction's realized_vote_share among its candidates proportionally
+    function computePresidentialVotes(candidateParties) {
+        // Group candidates by faction
+        const factionCandidates = {};
+        for (const cp of candidateParties) {
+            if (!factionCandidates[cp.faction_id]) factionCandidates[cp.faction_id] = [];
+            factionCandidates[cp.faction_id].push(cp);
         }
+
+        const tally = {};
+        let totalVotesCast = 0;
+        for (const cp of candidateParties) tally[cp.id] = 0;
+
+        // Distribute each faction's vote share among its candidates
+        // Use contested × turnout (not realized which is renormalized to sum=1)
+        for (const [fid, cands] of Object.entries(factionCandidates)) {
+            const s = standingMap[fid];
+            const contested = Number(s?.contested_vote_share || 0);
+            const turnout = Number(s?.turnout_rate || 0.65);
+            const factionVotes = Math.round(eligibleVoters * contested * turnout);
+            // Split evenly among candidates from same faction (usually 1)
+            const perCandidate = Math.floor(factionVotes / cands.length);
+            let assigned = 0;
+            for (const c of cands) {
+                tally[c.id] = perCandidate;
+                assigned += perCandidate;
+            }
+            // Remainder to first candidate
+            if (assigned < factionVotes && cands.length > 0) {
+                tally[cands[0].id] += factionVotes - assigned;
+            }
+            totalVotesCast += factionVotes;
+        }
+
+        const totalAbstentions = Math.max(0, eligibleVoters - totalVotesCast);
+        return { votes: tally, totalVotesCast, totalAbstentions, details: [] };
     }
 
-    // 7. Run Round 1 simulation (use totalSeats=0 — we only care about votes)
-    const round1 = runElectionSimulation(blocs, allCandidateParties, 0, allBlocApprovals);
+    const round1 = computePresidentialVotes(allCandidateParties);
 
     // Build Round 1 candidate results
-    const totalBlocWeight = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
     function buildCandidateResults(parties, simResult) {
         return parties.map(p => {
-            let weightedApproval = 40;
-            if (totalBlocWeight > 0) {
-                let wSum = 0;
-                for (const bloc of blocs) {
-                    const ba = allBlocApprovals[bloc.id];
-                    const approval = (ba && ba[p.id] != null) ? ba[p.id] : 40;
-                    wSum += approval * (bloc.voter_count || 0);
-                }
-                weightedApproval = Math.round(wSum / totalBlocWeight * 100) / 100;
-            }
             return {
                 candidate_id: p.id,
                 candidate_name: p.faction_name,
@@ -553,7 +667,7 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
                 faction_id: p.faction_id,
                 ideology: p.ideology,
                 trait_key: p.trait_key,
-                approval: weightedApproval,
+                approval: 40,
                 votes: simResult.votes[p.id] || 0,
                 vote_percentage: simResult.totalVotesCast > 0
                     ? Math.round(((simResult.votes[p.id] || 0) / simResult.totalVotesCast) * 10000) / 100
@@ -571,30 +685,169 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
     let round2Details = null;
     let winner;
 
+    let runoffMeta = null;
+
     if (topPct > 50 || allCandidateParties.length <= 2) {
         // Clear winner — no runoff
         winner = round1Results[0];
         winner.winner = true;
     } else {
-        // Runoff: top 2 advance, re-run simulation
+        // Runoff: top 2 advance with vote transfers from eliminated candidates
         wasRunoff = true;
-        const top2Ids = new Set([round1Results[0].candidate_id, round1Results[1].candidate_id]);
+        const top2 = [round1Results[0], round1Results[1]];
+        const top2Ids = new Set(top2.map(c => c.candidate_id));
         const runoffParties = allCandidateParties.filter(p => top2Ids.has(p.id));
+        const eliminatedParties = allCandidateParties.filter(p => !top2Ids.has(p.id));
 
-        // Build runoff-specific bloc approvals (only top 2 candidates)
-        const runoffBlocApprovals = {};
-        for (const [blocId, approvals] of Object.entries(allBlocApprovals)) {
-            runoffBlocApprovals[blocId] = {};
-            for (const p of runoffParties) {
-                runoffBlocApprovals[blocId][p.id] = approvals[p.id] ?? 40;
+        // Start with the top 2 candidates' Round 1 votes as base
+        const runoffTally = {};
+        for (const c of top2) runoffTally[c.candidate_id] = c.votes;
+        let runoffTotalVotes = top2.reduce((s, c) => s + c.votes, 0);
+        let runoffAbstentions = 0;
+
+        // Load player endorsement preferences (party → party)
+        const elimFactionIds = eliminatedParties.map(p => p.faction_id).filter(Boolean);
+        let endorsementPrefs = {};
+        if (elimFactionIds.length > 0) {
+            const { data: prefs } = await supabase
+                .from('party_endorsement_preferences')
+                .select('endorsing_party_id, endorsed_party_id')
+                .eq('nation_id', nationId)
+                .in('endorsing_party_id', elimFactionIds);
+            for (const p of (prefs || [])) {
+                endorsementPrefs[p.endorsing_party_id] = p.endorsed_party_id;
             }
         }
 
-        const round2 = runElectionSimulation(blocs, runoffParties, 0, runoffBlocApprovals);
-        runoffResults = buildCandidateResults(runoffParties, round2);
-        round2Details = round2.details;
+        // Map runoff candidate faction IDs for endorsement lookups
+        const runoffFactionToCandidateId = {};
+        for (const rp of runoffParties) {
+            runoffFactionToCandidateId[rp.faction_id] = rp.id;
+        }
+
+        // Transfer eliminated candidates' votes based on endorsements + ideological proximity
+        const AXES = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
+        const endorsements = [];
+
+        for (const elim of eliminatedParties) {
+            const elimR1 = round1Results.find(r => r.candidate_id === elim.id);
+            const elimVotes = elimR1?.votes || 0;
+            if (elimVotes === 0) continue;
+
+            // Compute ideological distance to each runoff candidate
+            const distances = runoffParties.map(rp => {
+                let distSq = 0;
+                for (const axis of AXES) {
+                    const diff = (elim.axes[axis] || 0) - (rp.axes[axis] || 0);
+                    distSq += diff * diff;
+                }
+                return { id: rp.id, name: rp.faction_name, dist: Math.sqrt(distSq) };
+            });
+
+            // Check for player endorsement: does this eliminated faction endorse a runoff candidate's faction?
+            const endorsedFactionId = endorsementPrefs[elim.faction_id] || null;
+            const endorsedCandidateId = endorsedFactionId ? runoffFactionToCandidateId[endorsedFactionId] || null : null;
+
+            // Convert distances to affinity (inverse distance)
+            // If a player endorsement exists, the endorsed candidate gets 75% of affinity
+            const totalDist = distances.reduce((s, d) => s + d.dist, 0);
+            let affinities;
+            if (endorsedCandidateId) {
+                // Player endorsed: 75% to endorsed, 25% to other
+                affinities = distances.map(d => ({
+                    ...d,
+                    affinity: d.id === endorsedCandidateId ? 0.75 : 0.25 / Math.max(1, distances.length - 1)
+                }));
+            } else if (totalDist === 0) {
+                affinities = distances.map(d => ({ ...d, affinity: 0.5 }));
+            } else {
+                affinities = distances.map(d => ({ ...d, affinity: 1 - (d.dist / totalDist) }));
+                const affinitySum = affinities.reduce((s, a) => s + a.affinity, 0);
+                for (const a of affinities) a.affinity = a.affinity / affinitySum;
+            }
+
+            // Abstention rate: lower if there's an endorsement (voters feel more directed)
+            // Base 15%, +1% per 10 distance units. Endorsement reduces by 5%.
+            const minDist = Math.min(...distances.map(d => d.dist));
+            const baseAbstain = endorsedCandidateId ? 0.10 : 0.15;
+            const abstainRate = Math.min(0.50, baseAbstain + (minDist / 1000));
+            const abstainVotes = Math.round(elimVotes * abstainRate);
+            const transferableVotes = elimVotes - abstainVotes;
+
+            const endorsement = {
+                eliminated_candidate: elim.faction_name,
+                eliminated_party: elim.party_name || elim.faction_name,
+                eliminated_faction_id: elim.faction_id,
+                endorsed_candidate_id: endorsedCandidateId,
+                endorsed_faction_name: endorsedCandidateId
+                    ? runoffParties.find(rp => rp.id === endorsedCandidateId)?.faction_name || null
+                    : null,
+                has_player_endorsement: !!endorsedCandidateId,
+                round1_votes: elimVotes,
+                abstain_votes: abstainVotes,
+                transfers: []
+            };
+
+            // Distribute transferable votes proportionally by affinity
+            let distributed = 0;
+            for (const a of affinities) {
+                const xfer = Math.round(transferableVotes * a.affinity);
+                runoffTally[a.id] = (runoffTally[a.id] || 0) + xfer;
+                distributed += xfer;
+                endorsement.transfers.push({
+                    candidate_id: a.id,
+                    candidate_name: a.name,
+                    votes: xfer,
+                    affinity_pct: Math.round(a.affinity * 100)
+                });
+            }
+            // Rounding remainder
+            if (distributed < transferableVotes && affinities.length > 0) {
+                const rem = transferableVotes - distributed;
+                const bestId = affinities.sort((a, b) => b.affinity - a.affinity)[0].id;
+                runoffTally[bestId] += rem;
+                const t = endorsement.transfers.find(t => t.candidate_id === bestId);
+                if (t) t.votes += rem;
+            }
+
+            runoffTotalVotes += transferableVotes;
+            runoffAbstentions += abstainVotes;
+            endorsements.push(endorsement);
+        }
+
+        // Build runoff results
+        runoffResults = runoffParties.map(p => {
+            const votes = runoffTally[p.id] || 0;
+            return {
+                candidate_id: p.id,
+                candidate_name: p.faction_name,
+                party_name: p.party_name,
+                faction_id: p.faction_id,
+                ideology: p.ideology,
+                trait_key: p.trait_key,
+                votes,
+                vote_percentage: runoffTotalVotes > 0
+                    ? Math.round((votes / runoffTotalVotes) * 10000) / 100
+                    : 0
+            };
+        }).sort((a, b) => b.votes - a.votes);
+
+        round2Details = [];
         winner = runoffResults[0];
         winner.winner = true;
+
+        runoffMeta = {
+            endorsements,
+            total_transferred: endorsements.reduce((s, e) => s + e.transfers.reduce((ts, t) => ts + t.votes, 0), 0),
+            total_abstain: runoffAbstentions,
+            runoff_total_votes: runoffTotalVotes,
+            endorsed_party_name: endorsements.length > 0
+                ? endorsements.sort((a, b) => b.round1_votes - a.round1_votes)[0]
+                    ?.transfers.sort((a, b) => b.votes - a.votes)[0]?.candidate_name || null
+                : null,
+            abstain_votes: runoffAbstentions,
+            protest_votes: 0
+        };
     }
 
     // Build candidate name lookup
@@ -614,6 +867,7 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
         was_runoff: wasRunoff,
         runoff_results: runoffResults,
         runoff_details: round2Details,
+        runoff_meta: runoffMeta,
         winner,
         candidateNames
     };

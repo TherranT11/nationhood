@@ -46,16 +46,38 @@ export async function fireBillEvent(supabase, triggerKey, bill, opts = {}) {
         });
     } catch (e) { /* non-blocking */ }
     // Backfill effects_applied on the row the RPC just created (RPC leaves it null).
-    // Match on nation + tick + event_name pattern, update the most recent row.
+    // Try multiple matching strategies to find the row reliably.
     try {
-        const { data: rows } = await supabase.from('event_log')
+        // Strategy 1: match on trigger_key column if the RPC stores it
+        let rows = null;
+        const { data: r1 } = await supabase.from('event_log')
             .select('id')
             .eq('nation_id', nationId)
             .eq('fired_at_tick', opts.currentTick)
-            .ilike('event_name', `%${triggerKey.includes('passed') ? 'Passed' : triggerKey.includes('failed') ? 'Failed' : triggerKey}%`)
+            .eq('trigger_key', triggerKey)
             .is('effects_applied', null)
             .order('created_at', { ascending: false })
             .limit(1);
+        rows = r1;
+
+        // Strategy 2: fallback to ilike on event_name with broader patterns
+        if (!rows || rows.length === 0) {
+            const patterns = [triggerKey.replace(/_/g, ' ')];
+            if (triggerKey.includes('passed')) patterns.push('Passed', 'Enacted', 'Signed');
+            else if (triggerKey.includes('failed')) patterns.push('Failed', 'Defeated', 'Vetoed');
+            for (const pat of patterns) {
+                const { data: r2 } = await supabase.from('event_log')
+                    .select('id')
+                    .eq('nation_id', nationId)
+                    .eq('fired_at_tick', opts.currentTick)
+                    .ilike('event_name', `%${pat}%`)
+                    .is('effects_applied', null)
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+                if (r2 && r2.length > 0) { rows = r2; break; }
+            }
+        }
+
         if (rows && rows.length > 0) {
             await supabase.from('event_log')
                 .update({ effects_applied: placeholders })

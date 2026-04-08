@@ -8,16 +8,16 @@
 <style>
 :root {
   --bg-0: #0e0e0c;
-  --bg-1: #141412;
+  --bg-1: #1a1a1a;
   --bg-2: #1a1a17;
-  --bg-3: #1e1e1a;
+  --bg-3: #252525;
   --bg-4: #24241f;
   --bg-5: #2c2c26;
   --bg-hover: #282822;
-  --text-bright: #e2e0d6;
+  --text-bright: #f0efe6;
   --text-primary: #c4c2b8;
-  --text-secondary: #8a8778;
-  --text-muted: #6b6a5e;
+  --text-secondary: #888;
+  --text-muted: #666;
   --text-dim: #4a4940;
   --text-ghost: #333229;
   --border-hair: rgba(255,255,255,0.04);
@@ -401,6 +401,16 @@ textarea {
   text-align: center;
   padding: 80px 20px;
 }
+
+/* ── Mobile ── */
+@media (max-width: 480px) {
+  .inline-fields { grid-template-columns: 1fr; }
+  .ideo-card { padding: 8px 10px; }
+  .ideo-card .ideo-name { font-size: 11px; }
+  .ideo-card .ideo-desc { font-size: 9px; }
+  .form-panel { padding: 14px; }
+  .cp-swatch { width: 20px; height: 20px; }
+}
 </style>
 </head>
 <body>
@@ -435,8 +445,8 @@ textarea {
         </div>
         <div class="input-group">
           <label class="input-label">Abbreviation</label>
-          <input type="text" id="party-abbr" placeholder="PWA" maxlength="3" style="text-transform:uppercase; font-family:var(--font-mono); font-weight:700; letter-spacing:0.1em;">
-          <div class="char-counter"><span id="abbr-counter">0</span>/3</div>
+          <input type="text" id="party-abbr" placeholder="PWA" maxlength="4" style="text-transform:uppercase; font-family:var(--font-mono); font-weight:700; letter-spacing:0.1em;">
+          <div class="char-counter"><span id="abbr-counter">0</span>/4</div>
         </div>
       </div>
       <div class="input-group">
@@ -499,23 +509,97 @@ textarea {
 import { _supabase } from './js/supabase-client.js';
 import { PARTY_ICONS, PARTY_COLOR_PALETTE, DEFAULT_PARTY_ICON, getPartyIconSVG, getDefaultPartyColor } from './js/party-icons.js';
 import { escapeHtml } from './js/utils.js';
-import { ideologyOppositionMultiplier } from './js/game/ideology.js';
 
 const urlParams = new URLSearchParams(window.location.search);
 const ideology1 = urlParams.get('ideology1');
 const ideology2 = urlParams.get('ideology2');
 
-// Leader name pools
-const FIRST_NAMES = [
+// Leader name pools (default: Crucera / Spanish)
+const CRUCERA_FIRST_NAMES = [
   'Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastian','Luca',
   'Andres','Gabriel','Joaquin','Mariana','Carlos','Tomas','Rafael','Edwin',
   'Emilio','Catalina','Fernando','Renata'
 ];
-const LAST_NAMES = [
+const CRUCERA_LAST_NAMES = [
   'Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Rios',
   'Delgado','Espinoza','Guzman','Navarro','Cordoba','Echeverria','Pacheco','Montero',
   'Aguilar','Valenzuela','Carrasco','Ibarra'
 ];
+
+// Calveth names (Danish)
+const CALVETH_FIRST = [
+  'Lukas','Noah','Victor','Oliver','Oscar','William','Emil','Alfred',
+  'Magnus','Mads','Frederik','Christian','Mikkel','Anders','Lars',
+  'Alma','Ida','Clara','Ella','Freja'
+];
+const CALVETH_LAST = [
+  'Jensen','Nielsen','Hansen','Pedersen','Andersen','Christensen',
+  'Larsen','Sørensen','Rasmussen','Jørgensen','Petersen','Madsen',
+  'Kristensen','Olsen','Thomsen','Frederiksen','Mikkelsen','Henriksen'
+];
+
+// Flandis names (Dutch)
+const FLANDIS_FIRST = [
+  'Anneliese','Bregje','Clasien','Dymphna','Elske','Fenna','Grietje','Hanneke',
+  'Ilse','Jobke','Karlijn','Lieselotte','Maaike','Nienke','Roos',
+  'Adriaan','Bastiaan','Casper','Damiaan','Evert','Floris','Gerben','Harmen',
+  'Ivo','Jasper','Klaas','Laurens','Maarten','Niels','Olaf','Pieter',
+  'Quinten','Reinier','Sander','Thijs','Uwe','Valentijn','Wessel','Xander',
+  'Yorick','Zeger','Arjen','Bram','Cor','Daan','Egbert','Folkert','Gijs','Hedzer','Imro'
+];
+const FLANDIS_LAST = [
+  'Bakker','Bos','Bosman','Brouwer','De Graaf','De Jong','De Vries','De Wit',
+  'Dekker','Dijkstra','Dijk','Driessen','Gerritsen','Hendriks','Hermans',
+  'Hoekstra','Huisman','Jacobs','Janssen','Koster','Kuiper','Lammers','Maas',
+  'Meijer','Mulder','Peters','Pieters','Pijpers','Post','Prins','Smit',
+  'Smits','Snel','Snoek','Timmers','Van Dam','Van den Berg','Van den Bosch',
+  'Van der Laan','Van der Meer','Van Dijk','Van Houten','Van Leeuwen','Van Rijn',
+  'Vermeer','Visser','Willems','Wolff','Zijlstra','Zwart'
+];
+
+// Avelia names (Spanish with Italian influence)
+const AVELIA_FIRST = [
+  'Marcelo','Luciana','Dante','Sofía','Lorenzo','Elena','Tomás','Rosario',
+  'Fabrizio','Carolina','Leandro','Paloma','Giancarlo','Inés','Renato','Marisol',
+  'Nico','Florencia','Aurelio','Celeste'
+];
+const AVELIA_LAST = [
+  'Montalbán','Ferretti','Salcedo','Conti','Valverde','Lucero','Maretti','Orellana',
+  'Bellini','Calderón','Santoro','Vásquez','Lombardi','Peñaloza','Rinaldi','Escobar',
+  'Castellani','Madrigal','Giacomo','Solano'
+];
+
+// Vostia names (Serbian/Slavic)
+const VOSTIA_FIRST = [
+  'Dragan','Goran','Vuk','Zoran','Dušan','Nemanja','Bogdan','Slobodan',
+  'Vlastimir','Milorad','Gvozden','Radomir','Branislav','Jovan','Dimitrije',
+  'Ognjen','Lazar','Miodrag','Zdravko','Nebojša','Predrag','Stojan',
+  'Vojislav','Darko','Borislav','Momčilo','Uroš','Radoš','Božidar',
+  'Gavrilo','Vasilije','Đorđe','Radovan','Blagoje','Veljko','Živko',
+  'Krsto','Miloš','Draško','Balša',
+  'Dragana','Svetlana','Jelena','Milica','Danica','Zora','Radmila','Snežana','Vesna'
+];
+const VOSTIA_LAST = [
+  'Jovanović','Petrović','Đorđević','Marković','Nikolić','Popović',
+  'Stojanović','Ilić','Lukić','Babić','Ristić','Kostić','Vuković',
+  'Lazarević','Kovačević','Simić','Milošević','Stevanović','Tomić',
+  'Savić','Radović','Dimitrijević','Vasić','Bogdanović','Jović',
+  'Krstić','Mladenović','Filipović','Gajić','Cvetković','Mitić',
+  'Todorović','Milosavljević','Živković','Knežević','Pantić','Stanković',
+  'Marić','Mihajlović','Tasić','Pavlović','Kuzmanović','Milanović'
+];
+
+// Nation-aware name selection
+const NATION_NAMES = {
+  'Calveth': { first: CALVETH_FIRST, last: CALVETH_LAST },
+  'Avelia': { first: AVELIA_FIRST, last: AVELIA_LAST },
+  'Flandis': { first: FLANDIS_FIRST, last: FLANDIS_LAST },
+  'Vostia': { first: VOSTIA_FIRST, last: VOSTIA_LAST }
+};
+function getNamePool(nationName) {
+  const pool = NATION_NAMES[nationName];
+  return pool || { first: CRUCERA_FIRST_NAMES, last: CRUCERA_LAST_NAMES };
+}
 
 // Ideology axis mapping
 const IDEOLOGY_AXIS_MAP = {
@@ -644,7 +728,7 @@ function validateForm() {
   const name = document.getElementById('party-name').value.trim();
   const abbr = document.getElementById('party-abbr').value.trim();
   const btn = document.getElementById('btn-next');
-  const valid = name.length > 0 && abbr.length === 3;
+  const valid = name.length > 0 && abbr.length >= 2 && abbr.length <= 4;
   btn.disabled = !valid;
   btn.classList.toggle('ready', valid);
 }
@@ -723,7 +807,7 @@ async function proceed() {
   const abbr = document.getElementById('party-abbr').value.trim();
   const desc = document.getElementById('party-desc').value.trim();
 
-  if (!name || abbr.length !== 3) return;
+  if (!name || abbr.length < 2 || abbr.length > 4) return;
 
   const btn = document.getElementById('btn-next');
   btn.disabled = true;
@@ -738,10 +822,11 @@ async function proceed() {
       .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shardData?.current_tick || 0;
 
-    // Generate leader
+    // Generate leader (nation-aware name pool)
+    const namePool = getNamePool(nationData.name);
     const leader = {
-      first: FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)],
-      last: LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)],
+      first: namePool.first[Math.floor(Math.random() * namePool.first.length)],
+      last: namePool.last[Math.floor(Math.random() * namePool.last.length)],
       age: 35 + Math.floor(Math.random() * 20)
     };
 
@@ -761,13 +846,14 @@ async function proceed() {
         needs_rebuild: false,
         party_color: _cpSelectedColor || null,
         party_logo: _cpSelectedLogo || 'star',
+        custom_logo_url: null,
         party_description: desc || null,
         leader_first_name: leader.first,
         leader_last_name: leader.last,
         leader_age: leader.age,
         founded_tick: currentTick,
         action_points: 5,
-        approval_rating: null
+        abandoned_at: null
       });
 
     if (upsertError) throw upsertError;
@@ -796,45 +882,67 @@ async function proceed() {
           declared_axis_2: m2.axis,
           declared_direction_2: m2.dir
         };
-        row[m1.axis] = 30 * m1.dir;
-        row[m2.axis] = 30 * m2.dir;
+        row[m1.axis] = 20 * m1.dir;
+        row[m2.axis] = 20 * m2.dir;
 
-        await _supabase.from('faction_ideology').upsert(row, { onConflict: 'faction_id' });
+        const { error: ideoErr } = await _supabase.from('faction_ideology').upsert(row, { onConflict: 'faction_id' });
+        if (ideoErr) console.error('Ideology upsert failed:', ideoErr);
       }
     }
 
-    // Seed bloc approvals
+    // Reset electoral standing for fresh party — momentum, credibility, governance all start at zero
     try {
-      const { data: blocs } = await _supabase
-        .from('voter_blocs')
-        .select('id, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
-        .eq('nation_id', nationData.id)
-        .eq('is_active', true);
+      await _supabase.from('faction_electoral_standing').upsert({
+        faction_id: currentUser.id,
+        nation_id: nationData.id,
+        party_approval: 10,
+        momentum: 0,
+        credibility: 50,
+        governance: 0,
+        gov_approval_events: 0
+      }, { onConflict: 'faction_id' });
+    } catch (e) { console.warn('Electoral standing reset failed (non-blocking):', e); }
 
-      if (blocs && blocs.length > 0) {
-        const { data: ideo } = await _supabase.from('faction_ideology')
-          .select('liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-          .eq('faction_id', currentUser.id)
-          .maybeSingle();
+    // Reset ideology axes to zero except declared positions at +20
+    if (m1 && m2) {
+      try {
+        const ideoReset = {
+          faction_id: currentUser.id,
+          liberty_equality: 0,
+          tradition_progress: 0,
+          security_freedom: 0,
+          globalism_nationalism: 0,
+          individualism_collectivism: 0
+        };
+        ideoReset[m1.axis] = 20 * m1.dir;
+        ideoReset[m2.axis] = 20 * m2.dir;
+        await _supabase.from('faction_ideology').upsert(ideoReset, { onConflict: 'faction_id' });
+      } catch (e) { console.warn('Ideology reset failed (non-blocking):', e); }
+    }
 
-        const rows = blocs.map(bloc => {
-          const mult = ideo ? ideologyOppositionMultiplier(ideo, bloc) : 1.0;
-          return {
-            faction_id: currentUser.id,
-            bloc_id: bloc.id,
-            preference_score: Math.round(40 * mult * 100) / 100
-          };
-        });
-
-        await _supabase.from('faction_bloc_approval')
-          .upsert(rows, { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true });
+    // Pre-cache state so dashboard loads instantly without a re-query
+    // (avoids race where the faction isn't found on a fresh DB read)
+    try {
+      const { data: freshFaction } = await _supabase
+        .from('factions').select('*').eq('id', currentUser.id).single();
+      const { data: freshShard } = await _supabase
+        .from('shard').select('*').eq('name', 'Alpha Shard').single();
+      if (freshFaction && nationData) {
+        const state = {
+          user: currentUser,
+          faction: freshFaction,
+          nation: nationData,
+          shard: freshShard,
+          timestamp: Date.now()
+        };
+        sessionStorage.setItem('nationhood_state', JSON.stringify(state));
       }
-    } catch (e) { console.warn('Bloc approval seeding non-blocking:', e); }
+    } catch (e) { console.warn('Pre-cache failed (non-blocking):', e); }
 
     // Clean up and redirect
     sessionStorage.removeItem('nationhood_pending_nation');
     sessionStorage.removeItem('nationhood_pending_party');
-    sessionStorage.removeItem('nationhood_state');
+    sessionStorage.removeItem('pending_faction_type');
     window.location.href = 'dashboard.html';
 
   } catch (error) {

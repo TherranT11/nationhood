@@ -1,5 +1,5 @@
 /**
- * party-leadership.js — Party Leadership: Leader, Deputy Leader, Party Whip
+ * party-leadership.js — Party Leadership: Leader
  * Trait-based candidate generation, electability, AP cost calculation
  */
 
@@ -11,28 +11,28 @@ export const POSITIVE_TRAITS = [
     { key: 'tireless_campaigner', name: 'Tireless Campaigner', cost: 4.0, category: 'AP', effect: '+1 AP generated per tick.' },
     { key: 'efficient_operator', name: 'Efficient Operator', cost: 3.5, category: 'AP', effect: 'All campaign actions cost -1 AP (minimum 1).' },
     { key: 'quick_study', name: 'Quick Study', cost: 1.5, category: 'AP', effect: 'First action each tick costs -1 AP (minimum 1).' },
-    { key: 'delegation', name: 'Delegation', cost: 1.0, category: 'AP', effect: 'Maintenance costs for planks and champions reduced by 1 total.' },
-    // Electoral & Electability
-    { key: 'born_leader', name: 'Born Leader', cost: 3.5, category: 'Electoral', effect: 'Electability gains are doubled.' },
-    { key: 'comeback_kid', name: 'Comeback Kid', cost: 3.5, category: 'Electoral', effect: 'Electability losses are halved.' },
-    { key: 'crowd_pleaser', name: 'Crowd Pleaser', cost: 1.5, category: 'Electoral', effect: 'Rally turnout +8%. Mobilize campaign reaches +1 additional bloc.' },
-    { key: 'telegenic', name: 'Telegenic', cost: 1.5, category: 'Electoral', effect: 'Campaign: Message effectiveness +30%. Media coverage events favor your party.' },
+    { key: 'delegation', name: 'Delegation', cost: 1.0, category: 'AP', effect: 'Outreach and Rally actions cost -1 AP each.' },
+    // Electoral & Momentum
+    { key: 'born_leader', name: 'Born Leader', cost: 3.5, category: 'Electoral', effect: '+3 Momentum per tick. Governance score recovers 50% faster.' },
+    { key: 'comeback_kid', name: 'Comeback Kid', cost: 3.5, category: 'Electoral', effect: 'After losing an election: +5 Governance and +10 Momentum bounce.' },
+    { key: 'crowd_pleaser', name: 'Crowd Pleaser', cost: 1.5, category: 'Electoral', effect: 'Rally actions give +2 bonus Momentum. Momentum gains from rallies +30%.' },
+    { key: 'telegenic', name: 'Telegenic', cost: 1.5, category: 'Electoral', effect: '+30% Momentum gains from all campaign actions. +2 Momentum per tick.' },
     // Legislative & Parliamentary
-    { key: 'arm_twister', name: 'Arm Twister', cost: 1.5, category: 'Legislative', effect: 'Bills your party sponsors have +15% passage rate.' },
-    { key: 'deal_maker', name: 'Deal Maker', cost: 1.5, category: 'Legislative', effect: 'Coalition negotiations complete 50% faster. Coalition partners demand 1 fewer ministry.' },
-    { key: 'policy_wonk', name: 'Policy Wonk', cost: 1.0, category: 'Legislative', effect: 'Bills you sponsor cost -1 AP to draft. Voters credit your party +5 approval for each enacted bill.' },
+    { key: 'arm_twister', name: 'Arm Twister', cost: 1.5, category: 'Legislative', effect: 'Whip effectiveness +20%. Party members vote with leadership 15% more often.' },
+    { key: 'deal_maker', name: 'Deal Maker', cost: 1.5, category: 'Legislative', effect: '+5 Governance while in a coalition. Formation deadline extended by 3 ticks when lead party.' },
+    { key: 'policy_wonk', name: 'Policy Wonk', cost: 1.0, category: 'Legislative', effect: 'Bills you sponsor cost -1 AP to draft. Each enacted bill gives +3 Governance.' },
     { key: 'constitutional_scholar', name: 'Constitutional Scholar', cost: 1.0, category: 'Legislative', effect: 'Impeachment and no-confidence attempts against your leader cost opponents +3 AP.' },
     // Governance
     { key: 'cabinet_builder', name: 'Cabinet Builder', cost: 3.5, category: 'Governance', effect: 'Your party gets +2 ministry slots in any coalition. Ministers you appoint start with +10 approval.' },
     { key: 'executive_authority', name: 'Executive Authority', cost: 4.0, category: 'Governance', effect: 'Pres: Executive Orders cost -2 AP. PM: Governor-General actions cost -1 AP.' },
     { key: 'crisis_manager', name: 'Crisis Manager', cost: 1.5, category: 'Governance', effect: 'Stability loss during crises halved. Crisis duration -2 ticks.' },
-    { key: 'economic_steward', name: 'Economic Steward', cost: 1.5, category: 'Governance', effect: 'GDP growth +0.5% while governing. Budget surplus generates +3 approval per tick.' },
+    { key: 'economic_steward', name: 'Economic Steward', cost: 1.5, category: 'Governance', effect: 'GDP growth +0.5% while governing. Budget surplus generates +3 Governance per tick.' },
     // Diplomatic
     { key: 'statesman', name: 'Statesman', cost: 3.5, category: 'Diplomatic', effect: 'State visits cost -2 AP and grant double relations boost.' },
     { key: 'international_presence', name: 'International Presence', cost: 1.0, category: 'Diplomatic', effect: 'International reputation +5 while leader. Foreign leaders accept diplomatic proposals 1 tick faster.' },
     // Voter Blocs
     { key: 'populist_touch', name: 'Populist Touch', cost: 3.5, category: 'Voter Blocs', effect: 'SKEPTICAL blocs are treated as SWING for all action targeting.' },
-    { key: 'base_energizer', name: 'Base Energizer', cost: 1.5, category: 'Voter Blocs', effect: 'BASE bloc turnout permanently +5%. Champion demands arrive 1 tick later.' },
+    { key: 'base_energizer', name: 'Base Energizer', cost: 1.5, category: 'Voter Blocs', effect: 'BASE bloc approval decay halved. +1 Momentum per tick.' },
 ];
 
 // ═══════════════════════════════════════
@@ -43,14 +43,14 @@ export const NEGATIVE_TRAITS = [
     { key: 'indecisive', name: 'Indecisive', relief: 2.0, category: 'AP', effect: '-1 AP generated per tick.' },
     { key: 'micromanager', name: 'Micromanager', relief: 1.5, category: 'AP', effect: 'All actions cost +1 AP.' },
     { key: 'slow_to_act', name: 'Slow to Act', relief: 1.0, category: 'AP', effect: 'First action each tick costs +1 AP.' },
-    { key: 'high_maintenance', name: 'High Maintenance', relief: 0.5, category: 'AP', effect: 'Maintenance costs for planks and champions increased by 1 total.' },
+    { key: 'high_maintenance', name: 'High Maintenance', relief: 0.5, category: 'AP', effect: 'Outreach and Rally actions cost +1 AP each.' },
     // Electoral
-    { key: 'unelectable', name: 'Unelectable', relief: 1.5, category: 'Electoral', effect: 'Electability gains are halved.' },
-    { key: 'sore_loser', name: 'Sore Loser', relief: 1.5, category: 'Electoral', effect: 'Electability losses are doubled. Losing an election triggers -5 approval across all blocs.' },
-    { key: 'gaffe_prone', name: 'Gaffe Prone', relief: 1.0, category: 'Electoral', effect: '20% chance per tick of a gaffe event: -3 approval with a random bloc.' },
-    { key: 'wooden_speaker', name: 'Wooden Speaker', relief: 1.0, category: 'Electoral', effect: 'Campaign: Message effectiveness -30%. Rally turnout -5%.' },
+    { key: 'unelectable', name: 'Unelectable', relief: 1.5, category: 'Electoral', effect: '-2 Momentum per tick. Governance score recovers 50% slower.' },
+    { key: 'sore_loser', name: 'Sore Loser', relief: 1.5, category: 'Electoral', effect: 'After losing an election: -5 Governance and -10 Momentum.' },
+    { key: 'gaffe_prone', name: 'Gaffe Prone', relief: 1.0, category: 'Electoral', effect: '20% chance per tick of a gaffe: -2 Governance and -3 Momentum.' },
+    { key: 'wooden_speaker', name: 'Wooden Speaker', relief: 1.0, category: 'Electoral', effect: '-30% Momentum gains from campaign actions. -1 Momentum per tick.' },
     // Legislative
-    { key: 'poor_whip', name: 'Poor Whip', relief: 1.0, category: 'Legislative', effect: 'Bills your party sponsors have -15% passage rate.' },
+    { key: 'poor_whip', name: 'Poor Whip', relief: 1.0, category: 'Legislative', effect: 'Whip effectiveness -20%. Party members break ranks 15% more often.' },
     { key: 'stubborn_negotiator', name: 'Stubborn Negotiator', relief: 1.0, category: 'Legislative', effect: 'Coalition negotiations take +3 ticks. Partners demand 1 additional ministry.' },
     { key: 'single_issue', name: 'Single-Issue', relief: 0.5, category: 'Legislative', effect: 'Bills outside leader\'s ideology axis cost +2 AP to sponsor.' },
     { key: 'paper_thin_mandate', name: 'Paper Thin Mandate', relief: 0.5, category: 'Legislative', effect: 'Impeachment and no-confidence attempts against your leader cost opponents -2 AP.' },
@@ -58,13 +58,13 @@ export const NEGATIVE_TRAITS = [
     { key: 'cabinet_hog', name: 'Cabinet Hog', relief: 1.5, category: 'Governance', effect: 'Your party MUST take at least 4 ministries in any coalition. Refusing collapses the government.' },
     { key: 'overreach', name: 'Overreach', relief: 2.0, category: 'Governance', effect: 'Pres: Executive Orders cost +2 AP. PM: All governance actions cost +1 AP.' },
     { key: 'panic_under_pressure', name: 'Panic Under Pressure', relief: 1.0, category: 'Governance', effect: 'Stability loss during crises doubled. Crisis duration +2 ticks.' },
-    { key: 'economically_illiterate', name: 'Economically Illiterate', relief: 1.0, category: 'Governance', effect: 'GDP growth -0.3% while governing. Budget deficits cause double approval loss.' },
+    { key: 'economically_illiterate', name: 'Economically Illiterate', relief: 1.0, category: 'Governance', effect: 'GDP growth -0.3% while governing. Budget deficits cause double Governance loss.' },
     // Diplomatic
     { key: 'isolationist', name: 'Isolationist', relief: 1.5, category: 'Diplomatic', effect: 'Cannot initiate state visits. Relations decay +50% faster with all nations.' },
     { key: 'international_pariah', name: 'International Pariah', relief: 0.5, category: 'Diplomatic', effect: 'International reputation -5 while leader. Foreign proposals take +1 tick to process.' },
     // Voter Blocs
     { key: 'elitist', name: 'Elitist', relief: 1.5, category: 'Voter Blocs', effect: 'SKEPTICAL blocs are treated as HOSTILE for all action targeting.' },
-    { key: 'divisive_figure', name: 'Divisive Figure', relief: 1.0, category: 'Voter Blocs', effect: 'Bridge actions cost +1 AP. Bridge residual reduced to +0 (no permanent gain).' },
+    { key: 'divisive_figure', name: 'Divisive Figure', relief: 1.0, category: 'Voter Blocs', effect: 'Outreach actions cost +1 AP. Outreach momentum gains with non-BASE blocs halved.' },
 ];
 
 // ═══════════════════════════════════════
@@ -110,6 +110,144 @@ CONTRADICTION_PAIRS.forEach(([a, b]) => {
 });
 
 export { POSITIVE_MAP, NEGATIVE_MAP };
+
+// ═══════════════════════════════════════
+//  Trait Helper Functions
+// ═══════════════════════════════════════
+
+/**
+ * Compute the net AP cost modifier for a campaign action based on leader traits.
+ *
+ * @param {string} actionType - 'rally' | 'outreach' | 'attack' | 'promise' | 'draft_bill' | 'executive_order'
+ * @param {object} faction - Faction row with leader_positive_traits, leader_negative_traits, last_action_tick
+ * @param {number} currentTick - Current game tick
+ * @returns {number} Net AP adjustment (negative = cheaper, positive = more expensive). Final cost should be Math.max(1, base + modifier).
+ */
+export function getTraitAPModifier(actionType, faction, currentTick) {
+    const pos = faction.leader_positive_traits || [];
+    const neg = faction.leader_negative_traits || [];
+    let mod = 0;
+
+    // efficient_operator: All campaign actions cost -1 AP
+    if (pos.includes('efficient_operator') && ['rally', 'outreach', 'attack', 'promise', 'press_conference'].includes(actionType)) {
+        mod -= 1;
+    }
+
+    // micromanager: All actions cost +1 AP
+    if (neg.includes('micromanager')) {
+        mod += 1;
+    }
+
+    // quick_study: First action each tick costs -1 AP
+    if (pos.includes('quick_study') && (faction.last_action_tick || 0) < currentTick) {
+        mod -= 1;
+    }
+
+    // slow_to_act: First action each tick costs +1 AP
+    if (neg.includes('slow_to_act') && (faction.last_action_tick || 0) < currentTick) {
+        mod += 1;
+    }
+
+    // delegation: Outreach and Rally cost -1 AP each
+    if (pos.includes('delegation') && ['rally', 'outreach'].includes(actionType)) {
+        mod -= 1;
+    }
+
+    // high_maintenance: Outreach and Rally cost +1 AP each
+    if (neg.includes('high_maintenance') && ['rally', 'outreach'].includes(actionType)) {
+        mod += 1;
+    }
+
+    // divisive_figure: Outreach costs +1 AP
+    if (neg.includes('divisive_figure') && actionType === 'outreach') {
+        mod += 1;
+    }
+
+    // policy_wonk: Draft bill costs -1 AP
+    if (pos.includes('policy_wonk') && actionType === 'draft_bill') {
+        mod -= 1;
+    }
+
+    // executive_authority: Executive Orders cost -2 AP (presidential)
+    if (pos.includes('executive_authority') && actionType === 'executive_order') {
+        mod -= 2;
+    }
+
+    // overreach (trait): Executive Orders cost +2 AP
+    if (neg.includes('overreach') && actionType === 'executive_order') {
+        mod += 2;
+    }
+
+    return mod;
+}
+
+/**
+ * Modify rally outcome weights based on leader traits.
+ * Mutates the weights object in place.
+ * @param {object} weights - { rousing, solid, low, gaffe, divisive, counter }
+ * @param {object} faction - Faction row with leader_positive_traits, leader_negative_traits
+ */
+export function applyRallyTraitModifiers(weights, faction) {
+    const pos = faction.leader_positive_traits || [];
+    const neg = faction.leader_negative_traits || [];
+
+    // crowd_pleaser: Rally turnout +8% → boost rousing and solid weights
+    if (pos.includes('crowd_pleaser')) {
+        weights.rousing += 8;
+        weights.solid += 4;
+    }
+
+    // wooden_speaker: Rally turnout -5%, message -30% → worse outcomes
+    if (neg.includes('wooden_speaker')) {
+        weights.gaffe += 5;
+        weights.rousing -= 8;
+        weights.low += 5;
+    }
+}
+
+/**
+ * Compute the approval multiplier for outreach/rally gains based on leader traits.
+ * @param {object} faction - Faction row with leader_positive_traits, leader_negative_traits
+ * @param {string} actionType - 'rally' | 'outreach'
+ * @param {string} blocDisposition - 'BASE' | 'LEAN' | 'SWING' | 'SKEPTICAL' | 'HOSTILE'
+ * @returns {number} Multiplier to apply to approval gain (e.g. 1.3 for telegenic, 0.5 for divisive_figure non-BASE)
+ */
+export function getTraitApprovalMultiplier(faction, actionType, blocDisposition) {
+    const pos = faction.leader_positive_traits || [];
+    const neg = faction.leader_negative_traits || [];
+    let mult = 1.0;
+
+    // telegenic: Campaign message effectiveness +30%
+    if (pos.includes('telegenic') && ['rally', 'outreach'].includes(actionType)) {
+        mult *= 1.3;
+    }
+
+    // divisive_figure: Outreach approval gains with non-BASE blocs halved
+    if (neg.includes('divisive_figure') && actionType === 'outreach' && blocDisposition !== 'BASE') {
+        mult *= 0.5;
+    }
+
+    return mult;
+}
+
+/**
+ * Get the effective bloc disposition after applying leader traits.
+ * populist_touch: SKEPTICAL → SWING
+ * elitist: SKEPTICAL → HOSTILE
+ * @param {string} disposition - Original disposition
+ * @param {object} faction - Faction row with leader_positive_traits, leader_negative_traits
+ * @returns {string} Effective disposition
+ */
+export function getEffectiveBlocDisposition(disposition, faction) {
+    const pos = faction.leader_positive_traits || [];
+    const neg = faction.leader_negative_traits || [];
+
+    if (disposition === 'SKEPTICAL') {
+        if (pos.includes('populist_touch')) return 'SWING';
+        if (neg.includes('elitist')) return 'HOSTILE';
+    }
+    return disposition;
+}
 
 // ═══════════════════════════════════════
 //  Ideology Colors
@@ -257,7 +395,7 @@ export function getAPCostLabel(ap) {
  * @param {Function} getNationNamesFn - The getNationNames function
  * @param {Set} usedFirstNames - Already used first names
  * @param {Set} usedLastNames - Already used last names
- * @param {'leader'|'deputy'|'whip'} role - Role this candidate is for
+ * @param {'leader'} role - Role this candidate is for
  * @returns {object} Candidate data
  */
 export function generateCandidate(nationName, getNationNamesFn, usedFirstNames = new Set(), usedLastNames = new Set(), role = 'leader') {
@@ -282,8 +420,8 @@ export function generateCandidate(nationName, getNationNamesFn, usedFirstNames =
     // Age: 28-65
     const age = 28 + Math.floor(Math.random() * 38);
 
-    // Electability: 20-70 at generation (leader only — deputy/whip don't have electability)
-    const electability = role === 'leader' ? 20 + Math.floor(Math.random() * 51) : undefined;
+    // Electability: 20-70 at generation
+    const electability = 20 + Math.floor(Math.random() * 51);
 
     // Ideology: pick one of the 10
     const ideologies = ['INDIVIDUALISM', 'COLLECTIVISM', 'GLOBALISM', 'NATIONALISM', 'PROGRESS', 'TRADITION', 'SECURITY', 'FREEDOM', 'LIBERTY', 'EQUALITY'];
@@ -313,7 +451,7 @@ export function generateCandidate(nationName, getNationNamesFn, usedFirstNames =
         apCost: costInfo.apCost,
         costBreakdown: costInfo,
     };
-    if (electability !== undefined) candidate.electability = electability;
+    candidate.electability = electability;
     return candidate;
 }
 
@@ -367,7 +505,7 @@ function pickTraits(pool, count, existingKeys, requireCategoryDiversity) {
 
 /**
  * Generate a set of leadership candidates (3 candidates for a role).
- * @param {'leader'|'deputy'|'whip'} role - Role these candidates are for
+ * @param {'leader'} role - Role these candidates are for
  */
 export function generateLeadershipCandidates(nationName, getNationNamesFn, count = 3, role = 'leader') {
     const usedFirst = new Set();
@@ -475,6 +613,7 @@ export async function executeLeaderStepDown(supabase, nationId, factionId, curre
     const { error: eventErr } = await supabase.from('event_log').insert({
         nation_id: nationId,
         event_name: 'Party Leader Steps Down',
+        trigger_key: 'party_leader_replaced',
         description_chosen: reason,
         category: 'POLITICAL',
         fired_at_tick: currentTick,

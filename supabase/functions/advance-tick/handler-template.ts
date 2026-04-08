@@ -62,6 +62,117 @@ async function ensureApRpcAvailability(supabase) {
 
 // ===== TICK-ONLY HELPERS (edge-function-only — not in game-common.js) =====
 
+// ==================== FACTION MOMENTUM HELPER ====================
+// Thin wrapper around adjust_momentum RPC for use in tick-only code.
+async function adjustFactionMomentum(supabase: any, factionId: string, nationId: string, delta: number, opts: any = {}) {
+    if (!factionId || delta === 0) return;
+    try {
+        await supabase.rpc('adjust_momentum', {
+            p_faction_id: factionId,
+            p_delta: delta,
+            p_label: opts.source || 'tick_effect',
+            p_tick: opts.tick || 0
+        });
+    } catch (e: any) {
+        console.warn(`[adjustFactionMomentum] Failed for ${factionId}: ${e.message}`);
+    }
+}
+
+// ==================== SURPLUS/DEFICIT CONNECTORS ====================
+// These require budget calculation and can't be expressed as simple
+// stat_connections rows. Simple threshold connectors (unemployment→happiness,
+// crime→investment, etc.) are in the stat_connections table via admin panel.
+
+async function processSurplusConnectors(supabase: any, nation: any) {
+    const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v * 10) / 10));
+    const capDelta = (d: number) => Math.max(-2, Math.min(2, d));
+    const gdp = Number(nation.gdp ?? 0);
+    if (gdp <= 0) return;
+
+    const efficiency = Number(nation.efficiency ?? 50);
+    const inflation = Number(nation.inflation ?? 38);
+    const currencyStrength = Number(nation.currency_strength ?? 50);
+
+    // Calculate surplus ratio from budget formula
+    let surplusRatio = 0;
+    try {
+        const budget = calculateNationalBudget(nation);
+        const baseExpenditure = gdp * 0.08 * (1 + (100 - efficiency) / 200);
+        const surplus = budget.grossRevenue - baseExpenditure;
+        surplusRatio = (surplus / gdp) * 100;
+    } catch (_) {
+        return;
+    }
+
+    const updates: any = {};
+    let changed = false;
+
+    // ── Surplus → Inflation ──
+    if (surplusRatio > 5) {
+        const delta = capDelta((surplusRatio - 5) * 0.1);
+        updates.inflation = clamp(inflation + delta);
+        changed = true;
+    }
+    // Deficit spending is also inflationary
+    if (surplusRatio < -5) {
+        const delta = capDelta((-surplusRatio - 5) * 0.05);
+        updates.inflation = clamp((updates.inflation ?? inflation) + delta);
+        changed = true;
+    }
+
+    // ── Surplus → Currency Strength ──
+    if (surplusRatio > 3) {
+        const delta = capDelta((surplusRatio - 3) * 0.08);
+        updates.currency_strength = clamp(currencyStrength + delta);
+        changed = true;
+    }
+    // Large deficit weakens currency
+    if (surplusRatio < -5) {
+        const delta = capDelta((-surplusRatio - 5) * 0.1);
+        updates.currency_strength = clamp(currencyStrength - delta);
+        changed = true;
+    }
+
+    if (changed) {
+        const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
+        if (error) {
+            console.error(`[SurplusConnectors] Update failed for ${nation.name}:`, error.message);
+        }
+        Object.assign(nation, updates);
+    }
+}
+
+// ==================== TARIFF → RELATIONS PENALTY ====================
+// Nations with tariffs > 25% lose -0.5 relations/tick with ALL other nations (floor 10)
+
+async function processTariffRelationsPenalty(supabase, nation) {
+    const tariffRate = Number(nation.tariffs ?? 0);
+    if (tariffRate <= 25) return;
+
+    // Load all diplomatic relations for this nation
+    const { data: relations } = await supabase
+        .from('diplomatic_relations')
+        .select('id, nation_a_id, nation_b_id, relation_score')
+        .or(`nation_a_id.eq.${nation.id},nation_b_id.eq.${nation.id}`);
+
+    if (!relations || relations.length === 0) return;
+
+    const FLOOR = 10;
+    const PENALTY = 0.5;
+
+    for (const rel of relations) {
+        const currentScore = Number(rel.relation_score ?? 50);
+        if (currentScore <= FLOOR) continue;
+        const newScore = Math.max(FLOOR, Math.round(currentScore - PENALTY));
+        if (newScore !== currentScore) {
+            const { error } = await supabase.from('diplomatic_relations')
+                .update({ relation_score: newScore })
+                .eq('id', rel.id);
+            if (error) console.warn(`[TariffPenalty] Failed to update relation ${rel.id}:`, error.message);
+        }
+    }
+}
+
 // ==================== POPULATION GROWTH ====================
 //
 // population_growth is a standalone 0-100 stat driven by policy effects and decay.
@@ -70,10 +181,28 @@ async function ensureApRpcAvailability(supabase) {
 //   0   → -1% per tick (max decline)
 //   50  → 0% per tick (equilibrium)
 //   100 → +1% per tick (max growth)
+//
+// Immigration inputs (per tick nudge to population_growth):
+//   immigration:          ±0.005 per point from 50 (max ±0.25)
+//   emigration:           ±0.005 per point from 50, inverted (max ±0.25)
+//   academic_immigration: ±0.003 per point from 50 (max ±0.15)
+//   illegal_immigration:  ±0.002 per point from 50 (max ±0.10)
 
 async function processPopulationGrowth(supabase: any, nation: any) {
-    // population_growth is now standalone — just use the current value directly
-    const currentPG = Number(nation.population_growth ?? 50);
+    let currentPG = Number(nation.population_growth ?? 50);
+
+    // Immigration/emigration nudges — each stat is 0-100, baseline 50
+    const imm     = Number(nation.immigration ?? 50);
+    const emig    = Number(nation.emigration ?? 50);
+    const acadImm = Number(nation.academic_immigration ?? 50);
+    const illegImm = Number(nation.illegal_immigration ?? 50);
+
+    const immNudge = (imm - 50) * 0.005        // high immigration → growth
+                   - (emig - 50) * 0.005        // high emigration → decline
+                   + (acadImm - 50) * 0.003     // academic immigration → growth (smaller)
+                   + (illegImm - 50) * 0.002;   // illegal immigration → growth (smallest)
+
+    currentPG += immNudge;
     const finalPG = Math.round(Math.max(0, Math.min(100, currentPG)) * 10) / 10;
 
     // Population change: linear mapping from 0-100 to -1%..+1% per tick
@@ -138,7 +267,7 @@ async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
     const ticksToElection = upcomingElection.election_tick - currentTick;
     console.log(`Campaign bonuses for incumbent ${president.first_name} ${president.last_name} in ${nation.name} (${ticksToElection} ticks to election)`);
 
-    await adjustMomentumAll(supabase, nation.id, president.faction_id, 2, 'campaign:incumbent_bonus');
+    await adjustFactionMomentum(supabase, president.faction_id, nation.id, 1, { source: 'campaign:incumbent', tick: currentTick });
 
     const { data: nationStats } = await supabase
         .from('nations')
@@ -375,7 +504,7 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
         if (!result || !result.decay_ticks_remaining || result.decay_ticks_remaining <= 0) continue;
 
         const decayRate = result.decay_rate || 1;
-        await adjustMomentumAll(supabase, nationId, action.party_id, -decayRate, 'purge:decay');
+        await adjustFactionMomentum(supabase, action.party_id, nationId, -round2(decayRate * 0.3), { source: 'purge:decay', tick: currentTick });
 
         const newRemaining = result.decay_ticks_remaining - 1;
         await supabase.from('campaign_actions')
@@ -849,6 +978,175 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
     };
 }
 
+// ==================== IPO VOTE EFFECT HELPER ====================
+
+/**
+ * Apply side-effects when an IPO vote passes (called from tick processor).
+ */
+async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
+    const meta = vote.meta || {};
+    const IPO_CHAT_COLORS = ['#5cb85c','#c8a64e','#5aafa5','#d9534f','#8b7ec8','#5b9bd5'];
+
+    switch (vote.vote_type) {
+        case 'membership': {
+            if (!meta.target_faction_id) break;
+
+            // If invite-based, mark the invitation as accepted
+            if (meta.invite_id) {
+                await supabase.from('ipo_invitations')
+                    .update({ status: 'accepted', responded_at_tick: tick })
+                    .eq('id', meta.invite_id);
+            }
+
+            const admitRole = meta.requested_role || 'member';
+
+            const factionsToAdmit = [{ id: meta.target_faction_id, name: meta.target_faction_name }];
+
+            // Assign chat colors and insert members
+            const { data: existingMembers } = await supabase
+                .from('ipo_members')
+                .select('chat_color')
+                .eq('org_id', org.id)
+                .eq('is_active', true);
+            const usedColors = new Set((existingMembers || []).map(m => m.chat_color).filter(Boolean));
+
+            for (const f of factionsToAdmit) {
+                const chatColor = IPO_CHAT_COLORS.find(c => !usedColors.has(c)) || IPO_CHAT_COLORS[0];
+                usedColors.add(chatColor);
+                await supabase.from('ipo_members').insert({
+                    org_id: org.id,
+                    faction_id: f.id,
+                    role: admitRole,
+                    joined_at_tick: tick,
+                    chat_color: chatColor
+                });
+            }
+
+            const admitMsg = factionsToAdmit.length > 1
+                ? `${meta.target_faction_name || 'An autocratic regime'} and its ${factionsToAdmit.length - 1} faction(s) have been admitted.`
+                : `${meta.target_faction_name || 'A new party'} has been admitted as ${admitRole === 'observer' ? 'an observer' : 'a member'}.`;
+            await supabase.from('ipo_chat').insert({
+                org_id: org.id, faction_id: null, is_system: true,
+                message_text: admitMsg,
+                tick_posted: tick
+            });
+            break;
+        }
+        case 'expulsion': {
+            if (meta.target_faction_id) {
+                await supabase.from('ipo_members')
+                    .update({ is_active: false, left_at_tick: tick })
+                    .eq('org_id', org.id)
+                    .eq('faction_id', meta.target_faction_id)
+                    .eq('is_active', true);
+
+                await supabase.from('ipo_chat').insert({
+                    org_id: org.id, faction_id: null, is_system: true,
+                    message_text: `${meta.target_faction_name || 'A member'} has been expelled from the organisation.`,
+                    tick_posted: tick
+                });
+            }
+            break;
+        }
+        case 'fund_draw': {
+            if (meta.amount_requested && meta.amount_requested > 0) {
+                const newBalance = Math.max(0, (org.solidarity_fund_balance || 0) - meta.amount_requested);
+                await supabase.from('international_orgs')
+                    .update({ solidarity_fund_balance: newBalance })
+                    .eq('id', org.id);
+
+                await supabase.from('ipo_fund_transactions').insert({
+                    org_id: org.id,
+                    faction_id: vote.proposed_by,
+                    transaction_type: 'draw',
+                    amount: -meta.amount_requested,
+                    description: meta.purpose || 'Fund draw (vote passed)',
+                    tick: tick
+                });
+
+                await supabase.from('ipo_chat').insert({
+                    org_id: org.id, faction_id: null, is_system: true,
+                    message_text: `Fund draw approved: ${meta.amount_requested} AP withdrawn. ${meta.purpose ? 'Purpose: ' + meta.purpose : ''}`,
+                    tick_posted: tick
+                });
+            }
+            break;
+        }
+        case 'change_headquarters': {
+            if (meta.proposed_nation_id) {
+                await supabase.from('international_orgs')
+                    .update({ headquarters_nation_id: meta.proposed_nation_id })
+                    .eq('id', org.id);
+            }
+            break;
+        }
+        case 'joint_statement': {
+            if (meta.statement_text) {
+                const visibility = meta.visibility === 'private' ? ' (private)' : '';
+                await supabase.from('ipo_chat').insert({
+                    org_id: org.id, faction_id: null, is_system: true,
+                    message_text: `JOINT STATEMENT${visibility}: "${meta.statement_text}"`,
+                    tick_posted: tick
+                });
+                await supabase.from('ipo_action_log').insert({
+                    org_id: org.id, faction_id: vote.proposed_by,
+                    action_type: 'joint_statement',
+                    action_data: { statement_text: meta.statement_text, visibility: meta.visibility || 'public' },
+                    ap_cost: 0, performed_at_tick: tick
+                });
+            }
+            break;
+        }
+        case 'charter_amendment': {
+            await supabase.from('ipo_chat').insert({
+                org_id: org.id, faction_id: null, is_system: true,
+                message_text: `Charter amendment approved: ${meta.article_type || 'charter'} — "${(meta.description || '').substring(0, 200)}". The president should apply changes via Amend Charter.`,
+                tick_posted: tick
+            });
+            await supabase.from('ipo_action_log').insert({
+                org_id: org.id, faction_id: vote.proposed_by,
+                action_type: 'charter_amendment',
+                action_data: { article_type: meta.article_type, description: meta.description },
+                ap_cost: 0, performed_at_tick: tick
+            });
+            break;
+        }
+        case 'symposium': {
+            const SYMPOSIUM_DELAY = 4;
+            const SYMPOSIUM_COOLDOWN = 20;
+            const SYMPOSIUM_SHIFT = 3;
+
+            const pendingSymposium = {
+                targetNation: meta.target_nation_id,
+                axis: meta.axis || 'economic',
+                direction: meta.direction || 'left',
+                ideologyShift: SYMPOSIUM_SHIFT,
+                firesOnTick: tick + SYMPOSIUM_DELAY
+            };
+
+            await supabase.from('international_orgs')
+                .update({
+                    pending_symposium: pendingSymposium,
+                    symposium_cooldown_remaining: SYMPOSIUM_COOLDOWN
+                })
+                .eq('id', org.id);
+
+            await supabase.from('ipo_chat').insert({
+                org_id: org.id, faction_id: null, is_system: true,
+                message_text: `Symposium approved! Targeting ${meta.target_nation_name || 'a nation'} (${meta.axis} ${meta.direction}). Effect fires in ${SYMPOSIUM_DELAY} ticks.`,
+                tick_posted: tick
+            });
+            await supabase.from('ipo_action_log').insert({
+                org_id: org.id, faction_id: vote.proposed_by,
+                action_type: 'symposium',
+                action_data: pendingSymposium,
+                ap_cost: 0, performed_at_tick: tick
+            });
+            break;
+        }
+    }
+}
+
 // ==================== ADVANCE TICK ====================
 
 async function advanceTick(supabase, { force = false, reprocess = false } = {}) {
@@ -908,12 +1206,24 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
       try {
         const { data: factions } = await supabase
             .from('factions')
-            .select('id, approval_rating, faction_type')
+            .select('id, faction_type, leader_positive_traits, leader_negative_traits')
             .eq('nation_id', nation.id)
             .eq('faction_type', 'party');
 
-        if (!factions || factions.length === 0) continue;
-
+        if (factions && factions.length > 0) {
+        // Guard: skip AP if already distributed this tick (prevents double AP on retry/overlap)
+        const { data: existingLedger } = await supabase
+            .from('ap_ledger')
+            .select('id')
+            .eq('faction_id', factions[0].id)
+            .eq('tick', newTick)
+            .eq('reason', 'tick_gain')
+            .limit(1);
+        if (existingLedger && existingLedger.length > 0) {
+            console.warn(`[advanceTick] AP already distributed for nation ${nation.name} tick ${newTick} — skipping`);
+            continue;
+        }
+        // Democracy AP logic
         const coalition = await fetchActiveCoalition(supabase, nation.id);
         const governmentPartyIds = new Set([
             ...(coalition?.party_ids || []),
@@ -925,6 +1235,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             let apGain = 5;
             if (isInGovernment) apGain += 2;
 
+            // Leader trait: tireless_campaigner → +1 AP per tick
+            const posTraits = faction.leader_positive_traits || [];
+            const negTraits = faction.leader_negative_traits || [];
+            if (posTraits.includes('tireless_campaigner')) apGain += 1;
+            // Leader trait: indecisive → -1 AP per tick
+            if (negTraits.includes('indecisive')) apGain = Math.max(1, apGain - 1);
+
             // Family member successor penalty: ruling faction loses 1 AP/tick
             if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) {
                 apGain = Math.max(1, apGain - 1);
@@ -934,6 +1251,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             if (result.success) {
                 console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+${apGain})`);
                 apDistributed++;
+                const parts = ['Base +5'];
+                if (isInGovernment) parts.push('Coalition +2');
+                if (posTraits.includes('tireless_campaigner')) parts.push('Tireless Campaigner +1');
+                if (negTraits.includes('indecisive')) parts.push('Indecisive -1');
+                if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) parts.push('Family successor -1');
+                await supabase.from('ap_ledger').insert({ faction_id: faction.id, tick: newTick, delta: apGain, reason: 'tick_gain', detail: parts.join(', ') }).then(() => {});
             } else {
                 console.error(`[advanceTick] AP accumulation FAILED for faction ${faction.id}: ${result.error}`);
                 apFailed++;
@@ -947,6 +1270,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 failedFactionIds.add(faction.id);
             }
         }
+        } // end factions.length > 0
       } catch (apErr) {
         console.error(`[advanceTick] AP distribution FAILED for nation ${nation.id} (${nation.name}):`, apErr);
         summary.errors = summary.errors || [];
@@ -1036,6 +1360,64 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] State visit expiration check failed (non-fatal):', svExpErr);
     }
 
+    // 3.8 Diplomatic relations decay — all relation scores drift toward 0 (neutral)
+    try {
+        const RELATION_DECAY_BASE = 0.1;
+        const RELATION_DECAY_ISOLATIONIST = 0.15;
+
+        const isolationistNationIds = new Set<string>();
+        const { data: coalitions } = await supabase.from('coalitions')
+            .select('nation_id, lead_party_id')
+            .eq('is_active', true);
+        if (coalitions && coalitions.length > 0) {
+            const leadIds = coalitions.map(c => c.lead_party_id);
+            const { data: leadFactions } = await supabase.from('factions')
+                .select('id, nation_id, leader_negative_traits')
+                .in('id', leadIds);
+            if (leadFactions) {
+                for (const lf of leadFactions) {
+                    const neg: string[] = lf.leader_negative_traits || [];
+                    if (neg.includes('isolationist')) {
+                        isolationistNationIds.add(lf.nation_id);
+                    }
+                }
+            }
+        }
+
+        const { data: allRelations } = await supabase.from('diplomatic_relations')
+            .select('id, nation_a_id, nation_b_id, relation_score');
+        if (allRelations && allRelations.length > 0) {
+            let decayUpdates = 0;
+            for (const rel of allRelations) {
+                const score = Number(rel.relation_score || 0);
+                if (score === 0) continue;
+
+                const hasIsolationist = isolationistNationIds.has(rel.nation_a_id) || isolationistNationIds.has(rel.nation_b_id);
+                const decayRate = hasIsolationist ? RELATION_DECAY_ISOLATIONIST : RELATION_DECAY_BASE;
+
+                let newScore: number;
+                if (score > 0) {
+                    newScore = Math.max(0, score - decayRate);
+                } else {
+                    newScore = Math.min(0, score + decayRate);
+                }
+                newScore = Math.round(newScore);
+
+                if (newScore !== score) {
+                    await supabase.from('diplomatic_relations')
+                        .update({ relation_score: newScore })
+                        .eq('id', rel.id);
+                    decayUpdates++;
+                }
+            }
+            if (decayUpdates > 0) {
+                console.log(`[advanceTick] Diplomatic relations decay: updated ${decayUpdates} relations`);
+            }
+        }
+    } catch (relDecayErr) {
+        console.error('[advanceTick] Diplomatic relations decay failed (non-fatal):', relDecayErr);
+    }
+
     // 4. Process each nation
     for (const nation of nationList) {
       try {
@@ -1043,52 +1425,86 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         initGameConfigForNation(nation);
 
         // Stat effects (from passed bills/active laws)
-        const effectResults = await processStatEffects(supabase, nation, newTick);
-        if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });
+        try {
+            const effectResults = await processStatEffects(supabase, nation, newTick);
+            if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });
+        } catch (statEffErr) {
+            console.error(`[advanceTick] Stat effects failed for ${nation.name} (non-fatal):`, statEffErr);
+        }
 
         // Ministry action effects
-        const ministryResults = await processMinistryActions(supabase, nation, newTick);
-        if (ministryResults.length > 0) {
-            summary.ministryActions = summary.ministryActions || [];
-            summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
+        try {
+            const ministryResults = await processMinistryActions(supabase, nation, newTick);
+            if (ministryResults.length > 0) {
+                summary.ministryActions = summary.ministryActions || [];
+                summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
+            }
+        } catch (minActErr) {
+            console.error(`[advanceTick] Ministry actions failed for ${nation.name} (non-fatal):`, minActErr);
+        }
+
+        // Energy ministry: process oil reserve build cycles
+        try {
+            const energyResult = await processEnergyOilBuildCycles(supabase, nation, newTick);
+            if (energyResult.processed > 0) {
+                summary.energyOil = summary.energyOil || [];
+                summary.energyOil.push({ nation: nation.name, ...energyResult });
+            }
+        } catch (energyErr) {
+            console.error(`[advanceTick] Energy oil build failed for ${nation.name} (non-fatal):`, energyErr);
         }
 
         // Apply GDP growth rate
-        await applyGdpGrowth(supabase, nation);
+        try {
+            await applyGdpGrowth(supabase, nation, newTick);
+        } catch (gdpErr) {
+            console.error(`[advanceTick] GDP growth failed for ${nation.name} (non-fatal):`, gdpErr);
+        }
 
         // Stat decay (equilibrium drift + erosion, modified by institution funding)
-        if (!_institutionConfig) {
-            const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
-            _institutionConfig = icRows || [];
-        }
-        // Build institution funding map for stat decay modification
-        const { data: _fundingRows } = await supabase.from('budget_item_allocations')
-            .select('item_id, item_type, allocation_amount, needed_amount')
-            .eq('nation_id', nation.id)
-            .eq('item_type', 'institution')
-            .order('created_at', { ascending: true });
-        const statInstMap = buildStatInstitutionMap(_institutionConfig, _fundingRows);
-        const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
-        const decayResults = await processStatDecay(supabase, nation, statInstMap, policyDecayAdj);
-        if (decayResults.length > 0) {
-            summary.decay = summary.decay || [];
-            summary.decay.push({ nation: nation.name, effects: decayResults });
+        try {
+            if (!_institutionConfig) {
+                const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
+                _institutionConfig = icRows || [];
+            }
+            const { data: _fundingRows } = await supabase.from('budget_item_allocations')
+                .select('item_id, item_type, allocation_amount, needed_amount')
+                .eq('nation_id', nation.id)
+                .eq('item_type', 'institution')
+                .order('created_at', { ascending: true });
+            const statInstMap = buildStatInstitutionMap(_institutionConfig, _fundingRows);
+            const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
+            const decayResults = await processStatDecay(supabase, nation, statInstMap, policyDecayAdj);
+            if (decayResults.length > 0) {
+                summary.decay = summary.decay || [];
+                summary.decay.push({ nation: nation.name, effects: decayResults });
+            }
+        } catch (decayErr) {
+            console.error(`[advanceTick] Stat decay failed for ${nation.name} (non-fatal):`, decayErr);
         }
 
         // Stat connections (threshold-triggered ripple effects)
-        if (!_statConnections) {
-            const { data: scRows } = await supabase.from('stat_connections').select('*').eq('enabled', true);
-            _statConnections = scRows || [];
-        }
-        const connResults = await processStatConnections(supabase, nation, newTick, _statConnections);
-        if (connResults.length > 0) {
-            summary.statConnections = summary.statConnections || [];
-            summary.statConnections.push({ nation: nation.name, effects: connResults });
+        try {
+            if (!_statConnections) {
+                const { data: scRows } = await supabase.from('stat_connections').select('*').eq('enabled', true);
+                _statConnections = scRows || [];
+            }
+            const connResults = await processStatConnections(supabase, nation, newTick, _statConnections);
+            if (connResults.length > 0) {
+                summary.statConnections = summary.statConnections || [];
+                summary.statConnections.push({ nation: nation.name, effects: connResults });
+            }
+        } catch (connErr) {
+            console.error(`[advanceTick] Stat connections failed for ${nation.name} (non-fatal):`, connErr);
         }
 
         // Ongoing costs (tracking only — accumulated per-policy, does not modify debt)
-        const costResult = await processOngoingCosts(supabase, nation, newTick);
-        if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
+        try {
+            const costResult = await processOngoingCosts(supabase, nation, newTick);
+            if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
+        } catch (costErr) {
+            console.error(`[advanceTick] Ongoing costs failed for ${nation.name} (non-fatal):`, costErr);
+        }
 
         // Budget deficit → debt accumulation (surplus pays down debt, deficit adds to it)
         try {
@@ -1124,32 +1540,160 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // PM trait effects
-        await processPMTraitEffects(supabase, nation, newTick);
+        try {
+            await processPMTraitEffects(supabase, nation, newTick);
+        } catch (pmTraitErr) {
+            console.error(`[advanceTick] PM trait effects failed for ${nation.name} (non-fatal):`, pmTraitErr);
+        }
+
+        // Timed momentum effects (e.g. State Media Control +2 momentum/tick for governing parties)
+        try {
+            const effects = Array.isArray(nation.timed_momentum_effects) ? nation.timed_momentum_effects : [];
+            if (effects.length > 0) {
+                // Decrement remaining_ticks FIRST to prevent double-fire if RPC calls fail
+                const updated = effects
+                    .map(e => ({ ...e, remaining_ticks: e.remaining_ticks - 1 }))
+                    .filter(e => e.remaining_ticks >= 0);
+                const afterCleanup = updated.filter(e => e.remaining_ticks > 0);
+                await supabase.from('nations').update({ timed_momentum_effects: afterCleanup }).eq('id', nation.id);
+                nation.timed_momentum_effects = afterCleanup;
+
+                // Now apply momentum boosts for this tick (using pre-decrement values)
+                for (const eff of effects) {
+                    if (eff.remaining_ticks > 0 && Array.isArray(eff.party_ids)) {
+                        for (const partyId of eff.party_ids) {
+                            await supabase.rpc('adjust_momentum', {
+                                p_faction_id: partyId,
+                                p_delta: eff.delta_per_tick,
+                                p_label: eff.source || 'timed_effect',
+                                p_tick: newTick
+                            });
+                        }
+                    }
+                }
+            }
+        } catch (timedMomErr) {
+            console.error(`[advanceTick] Timed momentum effects failed for ${nation.name} (non-fatal):`, timedMomErr);
+        }
+
+        // Protest resolution (resolve protests that have been in 'resolving' for 1+ ticks)
+        try {
+            const { data: resolvingProtests } = await supabase
+                .from('protest_log')
+                .select('*')
+                .eq('nation_id', nation.id)
+                .eq('status', 'resolving')
+                .lt('tick_called', newTick);
+            if (resolvingProtests && resolvingProtests.length > 0) {
+                summary.protests = summary.protests || [];
+                for (const protest of resolvingProtests) {
+                    try {
+                        const result = await resolveProtest(supabase, protest, nation, newTick);
+                        summary.protests.push({ nation: nation.name, protestId: protest.id, ...result });
+                    } catch (prErr) {
+                        console.error(`[advanceTick] resolveProtest failed for protest ${protest.id} in ${nation.name} (non-fatal):`, prErr);
+                    }
+                }
+            }
+        } catch (protestErr) {
+            console.error(`[advanceTick] Protest resolution failed for ${nation.name} (non-fatal):`, protestErr);
+        }
 
         // Elections (democracy only)
-        const electionResults = await processElections(supabase, nation, newTick);
-        if (electionResults.length > 0) {
-            summary.elections = summary.elections || [];
-            summary.elections.push({ nation: nation.name, elections: electionResults });
+        try {
+            const electionResults = await processElections(supabase, nation, newTick);
+            if (electionResults.length > 0) {
+                summary.elections = summary.elections || [];
+                summary.elections.push({ nation: nation.name, elections: electionResults });
+            }
+        } catch (electionErr) {
+            console.error(`[advanceTick] Elections failed for ${nation.name} (non-fatal):`, electionErr);
         }
 
         // Government vacancy penalties (democracy only)
-        const vacancyResult = await processGovernmentVacancy(supabase, nation, newTick);
-        if (vacancyResult) {
-            summary.vacancies = summary.vacancies || [];
-            summary.vacancies.push(vacancyResult);
+        try {
+            const vacancyResult = await processGovernmentVacancy(supabase, nation, newTick);
+            if (vacancyResult) {
+                summary.vacancies = summary.vacancies || [];
+                summary.vacancies.push(vacancyResult);
+            }
+        } catch (vacancyErr) {
+            console.error(`[advanceTick] Government vacancy failed for ${nation.name} (non-fatal):`, vacancyErr);
+        }
+
+        // Safety net: ensure every nation with a government has an active administration record
+        try {
+                const { data: activeAdmin } = await supabase.from('administrations')
+                    .select('id').eq('nation_id', nation.id).is('ended_at_tick', null).limit(1).maybeSingle();
+                if (!activeAdmin) {
+                    const { data: hog } = await supabase.from('head_of_government')
+                        .select('first_name, last_name, faction_id, appointed_tick')
+                        .eq('nation_id', nation.id).eq('active', true).maybeSingle();
+                    if (hog) {
+                        const { data: shardDate } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                        await supabase.from('administrations').insert({
+                            nation_id: nation.id,
+                            admin_name: (hog.last_name || 'Interim') + ' Administration',
+                            head_of_state: (hog.first_name || '') + ' ' + (hog.last_name || ''),
+                            government_type: nation.government_type || 'Parliamentary Democracy',
+                            started_at_tick: hog.appointed_tick || newTick,
+                            started_at_date: shardDate?.current_date || '',
+                            approval_at_start: Number(nation.gov_approval ?? 50),
+                            pm_party_id: hog.faction_id
+                        });
+                        console.log(`[advanceTick] Safety net: created missing administration for ${nation.name} (${hog.last_name} Administration)`);
+                    }
+                }
+        } catch (adminSafetyErr) {
+            console.error(`[advanceTick] Admin safety net failed for ${nation.name} (non-fatal):`, adminSafetyErr);
+        }
+
+        // Caucus system: activate/deactivate internal factions based on seat share
+        try {
+            await evaluateCaucusActivation(supabase, nation.id, GAME_CONFIG.TOTAL_SEATS);
+            await decayCaucusRelationships(supabase, nation.id, newTick);
+        } catch (caucusErr) {
+            console.error(`[advanceTick] Caucus processing failed for ${nation.name} (non-fatal):`, caucusErr);
         }
 
         // Check for early majority on active floor bills (lock outcome + set grace tick)
-        const earlyResults = await checkEarlyMajority(supabase, nation.id);
-        if (earlyResults.length > 0) {
-            summary.earlyMajority = summary.earlyMajority || [];
-            summary.earlyMajority.push({ nation: nation.name, bills: earlyResults });
+        try {
+            const earlyResults = await checkEarlyMajority(supabase, nation.id);
+            if (earlyResults.length > 0) {
+                summary.earlyMajority = summary.earlyMajority || [];
+                summary.earlyMajority.push({ nation: nation.name, bills: earlyResults });
+            }
+        } catch (earlyErr) {
+            console.error(`[advanceTick] checkEarlyMajority failed for ${nation.name} (non-fatal):`, earlyErr);
         }
 
         // Resolve expired votes (includes early-locked bills whose grace tick ended)
-        const resolutions = await resolveExpiredVotes(supabase, nation.id);
-        if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
+        let resolutions = [];
+        try {
+            resolutions = await resolveExpiredVotes(supabase, nation.id);
+            if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
+        } catch (resolveErr) {
+            console.error(`[advanceTick] resolveExpiredVotes failed for ${nation.name} (non-fatal):`, resolveErr);
+        }
+
+        // Safety net: catch any floor bills that resolveExpiredVotes missed
+        // (e.g. due to complex query failure or thrown error). Uses simple queries per-bill.
+        try {
+            const stuckResults = await resolveStuckFloorBills(supabase, nation.id);
+            if (stuckResults.length > 0) {
+                summary.resolutions.push({ nation: nation.name, bills: stuckResults, safetyNet: true });
+            }
+        } catch (stuckErr) {
+            console.error(`[advanceTick] resolveStuckFloorBills failed for ${nation.name} (non-fatal):`, stuckErr);
+        }
+
+        // Safety net: activate trade agreements where both ratification bills passed
+        // but the negotiation is still stuck at 'ratification' (same-tick race condition)
+        try {
+            await resolveStuckRatifications(supabase, nation.id);
+        } catch (ratErr) {
+            console.error(`[advanceTick] resolveStuckRatifications failed for ${nation.name} (non-fatal):`, ratErr);
+        }
 
         // ── Impeachment processing (Presidential systems) ──
         if (isPresidentialRepublic(nation)) {
@@ -1171,6 +1715,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     }).eq('id', cb.id);
                     if (cb.impeachment_id) {
                         await supabase.from('impeachment_proceedings').update({ phase: 'motion_floor' }).eq('id', cb.impeachment_id);
+                    }
+                    // Calculate caucus dispositions at floor entry so players can see/whip during voting
+                    try {
+                        const { data: arts } = await supabase.from('bill_articles').select('*, policies(*)').eq('bill_id', cb.id);
+                        await calculateCaucusDispositions(supabase, cb.id, nation.id, arts || []);
+                        await calculateCaucusVoteAdjustment(supabase, cb.id);
+                    } catch (caucusErr) {
+                        console.error(`[Impeachment] Caucus disposition calc failed for ${cb.id} (non-fatal):`, caucusErr);
                     }
                     console.log(`[Impeachment] Motion ${cb.id} auto-transitioned from committee to floor`);
                 }
@@ -1219,8 +1771,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         removal_reason: 'impeached'
                     }).eq('id', proc.president_id);
 
-                    // President's party takes -10 approval
-                    await adjustMomentumAll(supabase, nation.id, president.faction_id, -10, 'impeachment:convicted');
+                    // President's party takes massive momentum hit
+                    await adjustFactionMomentum(supabase, president.faction_id, nation.id, -5, { source: 'impeachment:convicted', tick: newTick });
 
                     // Stability -3, international_reputation -3
                     const newStab = Math.max(0, Math.round(Number(nation.stability || 50) - 3));
@@ -1353,13 +1905,58 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Ideology shifts failed for ${nation.name} (non-fatal):`, ideoErr);
         }
 
+        // Natural ideology decay toward center (extremism erodes over time)
+        try {
+            await processIdeologyDecay(supabase, nation.id, newTick);
+        } catch (decayErr) {
+            console.error(`[advanceTick] Ideology decay failed for ${nation.name} (non-fatal):`, decayErr);
+        }
+
         // Purge approval decay (autocracy scapegoat mechanic)
         try {
-            if (isAutocracy(nation)) {
-                await processPurgeDecay(supabase, nation.id, newTick);
-            }
+            await processPurgeDecay(supabase, nation.id, newTick);
         } catch (purgeErr) {
             console.error(`[advanceTick] Purge decay failed for ${nation.name} (non-fatal):`, purgeErr);
+        }
+
+        // Inactivity seat drain + auto-disband
+        // 12-17 ticks inactive: lose ~20% of seats per tick (min 1)
+        // 18+ ticks inactive: auto-disband (seats → 0, nation_id → null)
+        try {
+            const { data: allParties } = await supabase
+                .from('factions')
+                .select('id, faction_name, seats, last_seen_tick, founded_tick, abandoned_at')
+                .eq('nation_id', nation.id)
+                .eq('faction_type', 'party')
+                .is('abandoned_at', null);
+
+            for (const party of (allParties || [])) {
+                const ref = party.last_seen_tick ?? party.founded_tick ?? 0;
+                const ticksInactive = newTick - ref;
+
+                if (ticksInactive >= 18) {
+                    // Auto-disband: full cleanup via existing disbandParty()
+                    try {
+                        await disbandParty(supabase, nation.id, party.id, newTick);
+                        console.log(`[Inactivity] Auto-disbanded ${party.faction_name} in ${nation.name} (${ticksInactive} ticks inactive)`);
+                    } catch (disbandErr) {
+                        console.error(`[Inactivity] Auto-disband failed for ${party.faction_name}: ${disbandErr.message}`);
+                    }
+                } else if (ticksInactive >= 12 && (party.seats || 0) > 0) {
+                    // Seat drain: lose 20% of seats per tick (minimum 1)
+                    const currentSeats = party.seats || 0;
+                    const seatsLost = Math.max(1, Math.floor(currentSeats * 0.2));
+                    const newSeats = Math.max(0, currentSeats - seatsLost);
+                    const { error: drainErr } = await supabase.from('factions').update({ seats: newSeats }).eq('id', party.id);
+                    if (drainErr) {
+                        console.error(`[Inactivity] Seat drain failed for ${party.faction_name}: ${drainErr.message}`);
+                    } else {
+                        console.log(`[Inactivity] ${party.faction_name} in ${nation.name}: ${currentSeats} → ${newSeats} seats (${ticksInactive} ticks inactive, -${seatsLost})`);
+                    }
+                }
+            }
+        } catch (inactErr) {
+            console.error(`[advanceTick] Inactivity processing failed for ${nation.name} (non-fatal):`, inactErr);
         }
 
         // Seat rebalancing: if factions were disbanded and seats are vacant,
@@ -1433,70 +2030,53 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Gov approval calc failed for ${nation.name} (non-fatal):`, govAppErr);
         }
 
-        // Three-pillar voter preference recalculation
+        // Layer 2b: Government collapse check (≤5% approval → cascading penalties, 0% → dissolve + snap election)
         try {
-            await calculateThreePillarPreferences(supabase, nation, newTick);
-        } catch (pillarErr) {
-            console.error(`[advanceTick] Three-pillar prefs failed for ${nation.name} (non-fatal):`, pillarErr);
-        }
-
-        // Autocracy-specific per-tick processing (loyalty, pillars, stewards, standing, regime health, etc.)
-        if (isAutocracy(nation)) {
-            // Expire pending loyalty demands
-            try { await processLoyaltyDemandExpiry(supabase, nation, newTick); }
-            catch (e) { console.error(`[advanceTick] Loyalty demand expiry failed for ${nation.name} (non-fatal):`, e); }
-
-            // Faction loyalty
-            try { await processLoyaltyTick(supabase, nation); }
-            catch (e) { console.error(`[advanceTick] Loyalty tick failed for ${nation.name} (non-fatal):`, e); }
-
-            // Regime pillars decay & bonus
-            try { await processRegimePillars(supabase, nation); }
-            catch (e) { console.error(`[advanceTick] Regime pillars failed for ${nation.name} (non-fatal):`, e); }
-
-            // Steward stats tick
-            try { await processStewardTick(supabase, nation); }
-            catch (e) { console.error(`[advanceTick] Steward tick failed for ${nation.name} (non-fatal):`, e); }
-
-            // Standing relevance decay
-            try { await processStandingTick(supabase, nation, newTick); }
-            catch (e) { console.error(`[advanceTick] Standing tick failed for ${nation.name} (non-fatal):`, e); }
-
-            // Regime health tick
-            try { await processRegimeHealthTick(supabase, nation, newTick); }
-            catch (e) { console.error(`[advanceTick] Regime health failed for ${nation.name} (non-fatal):`, e); }
-
-            // Unaligned seat pool regeneration
-            try { await processUnalignedPoolTick(supabase, nation, newTick); }
-            catch (e) { console.error(`[advanceTick] Unaligned pool failed for ${nation.name} (non-fatal):`, e); }
-
-            // Secret coalition detection
-            try { await processCoalitionDetection(supabase, nation, newTick); }
-            catch (e) { console.error(`[advanceTick] Coalition detection failed for ${nation.name} (non-fatal):`, e); }
-        }
-
-        // Auto-resolve shakeups that are 1+ ticks old
-        try {
-            if (isAutocracy(nation)) {
-                await autoResolveStaleShakeups(supabase, nation.id, newTick);
+            const collapseResult = await processGovernmentCollapseCheck(supabase, nation, newTick);
+            if (collapseResult) {
+                summary.collapses = summary.collapses || [];
+                summary.collapses.push({ nation: nation.name, ...collapseResult });
+                if (collapseResult.collapsed) {
+                    console.log(`[advanceTick] Government COLLAPSED in ${nation.name} — snap election called`);
+                }
             }
-        } catch (shakeupErr) {
-            console.error(`[advanceTick] Shakeup auto-resolve failed for ${nation.name} (non-fatal):`, shakeupErr);
+        } catch (collapseErr) {
+            console.error(`[advanceTick] Gov collapse check failed for ${nation.name} (non-fatal):`, collapseErr);
+        }
+
+        // Surplus/deficit connectors (require budget calculation, can't be stat_connections rows)
+        try {
+            await processSurplusConnectors(supabase, nation);
+        } catch (connErr) {
+            console.error(`[advanceTick] Surplus connectors failed for ${nation.name} (non-fatal):`, connErr);
+        }
+
+        // Tariff → relations penalty (tariffs > 25% degrade relations with all nations)
+        try {
+            await processTariffRelationsPenalty(supabase, nation);
+        } catch (tariffErr) {
+            console.error(`[advanceTick] Tariff relations penalty failed for ${nation.name} (non-fatal):`, tariffErr);
+        }
+
+        // Credit lockout auto-clear: if credit has recovered above threshold, unlock
+        if (nation.credit_locked_out && Number(nation.credit ?? 0) > 5) {
+            await supabase.from('nations').update({ credit_locked_out: false }).eq('id', nation.id);
+            nation.credit_locked_out = false;
         }
 
         // Re-fetch nation with post-effect values for remaining processors
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (freshNation) Object.assign(nation, freshNation);
 
-        // Democratic revolution (autocracy only)
-        try {
-            const revolutionResult = await processRevolution(supabase, nation, newTick);
-            if (revolutionResult) {
-                summary.revolutions = summary.revolutions || [];
-                summary.revolutions.push(revolutionResult);
+        // Electoral standing calculator: 3-pillar (Governance + Momentum + Ideology)
+        // Runs every 3rd tick to reduce compute load — standings don't need per-tick precision
+        // Also runs if standings are stale (last_updated_tick is more than 3 ticks old)
+        if (newTick % 3 === 0 || newTick <= 185) {
+            try {
+                await tickElectorate(supabase, nation, newTick);
+            } catch (electorateErr) {
+                console.error(`[advanceTick] Electoral standing calc failed for ${nation.name} (non-fatal):`, electorateErr);
             }
-        } catch (revErr) {
-            console.error(`[advanceTick] Revolution processing failed for ${nation.name} (non-fatal):`, revErr);
         }
 
         // Random events
@@ -1505,17 +2085,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
         } catch (eventErr) {
             console.error(`[advanceTick] Random events failed for ${nation.name} (non-fatal):`, eventErr);
-        }
-
-        // Process active fundraiser promises
-        try {
-            const promiseResults = await processPromiseTick(supabase, nation, newTick);
-            if (promiseResults.length > 0) {
-                summary.promises = summary.promises || [];
-                summary.promises.push({ nation: nation.name, promises: promiseResults });
-            }
-        } catch (promiseErr) {
-            console.error(`[advanceTick] Promise processing failed for ${nation.name} (non-fatal):`, promiseErr);
         }
 
 
@@ -1553,149 +2122,48 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // ── Succession helper: updates HOS, syncs nation object, logs action ──
+        // Random replacement for head of state succession.
         async function handleStrongmanSuccession(
             supabase: any, nation: any, hosName: string, hosAge: number, newTick: number
         ) {
-            const FIRST = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
-            const LAST = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
-            const randFirst = () => FIRST[Math.floor(Math.random() * FIRST.length)];
-            const randLast = () => LAST[Math.floor(Math.random() * LAST.length)];
+            // Random replacement for head of state death — use nation-specific name pool
+            const { firstNames: FIRST, lastNames: LAST } = getNationNames(nation.name);
+            const newFirst = FIRST[Math.floor(Math.random() * FIRST.length)];
+            const newLast = LAST[Math.floor(Math.random() * LAST.length)];
+            const newAge = 45 + Math.floor(Math.random() * 16);
+            const newName = `${newFirst} ${newLast}`;
 
-            // Check for chosen successor
-            const { data: chosenSuccessor } = await supabase.from('stewards')
-                .select('id, faction_id, first_name, last_name, age, pillar_key, steward_type, succession_strength')
-                .eq('nation_id', nation.id).eq('is_chosen_successor', true).eq('is_alive', true)
-                .maybeSingle();
+            await supabase.from('nations').update({
+                head_of_state_first_name: newFirst, head_of_state_last_name: newLast,
+                head_of_state_age: newAge,
+                successor_cooldown_end_tick: null, successor_is_family_member: false,
+            }).eq('id', nation.id);
+            nation.head_of_state_first_name = newFirst;
+            nation.head_of_state_last_name = newLast;
+            nation.head_of_state_age = newAge;
 
-            if (chosenSuccessor) {
-                // === CLEAN SUCCESSION ===
-                const successorName = `${chosenSuccessor.first_name} ${chosenSuccessor.last_name}`;
-                console.log(`[LeaderAging] Clean succession: ${successorName} takes power`);
-
-                await supabase.from('nations').update({
-                    head_of_state_first_name: chosenSuccessor.first_name,
-                    head_of_state_last_name: chosenSuccessor.last_name,
-                    head_of_state_age: chosenSuccessor.age,
-                    ruling_faction_id: chosenSuccessor.faction_id,
-                    successor_cooldown_end_tick: null, successor_is_family_member: false,
-                }).eq('id', nation.id);
-                nation.head_of_state_first_name = chosenSuccessor.first_name;
-                nation.head_of_state_last_name = chosenSuccessor.last_name;
-                nation.head_of_state_age = chosenSuccessor.age;
-                nation.ruling_faction_id = chosenSuccessor.faction_id;
-
-                // Retire old steward, reset coup readiness
-                await supabase.from('stewards').update({
-                    is_chosen_successor: false, succession_strength: 0,
-                    successor_appointed_tick: null, is_alive: false, died_at_tick: newTick,
-                }).eq('id', chosenSuccessor.id);
-                await supabase.from('stewards').update({ coup_readiness: 0 })
-                    .eq('nation_id', nation.id).eq('is_alive', true);
-
-                // Loyalty: new ruler -5, others -15
-                const { data: factions } = await supabase.from('factions')
-                    .select('id, loyalty').eq('nation_id', nation.id).eq('faction_type', 'party');
-                for (const fac of (factions || [])) {
-                    const drop = fac.id === chosenSuccessor.faction_id ? 5 : 15;
-                    await supabase.from('factions').update({
-                        loyalty: Math.max(0, (fac.loyalty ?? 50) - drop)
-                    }).eq('id', fac.id);
-                }
-
-                // Generate replacement steward
-                const stewardType = PILLAR_TO_STEWARD_TYPE[chosenSuccessor.pillar_key] || 'technocrat';
-                await supabase.from('stewards').insert({
-                    nation_id: nation.id, faction_id: chosenSuccessor.faction_id,
-                    pillar_key: chosenSuccessor.pillar_key, steward_type: stewardType,
-                    first_name: randFirst(), last_name: randLast(),
-                    age: 40 + Math.floor(Math.random() * 16),
-                    standing: 40, power_base: 30, true_loyalty: 50, estimated_loyalty: 55,
-                    personal_wealth: 0, exit_readiness: 0, coup_readiness: 0,
-                    is_alive: true, is_chosen_successor: false, succession_strength: 0,
-                    created_at_tick: newTick,
-                });
-
-                await supabase.from('campaign_actions').insert({
-                    party_id: chosenSuccessor.faction_id, nation_id: nation.id,
-                    action_type: 'clean_succession', tick_performed: newTick,
-                    result: { deceased_name: hosName, deceased_age: hosAge,
-                        successor_name: successorName, successor_faction_id: chosenSuccessor.faction_id,
-                        succession_strength: chosenSuccessor.succession_strength ?? 0, cause: 'natural_causes' },
-                });
-                return { type: 'clean_succession', deceased: hosName, deceasedAge: hosAge,
-                    successor: successorName, successorAge: chosenSuccessor.age };
-
-            } else if (nation.successor_is_family_member) {
-                // === FAMILY MEMBER SUCCESSION ===
-                console.log(`[LeaderAging] Family succession in ${nation.name}`);
-                const famFirst = randFirst();
-                const famLast = nation.head_of_state_last_name || 'Unknown';
-                const famAge = 30 + Math.floor(Math.random() * 16);
-                const famName = `${famFirst} ${famLast}`;
-
-                await supabase.from('nations').update({
-                    head_of_state_first_name: famFirst, head_of_state_last_name: famLast,
-                    head_of_state_age: famAge,
-                    successor_cooldown_end_tick: null, successor_is_family_member: false,
-                }).eq('id', nation.id);
-                nation.head_of_state_first_name = famFirst;
-                nation.head_of_state_last_name = famLast;
-                nation.head_of_state_age = famAge;
-
-                await supabase.from('stewards').update({ coup_readiness: 0 })
-                    .eq('nation_id', nation.id).eq('is_alive', true);
-
-                const { data: factions } = await supabase.from('factions')
-                    .select('id, loyalty').eq('nation_id', nation.id).eq('faction_type', 'party');
-                for (const fac of (factions || [])) {
-                    await supabase.from('factions').update({
-                        loyalty: Math.max(0, (fac.loyalty ?? 50) - 5)
-                    }).eq('id', fac.id);
-                }
-
-                await supabase.from('campaign_actions').insert({
-                    party_id: nation.ruling_faction_id, nation_id: nation.id,
-                    action_type: 'family_succession', tick_performed: newTick,
-                    result: { deceased_name: hosName, deceased_age: hosAge,
-                        successor_name: famName, is_family_member: true, cause: 'natural_causes' },
-                });
-                return { type: 'family_succession', deceased: hosName, deceasedAge: hosAge,
-                    successor: famName, successorAge: famAge };
-
-            } else {
-                // === NO SUCCESSOR — random replacement ===
-                const newFirst = randFirst();
-                const newLast = randLast();
-                const newAge = 45 + Math.floor(Math.random() * 16);
-                const newName = `${newFirst} ${newLast}`;
-
-                await supabase.from('nations').update({
-                    head_of_state_first_name: newFirst, head_of_state_last_name: newLast,
-                    head_of_state_age: newAge,
-                    successor_cooldown_end_tick: null, successor_is_family_member: false,
-                }).eq('id', nation.id);
-                nation.head_of_state_first_name = newFirst;
-                nation.head_of_state_last_name = newLast;
-                nation.head_of_state_age = newAge;
-
-                await supabase.from('campaign_actions').insert({
-                    party_id: nation.ruling_faction_id, nation_id: nation.id,
-                    action_type: 'strongman_death', tick_performed: newTick,
-                    result: { deceased_name: hosName, deceased_age: hosAge,
-                        successor_name: newName, successor_age: newAge, cause: 'natural_causes' },
-                });
-                return { type: 'strongman_death', deceased: hosName, deceasedAge: hosAge,
-                    successor: newName, successorAge: newAge };
-            }
+            await supabase.from('campaign_actions').insert({
+                party_id: nation.ruling_faction_id, nation_id: nation.id,
+                action_type: 'strongman_death', tick_performed: newTick,
+                result: { deceased_name: hosName, deceased_age: hosAge,
+                    successor_name: newName, successor_age: newAge, cause: 'natural_causes' },
+            });
+            return { type: 'strongman_death', deceased: hosName, deceasedAge: hosAge,
+                successor: newName, successorAge: newAge };
         }
 
         // ── Leader aging (every January — tick % 12 === 0) ──
-        // All party leaders, stewards, and the strongman age 1 year.
+        // All party leaders and the strongman age 1 year.
         // The strongman also rolls health checks starting at age 70.
         if (newTick % 12 === 0) {
             try {
                 console.log(`[LeaderAging] ${nation.name}: tick=${newTick} (January — aging leaders)`);
                 const agingResults = [];
+
+                // RULE: Party leaders must NEVER be auto-generated. Leaders only change via:
+                //   1. Player action on party-leadership.html (manual appointment)
+                //   2. Retirement (cleared to NULL here) — player picks replacement
+                // Do NOT auto-fill vacant leader slots. The player must choose.
 
                 // 1. Age all party faction leaders +1
                 const { data: partyFactions } = await supabase
@@ -1830,62 +2298,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     }
                 }
 
-                // 2. Age all living stewards +1 (autocracy)
-                if (isAutocracy(nation)) {
-                    const { data: livingStews } = await supabase
-                        .from('stewards')
-                        .select('id, age, first_name, last_name, faction_id')
-                        .eq('nation_id', nation.id)
-                        .eq('is_alive', true);
-
-                    if (livingStews && livingStews.length > 0) {
-                        for (const s of livingStews) {
-                            const newAge = (s.age || 40) + 1;
-                            await supabase.from('stewards')
-                                .update({ age: newAge })
-                                .eq('id', s.id);
-                            agingResults.push({
-                                type: 'steward',
-                                name: `${s.first_name} ${s.last_name}`,
-                                stewardId: s.id,
-                                factionId: s.faction_id,
-                                newAge
-                            });
-                        }
-                    }
-
-                    // 3. Age the strongman (head of state) +1 and roll health checks
-                    const hosAge = Number(nation.head_of_state_age ?? 0);
-                    if (hosAge > 0) {
-                        const newHosAge = hosAge + 1;
-                        await supabase.from('nations')
-                            .update({ head_of_state_age: newHosAge })
-                            .eq('id', nation.id);
-                        nation.head_of_state_age = newHosAge;
-                        agingResults.push({
-                            type: 'strongman',
-                            name: `${nation.head_of_state_first_name || '?'} ${nation.head_of_state_last_name || '?'}`,
-                            newAge: newHosAge
-                        });
-
-                        // Strongman health check: escalating death chance from age 70 to 85.
-                        // Probability: 5% at 70, rising linearly to 100% at 85.
-                        // Formula: deathChance = 0.05 + (age - 70) * (0.95 / 15)
-                        if (newHosAge >= 70) {
-                            const deathChance = Math.min(1.0, 0.05 + (newHosAge - 70) * (0.95 / 15));
-                            const roll = Math.random();
-                            console.log(`[LeaderAging] Strongman health check for ${nation.name}: age=${newHosAge}, deathChance=${(deathChance * 100).toFixed(1)}%, roll=${roll.toFixed(3)}`);
-
-                            if (roll < deathChance) {
-                                const hosName = `${nation.head_of_state_first_name || 'The Strongman'} ${nation.head_of_state_last_name || ''}`.trim();
-                                console.log(`[LeaderAging] Strongman ${hosName} of ${nation.name} has died at age ${newHosAge}`);
-                                const result = await handleStrongmanSuccession(supabase, nation, hosName, newHosAge, newTick);
-                                agingResults.push(result);
-                            }
-                        }
-                    }
-                }
-
                 if (agingResults.length > 0) {
                     summary.leaderAging = summary.leaderAging || [];
                     summary.leaderAging.push({ nation: nation.name, results: agingResults });
@@ -1913,6 +2325,481 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] History snapshot FAILED for ${nation.id} (${nation.name}):`, snapErr);
         }
       }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4b. INTERNATIONAL PARTY ORGANISATIONS — cross-nation processing
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const { data: activeOrgs } = await supabase
+            .from('international_orgs')
+            .select('*')
+            .eq('is_active', true);
+
+        const ipoOrgs = activeOrgs || [];
+        if (ipoOrgs.length > 0) {
+            console.log(`[advanceTick] IPO: Processing ${ipoOrgs.length} active organisation(s)...`);
+        }
+
+        for (const org of ipoOrgs) {
+            try {
+                const charter = org.charter || {};
+                const leadership = charter.leadership || {};
+                const resources = charter.resources || {};
+
+                // Fetch active members (full members only, not observers)
+                const { data: members } = await supabase
+                    .from('ipo_members')
+                    .select('faction_id, role, factions:faction_id ( id, faction_name, nation_id, action_points, seats )')
+                    .eq('org_id', org.id)
+                    .eq('is_active', true);
+                const fullMembers = (members || []).filter(m => m.role === 'member');
+
+                // ── 1. VOTE AUTO-RESOLUTION ──
+                // Resolve open votes that have reached their closes_at_tick
+                const { data: expiredVotes } = await supabase
+                    .from('ipo_votes')
+                    .select('*')
+                    .eq('org_id', org.id)
+                    .eq('status', 'open')
+                    .lte('closes_at_tick', newTick);
+
+                for (const vote of (expiredVotes || [])) {
+                    try {
+                        // Fetch ballots for this vote
+                        const { data: ballots } = await supabase
+                            .from('ipo_ballots')
+                            .select('*')
+                            .eq('vote_id', vote.id);
+
+                        // Leadership elections use candidate-based voting (ballot = faction_id)
+                        if (vote.vote_type === 'leadership_election') {
+                            const voteTally = {};
+                            for (const b of (ballots || [])) {
+                                if (b.ballot && b.ballot !== 'abstain') {
+                                    voteTally[b.ballot] = (voteTally[b.ballot] || 0) + 1;
+                                }
+                            }
+                            // Find candidate with most votes (tie-break: current president wins ties)
+                            let winnerId = null;
+                            let maxVotes = 0;
+                            for (const [candidateId, count] of Object.entries(voteTally)) {
+                                if (count > maxVotes || (count === maxVotes && candidateId === org.president_id)) {
+                                    maxVotes = count;
+                                    winnerId = candidateId;
+                                }
+                            }
+                            // Fallback: if no votes cast, current president stays
+                            if (!winnerId) winnerId = org.president_id;
+
+                            const { error: presUpdateErr } = await supabase.from('international_orgs')
+                                .update({ president_id: winnerId, president_term_start_tick: newTick })
+                                .eq('id', org.id);
+                            if (presUpdateErr) console.error(`[advanceTick] IPO president update failed:`, presUpdateErr);
+
+                            const winnerMember = fullMembers.find(m => m.faction_id === winnerId);
+                            const winnerName = winnerMember?.factions?.faction_name || 'Unknown';
+                            const totalVotes = (ballots || []).length;
+
+                            await supabase.from('ipo_votes')
+                                .update({ status: 'passed', result: { tally: voteTally, winner: winnerId, total_ballots: totalVotes }, resolved_at_tick: newTick })
+                                .eq('id', vote.id);
+
+                            await supabase.from('ipo_chat').insert({
+                                org_id: org.id, faction_id: null, is_system: true,
+                                message_text: `Leadership Election Result: ${winnerName} elected president with ${maxVotes} vote${maxVotes !== 1 ? 's' : ''} (${totalVotes} total ballots cast).`,
+                                tick_posted: newTick
+                            });
+                            console.log(`[advanceTick] IPO ${org.name}: ${winnerName} elected president (${maxVotes}/${totalVotes} votes)`);
+                            continue; // skip standard yes/no resolution
+                        }
+
+                        const yes = (ballots || []).filter(b => b.ballot === 'yes').length;
+                        const no = (ballots || []).filter(b => b.ballot === 'no').length;
+                        const abstain = (ballots || []).filter(b => b.ballot === 'abstain').length;
+                        const totalEligible = fullMembers.length;
+                        const votePass = leadership.votePass || 'majority';
+
+                        let passed = false;
+                        if (totalEligible === 0) {
+                            passed = false; // No members = cannot pass
+                        } else if (votePass === 'unanimous') {
+                            passed = yes === totalEligible && no === 0;
+                        } else {
+                            passed = yes > no && (yes / totalEligible) > 0.5;
+                        }
+
+                        // Veto check
+                        const governance = charter.governance || {};
+                        if (passed && governance.vetoRight) {
+                            let vetoHolderId = null;
+                            if (governance.vetoRight === 'president') vetoHolderId = org.president_id;
+                            else if (governance.vetoRight === 'founding') vetoHolderId = org.founding_party_id;
+                            else if (governance.vetoRight === 'hq' && org.headquarters_nation_id) {
+                                const hqMember = fullMembers.find(m => m.factions?.nation_id === org.headquarters_nation_id);
+                                vetoHolderId = hqMember?.faction_id || null;
+                            }
+                            if (vetoHolderId) {
+                                const vetoBallot = (ballots || []).find(b => b.faction_id === vetoHolderId);
+                                if (vetoBallot && vetoBallot.ballot === 'no') passed = false;
+                            }
+                        }
+
+                        // Expulsion clause override
+                        if (vote.vote_type === 'expulsion' && totalEligible > 0 && charter.membership?.expulsionClause === 'unanimous') {
+                            passed = yes === totalEligible && no === 0;
+                        }
+
+                        const result = { yes, no, abstain, passed };
+                        const newStatus = passed ? 'passed' : 'failed';
+
+                        await supabase.from('ipo_votes')
+                            .update({ status: newStatus, result, resolved_at_tick: newTick })
+                            .eq('id', vote.id);
+
+                        // Apply effects for passed votes
+                        if (passed) {
+                            await applyIPOVoteEffect(supabase, org, vote, fullMembers, newTick);
+                        }
+
+                        // Reject membership invite if vote failed
+                        if (!passed && vote.vote_type === 'membership' && vote.meta?.invite_id) {
+                            await supabase.from('ipo_invitations')
+                                .update({ status: 'declined', responded_at_tick: newTick })
+                                .eq('id', vote.meta.invite_id);
+                        }
+
+                        const outcomeText = passed ? 'PASSED' : 'FAILED';
+                        await supabase.from('ipo_chat').insert({
+                            org_id: org.id, faction_id: null, is_system: true,
+                            message_text: `Vote "${vote.title}" auto-resolved: ${outcomeText} (${yes}Y / ${no}N / ${abstain}A).`,
+                            tick_posted: newTick
+                        });
+
+                        console.log(`[advanceTick] IPO vote "${vote.title}" auto-resolved: ${outcomeText}`);
+                    } catch (voteErr) {
+                        console.error(`[advanceTick] IPO vote resolution failed for vote ${vote.id}:`, voteErr);
+                    }
+                }
+
+                // ── 2. LEADERSHIP SUCCESSION ──
+                // Check if president's term has expired
+                const termTicks = (leadership.termYears || 2) * 12; // 12 ticks per year
+                const termEnd = (org.president_term_start_tick || 0) + termTicks;
+
+                if (newTick >= termEnd && fullMembers.length > 0) {
+                    let newPresidentId = null;
+                    const successionType = leadership.type || 'rotation';
+
+                    if (successionType === 'vote') {
+                        // Check if a leadership election vote is already open
+                        const { data: existingElection } = await supabase
+                            .from('ipo_votes')
+                            .select('id')
+                            .eq('org_id', org.id)
+                            .eq('vote_type', 'leadership_election')
+                            .eq('status', 'open')
+                            .limit(1);
+
+                        if (!existingElection || existingElection.length === 0) {
+                            // Create a leadership election vote — 3 ticks to vote
+                            const candidates = fullMembers.map(m => ({
+                                faction_id: m.faction_id,
+                                faction_name: m.factions?.faction_name || 'Unknown',
+                            }));
+                            const { error: electionInsertErr } = await supabase.from('ipo_votes').insert({
+                                org_id: org.id,
+                                title: 'Leadership Election — Choose Next President',
+                                vote_type: 'leadership_election',
+                                meta: { candidates },
+                                status: 'open',
+                                opened_at_tick: newTick,
+                                closes_at_tick: newTick + 3,
+                                proposed_by: org.president_id,
+                            });
+                            if (electionInsertErr) {
+                                console.error(`[advanceTick] IPO ${org.name}: failed to create election vote:`, electionInsertErr);
+                            } else {
+                                await supabase.from('ipo_chat').insert({
+                                    org_id: org.id, faction_id: null, is_system: true,
+                                    message_text: 'Presidential term has ended. A leadership election has been called — vote within 3 ticks.',
+                                    tick_posted: newTick,
+                                });
+                                console.log(`[advanceTick] IPO ${org.name}: leadership election opened`);
+                            }
+
+                            // Extend current president's term until election resolves
+                            await supabase.from('international_orgs')
+                                .update({ president_term_start_tick: newTick })
+                                .eq('id', org.id);
+                        }
+                        // Skip immediate succession — election will resolve via vote auto-resolution
+                    } else if (successionType === 'rotation') {
+                        // Rotate to next member (by join order / faction_id sort)
+                        const sortedMembers = [...fullMembers].sort((a, b) => a.faction_id.localeCompare(b.faction_id));
+                        const currentIdx = sortedMembers.findIndex(m => m.faction_id === org.president_id);
+                        const nextIdx = (currentIdx + 1) % sortedMembers.length;
+                        newPresidentId = sortedMembers[nextIdx].faction_id;
+                    } else if (successionType === 'most_seats') {
+                        // Member with the most parliamentary seats
+                        let maxSeats = -1;
+                        for (const m of fullMembers) {
+                            const seats = m.factions?.seats || 0;
+                            if (seats > maxSeats) {
+                                maxSeats = seats;
+                                newPresidentId = m.faction_id;
+                            }
+                        }
+                    } else if (successionType === 'random') {
+                        const idx = Math.floor(Math.random() * fullMembers.length);
+                        newPresidentId = fullMembers[idx].faction_id;
+                    }
+
+                    if (newPresidentId && newPresidentId !== org.president_id) {
+                        await supabase.from('international_orgs')
+                            .update({ president_id: newPresidentId, president_term_start_tick: newTick })
+                            .eq('id', org.id);
+
+                        const newPres = fullMembers.find(m => m.faction_id === newPresidentId);
+                        const presName = newPres?.factions?.faction_name || 'Unknown';
+                        await supabase.from('ipo_chat').insert({
+                            org_id: org.id, faction_id: null, is_system: true,
+                            message_text: `Leadership succession: ${presName} is now president (${successionType}).`,
+                            tick_posted: newTick
+                        });
+                        console.log(`[advanceTick] IPO ${org.name}: leadership succession → ${presName} (${successionType})`);
+                    } else if (newPresidentId === org.president_id) {
+                        // Same president re-elected / re-selected — reset term
+                        await supabase.from('international_orgs')
+                            .update({ president_term_start_tick: newTick })
+                            .eq('id', org.id);
+                    }
+                }
+
+                // ── 3. SOLIDARITY FUND QUARTERLY COLLECTION ──
+                // Every 3 ticks (quarterly), collect contributions from members
+                if (resources.solidarityFund?.enabled && newTick % 3 === 0) {
+                    const contribution = resources.solidarityFund.contributionPerQuarter || 1;
+                    let totalCollected = 0;
+
+                    for (const m of fullMembers) {
+                        // Deduct AP from faction
+                        const { data: deducted } = await supabase.rpc('deduct_ap', {
+                            p_faction_id: m.faction_id,
+                            p_cost: contribution
+                        });
+
+                        if (deducted !== null && deducted >= 0) {
+                            totalCollected += contribution;
+                            await supabase.from('ipo_fund_transactions').insert({
+                                org_id: org.id,
+                                faction_id: m.faction_id,
+                                transaction_type: 'contribution',
+                                amount: contribution,
+                                description: 'Quarterly solidarity fund contribution',
+                                tick: newTick
+                            });
+                            await supabase.from('ap_ledger').insert({ faction_id: m.faction_id, tick: newTick, delta: -contribution, reason: 'ipo_contribution', detail: org.name + ' solidarity fund' }).then(() => {});
+                        }
+                        // If deduction fails (insufficient AP), skip silently
+                    }
+
+                    if (totalCollected > 0) {
+                        const newBalance = (org.solidarity_fund_balance || 0) + totalCollected;
+                        await supabase.from('international_orgs')
+                            .update({ solidarity_fund_balance: newBalance })
+                            .eq('id', org.id);
+                        // Update local copy so HQ cost (section 4) reads the post-collection balance
+                        org.solidarity_fund_balance = newBalance;
+
+                        await supabase.from('ipo_chat').insert({
+                            org_id: org.id, faction_id: null, is_system: true,
+                            message_text: `Quarterly fund collection: ${totalCollected} AP collected from ${fullMembers.length} member(s).`,
+                            tick_posted: newTick
+                        });
+                    }
+                }
+
+                // ── 4. HQ AP COST ──
+                // If HQ is set, deduct 1 AP per tick from solidarity fund as upkeep
+                if (org.headquarters_nation_id && resources.solidarityFund?.enabled) {
+                    const hqCost = 1;
+                    const currentBalance = org.solidarity_fund_balance || 0;
+                    if (currentBalance >= hqCost) {
+                        await supabase.from('international_orgs')
+                            .update({ solidarity_fund_balance: currentBalance - hqCost })
+                            .eq('id', org.id);
+
+                        await supabase.from('ipo_fund_transactions').insert({
+                            org_id: org.id,
+                            faction_id: null,
+                            transaction_type: 'hq_cost',
+                            amount: -hqCost,
+                            description: 'Headquarters upkeep',
+                            tick: newTick
+                        });
+                    }
+                }
+
+                // ── 5. SYMPOSIUM RESOLUTION + COOLDOWN ──
+                // Decrement cooldown
+                if ((org.symposium_cooldown_remaining || 0) > 0) {
+                    await supabase.from('international_orgs')
+                        .update({ symposium_cooldown_remaining: org.symposium_cooldown_remaining - 1 })
+                        .eq('id', org.id);
+                }
+
+                // Check pending symposium
+                if (org.pending_symposium && org.pending_symposium.firesOnTick <= newTick) {
+                    const symp = org.pending_symposium;
+                    try {
+                        // Apply ideology shift to target nation
+                        const { data: targetNation } = await supabase
+                            .from('nations')
+                            .select('id, name, ideology')
+                            .eq('id', symp.targetNation)
+                            .single();
+
+                        if (targetNation) {
+                            const ideology = targetNation.ideology || {};
+                            const axis = symp.axis || 'economic';
+                            const direction = symp.direction || 'left';
+                            const shift = symp.ideologyShift || 3;
+
+                            // Map axis to ideology field
+                            const axisMap = {
+                                economic: 'economic',
+                                social: 'social',
+                                foreign: 'foreign_policy'
+                            };
+                            const field = axisMap[axis] || axis;
+                            const current = Number(ideology[field] ?? 50);
+                            const delta = direction === 'left' ? -shift : shift;
+                            ideology[field] = Math.max(0, Math.min(100, current + delta));
+
+                            await supabase.from('nations')
+                                .update({ ideology })
+                                .eq('id', targetNation.id);
+
+                            // Clear pending
+                            await supabase.from('international_orgs')
+                                .update({ pending_symposium: null })
+                                .eq('id', org.id);
+
+                            await supabase.from('ipo_chat').insert({
+                                org_id: org.id, faction_id: null, is_system: true,
+                                message_text: `Symposium effect applied: ${targetNation.name} ${axis} shifted ${direction} by ${shift}.`,
+                                tick_posted: newTick
+                            });
+
+                            console.log(`[advanceTick] IPO ${org.name}: symposium fired — ${targetNation.name} ${axis} ${direction} ${shift}`);
+                        } else {
+                            // Target nation not found — clear pending
+                            await supabase.from('international_orgs')
+                                .update({ pending_symposium: null })
+                                .eq('id', org.id);
+                        }
+                    } catch (sympErr) {
+                        console.error(`[advanceTick] IPO symposium failed for ${org.name}:`, sympErr);
+                    }
+                }
+
+                // ── 6. MEMBERSHIP INVITE EXPIRY ──
+                // Expire vote_pending invitations where the vote has already failed/been resolved
+                const { data: pendingInvites } = await supabase
+                    .from('ipo_invitations')
+                    .select('id, invited_faction_id')
+                    .eq('org_id', org.id)
+                    .eq('status', 'vote_pending');
+
+                for (const inv of (pendingInvites || [])) {
+                    // Check if there's a completed (non-open) membership vote for this invite
+                    const { data: relatedVotes } = await supabase
+                        .from('ipo_votes')
+                        .select('id, status')
+                        .eq('org_id', org.id)
+                        .eq('vote_type', 'membership')
+                        .neq('status', 'open')
+                        .contains('meta', { invite_id: inv.id });
+
+                    if (relatedVotes && relatedVotes.length > 0) {
+                        const vote = relatedVotes[0];
+                        if (vote.status === 'failed') {
+                            await supabase.from('ipo_invitations')
+                                .update({ status: 'declined', responded_at_tick: newTick })
+                                .eq('id', inv.id);
+                        }
+                        // 'passed' case already handled by applyIPOVoteEffect
+                    }
+                }
+
+            } catch (orgErr) {
+                console.error(`[advanceTick] IPO processing failed for org ${org.id} (${org.name}):`, orgErr);
+            }
+        }
+
+    } catch (ipoErr) {
+        console.error('[advanceTick] IPO processing failed (non-fatal):', ipoErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4c. BILATERAL ISSUES — modifier engine (runs before incidents)
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const issueResults = await processIssueTick(supabase, nationList, newTick);
+        if (issueResults.modifiersApplied > 0) {
+            console.log(`[advanceTick] Issues: ${issueResults.modifiersApplied} modifier effect(s) applied`);
+        }
+        if (issueResults.modifiersSpawned.length > 0) {
+            console.log(`[advanceTick] Issues: ${issueResults.modifiersSpawned.length} modifier(s) spawned`);
+        }
+        if (issueResults.modifiersExpired.length > 0) {
+            console.log(`[advanceTick] Issues: ${issueResults.modifiersExpired.length} modifier(s) expired`);
+        }
+        if (issueResults.escalations.length > 0) {
+            summary.issueEscalations = issueResults.escalations;
+            console.log(`[advanceTick] Issues: ${issueResults.escalations.length} issue(s) escalated to incidents`);
+        }
+        summary.issueResults = issueResults;
+    } catch (issueErr) {
+        console.error('[advanceTick] Issue processing failed (non-fatal):', issueErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4d. INCIDENTS — global trigger check (runs once per tick, not per-nation)
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const incidentResults = await processIncidentTriggers(supabase, nationList, newTick);
+        if (incidentResults.length > 0) {
+            summary.incidents = incidentResults;
+            console.log(`[advanceTick] Incidents: ${incidentResults.length} new incident(s) triggered`);
+        }
+
+        // Process active incidents: tick events + inaction penalties
+        const activeResults = await processActiveIncidents(supabase, nationList, newTick);
+        if (activeResults.tickEvents.length > 0 || activeResults.inactionPenalties.length > 0) {
+            summary.incidentTickEvents = activeResults.tickEvents;
+            summary.incidentInaction = activeResults.inactionPenalties;
+            console.log(`[advanceTick] Incidents: ${activeResults.tickEvents.length} tick event(s), ${activeResults.inactionPenalties.length} inaction penalty(ies)`);
+        }
+
+        // Process escalation, mediation, blowback, and resolution
+        const resolutionResults = await processIncidentResolutionPhase(supabase, nationList, newTick);
+        if (resolutionResults.escalations.length > 0) {
+            summary.incidentEscalations = resolutionResults.escalations;
+        }
+        if (resolutionResults.mediations.length > 0) {
+            summary.incidentMediations = resolutionResults.mediations;
+        }
+        if (resolutionResults.blowbacks.length > 0) {
+            summary.incidentBlowbacks = resolutionResults.blowbacks;
+        }
+        if (resolutionResults.resolutions.length > 0) {
+            summary.incidentResolutions = resolutionResults.resolutions;
+            console.log(`[advanceTick] Incidents: ${resolutionResults.resolutions.length} resolved`);
+        }
+    } catch (incidentErr) {
+        console.error('[advanceTick] Incident processing failed (non-fatal):', incidentErr);
     }
 
     // 5. Commit shard tick/date AFTER all nation processing completes.

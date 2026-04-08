@@ -24,14 +24,20 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatCurrency, assertRawEconomicValue } from './js/common.js';
-import './js/guide.js';
 import { escapeHtml } from './js/utils.js';
 import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
-import { calculateNationalBudget, applyTradeTariffOverride, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TAX_CONFIG, isPresidentialRepublic, isAutocracy, ISSUE_CATEGORY_STATS, formatStatName, deductAP, fetchActiveCoalition, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG, buildFundingPctMap, getInstFundingPct } from './js/game-common.js';
+import { GAME_CONFIG, deductAP } from './js/game/config.js';
+import { hasElectedPresident } from './js/game/government-types.js';
+import { fetchActiveCoalition } from './js/game/government-structure.js';
+import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TAX_CONFIG } from './js/game/budget.js';
+import { RAW_SCALING_DIVISORS, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS } from './js/game/diplomacy-constants.js';
+import { TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, formatSectorVolume } from './js/game/trade-constants.js';
+import { ISSUE_CATEGORY_STATS, buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
+import { formatStatName } from './js/game/political-actions.js';
+import { getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG } from './js/game/sovereign-default.js';
 
 // ==================== STATE ====================
 var previousTickData = null;
-var previousYearData = null;
 var currentTick = 0;
 var expenditureData = null;
 var expenditureDetails = null;
@@ -40,10 +46,19 @@ var tradeData = null;
 var aidData = null;  // { received: number, given: number, agreements: [...] }
 var currentNation = null;
 var allNations = null;
-var gameYear = 0;
 var activeTab = 'overview';
 var activeSector = 'fuel_energy';
 var tradeAgreements = null;
+
+// Single source of truth for capped tariff revenue (per tick, capped at 0.2% of GDP).
+// Consolidates the cap logic that was previously duplicated across Trade, Tariffs, and Budget tabs.
+function getCappedTariffRevenue(nation) {
+    if (!tradeData || !tradeData.summary) return 0;
+    var raw = Number(tradeData.summary.tariff_revenue) || 0;
+    if (raw <= 0) return 0;
+    var gdp = Number(nation.gdp ?? nation.GDP ?? 0);
+    return (gdp > 0) ? Math.min(raw, gdp * 0.002) : raw;
+}
 
 // Nation map colors for display
 var NATION_COLORS = {
@@ -58,7 +73,6 @@ var NATION_COLORS = {
 // ==================== TAXATION TAB STATE ====================
 var currentFaction = null;
 var taxConnections = [];
-var taxVoterBlocs = [];
 var taxAdminFunding = { allocated: 0, needed: 0, fundingPct: 0 };
 var taxRateChanges = {};  // { income_tax: 22, ... } — only keys that changed
 var originalRates = {};   // { income_tax: 18, corporate_tax: 24, sales_tax: 10 }
@@ -84,14 +98,12 @@ initPage('economy', async function(state) {
     currentFaction = state.faction;
     await loadPreviousTickData(nation.id);
     var results = await Promise.allSettled([
-        loadPreviousYearData(nation.id),
         loadExpenditureData(nation.id, nation),
         loadTradeData(nation.id),
         loadAllNationsData(),
         loadTradeAgreements(nation.id),
         loadAidData(nation.id),
         loadTaxConnections(),
-        loadTaxVoterBlocs(nation.id),
         loadTaxAdminFunding(nation),
         loadTaxPendingBills(nation.id),
         loadTaxHistory(nation.id),
@@ -106,17 +118,15 @@ initPage('economy', async function(state) {
 
 // ==================== PREVIOUS TICK DATA ====================
 async function loadPreviousTickData(nationId) {
-    var cacheKey = 'prev_tick_econ_' + nationId;
+    // Load current tick first so the cache key is correct
+    var res = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    if (!res.data) return;
+    currentTick = res.data.current_tick;
+
+    var cacheKey = 'prev_tick_econ_' + nationId + '_t' + currentTick;
     var cached = qCache(cacheKey);
     if (cached) { previousTickData = cached; return; }
 
-    var res = await _supabase.from('shard').select('current_tick, current_date').eq('name', 'Alpha Shard').single();
-    if (!res.data) return;
-
-    currentTick = res.data.current_tick;
-    if (res.data.current_date) {
-        gameYear = parseInt(res.data.current_date.split(', ')[1]) || 0;
-    }
     var previousTick = currentTick - 1;
     if (previousTick < 0) return;
 
@@ -140,60 +150,27 @@ async function loadPreviousTickData(nationId) {
 }
 
 // ==================== PREVIOUS YEAR DATA ====================
-async function loadPreviousYearData(nationId) {
-    var cacheKey = 'prev_year_econ_' + nationId;
-    var cached = qCache(cacheKey);
-    if (cached) { previousYearData = cached.data; currentTick = cached.tick; return; }
-
-    if (!currentTick) {
-        var res = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        if (!res.data) return;
-        currentTick = res.data.current_tick;
-    }
-
-    var previousYearTick = currentTick - GAME_CONFIG.TICKS_PER_YEAR;
-    if (previousYearTick < 0) return;
-
-    var histRes = await _supabase.from('nations_history')
-        .select('*').eq('nation_id', nationId).eq('tick', previousYearTick).limit(1);
-
-    if (histRes.data && histRes.data.length > 0) {
-        previousYearData = histRes.data[0];
-        qCacheSet(cacheKey, { data: previousYearData, tick: currentTick }, 5 * 60 * 1000);
-        return;
-    }
-
-    var fbRes = await _supabase.from('nations_history')
-        .select('*').eq('nation_id', nationId).lte('tick', previousYearTick)
-        .gte('tick', previousYearTick - 2)
-        .order('tick', { ascending: false }).limit(1);
-
-    if (fbRes.data && fbRes.data.length > 0) {
-        previousYearData = fbRes.data[0];
-        qCacheSet(cacheKey, { data: previousYearData, tick: currentTick }, 5 * 60 * 1000);
-    }
-}
-
-// ==================== EXPENDITURE DATA ====================
 async function loadExpenditureData(nationId, nation) {
-    var cacheKey = 'expenditure_data_' + nationId;
-    var cached = qCache(cacheKey);
-    if (cached) { expenditureData = cached.totals; expenditureDetails = cached.details; ministryFundingPcts = cached.fundingPcts || {}; return; }
+    // No caching — always compute fresh from config + allocations
+    // (admin config changes need to reflect immediately)
 
     var totals = {};
     var details = {};
 
     var res = await _supabase.from('active_laws')
-        .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat)')
-        .eq('nation_id', nationId);
+        .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat, policy_type)')
+        .eq('nation_id', nationId)
+        .eq('is_reversal', false);
 
     var yearStartTick = Math.floor(currentTick / GAME_CONFIG.TICKS_PER_YEAR) * GAME_CONFIG.TICKS_PER_YEAR;
+    var inflationMult = getInflationMultiplier(nation.inflation);
 
     for (var i = 0; i < (res.data || []).length; i++) {
         var law = res.data[i];
         if (law.is_reversal) continue;
         var policy = law.policies;
         if (!policy || !policy.fiscal_category) continue;
+        if (policy.policy_type === 'lever') continue; // Levers have no ongoing cost
 
         var cat = policy.fiscal_category;
         if (!totals[cat]) totals[cat] = 0;
@@ -215,6 +192,7 @@ async function loadExpenditureData(nationId, nation) {
             }
         }
 
+        policyCost *= inflationMult;
         totals[cat] += policyCost;
         if (policyCost > 0) {
             details[cat].push({ name: policy.policy_name, cost: policyCost, type: 'policy' });
@@ -243,6 +221,7 @@ async function loadExpenditureData(nationId, nation) {
             if (!fCat) continue;
             var baseVal = Number(cfg.base_cost_per_capita || 0);
             var instNeeded = cfg.scaling_type === 'gdp' ? (baseVal / 100) * gdp : baseVal * population;
+            instNeeded *= inflationMult;
             var instFundPct = getInstFundingPct(allocMap, cfg.id);
             var instCost = instNeeded * (instFundPct / 100);
             if (!catFundingSums[fCat]) catFundingSums[fCat] = { totalPct: 0, count: 0 };
@@ -271,7 +250,6 @@ async function loadExpenditureData(nationId, nation) {
 
     expenditureData = totals;
     expenditureDetails = details;
-    qCacheSet(cacheKey, { totals: totals, details: details, fundingPcts: ministryFundingPcts }, 2 * 60 * 1000);
 }
 
 function scaleCost(baseCost, scalingStat, nation) {
@@ -283,7 +261,7 @@ function scaleCost(baseCost, scalingStat, nation) {
 
 // ==================== TRADE DATA ====================
 async function loadTradeData(nationId) {
-    var cacheKey = 'trade_data_' + nationId;
+    var cacheKey = 'trade_data_' + nationId + '_t' + currentTick;
     var cached = qCache(cacheKey);
     if (cached) { tradeData = cached; return; }
 
@@ -401,7 +379,7 @@ async function loadTradeData(nationId) {
         }
         var tradeBonus = hasFTA ? 25 : hasRSC ? 20 : hasPTA ? 15 : 0;
         var diplomaticBonus = relScore * 0.3;
-        var proximityBonus = (prox / 100) * 20;
+        var proximityBonus = ((100 - prox) / 100) * 20;
         var embargoPenalty = hasEmbargo ? -40 : 0;
         var totalAffinity = Math.max(0, Math.min(100, 50 + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus));
         var breakdown = {
@@ -416,22 +394,24 @@ async function loadTradeData(nationId) {
             total: Math.round(totalAffinity * 10) / 10
         };
 
-        // Attach to existing trade partners
-        if (partners[nid]) {
-            partners[nid].affinityBreakdown = breakdown;
+        // Attach to existing trade partners, or create a zero-volume entry
+        // so all nations appear in the Trading Partners grid
+        if (!partners[nid]) {
+            partners[nid] = { name: nationNames[nid] || 'Unknown', exportsTo: {}, importsFrom: {}, totalExports: 0, totalImports: 0, affinity: 0 };
         }
+        partners[nid].affinityBreakdown = breakdown;
 
         // Collect all affinities for diagnostics
         allAffinities.push({ partnerId: nid, name: nationNames[nid] || 'Unknown', breakdown: breakdown });
     }
 
-    tradeData = { summary: summary, flows: flows, prevFlows: prevFlows, partners: partners, allAffinities: allAffinities };
+    tradeData = { summary: summary, flows: flows, prevFlows: prevFlows, partners: partners, allAffinities: allAffinities, nationNames: nationNames };
     qCacheSet(cacheKey, tradeData, 2 * 60 * 1000);
 }
 
 // ==================== ALL NATIONS DATA (NEW) ====================
 async function loadAllNationsData() {
-    var cacheKey = 'all_nations_econ';
+    var cacheKey = 'all_nations_econ_t' + currentTick;
     var cached = qCache(cacheKey);
     if (cached) { allNations = cached; return; }
 
@@ -539,6 +519,15 @@ function wireTabEvents(nation) {
             renderEconomyPage(nation);
         });
     });
+    if (activeTab === 'trade') {
+        document.querySelectorAll('.tft-row-clickable').forEach(function(row) {
+            row.addEventListener('click', function() {
+                activeSector = row.getAttribute('data-sector');
+                activeTab = 'sectors';
+                renderEconomyPage(nation);
+            });
+        });
+    }
     if (activeTab === 'sectors') {
         document.querySelectorAll('.sector-tab').forEach(function(tab) {
             tab.addEventListener('click', function() {
@@ -552,15 +541,49 @@ function wireTabEvents(nation) {
                 selectMinistryCategory(tab.getAttribute('data-category'));
             });
         });
-        document.querySelectorAll('.budget-line-clickable').forEach(function(line) {
-            line.addEventListener('click', function() {
-                selectMinistryCategory(line.getAttribute('data-category'));
-            });
-        });
     }
     if (activeTab === 'taxation') {
         wireTaxSliders(nation);
     }
+    if (activeTab === 'tariffs') {
+        wireTariffSimulator(nation);
+    }
+}
+
+function wireTariffSimulator(nation) {
+    var slider = document.getElementById('tsim-range');
+    if (!slider) return;
+
+    var simData = gatherTariffSimData(nation);
+    var currentRate = simData.currentRate;
+    var currentDampener = simData.currentDampener;
+    var totalCurrentImports = simData.totalCurrentImports;
+    var sectorImports = simData.sectorImports;
+    var collectionRate = simData.collectionRate;
+    var currentTariffRev = simData.currentTariffRev;
+
+    slider.addEventListener('input', function() {
+        var simRate = parseInt(slider.value, 10);
+
+        // Update fill bar
+        var fill = document.getElementById('tsim-fill');
+        if (fill) fill.style.width = simRate + '%';
+
+        // Update sim label
+        var label = document.getElementById('tsim-sim-label');
+        if (label) {
+            var isChanged = Math.round(simRate) !== Math.round(currentRate);
+            label.innerHTML = 'SIMULATED: <strong>' + simRate + '%</strong>';
+            label.classList.toggle('tsim-changed', isChanged);
+        }
+
+        // Update projections
+        var projEl = document.getElementById('tsim-projections');
+        if (projEl) {
+            var gdpCap = Number(nation.gdp ?? nation.GDP ?? 0) * 0.002;
+            projEl.innerHTML = renderTariffProjections(currentRate, simRate, currentDampener, totalCurrentImports, sectorImports, collectionRate, currentTariffRev, gdpCap);
+        }
+    });
 }
 
 function wireTaxSliders(nation) {
@@ -607,8 +630,11 @@ async function submitTaxBill(nation) {
     if (changedKeys.length === 0) return;
 
     var apCost = GAME_CONFIG.DRAFT_BILL_AP_COST || 2;
-    var isAutocracyGov = isAutocracy(nation);
-    var termBill = isAutocracyGov ? 'decree' : 'bill';
+    // Leader trait: policy_wonk → -1 AP for drafting bills
+    if (currentFaction && (currentFaction.leader_positive_traits || []).includes('policy_wonk')) apCost = Math.max(1, apCost - 1);
+    // Leader trait: micromanager → +1 AP for all actions
+    if (currentFaction && (currentFaction.leader_negative_traits || []).includes('micromanager')) apCost += 1;
+    var termBill = 'bill';
 
     // Build confirmation summary
     var gdp = Number(nation.gdp || 0);
@@ -625,21 +651,16 @@ async function submitTaxBill(nation) {
         var direction = newRate > oldRate ? 'increase' : 'decrease';
         var delta = gdp * ((newRate - oldRate) / 100) * cfg.gdpMultiplier * collectionRate;
         var rateDiff = newRate - oldRate;
-        var impactLine;
-        if (key === 'corporate_tax') {
-            var blocEff = rateDiff > 0 ? -3 : 2;
-            impactLine = '  Impact: ' + (blocEff >= 0 ? '+' : '') + blocEff + '% Business Owners bloc momentum (proposing party)';
-        } else {
-            var approvalImpact = rateDiff > 0 ? rateDiff * -2 : Math.abs(rateDiff) * 1;
-            impactLine = '  Approval impact: ' + (approvalImpact >= 0 ? '+' : '') + approvalImpact + '%';
-        }
+        // All tax types: increases hurt approval, cuts boost it
+        var approvalImpact = rateDiff > 0 ? rateDiff * -2 : Math.abs(rateDiff) * 1;
+        var impactLine = '  Government approval: ' + (approvalImpact >= 0 ? '+' : '') + approvalImpact + ' (decays over time)';
         summaryLines.push(
             cfg.name + ': ' + oldRate + '% → ' + newRate + '% (' + direction + ')\n' +
             '  Revenue: ' + (delta >= 0 ? '+' : '') + formatBudgetCurrency(delta) + '/yr\n' +
             impactLine
         );
     }
-    var confirmMsg = 'Submit Tax Reform ' + (isAutocracyGov ? 'Decree' : 'Bill') + '?\n\n' +
+    var confirmMsg = 'Submit Tax Reform Bill?\n\n' +
         summaryLines.join('\n\n') + '\n\nCost: ' + apCost + ' AP';
     if (!confirm(confirmMsg)) return;
 
@@ -676,6 +697,8 @@ async function submitTaxBill(nation) {
             bill_name: billName,
             bill_type: 'tax_reform',
             status: 'committee',
+            proposer_name: currentFaction.faction_name,
+            proposer_color: currentFaction.party_color,
             preamble: preamble,
             metadata: {
                 tax_changes: taxChangeSummary,
@@ -702,13 +725,8 @@ async function submitTaxBill(nation) {
             var artDelta = gdp * ((artNew - artOld) / 100) * artCfg.gdpMultiplier * collectionRate;
             var artRateDiff = artNew - artOld;
             var artApprovalText;
-            if (artKey === 'corporate_tax') {
-                var blocEff = artRateDiff > 0 ? -3 : 2;
-                artApprovalText = (blocEff >= 0 ? '+' : '') + blocEff + '% Business Owners voter bloc momentum (proposing party)';
-            } else {
-                var artApproval = artRateDiff > 0 ? artRateDiff * -2 : Math.abs(artRateDiff) * 1;
-                artApprovalText = (artApproval >= 0 ? '+' : '') + artApproval + '% approval';
-            }
+            var artApproval = artRateDiff > 0 ? artRateDiff * -2 : Math.abs(artRateDiff) * 1;
+            artApprovalText = (artApproval >= 0 ? '+' : '') + artApproval + ' government approval (decays over time)';
 
             articles.push({
                 bill_id: bill.id,
@@ -760,8 +778,9 @@ async function submitTaxBill(nation) {
 // ==================== OVERVIEW TAB ====================
 function computeBudgetSummary(nation) {
     var budget = calculateNationalBudget(nation);
-    if (tradeData && tradeData.summary) {
-        applyTradeTariffOverride(budget, Number(tradeData.summary.tariff_revenue));
+    var cappedTariff = getCappedTariffRevenue(nation);
+    if (cappedTariff > 0) {
+        applyTradeTariffOverride(budget, cappedTariff, Number(nation.gdp ?? nation.GDP ?? 0));
     }
     var aidReceived = aidData ? Number(aidData.received || 0) : 0;
     var aidGivenAmt = aidData ? Number(aidData.given || 0) : 0;
@@ -773,6 +792,10 @@ function computeBudgetSummary(nation) {
     totalExp += budget.debtService || 0;
     totalExp += aidGivenAmt;
     return { budget: budget, totalExpenditure: totalExp, balance: budget.grossRevenue - totalExp };
+}
+
+function formatUnemploymentPct(stat) {
+    return (0.7 + (stat - 1) * 34.3 / 99).toFixed(1) + '%';
 }
 
 function renderOverviewTab(nation) {
@@ -791,7 +814,7 @@ function renderOverviewTab(nation) {
         h += '<div class="distress-banner-text">Debt has reached ' + formatDebtToGDP(getDebtToGDP(nation)) + ' of GDP. Credit is deteriorating rapidly. ';
         if (_distressInfo.locked) h += 'Borrowing is locked out. ';
         if (_distressInfo.burden > 0) h += 'Government spending effectiveness reduced by ' + (_distressInfo.burden * 100).toFixed(0) + '%. ';
-        h += 'Consider a <a href="laws.html" style="color:#ff9800;text-decoration:underline;">Default Resolution</a> to restructure debt.</div>';
+        h += 'Consider a <a href="laws.html" style="color:#d48a3c;text-decoration:underline;">Default Resolution</a> to restructure debt.</div>';
         h += '</div></div>';
     } else if (_distressInfo.level === 'distressed') {
         h += '<div class="debt-distress-banner debt-distress-warning">';
@@ -838,8 +861,6 @@ function renderOverviewTab(nation) {
 
     // Trade Diagnostics — show inputs that drive trade
     if (tradeData && tradeData.summary) {
-        var _totalExp = Number(tradeData.summary.total_exports) || 0;
-        var _totalImp = Number(tradeData.summary.total_imports) || 0;
 
         h += '<div class="trade-diagnostics">';
         h += '<div class="trade-diag-header" onclick="this.parentElement.classList.toggle(\'expanded\')">TRADE INPUTS <span class="trade-diag-toggle">&#9662;</span></div>';
@@ -848,16 +869,18 @@ function renderOverviewTab(nation) {
         // Global modifiers row
         var tariffVal = Number(nation.tariffs) || 0;
         var tariffDampener = 1 - (tariffVal / 200);
+        var tariffReduction = ((1 - tariffDampener) * 100).toFixed(0);
         var currencyVal = Number(nation.currency_strength) || 50;
         var currencyMod = currencyVal / 50;
         var stabilityVal = Number(nation.stability) || 50;
         var stabilityMod = Math.min(1.0, stabilityVal / 40);
+        var gdpScale = (Number(nation.gdp) || 0) / 100000000000;
 
         h += '<div class="trade-diag-modifiers">';
         h += '<div class="trade-diag-mod">';
         h += '<span class="trade-diag-label">Tariff Rate</span>';
-        h += '<span class="trade-diag-value" style="color:' + (tariffVal > 50 ? 'var(--red, #f44336)' : tariffVal > 25 ? 'var(--accent, #ffcc00)' : 'var(--green, #4CAF50)') + '">' + tariffVal + '%</span>';
-        h += '<span class="trade-diag-effect">Import dampening: ' + (tariffDampener * 100).toFixed(0) + '%</span>';
+        h += '<span class="trade-diag-value" style="color:' + (tariffVal > 50 ? 'var(--red, #d9534f)' : tariffVal > 25 ? 'var(--accent, #ffcc00)' : 'var(--green, #5cb85c)') + '">' + tariffVal.toFixed(1) + '%</span>';
+        h += '<span class="trade-diag-effect">Tariff reduces imports by ' + tariffReduction + '%</span>';
         h += '</div>';
         h += '<div class="trade-diag-mod">';
         h += '<span class="trade-diag-label">Currency Strength</span>';
@@ -866,8 +889,13 @@ function renderOverviewTab(nation) {
         h += '</div>';
         h += '<div class="trade-diag-mod">';
         h += '<span class="trade-diag-label">Stability</span>';
-        h += '<span class="trade-diag-value" style="color:' + (stabilityVal < 25 ? 'var(--red, #f44336)' : stabilityVal < 40 ? 'var(--accent, #ffcc00)' : 'var(--green, #4CAF50)') + '">' + stabilityVal.toFixed(0) + '/100</span>';
+        h += '<span class="trade-diag-value" style="color:' + (stabilityVal < 25 ? 'var(--red, #d9534f)' : stabilityVal < 40 ? 'var(--accent, #ffcc00)' : 'var(--green, #5cb85c)') + '">' + stabilityVal.toFixed(0) + '/100</span>';
         h += '<span class="trade-diag-effect">Export modifier: ' + stabilityMod.toFixed(2) + 'x</span>';
+        h += '</div>';
+        h += '<div class="trade-diag-mod">';
+        h += '<span class="trade-diag-label">GDP Scale</span>';
+        h += '<span class="trade-diag-value" style="color:' + (gdpScale >= 1.0 ? 'var(--green, #5cb85c)' : gdpScale >= 0.5 ? 'var(--accent, #ffcc00)' : 'var(--red, #d9534f)') + '">' + gdpScale.toFixed(2) + 'x</span>';
+        h += '<span class="trade-diag-effect">vs $100B baseline</span>';
         h += '</div>';
         h += '</div>';
 
@@ -885,13 +913,18 @@ function renderOverviewTab(nation) {
                 var _impDem = Number(_f.import_demand) || 0;
                 var _impVol = Number(_f.import_volume) || 0;
                 var _capCls = _expCap > 0 ? 'surplus' : 'muted';
-                var _demCls = _impDem > 0 ? 'deficit' : 'muted';
+                var _isExportOnly = _s.export_only;
                 h += '<tr>';
                 h += '<td>' + escapeHtml(_s.label) + '</td>';
                 h += '<td class="' + _capCls + '">' + formatBudgetCurrency(_expCap) + '</td>';
                 h += '<td class="' + (_expVol > 0 ? 'surplus' : 'muted') + '">' + formatBudgetCurrency(_expVol) + '</td>';
-                h += '<td class="' + _demCls + '">' + formatBudgetCurrency(_impDem) + '</td>';
-                h += '<td class="' + (_impVol > 0 ? 'deficit' : 'muted') + '">' + formatBudgetCurrency(_impVol) + '</td>';
+                if (_isExportOnly) {
+                    h += '<td class="muted" style="font-style:italic;font-size:0.8em;">Export Only</td>';
+                    h += '<td class="muted" style="font-style:italic;font-size:0.8em;">Export Only</td>';
+                } else {
+                    h += '<td class="' + (_impDem > 0 ? 'deficit' : 'muted') + '">' + formatBudgetCurrency(_impDem) + '</td>';
+                    h += '<td class="' + (_impVol > 0 ? 'deficit' : 'muted') + '">' + formatBudgetCurrency(_impVol) + '</td>';
+                }
                 h += '</tr>';
             }
             h += '</tbody></table>';
@@ -912,20 +945,20 @@ function renderOverviewTab(nation) {
             h += '<span class="trade-diag-label">Trade Partners</span>';
             h += '<span class="trade-diag-value">' + positiveAffinities + ' eligible</span>';
             if (blockedAffinities > 0) {
-                h += '<span class="trade-diag-effect" style="color:var(--red, #f44336)">' + blockedAffinities + ' blocked (affinity ≤ 0)</span>';
+                h += '<span class="trade-diag-effect" style="color:var(--red, #d9534f)">' + blockedAffinities + ' blocked (affinity ≤ 0)</span>';
             }
             h += '</div>';
 
-            // Show top affinities with breakdown
+            // Show all partners with breakdown, sorted by affinity
             affinityDetails.sort(function(a, b) { return b.breakdown.total - a.breakdown.total; });
-            var showCount = Math.min(5, affinityDetails.length);
+            var showCount = affinityDetails.length;
             if (showCount > 0) {
                 h += '<div class="trade-diag-affinity-list">';
                 for (var _aj = 0; _aj < showCount; _aj++) {
                     var _ad = affinityDetails[_aj];
                     var _name = _ad.name || 'Nation';
                     var _b = _ad.breakdown;
-                    var _affColor = _b.total > 50 ? 'var(--green, #4CAF50)' : _b.total > 0 ? 'var(--accent, #ffcc00)' : 'var(--red, #f44336)';
+                    var _affColor = _b.total > 50 ? 'var(--green, #5cb85c)' : _b.total > 0 ? 'var(--accent, #ffcc00)' : 'var(--red, #d9534f)';
                     h += '<div class="trade-diag-affinity-row">';
                     h += '<span class="trade-diag-affinity-name">' + escapeHtml(_name) + '</span>';
                     h += '<span class="trade-diag-affinity-score" style="color:' + _affColor + '">' + _b.total.toFixed(0) + '</span>';
@@ -972,7 +1005,7 @@ function renderOverviewTab(nation) {
     if (burden > 0) {
         h += '<div class="debt-burden-bar">';
         h += '<div class="debt-burden-label">Debt Service Burden: <strong>' + (burden * 100).toFixed(1) + '%</strong> spending reduction</div>';
-        h += '<div class="debt-burden-track"><div class="debt-burden-fill" style="width:' + Math.min(100, (burden / SOVEREIGN_DEFAULT_CONFIG.BURDEN_MAX) * 100) + '%;background:' + (burden >= 0.3 ? '#ff4444' : burden >= 0.15 ? '#ff9800' : '#ffcc00') + ';"></div></div>';
+        h += '<div class="debt-burden-track"><div class="debt-burden-fill" style="width:' + Math.min(100, (burden / SOVEREIGN_DEFAULT_CONFIG.BURDEN_MAX) * 100) + '%;background:' + (burden >= 0.3 ? '#d9534f' : burden >= 0.15 ? '#d48a3c' : '#ffcc00') + ';"></div></div>';
         h += '</div>';
     }
     if (isLocked) {
@@ -992,7 +1025,7 @@ function renderOverviewTab(nation) {
     h += '<div class="econ-cards-row econ-cards-4">';
 
     var gdpGrowth = Number(nation.gdp_growth) || 50;
-    var growthPct = ((gdpGrowth - 50) / 50) * 3;
+    var growthPct = (gdpGrowth - 50) / 50;
     var growthDisplay = (growthPct >= 0 ? '+' : '') + growthPct.toFixed(2) + '%';
     var gdpGrowthSub = getTrendArrow('gdp_growth', gdpGrowth, false);
     if (tradeData && tradeData.summary) {
@@ -1011,7 +1044,7 @@ function renderOverviewTab(nation) {
     h += renderOverviewCard('GDP Growth', growthDisplay, growthPct >= 0 ? 'surplus' : 'deficit', gdpGrowthSub);
 
     var unemp = Number(nation.unemployment) || 50;
-    h += renderOverviewCard('Unemployment', Math.round(unemp), unemp <= 30 ? 'surplus' : unemp <= 60 ? 'neutral' : 'deficit', getTrendArrow('unemployment', unemp, true));
+    h += renderOverviewCard('Unemployment', formatUnemploymentPct(unemp), unemp <= 30 ? 'surplus' : unemp <= 60 ? 'neutral' : 'deficit', getTrendArrow('unemployment', unemp, true));
 
     var infl = Number(nation.inflation) || 0;
     var inflCC = inflationColorClass(infl);
@@ -1058,9 +1091,9 @@ function renderRankings(nation) {
     }
     var metrics = [
         { key: 'gdp', label: 'GDP', higher: true, fmt: fmtMonetary('gdp') },
-        { key: 'gdp_growth', label: 'GDP Growth', higher: true, fmt: function(v) { var p = ((v - 50) / 50) * 3; return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; } },
+        { key: 'gdp_growth', label: 'GDP Growth', higher: true, fmt: function(v) { var p = ((v - 50) / 50) * 1; return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; } },
         { key: 'standard_of_living', label: 'Std of Living', higher: true, fmt: function(v) { return Math.round(v); } },
-        { key: 'unemployment', label: 'Unemployment', higher: false, fmt: function(v) { return Math.round(v); } },
+        { key: 'unemployment', label: 'Unemployment', higher: false, fmt: function(v) { return formatUnemploymentPct(v); } },
         { key: 'debt', label: 'National Debt', higher: false, fmt: fmtMonetary('debt') }
     ];
 
@@ -1113,7 +1146,7 @@ function renderSectorHealth(nation) {
         var sector = TRADE_SECTORS[i];
         var score = getSectorScore(nation, sector);
         var pct = Math.min(100, Math.max(0, Math.round(score)));
-        var color = pct >= 70 ? 'var(--green, #4CAF50)' : pct >= 40 ? 'var(--accent, #ffcc00)' : 'var(--red, #f44336)';
+        var color = pct >= 70 ? 'var(--green, #5cb85c)' : pct >= 40 ? 'var(--accent, #ffcc00)' : 'var(--red, #d9534f)';
         var aboveThreshold = score >= sector.export_threshold;
 
         h += '<div class="econ-sector-row">';
@@ -1162,19 +1195,9 @@ async function loadTaxConnections() {
     qCacheSet(cacheKey, taxConnections, 5 * 60 * 1000);
 }
 
-async function loadTaxVoterBlocs(nationId) {
-    var cacheKey = 'tax_voter_blocs_' + nationId;
-    var cached = qCache(cacheKey);
-    if (cached) { taxVoterBlocs = cached; return; }
-    var { data } = await _supabase.from('voter_blocs')
-        .select('bloc_name, priority_issues')
-        .eq('nation_id', nationId);
-    taxVoterBlocs = data || [];
-    qCacheSet(cacheKey, taxVoterBlocs, 5 * 60 * 1000);
-}
 
 async function loadTaxAdminFunding(nation) {
-    var cacheKey = 'tax_admin_funding_' + nation.id;
+    var cacheKey = 'tax_admin_funding_' + nation.id + '_t' + currentTick;
     var cached = qCache(cacheKey);
     if (cached) { taxAdminFunding = cached; return; }
 
@@ -1223,7 +1246,7 @@ async function loadTaxPendingBills(nationId) {
 }
 
 async function loadTaxHistory(nationId) {
-    var cacheKey = 'tax_history_' + nationId;
+    var cacheKey = 'tax_history_' + nationId + '_t' + currentTick;
     var cached = qCache(cacheKey);
     if (cached) { taxHistory = cached; return; }
     var { data } = await _supabase.from('nations_history')
@@ -1253,27 +1276,6 @@ function getTaxEffects(taxKey) {
     return taxConnections.filter(function(c) { return c.source_stat === taxKey; });
 }
 
-function getTaxHits(taxKey) {
-    var effects = getTaxEffects(taxKey);
-    if (effects.length === 0) return [];
-    var targetStats = new Set(effects.map(function(e) { return e.target_stat; }));
-    var matchedCategories = new Set();
-    for (var cat in ISSUE_CATEGORY_STATS) {
-        var stats = ISSUE_CATEGORY_STATS[cat];
-        for (var i = 0; i < stats.length; i++) {
-            if (targetStats.has(stats[i])) { matchedCategories.add(cat); break; }
-        }
-    }
-    var hitBlocs = [];
-    for (var j = 0; j < taxVoterBlocs.length; j++) {
-        var bloc = taxVoterBlocs[j];
-        var issues = Array.isArray(bloc.priority_issues) ? bloc.priority_issues : [];
-        for (var k = 0; k < issues.length; k++) {
-            if (matchedCategories.has(issues[k])) { hitBlocs.push(bloc.bloc_name); break; }
-        }
-    }
-    return hitBlocs;
-}
 
 function getSliderColorClass(rate, maxRate) {
     var pct = rate / maxRate;
@@ -1285,8 +1287,9 @@ function getSliderColorClass(rate, maxRate) {
 
 function renderTaxationTab(nation) {
     var budget = calculateNationalBudget(nation);
-    if (tradeData && tradeData.summary && Number(tradeData.summary.tariff_revenue) > 0) {
-        applyTradeTariffOverride(budget, tradeData.summary.tariff_revenue);
+    var cappedTariff = getCappedTariffRevenue(nation);
+    if (cappedTariff > 0) {
+        applyTradeTariffOverride(budget, cappedTariff, Number(nation.gdp ?? nation.GDP ?? 0));
     }
 
     var incomeTax = Math.round(Number(nation.income_tax || 0));
@@ -1373,14 +1376,15 @@ function renderTaxationTab(nation) {
     var changedKeys = Object.keys(taxRateChanges).filter(function(k) { return taxRateChanges[k] !== originalRates[k]; });
     var hasChanges = changedKeys.length > 0;
     var mySeats = currentFaction ? (currentFaction.seats || 0) : 0;
-    var isAutoRuler = isAutocracy(nation) && currentFaction && nation.ruling_faction_id === currentFaction.id;
     var isInGovt = activeCoalition && currentFaction && (activeCoalition.party_ids || []).indexOf(currentFaction.id) !== -1;
-    var hasAuthority = mySeats >= 1 || isAutoRuler || isInGovt;
+    var hasAuthority = mySeats >= 1 || isInGovt;
     var canSubmit = hasAuthority && hasChanges;
     var apCost = GAME_CONFIG.DRAFT_BILL_AP_COST || 2;
+    if (currentFaction && (currentFaction.leader_positive_traits || []).includes('policy_wonk')) apCost = Math.max(1, apCost - 1);
+    if (currentFaction && (currentFaction.leader_negative_traits || []).includes('micromanager')) apCost += 1;
     var hasAp = currentFaction ? (currentFaction.action_points || 0) >= apCost : false;
     var btnDisabled = !(canSubmit && hasAp);
-    var termBill = isAutocracy(nation) ? 'Decree' : 'Bill';
+    var termBill = 'Bill';
     var btnTitle = !hasAuthority ? 'Your party holds no legislature seats' : !hasChanges ? 'Adjust at least one tax rate' : !hasAp ? 'Not enough AP (' + apCost + ' required)' : 'Submit tax reform ' + termBill.toLowerCase();
 
     h += '<div class="tax-summary-spacer"></div>';
@@ -1391,7 +1395,7 @@ function renderTaxationTab(nation) {
     h += '</div>'; // .tax-summary-bar
 
     // ── PRESIDENTIAL INFO CALLOUT ──
-    if (isPresidentialRepublic(nation)) {
+    if (hasElectedPresident(nation)) {
         h += '<div class="tax-info-callout">';
         h += '<span class="tax-info-callout-icon">&#8505;</span>';
         h += '<span class="tax-info-callout-text">Tax reform bills passed by the legislature must be <strong>signed by the President</strong> before taking effect. The President may veto, triggering a &frac23; override vote.</span>';
@@ -1415,7 +1419,6 @@ function renderTaxCard(config, nation, budget) {
     var isChanged = currentRate !== origRate;
     var revenue = budget[config.revenueKey] || 0;
     var effects = getTaxEffects(config.key);
-    var hits = getTaxHits(config.key);
 
     // Revenue projection
     var gdp = Number(nation.gdp || 0);
@@ -1538,16 +1541,6 @@ function renderTaxCard(config, nation, budget) {
         h += '<div class="tax-effects-empty">No stat effects configured</div>';
     }
 
-    if (hits.length > 0) {
-        h += '<div class="tax-hits-row">';
-        h += '<span class="tax-hits-label">Hits:</span>';
-        h += '<div class="tax-hits-tags">';
-        for (var j = 0; j < hits.length; j++) {
-            h += '<span class="tax-hit-tag">' + escapeHtml(hits[j]) + '</span>';
-        }
-        h += '</div>';
-        h += '</div>';
-    }
 
     h += '</div>'; // .tax-bottom
 
@@ -1610,10 +1603,10 @@ var MINISTRY_DESCRIPTIONS = {
 function renderBudgetTab(nation) {
     var budget = calculateNationalBudget(nation);
 
-    if (tradeData && tradeData.summary && Number(tradeData.summary.tariff_revenue) > 0) {
-        var oldTariff = budget.tariffRevenue;
-        budget.tariffRevenue = Number(tradeData.summary.tariff_revenue);
-        budget.grossRevenue = budget.grossRevenue - oldTariff + budget.tariffRevenue;
+    // Apply tariff override using getCappedTariffRevenue (single source of truth)
+    var cappedTariff = getCappedTariffRevenue(nation);
+    if (cappedTariff > 0) {
+        applyTradeTariffOverride(budget, cappedTariff, Number(nation.gdp ?? nation.GDP ?? 0));
     }
 
     var aidReceived = aidData ? Number(aidData.received || 0) : 0;
@@ -1640,16 +1633,16 @@ function renderBudgetTab(nation) {
     // --- Summary bar: 3 cards ---
     h += '<div class="bv2-summary-bar">';
     h += '<div class="bv2-card">';
-    h += '<div class="bv2-card-label" style="color:#4CAF50;">REVENUE</div>';
+    h += '<div class="bv2-card-label" style="color:var(--green);">REVENUE</div>';
     h += '<div class="bv2-card-value">' + formatBudgetCurrency(budget.grossRevenue) + '</div>';
     h += '</div>';
     h += '<div class="bv2-card">';
-    h += '<div class="bv2-card-label" style="color:#ff4444;">EXPENDITURES</div>';
+    h += '<div class="bv2-card-label" style="color:var(--red);">EXPENDITURES</div>';
     h += '<div class="bv2-card-value">' + formatBudgetCurrency(totalExpenditure) + '</div>';
     h += '</div>';
     h += '<div class="bv2-card">';
-    h += '<div class="bv2-card-label" style="color:' + (isDeficit ? '#ff4444' : '#4CAF50') + ';">' + (isDeficit ? 'DEFICIT' : 'SURPLUS') + '</div>';
-    h += '<div class="bv2-card-value" style="color:' + (isDeficit ? '#ff4444' : '#4CAF50') + ';">' + balSign + formatBudgetCurrency(balance) + '</div>';
+    h += '<div class="bv2-card-label" style="color:' + (isDeficit ? 'var(--red)' : 'var(--green)') + ';">' + (isDeficit ? 'DEFICIT' : 'SURPLUS') + '</div>';
+    h += '<div class="bv2-card-value" style="color:' + (isDeficit ? 'var(--red)' : 'var(--green)') + ';">' + balSign + formatBudgetCurrency(balance) + '</div>';
     h += '</div>';
     h += '</div>';
 
@@ -1663,8 +1656,8 @@ function renderBudgetTab(nation) {
     // LEFT: Revenues
     h += '<div class="bv2-col">';
     h += '<div class="bv2-col-header">';
-    h += '<span class="bv2-col-title" style="color:#4CAF50;">REVENUES</span>';
-    h += '<span class="bv2-col-total" style="color:#4CAF50;">Total: ' + formatBudgetCurrency(budget.grossRevenue) + ' / yr</span>';
+    h += '<span class="bv2-col-title" style="color:var(--green);">REVENUES</span>';
+    h += '<span class="bv2-col-total" style="color:var(--green);">Total: ' + formatBudgetCurrency(budget.grossRevenue) + ' / yr</span>';
     h += '</div>';
 
     h += bv2RevenueRow('INCOME TAX', Math.round(Number(nation.income_tax || 0)) + '% rate · Income bracket', budget.incomeRevenue);
@@ -1687,8 +1680,8 @@ function renderBudgetTab(nation) {
     // RIGHT: Expenditures
     h += '<div class="bv2-col">';
     h += '<div class="bv2-col-header">';
-    h += '<span class="bv2-col-title" style="color:#ff4444;">EXPENDITURES &mdash; MINISTRY COSTS</span>';
-    h += '<span class="bv2-col-total" style="color:#ff4444;">Total: ' + formatBudgetCurrency(totalExpenditure) + ' / yr</span>';
+    h += '<span class="bv2-col-title" style="color:var(--red);">EXPENDITURES &mdash; MINISTRY COSTS</span>';
+    h += '<span class="bv2-col-total" style="color:var(--red);">Total: ' + formatBudgetCurrency(totalExpenditure) + ' / yr</span>';
     h += '</div>';
 
     // Sort ministries by cost descending
@@ -1723,8 +1716,8 @@ function renderBudgetTab(nation) {
     h += '</div>'; // .bv2-breakdown
 
     // --- Net balance box ---
-    var netColor = isDeficit ? '#ff4444' : '#4CAF50';
-    var netIcon = isDeficit ? '&#9650;' : '&#9660;';
+    var netColor = isDeficit ? 'var(--red)' : 'var(--green)';
+    var netIcon = isDeficit ? '&#9660;' : '&#9650;'; // Down arrow for deficit, up for surplus
     var netLabel = isDeficit ? 'DEFICIT' : 'SURPLUS';
     h += '<div class="bv2-net-box" style="border-color:' + netColor + ';">';
     h += '<div class="bv2-net-header">';
@@ -1746,7 +1739,7 @@ function renderBudgetTab(nation) {
     if (isDeficit) {
         h += '<div class="bv2-info-bar">';
         h += '<span class="bv2-info-icon">i</span> ';
-        h += 'The shortfall of <strong style="color:#ff4444;">' + formatBudgetCurrency(Math.abs(balance)) + '</strong> exceeds available revenue ';
+        h += 'The shortfall of <strong style="color:#d9534f;">' + formatBudgetCurrency(Math.abs(balance)) + '</strong> exceeds available revenue ';
         h += 'and is being added to the national debt each tick. ';
         h += 'Raise taxes, grow the economy, or reduce ministry funding to close the gap.';
         h += '</div>';
@@ -1806,7 +1799,6 @@ function renderTradeTab(nation) {
     var totalExports = Number(summary.total_exports) || 0;
     var totalImports = Number(summary.total_imports) || 0;
     var surplus = Number(summary.trade_surplus) || 0;
-    var tariffRev = Number(summary.tariff_revenue) || 0;
 
     // --- Trade Overview Cards ---
     h += '<div class="econ-section">';
@@ -1818,7 +1810,8 @@ function renderTradeTab(nation) {
     var balCls = surplus >= 0 ? 'surplus' : 'deficit';
     var balSign = surplus >= 0 ? '+' : '';
     h += renderOverviewCard('Trade Balance', balSign + formatBudgetCurrency(surplus), balCls, null);
-    h += renderOverviewCard('Tariff Revenue', formatBudgetCurrency(tariffRev), tariffRev > 0 ? 'surplus' : 'neutral', 'Per Tick');
+    var cappedTariffRev = getCappedTariffRevenue(nation);
+    h += renderOverviewCard('Tariff Revenue', formatBudgetCurrency(cappedTariffRev), cappedTariffRev > 0 ? 'surplus' : 'neutral', 'Per Tick');
     h += '</div>';
     h += '</div>';
 
@@ -1840,7 +1833,7 @@ function renderSectorFlowsTable(nation) {
 
     var h = '<div class="econ-section">';
     h += '<div class="econ-section-header">SECTOR FLOWS</div>';
-    h += '<div class="econ-section-subtitle">Export and import volumes by sector. Price modifier affects trade value.</div>';
+    h += '<div class="econ-section-subtitle">Export and import volumes by sector. Click a sector for details.</div>';
 
     // Table header
     h += '<div class="trade-flow-table">';
@@ -1869,22 +1862,23 @@ function renderSectorFlowsTable(nation) {
         totalExp += expVol;
         totalImp += impVol;
 
-        var netColor = net > 0 ? '#4CAF50' : net < 0 ? '#ff4444' : '#6b6a5e';
+        var netColor = net > 0 ? '#5cb85c' : net < 0 ? '#d9534f' : '#666';
         var netSign = net > 0 ? '+' : '';
-        var priceColor = priceMod >= 1.05 ? '#4CAF50' : priceMod <= 0.95 ? '#ff4444' : '#8a8778';
+        var priceColor = priceMod >= 1.05 ? '#5cb85c' : priceMod <= 0.95 ? '#d9534f' : '#888';
 
         // Trend from previous tick
         var prevExp = tradeData.prevFlows[sKey] ? Number(tradeData.prevFlows[sKey].export_volume) || 0 : null;
         var prevImp = tradeData.prevFlows[sKey] ? Number(tradeData.prevFlows[sKey].import_volume) || 0 : null;
         var prevNet = (prevExp !== null && prevImp !== null) ? prevExp - prevImp : null;
 
-        h += '<div class="tft-row">';
+        h += '<div class="tft-row tft-row-clickable" data-sector="' + sKey + '">';
         h += '<div class="tft-cell tft-sector">';
         h += '<span class="tft-sector-name">' + escapeHtml(sector.label) + '</span>';
         if (sector.export_only) h += '<span class="tft-export-only">EXPORT ONLY</span>';
+        h += '<span class="tft-drill-chevron">&#x203A;</span>';
         h += '</div>';
-        h += '<div class="tft-cell tft-num" style="color:#4CAF50">' + formatBudgetCurrency(expVol) + '</div>';
-        h += '<div class="tft-cell tft-num" style="color:#ff4444">' + (impVol > 0 ? formatBudgetCurrency(impVol) : '—') + '</div>';
+        h += '<div class="tft-cell tft-num" style="color:#5cb85c">' + formatBudgetCurrency(expVol) + '</div>';
+        h += '<div class="tft-cell tft-num" style="color:#d9534f">' + (impVol > 0 ? formatBudgetCurrency(impVol) : '—') + '</div>';
         h += '<div class="tft-cell tft-num" style="color:' + netColor + '">' + netSign + formatBudgetCurrency(net) + '</div>';
         h += '<div class="tft-cell tft-num" style="color:' + priceColor + '">' + priceMod.toFixed(2) + 'x</div>';
         h += '<div class="tft-cell tft-trend">';
@@ -1899,12 +1893,12 @@ function renderSectorFlowsTable(nation) {
 
     // Totals row
     var totalNet = totalExp - totalImp;
-    var totalNetColor = totalNet > 0 ? '#4CAF50' : totalNet < 0 ? '#ff4444' : '#6b6a5e';
+    var totalNetColor = totalNet > 0 ? '#5cb85c' : totalNet < 0 ? '#d9534f' : '#666';
     var totalNetSign = totalNet > 0 ? '+' : '';
     h += '<div class="tft-row tft-total">';
     h += '<div class="tft-cell tft-sector">TOTAL</div>';
-    h += '<div class="tft-cell tft-num" style="color:#4CAF50">' + formatBudgetCurrency(totalExp) + '</div>';
-    h += '<div class="tft-cell tft-num" style="color:#ff4444">' + formatBudgetCurrency(totalImp) + '</div>';
+    h += '<div class="tft-cell tft-num" style="color:#5cb85c">' + formatBudgetCurrency(totalExp) + '</div>';
+    h += '<div class="tft-cell tft-num" style="color:#d9534f">' + formatBudgetCurrency(totalImp) + '</div>';
     h += '<div class="tft-cell tft-num" style="color:' + totalNetColor + '">' + totalNetSign + formatBudgetCurrency(totalNet) + '</div>';
     h += '<div class="tft-cell tft-num"></div>';
     h += '<div class="tft-cell tft-trend"></div>';
@@ -1960,8 +1954,8 @@ function renderTradeScoresSection(nation) {
         var s = scores[i];
         var rounded = Math.round(s.value * 10) / 10;
         var pct = Math.min(100, Math.round(s.value));
-        var color = pct >= 70 ? '#4CAF50' : pct >= 40 ? '#e2e0d6' : '#ff4444';
-        var borderColor = pct >= 70 ? '#4CAF50' : pct >= 40 ? '#8a8778' : '#ff4444';
+        var color = pct >= 70 ? '#5cb85c' : pct >= 40 ? '#f0efe6' : '#d9534f';
+        var borderColor = pct >= 70 ? '#5cb85c' : pct >= 40 ? '#888' : '#d9534f';
 
         h += '<div class="trade-score-card" style="border-left-color:' + borderColor + '">';
         h += '<div class="trade-score-name"' + (NATION_COLORS[s.name] ? ' style="color:' + NATION_COLORS[s.name] + '"' : '') + '>' + escapeHtml(s.name) + '</div>';
@@ -1970,7 +1964,7 @@ function renderTradeScoresSection(nation) {
         h += '<div class="trade-score-stats">';
         for (var j = 0; j < s.stats.length; j++) {
             var st = s.stats[j];
-            var stColor = st.value >= 70 ? '#4CAF50' : st.value >= 40 ? '#e2e0d6' : '#ff4444';
+            var stColor = st.value >= 70 ? '#5cb85c' : st.value >= 40 ? '#f0efe6' : '#d9534f';
             h += '<span class="trade-score-stat">' + escapeHtml(st.label) + ' <strong style="color:' + stColor + '">' + Math.round(st.value) + '</strong></span>';
         }
         h += '</div>';
@@ -2016,7 +2010,7 @@ function renderTradePartnersSection() {
         var p = partners[pid];
         var balance = p.totalExports - p.totalImports;
         var totalVol = p.totalExports + p.totalImports;
-        var borderColor = balance > 0 ? '#4CAF50' : balance < 0 ? '#ff4444' : '#8a8778';
+        var borderColor = balance > 0 ? '#5cb85c' : balance < 0 ? '#d9534f' : '#888';
 
         h += '<div class="partner-card" style="border-left-color:' + borderColor + '">';
 
@@ -2084,11 +2078,11 @@ function renderTradePartnersSection() {
                 var sp = sectorParts[si];
                 var detail = '';
                 if (sp.exp > 0 && sp.imp > 0) {
-                    detail = '<span style="color:#4CAF50">' + formatBudgetCurrency(sp.exp) + '</span> / <span style="color:#ff4444">' + formatBudgetCurrency(sp.imp) + '</span>';
+                    detail = '<span style="color:#5cb85c">' + formatBudgetCurrency(sp.exp) + '</span> / <span style="color:#d9534f">' + formatBudgetCurrency(sp.imp) + '</span>';
                 } else if (sp.exp > 0) {
-                    detail = '<span style="color:#4CAF50">' + formatBudgetCurrency(sp.exp) + '</span>';
+                    detail = '<span style="color:#5cb85c">' + formatBudgetCurrency(sp.exp) + '</span>';
                 } else {
-                    detail = '<span style="color:#ff4444">' + formatBudgetCurrency(sp.imp) + '</span>';
+                    detail = '<span style="color:#d9534f">' + formatBudgetCurrency(sp.imp) + '</span>';
                 }
                 h += '<div class="partner-sector-line">';
                 h += '<span class="partner-sector-name">' + escapeHtml(sp.label) + '</span>';
@@ -2117,7 +2111,7 @@ function renderSectorsTab(nation) {
         var s = TRADE_SECTORS[i];
         var score = getSectorScore(nation, s);
         var isActive = s.key === activeSector;
-        var borderColor = score >= 70 ? '#4CAF50' : score >= 40 ? '#8a8778' : '#ff4444';
+        var borderColor = score >= 70 ? '#5cb85c' : score >= 40 ? '#888' : '#d9534f';
         h += '<button class="sector-tab' + (isActive ? ' active' : '') + '" data-sector="' + s.key + '" style="' + (isActive ? 'border-bottom-color:' + borderColor : '') + '">';
         h += escapeHtml(s.label);
         h += '</button>';
@@ -2147,7 +2141,7 @@ function selectSector(sectorKey, nation) {
         var sector = TRADE_SECTOR_MAP[sectorKey];
         if (sector && nation) {
             var score = getSectorScore(nation, sector);
-            var borderColor = score >= 70 ? '#4CAF50' : score >= 40 ? '#8a8778' : '#ff4444';
+            var borderColor = score >= 70 ? '#5cb85c' : score >= 40 ? '#888' : '#d9534f';
             target.style.borderBottomColor = borderColor;
         }
     }
@@ -2162,8 +2156,8 @@ function renderSectorDetail(nation, sectorKey) {
     var score = getSectorScore(nation, sector);
     var pct = Math.min(100, Math.max(0, Math.round(score)));
     var aboveThreshold = score >= sector.export_threshold;
-    var scoreColor = pct >= 70 ? '#4CAF50' : pct >= 40 ? '#e2e0d6' : '#ff4444';
-    var borderColor = pct >= 70 ? '#4CAF50' : pct >= 40 ? '#8a8778' : '#ff4444';
+    var scoreColor = pct >= 70 ? '#5cb85c' : pct >= 40 ? '#f0efe6' : '#d9534f';
+    var borderColor = pct >= 70 ? '#5cb85c' : pct >= 40 ? '#888' : '#d9534f';
 
     var flow = (tradeData && tradeData.flows) ? tradeData.flows[sectorKey] : null;
     var expVol = flow ? Number(flow.export_volume) || 0 : 0;
@@ -2171,6 +2165,39 @@ function renderSectorDetail(nation, sectorKey) {
     var net = expVol - impVol;
     var priceMod = flow ? Number(flow.price_modifier) || 1 : 1;
     var isNetImporter = impVol > expVol;
+
+    // Compute RSC-committed capacity for this sector
+    var rscExportCommittedPct = 0;  // % of our export capacity locked to RSC buyers
+    var rscImportCommittedPct = 0;  // % of our import demand locked to RSC sellers
+    var rscExportPartners = [];     // names of buyers we're committed to
+    var rscImportPartners = [];     // names of sellers we're committed to
+    if (tradeAgreements && nation) {
+        for (var _ri = 0; _ri < tradeAgreements.length; _ri++) {
+            var _rsc = tradeAgreements[_ri];
+            if (_rsc.agreement_type !== 'resource_supply') continue;
+            var _arts = _rsc.articles || [];
+            var _supplyArt = null;
+            for (var _ai = 0; _ai < _arts.length; _ai++) {
+                if (_arts[_ai].type === 'supply_commitment') { _supplyArt = _arts[_ai].data; break; }
+            }
+            if (!_supplyArt || _supplyArt.sector !== sectorKey || !_supplyArt.commitment_pct) continue;
+            var _authorId = _supplyArt.author_nation_id || _rsc.nation_a_id;
+            var _otherId = (_authorId === _rsc.nation_a_id) ? _rsc.nation_b_id : _rsc.nation_a_id;
+            var _sellerId = _supplyArt.direction === 'we_buy' ? _otherId : _authorId;
+            var _buyerId  = _supplyArt.direction === 'we_buy' ? _authorId : _otherId;
+            var _pct = Number(_supplyArt.commitment_pct) || 0;
+            if (_sellerId === nation.id) {
+                rscExportCommittedPct += _pct;
+                var _buyerName = (tradeData && tradeData.nationNames && tradeData.nationNames[_buyerId]) || _buyerId;
+                rscExportPartners.push(_buyerName + ' (' + _pct + '%)');
+            }
+            if (_buyerId === nation.id) {
+                rscImportCommittedPct += _pct;
+                var _sellerName = (tradeData && tradeData.nationNames && tradeData.nationNames[_sellerId]) || _sellerId;
+                rscImportPartners.push(_sellerName + ' (' + _pct + '%)');
+            }
+        }
+    }
 
     var h = '';
 
@@ -2200,18 +2227,46 @@ function renderSectorDetail(nation, sectorKey) {
     // Right: volume cards
     h += '<div class="sector-volume-panel">';
     if (flow) {
+        // Supply & Demand capacity row
+        var supplyVal = Number(flow.export_capacity) || 0;
+        var demandVal = Number(flow.import_demand) || 0;
         h += '<div class="sector-vol-row">';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">EXPORTS</span><span class="sector-vol-value" style="color:#4CAF50">' + formatBudgetCurrency(expVol) + '</span></div>';
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">SUPPLY</span><span class="sector-vol-value" style="color:#6aa3d9">' + formatTradeVolume(supplyVal, sectorKey) + '</span></div>';
         if (!sector.export_only) {
-            h += '<div class="sector-vol-item"><span class="sector-vol-label">IMPORTS</span><span class="sector-vol-value" style="color:#ff4444">' + formatBudgetCurrency(impVol) + '</span></div>';
+            h += '<div class="sector-vol-item"><span class="sector-vol-label">DEMAND</span><span class="sector-vol-value" style="color:#c9a54e">' + formatTradeVolume(demandVal, sectorKey) + '</span></div>';
         }
-        var netColor = net > 0 ? '#4CAF50' : net < 0 ? '#ff4444' : '#8a8778';
+        h += '</div>';
+
+        // Available capacity row — only shown when RSC agreements are locking some capacity.
+        // Without commitments the values are identical to SUPPLY/DEMAND above, so omit to avoid noise.
+        if (rscExportCommittedPct > 0 || rscImportCommittedPct > 0) {
+            var availableSupply = Math.max(0, supplyVal * (1 - rscExportCommittedPct / 100));
+            var availableDemand = Math.max(0, demandVal * (1 - rscImportCommittedPct / 100));
+            var availSupplyColor = rscExportCommittedPct > 75 ? '#d9534f' : rscExportCommittedPct > 40 ? '#f0ad4e' : '#5cb85c';
+            var availDemandColor = rscImportCommittedPct > 75 ? '#d9534f' : rscImportCommittedPct > 40 ? '#f0ad4e' : '#5cb85c';
+            var supplyTitle = rscExportCommittedPct.toFixed(0) + '% committed via RSC: ' + rscExportPartners.join(', ');
+            var demandTitle = rscImportCommittedPct.toFixed(0) + '% committed via RSC: ' + rscImportPartners.join(', ');
+            h += '<div class="sector-vol-row">';
+            h += '<div class="sector-vol-item" title="' + escapeHtml(supplyTitle) + '"><span class="sector-vol-label">AVAILABLE</span><span class="sector-vol-value" style="color:' + availSupplyColor + '">' + formatTradeVolume(availableSupply, sectorKey) + (rscExportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscExportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
+            if (!sector.export_only) {
+                h += '<div class="sector-vol-item" title="' + escapeHtml(demandTitle) + '"><span class="sector-vol-label">UNMET DEMAND</span><span class="sector-vol-value" style="color:' + availDemandColor + '">' + formatTradeVolume(availableDemand, sectorKey) + (rscImportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscImportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
+            }
+            h += '</div>';
+        }
+
+        // Actual trade volumes row
+        h += '<div class="sector-vol-row">';
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">EXPORTS</span><span class="sector-vol-value" style="color:#5cb85c">' + formatTradeVolume(expVol, sectorKey) + '</span></div>';
+        if (!sector.export_only) {
+            h += '<div class="sector-vol-item"><span class="sector-vol-label">IMPORTS</span><span class="sector-vol-value" style="color:#d9534f">' + formatTradeVolume(impVol, sectorKey) + '</span></div>';
+        }
+        var netColor = net > 0 ? '#5cb85c' : net < 0 ? '#d9534f' : '#888';
         var netSign = net > 0 ? '+' : '';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">NET</span><span class="sector-vol-value" style="color:' + netColor + '">' + netSign + formatBudgetCurrency(net) + '</span></div>';
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">NET</span><span class="sector-vol-value" style="color:' + netColor + '">' + netSign + formatTradeVolume(net, sectorKey) + '</span></div>';
         h += '</div>';
 
         // Price modifier
-        var priceColor = priceMod >= 1.05 ? '#4CAF50' : priceMod <= 0.95 ? '#ff4444' : '#8a8778';
+        var priceColor = priceMod >= 1.05 ? '#5cb85c' : priceMod <= 0.95 ? '#d9534f' : '#888';
         h += '<div class="sector-price-mod">';
         h += 'Price modifier: <strong style="color:' + priceColor + '">' + priceMod.toFixed(2) + 'x</strong>';
         h += '</div>';
@@ -2245,12 +2300,256 @@ function renderSectorDetail(nation, sectorKey) {
 
     h += '</div>'; // .econ-section
 
+    // --- Why Imports / Why Exports explanation ---
+    h += renderTradeExplanation(nation, sectorKey, sector, flow);
+
     // --- Export Drivers ---
     h += renderSectorDrivers(nation, sector);
+
+    // --- Import Drivers ---
+    h += renderImportDrivers(nation, sector);
 
     // --- Partner breakdown ---
     h += renderSectorPartners(sectorKey, sector);
 
+    return h;
+}
+
+function renderTradeExplanation(nation, sectorKey, sector, flow) {
+    if (!flow) return '';
+
+    var expVol = Number(flow.export_volume) || 0;
+    var impVol = Number(flow.import_volume) || 0;
+    var expCap = Number(flow.export_capacity) || 0;
+    var impDem = Number(flow.import_demand) || 0;
+    var priceMod = Number(flow.price_modifier) || 1;
+
+    var exportReasons = [];
+    var importReasons = [];
+
+    // --- Build export explanation ---
+    if (expVol > 0) {
+        var score = getSectorScore(nation, sector);
+        exportReasons.push('Export capacity of ' + Math.round(score) + ' exceeds the threshold of ' + sector.export_threshold);
+        if (priceMod < 0.85) exportReasons.push('Global oversupply is depressing prices (' + priceMod.toFixed(2) + 'x modifier)');
+        else if (priceMod > 1.15) exportReasons.push('Strong global demand is boosting prices (' + priceMod.toFixed(2) + 'x modifier)');
+    } else if (expCap > 0) {
+        // Has capacity but no actual exports
+        exportReasons.push('Has export capacity but no trade partners are buying');
+        if (priceMod < 0.7) exportReasons.push('Global oversupply (' + priceMod.toFixed(2) + 'x) is reducing demand');
+
+        // Check affinity issues
+        var hasPartners = false;
+        if (tradeData && tradeData.partners) {
+            for (var pid in tradeData.partners) {
+                var p = tradeData.partners[pid];
+                if (p.exportsTo && p.exportsTo[sectorKey] > 0) { hasPartners = true; break; }
+            }
+        }
+        if (!hasPartners) {
+            exportReasons.push('No trade partners with sufficient affinity — consider signing trade agreements');
+        }
+    } else {
+        var score = getSectorScore(nation, sector);
+        if (score > (sector.export_threshold || 0)) {
+            // Score is above threshold but capacity is still 0 — sector-specific gate
+            if (sector.key === 'tourism' && (Number(nation.stability) || 0) <= 25) {
+                exportReasons.push('Tourism requires stability above 25 (currently ' + Math.round(Number(nation.stability) || 0) + ')');
+            } else if (sector.key === 'arms') {
+                exportReasons.push('Arms exports require defense spending above 8% of budget');
+            } else {
+                exportReasons.push('Score of ' + Math.round(score) + ' is above threshold but capacity is blocked by other factors');
+            }
+        } else if (score > 0) {
+            exportReasons.push('Score of ' + Math.round(score) + ' is below the export threshold of ' + sector.export_threshold);
+        } else {
+            exportReasons.push('No domestic production in this sector');
+        }
+    }
+
+    // --- Build import explanation ---
+    if (!sector.export_only) {
+        if (impVol > 0) {
+            if (sectorKey === 'fuel_energy') {
+                var oilGas = Number(nation.oil_and_gas) || 0;
+                var energyGen = Number(nation.energy_generation) || 0;
+                var manuf = Number(nation.manufacturing_output) || 0;
+                var urban = Number(nation.urbanization) || 0;
+                var rail = Number(nation.rail_network) || 0;
+                var col = Number(nation.cost_of_living) || 0;
+                if (oilGas < 50 || energyGen < 50) importReasons.push('Domestic energy production is insufficient (Oil & Gas: ' + Math.round(oilGas) + ', Energy Gen: ' + Math.round(energyGen) + ')');
+                if (manuf > 40) importReasons.push('Manufacturing sector ('+Math.round(manuf)+') drives industrial fuel consumption');
+                if (urban > 50) importReasons.push('High urbanization ('+Math.round(urban)+') increases energy needs');
+                if (rail < 40) importReasons.push('Weak rail network ('+Math.round(rail)+') forces reliance on fuel-based transport');
+                if (col > 60) importReasons.push('High cost of living ('+Math.round(col)+') reflects energy-intensive lifestyles');
+            } else if (sectorKey === 'food_agriculture') {
+                var arableLand = Number(nation.arable_land) || 0;
+                if (arableLand < 50) importReasons.push('Limited arable land ('+Math.round(arableLand)+') cannot feed the population');
+                else importReasons.push('Population outpaces domestic food production');
+            } else if (sectorKey === 'minerals') {
+                var minerals = Number(nation.rare_minerals) || 0;
+                var manuf = Number(nation.manufacturing_output) || 0;
+                if (minerals < 60) importReasons.push('Low mineral reserves ('+Math.round(minerals)+') require imports');
+                if (manuf > 30) importReasons.push('Manufacturing sector ('+Math.round(manuf)+') creates demand for raw material inputs');
+            } else if (sectorKey === 'manufactured_goods') {
+                var manuf = Number(nation.manufacturing_output) || 0;
+                var sol = Number(nation.standard_of_living) || 0;
+                if (manuf < 50) importReasons.push('Domestic manufacturing ('+Math.round(manuf)+') cannot meet consumer demand');
+                if (sol > 50) importReasons.push('Higher standard of living ('+Math.round(sol)+') drives demand for imported goods');
+            } else if (sectorKey === 'technology') {
+                var digi = Number(nation.digital_infrastructure) || 0;
+                if (digi < 50) importReasons.push('Low domestic tech capacity (Digital Infra: '+Math.round(digi)+')');
+                else importReasons.push('Digital economy growth outpaces domestic production');
+            } else if (sectorKey === 'arms') {
+                importReasons.push('Defense spending requires equipment procurement');
+            }
+        } else if (impDem > 0) {
+            importReasons.push('Has import demand but no trade partners are selling');
+        } else {
+            importReasons.push('Self-sufficient — no import demand in this sector');
+        }
+    }
+
+    // --- Render ---
+    var h = '<div class="econ-section">';
+    h += '<div class="econ-section-header">TRADE ANALYSIS</div>';
+
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:12px 16px;">';
+
+    // Export column
+    h += '<div>';
+    h += '<div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;letter-spacing:1px;">Why Exports = ' + formatBudgetCurrency(expVol) + '</div>';
+    for (var i = 0; i < exportReasons.length; i++) {
+        var eColor = expVol > 0 ? '#5cb85c' : 'var(--text-secondary)';
+        h += '<div style="font-size:0.8rem;color:' + eColor + ';margin-bottom:4px;padding-left:10px;border-left:2px solid ' + eColor + ';">' + escapeHtml(exportReasons[i]) + '</div>';
+    }
+    h += '</div>';
+
+    // Import column
+    if (!sector.export_only) {
+        h += '<div>';
+        h += '<div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;letter-spacing:1px;">Why Imports = ' + formatBudgetCurrency(impVol) + '</div>';
+        for (var i = 0; i < importReasons.length; i++) {
+            var iColor = impVol > 0 ? '#d9534f' : 'var(--text-secondary)';
+            h += '<div style="font-size:0.8rem;color:' + iColor + ';margin-bottom:4px;padding-left:10px;border-left:2px solid ' + iColor + ';">' + escapeHtml(importReasons[i]) + '</div>';
+        }
+        h += '</div>';
+    }
+
+    h += '</div>';
+
+    // --- Unmet demand warning ---
+    if (!sector.export_only && impDem > 0 && impVol < impDem) {
+        var unmetPct = Math.round(((impDem - impVol) / impDem) * 100);
+        if (unmetPct >= 5) {
+            var urgency = unmetPct >= 50 ? '#d9534f' : '#d48a3c';
+            var urgencyLabel = unmetPct >= 50 ? 'CRITICAL' : 'WARNING';
+            h += '<div style="margin:8px 16px;padding:10px 14px;border-radius:4px;border:1px solid ' + urgency + ';background:' + urgency + '15;">';
+            h += '<div style="font-size:0.75rem;font-weight:bold;color:' + urgency + ';margin-bottom:4px;">' + urgencyLabel + ': ' + unmetPct + '% of import demand unmet</div>';
+            h += '<div style="font-size:0.75rem;color:var(--text-secondary);">';
+            var penalties = [];
+            if (sectorKey === 'fuel_energy') penalties = ['Energy Generation \u2193', 'Manufacturing Output \u2193', 'Inflation \u2191', 'Cost of Living \u2191'];
+            else if (sectorKey === 'food_agriculture') penalties = ['Happiness \u2193', 'Civil Unrest \u2191', 'Healthcare Quality \u2193'];
+            else if (sectorKey === 'minerals') penalties = ['Manufacturing Output \u2193', 'Infrastructure \u2193'];
+            else if (sectorKey === 'manufactured_goods') penalties = ['Standard of Living \u2193', 'Cost of Living \u2191'];
+            else if (sectorKey === 'technology') penalties = ['Digital Infrastructure \u2193', 'Innovation Index \u2193'];
+            else if (sectorKey === 'arms') penalties = ['Military Strength \u2193'];
+            if (penalties.length > 0) h += 'Stat impact: ' + penalties.join(' \u2022 ');
+            h += '</div>';
+            h += '</div>';
+        }
+    }
+
+    // --- Recommendations ---
+    var recs = [];
+    if (tradeData && tradeData.allAffinities) {
+        var tariffs = Number(nation.tariffs) || 0;
+
+        // Check for partners without trade agreements
+        var noAgreementPartners = [];
+        var embargoPartners = [];
+        var bestUntappedPartner = null;
+        var bestUntappedAff = 0;
+        for (var ai = 0; ai < tradeData.allAffinities.length; ai++) {
+            var aEntry = tradeData.allAffinities[ai];
+            var bd = aEntry.breakdown;
+            if (bd.embargo < 0) {
+                embargoPartners.push(aEntry.name);
+            } else if (!bd.tradeType && bd.total > 20) {
+                noAgreementPartners.push(aEntry);
+                if (bd.total > bestUntappedAff) {
+                    bestUntappedAff = bd.total;
+                    bestUntappedPartner = aEntry;
+                }
+            }
+        }
+
+        // Export-side recommendations
+        if (expVol === 0 && expCap > 0) {
+            if (bestUntappedPartner) {
+                recs.push({icon: '\uD83E\uDD1D', text: 'Sign a trade agreement with ' + bestUntappedPartner.name + ' (affinity: ' + Math.round(bestUntappedAff) + ') to unlock export markets'});
+            }
+            if (embargoPartners.length > 0) {
+                recs.push({icon: '\u26A0\uFE0F', text: 'Active embargoes with ' + embargoPartners.join(', ') + ' are blocking trade — consider lifting them'});
+            }
+            if (noAgreementPartners.length > 1) {
+                recs.push({icon: '\uD83D\uDCDC', text: noAgreementPartners.length + ' nations have no trade agreement with you — FTAs give +25 affinity'});
+            }
+        }
+
+        // Import-side recommendations
+        if (!sector.export_only && impDem > 0 && impVol < impDem * 0.9) {
+            if (tariffs > 30) {
+                recs.push({icon: '\uD83D\uDCB0', text: 'Lower tariffs (currently ' + Math.round(tariffs) + '%) to make imports cheaper and increase inflow'});
+            }
+            if (sectorKey === 'fuel_energy') {
+                var rail = Number(nation.rail_network) || 0;
+                var oilGas = Number(nation.oil_and_gas) || 0;
+                if (rail < 40) {
+                    recs.push({icon: '\uD83D\uDE82', text: 'Invest in rail infrastructure (' + Math.round(rail) + ') to reduce fuel dependency for transport'});
+                }
+                if (oilGas < 40) {
+                    recs.push({icon: '\u26FD', text: 'Increase domestic oil & gas production (' + Math.round(oilGas) + ') through Energy Ministry funding'});
+                }
+                var energyGen = Number(nation.energy_generation) || 0;
+                if (energyGen < 50) {
+                    recs.push({icon: '\u26A1', text: 'Boost energy generation (' + Math.round(energyGen) + ') to reduce reliance on imported fuel'});
+                }
+            } else if (sectorKey === 'food_agriculture') {
+                var arable = Number(nation.arable_land) || 0;
+                if (arable < 50) {
+                    recs.push({icon: '\uD83C\uDF3E', text: 'Invest in agricultural development (Arable Land: ' + Math.round(arable) + ') to reduce food import dependency'});
+                }
+            } else if (sectorKey === 'minerals') {
+                recs.push({icon: '\u26CF\uFE0F', text: 'Develop domestic mining capacity to reduce mineral import needs'});
+            } else if (sectorKey === 'manufactured_goods') {
+                var manuf = Number(nation.manufacturing_output) || 0;
+                if (manuf < 50) {
+                    recs.push({icon: '\uD83C\uDFED', text: 'Grow domestic manufacturing (' + Math.round(manuf) + ') to reduce dependence on imported goods'});
+                }
+            }
+        }
+
+        // Price-based recommendations
+        if (priceMod > 1.3 && expCap > 0) {
+            recs.push({icon: '\uD83D\uDCC8', text: 'Global prices are high (' + priceMod.toFixed(2) + 'x) — good time to increase exports in this sector'});
+        } else if (priceMod < 0.7 && impDem > 0) {
+            recs.push({icon: '\uD83D\uDCC9', text: 'Global oversupply (' + priceMod.toFixed(2) + 'x) — cheap imports available, consider stockpiling'});
+        }
+    }
+
+    if (recs.length > 0) {
+        h += '<div style="padding:8px 16px 12px;">';
+        h += '<div style="font-size:0.7rem;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;letter-spacing:1px;">Recommendations</div>';
+        for (var ri = 0; ri < recs.length; ri++) {
+            h += '<div style="font-size:0.8rem;color:var(--text-primary);margin-bottom:6px;padding:6px 10px;background:var(--bg-hover);border-radius:3px;">';
+            h += recs[ri].icon + ' ' + escapeHtml(recs[ri].text);
+            h += '</div>';
+        }
+        h += '</div>';
+    }
+
+    h += '</div>';
     return h;
 }
 
@@ -2277,8 +2576,8 @@ function renderSectorDrivers(nation, sector) {
     for (var i = 0; i < stats.length; i++) {
         var st = stats[i];
         var stPct = Math.min(100, Math.max(0, Math.round(st.value)));
-        var stColor = stPct >= 70 ? '#4CAF50' : stPct >= 40 ? '#e2e0d6' : '#ff4444';
-        var barColor = stPct >= 70 ? '#4CAF50' : stPct >= 40 ? '#8a8778' : '#ff4444';
+        var stColor = stPct >= 70 ? '#5cb85c' : stPct >= 40 ? '#f0efe6' : '#d9534f';
+        var barColor = stPct >= 70 ? '#5cb85c' : stPct >= 40 ? '#888' : '#d9534f';
 
         h += '<div class="sector-driver-row">';
         h += '<div class="sector-driver-label">' + escapeHtml(st.label) + '</div>';
@@ -2299,13 +2598,92 @@ function renderSectorDrivers(nation, sector) {
     h += '<div class="sector-driver-label">Composite Score</div>';
     h += '<div class="sector-driver-track">';
     var compPct = Math.min(100, Math.max(0, Math.round(compositeScore)));
-    var compColor = compPct >= 70 ? '#4CAF50' : compPct >= 40 ? '#8a8778' : '#ff4444';
+    var compColor = compPct >= 70 ? '#5cb85c' : compPct >= 40 ? '#888' : '#d9534f';
     h += '<div class="sector-driver-fill" style="width:' + compPct + '%;background:' + compColor + '"></div>';
     h += '<div class="sector-score-threshold" style="left:' + sector.export_threshold + '%"></div>';
     h += '</div>';
-    h += '<div class="sector-driver-value" style="color:' + (compPct >= 70 ? '#4CAF50' : compPct >= 40 ? '#e2e0d6' : '#ff4444') + '">' + compPct + '</div>';
+    h += '<div class="sector-driver-value" style="color:' + (compPct >= 70 ? '#5cb85c' : compPct >= 40 ? '#f0efe6' : '#d9534f') + '">' + compPct + '</div>';
     h += '<div class="sector-driver-trend"></div>';
     h += '</div>';
+
+    h += '</div>';
+    h += '</div>';
+    return h;
+}
+
+// Import driver stat definitions per sector (based on calculateImportDemand logic)
+// inverted: true means LOW values drive MORE imports (deficiency model)
+var TRADE_IMPORT_DRIVERS = {
+    fuel_energy: [
+        { key: 'oil_and_gas', inverted: true },
+        { key: 'energy_generation', inverted: true },
+        { key: 'manufacturing_output', inverted: false },
+        { key: 'urbanization', inverted: false },
+        { key: 'cost_of_living', inverted: false },
+        { key: 'rail_network', inverted: true }
+    ],
+    minerals: [
+        { key: 'rare_minerals', inverted: true },
+        { key: 'manufacturing_output', inverted: false }
+    ],
+    food_agriculture: [
+        { key: 'arable_land', inverted: true }
+    ],
+    manufactured_goods: [
+        { key: 'standard_of_living', inverted: false },
+        { key: 'manufacturing_output', inverted: true }
+    ],
+    technology: [
+        { key: 'digital_infrastructure', inverted: false },
+        { key: 'higher_education', inverted: true }
+    ],
+    arms: []
+};
+
+function renderImportDrivers(nation, sector) {
+    if (sector.export_only) return '';
+    var drivers = TRADE_IMPORT_DRIVERS[sector.key];
+    if (!drivers || drivers.length === 0) return '';
+
+    var h = '<div class="econ-section">';
+    h += '<div class="econ-section-header">IMPORT DRIVERS</div>';
+    if (TRADE_IMPORT_HINTS[sector.key]) {
+        h += '<div class="econ-section-subtitle">' + escapeHtml(TRADE_IMPORT_HINTS[sector.key]) + '</div>';
+    }
+
+    h += '<div class="sector-drivers">';
+    for (var i = 0; i < drivers.length; i++) {
+        var d = drivers[i];
+        var val = Number(nation[d.key]) || 0;
+        var stPct = Math.min(100, Math.max(0, Math.round(val)));
+
+        // For inverted drivers: low value = high import pressure (red=driving imports)
+        // For normal drivers: high value = high import pressure
+        var barColor, stColor;
+        if (d.inverted) {
+            // Low value drives imports: low=red (high demand), high=green (self-sufficient)
+            barColor = stPct >= 70 ? '#5cb85c' : stPct >= 40 ? '#888' : '#d9534f';
+            stColor = stPct >= 70 ? '#5cb85c' : stPct >= 40 ? '#f0efe6' : '#d9534f';
+        } else {
+            // High value drives imports: high=red (consuming more), low=green (low demand)
+            barColor = stPct <= 30 ? '#5cb85c' : stPct <= 60 ? '#888' : '#d9534f';
+            stColor = stPct <= 30 ? '#5cb85c' : stPct <= 60 ? '#f0efe6' : '#d9534f';
+        }
+
+        var label = formatStatLabel(d.key);
+        var tag = d.inverted ? ' (low = more imports)' : ' (high = more imports)';
+
+        h += '<div class="sector-driver-row">';
+        h += '<div class="sector-driver-label">' + escapeHtml(label) + '</div>';
+        h += '<div class="sector-driver-track">';
+        h += '<div class="sector-driver-fill" style="width:' + stPct + '%;background:' + barColor + '"></div>';
+        h += '</div>';
+        h += '<div class="sector-driver-value" style="color:' + stColor + '">' + stPct + '</div>';
+
+        var trendHtml = getTrendArrow(d.key, val, d.inverted);
+        h += '<div class="sector-driver-trend">' + trendHtml + '</div>';
+        h += '</div>';
+    }
 
     h += '</div>';
     h += '</div>';
@@ -2351,9 +2729,9 @@ function renderSectorPartners(sectorKey, sector) {
             h += '<div class="sector-partner-row">';
             h += '<div class="sector-partner-name"' + (NATION_COLORS[ep.name] ? ' style="color:' + NATION_COLORS[ep.name] + '"' : '') + '>' + escapeHtml(ep.name) + '</div>';
             h += '<div class="sector-partner-bar-wrap">';
-            h += '<div class="sector-partner-bar" style="width:' + barW.toFixed(1) + '%;background:#4CAF50"></div>';
+            h += '<div class="sector-partner-bar" style="width:' + barW.toFixed(1) + '%;background:#5cb85c"></div>';
             h += '</div>';
-            h += '<div class="sector-partner-amount" style="color:#4CAF50">' + formatBudgetCurrency(ep.amount) + '</div>';
+            h += '<div class="sector-partner-amount" style="color:#5cb85c">' + formatBudgetCurrency(ep.amount) + '</div>';
             h += '</div>';
         }
     }
@@ -2373,9 +2751,9 @@ function renderSectorPartners(sectorKey, sector) {
                 h += '<div class="sector-partner-row">';
                 h += '<div class="sector-partner-name"' + (NATION_COLORS[ip.name] ? ' style="color:' + NATION_COLORS[ip.name] + '"' : '') + '>' + escapeHtml(ip.name) + '</div>';
                 h += '<div class="sector-partner-bar-wrap">';
-                h += '<div class="sector-partner-bar" style="width:' + barW.toFixed(1) + '%;background:#ff4444"></div>';
+                h += '<div class="sector-partner-bar" style="width:' + barW.toFixed(1) + '%;background:#d9534f"></div>';
                 h += '</div>';
-                h += '<div class="sector-partner-amount" style="color:#ff4444">' + formatBudgetCurrency(ip.amount) + '</div>';
+                h += '<div class="sector-partner-amount" style="color:#d9534f">' + formatBudgetCurrency(ip.amount) + '</div>';
                 h += '</div>';
             }
         }
@@ -2390,14 +2768,21 @@ function renderSectorPartners(sectorKey, sector) {
 function formatStatLabel(key) {
     var labels = {
         oil_and_gas: 'Oil & Gas',
+        energy_generation: 'Energy Generation',
         rare_minerals: 'Rare Minerals',
         arable_land: 'Arable Land',
+        manufacturing_output: 'Manufacturing Output',
         physical_infrastructure: 'Physical Infrastructure',
         digital_infrastructure: 'Digital Infrastructure',
         higher_education: 'Higher Education',
         happiness: 'Happiness',
         stability: 'Stability',
-        credit: 'Credit'
+        credit: 'Credit',
+        urbanization: 'Urbanization',
+        cost_of_living: 'Cost of Living',
+        rail_network: 'Rail Network',
+        standard_of_living: 'Standard of Living',
+        service_output: 'Service Output'
     };
     return labels[key] || key;
 }
@@ -2407,10 +2792,7 @@ function renderTariffsTab(nation) {
     var h = '<div class="econ-tab-body"><div class="econ-overview">';
 
     var tariffRate = Number(nation.tariffs) || 0;
-    var tariffRev = 0;
-    if (tradeData && tradeData.summary) {
-        tariffRev = Number(tradeData.summary.tariff_revenue) || 0;
-    }
+    var cappedTariffRevTariffs = getCappedTariffRevenue(nation);
 
     // --- Tariff Overview ---
     h += '<div class="econ-section">';
@@ -2419,7 +2801,7 @@ function renderTariffsTab(nation) {
 
     h += '<div class="econ-cards-row econ-cards-4">';
     h += renderOverviewCard('Tariff Rate', tariffRate.toFixed(0) + '%', 'neutral', null);
-    h += renderOverviewCard('Tariff Revenue', formatBudgetCurrency(tariffRev), tariffRev > 0 ? 'surplus' : 'neutral', 'Per Tick');
+    h += renderOverviewCard('Tariff Revenue', formatBudgetCurrency(cappedTariffRevTariffs), cappedTariffRevTariffs > 0 ? 'surplus' : 'neutral', 'Per Tick');
     var dampener = (1 - tariffRate / 200) * 100;
     h += renderOverviewCard('Import Dampener', dampener.toFixed(0) + '%', 'neutral', 'of full demand');
     var agreementCount = tradeAgreements ? tradeAgreements.length : 0;
@@ -2432,15 +2814,171 @@ function renderTariffsTab(nation) {
     h += 'Import dampener = 1 &minus; (tariff_rate / 200). ';
     h += 'At <strong>0%</strong> tariffs, imports flow at 100%. At <strong>50%</strong>, imports are reduced to 75%. At <strong>100%</strong>, imports are cut by half.';
     h += '</div>';
+
+    // Tariff relations warning
+    if (tariffRate > 25) {
+        h += '<div style="margin-top:8px;padding:8px 12px;background:rgba(204,85,85,0.06);border:1px solid rgba(204,85,85,0.2);border-radius:4px;">';
+        h += '<div style="font-family:var(--font-mono,monospace);font-size:9px;font-weight:700;color:#c55;margin-bottom:4px;">⚠ HIGH TARIFF DIPLOMATIC PENALTY</div>';
+        h += '<div style="font-size:11px;color:var(--text-muted,#9e9a92);line-height:1.5;">Tariffs above 25% degrade diplomatic relations with <strong>all nations</strong> by <strong>-0.5/tick</strong> (floor: 10). Current rate: <strong>' + tariffRate.toFixed(0) + '%</strong>. Reduce tariffs below 25% to stop the penalty.</div>';
+        h += '</div>';
+    }
     h += '</div>';
+
+    // --- Tariff Impact Simulator ---
+    h += renderTariffSimulator(nation);
 
     // --- Active Trade Agreements ---
     h += renderTariffAgreementsSection(nation);
+
+    // --- FTA Effects Warning ---
+    h += renderFTAEffectsSection(nation);
 
     // --- Tariff Matrix ---
     h += renderTariffMatrix(nation);
 
     h += '</div></div>';
+    return h;
+}
+
+function gatherTariffSimData(nation) {
+    var currentRate = Number(nation.tariffs) || 0;
+    var eff = Number(nation.efficiency) || 50;
+    var corr = Number(nation.corruption) || 50;
+    var collectionRate = (eff + (100 - corr)) / 200;
+    var currentDampener = 1 - (currentRate / 200);
+
+    var sectorImports = [];
+    var totalCurrentImports = 0;
+    if (tradeData && tradeData.flows) {
+        for (var i = 0; i < TRADE_SECTORS.length; i++) {
+            var s = TRADE_SECTORS[i];
+            if (s.export_only) continue;
+            var flow = tradeData.flows[s.key];
+            var impVol = flow ? Number(flow.import_volume) || 0 : 0;
+            if (impVol > 0) {
+                sectorImports.push({ key: s.key, label: s.label, imports: impVol });
+                totalCurrentImports += impVol;
+            }
+        }
+    }
+
+    var currentTariffRev = 0;
+    if (tradeData && tradeData.summary) {
+        currentTariffRev = Number(tradeData.summary.tariff_revenue) || 0;
+    }
+
+    return {
+        currentRate: currentRate,
+        collectionRate: collectionRate,
+        currentDampener: currentDampener,
+        sectorImports: sectorImports,
+        totalCurrentImports: totalCurrentImports,
+        currentTariffRev: currentTariffRev
+    };
+}
+
+function renderTariffSimulator(nation) {
+    var d = gatherTariffSimData(nation);
+    if (d.totalCurrentImports <= 0) {
+        var h = '<div class="econ-section">';
+        h += '<div class="econ-section-header">TARIFF IMPACT SIMULATOR</div>';
+        h += '<div class="econ-placeholder">No import data yet. Projections will appear once trade flows are established.</div>';
+        h += '</div>';
+        return h;
+    }
+
+    var h = '<div class="econ-section">';
+    h += '<div class="econ-section-header">TARIFF IMPACT SIMULATOR</div>';
+    h += '<div class="econ-section-subtitle">Drag to project how a tariff change would affect imports and revenue.</div>';
+
+    // Slider
+    h += '<div class="tsim-slider-row">';
+    h += '<div class="tsim-slider-label">CURRENT: <strong>' + d.currentRate.toFixed(0) + '%</strong></div>';
+    h += '<div class="tsim-slider-wrap">';
+    h += '<div class="tsim-slider-fill" id="tsim-fill" style="width:' + d.currentRate + '%"></div>';
+    h += '<input type="range" class="tsim-slider" id="tsim-range" min="0" max="100" step="1" value="' + d.currentRate.toFixed(0) + '">';
+    h += '<div class="tsim-slider-labels"><span>0%</span><span>50%</span><span>100%</span></div>';
+    h += '</div>';
+    h += '<div class="tsim-sim-label" id="tsim-sim-label">SIMULATED: <strong>' + d.currentRate.toFixed(0) + '%</strong></div>';
+    h += '</div>';
+
+    // Projection cards
+    h += '<div class="tsim-projections" id="tsim-projections">';
+    var gdpCap = Number(nation.gdp ?? nation.GDP ?? 0) * 0.002;
+    h += renderTariffProjections(d.currentRate, d.currentRate, d.currentDampener, d.totalCurrentImports, d.sectorImports, d.collectionRate, d.currentTariffRev, gdpCap);
+    h += '</div>';
+
+    h += '</div>';
+    return h;
+}
+
+function renderTariffProjections(currentRate, simRate, currentDampener, totalCurrentImports, sectorImports, collectionRate, currentTariffRev, gdpCap) {
+    var simDampener = 1 - (simRate / 200);
+    var dampenerRatio = currentDampener > 0 ? simDampener / currentDampener : 1;
+
+    var projectedTotalImports = Math.round(totalCurrentImports * dampenerRatio);
+    var projectedTariffRev = Math.round(projectedTotalImports * (simRate / 100) * collectionRate);
+    // Cap tariff revenue at 0.2% of GDP (matches budget)
+    if (gdpCap > 0) {
+        projectedTariffRev = Math.min(projectedTariffRev, Math.round(gdpCap));
+        currentTariffRev = Math.min(currentTariffRev, Math.round(gdpCap));
+    }
+
+    var importDelta = projectedTotalImports - totalCurrentImports;
+    var revDelta = projectedTariffRev - currentTariffRev;
+    var isChanged = Math.round(simRate) !== Math.round(currentRate);
+
+    var h = '';
+
+    // Summary cards
+    h += '<div class="econ-cards-row econ-cards-4">';
+
+    // Projected imports (neutral color — more/fewer imports isn't inherently good or bad)
+    var impDeltaStr = importDelta !== 0 ? (importDelta > 0 ? '+' : '') + formatBudgetCurrency(importDelta) : '—';
+    h += renderOverviewCard('Projected Imports', formatBudgetCurrency(projectedTotalImports), 'neutral', isChanged ? impDeltaStr : 'No change');
+
+    // Projected tariff revenue
+    var revColor = revDelta > 0 ? 'surplus' : revDelta < 0 ? 'deficit' : 'neutral';
+    var revDeltaStr = revDelta !== 0 ? (revDelta > 0 ? '+' : '') + formatBudgetCurrency(revDelta) : '—';
+    h += renderOverviewCard('Projected Revenue', formatBudgetCurrency(projectedTariffRev), revColor, isChanged ? revDeltaStr : 'No change');
+
+    // Import dampener
+    h += renderOverviewCard('Import Dampener', (simDampener * 100).toFixed(0) + '%', 'neutral', 'of full demand');
+
+    var netDirection = revDelta > 0 ? 'More revenue' : revDelta < 0 ? 'Less revenue' : 'No change';
+    var tradeDirection = importDelta > 0 ? ', more imports' : importDelta < 0 ? ', fewer imports' : '';
+    h += renderOverviewCard('Net Effect', isChanged ? (revDelta >= 0 ? '+' : '') + formatBudgetCurrency(revDelta) + '/tick' : '—', revColor, isChanged ? netDirection + tradeDirection : 'Drag the slider');
+
+    h += '</div>';
+
+    // Per-sector breakdown (only if changed)
+    if (isChanged && sectorImports.length > 0) {
+        h += '<div class="tsim-sector-table">';
+        h += '<div class="tsim-sector-header">';
+        h += '<div class="tsim-sector-cell tsim-sector-name">SECTOR</div>';
+        h += '<div class="tsim-sector-cell tsim-sector-num">CURRENT IMPORTS</div>';
+        h += '<div class="tsim-sector-cell tsim-sector-num">PROJECTED IMPORTS</div>';
+        h += '<div class="tsim-sector-cell tsim-sector-num">CHANGE</div>';
+        h += '</div>';
+
+        for (var i = 0; i < sectorImports.length; i++) {
+            var s = sectorImports[i];
+            var projImp = Math.round(s.imports * dampenerRatio);
+            var delta = projImp - s.imports;
+            var deltaColor = delta > 0 ? '#5cb85c' : delta < 0 ? '#d9534f' : '#888';
+            var deltaSign = delta > 0 ? '+' : '';
+
+            h += '<div class="tsim-sector-row">';
+            h += '<div class="tsim-sector-cell tsim-sector-name">' + escapeHtml(s.label) + '</div>';
+            h += '<div class="tsim-sector-cell tsim-sector-num">' + formatBudgetCurrency(s.imports) + '</div>';
+            h += '<div class="tsim-sector-cell tsim-sector-num">' + formatBudgetCurrency(projImp) + '</div>';
+            h += '<div class="tsim-sector-cell tsim-sector-num" style="color:' + deltaColor + '">' + deltaSign + formatBudgetCurrency(delta) + '</div>';
+            h += '</div>';
+        }
+
+        h += '</div>';
+    }
+
     return h;
 }
 
@@ -2471,7 +3009,7 @@ function renderTariffAgreementsSection(nation) {
         var partnerId = ag.nation_a_id === nation.id ? ag.nation_b_id : ag.nation_a_id;
         var partnerName = nameMap[partnerId] || 'Unknown';
         var typeInfo = TRADE_AGREEMENT_TYPES[ag.agreement_type] || {};
-        var typeBadge = typeInfo.shortLabel || ag.agreement_type.toUpperCase();
+        var typeBadge = typeInfo.shortLabel || (ag.agreement_type || '').toUpperCase();
 
         // Duration info
         var durationText = 'Permanent';
@@ -2486,7 +3024,7 @@ function renderTariffAgreementsSection(nation) {
         }
 
         // Border color by type
-        var borderColor = ag.agreement_type === 'fta' ? '#4CAF50' : ag.agreement_type === 'pta' ? '#2196F3' : '#8a8778';
+        var borderColor = ag.agreement_type === 'fta' ? '#5cb85c' : ag.agreement_type === 'pta' ? '#5b9bd5' : '#888';
 
         h += '<div class="tariff-agreement-card" style="border-left-color:' + borderColor + '">';
         h += '<div class="ta-card-header">';
@@ -2577,6 +3115,53 @@ function getSectorLabel(sectorKey) {
     return sectorKey || 'All Sectors';
 }
 
+function renderFTAEffectsSection(nation) {
+    if (!tradeAgreements || tradeAgreements.length === 0) return '';
+
+    var ftaCount = 0, ptaCount = 0, utrCount = 0;
+    for (var i = 0; i < tradeAgreements.length; i++) {
+        var ag = tradeAgreements[i];
+        if (ag.agreement_type === 'fta') ftaCount++;
+        else if (ag.agreement_type === 'pta') ptaCount++;
+        else if (ag.agreement_type === 'unilateral_tariff_reduction') {
+            // Only count UTRs we issued — being a target doesn't affect our economy
+            var utrArt = (ag.articles || [])[0];
+            if (utrArt && utrArt.data && utrArt.data.issuer_nation_id === nation.id) utrCount++;
+        }
+    }
+
+    if (ftaCount === 0 && ptaCount === 0 && utrCount === 0) return '';
+
+    var h = '<div class="econ-section">';
+    h += '<div class="econ-section-header">TRADE AGREEMENT EFFECTS</div>';
+    h += '<div class="econ-section-subtitle">Ongoing per-tick effects of your active trade agreements.</div>';
+    h += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">';
+
+    // Upsides
+    h += '<div style="flex:1;min-width:200px;background:rgba(92,184,92,0.06);border:1px solid rgba(92,184,92,0.2);border-radius:3px;padding:10px;">';
+    h += '<div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:700;color:var(--green);text-transform:uppercase;margin-bottom:6px;">Benefits per tick</div>';
+    h += '<div style="font-size:0.78rem;color:var(--text-primary);line-height:1.6;">';
+    if (ftaCount > 0) h += '↓ Cost of living <span style="color:var(--green);">-' + (0.2 * ftaCount).toFixed(1) + '</span> · ↑ GDP growth <span style="color:var(--green);">+' + (0.15 * ftaCount).toFixed(2) + '</span><br>';
+    if (ptaCount > 0) h += '↓ Cost of living <span style="color:var(--green);">-' + (0.05 * ptaCount).toFixed(2) + '</span> · ↑ GDP growth <span style="color:var(--green);">+' + (0.05 * ptaCount).toFixed(2) + '</span> (PTA)<br>';
+    if (utrCount > 0) h += '↓ Cost of living <span style="color:var(--green);">-' + (0.1 * utrCount).toFixed(1) + '</span> · ↑ Happiness <span style="color:var(--green);">+' + (0.05 * utrCount).toFixed(2) + '</span> (UTR)<br>';
+    h += '↑ Foreign investment, inflation reduction, trade affinity<br>';
+    h += '</div></div>';
+
+    // Downsides
+    h += '<div style="flex:1;min-width:200px;background:rgba(217,83,79,0.06);border:1px solid rgba(217,83,79,0.2);border-radius:3px;padding:10px;">';
+    h += '<div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:700;color:var(--red);text-transform:uppercase;margin-bottom:6px;">Costs per tick</div>';
+    h += '<div style="font-size:0.78rem;color:var(--text-primary);line-height:1.6;">';
+    if (ftaCount > 0) h += '↓ Manufacturing <span style="color:var(--red);">-' + (0.15 * ftaCount).toFixed(2) + '</span> · ↓ Union strength <span style="color:var(--red);">-' + (0.15 * ftaCount).toFixed(2) + '</span><br>';
+    if (ptaCount > 0) h += '↓ Manufacturing <span style="color:var(--red);">-' + (0.05 * ptaCount).toFixed(2) + '</span> · ↓ Union strength <span style="color:var(--red);">-' + (0.05 * ptaCount).toFixed(2) + '</span> (PTA)<br>';
+    if (utrCount > 0) h += '↓ Manufacturing <span style="color:var(--red);">-' + (0.05 * utrCount).toFixed(2) + '</span> (UTR)<br>';
+    h += '↓ Tariff revenue from reduced rates<br>';
+    if (ftaCount > 0) h += '⚠ Withdrawal causes economic shock<br>';
+    h += '</div></div>';
+
+    h += '</div></div>';
+    return h;
+}
+
 function renderTariffMatrix(nation) {
     if (!allNations || allNations.length === 0) return '';
 
@@ -2587,13 +3172,18 @@ function renderTariffMatrix(nation) {
         return (a.name || '').localeCompare(b.name || '');
     });
 
-    // Build agreement lookup: agreementWith[nationId] = { type, details }
+    // Build agreement lookup: agreementWith[nationId] = best agreement (most impactful)
+    // Priority: FTA > PTA > UTR > others
     var agreementWith = {};
+    var AGREEMENT_PRIORITY = { free_trade: 4, fta: 4, pta: 3, preferential_tariff: 3, unilateral_tariff_reduction: 2 };
     if (tradeAgreements) {
         for (var i = 0; i < tradeAgreements.length; i++) {
             var ag = tradeAgreements[i];
+            if (ag.status !== 'active') continue;
             var partnerId = ag.nation_a_id === nation.id ? ag.nation_b_id : ag.nation_a_id;
-            agreementWith[partnerId] = ag;
+            var newPri = AGREEMENT_PRIORITY[ag.agreement_type] || 1;
+            var existPri = agreementWith[partnerId] ? (AGREEMENT_PRIORITY[agreementWith[partnerId].agreement_type] || 1) : 0;
+            if (newPri > existPri) agreementWith[partnerId] = ag;
         }
     }
 
@@ -2626,7 +3216,7 @@ function renderTariffMatrix(nation) {
 
         if (ag) {
             var typeInfo = TRADE_AGREEMENT_TYPES[ag.agreement_type] || {};
-            agLabel = typeInfo.shortLabel || ag.agreement_type.toUpperCase();
+            agLabel = typeInfo.shortLabel || (ag.agreement_type || '').toUpperCase();
 
             if (ag.agreement_type === 'fta') {
                 // FTA: tariffs eliminated (check exemptions)
@@ -2638,7 +3228,7 @@ function renderTariffMatrix(nation) {
                 } else {
                     effectiveRate = 0;
                 }
-                agBadgeColor = '#4CAF50';
+                agBadgeColor = '#5cb85c';
             } else if (ag.agreement_type === 'pta') {
                 // PTA: partial reductions — approximate as weighted average
                 var articles = ag.articles || [];
@@ -2651,14 +3241,30 @@ function renderTariffMatrix(nation) {
                     var avgReduction = totalReduction / reductions.length;
                     effectiveRate = Math.max(0, rate * (1 - avgReduction / 100));
                 }
-                agBadgeColor = '#2196F3';
+                agBadgeColor = '#5b9bd5';
+            } else if (ag.agreement_type === 'unilateral_tariff_reduction') {
+                // UTR: only the issuer gets reduced tariffs — the target sees no change
+                var articles = ag.articles || [];
+                var utrArt = articles.find(function(a) { return a.type === 'tariff_reduction'; });
+                var utrPct = utrArt ? Number(utrArt.data?.reduction_pct || 0) : 50;
+                var issuerId = utrArt && utrArt.data ? utrArt.data.issuer_nation_id : null;
+                if (issuerId === nation.id) {
+                    // We issued this UTR — apply reduction to OUR base rate
+                    var yourRate = Number(nation.tariffs) || 0;
+                    effectiveRate = Math.max(0, yourRate * (1 - utrPct / 100));
+                    agLabel = 'UTR ' + utrPct + '%';
+                    agBadgeColor = '#5cb85c';
+                } else {
+                    // We are the target — this UTR doesn't affect OUR tariffs, show as no agreement
+                    ag = null;
+                }
             } else if (ag.agreement_type === 'resource_supply') {
-                agBadgeColor = '#ff9800';
+                agBadgeColor = '#d48a3c';
             }
         }
 
-        var rateColor = rate <= 20 ? '#4CAF50' : rate <= 50 ? '#e2e0d6' : '#ff4444';
-        var effColor = effectiveRate <= 5 ? '#4CAF50' : effectiveRate <= 20 ? '#e2e0d6' : effectiveRate <= 50 ? '#8a8778' : '#ff4444';
+        var rateColor = rate <= 20 ? '#5cb85c' : rate <= 50 ? '#f0efe6' : '#d9534f';
+        var effColor = effectiveRate <= 5 ? '#5cb85c' : effectiveRate <= 20 ? '#f0efe6' : effectiveRate <= 50 ? '#888' : '#d9534f';
 
         h += '<div class="tm-row' + (isYou ? ' tm-highlight' : '') + '">';
         h += '<div class="tm-cell tm-nation-name"' + (NATION_COLORS[n.name] ? ' style="color:' + NATION_COLORS[n.name] + '"' : '') + '>' + escapeHtml(n.name) + (isYou ? ' <span class="tm-you">(YOU)</span>' : '') + '</div>';
@@ -2772,7 +3378,7 @@ function renderMinistryPoliciesHtml(category) {
 
 // ==================== TRADE LINE ITEMS ====================
 var TRADE_EXPORT_HINTS = {
-    fuel_energy:        'Driven by: Oil & Gas',
+    fuel_energy:        'Driven by: Oil & Gas + Energy Generation',
     minerals:           'Driven by: Rare Minerals',
     food_agriculture:   'Driven by: Arable Land',
     manufactured_goods: 'Driven by: Manufacturing Output',
@@ -2782,7 +3388,7 @@ var TRADE_EXPORT_HINTS = {
     services_finance:   'Driven by: Service Output'
 };
 var TRADE_IMPORT_HINTS = {
-    fuel_energy:        'Driven by: Low Oil & Gas + Low Energy Generation',
+    fuel_energy:        'Driven by: Low Oil & Gas + Low Energy Generation + Manufacturing + Urbanization + Low Rail Network',
     minerals:           'Driven by: Low Rare Minerals × Manufacturing Need',
     food_agriculture:   'Driven by: Population vs. Arable Land',
     manufactured_goods: 'Driven by: Consumer Demand (Pop × Std. of Living) minus Manufacturing',
@@ -2790,24 +3396,6 @@ var TRADE_IMPORT_HINTS = {
     arms:               'Driven by: Defense Budget minus Domestic Arms Capacity'
 };
 
-function tradeLineItem(label, value, prevValue, inverted, sectorKey) {
-    var h = '<div class="budget-line-item">';
-    h += '<div class="budget-line-top">';
-    h += '<span class="budget-line-label">' + escapeHtml(label) + '</span>';
-    h += '<span class="budget-line-value">' + formatBudgetCurrency(value) + '</span>';
-    h += '</div>';
-    if (sectorKey) {
-        var hint = inverted ? TRADE_IMPORT_HINTS[sectorKey] : TRADE_EXPORT_HINTS[sectorKey];
-        if (hint) {
-            h += '<div class="trade-stat-hint">' + escapeHtml(hint) + '</div>';
-        }
-    }
-    if (prevValue !== null && prevValue !== undefined) {
-        h += '<div class="budget-line-trend">' + tradeTrendHtml(value, prevValue, inverted) + '</div>';
-    }
-    h += '</div>';
-    return h;
-}
 
 function tradeTrendHtml(current, previous, inverted) {
     if (previous === null || previous === undefined) return '';
@@ -2819,10 +3407,13 @@ function tradeTrendHtml(current, previous, inverted) {
     if (Math.abs(pctChange) < 0.1) {
         return '<span class="budget-trend trend-neutral">&mdash; 0.0%</span>';
     }
+    // For inverted stats (lower is better), swap the trend color: increase is bad, decrease is good
+    var upClass = inverted ? 'trend-down' : 'trend-up';
+    var downClass = inverted ? 'trend-up' : 'trend-down';
     if (pctChange > 0) {
-        return '<span class="budget-trend trend-up">&#9650; +' + pctChange.toFixed(1) + '%</span>';
+        return '<span class="budget-trend ' + upClass + '">&#9650; +' + pctChange.toFixed(1) + '%</span>';
     }
-    return '<span class="budget-trend trend-down">&#9660; ' + Math.abs(pctChange).toFixed(1) + '%</span>';
+    return '<span class="budget-trend ' + downClass + '">&#9660; ' + Math.abs(pctChange).toFixed(1) + '%</span>';
 }
 
 // ==================== BUDGET HELPERS ====================
@@ -2836,6 +3427,14 @@ function formatBudgetCurrency(val) {
     if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(1) + ' Million';
     if (abs >= 1e3)  return sign + '$' + (abs / 1e3).toFixed(1) + 'K';
     return sign + '$' + Math.round(abs).toLocaleString();
+}
+
+function formatTradeVolume(val, sectorKey) {
+    if (val == null) return '0';
+    var vol = formatSectorVolume(Number(val), sectorKey);
+    if (vol) return vol;
+    // Sectors without display units (technology, services_finance): currency
+    return formatBudgetCurrency(val);
 }
 
 function budgetTrendHtml(current, previous, prevYear) {
@@ -2864,18 +3463,6 @@ function budgetTotalLine(value) {
     return h;
 }
 
-function budgetLineItemClickable(label, value, prevValue, prevYear) {
-    var h = '<div class="budget-line-item budget-line-clickable" data-category="' + escapeHtml(label) + '">';
-    h += '<div class="budget-line-top">';
-    h += '<span class="budget-line-label">' + escapeHtml(label) + '</span>';
-    h += '<span class="budget-line-value">' + formatBudgetCurrency(value) + '</span>';
-    h += '</div>';
-    if (prevValue !== null && value > 0) {
-        h += '<div class="budget-line-trend">' + budgetTrendHtml(value, prevValue, prevYear) + '</div>';
-    }
-    h += '</div>';
-    return h;
-}
 
 function budgetLineItem(label, value, prevValue, prevYear, annotation) {
     var h = '<div class="budget-line-item">';
@@ -2922,14 +3509,6 @@ function formatDelta(d) {
 }
 
 // ==================== RATING ====================
-function getRating(value, inverted) {
-    var effective = inverted ? (100 - value) : value;
-    if (effective >= 80) return { label: 'Excellent', cls: 'excellent' };
-    if (effective >= 60) return { label: 'Good', cls: 'good' };
-    if (effective >= 40) return { label: 'Moderate', cls: 'moderate' };
-    if (effective >= 20) return { label: 'Poor', cls: 'poor' };
-    return { label: 'Critical', cls: 'critical' };
-}
 
 </script>
 </body>

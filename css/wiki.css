@@ -1,4 +1,4 @@
-/* ===== WIKI STYLES ===== */
+/* ===== WIKI STYLES — v5 Design System ===== */
 
 /* Override dashboard body constraints so wiki pages can scroll */
 body:has(.wiki-container) {
@@ -25,7 +25,7 @@ body:has(.wiki-container) #top-bar .hamburger-btn {
 }
 
 .wiki-top-bar-brand {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 14px;
     font-weight: 700;
     color: var(--accent);
@@ -100,9 +100,9 @@ body:has(.wiki-container) #top-bar .hamburger-btn {
 }
 
 .wiki-btn {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 500;
     text-transform: uppercase;
     padding: 7px 14px;
     border: 1px solid var(--border-main);
@@ -194,7 +194,7 @@ a.wiki-link-missing {
 }
 
 a.wiki-link-missing:hover {
-    color: #ff4444;
+    color: var(--red);
 }
 
 /* ---------- INFOBOX SIDEBAR ---------- */
@@ -227,7 +227,7 @@ a.wiki-link-missing:hover {
 
 .wiki-infobox-type {
     font-size: 10px;
-    font-weight: 600;
+    font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     text-align: center;
@@ -256,7 +256,7 @@ a.wiki-link-missing:hover {
 }
 
 .wiki-infobox-table td:first-child {
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-secondary);
     width: 40%;
     white-space: nowrap;
@@ -317,7 +317,7 @@ a.wiki-link-missing:hover {
 .wiki-field label {
     display: block;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 500;
     text-transform: uppercase;
     color: var(--text-secondary);
     margin-bottom: 6px;
@@ -328,7 +328,7 @@ a.wiki-link-missing:hover {
 .wiki-select {
     width: 100%;
     padding: 9px 12px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 13px;
     background: var(--bg-input);
     border: 1px solid var(--border-main);
@@ -386,7 +386,7 @@ a.wiki-link-missing:hover {
 .wiki-kv-row input {
     flex: 1;
     padding: 6px 10px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
     background: var(--bg-input);
     border: 1px solid var(--border-main);
@@ -490,7 +490,7 @@ a.wiki-link-missing:hover {
 
 .wiki-search-input {
     padding: 7px 12px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
     background: var(--bg-input);
     border: 1px solid var(--border-main);
@@ -505,9 +505,9 @@ a.wiki-link-missing:hover {
 }
 
 .wiki-filter-btn {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 10px;
-    font-weight: 600;
+    font-weight: 500;
     text-transform: uppercase;
     padding: 6px 10px;
     border: 1px solid var(--border-main);
@@ -568,14 +568,14 @@ a.wiki-link-missing:hover {
 
 .wiki-page-row-title {
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-primary);
     flex: 1;
 }
 
 .wiki-page-row-type {
     font-size: 9px;
-    font-weight: 600;
+    font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     padding: 3px 8px;
@@ -664,7 +664,7 @@ a.wiki-link-missing:hover {
 
 .wiki-search-create {
     color: var(--accent);
-    font-weight: 600;
+    font-weight: 500;
 }
 
 /* ---------- HOME PAGE ---------- */
@@ -750,7 +750,7 @@ a.wiki-link-missing:hover {
 
 .wiki-page-meta strong {
     color: var(--text-secondary);
-    font-weight: 600;
+    font-weight: 500;
 }
 
 /* ---------- BACKLINKS ---------- */
@@ -801,7 +801,7 @@ a.wiki-link-missing:hover {
 .wiki-lock-badge {
     display: inline-block;
     font-size: 9px;
-    font-weight: 600;
+    font-weight: 500;
     text-transform: uppercase;
     padding: 2px 8px;
     border-radius: 3px;
@@ -953,7 +953,7 @@ body.light-mode a.wiki-link-missing:hover {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 9px;
     font-weight: 500;
     color: var(--text-secondary);
@@ -984,7 +984,7 @@ body.light-mode a.wiki-link-missing:hover {
 /* Tag badges — new vs existing */
 .wiki-tag-badge {
     font-size: 8px;
-    font-weight: 600;
+    font-weight: 500;
     margin-left: 3px;
     text-transform: uppercase;
 }
@@ -1006,7 +1006,7 @@ body.light-mode a.wiki-link-missing:hover {
     border: none;
     background: transparent;
     color: var(--text-primary);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 9px;
     outline: none;
     min-width: 80px;
@@ -1065,7 +1065,7 @@ body.light-mode a.wiki-link-missing:hover {
     border: none;
     background: transparent;
     color: var(--text-primary);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
     outline: none;
     min-width: 200px;
@@ -1087,7 +1087,7 @@ body.light-mode a.wiki-link-missing:hover {
 }
 
 .wiki-popular-tag {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 9px;
     color: var(--text-muted);
     background: var(--bg-hover);
@@ -1130,7 +1130,7 @@ body.light-mode a.wiki-link-missing:hover {
     align-items: center;
     padding: 6px 12px;
     cursor: pointer;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-primary);
 }

@@ -30,7 +30,7 @@ const windowExports = {
     'onElectionNationSelect', 'runElection', 'previewElection',
     'onScheduleNationSelect', 'scheduleElection', 'filterPlayers',
     'onVoterNationSelect', 'saveAxes', 'resetAxesToSaved',
-    'generateDefaultBlocs', 'showAddBlocForm', 'initializeBlocApprovals',
+    'showAddBlocForm',
     'loadInspector', 'openInspectorNewTab', 'reloadInspector', 'resizeInspector',
     'loadInspectorFactions', 'resetShard', 'toggleBlocDetail', 'editBloc',
     'deleteVoterBloc', 'toggleIssue', 'saveBlocForm', 'cancelBlocForm'

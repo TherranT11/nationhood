@@ -17,16 +17,15 @@
   }
   .dash-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 20px;
-    max-width: 1580px;
   }
 
-  /* ── Nation Card ── */
+  /* ── Dashboard Cards — sharp corners, panel bg ── */
   .dash-card {
     background: var(--bg-panel);
     border: 1px solid var(--border-main);
-    border-radius: 8px;
+    border-radius: 0;
     overflow: hidden;
     min-width: 0;
   }
@@ -34,57 +33,62 @@
     height: 520px;
   }
   #world-map-card {
-    grid-column: 1 / span 3;
+    grid-column: 1 / span 4;
     grid-row: 2;
   }
   #crises-card {
-    grid-column: 4;
+    grid-column: 5;
     grid-row: 2;
   }
+  #events-card {
+    grid-column: 4 / span 2;
+    grid-row: 1;
+  }
+
+  /* Card Header — v5: mono, 0.72rem, 600, centered, uppercase */
   .dash-card-header {
     background: var(--bg-card);
     padding: 10px 20px;
-    margin-bottom: 14px;
-    font-size: 0.9rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     color: var(--text-secondary);
     text-align: center;
+    border-bottom: 1px solid var(--border-light);
   }
 
-  /* ── Tabbed card header ── */
-  .dash-card-tabs {
+  /* ── Events tab bar ── */
+  .events-tab-bar {
     display: flex;
-    gap: 0;
-    background: var(--bg-card);
-    border-bottom: 1px solid var(--border-main);
-    margin-bottom: 14px;
+    gap: 2px;
   }
-  .dash-card-tab {
-    flex: 1;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+  .events-tab-btn {
+    background: transparent;
+    border: 1px solid var(--border-light);
     color: var(--text-secondary);
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    padding: 10px 18px;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 10px;
     cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
+    transition: all 0.15s;
   }
-  .dash-card-tab:hover { color: var(--text-primary); }
-  .dash-card-tab.active {
-    color: var(--text-primary);
-    border-bottom-color: var(--text-primary);
+  .events-tab-btn:first-child { border-radius: 3px 0 0 3px; }
+  .events-tab-btn:last-child  { border-radius: 0 3px 3px 0; }
+  .events-tab-btn.active {
+    background: var(--text-primary);
+    color: var(--bg-page);
+    border-color: var(--text-primary);
   }
-  .dash-tab-pane { display: none; }
-  .dash-tab-pane.active { display: block; }
+  .events-tab-btn:hover:not(.active) {
+    background: rgba(255,255,255,0.05);
+  }
 
-  /* ── Events list ── */
+  /* ── Events list — event rows with left border accent ── */
   .dash-events-scroll {
     overflow-y: auto;
     padding: 0 14px 14px;
@@ -95,15 +99,15 @@
     align-items: baseline;
     gap: 8px;
     padding: 7px 6px;
-    border-bottom: 1px solid var(--border-main);
-    font-family: 'JetBrains Mono', monospace;
+    border-bottom: 1px solid var(--border-light);
+    font-family: var(--font-mono);
     font-size: 0.68rem;
   }
   .dash-event-date {
-    color: var(--text-secondary);
+    color: var(--text-dim);
     min-width: 70px;
     flex-shrink: 0;
-    opacity: 0.6;
+    font-weight: 500;
   }
   .dash-event-icon {
     flex-shrink: 0;
@@ -111,22 +115,60 @@
   }
   .dash-event-text {
     color: var(--text-primary);
+    font-family: var(--font-ui);
+    font-size: 0.82rem;
     flex: 1;
     line-height: 1.4;
   }
   .dash-event-category {
+    font-family: var(--font-mono);
     font-size: 0.6rem;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 1px 5px;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
     border-radius: 3px;
     flex-shrink: 0;
+    border: 1px solid;
   }
   .dash-card-body {
     padding: 6px 20px 20px;
   }
 
+  /* ── World event date + nation column ── */
+  .dash-event-date-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+
+  /* ── World event nation badge ── */
+  .world-event-nation-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    border: 1px solid;
+    vertical-align: middle;
+  }
+  .world-event-nation-badge img {
+    width: 14px;
+    height: 10px;
+    object-fit: cover;
+    border-radius: 1px;
+  }
+
+  /* ── Nation identity — serif name, serif motto ── */
   .nation-identity {
     display: flex;
     flex-direction: column;
@@ -139,7 +181,7 @@
     height: 56px;
     background: var(--bg-card);
     border: 1px solid var(--border-main);
-    border-radius: 4px;
+    border-radius: 2px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -152,25 +194,26 @@
     object-fit: contain;
   }
   .nation-flag-box .abbr-fallback {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--text-secondary);
+    font-weight: 700;
+    color: var(--text-dim);
     letter-spacing: 0.05em;
   }
   .nation-identity h2 {
-    font-family: 'IBM Plex Serif', serif;
+    font-family: var(--font-serif);
     font-size: 1.35rem;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--text-bright);
   }
   .nation-identity .motto {
-    font-family: 'IBM Plex Serif', serif;
+    font-family: var(--font-serif);
     font-style: italic;
     font-size: 0.9rem;
     color: var(--text-secondary);
   }
 
+  /* ── Nation stat rows — v5 stat row pattern ── */
   .nation-stats-list {
     display: flex;
     flex-direction: column;
@@ -180,28 +223,34 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 4px;
+    padding: 5px 4px;
     border-top: 1px solid var(--border-light);
-    font-size: 0.9rem;
   }
   .nation-stat-row:last-child {
     padding-bottom: 0;
   }
   .nation-stat-row .label {
-    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
   }
   .nation-stat-row .value {
-    color: var(--text-primary);
-    font-weight: 500;
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-bright);
     text-align: right;
   }
 
   /* ── Government Card ── */
   .gov-admin-name {
-    font-family: 'IBM Plex Sans', sans-serif;
+    font-family: var(--font-ui);
     font-size: 1.05rem;
     font-weight: 700;
-    color: var(--text-primary);
+    color: var(--text-bright);
     margin-bottom: 6px;
   }
   .gov-badges {
@@ -210,16 +259,14 @@
     margin-bottom: 10px;
   }
   .gov-badge {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.65rem;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
     padding: 3px 8px;
     border-radius: 3px;
-    border: 1px solid var(--border-main);
-    color: var(--text-primary);
-    background: var(--bg-card);
+    border: 1px solid;
   }
   .gov-leader-row {
     display: flex;
@@ -227,29 +274,29 @@
     gap: 10px;
     margin-bottom: 8px;
   }
+  /* Avatar — v5: initials, 32x32, bg-card, mono, dim */
   .gov-initials {
-    width: 28px;
-    height: 28px;
-    border-radius: 4px;
+    width: 32px;
+    height: 32px;
+    border-radius: 2px;
     background: var(--bg-card);
     border: 1px solid var(--border-main);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-dim);
     flex-shrink: 0;
   }
   .gov-leader-name {
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 0.88rem;
-    font-weight: 600;
-    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-bright);
   }
   .gov-leader-meta {
-    font-family: 'IBM Plex Sans', sans-serif;
+    font-family: var(--font-ui);
     font-size: 0.72rem;
     color: var(--text-secondary);
     margin-top: 1px;
@@ -261,23 +308,25 @@
     margin-top: 3px;
   }
   .gov-party-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
     flex-shrink: 0;
   }
   .gov-party-label {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
-    font-weight: 500;
-  }
-  .gov-section-title {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.65rem;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--text-secondary);
+  }
+  .gov-section-title {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
     margin-bottom: 6px;
   }
   .gov-divider {
@@ -285,13 +334,14 @@
     background: var(--border-light);
     margin: 10px 0;
   }
+  /* Seat bar — v5: NO border-radius, square ends */
   .gov-seat-bar {
     display: flex;
-    height: 10px;
-    border-radius: 3px;
-    overflow: hidden;
-    background: rgba(255,255,255,0.04);
+    height: 6px;
+    gap: 2px;
+    background: var(--bg-hover);
     margin-bottom: 6px;
+    /* NO border-radius — square ends always */
   }
   .gov-seat-segment {
     height: 100%;
@@ -303,39 +353,41 @@
     padding: 4px 0;
   }
   .gov-coalition-name {
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 0.78rem;
-    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-bright);
     flex: 1;
   }
   .gov-coalition-seats {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.78rem;
-    font-weight: 600;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 700;
   }
   .gov-seats-combined {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
     color: var(--text-muted);
     text-align: right;
     margin-top: 2px;
   }
+  /* Approval display — v5: 1.6rem, 800 weight */
   .gov-approval-big {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 1.6rem;
-    font-weight: 700;
+    font-weight: 800;
     line-height: 1;
   }
   .gov-footer {
     background: var(--bg-card);
-    border-top: 1px solid var(--border-main);
+    border-top: 1px solid var(--border-light);
     margin: 0;
     padding: 8px 20px 8px 24px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
     font-weight: 600;
     color: var(--text-secondary);
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -349,97 +401,96 @@
     font-weight: 400;
   }
 
-  /* ── Elections Card ── */
+  /* ── Elections Card — v5: left border accent, bg-card ── */
   .election-item {
-    border-left: 3px solid #888;
+    border-left: 3px solid var(--text-dim);
+    background: var(--bg-card);
     padding: 8px 14px;
     margin-bottom: 12px;
   }
-  .election-item.midterm { border-left-color: #e8a435; }
-  .election-item.presidential { border-left-color: #e05c4d; }
-  .election-item.parliamentary { border-left-color: #4da6e0; }
+  .election-item.midterm      { border-left-color: var(--amber); }
+  .election-item.presidential { border-left-color: var(--red); }
+  .election-item.parliamentary { border-left-color: var(--blue); }
   .election-item-type {
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--text-primary);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
   }
   .election-item-date {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.78rem;
-    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 500;
+    color: var(--text-dim);
     margin-top: 2px;
   }
-  .elections-suspended {
-    font-style: italic;
-    color: var(--red, #e74c3c);
-    font-size: 0.9rem;
-    padding: 20px 0;
-  }
-
-  /* ── Active Crises Card ── */
+  /* ── Active Crises Card — v5: left border, red triad ── */
   .crises-scroll {
     overflow-y: auto;
     padding: 0 14px 14px;
     flex: 1;
   }
   .crisis-item {
-    border-left: 3px solid #e74c3c;
-    padding: 10px 14px;
+    padding: 8px 10px;
     margin-bottom: 12px;
-    background: rgba(231,76,60,0.06);
-    border-radius: 0 4px 4px 0;
+    background: var(--red-faint);
+    border-radius: 0 2px 2px 0;
+    border: 1px solid var(--border-main);
+    border-left: 3px solid var(--red);
   }
   .crisis-item-name {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.82rem;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
     font-weight: 700;
-    color: #e74c3c;
+    color: var(--red);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
   }
   .crisis-item-since {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
-    color: var(--text-secondary);
+    color: var(--text-dim);
     margin-top: 2px;
   }
   .crisis-item-desc {
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 0.78rem;
+    font-family: var(--font-ui);
+    font-size: 0.82rem;
     color: var(--text-primary);
     margin-top: 6px;
     line-height: 1.45;
   }
   .crisis-item-effects {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
     color: var(--text-secondary);
     margin-top: 6px;
     display: flex;
     flex-wrap: wrap;
     gap: 4px 10px;
   }
-  .crisis-effect-up { color: #2ecc71; }
-  .crisis-effect-down { color: #e74c3c; }
+  .crisis-effect-up   { color: var(--green); }
+  .crisis-effect-down { color: var(--red); }
   .crisis-item-solution {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
     color: var(--text-secondary);
     margin-top: 8px;
     padding-top: 6px;
-    border-top: 1px solid var(--border-main);
+    border-top: 1px solid var(--border-light);
   }
   .crisis-item-solution strong {
-    color: var(--text-primary);
-    font-weight: 600;
+    color: var(--text-bright);
+    font-weight: 700;
   }
   .crises-empty {
-    color: var(--text-secondary);
-    font-size: 0.8rem;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    font-size: 0.72rem;
     text-align: center;
     padding: 30px 10px;
-    font-style: italic;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
 
   /* ── Mobile responsive ── */
@@ -451,6 +502,10 @@
       grid-column: span 2 !important;
     }
     #crises-card {
+      grid-column: span 2 !important;
+      grid-row: auto !important;
+    }
+    #events-card {
       grid-column: span 2 !important;
       grid-row: auto !important;
     }
@@ -470,17 +525,21 @@
       max-height: 480px;
     }
     #events-card.dash-card-tall {
-      max-height: 400px;
+      max-height: 450px;
+      height: 450px;
     }
-    #world-map-card {
+    #world-map-card,
+    #crises-card,
+    #events-card,
+    #nation-card,
+    #gov-card,
+    #elections-card {
       grid-column: span 1 !important;
-    }
-    #crises-card {
-      grid-column: span 1 !important;
+      grid-row: auto !important;
     }
     .dash-card-header {
       padding: 8px 14px;
-      font-size: 0.8rem;
+      font-size: 0.68rem;
     }
     .dash-card-body {
       padding: 6px 14px 14px;
@@ -492,8 +551,7 @@
       font-size: 0.8rem;
     }
     .nation-stat-row {
-      font-size: 0.82rem;
-      padding: 8px 4px;
+      padding: 5px 4px;
     }
     .gov-admin-name {
       font-size: 0.95rem;
@@ -527,6 +585,83 @@
     .nation-flag-box {
       width: 64px;
       height: 44px;
+    }
+    .dash-card-tall {
+      height: auto;
+      max-height: 380px;
+    }
+    #events-card.dash-card-tall {
+      max-height: 360px;
+      height: 360px;
+    }
+    .dash-card-header {
+      padding: 6px 10px;
+      font-size: 0.6rem;
+    }
+    .dash-card-body {
+      padding: 4px 10px 10px;
+    }
+    .nation-identity {
+      margin-bottom: 14px;
+    }
+    .nation-identity h2 {
+      font-size: 1rem;
+    }
+    .nation-identity .motto {
+      font-size: 0.72rem;
+    }
+    .nation-stat-row {
+      padding: 4px 2px;
+      font-size: 0.7rem;
+    }
+    .nation-stat-row .stat-label {
+      font-size: 0.62rem;
+    }
+    .gov-admin-name {
+      font-size: 0.85rem;
+    }
+    .gov-badges {
+      gap: 4px;
+    }
+    .gov-badges span {
+      font-size: 0.55rem;
+      padding: 2px 5px;
+    }
+    .dash-event-row {
+      padding: 5px 4px;
+      gap: 6px;
+      font-size: 0.58rem;
+    }
+    .dash-event-text {
+      font-size: 0.72rem;
+    }
+    .dash-event-date {
+      min-width: 44px;
+      font-size: 0.55rem;
+    }
+    .dash-events-scroll {
+      padding: 0 8px 8px;
+    }
+    .election-item {
+      padding: 5px 8px;
+      margin-bottom: 6px;
+    }
+  }
+
+  @media (max-width: 360px) {
+    #content-area {
+      margin: 2px 4px;
+      padding: 4px 0;
+    }
+    .dash-grid {
+      gap: 8px;
+    }
+    .nation-flag-box {
+      width: 52px;
+      height: 36px;
+    }
+    .nation-identity h2 {
+      font-size: 0.9rem;
     }
   }
 </style>
@@ -568,16 +703,29 @@
     </div>
 
     <div class="dash-card dash-card-tall" id="events-card" style="display:flex;flex-direction:column;">
-      <div class="dash-card-header">EVENTS</div>
+      <div class="dash-card-header" style="display:flex;align-items:center;gap:0;">
+        <span style="margin-right:auto;">EVENTS</span>
+        <div class="events-tab-bar" id="events-tab-bar">
+          <button class="events-tab-btn active" data-tab="nation" onclick="switchEventsTab('nation')">Nation</button>
+          <button class="events-tab-btn" data-tab="world" onclick="switchEventsTab('world')">World</button>
+        </div>
+      </div>
       <div class="dash-events-scroll" id="dash-events-list"></div>
     </div>
 
     <!-- ── Row 2: World Map (spans 3 columns) + Active Crises ── -->
     <div class="dash-card" id="world-map-card">
-      <div class="dash-card-header">WORLD MAP</div>
-      <div class="dash-card-body" id="world-map-body" style="padding:0; overflow:hidden;">
-        <img src="./assets/World Map Crucera3.svg" alt="World Map" style="width:100%; height:auto; object-fit:contain; display:block;">
+      <div class="dash-card-header">WORLD MAP <span style="font-size:0.6rem;color:var(--text-dim);font-weight:400;margin-left:8px;">scroll to zoom · drag to pan</span></div>
+      <div class="dash-card-body" id="world-map-body" style="padding:0; overflow:hidden; cursor:grab; position:relative; user-select:none;">
+        <img id="world-map-img" src="./assets/map/World Map Crucera 2.2.svg" alt="World Map"
+          style="width:100%; height:auto; display:block; transform-origin:0 0; pointer-events:none;"
+          draggable="false">
       </div>
+    </div>
+
+    <div class="dash-card dash-card-tall" id="issue-effects-card" style="display:none;flex-direction:column;">
+      <div class="dash-card-header">ACTIVE ISSUE EFFECTS</div>
+      <div class="crises-scroll" id="issue-effects-body"></div>
     </div>
 
     <div class="dash-card dash-card-tall" id="crises-card" style="display:flex;flex-direction:column;">
@@ -592,10 +740,10 @@
 
 <script type="module">
 import { initPage, formatNumber } from './js/common.js';
-import './js/guide.js';
 import { _supabase } from './js/supabase-client.js';
+import { MODIFIERS } from './js/game/issues.js';
 import { fetchActiveCoalition } from './js/game/government-structure.js';
-import { isPresidentialRepublic, isAutocracy, isParliamentaryDemocracy } from './js/game/government-types.js';
+import { hasElectedPresident } from './js/game/government-types.js';
 import { tickToDate, MONTHS } from './js/utils.js';
 
 function esc(str) {
@@ -614,18 +762,19 @@ initPage('home', async (state) => {
     .limit(1);
   const profile = (profiles && profiles.length > 0) ? profiles[0] : {};
 
-  // ── Flag (same source as top bar: nation.flag_url) ──
+  // ── Flag (same source as top bar: nation.flag_url, fallback to assets/flags/{name}.png) ──
   const flagBox = document.getElementById('nation-flag-box');
-  if (nation.flag_url) {
-    const img = document.createElement('img');
-    img.src = nation.flag_url;
-    img.alt = nation.name + ' flag';
-    flagBox.innerHTML = '';
-    flagBox.appendChild(img);
-  } else {
+  const flagUrl = nation.flag_url || `assets/flags/${nation.name}.png`;
+  const flagImg = document.createElement('img');
+  flagImg.src = flagUrl;
+  flagImg.alt = nation.name + ' flag';
+  flagImg.onerror = () => {
+    flagImg.remove();
     document.getElementById('nation-abbr').textContent =
       nation.name.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3);
-  }
+  };
+  flagBox.innerHTML = '';
+  flagBox.appendChild(flagImg);
 
   // ── Name & Motto ──
   document.getElementById('nation-name').textContent = nation.name;
@@ -636,7 +785,7 @@ initPage('home', async (state) => {
   // ── Stats rows ──
   const rows = [
     { label: 'Established', value: profile.founded_year || '\u2014' },
-    { label: 'Government', value: nation.government_type || '\u2014' },
+    { label: 'Government', value: nation.hos_election_method === 'hereditary' ? 'Constitutional Monarchy' : (nation.government_type || '\u2014') },
     { label: 'Capital', value: nation.capital || '\u2014' },
     { label: 'Language', value: profile.languages || 'Estrellan' },
     { label: 'Population', value: formatNumber(nation.population) },
@@ -653,8 +802,7 @@ initPage('home', async (state) => {
   // ══════════════════════════════════════
   // ── Shared data for Government, Elections & Events ──
   // ══════════════════════════════════════
-  const isPres = isPresidentialRepublic(nation);
-  const isAuto = isAutocracy(nation);
+  const isPres = hasElectedPresident(nation);
 
   let currentTick = 0;
   let parties = [];
@@ -687,7 +835,8 @@ initPage('home', async (state) => {
       { data: administration },
       coalitionResult,
       presidentResult,
-      prevApprovalResult
+      prevAdminResult,
+      hogResult
     ] = await Promise.all([
       _supabase.from('administrations')
         .select('admin_name, government_type, coalition_parties, total_seats, started_at_tick')
@@ -706,20 +855,34 @@ initPage('home', async (state) => {
             .limit(1)
             .maybeSingle()
         : Promise.resolve({ data: null }),
-      _supabase.from('nations_history')
-        .select('gov_approval')
+      // Previous administration's end approval (for delta display)
+      _supabase.from('administrations')
+        .select('approval_at_start, approval_at_end')
         .eq('nation_id', nation.id)
-        .order('tick', { ascending: false })
+        .not('ended_at_tick', 'is', null)
+        .order('ended_at_tick', { ascending: false })
         .limit(1)
-        .maybeSingle()
+        .maybeSingle(),
+      // Head of government (PM for parliamentary systems)
+      (!isPres)
+        ? _supabase.from('head_of_government')
+            .select('first_name, last_name, age, faction_id')
+            .eq('nation_id', nation.id)
+            .eq('active', true)
+            .order('appointed_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null })
     ]);
 
     const coalition = coalitionResult;
     const president = presidentResult?.data ?? presidentResult;
+    const hog = hogResult?.data ?? hogResult;
+    const prevAdmin = prevAdminResult?.data ?? null;
     const govCard = document.getElementById('gov-card');
 
-    // Empty state: no active coalition (democracies only — autocracies handle separately)
-    if (!coalition && !isAuto) {
+    // Empty state: no active coalition
+    if (!coalition) {
       document.getElementById('gov-card-body').innerHTML = `
         <div style="display:flex;align-items:center;justify-content:center;height:340px;color:var(--text-secondary);font-style:italic;font-size:0.9rem;">
           Government is currently being formed
@@ -727,12 +890,16 @@ initPage('home', async (state) => {
       `;
     } else {
 
-    // Previous approval for delta (already fetched in parallel)
-    const prevApproval = prevApprovalResult?.data?.gov_approval ?? null;
-
     // ── Compute values ──
     const approval = Math.round(Number(nation.gov_approval ?? 40));
     const approvalColor = approval >= 50 ? 'var(--green)' : approval >= 35 ? 'var(--orange)' : 'var(--red)';
+
+    // Approval delta: current admin started at 50%, show previous admin's end approval for context
+    let approvalDeltaHtml = '';
+    if (prevAdmin?.approval_at_end != null) {
+      const prevEnd = Math.round(Number(prevAdmin.approval_at_end));
+      approvalDeltaHtml = `<div style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-muted);margin-top:4px">Previous admin ended at <span style="font-weight:700;color:${prevEnd >= 50 ? 'var(--green)' : prevEnd >= 35 ? 'var(--orange)' : 'var(--red)'}">${prevEnd}%</span> &middot; Started at <span style="font-weight:600;color:var(--text-secondary)">50%</span></div>`;
+    }
     // Strip any trailing ", YYYY" from stored admin_name to avoid duplication
     const rawAdminName = administration?.admin_name || 'Government';
     const adminName = rawAdminName.replace(/,\s*\d{4}$/, '');
@@ -748,7 +915,7 @@ initPage('home', async (state) => {
     }
 
     // Gov type badge
-    const govTypeLabel = isAuto ? 'Autocracy' : isPres ? 'Presidential' : 'Parliamentary';
+    const govTypeLabel = isPres ? 'Presidential' : nation.hos_election_method === 'hereditary' ? 'Constitutional Monarchy' : 'Parliamentary';
 
     // Coalition info
     const coalitionIds = new Set(coalition?.party_ids || []);
@@ -781,41 +948,27 @@ initPage('home', async (state) => {
             </div>
           </div>
         </div>`;
-    } else if (!isPres && !isAuto && coalition) {
-      // Parliamentary: PM from lead party
-      const leadParty = parties.find(p => p.id === coalition.lead_party_id);
+    } else if (!isPres && coalition) {
+      // Parliamentary: PM from head_of_government table (fallback to lead party name)
+      const leadParty = parties.find(p => p.id === (hog?.faction_id || coalition.lead_party_id));
       const pmColor = leadParty?.party_color || '#888';
-      const pmName = leadParty?.faction_name || 'Unknown';
-      const pmAbbr = leadParty?.abbreviation || pmName.substring(0, 3).toUpperCase();
-      const initials = pmName.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
+      const pmAbbr = leadParty?.abbreviation || (leadParty?.faction_name || '??').substring(0, 3).toUpperCase();
+      const pmFullName = (hog?.first_name && hog?.last_name)
+        ? hog.first_name + ' ' + hog.last_name
+        : leadParty?.faction_name || 'Unknown';
+      const pmAge = hog?.age;
+      const initials = (hog?.first_name && hog?.last_name)
+        ? (hog.first_name[0] + hog.last_name[0]).toUpperCase()
+        : (leadParty?.faction_name || '??').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
       leader1Html = `
         <div class="gov-leader-row">
           <div class="gov-initials">${esc(initials)}</div>
           <div>
-            <div class="gov-leader-name">${esc(pmName)}</div>
-            <div class="gov-leader-meta">Prime Minister</div>
+            <div class="gov-leader-name">${esc(pmFullName)}</div>
+            <div class="gov-leader-meta">Prime Minister${pmAge ? ' &middot; Age ' + pmAge : ''}</div>
             <div class="gov-leader-party">
               <div class="gov-party-dot" style="background:${pmColor}"></div>
               <span class="gov-party-label" style="color:${pmColor}">${esc(pmAbbr)}</span>
-            </div>
-          </div>
-        </div>`;
-    } else if (isAuto) {
-      const hosName = (nation.head_of_state_first_name && nation.head_of_state_last_name)
-        ? nation.head_of_state_first_name + ' ' + nation.head_of_state_last_name : 'Unknown';
-      const initials = ((nation.head_of_state_first_name || '?')[0] + (nation.head_of_state_last_name || '?')[0]).toUpperCase();
-      const rulingParty = nation.ruling_faction_id ? parties.find(p => p.id === nation.ruling_faction_id) : null;
-      const rpColor = rulingParty?.party_color || '#c8a64e';
-      const rpAbbr = rulingParty?.abbreviation || (rulingParty?.faction_name || '??').substring(0, 3).toUpperCase();
-      leader1Html = `
-        <div class="gov-leader-row">
-          <div class="gov-initials">${esc(initials)}</div>
-          <div>
-            <div class="gov-leader-name">${esc(hosName)}</div>
-            <div class="gov-leader-meta">Generalísimo${nation.head_of_state_age ? ' &middot; Age ' + nation.head_of_state_age : ''}</div>
-            <div class="gov-leader-party">
-              <div class="gov-party-dot" style="background:${rpColor}"></div>
-              <span class="gov-party-label" style="color:${rpColor}">${esc(rpAbbr)}</span>
             </div>
           </div>
         </div>`;
@@ -832,17 +985,21 @@ initPage('home', async (state) => {
           <div class="gov-initials">${esc(initials)}</div>
           <div>
             <div class="gov-leader-name">${esc(hosFirst + ' ' + hosLast)}</div>
-            <div class="gov-leader-meta">Vice President</div>
+            <div class="gov-leader-meta">${esc(nation.head_of_state_title || 'Head of State')}</div>
           </div>
         </div>`;
-    } else if (!isPres && !isAuto && hosFirst && hosLast) {
+    } else if (!isPres && hosFirst && hosLast) {
       const initials = (hosFirst[0] + hosLast[0]).toUpperCase();
+      const dashHosIsHereditary = nation.hos_election_method === 'hereditary';
+      const dashHosMeta = dashHosIsHereditary
+        ? `${esc(nation.dynasty_name || 'Royal')} dynasty`
+        : (nation.head_of_state_title || 'Head of State');
       leader2Html = `
         <div class="gov-leader-row">
           <div class="gov-initials">${esc(initials)}</div>
           <div>
             <div class="gov-leader-name">${esc(hosFirst + ' ' + hosLast)}</div>
-            <div class="gov-leader-meta">Head of State</div>
+            <div class="gov-leader-meta">${dashHosMeta}</div>
           </div>
         </div>`;
     }
@@ -853,56 +1010,25 @@ initPage('home', async (state) => {
       ? sortedGov.map(p => {
           const pct = ((p.seats || 0) / totalSeats) * 100;
           if (pct <= 0) return '';
-          return `<div class="gov-seat-segment" style="width:${pct.toFixed(2)}%;background:${p.party_color || '#8a8778'}"></div>`;
+          return `<div class="gov-seat-segment" style="width:${pct.toFixed(2)}%;background:${p.party_color || '#888'}"></div>`;
         }).join('')
       : '';
 
     // ── Coalition party rows ──
     const partyRowsHtml = sortedGov.map(p =>
       `<div class="gov-coalition-row">
-        <div class="gov-party-dot" style="background:${p.party_color || '#8a8778'}"></div>
+        <div class="gov-party-dot" style="background:${p.party_color || '#888'}"></div>
         <span class="gov-coalition-name">${esc(p.faction_name || 'Unknown')}</span>
         <span class="gov-coalition-seats" style="color:${p.party_color || 'var(--text-primary)'}">${p.seats || 0}</span>
       </div>`
     ).join('');
 
     // ── Footer ──
-    const govLabel = isAuto ? 'Authoritarian Regime' : isMajority ? 'Majority Government' : 'Minority Government';
-    const footerDetail = isAuto
-      ? (nation.ruling_faction_id ? (parties.find(p => p.id === nation.ruling_faction_id)?.faction_name || 'Ruling Party') : 'Single-Party State')
-      : `${govSeats}/${totalSeats} seats (${majority} needed)`;
+    const govLabel = isMajority ? 'Majority Government' : 'Minority Government';
+    const footerDetail = `${govSeats}/${totalSeats} seats (${majority} needed)`;
 
     // ── Build card ──
-    if (isAuto) {
-      // Autocracy: show leader, ruling party, approval — no coalition section
-      const rulingParty = nation.ruling_faction_id ? parties.find(p => p.id === nation.ruling_faction_id) : null;
-      const rpColor = rulingParty?.party_color || '#c8a64e';
-      const rpName = rulingParty?.faction_name || 'Ruling Party';
-
-      document.getElementById('gov-card-body').innerHTML = `
-        <div class="gov-admin-name">${esc(adminName)}${yearSuffix}</div>
-        <div class="gov-badges">
-          <span class="gov-badge">${esc(govTypeLabel)}</span>
-          <span class="gov-badge">Single-Party State</span>
-        </div>
-
-        ${leader1Html}
-
-        <div class="gov-divider"></div>
-
-        <div class="gov-section-title">Ruling Party</div>
-        <div class="gov-coalition-row">
-          <div class="gov-party-dot" style="background:${rpColor}"></div>
-          <span class="gov-coalition-name">${esc(rpName)}</span>
-        </div>
-
-        <div class="gov-divider"></div>
-
-        <div class="gov-section-title">Approval</div>
-        <div class="gov-approval-big" style="color:${approvalColor}">${approval}%</div>
-      `;
-    } else {
-      document.getElementById('gov-card-body').innerHTML = `
+    document.getElementById('gov-card-body').innerHTML = `
         <div class="gov-admin-name">${esc(adminName)}${yearSuffix}</div>
         <div class="gov-badges">
           <span class="gov-badge">${esc(govTypeLabel)}</span>
@@ -923,8 +1049,8 @@ initPage('home', async (state) => {
 
         <div class="gov-section-title">Approval</div>
         <div class="gov-approval-big" style="color:${approvalColor}">${approval}%</div>
+        ${approvalDeltaHtml}
       `;
-    }
 
     // Footer (inside gov card, outside body padding)
     let footer = govCard.querySelector('.gov-footer');
@@ -947,6 +1073,7 @@ initPage('home', async (state) => {
   // ══════════════════════════════════════
   // ── Events Card ──
   // ══════════════════════════════════════
+  window._eventsCtx = { nationId: nation.id, currentTick, parties };
   loadDashEvents(nation.id, currentTick, parties);
 
   // ══════════════════════════════════════
@@ -955,32 +1082,6 @@ initPage('home', async (state) => {
   try {
     const elBody = document.getElementById('elections-card-body');
 
-    if (isAuto) {
-      // Compute revolution chance from stability and civil_unrest
-      const stability = Number(nation.stability ?? 50);
-      const unrest = Number(nation.civil_unrest ?? 10);
-      // Low stability + high unrest = higher revolution chance
-      const revolutionScore = Math.max(0, Math.min(100, (100 - stability) * 0.6 + unrest * 0.4));
-      let revolutionLevel, revolutionColor;
-      if (revolutionScore >= 60) {
-        revolutionLevel = 'High';
-        revolutionColor = 'var(--red, #e74c3c)';
-      } else if (revolutionScore >= 35) {
-        revolutionLevel = 'Moderate';
-        revolutionColor = 'var(--orange, #f39c12)';
-      } else {
-        revolutionLevel = 'Low';
-        revolutionColor = 'var(--green, #2ecc71)';
-      }
-      elBody.innerHTML = `
-        <div style="padding:12px 0;">
-          <div style="color:var(--red, #e74c3c);font-weight:700;font-size:0.85rem;margin-bottom:12px;">Elections are suspended.</div>
-          <div style="font-size:0.78rem;color:var(--text-secondary);">
-            Chance of Democratic Revolution: <span style="color:${revolutionColor};font-weight:700;">${revolutionLevel}</span>
-          </div>
-        </div>
-      `;
-    } else {
       // Fetch scheduled elections ordered by tick
       const { data: scheduled } = await _supabase
         .from('elections')
@@ -994,34 +1095,37 @@ initPage('home', async (state) => {
       // Build the list of next 5 elections
       let elections = [];
 
+      // Per-nation term lengths (from foundational laws, fallback to defaults)
+      const parlTermTicks = Number(nation.parliamentary_term_ticks) || 24;
+      const presTermTicks = Number(nation.presidential_term_ticks) || 48;
+
       if (isPres) {
         // For presidential: need alternating Midterm / Presidential pattern
-        // Midterm = parliamentary election in a presidential system
         const parlElections = (scheduled || []).filter(e => e.election_type === 'parliamentary');
         const presElections = (scheduled || []).filter(e => e.election_type === 'presidential');
 
         // Merge and sort by tick, label midterm vs presidential
         const merged = [
           ...parlElections.map(e => ({ tick: e.election_tick, type: 'Midterms', css: 'midterm' })),
-          ...presElections.map(e => ({ tick: e.election_tick, type: 'Presidential', css: 'presidential' }))
+          ...presElections.map(e => ({ tick: e.election_tick, type: 'General Election', css: 'presidential' }))
         ].sort((a, b) => a.tick - b.tick);
 
         elections = merged.slice(0, 5);
 
-        // If not enough scheduled, project future ones
+        // If not enough scheduled, project future ones using nation's actual term lengths
         if (elections.length < 5) {
           const lastParl = parlElections.length ? parlElections[parlElections.length - 1].election_tick : null;
           const lastPres = presElections.length ? presElections[presElections.length - 1].election_tick : null;
-          let nextParl = lastParl ? lastParl + 24 : currentTick + 24;
-          let nextPres = lastPres ? lastPres + 48 : currentTick + 48;
+          let nextParl = lastParl ? lastParl + parlTermTicks : currentTick + parlTermTicks;
+          let nextPres = lastPres ? lastPres + presTermTicks : currentTick + presTermTicks;
 
           while (elections.length < 5) {
             if (nextParl <= nextPres) {
               elections.push({ tick: nextParl, type: 'Midterms', css: 'midterm' });
-              nextParl += 24;
+              nextParl += parlTermTicks;
             } else {
-              elections.push({ tick: nextPres, type: 'Presidential', css: 'presidential' });
-              nextPres += 48;
+              elections.push({ tick: nextPres, type: 'General Election', css: 'presidential' });
+              nextPres += presTermTicks;
             }
           }
           elections.sort((a, b) => a.tick - b.tick);
@@ -1035,15 +1139,15 @@ initPage('home', async (state) => {
 
         elections = parlScheduled.slice(0, 5);
 
-        // Project if not enough
+        // Project if not enough, using nation's actual parliamentary term length
         if (elections.length < 5) {
           const lastTick = parlScheduled.length
             ? parlScheduled[parlScheduled.length - 1].tick
             : currentTick;
-          let next = lastTick + 24;
+          let next = lastTick + parlTermTicks;
           while (elections.length < 5) {
             elections.push({ tick: next, type: 'Parliamentary', css: 'parliamentary' });
-            next += 24;
+            next += parlTermTicks;
           }
         }
       }
@@ -1051,12 +1155,18 @@ initPage('home', async (state) => {
       elBody.innerHTML = elections.map(e => {
         const year = 2000 + Math.floor(e.tick / 12);
         const month = MONTHS[e.tick % 12];
+        const ticksLeft = e.tick - currentTick;
+        const yrsLeft = Math.floor(ticksLeft / 12);
+        const mosLeft = ticksLeft % 12;
+        const parts = [];
+        if (yrsLeft > 0) parts.push(`${yrsLeft} year${yrsLeft !== 1 ? 's' : ''}`);
+        if (mosLeft > 0) parts.push(`${mosLeft} month${mosLeft !== 1 ? 's' : ''}`);
+        const countdown = parts.length > 0 ? ` (${parts.join(', ')})` : ' (now)';
         return `<div class="election-item ${e.css}">
           <div class="election-item-type">${e.type}</div>
-          <div class="election-item-date">${month}, ${year}</div>
+          <div class="election-item-date">${month}, ${year}<span style="color:var(--text-secondary);font-weight:400;">${countdown}</span></div>
         </div>`;
       }).join('');
-    }
   } catch (e) {
     console.error('Elections card error:', e);
   }
@@ -1065,6 +1175,7 @@ initPage('home', async (state) => {
   // ── Active Crises Card ──
   // ══════════════════════════════════════
   loadActiveCrises(nation.id, currentTick);
+  loadActiveIssueEffects(nation.id);
 });
 
 // ══════════════════════════════════════
@@ -1074,11 +1185,147 @@ const EVENT_CATEGORY_STYLES = {
   crisis:           { icon: '\u26A0', color: '#e74c3c', bg: 'rgba(231,76,60,0.12)', label: 'CRISIS' },
   government:       { icon: '\u2696', color: '#f1c40f', bg: 'rgba(241,196,15,0.10)', label: 'GOV' },
   executive_order:  { icon: '\u270D', color: '#e67e22', bg: 'rgba(230,126,34,0.12)', label: 'EXEC ORDER' },
-  POLITICAL:        { icon: '\u2605', color: '#3498db', bg: 'rgba(52,152,219,0.12)', label: 'POLITICAL' },
-  Trade:            { icon: '\u2693', color: '#2ecc71', bg: 'rgba(46,204,113,0.12)', label: 'TRADE' },
-  Diplomatic:       { icon: '\uD83C\uDF10', color: '#9b59b6', bg: 'rgba(155,89,182,0.12)', label: 'DIPLOMATIC' },
+  political:        { icon: '\u2605', color: '#3498db', bg: 'rgba(52,152,219,0.12)', label: 'POLITICAL' },
+  trade:            { icon: '\u2693', color: '#2ecc71', bg: 'rgba(46,204,113,0.12)', label: 'TRADE' },
+  diplomatic:       { icon: '\uD83C\uDF10', color: '#9b59b6', bg: 'rgba(155,89,182,0.12)', label: 'DIPLOMATIC' },
+  bill:             { icon: '\uD83D\uDCDC', color: '#3498db', bg: 'rgba(52,152,219,0.10)', label: 'BILL' },
+  new_party:        { icon: '\uD83C\uDFF3', color: '#9b59b6', bg: 'rgba(155,89,182,0.10)', label: 'NEW PARTY' },
+  protest:          { icon: '\u270A', color: '#e67e22', bg: 'rgba(230,126,34,0.10)', label: 'PROTEST' },
+  military:         { icon: '\u2694', color: '#b07a4a', bg: 'rgba(176,122,74,0.12)', label: 'MILITARY' },
+  economy:          { icon: '\uD83D\uDCB0', color: '#7a9a5b', bg: 'rgba(122,154,91,0.12)', label: 'ECONOMY' },
+  health:           { icon: '\u2695', color: '#7a9a5b', bg: 'rgba(122,154,91,0.12)', label: 'HEALTH' },
+  education:        { icon: '\uD83D\uDCDA', color: '#3498db', bg: 'rgba(52,152,219,0.12)', label: 'EDUCATION' },
+  transport:        { icon: '\uD83D\uDE8C', color: '#5b9bd5', bg: 'rgba(91,155,213,0.12)', label: 'TRANSPORT' },
+  labor:            { icon: '\u2692', color: '#d48a3c', bg: 'rgba(212,138,60,0.12)', label: 'LABOR' },
+  resistance:       { icon: '\u270A', color: '#c0392b', bg: 'rgba(192,57,43,0.12)', label: 'RESISTANCE' },
 };
 const EVENT_CATEGORY_DEFAULT = { icon: '\u2022', color: '#888', bg: 'rgba(136,136,136,0.08)', label: '' };
+
+// ── Human-readable event name mapping ──
+const EVENT_NAME_DISPLAY = {
+  'FORMATION_SNAP_ELECTION':        'Snap Election Called',
+  'FORMATION_WINDOW_START':         'Coalition Formation Underway',
+  'FORMATION_DEADLINE_WARNING':     'Formation Deadline Warning',
+  'EMERGENCY_MINORITY_GOVERNMENT':  'Emergency Minority Government',
+  'DEMOCRATIC_REVOLUTION':          'Democratic Revolution',
+  'REVOLUTION_WARNING':             'Revolution Warning',
+  'REVOLUTION_ESCALATION':          'Revolution Escalation',
+  'REVOLUTION_AVERTED':             'Revolution Averted',
+};
+
+/** Convert raw event_name to a display-friendly title */
+function formatEventName(raw) {
+  if (!raw) return '';
+  // Strip prefixes like "CRISIS_STARTED: " or "CRISIS_RESOLVED: "
+  const stripped = raw.replace(/^[A-Z_]+:\s*/, '');
+  // Check explicit mapping first
+  if (EVENT_NAME_DISPLAY[stripped]) return EVENT_NAME_DISPLAY[stripped];
+  // If it's ALL_CAPS_WITH_UNDERSCORES, title-case it
+  if (/^[A-Z][A-Z0-9_]+$/.test(stripped)) {
+    return stripped.split('_').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+  }
+  return stripped;
+}
+
+// ── Shared helpers for Nation + World event feeds ──
+
+const IDEOLOGY_AXES_DISPLAY = [
+  { key: 'liberty_equality', left: 'Liberty', right: 'Equality' },
+  { key: 'tradition_progress', left: 'Tradition', right: 'Progress' },
+  { key: 'security_freedom', left: 'Security', right: 'Freedom' },
+  { key: 'globalism_nationalism', left: 'Globalism', right: 'Nationalism' },
+  { key: 'individualism_collectivism', left: 'Individualism', right: 'Collectivism' },
+];
+
+const PROTEST_TIER_LABELS = { 1:'Embarrassing Backfire', 2:'Protests Don\'t Materialise', 3:'Modest Turnout', 4:'Respectable Protest', 5:'Strong Demonstration', 6:'Nationwide Protests', 7:'The Big One' };
+
+function ideologySummary(idRow) {
+  if (!idRow) return '';
+  const tags = [];
+  for (const axis of IDEOLOGY_AXES_DISPLAY) {
+    const score = idRow[axis.key] || 0;
+    const abs = Math.abs(score);
+    if (abs <= 10) continue;
+    const intensity = abs <= 30 ? 'Leaning' : abs <= 60 ? 'Strong' : 'Radical';
+    const side = score < 0 ? axis.left : axis.right;
+    tags.push(`${intensity} ${side}`);
+  }
+  return tags.length > 0 ? tags.join(', ') : 'Centrist';
+}
+
+function partyHtml(name, color) {
+  const safeName = esc(name || 'Unknown');
+  if (!color) return `<strong>${safeName}</strong>`;
+  const safeColor = color.replace(/[^a-zA-Z0-9#(),.\s%]/g, '');
+  return `<span style="color:${safeColor};font-weight:600">${safeName}</span>`;
+}
+
+// ── Shared converters: raw DB rows → event-like objects ──
+
+function billToEvent(b, nationId, extra) {
+  const factionMatchesNation = b.factions?.nation_id === (b.nation_id || nationId);
+  const displayName = b.proposer_name || (factionMatchesNation ? b.factions?.faction_name : null) || 'A former party';
+  const displayColor = b.proposer_color || (factionMatchesNation ? b.factions?.party_color : null);
+  return {
+    fired_at_tick: b.proposed_tick,
+    event_name: b.bill_name,
+    _desc_html: `${partyHtml(displayName, displayColor)} proposed "${esc(b.bill_name)}"`,
+    category: 'bill',
+    _synthetic: true,
+    ...extra
+  };
+}
+
+function factionToEvent(f, extra) {
+  const leaderName = (f.leader_first_name && f.leader_last_name)
+    ? `${f.leader_first_name} ${f.leader_last_name}` : null;
+  const idRow = Array.isArray(f.faction_ideology) ? f.faction_ideology[0] : f.faction_ideology;
+  const ideology = ideologySummary(idRow);
+  const leaderPart = leaderName ? ` led by <strong>${esc(leaderName)}</strong>` : '';
+  const ideologyPart = ideology ? ` — <em>${esc(ideology)}</em>` : '';
+  return {
+    fired_at_tick: 0,
+    event_name: f.faction_name,
+    _desc_html: `${partyHtml(f.faction_name, f.party_color)} founded${leaderPart}${ideologyPart}`,
+    category: 'new_party',
+    _synthetic: true,
+    _created_at: f.created_at,
+    ...extra
+  };
+}
+
+function protestToEvent(p, extra) {
+  const tierLabel = PROTEST_TIER_LABELS[p.tier] || `Tier ${p.tier}`;
+  const demandPart = p.demand_label ? ` demanding "${esc(p.demand_label)}"` : '';
+  const isCrisis = p.status === 'crisis_active';
+  const tierColor = (p.tier >= 6) ? 'var(--red, #e74c3c)' : (p.tier >= 4) ? 'var(--orange, #f39c12)' : '';
+  const tierHtml = tierColor
+    ? `<span style="color:${tierColor};font-weight:600">${esc(tierLabel)}</span>`
+    : `<strong>${esc(tierLabel)}</strong>`;
+  return {
+    fired_at_tick: p.tick_resolved || p.tick_called,
+    event_name: tierLabel,
+    _desc_html: `${partyHtml(p.factions?.faction_name, p.factions?.party_color)} organised a protest${demandPart} — ${tierHtml}${isCrisis ? ' <span style="color:var(--red, #e74c3c);font-weight:700;">(CRISIS)</span>' : ''}`,
+    category: 'protest',
+    _synthetic: true,
+    ...extra
+  };
+}
+
+function mergeAndSortEvents(events, billEvents, factionEvents, protestEvents, limit) {
+  return [
+    ...events.map(ev => ({ ...ev, _synthetic: false })),
+    ...billEvents,
+    ...factionEvents,
+    ...protestEvents
+  ].sort((a, b) => {
+    const tickDiff = (b.fired_at_tick || 0) - (a.fired_at_tick || 0);
+    if (tickDiff !== 0) return tickDiff;
+    const aTime = a._created_at || a.created_at || '';
+    const bTime = b._created_at || b.created_at || '';
+    return bTime > aTime ? 1 : bTime < aTime ? -1 : 0;
+  }).slice(0, limit);
+}
 
 async function loadDashEvents(nationId, currentTick, parties) {
   const container = document.getElementById('dash-events-list');
@@ -1111,31 +1358,63 @@ async function loadDashEvents(nationId, currentTick, parties) {
   }
 
   try {
-    // Fetch from event_log — covers crises, bills, government events, trade, diplomatic
-    const { data: events, error } = await _supabase
-      .from('event_log')
-      .select('*')
-      .eq('nation_id', nationId)
-      .order('fired_at_tick', { ascending: false })
-      .limit(50);
+    const [evResult, billResult, factionResult, protestResult] = await Promise.all([
+      _supabase.from('event_log').select('*')
+        .eq('nation_id', nationId)
+        .order('fired_at_tick', { ascending: false })
+        .limit(50),
+      // Recent bill proposals
+      _supabase.from('bills')
+        .select('bill_name, proposed_tick, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id)')
+        .eq('nation_id', nationId)
+        .not('bill_type', 'in', '("no_confidence","confirmation","minister_confirmation","veto_override","impeachment_conviction")')
+        .order('proposed_tick', { ascending: false })
+        .limit(30),
+      // New parties (factions created recently)
+      _supabase.from('factions')
+        .select('faction_name, party_color, leader_first_name, leader_last_name, created_at, faction_ideology(liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism)')
+        .eq('nation_id', nationId)
+        .order('created_at', { ascending: false })
+        .limit(20),
+      // Resolved protests
+      _supabase.from('protest_log')
+        .select('id, tick_called, tick_resolved, tier, status, grievance_type, demand_label, faction_id, factions(faction_name, party_color)')
+        .eq('nation_id', nationId)
+        .in('status', ['resolved', 'crisis_active'])
+        .order('tick_called', { ascending: false })
+        .limit(20),
+    ]);
 
-    if (error) throw error;
+    if (evResult.error) throw evResult.error;
+    const events = evResult.data || [];
+    const bills = billResult.data || [];
+    const factions = factionResult.data || [];
+    const protests = protestResult.data || [];
 
-    if (!events || events.length === 0) {
+    const billEvents = bills.map(b => billToEvent(b, nationId));
+    const factionEvents = factions.map(f => factionToEvent(f));
+    const protestEvents = protests.map(p => protestToEvent(p));
+    const merged = mergeAndSortEvents(events, billEvents, factionEvents, protestEvents, 60);
+
+    if (merged.length === 0) {
       container.innerHTML = '<div style="color:var(--text-secondary);padding:24px;font-size:0.75rem;text-align:center;font-style:italic;">No events recorded yet.</div>';
       return;
     }
 
-    const rows = events.map(ev => {
+    const rows = merged.map(ev => {
       const dateStr = tickToDate(ev.fired_at_tick);
-      const desc = ev.description_chosen || ev.description_used || '';
-      const eventName = ev.event_name || '';
-      const cat = EVENT_CATEGORY_STYLES[ev.category] || EVENT_CATEGORY_DEFAULT;
+      const cat = EVENT_CATEGORY_STYLES[(ev.category || '').toLowerCase()] || EVENT_CATEGORY_DEFAULT;
 
-      // Show bold event name as headline, colorized description below
-      const headline = eventName ? `<strong>${esc(eventName)}</strong>` : '';
-      const body = desc ? colorizeText(desc, eventName) : '';
-      const displayText = headline && body ? `${headline} — ${body}` : (body || headline || 'Event');
+      let displayText;
+      if (ev._synthetic && ev._desc_html) {
+        displayText = ev._desc_html;
+      } else {
+        const desc = ev.description_chosen || ev.description_used || '';
+        const eventName = formatEventName(ev.event_name);
+        const headline = eventName ? `<strong>${esc(eventName)}</strong>` : '';
+        const body = desc ? colorizeText(desc, eventName) : '';
+        displayText = headline && body ? `${headline} — ${body}` : (body || headline || 'Event');
+      }
 
       return `<div class="dash-event-row">
         <span class="dash-event-date">${esc(dateStr)}</span>
@@ -1153,6 +1432,233 @@ async function loadDashEvents(nationId, currentTick, parties) {
 }
 
 // ══════════════════════════════════════
+// ── Events Tab Switching ──
+// ══════════════════════════════════════
+let _activeEventsTab = 'nation';
+
+window.switchEventsTab = switchEventsTab;
+function switchEventsTab(tab) {
+  if (tab === _activeEventsTab) return;
+  _activeEventsTab = tab;
+  document.querySelectorAll('.events-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  const ctx = window._eventsCtx;
+  if (!ctx) return;
+  if (tab === 'nation') {
+    loadDashEvents(ctx.nationId, ctx.currentTick, ctx.parties);
+  } else {
+    loadWorldEvents(ctx.nationId, ctx.currentTick);
+  }
+}
+
+async function loadWorldEvents(excludeNationId, currentTick) {
+  const container = document.getElementById('dash-events-list');
+  if (!container) return;
+  container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.75rem;text-align:center;">Loading world events\u2026</div>';
+
+  try {
+    const [evResult, billResult, factionResult, protestResult] = await Promise.all([
+      _supabase.from('event_log')
+        .select('*, nations!inner(name, flag_url)')
+        .neq('nation_id', excludeNationId)
+        .order('fired_at_tick', { ascending: false })
+        .limit(80),
+      // World bill proposals (other nations)
+      _supabase.from('bills')
+        .select('bill_name, proposed_tick, nation_id, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id), nations!inner(name, flag_url)')
+        .neq('nation_id', excludeNationId)
+        .not('bill_type', 'in', '("no_confidence","confirmation","minister_confirmation","veto_override","impeachment_conviction")')
+        .order('proposed_tick', { ascending: false })
+        .limit(30),
+      // World new parties (other nations)
+      _supabase.from('factions')
+        .select('faction_name, party_color, leader_first_name, leader_last_name, nation_id, created_at, faction_ideology(liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism), nations!inner(name, flag_url)')
+        .neq('nation_id', excludeNationId)
+        .order('created_at', { ascending: false })
+        .limit(20),
+      // World protests (other nations)
+      _supabase.from('protest_log')
+        .select('id, tick_called, tick_resolved, tier, status, grievance_type, demand_label, faction_id, nation_id, factions(faction_name, party_color), nations!inner(name, flag_url)')
+        .neq('nation_id', excludeNationId)
+        .in('status', ['resolved', 'crisis_active'])
+        .order('tick_called', { ascending: false })
+        .limit(20),
+    ]);
+
+    if (evResult.error) throw evResult.error;
+    const events = evResult.data || [];
+    const bills = billResult.data || [];
+    const factions = factionResult.data || [];
+    const protests = protestResult.data || [];
+
+    const billEvents = bills.map(b => billToEvent(b, null, { nations: b.nations }));
+    const factionEvents = factions.map(f => factionToEvent(f, { nations: f.nations }));
+    const protestEvents = protests.map(p => protestToEvent(p, { nations: p.nations }));
+    const merged = mergeAndSortEvents(events, billEvents, factionEvents, protestEvents, 80);
+
+    if (merged.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-secondary);padding:24px;font-size:0.75rem;text-align:center;font-style:italic;">No world events recorded yet.</div>';
+      return;
+    }
+
+    // Generate a consistent color for each nation name
+    const NATION_COLORS = [
+      { color: '#6b8cae', bg: 'rgba(107,140,174,0.10)', border: 'rgba(107,140,174,0.3)' },
+      { color: '#7a9a5b', bg: 'rgba(122,154,91,0.10)', border: 'rgba(122,154,91,0.3)' },
+      { color: '#b07a4a', bg: 'rgba(176,122,74,0.10)', border: 'rgba(176,122,74,0.3)' },
+      { color: '#8b7ec8', bg: 'rgba(139,126,200,0.10)', border: 'rgba(139,126,200,0.3)' },
+      { color: '#5b9a8b', bg: 'rgba(91,154,139,0.10)', border: 'rgba(91,154,139,0.3)' },
+      { color: '#a65d5d', bg: 'rgba(166,93,93,0.10)', border: 'rgba(166,93,93,0.3)' },
+      { color: '#b09a5b', bg: 'rgba(176,154,91,0.10)', border: 'rgba(176,154,91,0.3)' },
+      { color: '#e07baf', bg: 'rgba(224,123,175,0.10)', border: 'rgba(224,123,175,0.3)' },
+    ];
+    function nationColor(name) {
+      let h = 0;
+      for (let i = 0; i < name.length; i++) h = ((h << 5) - h + name.charCodeAt(i)) | 0;
+      return NATION_COLORS[Math.abs(h) % NATION_COLORS.length];
+    }
+
+    const rows = merged.map(ev => {
+      const dateStr = tickToDate(ev.fired_at_tick);
+      const cat = EVENT_CATEGORY_STYLES[(ev.category || '').toLowerCase()] || EVENT_CATEGORY_DEFAULT;
+      const nationName = ev.nations?.name || 'Unknown';
+      const flagUrl = ev.nations?.flag_url || (nationName !== 'Unknown' ? `assets/flags/${nationName}.png` : '');
+      const nc = nationColor(nationName);
+
+      let displayText;
+      if (ev._synthetic && ev._desc_html) {
+        displayText = ev._desc_html;
+      } else {
+        const desc = ev.description_chosen || ev.description_used || '';
+        const eventName = formatEventName(ev.event_name);
+        const headline = eventName ? `<strong>${esc(eventName)}</strong>` : '';
+        const body = desc ? esc(desc) : '';
+        displayText = headline && body ? `${headline} — ${body}` : (body || headline || 'Event');
+      }
+
+      const flagHtml = flagUrl
+        ? `<img src="${esc(flagUrl)}" alt="">`
+        : '';
+
+      return `<div class="dash-event-row">
+        <span class="dash-event-date-col">
+          <span class="dash-event-date">${esc(dateStr)}</span>
+          <span class="world-event-nation-badge" style="color:${nc.color};background:${nc.bg};border-color:${nc.border};">${flagHtml}${esc(nationName)}</span>
+        </span>
+        <span class="dash-event-text">
+          ${displayText}
+        </span>
+        ${cat.label ? `<span class="dash-event-category" style="color:${cat.color};background:${cat.bg}">${cat.label}</span>` : ''}
+      </div>`;
+    }).join('');
+
+    container.innerHTML = rows;
+  } catch (e) {
+    console.error('World events feed error:', e);
+    container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.75rem;">Failed to load world events.</div>';
+  }
+}
+
+// ══════════════════════════════════════
+// ── Active Issue Effects ──
+// ══════════════════════════════════════
+
+const ISSUE_TYPE_LABELS = {
+  maritime_fishing_rights: 'Maritime Fishing Rights',
+};
+
+async function loadActiveIssueEffects(nationId) {
+  const card = document.getElementById('issue-effects-card');
+  const body = document.getElementById('issue-effects-body');
+  if (!card || !body) return;
+
+  try {
+    // Fetch issues involving this nation
+    const { data: issues, error: issErr } = await _supabase
+      .from('bilateral_issues')
+      .select('id, issue_type, nation_a_id, nation_b_id, tension, status')
+      .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
+      .in('status', ['active', 'partial']);
+
+    if (issErr) throw issErr;
+    if (!issues || issues.length === 0) return; // card stays hidden
+
+    // Fetch active modifiers for these issues
+    const issueIds = issues.map(i => i.id);
+    const { data: mods, error: modErr } = await _supabase
+      .from('bilateral_issue_modifiers')
+      .select('issue_id, modifier_key, applies_to, is_active, is_periodic, is_periodic_active')
+      .in('issue_id', issueIds)
+      .eq('is_active', true);
+
+    if (modErr) throw modErr;
+
+    // Aggregate effects per issue
+    let html = '';
+    for (const issue of issues) {
+      const isNationA = issue.nation_a_id === nationId;
+      const side = isNationA ? 'nation_a' : 'nation_b';
+      const issueMods = (mods || []).filter(m =>
+        m.issue_id === issue.id &&
+        (!m.is_periodic || m.is_periodic_active)
+      );
+
+      // Favored nation gets effects reduced to 1/10th
+      const favoredNationId = issue.favor > 0 ? issue.nation_b_id
+                            : issue.favor < 0 ? issue.nation_a_id
+                            : null;
+      const isFavored = favoredNationId && nationId === favoredNationId;
+
+      // Aggregate stat deltas from modifiers that apply to this nation
+      const statMap = {};
+      for (const mod of issueMods) {
+        const config = MODIFIERS[mod.modifier_key];
+        if (!config || !config.stat_effects) continue;
+
+        // Check if this modifier applies to our nation
+        const applies = mod.applies_to;
+        const appliesToUs = applies === 'both' || applies === side
+            || (applies === 'disfavored' && !isFavored && issue.favor !== 0)
+            || (applies === 'favored' && isFavored);
+        if (!appliesToUs) continue;
+
+        const scale = isFavored ? 0.1 : 1;
+        for (const eff of config.stat_effects) {
+          if (!statMap[eff.stat_key]) statMap[eff.stat_key] = 0;
+          statMap[eff.stat_key] += eff.delta * scale;
+        }
+      }
+
+      const effects = Object.entries(statMap);
+      if (effects.length === 0) continue;
+
+      const typeName = ISSUE_TYPE_LABELS[issue.issue_type] || issue.issue_type.replace(/_/g, ' ');
+      const tensionCls = issue.tension <= 2 ? 'crisis-effect-up' : issue.tension <= 5 ? '' : 'crisis-effect-down';
+
+      html += `<div class="crisis-item">
+        <div class="crisis-item-name">ISSUE: ${esc(typeName)}</div>
+        <div class="crisis-item-desc" style="margin-top:2px;">Tension: <span class="${tensionCls}">${Number(issue.tension).toFixed(1)}/10</span> &middot; ${issueMods.length} active modifier${issueMods.length !== 1 ? 's' : ''}</div>
+        <div class="crisis-item-effects" style="margin-top:4px;">
+          ${effects.map(([stat, delta]) => {
+            const label = stat.replace(/_/g, ' ');
+            const sign = delta > 0 ? '+' : '';
+            return `<span class="crisis-effect-down">${label} ${sign}${delta.toFixed(2)}/tick</span>`;
+          }).join('')}
+        </div>
+      </div>`;
+    }
+
+    if (html) {
+      body.innerHTML = html;
+      card.style.display = 'flex';
+    }
+  } catch (e) {
+    console.error('Issue effects card error:', e);
+  }
+}
+
+// ══════════════════════════════════════
 // ── Active Crises Loader ──
 // ══════════════════════════════════════
 async function loadActiveCrises(nationId, currentTick) {
@@ -1160,9 +1666,10 @@ async function loadActiveCrises(nationId, currentTick) {
   if (!container) return;
 
   try {
+    // Step 1: Fetch active crisis records
     const { data: crises, error } = await _supabase
       .from('active_crises')
-      .select('started_at_tick, crisis_templates(name, description, crisis_effects(target, stat_key, change_per_tick), crisis_end_triggers(stat_key, operator, threshold))')
+      .select('id, crisis_id, started_at_tick, crisis_templates(name, description, crisis_effects(target, stat_key, change_per_tick), crisis_end_triggers(stat_key, operator, threshold))')
       .eq('nation_id', nationId);
 
     if (error) throw error;
@@ -1172,7 +1679,43 @@ async function loadActiveCrises(nationId, currentTick) {
       return;
     }
 
-    container.innerHTML = crises.map(c => {
+    // Step 2: If nested select returned null templates (PostgREST schema cache stale),
+    // fall back to separate queries joined in JS
+    let resolvedCrises = crises;
+    const needsFallback = crises.some(c => !c.crisis_templates);
+    if (needsFallback) {
+      const crisisIds = crises.map(c => c.crisis_id).filter(Boolean);
+      if (crisisIds.length > 0) {
+        const [templatesRes, effectsRes, endTriggersRes] = await Promise.all([
+          _supabase.from('crisis_templates').select('id, name, description').in('id', crisisIds),
+          _supabase.from('crisis_effects').select('crisis_id, target, stat_key, change_per_tick').in('crisis_id', crisisIds),
+          _supabase.from('crisis_end_triggers').select('crisis_id, stat_key, operator, threshold').in('crisis_id', crisisIds)
+        ]);
+        const tmplMap = {};
+        for (const t of (templatesRes.data || [])) {
+          tmplMap[t.id] = { ...t, crisis_effects: [], crisis_end_triggers: [] };
+        }
+        for (const e of (effectsRes.data || [])) {
+          if (tmplMap[e.crisis_id]) tmplMap[e.crisis_id].crisis_effects.push(e);
+        }
+        for (const et of (endTriggersRes.data || [])) {
+          if (tmplMap[et.crisis_id]) tmplMap[et.crisis_id].crisis_end_triggers.push(et);
+        }
+        resolvedCrises = crises.map(c => ({
+          ...c,
+          crisis_templates: tmplMap[c.crisis_id] || null
+        }));
+      }
+    }
+
+    const TARGET_LABELS = {
+      'government_approval': 'Gov Approval',
+      'coalition_approval': 'Coalition Approval',
+      'pm_approval': 'PM Approval',
+      'minister_approval': 'Minister Approval'
+    };
+
+    const html = resolvedCrises.map(c => {
       const t = c.crisis_templates;
       if (!t) return '';
 
@@ -1188,11 +1731,16 @@ async function loadActiveCrises(nationId, currentTick) {
       if (elapsedYears > 0 && elapsedMonths > 0) durationStr += ', ';
       if (elapsedMonths > 0 || elapsedYears === 0) durationStr += elapsedMonths + (elapsedMonths === 1 ? ' Month' : ' Months');
 
-      // Effects: stat going up/down
+      // Effects: show ALL effect types (nation stats, gov approval, etc.)
       const effects = (t.crisis_effects || [])
-        .filter(e => e.target === 'nation' && e.stat_key)
+        .filter(e => e.change_per_tick !== 0)
         .map(e => {
-          const label = e.stat_key.replace(/_/g, ' ');
+          let label;
+          if (e.target === 'nation' && e.stat_key) {
+            label = e.stat_key.replace(/_/g, ' ');
+          } else {
+            label = TARGET_LABELS[e.target] || e.target.replace(/_/g, ' ');
+          }
           const isUp = e.change_per_tick > 0;
           return `<span class="${isUp ? 'crisis-effect-up' : 'crisis-effect-down'}">${esc(label)} ${isUp ? '\u25B2' : '\u25BC'}</span>`;
         }).join('');
@@ -1200,8 +1748,6 @@ async function loadActiveCrises(nationId, currentTick) {
       // Solution: what end triggers require
       const solutions = (t.crisis_end_triggers || []).map(et => {
         const label = et.stat_key.replace(/_/g, ' ');
-        // If operator is 'lte' (<=), the stat needs to come DOWN to resolve
-        // If operator is 'gte' (>=), the stat needs to go UP to resolve
         const needsUp = et.operator === 'gte';
         return `<span class="${needsUp ? 'crisis-effect-up' : 'crisis-effect-down'}">${esc(label)} ${needsUp ? '\u25B2' : '\u25BC'} ${et.threshold}</span>`;
       }).join(' ');
@@ -1214,6 +1760,7 @@ async function loadActiveCrises(nationId, currentTick) {
         ${solutions ? `<div class="crisis-item-solution"><strong>Solution:</strong> ${solutions}</div>` : ''}
       </div>`;
     }).join('');
+    container.innerHTML = html || '<div class="crises-empty">No active crises.</div>';
   } catch (e) {
     console.error('Active crises card error:', e);
     container.innerHTML = '<div class="crises-empty">Failed to load crises.</div>';
@@ -1239,6 +1786,103 @@ function generateMotto(name) {
   for (let i = 0; i < name.length; i++) sum += name.charCodeAt(i);
   return mottos[sum % mottos.length];
 }
+
+// ── World Map pan & zoom ──
+(function initMapPanZoom() {
+    const container = document.getElementById('world-map-body');
+    const img = document.getElementById('world-map-img');
+    if (!container || !img) return;
+
+    let scale = 1, panX = 0, panY = 0;
+    let isDragging = false, startX = 0, startY = 0, startPanX = 0, startPanY = 0;
+    const MIN_SCALE = 1, MAX_SCALE = 5, ZOOM_SPEED = 0.15;
+
+    function applyTransform() {
+        // Clamp pan so map doesn't fly off-screen
+        const cw = container.clientWidth, ch = container.clientHeight;
+        const iw = img.naturalWidth || img.clientWidth, ih = img.naturalHeight || img.clientHeight;
+        const scaledW = (iw / iw) * cw * scale, scaledH = (ih / iw) * cw * scale;
+        const minX = Math.min(0, cw - scaledW), minY = Math.min(0, ch - scaledH);
+        panX = Math.max(minX, Math.min(0, panX));
+        panY = Math.max(minY, Math.min(0, panY));
+        img.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    }
+
+    // Wheel zoom
+    container.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect = container.getBoundingClientRect();
+        const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        const prevScale = scale;
+        scale *= e.deltaY < 0 ? (1 + ZOOM_SPEED) : (1 - ZOOM_SPEED);
+        scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, Math.round(scale * 100) / 100));
+        // Zoom toward cursor
+        const ratio = scale / prevScale;
+        panX = mx - (mx - panX) * ratio;
+        panY = my - (my - panY) * ratio;
+        applyTransform();
+    }, { passive: false });
+
+    // Mouse drag
+    container.addEventListener('mousedown', (e) => {
+        if (scale <= 1) return;
+        isDragging = true;
+        startX = e.clientX; startY = e.clientY;
+        startPanX = panX; startPanY = panY;
+        container.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        panX = startPanX + (e.clientX - startX);
+        panY = startPanY + (e.clientY - startY);
+        applyTransform();
+    });
+    window.addEventListener('mouseup', () => {
+        isDragging = false;
+        container.style.cursor = scale > 1 ? 'grab' : 'grab';
+    });
+
+    // Touch pinch zoom + drag
+    let lastTouchDist = 0, lastTouchMid = null;
+    container.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            lastTouchDist = Math.sqrt(dx * dx + dy * dy);
+            lastTouchMid = { x: (e.touches[0].clientX + e.touches[1].clientX) / 2, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 };
+        } else if (e.touches.length === 1 && scale > 1) {
+            isDragging = true;
+            startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+            startPanX = panX; startPanY = panY;
+        }
+    }, { passive: true });
+    container.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2 && lastTouchDist > 0) {
+            e.preventDefault();
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const prevScale = scale;
+            scale *= dist / lastTouchDist;
+            scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+            const rect = container.getBoundingClientRect();
+            const mid = { x: (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top };
+            const ratio = scale / prevScale;
+            panX = mid.x - (mid.x - panX) * ratio;
+            panY = mid.y - (mid.y - panY) * ratio;
+            lastTouchDist = dist;
+            applyTransform();
+        } else if (e.touches.length === 1 && isDragging) {
+            panX = startPanX + (e.touches[0].clientX - startX);
+            panY = startPanY + (e.touches[0].clientY - startY);
+            applyTransform();
+        }
+    }, { passive: false });
+    container.addEventListener('touchend', () => { isDragging = false; lastTouchDist = 0; });
+
+    // Double-click to reset
+    container.addEventListener('dblclick', () => { scale = 1; panX = 0; panY = 0; applyTransform(); });
+})();
 </script>
 
 </body>

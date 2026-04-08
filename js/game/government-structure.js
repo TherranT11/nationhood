@@ -3,12 +3,12 @@
  * Extracted from game-common.js
  */
 
-import { isAutocracy, isPresidentialRepublic } from './government-types.js';
+import { isPresidentialRepublic, hasElectedPresident } from './government-types.js';
 import { IDEOLOGY_OPPOSITES } from './ideology.js';
 
 // ==================== SEAT LOADING ====================
 
-export async function loadSeats(supabase, nationId, isAutocracy, allParties, currentFactionId) {
+export async function loadSeats(supabase, nationId, allParties, currentFactionId) {
     const allPartySeats = {};
 
     // factions.seats is the canonical source of truth — use it directly
@@ -116,11 +116,16 @@ export async function fetchActiveCoalition(supabase, nationId) {
         return result;
     }
 
-    // === PARLIAMENTARY DEMOCRACY / AUTOCRACY: existing logic ===
+    // === PARLIAMENTARY DEMOCRACY: existing logic ===
 
-    // Helper: if status looks active but frozen bills exist, it's actually caretaker
+    // Helper: if status looks active but frozen bills exist, it's actually caretaker.
+    // Skip for emergency_minority governments and explicitly formed governments
+    // (formed_at set) — stale frozen bills from a previous government should not
+    // override a legitimately formed new government.
     async function inferCaretakerStatus(result) {
-        if (result && (!result.status || result.status === 'formed')) {
+        if (result && (!result.status || result.status === 'formed')
+            && result.formation_type !== 'emergency_minority'
+            && !result.formed_at) {
             const { count } = await supabase
                 .from('bills')
                 .select('id', { count: 'exact', head: true })
@@ -133,6 +138,10 @@ export async function fetchActiveCoalition(supabase, nationId) {
         return result;
     }
 
+    // Only return formed or caretaker governments — 'active' means a proposal
+    // that hasn't been finalized. Returning proposals here causes the UI to
+    // render them as the actual government (e.g. "Majority Coalition Government"
+    // for an unfinalized proposal).
     const { data: newGov } = await supabase
         .from('government_formations')
         .select('*')
@@ -193,7 +202,7 @@ export async function fetchActiveCoalition(supabase, nationId) {
 
 // ==================== POLICY COMPATIBILITY ====================
 
-export function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy, excludePolicyIds = [], activePolicyIds = null) {
+export function getCompatiblePolicies(sector, allPolicies, faction, excludePolicyIds = [], activePolicyIds = null) {
     const ideo1 = (faction?.ideology_value_1 || '').toUpperCase();
     const ideo2 = (faction?.ideology_value_2 || '').toUpperCase();
     const factionIdeos = [ideo1, ideo2].filter(Boolean);
@@ -223,9 +232,11 @@ export function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy,
                 }
             }
 
-            // Structural policies that are already active laws cannot be enacted again
-            const alreadyEnacted = activePolicyIds && activePolicyIds.has(p.id) && p.policy_type === 'structural';
+            // Structural policies that are already active laws can be repealed; levers cannot
+            const isActive = activePolicyIds && activePolicyIds.has(p.id);
+            const alreadyEnacted = isActive && p.policy_type === 'structural';
+            const alreadyEnactedLever = isActive && p.policy_type === 'lever';
 
-            return { ...p, isOpposed, prerequisiteMissing, prerequisiteName, alreadyEnacted };
+            return { ...p, isOpposed, prerequisiteMissing, prerequisiteName, alreadyEnacted, alreadyEnactedLever };
         });
 }

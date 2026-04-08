@@ -29,13 +29,36 @@ export async function repealActiveLaw({
         return { success: false, reason: 'missing_target_id', targetLawId: null };
     }
 
-    const targetLaw = (currentActiveLaws || []).find(l => l.id === targetLawId);
+    let targetLaw = (currentActiveLaws || []).find(l => l.id === targetLawId);
+
+    // Fallback: if the stored UUID is stale (e.g. another bill re-enacted the
+    // policy between drafting and enactment), look up the active_law by
+    // policy_id from the article or bill instead.
     if (!targetLaw) {
-        return { success: false, reason: 'target_law_absent', targetLawId };
+        const policyId = article?.policy_id || bill?.repeal_policy_id;
+        if (policyId) {
+            const { data: freshLaw } = await supabase
+                .from('active_laws')
+                .select('*, policies(*)')
+                .eq('nation_id', nation.id)
+                .eq('policy_id', policyId)
+                .eq('is_reversal', false)
+                .maybeSingle();
+            if (freshLaw) {
+                console.log(`[repealActiveLaw] Stale UUID ${targetLawId} — resolved via policy_id ${policyId} to active_law ${freshLaw.id}`);
+                targetLaw = freshLaw;
+            }
+        }
+        if (!targetLaw) {
+            return { success: false, reason: 'target_law_absent', targetLawId };
+        }
     }
 
+    // Use the resolved law's actual ID (may differ from original targetLawId after fallback)
+    const resolvedLawId = targetLaw.id;
+
     if (!targetLaw.policies) {
-        return { success: false, reason: 'missing_target_policy', targetLawId };
+        return { success: false, reason: 'missing_target_policy', targetLawId: resolvedLawId };
     }
 
     // Save policy data before deleting the target law
@@ -47,11 +70,11 @@ export async function repealActiveLaw({
     const { data: referencingBills } = await supabase
         .from('bills')
         .select('id')
-        .eq('repeal_active_law_id', targetLawId);
+        .eq('repeal_active_law_id', resolvedLawId);
 
     if (referencingBills && referencingBills.length > 0) {
         const billIds = referencingBills.map(b => b.id);
-        console.log(`[repealActiveLaw] Clearing ${billIds.length} bill FK refs to active_law ${targetLawId}: ${billIds.join(', ')}`);
+        console.log(`[repealActiveLaw] Clearing ${billIds.length} bill FK refs to active_law ${resolvedLawId}: ${billIds.join(', ')}`);
         // Clear each referencing bill individually to ensure it takes effect
         for (const refBill of referencingBills) {
             const { error: clearErr } = await supabase
@@ -67,11 +90,11 @@ export async function repealActiveLaw({
     const { data: referencingArticles } = await supabase
         .from('bill_articles')
         .select('id')
-        .eq('repeal_active_law_id', targetLawId);
+        .eq('repeal_active_law_id', resolvedLawId);
 
     if (referencingArticles && referencingArticles.length > 0) {
         const articleIds = referencingArticles.map(a => a.id);
-        console.log(`[repealActiveLaw] Clearing ${articleIds.length} article FK refs to active_law ${targetLawId}: ${articleIds.join(', ')}`);
+        console.log(`[repealActiveLaw] Clearing ${articleIds.length} article FK refs to active_law ${resolvedLawId}: ${articleIds.join(', ')}`);
         for (const refArt of referencingArticles) {
             const { error: clearErr } = await supabase
                 .from('bill_articles')
@@ -83,32 +106,35 @@ export async function repealActiveLaw({
         }
     }
 
-    // Verify cleanup worked by checking if any references remain
-    const { data: remainingRefs } = await supabase
+    // Verify cleanup — warn but don't abort. The delete below will fail on FK
+    // constraint if references truly can't be cleared (RLS may block UPDATE but
+    // the CASCADE or service-role delete may still succeed).
+    const { data: remainingBillRefs } = await supabase
         .from('bills')
-        .select('id, repeal_active_law_id')
-        .eq('repeal_active_law_id', targetLawId);
-    if (remainingRefs && remainingRefs.length > 0) {
-        console.error(`[repealActiveLaw] FK cleanup failed — ${remainingRefs.length} bills still reference active_law ${targetLawId}: ${JSON.stringify(remainingRefs)}`);
-        return {
-            success: false,
-            reason: 'clear_bill_references_failed',
-            targetLawId,
-            error: `${remainingRefs.length} bills still reference this active_law after cleanup`,
-        };
+        .select('id')
+        .eq('repeal_active_law_id', resolvedLawId);
+    if (remainingBillRefs && remainingBillRefs.length > 0) {
+        console.warn(`[repealActiveLaw] ${remainingBillRefs.length} bills still reference active_law ${resolvedLawId} after cleanup — attempting delete anyway`);
+    }
+    const { data: remainingArtRefs } = await supabase
+        .from('bill_articles')
+        .select('id')
+        .eq('repeal_active_law_id', resolvedLawId);
+    if (remainingArtRefs && remainingArtRefs.length > 0) {
+        console.warn(`[repealActiveLaw] ${remainingArtRefs.length} bill_articles still reference active_law ${resolvedLawId} after cleanup — attempting delete anyway`);
     }
 
     // Delete target law, then create reversal
     const { error: deleteError } = await supabase
         .from('active_laws')
         .delete()
-        .eq('id', targetLawId);
+        .eq('id', resolvedLawId);
 
     if (deleteError) {
         return {
             success: false,
             reason: 'delete_failed',
-            targetLawId,
+            targetLawId: resolvedLawId,
             error: deleteError.message,
         };
     }
@@ -119,7 +145,7 @@ export async function repealActiveLaw({
     return {
         success: true,
         reason: 'repealed',
-        targetLawId,
+        targetLawId: resolvedLawId,
         policyName: targetPolicy.policy_name,
     };
 }

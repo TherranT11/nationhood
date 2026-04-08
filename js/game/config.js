@@ -12,6 +12,7 @@ export const GAME_CONFIG = {
     QUORUM_THRESHOLD: 0.5,           // 50% of seats must participate (yes+no+abstain) for quorum
     COMMITTEE_EXPIRY_TICKS: 6,
     DRAFT_BILL_AP_COST: 2,
+    FREE_BILL_ARTICLES: 4,         // First 4 non-text articles are free; article 5+ costs 1 AP each
     VETO_APPROVAL_COST: 3,
     NO_CONFIDENCE_AP_COST: 5,
     NO_CONFIDENCE_VOTING_TICKS: 6,
@@ -19,7 +20,7 @@ export const GAME_CONFIG = {
     FOUNDATIONAL_AP_COST: 3,
     FOUNDATIONAL_VOTING_TICKS: 6,
     SUPERMAJORITY_THRESHOLD: 2/3,
-    EARLY_ELECTION_TICKS: 6,
+    EARLY_ELECTION_TICKS: 2,
     EARLY_ELECTION_PM_APPROVAL_COST: 5,
     EARLY_ELECTION_COALITION_APPROVAL_COST: 3,
     // Presidential Democracy
@@ -46,90 +47,11 @@ export const GAME_CONFIG = {
     IMPEACHMENT_INCOMPETENCE_THRESHOLD: 25,   // gov_approval <= this for incompetence charge
     IMPEACHMENT_INCOMPETENCE_TICKS: 6,        // consecutive ticks below threshold
     IMPEACHMENT_VETO_ABUSE_COUNT: 2,          // vetoed bills with >66% support
+    IMPEACHMENT_ABUSE_OVERREACH_THRESHOLD: 4, // overreach_count >= this for abuse of power
+    IMPEACHMENT_CRIMINAL_CORRUPTION_THRESHOLD: 30,  // corruption >= this AND judicial_independence <= threshold
+    IMPEACHMENT_CRIMINAL_JUDICIAL_THRESHOLD: 35,    // judicial_independence <= this AND corruption >= threshold
 
-    // ── Autocracy v2 Faction Actions ──
-    PLEDGE_ALLEGIANCE_AP: 2,
-    PLEDGE_ALLEGIANCE_LOYALTY: 8,
-    PLEDGE_ALLEGIANCE_STANDING: -2,
-    PLEDGE_ALLEGIANCE_COMPLY_LOYALTY: 13,     // when under Demand Loyalty order
-    PLEDGE_ALLEGIANCE_COMPLY_STANDING: -3,
-    PLEDGE_ALLEGIANCE_STANDING_FLOOR: 5,      // standing cannot drop below this from pledging
-
-    CONSOLIDATE_POWER_AP: 2,
-    CONSOLIDATE_POWER_STANDING: 6,
-    CONSOLIDATE_POWER_LOYALTY: -3,
-
-    DEMONSTRATE_COMPETENCE_AP: 3,
-    DEMONSTRATE_COMPETENCE_STANDING: 4,
-    DEMONSTRATE_COMPETENCE_LOYALTY: 3,
-    DEMONSTRATE_COMPETENCE_COST: 2,           // $2M from embezzled funds
-    DEMONSTRATE_COMPETENCE_NATION_STAT: 0.3,
-    DEMONSTRATE_COMPETENCE_REDUCED_STANDING: 2, // when can't afford cost
-
-    EMBEZZLE_FUNDS_AP: 1,
-    EMBEZZLE_FUNDS_LOYALTY: -5,
-    EMBEZZLE_FUNDS_BASE_INCOME: 5,            // $5M base
-    EMBEZZLE_FUNDS_INCOME_FLOOR: 3,           // $3M minimum
-    EMBEZZLE_FUNDS_BASE_DETECTION: 0.10,      // 10% base
-    EMBEZZLE_FUNDS_CONSECUTIVE_BONUS: 0.05,   // +5% per consecutive tick
-    EMBEZZLE_FUNDS_DETECTION_FLOOR: 0.03,     // 3% minimum
-    EMBEZZLE_FUNDS_DETECTION_CAP: 0.50,       // 50% maximum
-    EMBEZZLE_FUNDS_DETECTED_LOYALTY: -15,
-    EMBEZZLE_FUNDS_DETECTED_STANDING: -10,
-    EMBEZZLE_FUNDS_DETECTED_FUNDS_SEIZURE: 0.30, // 30% seized
-
-    BUY_INFLUENCE_AP: 3,
-    BUY_INFLUENCE_STANDING: -1,
-    BUY_INFLUENCE_BASE_COST: 3,               // $3M per seat base
-    BUY_INFLUENCE_UNALIGNED_COST: 2,          // $2M per seat from unaligned pool
-    BUY_INFLUENCE_VULNERABILITY_DISCOUNT: 0.20, // 20% cheaper vs demonstrating faction
-    BUY_INFLUENCE_STRONGMAN_BASE_COST: 5,      // $5M per seat base when targeting ruling faction
-    BUY_INFLUENCE_STRONGMAN_HEALTH_SCALE: 0.02, // multiplier per regime_health point (0-100)
-
-    INTIMIDATE_AP: 2,
-    INTIMIDATE_COST: 1,                        // $1M flat
-    INTIMIDATE_LOYALTY: -4,
-    INTIMIDATE_STANDING: 2,
-    INTIMIDATE_STABILITY: -0.2,
-    INTIMIDATE_BASE_EFFECTIVENESS: 4,
-    INTIMIDATE_MIN_SEATS: 5,
-    INTIMIDATE_VULNERABILITY_BONUS: 0.25,      // 25% more effective vs demonstrating
-    INTIMIDATE_FAIL_STANDING: -3,
-    INTIMIDATE_REPORT_LOYALTY: -8,
-    INTIMIDATE_REPORT_STANDING: -3,
-    INTIMIDATE_REPORTER_LOYALTY: 3,
-    INTIMIDATE_RETALIATE_COST: 1,              // $1M
-    INTIMIDATE_RETALIATE_STANDING: -2,
-    INTIMIDATE_RETALIATE_SEATS: -2,
-    INTIMIDATE_RETALIATOR_LOYALTY: -2,
-
-    PURGE_AP: 3,
-    PURGE_LOYALTY_THRESHOLD: 20,
-    PURGE_TARGET_STANDING: -20,
-    PURGE_TARGET_SEAT_LOSS: 0.30,             // 30% lost
-    PURGE_TARGET_NEW_LOYALTY: 50,
-    PURGE_OTHERS_LOYALTY: 5,
-    PURGE_REGIME_HEALTH: -3,
-    PURGE_STABILITY: -1,
-    PURGE_COUP_LOCKOUT_TICKS: 6,
-
-    REDISTRIBUTE_SEATS_AP: 2,
-    REDISTRIBUTE_SEATS_COOLDOWN: 4,
-    REDISTRIBUTE_SEATS_MAX_RATIO: 0.30,       // max 30% of loser's seats
-    REDISTRIBUTE_SEATS_LOSER_STANDING: -3,
-    REDISTRIBUTE_SEATS_LOSER_LOYALTY: -5,
-    REDISTRIBUTE_SEATS_GAINER_LOYALTY: 5,
-
-    COUP_MIN_STANDING: 15,
-    COUP_MIN_SEAT_RATIO: 0.10,               // 10% of legislature
-    COUP_FUNDS_THRESHOLD: 30,                  // $30M
-    COUP_LOCKOUT_TICKS: 6,
-
-    STANDING_CAP: 90,
-    LOYALTY_CAP: 95,
-    STANDING_RELEVANCE_DECAY_TICKS: 3,
-    UNALIGNED_POOL_REGEN_TICKS: 4,            // +1 seat per 4 ticks
-    UNALIGNED_POOL_MAX_RATIO: 0.10,           // max 10% of legislature
+    // (Autocracy v2 action constants removed — Phase 0)
     NEW_FACTION_MIN_SEATS: 8,
 
     // ── Head of State Title (Foundational) ──
@@ -144,6 +66,21 @@ export const GAME_CONFIG = {
     // ── Presidential Term Limits (Foundational) ──
     TERM_LIMIT_OPTIONS: [0, 1, 2, 3, 4],  // 0 = no limits
     TERM_LIMIT_COOLDOWN_TICKS: 240,
+
+    // ── Legislative Term Length (Foundational) ──
+    PARLIAMENTARY_TERM_LENGTH_OPTIONS: [24, 36, 48, 60, 72],  // ticks: 2yr, 3yr, 4yr, 5yr, 6yr
+    PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS: 120,
+
+    // ── Head of State Election Method (Foundational) ──
+    HOS_ELECTION_COOLDOWN_TICKS: 360,
+
+    // ── Constitutional Reform (Foundational) ──
+    CONSTITUTIONAL_REFORM_COOLDOWN_TICKS: 240,
+    CONSTITUTIONAL_REFORM_ELECTION_PROXIMITY_TICKS: 6,
+
+    // ── Entrenchment Clauses ──
+    PROTECTED_THRESHOLD: 0.60,          // 60% of seats (72 of 120)
+    ENTRENCHED_COOLDOWN_TICKS: 60,      // ticks before repeal can be filed
 };
 
 export const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;
@@ -186,21 +123,36 @@ export function getPresidentialTermLimit(nation) {
     return GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT;
 }
 
+/**
+ * Get the effective parliamentary term length (in ticks) for a nation.
+ * Uses nation-specific override if set, otherwise falls back to GAME_CONFIG default.
+ */
+export function getParliamentaryTermTicks(nation) {
+    if (nation && nation.parliamentary_term_ticks != null && nation.parliamentary_term_ticks > 0) {
+        return nation.parliamentary_term_ticks;
+    }
+    return GAME_CONFIG.PARLIAMENTARY_TERM_TICKS;
+}
+
 export function initGameConfigForNation(nation) {
     const seats = (nation && nation.total_seats) ? nation.total_seats : 120;
     GAME_CONFIG.TOTAL_SEATS = seats;
     GAME_CONFIG.MAJORITY_SEATS = Math.floor(seats / 2) + 1;
 }
 
-export const FORMATION_DEADLINE_TICKS = 3; // ticks per formation window before escalation
+export const FORMATION_DEADLINE_TICKS = 3; // ticks per formation window before snap election
+export const POST_SNAP_DEADLINE_TICKS = 2; // ticks after snap election before emergency minority government
 export const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 5 — general snap cycle guard (overridden by formation escalation)
 
 /**
  * Atomic AP deduction via database RPC.
- * Returns { success: true, newAp } on success, or { success: false, error } on failure.
- * The DB function checks balance and deducts in a single UPDATE, preventing race conditions.
+ * Returns { success: true, newAp } on success,
+ * or { success: false, error, currentAp } on failure.
+ * The DB function checks balance and deducts in a single UPDATE, preventing
+ * race conditions.  On insufficient AP it returns -(current_ap + 1) so the
+ * caller always has the real server-side balance (single source of truth).
  */
-export async function deductAP(supabase, factionId, cost) {
+export async function deductAP(supabase, factionId, cost, ledger) {
     const { data, error } = await supabase.rpc('deduct_ap', {
         p_faction_id: factionId,
         p_cost: cost
@@ -209,8 +161,19 @@ export async function deductAP(supabase, factionId, cost) {
         console.error(`[deductAP] RPC failed for faction ${factionId}, cost ${cost}:`, error.message);
         return { success: false, error: error.message };
     }
-    if (data === -1) {
-        return { success: false, error: 'Insufficient AP' };
+    if (data < 0) {
+        const currentAp = -(data) - 1;
+        return { success: false, error: 'Insufficient AP', currentAp };
+    }
+    // Log to AP ledger if reason provided
+    if (ledger?.reason) {
+        supabase.from('ap_ledger').insert({
+            faction_id: factionId,
+            tick: ledger.tick || 0,
+            delta: -cost,
+            reason: ledger.reason,
+            detail: ledger.detail || null,
+        }).then(() => {}, (e) => console.warn('[deductAP] ledger insert failed:', e));
     }
     return { success: true, newAp: data };
 }

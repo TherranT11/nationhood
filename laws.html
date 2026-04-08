@@ -37,6 +37,9 @@
         <div class="add-text-article-section" id="add-funding-article-section" onclick="showFundingArticleForm()">
             <span class="add-text-article-btn-text">+ Funding Article</span>
         </div>
+        <div class="add-text-article-section" id="add-entrenchment-section" onclick="showEntrenchmentForm()">
+            <span class="add-text-article-btn-text">+ Add Entrenchment</span>
+        </div>
         <div id="add-article-form" style="display:none;">
             <div class="form-group">
                 <label class="form-label">Select Sector</label>
@@ -87,14 +90,49 @@
                 <div id="funding-institutions"></div>
                 <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border-main);">
                     <label class="form-label">Discretionary Funds ($M)</label>
-                    <!-- Stored as a one-time amount (in $M): shown in upfront/debt impact, never in recurring monthly totals. -->
-                    <input type="number" class="form-input" id="funding-discretionary" min="0" max="50000" value="0" placeholder="0">
-                    <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:4px;">One-time treasury expenditure added to national debt.</div>
+                    <div id="funding-discretionary-balance" style="font-size:0.7rem;margin-bottom:6px;"></div>
+                    <input type="number" class="form-input" id="funding-discretionary" min="-50000" max="50000" value="0" placeholder="0">
+                    <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:4px;">Positive = allocate funds (adds to debt). Negative = withdraw surplus funds (reduces debt).</div>
                 </div>
             </div>
             <div style="display:flex;gap:8px;margin-top:12px;">
                 <button class="btn-cancel" onclick="hideFundingArticleForm()">Cancel</button>
                 <button class="btn-add" id="add-funding-btn" disabled onclick="addFundingArticle()">Add to Bill</button>
+            </div>
+        </div>
+        <div id="add-entrenchment-form" style="display:none;">
+            <div class="form-group">
+                <label class="form-label">Entrenchment Level</label>
+                <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:10px;">
+                    Determines how difficult this law will be to repeal or amend once passed. The bill itself must pass at the entrenchment threshold.
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                    <label class="entrenchment-option" style="display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--border-main);border-radius:4px;cursor:pointer;">
+                        <input type="radio" name="entrenchment-tier" value="protected" style="margin-top:3px;">
+                        <div>
+                            <div style="font-weight:600;color:var(--blue);">Protected Law</div>
+                            <div style="font-size:0.75rem;color:var(--text-secondary);">Requires 60% supermajority to repeal or amend. This bill must also pass with 60%.</div>
+                        </div>
+                    </label>
+                    <label class="entrenchment-option" style="display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--border-main);border-radius:4px;cursor:pointer;">
+                        <input type="radio" name="entrenchment-tier" value="entrenched" style="margin-top:3px;">
+                        <div>
+                            <div style="font-weight:600;color:var(--purple);">Entrenched Law</div>
+                            <div style="font-size:0.75rem;color:var(--text-secondary);">Requires 67% supermajority to repeal or amend. ${GAME_CONFIG.ENTRENCHED_COOLDOWN_TICKS}-tick cooldown before repeal can be filed. This bill must also pass with 67%.</div>
+                        </div>
+                    </label>
+                    <label class="entrenchment-option" style="display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--border-main);border-radius:4px;cursor:pointer;">
+                        <input type="radio" name="entrenchment-tier" value="enshrined" style="margin-top:3px;">
+                        <div>
+                            <div style="font-weight:600;color:var(--amber);">Enshrined as Constitutional Law</div>
+                            <div style="font-size:0.75rem;color:var(--text-secondary);">Can only be repealed via a foundational bill (67% + co-sponsor). This bill must pass with foundational supermajority.</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="btn-cancel" onclick="hideEntrenchmentForm()">Cancel</button>
+                <button class="btn-add" id="add-entrenchment-btn" disabled onclick="addEntrenchmentArticle()">Add to Bill</button>
             </div>
         </div>
         <div class="bill-name-section" id="bill-name-section" style="display:none;">
@@ -189,9 +227,18 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
-import './js/guide.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS, RAW_SCALING_DIVISORS, buildFundingPctMap, getInstFundingPct, checkSovereigntyConstraints } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, deductAP } from './js/game/config.js';
+import { isGovernmentPresidential, hasElectedPresident, getCurrentConstitutionalSystem, getConstitutionalSystemLabel } from './js/game/government-types.js';
+import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
+import { loadFactionIdeology, IDEOLOGY_TO_AXIS, getIdeologyChipClass, calculateBillDynamicPenalty } from './js/game/ideology.js';
+import { calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, getRequiredSeats, evaluateBillVote, calculateIdeologyPenalty } from './js/game/bills.js';
+import { formatStatName, formatMinorSector } from './js/game/political-actions.js';
+import { MAJOR_SECTORS, RAW_SCALING_DIVISORS, checkSovereigntyConstraints } from './js/game/diplomacy-constants.js';
+import { signPresidentialBill, vetoPresidentialBill } from './js/game/presidential.js';
+import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier } from './js/game/budget.js';
+import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
+import { SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game/sovereign-default.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 (function () {
     'use strict';
@@ -206,9 +253,8 @@ function scaleLawCost(baseCost, scalingStat) {
 let currentNation = null, currentFaction = null, currentSeats = 0;
 let allPartySeats = {}, allParties = [], allPolicies = [];
 let activeLaws = [], committeeBills = [], floorBills = [], frozenBills = [], presidentDeskBills = [], recentBills = [];
-let lawsIsAutocracy = false, isHeadFaction = false, headFactionId = null;
+let isHeadFaction = false, headFactionId = null;
 let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
-let coalitionLeadPartyId = null;
 let isCaretaker = false;
 let isNoGovernment = false;
 let currentTickGlobal = 0;       // cached current tick
@@ -216,6 +262,7 @@ let draftArticles = [], selectedPolicy = null;
 let committeeSelectedPolicy = null, currentCommitteeBillId = null;
 let pendingPolicyIds = new Set();
 let isSubmitting = false;
+let _actionLock = false;
 let termBill = 'Bill', termBills = 'Bills', termDraft = 'Draft Bill', termPropose = 'Propose Bill';
 let showingAllLaws = false;
 let factionIdeology = null; // Dynamic ideology scores for current player
@@ -224,8 +271,8 @@ let showingPassedLaws = false;
 const FALLBACK_COLORS = ['var(--red)','var(--green)','var(--blue)','var(--orange)','var(--purple)','var(--blue)','var(--red)','var(--amber)'];
 
 function _getCompatiblePolicies(sector) {
-    const _activePolicyIds = new Set(activeLaws.map(al => al.policy_id));
-    return getCompatiblePolicies(sector, allPolicies, currentFaction, lawsIsAutocracy, draftArticles.map(a => a.policy?.id).filter(Boolean), _activePolicyIds);
+    const _activePolicyIds = new Set(activeLaws.filter(al => !al.is_reversal).map(al => al.policy_id));
+    return getCompatiblePolicies(sector, allPolicies, currentFaction, draftArticles.map(a => a.policy?.id).filter(Boolean), _activePolicyIds);
 }
 
 initPage('laws', async (state) => {
@@ -237,9 +284,7 @@ initPage('laws', async (state) => {
         document.getElementById('content-area').innerHTML = '<div class="placeholder-panel"><div class="ph-icon">📜</div><h3>No Nation Selected</h3><p>Your party is not assigned to a nation yet.</p></div>';
         return;
     }
-    lawsIsAutocracy = (nation.government_type === 'Autocracy');
-    isPresidential = (nation.government_type === 'Presidential');
-    if (lawsIsAutocracy) { termBill = 'Decree'; termBills = 'Decrees'; termDraft = 'Draft Decree'; termPropose = 'Propose Decree'; document.title = 'Decrees | Nationhood Alpha'; }
+    isPresidential = isGovernmentPresidential(nation);
 
     // Detect president's party
     if (isPresidential) {
@@ -252,9 +297,8 @@ initPage('laws', async (state) => {
     // Check for caretaker government (legislature frozen)
     // Bust coalition cache so caretaker status is never stale
     qCacheBust('coalition_');
-    if (!lawsIsAutocracy) {
+    {
         const coalition = await fetchActiveCoalition(_supabase, nation.id);
-        coalitionLeadPartyId = coalition?.lead_party_id || null;
         isCaretaker = coalition?.status === 'caretaker';
         isNoGovernment = !coalition;
         // Fallback: frozen bills are ground truth for caretaker status
@@ -282,16 +326,21 @@ initPage('laws', async (state) => {
         const msgs = recentlyResolved.map(r => {
             const earlyTag = (r.early_resolution_status === 'majority_reached' || r.early_resolution_status === 'quorum_reached') ? ' (Early Majority)'
                 : (r.early_resolution_status === 'majority_opposed' || r.early_resolution_status === 'quorum_opposed') ? ' (Majority Opposed)' : '';
+            if (r.referendum_status === 'resolved') {
+                const yes = Number(r.referendum_yes_pct || 0).toFixed(1);
+                const no = Number(r.referendum_no_pct || 0).toFixed(1);
+                return r.status === 'passed'
+                    ? `🗳 ${r.bill_name || 'Bill'} — Referendum APPROVED (${yes}% YES)`
+                    : `🗳 ${r.bill_name || 'Bill'} — Referendum REJECTED (${no}% NO)`;
+            }
+            if (r.referendum_status === 'skipped') {
+                return `⚠ ${r.bill_name || 'Bill'} — FORCED THROUGH (referendum bypassed)`;
+            }
             return r.status === 'passed'
                 ? '✅ ' + (r.bill_name || 'Bill') + ' PASSED' + earlyTag
                 : '❌ ' + (r.bill_name || 'Bill') + ' FAILED' + earlyTag;
         });
         setTimeout(() => { alert('Vote Results:\n\n' + msgs.join('\n')); }, 500);
-    }
-
-    if (lawsIsAutocracy) {
-        const hf = await detectHeadFaction(_supabase, currentNation.id, allParties, allPartySeats, currentFaction?.id);
-        headFactionId = hf.headFactionId; isHeadFaction = hf.isHeadFaction;
     }
 
     // Get current tick
@@ -313,7 +362,7 @@ async function loadLawsData() {
 
         const { data: parties } = await _supabase.from('factions').select('id, faction_name, seats, action_points, abbreviation, party_color').eq('nation_id', nid).eq('faction_type', 'party');
         allParties = parties || [];
-        const seatData = await loadSeats(_supabase, nid, lawsIsAutocracy, allParties, currentFaction?.id);
+        const seatData = await loadSeats(_supabase, nid, allParties, currentFaction?.id);
         allPartySeats = seatData.allPartySeats; currentSeats = seatData.currentSeats;
 
         // Refresh current faction AP from fresh DB data
@@ -326,7 +375,7 @@ async function loadLawsData() {
             cachedPolicies ? Promise.resolve({ data: cachedPolicies }) : _supabase.from('policies').select('*').eq('is_active', true),
             _supabase.from('active_laws').select('*, policies(*)').eq('nation_id', nid),
             _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), factions(faction_name)), bill_support(*)').eq('nation_id', nid).eq('status', 'committee'),
-            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)').eq('nation_id', nid).in('status', ['floor', 'vetoed']),
+            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)').eq('nation_id', nid).in('status', ['floor', 'vetoed', 'referendum_pending', 'referendum_approved']),
             _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).eq('status', 'frozen'),
             isPresidential ? _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).eq('status', 'president_desk') : Promise.resolve({ data: [] }),
             _supabase.from('bills').select('*, factions(faction_name)').eq('nation_id', nid).in('status', ['passed', 'failed']).order('passed_tick', { ascending: false }).limit(10)
@@ -404,8 +453,8 @@ function renderLawsPage() {
 const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and cannot propose bills"' : (isCaretaker ? 'title="Legislature is dissolved — no new bills during caretaker government"' : (isNoGovernment ? 'title="Legislature is suspended until a new government is formed"' : ''));
     const debtRatio = getDebtToGDP(currentNation);
     const defaultEligible = debtRatio >= SOVEREIGN_DEFAULT_CONFIG.MIN_DEBT_TO_GDP;
-    const showDefaultBtn = !lawsIsAutocracy;
-    const pageTitle = lawsIsAutocracy ? `Decrees of ${currentNation.name}` : `Bills & Laws of ${currentNation.name}`;
+    const showDefaultBtn = true;
+    const pageTitle = `Bills & Laws of ${currentNation.name}`;
     const html = `
         <div class="panel-padding">
             ${isCaretaker ? `
@@ -422,10 +471,10 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
             <div class="laws-header">
                 <div class="section-header" style="margin-bottom:0;border-bottom:none;">${pageTitle}</div>
                 <div class="laws-header-buttons">
-                    <button class="passed-laws-btn" onclick="togglePassedLaws()">📜 Passed Laws</button>
+                    <button class="passed-laws-btn" onclick="togglePassedLaws()">📜 Resolved Bills</button>
                     <button class="all-laws-btn" onclick="toggleAllLaws()">📋 All Laws</button>
                     ${showDefaultBtn ? `<button class="default-resolution-btn${defaultEligible ? '' : ' default-btn-locked'}" onclick="${defaultEligible ? 'openDefaultResolutionModal()' : 'void(0)'}" ${defaultEligible ? '' : 'disabled'} title="${defaultEligible ? 'Debt: ' + formatDebtToGDP(debtRatio) + ' of GDP' : 'Requires debt-to-GDP ≥ 150% (current: ' + formatDebtToGDP(debtRatio) + ')'}">💀 Default Resolution</button>` : ''}
-                    <button class="draft-btn ${lawsIsAutocracy ? 'autocracy-btn' : ''}" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'} ${noSeatsTitle}>
+                    <button class="draft-btn" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'} ${noSeatsTitle}>
                         ${termPropose} <span class="ap-cost">${GAME_CONFIG.DRAFT_BILL_AP_COST} AP</span>
                     </button>
                 </div>
@@ -458,7 +507,6 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
                 ${frozenBills.length > 0 ? renderFrozenBills() : ''}
                 ${floorBills.length > 0 ? renderFloorBills() : ''}
                 ${committeeBills.length > 0 ? renderCommitteeBills() : ''}
-                ${recentBills.length > 0 ? renderRecentBills() : ''}
                 <div class="section-header">Active Laws</div>
                 <div class="sector-accordion">
                     ${MAJOR_SECTORS.map(sector => renderMajorSector(sector)).join('')}
@@ -484,6 +532,9 @@ function toggleAllLaws() {
 
 function populateAllLawsFilters() {
     const sectors = [...new Set(allPolicies.map(p => p.major_sector).filter(Boolean))].sort();
+    // Add Foundational as a sector if not already present (foundational laws aren't regular policies)
+    if (!sectors.includes('FOUNDATIONAL')) sectors.push('FOUNDATIONAL');
+    sectors.sort();
     const ideologies = new Set();
     allPolicies.forEach(p => {
         if (p.ideologies && Array.isArray(p.ideologies)) p.ideologies.forEach(i => ideologies.add(i));
@@ -501,7 +552,72 @@ function filterAllLaws() {
     const sector = document.getElementById('law-filter-sector')?.value || '';
     const ideology = document.getElementById('law-filter-ideology')?.value || '';
 
-    const activePolicyIds = new Set(activeLaws.map(al => al.policy_id));
+    const activePolicyIds = new Set(activeLaws.filter(al => !al.is_reversal).map(al => al.policy_id));
+
+    // Handle foundational laws separately — they are nation-level settings, not policies
+    if (sector === 'FOUNDATIONAL') {
+        const container = document.getElementById('all-laws-list');
+        const n = currentNation;
+        if (!n) { container.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:30px;">No nation loaded.</div>'; return; }
+
+        const ticksPerYear = GAME_CONFIG.TICKS_PER_YEAR || 12;
+        const parlTermTicks = n.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS || 48;
+        const parlTermYears = parlTermTicks / ticksPerYear;
+        const hosMethod = n.hos_election_method === 'hereditary' ? 'Hereditary (Constitutional Monarchy)' : n.hos_election_method === 'direct_vote' ? 'Direct Popular Vote' : 'Appointed by Parliament';
+        const isPresidential = hasElectedPresident(n);
+        const termLimit = n.presidential_term_limit !== null && n.presidential_term_limit !== undefined ? n.presidential_term_limit : GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT;
+        const presTermTicks = n.presidential_term_ticks || GAME_CONFIG.PRESIDENTIAL_TERM_TICKS || 48;
+        const presTermYears = presTermTicks / ticksPerYear;
+
+        const currentGovSystem = getCurrentConstitutionalSystem(n);
+        const govSystemLabel = getConstitutionalSystemLabel(currentGovSystem);
+
+        const foundationalLaws = [
+            { name: 'System of Government', icon: '🏛', desc: `${n.name} is organized as ${/^[aeiou]/i.test(govSystemLabel) ? 'an' : 'a'} ${govSystemLabel}.`, value: govSystemLabel },
+            { name: 'Electoral Makeup', icon: '🗳', desc: `Parliament has ${n.total_seats || '?'} total seats.`, value: `${n.total_seats || '?'} seats` },
+            { name: 'Head of State Title', icon: '👑', desc: `The head of state holds the title of ${n.head_of_state_title || 'President'}.`, value: n.head_of_state_title || 'President' },
+            { name: 'Head of State Election Method', icon: '🗳', desc: `The head of state is selected via: ${hosMethod}.`, value: hosMethod },
+            { name: 'Legislative Term Length', icon: '🗓', desc: `Parliamentary elections occur every ${parlTermYears} year${parlTermYears !== 1 ? 's' : ''} (${parlTermTicks} ticks).`, value: `${parlTermYears} year${parlTermYears !== 1 ? 's' : ''}` },
+        ];
+
+        if (isPresidential) {
+            foundationalLaws.push(
+                { name: 'Presidential Term Length', icon: '📅', desc: `Presidential elections occur every ${presTermYears} year${presTermYears !== 1 ? 's' : ''} (${presTermTicks} ticks).`, value: `${presTermYears} year${presTermYears !== 1 ? 's' : ''}` },
+                { name: 'Presidential Term Limits', icon: '🔒', desc: termLimit === 0 ? 'No term limits — the president can serve unlimited terms.' : `The president is limited to ${termLimit} term${termLimit !== 1 ? 's' : ''}.`, value: termLimit === 0 ? 'None' : `${termLimit} term${termLimit !== 1 ? 's' : ''}` }
+            );
+        }
+
+        // Authoritarian foundational laws
+        if (n.term_limits_abolished) foundationalLaws.push({ name: 'Abolish Term Limits', icon: '⛓', desc: 'All term limits for the head of government have been removed. Ruling party gains +5 approval/tick, press freedom erodes -0.3/tick.', value: 'Enacted' });
+        if (n.state_media_control) foundationalLaws.push({ name: 'State Media Control Act', icon: '📺', desc: 'State controls major media outlets. Press freedom capped at 40.', value: 'Enacted' });
+        if (n.emergency_powers_act) foundationalLaws.push({ name: 'Emergency Powers Act', icon: '🚨', desc: 'The head of government can declare national emergencies, bypassing legislative votes. Stability -1/tick, freedom index -0.5/tick, judicial independence -0.5/tick while active.', value: 'Enacted' });
+        if (n.judicial_appointment_politicization) foundationalLaws.push({ name: 'Judicial Appointment Politicization Act', icon: '⚖️', desc: 'The ruling coalition appoints judges directly. Judicial independence permanently capped at 30. No confidence threshold raised to 60%.', value: 'Enacted' });
+        if (n.electoral_commission_reform) foundationalLaws.push({ name: 'Electoral Commission Reform Act', icon: '🗳️', desc: 'The ruling coalition controls the election commission. Governing parties receive a 5-10% seat bonus in elections drawn from opposition.', value: 'Enacted' });
+        if (n.party_registration_threshold > 0) foundationalLaws.push({ name: 'Political Party Registration Act', icon: '🚫', desc: `Parties below ${n.party_registration_threshold}% of seats have their seats reallocated. Affected parties cannot sponsor bills, vote, or hold ministries.`, value: `${n.party_registration_threshold}% threshold` });
+        if (n.legislative_quorum_override > 0) foundationalLaws.push({ name: 'Legislative Quorum Reform Act', icon: '📋', desc: `Quorum requirement for standard bills lowered from 50% to ${n.legislative_quorum_override}%.`, value: `${n.legislative_quorum_override}% quorum` });
+        if (n.constitutional_amendment_streamlining) foundationalLaws.push({ name: 'Constitutional Amendment Streamlining', icon: '📜', desc: 'Supermajority threshold for foundational bills lowered from 67% to 55%. The constitution is far easier to rewrite.', value: 'Enacted' });
+        if (n.anti_disinformation_act) foundationalLaws.push({ name: 'Anti-Disinformation Act', icon: '🔇', desc: 'The government defines what constitutes disinformation. Independent journalists, academics, and opposition figures can be sanctioned. Press freedom ceiling permanently reduced.', value: 'Enacted' });
+
+        let filteredFoundational = foundationalLaws;
+        if (search) {
+            filteredFoundational = foundationalLaws.filter(f => f.name.toLowerCase().includes(search) || f.desc.toLowerCase().includes(search));
+        }
+
+        document.getElementById('law-count-label').textContent = filteredFoundational.length + ' foundational laws';
+        if (filteredFoundational.length === 0) { container.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:30px;">No foundational laws match search.</div>'; return; }
+
+        container.innerHTML = filteredFoundational.map(f => `<div class="law-card law-active">
+            <div class="law-card-header">
+                <div class="law-card-name">${f.icon} ${escapeHtml(f.name)} <span style="color:var(--purple);font-size:0.75rem;">● FOUNDATIONAL</span></div>
+                <div class="law-card-sector" style="color:var(--purple);">FOUNDATIONAL</div>
+            </div>
+            <div class="law-card-desc">${escapeHtml(f.desc)}</div>
+            <div class="law-card-tags">
+                <span class="tag" style="background:var(--purple-faint);color:var(--purple);border:1px solid var(--purple-border);">${escapeHtml(f.value)}</span>
+            </div>
+        </div>`).join('');
+        return;
+    }
 
     let filtered = allPolicies.filter(p => {
         if (search && !(p.policy_name || '').toLowerCase().includes(search) && !(p.description || '').toLowerCase().includes(search)) return false;
@@ -544,7 +660,9 @@ function filterAllLaws() {
         const fmtC = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + Math.round(m) + 'M';
         const costHTML = [];
         if (upCost > 0) costHTML.push(`Up: ${fmtC(upCost)}`);
+        else if (upCost < 0) costHTML.push(`<span style="color:var(--green)">Rev: ${fmtC(Math.abs(upCost))}</span>`);
         if (onCost > 0) costHTML.push(`On: ${fmtC(onCost)}/t`);
+        else if (onCost < 0) costHTML.push(`<span style="color:var(--green)">Relief: ${fmtC(Math.abs(onCost))}/t</span>`);
 
         return `<div class="law-card ${isActive ? 'law-active' : 'law-inactive'}">
             <div class="law-card-header">
@@ -625,24 +743,28 @@ function renderPresidentDeskBills() {
 }
 
 async function signBill(billId) {
-    if (!isPresidentParty) return;
+    if (_actionLock || !isPresidentParty) return;
     if (!confirm('Sign this bill into law?')) return;
+    _actionLock = true;
     try {
         await signPresidentialBill(_supabase, billId, currentFaction.id);
         alert('Bill signed into law.');
         await loadLawsData(); renderLawsPage();
     } catch (error) { console.error('Sign error:', error); alert('Error: ' + error.message); }
+    finally { _actionLock = false; }
 }
 
 async function vetoBill(billId) {
-    if (!isPresidentParty) return;
+    if (_actionLock || !isPresidentParty) return;
     const overrideSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
     if (!confirm(`VETO this bill?\n\nA veto override bill will be automatically created requiring ${overrideSeats}/${GAME_CONFIG.TOTAL_SEATS} seats (2/3 supermajority).\n\nProceed?`)) return;
+    _actionLock = true;
     try {
         await vetoPresidentialBill(_supabase, billId, currentFaction.id);
         alert('Bill vetoed. A veto override bill has been sent to the floor.');
         await loadLawsData(); renderLawsPage();
     } catch (error) { console.error('Veto error:', error); alert('Error: ' + error.message); }
+    finally { _actionLock = false; }
 }
 
 // ==================== FLOOR BILLS ====================
@@ -650,10 +772,36 @@ async function vetoBill(billId) {
 function renderFloorBills() {
     const activeFloor = floorBills.filter(b => b.status === 'floor');
     const vetoedFloor = floorBills.filter(b => b.status === 'vetoed');
+    const referendumBills = floorBills.filter(b => b.status === 'referendum_pending' || b.status === 'referendum_approved');
     let html = '';
+    if (referendumBills.length > 0) html += `<div class="section-header" style="color:var(--purple);">🗳 Constitutional Referendum</div>${referendumBills.map(bill => renderReferendumBill(bill)).join('')}`;
     if (activeFloor.length > 0) html += `<div class="section-header" style="color:var(--green);">On The Floor</div>${activeFloor.map(bill => renderFloorBill(bill, false)).join('')}`;
     if (vetoedFloor.length > 0) html += `<div class="section-header" style="color:var(--red);">Vetoed ${termBills}</div>${vetoedFloor.map(bill => renderFloorBill(bill, true)).join('')}`;
     return html;
+}
+
+function renderReferendumBill(bill) {
+    const sponsorName = bill.factions?.faction_name || 'Unknown';
+    const articleCount = (bill.bill_articles || []).length;
+    const isApproved = bill.status === 'referendum_approved';
+    const badgeColor = isApproved ? 'var(--green)' : 'var(--purple)';
+    const badgeText = isApproved ? 'APPROVED' : 'REFERENDUM';
+    const metaText = isApproved
+        ? `Referendum passed (${Number(bill.referendum_yes_pct || 0).toFixed(1)}% YES) · Awaiting floor vote`
+        : `Filed by ${escapeHtml(sponsorName)} · ${articleCount} article${articleCount !== 1 ? 's' : ''} · Awaiting popular vote`;
+    // Results available next tick after referendum_start_tick
+    const resultsDate = !isApproved && bill.referendum_start_tick != null
+        ? tickToDate(bill.referendum_start_tick + 1) : null;
+    const resultsLine = resultsDate
+        ? `<div style="font-family:var(--font-mono);font-size:0.68rem;color:var(--purple);margin-top:4px;padding:0 6px;">Referendum results available <span style="font-weight:600;">${resultsDate}</span></div>` : '';
+    return `<div class="bill-card" onclick="window.location='bill.html?id=${bill.id}'" style="cursor:pointer;border-left:3px solid ${badgeColor};">
+        <div class="bill-card-top">
+            <span class="bill-card-title">${escapeHtml(bill.bill_name || 'Unnamed')}</span>
+            <span style="background:${badgeColor};color:#fff;padding:2px 8px;border-radius:3px;font-size:0.6rem;font-weight:bold;text-transform:uppercase;">${badgeText}</span>
+        </div>
+        <div class="bill-card-meta">${metaText}</div>
+        ${resultsLine}
+    </div>`;
 }
 
 function renderFloorBill(bill, isVetoed) {
@@ -676,6 +824,7 @@ function renderFloorBill(bill, isVetoed) {
     else if (bill.bill_type === 'default_resolution') typeBadge = ' <span style="background:var(--red);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">💀 Default Resolution</span>';
     else if (bill.bill_type === 'impeachment_motion') typeBadge = ' <span style="background:var(--red);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Impeachment</span>';
     else if (bill.bill_type === 'impeachment_conviction') typeBadge = ' <span style="background:var(--red);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Impeachment Trial</span>';
+    else if (bill.bill_type === 'entrenchment_upgrade') typeBadge = ' <span style="background:var(--purple);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🛡 Entrenchment</span>';
 
     var billTitle = (bill.bill_name || 'Unnamed ' + termBill) + typeBadge + votedBadge;
 
@@ -692,7 +841,7 @@ function renderFloorBill(bill, isVetoed) {
                     : (function() {
                         var fss = Object.values(allPartySeats).reduce(function(s,v){return s+(v||0);},0);
                         var ets = Math.min(GAME_CONFIG.TOTAL_SEATS, Math.max(fss, 1));
-                        var ev = evaluateBillVote({ votes_for: bill.votes_for || 0, votes_against: bill.votes_against || 0, votes_abstain: bill.votes_abstain || 0, bill_type: bill.bill_type }, ets);
+                        var ev = evaluateBillVote({ votes_for: bill.votes_for || 0, votes_against: bill.votes_against || 0, votes_abstain: bill.votes_abstain || 0, bill_type: bill.bill_type }, ets, currentNation);
                         var statusText, statusStyle;
                         if (ev.status === 'will_pass') { statusText = 'WILL PASS — Resolves Next Tick'; statusStyle = 'background:var(--green);border-color:var(--green);color:#fff;'; }
                         else if (ev.status === 'will_fail') { statusText = 'WILL FAIL — Resolves Next Tick'; statusStyle = 'background:var(--red);border-color:var(--red);color:#fff;'; }
@@ -708,7 +857,7 @@ function renderFloorBill(bill, isVetoed) {
                 (bill.bill_type === 'confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--blue);">🏛 Ambassador Confirmation Vote</span><div class="article-desc">Requires quorum (50%) + simple majority to confirm.</div></div></div>' :
                 (bill.bill_type === 'minister_confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--orange);">🏛 Cabinet Confirmation Vote</span><div class="article-desc">Requires quorum (50%) + simple majority to confirm.</div></div></div>' :
                 (bill.bill_type === 'veto_override' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">⚖ Veto Override Vote</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD) + ' seats) to override presidential veto.</div></div></div>' :
-                (bill.bill_type === 'foundational' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--purple);">' + (bill.proposed_term_length != null ? '📅 Term Length — Proposed: ' + (bill.proposed_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_term_limit != null ? '🔒 Term Limits — Proposed: ' + (bill.proposed_term_limit === 0 ? 'No Term Limits' : bill.proposed_term_limit + ' Term' + (bill.proposed_term_limit !== 1 ? 's' : '')) : bill.proposed_hos_title ? '👑 Head of State Title — Proposed: ' + bill.proposed_hos_title : '🏛 Electoral Makeup — Proposed: ' + (bill.proposed_seats || '?') + ' seats') + '</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
+                (bill.bill_type === 'foundational' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--purple);">' + (bill.proposed_term_length != null ? '📅 Term Length — Proposed: ' + (bill.proposed_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_parliamentary_term_length != null ? '🗓 Legislative Term — Proposed: ' + (bill.proposed_parliamentary_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_term_limit != null ? '🔒 Term Limits — Proposed: ' + (bill.proposed_term_limit === 0 ? 'No Term Limits' : bill.proposed_term_limit + ' Term' + (bill.proposed_term_limit !== 1 ? 's' : '')) : bill.proposed_hos_title ? '👑 Head of State Title — Proposed: ' + bill.proposed_hos_title : bill.proposed_abolish_term_limits ? '⛓ Abolish Term Limits' : bill.proposed_state_media_control ? '📺 State Media Control Act' : bill.proposed_emergency_powers_act ? '🚨 Emergency Powers Act' : bill.proposed_anti_disinformation_act ? '🔇 Anti-Disinformation Act' : '🏛 Electoral Makeup — Proposed: ' + (bill.proposed_seats || '?') + ' seats') + '</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
                 (bill.bill_type === 'default_resolution' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">💀 Sovereign Default Resolution</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
                 (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">🗑️ Proposes to rescind an active law</span></div></div>' :
                 (bill.bill_type === 'ratification' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--green);">🌐 Diplomatic Ratification Vote</span><div class="article-desc">Requires quorum (50%) + simple majority to ratify.</div></div></div>' :
@@ -738,24 +887,10 @@ function renderFloorBill(bill, isVetoed) {
             </div>
             ${isVetoed ? `<div class="vetoed-stamp">${isPresidential ? '⛔ VETOED BY PRESIDENT' : '⛔ VETOED BY HEAD FACTION'}</div>` : `
                 <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span>${(bill.votes_abstain || 0) > 0 ? `<span style="color:var(--text-secondary);font-size:0.75rem;margin-left:8px;">— ${bill.votes_abstain} Abstain</span>` : ''}<span style="color:var(--text-secondary);font-size:0.75rem;margin-left:8px;">${Math.max(0, Math.min(GAME_CONFIG.TOTAL_SEATS, Object.values(allPartySeats).reduce((s,v)=>s+(v||0),0)) - (bill.votes_for || 0) - (bill.votes_against || 0) - (bill.votes_abstain || 0))} undeclared</span></div>
-                ${lawsIsAutocracy && isHeadFaction ? `<div class="veto-banner"><div><div class="veto-banner-text">⚠ You may veto this ${termBill.toLowerCase()}</div><div style="font-size:0.75rem;color:var(--text-secondary);">Costs -${GAME_CONFIG.VETO_APPROVAL_COST} Approval</div></div><button class="stance-btn veto" onclick="event.stopPropagation(); vetoDecree('${bill.id}')">VETO</button></div>` : ''}
+                ${bill.voting_ends_tick ? `<div style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-muted);margin-top:4px;padding:0 6px;">Resolves on <span style="color:var(--text-secondary);font-weight:600;">${tickToDate(bill.voting_ends_tick)}</span></div>` : ''}
             `}
             ${!isVetoed ? `<div class="click-hint">Click to view full ${termBill.toLowerCase()} & vote →</div>` : ''}
         </div>`;
-}
-
-async function vetoDecree(billId) {
-    if (!lawsIsAutocracy || !isHeadFaction) return;
-    if (!confirm(`⛔ VETO this decree?\nYour faction loses -${GAME_CONFIG.VETO_APPROVAL_COST} Approval.\nProceed?`)) return;
-    try {
-        const { error: vetoErr } = await _supabase.from('bills').update({ status: 'vetoed' }).eq('id', billId);
-        if (vetoErr) throw vetoErr;
-        await adjustMomentumAll(_supabase, currentNation.id, currentFaction.id, -GAME_CONFIG.VETO_APPROVAL_COST, 'legislation:veto');
-        currentFaction.approval_rating = Math.max(0, (currentFaction.approval_rating || 0) - GAME_CONFIG.VETO_APPROVAL_COST);
-        alert(`⛔ Decree vetoed. Lost ${GAME_CONFIG.VETO_APPROVAL_COST}% approval.`);
-        await loadLawsData(); renderLawsPage();
-        document.getElementById('content-area').scrollTop = 0;
-    } catch (error) { console.error('Veto error:', error); alert('Error: ' + error.message); }
 }
 
 // ==================== COMMITTEE BILLS ====================
@@ -764,35 +899,8 @@ function renderCommitteeBills() {
     return `<div class="section-header" style="color:var(--orange);">In Committee</div><div class="committee-section">${committeeBills.map(bill => renderCommitteeBill(bill)).join('')}</div>`;
 }
 
-function renderRecentBills() {
-    return `<div class="section-header" style="color:var(--text-secondary);">Recently Resolved</div>` +
-        recentBills.slice(0, 5).map(bill => {
-            const isPassed = bill.status === 'passed';
-            const statusColor = isPassed ? 'var(--green)' : 'var(--red)';
-            const statusText = isPassed ? 'PASSED' : 'FAILED';
-            const statusClass = isPassed ? '' : 'recent-failed';
-            const typeLabel = bill.bill_type === 'foundational'
-                ? ' <span style="background:var(--purple);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Foundational</span>'
-                : (bill.bill_type === 'no_confidence'
-                    ? ' <span style="background:var(--red);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">No Confidence</span>'
-                    : (bill.bill_type === 'default_resolution'
-                        ? ' <span style="background:var(--red);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Default Resolution</span>'
-                        : (bill.bill_type === 'ratification'
-                            ? ' <span style="background:var(--green);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Ratification</span>'
-                            : '')));
-            return `
-                <div class="floor-bill clickable-bill ${statusClass}" onclick="window.location.href='bill.html?id=${bill.id}'" style="opacity:0.7;">
-                    <div class="committee-bill-header">
-                        <div>
-                            <div class="floor-bill-name" style="color:${statusColor};">${bill.bill_name || 'Unnamed Bill'}${typeLabel}</div>
-                            <div class="committee-bill-sponsor">Proposed by ${bill.factions?.faction_name || 'Unknown'}</div>
-                        </div>
-                        <div class="floor-status ${isPassed ? '' : 'failed-status'}" style="font-weight:bold;">${statusText}</div>
-                    </div>
-                </div>`;
-        }).join('') +
-        `<button class="archive-view-all-btn" onclick="togglePassedLaws()">View full legislative record →</button>`;
-}
+// renderRecentBills removed — resolved bills are now only shown via the
+// "Resolved Bills" toggle button which opens the full legislative record.
 
 // ==================== PASSED LAWS ARCHIVE ====================
 
@@ -802,8 +910,8 @@ async function loadArchiveData() {
     const { data } = await _supabase.from('bills')
         .select('*, factions(faction_name, abbreviation, party_color), bill_articles(*, policies(*)), bill_support(*, factions(faction_name, abbreviation, party_color))')
         .eq('nation_id', nid)
-        .in('status', ['passed', 'failed'])
-        .order('passed_tick', { ascending: false });
+        .in('status', ['passed', 'failed', 'ratification_failed'])
+        .order('passed_tick', { ascending: false, nullsFirst: false });
     archiveBills = data || [];
 }
 
@@ -838,7 +946,7 @@ function renderPassedLawsContent() {
         return;
     }
     const passedCount = archiveBills.filter(b => b.status === 'passed').length;
-    const failedCount = archiveBills.filter(b => b.status === 'failed').length;
+    const failedCount = archiveBills.filter(b => b.status !== 'passed').length;
     panel.innerHTML = `<button class="all-laws-back" onclick="togglePassedLaws()">\u2190 Back to ${termBills}</button>
         <div class="section-header" style="font-size:1rem;">Legislative Record</div>
         <div class="archive-summary">
@@ -926,6 +1034,7 @@ function renderArchiveBill(bill) {
         : bill.bill_type === 'default_resolution' ? ' <span class="archive-type-badge" style="background:var(--red);">Default Resolution</span>'
         : bill.bill_type === 'impeachment_motion' ? ' <span class="archive-type-badge" style="background:var(--red);">Impeachment</span>'
         : bill.bill_type === 'impeachment_conviction' ? ' <span class="archive-type-badge" style="background:var(--red);">Impeachment Trial</span>'
+        : bill.bill_type === 'entrenchment_upgrade' ? ' <span class="archive-type-badge" style="background:var(--purple);">Entrenchment</span>'
         : '';
 
     return `
@@ -954,9 +1063,7 @@ function renderCommitteeBill(bill) {
     const support = calculateBillSupport(bill.bill_support, bill.proposed_by, allPartySeats);
     const isSponsor = bill.proposed_by === currentFaction?.id;
     let decreeActionsHTML = '';
-    if (lawsIsAutocracy) {
-        decreeActionsHTML = `<div class="decree-actions" onclick="event.stopPropagation()">${isHeadFaction ? `<button class="decree-action-btn enact" onclick="event.stopPropagation(); enactDecree('${bill.id}')">⚡ Enact Decree</button>` : ''}${isSponsor ? `<button class="decree-action-btn retract-decree" onclick="event.stopPropagation(); retractBill('${bill.id}')">Retract</button>` : ''}</div>`;
-    } else if (isSponsor) {
+    if (isSponsor) {
         decreeActionsHTML = `<div class="decree-actions" onclick="event.stopPropagation()"><button class="decree-action-btn retract-decree" onclick="event.stopPropagation(); retractBill('${bill.id}')">Retract Bill</button></div>`;
     }
     return `
@@ -966,12 +1073,11 @@ function renderCommitteeBill(bill) {
                     <div class="committee-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'repeal' ? ' <span style="background:var(--red);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : (bill.bill_type === 'foundational' ? ' <span style="background:var(--purple);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>' : (bill.bill_type === 'default_resolution' ? ' <span style="background:var(--red);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">💀 Default Resolution</span>' : (bill.bill_type === 'ratification' ? ' <span style="background:var(--green);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🌐 Ratification</span>' : (bill.bill_type === 'impeachment_motion' ? ' <span style="background:var(--red);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Impeachment</span>' : ''))))}</div>
                     <div class="committee-bill-sponsor">Proposed by ${bill.factions?.faction_name || 'Unknown'}</div>
                 </div>
-                ${lawsIsAutocracy ? `<div class="committee-support"><div style="font-size:0.85rem;color:var(--red);font-weight:bold;">DECREE</div><div class="support-label">${isHeadFaction ? 'You can enact this' : 'Awaiting head faction'}</div></div>` :
-                `<div class="committee-support"><div class="support-percent ${support.percent >= 51 ? 'enough' : ''}">${support.percent}%</div><div class="support-label">Support</div></div>`}
+                <div class="committee-support"><div class="support-percent ${support.percent >= 51 ? 'enough' : ''}">${support.percent}%</div><div class="support-label">Support</div></div>
             </div>
-            ${!lawsIsAutocracy ? `<div class="support-bar-track"><div class="threshold-marker"></div><div class="support-bar-fill ${support.percent >= 51 ? 'enough' : ''}" style="width:${support.percent}%"></div></div>` : ''}
+            <div class="support-bar-track"><div class="threshold-marker"></div><div class="support-bar-fill ${support.percent >= 51 ? 'enough' : ''}" style="width:${support.percent}%"></div></div>
             <div class="bill-articles">
-                ${bill.bill_type === 'foundational' ? `<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--purple);">${bill.proposed_term_length != null ? '📅 Term Length — Proposed: ' + (bill.proposed_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_term_limit != null ? '🔒 Term Limits — Proposed: ' + (bill.proposed_term_limit === 0 ? 'No Term Limits' : bill.proposed_term_limit + ' Term' + (bill.proposed_term_limit !== 1 ? 's' : '')) : bill.proposed_hos_title ? '👑 Head of State Title — Proposed: ' + bill.proposed_hos_title : '🏛 Electoral Makeup — Proposed: ' + (bill.proposed_seats || '?') + ' seats'}</span><div class="article-desc">Requires 2/3 supermajority to pass. Co-sponsor required.</div></div></div>` :
+                ${bill.bill_type === 'foundational' ? `<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--purple);">${bill.proposed_term_length != null ? '📅 Term Length — Proposed: ' + (bill.proposed_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_parliamentary_term_length != null ? '🗓 Legislative Term — Proposed: ' + (bill.proposed_parliamentary_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_term_limit != null ? '🔒 Term Limits — Proposed: ' + (bill.proposed_term_limit === 0 ? 'No Term Limits' : bill.proposed_term_limit + ' Term' + (bill.proposed_term_limit !== 1 ? 's' : '')) : bill.proposed_hos_title ? '👑 Head of State Title — Proposed: ' + bill.proposed_hos_title : bill.proposed_abolish_term_limits ? '⛓ Abolish Term Limits' : bill.proposed_state_media_control ? '📺 State Media Control Act' : bill.proposed_emergency_powers_act ? '🚨 Emergency Powers Act' : bill.proposed_anti_disinformation_act ? '🔇 Anti-Disinformation Act' : '🏛 Electoral Makeup — Proposed: ' + (bill.proposed_seats || '?') + ' seats'}</span><div class="article-desc">Requires 2/3 supermajority to pass. Co-sponsor required.</div></div></div>` :
                 (bill.bill_type === 'default_resolution' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">💀 Sovereign Default Resolution</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
                 (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">🗑️ Proposes to rescind an active law</span></div></div>' :
                 (bill.bill_type === 'ratification' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--green);">🌐 Diplomatic Ratification Vote</span><div class="article-desc">Requires simple majority (' + GAME_CONFIG.MAJORITY_SEATS + ' seats) to ratify.</div></div></div>' :
@@ -999,62 +1105,79 @@ function renderCommitteeBill(bill) {
                 }).join('')))))}
             </div>
             ${decreeActionsHTML}
-            ${!lawsIsAutocracy ? `<div class="click-hint" style="color:var(--orange);">Click to view full ${termBill.toLowerCase()} & negotiate →</div>` : ''}
+            <div class="click-hint" style="color:var(--orange);">Click to view full ${termBill.toLowerCase()} & negotiate →</div>
         </div>`;
-}
-
-async function enactDecree(billId) {
-    if (!lawsIsAutocracy || !isHeadFaction) return;
-    if (!confirm('⚡ ENACT this decree?\nThis sends it directly to the floor for a vote.')) return;
-    try {
-        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const bill = committeeBills.find(b => b.id === billId);
-        const currentTick = shard?.current_tick || 0;
-        const decreeFields = {
-            status: 'floor',
-            floor_tick: currentTick,
-            voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS,
-            early_resolution_status: null,
-            early_resolution_tick: null,
-            passed_tick: null,
-            votes_for: 0,
-            votes_against: 0,
-            votes_abstain: 0
-        };
-        const { error: updateError } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
-        if (updateError) throw updateError;
-
-        // Apply dynamic ideology penalty to sponsor (skip for system-generated bills)
-        if (bill && bill.proposed_by) {
-            let sponsorIdeology = await loadFactionIdeology(_supabase, bill.proposed_by);
-            if (sponsorIdeology?._error) sponsorIdeology = null;
-            if (sponsorIdeology) {
-                const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, bill.bill_articles || []);
-                if (dynamicPenalty < 0) {
-                    await adjustMomentumAll(_supabase, currentNation.id, bill.proposed_by, dynamicPenalty, 'legislation:floor');
-                    console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
-                }
-            }
-        }
-
-        alert('⚡ Decree sent to the floor!');
-        await loadLawsData(); renderLawsPage();
-        // Scroll to the floor section so the enacted decree is visible
-        document.getElementById('content-area').scrollTop = 0;
-    } catch (error) { console.error('Enact error:', error); alert('Error: ' + error.message); }
 }
 
 // ==================== ACTIVE LAWS (SECTORS) ====================
 
+function normalizeMinorKey(p) {
+    return (p.minor_sector || p.law_category || '').toLowerCase().replace(/_/g, ' ').trim();
+}
+
 function renderMajorSector(sector) {
+    // Foundational laws are nation-level settings, not policies — render them specially
+    if (sector.key === 'FOUNDATIONAL') return renderFoundationalSector(sector);
+
     const sectorPolicies = allPolicies.filter(p => p.major_sector === sector.key);
-    const minorSectors = [...new Set(sectorPolicies.map(p => p.minor_sector || p.law_category))];
+    const minorSectors = [...new Set(sectorPolicies.map(normalizeMinorKey))].filter(Boolean);
     if (minorSectors.length === 0) return '';
     return `<div class="major-sector" id="sector-${sector.key}"><div class="major-sector-header" onclick="toggleMajorSector('${sector.key}')"><div class="major-sector-title">${sector.icon} ${sector.label}</div><div class="major-sector-arrow">▶</div></div><div class="major-sector-content">${minorSectors.map(minor => renderMinorSector(sector.key, minor)).join('')}</div></div>`;
 }
 
+function renderFoundationalSector(sector) {
+    const n = currentNation;
+    if (!n) return '';
+    const ticksPerYear = GAME_CONFIG.TICKS_PER_YEAR || 12;
+    const parlTermTicks = n.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS || 48;
+    const parlTermYears = parlTermTicks / ticksPerYear;
+    const hosMethod = n.hos_election_method === 'hereditary' ? 'Hereditary Monarchy' : n.hos_election_method === 'direct_vote' ? 'Direct Popular Vote' : 'Parliamentary Appointment';
+    const isPresidential = hasElectedPresident(n);
+    const termLimit = n.presidential_term_limit !== null && n.presidential_term_limit !== undefined ? n.presidential_term_limit : GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT;
+    const presTermTicks = n.presidential_term_ticks || GAME_CONFIG.PRESIDENTIAL_TERM_TICKS || 48;
+    const presTermYears = presTermTicks / ticksPerYear;
+    const currentGovSystem = getCurrentConstitutionalSystem(n);
+    const govSystemLabel = getConstitutionalSystemLabel(currentGovSystem);
+
+    const items = [
+        { label: 'System of Government', value: govSystemLabel },
+        { label: 'Parliament Size', value: (n.total_seats || '?') + ' seats' },
+        { label: 'Head of State', value: (n.head_of_state_title || 'President') + ' — ' + hosMethod },
+        { label: 'Legislative Term', value: parlTermYears + ' year' + (parlTermYears !== 1 ? 's' : '') + ' (' + parlTermTicks + ' ticks)' },
+    ];
+    if (isPresidential) {
+        items.push({ label: 'Presidential Term', value: presTermYears + ' year' + (presTermYears !== 1 ? 's' : '') });
+        items.push({ label: 'Term Limits', value: termLimit === 0 ? 'None (unlimited)' : termLimit + ' term' + (termLimit !== 1 ? 's' : '') });
+    }
+    // Authoritarian / special foundational laws
+    if (n.term_limits_abolished) items.push({ label: 'Term Limits Abolished', value: 'Active', cls: 'foundational--auth' });
+    if (n.state_media_control) items.push({ label: 'State Media Control', value: 'Active', cls: 'foundational--auth' });
+    if (n.emergency_powers_act) items.push({ label: 'Emergency Powers Act', value: 'Active', cls: 'foundational--auth' });
+    if (n.judicial_appointment_politicization) items.push({ label: 'Judicial Politicization', value: 'Active', cls: 'foundational--auth' });
+    if (n.electoral_commission_reform) items.push({ label: 'Electoral Commission Reform', value: 'Active', cls: 'foundational--auth' });
+    if (n.party_registration_threshold > 0) items.push({ label: 'Party Registration Act', value: n.party_registration_threshold + '% threshold', cls: 'foundational--auth' });
+    if (n.legislative_quorum_override > 0) items.push({ label: 'Quorum Reform', value: n.legislative_quorum_override + '% quorum' });
+    if (n.constitutional_amendment_streamlining) items.push({ label: 'Amendment Streamlining', value: '55% threshold' });
+    if (n.anti_disinformation_act) items.push({ label: 'Anti-Disinformation Act', value: 'Active', cls: 'foundational--auth' });
+
+    const content = items.map(i =>
+        '<div class="foundational-row' + (i.cls ? ' ' + i.cls : '') + '">' +
+            '<span class="foundational-label">' + escapeHtml(i.label) + '</span>' +
+            '<span class="foundational-value">' + escapeHtml(i.value) + '</span>' +
+        '</div>'
+    ).join('');
+
+    return '<div class="major-sector" id="sector-FOUNDATIONAL">' +
+        '<div class="major-sector-header" onclick="toggleMajorSector(\'FOUNDATIONAL\')">' +
+            '<div class="major-sector-title">' + sector.icon + ' ' + sector.label + '</div>' +
+            '<div class="major-sector-arrow">▶</div>' +
+        '</div>' +
+        '<div class="major-sector-content">' + content + '</div>' +
+    '</div>';
+}
+
 function renderMinorSector(majorKey, minorKey) {
-    const matchingLaws = activeLaws.filter(law => !law.is_reversal && law.policies?.major_sector === majorKey && (law.policies?.minor_sector === minorKey || law.policies?.law_category === minorKey));
+    const matchingLaws = activeLaws.filter(law => !law.is_reversal && law.policies?.major_sector === majorKey && (normalizeMinorKey(law.policies) === minorKey));
     const safeMinor = (minorKey || '').replace(/'/g, "\\'");
     const lawsHTML = matchingLaws.length > 0 ? matchingLaws.map(law => renderActiveLaw(law)).join('') : '<div class="no-law">No active law in this area.</div>';
     return `<div class="minor-sector" id="minor-${majorKey}-${minorKey}"><div class="minor-sector-header" onclick="toggleMinorSector('${majorKey}','${safeMinor}')"><div class="minor-sector-title">${formatMinorSector(minorKey)}</div><div class="minor-sector-arrow">▶</div></div><div class="minor-sector-content">${lawsHTML}</div></div>`;
@@ -1074,20 +1197,69 @@ function renderActiveLaw(law) {
         const cls = p.stat_direction === 'UP' ? 'effect-up' : 'effect-down';
         effectsHTML = `${formatStatName(p.target_stat)} <span class="${cls}">${dir}</span>`;
     }
-    return `<div class="active-law"><div class="active-law-name">${p.policy_name}</div><div class="active-law-desc">${p.description || ''}</div><div class="active-law-meta"><span>${effectsHTML}</span><span>Passed tick ${law.passed_tick || '?'}</span><button class="rescind-btn" onclick="rescindLaw('${law.id}','${p.policy_name.replace(/'/g, "\\'")}','${law.policy_id || ''}')">✕ Rescind</button></div></div>`;
+    const canRescind = currentSeats > 0 && !isCaretaker && !isNoGovernment;
+    // Entrenchment badge and rescind restrictions
+    let entrenchBadge = '';
+    let rescindDisabled = false;
+    let rescindTooltip = '';
+    if (law.entrenchment_tier === 'enshrined') {
+        entrenchBadge = ' <span style="background:var(--amber);color:#000;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;">⭐ ENSHRINED</span>';
+        rescindDisabled = true;
+        rescindTooltip = 'This law is enshrined — it can only be repealed via a foundational bill.';
+    } else if (law.entrenchment_tier === 'entrenched') {
+        entrenchBadge = ' <span style="background:var(--purple);color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;">🔒 ENTRENCHED</span>';
+        if (law.entrenchment_cooldown_until_tick && currentTickGlobal < law.entrenchment_cooldown_until_tick) {
+            rescindDisabled = true;
+            rescindTooltip = `Entrenched law — cooldown until tick ${law.entrenchment_cooldown_until_tick} (${law.entrenchment_cooldown_until_tick - currentTick} ticks remaining).`;
+        }
+    } else if (law.entrenchment_tier === 'protected') {
+        entrenchBadge = ' <span style="background:var(--blue);color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;">🛡 PROTECTED</span>';
+    }
+    const rescindBtn = canRescind && !rescindDisabled
+        ? `<button class="rescind-btn" onclick="rescindLaw('${law.id}','${p.policy_name.replace(/'/g, "\\'")}','${law.policy_id || ''}','${law.entrenchment_tier || ''}')">✕ Rescind</button>`
+        : (canRescind && rescindDisabled ? `<button class="rescind-btn" disabled title="${rescindTooltip}" style="opacity:0.4;cursor:not-allowed;">✕ Rescind</button>` : '');
+    // Upgrade entrenchment button (only if can upgrade to a higher tier)
+    const tierOrder = [null, 'protected', 'entrenched', 'enshrined'];
+    const currentTierIdx = tierOrder.indexOf(law.entrenchment_tier || null);
+    const canUpgrade = canRescind && currentTierIdx < 3;
+    const upgradeBtn = canUpgrade ? `<button class="rescind-btn" style="background:var(--purple);border-color:var(--purple);" onclick="showUpgradeEntrenchment('${law.id}','${p.policy_name.replace(/'/g, "\\'")}','${law.entrenchment_tier || ''}')">🛡 Entrench</button>` : '';
+    return `<div class="active-law"><div class="active-law-name">${p.policy_name}${entrenchBadge}</div><div class="active-law-desc">${p.description || ''}</div><div class="active-law-meta"><span>${effectsHTML}</span><span>Passed tick ${law.passed_tick || '?'}</span>${upgradeBtn}${rescindBtn}</div></div>`;
 }
 
 function toggleMajorSector(key) { document.getElementById('sector-'+key).classList.toggle('expanded'); }
 function toggleMinorSector(majorKey, minorKey) { document.getElementById('minor-'+majorKey+'-'+minorKey)?.classList.toggle('expanded'); }
 
-async function rescindLaw(activeLawId, policyName, policyId) {
+async function rescindLaw(activeLawId, policyName, policyId, entrenchmentTier) {
+    if (_actionLock) return;
     if (currentSeats === 0) { alert('Your faction holds no seats and cannot propose bills.'); return; }
-    if (!confirm('Propose a bill to rescind "' + policyName + '"?\n\nThis will create a repeal bill and send it to committee for a vote.')) return;
+    if (isCaretaker) { alert('Legislature is dissolved. No new bills during caretaker government.'); return; }
+    if (isNoGovernment) { alert('Legislature is suspended. A new government must be formed before bills can be proposed.'); return; }
+    if (entrenchmentTier === 'enshrined') { alert('This law is enshrined as constitutional law. It can only be repealed via a foundational bill.'); return; }
+    const thresholdNote = entrenchmentTier === 'protected' ? '\n\n⚠ This is a PROTECTED law — repeal requires 60% supermajority.'
+        : entrenchmentTier === 'entrenched' ? '\n\n⚠ This is an ENTRENCHED law — repeal requires 67% supermajority.'
+        : '';
+    if (!confirm('Propose a bill to rescind "' + policyName + '"?\n\nThis will create a repeal bill and send it to committee for a vote.\nCost: ' + GAME_CONFIG.DRAFT_BILL_AP_COST + ' AP' + thresholdNote)) return;
+    _actionLock = true;
     try {
+        // Deduct AP (consistent with regular bill drafting)
+        let apCost = GAME_CONFIG.DRAFT_BILL_AP_COST;
+        if (currentFaction) {
+            if ((currentFaction.leader_positive_traits || []).includes('policy_wonk')) apCost -= 1;
+            if ((currentFaction.leader_negative_traits || []).includes('micromanager')) apCost += 1;
+            apCost = Math.max(1, apCost);
+        }
+        const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+        if (!apResult.success) {
+            alert('Not enough AP. Need ' + apCost + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
+            return;
+        }
+        currentFaction.action_points = apResult.newAp;
+        sessionStorage.removeItem('nationhood_state');
+
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const currentTick = shard?.current_tick || 0;
-        const termBill = lawsIsAutocracy ? 'decree' : 'bill';
-        const { data: bill, error: billError } = await _supabase.from('bills').insert({
+        const termBill = 'bill';
+        const repealInsert = {
             nation_id: currentNation.id,
             proposed_by: currentFaction.id,
             proposed_tick: currentTick,
@@ -1095,8 +1267,15 @@ async function rescindLaw(activeLawId, policyName, policyId) {
             bill_type: 'repeal',
             repeal_active_law_id: activeLawId,
             status: 'committee',
+            proposer_name: currentFaction.faction_name,
+            proposer_color: currentFaction.party_color,
             preamble: 'This ' + termBill + ', put forth by the ' + currentFaction.faction_name + ', seeks to rescind the law "' + policyName + '" currently in effect in ' + currentNation.name + '.'
-        }).select().single();
+        };
+        // Repeal bill inherits entrenchment threshold from the target law
+        if (entrenchmentTier && entrenchmentTier !== 'enshrined') {
+            repealInsert.entrenchment_tier = entrenchmentTier;
+        }
+        const { data: bill, error: billError } = await _supabase.from('bills').insert(repealInsert).select().single();
         if (billError) throw billError;
 
         // Also insert a bill_article with repeal_active_law_id as a fallback
@@ -1120,30 +1299,198 @@ async function rescindLaw(activeLawId, policyName, policyId) {
     } catch (e) {
         console.error(e);
         alert('Error creating repeal bill: ' + e.message);
-    }
+    } finally { _actionLock = false; }
+}
+
+// ==================== ENTRENCHMENT UPGRADE ====================
+
+function showUpgradeEntrenchment(activeLawId, policyName, currentTier) {
+    const tierOrder = [null, 'protected', 'entrenched', 'enshrined'];
+    const currentIdx = tierOrder.indexOf(currentTier || null);
+    const options = [];
+    if (currentIdx < 1) options.push({ value: 'protected', label: 'Protected Law (60% to repeal)' });
+    if (currentIdx < 2) options.push({ value: 'entrenched', label: 'Entrenched Law (67% to repeal + cooldown)' });
+    if (currentIdx < 3) options.push({ value: 'enshrined', label: 'Enshrined as Constitutional Law (foundational bill to repeal)' });
+
+    const choice = prompt(
+        'Upgrade protection for "' + policyName + '":\n\n' +
+        options.map((o, i) => (i + 1) + '. ' + o.label).join('\n') +
+        '\n\nThe upgrade bill must pass at the TARGET tier\'s threshold.\nEnter number (1-' + options.length + '):'
+    );
+    if (!choice) return;
+    const idx = parseInt(choice) - 1;
+    if (idx < 0 || idx >= options.length) { alert('Invalid selection.'); return; }
+    fileEntrenchmentUpgrade(activeLawId, policyName, options[idx].value);
+}
+
+async function fileEntrenchmentUpgrade(activeLawId, policyName, targetTier) {
+    if (_actionLock) return;
+    _actionLock = true;
+    try {
+        const tierLabels = { protected: 'Protected', entrenched: 'Entrenched', enshrined: 'Constitutional' };
+        let apCost = GAME_CONFIG.DRAFT_BILL_AP_COST;
+        if (currentFaction) {
+            if ((currentFaction.leader_positive_traits || []).includes('policy_wonk')) apCost -= 1;
+            if ((currentFaction.leader_negative_traits || []).includes('micromanager')) apCost += 1;
+            apCost = Math.max(1, apCost);
+        }
+        const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+        if (!apResult.success) {
+            alert('Not enough AP. Need ' + apCost + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
+            return;
+        }
+        currentFaction.action_points = apResult.newAp;
+        sessionStorage.removeItem('nationhood_state');
+
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shard?.current_tick || 0;
+
+        const { data: bill, error: billError } = await _supabase.from('bills').insert({
+            nation_id: currentNation.id,
+            proposed_by: currentFaction.id,
+            proposed_tick: currentTick,
+            bill_name: 'Entrench: ' + policyName + ' (' + tierLabels[targetTier] + ')',
+            bill_type: 'entrenchment_upgrade',
+            entrenchment_tier: targetTier,
+            entrenchment_upgrade_law_id: activeLawId,
+            status: 'committee',
+            proposer_name: currentFaction.faction_name,
+            proposer_color: currentFaction.party_color,
+            preamble: 'This bill, put forth by the ' + currentFaction.faction_name + ', seeks to elevate "' + policyName + '" to ' + tierLabels[targetTier] + ' status in ' + currentNation.name + ', making it harder to repeal or amend.'
+        }).select().single();
+        if (billError) throw billError;
+
+        // Insert entrenchment article
+        const { error: artErr } = await _supabase.from('bill_articles').insert({
+            bill_id: bill.id,
+            policy_id: null,
+            article_number: 1,
+            added_by: currentFaction.id,
+            article_title: tierLabels[targetTier] + ' Law',
+            article_text: 'Entrenchment clause — elevate to ' + tierLabels[targetTier] + ' status.',
+            entrenchment_tier: targetTier
+        });
+        if (artErr) console.error('Failed to insert entrenchment article:', artErr.message);
+
+        // Auto-add sponsor support
+        const mySeats = currentFaction.seats || 0;
+        await _supabase.from('bill_support').insert({ bill_id: bill.id, faction_id: currentFaction.id, stance: 'accept', seat_count: mySeats });
+
+        alert('Entrenchment upgrade bill created and sent to committee!');
+        window.location.href = 'bill.html?id=' + bill.id;
+    } catch (e) {
+        console.error(e);
+        alert('Error creating entrenchment bill: ' + e.message);
+    } finally { _actionLock = false; }
 }
 
 // ==================== DRAFT MODAL ====================
 
+const FREE_ARTICLE_LIMIT = GAME_CONFIG.FREE_BILL_ARTICLES || 4;
+let _draftArticleLock = false; // Prevents double-fire on async article add/remove
+
+/** Count non-text draft articles (these are the ones that count toward the free limit). */
+function countBillableArticles(articles) {
+    return articles.filter(a => !a.isText && !a.isEntrenchment).length;
+}
+
+/** Check if adding a non-text article would exceed the free limit and charge 1 AP if so.
+ *  Returns true if the article can be added, false if insufficient AP. */
+async function chargeArticleAP() {
+    const billableCount = countBillableArticles(draftArticles);
+    if (billableCount >= FREE_ARTICLE_LIMIT) {
+        try {
+            const apResult = await deductAP(_supabase, currentFaction.id, 1);
+            if (!apResult.success) {
+                alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
+                return false;
+            }
+            currentFaction.action_points = apResult.newAp;
+            sessionStorage.removeItem('nationhood_state');
+        } catch (e) {
+            console.error('chargeArticleAP error:', e);
+            alert('Failed to deduct AP. Please try again.');
+            return false;
+        }
+        return true; // paid
+    }
+    return true; // free
+}
+
+/** Returns true if the article at the given index was a paid article (beyond the free limit). */
+function isArticlePaid(index) {
+    // Count how many non-text articles come before this one (in original insertion order)
+    let billableIndex = 0;
+    for (let i = 0; i < draftArticles.length; i++) {
+        if (!draftArticles[i].isText) {
+            if (i === index) return billableIndex >= FREE_ARTICLE_LIMIT;
+            billableIndex++;
+        }
+    }
+    return false;
+}
+
+/** Refund 1 AP for a paid article removal. */
+async function refundArticleAP() {
+    try {
+        const { error } = await _supabase.rpc('accumulate_ap', { p_faction_id: currentFaction.id, p_gain: 1, p_max_ap: GAME_CONFIG.MAX_AP || 20 });
+        if (error) { console.error('AP refund RPC error:', error); return; }
+        currentFaction.action_points = (currentFaction.action_points || 0) + 1;
+        sessionStorage.removeItem('nationhood_state');
+    } catch (e) { console.error('AP refund error:', e); }
+}
+
+/** Compute the base AP cost for submitting a bill, including all leader trait modifiers.
+ *  Shared by the display label and the actual submit path to prevent mismatches. */
+function computeBillApCost() {
+    let cost = GAME_CONFIG.DRAFT_BILL_AP_COST;
+    if (currentFaction) {
+        if ((currentFaction.leader_positive_traits || []).includes('policy_wonk')) cost -= 1;
+        if ((currentFaction.leader_negative_traits || []).includes('micromanager')) cost += 1;
+        // single_issue: Bills outside leader's ideology axis cost +2 AP
+        if ((currentFaction.leader_negative_traits || []).includes('single_issue') && currentFaction.leader_ideology) {
+            const leaderIdeo = currentFaction.leader_ideology.toUpperCase();
+            const IDEO_AXIS_MAP = {
+                'LIBERTY': 'liberty_equality', 'EQUALITY': 'liberty_equality',
+                'TRADITION': 'tradition_progress', 'PROGRESS': 'tradition_progress',
+                'SECURITY': 'security_freedom', 'FREEDOM': 'security_freedom',
+                'GLOBALISM': 'globalism_nationalism', 'NATIONALISM': 'globalism_nationalism',
+                'INDIVIDUALISM': 'individualism_collectivism', 'COLLECTIVISM': 'individualism_collectivism',
+            };
+            const leaderAxis = IDEO_AXIS_MAP[leaderIdeo];
+            const articleIdeos = draftArticles.flatMap(a => {
+                const ideologies = a.ideologies || (a.ideology ? [a.ideology] : []);
+                return ideologies.map(i => i.toUpperCase());
+            });
+            const matchesAxis = articleIdeos.some(i => IDEO_AXIS_MAP[i] === leaderAxis);
+            if (!matchesAxis && articleIdeos.length > 0) cost += 2;
+        }
+        cost = Math.max(1, cost);
+    }
+    return cost;
+}
+
+/** Update the submit button text to show total AP cost. */
+function updateSubmitButtonCost() {
+    const btn = document.getElementById('submit-bill-btn');
+    if (!btn) return;
+    const billableCount = countBillableArticles(draftArticles);
+    const extraArticles = Math.max(0, billableCount - FREE_ARTICLE_LIMIT);
+    const baseCost = computeBillApCost();
+    const totalPaid = extraArticles; // already paid per-article
+    const termBill = 'Bill';
+    const costLabel = baseCost + ' AP' + (totalPaid > 0 ? ' (+' + totalPaid + ' AP paid for extra articles)' : '');
+    btn.textContent = `Submit ${termBill} to Committee — ${costLabel}`;
+}
+
 function openDraftModal() {
     draftArticles = []; selectedPolicy = null;
-    if (lawsIsAutocracy) {
-        document.getElementById('draft-modal-content').classList.add('autocracy-modal');
-        document.getElementById('draft-modal-title').classList.add('autocracy-title');
-        document.getElementById('draft-modal-title').textContent = 'Draft New Decree';
-        document.getElementById('bill-name-label').textContent = 'Name Your Decree';
-        document.getElementById('bill-name-input').placeholder = 'e.g., Decree on National Resource Management';
-        document.getElementById('submit-bill-btn').textContent = `Submit Decree to Committee — ${GAME_CONFIG.DRAFT_BILL_AP_COST} AP`;
-    } else {
-        document.getElementById('draft-modal-content').classList.remove('autocracy-modal');
-        document.getElementById('draft-modal-title').classList.remove('autocracy-title');
-        document.getElementById('draft-modal-title').textContent = 'Draft New Bill';
-        document.getElementById('bill-name-label').textContent = 'Name Your Bill';
-        document.getElementById('bill-name-input').placeholder = 'e.g., The Religious Harmony Act';
-        document.getElementById('submit-bill-btn').textContent = `Submit to Committee — ${GAME_CONFIG.DRAFT_BILL_AP_COST} AP`;
-    }
+    document.getElementById('draft-modal-title').textContent = 'Draft New Bill';
+    document.getElementById('bill-name-label').textContent = 'Name Your Bill';
+    document.getElementById('bill-name-input').placeholder = 'e.g., The Religious Harmony Act';
+    updateSubmitButtonCost();
     document.getElementById('article-preamble').textContent =
-        `This ${lawsIsAutocracy ? 'decree' : 'bill'}, put forth in the ${lawsIsAutocracy ? 'regime' : 'legislature'} of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to enact the following provisions.`;
+        `This ${'bill'}, put forth in the ${'legislature'} of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to enact the following provisions.`;
     populateSectorDropdown('sector-select');
     const ideo1 = currentFaction.ideology_value_1 || '', ideo2 = currentFaction.ideology_value_2 || '';
     document.getElementById('party-ideologies').textContent = (ideo1 || ideo2) ? [ideo1, ideo2].filter(Boolean).join(' + ') : 'None (all policies available)';
@@ -1153,7 +1500,7 @@ function openDraftModal() {
     document.getElementById('draft-modal').classList.add('active');
     // Fetch data needed for funding articles
     Promise.all([
-        _supabase.from('ministries').select('ministry_key, funding_level').eq('nation_id', currentNation.id).eq('is_active', true),
+        _supabase.from('ministries').select('ministry_key, funding_level, discretionary_balance').eq('nation_id', currentNation.id).eq('is_active', true),
         _supabase.from('ministry_institution_config').select('*'),
         _supabase.from('budget_item_allocations').select('item_id, item_type, allocation_amount, needed_amount').eq('nation_id', currentNation.id).eq('item_type', 'institution').order('created_at', { ascending: true })
     ]).then(([ministries, instConfig, itemAllocs]) => {
@@ -1173,7 +1520,7 @@ function populateSectorDropdown(selectId) {
         if (policies.length > 0) select.innerHTML += `<option value="${sector.key}">${sector.label}</option>`;
     });
     // Add Foundational section for democracies (only in the main draft modal, not committee add modal)
-    if (!lawsIsAutocracy && selectId === 'sector-select') {
+    if (selectId === 'sector-select') {
         select.innerHTML += `<option value="FOUNDATIONAL" style="font-weight:bold;">🏛 Foundational</option>`;
     }
 }
@@ -1182,16 +1529,22 @@ function _hideAllArticleForms() {
     document.getElementById('add-article-form').style.display = 'none';
     document.getElementById('add-text-article-form').style.display = 'none';
     document.getElementById('add-funding-article-form').style.display = 'none';
+    document.getElementById('add-entrenchment-form').style.display = 'none';
 }
 function _showAllArticleButtons() {
     document.getElementById('add-article-section').style.display = 'block';
     document.getElementById('add-text-article-section').style.display = 'block';
     document.getElementById('add-funding-article-section').style.display = 'block';
+    // Only show entrenchment button if no entrenchment article exists yet and bill is not foundational
+    const hasEntrenchment = draftArticles.some(a => a.isEntrenchment);
+    const hasFoundational = draftArticles.some(a => a.isFoundational);
+    document.getElementById('add-entrenchment-section').style.display = (hasEntrenchment || hasFoundational) ? 'none' : 'block';
 }
 function _hideAllArticleButtons() {
     document.getElementById('add-article-section').style.display = 'none';
     document.getElementById('add-text-article-section').style.display = 'none';
     document.getElementById('add-funding-article-section').style.display = 'none';
+    document.getElementById('add-entrenchment-section').style.display = 'none';
 }
 
 function showAddArticleForm() {
@@ -1349,12 +1702,52 @@ function hideFundingArticleForm() {
     _showAllArticleButtons(); _hideAllArticleForms();
 }
 
+function showEntrenchmentForm() {
+    if (draftArticles.some(a => a.isEntrenchment)) return;
+    if (draftArticles.some(a => a.isFoundational)) return;
+    _hideAllArticleButtons(); _hideAllArticleForms();
+    document.getElementById('add-entrenchment-form').style.display = 'block';
+    document.querySelectorAll('input[name="entrenchment-tier"]').forEach(r => r.checked = false);
+    document.getElementById('add-entrenchment-btn').disabled = true;
+    document.querySelectorAll('input[name="entrenchment-tier"]').forEach(r => {
+        r.onchange = () => { document.getElementById('add-entrenchment-btn').disabled = false; };
+    });
+}
+
+function hideEntrenchmentForm() {
+    _showAllArticleButtons(); _hideAllArticleForms();
+}
+
+function addEntrenchmentArticle() {
+    if (_draftArticleLock) return;
+    if (draftArticles.some(a => a.isEntrenchment)) return;
+    const tier = document.querySelector('input[name="entrenchment-tier"]:checked')?.value;
+    if (!tier) return;
+    _draftArticleLock = true;
+    try {
+        const nextNum = draftArticles.length > 0 ? Math.max(...draftArticles.map(a => a.articleNumber)) + 1 : 1;
+        draftArticles.push({ isEntrenchment: true, entrenchmentTier: tier, articleNumber: nextNum });
+        hideEntrenchmentForm();
+        renderDraftArticles();
+        updateSubmitButtonCost();
+    } finally { _draftArticleLock = false; }
+}
+
 function onFundingMinistryChange() {
     const key = document.getElementById('funding-ministry-select').value;
     if (!key) { document.getElementById('funding-controls').style.display = 'none'; document.getElementById('add-funding-btn').disabled = true; return; }
     document.getElementById('funding-controls').style.display = 'block';
     document.getElementById('add-funding-btn').disabled = false;
     document.getElementById('funding-discretionary').value = 0;
+    // Show current discretionary balance
+    const mRow = (window._allMinistries || []).find(m => m.ministry_key === key);
+    const curBal = Number(mRow?.discretionary_balance || 0);
+    const balLabel = document.getElementById('funding-discretionary-balance');
+    if (balLabel) {
+        const fmtBal = curBal >= 1000000 ? '$' + (curBal / 1000000).toFixed(1) + 'M' : '$' + Math.round(curBal).toLocaleString();
+        const balColor = curBal > 0 ? 'var(--green, #5cb85c)' : 'var(--red, #d9534f)';
+        balLabel.innerHTML = `Current balance: <strong style="color:${balColor}">${fmtBal}</strong>`;
+    }
     // Render institution sliders
     const institutions = FUNDING_INSTITUTIONS[key] || [];
     const container = document.getElementById('funding-institutions');
@@ -1399,7 +1792,8 @@ function onInstSliderChange(instId) {
     if (badge) { badge.textContent = fl.label; badge.style.color = fl.color; }
 }
 
-function addFundingArticle() {
+async function addFundingArticle() {
+    if (_draftArticleLock) return;
     const key = document.getElementById('funding-ministry-select').value;
     if (!key) return;
     const label = FUNDING_MINISTRY_LABELS[key] || key;
@@ -1424,9 +1818,19 @@ function addFundingArticle() {
     }
 
     const discretionary = parseInt(document.getElementById('funding-discretionary').value) || 0;
-    if (!anyChange && discretionary <= 0) { alert('No funding changes made. Adjust at least one institution or add discretionary funds.'); return; }
+    if (!anyChange && discretionary === 0) { alert('No funding changes made. Adjust at least one institution or set discretionary funds.'); return; }
+    // Cap withdrawals at current balance
+    if (discretionary < 0) {
+        const mRow = (window._allMinistries || []).find(m => m.ministry_key === key);
+        const curBal = Number(mRow?.discretionary_balance || 0);
+        const maxWithdrawalM = Math.floor(curBal / 1000000);
+        if (Math.abs(discretionary) > maxWithdrawalM) {
+            alert(`Cannot withdraw more than the current balance ($${maxWithdrawalM}M available).`);
+            return;
+        }
+    }
 
-    const fundingSignature = JSON.stringify({ key, institutions: instLevels, discretionary: discretionary > 0 ? discretionary : null });
+    const fundingSignature = JSON.stringify({ key, institutions: instLevels, discretionary: discretionary !== 0 ? discretionary : null });
     const isDuplicateFunding = draftArticles.some(a => a.isFunding && JSON.stringify({
         key: a.fundingData?.ministry_key,
         institutions: a.fundingData?.institutions || [],
@@ -1437,22 +1841,28 @@ function addFundingArticle() {
         return;
     }
 
-    draftArticles.push({
-        articleNumber: draftArticles.length + 2,
-        isFunding: true,
-        policy: null,
-        fundingData: {
-            ministry_key: key,
-            ministry_label: label,
-            institutions: instLevels,
-            discretionary: discretionary > 0 ? discretionary : null
-        }
-    });
-    const fundingArticle = draftArticles[draftArticles.length - 1];
-    console.log('Funding article added:', JSON.stringify(fundingArticle, null, 2));
-    renderDraftArticles();
-    hideFundingArticleForm();
-    if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
+    // Charge 1 AP if beyond free article limit
+    _draftArticleLock = true;
+    try {
+        const canAdd = await chargeArticleAP();
+        if (!canAdd) return;
+
+        draftArticles.push({
+            articleNumber: draftArticles.length + 2,
+            isFunding: true,
+            policy: null,
+            fundingData: {
+                ministry_key: key,
+                ministry_label: label,
+                institutions: instLevels,
+                discretionary: discretionary !== 0 ? discretionary : null
+            }
+        });
+        renderDraftArticles();
+        hideFundingArticleForm();
+        if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
+        updateSubmitButtonCost();
+    } finally { _draftArticleLock = false; }
 }
 
 function addTextArticle() {
@@ -1469,6 +1879,7 @@ function addTextArticle() {
     renderDraftArticles();
     hideTextArticleForm();
     if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
+    updateSubmitButtonCost();
 }
 
 let _currentSectorPolicies = [];
@@ -1609,27 +2020,205 @@ function renderFoundationalOptions() {
                 </select>
                 <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">Removing term limits costs legitimacy and triggers opposition momentum. Adding limits strengthens democratic institutions.</div>
             </div>
+        </div>
+        ${(() => {
+            const parlTermEstablished = currentNation.parliamentary_term_established_tick != null;
+            const parlTermYears = (currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS) / (GAME_CONFIG.TICKS_PER_YEAR || 12);
+            // Both active and inactive use the same parliamentary_term_length flow — just different descriptions
+            return `<div class="policy-option${selectedFoundationalType === 'parliamentary_term_length' ? ' selected' : ''}" style="${selectedFoundationalType === 'parliamentary_term_length' ? 'border-color:var(--purple);' : ''}" onclick="selectFoundationalType('parliamentary_term_length')" data-foundational-type="parliamentary_term_length">
+                <div class="policy-option-name">🗓 Legislative Term Length <span class="article-ideology" style="background:var(--purple);color:#fff;">FOUNDATIONAL</span>${parlTermEstablished ? ' <span style="background:var(--green,#5cb85c);color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">ACTIVE</span>' : ''}</div>
+                <div class="policy-option-desc">${parlTermEstablished
+                    ? 'Current term: <strong>' + parlTermYears + ' Years</strong>. Select a different term length to propose a change. Requires 2/3 supermajority (' + required + ' seats). ' + GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS + ' tick cooldown.'
+                    : 'Set how often legislative elections occur. Requires 2/3 supermajority (' + required + ' seats) to pass. ' + GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS + ' tick cooldown between changes.'}</div>
+                <div id="foundational-parl-term-config" style="margin-top:12px;${selectedFoundationalType === 'parliamentary_term_length' ? '' : 'display:none;'}">
+                    <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-bottom:6px;">Current term: <strong>${parlTermYears} Years</strong> — Select new term length:</label>
+                    <select id="foundational-parl-term-select" style="background:var(--bg-card);border:1px solid var(--purple);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:220px;">
+                        ${(GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_OPTIONS || [24,36,48,60,72]).map(t => {
+                            const years = t / (GAME_CONFIG.TICKS_PER_YEAR || 12);
+                            const currentTicks = currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS;
+                            const isCurrent = t === currentTicks;
+                            return '<option value="' + t + '"' + (isCurrent ? ' selected disabled' : '') + '>' + years + ' Years' + (isCurrent ? ' (Current)' : '') + '</option>';
+                        }).join('')}
+                    </select>
+                    <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">The new term length takes effect after the next scheduled election — the current legislature's term is not changed.</div>
+                </div>
+            </div>`;
+        })()}
+        ${(() => {
+            const curSystem = getCurrentConstitutionalSystem(currentNation);
+            const allSystems = [
+                { id: 'parliamentary', label: 'Parliamentary Democracy', desc: 'Head of State appointed by parliament. Prime Minister holds executive power.' },
+                { id: 'constitutional_monarchy', label: 'Constitutional Monarchy', desc: 'Hereditary monarch as Head of State. Prime Minister holds executive power.' },
+                { id: 'presidential', label: 'Presidential Republic', desc: 'Directly elected President as sole executive. No Prime Minister.' },
+                { id: 'semi_presidential', label: 'Semi-Presidential Republic', desc: 'Directly elected President shares power with a Prime Minister appointed by parliament.' }
+            ];
+            const currentLabel = getConstitutionalSystemLabel(curSystem);
+            return `
+        <div class="policy-option${selectedFoundationalType === 'constitutional_reform' ? ' selected' : ''}" style="${selectedFoundationalType === 'constitutional_reform' ? 'border-color:var(--purple);' : ''}" onclick="selectFoundationalType('constitutional_reform')" data-foundational-type="constitutional_reform">
+            <div class="policy-option-name">🏛 Constitutional Reform <span class="article-ideology" style="background:var(--purple);color:#fff;">FOUNDATIONAL</span></div>
+            <div class="policy-option-desc">Change the system of government. Current: <strong>${currentLabel}</strong>. Requires 2/3 supermajority (${required} seats) to pass. ${GAME_CONFIG.CONSTITUTIONAL_REFORM_COOLDOWN_TICKS / GAME_CONFIG.TICKS_PER_YEAR}-year cooldown.</div>
+            <div id="foundational-constitutional-reform-config" style="margin-top:12px;${selectedFoundationalType === 'constitutional_reform' ? '' : 'display:none;'}">
+                <div style="color:var(--text-primary);font-size:0.8rem;margin-bottom:8px;">Select the new system of government:</div>
+                ${allSystems.map(s => `
+                <label style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;margin-bottom:6px;border:1px solid ${s.id === curSystem ? 'var(--text-tertiary)' : 'var(--border-primary)'};border-radius:4px;cursor:${s.id === curSystem ? 'not-allowed' : 'pointer'};opacity:${s.id === curSystem ? '0.5' : '1'};background:var(--bg-card);" onclick="${s.id !== curSystem ? 'onConstitutionalReformSelect(\'' + s.id + '\')' : ''}">
+                    <input type="radio" name="constitutional-reform-target" value="${s.id}" ${s.id === curSystem ? 'disabled' : ''} style="margin-top:3px;">
+                    <div>
+                        <div style="color:var(--text-primary);font-weight:600;font-size:0.85rem;">${s.label}${s.id === curSystem ? ' <span style="color:var(--text-tertiary);font-weight:400;">(Current)</span>' : ''}</div>
+                        <div style="color:var(--text-secondary);font-size:0.7rem;margin-top:2px;">${s.desc}</div>
+                    </div>
+                </label>`).join('')}
+                <div id="constitutional-reform-dynasty-config" style="display:none;margin-top:12px;">
+                    <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-bottom:6px;">Dynasty Name:</label>
+                    <input type="text" id="foundational-dynasty-name" maxlength="40" placeholder="e.g. House of Velasco" style="background:var(--bg-card);border:1px solid var(--purple);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:280px;">
+                    <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:4px;">Choose a dynasty name. A monarch will be generated upon passage.</div>
+                    <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-top:12px;margin-bottom:6px;">Dynasty Crest (optional):</label>
+                    <input type="text" id="foundational-dynasty-crest" maxlength="200" placeholder="Image URL for crest/logo" style="background:var(--bg-card);border:1px solid var(--purple);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:280px;">
+                </div>
+                <div id="constitutional-reform-info" style="font-size:0.7rem;color:var(--text-secondary);margin-top:8px;"></div>
+            </div>
+        </div>`;
+        })()}
+        <div class="policy-option${selectedFoundationalType === 'abolish_term_limits' ? ' selected' : ''}" style="${selectedFoundationalType === 'abolish_term_limits' ? 'border-color:var(--red);' : ''}${currentNation.term_limits_abolished ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('abolish_term_limits')" data-foundational-type="abolish_term_limits">
+            <div class="policy-option-name">⛓ Abolish Term Limits <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.term_limits_abolished
+                ? 'Already enacted — term limits have been abolished.'
+                : 'Remove all term limits for the head of government. The ruling party gains +5 approval/tick but press freedom erodes -0.3/tick permanently. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'state_media_control' ? ' selected' : ''}" style="${selectedFoundationalType === 'state_media_control' ? 'border-color:var(--red);' : ''}${currentNation.state_media_control ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('state_media_control')" data-foundational-type="state_media_control">
+            <div class="policy-option-name">📺 State Media Control Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.state_media_control
+                ? 'Already enacted — the government controls national media.'
+                : 'Government takes control of national media. Press freedom permanently capped at 40. +10 Government Approval. +2 Momentum all Parties in Government / tick for 10 ticks. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'emergency_powers' ? ' selected' : ''}" style="${selectedFoundationalType === 'emergency_powers' ? 'border-color:var(--red);' : ''}${currentNation.emergency_powers_act ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('emergency_powers')" data-foundational-type="emergency_powers">
+            <div class="policy-option-name">🚨 Emergency Powers Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.emergency_powers_act
+                ? 'Already enacted — the head of government may declare national emergencies.'
+                : 'Grants the head of government power to declare national emergencies, bypassing legislative votes. While active: stability -1/tick, freedom index -0.5/tick, judicial independence -0.5/tick. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'judicial_appointment_politicization' ? ' selected' : ''}" style="${selectedFoundationalType === 'judicial_appointment_politicization' ? 'border-color:var(--red);' : ''}${currentNation.judicial_appointment_politicization ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('judicial_appointment_politicization')" data-foundational-type="judicial_appointment_politicization">
+            <div class="policy-option-name">⚖️ Judicial Appointment Politicization Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.judicial_appointment_politicization
+                ? 'Already enacted — the ruling coalition appoints judges directly.'
+                : 'The ruling coalition appoints judges directly. Judicial independence permanently capped at 30. Legitimacy -5, freedom index -3. ' + (isPresidential ? 'Impeachment conviction threshold rises from 67% to 75%.' : 'No confidence threshold rises from 50%+1 to 60%.') + ' Requires 2/3 supermajority (' + required + ' seats).'}</div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'electoral_commission_reform' ? ' selected' : ''}" style="${selectedFoundationalType === 'electoral_commission_reform' ? 'border-color:var(--red);' : ''}${currentNation.electoral_commission_reform ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('electoral_commission_reform')" data-foundational-type="electoral_commission_reform">
+            <div class="policy-option-name">🗳️ Electoral Commission Reform Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.electoral_commission_reform
+                ? 'Already enacted — the ruling coalition controls the election commission.'
+                : 'The ruling coalition controls the election commission. In parliamentary elections, governing parties receive a random 5-10% seat bonus drawn proportionally from opposition parties. Legitimacy -5, polarization +3. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'party_registration_act' ? ' selected' : ''}" style="${selectedFoundationalType === 'party_registration_act' ? 'border-color:var(--red);' : ''}${currentNation.party_registration_threshold > 0 ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('party_registration_act')" data-foundational-type="party_registration_act">
+            <div class="policy-option-name">🚫 Political Party Registration Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.party_registration_threshold > 0
+                ? 'Already enacted — parties below ' + currentNation.party_registration_threshold + '% of seats are removed after elections.'
+                : 'Raises barriers for party representation. Choose a threshold (5%, 10%, or 15%) — parties below that percentage of seats have their seats reallocated after elections. Affected parties cannot sponsor bills, vote, or hold ministries. Legitimacy -4, polarization +5, freedom index -3. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+            <div id="foundational-party-reg-config" style="margin-top:12px;${selectedFoundationalType === 'party_registration_act' ? '' : 'display:none;'}">
+                <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-bottom:6px;">Seat Threshold:</label>
+                <select id="foundational-party-reg-threshold" style="background:var(--bg-card);border:1px solid var(--red);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:220px;">
+                    <option value="5">5% — Moderate</option>
+                    <option value="10">10% — Restrictive</option>
+                    <option value="15">15% — Severe</option>
+                </select>
+            </div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'legislative_quorum_reform' ? ' selected' : ''}" style="${selectedFoundationalType === 'legislative_quorum_reform' ? 'border-color:var(--red);' : ''}${currentNation.legislative_quorum_override > 0 ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('legislative_quorum_reform')" data-foundational-type="legislative_quorum_reform">
+            <div class="policy-option-name">📋 Legislative Quorum Reform Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.legislative_quorum_override > 0
+                ? 'Already enacted — quorum requirement lowered to ' + currentNation.legislative_quorum_override + '%.'
+                : 'Lowers the quorum requirement for standard bills from 50%. Choose a new threshold (40%, 30%, or 25%). The ruling coalition can pass legislation with fewer participants. Legitimacy -3, freedom index -2. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+            <div id="foundational-quorum-config" style="margin-top:12px;${selectedFoundationalType === 'legislative_quorum_reform' ? '' : 'display:none;'}">
+                <label style="color:var(--text-primary);font-size:0.8rem;display:block;margin-bottom:6px;">New Quorum Requirement:</label>
+                <select id="foundational-quorum-threshold" style="background:var(--bg-card);border:1px solid var(--red);color:#fff;padding:8px 12px;border-radius:3px;font-size:1rem;width:220px;">
+                    <option value="40">40% — Moderate reduction</option>
+                    <option value="30">30% — Significant reduction</option>
+                    <option value="25">25% — Minimal quorum</option>
+                </select>
+            </div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'constitutional_amendment_streamlining' ? ' selected' : ''}" style="${selectedFoundationalType === 'constitutional_amendment_streamlining' ? 'border-color:var(--red);' : ''}${currentNation.constitutional_amendment_streamlining ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('constitutional_amendment_streamlining')" data-foundational-type="constitutional_amendment_streamlining">
+            <div class="policy-option-name">📜 Constitutional Amendment Streamlining <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.constitutional_amendment_streamlining
+                ? 'Already enacted — foundational bills now require only 55% to pass.'
+                : 'Lowers the supermajority threshold for all future foundational bills from 67% to 55%. This law itself requires the full 67% to pass. Once enacted, the constitution becomes far easier to rewrite. Legitimacy -8, polarization +5, freedom index -5. Requires 2/3 supermajority (' + required + ' seats).'}</div>
+        </div>
+        <div class="policy-option${selectedFoundationalType === 'anti_disinformation_act' ? ' selected' : ''}" style="${selectedFoundationalType === 'anti_disinformation_act' ? 'border-color:var(--red);' : ''}${currentNation.anti_disinformation_act ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('anti_disinformation_act')" data-foundational-type="anti_disinformation_act">
+            <div class="policy-option-name">🔇 Anti-Disinformation Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
+            <div class="policy-option-desc">${currentNation.anti_disinformation_act
+                ? 'Already enacted — the government defines what constitutes disinformation.'
+                : 'The government defines what constitutes "disinformation." Independent journalists, academics, and opposition figures can be sanctioned. Press freedom ceiling -5 permanently, freedom index -0.2/tick for 20 ticks, government approval +7, legitimacy -4, polarization +4. -5 relations with all nations. Requires 2/3 supermajority (' + required + ' seats).'}</div>
         </div>`;
     selectedFoundationalType = null;
     selectedPolicy = null;
     document.getElementById('add-article-btn').disabled = true;
 }
 
+function onHosElectionMethodChange() {
+    const method = document.getElementById('foundational-hos-election-select')?.value;
+    const dynastyConfig = document.getElementById('hos-election-dynasty-config');
+    const infoDiv = document.getElementById('hos-election-method-info');
+    if (dynastyConfig) dynastyConfig.style.display = method === 'hereditary' ? '' : 'none';
+    if (infoDiv) {
+        if (method === 'direct_vote') {
+            infoDiv.innerHTML = 'The Head of State will be elected by popular vote alongside parliamentary elections. Increases legitimacy and political engagement, but adds another electoral contest.';
+        } else if (method === 'appointed') {
+            infoDiv.innerHTML = 'The ruling coalition automatically appoints the Head of State when a new government forms. Low friction, ceremonial role.';
+        } else if (method === 'hereditary') {
+            infoDiv.innerHTML = 'Establishes a constitutional monarchy. The Head of State becomes a permanent, non-partisan institution. Stability +5, legitimacy -5.';
+        } else {
+            infoDiv.innerHTML = '';
+        }
+    }
+}
+window.onHosElectionMethodChange = onHosElectionMethodChange;
+
+function onConstitutionalReformSelect(systemId) {
+    // Check the radio button
+    const radios = document.querySelectorAll('input[name="constitutional-reform-target"]');
+    radios.forEach(r => { r.checked = r.value === systemId; });
+
+    const dynastyConfig = document.getElementById('constitutional-reform-dynasty-config');
+    const infoDiv = document.getElementById('constitutional-reform-info');
+    if (dynastyConfig) dynastyConfig.style.display = systemId === 'constitutional_monarchy' ? '' : 'none';
+
+    if (infoDiv) {
+        const effects = {
+            parliamentary: 'Stability +3, Legitimacy +2, Civil Unrest +5. If transitioning from a presidential system, the president will be deactivated and a parliamentary election scheduled.',
+            constitutional_monarchy: 'Stability +5, Legitimacy -5, Civil Unrest +5. A hereditary monarch will be established as Head of State. If transitioning from a presidential system, the president will be deactivated.',
+            presidential: 'Legitimacy +3, Political Engagement +3, Polarization +2, Civil Unrest +5. A presidential election will be scheduled. If transitioning from a parliamentary system, the PM and coalition will be dissolved.',
+            semi_presidential: 'Legitimacy +2, Political Engagement +2, Polarization +3, Civil Unrest +5. Both president and PM coexist. A presidential election will be scheduled if needed, and PM formation will be triggered.'
+        };
+        infoDiv.innerHTML = effects[systemId] || '';
+    }
+}
+window.onConstitutionalReformSelect = onConstitutionalReformSelect;
+
 function selectFoundationalType(type) {
     selectedFoundationalType = type;
     document.querySelectorAll('[data-foundational-type]').forEach(el => {
         const isSelected = el.dataset.foundationalType === type;
         el.classList.toggle('selected', isSelected);
-        el.style.borderColor = isSelected ? 'var(--purple)' : '';
+        const authTypes = ['abolish_term_limits', 'state_media_control', 'emergency_powers', 'judicial_appointment_politicization', 'electoral_commission_reform', 'party_registration_act', 'legislative_quorum_reform', 'constitutional_amendment_streamlining', 'anti_disinformation_act'];
+        el.style.borderColor = isSelected ? (authTypes.includes(type) ? 'var(--red)' : 'var(--purple)') : '';
     });
     const seatsConfig = document.getElementById('foundational-seats-config');
     const hosConfig = document.getElementById('foundational-hos-config');
     const termLengthConfig = document.getElementById('foundational-term-length-config');
     const termLimitConfig = document.getElementById('foundational-term-limit-config');
+    const parlTermConfig = document.getElementById('foundational-parl-term-config');
+    const hosElectionConfig = document.getElementById('foundational-hos-election-config');
+    const constReformConfig = document.getElementById('foundational-constitutional-reform-config');
     if (seatsConfig) seatsConfig.style.display = type === 'electoral_makeup' ? '' : 'none';
     if (hosConfig) hosConfig.style.display = type === 'hos_title' ? '' : 'none';
     if (termLengthConfig) termLengthConfig.style.display = type === 'term_length' ? '' : 'none';
     if (termLimitConfig) termLimitConfig.style.display = type === 'term_limit' ? '' : 'none';
+    if (parlTermConfig) parlTermConfig.style.display = type === 'parliamentary_term_length' ? '' : 'none';
+    if (hosElectionConfig) hosElectionConfig.style.display = type === 'hos_election' ? '' : 'none';
+    if (constReformConfig) constReformConfig.style.display = type === 'constitutional_reform' ? '' : 'none';
+    const partyRegConfig = document.getElementById('foundational-party-reg-config');
+    const quorumConfig = document.getElementById('foundational-quorum-config');
+    if (partyRegConfig) partyRegConfig.style.display = type === 'party_registration_act' ? '' : 'none';
+    if (quorumConfig) quorumConfig.style.display = type === 'legislative_quorum_reform' ? '' : 'none';
     document.getElementById('add-article-btn').disabled = false;
 }
 window.selectFoundationalType = selectFoundationalType;
@@ -1645,12 +2234,14 @@ function renderPolicyOptions(policies, containerId, buttonId) {
         }).join(' ');
         const isPending = pendingPolicyIds.has(policy.id);
         const isEnacted = policy.alreadyEnacted;
+        const isActiveLever = policy.alreadyEnactedLever;
         const opposedClass = policy.isOpposed ? ' opposed' : '';
         const pendingClass = isPending ? ' pending' : '';
-        const enactedClass = isEnacted ? ' enacted-repealable' : '';
+        const enactedClass = isEnacted ? ' enacted-repealable' : (isActiveLever ? ' pending' : '');
         const opposedBadge = policy.isOpposed ? '<span class="opposed-badge">⚠ Opposed</span>' : '';
         const pendingBadge = isPending ? '<span class="opposed-badge" style="background:var(--text-muted);color:var(--text-primary);">⏳ In Active Bill</span>' : '';
         const enactedBadge = isEnacted ? '<span class="opposed-badge" style="background:var(--red);color:#fff;">Click to Repeal</span>' : '';
+        const leverBadge = isActiveLever ? '<span class="opposed-badge" style="background:var(--green);color:#fff;">ACTIVE LEVER</span>' : '';
         const opposedWarn = policy.isOpposed ? '<div class="opposed-warning">Ideologically opposed — approval penalty if proposed</div>' : '';
         let effectHTML = '';
         if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
@@ -1664,10 +2255,10 @@ function renderPolicyOptions(policies, containerId, buttonId) {
             const cls = policy.stat_direction === 'UP' ? 'effect-up' : 'effect-down';
             effectHTML = `${formatStatName(policy.target_stat)} <span class="${cls}">${dir}</span>`;
         }
-        // Enacted policies can be clicked to add a repeal article; pending ones stay disabled
+        // Enacted structural policies can be clicked to add a repeal article; levers and pending ones stay disabled
         const clickAction = isEnacted
             ? `selectRepealPolicy('${policy.id}')`
-            : (isPending ? '' : `selectPolicyOption('${policy.id}','${buttonId}')`);
+            : (isPending || isActiveLever ? '' : `selectPolicyOption('${policy.id}','${buttonId}')`);
         // Show reversed stat effects and cost savings for enacted policies
         let repealInfoHTML = '';
         if (isEnacted) {
@@ -1688,7 +2279,7 @@ function renderPolicyOptions(policies, containerId, buttonId) {
                 repealInfoHTML += `<div style="margin-top:2px;font-size:0.75rem;color:var(--green);">Saves ${fmtC(onCostScaled)}/tick if repealed</div>`;
             }
         }
-        return `<div class="policy-option${opposedClass}${pendingClass}${enactedClass}" data-policy-id="${policy.id}" onclick="${clickAction}"><div class="policy-option-name">${escapeHtml(policy.policy_name)} ${ideoHTML} ${opposedBadge}${pendingBadge}${enactedBadge}</div><div class="policy-option-desc">${escapeHtml(policy.description || '')}</div><div class="policy-option-effects">${effectHTML}</div>${repealInfoHTML}${opposedWarn}</div>`;
+        return `<div class="policy-option${opposedClass}${pendingClass}${enactedClass}" data-policy-id="${policy.id}" onclick="${clickAction}"><div class="policy-option-name">${escapeHtml(policy.policy_name)} ${ideoHTML} ${opposedBadge}${pendingBadge}${enactedBadge}${leverBadge}</div><div class="policy-option-desc">${escapeHtml(policy.description || '')}</div><div class="policy-option-effects">${effectHTML}</div>${repealInfoHTML}${opposedWarn}</div>`;
     }).join('');
 }
 
@@ -1699,7 +2290,8 @@ function selectPolicyOption(policyId, buttonId) {
     document.getElementById(buttonId).disabled = false;
 }
 
-function selectRepealPolicy(policyId) {
+async function selectRepealPolicy(policyId) {
+    if (_draftArticleLock) return;
     const policy = allPolicies.find(p => p.id === policyId);
     if (!policy) return;
     // Find the active law for this policy
@@ -1710,23 +2302,31 @@ function selectRepealPolicy(policyId) {
         alert('A repeal article for this law is already in the draft.');
         return;
     }
-    draftArticles.push({
-        articleNumber: draftArticles.length + 2,
-        policy: policy,
-        isRepeal: true,
-        repealActiveLawId: activeLaw.id,
-        isOpposed: false
-    });
-    renderDraftArticles();
-    hideAddArticleForm();
-    selectedPolicy = null;
-    if (draftArticles.length > 0) {
-        document.getElementById('bill-name-section').style.display = 'block';
-        document.getElementById('submit-bill-btn').disabled = false;
-    }
+    // Charge 1 AP if beyond free article limit
+    _draftArticleLock = true;
+    try {
+        const canAdd = await chargeArticleAP();
+        if (!canAdd) return;
+        draftArticles.push({
+            articleNumber: draftArticles.length + 2,
+            policy: policy,
+            isRepeal: true,
+            repealActiveLawId: activeLaw.id,
+            isOpposed: false
+        });
+        renderDraftArticles();
+        hideAddArticleForm();
+        selectedPolicy = null;
+        if (draftArticles.length > 0) {
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+        }
+        updateSubmitButtonCost();
+    } finally { _draftArticleLock = false; }
 }
 
-function addArticle() {
+async function addArticle() {
+    if (_draftArticleLock) return;
     const sector = document.getElementById('sector-select').value;
 
     // Foundational article (Electoral Makeup or HoS Title)
@@ -1803,6 +2403,30 @@ function addArticle() {
             document.getElementById('submit-bill-btn').disabled = false;
             _hideAllArticleButtons();
             return;
+        } else if (selectedFoundationalType === 'parliamentary_term_length') {
+            const parlTermSelect = document.getElementById('foundational-parl-term-select');
+            const newParlTermTicks = parseInt(parlTermSelect?.value, 10);
+            if (isNaN(newParlTermTicks)) { alert('Please select a term length.'); return; }
+            const currentParlTermTicks = currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS;
+            if (newParlTermTicks === currentParlTermTicks) {
+                alert('The selected term length is already the current value.');
+                return;
+            }
+            const years = newParlTermTicks / (GAME_CONFIG.TICKS_PER_YEAR || 12);
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'parliamentary_term_length',
+                proposedParliamentaryTermLength: newParlTermTicks,
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = `Legislative Term Length Act (${years} Years)`;
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
         } else if (selectedFoundationalType === 'term_limit') {
             const limitSelect = document.getElementById('foundational-term-limit-select');
             const newLimit = parseInt(limitSelect?.value, 10);
@@ -1827,6 +2451,211 @@ function addArticle() {
             document.getElementById('submit-bill-btn').disabled = false;
             _hideAllArticleButtons();
             return;
+        } else if (selectedFoundationalType === 'constitutional_reform') {
+            const selectedRadio = document.querySelector('input[name="constitutional-reform-target"]:checked');
+            if (!selectedRadio) { alert('Please select a system of government.'); return; }
+            const targetSystem = selectedRadio.value;
+            const curSystem = getCurrentConstitutionalSystem(currentNation);
+            if (targetSystem === curSystem) {
+                alert('The selected system is already the current system of government.');
+                return;
+            }
+            let dynastyName = null;
+            let dynastyCrest = null;
+            if (targetSystem === 'constitutional_monarchy') {
+                dynastyName = document.getElementById('foundational-dynasty-name')?.value?.trim();
+                dynastyCrest = document.getElementById('foundational-dynasty-crest')?.value?.trim() || null;
+                if (!dynastyName) { alert('Please enter a dynasty name for the constitutional monarchy.'); return; }
+            }
+            const systemLabels = { parliamentary: 'Parliamentary Democracy', constitutional_monarchy: 'Constitutional Monarchy', presidential: 'Presidential Republic', semi_presidential: 'Semi-Presidential Republic' };
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'constitutional_reform',
+                proposedConstitutionalReform: targetSystem,
+                proposedDynastyName: dynastyName,
+                proposedDynastyCrest: dynastyCrest,
+                policy: null
+            });
+            const billLabel = targetSystem === 'constitutional_monarchy'
+                ? `Constitutional Monarchy Act (${dynastyName})`
+                : `Constitutional Reform Act (${systemLabels[targetSystem]})`;
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = billLabel;
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'hos_election') {
+            // Legacy — kept for backward compatibility with existing bills
+            const methodSelect = document.getElementById('foundational-hos-election-select');
+            const newMethod = methodSelect?.value;
+            if (!newMethod) { alert('Please select an election method.'); return; }
+            const currentMethod = currentNation.hos_election_method || 'appointed';
+            if (newMethod === currentMethod) {
+                alert('The selected method is already the current Head of State election method.');
+                return;
+            }
+            let dynastyName = null;
+            let dynastyCrest = null;
+            if (newMethod === 'hereditary') {
+                dynastyName = document.getElementById('foundational-dynasty-name')?.value?.trim();
+                dynastyCrest = document.getElementById('foundational-dynasty-crest')?.value?.trim() || null;
+                if (!dynastyName) { alert('Please enter a dynasty name.'); return; }
+            }
+            const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Constitutional Monarchy' };
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'hos_election',
+                proposedHosElectionMethod: newMethod,
+                proposedDynastyName: dynastyName,
+                proposedDynastyCrest: dynastyCrest,
+                policy: null
+            });
+            const billLabel = newMethod === 'hereditary' ? `Constitutional Monarchy Act (${dynastyName})` : `Head of State Election Act (${methodLabels[newMethod]})`;
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = billLabel;
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'abolish_term_limits') {
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'abolish_term_limits',
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = 'Abolish Term Limits Act';
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'state_media_control') {
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'state_media_control',
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = 'State Media Control Act';
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'emergency_powers') {
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'emergency_powers',
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = 'Emergency Powers Act';
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'judicial_appointment_politicization') {
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'judicial_appointment_politicization',
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = 'Judicial Appointment Politicization Act';
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'electoral_commission_reform') {
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'electoral_commission_reform',
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = 'Electoral Commission Reform Act';
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'party_registration_act') {
+            const thresholdEl = document.getElementById('foundational-party-reg-threshold');
+            const threshold = thresholdEl ? parseInt(thresholdEl.value) : 0;
+            if (!threshold || threshold <= 0) { alert('Please select a registration threshold.'); return; }
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'party_registration_act',
+                proposedPartyRegistrationThreshold: threshold,
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = `Political Party Registration Act (${threshold}% threshold)`;
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'legislative_quorum_reform') {
+            const quorumEl = document.getElementById('foundational-quorum-threshold');
+            const quorum = quorumEl ? parseInt(quorumEl.value) : 0;
+            if (!quorum || quorum <= 0) { alert('Please select a quorum threshold.'); return; }
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'legislative_quorum_reform',
+                proposedQuorumOverride: quorum,
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = `Legislative Quorum Reform Act (${quorum}% quorum)`;
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'constitutional_amendment_streamlining') {
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'constitutional_amendment_streamlining',
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = 'Constitutional Amendment Streamlining Act';
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
+        } else if (selectedFoundationalType === 'anti_disinformation_act') {
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: 'anti_disinformation_act',
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = 'Anti-Disinformation Act';
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
         } else {
             alert('Please select a foundational option first.');
             return;
@@ -1834,9 +2663,16 @@ function addArticle() {
     }
 
     if (!selectedPolicy) return;
-    draftArticles.push({ articleNumber: draftArticles.length + 2, policy: selectedPolicy, isOpposed: selectedPolicy.isOpposed || false });
-    renderDraftArticles(); hideAddArticleForm(); selectedPolicy = null;
-    if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
+    // Charge 1 AP if beyond free article limit
+    _draftArticleLock = true;
+    try {
+        const canAdd = await chargeArticleAP();
+        if (!canAdd) return;
+        draftArticles.push({ articleNumber: draftArticles.length + 2, policy: selectedPolicy, isOpposed: selectedPolicy.isOpposed || false });
+        renderDraftArticles(); hideAddArticleForm(); selectedPolicy = null;
+        if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
+        updateSubmitButtonCost();
+    } finally { _draftArticleLock = false; }
 }
 
 function renderDraftArticles() {
@@ -1866,7 +2702,11 @@ function renderDraftArticles() {
         }
     }
 
+    // Track billable article index for cost display
+    let _billableIdx = 0;
     container.innerHTML = draftArticles.map((art, index) => {
+        const _isPaid = !art.isText && ((() => { const idx = _billableIdx; _billableIdx++; return idx >= FREE_ARTICLE_LIMIT; })());
+        const _costBadge = _isPaid ? ' <span class="ap-cost" style="font-size:0.7rem;color:var(--amber);font-weight:600;">1 AP</span>' : '';
         if (art.isFoundational) {
             if (art.foundationalSubtype === 'hos_title') {
                 return `<div class="draft-article-card" style="border-left:3px solid var(--purple);">
@@ -1903,6 +2743,145 @@ function renderDraftArticles() {
                     <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
                 </div>`;
             }
+            if (art.foundationalSubtype === 'constitutional_reform') {
+                const systemLabels = { parliamentary: 'Parliamentary Democracy', constitutional_monarchy: 'Constitutional Monarchy', presidential: 'Presidential Republic', semi_presidential: 'Semi-Presidential Republic' };
+                const systemLabel = systemLabels[art.proposedConstitutionalReform] || art.proposedConstitutionalReform;
+                const dynastyInfo = art.proposedDynastyName ? ` · Dynasty: ${escapeHtml(art.proposedDynastyName)}` : '';
+                return `<div class="draft-article-card" style="border-left:3px solid var(--purple);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--purple);">Foundational</span></div>
+                        <div class="draft-article-name">🏛 Constitutional Reform</div>
+                        <div class="draft-article-meta">Reform to: ${escapeHtml(systemLabel)}${dynastyInfo} · Requires 2/3 supermajority · ${GAME_CONFIG.CONSTITUTIONAL_REFORM_COOLDOWN_TICKS / GAME_CONFIG.TICKS_PER_YEAR}-year cooldown</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'hos_election') {
+                const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Constitutional Monarchy' };
+                const methodLabel = methodLabels[art.proposedHosElectionMethod] || art.proposedHosElectionMethod;
+                const dynastyInfo = art.proposedDynastyName ? ` · Dynasty: ${escapeHtml(art.proposedDynastyName)}` : '';
+                return `<div class="draft-article-card" style="border-left:3px solid var(--purple);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--purple);">Foundational</span></div>
+                        <div class="draft-article-name">🗳 Election of Head of State</div>
+                        <div class="draft-article-meta">Change to: ${escapeHtml(methodLabel)}${dynastyInfo} · Requires 2/3 supermajority · 360 tick cooldown</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'abolish_term_limits') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">⛓ Abolish Term Limits</div>
+                        <div class="draft-article-meta">Removes all term limits. Ruling party +5 approval/tick, press freedom -0.3/tick. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'state_media_control') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">📺 State Media Control Act</div>
+                        <div class="draft-article-meta">Press freedom capped at 40. +10 Gov Approval. +2 Momentum/tick for governing parties (10 ticks). Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'emergency_powers') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">🚨 Emergency Powers Act</div>
+                        <div class="draft-article-meta">Head of government may declare emergencies to bypass votes. Stat drain while active. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'judicial_appointment_politicization') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">⚖️ Judicial Appointment Politicization Act</div>
+                        <div class="draft-article-meta">Judicial independence capped at 30. Legitimacy -5, freedom index -3. Harder to remove leader. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'electoral_commission_reform') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">🗳️ Electoral Commission Reform Act</div>
+                        <div class="draft-article-meta">Governing parties get 5-10% seat bonus in elections. Legitimacy -5, polarization +3. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'party_registration_act') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">🚫 Political Party Registration Act (${art.proposedPartyRegistrationThreshold || '?'}%)</div>
+                        <div class="draft-article-meta">Parties below ${art.proposedPartyRegistrationThreshold || '?'}% of seats removed. Legitimacy -4, polarization +5, freedom index -3. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'legislative_quorum_reform') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">📋 Legislative Quorum Reform Act (${art.proposedQuorumOverride || '?'}%)</div>
+                        <div class="draft-article-meta">Quorum lowered to ${art.proposedQuorumOverride || '?'}%. Legitimacy -3, freedom index -2. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'constitutional_amendment_streamlining') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">📜 Constitutional Amendment Streamlining</div>
+                        <div class="draft-article-meta">Foundational bills need only 55% (down from 67%). Legitimacy -8, polarization +5, freedom index -5. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'anti_disinformation_act') {
+                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
+                        <div class="draft-article-name">🔇 Anti-Disinformation Act</div>
+                        <div class="draft-article-meta">Press freedom ceiling -5 permanently. Freedom index -0.2/tick (20 ticks). Gov approval +7. Legitimacy -4, polarization +4. -5 relations with all nations. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'parliamentary_term_length') {
+                const years = art.proposedParliamentaryTermLength / (GAME_CONFIG.TICKS_PER_YEAR || 12);
+                const currentYears = (currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS) / (GAME_CONFIG.TICKS_PER_YEAR || 12);
+                return `<div class="draft-article-card" style="border-left:3px solid var(--purple);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--purple);">Foundational</span></div>
+                        <div class="draft-article-name">🗓 Legislative Term Length</div>
+                        <div class="draft-article-meta">Change term: ${currentYears} Years → ${years} Years · Requires 2/3 supermajority · ${GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS} tick cooldown</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype === 'repeal_parliamentary_term') {
+                const currentYears = (currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS) / (GAME_CONFIG.TICKS_PER_YEAR || 12);
+                return `<div class="draft-article-card" style="border-left:3px solid var(--purple);">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--purple);">Foundational</span></div>
+                        <div class="draft-article-name">🗓 Repeal: Legislative Term Length</div>
+                        <div class="draft-article-meta">Repeal the ${currentYears}-Year legislative term law · Requires 2/3 supermajority · ${GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS} tick cooldown</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
             const change = art.proposedSeats - GAME_CONFIG.TOTAL_SEATS;
             const changeText = change > 0 ? `+${change}` : `${change}`;
             return `<div class="draft-article-card" style="border-left:3px solid var(--purple);">
@@ -1931,7 +2910,7 @@ function renderDraftArticles() {
                 const arrow = i.proposed_pct > i.current_pct ? '↑' : '↓';
                 return `${i.name}: ${i.current_pct}% → ${i.proposed_pct}% ${arrow}`;
             });
-            if (fd.discretionary) summaryParts.push(`One-time: +$${fd.discretionary}M`);
+            if (fd.discretionary) summaryParts.push(fd.discretionary > 0 ? `Allocate: +$${fd.discretionary}M` : `Withdraw: -$${Math.abs(fd.discretionary)}M`);
             const hasIncrease = changes.some(i => i.proposed_pct > i.current_pct);
             const hasDecrease = changes.some(i => i.proposed_pct < i.current_pct);
             const borderColor = hasDecrease ? 'var(--red)' : hasIncrease ? 'var(--green)' : 'var(--blue)';
@@ -1943,10 +2922,29 @@ function renderDraftArticles() {
                 `<div style="margin-top:2px;font-size:0.8rem;color:var(--text-primary);font-weight:600;">Ongoing: ${ongoingText}</div>`;
             return `<div class="draft-article-card" style="border-left:3px solid ${borderColor};">
                 <div class="draft-article-info">
-                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:${borderColor};">Funding</span></div>
+                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:${borderColor};">Funding</span>${_costBadge}</div>
                     <div class="draft-article-name">${escapeHtml(fd.ministry_label)} Ministry Funding</div>
                     <div class="draft-article-meta">${summaryParts.map(s => escapeHtml(s)).join('<br>')}</div>
                     ${budgetImpact}
+                </div>
+                <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+            </div>`;
+        }
+        if (art.isEntrenchment) {
+            const tierLabels = { protected: 'Protected Law', entrenched: 'Entrenched Law', enshrined: 'Constitutional Law' };
+            const tierColors = { protected: 'var(--blue)', entrenched: 'var(--purple)', enshrined: 'var(--amber)' };
+            const tierIcons = { protected: '🛡', entrenched: '🔒', enshrined: '⭐' };
+            const tierDescs = {
+                protected: 'Requires 60% supermajority to repeal or amend. This bill must pass with 60%.',
+                entrenched: `Requires 67% supermajority to repeal or amend. ${GAME_CONFIG.ENTRENCHED_COOLDOWN_TICKS}-tick cooldown before repeal can be filed. This bill must pass with 67%.`,
+                enshrined: 'Can only be repealed via foundational bill (67% + co-sponsor). This bill must pass with foundational supermajority.'
+            };
+            const t = art.entrenchmentTier;
+            return `<div class="draft-article-card" style="border-left:3px solid ${tierColors[t]};">
+                <div class="draft-article-info">
+                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:${tierColors[t]};">Entrenchment</span></div>
+                    <div class="draft-article-name">${tierIcons[t]} ${tierLabels[t]}</div>
+                    <div class="draft-article-meta">${tierDescs[t]}</div>
                 </div>
                 <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
             </div>`;
@@ -1979,7 +2977,7 @@ function renderDraftArticles() {
             }
             return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
                 <div class="draft-article-info">
-                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">REPEAL</span></div>
+                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">REPEAL</span>${_costBadge}</div>
                     <div class="draft-article-name">${escapeHtml(p.policy_name)} ${ideoHTML} <span class="opposed-badge" style="background:var(--red);color:#fff;">REPEAL</span></div>
                     <div class="draft-article-meta">${escapeHtml(p.description || '')}</div>
                     ${reversalHTML}
@@ -1995,17 +2993,42 @@ function renderDraftArticles() {
         }).join(' ');
         const opposedBadge = art.isOpposed ? ' <span class="opposed-badge">⚠ Opposed</span>' : '';
         const borderColor = art.isOpposed ? 'border-left:3px solid var(--red);' : '';
-        return `<div class="draft-article-card" style="${borderColor}"><div class="draft-article-info"><div class="draft-article-num">Article ${art.articleNumber}</div><div class="draft-article-name">${art.policy.policy_name} ${ideoHTML}${opposedBadge}</div><div class="draft-article-meta">${art.policy.description || ''}</div></div><button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button></div>`;
+        // Policy cost/revenue badge for draft articles
+        let _policyCostBadge = '';
+        if (art.policy) {
+            const _fmtC = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + Math.round(m) + 'M';
+            const _upRaw = art.policy.upfront_cost || 0;
+            const _onRaw = art.policy.ongoing_base_cost || art.policy.ongoing_cost_per_tick || 0;
+            const _upCost = scaleLawCost(_upRaw, art.policy.upfront_scaling_stat);
+            const _onCost = scaleLawCost(_onRaw, art.policy.ongoing_scaling_stat);
+            const _parts = [];
+            if (_upCost > 0) _parts.push(`Up: ${_fmtC(_upCost)}`);
+            else if (_upCost < 0) _parts.push(`<span style="color:var(--green)">Rev: ${_fmtC(Math.abs(_upCost))}</span>`);
+            if (_onCost > 0) _parts.push(`On: ${_fmtC(_onCost)}/t`);
+            else if (_onCost < 0) _parts.push(`<span style="color:var(--green)">Relief: ${_fmtC(Math.abs(_onCost))}/t</span>`);
+            if (_parts.length > 0) _policyCostBadge = ' <span style="font-size:0.7rem;color:var(--text-secondary);margin-left:6px;">' + _parts.join(' · ') + '</span>';
+        }
+        return `<div class="draft-article-card" style="${borderColor}"><div class="draft-article-info"><div class="draft-article-num">Article ${art.articleNumber}${_costBadge}${_policyCostBadge}</div><div class="draft-article-name">${art.policy.policy_name} ${ideoHTML}${opposedBadge}</div><div class="draft-article-meta">${art.policy.description || ''}</div></div><button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button></div>`;
     }).join('') + penaltySummary;
 }
 
-function removeArticle(index) {
-    draftArticles.splice(index, 1);
-    draftArticles.forEach((art, i) => { art.articleNumber = i + 2; });
-    renderDraftArticles();
-    // Re-show add buttons (they may have been hidden for foundational bills)
-    _showAllArticleButtons();
-    if (draftArticles.length === 0) { document.getElementById('bill-name-section').style.display = 'none'; document.getElementById('submit-bill-btn').disabled = true; }
+async function removeArticle(index) {
+    if (_draftArticleLock) return;
+    _draftArticleLock = true;
+    try {
+        const art = draftArticles[index];
+        if (!art) return;
+        const wasPaid = !art.isText && isArticlePaid(index);
+        draftArticles.splice(index, 1);
+        draftArticles.forEach((art, i) => { art.articleNumber = i + 2; });
+        // Refund 1 AP if this was a paid article (beyond the free limit)
+        if (wasPaid) await refundArticleAP();
+        renderDraftArticles();
+        // Re-show add buttons (they may have been hidden for foundational bills)
+        _showAllArticleButtons();
+        if (draftArticles.length === 0) { document.getElementById('bill-name-section').style.display = 'none'; document.getElementById('submit-bill-btn').disabled = true; }
+        updateSubmitButtonCost();
+    } finally { _draftArticleLock = false; }
 }
 
 async function submitToCommittee() {
@@ -2135,6 +3158,37 @@ async function submitToCommittee() {
             }
         }
 
+        // Legislative term length cooldown check (applies to both new proposals and repeals)
+        if (foundationalArt.foundationalSubtype === 'parliamentary_term_length' || foundationalArt.foundationalSubtype === 'repeal_parliamentary_term') {
+            const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            const nowTick = shard?.current_tick || 0;
+            const { data: lastParlTermBill } = await _supabase
+                .from('bills')
+                .select('passed_tick')
+                .eq('nation_id', currentNation.id)
+                .eq('bill_type', 'foundational')
+                .eq('status', 'passed')
+                .not('proposed_parliamentary_term_length', 'is', null)
+                .order('passed_tick', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (lastParlTermBill && lastParlTermBill.passed_tick != null) {
+                const ticksSince = nowTick - lastParlTermBill.passed_tick;
+                const cooldown = GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS;
+                if (ticksSince < cooldown) {
+                    const remaining = cooldown - ticksSince;
+                    const years = Math.floor(remaining / GAME_CONFIG.TICKS_PER_YEAR);
+                    const mo = remaining % GAME_CONFIG.TICKS_PER_YEAR;
+                    const timeStr = years > 0 ? `${years} year${years !== 1 ? 's' : ''}${mo > 0 ? ', ' + mo + ' month' + (mo !== 1 ? 's' : '') : ''}` : `${mo} month${mo !== 1 ? 's' : ''}`;
+                    alert(`Legislative term length was changed recently. Cooldown: ${timeStr} remaining.`);
+                    isSubmitting = false;
+                    document.getElementById('submit-bill-btn').disabled = false;
+                    return;
+                }
+            }
+        }
+
         // Term limits cooldown check
         if (foundationalArt.foundationalSubtype === 'term_limit') {
             const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -2159,6 +3213,79 @@ async function submitToCommittee() {
                     const mo = remaining % GAME_CONFIG.TICKS_PER_YEAR;
                     const timeStr = years > 0 ? `${years} year${years !== 1 ? 's' : ''}${mo > 0 ? ', ' + mo + ' month' + (mo !== 1 ? 's' : '') : ''}` : `${mo} month${mo !== 1 ? 's' : ''}`;
                     alert(`Presidential term limits were changed recently. Cooldown: ${timeStr} remaining.`);
+                    isSubmitting = false;
+                    document.getElementById('submit-bill-btn').disabled = false;
+                    return;
+                }
+            }
+        }
+
+        // Constitutional reform cooldown & election proximity check
+        if (foundationalArt.foundationalSubtype === 'constitutional_reform') {
+            const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            const nowTick = shard?.current_tick || 0;
+
+            // Check cooldown via nation column
+            const { data: nationData } = await _supabase.from('nations').select('last_constitutional_reform_tick').eq('id', currentNation.id).single();
+            if (nationData?.last_constitutional_reform_tick != null) {
+                const ticksSince = nowTick - nationData.last_constitutional_reform_tick;
+                const cooldown = GAME_CONFIG.CONSTITUTIONAL_REFORM_COOLDOWN_TICKS;
+                if (ticksSince < cooldown) {
+                    const remaining = cooldown - ticksSince;
+                    const years = Math.floor(remaining / GAME_CONFIG.TICKS_PER_YEAR);
+                    const mo = remaining % GAME_CONFIG.TICKS_PER_YEAR;
+                    const timeStr = years > 0 ? `${years} year${years !== 1 ? 's' : ''}${mo > 0 ? ', ' + mo + ' month' + (mo !== 1 ? 's' : '') : ''}` : `${mo} month${mo !== 1 ? 's' : ''}`;
+                    alert(`Constitutional reform was enacted recently. Cooldown: ${timeStr} remaining.`);
+                    isSubmitting = false;
+                    document.getElementById('submit-bill-btn').disabled = false;
+                    return;
+                }
+            }
+
+            // Election proximity check — cannot file within 6 ticks of any election
+            const { data: upcomingElection } = await _supabase.from('elections')
+                .select('election_tick, election_type')
+                .eq('nation_id', currentNation.id)
+                .eq('status', 'scheduled')
+                .gte('election_tick', nowTick)
+                .lte('election_tick', nowTick + GAME_CONFIG.CONSTITUTIONAL_REFORM_ELECTION_PROXIMITY_TICKS)
+                .order('election_tick', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+
+            if (upcomingElection) {
+                const ticksUntil = upcomingElection.election_tick - nowTick;
+                alert(`Cannot file a constitutional reform within ${GAME_CONFIG.CONSTITUTIONAL_REFORM_ELECTION_PROXIMITY_TICKS} ticks of an election. A ${upcomingElection.election_type} election is scheduled in ${ticksUntil} tick${ticksUntil !== 1 ? 's' : ''}.`);
+                isSubmitting = false;
+                document.getElementById('submit-bill-btn').disabled = false;
+                return;
+            }
+        }
+
+        // HoS election method cooldown check (legacy)
+        if (foundationalArt.foundationalSubtype === 'hos_election') {
+            const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            const nowTick = shard?.current_tick || 0;
+            const { data: lastHosElectionBill } = await _supabase
+                .from('bills')
+                .select('passed_tick')
+                .eq('nation_id', currentNation.id)
+                .eq('bill_type', 'foundational')
+                .eq('status', 'passed')
+                .not('proposed_hos_election_method', 'is', null)
+                .order('passed_tick', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (lastHosElectionBill && lastHosElectionBill.passed_tick != null) {
+                const ticksSince = nowTick - lastHosElectionBill.passed_tick;
+                const cooldown = GAME_CONFIG.HOS_ELECTION_COOLDOWN_TICKS;
+                if (ticksSince < cooldown) {
+                    const remaining = cooldown - ticksSince;
+                    const years = Math.floor(remaining / GAME_CONFIG.TICKS_PER_YEAR);
+                    const mo = remaining % GAME_CONFIG.TICKS_PER_YEAR;
+                    const timeStr = years > 0 ? `${years} year${years !== 1 ? 's' : ''}${mo > 0 ? ', ' + mo + ' month' + (mo !== 1 ? 's' : '') : ''}` : `${mo} month${mo !== 1 ? 's' : ''}`;
+                    alert(`Head of State election method was changed recently. Cooldown: ${timeStr} remaining.`);
                     isSubmitting = false;
                     document.getElementById('submit-bill-btn').disabled = false;
                     return;
@@ -2196,7 +3323,7 @@ async function submitToCommittee() {
 
                     if (oppositionFactions) {
                         for (const faction of oppositionFactions) {
-                            await adjustMomentumAll(_supabase, currentNation.id, faction.id, 4, 'term_extension_attempt');
+                            await _supabase.rpc('adjust_momentum', { p_faction_id: faction.id, p_delta: 4, p_label: 'Term extension attempt — opposition boost (+4)', p_tick: currentTick || 0 });
                         }
                     }
                 }
@@ -2220,7 +3347,7 @@ async function submitToCommittee() {
                 const fd = art.fundingData;
                 const changes = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
                 const textParts = changes.map(i => `${i.name}: ${i.current_pct}% → ${i.proposed_pct}%`);
-                if (fd.discretionary) textParts.push(`One-time: +$${fd.discretionary}M`);
+                if (fd.discretionary) textParts.push(fd.discretionary > 0 ? `Allocate: +$${fd.discretionary}M` : `Withdraw: -$${Math.abs(fd.discretionary)}M`);
                 const title = `${fd.ministry_label} Funding`;
                 const text = textParts.join('. ') + '.';
                 return {
@@ -2257,7 +3384,7 @@ async function submitToCommittee() {
         articles: normalizedArticles
     };
 
-    const debugBillSubmission = window.NATIONHOOD_DEBUG_BILL_SUBMISSION ?? true;
+    const debugBillSubmission = window.NATIONHOOD_DEBUG_BILL_SUBMISSION ?? false;
     if (debugBillSubmission) {
         console.log('Submitting bill:', JSON.stringify(billPayload, null, 2));
     }
@@ -2285,10 +3412,14 @@ async function submitToCommittee() {
         }
     }
 
+    // Compute effective bill AP cost with leader trait modifiers (shared with display label)
+    const billApCost = computeBillApCost();
+
     // Atomic AP deduction — prevents race conditions and double-spend
-    const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.DRAFT_BILL_AP_COST);
+    const apResult = await deductAP(_supabase, currentFaction.id, billApCost);
     if (!apResult.success) {
-        alert('Not enough AP to draft this bill.');
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP to draft this bill. Need ' + billApCost + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
         isSubmitting = false;
         document.getElementById('submit-bill-btn').disabled = draftArticles.length === 0;
         return;
@@ -2302,6 +3433,7 @@ async function submitToCommittee() {
 
         const billInsert = {
             nation_id: currentNation.id, proposed_by: currentFaction.id, proposed_tick: currentTick, bill_name: billName, status: 'committee',
+            proposer_name: currentFaction.faction_name, proposer_color: currentFaction.party_color,
             preamble: isFoundationalBill
                 ? (draftArticles.find(a => a.isFoundational).foundationalSubtype === 'hos_title'
                     ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the Head of State title in ${currentNation.name} to "${draftArticles.find(a => a.isFoundational).proposedHosTitle}". Requires a two-thirds supermajority to pass.`
@@ -2309,8 +3441,34 @@ async function submitToCommittee() {
                     ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the presidential term length in ${currentNation.name} to ${draftArticles.find(a => a.isFoundational).proposedTermLength / (GAME_CONFIG.TICKS_PER_YEAR || 12)} years. Requires a two-thirds supermajority to pass.`
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'term_limit'
                     ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to ${draftArticles.find(a => a.isFoundational).proposedTermLimit === 0 ? 'remove presidential term limits' : 'set presidential term limits to ' + draftArticles.find(a => a.isFoundational).proposedTermLimit + ' term' + (draftArticles.find(a => a.isFoundational).proposedTermLimit !== 1 ? 's' : '')} in ${currentNation.name}. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'repeal_parliamentary_term'
+                    ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to repeal the current Legislative Term Length law (${(currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS) / (GAME_CONFIG.TICKS_PER_YEAR || 12)} years) in ${currentNation.name}. Once repealed, a new term length may be proposed. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'parliamentary_term_length'
+                    ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the legislative term length in ${currentNation.name} to ${draftArticles.find(a => a.isFoundational).proposedParliamentaryTermLength / (GAME_CONFIG.TICKS_PER_YEAR || 12)} years. The new term length takes effect after the next scheduled election. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'constitutional_reform'
+                    ? (() => { const fArt = draftArticles.find(a => a.isFoundational); const safeDynasty = escapeHtml(fArt.proposedDynastyName || 'Royal'); const sysLabels = { parliamentary: 'a Parliamentary Democracy', constitutional_monarchy: `a Constitutional Monarchy (establishing the ${safeDynasty} dynasty)`, presidential: 'a Presidential Republic', semi_presidential: 'a Semi-Presidential Republic' }; return `This foundational law, proposed by the ${escapeHtml(currentFaction.faction_name)}, seeks to reform the system of government in ${escapeHtml(currentNation.name)} to ${sysLabels[fArt.proposedConstitutionalReform] || escapeHtml(fArt.proposedConstitutionalReform)}. This is a major constitutional change that will restructure the executive branch. Requires a two-thirds supermajority to pass.`; })()
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'hos_election'
+                    ? `This foundational law, proposed by the ${escapeHtml(currentFaction.faction_name)}, seeks to change the Head of State election method in ${escapeHtml(currentNation.name)} to ${draftArticles.find(a => a.isFoundational).proposedHosElectionMethod === 'hereditary' ? 'hereditary succession (establishing the ' + escapeHtml(draftArticles.find(a => a.isFoundational).proposedDynastyName) + ' dynasty)' : draftArticles.find(a => a.isFoundational).proposedHosElectionMethod === 'direct_vote' ? 'direct popular vote' : 'parliamentary appointment'}. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'abolish_term_limits'
+                    ? `This foundational law removes all presidential term limits in ${currentNation.name}. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'state_media_control'
+                    ? `This foundational law establishes state control over national media in ${currentNation.name}. Press freedom permanently capped at 40. +10 government approval. Governing parties receive +2 momentum/tick for 10 ticks. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'emergency_powers'
+                    ? `This foundational law grants the head of government emergency powers in ${currentNation.name}, allowing them to bypass legislative votes. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'judicial_appointment_politicization'
+                    ? `This foundational law politicizes judicial appointments in ${currentNation.name}. Judicial independence permanently capped at 30. Harder to impeach or remove leaders. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'electoral_commission_reform'
+                    ? `This foundational law gives the ruling coalition control over the election commission in ${currentNation.name}. Governing parties receive a 5-10% seat bonus in elections. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'party_registration_act'
+                    ? `This foundational law sets a ${draftArticles.find(a => a.isFoundational).proposedPartyRegistrationThreshold || 10}% party registration threshold in ${currentNation.name}. Parties below the threshold lose seats and legislative rights. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'legislative_quorum_reform'
+                    ? `This foundational law lowers the legislative quorum to ${draftArticles.find(a => a.isFoundational).proposedQuorumOverride || 30}% in ${currentNation.name}. The ruling coalition can pass bills with fewer participants. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'constitutional_amendment_streamlining'
+                    ? `This foundational law lowers the supermajority threshold for all future foundational bills from 67% to 55% in ${currentNation.name}. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'anti_disinformation_act'
+                    ? `This foundational law empowers the government of ${currentNation.name} to define what constitutes "disinformation." Independent journalists, academics, and opposition figures may be sanctioned. Press freedom ceiling permanently reduced by 5. Freedom index drains -0.2/tick for 20 ticks. +7 government approval. Legitimacy -4, polarization +4. -5 relations with all nations. Requires a two-thirds supermajority to pass.`
                     : `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the number of legislative seats in ${currentNation.name} from ${GAME_CONFIG.TOTAL_SEATS} to ${draftArticles.find(a => a.isFoundational).proposedSeats}. Requires a two-thirds supermajority to pass.`)
-                : `This ${lawsIsAutocracy ? 'decree' : 'bill'}, put forth in the ${lawsIsAutocracy ? 'regime' : 'legislature'} of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to enact the following provisions.`
+                : `This ${'bill'}, put forth in the ${'legislature'} of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to enact the following provisions.`
         };
 
         if (isFoundationalBill) {
@@ -2322,9 +3480,46 @@ async function submitToCommittee() {
                 billInsert.proposed_term_length = fArt.proposedTermLength;
             } else if (fArt.foundationalSubtype === 'term_limit') {
                 billInsert.proposed_term_limit = fArt.proposedTermLimit;
+            } else if (fArt.foundationalSubtype === 'repeal_parliamentary_term') {
+                billInsert.is_foundational_repeal = true;
+                billInsert.foundational_repeal_subtype = 'parliamentary_term_length';
+            } else if (fArt.foundationalSubtype === 'parliamentary_term_length') {
+                billInsert.proposed_parliamentary_term_length = fArt.proposedParliamentaryTermLength;
+            } else if (fArt.foundationalSubtype === 'constitutional_reform') {
+                billInsert.proposed_constitutional_reform = fArt.proposedConstitutionalReform;
+                if (fArt.proposedDynastyName) billInsert.proposed_dynasty_name = fArt.proposedDynastyName;
+                if (fArt.proposedDynastyCrest) billInsert.proposed_dynasty_crest_url = fArt.proposedDynastyCrest;
+            } else if (fArt.foundationalSubtype === 'hos_election') {
+                billInsert.proposed_hos_election_method = fArt.proposedHosElectionMethod;
+                if (fArt.proposedDynastyName) billInsert.proposed_dynasty_name = fArt.proposedDynastyName;
+                if (fArt.proposedDynastyCrest) billInsert.proposed_dynasty_crest_url = fArt.proposedDynastyCrest;
+            } else if (fArt.foundationalSubtype === 'abolish_term_limits') {
+                billInsert.proposed_abolish_term_limits = true;
+            } else if (fArt.foundationalSubtype === 'state_media_control') {
+                billInsert.proposed_state_media_control = true;
+            } else if (fArt.foundationalSubtype === 'emergency_powers') {
+                billInsert.proposed_emergency_powers_act = true;
+            } else if (fArt.foundationalSubtype === 'judicial_appointment_politicization') {
+                billInsert.proposed_judicial_appointment_politicization = true;
+            } else if (fArt.foundationalSubtype === 'electoral_commission_reform') {
+                billInsert.proposed_electoral_commission_reform = true;
+            } else if (fArt.foundationalSubtype === 'party_registration_act') {
+                billInsert.proposed_party_registration_threshold = fArt.proposedPartyRegistrationThreshold || 10;
+            } else if (fArt.foundationalSubtype === 'legislative_quorum_reform') {
+                billInsert.proposed_legislative_quorum_override = fArt.proposedQuorumOverride || 30;
+            } else if (fArt.foundationalSubtype === 'constitutional_amendment_streamlining') {
+                billInsert.proposed_constitutional_amendment_streamlining = true;
+            } else if (fArt.foundationalSubtype === 'anti_disinformation_act') {
+                billInsert.proposed_anti_disinformation_act = true;
             } else {
                 billInsert.proposed_seats = fArt.proposedSeats;
             }
+        }
+
+        // Set entrenchment_tier on bill if an entrenchment article exists
+        const entrenchmentArt = draftArticles.find(a => a.isEntrenchment);
+        if (entrenchmentArt) {
+            billInsert.entrenchment_tier = entrenchmentArt.entrenchmentTier;
         }
 
         const { data: bill, error: billError } = await _supabase.from('bills').insert(billInsert).select().single();
@@ -2333,6 +3528,10 @@ async function submitToCommittee() {
         // Only insert bill_articles for non-foundational bills
         if (!isFoundationalBill) {
             const articles = draftArticles.map(art => {
+                if (art.isEntrenchment) {
+                    const tierLabels = { protected: 'Protected Law', entrenched: 'Entrenched Law', enshrined: 'Constitutional Law' };
+                    return { bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id, article_title: tierLabels[art.entrenchmentTier], article_text: 'Entrenchment clause', entrenchment_tier: art.entrenchmentTier };
+                }
                 if (art.isText) {
                     return { bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id, article_title: art.textTitle, article_text: art.textBody };
                 }
@@ -2340,7 +3539,7 @@ async function submitToCommittee() {
                     const fd = art.fundingData;
                     const changes = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
                     const textParts = changes.map(i => `${i.name}: ${i.current_pct}% → ${i.proposed_pct}%`);
-                    if (fd.discretionary) textParts.push(`One-time: +$${fd.discretionary}M`);
+                    if (fd.discretionary) textParts.push(fd.discretionary > 0 ? `Allocate: +$${fd.discretionary}M` : `Withdraw: -$${Math.abs(fd.discretionary)}M`);
                     const title = `${fd.ministry_label} Funding`;
                     const text = textParts.join('. ') + '.';
                     return { bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id, article_title: title, article_text: text, funding_data: fd };
@@ -2362,6 +3561,16 @@ async function submitToCommittee() {
             }
         }
 
+        // +2 Momentum for sponsoring a bill (atomic RPC with log)
+        try {
+            const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            const { error: momErr } = await _supabase.rpc('adjust_momentum', {
+                p_faction_id: currentFaction.id, p_delta: 2,
+                p_label: 'Bill sponsored: ' + (billInsert.bill_name || 'Bill'), p_tick: shard?.current_tick || 0
+            });
+            if (momErr) console.warn('Momentum +2 for sponsorship RPC failed:', momErr.message);
+        } catch (momErr) { console.warn('Momentum +2 for sponsorship failed:', momErr.message); }
+
         closeModal(); await loadLawsData(); renderLawsPage();
         alert(`"${billName}" submitted to committee!${isFoundationalBill ? '\n\nYou need at least one co-sponsor to send it to the floor.' : ''}`);
     } catch (error) {
@@ -2382,7 +3591,6 @@ async function submitToCommittee() {
 let defaultAusterityCount = 0;
 
 async function openDefaultResolutionModal() {
-    if (lawsIsAutocracy) return;
     if (isCaretaker) { alert('Legislature is dissolved.'); return; }
     if (isNoGovernment) { alert('Legislature is suspended.'); return; }
     if (currentSeats === 0) { alert('Your faction holds no seats.'); return; }
@@ -2406,11 +3614,6 @@ async function openDefaultResolutionModal() {
             default_cooldown: `Cannot file another default for ${eligibility.ticksRemaining} more ticks.`
         };
         alert(reasons[eligibility.reason] || 'Cannot propose a Default Resolution right now.');
-        return;
-    }
-
-    if ((currentFaction?.action_points || 0) < SOVEREIGN_DEFAULT_CONFIG.DEFAULT_RESOLUTION_AP_COST) {
-        alert(`Not enough AP. Need ${SOVEREIGN_DEFAULT_CONFIG.DEFAULT_RESOLUTION_AP_COST} AP.`);
         return;
     }
 
@@ -2494,9 +3697,9 @@ function updateDefaultPreview() {
     const austerity = getAusterityCommitments();
     const preview = previewDefaultConsequences(currentNation, type, rate, austerity);
 
-    const fmtChange = (change) => {
-        if (change > 0) return `<span style="color:var(--green);">+${change}</span>`;
-        if (change < 0) return `<span style="color:var(--red);">${change}</span>`;
+    const fmtChange = (change, inverse = false) => {
+        if (change > 0) return `<span style="color:var(--${inverse ? 'red' : 'green'});">+${change}</span>`;
+        if (change < 0) return `<span style="color:var(--${inverse ? 'green' : 'red'});">${change}</span>`;
         return `<span style="color:var(--text-secondary);">0</span>`;
     };
 
@@ -2520,21 +3723,22 @@ function updateDefaultPreview() {
         <div class="default-preview-grid">`;
 
     const stats = [
-        ['Credit', preview.statChanges.credit],
-        ['Currency', preview.statChanges.currency_strength],
-        ['Foreign Inv.', preview.statChanges.foreign_investment],
-        ['Intl. Rep.', preview.statChanges.international_reputation],
-        ['Interest Rates', preview.statChanges.interest_rates],
-        ['Inflation', preview.statChanges.inflation],
-        ['Trade Balance', preview.statChanges.trade_balance],
-        ['Standard of Living', preview.statChanges.standard_of_living],
-        ['Happiness', preview.statChanges.happiness]
+        ['Credit', preview.statChanges.credit, false],
+        ['Currency', preview.statChanges.currency_strength, false],
+        ['Foreign Inv.', preview.statChanges.foreign_investment, false],
+        ['Intl. Rep.', preview.statChanges.international_reputation, false],
+        ['Interest Rates', preview.statChanges.interest_rates, true],
+        ['Inflation', preview.statChanges.inflation, true],
+        ['Trade Balance', preview.statChanges.trade_balance, false],
+        ['Standard of Living', preview.statChanges.standard_of_living, false],
+        ['Happiness', preview.statChanges.happiness, false]
     ];
 
-    for (const [label, stat] of stats) {
+    for (const [label, stat, inverse] of stats) {
+        const s = stat || { before: 0, after: 0, change: 0 };
         html += `<div class="default-preview-stat">
             <span class="dps-label">${label}</span>
-            <span class="dps-value">${stat.before.toFixed(0)} → ${stat.after.toFixed(0)} ${fmtChange(stat.change)}</span>
+            <span class="dps-value">${s.before.toFixed(0)} → ${s.after.toFixed(0)} ${fmtChange(s.change, inverse)}</span>
         </div>`;
     }
 
@@ -2602,7 +3806,8 @@ async function submitDefaultResolution() {
     // Deduct AP
     const apResult = await deductAP(_supabase, currentFaction.id, cfg.DEFAULT_RESOLUTION_AP_COST);
     if (!apResult.success) {
-        alert('Not enough AP.');
+        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
+        alert('Not enough AP. Need ' + cfg.DEFAULT_RESOLUTION_AP_COST + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
         isSubmitting = false;
         document.getElementById('submit-default-btn').disabled = false;
         return;
@@ -2628,6 +3833,8 @@ async function submitDefaultResolution() {
             bill_type: 'default_resolution',
             status: 'floor',
             voting_ends_tick: currentTick + cfg.VOTING_TICKS,
+            proposer_name: currentFaction.faction_name,
+            proposer_color: currentFaction.party_color,
             preamble: defaultType === 'full'
                 ? `This resolution, filed by the ${currentFaction.faction_name}, declares sovereign default on all outstanding national debt (${formatDebtToGDP(debtRatio)} of GDP). Passage requires a two-thirds supermajority.`
                 : `This resolution, filed by the ${currentFaction.faction_name}, proposes partial restructuring of national debt (${formatDebtToGDP(debtRatio)} of GDP), committing to repay ${Math.round((repaymentRate || 0.5) * 100)}% of obligations. Passage requires a two-thirds supermajority.`
@@ -2697,6 +3904,7 @@ async function setStance(billId, stance) {
 }
 
 async function retractBill(billId) {
+    if (_actionLock) return;
     // Verify bill is still in committee before allowing retraction
     const { data: check } = await _supabase.from('bills').select('status').eq('id', billId).single();
     if (check?.status !== 'committee') {
@@ -2704,6 +3912,7 @@ async function retractBill(billId) {
         return;
     }
     if (!confirm(`Retract this ${termBill.toLowerCase()}? This cannot be undone.`)) return;
+    _actionLock = true;
     try {
         // Load bill + articles before deletion so we can reverse ideology
         const { data: bill } = await _supabase.from('bills')
@@ -2744,12 +3953,13 @@ async function retractBill(billId) {
         await loadLawsData(); renderLawsPage();
         alert(termBill + ' retracted.');
     } catch (error) { console.error('Error retracting:', error); alert('Error retracting.'); }
+    finally { _actionLock = false; }
 }
 
 function openCommitteeAddModal(billId) {
     currentCommitteeBillId = billId; committeeSelectedPolicy = null;
     populateSectorDropdown('committee-sector-select');
-    document.getElementById('committee-modal-title').textContent = lawsIsAutocracy ? 'Add Article to Decree' : 'Add Article to Bill';
+    document.getElementById('committee-modal-title').textContent = 'Add Article to Bill';
     const ideo1 = currentFaction.ideology_value_1 || '', ideo2 = currentFaction.ideology_value_2 || '';
     document.getElementById('committee-party-ideologies').textContent = (ideo1 || ideo2) ? [ideo1, ideo2].filter(Boolean).join(' + ') : 'None';
     document.getElementById('committee-sector-select').value = '';
@@ -2802,13 +4012,14 @@ function selectCommitteePolicy(policyId) {
 }
 
 async function submitCommitteeArticle() {
-    if (!committeeSelectedPolicy || !currentCommitteeBillId) return;
+    if (_actionLock || !committeeSelectedPolicy || !currentCommitteeBillId) return;
     // Only the bill sponsor can add articles
     const targetBill = committeeBills.find(b => b.id === currentCommitteeBillId);
     if (targetBill && targetBill.proposed_by && targetBill.proposed_by !== currentFaction?.id) {
         alert('Only the bill sponsor can add articles.');
         return;
     }
+    _actionLock = true;
     try {
         const { data: existingArticles } = await _supabase.from('bill_articles').select('article_number').eq('bill_id', currentCommitteeBillId).order('article_number', { ascending: false }).limit(1);
         const nextArticleNum = (existingArticles?.[0]?.article_number || 1) + 1;
@@ -2816,45 +4027,7 @@ async function submitCommitteeArticle() {
         await _supabase.from('bill_support').upsert({ bill_id: currentCommitteeBillId, faction_id: currentFaction.id, stance: 'accept', seat_count: currentSeats }, { onConflict: 'bill_id,faction_id' });
         closeCommitteeAddModal(); await loadLawsData(); renderLawsPage();
     } catch (error) { console.error('Error adding article:', error); alert('Error adding article.'); }
-}
-
-async function sendToFloor(billId) {
-    const bill = committeeBills.find(b => b.id === billId);
-    // Require at least one article for non-repeal/non-ratification bills
-    if (bill && bill.bill_type !== 'repeal' && bill.bill_type !== 'ratification'
-        && (!bill.bill_articles || bill.bill_articles.filter(a => a.policy_id || a.effect_data || a.repeal_active_law_id || a.funding_data).length === 0)) {
-        alert('This bill has no policy articles. Add at least one article before sending to the floor.');
-        return;
-    }
-    // Prompt to rename the bill before sending to floor
-    const newName = prompt('Rename this Bill?', bill?.bill_name || '');
-    if (newName === null) return; // User cancelled
-
-    try {
-        const updateFields = { status: 'floor' };
-        const trimmed = newName.trim();
-        if (trimmed && trimmed !== bill?.bill_name) {
-            updateFields.bill_name = trimmed;
-        }
-        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        updateFields.floor_tick = shard?.current_tick || 0;
-        updateFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
-        // Track when the bill was moved to the floor
-        updateFields.floor_tick = shard?.current_tick || 0;
-        await _supabase.from('bills').update(updateFields).eq('id', billId);
-
-        // Apply dynamic ideology penalty to sponsor (skip for system-generated bills)
-        if (bill && bill.proposed_by && factionIdeology) {
-            const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, bill.bill_articles || []);
-            if (dynamicPenalty < 0) {
-                await adjustMomentumAll(_supabase, currentNation.id, bill.proposed_by, dynamicPenalty, 'legislation:floor');
-                console.log(`Dynamic ideology penalty (floor): ${dynamicPenalty} for sponsor`);
-            }
-        }
-
-        await loadLawsData(); renderLawsPage();
-        alert(termBill + ' sent to the floor!');
-    } catch (error) { console.error('Error:', error); alert('Error sending to floor.'); }
+    finally { _actionLock = false; }
 }
 
 // Expose handlers used by inline HTML attributes
@@ -2867,6 +4040,9 @@ window.hideTextArticleForm = hideTextArticleForm;
 window.addTextArticle = addTextArticle;
 window.showFundingArticleForm = showFundingArticleForm;
 window.hideFundingArticleForm = hideFundingArticleForm;
+window.showEntrenchmentForm = showEntrenchmentForm;
+window.hideEntrenchmentForm = hideEntrenchmentForm;
+window.addEntrenchmentArticle = addEntrenchmentArticle;
 window.onFundingMinistryChange = onFundingMinistryChange;
 window.onInstSliderChange = onInstSliderChange;
 window.addFundingArticle = addFundingArticle;
@@ -2883,8 +4059,6 @@ window.selectPolicyOption = selectPolicyOption;
 window.selectRepealPolicy = selectRepealPolicy;
 window.signBill = signBill;
 window.vetoBill = vetoBill;
-window.vetoDecree = vetoDecree;
-window.enactDecree = enactDecree;
 window.retractBill = retractBill;
 window.filterAllLaws = filterAllLaws;
 window.togglePassedLaws = togglePassedLaws;

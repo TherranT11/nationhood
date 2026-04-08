@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nationhood | Join the Chronicle</title>
-    
-        <link rel="stylesheet" href="css/signup.css">
+    <title>Nationhood | Establish Faction</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/signup.css">
 </head>
 <body>
 
@@ -15,7 +17,7 @@
         <h2>Establish Faction</h2>
         
         <div class="info-note">
-            <strong style="color: #4CAF50;">Welcome to Alpha Shard!</strong><br>
+            <strong style="color: var(--green);">Welcome to Alpha Shard!</strong><br>
             You'll choose your nation after creating your account.
         </div>
         
@@ -30,32 +32,7 @@
                 <input type="password" id="password" minlength="6" required>
             </div>
             
-            <div class="input-group">
-                <label>Choose Your Faction Path</label>
-                <div class="faction-types">
-                    <!-- Political Party - Available -->
-                    <div class="faction-option available selected" data-type="party">
-                        <div class="faction-title">Political Party</div>
-                        <div class="faction-desc">Shape laws, influence policy, and guide your nation's future through political power.</div>
-                    </div>
-                    
-                    <!-- Corporation - Coming Soon -->
-                    <div class="faction-option disabled" data-type="corp">
-                        <span class="coming-soon">Coming Soon</span>
-                        <div class="faction-title">Corporation</div>
-                        <div class="faction-desc">Control wealth, trade, and economic power to influence the nation.</div>
-                    </div>
-                    
-                    <!-- Military Branch - Coming Soon -->
-                    <div class="faction-option disabled" data-type="military">
-                        <span class="coming-soon">Coming Soon</span>
-                        <div class="faction-title">Military Branch</div>
-                        <div class="faction-desc">Command forces, ensure security, and project strength for your nation.</div>
-                    </div>
-                </div>
-            </div>
-            
-            <button type="submit" class="btn-join" id="submit-btn">CREATE FACTION</button>
+            <button type="submit" class="btn-join" id="submit-btn">COMPLETE SIGNUP</button>
             <div id="error-message" class="error"></div>
         </form>
         
@@ -85,17 +62,8 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 
+    // Faction type is chosen later in the flow; default to party for signup
     let selectedFactionType = 'party';
-    
-    // Handle faction type selection (only party is clickable)
-    document.querySelectorAll('.faction-option').forEach(option => {
-        option.addEventListener('click', function() {
-            if (this.classList.contains('disabled')) return;
-            document.querySelectorAll('.faction-option').forEach(opt => opt.classList.remove('selected'));
-            this.classList.add('selected');
-            selectedFactionType = this.getAttribute('data-type');
-        });
-    });
 
     document.getElementById('signup-form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -105,7 +73,7 @@ import { _supabase } from './js/supabase-client.js';
         
         errorMsg.textContent = '';
         submitBtn.disabled = true;
-        submitBtn.textContent = 'CREATING FACTION...';
+        submitBtn.textContent = 'SIGNING UP...';
         
         try {
             const email = document.getElementById('email').value.trim();
@@ -128,6 +96,9 @@ import { _supabase } from './js/supabase-client.js';
             });
 
             if (authError) throw authError;
+
+            // Store selected faction type for downstream pages
+            sessionStorage.setItem('pending_faction_type', selectedFactionType);
 
             // Email confirmation required (normal flow)
             if (authData.user && !authData.session) {
@@ -157,7 +128,7 @@ import { _supabase } from './js/supabase-client.js';
             console.error('Signup error:', error);
             errorMsg.textContent = error.message || 'Signup failed. Please try again.';
             submitBtn.disabled = false;
-            submitBtn.textContent = 'CREATE FACTION';
+            submitBtn.textContent = 'COMPLETE SIGNUP';
         }
     });
 </script>

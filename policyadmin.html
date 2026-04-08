@@ -150,7 +150,7 @@
                     <div class="builder-section-title">🌍 3. Starting Status</div>
                     <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
                         Which nations have this policy active at game start?
-                        <span style="color:#ff9800;">Active = ongoing cost runs, stat effects do NOT fire (stats are pre-set).</span>
+                        <span style="color:#d48a3c;">Active = ongoing cost runs, stat effects do NOT fire (stats are pre-set).</span>
                     </p>
                     <div class="nation-checks" id="nation-checks">Loading nations...</div>
                 </div>
@@ -160,8 +160,8 @@
                     <div class="builder-section-title">💰 4. Costs</div>
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
                         <div class="form-field">
-                            <label>Upfront Base Cost ($M)</label>
-                            <input type="number" id="b-upfront" value="0" min="0" step="1" oninput="updateCostPreview()">
+                            <label>Upfront Base Cost ($M) <span style="font-size:0.7rem;color:var(--text-dim);">negative = revenue</span></label>
+                            <input type="number" id="b-upfront" value="0" step="1" oninput="updateCostPreview()">
                         </div>
                         <div class="form-field">
                             <label>Upfront Scaling Stat (or None)</label>
@@ -170,8 +170,8 @@
                             </select>
                         </div>
                         <div class="form-field">
-                            <label>Ongoing Base Cost ($M/tick)</label>
-                            <input type="number" id="b-ongoing-base" value="0" min="0" step="0.1" oninput="updateCostPreview()">
+                            <label>Ongoing Base Cost ($M/tick) <span style="font-size:0.7rem;color:var(--text-dim);">negative = relief</span></label>
+                            <input type="number" id="b-ongoing-base" value="0" step="0.1" oninput="updateCostPreview()">
                         </div>
                         <div class="form-field">
                             <label>Ongoing Scaling Stat (or None)</label>
@@ -210,7 +210,7 @@
     <div class="builder-section-title">🔗 7. Prerequisite Policy</div>
     <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
         Does this policy require another policy to be active first?
-        <span style="color:#2196F3;">e.g., Central Bank policies require "Establish Central Bank"</span>
+        <span style="color:#5b9bd5;">e.g., Central Bank policies require "Establish Central Bank"</span>
     </p>
     <div class="prereq-toggle">
         <input type="checkbox" id="b-has-prereq" onchange="togglePrereq()">
@@ -440,16 +440,24 @@ function renderPolicyTable() {
             effectsHTML = `<span class="tag ${cls}">${fmtStat(p.target_stat)} ${arrow} ${p.stat_change_per_tick || '?'}/t</span>`;
         }
 
-        // Costs
+        // Costs (negative = revenue/relief)
       const costs = [];
         if (p.upfront_cost > 0) {
             const upScaling = p.upfront_scaling_stat;
             costs.push(upScaling ? `${fmtCost(p.upfront_cost)}×${fmtStat(upScaling)} up` : `${fmtCost(p.upfront_cost)} up`);
+        } else if (p.upfront_cost < 0) {
+            const upScaling = p.upfront_scaling_stat;
+            const revLabel = upScaling ? `<span style="color:#5cb85c">${fmtCost(Math.abs(p.upfront_cost))}×${fmtStat(upScaling)} rev</span>` : `<span style="color:#5cb85c">${fmtCost(Math.abs(p.upfront_cost))} rev</span>`;
+            costs.push(revLabel);
         }
-        if ((p.ongoing_base_cost || p.ongoing_cost_per_tick || 0) > 0) {
-            const base = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
+        const onBase = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
+        if (onBase > 0) {
             const scaling = p.ongoing_scaling_stat;
-            costs.push(scaling ? `${fmtCost(base)}×${fmtStat(scaling)}/t` : `${fmtCost(base)}/t`);
+            costs.push(scaling ? `${fmtCost(onBase)}×${fmtStat(scaling)}/t` : `${fmtCost(onBase)}/t`);
+        } else if (onBase < 0) {
+            const scaling = p.ongoing_scaling_stat;
+            const relLabel = scaling ? `<span style="color:#5cb85c">${fmtCost(Math.abs(onBase))}×${fmtStat(scaling)}/t relief</span>` : `<span style="color:#5cb85c">${fmtCost(Math.abs(onBase))}/t relief</span>`;
+            costs.push(relLabel);
         }
         const costHTML = costs.length > 0 ? costs.join('<br>') : '—';
 
@@ -502,7 +510,6 @@ function duplicatePolicy(id) {
     if (!p) return;
     editingPolicyId = null;
     loadPolicyIntoBuilder(p);
-    document.getElementById('b-policy-type').value = p.policy_type || 'structural';
     document.getElementById('b-name').value = p.policy_name + ' (Copy)';
     document.getElementById('submit-btn').textContent = '✅ Create Policy';
     switchView('builder');
@@ -522,6 +529,8 @@ function loadPolicyIntoBuilder(p) {
     document.getElementById('b-name').value = p.policy_name || '';
     document.getElementById('b-desc').value = p.description || '';
     document.getElementById('b-sector').value = p.major_sector || '';
+    // Policy type (lever vs structural) — must be set here or edits silently reset to structural
+    document.getElementById('b-policy-type').value = p.policy_type || 'structural';
     populateLawCategories();
     const lawCatVal = p.law_category || p.minor_sector || '';
     const select = document.getElementById('b-law-category-select');

@@ -148,8 +148,8 @@ export const STAT_KEY_ALIASES = {
     tourism: 'international_reputation',
     // Legacy aliases for removed/renamed stats
     religious: 'religiosity',
-    birth_rate: 'population_growth',
-    death_rate: 'population_growth',
+    // NOTE: birth_rate and death_rate aliases REMOVED — they mapped 1:1 to population_growth
+    // which caused direction inversion bugs. Fix policy data to use population_growth directly.
     trade_agreements: 'international_reputation',
     sanctions: 'international_reputation'
 };
@@ -165,7 +165,7 @@ export function normalizeNationStatKey(statKey) {
 export const STATS_HIGHER_IS_BETTER = [
     'gdp_growth', 'currency_strength', 'foreign_investment', 'credit',
     'labor_force_participation', 'minimum_wage', 'union_strength',
-    'population_growth', 'eligible_voters', 'ethnic_diversity',
+    'population_growth', 'ethnic_diversity',
     'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan',
     'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
     'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation', 'renewable_energy_percentage',
@@ -191,7 +191,7 @@ export const STATS_LOWER_IS_BETTER = [
 
 // ==================== STAT DECAY CONFIGURATION ====================
 
-const DECAY_SPEED = { CRAWL: 0.25, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
+const DECAY_SPEED = { CRAWL: 0.15, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
 
 /**
  * Stats that decay each tick. Two types:
@@ -201,7 +201,7 @@ const DECAY_SPEED = { CRAWL: 0.25, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 }
  */
 export const STAT_DECAY_CONFIG = {
     // ── Equilibrium (drift back to midpoint) ──
-    inflation:           { type: 'equilibrium', target: 28, speed: DECAY_SPEED.CRAWL },
+    inflation:           { type: 'equilibrium', target: 38, speed: DECAY_SPEED.CRAWL },
     interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
@@ -217,6 +217,9 @@ export const STAT_DECAY_CONFIG = {
     emigration:          { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
     fuel_prices:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     debt_growth:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    crime_rate:          { type: 'equilibrium', target: 18, speed: DECAY_SPEED.CRAWL },
+    stability:           { type: 'equilibrium', target: 45, speed: DECAY_SPEED.CRAWL },
+    legitimacy:          { type: 'equilibrium', target: 40, speed: DECAY_SPEED.CRAWL },
 
     // ── Erosion (degrade toward bad floor if neglected) ──
     physical_infrastructure:  { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
@@ -435,32 +438,77 @@ export function statDirectionSign(statKey) {
  */
 
 export function inflationRate(inflationStat) {
-    const val = Math.max(0, Number(inflationStat ?? 0));
-    return Math.pow(val, 1.5) / 100;
+    // Maps 0-100 stat to roughly -2% to +10%, with ~0% at stat 15
+    // and the healthy 2% target around stat 38 (equilibrium)
+    const val = Math.max(0, Math.min(100, Number(inflationStat ?? 0)));
+    if (val <= 15) return -((15 - val) / 15) * 2;   // 0 → -2%, 15 → 0%
+    return Math.pow(val - 15, 1.5) / 100;            // 15 → 0%, 38 → ~2.1%, 100 → ~7.8%
 }
 
 export function formatInflationRate(inflationStat) {
     const rate = inflationRate(inflationStat);
-    if (rate < 0.01) return '0%';
-    if (rate < 1) return '+' + rate.toFixed(2) + '%';
-    return '+' + rate.toFixed(1) + '%';
+    if (Math.abs(rate) < 0.01) return '0%';
+    const sign = rate >= 0 ? '+' : '';
+    if (Math.abs(rate) < 1) return sign + rate.toFixed(2) + '%';
+    return sign + rate.toFixed(1) + '%';
 }
 
 export function getInflationLabel(inflationStat) {
-    const rate = inflationRate(inflationStat);
-    if (rate < 0.1)  return 'Negligible';
-    if (rate < 0.5)  return 'Minimal';
-    if (rate < 1.5)  return 'Stable';
-    if (rate < 3)    return 'Low Inflation';
-    if (rate < 5)    return 'Moderate Inflation';
-    if (rate < 8)    return 'High Inflation';
+    const val = Number(inflationStat ?? 0);
+    if (val <= 5)   return 'Severe Deflation';
+    if (val <= 15)  return 'Deflation';
+    if (val <= 25)  return 'Low Inflation';
+    if (val <= 45)  return 'Stable';
+    if (val <= 65)  return 'Moderate Inflation';
+    if (val <= 85)  return 'High Inflation';
     return 'Hyperinflation';
 }
 
 export function inflationColorClass(inflationStat) {
-    const rate = inflationRate(inflationStat);
-    if (rate < 1.5)  return 'good';
-    if (rate < 5)    return 'medium';
+    const val = Number(inflationStat ?? 0);
+    if (val <= 15)  return 'bad';    // Deflation is harmful
+    if (val <= 25)  return 'medium'; // Low but not dangerous
+    if (val <= 45)  return 'good';   // Healthy range (equilibrium at 38)
+    if (val <= 65)  return 'medium'; // Getting warm
+    return 'bad';                    // High/hyperinflation
+}
+
+// ==================== FUEL PRICE DISPLAY ====================
+
+/**
+ * Convert the 0-100 fuel_prices stat to a dollars-per-gallon price,
+ * adjusted by currency strength and inflation.
+ * @param {number} fuelStat      - fuel_prices 0-100
+ * @param {number} currencyStat  - currency_strength 0-100
+ * @param {number} inflationStat - inflation 0-100
+ * @returns {number} price in $/gallon
+ */
+export function fuelPricePerGallon(fuelStat, currencyStat, inflationStat) {
+    const fuel = Math.max(0, Math.min(100, Number(fuelStat ?? 50)));
+    const basePrice = 1.0 + (fuel / 100) * 7.0;  // $1.00 at 0, $8.00 at 100
+    const currencyMult = 1.5 - (Math.max(0, Math.min(100, Number(currencyStat ?? 50))) / 100);
+    const inflMult = Math.max(0.98, 1 + (inflationRate(inflationStat) / 100));
+    return Math.round(basePrice * currencyMult * inflMult * 100) / 100;
+}
+
+export function formatFuelPrice(fuelStat, currencyStat, inflationStat) {
+    const price = fuelPricePerGallon(fuelStat, currencyStat, inflationStat);
+    return '$' + price.toFixed(2) + '/gal';
+}
+
+export function getFuelPriceLabel(fuelStat, currencyStat, inflationStat) {
+    const price = fuelPricePerGallon(fuelStat, currencyStat, inflationStat);
+    if (price < 2.00) return 'Cheap';
+    if (price < 4.00) return 'Normal';
+    if (price < 5.50) return 'Elevated';
+    if (price < 7.00) return 'Expensive';
+    return 'Crisis';
+}
+
+export function fuelPriceColorClass(fuelStat, currencyStat, inflationStat) {
+    const price = fuelPricePerGallon(fuelStat, currencyStat, inflationStat);
+    if (price < 4.00) return 'good';
+    if (price < 5.50) return 'medium';
     return 'bad';
 }
 
@@ -595,10 +643,10 @@ export const MINISTER_APPROVAL_CONFIG = {
     DELTA_SENSITIVITY: 0.6,
 
     // Baseline decay: approval always erodes by this amount per tick unless stats improve
-    BASELINE_DECAY: -0.25,
+    BASELINE_DECAY: -0.5,
 
-    // New minister starts at 40% approval
-    NEW_MINISTER_APPROVAL: 40,
+    // New minister starts at 50% approval (clean slate on appointment)
+    NEW_MINISTER_APPROVAL: 50,
 
     // Firing a minister costs 1 AP and gives +3 to the event modifier
     FIRE_MINISTER_AP_COST: 1,
@@ -607,14 +655,17 @@ export const MINISTER_APPROVAL_CONFIG = {
     // Foreign Minister: -0.25 approval/tick per nation without an outgoing ambassador
     MISSING_AMBASSADOR_PENALTY: -0.25,
 
-    // Government approval: -3 per vacant ministry seat
-    VACANCY_PENALTY: -3,
+    // Government approval: -0.1 per vacant ministry per tick
+    VACANCY_PENALTY: -0.1,
+
+    // Government approval floor: even the worst government retains some support
+    APPROVAL_FLOOR: 15,
 
     // Event modifier decay: 10% per tick (transient shocks fade naturally)
     EVENTS_DECAY_RATE: 0.10,
 
     // Legislative activity: bonus to gov_approval_events when a bill passes
-    BILL_PASSAGE_EVENT_BONUS: 3,
+    BILL_PASSAGE_EVENT_BONUS: 1,
 
 };
 

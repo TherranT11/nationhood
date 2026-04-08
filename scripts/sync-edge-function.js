@@ -40,15 +40,28 @@ const MODULE_FILES = [
     'momentum.js',
     'budget.js',
     'government-structure.js',
+    'caucus.js',
     'repeal-helper.js',
     'event-helpers.js',
     'bills.js',
     'elections.js',
     'presidential.js',
-    'three-pillar.js',
+    'engagement.js',
+    'electorate.js',
+    'party-leadership.js',
+    'autocracy-pillars.js',
+    'autocracy-actions.js',
+    'autocracy-actions-military-party-oligarch.js',
+    'autocracy-actions-security-media-strongman.js',
+    'autocracy-coups.js',
+    'autocracy-silent-coup.js',
+    'protest.js',
     'political-actions.js',
     'election-simulation.js',
+    'energy.js',
     'sovereign-default.js',
+    'issues.js',
+    'incidents.js',
 ];
 
 // Read and process each module
@@ -58,6 +71,12 @@ let totalModuleLines = 0;
 for (const file of MODULE_FILES) {
     const filePath = path.join(GAME_DIR, file);
     let content = fs.readFileSync(filePath, 'utf8');
+
+    // Strip re-export lines (export { ... } from '...') — must come before export keyword strip
+    content = content.replace(/^export\s+\{[^}]*\}\s+from\s+['"][^'"]+['"];\s*\n?/gm, '');
+
+    // Strip multi-line export blocks (export {\n  ...\n};) — no 'from', just re-declaring local symbols
+    content = content.replace(/^export\s+\{[\s\S]*?\};\s*\n?/gm, '');
 
     // Strip ES module export keywords
     content = content.replace(/^export /gm, '');

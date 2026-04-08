@@ -8,16 +8,16 @@
 <style>
 :root {
   --bg-0: #0e0e0c;
-  --bg-1: #141412;
+  --bg-1: #1a1a1a;
   --bg-2: #1a1a17;
-  --bg-3: #1e1e1a;
+  --bg-3: #252525;
   --bg-4: #24241f;
   --bg-5: #2c2c26;
   --bg-hover: #282822;
-  --text-bright: #e2e0d6;
+  --text-bright: #f0efe6;
   --text-primary: #c4c2b8;
-  --text-secondary: #8a8778;
-  --text-muted: #6b6a5e;
+  --text-secondary: #888;
+  --text-muted: #666;
   --text-dim: #4a4940;
   --text-ghost: #333229;
   --border-hair: rgba(255,255,255,0.04);
@@ -260,7 +260,43 @@ body {
 
 <div id="loading" class="loading-msg">AUTHENTICATING...</div>
 
-<div id="page-content" style="display:none; width:100%; display:none; flex-direction:column; align-items:center;">
+<!-- Faction type chooser (shown when user has no factions and no pending nation) -->
+<div id="faction-chooser" style="display:none; width:100%; flex-direction:column; align-items:center;">
+  <button id="fs-logout-btn" onclick="logoutUser()" style="position:fixed;top:16px;right:16px;z-index:100;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;background:transparent;color:var(--text-muted);border:1px solid var(--border-1);padding:6px 16px;cursor:pointer;transition:color 0.15s,border-color 0.15s;" onmouseover="this.style.color='var(--red)';this.style.borderColor='var(--red)'" onmouseout="this.style.color='var(--text-muted)';this.style.borderColor='var(--border-1)'">Logout</button>
+  <div class="page-header">
+    <h1>Nationhood</h1>
+    <div class="title">Choose Your Faction Path</div>
+    <div class="subtitle">How will you shape the world? Choose your path, then select a nation to join.</div>
+  </div>
+  <div style="width:100%;max-width:640px;padding:0 16px 48px;">
+    <div id="opt-party" onclick="selectFactionOption('party')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--blue-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
+      <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Political Party</div>
+      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Shape laws, influence policy, and guide your nation's future through political power.</div>
+    </div>
+    <div id="opt-corp" onclick="selectFactionOption('corporation')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--green-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.06em;">Corporation</span>
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--amber);background:var(--amber-faint);border:1px solid var(--amber-border);padding:1px 6px;letter-spacing:0.06em;">ALPHA</span>
+      </div>
+      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Control wealth, trade, and economic power to influence the nation.</div>
+    </div>
+    <div id="corp-code-group" style="display:none;background:var(--bg-2);border:1px solid var(--border-0);padding:16px;margin-bottom:8px;">
+      <label style="font-family:var(--font-mono);font-size:9px;font-weight:600;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;display:block;margin-bottom:6px;">Alpha Access Code</label>
+      <input type="text" id="corp-code-input" placeholder="Enter access code" maxlength="10" autocomplete="off" spellcheck="false" style="width:100%;padding:8px 10px;background:var(--bg-0);border:1px solid var(--border-1);color:var(--text-bright);font-family:var(--font-mono);font-size:12px;letter-spacing:0.06em;outline:none;">
+      <div id="corp-code-error" style="font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:6px;display:none;"></div>
+    </div>
+    <div style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;opacity:0.3;cursor:not-allowed;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.06em;">Military Branch</span>
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--text-dim);background:var(--bg-3);border:1px solid var(--border-1);padding:1px 6px;letter-spacing:0.06em;">COMING SOON</span>
+      </div>
+      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Command armies, defend borders, and project military force to protect or conquer.</div>
+    </div>
+    <button id="btn-confirm-faction" onclick="confirmFactionChoice()" disabled style="width:100%;padding:12px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:var(--bg-3);border:1px solid var(--border-0);color:var(--text-dim);cursor:not-allowed;transition:all 0.15s;">CONFIRM</button>
+  </div>
+</div>
+
+<div id="page-content" style="display:none; width:100%; flex-direction:column; align-items:center;">
   <div class="page-header">
     <h1>Step 2 of 3</h1>
     <div class="title">Define Your Political Identity</div>
@@ -335,25 +371,41 @@ async function init() {
   const { data: { user } } = await _supabase.auth.getUser();
   if (!user) { window.location.href = 'login.html'; return; }
 
-  // Check if user already has a party
-  const { data: faction } = await _supabase
-    .from('factions').select('id, nation_id').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
-  if (faction && faction.nation_id) {
+  // Check if user already has an active party
+  const { data: faction, error: partyErr } = await _supabase
+    .from('factions').select('id, nation_id, abandoned_at').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
+  if (partyErr) console.warn('Party check failed:', partyErr.message);
+  if (faction && faction.nation_id && !faction.abandoned_at) {
     window.location.href = 'dashboard.html';
     return;
   }
 
+  // Check if user has an active corporation — only redirect if they're NOT
+  // explicitly trying to found a party (pending_faction_type === 'party')
+  const pendingType = sessionStorage.getItem('pending_faction_type');
+  if (pendingType !== 'party') {
+    const { data: corpFaction, error: corpErr } = await _supabase
+      .from('factions').select('id, nation_id, abandoned_at')
+      .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+      .eq('faction_type', 'corporation')
+      .is('abandoned_at', null)
+      .maybeSingle();
+    if (corpErr) console.warn('Corp check failed:', corpErr.message);
+    if (corpFaction && corpFaction.nation_id) {
+      window.location.href = 'corp-dashboard.html';
+      return;
+    }
+  }
+
   // Load pending nation from sessionStorage (set by select-nation.html)
   const raw = sessionStorage.getItem('nationhood_pending_nation');
-  if (!raw) {
-    window.location.href = 'select-nation.html';
+  if (!raw || !JSON.parse(raw).id) {
+    // No nation selected yet — show faction type chooser first
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('faction-chooser').style.display = 'flex';
     return;
   }
   nationData = JSON.parse(raw);
-  if (!nationData.id) {
-    window.location.href = 'select-nation.html';
-    return;
-  }
 
   renderAxes();
   document.getElementById('loading').style.display = 'none';
@@ -438,11 +490,83 @@ function goBack() {
   window.location.href = 'select-nation.html';
 }
 
+function chooseFactionType(type) {
+  if (type === 'corporation') {
+    sessionStorage.setItem('pending_faction_type', 'corp');
+    window.location.href = 'corp-setup.html';
+  } else {
+    sessionStorage.setItem('pending_faction_type', 'party');
+    // Party flow: pick nation, then ideology
+    window.location.href = 'select-nation.html';
+  }
+}
+
+let selectedFaction = null;
+
+function selectFactionOption(type) {
+  selectedFaction = type;
+  const optParty = document.getElementById('opt-party');
+  const optCorp = document.getElementById('opt-corp');
+  const corpCodeGroup = document.getElementById('corp-code-group');
+  const corpCodeError = document.getElementById('corp-code-error');
+  const confirmBtn = document.getElementById('btn-confirm-faction');
+
+  // Reset both
+  optParty.classList.remove('fs-selected');
+  optParty.style.borderColor = 'var(--border-0)';
+  optCorp.classList.remove('fs-selected');
+  optCorp.style.borderColor = 'var(--border-0)';
+  corpCodeError.style.display = 'none';
+
+  if (type === 'party') {
+    optParty.classList.add('fs-selected');
+    optParty.style.borderColor = 'var(--blue-border)';
+    corpCodeGroup.style.display = 'none';
+  } else if (type === 'corporation') {
+    optCorp.classList.add('fs-selected');
+    optCorp.style.borderColor = 'var(--green-border)';
+    corpCodeGroup.style.display = 'block';
+  }
+
+  // Enable confirm button
+  confirmBtn.disabled = false;
+  confirmBtn.style.cursor = 'pointer';
+  confirmBtn.style.background = 'var(--green-faint)';
+  confirmBtn.style.color = 'var(--green)';
+  confirmBtn.style.borderColor = 'var(--green-border)';
+}
+
+function confirmFactionChoice() {
+  if (!selectedFaction) return;
+
+  if (selectedFaction === 'corporation') {
+    const codeInput = document.getElementById('corp-code-input');
+    const corpCodeError = document.getElementById('corp-code-error');
+    if (codeInput.value.trim().toUpperCase() !== 'CORPO22') {
+      corpCodeError.textContent = 'Invalid access code.';
+      corpCodeError.style.display = 'block';
+      return;
+    }
+    corpCodeError.style.display = 'none';
+  }
+
+  chooseFactionType(selectedFaction);
+}
+
 init();
 
 window.toggleIdeo = toggleIdeo;
 window.proceed = proceed;
 window.goBack = goBack;
+window.chooseFactionType = chooseFactionType;
+window.selectFactionOption = selectFactionOption;
+window.confirmFactionChoice = confirmFactionChoice;
+
+async function logoutUser() {
+    await _supabase.auth.signOut();
+    window.location.href = 'login.html';
+}
+window.logoutUser = logoutUser;
 </script>
 </body>
 </html>
