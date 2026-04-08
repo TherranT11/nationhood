@@ -8947,7 +8947,10 @@ async function enactBill(supabase, bill, currentTick) {
                     policy_id: policy.id,
                     passed_tick: currentTick,
                     proposed_by: bill.proposed_by,
-                    effects_applied_through_tick: currentTick - 1
+                    effects_applied_through_tick: currentTick - 1,
+                    // Clear reversal flags — this is a fresh enactment, not a reversal
+                    is_reversal: false,
+                    reversal_effects: null
                 };
             // Stamp entrenchment from bill
             if (bill.entrenchment_tier) {
