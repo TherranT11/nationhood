@@ -21730,20 +21730,10 @@ async function rebalanceVacantSeats(supabase, nation) {
 
     console.log(`[rebalanceVacantSeats] ${nation.name}: ${vacantSeats} vacant seat(s) detected (${currentSum}/${totalSeats}). Redistributing.`);
 
-    // All factions at 0 seats — distribute evenly
+    // All factions at 0 seats — no election has occurred yet, don't distribute.
+    // Seats will be assigned when the first election completes.
     if (currentSum === 0) {
-        const perParty = Math.floor(totalSeats / factions.length);
-        let remainder = totalSeats - perParty * factions.length;
-        const updates = [];
-        for (const f of factions) {
-            const newSeats = perParty + (remainder > 0 ? 1 : 0);
-            if (remainder > 0) remainder--;
-            updates.push({ id: f.id, name: f.faction_name, oldSeats: f.seats || 0, newSeats });
-        }
-        for (const u of updates) {
-            await supabase.from('factions').update({ seats: u.newSeats }).eq('id', u.id);
-        }
-        return { nation: nation.name, vacantSeats, updates };
+        return null;
     }
 
     // Standard Largest Remainder: allocate totalSeats proportionally by current seat share
