@@ -7268,9 +7268,13 @@ function renderPriceTermsEditor() {
 }
 
 function togglePriceModifier() {
-    const priceType = document.querySelector('input[name="price-type"]:checked')?.value;
+    const checked = document.querySelector('input[name="price-type"]:checked');
+    const priceType = checked?.value;
     const field = document.getElementById('price-modifier-field');
     if (field) field.style.display = (priceType === 'discounted' || priceType === 'premium') ? 'block' : 'none';
+    // Update visual selection on radio cards
+    document.querySelectorAll('.trade-radio-option').forEach(el => el.classList.remove('selected'));
+    if (checked) checked.closest('.trade-radio-option')?.classList.add('selected');
 }
 
 // ── Breach Penalty Editor ──
