@@ -5176,12 +5176,14 @@ async function detectHeadFaction(supabase, nationId, allParties, allPartySeats, 
 
 // ==================== COALITION FETCHING ====================
 
+// Per-tick coalition cache — avoids re-querying the same coalition 3+ times per nation.
+// Cleared per-nation at the start of the main loop. Invalidated after elections/government changes.
+const _coalitionCache = new Map();
+function invalidateCoalitionCache(nationId) { _coalitionCache.delete(nationId); }
+
 async function fetchActiveCoalition(supabase, nationId) {
-    const cacheKey = 'coalition_' + nationId;
-    if (typeof qCache === 'function') {
-        const cached = qCache(cacheKey);
-        if (cached) return cached;
-    }
+    if (_coalitionCache.has(nationId)) return _coalitionCache.get(nationId);
+
 
     // === PRESIDENTIAL SYSTEMS: return virtual coalition from active president ===
     const { data: nationRow } = await supabase
@@ -5228,7 +5230,7 @@ async function fetchActiveCoalition(supabase, nationId) {
             status: 'formed',  // Always 'formed' while president is active
             _source: 'presidential'
         };
-        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 15 * 1000);
+        _coalitionCache.set(nationId, result);
         return result;
     }
 
@@ -5295,7 +5297,7 @@ async function fetchActiveCoalition(supabase, nationId) {
             } catch (e) { console.warn('Coalition table reconciliation failed:', e); }
         }
 
-        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 15 * 1000);
+        _coalitionCache.set(nationId, result);
         return result;
     }
 
@@ -5310,7 +5312,9 @@ async function fetchActiveCoalition(supabase, nationId) {
 
     if (data) {
         await inferCaretakerStatus(data);
-        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 15 * 1000);
+        _coalitionCache.set(nationId, data);
+    } else {
+        _coalitionCache.set(nationId, null); // Cache null too — avoids re-querying for no-coalition nations
     }
     return data;
 }
@@ -31901,6 +31905,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
       try {
         // Set correct seat count for this nation (affects supermajority thresholds, etc.)
         initGameConfigForNation(nation);
+        invalidateCoalitionCache(nation.id); // Fresh coalition lookup for each nation
 
         // Stat effects (from passed bills/active laws)
         try {
@@ -32073,6 +32078,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         try {
             const electionResults = await processElections(supabase, nation, newTick);
             if (electionResults.length > 0) {
+                invalidateCoalitionCache(nation.id); // Elections may change coalition
                 summary.elections = summary.elections || [];
                 summary.elections.push({ nation: nation.name, elections: electionResults });
             }
@@ -32507,6 +32513,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 summary.collapses = summary.collapses || [];
                 summary.collapses.push({ nation: nation.name, ...collapseResult });
                 if (collapseResult.collapsed) {
+                    invalidateCoalitionCache(nation.id); // Government dissolved
                     console.log(`[advanceTick] Government COLLAPSED in ${nation.name} — snap election called`);
                 }
             }
