@@ -2970,7 +2970,7 @@ const PM_SEV_COLORS = {
 
 let pmState = null; // { project, bid, tab, expandedEvent, selectedResponse, events }
 
-function openProjectModal(projectId) {
+async function openProjectModal(projectId) {
     const project = activeProjects.find(p => p.id === projectId);
     if (!project) return;
 
@@ -2985,29 +2985,63 @@ function openProjectModal(projectId) {
     let phaseIdx = Math.min(PM_PHASES.length - 1, Math.floor(progressPct / (100 / PM_PHASES.length)));
     const phaseProgress = Math.round((progressPct % (100 / PM_PHASES.length)) / (100 / PM_PHASES.length) * 100);
 
-    // Build materials from contract required_materials + bid material_grades
+    // Build materials from contract required_materials + real allocations from DB
     const reqMats = project.required_materials || {};
     const bidGrades = bid?.material_grades || {};
+
+    // Load real allocations for this project
+    let projectAllocations = [];
+    try {
+        const { data: allocData } = await _supabase
+            .from('project_material_allocations')
+            .select('material_key, quality_tier, quantity, consumed')
+            .eq('contract_id', project.id);
+        projectAllocations = allocData || [];
+    } catch (e) { /* non-fatal */ }
+
+    // Build allocation lookup: { materialKey: { totalAllocated, totalConsumed, tiers: { STD: {qty,consumed}, ... } } }
+    const allocLookup = {};
+    for (const a of projectAllocations) {
+        if (!allocLookup[a.material_key]) allocLookup[a.material_key] = { totalAllocated: 0, totalConsumed: 0, tiers: {} };
+        allocLookup[a.material_key].totalAllocated += a.quantity;
+        allocLookup[a.material_key].totalConsumed += a.consumed;
+        allocLookup[a.material_key].tiers[a.quality_tier] = { qty: a.quantity, consumed: a.consumed };
+    }
+
     const materials = Object.entries(reqMats).map(([key, qty]) => {
-        const grade = bidGrades[key] || 'STANDARD';
-        const consumed = Math.round(qty * (progressPct / 100) * (0.6 + Math.random() * 0.4));
+        const grade = bidGrades[key] || 'STD';
+        const alloc = allocLookup[key] || { totalAllocated: 0, totalConsumed: 0, tiers: {} };
         return {
             key,
             name: key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
             grade,
-            allocated: qty,
-            used: Math.min(consumed, qty),
+            required: Number(qty),
+            allocated: alloc.totalAllocated,
+            consumed: alloc.totalConsumed,
+            tiers: alloc.tiers,
+            warehouseStock: warehouseData[key] || {},
         };
     });
 
-    // Build equipment from contract required_equipment
+    // Build equipment from contract required_equipment + real corp_equipment data
     const reqEquip = project.required_equipment || [];
-    const equipment = reqEquip.map(eqKey => ({
-        key: eqKey,
-        name: eqKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-        qty: 1 + Math.floor(Math.random() * 3),
-        condition: 55 + Math.floor(Math.random() * 40),
-    }));
+    const equipCondition = project.equipment_condition || {};
+    const equipment = reqEquip.map(eqKey => {
+        const owned = equipmentData.find(e => e.equipment_key === eqKey);
+        // Check if this equipment is assigned to THIS project
+        const assignments = owned?.assigned_projects || [];
+        const thisAssignment = assignments.find(a => a.contract_id === project.id);
+        const assignedUnits = thisAssignment ? thisAssignment.units : 0;
+        return {
+            key: eqKey,
+            name: eqKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+            ownedTotal: owned?.owned || 0,
+            deployed: owned?.deployed || 0,
+            available: Math.max(0, (owned?.owned || 0) - (owned?.deployed || 0)),
+            assignedToProject: assignedUnits,
+            condition: equipCondition[eqKey] ?? (owned?.condition || 100),
+        };
+    });
 
     // Build budget/spend data
     const budget = project.budget_ceiling || 0;
@@ -3016,10 +3050,17 @@ function openProjectModal(projectId) {
     const quality = bid?.estimated_quality || 65;
     const qualityLabel = quality >= 80 ? 'STRONG' : quality >= 60 ? 'PROMISING' : quality >= 40 ? 'FAIR' : 'UNCERTAIN';
 
-    // Workforce from contract
+    // Workforce from contract + actual assignments
     const reqWf = project.required_workforce || {};
-    const wfNeeded = (reqWf.general || 0) + (reqWf.skilled || 0);
+    const assignedWf = project.workers_assigned || {};
+    const wfNeeded = (reqWf.general || 0) + (reqWf.skilled || 0) + (reqWf.innovative || 0);
+    const wfAssigned = (assignedWf.general || 0) + (assignedWf.skilled || 0) + (assignedWf.innovative || 0);
     const laborCount = bid?.labor_count || wfNeeded;
+
+    // Corp's available workforce
+    const corpGeneral = Number(faction?.corp_general_workforce ?? 0);
+    const corpSkilled = Number(faction?.corp_skilled_workforce ?? 0);
+    const corpInnovative = Number(faction?.corp_innovative_workforce ?? 0);
 
     pmState = {
         project,
@@ -3043,6 +3084,12 @@ function openProjectModal(projectId) {
         qualityLabel,
         laborCount,
         wfNeeded,
+        wfAssigned,
+        reqWf,
+        assignedWf,
+        corpGeneral,
+        corpSkilled,
+        corpInnovative,
         events: [],
     };
 
@@ -3052,6 +3099,167 @@ function openProjectModal(projectId) {
     // Load events from DB
     loadProjectEvents(project.id).then(() => renderProjectModal());
     renderProjectModal();
+}
+
+let _pmAllocLock = false;
+
+async function pmAllocateMaterial(materialKey, qualityTier, qty) {
+    if (_pmAllocLock || !pmState || !faction) return;
+    _pmAllocLock = true;
+    try {
+        const { data, error } = await _supabase.rpc('allocate_material_to_project', {
+            p_contract_id: pmState.project.id,
+            p_faction_id: faction.id,
+            p_material_key: materialKey,
+            p_quality_tier: qualityTier,
+            p_quantity: qty
+        });
+        if (error) { alert('Allocation failed: ' + error.message); return; }
+        if (data && !data.success) { alert(data.error || 'Allocation failed'); return; }
+        // Refresh warehouse + reopen modal to show updated state
+        await loadWarehouse();
+        await openProjectModal(pmState.project.id);
+    } catch (e) {
+        alert('Allocation error: ' + e.message);
+    } finally {
+        _pmAllocLock = false;
+    }
+}
+
+async function pmDeallocateMaterial(materialKey, qualityTier, qty) {
+    if (_pmAllocLock || !pmState || !faction) return;
+    _pmAllocLock = true;
+    try {
+        const { data, error } = await _supabase.rpc('deallocate_material_from_project', {
+            p_contract_id: pmState.project.id,
+            p_faction_id: faction.id,
+            p_material_key: materialKey,
+            p_quality_tier: qualityTier,
+            p_quantity: qty
+        });
+        if (error) { alert('Return failed: ' + error.message); return; }
+        if (data && !data.success) { alert(data.error || 'Return failed'); return; }
+        await loadWarehouse();
+        await openProjectModal(pmState.project.id);
+    } catch (e) {
+        alert('Return error: ' + e.message);
+    } finally {
+        _pmAllocLock = false;
+    }
+}
+
+async function pmAssignWorkers(workerType, qty) {
+    if (_pmAllocLock || !pmState || !faction) return;
+    _pmAllocLock = true;
+    try {
+        const project = pmState.project;
+        const current = project.workers_assigned || {};
+        const currentCount = Number(current[workerType] || 0);
+        const required = Number((project.required_workforce || {})[workerType] || 0);
+        const canAssign = Math.min(qty, required - currentCount);
+        if (canAssign <= 0) { alert('Already fully staffed for ' + workerType); return; }
+
+        const updated = { ...current, [workerType]: currentCount + canAssign };
+        const { error } = await _supabase.from('construction_contracts')
+            .update({ workers_assigned: updated })
+            .eq('id', project.id);
+        if (error) { alert('Assign failed: ' + error.message); return; }
+
+        await openProjectModal(project.id);
+    } catch (e) {
+        alert('Assign error: ' + e.message);
+    } finally {
+        _pmAllocLock = false;
+    }
+}
+
+async function pmUnassignWorkers(workerType, qty) {
+    if (_pmAllocLock || !pmState || !faction) return;
+    _pmAllocLock = true;
+    try {
+        const project = pmState.project;
+        const current = project.workers_assigned || {};
+        const currentCount = Number(current[workerType] || 0);
+        const toRemove = Math.min(qty, currentCount);
+        if (toRemove <= 0) { alert('No ' + workerType + ' assigned'); return; }
+
+        const updated = { ...current, [workerType]: currentCount - toRemove };
+        const { error } = await _supabase.from('construction_contracts')
+            .update({ workers_assigned: updated })
+            .eq('id', project.id);
+        if (error) { alert('Unassign failed: ' + error.message); return; }
+
+        await openProjectModal(project.id);
+    } catch (e) {
+        alert('Unassign error: ' + e.message);
+    } finally {
+        _pmAllocLock = false;
+    }
+}
+
+async function pmDeployEquipment(equipmentKey, units) {
+    if (_pmAllocLock || !pmState || !faction) return;
+    _pmAllocLock = true;
+    try {
+        const eqRow = equipmentData.find(e => e.equipment_key === equipmentKey);
+        if (!eqRow) { alert('Equipment not found in inventory.'); return; }
+        const available = Math.max(0, (eqRow.owned || 0) - (eqRow.deployed || 0));
+        if (available < units) { alert('Not enough available ' + equipmentKey + ' (' + available + ' available).'); return; }
+
+        // Update deployed count
+        const newDeployed = (eqRow.deployed || 0) + units;
+        // Add to assigned_projects JSONB
+        const assignments = [...(eqRow.assigned_projects || [])];
+        const existing = assignments.find(a => a.contract_id === pmState.project.id);
+        if (existing) {
+            existing.units += units;
+        } else {
+            assignments.push({ contract_id: pmState.project.id, contract_name: pmState.project.name, units });
+        }
+
+        const { error } = await _supabase.from('corp_equipment')
+            .update({ deployed: newDeployed, assigned_projects: assignments })
+            .eq('faction_id', faction.id)
+            .eq('equipment_key', equipmentKey);
+        if (error) { alert('Deploy failed: ' + error.message); return; }
+
+        await loadEquipment();
+        await openProjectModal(pmState.project.id);
+    } catch (e) {
+        alert('Deploy error: ' + e.message);
+    } finally {
+        _pmAllocLock = false;
+    }
+}
+
+async function pmUndeployEquipment(equipmentKey) {
+    if (_pmAllocLock || !pmState || !faction) return;
+    _pmAllocLock = true;
+    try {
+        const eqRow = equipmentData.find(e => e.equipment_key === equipmentKey);
+        if (!eqRow) { alert('Equipment not found.'); return; }
+
+        const assignments = [...(eqRow.assigned_projects || [])];
+        const idx = assignments.findIndex(a => a.contract_id === pmState.project.id);
+        if (idx === -1) { alert('Equipment not deployed to this project.'); return; }
+
+        const unitsToReturn = assignments[idx].units;
+        assignments.splice(idx, 1);
+        const newDeployed = Math.max(0, (eqRow.deployed || 0) - unitsToReturn);
+
+        const { error } = await _supabase.from('corp_equipment')
+            .update({ deployed: newDeployed, assigned_projects: assignments })
+            .eq('faction_id', faction.id)
+            .eq('equipment_key', equipmentKey);
+        if (error) { alert('Undeploy failed: ' + error.message); return; }
+
+        await loadEquipment();
+        await openProjectModal(pmState.project.id);
+    } catch (e) {
+        alert('Undeploy error: ' + e.message);
+    } finally {
+        _pmAllocLock = false;
+    }
 }
 
 function closeProjectModal(event) {
@@ -3249,6 +3457,50 @@ function renderPmOverview(s, p, budgetColor, budgetPct, remaining, ticksRemainin
         html += '</div></div>';
     }
 
+    // Worker Assignment Section
+    html += '<div style="padding:0 16px"><div class="pm-section">';
+    html += '<div class="pm-section__title">Workforce Assignment</div>';
+
+    const wfTypes = [
+        { key: 'general', label: 'General Workers', corpAvail: s.corpGeneral, color: 'var(--text-primary)' },
+        { key: 'skilled', label: 'Skilled Workers', corpAvail: s.corpSkilled, color: 'var(--blue)' },
+        { key: 'innovative', label: 'Innovative Workers', corpAvail: s.corpInnovative, color: 'var(--purple)' },
+    ];
+
+    for (const wt of wfTypes) {
+        const required = Number(s.reqWf[wt.key] || 0);
+        if (required === 0) continue;
+        const assigned = Number(s.assignedWf[wt.key] || 0);
+        const isMet = assigned >= required;
+        const statusColor = isMet ? 'var(--green)' : assigned > 0 ? 'var(--amber)' : 'var(--red)';
+        const canAdd = wt.corpAvail > 0 && assigned < required;
+        const addQty = Math.min(wt.corpAvail, required - assigned);
+        const canRemove = assigned > 0;
+
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.72rem;">`;
+        html += `<div>`;
+        html += `<span style="color:${wt.color};font-weight:600;">${wt.label}</span>`;
+        html += `<span style="color:var(--text-dim);margin-left:8px;">Required: <strong>${required}</strong></span>`;
+        html += `<span style="color:${statusColor};margin-left:8px;font-weight:700;">${assigned} assigned</span>`;
+        html += `<span style="color:var(--text-dim);margin-left:8px;">Pool: ${wt.corpAvail}</span>`;
+        html += `</div>`;
+        html += `<div style="display:flex;gap:4px;">`;
+        if (canAdd) {
+            html += `<button onclick="pmAssignWorkers('${wt.key}',${addQty})" style="font-size:0.6rem;padding:2px 8px;border:1px solid var(--green);color:var(--green);background:rgba(92,184,92,0.08);border-radius:3px;cursor:pointer;">Assign ${addQty}</button>`;
+        }
+        if (canRemove) {
+            html += `<button onclick="pmUnassignWorkers('${wt.key}',${assigned})" style="font-size:0.6rem;padding:2px 8px;border:1px solid var(--orange);color:var(--orange);background:rgba(232,114,74,0.08);border-radius:3px;cursor:pointer;">Remove ${assigned}</button>`;
+        }
+        html += `</div></div>`;
+    }
+
+    const totalReq = Number(s.reqWf.general || 0) + Number(s.reqWf.skilled || 0) + Number(s.reqWf.innovative || 0);
+    const totalAssigned = Number(s.assignedWf.general || 0) + Number(s.assignedWf.skilled || 0) + Number(s.assignedWf.innovative || 0);
+    if (totalReq > 0 && totalAssigned < totalReq) {
+        html += `<div style="font-size:0.62rem;color:var(--red);margin-top:6px;font-family:var(--font-mono);">⚠ Project will STALL until workforce is fully assigned</div>`;
+    }
+    html += '</div></div>';
+
     return html;
 }
 
@@ -3358,56 +3610,117 @@ function renderPmEvents(s) {
 
 function renderPmMaterials(s) {
     if (s.materials.length === 0) {
-        return '<div class="pm-evt-empty">No materials allocated to this project.</div>';
+        return '<div class="pm-evt-empty">No materials required for this project.</div>';
     }
 
-    let html = '<div class="pm-tab-header">Allocated Materials</div>';
+    let html = '<div class="pm-tab-header">Project Materials</div>';
     for (const mat of s.materials) {
-        const usedPct = mat.allocated > 0 ? Math.round((mat.used / mat.allocated) * 100) : 0;
-        const gradeClass = mat.grade === 'HIGH' ? 'high' : mat.grade === 'LOW' ? 'low' : 'std';
-        const gradeColor = mat.grade === 'HIGH' ? 'var(--green)' : mat.grade === 'LOW' ? 'var(--orange)' : 'var(--amber)';
+        const allocPct = mat.required > 0 ? Math.round((mat.allocated / mat.required) * 100) : 0;
+        const consumedPct = mat.allocated > 0 ? Math.round((mat.consumed / mat.allocated) * 100) : 0;
+        const isFull = mat.allocated >= mat.required;
+        const statusColor = isFull ? 'var(--green)' : mat.allocated > 0 ? 'var(--amber)' : 'var(--red)';
+        const statusText = isFull ? 'FULLY ALLOCATED' : mat.allocated > 0 ? 'PARTIAL' : 'NONE ALLOCATED';
 
-        html += `<div class="pm-mat">
-            <div class="pm-mat__row1">
-                <div class="pm-mat__left">
-                    <span class="pm-mat__name">${escapeHtml(mat.name)}</span>
-                    <div class="pm-mat__grade-dot pm-mat__grade-dot--${gradeClass}"></div>
-                    <span class="pm-mat__grade" style="color:${gradeColor}">${mat.grade}</span>
-                </div>
-                <span class="pm-mat__qty">${mat.used.toLocaleString()} / ${mat.allocated.toLocaleString()}</span>
+        html += `<div class="pm-mat" style="margin-bottom:14px;">`;
+
+        // Row 1: Material name + status
+        html += `<div class="pm-mat__row1">
+            <div class="pm-mat__left">
+                <span class="pm-mat__name">${escapeHtml(mat.name)}</span>
             </div>
-            <div class="pm-mat__bar-row">
-                <div class="pm-mat__bar"><div class="pm-mat__bar-fill" style="width:${usedPct}%"></div></div>
-                <span class="pm-mat__pct">${usedPct}% consumed</span>
-            </div>
+            <span style="font-family:var(--font-mono);font-size:0.65rem;font-weight:700;color:${statusColor};">${mat.allocated} / ${mat.required} allocated · ${statusText}</span>
         </div>`;
+
+        // Progress bar: allocated vs required
+        html += `<div class="pm-mat__bar-row">
+            <div class="pm-mat__bar"><div class="pm-mat__bar-fill" style="width:${allocPct}%;background:${statusColor};"></div></div>
+            <span class="pm-mat__pct">${mat.consumed} consumed</span>
+        </div>`;
+
+        // Warehouse stock + allocation controls per tier
+        const tiers = ['STD', 'LOW', 'HIGH'];
+        const remaining = mat.required - mat.allocated;
+        for (const tier of tiers) {
+            const wh = mat.warehouseStock[tier] || { qty: 0 };
+            const tierAlloc = mat.tiers[tier] || { qty: 0, consumed: 0 };
+            const tierReturnable = tierAlloc.qty - tierAlloc.consumed;
+
+            // Skip tiers with nothing relevant
+            if (wh.qty === 0 && tierAlloc.qty === 0) continue;
+
+            const tierColor = tier === 'HIGH' ? 'var(--green)' : tier === 'LOW' ? 'var(--orange)' : 'var(--text-muted)';
+            const tierLabel = tier === 'HIGH' ? 'HIGH' : tier === 'LOW' ? 'LOW' : 'STD';
+
+            html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.7rem;">`;
+            html += `<div style="display:flex;align-items:center;gap:6px;">`;
+            html += `<span style="font-family:var(--font-mono);font-size:0.6rem;font-weight:700;color:${tierColor};width:32px;">${tierLabel}</span>`;
+            html += `<span style="color:var(--text-dim);">Warehouse: <strong style="color:var(--text-primary);">${wh.qty}</strong></span>`;
+            if (tierAlloc.qty > 0) {
+                html += `<span style="color:var(--text-dim);margin-left:8px;">Allocated: <strong style="color:var(--text-primary);">${tierAlloc.qty}</strong></span>`;
+            }
+            html += `</div>`;
+
+            // Action buttons
+            html += `<div style="display:flex;gap:4px;">`;
+            if (wh.qty > 0 && remaining > 0) {
+                const allocQty = Math.min(wh.qty, remaining);
+                html += `<button class="pm-alloc-btn" onclick="pmAllocateMaterial('${mat.key}','${tier}',${allocQty})" style="font-size:0.6rem;padding:2px 8px;border:1px solid var(--green);color:var(--green);background:rgba(92,184,92,0.08);border-radius:3px;cursor:pointer;">Allocate ${allocQty}</button>`;
+            }
+            if (tierReturnable > 0) {
+                html += `<button class="pm-alloc-btn" onclick="pmDeallocateMaterial('${mat.key}','${tier}',${tierReturnable})" style="font-size:0.6rem;padding:2px 8px;border:1px solid var(--orange);color:var(--orange);background:rgba(232,114,74,0.08);border-radius:3px;cursor:pointer;">Return ${tierReturnable}</button>`;
+            }
+            html += `</div></div>`;
+        }
+
+        html += `</div>`;
     }
     return html;
 }
 
 function renderPmEquipment(s) {
     if (s.equipment.length === 0) {
-        return '<div class="pm-evt-empty">No equipment deployed to this project.</div>';
+        return '<div class="pm-evt-empty">No equipment required for this project.</div>';
     }
 
-    let html = '<div class="pm-tab-header">Deployed Equipment</div>';
+    let html = '<div class="pm-tab-header">Project Equipment</div>';
     for (const eq of s.equipment) {
         const cc = eq.condition >= 75 ? 'var(--green)' : eq.condition >= 50 ? 'var(--amber)' : eq.condition >= 25 ? 'var(--orange)' : 'var(--red)';
-        const showWear = eq.condition < 60;
+        const isAssigned = eq.assignedToProject > 0;
+        const statusColor = isAssigned ? 'var(--green)' : eq.ownedTotal > 0 ? 'var(--amber)' : 'var(--red)';
+        const statusText = isAssigned ? 'DEPLOYED' : eq.ownedTotal > 0 ? 'NOT DEPLOYED' : 'NOT OWNED';
 
-        html += `<div class="pm-eq">
+        html += `<div class="pm-eq" style="margin-bottom:12px;">
             <div class="pm-eq__info">
                 <div class="pm-eq__left">
                     <span class="pm-eq__name">${escapeHtml(eq.name)}</span>
-                    <span class="pm-eq__qty">×${eq.qty}</span>
-                    ${showWear ? '<span class="pm-eq__wear">WEAR</span>' : ''}
+                    <span style="font-family:var(--font-mono);font-size:0.6rem;font-weight:700;color:${statusColor};margin-left:8px;">${statusText}</span>
                 </div>
-            </div>
-            <div class="pm-eq__cond">
+            </div>`;
+
+        // Condition bar (only if assigned)
+        if (isAssigned) {
+            html += `<div class="pm-eq__cond">
                 <div class="pm-eq__cond-bar"><div class="pm-eq__cond-fill" style="width:${eq.condition}%;background:${cc}"></div></div>
                 <span class="pm-eq__cond-val" style="color:${cc}">${eq.condition}%</span>
-            </div>
-        </div>`;
+            </div>`;
+        }
+
+        // Assignment info + controls
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;font-size:0.7rem;">`;
+        html += `<span style="color:var(--text-dim);">Owned: <strong style="color:var(--text-primary);">${eq.ownedTotal}</strong>`;
+        html += ` · Deployed: <strong style="color:var(--text-primary);">${eq.deployed}</strong>`;
+        html += ` · Available: <strong style="color:var(--text-primary);">${eq.available}</strong></span>`;
+
+        html += `<div style="display:flex;gap:4px;">`;
+        if (!isAssigned && eq.available > 0) {
+            html += `<button onclick="pmDeployEquipment('${eq.key}',1)" style="font-size:0.6rem;padding:2px 8px;border:1px solid var(--green);color:var(--green);background:rgba(92,184,92,0.08);border-radius:3px;cursor:pointer;">Deploy</button>`;
+        }
+        if (isAssigned) {
+            html += `<button onclick="pmUndeployEquipment('${eq.key}')" style="font-size:0.6rem;padding:2px 8px;border:1px solid var(--orange);color:var(--orange);background:rgba(232,114,74,0.08);border-radius:3px;cursor:pointer;">Undeploy</button>`;
+        }
+        html += `</div></div>`;
+
+        html += `</div>`;
     }
     return html;
 }
@@ -3423,6 +3736,12 @@ window.closeProjectModal = closeProjectModal;
 window.pmSetTab = pmSetTab;
 window.pmToggleEvent = pmToggleEvent;
 window.pmSelectResponse = pmSelectResponse;
+window.pmAllocateMaterial = pmAllocateMaterial;
+window.pmDeallocateMaterial = pmDeallocateMaterial;
+window.pmDeployEquipment = pmDeployEquipment;
+window.pmUndeployEquipment = pmUndeployEquipment;
+window.pmAssignWorkers = pmAssignWorkers;
+window.pmUnassignWorkers = pmUnassignWorkers;
 
 async function loadProjectEvents(contractId) {
     if (!pmState) return;

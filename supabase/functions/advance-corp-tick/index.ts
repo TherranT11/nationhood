@@ -918,7 +918,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
     // 2. Process in_progress contracts
     const { data: activeContracts } = await supabase
         .from('construction_contracts')
-        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks, current_phase, sector, required_materials, required_equipment, materials_consumed, equipment_condition')
+        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks, current_phase, sector, required_materials, required_equipment, required_workforce, materials_consumed, equipment_condition, workers_assigned')
         .eq('nation_id', nationId)
         .eq('status', 'in_progress');
 
@@ -942,38 +942,28 @@ async function processActiveProjects(supabase, nationId, currentTick) {
     const bidMap = {};
     for (const b of allBids) bidMap[b.contract_id] = b;
 
-    // 4. Sum workforce needs per faction across all active projects
-    //    Workforce composition: General 80%, Skilled 15%, Innovative 5%
-    const factionNeeds = {};
-    for (const contract of activeContracts) {
-        const bid = bidMap[contract.id];
-        if (!bid) continue;
-        const labor = bid.labor_count || 0;
-        if (!factionNeeds[bid.faction_id]) factionNeeds[bid.faction_id] = { general: 0, skilled: 0, innovative: 0 };
-        factionNeeds[bid.faction_id].general += Math.ceil(labor * 0.80);
-        factionNeeds[bid.faction_id].skilled += Math.ceil(labor * 0.15);
-        factionNeeds[bid.faction_id].innovative += Math.ceil(labor * 0.05);
+    // 4. Per-project worker staffing check (uses workers_assigned JSONB on each contract)
+    //    Old system checked pooled faction workforce — new system requires manual assignment.
+
+    // 6. Load material allocations for all active contracts (one batch query)
+    let allAllocations = [];
+    if (contractIds.length > 0) {
+        const allocQuery = contractIds.length === 1
+            ? supabase.from('project_material_allocations').select('contract_id, material_key, quality_tier, quantity, consumed').eq('contract_id', contractIds[0])
+            : supabase.from('project_material_allocations').select('contract_id, material_key, quality_tier, quantity, consumed').in('contract_id', contractIds);
+        const { data: allocData } = await allocQuery;
+        allAllocations = allocData || [];
+    }
+    // Build allocation map: contractId → { materialKey → { totalAllocated, totalConsumed } }
+    const allocMap = {};
+    for (const a of allAllocations) {
+        if (!allocMap[a.contract_id]) allocMap[a.contract_id] = {};
+        if (!allocMap[a.contract_id][a.material_key]) allocMap[a.contract_id][a.material_key] = { allocated: 0, consumed: 0 };
+        allocMap[a.contract_id][a.material_key].allocated += a.quantity;
+        allocMap[a.contract_id][a.material_key].consumed += a.consumed;
     }
 
-    // 5. Fetch each faction's workforce and determine if they can staff all projects
-    const factionStaffed = {};
-    for (const fId of Object.keys(factionNeeds)) {
-        const { data: corp } = await supabase.from('factions')
-            .select('corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
-            .eq('id', fId).single();
-        const has = {
-            general: Number(corp?.corp_general_workforce ?? 0),
-            skilled: Number(corp?.corp_skilled_workforce ?? 0),
-            innovative: Number(corp?.corp_innovative_workforce ?? 0),
-        };
-        const need = factionNeeds[fId];
-        factionStaffed[fId] = has.general >= need.general && has.skilled >= need.skilled && has.innovative >= need.innovative;
-        if (!factionStaffed[fId]) {
-            console.log(`[Projects] Faction ${fId} understaffed: need G${need.general}/S${need.skilled}/I${need.innovative}, have G${has.general}/S${has.skilled}/I${has.innovative}`);
-        }
-    }
-
-    // 6. Process each contract
+    // 7. Process each contract
     const results = [];
 
     for (const contract of activeContracts) {
@@ -986,13 +976,48 @@ async function processActiveProjects(supabase, nationId, currentTick) {
         const stalledTicks = contract.stalled_ticks || 0;
         const effectiveProgress = ticksElapsed - stalledTicks;
 
-        // Workforce gate: if faction can't staff all its projects, this one stalls
-        if (!factionStaffed[bid.faction_id]) {
+        // Workforce gate: check per-project workers_assigned vs required_workforce
+        const reqWf = contract.required_workforce || {};
+        const assignedWf = contract.workers_assigned || {};
+        const wfReqGeneral = Number(reqWf.general || 0);
+        const wfReqSkilled = Number(reqWf.skilled || 0);
+        const wfReqInnovative = Number(reqWf.innovative || 0);
+        const wfHasGeneral = Number(assignedWf.general || 0);
+        const wfHasSkilled = Number(assignedWf.skilled || 0);
+        const wfHasInnovative = Number(assignedWf.innovative || 0);
+        const workersStaffed = wfHasGeneral >= wfReqGeneral && wfHasSkilled >= wfReqSkilled && wfHasInnovative >= wfReqInnovative;
+        if (!workersStaffed) {
             await supabase.from('construction_contracts')
                 .update({ stalled_ticks: stalledTicks + 1 })
                 .eq('id', contract.id);
-            console.log(`[Projects] ${contract.name}: STALLED (tick ${currentTick}, stalled ${stalledTicks + 1} total)`);
-            // No cost deduction — no work done this tick
+            console.log(`[Projects] ${contract.name}: STALLED — understaffed (need G${wfReqGeneral}/S${wfReqSkilled}/I${wfReqInnovative}, assigned G${wfHasGeneral}/S${wfHasSkilled}/I${wfHasInnovative})`);
+            continue;
+        }
+
+        // Material gate: check if allocated materials meet requirements for next tick of progress
+        const reqMaterials = contract.required_materials || {};
+        const contractAllocs = allocMap[contract.id] || {};
+        const matKeys = Object.keys(reqMaterials);
+        let materialsReady = true;
+        if (matKeys.length > 0) {
+            // Calculate how many units should be consumed by next tick
+            const nextProgressPct = Math.min(1, (effectiveProgress + 1) / totalTicks);
+            for (const mat of matKeys) {
+                const required = Number(reqMaterials[mat]) || 0;
+                const neededByNextTick = Math.min(required, Math.floor(required * nextProgressPct));
+                const alloc = contractAllocs[mat];
+                const totalAllocated = alloc ? alloc.allocated : 0;
+                if (totalAllocated < neededByNextTick) {
+                    materialsReady = false;
+                    break;
+                }
+            }
+        }
+        if (!materialsReady) {
+            await supabase.from('construction_contracts')
+                .update({ stalled_ticks: stalledTicks + 1 })
+                .eq('id', contract.id);
+            console.log(`[Projects] ${contract.name}: STALLED — insufficient materials allocated (tick ${currentTick}, stalled ${stalledTicks + 1} total)`);
             continue;
         }
 
@@ -1023,14 +1048,42 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             console.log(`[Projects] ${contract.name}: phase → ${newPhase} (${Math.round(progressPct * 100)}%)`);
         }
 
-        // Material consumption: proportional to progress
-        const reqMaterials = contract.required_materials || {};
+        // Material consumption: consume from allocations proportional to progress.
+        // Each tick, calculate how many units SHOULD be consumed by this point,
+        // then mark the delta as newly consumed in project_material_allocations.
         const prevConsumed = contract.materials_consumed || {};
         const newConsumed = {};
         for (const [mat, total] of Object.entries(reqMaterials)) {
-            newConsumed[mat] = Math.min(Number(total), Math.floor(Number(total) * progressPct));
+            const targetConsumed = Math.min(Number(total), Math.floor(Number(total) * progressPct));
+            const prevMatConsumed = Number(prevConsumed[mat] || 0);
+            const delta = targetConsumed - prevMatConsumed;
+            newConsumed[mat] = targetConsumed;
+
+            // Update allocation consumed counts if delta > 0
+            if (delta > 0) {
+                // Distribute consumption across quality tiers (consume STD first, then LOW, then HIGH)
+                const tierOrder = ['STD', 'LOW', 'HIGH'];
+                let remaining = delta;
+                for (const tier of tierOrder) {
+                    if (remaining <= 0) break;
+                    const allocRows = allAllocations.filter(a =>
+                        a.contract_id === contract.id && a.material_key === mat && a.quality_tier === tier);
+                    for (const row of allocRows) {
+                        if (remaining <= 0) break;
+                        const available = row.quantity - row.consumed;
+                        if (available <= 0) continue;
+                        const consume = Math.min(remaining, available);
+                        await supabase.from('project_material_allocations')
+                            .update({ consumed: row.consumed + consume })
+                            .eq('contract_id', contract.id)
+                            .eq('material_key', mat)
+                            .eq('quality_tier', tier);
+                        row.consumed += consume; // update in-memory too
+                        remaining -= consume;
+                    }
+                }
+            }
         }
-        // Only update if changed
         if (JSON.stringify(newConsumed) !== JSON.stringify(prevConsumed)) {
             tickUpdates.materials_consumed = newConsumed;
         }
@@ -1410,11 +1463,22 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
         const generalCount = Number(corp.corp_general_workforce ?? 0);
         const skilledCount = Number(corp.corp_skilled_workforce ?? 0);
         const innovativeCount = Number(corp.corp_innovative_workforce ?? 0);
+        const totalEmployees = generalCount + skilledCount + innovativeCount;
         const annualWages = (generalCount * calcWage(GENERAL_MULT))
                           + (skilledCount * calcWage(SKILLED_MULT))
                           + (innovativeCount * calcWage(INNOVATIVE_MULT));
         const monthlyWages = Math.round(annualWages / 12);
-        const monthlyIncome = monthlyMarketRev - monthlyWages;
+
+        // Scale market revenue by workforce utilization — 0 employees = 0 revenue
+        const WORKFORCE_TARGET = 3000; // default corp workforce capacity
+        const workforceUtil = Math.min(1, totalEmployees / WORKFORCE_TARGET);
+        const corpMonthlyRev = Math.round(monthlyMarketRev * workforceUtil);
+
+        // Fixed overhead: minimum operating costs even with 0 employees
+        // Property maintenance, admin, insurance, utilities
+        const FIXED_OVERHEAD_MONTHLY = 75_000;
+
+        const monthlyIncome = corpMonthlyRev - monthlyWages - FIXED_OVERHEAD_MONTHLY;
 
         // Compute monthly loan payment (amortized) and split into interest + principal
         let debtPayment = 0;
@@ -1519,7 +1583,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // Load corporation factions for this nation (exclude dissolved corps)
             const { data: corpFactions, error: corpErr } = await supabase
                 .from('factions')
-                .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_loans, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
+                .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_loans, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce, corp_reputation')
                 .eq('nation_id', nation.id)
                 .eq('faction_type', 'corporation')
                 .is('abandoned_at', null);
@@ -1627,11 +1691,16 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             }
 
             // ── Reputation Decay ─────────────────────────────────────────
-            // All corps lose -0.25 reputation per tick (floor at 0)
+            // Base: -0.25/tick. Accelerated to -1.0/tick when workforce is 0 (company is a shell).
+            // Uses integer-safe rounding: multiply by 100, round, divide by 100.
             try {
                 for (const corp of corps) {
+                    const totalWf = Number(corp.corp_general_workforce ?? 0)
+                                  + Number(corp.corp_skilled_workforce ?? 0)
+                                  + Number(corp.corp_innovative_workforce ?? 0);
+                    const repDecayRate = totalWf === 0 ? 1.0 : 0.25;
                     const currentRep = Number(corp.corp_reputation ?? 65);
-                    const newRep = Math.max(0, Math.round((currentRep - 0.25) * 100) / 100);
+                    const newRep = Math.max(0, Math.round((currentRep - repDecayRate) * 100) / 100);
                     if (newRep !== currentRep) {
                         const { error: repErr } = await supabase.from('factions')
                             .update({ corp_reputation: newRep })
