@@ -225,6 +225,7 @@ let issueActionExecuting = false;
 let _actionIssue = null;    // current issue for action click delegation
 let _actionMods = null;     // current modifiers for action click delegation
 let _selectedActionKey = null; // currently highlighted action
+let _currentRoles = new Set(); // roles held by the current faction (e.g. 'foreign_minister', 'head_of_government')
 
 // ==================== INIT ====================
 
@@ -340,7 +341,7 @@ initPage('conflicts', async (state) => {
         }
 
         // Action item selection
-        const item = e.target.closest('.ia-item:not(.ia-item--used):not(.ia-item--locked)');
+        const item = e.target.closest('.ia-item:not(.ia-item--used):not(.ia-item--locked):not(.ia-item--wrong-role)');
         if (!item) return;
         const actionKey = item.dataset.actionKey;
         if (!actionKey || !_actionIssue) return;
@@ -365,11 +366,43 @@ initPage('conflicts', async (state) => {
         }
     });
 
+    // Load current faction's government roles for issue action gating
+    await loadFactionRoles();
+
     await loadIncidents();
 
     // Default to issues tab
     switchSubTab('issues');
 });
+
+async function loadFactionRoles() {
+    _currentRoles = new Set();
+    if (!currentFaction || !currentNation) return;
+    try {
+        // Check HoG (PM or President)
+        const { data: hog } = await _supabase.from('presidents')
+            .select('faction_id').eq('nation_id', currentNation.id).eq('active', true).maybeSingle();
+        if (hog && hog.faction_id === currentFaction.id) _currentRoles.add('head_of_government');
+        // Check PM via coalition
+        const { data: coal } = await _supabase.from('government_formations')
+            .select('ministry_allocations').eq('nation_id', currentNation.id)
+            .in('status', ['formed', 'caretaker']).order('formed_at_tick', { ascending: false }).limit(1).maybeSingle();
+        if (coal?.ministry_allocations?.prime_minister === currentFaction.id) _currentRoles.add('head_of_government');
+        // Check ministries
+        const { data: mins } = await _supabase.from('ministries')
+            .select('ministry_key, party_id').eq('nation_id', currentNation.id).eq('is_active', true);
+        const keyMap = { foreign: 'foreign_minister', defense: 'minister_of_defense', trade: 'minister_of_trade', finance: 'minister_of_finance' };
+        for (const m of (mins || [])) {
+            if (m.party_id === currentFaction.id && keyMap[m.ministry_key]) {
+                _currentRoles.add(keyMap[m.ministry_key]);
+            }
+        }
+        // Check ambassador (for any nation)
+        const { data: amb } = await _supabase.from('ambassadors')
+            .select('id').eq('faction_id', currentFaction.id).eq('nation_id', currentNation.id).eq('status', 'active').limit(1);
+        if (amb && amb.length > 0) _currentRoles.add('ambassador');
+    } catch (e) { /* non-fatal — items will show without role gating */ }
+}
 
 
 // ==================== SUB-TAB SWITCHING ====================
@@ -1090,7 +1123,8 @@ function renderActionList(category, actions, usedActions, actedThisTick, hasFric
         idx++;
         const isUsed = usedActions.has(action.key);
         const isLocked = actedThisTick && !isUsed;
-        const cls = isUsed ? 'ia-item--used' : isLocked ? 'ia-item--locked' : '';
+        const hasRole = !action.role || _currentRoles.has(action.role);
+        const cls = isUsed ? 'ia-item--used' : isLocked ? 'ia-item--locked' : !hasRole ? 'ia-item--wrong-role' : '';
         const apCost = action.ap_cost + (hasFriction && category === 'diplomatic' ? 1 : 0);
         const roleLabel = ACTION_ROLE_LABELS[action.role] || action.role;
 

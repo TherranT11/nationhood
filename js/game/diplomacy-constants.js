@@ -522,6 +522,7 @@ export const WAR_JUSTIFICATIONS = {
 };
 
 export const MAJOR_SECTORS = [
+    { key: 'FOUNDATIONAL',  label: 'Foundational',        icon: '📜' },
     { key: 'ECONOMICS',     label: 'Economics',           icon: '💰' },
     { key: 'LABOR',         label: 'Labor',               icon: '👷' },
     { key: 'EDUCATION',     label: 'Education',           icon: '📚' },

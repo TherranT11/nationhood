@@ -10916,7 +10916,12 @@ function renderNegDetailContent(p, pd, needsOurAction, isFmReview, isRatificatio
         html += '<button class="detail-btn" onclick="fmApprove(\'' + p.id + '\')">Approve</button>';
         html += '<button class="detail-btn" onclick="fmEscalate(\'' + p.id + '\')">Escalate</button>';
         html += '<button class="detail-btn" onclick="fmReject(\'' + p.id + '\')">Reject</button>';
-    } else if (isRatification && (diplomaticRoles.isFM || diplomaticRoles.isHoG)) {
+    } else if (p.status === 'ratification' && (diplomaticRoles.isFM || diplomaticRoles.isHoG)) {
+        // Bill is actively in parliament — disable buttons to prevent interfering with the vote
+        html += '<button class="detail-btn" disabled style="opacity:0.4;cursor:not-allowed;">Resubmit</button>';
+        html += '<button class="detail-btn" disabled style="opacity:0.4;cursor:not-allowed;">Abandon</button>';
+        html += '<div style="font-size:10px;color:var(--text-dim);margin-top:4px;">Awaiting parliamentary vote</div>';
+    } else if (p.status === 'ratification_failed' && (diplomaticRoles.isFM || diplomaticRoles.isHoG)) {
         html += '<button class="detail-btn" onclick="fmEscalate(\'' + p.id + '\')">Resubmit</button>';
         html += '<button class="detail-btn" onclick="fmReject(\'' + p.id + '\')">Abandon</button>';
     }
