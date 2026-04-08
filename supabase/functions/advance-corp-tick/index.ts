@@ -918,7 +918,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
     // 2. Process in_progress contracts
     const { data: activeContracts } = await supabase
         .from('construction_contracts')
-        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks, current_phase, sector, required_materials, required_equipment, materials_consumed, equipment_condition')
+        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks, current_phase, sector, required_materials, required_equipment, required_workforce, materials_consumed, equipment_condition, workers_assigned')
         .eq('nation_id', nationId)
         .eq('status', 'in_progress');
 
@@ -942,36 +942,8 @@ async function processActiveProjects(supabase, nationId, currentTick) {
     const bidMap = {};
     for (const b of allBids) bidMap[b.contract_id] = b;
 
-    // 4. Sum workforce needs per faction across all active projects
-    //    Workforce composition: General 80%, Skilled 15%, Innovative 5%
-    const factionNeeds = {};
-    for (const contract of activeContracts) {
-        const bid = bidMap[contract.id];
-        if (!bid) continue;
-        const labor = bid.labor_count || 0;
-        if (!factionNeeds[bid.faction_id]) factionNeeds[bid.faction_id] = { general: 0, skilled: 0, innovative: 0 };
-        factionNeeds[bid.faction_id].general += Math.ceil(labor * 0.80);
-        factionNeeds[bid.faction_id].skilled += Math.ceil(labor * 0.15);
-        factionNeeds[bid.faction_id].innovative += Math.ceil(labor * 0.05);
-    }
-
-    // 5. Fetch each faction's workforce and determine if they can staff all projects
-    const factionStaffed = {};
-    for (const fId of Object.keys(factionNeeds)) {
-        const { data: corp } = await supabase.from('factions')
-            .select('corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
-            .eq('id', fId).single();
-        const has = {
-            general: Number(corp?.corp_general_workforce ?? 0),
-            skilled: Number(corp?.corp_skilled_workforce ?? 0),
-            innovative: Number(corp?.corp_innovative_workforce ?? 0),
-        };
-        const need = factionNeeds[fId];
-        factionStaffed[fId] = has.general >= need.general && has.skilled >= need.skilled && has.innovative >= need.innovative;
-        if (!factionStaffed[fId]) {
-            console.log(`[Projects] Faction ${fId} understaffed: need G${need.general}/S${need.skilled}/I${need.innovative}, have G${has.general}/S${has.skilled}/I${has.innovative}`);
-        }
-    }
+    // 4. Per-project worker staffing check (uses workers_assigned JSONB on each contract)
+    //    Old system checked pooled faction workforce — new system requires manual assignment.
 
     // 6. Load material allocations for all active contracts (one batch query)
     let allAllocations = [];
@@ -1004,12 +976,21 @@ async function processActiveProjects(supabase, nationId, currentTick) {
         const stalledTicks = contract.stalled_ticks || 0;
         const effectiveProgress = ticksElapsed - stalledTicks;
 
-        // Workforce gate: if faction can't staff all its projects, this one stalls
-        if (!factionStaffed[bid.faction_id]) {
+        // Workforce gate: check per-project workers_assigned vs required_workforce
+        const reqWf = contract.required_workforce || {};
+        const assignedWf = contract.workers_assigned || {};
+        const wfReqGeneral = Number(reqWf.general || 0);
+        const wfReqSkilled = Number(reqWf.skilled || 0);
+        const wfReqInnovative = Number(reqWf.innovative || 0);
+        const wfHasGeneral = Number(assignedWf.general || 0);
+        const wfHasSkilled = Number(assignedWf.skilled || 0);
+        const wfHasInnovative = Number(assignedWf.innovative || 0);
+        const workersStaffed = wfHasGeneral >= wfReqGeneral && wfHasSkilled >= wfReqSkilled && wfHasInnovative >= wfReqInnovative;
+        if (!workersStaffed) {
             await supabase.from('construction_contracts')
                 .update({ stalled_ticks: stalledTicks + 1 })
                 .eq('id', contract.id);
-            console.log(`[Projects] ${contract.name}: STALLED — understaffed (tick ${currentTick}, stalled ${stalledTicks + 1} total)`);
+            console.log(`[Projects] ${contract.name}: STALLED — understaffed (need G${wfReqGeneral}/S${wfReqSkilled}/I${wfReqInnovative}, assigned G${wfHasGeneral}/S${wfHasSkilled}/I${wfHasInnovative})`);
             continue;
         }
 

@@ -3050,10 +3050,17 @@ async function openProjectModal(projectId) {
     const quality = bid?.estimated_quality || 65;
     const qualityLabel = quality >= 80 ? 'STRONG' : quality >= 60 ? 'PROMISING' : quality >= 40 ? 'FAIR' : 'UNCERTAIN';
 
-    // Workforce from contract
+    // Workforce from contract + actual assignments
     const reqWf = project.required_workforce || {};
-    const wfNeeded = (reqWf.general || 0) + (reqWf.skilled || 0);
+    const assignedWf = project.workers_assigned || {};
+    const wfNeeded = (reqWf.general || 0) + (reqWf.skilled || 0) + (reqWf.innovative || 0);
+    const wfAssigned = (assignedWf.general || 0) + (assignedWf.skilled || 0) + (assignedWf.innovative || 0);
     const laborCount = bid?.labor_count || wfNeeded;
+
+    // Corp's available workforce
+    const corpGeneral = Number(faction?.corp_general_workforce ?? 0);
+    const corpSkilled = Number(faction?.corp_skilled_workforce ?? 0);
+    const corpInnovative = Number(faction?.corp_innovative_workforce ?? 0);
 
     pmState = {
         project,
@@ -3077,6 +3084,12 @@ async function openProjectModal(projectId) {
         qualityLabel,
         laborCount,
         wfNeeded,
+        wfAssigned,
+        reqWf,
+        assignedWf,
+        corpGeneral,
+        corpSkilled,
+        corpInnovative,
         events: [],
     };
 
@@ -3130,6 +3143,55 @@ async function pmDeallocateMaterial(materialKey, qualityTier, qty) {
         await openProjectModal(pmState.project.id);
     } catch (e) {
         alert('Return error: ' + e.message);
+    } finally {
+        _pmAllocLock = false;
+    }
+}
+
+async function pmAssignWorkers(workerType, qty) {
+    if (_pmAllocLock || !pmState || !faction) return;
+    _pmAllocLock = true;
+    try {
+        const project = pmState.project;
+        const current = project.workers_assigned || {};
+        const currentCount = Number(current[workerType] || 0);
+        const required = Number((project.required_workforce || {})[workerType] || 0);
+        const canAssign = Math.min(qty, required - currentCount);
+        if (canAssign <= 0) { alert('Already fully staffed for ' + workerType); return; }
+
+        const updated = { ...current, [workerType]: currentCount + canAssign };
+        const { error } = await _supabase.from('construction_contracts')
+            .update({ workers_assigned: updated })
+            .eq('id', project.id);
+        if (error) { alert('Assign failed: ' + error.message); return; }
+
+        await openProjectModal(project.id);
+    } catch (e) {
+        alert('Assign error: ' + e.message);
+    } finally {
+        _pmAllocLock = false;
+    }
+}
+
+async function pmUnassignWorkers(workerType, qty) {
+    if (_pmAllocLock || !pmState || !faction) return;
+    _pmAllocLock = true;
+    try {
+        const project = pmState.project;
+        const current = project.workers_assigned || {};
+        const currentCount = Number(current[workerType] || 0);
+        const toRemove = Math.min(qty, currentCount);
+        if (toRemove <= 0) { alert('No ' + workerType + ' assigned'); return; }
+
+        const updated = { ...current, [workerType]: currentCount - toRemove };
+        const { error } = await _supabase.from('construction_contracts')
+            .update({ workers_assigned: updated })
+            .eq('id', project.id);
+        if (error) { alert('Unassign failed: ' + error.message); return; }
+
+        await openProjectModal(project.id);
+    } catch (e) {
+        alert('Unassign error: ' + e.message);
     } finally {
         _pmAllocLock = false;
     }
@@ -3395,6 +3457,50 @@ function renderPmOverview(s, p, budgetColor, budgetPct, remaining, ticksRemainin
         html += '</div></div>';
     }
 
+    // Worker Assignment Section
+    html += '<div style="padding:0 16px"><div class="pm-section">';
+    html += '<div class="pm-section__title">Workforce Assignment</div>';
+
+    const wfTypes = [
+        { key: 'general', label: 'General Workers', corpAvail: s.corpGeneral, color: 'var(--text-primary)' },
+        { key: 'skilled', label: 'Skilled Workers', corpAvail: s.corpSkilled, color: 'var(--blue)' },
+        { key: 'innovative', label: 'Innovative Workers', corpAvail: s.corpInnovative, color: 'var(--purple)' },
+    ];
+
+    for (const wt of wfTypes) {
+        const required = Number(s.reqWf[wt.key] || 0);
+        if (required === 0) continue;
+        const assigned = Number(s.assignedWf[wt.key] || 0);
+        const isMet = assigned >= required;
+        const statusColor = isMet ? 'var(--green)' : assigned > 0 ? 'var(--amber)' : 'var(--red)';
+        const canAdd = wt.corpAvail > 0 && assigned < required;
+        const addQty = Math.min(wt.corpAvail, required - assigned);
+        const canRemove = assigned > 0;
+
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.72rem;">`;
+        html += `<div>`;
+        html += `<span style="color:${wt.color};font-weight:600;">${wt.label}</span>`;
+        html += `<span style="color:var(--text-dim);margin-left:8px;">Required: <strong>${required}</strong></span>`;
+        html += `<span style="color:${statusColor};margin-left:8px;font-weight:700;">${assigned} assigned</span>`;
+        html += `<span style="color:var(--text-dim);margin-left:8px;">Pool: ${wt.corpAvail}</span>`;
+        html += `</div>`;
+        html += `<div style="display:flex;gap:4px;">`;
+        if (canAdd) {
+            html += `<button onclick="pmAssignWorkers('${wt.key}',${addQty})" style="font-size:0.6rem;padding:2px 8px;border:1px solid var(--green);color:var(--green);background:rgba(92,184,92,0.08);border-radius:3px;cursor:pointer;">Assign ${addQty}</button>`;
+        }
+        if (canRemove) {
+            html += `<button onclick="pmUnassignWorkers('${wt.key}',${assigned})" style="font-size:0.6rem;padding:2px 8px;border:1px solid var(--orange);color:var(--orange);background:rgba(232,114,74,0.08);border-radius:3px;cursor:pointer;">Remove ${assigned}</button>`;
+        }
+        html += `</div></div>`;
+    }
+
+    const totalReq = Number(s.reqWf.general || 0) + Number(s.reqWf.skilled || 0) + Number(s.reqWf.innovative || 0);
+    const totalAssigned = Number(s.assignedWf.general || 0) + Number(s.assignedWf.skilled || 0) + Number(s.assignedWf.innovative || 0);
+    if (totalReq > 0 && totalAssigned < totalReq) {
+        html += `<div style="font-size:0.62rem;color:var(--red);margin-top:6px;font-family:var(--font-mono);">⚠ Project will STALL until workforce is fully assigned</div>`;
+    }
+    html += '</div></div>';
+
     return html;
 }
 
@@ -3634,6 +3740,8 @@ window.pmAllocateMaterial = pmAllocateMaterial;
 window.pmDeallocateMaterial = pmDeallocateMaterial;
 window.pmDeployEquipment = pmDeployEquipment;
 window.pmUndeployEquipment = pmUndeployEquipment;
+window.pmAssignWorkers = pmAssignWorkers;
+window.pmUnassignWorkers = pmUnassignWorkers;
 
 async function loadProjectEvents(contractId) {
     if (!pmState) return;
