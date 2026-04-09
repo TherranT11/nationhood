@@ -988,11 +988,15 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
           <span style="font-size:8px;color:var(--amber);">●</span>
           <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text-muted);text-transform:uppercase;">Events</span>
         </div>
-        <div class="corp-events-tab-bar">
-          <button class="corp-events-tab active" data-tab="corporate" onclick="switchCorpEventsTab('corporate')">Corporate</button>
-          <button class="corp-events-tab" data-tab="political" onclick="switchCorpEventsTab('political')">Political</button>
-          <button class="corp-events-tab" data-tab="nation" onclick="switchCorpEventsTab('nation')">Nation</button>
-          <button class="corp-events-tab" data-tab="world" onclick="switchCorpEventsTab('world')">World</button>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <div class="corp-events-tab-bar" id="corp-events-cat-bar">
+            <button class="corp-events-tab active" data-cat="nation" onclick="switchCorpEventsCat('nation')">Nation</button>
+            <button class="corp-events-tab" data-cat="corporate" onclick="switchCorpEventsCat('corporate')">Corporate</button>
+          </div>
+          <div class="corp-events-tab-bar" id="corp-events-scope-bar">
+            <button class="corp-events-tab active" data-scope="local" onclick="switchCorpEventsScope('local')">Local</button>
+            <button class="corp-events-tab" data-scope="world" onclick="switchCorpEventsScope('world')">World</button>
+          </div>
         </div>
       </div>
       <div class="corp-events-scroll" id="corp-events-list">
@@ -1277,7 +1281,7 @@ async function init() {
 
     // Events feed
     _corpEventsCtx = { nationId: faction.nation_id };
-    loadCorpEvents();
+    loadNationEvents();
 
     // Show page
     document.getElementById('loading').style.display = 'none';
@@ -2330,7 +2334,8 @@ const CORP_EVENT_DEFAULT = { icon: '\u2022', color: '#888', bg: 'rgba(136,136,13
 
 const PROTEST_TIER_LABELS = { 1:'Embarrassing Backfire', 2:'Protests Don\'t Materialise', 3:'Modest Turnout', 4:'Respectable Protest', 5:'Strong Demonstration', 6:'Nationwide Protests', 7:'The Big One' };
 
-let _activeCorpEventsTab = 'corporate';
+let _corpEventsCat = 'nation';
+let _corpEventsScope = 'local';
 let _corpEventsCtx = null;
 
 function formatEventName(raw) {
@@ -2464,13 +2469,76 @@ function renderWorldEventRows(merged) {
     }).join('');
 }
 
-// ── Corporate Events (placeholder for now — no corp_events table yet) ──
+// ── Corporate Events Local (corps in your nation) ──
 async function loadCorpEvents() {
     const container = document.getElementById('corp-events-list');
-    if (!container) return;
-    // Corporate events will come from a future corp_events table.
-    // For now show a placeholder.
-    container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No corporate events yet.<br>Events will appear here as your company grows.</div>';
+    if (!container || !_corpEventsCtx) return;
+    const { nationId } = _corpEventsCtx;
+    if (!nationId) { container.innerHTML = '<div class="subs-card__empty">No nation linked.</div>'; return; }
+    container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.7rem;text-align:center;">Loading\u2026</div>';
+    try {
+        const { data: corps, error } = await _supabase.from('factions')
+            .select('faction_name, abbreviation, corp_sector, corp_subsector, corp_ticker, leader_first_name, leader_last_name, nation_id, nation, created_at, founded_tick')
+            .eq('faction_type', 'corporation').eq('nation_id', nationId).is('abandoned_at', null)
+            .order('created_at', { ascending: false }).limit(30);
+        if (error) throw error;
+        if (!corps || corps.length === 0) {
+            container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No corporate events in this nation yet.</div>';
+            return;
+        }
+        container.innerHTML = _renderCorpFoundedList(corps, false);
+    } catch (e) {
+        console.error('Corp local events error:', e);
+        container.innerHTML = '<div class="subs-card__empty">Failed to load events.</div>';
+    }
+}
+
+// ── Corporate Events World (corps in other nations) ──
+async function loadCorpEventsWorld() {
+    const container = document.getElementById('corp-events-list');
+    if (!container || !_corpEventsCtx) return;
+    const { nationId } = _corpEventsCtx;
+    if (!nationId) { container.innerHTML = '<div class="subs-card__empty">No nation linked.</div>'; return; }
+    container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.7rem;text-align:center;">Loading\u2026</div>';
+    try {
+        const { data: corps, error } = await _supabase.from('factions')
+            .select('faction_name, abbreviation, corp_sector, corp_subsector, corp_ticker, leader_first_name, leader_last_name, nation_id, nation, created_at, founded_tick')
+            .eq('faction_type', 'corporation').neq('nation_id', nationId).is('abandoned_at', null)
+            .order('created_at', { ascending: false }).limit(30);
+        if (error) throw error;
+        if (!corps || corps.length === 0) {
+            container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No corporate events from other nations yet.</div>';
+            return;
+        }
+        container.innerHTML = _renderCorpFoundedList(corps, true);
+    } catch (e) {
+        console.error('Corp world events error:', e);
+        container.innerHTML = '<div class="subs-card__empty">Failed to load events.</div>';
+    }
+}
+
+function _renderCorpFoundedList(corps, showNationTag) {
+    return corps.map(c => {
+        const ceoName = [c.leader_first_name, c.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
+        const nationName = c.nation || 'Unknown';
+        const subsector = c.corp_subsector || c.corp_sector || 'General';
+        const ticker = c.corp_ticker || c.abbreviation || '';
+        const tickDate = c.founded_tick ? tickToDate(c.founded_tick) : '';
+        let html = '<div class="corp-event-row">';
+        if (showNationTag) {
+            html += '<div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--teal);background:rgba(90,175,165,0.08);border:1px solid rgba(90,175,165,0.15);padding:1px 5px;display:inline-block;margin-bottom:2px;">' + escapeHtml(nationName.toUpperCase()) + '</div>';
+        }
+        html += '<div style="font-size:11px;color:var(--text-primary);line-height:1.5;">';
+        html += '<span style="font-weight:600;">' + escapeHtml(c.faction_name) + '</span>';
+        if (ticker) html += ' <span style="font-family:var(--font-mono);font-size:0.65rem;color:var(--text-dim);">[' + escapeHtml(ticker) + ']</span>';
+        html += ' was founded in <span style="font-weight:500;">' + escapeHtml(nationName) + '</span>';
+        html += ' with a specialty in <span style="color:var(--teal);font-weight:500;">' + escapeHtml(subsector) + '</span>.';
+        html += ' Led by CEO <span style="font-weight:500;">' + escapeHtml(ceoName) + '</span>.';
+        html += '</div>';
+        if (tickDate) html += '<div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:1px;">' + escapeHtml(tickDate) + '</div>';
+        html += '</div>';
+        return html;
+    }).join('');
 }
 
 // ── Political Events (nation-scoped: event_log + bills + factions + protests) ──
@@ -2619,18 +2687,29 @@ async function loadCorpWorldEvents() {
     }
 }
 
-function switchCorpEventsTab(tab) {
-    if (tab === _activeCorpEventsTab) return;
-    _activeCorpEventsTab = tab;
-    document.querySelectorAll('.corp-events-tab').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.tab === tab);
-    });
-    if (tab === 'corporate') loadCorpEvents();
-    else if (tab === 'political') loadPoliticalEvents();
-    else if (tab === 'nation') loadNationEvents();
-    else if (tab === 'world') loadCorpWorldEvents();
+window.switchCorpEventsCat = function(cat) {
+    if (cat === _corpEventsCat) return;
+    _corpEventsCat = cat;
+    document.querySelectorAll('#corp-events-cat-bar .corp-events-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.cat === cat));
+    _refreshCorpEvents();
+};
+window.switchCorpEventsScope = function(scope) {
+    if (scope === _corpEventsScope) return;
+    _corpEventsScope = scope;
+    document.querySelectorAll('#corp-events-scope-bar .corp-events-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.scope === scope));
+    _refreshCorpEvents();
+};
+function _refreshCorpEvents() {
+    if (_corpEventsCat === 'nation' && _corpEventsScope === 'local') {
+        loadNationEvents();
+    } else if (_corpEventsCat === 'nation' && _corpEventsScope === 'world') {
+        loadCorpWorldEvents();
+    } else if (_corpEventsCat === 'corporate' && _corpEventsScope === 'local') {
+        loadCorpEvents();
+    } else {
+        loadCorpEventsWorld();
+    }
 }
-window.switchCorpEventsTab = switchCorpEventsTab;
 
 init();
 </script>
