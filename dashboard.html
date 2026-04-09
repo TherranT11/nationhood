@@ -705,9 +705,15 @@
     <div class="dash-card dash-card-tall" id="events-card" style="display:flex;flex-direction:column;">
       <div class="dash-card-header" style="display:flex;align-items:center;gap:0;">
         <span style="margin-right:auto;">EVENTS</span>
-        <div class="events-tab-bar" id="events-tab-bar">
-          <button class="events-tab-btn active" data-tab="nation" onclick="switchEventsTab('nation')">Nation</button>
-          <button class="events-tab-btn" data-tab="world" onclick="switchEventsTab('world')">World</button>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <div class="events-tab-bar" id="events-cat-bar">
+            <button class="events-tab-btn active" data-cat="nation" onclick="switchEventsCat('nation')">Nation</button>
+            <button class="events-tab-btn" data-cat="corporate" onclick="switchEventsCat('corporate')">Corporate</button>
+          </div>
+          <div class="events-tab-bar" id="events-scope-bar">
+            <button class="events-tab-btn active" data-scope="local" onclick="switchEventsScope('local')">Local</button>
+            <button class="events-tab-btn" data-scope="world" onclick="switchEventsScope('world')">World</button>
+          </div>
         </div>
       </div>
       <div class="dash-events-scroll" id="dash-events-list"></div>
@@ -1432,23 +1438,90 @@ async function loadDashEvents(nationId, currentTick, parties) {
 }
 
 // ══════════════════════════════════════
-// ── Events Tab Switching ──
+// ── Events Tab Switching (Nation/Corporate × Local/World) ──
 // ══════════════════════════════════════
-let _activeEventsTab = 'nation';
+let _eventsCat = 'nation';
+let _eventsScope = 'local';
 
-window.switchEventsTab = switchEventsTab;
-function switchEventsTab(tab) {
-  if (tab === _activeEventsTab) return;
-  _activeEventsTab = tab;
-  document.querySelectorAll('.events-tab-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === tab);
-  });
+window.switchEventsCat = function(cat) {
+  if (cat === _eventsCat) return;
+  _eventsCat = cat;
+  document.querySelectorAll('#events-cat-bar .events-tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.cat === cat));
+  _refreshEvents();
+};
+window.switchEventsScope = function(scope) {
+  if (scope === _eventsScope) return;
+  _eventsScope = scope;
+  document.querySelectorAll('#events-scope-bar .events-tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.scope === scope));
+  _refreshEvents();
+};
+function _refreshEvents() {
   const ctx = window._eventsCtx;
   if (!ctx) return;
-  if (tab === 'nation') {
+  if (_eventsCat === 'nation' && _eventsScope === 'local') {
     loadDashEvents(ctx.nationId, ctx.currentTick, ctx.parties);
-  } else {
+  } else if (_eventsCat === 'nation' && _eventsScope === 'world') {
     loadWorldEvents(ctx.nationId, ctx.currentTick);
+  } else if (_eventsCat === 'corporate') {
+    loadCorpEvents(ctx.nationId, ctx.currentTick, _eventsScope === 'local');
+  }
+}
+
+async function loadCorpEvents(nationId, currentTick, isLocal) {
+  const container = document.getElementById('dash-events-list');
+  if (!container) return;
+  container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.75rem;text-align:center;">Loading corporate events\u2026</div>';
+
+  try {
+    // Fetch corporations — local (same nation) or world (other nations)
+    const corpQuery = _supabase.from('factions')
+      .select('faction_name, abbreviation, corp_sector, corp_subsector, corp_ticker, leader_first_name, leader_last_name, nation_id, nation, created_at, founded_tick')
+      .eq('faction_type', 'corporation')
+      .is('abandoned_at', null)
+      .order('created_at', { ascending: false })
+      .limit(30);
+
+    if (isLocal) {
+      corpQuery.eq('nation_id', nationId);
+    } else {
+      corpQuery.neq('nation_id', nationId);
+    }
+
+    const { data: corps, error } = await corpQuery;
+    if (error) throw error;
+
+    if (!corps || corps.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-secondary);padding:24px;font-size:0.75rem;text-align:center;font-style:italic;">No corporate events ' + (isLocal ? 'in this nation' : 'from other nations') + ' yet.</div>';
+      return;
+    }
+
+    let html = '';
+    for (const c of corps) {
+      const ceoName = [c.leader_first_name, c.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
+      const nationName = c.nation || 'Unknown';
+      const subsector = c.corp_subsector || c.corp_sector || 'General';
+      const ticker = c.corp_ticker || c.abbreviation || '';
+      const tickDate = c.founded_tick ? tickToDate(c.founded_tick) : '';
+
+      html += '<div class="dash-event">';
+      if (!isLocal) {
+        html += '<div class="dash-event-nation-tag" style="color:var(--teal);background:rgba(90,175,165,0.08);border:1px solid rgba(90,175,165,0.15);font-family:var(--font-mono);font-size:7px;font-weight:700;padding:1px 5px;display:inline-block;margin-bottom:2px;">' + escapeHtml(nationName.toUpperCase()) + '</div>';
+      }
+      html += '<div class="dash-event-text">';
+      html += '<span style="font-weight:600;color:var(--text-primary);">' + escapeHtml(c.faction_name) + '</span>';
+      if (ticker) html += ' <span style="font-family:var(--font-mono);font-size:0.65rem;color:var(--text-dim);">[' + escapeHtml(ticker) + ']</span>';
+      html += ' was founded in <span style="font-weight:500;">' + escapeHtml(nationName) + '</span>';
+      html += ' with a specialty in <span style="color:var(--teal);font-weight:500;">' + escapeHtml(subsector) + '</span>.';
+      html += ' Led by CEO <span style="font-weight:500;">' + escapeHtml(ceoName) + '</span>.';
+      html += '</div>';
+      if (tickDate) html += '<div class="dash-event-date">' + escapeHtml(tickDate) + '</div>';
+      html += '</div>';
+    }
+
+    container.innerHTML = html;
+  } catch (e) {
+    console.error('Corp events error:', e);
+    container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.75rem;">Failed to load corporate events.</div>';
   }
 }
 
