@@ -262,7 +262,7 @@ initPage('conflicts', async (state) => {
 
     // Event delegation for issue actions — highlight on click, confirm via button
     const actionsPanel = document.getElementById('issues-actions-panel');
-    actionsPanel.addEventListener('click', (e) => {
+    actionsPanel.addEventListener('click', async (e) => {
         // Tab switching
         const tab = e.target.closest('.ia-tab');
         if (tab) {
