@@ -5650,6 +5650,64 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
             const playerRelPos = varWidth > 0 ? ((normPos - varLeft) / varWidth) * 100 : 50;
             const meanRelPos = varWidth > 0 ? ((eMean - varLeft) / varWidth) * 100 : 50;
 
+            // Generate voter density curve SVG — same math as bimodalAxisAlignment
+            const DENSITY_POINTS = 25;
+            const _gauss = (x, mu, sig) => Math.exp(-((x - mu) * (x - mu)) / (2 * sig * sig));
+            const _sigma = Math.max(5, eVar);
+            const _polWeight = Math.min(1, Math.max(0, (eVar - 10) / 30));
+            const _offset = eVar * 0.67;
+            const _humpMult = 0.45 - 0.20 * _polWeight;
+            const _humpSigma = Math.max(5, _sigma * _humpMult);
+            const _leftHump = Math.min(100, Math.max(0, eMean - _offset));
+            const _rightHump = Math.min(100, Math.max(0, eMean + _offset));
+
+            let densityPts = [];
+            let maxDensity = 0;
+            for (let di = 0; di <= DENSITY_POINTS; di++) {
+                const xPct = di / DENSITY_POINTS; // 0..1 within variance band
+                const xVal = varLeft + xPct * varWidth; // absolute 0-100 position
+                const uniVal = _gauss(xVal, eMean, _sigma);
+                const biVal = Math.max(_gauss(xVal, _leftHump, _humpSigma), _gauss(xVal, _rightHump, _humpSigma));
+                const density = (1 - _polWeight) * uniVal + _polWeight * biVal;
+                densityPts.push({ x: xPct, y: density });
+                if (density > maxDensity) maxDensity = density;
+            }
+
+            // Normalize to 0-1 height and build SVG polyline
+            let svgPath = '';
+            if (maxDensity > 0) {
+                const svgW = 100; // viewBox width
+                const svgH = 36;  // matches bar height
+                const padding = 2; // top padding so curve doesn't touch edge
+                const pts = densityPts.map(p => {
+                    const sx = (p.x * svgW).toFixed(1);
+                    const sy = (svgH - padding - (p.y / maxDensity) * (svgH - padding * 2)).toFixed(1);
+                    return `${sx},${sy}`;
+                });
+                // Close the path along the bottom
+                const fillPts = [`0,${svgH}`, ...pts, `${svgW},${svgH}`].join(' ');
+                const linePts = pts.join(' ');
+                svgPath = `<svg class="elec-ideo-density-svg" viewBox="0 0 ${svgW} ${svgH}" preserveAspectRatio="none">
+                    <polygon points="${fillPts}" fill="rgba(90,175,165,0.06)" />
+                    <polyline points="${linePts}" fill="none" stroke="rgba(90,175,165,0.35)" stroke-width="1" vector-effect="non-scaling-stroke" />
+                </svg>`;
+            }
+
+            // Rival party dots — show all parties except the player's
+            let rivalDotsHtml = '';
+            for (const rp of (allParties || [])) {
+                if (rp.id === faction.id) continue; // skip own party — shown as teal dot
+                const rpIdeo = ideoMap[rp.id];
+                if (!rpIdeo) continue;
+                const rpRaw = Number(rpIdeo[ax.key] ?? 0);
+                const rpNorm = (rpRaw + 100) / 2;
+                const rpRelPos = varWidth > 0 ? ((rpNorm - varLeft) / varWidth) * 100 : 50;
+                // Only show if within the variance band (0-100% relative)
+                if (rpRelPos < -5 || rpRelPos > 105) continue;
+                const rpColor = rp.party_color || '#888';
+                rivalDotsHtml += `<div class="elec-ideo-rival-dot" style="left:${rpRelPos}%;background:${rpColor};" title="${escapeHtml(rp.abbreviation || rp.faction_name)}"></div>`;
+            }
+
             ideologyRowsHtml += `
             <div class="elec-ideo-axis">
                 <div class="elec-ideo-axis-header">
@@ -5664,6 +5722,8 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
                     <div class="elec-ideo-bar-track">
                         <div class="elec-ideo-var-band" style="left:${varLeft}%;width:${varWidth}%">
                             ${zonesHtml}
+                            ${svgPath}
+                            ${rivalDotsHtml}
                             <div class="elec-ideo-mean-marker" style="left:${meanRelPos}%"></div>
                             <div class="elec-ideo-player-marker" style="left:${playerRelPos}%"></div>
                         </div>

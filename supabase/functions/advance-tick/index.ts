@@ -15982,11 +15982,16 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         console.error(`[tickElectorate] Ideology shift actions failed for ${nation.name} (non-fatal):`, shiftErr);
     }
 
-    // 3. Load issue states for salience weights
+    // 3. Load issue states, drift salience toward stat-driven targets, then compute weights
     const { data: issueStates } = await supabase
         .from('issue_state')
-        .select('issue_id, salience')
+        .select('*')
         .eq('nation_id', nationId);
+    try {
+        await tickIssueSalience(supabase, nation, issueStates || [], currentTick);
+    } catch (salErr) {
+        console.error(`[tickElectorate] Issue salience drift failed for ${nation.name} (non-fatal):`, salErr);
+    }
     const axisSalienceWeights = computeAxisSalienceWeights(issueStates || []);
 
     // 4. Load faction ideologies
