@@ -493,6 +493,11 @@ let rdLoanRate = 8;
 let rdLoanAmount = 18000000;
 let rdLoanTerm = 24;
 let rdLoanCollateral = 'equipment';
+
+// Insurance controls
+let rdInsurePremium = 3.5;
+let rdInsureCoverage = 12000000;
+let rdInsureDeductible = 10;
 const COLLATERAL_TIERS = [
     { id: 'none', label: 'None', recovery: 0, desc: 'Unsecured loan. No recovery on default.' },
     { id: 'equipment', label: 'Equipment', recovery: 60, desc: 'Seize financed equipment on default — recover ~60%.' },
@@ -512,6 +517,10 @@ function rdOpen(dealIdx) {
         rdLoanAmount = deal.amount;
         rdLoanTerm = deal.term || 24;
         rdLoanCollateral = 'equipment';
+    } else if (deal.type === 'INSURE') {
+        rdInsurePremium = 3.5;
+        rdInsureCoverage = deal.amount;
+        rdInsureDeductible = 10;
     }
 
     document.getElementById('rd-overlay').classList.add('open');
@@ -534,6 +543,9 @@ function rdSetLoanRate(v) { rdLoanRate = Number(v); renderReviewDeal(); }
 function rdSetLoanAmount(v) { rdLoanAmount = Number(v); renderReviewDeal(); }
 function rdSetLoanTerm(v) { rdLoanTerm = Number(v); renderReviewDeal(); }
 function rdSetCollateral(v) { rdLoanCollateral = v; renderReviewDeal(); }
+function rdSetInsurePremium(v) { rdInsurePremium = Number(v); renderReviewDeal(); }
+function rdSetInsureCoverage(v) { rdInsureCoverage = Number(v); renderReviewDeal(); }
+function rdSetInsureDeductible(v) { rdInsureDeductible = Number(v); renderReviewDeal(); }
 
 function rdBar(value, max, color) {
     const pct = Math.min((value / max) * 100, 100);
@@ -569,7 +581,17 @@ function renderReviewDeal() {
     const acceptColor = acceptProb >= 70 ? '#5c5' : acceptProb >= 45 ? '#ca5' : acceptProb >= 25 ? '#c84' : '#c55';
 
     const collTier = COLLATERAL_TIERS.find(c => c.id === rdLoanCollateral);
-    const expectedReturn = Math.round(loanTotalInterest * (1 - defaultProb / 100));
+    const loanExpectedReturn = Math.round(loanTotalInterest * (1 - defaultProb / 100));
+
+    // ── Insurance calculations ──
+    const insureTermYears = (d.term || 18) / 12;
+    const insureTotalPremiums = Math.round(rdInsureCoverage * (rdInsurePremium / 100) * insureTermYears);
+    const baseClaimProb = 100 - (d.reputation || 50); // lower rep = higher claim chance
+    const insureClaimProb = Math.max(5, Math.min(50, Math.round(baseClaimProb * 0.4)));
+    const insureMaxExposure = Math.round(rdInsureCoverage * (1 - rdInsureDeductible / 100));
+    const insureExpectedPayout = Math.round(insureMaxExposure * (insureClaimProb / 100));
+    const insureExpectedProfit = insureTotalPremiums - insureExpectedPayout;
+    const claimColor = insureClaimProb <= 12 ? '#5c5' : insureClaimProb <= 22 ? '#ca5' : insureClaimProb <= 35 ? '#c84' : '#c55';
 
     // ── HEADER ──
     let html = `<div class="rd-header">
@@ -582,9 +604,10 @@ function renderReviewDeal() {
         </div>
         <div class="rd-tabs">`;
 
-    // Only show the tab for the current deal type (other types will be added in Phase 2/3)
+    // Show tab for the current deal type
     const tabs = [
-        { id: 'LOAN', label: 'Loan', color: '#5a8aaa', name: d.type === 'LOAN' ? d.applicant : 'Loan' },
+        { id: 'LOAN', label: 'Loan', name: d.type === 'LOAN' ? d.applicant : 'Loan' },
+        { id: 'INSURE', label: 'Insure', name: d.type === 'INSURE' ? d.applicant : 'Insure' },
     ];
     for (const t of tabs) {
         const isActive = rdType === t.id;
@@ -674,6 +697,72 @@ function renderReviewDeal() {
         </div>`;
     }
 
+    if (rdType === 'INSURE') {
+        // Applicant info
+        const repColor = (d.reputation || 50) >= 60 ? '#5c5' : (d.reputation || 50) >= 35 ? '#ca5' : '#c84';
+        const assetLabel = d.projectValue ? 'PROJECT' : 'FLEET';
+        const assetValue = d.projectValue || d.fleetValue || 0;
+        html += `<div class="rd-applicant">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c8a832;">${escapeHtml(d.abbr)}</span>
+                <span style="font-size:13px;font-weight:700;color:#e8e4dc;">${escapeHtml(d.applicant)}</span>
+                <span class="df-badge df-badge-${d.entity.toLowerCase()}">${d.entity}</span>
+            </div>
+            <div style="font-size:10px;color:#9e9a92;line-height:1.5;margin-bottom:6px;">${escapeHtml(d.purpose)}</div>
+            <div class="rd-applicant__stats">
+                <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">REP</div><div class="rd-applicant__stat-value" style="color:${repColor};">${d.reputation || '—'}</div></div>
+                <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">${assetLabel}</div><div class="rd-applicant__stat-value" style="color:#e8e4dc;">${fmtMoney(assetValue)}</div></div>
+                <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">REQUESTED</div><div class="rd-applicant__stat-value" style="color:#e8e4dc;">${fmtMoney(d.amount)}</div></div>
+                <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">TERM</div><div class="rd-applicant__stat-value" style="color:#e8e4dc;">${d.term}mo</div></div>
+            </div>
+        </div>`;
+
+        html += `<div class="rd-section-bar" style="color:#aa7a5a;">Set Policy Terms</div>`;
+
+        // Premium Rate slider
+        const premPct = ((rdInsurePremium - 1) / 7) * 100;
+        html += `<div class="rd-control">
+            <div class="rd-control__header">
+                <span class="rd-control__label">PREMIUM RATE (ANNUAL)</span>
+                <span class="rd-control__value" style="font-size:16px;color:#aa7a5a;">${rdInsurePremium}%</span>
+            </div>
+            <input type="range" class="rd-control__range" min="1" max="8" step="0.5" value="${rdInsurePremium}"
+                oninput="rdSetInsurePremium(this.value)"
+                style="background:linear-gradient(90deg,#aa7a5a ${premPct}%,#2a2a24 ${premPct}%);">
+            <div class="rd-control__hints"><span>1% (competitive)</span><span>8% (expensive)</span></div>
+        </div>`;
+
+        // Coverage Amount slider
+        const maxCoverage = Math.round((d.projectValue || d.fleetValue || d.amount) * 0.7);
+        const minCoverage = Math.round(d.amount * 0.33);
+        const covPct = ((rdInsureCoverage - minCoverage) / (maxCoverage - minCoverage)) * 100;
+        html += `<div class="rd-control">
+            <div class="rd-control__header">
+                <span class="rd-control__label">COVERAGE AMOUNT</span>
+                <span class="rd-control__value" style="font-size:14px;color:#e8e4dc;">${fmtMoney(rdInsureCoverage)}</span>
+            </div>
+            <input type="range" class="rd-control__range" min="${minCoverage}" max="${maxCoverage}" step="1000000" value="${rdInsureCoverage}"
+                oninput="rdSetInsureCoverage(this.value)"
+                style="background:linear-gradient(90deg,#aa7a5a ${covPct}%,#2a2a24 ${covPct}%);">
+            <div class="rd-control__hints"><span>${fmtMoney(minCoverage)} (partial)</span><span>${fmtMoney(maxCoverage)} (max)</span></div>
+        </div>`;
+
+        // Deductible presets
+        html += `<div class="rd-control">
+            <div class="rd-control__header">
+                <span class="rd-control__label">DEDUCTIBLE</span>
+                <span class="rd-control__value" style="font-size:14px;color:#e8e4dc;">${rdInsureDeductible}%</span>
+            </div>
+            <div class="rd-presets">`;
+        for (const d2 of [5, 10, 15, 20, 25]) {
+            const isActive = rdInsureDeductible === d2;
+            html += `<span class="rd-preset" onclick="rdSetInsureDeductible(${d2})" style="${isActive ? 'color:#000;background:#aa7a5a;border-color:#aa7a5a;' : ''}">${d2}%</span>`;
+        }
+        html += `</div>
+            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:4px;">Policyholder pays first ${rdInsureDeductible}% of any claim (${fmtMoney(Math.round(rdInsureCoverage * rdInsureDeductible / 100))})</div>
+        </div>`;
+    }
+
     html += '</div>'; // close rd-left
 
     // ═══ RIGHT PANEL ═══
@@ -712,18 +801,42 @@ function renderReviewDeal() {
         const dsColor = loanDebtService > 30 ? '#c55' : loanDebtService > 15 ? '#ca5' : '#5c5';
         html += `<div class="rd-risk-row"><span class="rd-risk-label">BORROWER DEBT SERVICE</span><span class="rd-risk-value" style="color:${dsColor};">${loanDebtService}% of revenue</span></div>`;
 
-        html += `<div class="rd-expected"><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#e8e4dc;">EXPECTED RETURN</span><span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:#5c5;">${fmtMoney(expectedReturn)}</span></div>`;
+        html += `<div class="rd-expected"><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#e8e4dc;">EXPECTED RETURN</span><span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:#5c5;">${fmtMoney(loanExpectedReturn)}</span></div>`;
         html += `<div class="rd-formula">Risk-adjusted: total interest × (1 - ${defaultProb}% default)</div>`;
+    }
+
+    if (rdType === 'INSURE') {
+        // Claim Probability
+        html += `<div class="rd-section-bar" style="color:#a3b07e;">Risk Assessment</div>`;
+        html += `<div class="rd-control">
+            <div class="rd-control__header">
+                <span class="rd-control__label">CLAIM PROBABILITY</span>
+                <span class="rd-control__value" style="font-size:14px;color:${claimColor};">${insureClaimProb}%</span>
+            </div>
+            ${rdBar(insureClaimProb, 100, claimColor)}
+            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:4px;">Based on contractor reputation, project complexity, and nation stability.</div>
+        </div>`;
+
+        // Projected Returns
+        html += `<div class="rd-section-bar" style="color:#5c5;">Projected Returns</div>`;
+        html += `<div class="rd-risk-row"><span class="rd-risk-label">MAX EXPOSURE</span><span class="rd-risk-value" style="color:#c55;">${fmtMoney(insureMaxExposure)}</span></div>`;
+        html += `<div class="rd-risk-row"><span class="rd-risk-label">TOTAL PREMIUMS</span><span class="rd-risk-value" style="color:#5c5;">${fmtMoney(insureTotalPremiums)}</span></div>`;
+        html += `<div class="rd-risk-row"><span class="rd-risk-label">EXPECTED PAYOUT</span><span class="rd-risk-value" style="color:#c84;">${fmtMoney(insureExpectedPayout)}</span></div>`;
+
+        const profitClass = insureExpectedProfit > 0 ? '' : ' negative';
+        const profitColor = insureExpectedProfit > 0 ? '#5c5' : '#c55';
+        html += `<div class="rd-expected${profitClass}"><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#e8e4dc;">EXPECTED PROFIT</span><span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${profitColor};">${fmtMoney(insureExpectedProfit)}</span></div>`;
+        html += `<div class="rd-formula">Premiums (${fmtMoney(insureTotalPremiums)}) − expected payout (${insureClaimProb}% × ${fmtMoney(insureMaxExposure)})</div>`;
     }
 
     html += '</div>'; // close rd-right
     html += '</div>'; // close rd-body
 
     // ── FOOTER ──
-    const footerCapital = rdType === 'LOAN' ? rdLoanAmount : 0;
-    const footerReturn = rdType === 'LOAN' ? expectedReturn : 0;
-    const footerRisk = rdType === 'LOAN' ? defaultProb : 0;
-    const footerRiskColor = rdType === 'LOAN' ? defaultColor : '#6a6660';
+    const footerCapital = rdType === 'LOAN' ? rdLoanAmount : rdType === 'INSURE' ? rdInsureCoverage : 0;
+    const footerReturn = rdType === 'LOAN' ? loanExpectedReturn : rdType === 'INSURE' ? insureExpectedProfit : 0;
+    const footerRisk = rdType === 'LOAN' ? defaultProb : rdType === 'INSURE' ? insureClaimProb : 0;
+    const footerRiskColor = rdType === 'LOAN' ? defaultColor : rdType === 'INSURE' ? claimColor : '#6a6660';
     const actionLabel = rdType === 'LOAN' ? 'ISSUE LOAN' : rdType === 'INSURE' ? 'WRITE POLICY' : 'BUY BONDS';
     const actionClass = rdType.toLowerCase();
 
@@ -749,6 +862,9 @@ window.rdSetLoanRate = rdSetLoanRate;
 window.rdSetLoanAmount = rdSetLoanAmount;
 window.rdSetLoanTerm = rdSetLoanTerm;
 window.rdSetCollateral = rdSetCollateral;
+window.rdSetInsurePremium = rdSetInsurePremium;
+window.rdSetInsureCoverage = rdSetInsureCoverage;
+window.rdSetInsureDeductible = rdSetInsureDeductible;
 
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
