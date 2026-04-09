@@ -28923,23 +28923,17 @@ async function executeIssueAction(supabase, params) {
         }
     }
 
-    // Deduct treasury if needed
+    // Deduct treasury cost by adding to national debt
+    // Nations don't have a separate treasury pool — costs are financed through borrowing
     if (action.treasury_cost > 0) {
         const { data: nationData } = await supabase
             .from('nations')
-            .select('treasury')
+            .select('debt')
             .eq('id', actingNationId)
             .single();
-        const currentTreasury = Number(nationData?.treasury ?? 0);
-        if (currentTreasury < action.treasury_cost) {
-            // Refund AP if we already deducted
-            if (apCost > 0) {
-                await supabase.rpc('deduct_ap', { p_faction_id: actingFactionId, p_cost: -apCost });
-            }
-            return { success: false, error: `Insufficient treasury (need $${(action.treasury_cost / 1_000_000).toFixed(0)}M).` };
-        }
+        const currentDebt = Number(nationData?.debt ?? 0);
         await supabase.from('nations')
-            .update({ treasury: currentTreasury - action.treasury_cost })
+            .update({ debt: currentDebt + action.treasury_cost })
             .eq('id', actingNationId);
     }
 

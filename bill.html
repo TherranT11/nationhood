@@ -242,7 +242,7 @@ import { isGovernmentPresidential, hasElectedPresident } from './js/game/governm
 import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
 import { loadFactionIdeology, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, getIdeologyChipClass, calculateBillDynamicPenalty } from './js/game/ideology.js';
 import { calculateBillSupport, syncVoteTallies, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote } from './js/game/bills.js';
-import { POLICY_STANCES, MAJOR_SECTORS, RAW_SCALING_DIVISORS, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES } from './js/game/diplomacy-constants.js';
+import { POLICY_STANCES, MAJOR_SECTORS, RAW_SCALING_DIVISORS, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, INITIATIVE_ARTICLE_TYPES, MAJOR_INITIATIVE_ARTICLE_TYPES } from './js/game/diplomacy-constants.js';
 import { signPresidentialBill, vetoPresidentialBill, rejectOwnNomination } from './js/game/presidential.js';
 import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost } from './js/game/budget.js';
 import { advanceBillEmergency, EO_CONFIG } from './js/game/executive-orders.js';
@@ -1809,11 +1809,45 @@ function renderRatificationBill() {
                 const isStruck = struck.has(i);
                 const numeral = ROMAN[i] || (i + 1);
                 const isStructuredTradeArticle = !!(art && art.type && art.data && typeof art.data === 'object');
-                const artTypeInfo = isStructuredTradeArticle ? (TRADE_ARTICLE_TYPES[art.type] || {}) : {};
-                const typeLabel = artTypeInfo.label || (isStructuredTradeArticle ? (art.type || 'Provision') : '');
-                const descriptionHtml = isStructuredTradeArticle
-                    ? renderTradeArticleDescription(art, rd)
-                    : escapeHtml(art.text || '');
+                const isInitiativeArticle = !!(art && art.type && (INITIATIVE_ARTICLE_TYPES?.[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES?.[art.type]));
+                const artTypeInfo = isStructuredTradeArticle ? (TRADE_ARTICLE_TYPES[art.type] || {})
+                    : isInitiativeArticle ? (INITIATIVE_ARTICLE_TYPES[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES[art.type] || {}) : {};
+                const typeLabel = artTypeInfo.label || (isStructuredTradeArticle || isInitiativeArticle ? (art.type || 'Provision') : '');
+
+                let descriptionHtml;
+                if (isStructuredTradeArticle) {
+                    descriptionHtml = renderTradeArticleDescription(art, rd);
+                } else if (isInitiativeArticle) {
+                    // Render initiative article with description + config summary + effects
+                    let initHtml = '';
+                    if (artTypeInfo.description && !isStruck) {
+                        initHtml += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">' + escapeHtml(artTypeInfo.description) + '</div>';
+                    }
+                    if (art.config && !isStruck) {
+                        const cfgParts = [];
+                        for (const [k, v] of Object.entries(art.config)) {
+                            if (v != null && v !== '' && v !== false) {
+                                const label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                cfgParts.push('<strong>' + escapeHtml(label) + ':</strong> ' + escapeHtml(String(v)));
+                            }
+                        }
+                        if (cfgParts.length > 0) initHtml += '<div style="font-size:11px;color:var(--text-muted);line-height:1.5;">' + cfgParts.join(' &middot; ') + '</div>';
+                    }
+                    if (art.effects && !isStruck) {
+                        const effectParts = [];
+                        for (const [k, v] of Object.entries(art.effects)) {
+                            if (v && v !== 0) {
+                                const sign = typeof v === 'number' && v > 0 ? '+' : '';
+                                const label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                effectParts.push('<span style="font-family:var(--font-mono);font-size:10px;font-weight:600;padding:1px 5px;background:rgba(90,175,165,0.08);border:1px solid rgba(90,175,165,0.2);color:var(--teal);border-radius:2px;">' + sign + v + ' ' + escapeHtml(label) + '</span>');
+                            }
+                        }
+                        if (effectParts.length > 0) initHtml += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">' + effectParts.join('') + '</div>';
+                    }
+                    descriptionHtml = initHtml || escapeHtml(art.text || 'Initiative provision.');
+                } else {
+                    descriptionHtml = escapeHtml(art.text || '');
+                }
                 html += '<div class="article' + (isStruck ? ' struck-article' : '') + '">' +
                     '<div class="article-number">Article ' + numeral +
                         (typeLabel ? ' <span style="color:var(--blue);font-size:0.7rem;">' + escapeHtml(typeLabel.toUpperCase()) + '</span>' : '') +
