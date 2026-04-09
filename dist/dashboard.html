@@ -663,9 +663,9 @@
     }
   }
 </style>
-  <script type="module" crossorigin src="/assets/dashboard-DPCXDbnA.js"></script>
+  <script type="module" crossorigin src="/assets/dashboard-BGJurmt2.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
-  <link rel="modulepreload" crossorigin href="/assets/common-B8efSF6M.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-B3gRt7tv.js">
   <link rel="modulepreload" crossorigin href="/assets/issues-C-G9s1Kq.js">
   <link rel="modulepreload" crossorigin href="/assets/government-types-BwzErBjP.js">
   <link rel="modulepreload" crossorigin href="/assets/ideology-Dqw3ro_Z.js">
@@ -713,9 +713,15 @@
     <div class="dash-card dash-card-tall" id="events-card" style="display:flex;flex-direction:column;">
       <div class="dash-card-header" style="display:flex;align-items:center;gap:0;">
         <span style="margin-right:auto;">EVENTS</span>
-        <div class="events-tab-bar" id="events-tab-bar">
-          <button class="events-tab-btn active" data-tab="nation" onclick="switchEventsTab('nation')">Nation</button>
-          <button class="events-tab-btn" data-tab="world" onclick="switchEventsTab('world')">World</button>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <div class="events-tab-bar" id="events-cat-bar">
+            <button class="events-tab-btn active" data-cat="nation" onclick="switchEventsCat('nation')">Nation</button>
+            <button class="events-tab-btn" data-cat="corporate" onclick="switchEventsCat('corporate')">Corporate</button>
+          </div>
+          <div class="events-tab-bar" id="events-scope-bar">
+            <button class="events-tab-btn active" data-scope="local" onclick="switchEventsScope('local')">Local</button>
+            <button class="events-tab-btn" data-scope="world" onclick="switchEventsScope('world')">World</button>
+          </div>
         </div>
       </div>
       <div class="dash-events-scroll" id="dash-events-list"></div>
