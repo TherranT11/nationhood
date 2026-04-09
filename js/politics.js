@@ -474,14 +474,6 @@ async function renderPartyTab(f, nation, data) {
         </div>
     </div>`;
 
-    const electorateTabBtn = '<button class="pol-page-tab" data-page-tab="electorate-spread">Electorate</button>';
-    const electorateContent = `
-    <div class="pol-page-content" data-page-content="electorate-spread">
-        <div id="electorate-spread-container" class="es-page" style="min-height:300px;">
-            <div style="color:var(--dtext-3);font-family:var(--dfont-mono);font-size:11px;">Loading electorate data...</div>
-        </div>
-    </div>`;
-
     const otherPartiesTabBtn = '<button class="pol-page-tab" data-page-tab="other-parties">Other Parties</button>';
     const otherPartiesContent = `
     <div class="pol-page-content" data-page-content="other-parties">
@@ -502,7 +494,6 @@ async function renderPartyTab(f, nation, data) {
     <div class="pol-page-tabs">
         <button class="pol-page-tab active" data-page-tab="politics">Politics</button>
         <button class="pol-page-tab" data-page-tab="actions">Actions</button>
-        ${electorateTabBtn}
         ${electionsTabBtn}
         ${otherPartiesTabBtn}
     </div>
@@ -514,7 +505,6 @@ async function renderPartyTab(f, nation, data) {
             <div id="actions-container"></div>
         </div>
     </div>
-    ${electorateContent}
     ${electionsContent}
     ${otherPartiesContent}`;
 
@@ -523,7 +513,6 @@ async function renderPartyTab(f, nation, data) {
     // Wire up page-level sub-tabs (Politics / Actions / Electorate / Other Parties / Elections)
     let actionsLoaded = false;
     let otherPartiesLoaded = false;
-    let electorateSpreadLoaded = false;
     let electionsLoaded = false;
     document.querySelectorAll('.pol-page-tab').forEach(tab => {
         tab.addEventListener('click', () => {
@@ -537,11 +526,6 @@ async function renderPartyTab(f, nation, data) {
             if (target === 'actions' && !actionsLoaded) {
                 actionsLoaded = true;
                 renderDemocracyActions(nation, f, shard, allParties);
-            }
-            // Lazy-load Electorate Spread tab on first click
-            if (target === 'electorate-spread' && !electorateSpreadLoaded) {
-                electorateSpreadLoaded = true;
-                renderElectorateSpreadTab(f, nation, allParties, allPartyIdeologies, currentTick);
             }
             // Lazy-load Other Parties tab on first click
             if (target === 'other-parties' && !otherPartiesLoaded) {
@@ -4993,7 +4977,7 @@ async function _renderStanceSummaryStrip(factionId, nationId) {
 
     if (!stances || stances.length === 0) {
         strip.innerHTML = `<div style="color:var(--dtext-3);font-size:12px;font-family:var(--dfont-ui);padding:4px 0;">
-            No active stances. Take a stance in the <span style="color:var(--dtext-0);font-weight:600">Electorate</span> tab.
+            No active stances. Take a stance in the <span style="color:var(--dtext-0);font-weight:600">Actions</span> tab.
         </div>`;
         return;
     }
@@ -5041,7 +5025,7 @@ async function _renderStanceSummaryStrip(factionId, nationId) {
             <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-2)">${stances.length} / ${maxStances}</span>
         </div>
         ${rowsHtml}
-        <div style="margin-top:8px;font-size:10px;color:var(--dtext-3);font-family:var(--dfont-ui)">Manage stances in the <span style="color:var(--dtext-0);font-weight:600">Electorate</span> tab</div>`;
+        <div style="margin-top:8px;font-size:10px;color:var(--dtext-3);font-family:var(--dfont-ui)">Manage stances in the <span style="color:var(--dtext-0);font-weight:600">Actions</span> tab</div>`;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
