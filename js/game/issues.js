@@ -3653,6 +3653,231 @@ export async function processArbitration(supabase, issueId, currentTick) {
 
 // ==================== EXPORTS ====================
 
+// ==================== TRADE IMBALANCE AUTO-SPAWN ====================
+/**
+ * Check bilateral trade data for sustained imbalances and auto-spawn
+ * chronic_trade_imbalance issues when conditions are met.
+ *
+ * Called each tick AFTER processTradeFlows has written trade_partners rows.
+ *
+ * Logic:
+ *   1. Query trade_partners for last N ticks (sustained_ticks config)
+ *   2. Aggregate bilateral volumes per nation pair per tick
+ *   3. If imbalance_pct > threshold for ALL N ticks (same direction), candidate
+ *   4. Filter out existing active issues, cooldowns, max-per-nation caps
+ *   5. Roll spawn_chance (50%) per candidate
+ *   6. Create bilateral_issues row + starter modifiers + history
+ */
+export async function checkTradeImbalanceAutoSpawn(supabase, nationList, currentTick) {
+    var typeDef = ISSUE_TYPES.chronic_trade_imbalance;
+    var config = typeDef.auto_spawn_config;
+    var threshold = config.imbalance_pct_threshold; // 50
+    var sustainedTicks = config.sustained_ticks;     // 5
+    var spawnChance = config.spawn_chance;            // 0.5
+    var maxPerNation = config.max_per_nation;         // 2
+    var cooldown = config.cooldown_after_resolution;  // 60
+
+    if (currentTick < sustainedTicks) return [];
+    if (!nationList || nationList.length < 2) return [];
+
+    // ── 1. Query bilateral trade volumes for last N ticks ──
+    var startTick = currentTick - sustainedTicks + 1;
+    var { data: partnerData, error: partnerErr } = await supabase
+        .from('trade_partners')
+        .select('tick, exporter_nation_id, importer_nation_id, trade_volume')
+        .gte('tick', startTick)
+        .lte('tick', currentTick);
+
+    if (partnerErr || !partnerData || partnerData.length === 0) return [];
+
+    // Build nation ID set for validation
+    var nationIds = new Set();
+    for (var ni = 0; ni < nationList.length; ni++) nationIds.add(nationList[ni].id);
+
+    // ── 2. Aggregate by canonical pair + tick ──
+    // pairMap[canonicalKey] = { a, b, ticks: { [tick]: { aToB, bToA } } }
+    var pairMap = {};
+
+    for (var i = 0; i < partnerData.length; i++) {
+        var row = partnerData[i];
+        if (!nationIds.has(row.exporter_nation_id) || !nationIds.has(row.importer_nation_id)) continue;
+
+        var a = row.exporter_nation_id < row.importer_nation_id
+            ? row.exporter_nation_id : row.importer_nation_id;
+        var b = row.exporter_nation_id < row.importer_nation_id
+            ? row.importer_nation_id : row.exporter_nation_id;
+        var key = a + '|' + b;
+
+        if (!pairMap[key]) pairMap[key] = { a: a, b: b, ticks: {} };
+        if (!pairMap[key].ticks[row.tick]) pairMap[key].ticks[row.tick] = { aToB: 0, bToA: 0 };
+
+        if (row.exporter_nation_id === a) {
+            pairMap[key].ticks[row.tick].aToB += Number(row.trade_volume) || 0;
+        } else {
+            pairMap[key].ticks[row.tick].bToA += Number(row.trade_volume) || 0;
+        }
+    }
+
+    // ── 3. Find pairs with sustained imbalance (same direction every tick) ──
+    var candidates = [];
+
+    for (var key in pairMap) {
+        var pair = pairMap[key];
+        var sustained = true;
+        var surplusIsA = 0;
+        var surplusIsB = 0;
+
+        for (var t = startTick; t <= currentTick; t++) {
+            var entry = pair.ticks[t];
+            if (!entry) { sustained = false; break; }
+
+            var totalVol = entry.aToB + entry.bToA;
+            // Minimum volume guard — ignore tiny trades
+            if (totalVol < 50000) { sustained = false; break; }
+
+            var imbalancePct = Math.abs(entry.aToB - entry.bToA) / totalVol * 100;
+            if (imbalancePct < threshold) { sustained = false; break; }
+
+            if (entry.aToB > entry.bToA) surplusIsA++;
+            else surplusIsB++;
+        }
+
+        if (!sustained) continue;
+
+        // Surplus direction must be consistent across all ticks
+        var surplusNationId;
+        if (surplusIsA >= sustainedTicks) {
+            surplusNationId = pair.a;
+        } else if (surplusIsB >= sustainedTicks) {
+            surplusNationId = pair.b;
+        } else {
+            continue; // direction flip-flopped
+        }
+
+        candidates.push({
+            nationA: pair.a,
+            nationB: pair.b,
+            surplusNationId: surplusNationId,
+            deficitNationId: surplusNationId === pair.a ? pair.b : pair.a,
+        });
+    }
+
+    if (candidates.length === 0) return [];
+
+    // ── 4. Filter: existing issues, cooldowns, max-per-nation ──
+    var { data: existingIssues } = await supabase
+        .from('bilateral_issues')
+        .select('nation_a_id, nation_b_id, status, resolved_tick, escalated_tick')
+        .eq('issue_type', 'chronic_trade_imbalance');
+
+    var activePerNation = {};
+    var activePairs = new Set();
+    var cooldownPairs = new Set();
+
+    for (var ei = 0; ei < (existingIssues || []).length; ei++) {
+        var ex = existingIssues[ei];
+        var pairKey = ex.nation_a_id + '|' + ex.nation_b_id;
+
+        if (ex.status === 'active' || ex.status === 'partial') {
+            activePairs.add(pairKey);
+            activePerNation[ex.nation_a_id] = (activePerNation[ex.nation_a_id] || 0) + 1;
+            activePerNation[ex.nation_b_id] = (activePerNation[ex.nation_b_id] || 0) + 1;
+        }
+
+        // Cooldown: resolved or escalated within last N ticks
+        var resolvedAt = ex.resolved_tick || ex.escalated_tick;
+        if ((ex.status === 'resolved' || ex.status === 'escalated' || ex.status === 'dormant') && resolvedAt) {
+            if (currentTick - resolvedAt < cooldown) {
+                cooldownPairs.add(pairKey);
+            }
+        }
+    }
+
+    // ── 5. Spawn issues for qualifying candidates ──
+    var spawned = [];
+    var dummyResults = { modifiersSpawned: [] }; // for spawnModifier callback
+
+    for (var ci = 0; ci < candidates.length; ci++) {
+        var cand = candidates[ci];
+        var candKey = cand.nationA + '|' + cand.nationB;
+
+        if (activePairs.has(candKey)) continue;
+        if (cooldownPairs.has(candKey)) continue;
+        if ((activePerNation[cand.nationA] || 0) >= maxPerNation) continue;
+        if ((activePerNation[cand.nationB] || 0) >= maxPerNation) continue;
+
+        // Roll spawn chance
+        if (Math.random() > spawnChance) {
+            console.log(`[TradeImbalanceAutoSpawn] Candidate ${cand.nationA.slice(0,8)}↔${cand.nationB.slice(0,8)} — spawn roll failed`);
+            continue;
+        }
+
+        // Create the bilateral issue
+        var { data: issueRow, error: issueErr } = await supabase
+            .from('bilateral_issues')
+            .insert({
+                issue_type: 'chronic_trade_imbalance',
+                nation_a_id: cand.nationA,
+                nation_b_id: cand.nationB,
+                tension: 1,
+                favor: 0,
+                status: 'active',
+                created_tick: currentTick,
+                ticks_without_diplomatic_action: 0,
+                administering_nation_id: cand.surplusNationId,
+            })
+            .select('id')
+            .single();
+
+        if (issueErr || !issueRow) {
+            console.error('[TradeImbalanceAutoSpawn] Failed to create issue:', issueErr?.message);
+            continue;
+        }
+
+        // Insert starter modifiers (each has own spawn_chance)
+        var issueObj = { id: issueRow.id };
+        var starterKeys = typeDef.starter_modifiers;
+        for (var mi = 0; mi < starterKeys.length; mi++) {
+            var modKey = starterKeys[mi];
+            var modConfig = MODIFIERS[modKey];
+            if (!modConfig) continue;
+
+            // Per-modifier spawn chance (structural starters: 1.0, 0.6, or 0.4)
+            if (modConfig.spawn_chance !== undefined && Math.random() > modConfig.spawn_chance) continue;
+
+            await spawnModifier(supabase, issueObj, modKey, modConfig.applies_to || 'both',
+                currentTick, 'auto:trade_imbalance_detected', dummyResults);
+        }
+
+        // History entry
+        await insertHistory(supabase, issueRow.id, currentTick, 'created',
+            'Chronic trade imbalance detected. The surplus nation consistently exports far more than it imports from the deficit nation.',
+            {
+                issue_type: 'chronic_trade_imbalance',
+                surplus_nation_id: cand.surplusNationId,
+                deficit_nation_id: cand.deficitNationId,
+                sustained_ticks: sustainedTicks,
+                source: 'auto_trade_engine',
+            });
+
+        spawned.push({
+            issueId: issueRow.id,
+            nationA: cand.nationA,
+            nationB: cand.nationB,
+            surplusNationId: cand.surplusNationId,
+        });
+
+        // Update tracking for subsequent candidates this tick
+        activePerNation[cand.nationA] = (activePerNation[cand.nationA] || 0) + 1;
+        activePerNation[cand.nationB] = (activePerNation[cand.nationB] || 0) + 1;
+        activePairs.add(candKey);
+
+        console.log(`[TradeImbalanceAutoSpawn] Spawned chronic_trade_imbalance: ${cand.nationA.slice(0,8)}↔${cand.nationB.slice(0,8)}, surplus=${cand.surplusNationId.slice(0,8)}`);
+    }
+
+    return spawned;
+}
+
 export {
     TENSION_LABELS,
     getTensionLabel,
