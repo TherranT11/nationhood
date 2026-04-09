@@ -107,12 +107,12 @@ SELECT
     GREATEST(sm.id, n.id),
     30,
     CASE LOWER(n.name)
-        WHEN 'avelia'       THEN 32
-        WHEN 'melizea'      THEN 28
-        WHEN 'sangreza'     THEN 22
+        WHEN 'san estrella' THEN 7
+        WHEN 'sangreza'     THEN 9
         WHEN 'montequilla'  THEN 24
-        WHEN 'san estrella' THEN 18
         WHEN 'palvera'      THEN 26
+        WHEN 'melizea'      THEN 28
+        WHEN 'avelia'       THEN 32
         WHEN 'calveth'      THEN 72
         WHEN 'flandis'      THEN 68
         WHEN 'vostia'       THEN 78
