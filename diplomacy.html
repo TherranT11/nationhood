@@ -16348,7 +16348,7 @@ async function loadIPOVotes(orgId) {
         // Fetch active members for voter count
         const { data: members } = await _supabase
             .from('ipo_members')
-            .select('faction_id, role, factions:faction_id ( faction_name, nation_id )')
+            .select('faction_id, role, is_active, factions:faction_id ( faction_name, nation_id )')
             .eq('org_id', orgId)
             .eq('is_active', true);
         ipoAllMembers = members || [];
