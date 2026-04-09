@@ -1676,6 +1676,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] resolveExpiredVotes failed for ${nation.name} (non-fatal):`, resolveErr);
         }
 
+        // Resolve constitutional referendums (1+ tick after referendum_start_tick)
+        try {
+            const referendumResults = await resolveReferendums(supabase, nation, newTick);
+            if (referendumResults.length > 0) {
+                summary.referendums = summary.referendums || [];
+                summary.referendums.push({ nation: nation.name, results: referendumResults });
+            }
+        } catch (refErr) {
+            console.error(`[advanceTick] resolveReferendums failed for ${nation.name} (non-fatal):`, refErr);
+        }
+
         // Safety net: catch any floor bills that resolveExpiredVotes missed
         // (e.g. due to complex query failure or thrown error). Uses simple queries per-bill.
         try {

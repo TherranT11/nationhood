@@ -885,6 +885,127 @@ export async function checkEarlyMajority(supabase, nationId) {
     return results;
 }
 
+// ── Constitutional Referendum Resolution ──
+// Resolves pending referendums 1+ ticks after referendum_start_tick.
+// YES > 50% → bill moves to referendum_approved (sponsor can send to floor).
+// NO ≥ 50% → bill fails.
+export async function resolveReferendums(supabase, nation, currentTick) {
+    const { data: pendingBills, error } = await supabase
+        .from('bills')
+        .select('id, bill_name, proposed_by, referendum_start_tick, bill_type, proposed_seats, proposed_term_length, proposed_constitutional_reform, proposed_constitutional_amendment_streamlining, entrenchment_tier')
+        .eq('nation_id', nation.id)
+        .eq('status', 'referendum_pending')
+        .eq('referendum_status', 'pending')
+        .lte('referendum_start_tick', currentTick - 1);
+
+    if (error || !pendingBills || pendingBills.length === 0) return [];
+
+    const results = [];
+
+    for (const bill of pendingBills) {
+        if (bill.proposed_by) {
+            const { data: proposer } = await supabase.from('factions').select('id').eq('id', bill.proposed_by).maybeSingle();
+            if (!proposer) {
+                await supabase.from('bills').update({ status: 'failed', referendum_status: 'resolved', referendum_yes_pct: 0, referendum_no_pct: 100, referendum_turnout_pct: 0 }).eq('id', bill.id);
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_proposer_disbanded' });
+                continue;
+            }
+        }
+
+        var govApproval = Number(nation.gov_approval ?? 50);
+        var civilUnrest = Number(nation.civil_unrest ?? 30);
+        var polarization = Number(nation.polarization ?? 50);
+        var happiness = Number(nation.happiness ?? 50);
+        var stability = Number(nation.stability ?? 50);
+        var sol = Number(nation.standard_of_living ?? 50);
+        var gdpGrowth = Number(nation.gdp_growth ?? 0);
+
+        var crisisCount = 0;
+        try {
+            const { count } = await supabase
+                .from('incidents')
+                .select('id', { count: 'exact', head: true })
+                .or(`nation_a_id.eq.${nation.id},nation_b_id.eq.${nation.id}`)
+                .in('status', ['active', 'mediating']);
+            crisisCount = count || 0;
+        } catch (_) {}
+
+        var proposerApproval = 50;
+        if (bill.proposed_by) {
+            try {
+                const { data: standing } = await supabase
+                    .from('faction_electoral_standing')
+                    .select('party_approval')
+                    .eq('faction_id', bill.proposed_by)
+                    .maybeSingle();
+                if (standing) proposerApproval = Number(standing.party_approval ?? 50);
+            } catch (_) {}
+        }
+
+        var fatiguePenalty = 0;
+        try {
+            const { count: recentCount } = await supabase
+                .from('bills')
+                .select('id', { count: 'exact', head: true })
+                .eq('nation_id', nation.id)
+                .eq('referendum_status', 'resolved')
+                .gte('referendum_start_tick', currentTick - 24);
+            if (recentCount && recentCount > 0) fatiguePenalty = 10;
+        } catch (_) {}
+
+        var yesPct = 50;
+        yesPct += Math.max(0, (50 - govApproval)) * 0.3;
+        yesPct += Math.max(0, (civilUnrest - 50)) * 0.2;
+        yesPct += crisisCount * 5;
+        yesPct += Math.max(0, (polarization - 50)) * 0.15;
+        yesPct += Math.max(0, (50 - happiness)) * 0.15;
+        yesPct += (proposerApproval - 50) * 0.2;
+        yesPct -= Math.max(0, (stability - 50)) * 0.2;
+        yesPct -= Math.max(0, (sol - 50)) * 0.15;
+        yesPct -= Math.max(0, gdpGrowth) * 5;
+        yesPct -= fatiguePenalty;
+
+        yesPct = Math.max(15, Math.min(85, yesPct));
+        yesPct += (Math.random() - 0.5) * 10;
+        yesPct = Math.round(Math.max(5, Math.min(95, yesPct)) * 10) / 10;
+        var noPct = Math.round((100 - yesPct) * 10) / 10;
+
+        var turnout = 30;
+        turnout += Math.max(0, (polarization - 50)) * 0.2;
+        turnout += crisisCount * 3;
+        turnout += Math.max(0, (civilUnrest - 50)) * 0.1;
+        turnout = Math.max(20, Math.min(45, turnout));
+        turnout = Math.round((turnout + (Math.random() - 0.5) * 4) * 10) / 10;
+        turnout = Math.max(15, Math.min(50, turnout));
+
+        var passed = yesPct > 50;
+
+        console.log(`[resolveReferendums] ${bill.bill_name}: YES=${yesPct}% NO=${noPct}% turnout=${turnout}% → ${passed ? 'APPROVED' : 'REJECTED'}`);
+
+        if (passed) {
+            await supabase.from('bills').update({
+                status: 'referendum_approved',
+                referendum_status: 'resolved',
+                referendum_yes_pct: yesPct,
+                referendum_no_pct: noPct,
+                referendum_turnout_pct: turnout
+            }).eq('id', bill.id);
+        } else {
+            await supabase.from('bills').update({
+                status: 'failed',
+                referendum_status: 'resolved',
+                referendum_yes_pct: yesPct,
+                referendum_no_pct: noPct,
+                referendum_turnout_pct: turnout
+            }).eq('id', bill.id);
+        }
+
+        results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'approved' : 'rejected', yesPct, noPct, turnout });
+    }
+
+    return results;
+}
+
 export async function resolveExpiredVotes(supabase, nationId) {
     const { data: shard } = await supabase
         .from('shard')
