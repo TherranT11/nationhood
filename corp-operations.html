@@ -5279,7 +5279,7 @@ function renderPermits() {
 let _pmApplyLock = false;
 
 async function pmApplyForPermit(permitKey) {
-    if (_pmApplyLock || !faction || !nation) return;
+    if (_pmApplyLock || !faction || !nationStats) return;
     _pmApplyLock = true;
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -5287,7 +5287,7 @@ async function pmApplyForPermit(permitKey) {
 
         const { data, error } = await _supabase.rpc('apply_for_permit', {
             p_faction_id: faction.id,
-            p_nation_id: nation.id,
+            p_nation_id: nationStats.id,
             p_permit_key: permitKey,
             p_current_tick: tick
         });
@@ -5305,7 +5305,7 @@ async function pmApplyForPermit(permitKey) {
 window.pmApplyForPermit = pmApplyForPermit;
 
 async function loadPermits() {
-    if (!faction || !nation) {
+    if (!faction || !nationStats) {
         pmActivePermits = [];
         pmPendingPermits = [];
         pmAvailablePermits = [];
@@ -5326,14 +5326,14 @@ async function loadPermits() {
         .from('corp_permits')
         .select('*')
         .eq('faction_id', faction.id)
-        .eq('nation_id', nation.id);
+        .eq('nation_id', nationStats.id);
     const heldPermits = corpPermitRows || [];
 
     // 3. Load nation's active laws that have permit_key (determines which permits are required)
     const { data: activeLawRows } = await _supabase
         .from('active_laws')
         .select('policy_id, policies(permit_key, policy_name)')
-        .eq('nation_id', nation.id)
+        .eq('nation_id', nationStats.id)
         .not('policies.permit_key', 'is', null);
     const requiredPermitKeys = new Set();
     const policyNameByPermit = {};
@@ -5358,7 +5358,7 @@ async function loadPermits() {
             return {
                 name: def.name || p.permit_key,
                 permit_key: p.permit_key,
-                nation: nation.name,
+                nation: nationStats.name,
                 policy: policyNameByPermit[p.permit_key] || '—',
                 issued: p.granted_at_tick != null ? tickToDate(p.granted_at_tick) : '—',
                 expires: p.expires_at_tick ? tickToDate(p.expires_at_tick) : 'Single-use',
@@ -5382,7 +5382,7 @@ async function loadPermits() {
             return {
                 name: def.name || p.permit_key,
                 permit_key: p.permit_key,
-                nation: nation.name,
+                nation: nationStats.name,
                 applied: tickToDate(p.applied_at_tick),
                 status: 'PROCESSING',
                 processing_total: procTotal,
@@ -5402,7 +5402,7 @@ async function loadPermits() {
             return {
                 name: def.name || key,
                 permit_key: key,
-                nation: nation.name,
+                nation: nationStats.name,
                 description: def.description || '',
                 policy: policyNameByPermit[key] || '—',
                 cost: def.cost_is_percentage ? 150000 : (def.cost || 0),
