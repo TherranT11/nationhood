@@ -33032,7 +33032,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Electoral standing calculator: 3-pillar (Governance + Momentum + Ideology)
         // Runs every 3rd tick to reduce compute load — standings don't need per-tick precision
         // Also runs if standings are stale (last_updated_tick is more than 3 ticks old)
-        if (newTick % 3 === 0 || newTick <= 185) {
+        // Electorate: runs every 3rd tick to save CPU, but always runs for nations
+        // that don't have an electorate_profile yet (genesis must not be delayed)
+        const { data: hasProfile } = await supabase.from('electorate_profile')
+            .select('id').eq('nation_id', nation.id).maybeSingle();
+        if (newTick % 3 === 0 || !hasProfile) {
             try {
                 await tickElectorate(supabase, nation, newTick);
             } catch (electorateErr) {
