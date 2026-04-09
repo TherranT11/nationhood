@@ -2351,14 +2351,24 @@ export async function resolveStuckRatifications(supabase, nationId) {
         const currentTick = shard?.current_tick || 0;
 
         for (const neg of stuckNegs) {
-            if (!neg.bill_a_id || !neg.bill_b_id) continue;
+            // If bill IDs are missing, the negotiation is orphaned — fail it
+            if (!neg.bill_a_id || !neg.bill_b_id) {
+                await supabase.from('trade_negotiations')
+                    .update({ status: 'ratification_failed' })
+                    .eq('id', neg.id);
+                console.log(`[resolveStuckRatifications] Negotiation ${neg.id} failed — missing bill IDs`);
+                continue;
+            }
 
             const [billARes, billBRes] = await Promise.all([
                 supabase.from('bills').select('status').eq('id', neg.bill_a_id).single(),
                 supabase.from('bills').select('status').eq('id', neg.bill_b_id).single(),
             ]);
 
-            if (billARes.data?.status === 'passed' && billBRes.data?.status === 'passed') {
+            const aStatus = billARes.data?.status;
+            const bStatus = billBRes.data?.status;
+
+            if (aStatus === 'passed' && bStatus === 'passed') {
                 console.log(`[resolveStuckRatifications] Both bills passed for negotiation ${neg.id} — activating trade agreement`);
 
                 const articles = neg.draft_articles || [];
@@ -2394,6 +2404,12 @@ export async function resolveStuckRatifications(supabase, nationId) {
                     .eq('id', neg.id);
 
                 console.log(`[resolveStuckRatifications] Negotiation ${neg.id} activated via safety net`);
+            } else if (['failed', 'expired', 'vetoed'].includes(aStatus) || ['failed', 'expired', 'vetoed'].includes(bStatus) || !aStatus || !bStatus) {
+                // One or both ratification bills failed, expired, or were deleted — negotiation is dead
+                await supabase.from('trade_negotiations')
+                    .update({ status: 'ratification_failed' })
+                    .eq('id', neg.id);
+                console.log(`[resolveStuckRatifications] Negotiation ${neg.id} failed — bill statuses: A=${aStatus}, B=${bStatus}`);
             }
         }
     } catch (err) {
