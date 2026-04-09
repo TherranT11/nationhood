@@ -777,39 +777,55 @@ async function confirmNation() {
         const startingCash = Math.round(baseCash * currencyMult);
         const startingLoans = Math.round(8_000_000 * currencyMult);
 
-        // Upsert corporation faction record
-        const { error: upsertError } = await _supabase
+        // Check if user already has a faction (party) — if so, create corp as linked faction
+        const { data: existingFaction } = await _supabase
             .from('factions')
-            .upsert({
-                id: currentUser.id,
-                faction_type: 'corporation',
-                faction_name: corpName,
-                nation_id: nation.id,
-                nation: nation.name,
-                abbreviation: ticker,
-                seats: 0,
-                needs_rebuild: false,
-                party_color: '#5aafa5',
-                party_logo: null,
-                party_description: null,
-                leader_first_name: ceoFirst,
-                leader_last_name: ceoLast,
-                leader_age: ceoAge,
-                founded_tick: currentTick,
-                action_points: 0, // Corporations don't use AP
-                corp_sector: corpSetup.sector,
-                corp_subsector: corpSetup.subsector,
-                corp_company_type: companyType,
-                corp_ticker: ticker,
-                corp_cash_reserves: startingCash,
-                corp_loans: startingLoans,
-                corp_general_workforce: 375,
-                corp_skilled_workforce: 100,
-                corp_innovative_workforce: 25,
-                abandoned_at: null,
-            });
+            .select('id, faction_type')
+            .eq('id', currentUser.id)
+            .is('abandoned_at', null)
+            .maybeSingle();
 
-        if (upsertError) throw upsertError;
+        const isLinkedCorp = existingFaction && existingFaction.faction_type === 'party';
+        const corpId = isLinkedCorp ? crypto.randomUUID() : currentUser.id;
+
+        // Insert (new linked corp) or upsert (first faction for this user)
+        const corpRow = {
+            id: corpId,
+            faction_type: 'corporation',
+            faction_name: corpName,
+            nation_id: nation.id,
+            nation: nation.name,
+            abbreviation: ticker,
+            seats: 0,
+            needs_rebuild: false,
+            party_color: '#5aafa5',
+            party_logo: null,
+            party_description: null,
+            leader_first_name: ceoFirst,
+            leader_last_name: ceoLast,
+            leader_age: ceoAge,
+            founded_tick: currentTick,
+            action_points: 0,
+            corp_sector: corpSetup.sector,
+            corp_subsector: corpSetup.subsector,
+            corp_company_type: companyType,
+            corp_ticker: ticker,
+            corp_cash_reserves: startingCash,
+            corp_loans: startingLoans,
+            corp_general_workforce: 375,
+            corp_skilled_workforce: 100,
+            corp_innovative_workforce: 25,
+            abandoned_at: null,
+        };
+
+        if (isLinkedCorp) {
+            corpRow.linked_user_id = currentUser.id;
+            const { error: insertError } = await _supabase.from('factions').insert(corpRow);
+            if (insertError) throw insertError;
+        } else {
+            const { error: upsertError } = await _supabase.from('factions').upsert(corpRow);
+            if (upsertError) throw upsertError;
+        }
 
         // Seed starting equipment + warehouse for construction corps
         if (corpSetup.sector === 'Construction') {
