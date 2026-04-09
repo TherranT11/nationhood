@@ -32234,7 +32234,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 // Check if aid_agreement_state exists for this agreement
                 const { data: existing } = await supabase
                     .from('aid_agreement_state')
-                    .select('id')
+                    .select('agreement_id')
                     .eq('agreement_id', ta.id)
                     .maybeSingle();
 
