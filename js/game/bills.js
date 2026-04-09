@@ -962,7 +962,8 @@ export async function resolveReferendums(supabase, nation, currentTick) {
         yesPct += (proposerApproval - 50) * 0.2;
         yesPct -= Math.max(0, (stability - 50)) * 0.2;
         yesPct -= Math.max(0, (sol - 50)) * 0.15;
-        yesPct -= Math.max(0, gdpGrowth) * 5;
+        // GDP growth: gdp_growth is 0-100 centered at 50. Growing economy resists change.
+        yesPct -= Math.max(0, (gdpGrowth - 50)) * 0.3;
         yesPct -= fatiguePenalty;
 
         yesPct = Math.max(15, Math.min(85, yesPct));
