@@ -1152,7 +1152,7 @@ function populateLeadSection(lead, sidebar) {
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sidebar-headline">${escapeHtml(a.headline)}</h3>
                 <p class="nws-sidebar-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 120))}${(a.body || '').length > 120 ? '...' : ''}</p>
-                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${_state?.shard?.current_date || '—'}</span></div>
+                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${a.published_tick != null ? tickToDate(a.published_tick) : (_state?.shard?.current_date || '—')}</span></div>
             </div>
         `).join('')
         : `<div class="nws-sidebar-story"><p class="nws-placeholder">[More stories will appear as articles are published.]</p></div>`;
@@ -1176,7 +1176,7 @@ function populateLeadSection(lead, sidebar) {
             <div class="nws-byline">
                 <span class="nws-author">${escapeHtml(lead.author_name)}</span>
                 <span class="nws-dot">&middot;</span>
-                <span>${_state?.shard?.current_date || '—'}</span>
+                <span>${lead.published_tick != null ? tickToDate(lead.published_tick) : (_state?.shard?.current_date || '—')}</span>
             </div>
             <div class="nws-lead-body">
                 ${formatLeadPreview(leadBody)}
@@ -1214,7 +1214,7 @@ function populateSecondaryGrid(articles) {
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sec-headline">${escapeHtml(a.headline)}</h3>
                 <p class="nws-sec-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 150))}${(a.body || '').length > 150 ? '...' : ''}</p>
-                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${_state?.shard?.current_date || '—'}</span></div>
+                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${a.published_tick != null ? tickToDate(a.published_tick) : (_state?.shard?.current_date || '—')}</span></div>
             </div>`;
         } else {
             const label = placeholderLabels[i] || 'News';
@@ -1310,7 +1310,8 @@ function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
     const deck = (a) => esc((a.body || '').replace(/\n+/g, ' ').substring(0, 200)) + ((a.body || '').length > 200 ? '...' : '');
     const shortDeck = (a) => esc((a.body || '').replace(/\n+/g, ' ').substring(0, 120)) + ((a.body || '').length > 120 ? '...' : '');
     const cat = (a) => esc(categoryLabel(a.category));
-    const date = _state?.shard?.current_date || '—';
+    // Use article's published_tick for date, fallback to current game date
+    const date = (a) => a?.published_tick != null ? tickToDate(a.published_tick) : (_state?.shard?.current_date || '—');
     const imgCls = { politics: '--politics', economy: '--economy', social: '--social', international: '--intl', entertainment: '--culture', science: '--science' };
 
     let h = '';
@@ -1340,7 +1341,7 @@ function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
                 <div class="ct-hero__meta">
                     <span class="ct-hero__author">${esc(lead.author_name)}</span>
                     <span>&middot;</span>
-                    <span>${date}</span>
+                    <span>${date(lead)}</span>
                 </div>
             </div>
         </div>`;
@@ -1369,7 +1370,7 @@ function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
                     <div class="ct-card__meta">
                         <span class="ct-card__author">${esc(a.author_name)}</span>
                         <span>&middot;</span>
-                        <span>${date}</span>
+                        <span>${date(a)}</span>
                     </div>
                 </div>
             </div>`;
@@ -1390,7 +1391,7 @@ function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
                 <div class="ct-analysis-story__section">${cat(a)}</div>
                 <h2 class="ct-analysis-story__headline">${esc(a.headline)}</h2>
                 <p class="ct-analysis-story__summary">${shortDeck(a)}</p>
-                <div class="ct-analysis-story__meta"><strong>${esc(a.author_name)}</strong> &middot; ${date}</div>
+                <div class="ct-analysis-story__meta"><strong>${esc(a.author_name)}</strong> &middot; ${date(a)}</div>
             </div>`;
         }
         h += `</div></div></div><div class="nws-main-content">`;
@@ -1414,7 +1415,7 @@ function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
                     <div class="ct-analysis-item__section">${cat(a)}</div>
                     <h3 class="ct-analysis-item__headline">${esc(a.headline)}</h3>
                     <p class="ct-analysis-item__summary">${shortDeck(a)}</p>
-                    <div class="ct-analysis-item__meta"><strong>${esc(a.author_name)}</strong> &middot; ${date}</div>
+                    <div class="ct-analysis-item__meta"><strong>${esc(a.author_name)}</strong> &middot; ${date(a)}</div>
                 </div>
             </div>`;
         }
