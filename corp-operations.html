@@ -2796,7 +2796,9 @@ function openContractDetail(contract) {
 
     // Content
     const permits = contract.permits_required || [];
-    const equipment = contract.required_equipment || contract.equipment_required || [];
+    // required_equipment is { key: qty } object (or legacy array)
+    const rawEquip = contract.required_equipment || contract.equipment_required || {};
+    const equipment = Array.isArray(rawEquip) ? rawEquip.map(k => ({ key: k, qty: 1 })) : Object.entries(rawEquip).map(([k, q]) => ({ key: k, qty: q }));
     const materials = contract.required_materials || contract.materials_estimated || {};
 
     // Map sector to specialization label
@@ -2909,15 +2911,20 @@ function openContractDetail(contract) {
     // Footer
     const permitsApproved = permits.filter(p => p.status === 'approved').length;
     const permitsPending = permits.length - permitsApproved;
-    const equipOwned = equipment.filter(e => e.owned).length;
-    const equipMissing = equipment.length - equipOwned;
+    const equipTotal = equipment.length;
+    // Check which equipment types the corp owns at least 1 of
+    const equipOwned = equipment.filter(e => {
+        const corpEquip = equipmentData.find(ce => ce.equipment_key === e.key);
+        return corpEquip && corpEquip.owned >= e.qty;
+    }).length;
+    const equipMissing = equipTotal - equipOwned;
 
     let badgesHtml = '';
-    if (equipment.length > 0) {
+    if (equipTotal > 0) {
         if (equipMissing === 0) {
             badgesHtml += `<span class="cd-footer__badge ok">ALL EQUIPMENT MET</span>`;
         } else {
-            badgesHtml += `<span class="cd-footer__badge bad">${equipMissing} EQUIPMENT MISSING</span>`;
+            badgesHtml += `<span class="cd-footer__badge bad">${equipMissing} EQUIPMENT SHORT</span>`;
         }
     }
     if (permits.length > 0) {
@@ -3065,17 +3072,21 @@ async function openProjectModal(projectId) {
     });
 
     // Build equipment from contract required_equipment + real corp_equipment data
-    const reqEquip = project.required_equipment || [];
+    // required_equipment is { key: qty } object (or legacy array where each entry = 1)
+    const rawReqEquip = project.required_equipment || {};
     const equipCondition = project.equipment_condition || {};
-    const equipment = reqEquip.map(eqKey => {
+    const equipEntries = Array.isArray(rawReqEquip)
+        ? rawReqEquip.map(k => [k, 1])
+        : Object.entries(rawReqEquip);
+    const equipment = equipEntries.map(([eqKey, reqQty]) => {
         const owned = equipmentData.find(e => e.equipment_key === eqKey);
-        // Check if this equipment is assigned to THIS project
         const assignments = owned?.assigned_projects || [];
         const thisAssignment = assignments.find(a => a.contract_id === project.id);
         const assignedUnits = thisAssignment ? thisAssignment.units : 0;
         return {
             key: eqKey,
             name: eqKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+            required: Number(reqQty) || 1,
             ownedTotal: owned?.owned || 0,
             deployed: owned?.deployed || 0,
             available: Math.max(0, (owned?.owned || 0) - (owned?.deployed || 0)),
@@ -3742,9 +3753,10 @@ function renderPmEquipment(s) {
     let html = '<div class="pm-tab-header">Project Equipment</div>';
     for (const eq of s.equipment) {
         const cc = eq.condition >= 75 ? 'var(--green)' : eq.condition >= 50 ? 'var(--amber)' : eq.condition >= 25 ? 'var(--orange)' : 'var(--red)';
-        const isAssigned = eq.assignedToProject > 0;
-        const statusColor = isAssigned ? 'var(--green)' : eq.ownedTotal > 0 ? 'var(--amber)' : 'var(--red)';
-        const statusText = isAssigned ? 'DEPLOYED' : eq.ownedTotal > 0 ? 'NOT DEPLOYED' : 'NOT OWNED';
+        const isFull = eq.assignedToProject >= eq.required;
+        const isPartial = eq.assignedToProject > 0 && eq.assignedToProject < eq.required;
+        const statusColor = isFull ? 'var(--green)' : isPartial ? 'var(--amber)' : eq.ownedTotal > 0 ? 'var(--amber)' : 'var(--red)';
+        const statusText = isFull ? `${eq.assignedToProject}/${eq.required} DEPLOYED` : isPartial ? `${eq.assignedToProject}/${eq.required} PARTIAL` : eq.ownedTotal > 0 ? 'NOT DEPLOYED' : 'NOT OWNED';
 
         html += `<div class="pm-eq" style="margin-bottom:12px;">
             <div class="pm-eq__info">
@@ -3755,7 +3767,7 @@ function renderPmEquipment(s) {
             </div>`;
 
         // Condition bar (only if assigned)
-        if (isAssigned) {
+        if (eq.assignedToProject > 0) {
             html += `<div class="pm-eq__cond">
                 <div class="pm-eq__cond-bar"><div class="pm-eq__cond-fill" style="width:${eq.condition}%;background:${cc}"></div></div>
                 <span class="pm-eq__cond-val" style="color:${cc}">${eq.condition}%</span>
@@ -3763,17 +3775,17 @@ function renderPmEquipment(s) {
         }
 
         // Assignment info + controls
+        const canDeploy = Math.min(eq.available, eq.required - eq.assignedToProject);
         html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;font-size:0.7rem;">`;
-        html += `<span style="color:var(--text-dim);">Required: <strong style="color:var(--text-primary);">1</strong>`;
+        html += `<span style="color:var(--text-dim);">Required: <strong style="color:${isFull ? 'var(--green)' : 'var(--red)'}">${eq.required}</strong>`;
         html += ` · Owned: <strong style="color:var(--text-primary);">${eq.ownedTotal}</strong>`;
-        html += ` · Deployed: <strong style="color:var(--text-primary);">${eq.deployed}</strong>`;
         html += ` · Available: <strong style="color:var(--text-primary);">${eq.available}</strong></span>`;
 
         html += `<div style="display:flex;gap:4px;">`;
-        if (!isAssigned && eq.available > 0) {
-            html += `<button onclick="pmDeployEquipment('${eq.key}',1)" style="font-size:0.6rem;padding:2px 8px;border:1px solid var(--green);color:var(--green);background:rgba(92,184,92,0.08);border-radius:3px;cursor:pointer;">Deploy</button>`;
+        if (canDeploy > 0) {
+            html += `<button onclick="pmDeployEquipment('${eq.key}',${canDeploy})" style="font-size:0.6rem;padding:2px 8px;border:1px solid var(--green);color:var(--green);background:rgba(92,184,92,0.08);border-radius:3px;cursor:pointer;">Deploy ${canDeploy}</button>`;
         }
-        if (isAssigned) {
+        if (eq.assignedToProject > 0) {
             html += `<button onclick="pmUndeployEquipment('${eq.key}')" style="font-size:0.6rem;padding:2px 8px;border:1px solid var(--orange);color:var(--orange);background:rgba(232,114,74,0.08);border-radius:3px;cursor:pointer;">Undeploy</button>`;
         }
         html += `</div></div>`;
@@ -6834,10 +6846,11 @@ async function cpSubmit() {
                 };
             })(),
             required_equipment: (() => {
-                const equip = ['work_trucks', 'concrete_mixers'];
-                if (_cpData.size > 1000) { equip.push('excavators', 'tower_cranes'); }
-                if (_cpData.size > 3000) { equip.push('bulldozers', 'heavy_haulers'); }
-                if (_cpData.size > 8000) { equip.push('pile_drivers'); }
+                const sz = _cpData.size;
+                const equip = { work_trucks: Math.ceil(sz / 2000) + 1, concrete_mixers: Math.ceil(sz / 3000) + 1 };
+                if (sz > 1000) { equip.excavators = Math.ceil(sz / 3000) + 1; equip.tower_cranes = Math.ceil(sz / 4000) + 1; }
+                if (sz > 3000) { equip.bulldozers = Math.ceil(sz / 4000) + 1; equip.heavy_haulers = Math.ceil(sz / 5000) + 1; }
+                if (sz > 8000) { equip.pile_drivers = Math.ceil(sz / 6000) + 1; }
                 return equip;
             })(),
             required_workforce: { general: Math.ceil(_cpData.size * 0.08), skilled: Math.ceil(_cpData.size * 0.03) },
