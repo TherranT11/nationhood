@@ -7923,7 +7923,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                                 expires_at_tick: expiresAt,
                                 auto_renew: dt.auto_renew || false,
                                 withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
-                                diplomatic_proposal_id: proposal.id
+                                negotiation_id: null
                             }).select('id').single().then(async ({ data: newTA, error: taErr }) => {
                                 if (taErr) { console.error('[ratification] trade_agreements insert failed:', taErr.message); return; }
                                 // Move proposal to terminal state so it doesn't show as duplicate active agreement
@@ -9321,12 +9321,15 @@ async function enactBill(supabase, bill, currentTick) {
             console.log(`[enactBill] discretionary: ${fd.ministry_key} balance ${curBalance} → ${newBalance} (${grantAmountM > 0 ? '+' : ''}${grantAmountM}M)`);
 
             // Positive grants add to national debt (the money has to come from somewhere)
+            // grantAmountM is in $M, nation.debt is in raw dollars — convert
             if (grantAmountM > 0) {
-                const newDebt = (Number(nation.debt) || 0) + grantAmountM;
+                const grantDollars = grantAmountM * 1_000_000;
+                const newDebt = (Number(nation.debt) || 0) + grantDollars;
                 console.log('[enactBill] stage=update_debt_for_grant attempt', {
                     ...logContext,
                     ministryKey: fd.ministry_key,
                     grantAmount: grantAmountM,
+                    grantDollars,
                     newDebt
                 });
                 await supabase.from('nations').update({ debt: newDebt }).eq('id', bill.nation_id);
@@ -9340,11 +9343,11 @@ async function enactBill(supabase, bill, currentTick) {
             }
             // Negative grants (withdrawals) reduce debt if possible
             if (grantAmountM < 0) {
-                const absAmount = Math.abs(grantAmountM);
-                const newDebt = Math.max(0, (Number(nation.debt) || 0) - absAmount);
+                const absAmountDollars = Math.abs(grantAmountM) * 1_000_000;
+                const newDebt = Math.max(0, (Number(nation.debt) || 0) - absAmountDollars);
                 await supabase.from('nations').update({ debt: newDebt }).eq('id', bill.nation_id);
                 nation.debt = newDebt;
-                console.log(`[enactBill] discretionary withdrawal: debt reduced by ${absAmount}M → ${newDebt}M`);
+                console.log(`[enactBill] discretionary withdrawal: debt reduced by $${Math.abs(grantAmountM)}M → ${newDebt}`);
             }
         }
     }
@@ -15969,6 +15972,14 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     if (!profile) {
         await genesisElectorate(supabase, nation, activeFactions, currentTick);
         return;
+    }
+
+    // 2b. Process active ideology shift actions (think tanks, media campaigns, grassroots)
+    // Must run before pillar computation so drift effects are reflected this tick
+    try {
+        await tickIdeologyShiftActions(supabase, nationId, profile, currentTick);
+    } catch (shiftErr) {
+        console.error(`[tickElectorate] Ideology shift actions failed for ${nation.name} (non-fatal):`, shiftErr);
     }
 
     // 3. Load issue states for salience weights
@@ -32202,6 +32213,53 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (expErr) {
         console.error('[advanceTick] Agreement expiration check failed (non-fatal):', expErr);
+    }
+
+    // 3.6b Safety net: catch economic aid agreements missing their aid_agreement_state row
+    // This handles cases where trade_agreements was created but aid_agreement_state insert failed
+    try {
+        const { data: orphanedAid } = await supabase
+            .from('trade_agreements')
+            .select('id, nation_a_id, nation_b_id, articles, enacted_at_tick')
+            .eq('agreement_type', 'economic_aid')
+            .eq('status', 'active');
+
+        if (orphanedAid && orphanedAid.length > 0) {
+            for (const ta of orphanedAid) {
+                // Check if aid_agreement_state exists for this agreement
+                const { data: existing } = await supabase
+                    .from('aid_agreement_state')
+                    .select('id')
+                    .eq('agreement_id', ta.id)
+                    .maybeSingle();
+
+                if (!existing) {
+                    // Missing — reconstruct from articles
+                    const aidArt = (ta.articles || []).find((a: any) => a.type === 'aid_terms');
+                    if (aidArt?.data?.donor_nation_id && aidArt?.data?.annual_amount) {
+                        const donorId = aidArt.data.donor_nation_id;
+                        const recipientId = donorId === ta.nation_a_id ? ta.nation_b_id : ta.nation_a_id;
+                        const annualAmount = Number(aidArt.data.annual_amount);
+                        const { error: fixErr } = await supabase.from('aid_agreement_state').insert({
+                            agreement_id: ta.id,
+                            donor_nation_id: donorId,
+                            recipient_nation_id: recipientId,
+                            current_annual_amount: annualAmount,
+                            original_annual_amount: annualAmount,
+                            next_review_tick: newTick + 12,
+                            condition_failures: {}
+                        });
+                        if (fixErr) {
+                            console.error(`[advanceTick] Failed to create orphaned aid_agreement_state for ${ta.id}:`, fixErr.message);
+                        } else {
+                            console.log(`[advanceTick] Safety net: created missing aid_agreement_state for agreement ${ta.id} (donor=${donorId}, $${(annualAmount/1e9).toFixed(1)}B/yr)`);
+                        }
+                    }
+                }
+            }
+        }
+    } catch (aidFixErr) {
+        console.error('[advanceTick] Aid agreement safety net failed (non-fatal):', aidFixErr);
     }
 
     // 3.7 Expire pending state visit proposals past their accept window
