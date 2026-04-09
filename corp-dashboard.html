@@ -1096,13 +1096,13 @@ async function init() {
         return;
     }
 
-    // Set operations nav link based on corp sector
+    // Set operations nav link based on corp sector; expansion is shared across all sectors
     const SECTOR_OPS_PAGE = { Construction: 'corp-operations.html', Finance: 'corp-operations-finance.html' };
     const opsPage = SECTOR_OPS_PAGE[faction.corp_sector] || 'corp-operations.html';
     const navOps = document.getElementById('nav-operations');
     const navExp = document.getElementById('nav-expansion');
     if (navOps) navOps.href = opsPage;
-    if (navExp) navExp.href = opsPage + '?tab=expansion';
+    if (navExp) navExp.href = 'corp-operations.html?tab=expansion';
 
     // Load nation + shard data
     let nationName = faction.nation || '';

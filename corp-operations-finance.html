@@ -143,7 +143,7 @@ body.light-mode .corp-nav__tab.active { color:#1a1a17; border-bottom-color:#1a1a
   <nav class="corp-nav" id="corp-nav">
     <a href="corp-dashboard.html" class="corp-nav__tab" data-tab="home">Home</a>
     <a href="corp-operations-finance.html" class="corp-nav__tab active" data-tab="operations">Operations</a>
-    <a href="corp-operations-finance.html?tab=expansion" class="corp-nav__tab" data-tab="expansion">Expansion</a>
+    <a href="corp-operations.html?tab=expansion" class="corp-nav__tab" data-tab="expansion">Expansion</a>
     <a href="#" class="corp-nav__tab" data-tab="industries" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Industries</a>
     <a href="#" class="corp-nav__tab" data-tab="innovation" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Innovation</a>
     <a href="#" class="corp-nav__tab" data-tab="lobbying" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Lobbying</a>
@@ -163,15 +163,6 @@ body.light-mode .corp-nav__tab.active { color:#1a1a17; border-bottom-color:#1a1a
       </div>
     </div>
 
-    <div id="expansion-content" style="display:none;justify-content:center;gap:12px;align-items:flex-start;flex-wrap:wrap;">
-      <div class="empty-state">
-        <div class="empty-state__icon">&#128200;</div>
-        <div class="empty-state__title">Expansion</div>
-        <div class="empty-state__desc">
-          Hire and fire workforce, establish subsidiaries, acquire properties, and manage your corporate footprint.
-        </div>
-      </div>
-    </div>
   </div>
 
 <script type="module">
@@ -257,25 +248,6 @@ async function init() {
     // Tick countdown
     if (shard?.next_tick_at) startCountdown(shard.next_tick_at);
 
-    // Check for ?tab=expansion
-    if (new URLSearchParams(window.location.search).get('tab') === 'expansion') {
-        switchToExpansion();
-    }
-}
-
-function switchToExpansion() {
-    document.getElementById('operations-content').style.display = 'none';
-    const expEl = document.getElementById('expansion-content');
-    expEl.style.display = 'flex';
-    document.querySelectorAll('.corp-nav__tab').forEach(t => t.classList.remove('active'));
-    document.querySelector('[data-tab="expansion"]')?.classList.add('active');
-}
-
-function switchToOperations() {
-    document.getElementById('operations-content').style.display = '';
-    document.getElementById('expansion-content').style.display = 'none';
-    document.querySelectorAll('.corp-nav__tab').forEach(t => t.classList.remove('active'));
-    document.querySelector('[data-tab="operations"]')?.classList.add('active');
 }
 
 function renderFactionSwitcher() {
