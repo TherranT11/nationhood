@@ -3206,6 +3206,9 @@ async function pmAssignWorkers(workerType, qty) {
             .eq('id', project.id);
         if (error) { alert('Assign failed: ' + error.message); return; }
 
+        // Update local state so modal refresh sees new values
+        const localProject = activeProjects.find(p => p.id === project.id);
+        if (localProject) localProject.workers_assigned = updated;
         await openProjectModal(project.id);
     } catch (e) {
         alert('Assign error: ' + e.message);
@@ -3230,6 +3233,9 @@ async function pmUnassignWorkers(workerType, qty) {
             .eq('id', project.id);
         if (error) { alert('Unassign failed: ' + error.message); return; }
 
+        // Update local state so modal refresh sees new values
+        const localProject = activeProjects.find(p => p.id === project.id);
+        if (localProject) localProject.workers_assigned = updated;
         await openProjectModal(project.id);
     } catch (e) {
         alert('Unassign error: ' + e.message);
@@ -3758,7 +3764,8 @@ function renderPmEquipment(s) {
 
         // Assignment info + controls
         html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;font-size:0.7rem;">`;
-        html += `<span style="color:var(--text-dim);">Owned: <strong style="color:var(--text-primary);">${eq.ownedTotal}</strong>`;
+        html += `<span style="color:var(--text-dim);">Required: <strong style="color:var(--text-primary);">1</strong>`;
+        html += ` · Owned: <strong style="color:var(--text-primary);">${eq.ownedTotal}</strong>`;
         html += ` · Deployed: <strong style="color:var(--text-primary);">${eq.deployed}</strong>`;
         html += ` · Available: <strong style="color:var(--text-primary);">${eq.available}</strong></span>`;
 
