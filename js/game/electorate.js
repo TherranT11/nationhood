@@ -1059,6 +1059,14 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         return;
     }
 
+    // 2b. Process active ideology shift actions (think tanks, media campaigns, grassroots)
+    // Must run before pillar computation so drift effects are reflected this tick
+    try {
+        await tickIdeologyShiftActions(supabase, nationId, profile, currentTick);
+    } catch (shiftErr) {
+        console.error(`[tickElectorate] Ideology shift actions failed for ${nation.name} (non-fatal):`, shiftErr);
+    }
+
     // 3. Load issue states for salience weights
     const { data: issueStates } = await supabase
         .from('issue_state')
