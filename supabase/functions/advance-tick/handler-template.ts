@@ -1332,6 +1332,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Trade processing failed (non-fatal):', tradeErr);
     }
 
+    // 3.5b Trade imbalance auto-spawn — detect sustained bilateral imbalances → create issues
+    try {
+        const tradeIssuesSpawned = await checkTradeImbalanceAutoSpawn(supabase, nationList, newTick);
+        if (tradeIssuesSpawned.length > 0) {
+            summary.tradeIssuesSpawned = tradeIssuesSpawned.length;
+            console.log(`[advanceTick] Trade imbalance: spawned ${tradeIssuesSpawned.length} new issue(s)`);
+        }
+    } catch (tiErr) {
+        console.error('[advanceTick] Trade imbalance auto-spawn failed (non-fatal):', tiErr);
+    }
+
     // 3.6 Expire trade agreements (including economic aid) that have passed their expires_at_tick
     try {
         const expiredAgreements = await processExpiredTradeAgreements(supabase, newTick);
