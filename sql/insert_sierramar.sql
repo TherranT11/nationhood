@@ -81,22 +81,24 @@ INSERT INTO nation_profiles (
     area_sq_km, natural_resources, major_industries, major_exports, major_imports
 )
 SELECT n.id,
-    'assets/flags/Sierramar.png',
-    'Sierramar is a small but spirited Caribbean island democracy on the Crucera continent, shaped by colonial legacy, cultural resilience, and the restless ambition of its people. With a service-driven economy, deep religious traditions, and a young population hungry for opportunity, Sierramar punches above its weight in regional politics. Emigration drains talent while corruption and inequality test the patience of its citizens. The capital Porto Serrano hums with music, debate, and the constant tension between tradition and progress.',
-    'Isla de Fuerza, Pueblo de Fe (Island of Strength, People of Faith)',
-    'Sierramareño',
-    'Commonwealth of Sierramar',
-    'Sierramareño Spanish, Cruceran Creole',
-    'Roman Catholic (majority), Evangelical Protestant, Afro-Caribbean spiritual traditions',
-    'Sierramareño Peso (SMP)',
-    '1952',
-    'Tropical island with mountainous interior, coastal plains, and a natural harbor at Porto Serrano. The Sierra del Mar mountain range bisects the island.',
-    'Tropical maritime with mild seasonal variation',
-    '9,100',
-    'Limited — some offshore fisheries, modest arable land, potential for solar and wind energy',
-    'Tourism, financial services, pharmaceuticals, light manufacturing, rum production',
-    'Pharmaceuticals, rum, coffee, tobacco, light electronics',
-    'Oil, vehicles, machinery, food products, construction materials'
+    '/flags/sierramar.png',
+    'Sierramar is a small but spirited island democracy in northeastern Crucera, shaped by colonial legacy, volcanic geography, and the restless ambition of its people. With a service-driven economy built on fishing, tourism, and one of the busiest ports in the Sierramari Channel, the nation punches above its weight in regional trade. Deep Solvarist faith anchors daily life while a young population pushes for modernization. Emigration drains talent, corruption tests patience, and hurricane season tests everything else — but Sierramari resilience is a point of national pride.
+
+Porto Serrano, the capital, wraps around a natural deepwater harbor where fishing boats share dock space with container ships. The Sierra del Mar mountain range rises steeply from the coast, creating microclimates that support coffee and tropical fruit in the highlands and sugarcane in the coastal lowlands. Political life is passionate and personal — everyone knows their representative, and parliamentary debates regularly spill into the rum shops and plazas of the capital.',
+    'Mar, Monte, y Mañana (Sea, Mountain, and Tomorrow)',
+    'Sierramari',
+    'Parliamentary Republic of Sierramar',
+    'Estrellan',
+    'Solvarist (84%)',
+    'Serrano Real (SRR)',
+    '1887',
+    'Northeastern Crucera, Sierramari Channel',
+    'Tropical maritime, wet season April-October, hurricane risk August-November',
+    '4,216',
+    'Fish stocks, volcanic soil, freshwater rivers, timber, minor bauxite deposits',
+    'Tourism, commercial fishing, port services, light agriculture, rum and spirits production',
+    'Fish and seafood, tropical fruit, rum, port transit fees, handcrafted goods',
+    'Petroleum products, machinery, vehicles, manufactured goods, rice and grains'
 FROM nations n WHERE LOWER(n.name) = 'sierramar'
 ON CONFLICT (nation_id) DO NOTHING;
 
