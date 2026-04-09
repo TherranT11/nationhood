@@ -126,11 +126,42 @@ body.light-mode .corp-nav__tab.active { color:#1a1a17; border-bottom-color:#1a1a
 .df-review-btn.active { color:#000; background:#8b9a6b; border-color:#8b9a6b; cursor:pointer; opacity:1; }
 .df-new-dot { position:absolute; left:4px; top:50%; transform:translateY(-50%); width:4px; height:4px; border-radius:50%; background:#c8a832; }
 
+/* Active Portfolio container */
+.ap-container { width:380px; background:#1a1a16; border:1px solid #2a2a24; display:flex; flex-direction:column; overflow:hidden; max-height:450px; }
+.ap-summary { display:flex; border-bottom:1px solid #2a2a24; background:#1c1c18; flex-shrink:0; }
+.ap-summary__cell { padding:6px 14px; }
+.ap-summary__cell + .ap-summary__cell { border-left:1px solid #2a2a24; }
+.ap-summary__label { font-family:var(--font-mono); font-size:7px; color:#6a6660; letter-spacing:0.8px; }
+.ap-summary__value { font-family:var(--font-mono); font-weight:700; margin-top:1px; }
+.ap-list { flex:1; overflow-y:auto; }
+.ap-deal { border-bottom:1px solid #2a2a24; border-left:2px solid transparent; cursor:pointer; }
+.ap-deal:hover { background:rgba(255,255,255,0.01); }
+.ap-deal.alert-orange { border-left-color:#c84; }
+.ap-deal.alert-red { border-left-color:#c55; }
+.ap-deal.alert-yellow { border-left-color:#ca5; }
+.ap-deal__inner { padding:7px 14px; }
+.ap-deal__alert { margin-top:4px; padding:4px 6px; font-size:9px; line-height:1.4; }
+.ap-deal__expanded { margin-top:6px; padding:6px 8px; background:#121210; border:1px solid #2a2a24; }
+.ap-detail-row { display:flex; justify-content:space-between; padding:2px 0; }
+.ap-detail-row + .ap-detail-row { border-top:1px solid #2a2a24; }
+.ap-detail-label { font-family:var(--font-mono); font-size:7px; color:#6a6660; }
+.ap-detail-value { font-family:var(--font-mono); font-size:9px; font-weight:700; }
+.ap-actions { display:flex; gap:4px; margin-top:6px; }
+.ap-action-btn { flex:1; padding:4px 0; text-align:center; cursor:pointer; font-family:var(--font-mono); font-size:7px; font-weight:700; background:transparent; }
+.ap-action-btn.green { color:#5c5; border:1px solid #2a5a3a; background:rgba(74,170,136,0.06); }
+.ap-action-btn.orange { color:#c84; border:1px solid rgba(204,136,68,0.27); }
+.ap-action-btn.red { color:#c55; border:1px solid rgba(204,85,85,0.27); }
+.ap-action-btn.purple { color:#8a6aaa; border:1px solid rgba(138,106,170,0.27); }
+.ap-action-btn.olive { color:#8b9a6b; border:1px solid rgba(139,154,107,0.27); }
+.ap-claim-box { padding:4px 6px; margin-bottom:4px; background:rgba(204,85,85,0.04); border:1px solid rgba(204,85,85,0.1); }
+.ap-empty { padding:30px 20px; text-align:center; font-family:var(--font-mono); font-size:9px; color:#6a6660; line-height:1.6; }
+
 /* Content layout */
 .ops-grid { display:flex; justify-content:center; gap:12px; align-items:flex-start; flex-wrap:wrap; }
 
 @media (max-width: 768px) {
   .df-container { width:100%; max-height:none; }
+  .ap-container { width:100%; max-height:none; }
   .rd-modal { width:95vw !important; }
   .rd-body { flex-direction:column !important; }
   .rd-right { width:100% !important; border-left:none !important; border-top:1px solid #2a2a24; }
@@ -203,7 +234,7 @@ body.light-mode .corp-nav__tab.active { color:#1a1a17; border-bottom-color:#1a1a
   .corp-nav.nav-open .corp-nav__tab.active { border-left-color:var(--text-bright); border-bottom:none; }
 }
 </style>
-  <script type="module" crossorigin src="/assets/corp-operations-finance-vbrczlPK.js"></script>
+  <script type="module" crossorigin src="/assets/corp-operations-finance-CYItHAHl.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
 </head>
@@ -257,6 +288,7 @@ body.light-mode .corp-nav__tab.active { color:#1a1a17; border-bottom-color:#1a1a
   <div class="content">
     <div id="operations-content" class="ops-grid">
       <div class="df-container" id="df-container"></div>
+      <div class="ap-container" id="ap-container"></div>
     </div>
   </div>
 
