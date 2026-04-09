@@ -282,71 +282,22 @@ initPage('conflicts', async (state) => {
         }
 
         // Confirm button
+        // Execute button click → fire action directly
         if (e.target.closest('#ia-confirm-btn') || e.target.closest('.ia-confirm-btn')) {
             e.stopPropagation();
             if (issueActionExecuting) return;
             if (!_selectedActionKey || !_actionIssue) return;
-            const action = ACTIONS[_selectedActionKey];
-            if (!action) return;
-            const modal = document.getElementById('action-modal');
-            if (!modal) return;
-            const ap = currentFaction?.action_points || 0;
-            let apCost = action.ap_cost;
-            const hasFriction = (_actionMods || []).some(m => m.modifier_key === 'diplomatic_friction' && m.is_active);
-            if (action.category === 'diplomatic' && hasFriction) apCost += 1;
-
-            document.getElementById('modal-header').innerHTML = `<span class="modal-action-name">${escapeHtml(action.name)}</span>`;
-
-            const roleLabel = ACTION_ROLE_LABELS[action.role] || action.role;
-            let bodyHtml = `<div class="modal-description">${escapeHtml(action.description)}</div>`;
-            bodyHtml += '<div class="modal-stats">';
-            bodyHtml += `<div class="modal-stat-row"><span>AP Cost:</span><span>${apCost}</span></div>`;
-            bodyHtml += `<div class="modal-stat-row"><span>Your AP:</span><span>${ap}</span></div>`;
-            bodyHtml += `<div class="modal-stat-row"><span>Category:</span><span style="text-transform:capitalize">${action.category}</span></div>`;
-            bodyHtml += `<div class="modal-stat-row"><span>Role:</span><span>${roleLabel}</span></div>`;
-            if (action.tension_delta !== 0) bodyHtml += `<div class="modal-stat-row"><span>Tension:</span><span>${action.tension_delta > 0 ? '+' : ''}${action.tension_delta}</span></div>`;
-            if (action.favor_delta !== 0) bodyHtml += `<div class="modal-stat-row"><span>Favor:</span><span>${action.favor_delta > 0 ? '+' : ''}${action.favor_delta}</span></div>`;
-            if (action.treasury_cost > 0) bodyHtml += `<div class="modal-stat-row"><span>Cost:</span><span>$${(action.treasury_cost / 1_000_000).toFixed(0)}M from treasury</span></div>`;
-            if (action.relations_delta) bodyHtml += `<div class="modal-stat-row"><span>Relations:</span><span>${action.relations_delta}</span></div>`;
-            bodyHtml += '</div>';
-
-            if (action.category === 'diplomatic') {
-                bodyHtml += '<div class="modal-info">The other nation has 3 ticks to match this action. If they don\'t, you suffer a Political Gaffe: -3 Gov Approval, +1 Tension.</div>';
-            } else if (action.category === 'threatening') {
-                if (action.special === 'incident_trigger_50') bodyHtml += '<div class="modal-risk">WARNING: 50% chance this directly triggers an incident.</div>';
-                else if (action.special === 'incident_trigger_25') bodyHtml += '<div class="modal-risk">WARNING: 25% chance this directly triggers an incident.</div>';
-            }
-
-            document.getElementById('modal-body').innerHTML = bodyHtml;
-
-            const confirmBtn = document.getElementById('modal-confirm');
-            confirmBtn.textContent = action.category === 'diplomatic' ? 'Submit' : 'Execute';
-            confirmBtn.className = action.category === 'threatening' ? 'modal-btn modal-btn--danger' : 'modal-btn modal-btn--confirm';
-
-            modal.style.display = '';
-
-            // Wire modal buttons
-            const cancelBtn = document.getElementById('modal-cancel');
-            const newCancel = cancelBtn.cloneNode(true);
-            cancelBtn.replaceWith(newCancel);
-            newCancel.addEventListener('click', () => { modal.style.display = 'none'; });
-
-            const newConfirm = confirmBtn.cloneNode(true);
-            confirmBtn.replaceWith(newConfirm);
-            newConfirm.addEventListener('click', async () => {
-                modal.style.display = 'none';
-                await executeIssueActionFromUI(_selectedActionKey, _actionIssue);
-            });
+            await executeIssueActionFromUI(_selectedActionKey, _actionIssue);
             return;
         }
 
-        // Action item selection
+        // Action item click → select it and show execute button
         const item = e.target.closest('.ia-item:not(.ia-item--used):not(.ia-item--locked):not(.ia-item--wrong-role)');
         if (!item) return;
         const actionKey = item.dataset.actionKey;
         if (!actionKey || !_actionIssue) return;
 
-        // Toggle highlight
+        // Toggle selection
         const wasSelected = item.classList.contains('ia-item--selected');
         actionsPanel.querySelectorAll('.ia-item').forEach(i => i.classList.remove('ia-item--selected'));
 
@@ -379,15 +330,17 @@ async function loadFactionRoles() {
     _currentRoles = new Set();
     if (!currentFaction || !currentNation) return;
     try {
-        // Check HoG (PM or President)
+        // Check HoG via president (for presidential/semi-presidential systems)
         const { data: hog } = await _supabase.from('presidents')
-            .select('faction_id').eq('nation_id', currentNation.id).eq('active', true).maybeSingle();
+            .select('faction_id').eq('nation_id', currentNation.id).eq('is_active', true).maybeSingle();
         if (hog && hog.faction_id === currentFaction.id) _currentRoles.add('head_of_government');
-        // Check PM via coalition
+        // Check PM via coalition (for parliamentary systems)
         const { data: coal } = await _supabase.from('government_formations')
-            .select('ministry_allocations').eq('nation_id', currentNation.id)
-            .in('status', ['formed', 'caretaker']).order('formed_at_tick', { ascending: false }).limit(1).maybeSingle();
-        if (coal?.ministry_allocations?.prime_minister === currentFaction.id) _currentRoles.add('head_of_government');
+            .select('ministry_assignments').eq('nation_id', currentNation.id)
+            .in('status', ['formed', 'caretaker']).order('created_at', { ascending: false }).limit(1).maybeSingle();
+        if (coal?.ministry_assignments?.prime_minister === currentFaction.id) _currentRoles.add('head_of_government');
+        // Also check if faction is the ruling_faction_id (lead party = PM in parliamentary)
+        if (currentNation.ruling_faction_id === currentFaction.id) _currentRoles.add('head_of_government');
         // Check ministries
         const { data: mins } = await _supabase.from('ministries')
             .select('ministry_key, party_id').eq('nation_id', currentNation.id).eq('is_active', true);
