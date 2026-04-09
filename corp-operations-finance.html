@@ -498,6 +498,9 @@ let rdLoanCollateral = 'equipment';
 let rdInsurePremium = 3.5;
 let rdInsureCoverage = 12000000;
 let rdInsureDeductible = 10;
+
+// Bond controls
+let rdBondAmount = 25000000;
 const COLLATERAL_TIERS = [
     { id: 'none', label: 'None', recovery: 0, desc: 'Unsecured loan. No recovery on default.' },
     { id: 'equipment', label: 'Equipment', recovery: 60, desc: 'Seize financed equipment on default — recover ~60%.' },
@@ -521,6 +524,8 @@ function rdOpen(dealIdx) {
         rdInsurePremium = 3.5;
         rdInsureCoverage = deal.amount;
         rdInsureDeductible = 10;
+    } else if (deal.type === 'BOND') {
+        rdBondAmount = Math.round(deal.amount * 0.25);
     }
 
     document.getElementById('rd-overlay').classList.add('open');
@@ -546,6 +551,7 @@ function rdSetCollateral(v) { rdLoanCollateral = v; renderReviewDeal(); }
 function rdSetInsurePremium(v) { rdInsurePremium = Number(v); renderReviewDeal(); }
 function rdSetInsureCoverage(v) { rdInsureCoverage = Number(v); renderReviewDeal(); }
 function rdSetInsureDeductible(v) { rdInsureDeductible = Number(v); renderReviewDeal(); }
+function rdSetBondAmount(v) { rdBondAmount = Number(v); renderReviewDeal(); }
 
 function rdBar(value, max, color) {
     const pct = Math.min((value / max) * 100, 100);
@@ -593,6 +599,23 @@ function renderReviewDeal() {
     const insureExpectedProfit = insureTotalPremiums - insureExpectedPayout;
     const claimColor = insureClaimProb <= 12 ? '#5c5' : insureClaimProb <= 22 ? '#ca5' : insureClaimProb <= 35 ? '#c84' : '#c55';
 
+    // ── Bond calculations ──
+    const bondCoupon = d.couponRate || 6.2;
+    const bondTermMonths = d.term || 60;
+    const bondTermYears = bondTermMonths / 12;
+    const bondAnnualCoupon = Math.round(rdBondAmount * (bondCoupon / 100));
+    const bondTotalReturn = Math.round(rdBondAmount * (bondCoupon / 100) * bondTermYears);
+    // Default probability from stability + credit rating + debt/GDP
+    const bondStability = d.stability || 50;
+    const bondCreditRating = d.creditRating || 50;
+    const bondDebtToGdp = d.debtToGdp || 30;
+    const bondBaseDefault = Math.max(2, Math.round(
+        (100 - bondStability) * 0.15 + (100 - bondCreditRating) * 0.15 + Math.max(0, bondDebtToGdp - 30) * 0.3
+    ));
+    const bondDefaultProb = Math.min(60, bondBaseDefault);
+    const bondDefaultColor = bondDefaultProb <= 10 ? '#5c5' : bondDefaultProb <= 20 ? '#ca5' : bondDefaultProb <= 35 ? '#c84' : '#c55';
+    const bondExpectedReturn = Math.round(bondTotalReturn * (1 - bondDefaultProb / 100));
+
     // ── HEADER ──
     let html = `<div class="rd-header">
         <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -608,6 +631,7 @@ function renderReviewDeal() {
     const tabs = [
         { id: 'LOAN', label: 'Loan', name: d.type === 'LOAN' ? d.applicant : 'Loan' },
         { id: 'INSURE', label: 'Insure', name: d.type === 'INSURE' ? d.applicant : 'Insure' },
+        { id: 'BOND', label: 'Bond', name: d.type === 'BOND' ? d.applicant : 'Bond' },
     ];
     for (const t of tabs) {
         const isActive = rdType === t.id;
@@ -763,6 +787,64 @@ function renderReviewDeal() {
         </div>`;
     }
 
+    if (rdType === 'BOND') {
+        // Issuer info
+        const stabColor = bondStability >= 50 ? '#5c5' : bondStability >= 30 ? '#ca5' : bondStability >= 15 ? '#c84' : '#c55';
+        html += `<div class="rd-applicant">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                <span class="df-badge df-badge-gov" style="font-size:8px;padding:2px 6px;">GOV</span>
+                <span style="font-size:13px;font-weight:700;color:#e8e4dc;">${escapeHtml(d.applicant)}</span>
+            </div>
+            <div style="font-size:10px;color:#9e9a92;line-height:1.5;margin-bottom:6px;">${escapeHtml(d.purpose)}</div>
+            <div class="rd-applicant__stats">
+                <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">TOTAL ISSUE</div><div class="rd-applicant__stat-value" style="color:#e8e4dc;">${fmtMoney(d.amount)}</div></div>
+                <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">COUPON</div><div class="rd-applicant__stat-value" style="color:#8a6aaa;">${bondCoupon}%</div></div>
+                <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">TERM</div><div class="rd-applicant__stat-value" style="color:#e8e4dc;">${bondTermMonths}mo</div></div>
+                <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">STABILITY</div><div class="rd-applicant__stat-value" style="color:${stabColor};">${bondStability}</div></div>
+            </div>
+        </div>`;
+
+        // Purchase Amount
+        html += `<div class="rd-section-bar" style="color:#8a6aaa;">Purchase Amount</div>`;
+        const bondMax = d.amount;
+        const bondMin = Math.round(bondMax * 0.05);
+        const bondPct = ((rdBondAmount - bondMin) / (bondMax - bondMin)) * 100;
+        html += `<div class="rd-control">
+            <div class="rd-control__header">
+                <span class="rd-control__label">BUY AMOUNT</span>
+                <span class="rd-control__value" style="font-size:16px;color:#8a6aaa;">${fmtMoney(rdBondAmount)}</span>
+            </div>
+            <input type="range" class="rd-control__range" min="${bondMin}" max="${bondMax}" step="5000000" value="${rdBondAmount}"
+                oninput="rdSetBondAmount(this.value)"
+                style="background:linear-gradient(90deg,#8a6aaa ${bondPct}%,#2a2a24 ${bondPct}%);">
+            <div class="rd-control__hints"><span>${fmtMoney(bondMin)} (small position)</span><span>${fmtMoney(bondMax)} (full issuance)</span></div>
+            <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;margin-top:6px;">Coupon rate and term are set by issuer. You choose how much to buy.</div>
+        </div>`;
+
+        // Nation Risk Profile
+        html += `<div class="rd-control" style="padding-top:8px;">
+            <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:1px;margin-bottom:6px;text-transform:uppercase;">Nation Risk Profile</div>`;
+        const nationStats = [
+            { key: 'stability', value: bondStability, label: 'Political stability', invert: false },
+            { key: 'debt_to_gdp', value: bondDebtToGdp, label: 'Debt burden', invert: true },
+            { key: 'credit_rating', value: bondCreditRating, label: 'Creditworthiness', invert: false },
+            { key: 'gdp_growth', value: d.gdpGrowth || 54, label: 'Economic trajectory', invert: false },
+            { key: 'corruption', value: d.corruption || 62, label: 'Institutional risk', invert: true },
+        ];
+        for (const s of nationStats) {
+            const barColor = s.invert
+                ? (s.value > 60 ? '#c55' : s.value > 40 ? '#ca5' : '#5c5')
+                : (s.value >= 50 ? '#5c5' : s.value >= 30 ? '#ca5' : s.value >= 15 ? '#c84' : '#c55');
+            html += `<div class="rd-nation-stat">
+                <span style="font-family:var(--font-mono);font-size:8px;color:#9e9a92;width:90px;">${s.key}</span>
+                <div style="width:40px;">${rdBar(s.value, 100, barColor)}</div>
+                <span style="font-family:var(--font-mono);font-size:9px;color:#e8e4dc;width:18px;text-align:right;">${s.value}</span>
+                <span style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">${s.label}</span>
+            </div>`;
+        }
+        html += `</div>`;
+    }
+
     html += '</div>'; // close rd-left
 
     // ═══ RIGHT PANEL ═══
@@ -829,14 +911,36 @@ function renderReviewDeal() {
         html += `<div class="rd-formula">Premiums (${fmtMoney(insureTotalPremiums)}) − expected payout (${insureClaimProb}% × ${fmtMoney(insureMaxExposure)})</div>`;
     }
 
+    if (rdType === 'BOND') {
+        // Sovereign Default Risk
+        html += `<div class="rd-section-bar" style="color:#a3b07e;">Risk Assessment</div>`;
+        html += `<div class="rd-control">
+            <div class="rd-control__header">
+                <span class="rd-control__label">SOVEREIGN DEFAULT RISK</span>
+                <span class="rd-control__value" style="font-size:14px;color:${bondDefaultColor};">${bondDefaultProb}%</span>
+            </div>
+            ${rdBar(bondDefaultProb, 100, bondDefaultColor)}
+            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:4px;">Based on stability, debt/GDP, credit rating, and economic trajectory.</div>
+        </div>`;
+
+        // Projected Returns
+        html += `<div class="rd-section-bar" style="color:#5c5;">Projected Returns</div>`;
+        html += `<div class="rd-risk-row"><span class="rd-risk-label">CAPITAL AT RISK</span><span class="rd-risk-value" style="color:#c55;">${fmtMoney(rdBondAmount)}</span></div>`;
+        html += `<div class="rd-risk-row"><span class="rd-risk-label">ANNUAL COUPON</span><span class="rd-risk-value" style="color:#5c5;">${fmtMoney(bondAnnualCoupon)}</span></div>`;
+        html += `<div class="rd-risk-row"><span class="rd-risk-label">TOTAL RETURN (${Math.round(bondTermYears)}yr)</span><span class="rd-risk-value" style="color:#5c5;">${fmtMoney(bondTotalReturn)}</span></div>`;
+
+        html += `<div class="rd-expected"><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#e8e4dc;">EXPECTED RETURN</span><span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:#5c5;">${fmtMoney(bondExpectedReturn)}</span></div>`;
+        html += `<div class="rd-formula">Risk-adjusted: total coupon × (1 - ${bondDefaultProb}% default)</div>`;
+    }
+
     html += '</div>'; // close rd-right
     html += '</div>'; // close rd-body
 
     // ── FOOTER ──
-    const footerCapital = rdType === 'LOAN' ? rdLoanAmount : rdType === 'INSURE' ? rdInsureCoverage : 0;
-    const footerReturn = rdType === 'LOAN' ? loanExpectedReturn : rdType === 'INSURE' ? insureExpectedProfit : 0;
-    const footerRisk = rdType === 'LOAN' ? defaultProb : rdType === 'INSURE' ? insureClaimProb : 0;
-    const footerRiskColor = rdType === 'LOAN' ? defaultColor : rdType === 'INSURE' ? claimColor : '#6a6660';
+    const footerCapital = rdType === 'LOAN' ? rdLoanAmount : rdType === 'INSURE' ? rdInsureCoverage : rdBondAmount;
+    const footerReturn = rdType === 'LOAN' ? loanExpectedReturn : rdType === 'INSURE' ? insureExpectedProfit : bondExpectedReturn;
+    const footerRisk = rdType === 'LOAN' ? defaultProb : rdType === 'INSURE' ? insureClaimProb : bondDefaultProb;
+    const footerRiskColor = rdType === 'LOAN' ? defaultColor : rdType === 'INSURE' ? claimColor : bondDefaultColor;
     const actionLabel = rdType === 'LOAN' ? 'ISSUE LOAN' : rdType === 'INSURE' ? 'WRITE POLICY' : 'BUY BONDS';
     const actionClass = rdType.toLowerCase();
 
@@ -865,6 +969,7 @@ window.rdSetCollateral = rdSetCollateral;
 window.rdSetInsurePremium = rdSetInsurePremium;
 window.rdSetInsureCoverage = rdSetInsureCoverage;
 window.rdSetInsureDeductible = rdSetInsureDeductible;
+window.rdSetBondAmount = rdSetBondAmount;
 
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
