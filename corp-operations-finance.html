@@ -569,11 +569,6 @@ function rdClose() {
     rdDeal = null;
 }
 
-function rdSetTab(type) {
-    rdType = type;
-    renderReviewDeal();
-}
-
 function rdSetLoanRate(v) { rdLoanRate = Number(v); renderReviewDeal(); }
 function rdSetLoanAmount(v) { rdLoanAmount = Number(v); renderReviewDeal(); }
 function rdSetLoanTerm(v) { rdLoanTerm = Number(v); renderReviewDeal(); }
@@ -654,8 +649,7 @@ function renderReviewDeal() {
                 <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:2px;color:#9e9a92;text-transform:uppercase;">Review Deal</span>
             </div>
             <span onclick="rdClose()" style="font-family:var(--font-mono);font-size:14px;color:#6a6660;cursor:pointer;">&#215;</span>
-        </div>
-        <div class="rd-tabs">`;
+        </div>`;
 
     // Single tab showing this deal's type and applicant
     const tabClass = rdType === 'LOAN' ? 'active-loan' : rdType === 'INSURE' ? 'active-insure' : 'active-bond';
@@ -705,8 +699,8 @@ function renderReviewDeal() {
         </div>`;
 
         // Loan Amount slider
-        const amtPct = ((rdLoanAmount - 5000000) / 20000000) * 100;
         const maxLoanAmt = Math.round((d.amount || 18000000) * 1.4);
+        const amtPct = ((rdLoanAmount - 5000000) / Math.max(1, maxLoanAmt - 5000000)) * 100;
         html += `<div class="rd-control">
             <div class="rd-control__header">
                 <span class="rd-control__label">LOAN AMOUNT</span>
@@ -832,7 +826,7 @@ function renderReviewDeal() {
         // Purchase Amount
         html += `<div class="rd-section-bar" style="color:#8a6aaa;">Purchase Amount</div>`;
         const bondMax = d.amount;
-        const bondMin = Math.round(bondMax * 0.05);
+        const bondMin = Math.max(5000000, Math.ceil(bondMax * 0.05 / 5000000) * 5000000);
         const bondPct = ((rdBondAmount - bondMin) / (bondMax - bondMin)) * 100;
         html += `<div class="rd-control">
             <div class="rd-control__header">
@@ -986,7 +980,6 @@ function renderReviewDeal() {
 
 window.rdOpen = rdOpen;
 window.rdClose = rdClose;
-window.rdSetTab = rdSetTab;
 window.rdSetLoanRate = rdSetLoanRate;
 window.rdSetLoanAmount = rdSetLoanAmount;
 window.rdSetLoanTerm = rdSetLoanTerm;
