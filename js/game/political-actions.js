@@ -3552,12 +3552,12 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     }
 
     // 6b. Nullify FK references that would block future hard-deletes of the faction
+    // Tables removed: election_candidates, presidential_candidates don't exist.
+    // protests → protest_log (renamed in migration).
     const fkResults = await Promise.allSettled([
         supabase.from('active_laws').update({ proposed_by: null }).eq('proposed_by', factionId),
         supabase.from('administrations').update({ pm_party_id: null }).eq('pm_party_id', factionId),
-        supabase.from('election_candidates').delete().eq('faction_id', factionId),
-        supabase.from('presidential_candidates').delete().eq('faction_id', factionId),
-        supabase.from('protests').update({ faction_id: null }).eq('faction_id', factionId),
+        supabase.from('protest_log').update({ faction_id: null }).eq('faction_id', factionId),
     ]);
     for (const r of fkResults) {
         if (r.status === 'rejected') console.warn('disbandParty: FK cleanup error:', r.reason);
@@ -3604,6 +3604,7 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
             party_id: factionId,
             nation_id: nationId,
             action_type: 'party_disbanded',
+            ap_cost: 0,
             tick_performed: currentTick,
             result: { faction_name: faction?.faction_name || 'Unknown' }
         });

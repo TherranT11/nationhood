@@ -23983,12 +23983,12 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
     }
 
     // 6b. Nullify FK references that would block future hard-deletes of the faction
+    // Tables removed: election_candidates, presidential_candidates don't exist.
+    // protests → protest_log (renamed in migration).
     const fkResults = await Promise.allSettled([
         supabase.from('active_laws').update({ proposed_by: null }).eq('proposed_by', factionId),
         supabase.from('administrations').update({ pm_party_id: null }).eq('pm_party_id', factionId),
-        supabase.from('election_candidates').delete().eq('faction_id', factionId),
-        supabase.from('presidential_candidates').delete().eq('faction_id', factionId),
-        supabase.from('protests').update({ faction_id: null }).eq('faction_id', factionId),
+        supabase.from('protest_log').update({ faction_id: null }).eq('faction_id', factionId),
     ]);
     for (const r of fkResults) {
         if (r.status === 'rejected') console.warn('disbandParty: FK cleanup error:', r.reason);
@@ -24035,6 +24035,7 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
             party_id: factionId,
             nation_id: nationId,
             action_type: 'party_disbanded',
+            ap_cost: 0,
             tick_performed: currentTick,
             result: { faction_name: faction?.faction_name || 'Unknown' }
         });
@@ -32199,7 +32200,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // 3.5b Trade imbalance auto-spawn — detect sustained bilateral imbalances → create issues
-    try {
+    // Runs every 5 ticks to reduce CPU — needs 5 ticks of sustained data anyway
+    if (newTick % 5 === 0) try {
         const tradeIssuesSpawned = await checkTradeImbalanceAutoSpawn(supabase, nationList, newTick);
         if (tradeIssuesSpawned.length > 0) {
             summary.tradeIssuesSpawned = tradeIssuesSpawned.length;
@@ -32221,8 +32223,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // 3.6b Safety net: catch economic aid agreements missing their aid_agreement_state row
-    // This handles cases where trade_agreements was created but aid_agreement_state insert failed
-    try {
+    // Runs every 5 ticks to reduce CPU load — orphaned rows are rare, no urgency
+    if (newTick % 5 === 0) try {
         const { data: orphanedAid } = await supabase
             .from('trade_agreements')
             .select('id, nation_a_id, nation_b_id, articles, enacted_at_tick')
@@ -32234,7 +32236,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 // Check if aid_agreement_state exists for this agreement
                 const { data: existing } = await supabase
                     .from('aid_agreement_state')
-                    .select('id')
+                    .select('agreement_id')
                     .eq('agreement_id', ta.id)
                     .maybeSingle();
 
@@ -32471,28 +32473,24 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // Base momentum decay — 8% per tick, applied to all party factions
-        // Momentum fades if you stop acting. Sustained activity outpaces the decay.
+        // Single direct update per faction (no RPC overhead, no momentum_log append).
+        // Decay entries would flood the 50-entry log — players see 'base_decay' in the
+        // tooltip anyway. This saves N RPC calls (each RPC = 2 queries internally).
         try {
-            const { data: nationFactions } = await supabase
+            const { data: decayFactions } = await supabase
                 .from('factions')
                 .select('id, momentum')
                 .eq('nation_id', nation.id)
                 .eq('faction_type', 'party')
                 .gt('momentum', 0);
 
-            if (nationFactions && nationFactions.length > 0) {
-                for (const f of nationFactions) {
-                    const oldMom = Number(f.momentum) || 0;
-                    if (oldMom <= 0) continue;
-                    const decay = Math.round(oldMom * 0.08 * 100) / 100; // 8% of current
-                    const decayAmount = Math.max(0.5, decay); // minimum 0.5 decay so low momentum still drains
-                    await supabase.rpc('adjust_momentum', {
-                        p_faction_id: f.id,
-                        p_delta: -decayAmount,
-                        p_label: 'base_decay',
-                        p_tick: newTick
-                    });
-                }
+            for (const f of (decayFactions || [])) {
+                const oldMom = Number(f.momentum) || 0;
+                const decay = Math.max(0.5, Math.round(oldMom * 0.08 * 100) / 100);
+                const newMom = Math.max(0, Math.round((oldMom - decay) * 100) / 100);
+                await supabase.from('factions')
+                    .update({ momentum: newMom })
+                    .eq('id', f.id);
             }
         } catch (momDecayErr) {
             console.error(`[advanceTick] Momentum decay failed for ${nation.name} (non-fatal):`, momDecayErr);
