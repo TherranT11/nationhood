@@ -328,6 +328,13 @@ const SAMPLE_DEALS = [
 let dfFilter = 'ALL';
 let dfSelected = -1;
 
+function dfCanReview(deal) {
+    if (!faction) return false;
+    const subsector = (faction.corp_subsector || '').toLowerCase();
+    const allowedType = SUBSECTOR_DEAL_MAP[subsector];
+    return deal.type === allowedType;
+}
+
 function dfSetFilter(type) {
     dfFilter = type;
     dfSelected = -1;
@@ -380,17 +387,19 @@ function renderDealFlow() {
         const isSel = dfSelected === globalIdx;
         const tm = DF_TYPE_META[d.type];
         const rm = DF_RISK_META[d.risk];
+        const canReview = dfCanReview(d);
 
-        html += `<div class="df-deal${isSel ? ' sel-' + tm.class : ''}" onclick="dfSelectDeal(${globalIdx})">`;
+        html += `<div class="df-deal${isSel ? ' sel-' + tm.class : ''}" onclick="dfSelectDeal(${globalIdx})" style="${canReview ? '' : 'opacity:0.5;'}">`;
 
         // New dot
-        if (d.isNew) html += '<div class="df-new-dot"></div>';
+        if (d.isNew && canReview) html += '<div class="df-new-dot"></div>';
 
-        // Row 1: type badge + applicant + entity
+        // Row 1: type badge + applicant + entity + lock if mismatched
         html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
             <span class="df-badge df-badge-${tm.class}">${tm.label}</span>
             <span style="font-size:11px;font-weight:600;color:#e8e4dc;">${escapeHtml(d.applicant)}</span>
             <span class="df-badge df-badge-${d.entity.toLowerCase()}">${d.entity}</span>
+            ${canReview ? '' : '<span style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-left:auto;">&#128274;</span>'}
         </div>`;
 
         // Row 2: nation + risk
@@ -430,31 +439,42 @@ function renderDealFlow() {
         // Expanded detail
         if (isSel) {
             html += `<div style="margin-top:6px;font-size:10px;color:#9e9a92;line-height:1.5;margin-bottom:6px;">${escapeHtml(d.purpose)}</div>`;
-            html += '<div class="df-detail">';
 
-            if (d.type === 'LOAN') {
-                const dtrPct = Math.round((d.debt / d.revenue) * 100);
-                const dtrColor = dtrPct > 50 ? '#c84' : '#5c5';
-                const debtColor = d.debt > d.revenue * 0.5 ? '#c84' : '#9e9a92';
-                html += `<div class="df-detail-row"><span class="df-detail-label">ANNUAL REVENUE</span><span class="df-detail-value" style="color:#9e9a92;">${fmtMoney(d.revenue)}</span></div>`;
-                html += `<div class="df-detail-row"><span class="df-detail-label">EXISTING DEBT</span><span class="df-detail-value" style="color:${debtColor};">${fmtMoney(d.debt)}</span></div>`;
-                html += `<div class="df-detail-row"><span class="df-detail-label">DEBT/REVENUE</span><span class="df-detail-value" style="color:${dtrColor};font-weight:700;">${dtrPct}%</span></div>`;
-            } else if (d.type === 'BOND') {
-                const stabColor = d.stability >= 50 ? '#5c5' : d.stability >= 30 ? '#ca5' : '#c84';
-                const dtgColor = d.debtToGdp > 60 ? '#c55' : d.debtToGdp > 40 ? '#c84' : '#5c5';
-                const crColor = d.creditRating >= 60 ? '#5c5' : d.creditRating >= 35 ? '#ca5' : '#c55';
-                html += `<div class="df-detail-row"><span class="df-detail-label">STABILITY</span><span class="df-detail-value" style="color:${stabColor};">${d.stability}/100</span></div>`;
-                html += `<div class="df-detail-row"><span class="df-detail-label">DEBT/GDP</span><span class="df-detail-value" style="color:${dtgColor};">${d.debtToGdp}%</span></div>`;
-                html += `<div class="df-detail-row"><span class="df-detail-label">CREDIT RATING</span><span class="df-detail-value" style="color:${crColor};font-weight:700;">${d.creditRating}/100</span></div>`;
-            } else if (d.type === 'INSURE') {
-                const repColor = d.reputation >= 60 ? '#5c5' : d.reputation >= 35 ? '#ca5' : '#c84';
-                const assetLabel = d.projectValue ? 'PROJECT VALUE' : 'FLEET VALUE';
-                const assetValue = d.projectValue || d.fleetValue;
-                html += `<div class="df-detail-row"><span class="df-detail-label">REPUTATION</span><span class="df-detail-value" style="color:${repColor};">${d.reputation}/100</span></div>`;
-                html += `<div class="df-detail-row"><span class="df-detail-label">${assetLabel}</span><span class="df-detail-value" style="color:#9e9a92;">${fmtMoney(assetValue)}</span></div>`;
+            if (!canReview) {
+                const neededSub = d.type === 'LOAN' ? 'Banking' : d.type === 'INSURE' ? 'Insurance' : 'Investment';
+                html += `<div style="padding:6px 8px;background:rgba(106,102,96,0.06);border:1px solid #2a2a24;font-family:var(--font-mono);font-size:8px;color:#6a6660;line-height:1.5;">
+                    &#128274; Requires <span style="color:#e8e4dc;font-weight:700;">${neededSub}</span> subsector to underwrite.
+                    ${faction?.corp_subsector ? 'Your subsector: <span style="color:#aa7a5a;">' + escapeHtml(faction.corp_subsector) + '</span>.' : ''}
+                    Establish a subsidiary with this subsector to access these deals.
+                </div>`;
+            } else {
+                html += '<div class="df-detail">';
             }
 
-            html += '</div>';
+            if (canReview) {
+                if (d.type === 'LOAN') {
+                    const dtrPct = Math.round((d.debt / d.revenue) * 100);
+                    const dtrColor = dtrPct > 50 ? '#c84' : '#5c5';
+                    const debtColor = d.debt > d.revenue * 0.5 ? '#c84' : '#9e9a92';
+                    html += `<div class="df-detail-row"><span class="df-detail-label">ANNUAL REVENUE</span><span class="df-detail-value" style="color:#9e9a92;">${fmtMoney(d.revenue)}</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label">EXISTING DEBT</span><span class="df-detail-value" style="color:${debtColor};">${fmtMoney(d.debt)}</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label">DEBT/REVENUE</span><span class="df-detail-value" style="color:${dtrColor};font-weight:700;">${dtrPct}%</span></div>`;
+                } else if (d.type === 'BOND') {
+                    const stabColor = d.stability >= 50 ? '#5c5' : d.stability >= 30 ? '#ca5' : '#c84';
+                    const dtgColor = d.debtToGdp > 60 ? '#c55' : d.debtToGdp > 40 ? '#c84' : '#5c5';
+                    const crColor = d.creditRating >= 60 ? '#5c5' : d.creditRating >= 35 ? '#ca5' : '#c55';
+                    html += `<div class="df-detail-row"><span class="df-detail-label">STABILITY</span><span class="df-detail-value" style="color:${stabColor};">${d.stability}/100</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label">DEBT/GDP</span><span class="df-detail-value" style="color:${dtgColor};">${d.debtToGdp}%</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label">CREDIT RATING</span><span class="df-detail-value" style="color:${crColor};font-weight:700;">${d.creditRating}/100</span></div>`;
+                } else if (d.type === 'INSURE') {
+                    const repColor = d.reputation >= 60 ? '#5c5' : d.reputation >= 35 ? '#ca5' : '#c84';
+                    const assetLabel = d.projectValue ? 'PROJECT VALUE' : 'FLEET VALUE';
+                    const assetValue = d.projectValue || d.fleetValue;
+                    html += `<div class="df-detail-row"><span class="df-detail-label">REPUTATION</span><span class="df-detail-value" style="color:${repColor};">${d.reputation}/100</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label">${assetLabel}</span><span class="df-detail-value" style="color:#9e9a92;">${fmtMoney(assetValue)}</span></div>`;
+                }
+                html += '</div>'; // close df-detail
+            }
         }
 
         html += '</div>'; // close df-deal
@@ -472,7 +492,17 @@ function renderDealFlow() {
             <div class="df-footer__count"><div class="df-footer__count-dot" style="background:#aa7a5a;"></div><span class="df-footer__count-label">INSURE</span><span class="df-footer__count-num">${insureCount}</span></div>
             <div class="df-footer__count"><div class="df-footer__count-dot" style="background:#8a6aaa;"></div><span class="df-footer__count-label">BOND</span><span class="df-footer__count-num">${bondCount}</span></div>
         </div>
-        <div class="df-review-btn${dfSelected >= 0 ? ' active' : ''}" ${dfSelected >= 0 ? `onclick="rdOpen(${dfSelected})"` : ''}>REVIEW DEAL</div>
+        ${(() => {
+            const selDeal = dfSelected >= 0 ? SAMPLE_DEALS[dfSelected] : null;
+            const canRev = selDeal && dfCanReview(selDeal);
+            if (canRev) {
+                return `<div class="df-review-btn active" onclick="rdOpen(${dfSelected})">REVIEW DEAL</div>`;
+            } else if (selDeal && !canRev) {
+                return `<div class="df-review-btn" style="opacity:0.4;cursor:not-allowed;" title="Requires matching subsector">&#128274; LOCKED</div>`;
+            } else {
+                return `<div class="df-review-btn">REVIEW DEAL</div>`;
+            }
+        })()}
     </div>`;
 
     container.innerHTML = html;
@@ -627,17 +657,12 @@ function renderReviewDeal() {
         </div>
         <div class="rd-tabs">`;
 
-    // Show tab for the current deal type
-    const tabs = [
-        { id: 'LOAN', label: 'Loan', name: d.type === 'LOAN' ? d.applicant : 'Loan' },
-        { id: 'INSURE', label: 'Insure', name: d.type === 'INSURE' ? d.applicant : 'Insure' },
-        { id: 'BOND', label: 'Bond', name: d.type === 'BOND' ? d.applicant : 'Bond' },
-    ];
-    for (const t of tabs) {
-        const isActive = rdType === t.id;
-        html += `<span class="rd-tab${isActive ? ' active-' + t.id.toLowerCase() : ''}" onclick="rdSetTab('${t.id}')">${t.label} — ${escapeHtml(t.name)}</span>`;
-    }
-    html += `</div></div>`;
+    // Single tab showing this deal's type and applicant
+    const tabClass = rdType === 'LOAN' ? 'active-loan' : rdType === 'INSURE' ? 'active-insure' : 'active-bond';
+    const tabLabel = rdType === 'LOAN' ? 'Loan' : rdType === 'INSURE' ? 'Insure' : 'Bond';
+    html += `<div class="rd-tabs">
+        <span class="rd-tab ${tabClass}" style="cursor:default;">${tabLabel} — ${escapeHtml(d.applicant)}</span>
+    </div></div>`;
 
     // ── BODY ──
     html += '<div class="rd-body">';
