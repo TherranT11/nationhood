@@ -56,8 +56,9 @@ function getCappedTariffRevenue(nation) {
     if (!tradeData || !tradeData.summary) return 0;
     var raw = Number(tradeData.summary.tariff_revenue) || 0;
     if (raw <= 0) return 0;
+    // Cap at 5% of GDP — realistic range for high-tariff nations is 1-5% of GDP
     var gdp = Number(nation.gdp ?? nation.GDP ?? 0);
-    return (gdp > 0) ? Math.min(raw, gdp * 0.002) : raw;
+    return (gdp > 0) ? Math.min(raw, gdp * 0.05) : raw;
 }
 
 // Nation map colors for display
@@ -580,7 +581,7 @@ function wireTariffSimulator(nation) {
         // Update projections
         var projEl = document.getElementById('tsim-projections');
         if (projEl) {
-            var gdpCap = Number(nation.gdp ?? nation.GDP ?? 0) * 0.002;
+            var gdpCap = Number(nation.gdp ?? nation.GDP ?? 0) * 0.05;
             projEl.innerHTML = renderTariffProjections(currentRate, simRate, currentDampener, totalCurrentImports, sectorImports, collectionRate, currentTariffRev, gdpCap);
         }
     });
@@ -2904,7 +2905,7 @@ function renderTariffSimulator(nation) {
 
     // Projection cards
     h += '<div class="tsim-projections" id="tsim-projections">';
-    var gdpCap = Number(nation.gdp ?? nation.GDP ?? 0) * 0.002;
+    var gdpCap = Number(nation.gdp ?? nation.GDP ?? 0) * 0.05;
     h += renderTariffProjections(d.currentRate, d.currentRate, d.currentDampener, d.totalCurrentImports, d.sectorImports, d.collectionRate, d.currentTariffRev, gdpCap);
     h += '</div>';
 
@@ -2918,7 +2919,7 @@ function renderTariffProjections(currentRate, simRate, currentDampener, totalCur
 
     var projectedTotalImports = Math.round(totalCurrentImports * dampenerRatio);
     var projectedTariffRev = Math.round(projectedTotalImports * (simRate / 100) * collectionRate);
-    // Cap tariff revenue at 0.2% of GDP (matches budget)
+    // Cap at 5% of GDP — realistic range for high-tariff nations
     if (gdpCap > 0) {
         projectedTariffRev = Math.min(projectedTariffRev, Math.round(gdpCap));
         currentTariffRev = Math.min(currentTariffRev, Math.round(gdpCap));
