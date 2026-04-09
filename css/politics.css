@@ -5071,6 +5071,18 @@ body.light-mode .pol-blocs-box {
     overflow: visible;
 }
 
+.elec-ideo-rival-dot {
+    position: absolute;
+    top: 50%;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1.5px solid var(--dbg-2);
+    transform: translate(-50%, -50%);
+    z-index: 4;
+    opacity: 0.7;
+}
+
 .elec-ideo-density-svg {
     position: absolute;
     top: 0;

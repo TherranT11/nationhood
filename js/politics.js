@@ -5693,6 +5693,21 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
                 </svg>`;
             }
 
+            // Rival party dots — show all parties except the player's
+            let rivalDotsHtml = '';
+            for (const rp of (allParties || [])) {
+                if (rp.id === faction.id) continue; // skip own party — shown as teal dot
+                const rpIdeo = ideoMap[rp.id];
+                if (!rpIdeo) continue;
+                const rpRaw = Number(rpIdeo[ax.key] ?? 0);
+                const rpNorm = (rpRaw + 100) / 2;
+                const rpRelPos = varWidth > 0 ? ((rpNorm - varLeft) / varWidth) * 100 : 50;
+                // Only show if within the variance band (0-100% relative)
+                if (rpRelPos < -5 || rpRelPos > 105) continue;
+                const rpColor = rp.party_color || '#888';
+                rivalDotsHtml += `<div class="elec-ideo-rival-dot" style="left:${rpRelPos}%;background:${rpColor};" title="${escapeHtml(rp.abbreviation || rp.faction_name)}"></div>`;
+            }
+
             ideologyRowsHtml += `
             <div class="elec-ideo-axis">
                 <div class="elec-ideo-axis-header">
@@ -5708,6 +5723,7 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
                         <div class="elec-ideo-var-band" style="left:${varLeft}%;width:${varWidth}%">
                             ${zonesHtml}
                             ${svgPath}
+                            ${rivalDotsHtml}
                             <div class="elec-ideo-mean-marker" style="left:${meanRelPos}%"></div>
                             <div class="elec-ideo-player-marker" style="left:${playerRelPos}%"></div>
                         </div>
