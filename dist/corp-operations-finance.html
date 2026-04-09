@@ -77,13 +77,61 @@ body.light-mode .corp-nav__tab { color:#666660; }
 body.light-mode .corp-nav__tab:hover { color:#333330; }
 body.light-mode .corp-nav__tab.active { color:#1a1a17; border-bottom-color:#1a1a17; }
 
-/* Content */
-.content { max-width:1200px; margin:0 auto; padding:20px 16px; }
-.empty-state { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:400px; text-align:center; }
-.empty-state__icon { font-size:48px; margin-bottom:16px; opacity:0.3; }
-.empty-state__title { font-family:var(--font-mono); font-size:14px; font-weight:600; color:var(--text-bright); letter-spacing:1px; text-transform:uppercase; margin-bottom:8px; }
-.empty-state__desc { font-size:13px; color:var(--text-secondary); max-width:400px; line-height:1.6; }
-.empty-state__subsector { font-family:var(--font-mono); font-size:11px; color:var(--teal); padding:4px 12px; background:rgba(90,175,165,0.08); border:1px solid var(--teal-border); border-radius:3px; margin-top:16px; }
+/* Deal Flow container */
+.df-container { width:380px; background:#1a1a16; border:1px solid #2a2a24; display:flex; flex-direction:column; overflow:hidden; max-height:450px; }
+.df-header { padding:8px 14px; border-bottom:1px solid #2a2a24; display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
+.df-header__left { display:flex; align-items:center; gap:6px; }
+.df-header__dot { font-size:8px; color:var(--teal); }
+.df-header__title { font-family:var(--font-mono); font-size:11px; font-weight:700; letter-spacing:2px; color:#9e9a92; text-transform:uppercase; }
+.df-filters { padding:5px 14px; border-bottom:1px solid #2a2a24; background:#1c1c18; flex-shrink:0; display:flex; gap:3px; }
+.df-pill { flex:1; text-align:center; padding:3px 0; font-family:var(--font-mono); font-size:8px; font-weight:700; cursor:pointer; letter-spacing:0.5px; border:1px solid #2a2a24; color:#6a6660; background:transparent; transition:all 0.1s; }
+.df-pill.active-all { color:#000; background:#8b9a6b; border-color:#8b9a6b; }
+.df-pill.active-loan { color:#000; background:#5a8aaa; border-color:#5a8aaa; }
+.df-pill.active-insure { color:#000; background:#aa7a5a; border-color:#aa7a5a; }
+.df-pill.active-bond { color:#000; background:#8a6aaa; border-color:#8a6aaa; }
+.df-list { flex:1; overflow-y:auto; }
+.df-deal { padding:8px 14px; border-bottom:1px solid #2a2a24; border-left:2px solid transparent; cursor:pointer; position:relative; }
+.df-deal:hover { background:rgba(255,255,255,0.01); }
+.df-deal.sel-loan { border-left-color:#5a8aaa; background:rgba(90,138,170,0.08); }
+.df-deal.sel-insure { border-left-color:#aa7a5a; background:rgba(170,122,90,0.08); }
+.df-deal.sel-bond { border-left-color:#8a6aaa; background:rgba(138,106,170,0.08); }
+.df-badge { font-family:var(--font-mono); font-size:7px; font-weight:700; letter-spacing:0.5px; padding:1px 5px; line-height:13px; display:inline-block; }
+.df-badge-loan { color:#5a8aaa; background:rgba(90,138,170,0.08); border:1px solid rgba(90,138,170,0.2); }
+.df-badge-insure { color:#aa7a5a; background:rgba(170,122,90,0.08); border:1px solid rgba(170,122,90,0.2); }
+.df-badge-bond { color:#8a6aaa; background:rgba(138,106,170,0.08); border:1px solid rgba(138,106,170,0.2); }
+.df-badge-gov { color:#a3b07e; background:rgba(163,176,126,0.1); border:1px solid rgba(163,176,126,0.2); }
+.df-badge-corp { color:#c8a832; background:rgba(200,168,50,0.08); border:1px solid rgba(200,168,50,0.2); }
+.df-badge-nation { color:#8b9a6b; background:rgba(139,154,107,0.08); border:1px solid rgba(139,154,107,0.15); }
+.df-risk-low { color:#5c5; }
+.df-risk-moderate { color:#ca5; }
+.df-risk-elevated { color:#c84; }
+.df-risk-high { color:#c55; }
+.df-metrics { display:flex; gap:0; background:#1c1c18; border:1px solid #2a2a24; }
+.df-metrics > div { padding:4px 8px; }
+.df-metrics > div + div { border-left:1px solid #2a2a24; }
+.df-metrics__label { font-family:var(--font-mono); font-size:7px; color:#6a6660; letter-spacing:0.5px; }
+.df-metrics__value { font-family:var(--font-mono); font-weight:700; margin-top:1px; }
+.df-detail { background:#121210; border:1px solid #2a2a24; padding:5px 8px; margin-top:6px; }
+.df-detail-row { display:flex; justify-content:space-between; padding:2px 0; }
+.df-detail-row + .df-detail-row { border-top:1px solid #2a2a24; }
+.df-detail-label { font-family:var(--font-mono); font-size:8px; color:#6a6660; }
+.df-detail-value { font-family:var(--font-mono); font-size:9px; }
+.df-footer { padding:8px 14px; border-top:1px solid #2a2a24; background:#1c1c18; flex-shrink:0; display:flex; justify-content:space-between; align-items:center; }
+.df-footer__counts { display:flex; gap:10px; }
+.df-footer__count { display:flex; align-items:center; gap:4px; }
+.df-footer__count-dot { width:5px; height:5px; border-radius:1px; }
+.df-footer__count-label { font-family:var(--font-mono); font-size:7px; color:#6a6660; }
+.df-footer__count-num { font-family:var(--font-mono); font-size:8px; font-weight:700; color:#9e9a92; }
+.df-review-btn { padding:4px 14px; font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:1px; border:1px solid #2a2a24; cursor:default; color:#6a6660; background:transparent; opacity:0.4; }
+.df-review-btn.active { color:#000; background:#8b9a6b; border-color:#8b9a6b; cursor:pointer; opacity:1; }
+.df-new-dot { position:absolute; left:4px; top:50%; transform:translateY(-50%); width:4px; height:4px; border-radius:50%; background:#c8a832; }
+
+/* Content layout */
+.ops-grid { display:flex; justify-content:center; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+
+@media (max-width: 768px) {
+  .df-container { width:100%; max-height:none; }
+}
 
 /* Faction dropdown */
 .corp-faction-dropdown { display:none; position:absolute; top:100%; right:0; background:var(--bg-3); border:1px solid var(--border-1); z-index:100; min-width:200px; margin-top:4px; }
@@ -103,7 +151,7 @@ body.light-mode .corp-nav__tab.active { color:#1a1a17; border-bottom-color:#1a1a
   .corp-nav.nav-open .corp-nav__tab.active { border-left-color:var(--text-bright); border-bottom:none; }
 }
 </style>
-  <script type="module" crossorigin src="/assets/corp-operations-finance-kSPda76U.js"></script>
+  <script type="module" crossorigin src="/assets/corp-operations-finance-aVSEzmtD.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
 </head>
@@ -155,17 +203,10 @@ body.light-mode .corp-nav__tab.active { color:#1a1a17; border-bottom-color:#1a1a
   </nav>
 
   <div class="content">
-    <div id="operations-content">
-      <div class="empty-state">
-        <div class="empty-state__icon">&#127974;</div>
-        <div class="empty-state__title">Finance Operations</div>
-        <div class="empty-state__desc">
-          Financial operations are under development. Lending, underwriting, asset management, and market trading mechanics will be available in a future update.
-        </div>
-        <div class="empty-state__subsector" id="subsector-badge">--</div>
-      </div>
+    <div id="operations-content" class="ops-grid">
+      <!-- Deal Flow Container -->
+      <div class="df-container" id="df-container"></div>
     </div>
-
   </div>
 
 </body>
