@@ -156,12 +156,30 @@ body.light-mode .corp-nav__tab.active { color:#1a1a17; border-bottom-color:#1a1a
 .ap-claim-box { padding:4px 6px; margin-bottom:4px; background:rgba(204,85,85,0.04); border:1px solid rgba(204,85,85,0.1); }
 .ap-empty { padding:30px 20px; text-align:center; font-family:var(--font-mono); font-size:9px; color:#6a6660; line-height:1.6; }
 
+/* Reserves & Risk container */
+.rr-container { width:380px; background:#1a1a16; border:1px solid #2a2a24; display:flex; flex-direction:column; overflow:hidden; max-height:450px; }
+.rr-section-bar { padding:6px 14px; border-bottom:1px solid #2a2a24; background:#1c1c18; font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:1.5px; color:#a3b07e; text-transform:uppercase; }
+.rr-section { padding:8px 14px; border-bottom:1px solid #2a2a24; }
+.rr-seg-bar { width:100%; display:flex; overflow:hidden; }
+.rr-seg-legend { display:flex; justify-content:space-between; margin-top:4px; }
+.rr-seg-legend-item { display:flex; align-items:center; gap:4px; font-family:var(--font-mono); font-size:8px; color:#9e9a92; }
+.rr-seg-legend-dot { width:6px; height:6px; }
+.rr-reserve-cells { display:flex; gap:0; margin-top:8px; background:#1c1c18; border:1px solid #2a2a24; }
+.rr-reserve-cell { flex:1; padding:4px 8px; }
+.rr-reserve-cell + .rr-reserve-cell { border-left:1px solid #2a2a24; }
+.rr-type-row { display:flex; align-items:center; padding:3px 0; }
+.rr-type-row + .rr-type-row { border-top:1px solid #2a2a24; }
+.rr-conc-row { display:flex; align-items:center; padding:3px 0; }
+.rr-conc-row + .rr-conc-row { border-top:1px solid #2a2a24; }
+.rr-warning { padding:6px 14px; border-bottom:1px solid #2a2a24; background:rgba(204,85,85,0.03); font-size:9px; color:#c84; line-height:1.5; }
+
 /* Content layout */
 .ops-grid { display:flex; justify-content:center; gap:12px; align-items:flex-start; flex-wrap:wrap; }
 
 @media (max-width: 768px) {
   .df-container { width:100%; max-height:none; }
   .ap-container { width:100%; max-height:none; }
+  .rr-container { width:100%; max-height:none; }
   .rd-modal { width:95vw !important; }
   .rd-body { flex-direction:column !important; }
   .rd-right { width:100% !important; border-left:none !important; border-top:1px solid #2a2a24; }
@@ -286,6 +304,7 @@ body.light-mode .corp-nav__tab.active { color:#1a1a17; border-bottom-color:#1a1a
     <div id="operations-content" class="ops-grid">
       <div class="df-container" id="df-container"></div>
       <div class="ap-container" id="ap-container"></div>
+      <div class="rr-container" id="rr-container"></div>
     </div>
   </div>
 
@@ -738,6 +757,186 @@ function renderActivePortfolio() {
 
 window.apSetFilter = apSetFilter;
 window.apToggle = apToggle;
+
+// ==================== RESERVES & RISK ====================
+
+function rrSegBar(segments, h) {
+    const total = segments.reduce((a, s) => a + s.value, 0);
+    if (total === 0) return `<div class="rr-seg-bar" style="height:${h}px;background:#2a2a24;"></div>`;
+    return `<div class="rr-seg-bar" style="height:${h}px;">${segments.map(s =>
+        `<div style="width:${(s.value / total * 100).toFixed(1)}%;height:100%;background:${s.color};"></div>`
+    ).join('')}</div>`;
+}
+
+function renderReservesRisk() {
+    const container = document.getElementById('rr-container');
+    if (!container) return;
+
+    // Compute from portfolio + faction cash
+    const cash = Number(faction?.corp_cash_reserves) || 0;
+    const loanExposure = apPortfolio.filter(p => p.type === 'LOAN').reduce((s, p) => s + (p.remaining || 0), 0);
+    const insureExposure = apPortfolio.filter(p => p.type === 'INSURE').reduce((s, p) => s + (p.coverage || 0), 0);
+    const bondExposure = apPortfolio.filter(p => p.type === 'BOND').reduce((s, p) => s + (p.faceValue || 0), 0);
+    const totalExposure = loanExposure + insureExposure + bondExposure;
+    const deployed = totalExposure;
+    const totalAssets = cash + deployed;
+
+    const requiredReserve = Math.round(totalExposure * 0.15);
+    const reserveRatio = totalExposure > 0 ? Math.round((cash / totalExposure) * 100) : 100;
+    const reserveHealth = reserveRatio >= 30 ? 'HEALTHY' : reserveRatio >= 20 ? 'ADEQUATE' : reserveRatio >= 15 ? 'THIN' : 'CRITICAL';
+    const reserveColor = reserveRatio >= 30 ? '#5c5' : reserveRatio >= 20 ? '#ca5' : reserveRatio >= 15 ? '#c84' : '#c55';
+    const availableCapital = Math.max(0, cash - requiredReserve);
+
+    // Concentration by nation
+    const nationMap = {};
+    for (const p of apPortfolio) {
+        const n = p.nation || 'Unknown';
+        const exp = p.remaining || p.coverage || p.faceValue || 0;
+        nationMap[n] = (nationMap[n] || 0) + exp;
+    }
+    const nationConc = Object.entries(nationMap)
+        .map(([name, exposure]) => ({ name, exposure, pct: totalExposure > 0 ? Math.round(exposure / totalExposure * 100) : 0 }))
+        .sort((a, b) => b.exposure - a.exposure);
+
+    // Concentration by sector
+    const sectorMap = {};
+    for (const p of apPortfolio) {
+        const sec = p.type === 'BOND' ? 'Government' : p.sector || 'Other';
+        const exp = p.remaining || p.coverage || p.faceValue || 0;
+        sectorMap[sec] = (sectorMap[sec] || 0) + exp;
+    }
+    const sectorConc = Object.entries(sectorMap)
+        .map(([name, exposure]) => ({ name, exposure, pct: totalExposure > 0 ? Math.round(exposure / totalExposure * 100) : 0 }))
+        .sort((a, b) => b.exposure - a.exposure);
+
+    const topNationPct = nationConc.length > 0 ? nationConc[0].pct : 0;
+    const concRisk = topNationPct > 60 ? 'HIGH' : topNationPct > 40 ? 'MODERATE' : 'LOW';
+    const concColor = concRisk === 'HIGH' ? '#c55' : concRisk === 'MODERATE' ? '#ca5' : '#5c5';
+
+    // ── Header ──
+    let html = `<div class="df-header">
+        <div class="df-header__left">
+            <span class="df-header__dot">&#9679;</span>
+            <span class="df-header__title">Reserves & Risk</span>
+        </div>
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:1px 6px;color:${reserveColor};background:${reserveColor}12;border:1px solid ${reserveColor}25;">${reserveHealth}</span>
+    </div>`;
+
+    html += '<div style="flex:1;overflow-y:auto;">';
+
+    // ── Capital Position ──
+    html += '<div class="rr-section-bar">Capital Position</div>';
+    html += '<div class="rr-section">';
+    html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:0.8px;">TOTAL ASSETS</span>
+        <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:#e8e4dc;">${fmtMoney(totalAssets)}</span>
+    </div>`;
+    html += rrSegBar([{ value: cash, color: '#5c5' }, { value: deployed, color: '#8b9a6b' }], 6);
+    html += `<div class="rr-seg-legend">
+        <div class="rr-seg-legend-item"><div class="rr-seg-legend-dot" style="background:#5c5;"></div>Cash ${fmtMoney(cash)}</div>
+        <div class="rr-seg-legend-item"><div class="rr-seg-legend-dot" style="background:#8b9a6b;"></div>Deployed ${fmtMoney(deployed)}</div>
+    </div>`;
+    html += '</div>';
+
+    // ── Reserve Ratio ──
+    html += '<div class="rr-section">';
+    html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:0.8px;">RESERVE RATIO</span>
+        <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${reserveColor};">${reserveRatio}%</span>
+    </div>`;
+    html += `<div class="rd-bar" style="height:5px;"><div class="rd-bar__fill" style="width:${Math.min(reserveRatio / 60 * 100, 100)}%;background:${reserveColor};"></div></div>`;
+    html += `<div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:3px;">
+        <span style="color:#c55;">15% minimum</span><span>30% healthy</span><span style="color:#5c5;">60%+</span>
+    </div>`;
+    html += `<div class="rr-reserve-cells">
+        <div class="rr-reserve-cell"><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">REQUIRED (15%)</div><div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c84;margin-top:1px;">${fmtMoney(requiredReserve)}</div></div>
+        <div class="rr-reserve-cell"><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">AVAILABLE TO DEPLOY</div><div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${availableCapital > 0 ? '#5c5' : '#c55'};margin-top:1px;">${fmtMoney(availableCapital)}</div></div>
+    </div>`;
+    html += '</div>';
+
+    // ── Exposure by Type ──
+    html += '<div class="rr-section-bar">Exposure by Type</div>';
+    html += '<div class="rr-section">';
+    if (totalExposure > 0) {
+        html += rrSegBar([
+            { value: loanExposure, color: '#5a8aaa' },
+            { value: insureExposure, color: '#aa7a5a' },
+            { value: bondExposure, color: '#8a6aaa' },
+        ], 6);
+        html += '<div style="margin-top:6px;">';
+        const types = [
+            { label: 'Loans', value: loanExposure, color: '#5a8aaa', pct: totalExposure > 0 ? Math.round(loanExposure / totalExposure * 100) : 0 },
+            { label: 'Insurance', value: insureExposure, color: '#aa7a5a', pct: totalExposure > 0 ? Math.round(insureExposure / totalExposure * 100) : 0 },
+            { label: 'Bonds', value: bondExposure, color: '#8a6aaa', pct: totalExposure > 0 ? Math.round(bondExposure / totalExposure * 100) : 0 },
+        ];
+        for (let i = 0; i < types.length; i++) {
+            const t = types[i];
+            html += `<div class="rr-type-row">
+                <div style="width:6px;height:6px;background:${t.color};margin-right:6px;"></div>
+                <span style="flex:1;font-family:var(--font-mono);font-size:9px;color:#9e9a92;">${t.label}</span>
+                <span style="font-family:var(--font-mono);font-size:9px;color:#e8e4dc;width:50px;text-align:right;">${fmtMoney(t.value)}</span>
+                <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;width:28px;text-align:right;">${t.pct}%</span>
+            </div>`;
+        }
+        html += '</div>';
+    } else {
+        html += '<div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;text-align:center;padding:8px 0;">No exposure</div>';
+    }
+    html += '</div>';
+
+    // ── Concentration Risk ──
+    html += `<div class="rr-section-bar" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Concentration Risk</span>
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:1px 6px;color:${concColor};background:${concColor}12;border:1px solid ${concColor}25;">${concRisk}</span>
+    </div>`;
+    html += '<div class="rr-section">';
+
+    if (nationConc.length > 0) {
+        html += '<div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:0.8px;margin-bottom:4px;">BY NATION</div>';
+        for (const n of nationConc) {
+            const barColor = n.pct > 50 ? '#c84' : n.pct > 30 ? '#ca5' : '#5c5';
+            html += `<div class="rr-conc-row">
+                <span style="font-family:var(--font-mono);font-size:7px;padding:0 4px;color:#8b9a6b;background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15);line-height:12px;width:52px;text-align:center;">${escapeHtml(n.name.toUpperCase().slice(0, 6))}</span>
+                <div style="flex:1;margin:0 6px;"><div class="rd-bar"><div class="rd-bar__fill" style="width:${n.pct}%;background:${barColor};"></div></div></div>
+                <span style="font-family:var(--font-mono);font-size:9px;color:#e8e4dc;width:50px;text-align:right;">${fmtMoney(n.exposure)}</span>
+                <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;width:28px;text-align:right;color:${n.pct > 50 ? '#c84' : '#9e9a92'};">${n.pct}%</span>
+            </div>`;
+        }
+    }
+
+    if (sectorConc.length > 0) {
+        html += '<div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:0.8px;margin-top:8px;margin-bottom:4px;">BY SECTOR</div>';
+        for (const s of sectorConc) {
+            const barColor = s.pct > 50 ? '#c84' : s.pct > 30 ? '#ca5' : '#5c5';
+            html += `<div class="rr-conc-row">
+                <span style="font-family:var(--font-mono);font-size:8px;color:#9e9a92;width:52px;">${escapeHtml(s.name)}</span>
+                <div style="flex:1;margin:0 6px;"><div class="rd-bar"><div class="rd-bar__fill" style="width:${s.pct}%;background:${barColor};"></div></div></div>
+                <span style="font-family:var(--font-mono);font-size:9px;color:#e8e4dc;width:50px;text-align:right;">${fmtMoney(s.exposure)}</span>
+                <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;width:28px;text-align:right;color:${s.pct > 50 ? '#c84' : '#9e9a92'};">${s.pct}%</span>
+            </div>`;
+        }
+    }
+
+    if (nationConc.length === 0 && sectorConc.length === 0) {
+        html += '<div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;text-align:center;padding:8px 0;">No positions to analyze</div>';
+    }
+    html += '</div>';
+
+    // Concentration warning
+    if (topNationPct > 60 && nationConc.length > 0) {
+        html += `<div class="rr-warning"><span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:#c55;">CONCENTRATION WARNING: </span>${topNationPct}% of exposure is in ${escapeHtml(nationConc[0].name)}. A sovereign crisis or economic downturn in this nation would affect the majority of your portfolio. Consider diversifying across nations.</div>`;
+    }
+
+    html += '</div>'; // close scrollable area
+
+    // ── Footer ──
+    html += `<div class="df-footer" style="justify-content:space-between;">
+        <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">DEPLOYABLE CAPITAL</div><div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${availableCapital > 0 ? '#5c5' : '#c55'};">${fmtMoney(availableCapital)}</div></div>
+        <div style="text-align:right;"><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">TOTAL EXPOSURE</div><div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:#e8e4dc;">${fmtMoney(totalExposure)}</div></div>
+    </div>`;
+
+    container.innerHTML = html;
+}
 
 // ==================== REVIEW DEAL MODAL ====================
 
@@ -1281,6 +1480,7 @@ async function init() {
     // Render containers
     renderDealFlow();
     renderActivePortfolio();
+    renderReservesRisk();
 
     // Tick countdown
     if (shard?.next_tick_at) startCountdown(shard.next_tick_at);
