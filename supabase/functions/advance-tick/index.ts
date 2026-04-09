@@ -32407,6 +32407,34 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] PM trait effects failed for ${nation.name} (non-fatal):`, pmTraitErr);
         }
 
+        // Base momentum decay — 8% per tick, applied to all party factions
+        // Momentum fades if you stop acting. Sustained activity outpaces the decay.
+        try {
+            const { data: nationFactions } = await supabase
+                .from('factions')
+                .select('id, momentum')
+                .eq('nation_id', nation.id)
+                .eq('faction_type', 'party')
+                .gt('momentum', 0);
+
+            if (nationFactions && nationFactions.length > 0) {
+                for (const f of nationFactions) {
+                    const oldMom = Number(f.momentum) || 0;
+                    if (oldMom <= 0) continue;
+                    const decay = Math.round(oldMom * 0.08 * 100) / 100; // 8% of current
+                    const decayAmount = Math.max(0.5, decay); // minimum 0.5 decay so low momentum still drains
+                    await supabase.rpc('adjust_momentum', {
+                        p_faction_id: f.id,
+                        p_delta: -decayAmount,
+                        p_label: 'base_decay',
+                        p_tick: newTick
+                    });
+                }
+            }
+        } catch (momDecayErr) {
+            console.error(`[advanceTick] Momentum decay failed for ${nation.name} (non-fatal):`, momDecayErr);
+        }
+
         // Timed momentum effects (e.g. State Media Control +2 momentum/tick for governing parties)
         try {
             const effects = Array.isArray(nation.timed_momentum_effects) ? nation.timed_momentum_effects : [];
