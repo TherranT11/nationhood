@@ -657,10 +657,11 @@ async function renderWorldNations() {
             const coalitionIds = new Set(coalition?.party_ids || []);
             if (nation.ruling_faction_id) coalitionIds.add(nation.ruling_faction_id);
 
-            // Stats
+            // Stats — unemployment uses the same 0.7%-35% mapping as the nation stat card
             const pop = nation.population ? formatNumber(nation.population) : '—';
             const gdp = nation.gdp ? fmtBudgetCurrency(nation.gdp) : '—';
-            const unemp = nation.unemployment != null ? nation.unemployment.toFixed(1) + '%' : '—';
+            const unempRaw = nation.unemployment;
+            const unemp = unempRaw != null ? (0.7 + (unempRaw - 1) * 34.3 / 99).toFixed(1) + '%' : '—';
             const stabRaw = nation.stability;
             const stab = stabRaw != null ? Math.round(stabRaw) : '—';
             const stabColor = stabRaw != null
