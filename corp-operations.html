@@ -5866,12 +5866,24 @@ async function init() {
     }
 
     // Redirect non-Construction corps to their sector-specific operations page
-    if (faction.corp_sector && faction.corp_sector !== 'Construction') {
+    // BUT allow them to stay for the shared Expansion tab
+    const isExpansionTab = new URLSearchParams(window.location.search).get('tab') === 'expansion';
+    if (faction.corp_sector && faction.corp_sector !== 'Construction' && !isExpansionTab) {
         const SECTOR_OPS = { Finance: 'corp-operations-finance.html' };
         const targetPage = SECTOR_OPS[faction.corp_sector];
         if (targetPage) {
-            window.location.href = targetPage + window.location.search;
+            window.location.href = targetPage;
             return;
+        }
+    }
+
+    // If non-Construction corp is here for expansion, update Operations nav link to their sector page
+    if (faction.corp_sector && faction.corp_sector !== 'Construction') {
+        const SECTOR_OPS = { Finance: 'corp-operations-finance.html' };
+        const sectorPage = SECTOR_OPS[faction.corp_sector];
+        if (sectorPage) {
+            const opsTab = document.querySelector('[data-tab="operations"]');
+            if (opsTab) opsTab.href = sectorPage;
         }
     }
 
@@ -6585,11 +6597,15 @@ async function loadAvailableProperties() {
 
     if (error) { console.warn('[Property] Failed to load marketplace:', error.message); return; }
 
-    _npAvailable = (data || []).map(p => ({
-        ...p,
-        adjusted_cost: p.price,
-        adjusted_maintenance: p.monthly_maintenance,
-    }));
+    // Filter out warehouse properties for non-Construction corps
+    const isConstruction = faction?.corp_sector === 'Construction';
+    _npAvailable = (data || [])
+        .filter(p => isConstruction || p.type !== 'warehouse')
+        .map(p => ({
+            ...p,
+            adjusted_cost: p.price,
+            adjusted_maintenance: p.monthly_maintenance,
+        }));
 }
 
 function renderNewPropertyCard() {
