@@ -154,6 +154,9 @@
                 <!-- Action notification banner (opponent took action / your diplomatic pending) -->
                 <div class="issues-action-notification" id="issues-action-notification" style="display:none;"></div>
 
+                <!-- Bilateral Intel — nation comparison -->
+                <div class="issues-intel" id="issues-intel" style="display:none;"></div>
+
                 <!-- Status bar: Tension / Favor / Status -->
                 <div class="issues-status-bar" id="issues-status-bar"></div>
 
@@ -570,6 +573,7 @@ async function selectIssue(issueId) {
 
     renderIssueHeader(issue);
     renderActionNotification(issue, actionsTaken);
+    await renderBilateralIntel(issue);
     renderIssueStatusBar(issue);
     renderIssueModifiers(issue, modifiers);
     renderIssueEffects(issue, modifiers);
@@ -750,6 +754,103 @@ function renderIssueStatusBar(issue) {
             <div class="issues-status-detail">${issue.status === 'escalated' ? 'This issue has escalated to an incident.' : `Idle ${issue.ticks_without_diplomatic_action} ticks`}</div>
         </div>
     `;
+}
+
+
+// ==================== BILATERAL INTEL ====================
+
+async function renderBilateralIntel(issue) {
+    const el = document.getElementById('issues-intel');
+    if (!el) return;
+
+    const isYours = issue.nation_a_id === currentNation.id || issue.nation_b_id === currentNation.id;
+    if (!isYours) { el.style.display = 'none'; return; }
+
+    const ourNationId = currentNation.id;
+    const theirNationId = issue.nation_a_id === ourNationId ? issue.nation_b_id : issue.nation_a_id;
+    const ourName = currentNation.name;
+    const theirName = issue.nation_a_id === ourNationId ? (issue.nation_b?.name || 'Unknown') : (issue.nation_a?.name || 'Unknown');
+
+    // Fetch both nations' data, their HoGs, and active crises/issues
+    const [theirNationRes, ourHogRes, theirHogRes, ourCrisesRes, theirCrisesRes, ourIssuesRes, theirIssuesRes] = await Promise.allSettled([
+        _supabase.from('nations').select('gov_approval, stability, polarization, civil_unrest, government_type, ruling_faction_id').eq('id', theirNationId).single(),
+        _supabase.from('head_of_government').select('first_name, last_name, factions:faction_id(faction_name, abbreviation)').eq('nation_id', ourNationId).eq('active', true).maybeSingle(),
+        _supabase.from('head_of_government').select('first_name, last_name, factions:faction_id(faction_name, abbreviation)').eq('nation_id', theirNationId).eq('active', true).maybeSingle(),
+        _supabase.from('active_crises').select('id, crisis_templates(name)').eq('nation_id', ourNationId),
+        _supabase.from('active_crises').select('id, crisis_templates(name)').eq('nation_id', theirNationId),
+        _supabase.from('bilateral_issues').select('issue_type, nation_a:nations!bilateral_issues_nation_a_id_fkey(name), nation_b:nations!bilateral_issues_nation_b_id_fkey(name)').or(`nation_a_id.eq.${ourNationId},nation_b_id.eq.${ourNationId}`).in('status', ['active', 'partial']).neq('id', issue.id),
+        _supabase.from('bilateral_issues').select('issue_type, nation_a:nations!bilateral_issues_nation_a_id_fkey(name), nation_b:nations!bilateral_issues_nation_b_id_fkey(name)').or(`nation_a_id.eq.${theirNationId},nation_b_id.eq.${theirNationId}`).in('status', ['active', 'partial']).neq('id', issue.id),
+    ]);
+
+    const theirNation = theirNationRes.status === 'fulfilled' ? theirNationRes.value.data : null;
+    const ourHog = ourHogRes.status === 'fulfilled' ? ourHogRes.value.data : null;
+    const theirHog = theirHogRes.status === 'fulfilled' ? theirHogRes.value.data : null;
+    const ourCrises = ourCrisesRes.status === 'fulfilled' ? (ourCrisesRes.value.data || []) : [];
+    const theirCrises = theirCrisesRes.status === 'fulfilled' ? (theirCrisesRes.value.data || []) : [];
+    const ourIssues = ourIssuesRes.status === 'fulfilled' ? (ourIssuesRes.value.data || []) : [];
+    const theirIssues = theirIssuesRes.status === 'fulfilled' ? (theirIssuesRes.value.data || []) : [];
+
+    function statColor(val, good) {
+        if (val == null) return 'var(--text-dim)';
+        return good ? (val >= 60 ? 'var(--green)' : val >= 40 ? 'var(--amber)' : 'var(--red)')
+                     : (val <= 30 ? 'var(--green)' : val <= 60 ? 'var(--amber)' : 'var(--red)');
+    }
+
+    function renderCard(name, color, nation, hog, crises, issues) {
+        const approval = Number(nation?.gov_approval ?? currentNation.gov_approval ?? 50);
+        const stability = Number(nation?.stability ?? currentNation.stability ?? 50);
+
+        let hogName = '—';
+        let hogParty = '';
+        if (hog) {
+            hogName = `<strong>${escapeHtml((hog.first_name || '') + ' ' + (hog.last_name || ''))}</strong>`;
+            const fac = hog.factions;
+            if (fac) hogParty = `<span class="issues-intel-party">[${escapeHtml(fac.abbreviation || fac.faction_name || '')}]</span>`;
+        }
+
+        let crisisHtml = '';
+        if (crises.length > 0) {
+            crisisHtml = crises.map(c => {
+                const cName = c.crisis_templates?.name || 'Active Crisis';
+                return `<div class="issues-intel-crisis issues-intel-crisis--active">${escapeHtml(cName)}</div>`;
+            }).join('');
+        }
+        if (issues.length > 0) {
+            crisisHtml += issues.map(iss => {
+                const typeName = ISSUE_TYPE_NAMES[iss.issue_type] || iss.issue_type;
+                const otherName = iss.nation_a?.name === name ? (iss.nation_b?.name || '?') : (iss.nation_a?.name || '?');
+                return `<div class="issues-intel-crisis issues-intel-crisis--issue">${escapeHtml(typeName)} w/ ${escapeHtml(otherName)}</div>`;
+            }).join('');
+        }
+        if (!crisisHtml) crisisHtml = '<div class="issues-intel-none">None</div>';
+
+        return `<div class="issues-intel-card">
+            <div class="issues-intel-nation" style="color:${color};">${escapeHtml(name)}</div>
+            <div class="issues-intel-line">
+                <span class="issues-intel-key">Head of Government</span>
+                <span class="issues-intel-val">${hogName} ${hogParty}</span>
+            </div>
+            <div class="issues-intel-line">
+                <span class="issues-intel-key">Government Approval</span>
+                <span class="issues-intel-val-num" style="color:${statColor(approval, true)};">${Math.round(approval)}</span>
+            </div>
+            <div class="issues-intel-line">
+                <span class="issues-intel-key">Stability</span>
+                <span class="issues-intel-val-num" style="color:${statColor(stability, true)};">${Math.round(stability)}</span>
+            </div>
+            <div class="issues-intel-line">
+                <span class="issues-intel-key">Active Crises & Issues</span>
+            </div>
+            <div class="issues-intel-crises">${crisisHtml}</div>
+        </div>`;
+    }
+
+    const ourColor = 'var(--teal)';
+    const theirColor = 'var(--red)';
+
+    el.innerHTML = renderCard(ourName, ourColor, currentNation, ourHog, ourCrises, ourIssues)
+                 + renderCard(theirName, theirColor, theirNation, theirHog, theirCrises, theirIssues);
+    el.style.display = '';
 }
 
 
