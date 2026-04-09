@@ -159,10 +159,10 @@ body {
 /* Nation cards grid */
 .nations-grid {
   width: 100%;
-  max-width: 900px;
+  max-width: 1200px;
   padding: 0 16px 48px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
 
@@ -656,10 +656,13 @@ body {
   vertical-align: middle;
 }
 
+@media (max-width: 1100px) {
+  .nations-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 700px) {
+  .nations-grid { grid-template-columns: 1fr; }
+}
 @media (max-width: 480px) {
-  .nations-grid {
-    grid-template-columns: 1fr;
-  }
   .continent-tabs {
     flex-direction: column;
     gap: 4px;
@@ -672,7 +675,7 @@ body {
   .modal { width: 95%; padding: 16px; }
 }
 </style>
-  <script type="module" crossorigin src="/assets/select-nation-gBI759TD.js"></script>
+  <script type="module" crossorigin src="/assets/select-nation-C8fvz4Rg.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
 </head>

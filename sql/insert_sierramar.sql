@@ -47,7 +47,7 @@ SELECT
     'Sierramar', 'Parliamentary', 100, 8, 'Porto Serrano', 'Crucera',
     s.id,
     3800000, 2698000, 32, 62, 48,
-    'President', NULL, NULL, NULL, 'parliamentary_appointment',
+    'President', NULL, NULL, NULL, 'appointed',
     17000000000, 14000000000, 44, 26, 44, 52,
     28, 38, 42, 38,
     32, 36, 38, 36,
