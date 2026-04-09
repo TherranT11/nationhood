@@ -1291,7 +1291,7 @@
 .ia-item--locked { opacity: 0.5; pointer-events: none; }
 .ia-item--selected { background: rgba(100, 200, 180, 0.1); border-left: 3px solid var(--teal); }
 
-.ia-confirm-bar { padding: 10px 14px; border-top: 1px solid var(--border-subtle); }
+.ia-confirm-bar { padding: 10px 14px; border-top: 1px solid var(--border-subtle); position: sticky; bottom: 0; background: var(--bg-2); z-index: 10; }
 .ia-confirm-btn {
     width: 100%;
     padding: 10px 16px;
