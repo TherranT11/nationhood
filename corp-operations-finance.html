@@ -698,18 +698,18 @@ function renderReviewDeal() {
             <div class="rd-control__hints"><span>3% (generous)</span><span>18% (predatory)</span></div>
         </div>`;
 
-        // Loan Amount slider
-        const maxLoanAmt = Math.round((d.amount || 18000000) * 1.4);
+        // Loan Amount slider — $5M to $150M
+        const maxLoanAmt = 150000000;
         const amtPct = ((rdLoanAmount - 5000000) / Math.max(1, maxLoanAmt - 5000000)) * 100;
         html += `<div class="rd-control">
             <div class="rd-control__header">
                 <span class="rd-control__label">LOAN AMOUNT</span>
                 <span class="rd-control__value" style="font-size:14px;color:#e8e4dc;">${fmtMoney(rdLoanAmount)}</span>
             </div>
-            <input type="range" class="rd-control__range" min="5000000" max="${maxLoanAmt}" step="1000000" value="${rdLoanAmount}"
+            <input type="range" class="rd-control__range" min="5000000" max="${maxLoanAmt}" step="5000000" value="${rdLoanAmount}"
                 oninput="rdSetLoanAmount(this.value)"
                 style="background:linear-gradient(90deg,#5a8aaa ${amtPct}%,#2a2a24 ${amtPct}%);">
-            <div class="rd-control__hints"><span>$5M (partial)</span><span>${fmtMoney(maxLoanAmt)} (over-fund)</span></div>
+            <div class="rd-control__hints"><span>$5M</span><span>$150M</span></div>
         </div>`;
 
         // Term presets
@@ -719,7 +719,7 @@ function renderReviewDeal() {
                 <span class="rd-control__value" style="font-size:14px;color:#e8e4dc;">${rdLoanTerm}mo</span>
             </div>
             <div class="rd-presets">`;
-        for (const t of [6, 12, 18, 24, 36, 48]) {
+        for (const t of [12, 24, 36, 48, 60, 72, 84, 96, 108, 120]) {
             const isActive = rdLoanTerm === t;
             html += `<span class="rd-preset" onclick="rdSetLoanTerm(${t})" style="${isActive ? 'color:#000;background:#5a8aaa;border-color:#5a8aaa;' : ''}">${t}</span>`;
         }
