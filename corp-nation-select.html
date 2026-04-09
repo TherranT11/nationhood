@@ -726,6 +726,21 @@ async function confirmNation() {
     try {
         const nation = allNations.find(n => n.id === selectedNationId);
 
+        // Check ticker uniqueness across all corporations globally
+        const { data: existingTicker } = await _supabase
+            .from('factions')
+            .select('id, faction_name')
+            .eq('faction_type', 'corporation')
+            .eq('corp_ticker', ticker)
+            .is('abandoned_at', null)
+            .limit(1);
+        if (existingTicker && existingTicker.length > 0) {
+            errEl.textContent = `Ticker "${ticker}" is already in use by ${existingTicker[0].faction_name}. Choose a different abbreviation.`;
+            btn.disabled = false;
+            btn.textContent = 'Confirm \u25B6';
+            return;
+        }
+
         // Block if player's political party is in the same nation
         const { data: partyInSameNation } = await _supabase
             .from('factions')
@@ -753,9 +768,10 @@ async function confirmNation() {
         const ceoLast = lastNames[Math.floor(Math.random() * lastNames.length)];
         const ceoAge = 40 + Math.floor(Math.random() * 36);
 
-        // Starting financials: $36M cash, $8M loans, scaled by currency strength
+        // Starting financials, scaled by currency strength
         const currencyMult = (Number(nation.currency_strength) || 50) / 50;
-        const startingCash = Math.round(36_000_000 * currencyMult);
+        const baseCash = corpSetup.sector === 'Finance' ? 32_000_000 : 36_000_000;
+        const startingCash = Math.round(baseCash * currencyMult);
         const startingLoans = Math.round(8_000_000 * currencyMult);
 
         // Upsert corporation faction record

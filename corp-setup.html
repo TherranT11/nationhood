@@ -466,8 +466,8 @@ const SECTORS = [
     {
         key: 'finance',
         name: 'Finance',
-        desc: 'Banks, investment firms, and insurance. Control the flow of capital and shape monetary policy.',
-        available: false,
+        desc: 'Banks, investment firms, and insurance companies. Control the flow of capital, manage risk, and shape the economic landscape through lending, underwriting, and strategic investment.',
+        available: true,
     },
     {
         key: 'defense',
@@ -534,6 +534,23 @@ const SUBSECTORS = {
             key: 'megaprojects',
             name: 'Megaprojects',
             desc: 'Nation-defining projects: international airports, hydroelectric dams, national rail networks. Very long timelines (20-40+ ticks), enormous capital requirements, massive payoff on success and devastating loss on failure.',
+        },
+    ],
+    finance: [
+        {
+            key: 'banking',
+            name: 'Banking',
+            desc: 'Commercial and retail banking — accept deposits, issue loans, manage credit lines, and facilitate payments. Your revenue comes from the spread between deposit interest and lending rates. Growth depends on trust, regulation, and the health of the economy you operate in.',
+        },
+        {
+            key: 'insurance',
+            name: 'Insurance',
+            desc: 'Underwrite risk for individuals, businesses, and governments. Collect premiums, pay claims, and invest the float. Profitability hinges on actuarial accuracy — price risk too low and a single disaster wipes you out; price it too high and clients go elsewhere.',
+        },
+        {
+            key: 'investment',
+            name: 'Investment',
+            desc: 'Asset management, securities trading, and venture capital. Raise funds from investors, deploy capital into markets, and earn returns through fees and performance. High risk, high reward — your reputation is your product.',
         },
     ],
 };

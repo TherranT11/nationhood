@@ -5865,6 +5865,16 @@ async function init() {
         return;
     }
 
+    // Redirect non-Construction corps to their sector-specific operations page
+    if (faction.corp_sector && faction.corp_sector !== 'Construction') {
+        const SECTOR_OPS = { Finance: 'corp-operations-finance.html' };
+        const targetPage = SECTOR_OPS[faction.corp_sector];
+        if (targetPage) {
+            window.location.href = targetPage + window.location.search;
+            return;
+        }
+    }
+
     // Load nation + shard
     const [nationRes, shardRes] = await Promise.all([
         faction.nation_id
