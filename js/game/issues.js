@@ -3765,10 +3765,15 @@ export async function checkTradeImbalanceAutoSpawn(supabase, nationList, current
     if (candidates.length === 0) return [];
 
     // ── 4. Filter: existing issues, cooldowns, max-per-nation ──
-    var { data: existingIssues } = await supabase
+    var { data: existingIssues, error: existErr } = await supabase
         .from('bilateral_issues')
         .select('nation_a_id, nation_b_id, status, resolved_tick, escalated_tick')
         .eq('issue_type', 'chronic_trade_imbalance');
+
+    if (existErr) {
+        console.error('[TradeImbalanceAutoSpawn] Failed to query existing issues:', existErr.message);
+        return [];
+    }
 
     var activePerNation = {};
     var activePairs = new Set();
@@ -3807,10 +3812,7 @@ export async function checkTradeImbalanceAutoSpawn(supabase, nationList, current
         if ((activePerNation[cand.nationB] || 0) >= maxPerNation) continue;
 
         // Roll spawn chance
-        if (Math.random() > spawnChance) {
-            console.log(`[TradeImbalanceAutoSpawn] Candidate ${cand.nationA.slice(0,8)}↔${cand.nationB.slice(0,8)} — spawn roll failed`);
-            continue;
-        }
+        if (Math.random() > spawnChance) continue;
 
         // Create the bilateral issue
         var { data: issueRow, error: issueErr } = await supabase
