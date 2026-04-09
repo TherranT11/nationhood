@@ -29,7 +29,7 @@ import{_ as m}from"./supabase-client-BXEzLDpS.js";import{c as L,e as f}from"./ut
           </div>
           <div class="stat-row">
             <span class="stat-row__label">Stability</span>
-            <span class="stat-row__value" style="color:${(t.stability||50)>=60?"var(--green)":(t.stability||50)>=40?"var(--amber)":"var(--red)"};">${Number(t.stability||50).toFixed(1)}</span>
+            <span class="stat-row__value" style="color:${(t.stability??50)>=60?"var(--green)":(t.stability??50)>=40?"var(--amber)":"var(--red)"};">${Number(t.stability??50).toFixed(1)}</span>
           </div>
 
           ${l.some(s=>s.seats>0)?`

@@ -975,7 +975,7 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
           </div>
           <div class="stat-row">
             <span class="stat-row__label">Stability</span>
-            <span class="stat-row__value" style="color:${(nation.stability || 50) >= 60 ? 'var(--green)' : (nation.stability || 50) >= 40 ? 'var(--amber)' : 'var(--red)'};">${Number(nation.stability || 50).toFixed(1)}</span>
+            <span class="stat-row__value" style="color:${(nation.stability ?? 50) >= 60 ? 'var(--green)' : (nation.stability ?? 50) >= 40 ? 'var(--amber)' : 'var(--red)'};">${Number(nation.stability ?? 50).toFixed(1)}</span>
           </div>
 
           ${nParties.some(p => p.seats > 0) ? `
