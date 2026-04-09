@@ -16634,7 +16634,8 @@ function renderVoteMetaSummary(vote) {
             }
             break;
         case 'fund_draw':
-            text = `Withdraw <strong>${meta.amount_requested || 0} AP</strong> from the solidarity fund.`;
+            text = `<strong>${escapeHtml(meta.proposer_name || 'A member')}</strong> requests <strong>${meta.amount_requested || 0} AP</strong> from the solidarity fund.`;
+            if (meta.purpose) text += `<br><span style="color:var(--text-muted);font-size:0.8em;">Purpose: ${escapeHtml(meta.purpose)}</span>`;
             break;
         case 'charter_amendment':
             text = `Amend <strong>${meta.article_type || 'charter'}</strong>: ${escapeHtml((meta.description || '').substring(0, 100))}`;
