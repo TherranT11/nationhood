@@ -1057,7 +1057,7 @@
 
 /* Modifiers */
 .issue-modifier {
-    padding: 6px 10px;
+    padding: 8px 12px;
     margin-bottom: 4px;
     background: var(--bg-3);
     border-left: 2px solid;
@@ -1072,21 +1072,21 @@
 .issue-mod-content { flex: 1; min-width: 0; }
 .issue-mod-name {
     font-family: var(--font-sans);
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 500;
     color: var(--text-primary);
 }
 .issue-mod-effect {
     font-family: var(--font-mono);
-    font-size: 8px;
+    font-size: 10px;
     color: var(--text-dim);
-    margin-top: 1px;
+    margin-top: 2px;
 }
 .issue-mod-tag {
     font-family: var(--font-mono);
-    font-size: 7px;
+    font-size: 9px;
     font-weight: 700;
-    padding: 1px 4px;
+    padding: 2px 5px;
     border-radius: 1px;
     flex-shrink: 0;
     margin-top: 2px;
