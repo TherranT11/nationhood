@@ -881,7 +881,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
         </div>
       </div>
     </div>
-    <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.1.3.9</div>
+    <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.1.4.0</div>
     <div class="top-bar-right">
       <span class="topbar-cash" id="topbar-cash" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;color:var(--gold);padding:3px 8px;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.2);">CASH: --</span>
       <div class="faction-switcher" id="faction-switcher" style="position:relative;">
@@ -1538,6 +1538,23 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
                 <div class="fin-cash-debt__value" style="color:var(--amber)">${fmtMoney(debt)}</div>
             </div>
         </div>
+        <!-- Purchasing Power -->
+        ${(() => {
+            const currStr = Number(nation?.currency_strength ?? 50);
+            const infl = Number(nation?.inflation ?? 0);
+            const currMult = currStr / 50;
+            const inflMult = Math.max(0.5, 1 - infl / 200);
+            const realValue = Math.round(cash * currMult * inflMult);
+            const ppColor = realValue >= cash ? 'var(--green)' : realValue >= cash * 0.8 ? 'var(--amber)' : 'var(--red)';
+            const pctOfNominal = cash > 0 ? Math.round((realValue / cash) * 100) : 100;
+            return `<div style="padding:4px 14px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border-hair);">
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.5px;text-transform:uppercase;">Purchasing Power</div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${ppColor};">${fmtMoney(realValue)}</span>
+                    <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${pctOfNominal}% · CUR ${currStr} · INF ${Math.round(infl)}</span>
+                </div>
+            </div>`;
+        })()}
         <!-- Loans Section -->
         <div style="padding:8px 14px;border-top:1px solid var(--border-0);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
