@@ -881,7 +881,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
         </div>
       </div>
     </div>
-    <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.1.4.0</div>
+    <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.1.4.1</div>
     <div class="top-bar-right">
       <span class="topbar-cash" id="topbar-cash" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;color:var(--gold);padding:3px 8px;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.2);">CASH: --</span>
       <div class="faction-switcher" id="faction-switcher" style="position:relative;">
@@ -924,6 +924,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
         <div class="id-card__slogan" id="id-slogan">"--"</div>
         <div class="id-card__divider"></div>
         <div class="id-card__rows" id="id-rows"></div>
+        <div id="corp-logo-upload" style="padding:8px 14px;border-top:1px solid var(--border-0);"></div>
         <div id="slogan-editor"></div>
       </div>
     </div>
@@ -1186,7 +1187,12 @@ async function init() {
 
     // ── Populate identity card ──
     document.getElementById('id-type-badge').textContent = faction.corp_company_type || '—';
-    document.getElementById('id-logo').textContent = ticker.slice(0, 3) || '—';
+    const logoEl = document.getElementById('id-logo');
+    if (faction.custom_logo_url) {
+        logoEl.innerHTML = `<img src="${escapeHtml(faction.custom_logo_url)}" alt="logo" style="width:100%;height:100%;object-fit:contain;border-radius:4px;">`;
+    } else {
+        logoEl.textContent = ticker.slice(0, 3) || '—';
+    }
     document.getElementById('id-corp-name').textContent = faction.faction_name || 'Unnamed Corp';
     const currentSlogan = faction.party_description || '';
     document.getElementById('id-slogan').textContent = currentSlogan ? '"' + currentSlogan + '"' : '"--"';
@@ -1246,6 +1252,19 @@ async function init() {
         </div>
         <div class="slogan-hint" id="slogan-hint">${canEditSlogan ? '60 characters max. 120 tick cooldown after change.' : ticksRemaining + ' ticks until you can change slogan.'}</div>
     `;
+
+    // ── Logo upload ──
+    const logoUploadEl = document.getElementById('corp-logo-upload');
+    logoUploadEl.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.5px;text-transform:uppercase;">Logo</span>
+            <label style="font-family:var(--font-mono);font-size:8px;color:var(--teal);cursor:pointer;text-decoration:underline;" id="corp-logo-label">
+                ${faction.custom_logo_url ? 'Change Logo' : 'Upload Logo'}
+                <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" id="corp-logo-file" style="display:none;">
+            </label>
+        </div>
+    `;
+    document.getElementById('corp-logo-file')?.addEventListener('change', handleCorpLogoUpload);
 
     // Store for save handler
     window._corpFactionId = faction.id;
@@ -2468,6 +2487,41 @@ document.addEventListener('click', (e) => {
 
 window.doLogout = doLogout;
 window.toggleTheme = toggleTheme;
+async function handleCorpLogoUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 128 * 1024) { alert('Logo must be under 128KB.'); return; }
+
+    const factionId = window._corpFactionId;
+    if (!factionId) return;
+
+    const label = document.getElementById('corp-logo-label');
+    if (label) label.textContent = 'Uploading...';
+
+    try {
+        const ext = file.name.split('.').pop() || 'png';
+        const filePath = `party-logos/${factionId}/${Date.now()}.${ext}`;
+        const { error: uploadErr } = await _supabase.storage
+            .from('public-assets')
+            .upload(filePath, file, { contentType: file.type, upsert: true });
+        if (uploadErr) throw uploadErr;
+
+        const { data: urlData } = _supabase.storage.from('public-assets').getPublicUrl(filePath);
+        const logoUrl = urlData?.publicUrl || null;
+
+        await _supabase.from('factions').update({ custom_logo_url: logoUrl }).eq('id', factionId);
+
+        // Update display immediately
+        const logoEl = document.getElementById('id-logo');
+        if (logoEl) logoEl.innerHTML = `<img src="${logoUrl}" alt="logo" style="width:100%;height:100%;object-fit:contain;border-radius:4px;">`;
+        if (label) label.textContent = 'Change Logo';
+    } catch (err) {
+        console.error('Logo upload failed:', err);
+        alert('Upload failed: ' + (err.message || 'Unknown error'));
+        if (label) label.textContent = 'Upload Logo';
+    }
+}
+
 window.saveSlogan = saveSlogan;
 window.toggleCorpDropdown = toggleCorpDropdown;
 window.switchToFaction = switchToFaction;
