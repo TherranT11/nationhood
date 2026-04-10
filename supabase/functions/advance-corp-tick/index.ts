@@ -1391,6 +1391,26 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                 continue;
             }
 
+            // Close any active insurance policy for this completed project
+            try {
+                const { data: insReq } = await supabase
+                    .from('finance_loan_requests')
+                    .select('id')
+                    .eq('request_type', 'insurance')
+                    .eq('insured_contract_id', contract.id)
+                    .eq('status', 'funded')
+                    .maybeSingle();
+                if (insReq) {
+                    await supabase.from('finance_active_loans').update({
+                        status: 'repaid',
+                        completed_tick: currentTick,
+                    }).eq('request_id', insReq.id).eq('status', 'current');
+                    console.log(`[Projects] Insurance policy closed for completed project: ${contract.name}`);
+                }
+            } catch (insCleanupErr) {
+                console.warn(`[Projects] Insurance cleanup failed for ${contract.name}:`, insCleanupErr.message);
+            }
+
             if (actualPayment > 0) {
                 const { data: corpPay } = await supabase
                     .from('factions')
@@ -1958,16 +1978,77 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             .eq('status', 'pending');
     }
 
-    // 2. Process active loan payments (1 tick = 1 month)
+    // 2. Process active loan/bond/insurance payments (1 tick = 1 month)
     const { data: activeLoans } = await supabase
         .from('finance_active_loans')
-        .select('*')
+        .select('*, finance_loan_requests!inner(request_type, issuer_nation_id)')
         .eq('nation_id', nationId)
         .in('status', ['current', 'late', 'delinquent']);
 
     if (!activeLoans || activeLoans.length === 0) return results;
 
     for (const loan of activeLoans) {
+        const requestType = loan.finance_loan_requests?.request_type || 'loan';
+
+        // Skip insurance — premiums collected separately
+        if (requestType === 'insurance') continue;
+
+        // Bonds: coupon payments come from nation treasury (increases debt)
+        if (requestType === 'bond') {
+            const payment = loan.monthly_payment;
+            const newPaymentsMade = loan.payments_made + 1;
+            const isMatured = newPaymentsMade >= loan.term_months && loan.term_months > 0;
+
+            // Nation pays coupon to bondholder
+            const { data: lender } = await supabase.from('factions')
+                .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
+            if (lender) {
+                await supabase.from('factions').update({
+                    corp_cash_reserves: Number(lender.corp_cash_reserves || 0) + payment
+                }).eq('id', loan.lender_faction_id);
+            }
+
+            // Increase nation debt by coupon amount
+            const { data: nation } = await supabase.from('nations')
+                .select('debt').eq('id', nationId).single();
+            if (nation) {
+                await supabase.from('nations').update({
+                    debt: Number(nation.debt || 0) + payment
+                }).eq('id', nationId);
+            }
+
+            // At maturity: return principal to bondholder, add to nation debt
+            if (isMatured) {
+                if (lender) {
+                    const { data: lenderFresh } = await supabase.from('factions')
+                        .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
+                    await supabase.from('factions').update({
+                        corp_cash_reserves: Number(lenderFresh?.corp_cash_reserves || 0) + loan.principal
+                    }).eq('id', loan.lender_faction_id);
+                }
+                const { data: nationFresh } = await supabase.from('nations')
+                    .select('debt').eq('id', nationId).single();
+                if (nationFresh) {
+                    await supabase.from('nations').update({
+                        debt: Number(nationFresh.debt || 0) + loan.principal
+                    }).eq('id', nationId);
+                }
+            }
+
+            await supabase.from('finance_active_loans').update({
+                total_paid: loan.total_paid + payment,
+                total_interest_paid: (loan.total_interest_paid || 0) + payment,
+                payments_made: newPaymentsMade,
+                last_payment_tick: currentTick,
+                status: isMatured ? 'repaid' : 'current',
+                completed_tick: isMatured ? currentTick : null,
+            }).eq('id', loan.id);
+
+            results.payments++;
+            continue;
+        }
+
+        // Standard loans: borrower pays from corp cash
         const { data: borrower } = await supabase
             .from('factions')
             .select('corp_cash_reserves')

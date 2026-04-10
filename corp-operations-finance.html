@@ -1817,14 +1817,15 @@ async function loadActivePortfolio() {
 
     const { data: loans } = await _supabase
         .from('finance_active_loans')
-        .select('*, borrower:factions!borrower_faction_id(id, faction_name, abbreviation, corp_ticker)')
+        .select('*, borrower:factions!borrower_faction_id(id, faction_name, abbreviation, corp_ticker), finance_loan_requests!inner(request_type)')
         .eq('lender_faction_id', faction.id)
         .in('status', ['current', 'late', 'delinquent'])
         .order('started_tick', { ascending: false });
 
+    const TYPE_MAP = { loan: 'LOAN', bond: 'BOND', insurance: 'INSURE' };
     apPortfolio = (loans || []).map(loan => ({
         id: loan.id,
-        type: 'LOAN',
+        type: TYPE_MAP[loan.finance_loan_requests?.request_type] || 'LOAN',
         counterparty: loan.borrower?.faction_name || 'Unknown',
         abbr: loan.borrower?.abbreviation || loan.borrower?.corp_ticker || '??',
         remaining: loan.principal - loan.total_paid,
@@ -1857,16 +1858,17 @@ async function loadCollections() {
 
     const { data: loans } = await _supabase
         .from('finance_active_loans')
-        .select('*, borrower:factions!borrower_faction_id(id, faction_name, abbreviation, corp_ticker)')
+        .select('*, borrower:factions!borrower_faction_id(id, faction_name, abbreviation, corp_ticker), finance_loan_requests!inner(request_type)')
         .eq('lender_faction_id', faction.id)
         .in('status', ['repaid', 'defaulted'])
         .order('completed_tick', { ascending: false });
 
+    const CTYPE_MAP = { loan: 'LOAN', bond: 'BOND', insurance: 'INSURE' };
     ccResolved = (loans || []).map(loan => {
         const earned = loan.total_interest_paid || 0;
         const lost = loan.status === 'defaulted' ? Math.max(0, loan.principal - loan.total_paid) : 0;
         return {
-            type: 'LOAN',
+            type: CTYPE_MAP[loan.finance_loan_requests?.request_type] || 'LOAN',
             counterparty: loan.borrower?.faction_name || 'Unknown',
             abbr: loan.borrower?.abbreviation || loan.borrower?.corp_ticker || '??',
             nation: '',
