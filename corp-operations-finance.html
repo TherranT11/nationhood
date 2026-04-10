@@ -173,6 +173,25 @@ body.light-mode .corp-nav__tab.active { color:#1a1a17; border-bottom-color:#1a1a
 .rr-conc-row + .rr-conc-row { border-top:1px solid #2a2a24; }
 .rr-warning { padding:6px 14px; border-bottom:1px solid #2a2a24; background:rgba(204,85,85,0.03); font-size:9px; color:#c84; line-height:1.5; }
 
+/* Collections container */
+.cc-container { width:380px; height:450px; background:#1a1a16; border:1px solid #2a2a24; display:flex; flex-direction:column; overflow:hidden; }
+.cc-scorecard { display:flex; border-bottom:1px solid #2a2a24; background:#1c1c18; flex-shrink:0; }
+.cc-scorecard__cell { flex:1; padding:6px 14px; }
+.cc-scorecard__cell + .cc-scorecard__cell { border-left:1px solid #2a2a24; }
+.cc-scorecard__label { font-family:var(--font-mono); font-size:7px; color:#6a6660; letter-spacing:0.8px; }
+.cc-scorecard__value { font-family:var(--font-mono); font-size:13px; font-weight:700; margin-top:1px; }
+.cc-winloss { padding:5px 14px; border-bottom:1px solid #2a2a24; display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.cc-winloss__bar { flex:1; display:flex; height:4px; }
+.cc-winloss__stat { font-family:var(--font-mono); font-size:8px; font-weight:700; }
+.cc-list { flex:1; overflow-y:auto; }
+.cc-deal { border-bottom:1px solid #2a2a24; cursor:pointer; }
+.cc-deal:hover { background:rgba(255,255,255,0.01); }
+.cc-deal__inner { padding:7px 14px; }
+.cc-deal__expanded { margin-top:6px; background:#121210; border:1px solid #2a2a24; padding:6px 8px; }
+.cc-detail-row { display:flex; justify-content:space-between; padding:2px 0; }
+.cc-detail-row + .cc-detail-row { border-top:1px solid #2a2a24; }
+.cc-empty { padding:30px 20px; text-align:center; font-family:var(--font-mono); font-size:9px; color:#6a6660; line-height:1.6; }
+
 /* Content layout */
 .ops-grid { display:flex; justify-content:center; gap:12px; align-items:flex-start; flex-wrap:wrap; }
 
@@ -180,6 +199,7 @@ body.light-mode .corp-nav__tab.active { color:#1a1a17; border-bottom-color:#1a1a
   .df-container { width:100%; }
   .ap-container { width:100%; }
   .rr-container { width:100%; }
+  .cc-container { width:100%; }
   .rd-modal { width:95vw !important; }
   .rd-body { flex-direction:column !important; }
   .rd-right { width:100% !important; border-left:none !important; border-top:1px solid #2a2a24; }
@@ -305,6 +325,7 @@ body.light-mode .corp-nav__tab.active { color:#1a1a17; border-bottom-color:#1a1a
       <div class="df-container" id="df-container"></div>
       <div class="ap-container" id="ap-container"></div>
       <div class="rr-container" id="rr-container"></div>
+      <div class="cc-container" id="cc-container"></div>
     </div>
   </div>
 
@@ -938,6 +959,181 @@ function renderReservesRisk() {
     container.innerHTML = html;
 }
 
+// ==================== COLLECTIONS ====================
+
+const CC_OUTCOME_META = {
+    REPAID:      { color: '#5c5', label: 'REPAID' },
+    DEFAULTED:   { color: '#c55', label: 'DEFAULTED' },
+    EXPIRED:     { color: '#5c5', label: 'EXPIRED' },
+    CLAIMED:     { color: '#c84', label: 'CLAIMED' },
+    MATURED:     { color: '#5c5', label: 'MATURED' },
+    SOLD:        { color: '#ca5', label: 'SOLD EARLY' },
+    FORECLOSED:  { color: '#c55', label: 'FORECLOSED' },
+};
+
+// Collections data — populated from DB when deal system is wired
+let ccResolved = [];
+let ccExpanded = -1;
+
+function ccToggle(idx) {
+    ccExpanded = ccExpanded === idx ? -1 : idx;
+    renderCollections();
+}
+
+function renderCollections() {
+    const container = document.getElementById('cc-container');
+    if (!container) return;
+
+    const totalEarned = ccResolved.reduce((s, d) => s + (d.earned || 0), 0);
+    const totalLost = ccResolved.reduce((s, d) => s + (d.lost || 0), 0);
+    const totalNet = ccResolved.reduce((s, d) => s + (d.net || 0), 0);
+    const winCount = ccResolved.filter(d => d.net > 0).length;
+    const lossCount = ccResolved.filter(d => d.net < 0).length;
+    const profitable = totalNet >= 0;
+
+    // Header
+    let html = `<div class="df-header">
+        <div class="df-header__left">
+            <span class="df-header__dot">&#9679;</span>
+            <span class="df-header__title">Collections</span>
+        </div>
+        <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">${ccResolved.length} RESOLVED</span>
+    </div>`;
+
+    // Scorecard
+    html += `<div class="cc-scorecard">
+        <div class="cc-scorecard__cell">
+            <div class="cc-scorecard__label">EARNED</div>
+            <div class="cc-scorecard__value" style="color:#5c5;">${fmtMoney(totalEarned)}</div>
+        </div>
+        <div class="cc-scorecard__cell">
+            <div class="cc-scorecard__label">LOST</div>
+            <div class="cc-scorecard__value" style="color:#c55;">${fmtMoney(totalLost)}</div>
+        </div>
+        <div class="cc-scorecard__cell" style="background:${profitable ? 'rgba(92,204,92,0.03)' : 'rgba(204,85,85,0.03)'};">
+            <div class="cc-scorecard__label">NET P&amp;L</div>
+            <div class="cc-scorecard__value" style="color:${profitable ? '#5c5' : '#c55'};">${profitable ? '+' : ''}${fmtMoney(totalNet)}</div>
+        </div>
+    </div>`;
+
+    // Win/Loss bar
+    if (ccResolved.length > 0) {
+        const winPct = (winCount / ccResolved.length) * 100;
+        html += `<div class="cc-winloss">
+            <div class="cc-winloss__bar">
+                <div style="width:${winPct}%;background:#5c5;height:100%;"></div>
+                <div style="flex:1;background:#c55;height:100%;"></div>
+            </div>
+            <span class="cc-winloss__stat" style="color:#5c5;">${winCount}W</span>
+            <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">&mdash;</span>
+            <span class="cc-winloss__stat" style="color:#c55;">${lossCount}L</span>
+        </div>`;
+    }
+
+    // Resolved deals list
+    html += '<div class="cc-list">';
+
+    if (ccResolved.length === 0) {
+        html += '<div class="cc-empty">No resolved deals yet.<br>Completed loans, expired policies, and matured bonds appear here.</div>';
+    }
+
+    for (let i = 0; i < ccResolved.length; i++) {
+        const d = ccResolved[i];
+        const tm = DF_TYPE_META[d.type] || { class: 'loan', label: d.type };
+        const om = CC_OUTCOME_META[d.outcome] || { color: '#9e9a92', label: d.outcome };
+        const isExp = ccExpanded === i;
+        const isProfitable = d.net >= 0;
+
+        html += `<div class="cc-deal" onclick="ccToggle(${i})" style="border-left:2px solid ${isProfitable ? '#5c5' : '#c55'};">
+        <div class="cc-deal__inner" style="${isExp ? 'background:' + (d.type === 'LOAN' ? 'rgba(90,138,170,0.08)' : d.type === 'INSURE' ? 'rgba(170,122,90,0.08)' : 'rgba(138,106,170,0.08)') : ''}">`;
+
+        // Row 1: Type + counterparty + outcome
+        html += `<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
+            <span class="df-badge df-badge-${tm.class}">${tm.label}</span>
+            <span style="font-size:11px;font-weight:600;color:#e8e4dc;flex:1;">${escapeHtml(d.counterparty)}</span>
+            <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:0 5px;line-height:12px;color:${om.color};background:${om.color}12;border:1px solid ${om.color}25;">${om.label}</span>
+        </div>`;
+
+        // Row 2: Nation + date
+        html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span class="df-badge df-badge-nation" style="line-height:12px;">${escapeHtml((d.nation || '').toUpperCase())}</span>
+            <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">${escapeHtml(d.resolved || '')}</span>
+        </div>`;
+
+        // Row 3: P&L bar
+        html += '<div class="df-metrics">';
+        html += `<div style="flex:1;padding:3px 8px;">
+            <div class="df-metrics__label">PRINCIPAL</div>
+            <div class="df-metrics__value" style="font-size:10px;color:#e8e4dc;margin-top:1px;">${fmtMoney(d.principal || 0)}</div>
+        </div>`;
+        html += `<div style="flex:0.8;padding:3px 8px;text-align:center;border-left:1px solid #2a2a24;">
+            <div class="df-metrics__label">EARNED</div>
+            <div class="df-metrics__value" style="font-size:10px;color:#5c5;margin-top:1px;">${fmtMoney(d.earned || 0)}</div>
+        </div>`;
+        if (d.lost > 0) {
+            html += `<div style="flex:0.8;padding:3px 8px;text-align:center;border-left:1px solid #2a2a24;">
+                <div class="df-metrics__label">LOST</div>
+                <div class="df-metrics__value" style="font-size:10px;color:#c55;margin-top:1px;">${fmtMoney(d.lost)}</div>
+            </div>`;
+        }
+        html += `<div style="flex:1;padding:3px 8px;text-align:right;border-left:1px solid #2a2a24;background:${isProfitable ? 'rgba(92,204,92,0.03)' : 'rgba(204,85,85,0.03)'};">
+            <div class="df-metrics__label">NET</div>
+            <div class="df-metrics__value" style="font-size:11px;color:${isProfitable ? '#5c5' : '#c55'};margin-top:1px;">${isProfitable ? '+' : ''}${fmtMoney(d.net || 0)}</div>
+        </div>`;
+        html += '</div>';
+
+        // Expanded details
+        if (isExp) {
+            html += '<div class="cc-deal__expanded">';
+            if (d.term) {
+                html += `<div class="cc-detail-row">
+                    <span style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">TERM</span>
+                    <span style="font-family:var(--font-mono);font-size:9px;color:#9e9a92;">${escapeHtml(d.term)}</span>
+                </div>`;
+            }
+            if (d.rate) {
+                html += `<div class="cc-detail-row">
+                    <span style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">RATE</span>
+                    <span style="font-family:var(--font-mono);font-size:9px;color:#9e9a92;">${escapeHtml(d.rate)}</span>
+                </div>`;
+            }
+            if (d.note) {
+                html += `<div style="padding:4px 0;">
+                    <div style="font-size:9px;color:${isProfitable ? '#9e9a92' : '#c84'};line-height:1.5;">${escapeHtml(d.note)}</div>
+                </div>`;
+            }
+            html += '</div>';
+        }
+
+        html += '</div></div>'; // close inner + deal
+    }
+
+    html += '</div>'; // close list
+
+    // Footer
+    html += `<div class="df-footer" style="justify-content:space-between;">
+        <div>
+            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">LIFETIME P&amp;L</div>
+            <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${profitable ? '#5c5' : '#c55'};">${profitable ? '+' : ''}${fmtMoney(totalNet)}</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+            ${Object.entries(
+                ccResolved.reduce((acc, d) => { acc[d.outcome] = (acc[d.outcome] || 0) + 1; return acc; }, {})
+            ).map(([outcome, count]) => {
+                const om = CC_OUTCOME_META[outcome] || { color: '#9e9a92', label: outcome };
+                return `<div style="text-align:center;">
+                    <div style="font-family:var(--font-mono);font-size:6px;color:${om.color};letter-spacing:0.3px;">${om.label}</div>
+                    <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#e8e4dc;">${count}</div>
+                </div>`;
+            }).join('')}
+        </div>
+    </div>`;
+
+    container.innerHTML = html;
+}
+
+window.ccToggle = ccToggle;
+
 // ==================== REVIEW DEAL MODAL ====================
 
 const SUBSECTOR_DEAL_MAP = { banking: 'LOAN', insurance: 'INSURE', investment: 'BOND' };
@@ -1481,6 +1677,7 @@ async function init() {
     renderDealFlow();
     renderActivePortfolio();
     renderReservesRisk();
+    renderCollections();
 
     // Tick countdown
     if (shard?.next_tick_at) startCountdown(shard.next_tick_at);
