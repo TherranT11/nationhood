@@ -296,7 +296,7 @@ body.light-mode .corp-nav__tab.active { color:#1a1a17; border-bottom-color:#1a1a
         </div>
       </div>
     </div>
-    <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.1.3.7</div>
+    <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.1.3.8</div>
     <div class="top-bar-right">
       <span class="topbar-cash" id="topbar-cash">CASH: --</span>
       <div class="faction-switcher" id="faction-switcher" style="position:relative;">
@@ -371,12 +371,13 @@ let dfSelected = -1;
 
 async function loadDealFlow() {
     if (!faction || !shard) return;
-    // Load all open loan requests across the shard (finance corps can lend worldwide)
-    const { data: requests } = await _supabase
+    // Load all open requests across the shard (loans + bonds)
+    const { data: requests, error: reqErr } = await _supabase
         .from('finance_loan_requests')
-        .select('*, requesting_faction:factions!requesting_faction_id(id, faction_name, abbreviation, corp_ticker, corp_subsector, nation_id)')
+        .select('*, requesting_faction:factions!requesting_faction_id(id, faction_name, abbreviation, corp_ticker, corp_subsector, nation_id), issuer_nation:nations!issuer_nation_id(id, name, stability, credit, debt, gdp, gdp_growth, corruption)')
         .eq('status', 'open')
         .order('created_tick', { ascending: false });
+    if (reqErr) console.error('[DealFlow] Request query error:', reqErr.message);
 
     // Check which requests this corp already made an offer on
     const { data: myOffers } = await _supabase
@@ -385,20 +386,60 @@ async function loadDealFlow() {
         .eq('offering_faction_id', faction.id);
     const offeredSet = new Set((myOffers || []).map(o => o.request_id));
 
-    dfDeals = (requests || []).map(req => ({
-        id: req.id,
-        type: 'LOAN',
-        applicant: req.requesting_faction?.faction_name || 'Unknown',
-        abbr: req.requesting_faction?.abbreviation || req.requesting_faction?.corp_ticker || '??',
-        entity: 'CORP',
-        nation: 'N/A',
-        amount: req.amount,
-        term: req.term_months,
-        purpose: req.purpose || '',
-        reputation: 50,
-        creditRating: 50,
-        risk: 'MODERATE',
-        isNew: !offeredSet.has(req.id),
+    const subsector = (faction.corp_subsector || '').toLowerCase();
+
+    dfDeals = (requests || []).filter(req => {
+        // Banking corps see loans, Investment corps see bonds
+        if (req.request_type === 'bond') return subsector === 'investment';
+        return subsector === 'banking';
+    }).map(req => {
+        if (req.request_type === 'bond') {
+            const n = req.issuer_nation;
+            const stability = Number(n?.stability ?? 50);
+            const creditRating = Number(n?.credit ?? 50);
+            const gdp = Number(n?.gdp ?? 1);
+            const debt = Number(n?.debt ?? 0);
+            const debtToGdp = gdp > 0 ? Math.round((debt / gdp) * 100) : 0;
+            return {
+                id: req.id,
+                type: 'BOND',
+                applicant: n?.name || 'Unknown Nation',
+                abbr: (n?.name || '??').slice(0, 3).toUpperCase(),
+                entity: 'GOV',
+                nation: n?.name || 'N/A',
+                nation_id: req.issuer_nation_id,
+                amount: req.amount || 0,
+                term: req.term_months,
+                couponRate: Number(req.coupon_rate || 5),
+                purpose: req.purpose || 'Government Bond',
+                stability,
+                creditRating,
+                debtToGdp,
+                gdpGrowth: Number(n?.gdp_growth ?? 50),
+                corruption: Number(n?.corruption ?? 50),
+                risk: stability >= 60 && creditRating >= 50 ? 'LOW'
+                    : stability >= 35 && creditRating >= 30 ? 'MODERATE'
+                    : 'HIGH',
+                isNew: !offeredSet.has(req.id),
+                ticksLeft: (req.expires_tick || 0) - (shard?.current_tick || 0),
+                requestId: req.id,
+                alreadyOffered: offeredSet.has(req.id),
+            };
+        }
+        return {
+            id: req.id,
+            type: 'LOAN',
+            applicant: req.requesting_faction?.faction_name || 'Unknown',
+            abbr: req.requesting_faction?.abbreviation || req.requesting_faction?.corp_ticker || '??',
+            entity: 'CORP',
+            nation: 'N/A',
+            amount: req.amount,
+            term: req.term_months,
+            purpose: req.purpose || '',
+            reputation: 50,
+            creditRating: 50,
+            risk: 'MODERATE',
+            isNew: !offeredSet.has(req.id),
         ticksLeft: (req.expires_tick || 0) - (shard?.current_tick || 0),
         collateral: req.collateral_type || 'unsecured',
         requestId: req.id,
@@ -1619,38 +1660,84 @@ window.rdSetBondAmount = rdSetBondAmount;
 let _submittingOffer = false;
 async function rdSubmitOffer() {
     if (!rdDeal || !faction || !shard || _submittingOffer) return;
-    if (rdDeal.type !== 'LOAN') return; // Only loans for now
     _submittingOffer = true;
 
-    // Validate rate is within bounds
-    const rate = rdLoanRate;
-    if (rate < 1 || rate > 20) { alert('Interest rate must be 1-20%.'); _submittingOffer = false; return; }
-
-    // Check the finance corp has enough cash to fund this loan
-    const cash = Number(faction.corp_cash_reserves) || 0;
-    if (cash < rdDeal.amount) { alert('Insufficient cash reserves to fund this loan.'); _submittingOffer = false; return; }
-
-    // Map collateral to DB enum
-    const collateralMap = { none: 'unsecured', equipment: 'equipment', property: 'property', full: 'property' };
-    const collateral = collateralMap[rdLoanCollateral] || 'unsecured';
-
     const currentTick = shard.current_tick || 0;
+    const cash = Number(faction.corp_cash_reserves) || 0;
 
-    const { error } = await _supabase.from('finance_loan_offers').insert({
-        request_id: rdDeal.requestId,
-        offering_faction_id: faction.id,
-        interest_rate: rate,
-        collateral_type: collateral,
-        created_tick: currentTick,
-    });
+    if (rdDeal.type === 'LOAN') {
+        const rate = rdLoanRate;
+        if (rate < 1 || rate > 20) { alert('Interest rate must be 1-20%.'); _submittingOffer = false; return; }
+        if (cash < rdDeal.amount) { alert('Insufficient cash reserves to fund this loan.'); _submittingOffer = false; return; }
 
-    if (error) {
-        _submittingOffer = false;
-        if (error.message.includes('unique') || error.message.includes('duplicate')) {
-            alert('You have already submitted an offer for this loan request.');
-        } else {
-            alert('Failed to submit offer: ' + error.message);
+        const collateralMap = { none: 'unsecured', equipment: 'equipment', property: 'property', full: 'property' };
+        const collateral = collateralMap[rdLoanCollateral] || 'unsecured';
+
+        const { error } = await _supabase.from('finance_loan_offers').insert({
+            request_id: rdDeal.requestId,
+            offering_faction_id: faction.id,
+            interest_rate: rate,
+            collateral_type: collateral,
+            created_tick: currentTick,
+        });
+        if (error) {
+            _submittingOffer = false;
+            if (error.message.includes('unique') || error.message.includes('duplicate')) {
+                alert('You have already submitted an offer for this loan request.');
+            } else { alert('Failed to submit offer: ' + error.message); }
+            return;
         }
+    } else if (rdDeal.type === 'BOND') {
+        if (cash < rdBondAmount) { alert('Insufficient cash reserves. Need ' + fmtMoney(rdBondAmount) + ', have ' + fmtMoney(cash) + '.'); _submittingOffer = false; return; }
+
+        // Insert bond purchase as an offer (immediate — no acceptance needed from gov)
+        const { error: offerErr } = await _supabase.from('finance_loan_offers').insert({
+            request_id: rdDeal.requestId,
+            offering_faction_id: faction.id,
+            interest_rate: rdDeal.couponRate,
+            collateral_type: 'unsecured',
+            status: 'accepted',
+            created_tick: currentTick,
+        });
+        if (offerErr) { alert('Failed to buy bonds: ' + offerErr.message); _submittingOffer = false; return; }
+
+        // Create active loan record (bond position)
+        const r = (rdDeal.couponRate / 100) / 12;
+        const n = rdDeal.term;
+        const monthlyPayment = Math.round(rdBondAmount * r); // coupon only, no amortization
+
+        const { error: loanErr } = await _supabase.from('finance_active_loans').insert({
+            request_id: rdDeal.requestId,
+            offer_id: null,
+            borrower_faction_id: rdDeal.requestId, // placeholder — gov is the borrower
+            lender_faction_id: faction.id,
+            nation_id: rdDeal.nation_id || faction.nation_id,
+            principal: rdBondAmount,
+            interest_rate: rdDeal.couponRate,
+            term_months: rdDeal.term,
+            collateral_type: 'unsecured',
+            purpose: rdDeal.purpose,
+            monthly_payment: monthlyPayment,
+            started_tick: currentTick,
+        });
+        if (loanErr) { alert('Failed to create bond position: ' + loanErr.message); _submittingOffer = false; return; }
+
+        // Deduct cash from investment bank
+        await _supabase.from('factions').update({
+            corp_cash_reserves: Math.max(0, cash - rdBondAmount)
+        }).eq('id', faction.id);
+
+        // Credit nation treasury (reduce debt)
+        const { data: nationData } = await _supabase.from('nations').select('debt').eq('id', rdDeal.nation_id).single();
+        if (nationData) {
+            await _supabase.from('nations').update({
+                debt: Math.max(0, Number(nationData.debt || 0) - rdBondAmount)
+            }).eq('id', rdDeal.nation_id);
+        }
+
+        faction.corp_cash_reserves = Math.max(0, cash - rdBondAmount);
+    } else {
+        _submittingOffer = false;
         return;
     }
 
