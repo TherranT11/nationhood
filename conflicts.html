@@ -1242,6 +1242,18 @@ async function executeIssueActionFromUI(actionKey, issue) {
             .single();
         if (freshFaction) currentFaction.action_points = freshFaction.action_points;
 
+        // Re-fetch the issue from DB so display cards reflect the new tension/favor/status
+        const { data: freshIssue } = await _supabase
+            .from('bilateral_issues')
+            .select('*, nation_a:nations!bilateral_issues_nation_a_id_fkey(id, name), nation_b:nations!bilateral_issues_nation_b_id_fkey(id, name)')
+            .eq('id', issue.id)
+            .single();
+        if (freshIssue) {
+            const idx = allIssues.findIndex(i => i.id === issue.id);
+            if (idx >= 0) allIssues[idx] = freshIssue;
+            else allIssues.push(freshIssue);
+        }
+
         // Refresh the issue view
         await selectIssue(issue.id);
 
