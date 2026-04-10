@@ -1010,6 +1010,20 @@ async function resolveExpiredBids(supabase, nationId, currentTick) {
         }
 
         results.push({ contract: contract.name, result: 'awarded', winner: winner.faction_id, price: winner.bid_price, method });
+
+        // GDP growth nudge: +0.01 per $100M contracted (fire-and-forget)
+        try {
+            const gdpNudge = (winner.bid_price / 100_000_000) * 0.01;
+            if (gdpNudge > 0.001) {
+                const { data: curNation } = await supabase.from('nations')
+                    .select('gdp_growth').eq('id', nationId).single();
+                if (curNation) {
+                    await supabase.from('nations').update({
+                        gdp_growth: Math.min(100, Number(curNation.gdp_growth || 50) + gdpNudge)
+                    }).eq('id', nationId);
+                }
+            }
+        } catch (_gdpErr) { /* non-blocking */ }
     }
 
     return results;

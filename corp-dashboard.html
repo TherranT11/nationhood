@@ -881,7 +881,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
         </div>
       </div>
     </div>
-    <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.1.4.1</div>
+    <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.1.4.2</div>
     <div class="top-bar-right">
       <span class="topbar-cash" id="topbar-cash" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;color:var(--gold);padding:3px 8px;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.2);">CASH: --</span>
       <div class="faction-switcher" id="faction-switcher" style="position:relative;">
@@ -2258,7 +2258,7 @@ async function renderProperty(nation, nationName, factionData, shard) {
                     <div class="prop-asset__name">${escapeHtml(prop.name)}</div>
                     <div style="font-size:9px;color:var(--text-dim);margin-top:1px;">${escapeHtml(prop.city || natUp)} · ${(prop.type || '').replace(/_/g, ' ')} · <span style="color:${sm.color}">${(prop.style || 'Basic').toUpperCase()}</span></div>
                 </div>
-                <span class="prop-asset__badge">OWNED</span>
+                <span class="prop-asset__badge" ${['branch_office','trading_floor','claims_office'].includes(prop.type) ? 'style="background:rgba(138,106,170,0.12);color:#8a6aaa;border-color:rgba(138,106,170,0.3);"' : ''}>${['branch_office','trading_floor','claims_office'].includes(prop.type) ? prop.type.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) : 'OWNED'}</span>
             </div>
             <div style="display:flex;gap:0;background:var(--bg-3);border:1px solid var(--border-hair);margin:4px 0;">
                 <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
@@ -2288,6 +2288,9 @@ async function renderProperty(nation, nationName, factionData, shard) {
                 : `<div style="display:flex;gap:4px;margin-top:4px;">
                 <button class="prop-action-btn prop-action-btn--sell" onclick="showSellModal('${prop.id}','${escapeHtml(prop.name).replace(/'/g, "\\'")}',${prop.purchase_price || 0},${prop.condition})">SELL</button>
                 <button class="prop-action-btn prop-action-btn--refurbish" onclick="showRefurbishModal('${prop.id}','${escapeHtml(prop.name).replace(/'/g, "\\'")}',${prop.condition},${propCap})">REFURBISH</button>
+                ${factionData?.corp_sector === 'Finance' && (prop.type === 'office' || prop.type === 'regional_hq') && !['branch_office','trading_floor','claims_office'].includes(prop.type)
+                    ? `<button class="prop-action-btn" style="background:rgba(138,106,170,0.08);border-color:rgba(138,106,170,0.2);color:#8a6aaa;" onclick="showConvertModal('${prop.id}','${escapeHtml(prop.name).replace(/'/g, "\\'")}',${prop.purchase_price || 0})">CONVERT</button>`
+                    : ''}
             </div>`}
         </div>`;
     }
@@ -2869,6 +2872,74 @@ window.confirmSellProperty = confirmSellProperty;
 window.showRefurbishModal = showRefurbishModal;
 window.confirmRefurbish = confirmRefurbish;
 window.closePropModal = closePropModal;
+window.showConvertModal = showConvertModal;
+window.confirmConvertProperty = confirmConvertProperty;
+
+let _convertTargetType = 'branch_office';
+
+function showConvertModal(propId, propName, purchasePrice) {
+    const subsector = (faction?.corp_subsector || '').toLowerCase();
+    const options = subsector === 'banking' ? [['branch_office', 'Branch Office']]
+        : subsector === 'investment' ? [['trading_floor', 'Trading Floor']]
+        : subsector === 'insurance' ? [['claims_office', 'Claims Office']]
+        : [];
+    if (options.length === 0) return;
+    _convertTargetType = options[0][0];
+
+    const conversionCost = Math.round(purchasePrice * 0.15);
+    const conversionTicks = Math.floor(Math.random() * 6) + 4; // 1d6+3 = 4-9 ticks
+
+    const overlay = document.getElementById('prop-modal-overlay');
+    const content = document.getElementById('prop-modal-content');
+    content.innerHTML = `
+        <div style="font-size:14px;font-weight:700;margin-bottom:8px;color:var(--text-primary);">Convert Property</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-bottom:10px;">${escapeHtml(propName)}</div>
+        <div style="display:flex;gap:4px;margin-bottom:10px;">
+            ${options.map(([key, label]) => `<span onclick="_convertTargetType='${key}';document.querySelectorAll('.conv-opt').forEach(e=>e.style.background='transparent');this.style.background='rgba(138,106,170,0.15)'" class="conv-opt" style="flex:1;text-align:center;padding:6px;font-family:var(--font-mono);font-size:9px;font-weight:700;cursor:pointer;border:1px solid rgba(138,106,170,0.3);color:#8a6aaa;${key === _convertTargetType ? 'background:rgba(138,106,170,0.15)' : ''}">${label}</span>`).join('')}
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);margin-bottom:4px;">
+            <span style="color:var(--text-dim);">Conversion Cost</span>
+            <span style="color:var(--gold);">${fmtMoney(conversionCost)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);margin-bottom:4px;">
+            <span style="color:var(--text-dim);">Conversion Time</span>
+            <span style="color:var(--text-bright);">${conversionTicks} ticks</span>
+        </div>
+        <div style="font-size:8px;color:var(--text-dim);margin:8px 0;font-family:var(--font-mono);line-height:1.5;">Property will be offline during conversion. No revenue or workforce allocation until complete.</div>
+        <div style="display:flex;gap:6px;justify-content:flex-end;">
+            <button class="prop-action-btn prop-action-btn--sell" onclick="closePropModal()">Cancel</button>
+            <button class="prop-action-btn" style="background:rgba(138,106,170,0.12);border-color:rgba(138,106,170,0.3);color:#8a6aaa;" onclick="confirmConvertProperty('${propId}',${conversionCost},${conversionTicks})">Convert</button>
+        </div>
+    `;
+    overlay.style.display = 'flex';
+}
+
+async function confirmConvertProperty(propId, cost, ticks) {
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    if (cash < cost) { alert('Insufficient cash. Need ' + fmtMoney(cost) + '.'); return; }
+
+    const currentTick = shard?.current_tick || 0;
+
+    try {
+        // Deduct cost
+        await _supabase.from('factions').update({
+            corp_cash_reserves: Math.max(0, cash - cost)
+        }).eq('id', faction.id);
+        faction.corp_cash_reserves = Math.max(0, cash - cost);
+
+        // Set property to converting state
+        await _supabase.from('corp_properties').update({
+            type: _convertTargetType,
+            refurbish_until_tick: currentTick + ticks,
+            condition: 100,
+        }).eq('id', propId);
+
+        closePropModal();
+        const propData = await renderProperty(nationStats, nationStats?.name || faction?.nation, faction, shard);
+    } catch (err) {
+        alert('Conversion failed: ' + err.message);
+    }
+}
 
 // ══════════════════════════════════════
 // ── Events Feed ──
