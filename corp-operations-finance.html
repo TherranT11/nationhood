@@ -363,11 +363,51 @@ const DF_RISK_META = {
     HIGH:     { class: 'df-risk-high',      label: 'HIGH RISK' },
 };
 
-// Deal data — populated from DB when deal system is wired
-const SAMPLE_DEALS = [];
+// Deal data — loaded from finance_loan_requests
+let dfDeals = [];
 
 let dfFilter = 'ALL';
 let dfSelected = -1;
+
+async function loadDealFlow() {
+    if (!faction || !shard) return;
+    // Load open loan requests in the same nation (visible to finance corps)
+    const { data: requests } = await _supabase
+        .from('finance_loan_requests')
+        .select('*, requesting_faction:factions!requesting_faction_id(id, faction_name, abbreviation, corp_ticker, corp_subsector, corp_reputation, corp_credit_rating, nation_id)')
+        .eq('nation_id', faction.nation_id)
+        .eq('status', 'open')
+        .order('created_tick', { ascending: false });
+
+    // Check which requests this corp already made an offer on
+    const { data: myOffers } = await _supabase
+        .from('finance_loan_offers')
+        .select('request_id')
+        .eq('offering_faction_id', faction.id);
+    const offeredSet = new Set((myOffers || []).map(o => o.request_id));
+
+    dfDeals = (requests || []).map(req => ({
+        id: req.id,
+        type: 'LOAN',
+        applicant: req.requesting_faction?.faction_name || 'Unknown',
+        abbr: req.requesting_faction?.abbreviation || req.requesting_faction?.corp_ticker || '??',
+        entity: 'CORP',
+        nation: 'N/A',
+        amount: req.amount,
+        term: req.term_months,
+        purpose: req.purpose || '',
+        reputation: req.requesting_faction?.corp_reputation ?? 50,
+        creditRating: req.requesting_faction?.corp_credit_rating ?? 50,
+        risk: (req.requesting_faction?.corp_credit_rating ?? 50) >= 60 ? 'LOW'
+            : (req.requesting_faction?.corp_credit_rating ?? 50) >= 40 ? 'MODERATE'
+            : (req.requesting_faction?.corp_credit_rating ?? 50) >= 25 ? 'ELEVATED' : 'HIGH',
+        isNew: !offeredSet.has(req.id),
+        ticksLeft: (req.expires_tick || 0) - (shard?.current_tick || 0),
+        requestId: req.id,
+        alreadyOffered: offeredSet.has(req.id),
+    }));
+    renderDealFlow();
+}
 
 function dfCanReview(deal) {
     if (!faction) return false;
@@ -391,9 +431,9 @@ function renderDealFlow() {
     const container = document.getElementById('df-container');
     if (!container) return;
 
-    const deals = dfFilter === 'ALL' ? SAMPLE_DEALS : SAMPLE_DEALS.filter(d => d.type === dfFilter);
-    const newCount = SAMPLE_DEALS.filter(d => d.isNew).length;
-    const totalCount = SAMPLE_DEALS.length;
+    const deals = dfFilter === 'ALL' ? dfDeals : dfDeals.filter(d => d.type === dfFilter);
+    const newCount = dfDeals.filter(d => d.isNew).length;
+    const totalCount = dfDeals.length;
 
     // Header
     let html = `<div class="df-header">
@@ -427,7 +467,7 @@ function renderDealFlow() {
     }
     for (let i = 0; i < deals.length; i++) {
         const d = deals[i];
-        const globalIdx = SAMPLE_DEALS.indexOf(d);
+        const globalIdx = dfDeals.indexOf(d);
         const isSel = dfSelected === globalIdx;
         const tm = DF_TYPE_META[d.type];
         const rm = DF_RISK_META[d.risk];
@@ -526,9 +566,9 @@ function renderDealFlow() {
     html += '</div>'; // close df-list
 
     // Footer
-    const loanCount = SAMPLE_DEALS.filter(d => d.type === 'LOAN').length;
-    const insureCount = SAMPLE_DEALS.filter(d => d.type === 'INSURE').length;
-    const bondCount = SAMPLE_DEALS.filter(d => d.type === 'BOND').length;
+    const loanCount = dfDeals.filter(d => d.type === 'LOAN').length;
+    const insureCount = dfDeals.filter(d => d.type === 'INSURE').length;
+    const bondCount = dfDeals.filter(d => d.type === 'BOND').length;
 
     html += `<div class="df-footer">
         <div class="df-footer__counts">
@@ -537,7 +577,7 @@ function renderDealFlow() {
             <div class="df-footer__count"><div class="df-footer__count-dot" style="background:#8a6aaa;"></div><span class="df-footer__count-label">BOND</span><span class="df-footer__count-num">${bondCount}</span></div>
         </div>
         ${(() => {
-            const selDeal = dfSelected >= 0 ? SAMPLE_DEALS[dfSelected] : null;
+            const selDeal = dfSelected >= 0 ? dfDeals[dfSelected] : null;
             const canRev = selDeal && dfCanReview(selDeal);
             if (canRev) {
                 return `<div class="df-review-btn active" onclick="rdOpen(${dfSelected})">REVIEW DEAL</div>`;
@@ -1162,7 +1202,7 @@ const COLLATERAL_TIERS = [
 ];
 
 function rdOpen(dealIdx) {
-    const deal = SAMPLE_DEALS[dealIdx];
+    const deal = dfDeals[dealIdx];
     if (!deal) return;
     rdDeal = deal;
     rdType = deal.type;
@@ -1594,7 +1634,7 @@ function renderReviewDeal() {
         </div>
         <div style="display:flex;gap:6px;">
             <button class="rd-btn-decline" onclick="rdClose()">DECLINE</button>
-            <button class="rd-btn-action ${actionClass}">${actionLabel}</button>
+            <button class="rd-btn-action ${actionClass}" onclick="rdSubmitOffer()">${actionLabel}</button>
         </div>
     </div>`;
 
@@ -1611,6 +1651,131 @@ window.rdSetInsurePremium = rdSetInsurePremium;
 window.rdSetInsureCoverage = rdSetInsureCoverage;
 window.rdSetInsureDeductible = rdSetInsureDeductible;
 window.rdSetBondAmount = rdSetBondAmount;
+
+// ==================== SUBMIT OFFER ====================
+
+let _submittingOffer = false;
+async function rdSubmitOffer() {
+    if (!rdDeal || !faction || !shard || _submittingOffer) return;
+    if (rdDeal.type !== 'LOAN') return; // Only loans for now
+    _submittingOffer = true;
+
+    // Validate rate is within bounds
+    const rate = rdLoanRate;
+    if (rate < 1 || rate > 20) { alert('Interest rate must be 1-20%.'); _submittingOffer = false; return; }
+
+    // Check the finance corp has enough cash to fund this loan
+    const cash = Number(faction.corp_cash_reserves) || 0;
+    if (cash < rdDeal.amount) { alert('Insufficient cash reserves to fund this loan.'); _submittingOffer = false; return; }
+
+    // Map collateral to DB enum
+    const collateralMap = { none: 'unsecured', equipment: 'equipment', property: 'property', full: 'property' };
+    const collateral = collateralMap[rdLoanCollateral] || 'unsecured';
+
+    const currentTick = shard.current_tick || 0;
+
+    const { error } = await _supabase.from('finance_loan_offers').insert({
+        request_id: rdDeal.requestId,
+        offering_faction_id: faction.id,
+        interest_rate: rate,
+        collateral_type: collateral,
+        created_tick: currentTick,
+    });
+
+    if (error) {
+        _submittingOffer = false;
+        if (error.message.includes('unique') || error.message.includes('duplicate')) {
+            alert('You have already submitted an offer for this loan request.');
+        } else {
+            alert('Failed to submit offer: ' + error.message);
+        }
+        return;
+    }
+
+    rdClose();
+    dfSelected = -1;
+    await loadDealFlow();
+    _submittingOffer = false;
+}
+
+window.rdSubmitOffer = rdSubmitOffer;
+
+// ==================== LOAD ACTIVE PORTFOLIO ====================
+
+async function loadActivePortfolio() {
+    if (!faction) { renderActivePortfolio(); return; }
+
+    const { data: loans } = await _supabase
+        .from('finance_active_loans')
+        .select('*, borrower:factions!borrower_faction_id(id, faction_name, abbreviation, corp_ticker)')
+        .eq('lender_faction_id', faction.id)
+        .in('status', ['current', 'late', 'delinquent'])
+        .order('started_tick', { ascending: false });
+
+    apPortfolio = (loans || []).map(loan => ({
+        id: loan.id,
+        type: 'LOAN',
+        counterparty: loan.borrower?.faction_name || 'Unknown',
+        abbr: loan.borrower?.abbreviation || loan.borrower?.corp_ticker || '??',
+        remaining: loan.principal - loan.total_paid,
+        principal: loan.principal,
+        earned: loan.total_interest_paid || 0,
+        rate: loan.interest_rate,
+        term: loan.term_months,
+        paymentsMade: loan.payments_made,
+        paymentsMissed: loan.payments_missed,
+        monthlyPayment: loan.monthly_payment,
+        status: loan.status.toUpperCase(),
+        collateral: loan.collateral_type,
+        purpose: loan.purpose || '',
+        alert: loan.status === 'late' || loan.status === 'delinquent',
+        alertLevel: loan.status === 'delinquent' ? 'red' : loan.status === 'late' ? 'orange' : null,
+        alertMsg: loan.status === 'delinquent'
+            ? `${loan.payments_missed} missed payments. Default imminent.`
+            : loan.status === 'late'
+            ? `${loan.payments_missed} missed payment${loan.payments_missed > 1 ? 's' : ''}. Monitor closely.`
+            : null,
+    }));
+
+    renderActivePortfolio();
+}
+
+// ==================== LOAD COLLECTIONS ====================
+
+async function loadCollections() {
+    if (!faction) { renderCollections(); return; }
+
+    const { data: loans } = await _supabase
+        .from('finance_active_loans')
+        .select('*, borrower:factions!borrower_faction_id(id, faction_name, abbreviation, corp_ticker)')
+        .eq('lender_faction_id', faction.id)
+        .in('status', ['repaid', 'defaulted'])
+        .order('completed_tick', { ascending: false });
+
+    ccResolved = (loans || []).map(loan => {
+        const earned = loan.total_interest_paid || 0;
+        const lost = loan.status === 'defaulted' ? Math.max(0, loan.principal - loan.total_paid) : 0;
+        return {
+            type: 'LOAN',
+            counterparty: loan.borrower?.faction_name || 'Unknown',
+            abbr: loan.borrower?.abbreviation || loan.borrower?.corp_ticker || '??',
+            nation: '',
+            outcome: loan.status === 'repaid' ? 'REPAID' : 'DEFAULTED',
+            principal: loan.principal,
+            earned,
+            lost,
+            net: earned - lost,
+            resolved: loan.completed_tick ? 'Tick ' + loan.completed_tick : '',
+            term: loan.term_months + 'mo',
+            rate: loan.interest_rate + '%',
+            note: loan.status === 'repaid'
+                ? `Fully repaid over ${loan.payments_made} payments.`
+                : `Defaulted after ${loan.payments_missed} missed payments. ${loan.collateral_type !== 'unsecured' ? 'Collateral (' + loan.collateral_type + ') partially recovered losses.' : 'Unsecured — no collateral recovery.'}`,
+        };
+    });
+
+    renderCollections();
+}
 
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
@@ -1673,11 +1838,11 @@ async function init() {
     // Faction switcher
     renderFactionSwitcher();
 
-    // Render containers
-    renderDealFlow();
-    renderActivePortfolio();
+    // Load data and render containers
+    await loadDealFlow();
+    await loadActivePortfolio();
     renderReservesRisk();
-    renderCollections();
+    await loadCollections();
 
     // Tick countdown
     if (shard?.next_tick_at) startCountdown(shard.next_tick_at);
