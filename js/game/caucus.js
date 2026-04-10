@@ -32,18 +32,15 @@ export const CAUCUS_CONFIG = {
     // Non-governing factions are 15% more trigger-happy
     NON_GOVERNING_MODIFIER: 0.85,
     // Relationship score deltas
-    REL_BILL_ALIGNED: 7,
-    REL_BILL_NERVOUS_UNWHIPPED: 5,
+    REL_BILL_FAVORABLE_ARTICLE: 1, // +1 per favorable ideological article in a passed bill
     REL_BILL_OPPOSED_PASS: -20,
     REL_WHIP: 3,
     // REL_PLEDGE_HONOURED / REL_PLEDGE_BETRAYED: reserved for future pledge system
-    REL_DECAY: -2,
-    REL_DECAY_TICK_WINDOW: 10,    // no positive bills in last N ticks
+    REL_DECAY: -2,                 // unconditional decay per tick
     // Relationship = 0 means permanently opposed on any touching bill
     REL_VOLATILE_THRESHOLD: 30,
     // Defection: caucus members leave to join ideologically compatible opposition
     DEFECTION_THRESHOLD: 20,       // relationship_score at or below this triggers defection
-    DEFECTION_SEATS_PER_TICK: 2,   // seats lost per tick while below threshold
 };
 
 /** Wing names per axis, keyed by dominant_axis */
@@ -204,10 +201,9 @@ export async function assignCaucusFactions(supabase, party, nationId, totalFacti
         const wingNames = CAUCUS_WING_NAMES[axis.axisKey];
         if (!wingNames) continue;
 
-        const totalWingWeight = axis.leftWeight + axis.rightWeight || 1;
-        const wingWeight = wing === 'left' ? axis.leftWeight : axis.rightWeight;
-        // Seat share: proportional to wing weight, minimum 0.12 (~10-15% of party seats)
-        const seatShare = Math.max(0.12, Math.min(0.40, wingWeight / totalWingWeight * 0.50));
+        // Seat share: 20% + 1D10% of party's total available seats
+        const d10 = Math.floor(Math.random() * 10) + 1; // 1-10
+        const seatShare = 0.20 + (d10 / 100);           // 0.21 to 0.30
 
         await supabase.from('caucus_factions').insert({
             party_id: party.id,
@@ -453,10 +449,16 @@ export async function executeWhipCaucus(supabase, factionId, caucusFactionId, bi
 
 /**
  * Update caucus relationship scores after a bill is resolved.
+ * +1 per favorable ideological article in a passed bill that the caucus's party voted on.
+ * -20 if opposed and bill passes anyway.
  *
  * @param {string} outcome - 'passed' or 'failed'
+ * @param {Array} billArticles - bill_articles rows with policies (from bill query)
+ * @param {Array} billSupport - bill_support rows with faction_id/stance
  */
-export async function updateCaucusRelationships(supabase, billId, outcome) {
+export async function updateCaucusRelationships(supabase, billId, outcome, billArticles, billSupport) {
+    if (outcome !== 'passed') return; // no relationship change on failed bills
+
     const { data: dispositions, error } = await supabase
         .from('caucus_dispositions')
         .select('caucus_faction_id, disposition, whipped')
@@ -464,32 +466,65 @@ export async function updateCaucusRelationships(supabase, billId, outcome) {
 
     if (error || !dispositions || dispositions.length === 0) return;
 
+    // Build set of party IDs that voted on this bill
+    const votedPartyIds = new Set();
+    for (const s of (billSupport || [])) {
+        if (s.faction_id) votedPartyIds.add(s.faction_id);
+    }
+
+    // Load caucus faction details (need party_id, dominant_axis, wing_end)
+    const caucusIds = dispositions.map(d => d.caucus_faction_id);
+    const { data: caucusFactions } = await supabase
+        .from('caucus_factions')
+        .select('id, party_id, dominant_axis, wing_end, relationship_score')
+        .in('id', caucusIds);
+
+    if (!caucusFactions || caucusFactions.length === 0) return;
+
+    const caucusMap = {};
+    for (const cf of caucusFactions) caucusMap[cf.id] = cf;
+
     for (const d of dispositions) {
         if (d.disposition === 'not_triggered') continue;
 
+        const caucus = caucusMap[d.caucus_faction_id];
+        if (!caucus) continue;
+
+        // Party must have voted on the bill
+        if (!votedPartyIds.has(caucus.party_id)) continue;
+
         let delta = 0;
 
-        if (outcome === 'passed') {
-            if (d.disposition === 'aligned' || d.whipped) {
-                delta = CAUCUS_CONFIG.REL_BILL_ALIGNED;
-            } else if (d.disposition === 'nervous' && !d.whipped) {
-                delta = CAUCUS_CONFIG.REL_BILL_NERVOUS_UNWHIPPED;
-            } else if (d.disposition === 'opposed') {
-                delta = CAUCUS_CONFIG.REL_BILL_OPPOSED_PASS;
+        if (d.disposition === 'opposed' && !d.whipped) {
+            delta = CAUCUS_CONFIG.REL_BILL_OPPOSED_PASS;
+        } else {
+            // Count favorable articles: ideology tags on the caucus's dominant axis
+            // in the caucus's favored direction
+            const favoredDirection = caucus.wing_end === 'left' ? -1 : 1;
+            let favorableCount = 0;
+
+            for (const art of (billArticles || [])) {
+                const p = art.policies || art;
+                if (!p) continue;
+
+                const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
+                    ? p.ideologies.map(i => i.toUpperCase())
+                    : (p.ideology ? [p.ideology.toUpperCase()] : []);
+
+                for (const tag of ideos) {
+                    const mapping = IDEOLOGY_TO_AXIS[tag];
+                    if (!mapping) continue;
+                    // Article must be on the caucus's dominant axis and in the favored direction
+                    if (mapping.axisKey === caucus.dominant_axis && mapping.direction === favoredDirection) {
+                        favorableCount++;
+                    }
+                }
             }
+
+            delta = favorableCount * CAUCUS_CONFIG.REL_BILL_FAVORABLE_ARTICLE;
         }
-        // Bill failed: no relationship change (status quo preserved)
 
         if (delta === 0) continue;
-
-        // Load current score and update
-        const { data: caucus } = await supabase
-            .from('caucus_factions')
-            .select('relationship_score')
-            .eq('id', d.caucus_faction_id)
-            .single();
-
-        if (!caucus) continue;
 
         const newScore = Math.max(0, Math.min(100, caucus.relationship_score + delta));
         await supabase
@@ -500,10 +535,10 @@ export async function updateCaucusRelationships(supabase, billId, outcome) {
 }
 
 /**
- * Decay caucus relationship scores for factions with no positive bills recently.
- * Called once per tick.
+ * Decay caucus relationship scores unconditionally.
+ * Called once per tick. Every active caucus loses REL_DECAY (-2) per tick.
  */
-export async function decayCaucusRelationships(supabase, nationId, currentTick) {
+export async function decayCaucusRelationships(supabase, nationId) {
     const { data: caucuses, error } = await supabase
         .from('caucus_factions')
         .select('id, relationship_score')
@@ -512,30 +547,7 @@ export async function decayCaucusRelationships(supabase, nationId, currentTick) 
 
     if (error || !caucuses || caucuses.length === 0) return;
 
-    // Load bills resolved within the decay window to check for recent aligned dispositions
-    const windowStart = currentTick - CAUCUS_CONFIG.REL_DECAY_TICK_WINDOW;
-    const { data: recentBills } = await supabase
-        .from('bills')
-        .select('id')
-        .eq('nation_id', nationId)
-        .gte('voting_ends_tick', windowStart);
-    const recentBillIds = (recentBills || []).map(b => b.id);
-
     for (const caucus of caucuses) {
-        // Check if any aligned disposition exists on recent bills
-        let hasRecentPositive = false;
-        if (recentBillIds.length > 0) {
-            const { data: recentPositive } = await supabase
-                .from('caucus_dispositions')
-                .select('id')
-                .eq('caucus_faction_id', caucus.id)
-                .in('bill_id', recentBillIds)
-                .in('disposition', ['aligned'])
-                .limit(1);
-            hasRecentPositive = recentPositive && recentPositive.length > 0;
-        }
-        if (hasRecentPositive) continue;
-
         const newScore = Math.max(0, caucus.relationship_score + CAUCUS_CONFIG.REL_DECAY);
         if (newScore !== caucus.relationship_score) {
             await supabase
@@ -551,10 +563,11 @@ export async function decayCaucusRelationships(supabase, nationId, currentTick) 
 
 /**
  * Process caucus defections for a nation. Called once per tick after decay.
- * When a caucus relationship_score drops to DEFECTION_THRESHOLD or below,
- * members begin defecting (DEFECTION_SEATS_PER_TICK per tick) to the
- * ideologically closest opposition party on the caucus's dominant axis.
- * If no compatible party exists, seats are simply lost (independents).
+ * Threshold-based defection:
+ *   - relationship_score <= 20: 1 member defects per tick
+ *   - relationship_score <= 19: 2 members defect per tick
+ * Defectors join the ideologically closest opposition party on the caucus's
+ * dominant axis. If no compatible party exists, seats are lost (independents).
  */
 export async function processCaucusDefections(supabase, nationId, currentTick) {
     const { data: caucuses, error } = await supabase
@@ -594,7 +607,9 @@ export async function processCaucusDefections(supabase, nationId, currentTick) {
         const sourceParty = partyMap[caucus.party_id];
         if (!sourceParty || sourceParty.seats <= 0) continue;
 
-        const seatsToLose = Math.min(CAUCUS_CONFIG.DEFECTION_SEATS_PER_TICK, sourceParty.seats);
+        // Threshold-based: 1 at <=20, 2 at <=19
+        const baseDefections = caucus.relationship_score <= 19 ? 2 : 1;
+        const seatsToLose = Math.min(baseDefections, sourceParty.seats);
         if (seatsToLose <= 0) continue;
 
         // Find the best ideological match among OTHER parties on this caucus's axis

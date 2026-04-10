@@ -2280,7 +2280,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
         // Caucus relationship updates after bill resolution
         try {
             const outcome = passed ? 'passed' : 'failed';
-            await updateCaucusRelationships(supabase, bill.id, outcome);
+            await updateCaucusRelationships(supabase, bill.id, outcome, bill.bill_articles || [], bill.bill_support || []);
         } catch (caucusRelErr) {
             console.error(`[resolveExpiredVotes] Caucus relationship update failed for bill ${bill.id}:`, caucusRelErr.message);
         }
