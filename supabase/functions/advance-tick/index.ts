@@ -27860,6 +27860,15 @@ async function processIssueTick(supabase, nationList, currentTick) {
                         `Both nations agreed on ${dipAction.name}. Effects applied.`,
                         { action_key: actionKey, tension_delta: dipAction.tension_delta,
                           modifiers_removed: dipAction.modifiers_removed });
+
+                    // Fire event_log for both nations so match appears in World Events
+                    const matchHeadline = `${nationA.name} and ${nationB.name} reach diplomatic agreement in bilateral dispute: ${dipAction.name}.`;
+                    try {
+                        await supabase.from('event_log').insert([
+                            { nation_id: issue.nation_a_id, event_name: dipAction.name, category: 'Conflict', description_chosen: matchHeadline, fired_at_tick: currentTick },
+                            { nation_id: issue.nation_b_id, event_name: dipAction.name, category: 'Conflict', description_chosen: matchHeadline, fired_at_tick: currentTick },
+                        ]);
+                    } catch (e) { console.warn('[Issues] Diplomatic match event dispatch failed:', e.message); }
                 }
             }
 
@@ -27948,6 +27957,17 @@ async function processIssueTick(supabase, nationList, currentTick) {
                           counter_play: true, gov_approval_bonus: 3, momentum_bonus: 3,
                           exploited_action: sa.action_key },
                         opponentNationId);
+
+                    // Fire event_log so counter-play appears in World Events
+                    const oppNation = opponentNationId === issue.nation_a_id ? nationA : nationB;
+                    const gaffeNationObj = gaffeNationId === issue.nation_a_id ? nationA : nationB;
+                    const counterHeadline = `${oppNation.name} exploits failed diplomacy by ${gaffeNationObj.name} in bilateral dispute: ${oppActionName}.`;
+                    try {
+                        await supabase.from('event_log').insert([
+                            { nation_id: opponentNationId, event_name: 'Diplomatic Counter-Play', category: 'Conflict', description_chosen: counterHeadline, fired_at_tick: currentTick },
+                            { nation_id: gaffeNationId, event_name: 'Diplomatic Counter-Play', category: 'Conflict', description_chosen: counterHeadline, fired_at_tick: currentTick },
+                        ]);
+                    } catch (e) { console.warn('[Issues] Counter-play event dispatch failed:', e.message); }
                 }
 
                 // Mark as gaffe
@@ -29039,6 +29059,22 @@ async function executeIssueAction(supabase, params) {
             { action_key: actionKey, acting_nation_id: actingNationId },
             actingNationId);
 
+        // Fire event_log for both nations
+        try {
+            const [actRes, oppRes] = await Promise.all([
+                supabase.from('nations').select('name').eq('id', actingNationId).single(),
+                supabase.from('nations').select('name').eq('id', opponentNationId).single(),
+            ]);
+            const actName = actRes.data?.name || 'A nation';
+            const oppName = oppRes.data?.name || 'another nation';
+            const headline = `${actName} proposes diplomatic resolution with ${oppName} in bilateral dispute: ${action.name}.`;
+            const row = { event_name: action.name, category: 'Conflict', description_chosen: headline, fired_at_tick: currentTick };
+            await supabase.from('event_log').insert([
+                { ...row, nation_id: actingNationId },
+                { ...row, nation_id: opponentNationId },
+            ]);
+        } catch (e) { console.warn('[Issues] Event log dispatch failed:', e.message); }
+
         return { success: true, result: { type: 'submitted', actionKey, apCost } };
     }
 
@@ -29230,6 +29266,25 @@ async function executeIssueAction(supabase, params) {
             `Tension shifted from ${oldTensionLabel} to ${newTensionLabel}.`,
             { tension_before: issue.tension, tension_after: newTension });
     }
+
+    // Fire event_log for both nations
+    const verb = action.category === 'diplomatic' ? 'takes diplomatic action against'
+        : action.category === 'threatening' ? 'takes threatening action against'
+        : 'takes unilateral action against';
+    try {
+        const [actingRes, opponentRes] = await Promise.all([
+            supabase.from('nations').select('name').eq('id', actingNationId).single(),
+            supabase.from('nations').select('name').eq('id', opponentNationId).single(),
+        ]);
+        const actingName = actingRes.data?.name || 'A nation';
+        const opponentName = opponentRes.data?.name || 'another nation';
+        const headline = `${actingName} ${verb} ${opponentName} in bilateral dispute: ${action.name}.`;
+        const row = { event_name: action.name, category: 'Conflict', description_chosen: headline, fired_at_tick: currentTick };
+        await supabase.from('event_log').insert([
+            { ...row, nation_id: actingNationId },
+            { ...row, nation_id: opponentNationId },
+        ]);
+    } catch (e) { console.warn('[Issues] Event log dispatch failed:', e.message); }
 
     return {
         success: true,
