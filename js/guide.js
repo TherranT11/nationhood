@@ -58,17 +58,17 @@ const guideContent = {
 <h3>Revenue Sources</h3>
 <table>
 <tr><th>Source</th><th>Formula</th></tr>
-<tr><td><strong>Income Tax</strong></td><td>GDP &times; (rate/100) &times; 0.40 &times; collection rate</td></tr>
-<tr><td><strong>Sales Tax</strong></td><td>GDP &times; (rate/100) &times; 0.30 &times; collection rate</td></tr>
-<tr><td><strong>Corporate Tax</strong></td><td>GDP &times; (rate/100) &times; 0.10 &times; collection rate</td></tr>
+<tr><td><strong>Income Tax</strong></td><td>GDP &times; (rate/100) &times; 0.55 &times; collection rate</td></tr>
+<tr><td><strong>Sales Tax</strong></td><td>GDP &times; (rate/100) &times; 0.35 &times; collection rate</td></tr>
+<tr><td><strong>Corporate Tax</strong></td><td>GDP &times; (rate/100) &times; 0.15 &times; collection rate</td></tr>
 <tr><td><strong>Tariffs</strong></td><td>Actual tariff revenue from trade engine</td></tr>
 <tr><td><strong>Oil &amp; Gas</strong></td><td>GDP &times; (oil_and_gas/100) &times; 0.06 (only if stat &gt; 30, bypasses collection rate)</td></tr>
 <tr><td><strong>Foreign Aid</strong></td><td>Aid received from other nations</td></tr>
 </table>
 
 <h3>Collection Rate</h3>
-<p><code>(efficiency + (100 - corruption)) / 200</code></p>
-<p class="guide-tip">Perfect efficiency (100) + zero corruption = 100% collection. Low efficiency and high corruption means lost revenue. Invest in efficiency before raising tax rates.</p>
+<p><code>0.35 + ((efficiency + (100 - corruption)) / 200) &times; 0.65</code></p>
+<p class="guide-tip">Ranges from 35% (worst governance) to 100% (perfect). Even poorly-run nations collect some tax. High efficiency and low corruption maximize revenue.</p>
 
 <h3>Expenditures</h3>
 <p>11 ministries, each with costs from:</p>
@@ -245,10 +245,10 @@ const guideContent = {
 
 <details><summary>Key Formulas</summary><div>
 <h3>Revenue</h3>
-<p><code>collection_rate = (efficiency + (100 - corruption)) / 200</code></p>
-<p><code>income_tax = GDP &times; (rate/100) &times; 0.40 &times; collection_rate</code></p>
-<p><code>sales_tax = GDP &times; (rate/100) &times; 0.30 &times; collection_rate</code></p>
-<p><code>corporate_tax = GDP &times; (rate/100) &times; 0.10 &times; collection_rate</code></p>
+<p><code>collection_rate = 0.35 + ((efficiency + (100 - corruption)) / 200) &times; 0.65</code></p>
+<p><code>income_tax = GDP &times; (rate/100) &times; 0.55 &times; collection_rate</code></p>
+<p><code>sales_tax = GDP &times; (rate/100) &times; 0.35 &times; collection_rate</code></p>
+<p><code>corporate_tax = GDP &times; (rate/100) &times; 0.15 &times; collection_rate</code></p>
 
 <h3>Debt</h3>
 <p><code>interest = 15% - (credit_rating &times; 0.13%)</code> [clamped 2%&ndash;18%]</p>

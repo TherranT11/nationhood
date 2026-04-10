@@ -31,13 +31,15 @@ export function calculateNationalBudget(nation) {
     const oilGas         = Number(nation.oil_and_gas ?? 0);
     const creditRating   = Number(nation.credit ?? 50);
 
-    // Collection Rate = (Efficiency + (100 - Corruption)) / 200  →  0.0 to 1.0
-    const collectionRate = (efficiency + (100 - corruption)) / 200;
+    // Collection Rate: floor at 0.35 so even poorly-governed nations collect some tax.
+    // Ranges 0.35 (eff=0, corr=100) to 1.0 (eff=100, corr=0).
+    const rawCR = (efficiency + (100 - corruption)) / 200;
+    const collectionRate = 0.35 + rawCR * 0.65;
 
     // Tax Revenue (raw dollars, since GDP is raw dollars)
-    const incomeRevenue  = gdp * (incomeTaxRate / 100) * 0.40 * collectionRate;
-    const corpRevenue    = gdp * (corpTaxRate / 100)   * 0.10 * collectionRate;
-    const salesRevenue   = gdp * (salesTaxRate / 100)  * 0.30 * collectionRate;
+    const incomeRevenue  = gdp * (incomeTaxRate / 100) * 0.55 * collectionRate;
+    const corpRevenue    = gdp * (corpTaxRate / 100)   * 0.15 * collectionRate;
+    const salesRevenue   = gdp * (salesTaxRate / 100)  * 0.35 * collectionRate;
     const tariffRevenue  = gdp * (tariffsRate / 100)   * 0.0025 * collectionRate;
 
     // Oil & Gas Revenue (only if oil_and_gas stat > 30)
@@ -91,7 +93,7 @@ export const TAX_CONFIG = [
         category: 'Income',
         categoryClass: 'pill-income',
         revenueKey: 'incomeRevenue',
-        gdpMultiplier: 0.40,
+        gdpMultiplier: 0.55,
         maxRate: 50
     },
     {
@@ -100,7 +102,7 @@ export const TAX_CONFIG = [
         category: 'Consumption',
         categoryClass: 'pill-consumption',
         revenueKey: 'salesRevenue',
-        gdpMultiplier: 0.30,
+        gdpMultiplier: 0.35,
         maxRate: 50
     },
     {
@@ -109,7 +111,7 @@ export const TAX_CONFIG = [
         category: 'Corporate',
         categoryClass: 'pill-corporate',
         revenueKey: 'corpRevenue',
-        gdpMultiplier: 0.10,
+        gdpMultiplier: 0.15,
         maxRate: 50
     }
 ];
