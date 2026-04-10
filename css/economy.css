@@ -3870,3 +3870,63 @@ body.light-mode .trade-diag-table td.muted { color: #bbb; }
 body.light-mode .trade-diag-affinity-summary { border-top-color: rgba(0,0,0,0.06); }
 body.light-mode .trade-diag-affinity-name { color: #555; }
 body.light-mode .trade-diag-affinity-breakdown { color: #aaa; }
+
+/* ===== DUAL-PERIOD DISPLAY (Annual + Monthly) ===== */
+.dual-period {
+    display: inline-flex;
+    flex-direction: column;
+    line-height: 1.15;
+}
+.dual-period-yr {
+    /* inherits parent font-size — this is the "large" number */
+}
+.dual-period-label {
+    font-size: 0.65em;
+    opacity: 0.55;
+    font-weight: 400;
+}
+.dual-period-mo {
+    font-size: 0.65em;
+    opacity: 0.6;
+    color: var(--text-muted, #8a8978);
+    font-weight: 400;
+}
+.dual-period-mo .dual-period-label {
+    font-size: 0.8em;
+}
+
+/* Ensure dual-period inherits color in surplus/deficit card contexts */
+.econ-card-surplus .dual-period-yr,
+.econ-card-surplus .dual-period-mo { color: var(--green, #5cb85c); }
+.econ-card-deficit .dual-period-yr,
+.econ-card-deficit .dual-period-mo { color: var(--red, #d9534f); }
+.econ-card-surplus .dual-period-mo,
+.econ-card-deficit .dual-period-mo { opacity: 0.6; }
+
+/* In budget net-amount, keep the monthly proportionally smaller */
+.bv2-net-amount .dual-period-mo {
+    font-size: 0.55em;
+}
+
+/* In compact contexts (row values, totals), tighten spacing */
+.bv2-row-value .dual-period,
+.bv2-total-value .dual-period,
+.bv2-col-total .dual-period {
+    line-height: 1.1;
+}
+.bv2-col-total .dual-period-mo {
+    font-size: 0.85em;
+}
+
+/* Tax revenue block dual display */
+.tax-revenue-value .dual-period-mo {
+    font-size: 0.7em;
+}
+.tax-revenue-delta .dual-period {
+    line-height: 1.1;
+}
+
+/* Light mode overrides */
+body.light-mode .dual-period-mo {
+    color: #999;
+}

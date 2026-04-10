@@ -830,12 +830,12 @@ function renderOverviewTab(nation) {
     h += '<div class="econ-section">';
     h += '<div class="econ-section-header">FISCAL SNAPSHOT</div>';
     h += '<div class="econ-cards-row">';
-    h += renderOverviewCard('Revenue', formatBudgetCurrency(bs.budget.grossRevenue), 'neutral', null);
-    h += renderOverviewCard('Expenditures', formatBudgetCurrency(bs.totalExpenditure), 'neutral', null);
+    h += renderOverviewCard('Revenue', formatDualPeriod(bs.budget.grossRevenue), 'neutral', null);
+    h += renderOverviewCard('Expenditures', formatDualPeriod(bs.totalExpenditure), 'neutral', null);
     var balClass = bs.balance >= 0 ? 'surplus' : 'deficit';
     var balSign = bs.balance >= 0 ? '+' : '';
     var balLabel = bs.balance >= 0 ? 'Surplus' : 'Deficit';
-    h += renderOverviewCard(balLabel, balSign + formatBudgetCurrency(bs.balance), balClass, null);
+    h += renderOverviewCard(balLabel, formatDualPeriod(bs.balance, balSign), balClass, null);
     h += '</div>';
     h += '</div>';
 
@@ -850,11 +850,11 @@ function renderOverviewTab(nation) {
         var totalImports = Number(tradeData.summary.total_imports) || 0;
         var surplus = Number(tradeData.summary.trade_surplus) || 0;
         h += '<div class="econ-cards-row">';
-        h += renderOverviewCard('Exports', formatBudgetCurrency(totalExports), 'surplus', 'Per Tick');
-        h += renderOverviewCard('Imports', formatBudgetCurrency(totalImports), 'deficit', 'Per Tick');
+        h += renderOverviewCard('Exports', formatDualPeriodFromTick(totalExports), 'surplus', null);
+        h += renderOverviewCard('Imports', formatDualPeriodFromTick(totalImports), 'deficit', null);
         var tCls = surplus >= 0 ? 'surplus' : 'deficit';
         var tSign = surplus >= 0 ? '+' : '';
-        h += renderOverviewCard('Balance', tSign + formatBudgetCurrency(surplus), tCls, 'Per Tick');
+        h += renderOverviewCard('Balance', formatDualPeriodFromTick(surplus, tSign), tCls, null);
         h += '</div>';
     } else {
         h += '<div class="econ-placeholder">Trade data will appear after the next tick.</div>';
@@ -1319,7 +1319,7 @@ function renderTaxationTab(nation) {
     h += '<div class="tax-summary-bar">';
     h += '<div class="tax-summary-stat">';
     h += '<span class="tax-summary-label">Tax Revenue</span>';
-    h += '<span class="tax-summary-value green">' + formatBudgetCurrency(totalTaxRevenue) + '/year</span>';
+    h += '<span class="tax-summary-value green">' + formatDualPeriod(totalTaxRevenue) + '</span>';
     h += '<span class="tax-summary-detail">' + (budget.grossRevenue > 0 ? Math.round(totalTaxRevenue / budget.grossRevenue * 100) : 0) + '% of total income</span>';
     h += '</div>';
 
@@ -1459,12 +1459,12 @@ function renderTaxCard(config, nation, budget) {
     h += '<div class="tax-revenue-block">';
     h += '<span class="tax-revenue-label">Revenue</span>';
     if (isChanged) {
-        h += '<span class="tax-revenue-value">' + formatBudgetCurrency(projectedRevenue) + '/yr</span>';
+        h += '<span class="tax-revenue-value">' + formatDualPeriod(projectedRevenue) + '</span>';
         var deltaClass = revenueDelta >= 0 ? 'tax-delta-positive' : 'tax-delta-negative';
         var deltaSign = revenueDelta >= 0 ? '+' : '';
-        h += '<span class="tax-revenue-delta ' + deltaClass + '">' + deltaSign + formatBudgetCurrency(revenueDelta) + '/yr</span>';
+        h += '<span class="tax-revenue-delta ' + deltaClass + '">' + formatDualPeriod(revenueDelta, deltaSign) + '</span>';
     } else {
-        h += '<span class="tax-revenue-value">' + formatBudgetCurrency(revenue) + '/yr</span>';
+        h += '<span class="tax-revenue-value">' + formatDualPeriod(revenue) + '</span>';
     }
     h += '</div>';
     h += '</div>';
@@ -1635,15 +1635,15 @@ function renderBudgetTab(nation) {
     h += '<div class="bv2-summary-bar">';
     h += '<div class="bv2-card">';
     h += '<div class="bv2-card-label" style="color:var(--green);">REVENUE</div>';
-    h += '<div class="bv2-card-value">' + formatBudgetCurrency(budget.grossRevenue) + '</div>';
+    h += '<div class="bv2-card-value">' + formatDualPeriod(budget.grossRevenue) + '</div>';
     h += '</div>';
     h += '<div class="bv2-card">';
     h += '<div class="bv2-card-label" style="color:var(--red);">EXPENDITURES</div>';
-    h += '<div class="bv2-card-value">' + formatBudgetCurrency(totalExpenditure) + '</div>';
+    h += '<div class="bv2-card-value">' + formatDualPeriod(totalExpenditure) + '</div>';
     h += '</div>';
     h += '<div class="bv2-card">';
     h += '<div class="bv2-card-label" style="color:' + (isDeficit ? 'var(--red)' : 'var(--green)') + ';">' + (isDeficit ? 'DEFICIT' : 'SURPLUS') + '</div>';
-    h += '<div class="bv2-card-value" style="color:' + (isDeficit ? 'var(--red)' : 'var(--green)') + ';">' + balSign + formatBudgetCurrency(balance) + '</div>';
+    h += '<div class="bv2-card-value" style="color:' + (isDeficit ? 'var(--red)' : 'var(--green)') + ';">' + formatDualPeriod(balance, balSign) + '</div>';
     h += '</div>';
     h += '</div>';
 
@@ -1658,7 +1658,7 @@ function renderBudgetTab(nation) {
     h += '<div class="bv2-col">';
     h += '<div class="bv2-col-header">';
     h += '<span class="bv2-col-title" style="color:var(--green);">REVENUES</span>';
-    h += '<span class="bv2-col-total" style="color:var(--green);">Total: ' + formatBudgetCurrency(budget.grossRevenue) + ' / yr</span>';
+    h += '<span class="bv2-col-total" style="color:var(--green);">Total: ' + formatDualPeriod(budget.grossRevenue) + '</span>';
     h += '</div>';
 
     h += bv2RevenueRow('INCOME TAX', Math.round(Number(nation.income_tax || 0)) + '% rate · Income bracket', budget.incomeRevenue);
@@ -1674,7 +1674,7 @@ function renderBudgetTab(nation) {
 
     h += '<div class="bv2-total-row">';
     h += '<span class="bv2-total-label">TOTAL REVENUE</span>';
-    h += '<span class="bv2-total-value">' + formatBudgetCurrency(budget.grossRevenue) + '/yr</span>';
+    h += '<span class="bv2-total-value">' + formatDualPeriod(budget.grossRevenue) + '</span>';
     h += '</div>';
     h += '</div>';
 
@@ -1682,7 +1682,7 @@ function renderBudgetTab(nation) {
     h += '<div class="bv2-col">';
     h += '<div class="bv2-col-header">';
     h += '<span class="bv2-col-title" style="color:var(--red);">EXPENDITURES &mdash; MINISTRY COSTS</span>';
-    h += '<span class="bv2-col-total" style="color:var(--red);">Total: ' + formatBudgetCurrency(totalExpenditure) + ' / yr</span>';
+    h += '<span class="bv2-col-total" style="color:var(--red);">Total: ' + formatDualPeriod(totalExpenditure) + '</span>';
     h += '</div>';
 
     // Sort ministries by cost descending
@@ -1710,7 +1710,7 @@ function renderBudgetTab(nation) {
 
     h += '<div class="bv2-total-row">';
     h += '<span class="bv2-total-label">TOTAL EXPENDITURE</span>';
-    h += '<span class="bv2-total-value">' + formatBudgetCurrency(totalExpenditure) + '/yr</span>';
+    h += '<span class="bv2-total-value">' + formatDualPeriod(totalExpenditure) + '</span>';
     h += '</div>';
     h += '</div>';
 
@@ -1725,14 +1725,14 @@ function renderBudgetTab(nation) {
     h += '<span class="bv2-net-icon" style="color:' + netColor + ';">' + netIcon + '</span>';
     h += '<span class="bv2-net-label" style="color:' + netColor + ';">' + netLabel + '</span>';
     h += '</div>';
-    h += '<div class="bv2-net-amount" style="color:' + netColor + ';">' + balSign + formatBudgetCurrency(balance) + '</div>';
+    h += '<div class="bv2-net-amount" style="color:' + netColor + ';">' + formatDualPeriod(balance, balSign) + '</div>';
     if (isDeficit) {
         h += '<div class="bv2-net-subtext">SHORTFALL ATTRIBUTING TO NATIONAL DEBT THIS TICK</div>';
     }
     h += '<div class="bv2-net-breakdown">';
-    h += '<div class="bv2-net-col"><div class="bv2-net-col-label">TOTAL REVENUE</div><div class="bv2-net-col-value">' + formatBudgetCurrency(budget.grossRevenue) + '</div></div>';
-    h += '<div class="bv2-net-col"><div class="bv2-net-col-label">TOTAL EXPENDITURE</div><div class="bv2-net-col-value">' + formatBudgetCurrency(totalExpenditure) + '</div></div>';
-    h += '<div class="bv2-net-col"><div class="bv2-net-col-label">NET</div><div class="bv2-net-col-value" style="color:' + netColor + ';">' + balSign + formatBudgetCurrency(balance) + '</div></div>';
+    h += '<div class="bv2-net-col"><div class="bv2-net-col-label">TOTAL REVENUE</div><div class="bv2-net-col-value">' + formatDualPeriod(budget.grossRevenue) + '</div></div>';
+    h += '<div class="bv2-net-col"><div class="bv2-net-col-label">TOTAL EXPENDITURE</div><div class="bv2-net-col-value">' + formatDualPeriod(totalExpenditure) + '</div></div>';
+    h += '<div class="bv2-net-col"><div class="bv2-net-col-label">NET</div><div class="bv2-net-col-value" style="color:' + netColor + ';">' + formatDualPeriod(balance, balSign) + '</div></div>';
     h += '</div>';
     h += '</div>';
 
@@ -1763,7 +1763,7 @@ function bv2RevenueRow(label, subtitle, value) {
     h += '<div class="bv2-row-label">' + escapeHtml(label) + '</div>';
     h += '<div class="bv2-row-subtitle">' + escapeHtml(subtitle) + '</div>';
     h += '</div>';
-    h += '<div class="bv2-row-value">' + formatBudgetCurrency(value) + '/yr</div>';
+    h += '<div class="bv2-row-value">' + formatDualPeriod(value) + '</div>';
     h += '</div>';
     return h;
 }
@@ -1778,7 +1778,7 @@ function bv2ExpenditureRow(label, subtitle, value, fundingPct) {
     if (fundingPct !== null) {
         h += '<span class="bv2-funding-badge">' + fundingPct + '%</span>';
     }
-    h += '<span class="bv2-row-value">' + formatBudgetCurrency(value) + '/yr</span>';
+    h += '<span class="bv2-row-value">' + formatDualPeriod(value) + '</span>';
     h += '</div>';
     h += '</div>';
     return h;
@@ -1804,15 +1804,14 @@ function renderTradeTab(nation) {
     // --- Trade Overview Cards ---
     h += '<div class="econ-section">';
     h += '<div class="econ-section-header">TRADE OVERVIEW</div>';
-    h += '<div class="econ-section-subtitle">All values per tick</div>';
     h += '<div class="econ-cards-row econ-cards-4">';
-    h += renderOverviewCard('Total Exports', formatBudgetCurrency(totalExports), 'surplus', null);
-    h += renderOverviewCard('Total Imports', formatBudgetCurrency(totalImports), 'deficit', null);
+    h += renderOverviewCard('Total Exports', formatDualPeriodFromTick(totalExports), 'surplus', null);
+    h += renderOverviewCard('Total Imports', formatDualPeriodFromTick(totalImports), 'deficit', null);
     var balCls = surplus >= 0 ? 'surplus' : 'deficit';
     var balSign = surplus >= 0 ? '+' : '';
-    h += renderOverviewCard('Trade Balance', balSign + formatBudgetCurrency(surplus), balCls, null);
+    h += renderOverviewCard('Trade Balance', formatDualPeriodFromTick(surplus, balSign), balCls, null);
     var cappedTariffRev = getCappedTariffRevenue(nation);
-    h += renderOverviewCard('Tariff Revenue', formatBudgetCurrency(cappedTariffRev), cappedTariffRev > 0 ? 'surplus' : 'neutral', 'Per Tick');
+    h += renderOverviewCard('Tariff Revenue', formatDualPeriodFromTick(cappedTariffRev), cappedTariffRev > 0 ? 'surplus' : 'neutral', null);
     h += '</div>';
     h += '</div>';
 
@@ -2003,7 +2002,7 @@ function renderTradePartnersSection() {
 
     var h = '<div class="econ-section">';
     h += '<div class="econ-section-header">TRADING PARTNERS</div>';
-    h += '<div class="econ-section-subtitle">Bilateral trade volumes per tick, sorted by total volume.</div>';
+    h += '<div class="econ-section-subtitle">Bilateral trade volumes sorted by total volume.</div>';
     h += '<div class="trade-partners-grid">';
 
     for (var i = 0; i < partnerIds.length; i++) {
@@ -2044,11 +2043,11 @@ function renderTradePartnersSection() {
 
         // Stats row
         h += '<div class="partner-stats">';
-        h += '<div class="partner-stat"><span class="partner-stat-label">EXP</span><span class="partner-stat-value exports">' + formatBudgetCurrency(p.totalExports) + '</span></div>';
-        h += '<div class="partner-stat"><span class="partner-stat-label">IMP</span><span class="partner-stat-value imports">' + formatBudgetCurrency(p.totalImports) + '</span></div>';
+        h += '<div class="partner-stat"><span class="partner-stat-label">EXP</span><span class="partner-stat-value exports">' + formatDualPeriodFromTick(p.totalExports) + '</span></div>';
+        h += '<div class="partner-stat"><span class="partner-stat-label">IMP</span><span class="partner-stat-value imports">' + formatDualPeriodFromTick(p.totalImports) + '</span></div>';
         var balClass = balance >= 0 ? 'surplus' : 'deficit';
         var balSign = balance >= 0 ? '+' : '';
-        h += '<div class="partner-stat"><span class="partner-stat-label">NET</span><span class="partner-stat-value ' + balClass + '">' + balSign + formatBudgetCurrency(balance) + '</span></div>';
+        h += '<div class="partner-stat"><span class="partner-stat-label">NET</span><span class="partner-stat-value ' + balClass + '">' + formatDualPeriodFromTick(balance, balSign) + '</span></div>';
         h += '</div>';
 
         // Volume bar
@@ -2802,7 +2801,7 @@ function renderTariffsTab(nation) {
 
     h += '<div class="econ-cards-row econ-cards-4">';
     h += renderOverviewCard('Tariff Rate', tariffRate.toFixed(0) + '%', 'neutral', null);
-    h += renderOverviewCard('Tariff Revenue', formatBudgetCurrency(cappedTariffRevTariffs), cappedTariffRevTariffs > 0 ? 'surplus' : 'neutral', 'Per Tick');
+    h += renderOverviewCard('Tariff Revenue', formatDualPeriodFromTick(cappedTariffRevTariffs), cappedTariffRevTariffs > 0 ? 'surplus' : 'neutral', null);
     var dampener = (1 - tariffRate / 200) * 100;
     h += renderOverviewCard('Import Dampener', dampener.toFixed(0) + '%', 'neutral', 'of full demand');
     var agreementCount = tradeAgreements ? tradeAgreements.length : 0;
@@ -2936,19 +2935,20 @@ function renderTariffProjections(currentRate, simRate, currentDampener, totalCur
 
     // Projected imports (neutral color — more/fewer imports isn't inherently good or bad)
     var impDeltaStr = importDelta !== 0 ? (importDelta > 0 ? '+' : '') + formatBudgetCurrency(importDelta) : '—';
-    h += renderOverviewCard('Projected Imports', formatBudgetCurrency(projectedTotalImports), 'neutral', isChanged ? impDeltaStr : 'No change');
+    h += renderOverviewCard('Projected Imports', formatDualPeriodFromTick(projectedTotalImports), 'neutral', isChanged ? impDeltaStr : 'No change');
 
     // Projected tariff revenue
     var revColor = revDelta > 0 ? 'surplus' : revDelta < 0 ? 'deficit' : 'neutral';
     var revDeltaStr = revDelta !== 0 ? (revDelta > 0 ? '+' : '') + formatBudgetCurrency(revDelta) : '—';
-    h += renderOverviewCard('Projected Revenue', formatBudgetCurrency(projectedTariffRev), revColor, isChanged ? revDeltaStr : 'No change');
+    h += renderOverviewCard('Projected Revenue', formatDualPeriodFromTick(projectedTariffRev), revColor, isChanged ? revDeltaStr : 'No change');
 
     // Import dampener
     h += renderOverviewCard('Import Dampener', (simDampener * 100).toFixed(0) + '%', 'neutral', 'of full demand');
 
     var netDirection = revDelta > 0 ? 'More revenue' : revDelta < 0 ? 'Less revenue' : 'No change';
     var tradeDirection = importDelta > 0 ? ', more imports' : importDelta < 0 ? ', fewer imports' : '';
-    h += renderOverviewCard('Net Effect', isChanged ? (revDelta >= 0 ? '+' : '') + formatBudgetCurrency(revDelta) + '/tick' : '—', revColor, isChanged ? netDirection + tradeDirection : 'Drag the slider');
+    var netSign = revDelta >= 0 ? '+' : '';
+    h += renderOverviewCard('Net Effect', isChanged ? formatDualPeriodFromTick(revDelta, netSign) : '—', revColor, isChanged ? netDirection + tradeDirection : 'Drag the slider');
 
     h += '</div>';
 
@@ -3135,12 +3135,12 @@ function renderFTAEffectsSection(nation) {
 
     var h = '<div class="econ-section">';
     h += '<div class="econ-section-header">TRADE AGREEMENT EFFECTS</div>';
-    h += '<div class="econ-section-subtitle">Ongoing per-tick effects of your active trade agreements.</div>';
+    h += '<div class="econ-section-subtitle">Ongoing effects of your active trade agreements.</div>';
     h += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">';
 
     // Upsides
     h += '<div style="flex:1;min-width:200px;background:rgba(92,184,92,0.06);border:1px solid rgba(92,184,92,0.2);border-radius:3px;padding:10px;">';
-    h += '<div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:700;color:var(--green);text-transform:uppercase;margin-bottom:6px;">Benefits per tick</div>';
+    h += '<div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:700;color:var(--green);text-transform:uppercase;margin-bottom:6px;">Benefits per month</div>';
     h += '<div style="font-size:0.78rem;color:var(--text-primary);line-height:1.6;">';
     if (ftaCount > 0) h += '↓ Cost of living <span style="color:var(--green);">-' + (0.2 * ftaCount).toFixed(1) + '</span> · ↑ GDP growth <span style="color:var(--green);">+' + (0.15 * ftaCount).toFixed(2) + '</span><br>';
     if (ptaCount > 0) h += '↓ Cost of living <span style="color:var(--green);">-' + (0.05 * ptaCount).toFixed(2) + '</span> · ↑ GDP growth <span style="color:var(--green);">+' + (0.05 * ptaCount).toFixed(2) + '</span> (PTA)<br>';
@@ -3150,7 +3150,7 @@ function renderFTAEffectsSection(nation) {
 
     // Downsides
     h += '<div style="flex:1;min-width:200px;background:rgba(217,83,79,0.06);border:1px solid rgba(217,83,79,0.2);border-radius:3px;padding:10px;">';
-    h += '<div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:700;color:var(--red);text-transform:uppercase;margin-bottom:6px;">Costs per tick</div>';
+    h += '<div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:700;color:var(--red);text-transform:uppercase;margin-bottom:6px;">Costs per month</div>';
     h += '<div style="font-size:0.78rem;color:var(--text-primary);line-height:1.6;">';
     if (ftaCount > 0) h += '↓ Manufacturing <span style="color:var(--red);">-' + (0.15 * ftaCount).toFixed(2) + '</span> · ↓ Union strength <span style="color:var(--red);">-' + (0.15 * ftaCount).toFixed(2) + '</span><br>';
     if (ptaCount > 0) h += '↓ Manufacturing <span style="color:var(--red);">-' + (0.05 * ptaCount).toFixed(2) + '</span> · ↓ Union strength <span style="color:var(--red);">-' + (0.05 * ptaCount).toFixed(2) + '</span> (PTA)<br>';
@@ -3428,6 +3428,34 @@ function formatBudgetCurrency(val) {
     if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(1) + ' Million';
     if (abs >= 1e3)  return sign + '$' + (abs / 1e3).toFixed(1) + 'K';
     return sign + '$' + Math.round(abs).toLocaleString();
+}
+
+/**
+ * Dual-period display: shows annual value (large) with monthly beneath (small).
+ * @param {number} annualValue - The yearly dollar amount.
+ * @param {string} [prefix] - Optional prefix like '+' for positive signed values.
+ */
+function formatDualPeriod(annualValue, prefix) {
+    prefix = prefix || '';
+    var monthly = annualValue / 12;
+    return '<span class="dual-period">' +
+        '<span class="dual-period-yr">' + prefix + formatBudgetCurrency(annualValue) + '<span class="dual-period-label"> /yr</span></span>' +
+        '<span class="dual-period-mo">' + prefix + formatBudgetCurrency(monthly) + '<span class="dual-period-label"> /mo</span></span>' +
+        '</span>';
+}
+
+/**
+ * Dual-period display for per-tick (monthly) values: shows annual (×12) large, monthly small.
+ * @param {number} tickValue - The per-tick (monthly) dollar amount.
+ * @param {string} [prefix] - Optional prefix like '+' for positive signed values.
+ */
+function formatDualPeriodFromTick(tickValue, prefix) {
+    prefix = prefix || '';
+    var annual = tickValue * 12;
+    return '<span class="dual-period">' +
+        '<span class="dual-period-yr">' + prefix + formatBudgetCurrency(annual) + '<span class="dual-period-label"> /yr</span></span>' +
+        '<span class="dual-period-mo">' + prefix + formatBudgetCurrency(tickValue) + '<span class="dual-period-label"> /mo</span></span>' +
+        '</span>';
 }
 
 function formatTradeVolume(val, sectorKey) {
