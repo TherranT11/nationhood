@@ -850,11 +850,11 @@ function renderOverviewTab(nation) {
         var totalImports = Number(tradeData.summary.total_imports) || 0;
         var surplus = Number(tradeData.summary.trade_surplus) || 0;
         h += '<div class="econ-cards-row">';
-        h += renderOverviewCard('Exports', formatDualPeriodFromTick(totalExports), 'surplus', null);
-        h += renderOverviewCard('Imports', formatDualPeriodFromTick(totalImports), 'deficit', null);
+        h += renderOverviewCard('Exports', formatDualPeriod(totalExports), 'surplus', null);
+        h += renderOverviewCard('Imports', formatDualPeriod(totalImports), 'deficit', null);
         var tCls = surplus >= 0 ? 'surplus' : 'deficit';
         var tSign = surplus >= 0 ? '+' : '';
-        h += renderOverviewCard('Balance', formatDualPeriodFromTick(surplus, tSign), tCls, null);
+        h += renderOverviewCard('Balance', formatDualPeriod(surplus, tSign), tCls, null);
         h += '</div>';
     } else {
         h += '<div class="econ-placeholder">Trade data will appear after the next tick.</div>';
@@ -1805,13 +1805,13 @@ function renderTradeTab(nation) {
     h += '<div class="econ-section">';
     h += '<div class="econ-section-header">TRADE OVERVIEW</div>';
     h += '<div class="econ-cards-row econ-cards-4">';
-    h += renderOverviewCard('Total Exports', formatDualPeriodFromTick(totalExports), 'surplus', null);
-    h += renderOverviewCard('Total Imports', formatDualPeriodFromTick(totalImports), 'deficit', null);
+    h += renderOverviewCard('Total Exports', formatDualPeriod(totalExports), 'surplus', null);
+    h += renderOverviewCard('Total Imports', formatDualPeriod(totalImports), 'deficit', null);
     var balCls = surplus >= 0 ? 'surplus' : 'deficit';
     var balSign = surplus >= 0 ? '+' : '';
-    h += renderOverviewCard('Trade Balance', formatDualPeriodFromTick(surplus, balSign), balCls, null);
+    h += renderOverviewCard('Trade Balance', formatDualPeriod(surplus, balSign), balCls, null);
     var cappedTariffRev = getCappedTariffRevenue(nation);
-    h += renderOverviewCard('Tariff Revenue', formatDualPeriodFromTick(cappedTariffRev), cappedTariffRev > 0 ? 'surplus' : 'neutral', null);
+    h += renderOverviewCard('Tariff Revenue', formatDualPeriod(cappedTariffRev), cappedTariffRev > 0 ? 'surplus' : 'neutral', null);
     h += '</div>';
     h += '</div>';
 
@@ -2043,11 +2043,11 @@ function renderTradePartnersSection() {
 
         // Stats row
         h += '<div class="partner-stats">';
-        h += '<div class="partner-stat"><span class="partner-stat-label">EXP</span><span class="partner-stat-value exports">' + formatDualPeriodFromTick(p.totalExports) + '</span></div>';
-        h += '<div class="partner-stat"><span class="partner-stat-label">IMP</span><span class="partner-stat-value imports">' + formatDualPeriodFromTick(p.totalImports) + '</span></div>';
+        h += '<div class="partner-stat"><span class="partner-stat-label">EXP</span><span class="partner-stat-value exports">' + formatDualPeriod(p.totalExports) + '</span></div>';
+        h += '<div class="partner-stat"><span class="partner-stat-label">IMP</span><span class="partner-stat-value imports">' + formatDualPeriod(p.totalImports) + '</span></div>';
         var balClass = balance >= 0 ? 'surplus' : 'deficit';
         var balSign = balance >= 0 ? '+' : '';
-        h += '<div class="partner-stat"><span class="partner-stat-label">NET</span><span class="partner-stat-value ' + balClass + '">' + formatDualPeriodFromTick(balance, balSign) + '</span></div>';
+        h += '<div class="partner-stat"><span class="partner-stat-label">NET</span><span class="partner-stat-value ' + balClass + '">' + formatDualPeriod(balance, balSign) + '</span></div>';
         h += '</div>';
 
         // Volume bar
@@ -2801,7 +2801,7 @@ function renderTariffsTab(nation) {
 
     h += '<div class="econ-cards-row econ-cards-4">';
     h += renderOverviewCard('Tariff Rate', tariffRate.toFixed(0) + '%', 'neutral', null);
-    h += renderOverviewCard('Tariff Revenue', formatDualPeriodFromTick(cappedTariffRevTariffs), cappedTariffRevTariffs > 0 ? 'surplus' : 'neutral', null);
+    h += renderOverviewCard('Tariff Revenue', formatDualPeriod(cappedTariffRevTariffs), cappedTariffRevTariffs > 0 ? 'surplus' : 'neutral', null);
     var dampener = (1 - tariffRate / 200) * 100;
     h += renderOverviewCard('Import Dampener', dampener.toFixed(0) + '%', 'neutral', 'of full demand');
     var agreementCount = tradeAgreements ? tradeAgreements.length : 0;
@@ -2935,12 +2935,12 @@ function renderTariffProjections(currentRate, simRate, currentDampener, totalCur
 
     // Projected imports (neutral color — more/fewer imports isn't inherently good or bad)
     var impDeltaStr = importDelta !== 0 ? (importDelta > 0 ? '+' : '') + formatBudgetCurrency(importDelta) : '—';
-    h += renderOverviewCard('Projected Imports', formatDualPeriodFromTick(projectedTotalImports), 'neutral', isChanged ? impDeltaStr : 'No change');
+    h += renderOverviewCard('Projected Imports', formatDualPeriod(projectedTotalImports), 'neutral', isChanged ? impDeltaStr : 'No change');
 
     // Projected tariff revenue
     var revColor = revDelta > 0 ? 'surplus' : revDelta < 0 ? 'deficit' : 'neutral';
     var revDeltaStr = revDelta !== 0 ? (revDelta > 0 ? '+' : '') + formatBudgetCurrency(revDelta) : '—';
-    h += renderOverviewCard('Projected Revenue', formatDualPeriodFromTick(projectedTariffRev), revColor, isChanged ? revDeltaStr : 'No change');
+    h += renderOverviewCard('Projected Revenue', formatDualPeriod(projectedTariffRev), revColor, isChanged ? revDeltaStr : 'No change');
 
     // Import dampener
     h += renderOverviewCard('Import Dampener', (simDampener * 100).toFixed(0) + '%', 'neutral', 'of full demand');
@@ -2948,7 +2948,7 @@ function renderTariffProjections(currentRate, simRate, currentDampener, totalCur
     var netDirection = revDelta > 0 ? 'More revenue' : revDelta < 0 ? 'Less revenue' : 'No change';
     var tradeDirection = importDelta > 0 ? ', more imports' : importDelta < 0 ? ', fewer imports' : '';
     var netSign = revDelta >= 0 ? '+' : '';
-    h += renderOverviewCard('Net Effect', isChanged ? formatDualPeriodFromTick(revDelta, netSign) : '—', revColor, isChanged ? netDirection + tradeDirection : 'Drag the slider');
+    h += renderOverviewCard('Net Effect', isChanged ? formatDualPeriod(revDelta, netSign) : '—', revColor, isChanged ? netDirection + tradeDirection : 'Drag the slider');
 
     h += '</div>';
 
@@ -3441,20 +3441,6 @@ function formatDualPeriod(annualValue, prefix) {
     return '<span class="dual-period">' +
         '<span class="dual-period-yr">' + prefix + formatBudgetCurrency(annualValue) + '<span class="dual-period-label"> /yr</span></span>' +
         '<span class="dual-period-mo">' + prefix + formatBudgetCurrency(monthly) + '<span class="dual-period-label"> /mo</span></span>' +
-        '</span>';
-}
-
-/**
- * Dual-period display for per-tick (monthly) values: shows annual (×12) large, monthly small.
- * @param {number} tickValue - The per-tick (monthly) dollar amount.
- * @param {string} [prefix] - Optional prefix like '+' for positive signed values.
- */
-function formatDualPeriodFromTick(tickValue, prefix) {
-    prefix = prefix || '';
-    var annual = tickValue * 12;
-    return '<span class="dual-period">' +
-        '<span class="dual-period-yr">' + prefix + formatBudgetCurrency(annual) + '<span class="dual-period-label"> /yr</span></span>' +
-        '<span class="dual-period-mo">' + prefix + formatBudgetCurrency(tickValue) + '<span class="dual-period-label"> /mo</span></span>' +
         '</span>';
 }
 

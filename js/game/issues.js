@@ -3224,6 +3224,26 @@ async function insertHistory(supabase, issueId, tick, eventType, eventText, meta
 
 // ==================== ACTIONS SYSTEM ====================
 
+/** Publish an issue action to both nations' event_log feeds (Nation-Local + World). */
+async function dispatchIssueEvent(supabase, actingNationId, opponentNationId, action, verb, currentTick) {
+    try {
+        const [actRes, oppRes] = await Promise.all([
+            supabase.from('nations').select('name').eq('id', actingNationId).single(),
+            supabase.from('nations').select('name').eq('id', opponentNationId).single(),
+        ]);
+        const actName = actRes.data?.name || 'A nation';
+        const oppName = oppRes.data?.name || 'another nation';
+        const headline = `${actName} ${verb} ${oppName} in bilateral dispute: ${action.name}.`;
+        const row = { event_name: action.name, category: 'Conflict', description_chosen: headline, fired_at_tick: currentTick };
+        await supabase.from('event_log').insert([
+            { ...row, nation_id: actingNationId },
+            { ...row, nation_id: opponentNationId },
+        ]);
+    } catch (err) {
+        console.warn('[Issues] Event log dispatch failed:', err.message);
+    }
+}
+
 /**
  * Execute an issue action. Called from the frontend when a player clicks an action.
  *
@@ -3371,6 +3391,8 @@ export async function executeIssueAction(supabase, params) {
             `${action.name} submitted. Awaiting matching action from other nation.`,
             { action_key: actionKey, acting_nation_id: actingNationId },
             actingNationId);
+
+        await dispatchIssueEvent(supabase, actingNationId, opponentNationId, action, 'proposes diplomatic resolution with', currentTick);
 
         return { success: true, result: { type: 'submitted', actionKey, apCost } };
     }
@@ -3563,6 +3585,11 @@ export async function executeIssueAction(supabase, params) {
             `Tension shifted from ${oldTensionLabel} to ${newTensionLabel}.`,
             { tension_before: issue.tension, tension_after: newTension });
     }
+
+    const verb = action.category === 'diplomatic' ? 'takes diplomatic action against'
+        : action.category === 'threatening' ? 'takes threatening action against'
+        : 'takes unilateral action against';
+    await dispatchIssueEvent(supabase, actingNationId, opponentNationId, action, verb, currentTick);
 
     return {
         success: true,
