@@ -209,7 +209,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
-import { escapeHtml } from './js/utils.js';
+import { escapeHtml, tickToDate } from './js/utils.js';
 import { ACTIONS, MODIFIERS, ISSUE_TYPES, executeIssueAction } from './js/game/issues.js';
 
 let currentFaction = null;
@@ -1046,6 +1046,11 @@ function renderIssueHistory(issue, history) {
         return;
     }
 
+    // Build nation ID → name map from the issue's joined data
+    const nationNames = {};
+    if (issue.nation_a) nationNames[issue.nation_a_id] = issue.nation_a.name;
+    if (issue.nation_b) nationNames[issue.nation_b_id] = issue.nation_b.name;
+
     const dotColors = {
         created: 'var(--text-dim)',
         modifier_added: 'var(--amber)',
@@ -1067,10 +1072,15 @@ function renderIssueHistory(issue, history) {
     let html = '';
     for (const evt of history) {
         const dotColor = dotColors[evt.event_type] || 'var(--text-dim)';
+        const dateStr = tickToDate(evt.tick);
+        const nationName = evt.caused_by_nation_id ? nationNames[evt.caused_by_nation_id] : null;
+        const nationTag = nationName
+            ? `<span class="issue-history-nation">${escapeHtml(nationName)}</span>`
+            : '';
         html += `<div class="issue-history-entry">
-            <span class="issue-history-tick">T${evt.tick}</span>
+            <span class="issue-history-tick">${escapeHtml(dateStr)}</span>
             <div class="issue-history-dot" style="background:${dotColor}"></div>
-            <span class="issue-history-text">${escapeHtml(evt.event_text)}</span>
+            <span class="issue-history-text">${nationTag}${escapeHtml(evt.event_text)}</span>
         </div>`;
     }
     el.innerHTML = html;
