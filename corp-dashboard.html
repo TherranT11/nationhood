@@ -1964,19 +1964,22 @@ async function loadLoansSection() {
     const container = document.getElementById('fin-loans-list');
     if (!container) return;
 
-    const { data: requests } = await _supabase
+    try {
+    const { data: requests, error: reqErr } = await _supabase
         .from('finance_loan_requests')
         .select('*, finance_loan_offers(*)')
         .eq('requesting_faction_id', faction.id)
         .in('status', ['open', 'funded'])
         .order('created_tick', { ascending: false });
+    if (reqErr) console.error('[Loans] Request query error:', reqErr.message);
 
-    const { data: activeLoans } = await _supabase
+    const { data: activeLoans, error: loanErr } = await _supabase
         .from('finance_active_loans')
         .select('*')
         .eq('borrower_faction_id', faction.id)
         .in('status', ['current', 'late', 'delinquent'])
         .order('started_tick', { ascending: false });
+    if (loanErr) console.error('[Loans] Active loans query error:', loanErr.message);
 
     let html = '';
 
@@ -2039,6 +2042,9 @@ async function loadLoansSection() {
 
     if (!html) html = '<div style="color:var(--text-dim);">No active loans.</div>';
     container.innerHTML = html;
+    } catch (e) {
+        console.error('[Loans] loadLoansSection error:', e);
+    }
 }
 
 window.acceptOffer = acceptOffer;
