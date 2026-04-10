@@ -940,6 +940,41 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
       <div class="fin-card__scroll" id="fin-body"></div>
     </div>
 
+    <!-- Loan Request Modal -->
+    <div id="lr-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;" onclick="if(event.target===this)lrClose()">
+      <div style="width:380px;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="padding:10px 14px;border-bottom:1px solid #2a2a24;background:#1c1c18;display:flex;justify-content:space-between;align-items:center;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:8px;color:#5a8aaa;">&#9679;</span>
+            <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:2px;color:#9e9a92;text-transform:uppercase;">Request Loan</span>
+          </div>
+          <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;cursor:pointer;" onclick="lrClose()">&#10005;</span>
+        </div>
+        <div style="padding:14px;">
+          <div style="margin-bottom:12px;">
+            <label style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:0.5px;display:block;margin-bottom:4px;">AMOUNT ($)</label>
+            <input id="lr-amount" type="number" min="100000" max="100000000" step="100000" value="5000000" style="width:100%;padding:6px 8px;background:#121210;border:1px solid #2a2a24;color:#e8e4dc;font-family:var(--font-mono);font-size:12px;" />
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:0.5px;display:block;margin-bottom:4px;">TERM (MONTHS): <span id="lr-term-display" style="color:#e8e4dc;">24</span></label>
+            <input id="lr-term" type="range" min="1" max="120" value="24" style="width:100%;accent-color:#5a8aaa;" oninput="document.getElementById('lr-term-display').textContent=this.value" />
+            <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:7px;color:#6a6660;">
+              <span>1mo</span><span>120mo</span>
+            </div>
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:0.5px;display:block;margin-bottom:4px;">PURPOSE</label>
+            <textarea id="lr-purpose" rows="3" maxlength="200" placeholder="Why do you need this loan?" style="width:100%;padding:6px 8px;background:#121210;border:1px solid #2a2a24;color:#e8e4dc;font-family:var(--font-sans);font-size:10px;resize:none;"></textarea>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <div style="flex:1;padding:6px;text-align:center;cursor:pointer;font-family:var(--font-mono);font-size:9px;font-weight:700;color:#6a6660;border:1px solid #2a2a24;" onclick="lrClose()">CANCEL</div>
+            <div id="lr-submit-btn" style="flex:1;padding:6px;text-align:center;cursor:pointer;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:#5a8aaa;border:1px solid #5a8aaa;" onclick="lrSubmit()">SUBMIT REQUEST</div>
+          </div>
+          <div id="lr-error" style="margin-top:6px;font-family:var(--font-mono);font-size:8px;color:#c55;display:none;"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Stats card -->
     <div class="stats-card">
       <div class="fin-card__header">
@@ -1543,6 +1578,14 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
                 <div class="fin-cash-debt__value" style="color:var(--amber)">${fmtMoney(debt)}</div>
             </div>
         </div>
+        <!-- Loans Section -->
+        <div style="padding:8px 14px;border-top:1px solid var(--border-0);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-dim);text-transform:uppercase;">Loans</span>
+                <div style="padding:3px 10px;cursor:pointer;font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.5px;color:#000;background:#5a8aaa;border:1px solid #5a8aaa;" onclick="lrOpen()">REQUEST LOAN</div>
+            </div>
+            <div id="fin-loans-list" style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">No active loans.</div>
+        </div>
         <!-- Market Revenue Drivers -->
         <div style="padding:8px 14px;">
             <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px;">Market Revenue Drivers</div>
@@ -1561,7 +1604,228 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
             </div>
         </div>
     `;
+
+    // Load and render active loans + pending requests
+    loadLoansSection();
 }
+
+// ==================== LOAN REQUEST ====================
+
+function lrOpen() {
+    const overlay = document.getElementById('lr-overlay');
+    overlay.style.display = 'flex';
+    document.getElementById('lr-error').style.display = 'none';
+}
+
+function lrClose() {
+    document.getElementById('lr-overlay').style.display = 'none';
+}
+
+async function lrSubmit() {
+    if (!faction || !shard) return;
+    const amount = parseInt(document.getElementById('lr-amount').value);
+    const termMonths = parseInt(document.getElementById('lr-term').value);
+    const purpose = (document.getElementById('lr-purpose').value || '').trim();
+    const errEl = document.getElementById('lr-error');
+
+    if (!amount || amount < 100000) { errEl.textContent = 'Minimum loan amount is $100,000.'; errEl.style.display = 'block'; return; }
+    if (amount > 100000000) { errEl.textContent = 'Maximum loan amount is $100,000,000.'; errEl.style.display = 'block'; return; }
+    if (!termMonths || termMonths < 1 || termMonths > 120) { errEl.textContent = 'Term must be 1-120 months.'; errEl.style.display = 'block'; return; }
+    if (!purpose || purpose.length < 5) { errEl.textContent = 'Please describe why you need this loan.'; errEl.style.display = 'block'; return; }
+
+    const btn = document.getElementById('lr-submit-btn');
+    btn.style.opacity = '0.5';
+    btn.style.pointerEvents = 'none';
+
+    const currentTick = shard.current_tick || 0;
+    const { error } = await _supabase.from('finance_loan_requests').insert({
+        requesting_faction_id: faction.id,
+        nation_id: faction.nation_id,
+        amount,
+        term_months: termMonths,
+        purpose,
+        created_tick: currentTick,
+        expires_tick: currentTick + 5,
+    });
+
+    btn.style.opacity = '1';
+    btn.style.pointerEvents = 'auto';
+
+    if (error) {
+        errEl.textContent = 'Failed to submit: ' + error.message;
+        errEl.style.display = 'block';
+        return;
+    }
+
+    lrClose();
+    loadLoansSection();
+}
+
+async function acceptOffer(offerId, requestId) {
+    if (!faction) return;
+
+    // 1. Mark offer as accepted, others as declined
+    const { data: offer, error: offerErr } = await _supabase
+        .from('finance_loan_offers').select('*').eq('id', offerId).single();
+    if (offerErr || !offer) return;
+
+    const { data: request, error: reqErr } = await _supabase
+        .from('finance_loan_requests').select('*').eq('id', requestId).single();
+    if (reqErr || !request) return;
+
+    // Calculate monthly payment (fixed amortization)
+    const r = (offer.interest_rate / 100) / 12;
+    const n = request.term_months;
+    const monthlyPayment = r > 0
+        ? Math.round((request.amount * r) / (1 - Math.pow(1 + r, -n)))
+        : Math.round(request.amount / n);
+
+    const currentTick = shard?.current_tick || 0;
+
+    // 2. Update request status
+    await _supabase.from('finance_loan_requests').update({
+        status: 'funded',
+        accepted_offer_id: offerId,
+        funded_tick: currentTick,
+    }).eq('id', requestId);
+
+    // 3. Accept this offer, decline all others
+    await _supabase.from('finance_loan_offers').update({ status: 'accepted' }).eq('id', offerId);
+    await _supabase.from('finance_loan_offers').update({ status: 'declined' })
+        .eq('request_id', requestId).neq('id', offerId).eq('status', 'pending');
+
+    // 4. Create active loan
+    await _supabase.from('finance_active_loans').insert({
+        request_id: requestId,
+        offer_id: offerId,
+        borrower_faction_id: request.requesting_faction_id,
+        lender_faction_id: offer.offering_faction_id,
+        nation_id: request.nation_id,
+        principal: request.amount,
+        interest_rate: offer.interest_rate,
+        term_months: request.term_months,
+        collateral_type: offer.collateral_type,
+        purpose: request.purpose,
+        monthly_payment: monthlyPayment,
+        started_tick: currentTick,
+    });
+
+    // 5. Transfer cash: lender → borrower
+    // Deduct from lender
+    const { data: lender } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', offer.offering_faction_id).single();
+    if (lender) {
+        await _supabase.from('factions').update({
+            corp_cash_reserves: Math.max(0, (Number(lender.corp_cash_reserves) || 0) - request.amount)
+        }).eq('id', offer.offering_faction_id);
+    }
+
+    // Credit to borrower
+    const { data: borrower } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', request.requesting_faction_id).single();
+    if (borrower) {
+        await _supabase.from('factions').update({
+            corp_cash_reserves: (Number(borrower.corp_cash_reserves) || 0) + request.amount
+        }).eq('id', request.requesting_faction_id);
+    }
+
+    loadLoansSection();
+}
+
+async function cancelRequest(requestId) {
+    await _supabase.from('finance_loan_requests').update({ status: 'cancelled' }).eq('id', requestId);
+    loadLoansSection();
+}
+
+async function loadLoansSection() {
+    if (!faction) return;
+    const container = document.getElementById('fin-loans-list');
+    if (!container) return;
+
+    // Fetch open/funded requests for this faction
+    const { data: requests } = await _supabase
+        .from('finance_loan_requests')
+        .select('*, finance_loan_offers(*)')
+        .eq('requesting_faction_id', faction.id)
+        .in('status', ['open', 'funded'])
+        .order('created_tick', { ascending: false });
+
+    // Fetch active loans where this faction is borrower
+    const { data: activeLoans } = await _supabase
+        .from('finance_active_loans')
+        .select('*')
+        .eq('borrower_faction_id', faction.id)
+        .in('status', ['current', 'late', 'delinquent'])
+        .order('started_tick', { ascending: false });
+
+    let html = '';
+
+    // Open requests with offers
+    if (requests && requests.length > 0) {
+        for (const req of requests) {
+            if (req.status === 'open') {
+                const offers = (req.finance_loan_offers || []).filter(o => o.status === 'pending');
+                html += `<div style="padding:6px 0;border-bottom:1px solid var(--border-hair);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <span style="color:#5a8aaa;font-weight:700;">OPEN</span>
+                            <span style="color:var(--text-primary);margin-left:4px;">${fmtMoney(req.amount)}</span>
+                            <span style="color:var(--text-dim);margin-left:4px;">${req.term_months}mo</span>
+                        </div>
+                        <span style="color:var(--text-dim);cursor:pointer;" onclick="cancelRequest('${req.id}')">&#10005;</span>
+                    </div>
+                    <div style="font-size:7px;color:var(--text-dim);margin-top:2px;">${escapeHtml(req.purpose || '')}</div>`;
+
+                if (offers.length > 0) {
+                    html += `<div style="margin-top:4px;font-size:7px;color:#5a8aaa;font-weight:700;">${offers.length} OFFER${offers.length > 1 ? 'S' : ''}</div>`;
+                    for (const o of offers.sort((a, b) => a.interest_rate - b.interest_rate)) {
+                        html += `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-top:1px solid var(--border-hair);">
+                            <span style="color:var(--text-primary);font-weight:700;">${o.interest_rate}%</span>
+                            <span style="color:var(--text-dim);">${o.collateral_type}</span>
+                            <span style="flex:1;"></span>
+                            <span style="padding:2px 8px;cursor:pointer;color:#000;background:#5a8aaa;font-weight:700;font-size:7px;" onclick="acceptOffer('${o.id}','${req.id}')">ACCEPT</span>
+                        </div>`;
+                    }
+                } else {
+                    html += '<div style="margin-top:2px;font-size:7px;color:var(--text-dim);">Awaiting offers from finance corporations...</div>';
+                }
+                html += '</div>';
+            }
+        }
+    }
+
+    // Active loans
+    if (activeLoans && activeLoans.length > 0) {
+        for (const loan of activeLoans) {
+            const statusColor = loan.status === 'current' ? 'var(--green)' : loan.status === 'late' ? '#c84' : '#c55';
+            const pctPaid = loan.term_months > 0 ? Math.round((loan.payments_made / loan.term_months) * 100) : 0;
+            html += `<div style="padding:6px 0;border-bottom:1px solid var(--border-hair);">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <span style="color:${statusColor};font-weight:700;">${loan.status.toUpperCase()}</span>
+                        <span style="color:var(--text-primary);margin-left:4px;">${fmtMoney(loan.principal)}</span>
+                        <span style="color:var(--text-dim);margin-left:4px;">@ ${loan.interest_rate}%</span>
+                    </div>
+                    <span style="color:var(--text-dim);">${pctPaid}% repaid</span>
+                </div>
+                <div style="height:2px;background:var(--border-0);margin-top:3px;">
+                    <div style="height:100%;width:${pctPaid}%;background:${statusColor};"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:7px;color:var(--text-dim);">
+                    <span>Payment: ${fmtMoney(loan.monthly_payment)}/mo</span>
+                    <span>${loan.payments_made}/${loan.term_months} payments</span>
+                </div>
+            </div>`;
+        }
+    }
+
+    if (!html) html = '<div style="color:var(--text-dim);">No active loans.</div>';
+    container.innerHTML = html;
+}
+
+window.lrOpen = lrOpen;
+window.lrClose = lrClose;
+window.lrSubmit = lrSubmit;
+window.acceptOffer = acceptOffer;
+window.cancelRequest = cancelRequest;
 
 function renderStats(nationName, faction) {
     const nation = (nationName || '').toUpperCase();

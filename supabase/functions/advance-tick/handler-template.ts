@@ -142,6 +142,133 @@ async function processSurplusConnectors(supabase: any, nation: any) {
     }
 }
 
+// ==================== FINANCE LOAN PROCESSING ====================
+// Each tick: expire unfunded requests, process loan repayments, handle defaults.
+
+async function processFinanceLoans(supabase, nationId, currentTick) {
+    const results = { expired: 0, payments: 0, defaults: 0 };
+
+    // 1. Expire unfunded loan requests past their deadline
+    const { data: expiredReqs } = await supabase
+        .from('finance_loan_requests')
+        .update({ status: 'expired' })
+        .eq('nation_id', nationId)
+        .eq('status', 'open')
+        .lte('expires_tick', currentTick)
+        .select('id');
+    results.expired = expiredReqs?.length || 0;
+
+    // Decline all pending offers on expired requests
+    if (results.expired > 0) {
+        const expiredIds = expiredReqs.map(r => r.id);
+        await supabase
+            .from('finance_loan_offers')
+            .update({ status: 'declined' })
+            .in('request_id', expiredIds)
+            .eq('status', 'pending');
+    }
+
+    // 2. Process active loan payments (1 tick = 1 month)
+    const { data: activeLoans } = await supabase
+        .from('finance_active_loans')
+        .select('*')
+        .eq('nation_id', nationId)
+        .in('status', ['current', 'late', 'delinquent']);
+
+    if (!activeLoans || activeLoans.length === 0) return results;
+
+    for (const loan of activeLoans) {
+        // Check if borrower can pay
+        const { data: borrower } = await supabase
+            .from('factions')
+            .select('corp_cash_reserves')
+            .eq('id', loan.borrower_faction_id)
+            .single();
+
+        const borrowerCash = Number(borrower?.corp_cash_reserves) || 0;
+        const payment = loan.monthly_payment;
+
+        // Calculate interest portion of this payment
+        const monthlyRate = (loan.interest_rate / 100) / 12;
+        const remainingPrincipal = loan.principal - loan.total_paid;
+        const interestPortion = Math.round(remainingPrincipal * monthlyRate);
+
+        if (borrowerCash >= payment) {
+            // Successful payment
+            const newTotalPaid = loan.total_paid + payment;
+            const newInterestPaid = loan.total_interest_paid + interestPortion;
+            const newPaymentsMade = loan.payments_made + 1;
+            const isRepaid = newPaymentsMade >= loan.term_months;
+
+            // Deduct from borrower
+            await supabase.from('factions').update({
+                corp_cash_reserves: borrowerCash - payment
+            }).eq('id', loan.borrower_faction_id);
+
+            // Credit to lender
+            const { data: lender } = await supabase
+                .from('factions')
+                .select('corp_cash_reserves')
+                .eq('id', loan.lender_faction_id)
+                .single();
+            await supabase.from('factions').update({
+                corp_cash_reserves: (Number(lender?.corp_cash_reserves) || 0) + payment
+            }).eq('id', loan.lender_faction_id);
+
+            // Update loan record
+            await supabase.from('finance_active_loans').update({
+                total_paid: newTotalPaid,
+                total_interest_paid: newInterestPaid,
+                payments_made: newPaymentsMade,
+                payments_missed: 0, // Reset missed streak on successful payment
+                last_payment_tick: currentTick,
+                status: isRepaid ? 'repaid' : 'current',
+                completed_tick: isRepaid ? currentTick : null,
+            }).eq('id', loan.id);
+
+            results.payments++;
+        } else {
+            // Missed payment
+            const newMissed = loan.payments_missed + 1;
+            let newStatus = loan.status;
+
+            if (newMissed >= 4) {
+                newStatus = 'defaulted';
+                results.defaults++;
+
+                // On default with collateral, recover partial amount
+                let recovery = 0;
+                if (loan.collateral_type === 'equipment') recovery = 0.6;
+                else if (loan.collateral_type === 'property') recovery = 0.75;
+
+                if (recovery > 0) {
+                    const recoveredAmount = Math.round(remainingPrincipal * recovery);
+                    const { data: lender } = await supabase
+                        .from('factions')
+                        .select('corp_cash_reserves')
+                        .eq('id', loan.lender_faction_id)
+                        .single();
+                    await supabase.from('factions').update({
+                        corp_cash_reserves: (Number(lender?.corp_cash_reserves) || 0) + recoveredAmount
+                    }).eq('id', loan.lender_faction_id);
+                }
+            } else if (newMissed >= 3) {
+                newStatus = 'delinquent';
+            } else if (newMissed >= 1) {
+                newStatus = 'late';
+            }
+
+            await supabase.from('finance_active_loans').update({
+                payments_missed: newMissed,
+                status: newStatus,
+                completed_tick: newStatus === 'defaulted' ? currentTick : null,
+            }).eq('id', loan.id);
+        }
+    }
+
+    return results;
+}
+
 // ==================== TARIFF → RELATIONS PENALTY ====================
 // Nations with tariffs > 25% lose -0.5 relations/tick with ALL other nations (floor 10)
 
@@ -2063,6 +2190,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (seatErr) {
             console.error(`[advanceTick] Seat rebalancing failed for ${nation.name} (non-fatal):`, seatErr);
+        }
+
+        // Finance loan processing: expire requests, process repayments, handle defaults.
+        try {
+            const loanResults = await processFinanceLoans(supabase, nation.id, newTick);
+            if (loanResults && (loanResults.expired > 0 || loanResults.payments > 0 || loanResults.defaults > 0)) {
+                summary.financeLoans = summary.financeLoans || [];
+                summary.financeLoans.push({ nation: nation.name, ...loanResults });
+            }
+        } catch (loanErr) {
+            console.error(`[advanceTick] Finance loan processing failed for ${nation.name} (non-fatal):`, loanErr);
         }
 
         // Crises (persistent negative events that apply effects every tick)
