@@ -669,10 +669,13 @@ export async function processCaucusDefections(supabase, nationId, currentTick) {
 
         // Reduce caucus seat_share proportionally
         const newSeatShare = Math.max(0, caucus.seat_share - (seatsToLose / (nation?.total_seats || 100)));
-        await supabase
+        const { error: shareErr } = await supabase
             .from('caucus_factions')
             .update({ seat_share: Math.round(newSeatShare * 1000) / 1000 })
             .eq('id', caucus.id);
+        if (shareErr) {
+            console.error(`[Caucus Defection] Failed to update seat_share for ${caucus.name}:`, shareErr.message);
+        }
 
         // Get wing label for event
         const axisInfo = IDEOLOGY_AXES.find(a => a.key === axisKey);
