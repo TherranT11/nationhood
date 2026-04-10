@@ -374,7 +374,7 @@ async function loadDealFlow() {
     // Load all open loan requests across the shard (finance corps can lend worldwide)
     const { data: requests } = await _supabase
         .from('finance_loan_requests')
-        .select('*, requesting_faction:factions!requesting_faction_id(id, faction_name, abbreviation, corp_ticker, corp_subsector, corp_reputation, corp_credit_rating, nation_id)')
+        .select('*, requesting_faction:factions!requesting_faction_id(id, faction_name, abbreviation, corp_ticker, corp_subsector, nation_id)')
         .eq('status', 'open')
         .order('created_tick', { ascending: false });
 
@@ -395,11 +395,9 @@ async function loadDealFlow() {
         amount: req.amount,
         term: req.term_months,
         purpose: req.purpose || '',
-        reputation: req.requesting_faction?.corp_reputation ?? 50,
-        creditRating: req.requesting_faction?.corp_credit_rating ?? 50,
-        risk: (req.requesting_faction?.corp_credit_rating ?? 50) >= 60 ? 'LOW'
-            : (req.requesting_faction?.corp_credit_rating ?? 50) >= 40 ? 'MODERATE'
-            : (req.requesting_faction?.corp_credit_rating ?? 50) >= 25 ? 'ELEVATED' : 'HIGH',
+        reputation: 50,
+        creditRating: 50,
+        risk: 'MODERATE',
         isNew: !offeredSet.has(req.id),
         ticksLeft: (req.expires_tick || 0) - (shard?.current_tick || 0),
         requestId: req.id,
