@@ -21648,9 +21648,22 @@ async function rebalanceVacantSeats(supabase, nation) {
 
     if (vacantSeats <= 0) return null; // No vacant seats
 
+    // If no election has ever been held, don't distribute seats — they should
+    // remain at 0 until the first election actually runs.
+    if (currentSum === 0) {
+        const { count: electionCount } = await supabase
+            .from('elections')
+            .select('id', { count: 'exact', head: true })
+            .eq('nation_id', nation.id)
+            .eq('status', 'completed');
+        if (!electionCount || electionCount === 0) {
+            return null;
+        }
+    }
+
     console.log(`[rebalanceVacantSeats] ${nation.name}: ${vacantSeats} vacant seat(s) detected (${currentSum}/${totalSeats}). Redistributing.`);
 
-    // All factions at 0 seats — distribute evenly
+    // All factions at 0 seats — distribute evenly (only reachable after an election has occurred)
     if (currentSum === 0) {
         const perParty = Math.floor(totalSeats / factions.length);
         let remainder = totalSeats - perParty * factions.length;
