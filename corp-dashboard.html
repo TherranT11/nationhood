@@ -1624,12 +1624,13 @@ function lrSetCollateral(id) { lrCollateral = id; renderLoanModal(); }
 
 async function lrLoadFinanceCorps() {
     if (!faction) return;
+    // All Finance corps worldwide can lend — not restricted to same nation
     const { data } = await _supabase.from('factions')
         .select('id, faction_name, abbreviation, corp_ticker, corp_company_type')
-        .eq('nation_id', faction.nation_id)
         .eq('faction_type', 'corporation')
         .eq('corp_sector', 'Finance')
-        .is('abandoned_at', null);
+        .is('abandoned_at', null)
+        .neq('id', faction.id);
     lrFinanceCorps = data || [];
     renderLoanModal();
 }
