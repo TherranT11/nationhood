@@ -267,7 +267,8 @@ async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
     const ticksToElection = upcomingElection.election_tick - currentTick;
     console.log(`Campaign bonuses for incumbent ${president.first_name} ${president.last_name} in ${nation.name} (${ticksToElection} ticks to election)`);
 
-    await adjustFactionMomentum(supabase, president.faction_id, nation.id, 1, { source: 'campaign:incumbent', tick: currentTick });
+    // Incumbent bias removed — incumbents already benefit from executive powers.
+    // Previously: await adjustFactionMomentum(supabase, president.faction_id, nation.id, 1, { source: 'campaign:incumbent', tick: currentTick });
 
     const { data: nationStats } = await supabase
         .from('nations')

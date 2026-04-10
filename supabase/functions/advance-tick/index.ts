@@ -6536,11 +6536,10 @@ async function applyNoVotePenalty(supabase, bill, nationId, currentTick = 0) {
     // 4. Apply penalties to each non-voter
     const penalized = [];
     for (const faction of nonVoters) {
-        // -1d3 momentum for not voting
-        const momLoss = -(1 + Math.floor(Math.random() * 3));
+        // Flat -2 momentum for not voting
         await supabase.rpc('adjust_momentum', {
-            p_faction_id: faction.id, p_delta: momLoss,
-            p_label: `Absent from vote (${momLoss})`, p_tick: currentTick || 0
+            p_faction_id: faction.id, p_delta: -2,
+            p_label: 'Absent from vote (-2)', p_tick: currentTick || 0
         });
 
         // Visibility and credibility writes removed — 3-pillar election system.
@@ -8530,14 +8529,14 @@ async function resolveExpiredVotes(supabase, nationId) {
                     let label = '';
 
                     if (stance === 'yes' && billPassed) {
-                        delta = 2 * articleCount;
-                        label = `Bill passed: ${(bill.bill_name || '').slice(0, 25)}… (+${delta})`;
+                        delta = 1;
+                        label = `Bill passed: ${(bill.bill_name || '').slice(0, 25)}… (+1)`;
                     } else if (stance === 'yes' && !billPassed) {
                         delta = -1;
-                        label = `Bill failed: ${(bill.bill_name || '').slice(0, 25)}… (${delta})`;
+                        label = `Bill failed: ${(bill.bill_name || '').slice(0, 25)}… (-1)`;
                     } else if (stance === 'no' && !billPassed) {
-                        delta = 2 * articleCount;
-                        label = `Bill failed: ${(bill.bill_name || '').slice(0, 25)}… (+${delta})`;
+                        delta = 1;
+                        label = `Bill failed: ${(bill.bill_name || '').slice(0, 25)}… (+1)`;
                     } else if (stance === 'no' && billPassed) {
                         delta = -1;
                         label = `Bill passed: ${(bill.bill_name || '').slice(0, 25)}… (${delta})`;
@@ -11349,6 +11348,16 @@ async function createAdministration(supabase, nationId, nation, coalition, allPa
             });
         } catch (e) { /* non-blocking */ }
 
+        // Coalition formation reward: formateur party gets +3 momentum
+        try {
+            await supabase.rpc('adjust_momentum', {
+                p_faction_id: leadPartyId,
+                p_delta: 3,
+                p_label: 'Coalition formed (+3)',
+                p_tick: currentTick
+            });
+        } catch (e) { /* non-blocking */ }
+
         console.log(`Administration created: "${adminName}" at tick ${currentTick}`);
     } catch (err) {
         console.error('createAdministration error:', err);
@@ -11731,7 +11740,7 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
                 .eq('nation_id', nationId).eq('active', true);
 
             // Calling party gets approval boost
-            await supabase.rpc('adjust_momentum', { p_faction_id: callingPartyId, p_delta: 2, p_label: 'No confidence called (+2)', p_tick: currentTick });
+            await supabase.rpc('adjust_momentum', { p_faction_id: callingPartyId, p_delta: 4, p_label: 'No confidence called (+4)', p_tick: currentTick });
 
             // PM's party takes hit
             if (pmFactionId) {
@@ -11783,7 +11792,7 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
             await dissolveCoalition(supabase, nationId);
 
             // Calling party gets approval boost
-            await supabase.rpc('adjust_momentum', { p_faction_id: callingPartyId, p_delta: 2, p_label: 'No confidence called (+2)', p_tick: currentTick });
+            await supabase.rpc('adjust_momentum', { p_faction_id: callingPartyId, p_delta: 4, p_label: 'No confidence called (+4)', p_tick: currentTick });
 
             // All coalition parties take approval & credibility hit
             for (const partyId of coalitionPartyIds) {
@@ -12998,6 +13007,13 @@ async function processElections(supabase, nation, currentTick) {
         const completedElection = { id: election.id, results: data };
 
         if (completedElection?.results?.seats) {
+            // Snapshot old seats before syncing new ones (for momentum seed)
+            const { data: oldSeatData } = await supabase.from('factions')
+                .select('id, seats').eq('nation_id', nation.id)
+                .eq('faction_type', 'party').is('abandoned_at', null);
+            const oldSeats: Record<string, number> = {};
+            if (oldSeatData) for (const f of oldSeatData) oldSeats[f.id] = f.seats || 0;
+
             for (const r of completedElection.results.seats) {
                 await supabase
                     .from('factions')
@@ -13005,6 +13021,19 @@ async function processElections(supabase, nation, currentTick) {
                     .eq('id', r.party_id);
             }
             console.log(`Seats synced to factions for ${nation.name}`);
+
+            // Post-election momentum seed: +1 per 5 seats gained (min 1 if any gained)
+            for (const r of completedElection.results.seats) {
+                const gained = (r.seats || 0) - (oldSeats[r.party_id] || 0);
+                if (gained > 0) {
+                    const momDelta = Math.max(1, Math.floor(gained / 5));
+                    await supabase.rpc('adjust_momentum', {
+                        p_faction_id: r.party_id, p_delta: momDelta,
+                        p_label: `Election: gained ${gained} seat${gained !== 1 ? 's' : ''} (+${momDelta})`,
+                        p_tick: currentTick
+                    });
+                }
+            }
 
             // Fire election result timeline event with seat breakdown
             try {
@@ -23268,8 +23297,8 @@ async function processCrises(supabase, nation, currentTick) {
                     for (const pid of govFormation.party_ids) {
                         await supabase.rpc('adjust_momentum', {
                             p_faction_id: pid,
-                            p_delta: 8,
-                            p_label: `Crisis resolved: ${template.name} (+8)`,
+                            p_delta: 3,
+                            p_label: `Crisis resolved: ${template.name} (+3)`,
                             p_tick: currentTick
                         });
                     }
@@ -28026,8 +28055,8 @@ async function processIssueTick(supabase, nationList, currentTick) {
                         [{ stat_key: 'gov_approval', delta: -7 }]);
                 }
 
-                // Momentum: +6 for favored government parties, -10 for disfavored
-                for (const [nId, delta] of [[favoredNationId, 6], [disfavoredNationId, -10]]) {
+                // Momentum: +4 for favored government parties, -6 for disfavored
+                for (const [nId, delta] of [[favoredNationId, 4], [disfavoredNationId, -6]]) {
                     const { data: govMinistries } = await supabase
                         .from('ministries')
                         .select('party_id')
@@ -28052,10 +28081,10 @@ async function processIssueTick(supabase, nationList, currentTick) {
                 const favoredName = favoredNation?.name || 'Unknown';
                 const disfavoredName = disfavoredNation?.name || 'Unknown';
                 await insertHistory(supabase, issue.id, currentTick, 'escalation_favor',
-                    `Escalation Favor: ${favoredName} benefits (+7 Gov Approval, +6 Momentum). ${disfavoredName} penalized (-7 Gov Approval, -10 Momentum).`,
+                    `Escalation Favor: ${favoredName} benefits (+7 Gov Approval, +4 Momentum). ${disfavoredName} penalized (-7 Gov Approval, -6 Momentum).`,
                     { favored_nation_id: favoredNationId, disfavored_nation_id: disfavoredNationId,
                       favor: currentFavor, gov_approval_favored: 7, gov_approval_disfavored: -7,
-                      momentum_favored: 6, momentum_disfavored: -10 });
+                      momentum_favored: 4, momentum_disfavored: -6 });
             }
         }
 
@@ -31283,7 +31312,8 @@ async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
     const ticksToElection = upcomingElection.election_tick - currentTick;
     console.log(`Campaign bonuses for incumbent ${president.first_name} ${president.last_name} in ${nation.name} (${ticksToElection} ticks to election)`);
 
-    await adjustFactionMomentum(supabase, president.faction_id, nation.id, 1, { source: 'campaign:incumbent', tick: currentTick });
+    // Incumbent bias removed — incumbents already benefit from executive powers.
+    // Previously: await adjustFactionMomentum(supabase, president.faction_id, nation.id, 1, { source: 'campaign:incumbent', tick: currentTick });
 
     const { data: nationStats } = await supabase
         .from('nations')

@@ -2387,8 +2387,8 @@ export async function processIssueTick(supabase, nationList, currentTick) {
                         [{ stat_key: 'gov_approval', delta: -7 }]);
                 }
 
-                // Momentum: +6 for favored government parties, -10 for disfavored
-                for (const [nId, delta] of [[favoredNationId, 6], [disfavoredNationId, -10]]) {
+                // Momentum: +4 for favored government parties, -6 for disfavored
+                for (const [nId, delta] of [[favoredNationId, 4], [disfavoredNationId, -6]]) {
                     const { data: govMinistries } = await supabase
                         .from('ministries')
                         .select('party_id')
@@ -2413,10 +2413,10 @@ export async function processIssueTick(supabase, nationList, currentTick) {
                 const favoredName = favoredNation?.name || 'Unknown';
                 const disfavoredName = disfavoredNation?.name || 'Unknown';
                 await insertHistory(supabase, issue.id, currentTick, 'escalation_favor',
-                    `Escalation Favor: ${favoredName} benefits (+7 Gov Approval, +6 Momentum). ${disfavoredName} penalized (-7 Gov Approval, -10 Momentum).`,
+                    `Escalation Favor: ${favoredName} benefits (+7 Gov Approval, +4 Momentum). ${disfavoredName} penalized (-7 Gov Approval, -6 Momentum).`,
                     { favored_nation_id: favoredNationId, disfavored_nation_id: disfavoredNationId,
                       favor: currentFavor, gov_approval_favored: 7, gov_approval_disfavored: -7,
-                      momentum_favored: 6, momentum_disfavored: -10 });
+                      momentum_favored: 4, momentum_disfavored: -6 });
             }
         }
 
