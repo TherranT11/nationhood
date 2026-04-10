@@ -941,7 +941,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
     </div>
 
     <!-- Loan Request Modal -->
-    <div id="lr-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;" onclick="if(event.target===this)lrClose()">
+    <div id="lr-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;">
       <div style="width:380px;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
         <div style="padding:10px 14px;border-bottom:1px solid #2a2a24;background:#1c1c18;display:flex;justify-content:space-between;align-items:center;">
           <div style="display:flex;align-items:center;gap:6px;">
@@ -952,8 +952,11 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
         </div>
         <div style="padding:14px;">
           <div style="margin-bottom:12px;">
-            <label style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:0.5px;display:block;margin-bottom:4px;">AMOUNT ($)</label>
-            <input id="lr-amount" type="number" min="100000" max="100000000" step="100000" value="5000000" style="width:100%;padding:6px 8px;background:#121210;border:1px solid #2a2a24;color:#e8e4dc;font-family:var(--font-mono);font-size:12px;" />
+            <label style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:0.5px;display:block;margin-bottom:4px;">AMOUNT (MILLIONS $)</label>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input id="lr-amount" type="number" min="0.1" max="100" step="0.1" value="5" style="flex:1;padding:6px 8px;background:#121210;border:1px solid #2a2a24;color:#e8e4dc;font-family:var(--font-mono);font-size:12px;" />
+              <span style="font-family:var(--font-mono);font-size:11px;color:#6a6660;white-space:nowrap;">M</span>
+            </div>
           </div>
           <div style="margin-bottom:12px;">
             <label style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:0.5px;display:block;margin-bottom:4px;">TERM (MONTHS): <span id="lr-term-display" style="color:#e8e4dc;">24</span></label>
@@ -1088,6 +1091,8 @@ import { initMessaging } from './js/messaging.js';
 import { calculateTotalMaintenance } from './js/game/equipment.js';
 
 let allUserFactions = [];
+let faction = null;
+let shard = null;
 
 // Shared utility: format currency values
 function fmtMoney(n) {
@@ -1115,7 +1120,7 @@ async function init() {
 
     // Pick active faction — prefer sessionStorage, then first corp, then first
     const activeFactionId = sessionStorage.getItem('active_faction_id');
-    let faction = allUserFactions.find(f => f.id === activeFactionId)
+    faction = allUserFactions.find(f => f.id === activeFactionId)
         || allUserFactions.find(f => f.faction_type === 'corporation')
         || allUserFactions[0];
 
@@ -1155,7 +1160,7 @@ async function init() {
     if (nationRes.error) console.warn('Nation load failed:', nationRes.error.message);
     if (nationRes.data) { nationName = nationRes.data.name; nationStats = nationRes.data; }
     if (shardRes.error) console.warn('Shard load failed:', shardRes.error.message);
-    const shard = shardRes.data;
+    shard = shardRes.data;
 
     // Populate top bar — left side
     const ticker = faction.corp_ticker || faction.abbreviation || '';
@@ -1623,13 +1628,14 @@ function lrClose() {
 
 async function lrSubmit() {
     if (!faction || !shard) return;
-    const amount = parseInt(document.getElementById('lr-amount').value);
+    const rawAmount = parseFloat(document.getElementById('lr-amount').value);
+    const amount = Math.round((rawAmount || 0) * 1_000_000); // Input is in millions
     const termMonths = parseInt(document.getElementById('lr-term').value);
     const purpose = (document.getElementById('lr-purpose').value || '').trim();
     const errEl = document.getElementById('lr-error');
 
-    if (!amount || amount < 100000) { errEl.textContent = 'Minimum loan amount is $100,000.'; errEl.style.display = 'block'; return; }
-    if (amount > 100000000) { errEl.textContent = 'Maximum loan amount is $100,000,000.'; errEl.style.display = 'block'; return; }
+    if (!rawAmount || rawAmount < 0.1) { errEl.textContent = 'Minimum loan amount is $0.1M ($100,000).'; errEl.style.display = 'block'; return; }
+    if (rawAmount > 100) { errEl.textContent = 'Maximum loan amount is $100M.'; errEl.style.display = 'block'; return; }
     if (!termMonths || termMonths < 1 || termMonths > 120) { errEl.textContent = 'Term must be 1-120 months.'; errEl.style.display = 'block'; return; }
     if (!purpose || purpose.length < 5) { errEl.textContent = 'Please describe why you need this loan.'; errEl.style.display = 'block'; return; }
 
