@@ -999,11 +999,11 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
     const govApproval = Number(nationCheck?.gov_approval ?? 50);
 
     if (govApproval > 50) {
-        // STRENGTH: "Seeking a fresh mandate" — PM party gets +10 momentum
+        // STRENGTH: "Seeking a fresh mandate" — PM party gets +3 momentum
         await supabase.rpc('adjust_momentum', {
             p_faction_id: pmFactionId,
-            p_delta: 10,
-            p_label: 'Snap elections from strength (+10)',
+            p_delta: 3,
+            p_label: 'Snap elections from strength (+3)',
             p_tick: currentTick
         });
     } else if (govApproval < 35) {
