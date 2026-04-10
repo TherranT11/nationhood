@@ -3811,6 +3811,37 @@ function tickToDate(tick) {
     return `${MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
 }
 
+async function requestInsurance(contractId, budgetCeiling) {
+    if (!faction || !shard) return;
+    if (!confirm('Request insurance for this project? Insurance corps will see this in their Deal Flow.')) return;
+
+    const currentTick = shard.current_tick || 0;
+    const { error } = await _supabase.from('finance_loan_requests').insert({
+        requesting_faction_id: faction.id,
+        nation_id: faction.nation_id,
+        request_type: 'insurance',
+        insured_contract_id: contractId,
+        amount: budgetCeiling,
+        term_months: 0,
+        purpose: 'Construction Insurance',
+        collateral_type: 'unsecured',
+        status: 'open',
+        created_tick: currentTick,
+        expires_tick: currentTick + 12,
+    });
+    if (error) {
+        if (error.message.includes('duplicate') || error.message.includes('unique')) {
+            alert('Insurance already requested for this project.');
+        } else {
+            alert('Failed to request insurance: ' + error.message);
+        }
+        return;
+    }
+    alert('Insurance request posted to Deal Flow. Insurance corporations can now offer coverage.');
+    await loadActiveProjects();
+}
+window.requestInsurance = requestInsurance;
+
 window.openProjectModal = openProjectModal;
 window.closeProjectModal = closeProjectModal;
 window.pmSetTab = pmSetTab;
@@ -4124,6 +4155,15 @@ function renderActiveProjects() {
                     <div class="ap-detail-cell__label">REMAINING</div>
                     <div class="ap-detail-cell__value" style="font-size:10px;font-weight:700;color:${isLate ? 'var(--red)' : 'var(--text-bright)'}">${ticksRemaining} ticks</div>
                 </div>
+                <div class="ap-detail-cell" style="flex:0.7;text-align:center">
+                    <div class="ap-detail-cell__label">INSURANCE</div>
+                    ${p._hasInsurance
+                        ? '<div class="ap-detail-cell__value" style="font-size:8px;font-weight:700;color:var(--green);">INSURED</div>'
+                        : p._insurancePending
+                            ? '<div class="ap-detail-cell__value" style="font-size:8px;font-weight:700;color:var(--orange);">PENDING</div>'
+                            : `<div class="ap-detail-cell__value" style="font-size:8px;cursor:pointer;color:#aa7a5a;font-weight:700;text-decoration:underline;" onclick="event.stopPropagation();requestInsurance('${p.id}',${budget})">INSURE</div>`
+                    }
+                </div>
             </div>
         </div>`;
     }
@@ -4156,6 +4196,29 @@ async function loadActiveProjects() {
         activeProjects = [];
     } else {
         activeProjects = data || [];
+    }
+
+    // Check insurance status for each project
+    if (activeProjects.length > 0) {
+        const contractIds = activeProjects.map(p => p.id);
+        const { data: insuranceReqs } = await _supabase
+            .from('finance_loan_requests')
+            .select('insured_contract_id, status')
+            .eq('request_type', 'insurance')
+            .in('insured_contract_id', contractIds);
+        const { data: activeInsurance } = await _supabase
+            .from('finance_active_loans')
+            .select('request_id, finance_loan_requests!inner(insured_contract_id)')
+            .in('status', ['current'])
+            .eq('finance_loan_requests.request_type', 'insurance');
+
+        const insuredSet = new Set((activeInsurance || []).map(a => a.finance_loan_requests?.insured_contract_id).filter(Boolean));
+        const pendingSet = new Set((insuranceReqs || []).filter(r => r.status === 'open').map(r => r.insured_contract_id));
+
+        for (const p of activeProjects) {
+            p._hasInsurance = insuredSet.has(p.id);
+            p._insurancePending = pendingSet.has(p.id);
+        }
     }
 
     renderActiveProjects();

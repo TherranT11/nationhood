@@ -389,8 +389,9 @@ async function loadDealFlow() {
     const subsector = (faction.corp_subsector || '').toLowerCase();
 
     dfDeals = (requests || []).filter(req => {
-        // Banking corps see loans, Investment corps see bonds
+        // Banking sees loans, Investment sees bonds, Insurance sees insurance
         if (req.request_type === 'bond') return subsector === 'investment';
+        if (req.request_type === 'insurance') return subsector === 'insurance';
         return subsector === 'banking';
     }).map(req => {
         if (req.request_type === 'bond') {
@@ -423,6 +424,27 @@ async function loadDealFlow() {
                 isNew: !offeredSet.has(req.id),
                 ticksLeft: (req.expires_tick || 0) - (shard?.current_tick || 0),
                 requestId: req.id,
+                alreadyOffered: offeredSet.has(req.id),
+            };
+        }
+        if (req.request_type === 'insurance') {
+            return {
+                id: req.id,
+                type: 'INSURE',
+                applicant: req.requesting_faction?.faction_name || 'Unknown',
+                abbr: req.requesting_faction?.abbreviation || req.requesting_faction?.corp_ticker || '??',
+                entity: 'CORP',
+                nation: 'N/A',
+                amount: req.amount || 0,
+                term: req.term_months || 0,
+                purpose: req.purpose || 'Construction Insurance',
+                reputation: 50,
+                projectValue: req.amount || 0,
+                risk: 'MODERATE',
+                isNew: !offeredSet.has(req.id),
+                ticksLeft: (req.expires_tick || 0) - (shard?.current_tick || 0),
+                requestId: req.id,
+                insuredContractId: req.insured_contract_id,
                 alreadyOffered: offeredSet.has(req.id),
             };
         }
@@ -1737,6 +1759,44 @@ async function rdSubmitOffer() {
         }
 
         faction.corp_cash_reserves = Math.max(0, cash - rdBondAmount);
+    } else if (rdDeal.type === 'INSURE') {
+        // Insurance: write policy — no upfront cost, premiums collected per tick
+        const annualPremium = rdInsurePremium;
+        const coverage = rdInsureCoverage;
+        const deductible = rdInsureDeductible;
+        const monthlyPremiumAmt = Math.round(coverage * (annualPremium / 100) / 12);
+
+        const { error: offerErr } = await _supabase.from('finance_loan_offers').insert({
+            request_id: rdDeal.requestId,
+            offering_faction_id: faction.id,
+            interest_rate: annualPremium,
+            collateral_type: 'unsecured',
+            status: 'accepted',
+            created_tick: currentTick,
+        });
+        if (offerErr) { alert('Failed to write policy: ' + offerErr.message); _submittingOffer = false; return; }
+
+        // Mark request as funded and get the requesting faction
+        const { data: fundedReq } = await _supabase.from('finance_loan_requests').update({
+            status: 'funded', funded_tick: currentTick,
+        }).eq('id', rdDeal.requestId).select('requesting_faction_id').single();
+
+        // Create active insurance policy as a loan record
+        const { error: policyErr } = await _supabase.from('finance_active_loans').insert({
+            request_id: rdDeal.requestId,
+            offer_id: null,
+            borrower_faction_id: fundedReq?.requesting_faction_id || rdDeal.requestId,
+            lender_faction_id: faction.id,
+            nation_id: faction.nation_id,
+            principal: coverage,
+            interest_rate: annualPremium,
+            term_months: 0, // until project completes
+            collateral_type: 'unsecured',
+            purpose: 'Insurance Policy — ' + rdDeal.applicant,
+            monthly_payment: monthlyPremiumAmt,
+            started_tick: currentTick,
+        });
+        if (policyErr) { alert('Failed to create policy record: ' + policyErr.message); _submittingOffer = false; return; }
     } else {
         _submittingOffer = false;
         return;

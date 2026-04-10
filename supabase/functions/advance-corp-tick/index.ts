@@ -1749,8 +1749,48 @@ async function resolveExpiredEvents(supabase, nationId, currentTick) {
         const delayApplied = response.delay || 0;
         const qualityApplied = response.qualityImpact || 0;
 
-        // Deduct cost from corporation
+        // Check if contract has active insurance
+        let insurancePaidClaim = false;
         if (costApplied > 0) {
+            // Look up insurance by contract_id → funded request → active loan
+            let policy = null;
+            const { data: insReq } = await supabase
+                .from('finance_loan_requests')
+                .select('id')
+                .eq('request_type', 'insurance')
+                .eq('insured_contract_id', event.contract_id)
+                .eq('status', 'funded')
+                .maybeSingle();
+            if (insReq) {
+                const { data: activePol } = await supabase
+                    .from('finance_active_loans')
+                    .select('id, lender_faction_id, principal, interest_rate, claims_paid')
+                    .eq('request_id', insReq.id)
+                    .eq('status', 'current')
+                    .maybeSingle();
+                policy = activePol;
+            }
+
+            if (policy) {
+                // Insurance covers the cost — deduct from insurer instead
+                const { data: insurer } = await supabase.from('factions')
+                    .select('corp_cash_reserves').eq('id', policy.lender_faction_id).single();
+                if (insurer) {
+                    await supabase.from('factions').update({
+                        corp_cash_reserves: Math.max(0, Number(insurer.corp_cash_reserves || 0) - costApplied)
+                    }).eq('id', policy.lender_faction_id);
+                }
+                // Track claim on the policy
+                await supabase.from('finance_active_loans').update({
+                    claims_paid: (policy.claims_paid || 0) + costApplied
+                }).eq('id', policy.id);
+                insurancePaidClaim = true;
+                console.log(`[Events] Insurance claim: ${event.title} — insurer pays $${costApplied}`);
+            }
+        }
+
+        // Deduct cost from construction corp (only if no insurance covered it)
+        if (costApplied > 0 && !insurancePaidClaim) {
             const { data: corp } = await supabase.from('factions')
                 .select('corp_cash_reserves').eq('id', event.faction_id).single();
             if (corp) {
@@ -2136,6 +2176,54 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 const expiredResults = await resolveExpiredEvents(supabase, nation.id, currentTick);
                 if (expiredResults.length > 0) {
                     summary.construction.push({ nation: nation.name, type: 'expired_events', data: expiredResults });
+                }
+
+                // ── Insurance Premium Collection ─────────────────────────
+                try {
+                    const { data: activePolicies } = await supabase
+                        .from('finance_active_loans')
+                        .select('id, borrower_faction_id, lender_faction_id, monthly_payment, request_id, finance_loan_requests!inner(request_type, insured_contract_id)')
+                        .eq('status', 'current')
+                        .eq('nation_id', nation.id)
+                        .eq('finance_loan_requests.request_type', 'insurance');
+
+                    for (const policy of (activePolicies || [])) {
+                        const premium = policy.monthly_payment || 0;
+                        if (premium <= 0) continue;
+
+                        // Find the insured corp (the one who requested insurance)
+                        const contractId = policy.finance_loan_requests?.insured_contract_id;
+                        if (!contractId) continue;
+
+                        const { data: insReq } = await supabase
+                            .from('finance_loan_requests')
+                            .select('requesting_faction_id')
+                            .eq('id', policy.request_id)
+                            .single();
+                        if (!insReq) continue;
+
+                        const insuredFactionId = insReq.requesting_faction_id;
+
+                        // Deduct premium from insured corp
+                        const { data: insured } = await supabase.from('factions')
+                            .select('corp_cash_reserves').eq('id', insuredFactionId).single();
+                        if (insured) {
+                            await supabase.from('factions').update({
+                                corp_cash_reserves: Math.max(0, Number(insured.corp_cash_reserves || 0) - premium)
+                            }).eq('id', insuredFactionId);
+                        }
+
+                        // Credit premium to insurer
+                        const { data: insurer } = await supabase.from('factions')
+                            .select('corp_cash_reserves').eq('id', policy.lender_faction_id).single();
+                        if (insurer) {
+                            await supabase.from('factions').update({
+                                corp_cash_reserves: Number(insurer.corp_cash_reserves || 0) + premium
+                            }).eq('id', policy.lender_faction_id);
+                        }
+                    }
+                } catch (insErr) {
+                    console.warn(`[Insurance] Premium collection error for ${nation.name}:`, insErr.message);
                 }
 
                 // ── Permit Lifecycle (pending→active, expiry) ─────────────
