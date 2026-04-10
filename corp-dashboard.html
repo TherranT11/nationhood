@@ -1661,70 +1661,78 @@ async function lrSubmit() {
     loadLoansSection();
 }
 
+let _acceptingOffer = false;
 async function acceptOffer(offerId, requestId) {
-    if (!faction) return;
+    if (!faction || _acceptingOffer) return;
+    _acceptingOffer = true;
 
-    // 1. Mark offer as accepted, others as declined
-    const { data: offer, error: offerErr } = await _supabase
-        .from('finance_loan_offers').select('*').eq('id', offerId).single();
-    if (offerErr || !offer) return;
+    try {
+        // 1. Fetch offer and request, verify still open
+        const { data: offer, error: offerErr } = await _supabase
+            .from('finance_loan_offers').select('*').eq('id', offerId).single();
+        if (offerErr || !offer) return;
 
-    const { data: request, error: reqErr } = await _supabase
-        .from('finance_loan_requests').select('*').eq('id', requestId).single();
-    if (reqErr || !request) return;
+        const { data: request, error: reqErr } = await _supabase
+            .from('finance_loan_requests').select('*').eq('id', requestId).single();
+        if (reqErr || !request) return;
 
-    // Calculate monthly payment (fixed amortization)
-    const r = (offer.interest_rate / 100) / 12;
-    const n = request.term_months;
-    const monthlyPayment = r > 0
-        ? Math.round((request.amount * r) / (1 - Math.pow(1 + r, -n)))
-        : Math.round(request.amount / n);
+        // Guard: don't accept if already funded
+        if (request.status !== 'open') return;
 
-    const currentTick = shard?.current_tick || 0;
+        // Calculate monthly payment (fixed amortization)
+        const r = (offer.interest_rate / 100) / 12;
+        const n = request.term_months;
+        const monthlyPayment = r > 0
+            ? Math.round((request.amount * r) / (1 - Math.pow(1 + r, -n)))
+            : Math.round(request.amount / n);
 
-    // 2. Update request status
-    await _supabase.from('finance_loan_requests').update({
-        status: 'funded',
-        accepted_offer_id: offerId,
-        funded_tick: currentTick,
-    }).eq('id', requestId);
+        const currentTick = shard?.current_tick || 0;
 
-    // 3. Accept this offer, decline all others
-    await _supabase.from('finance_loan_offers').update({ status: 'accepted' }).eq('id', offerId);
-    await _supabase.from('finance_loan_offers').update({ status: 'declined' })
-        .eq('request_id', requestId).neq('id', offerId).eq('status', 'pending');
+        // 2. Update request status
+        const { error: reqUpErr } = await _supabase.from('finance_loan_requests').update({
+            status: 'funded',
+            accepted_offer_id: offerId,
+            funded_tick: currentTick,
+        }).eq('id', requestId);
+        if (reqUpErr) return;
 
-    // 4. Create active loan
-    await _supabase.from('finance_active_loans').insert({
-        request_id: requestId,
-        offer_id: offerId,
-        borrower_faction_id: request.requesting_faction_id,
-        lender_faction_id: offer.offering_faction_id,
-        nation_id: request.nation_id,
-        principal: request.amount,
-        interest_rate: offer.interest_rate,
-        term_months: request.term_months,
-        collateral_type: offer.collateral_type,
-        purpose: request.purpose,
-        monthly_payment: monthlyPayment,
-        started_tick: currentTick,
-    });
+        // 3. Accept this offer, decline all others
+        await _supabase.from('finance_loan_offers').update({ status: 'accepted' }).eq('id', offerId);
+        await _supabase.from('finance_loan_offers').update({ status: 'declined' })
+            .eq('request_id', requestId).neq('id', offerId).eq('status', 'pending');
 
-    // 5. Transfer cash: lender → borrower
-    // Deduct from lender
-    const { data: lender } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', offer.offering_faction_id).single();
-    if (lender) {
-        await _supabase.from('factions').update({
-            corp_cash_reserves: Math.max(0, (Number(lender.corp_cash_reserves) || 0) - request.amount)
-        }).eq('id', offer.offering_faction_id);
-    }
+        // 4. Create active loan
+        await _supabase.from('finance_active_loans').insert({
+            request_id: requestId,
+            offer_id: offerId,
+            borrower_faction_id: request.requesting_faction_id,
+            lender_faction_id: offer.offering_faction_id,
+            nation_id: request.nation_id,
+            principal: request.amount,
+            interest_rate: offer.interest_rate,
+            term_months: request.term_months,
+            collateral_type: offer.collateral_type,
+            purpose: request.purpose,
+            monthly_payment: monthlyPayment,
+            started_tick: currentTick,
+        });
 
-    // Credit to borrower
-    const { data: borrower } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', request.requesting_faction_id).single();
-    if (borrower) {
-        await _supabase.from('factions').update({
-            corp_cash_reserves: (Number(borrower.corp_cash_reserves) || 0) + request.amount
-        }).eq('id', request.requesting_faction_id);
+        // 5. Transfer cash: lender → borrower
+        const { data: lender } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', offer.offering_faction_id).single();
+        if (lender) {
+            await _supabase.from('factions').update({
+                corp_cash_reserves: Math.max(0, (Number(lender.corp_cash_reserves) || 0) - request.amount)
+            }).eq('id', offer.offering_faction_id);
+        }
+
+        const { data: borrower } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', request.requesting_faction_id).single();
+        if (borrower) {
+            await _supabase.from('factions').update({
+                corp_cash_reserves: (Number(borrower.corp_cash_reserves) || 0) + request.amount
+            }).eq('id', request.requesting_faction_id);
+        }
+    } finally {
+        _acceptingOffer = false;
     }
 
     loadLoansSection();

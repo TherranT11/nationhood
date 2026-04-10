@@ -1654,17 +1654,19 @@ window.rdSetBondAmount = rdSetBondAmount;
 
 // ==================== SUBMIT OFFER ====================
 
+let _submittingOffer = false;
 async function rdSubmitOffer() {
-    if (!rdDeal || !faction || !shard) return;
+    if (!rdDeal || !faction || !shard || _submittingOffer) return;
     if (rdDeal.type !== 'LOAN') return; // Only loans for now
+    _submittingOffer = true;
 
     // Validate rate is within bounds
     const rate = rdLoanRate;
-    if (rate < 1 || rate > 20) { alert('Interest rate must be 1-20%.'); return; }
+    if (rate < 1 || rate > 20) { alert('Interest rate must be 1-20%.'); _submittingOffer = false; return; }
 
     // Check the finance corp has enough cash to fund this loan
     const cash = Number(faction.corp_cash_reserves) || 0;
-    if (cash < rdDeal.amount) { alert('Insufficient cash reserves to fund this loan.'); return; }
+    if (cash < rdDeal.amount) { alert('Insufficient cash reserves to fund this loan.'); _submittingOffer = false; return; }
 
     // Map collateral to DB enum
     const collateralMap = { none: 'unsecured', equipment: 'equipment', property: 'property', full: 'property' };
@@ -1681,6 +1683,7 @@ async function rdSubmitOffer() {
     });
 
     if (error) {
+        _submittingOffer = false;
         if (error.message.includes('unique') || error.message.includes('duplicate')) {
             alert('You have already submitted an offer for this loan request.');
         } else {
@@ -1692,6 +1695,7 @@ async function rdSubmitOffer() {
     rdClose();
     dfSelected = -1;
     await loadDealFlow();
+    _submittingOffer = false;
 }
 
 window.rdSubmitOffer = rdSubmitOffer;
@@ -1749,7 +1753,6 @@ async function loadCollections() {
         .order('completed_tick', { ascending: false });
 
     ccResolved = (loans || []).map(loan => {
-        const totalOwed = Math.round(loan.monthly_payment * loan.term_months);
         const earned = loan.total_interest_paid || 0;
         const lost = loan.status === 'defaulted' ? Math.max(0, loan.principal - loan.total_paid) : 0;
         return {
