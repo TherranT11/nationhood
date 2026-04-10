@@ -1734,7 +1734,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Caucus system: activate/deactivate internal factions based on seat share
         try {
             await evaluateCaucusActivation(supabase, nation.id, GAME_CONFIG.TOTAL_SEATS);
-            await decayCaucusRelationships(supabase, nation.id, newTick);
+            await decayCaucusRelationships(supabase, nation.id);
+            await processCaucusDefections(supabase, nation.id, newTick);
         } catch (caucusErr) {
             console.error(`[advanceTick] Caucus processing failed for ${nation.name} (non-fatal):`, caucusErr);
         }
