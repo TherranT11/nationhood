@@ -615,9 +615,9 @@ function bindSubmitHandler() {
 
                 if (error) throw error;
 
-                // Momentum: +3 for 1st article this tick, +1 for subsequent articles
+                // Momentum: +2 for 1st article this tick, 0 for subsequent
                 const currentTick = shard?.current_tick || 0;
-                let momDelta = 1; // default: subsequent article
+                let momDelta = 0; // subsequent articles give nothing
                 // Check how many articles this faction already published this tick
                 const { data: tickArticles, error: tickCountErr } = await _supabase
                     .from('player_articles')
@@ -629,27 +629,27 @@ function bindSubmitHandler() {
                 }
                 // Count includes the article we just inserted, so 1 means this is the first
                 if (!tickCountErr && (!tickArticles || tickArticles.length <= 1)) {
-                    momDelta = 3;
+                    momDelta = 2;
                 }
                 const momLabel = `News article published (+${momDelta})`;
 
                 let successMsg = 'Article published!';
-                try {
-                    const { error: momErr } = await _supabase.rpc('adjust_momentum', {
-                        p_faction_id: faction.id,
-                        p_delta: momDelta,
-                        p_label: momLabel,
-                        p_tick: currentTick
-                    });
-                    if (momErr) {
-                        console.error('[News] Momentum reward failed:', momErr);
-                        successMsg = 'Article published! (Momentum reward failed)';
-                    } else {
-                        successMsg = `Article published! +${momDelta} Momentum.`;
+                if (momDelta > 0) {
+                    try {
+                        const { error: momErr } = await _supabase.rpc('adjust_momentum', {
+                            p_faction_id: faction.id,
+                            p_delta: momDelta,
+                            p_label: momLabel,
+                            p_tick: currentTick
+                        });
+                        if (momErr) {
+                            console.error('[News] Momentum reward failed:', momErr);
+                        } else {
+                            successMsg = `Article published! +${momDelta} Momentum.`;
+                        }
+                    } catch (momCatchErr) {
+                        console.error('[News] Momentum reward error:', momCatchErr);
                     }
-                } catch (momCatchErr) {
-                    console.error('[News] Momentum reward error:', momCatchErr);
-                    successMsg = 'Article published! (Momentum reward failed)';
                 }
                 sessionStorage.removeItem('nationhood_state');
                 showFormSuccess(successMsg);

@@ -12302,6 +12302,7 @@ function renderIssueStatementPanel(body, statusEl) {
     const apCost = 1;
     const maxChars = 400;
     const hasEnoughAP = (currentFaction?.action_points ?? 0) >= apCost;
+    const defaultNation = ambPostings[0]?.target_nation_name || '...';
 
     let html = '<div class="draft-panel">';
 
@@ -12310,10 +12311,20 @@ function renderIssueStatementPanel(body, statusEl) {
     html += '<div class="draft-field"><div class="draft-field-label">Action</div><div class="draft-field-input">Issue Statement <span style="font-family:var(--font-mono);font-size:10px;font-weight:600;color:var(--teal);">1 AP</span></div></div>';
     html += '</div>';
 
-    // Topic
+    // Regarding nation (restricted to ambassador postings)
     html += '<div style="padding:10px 14px 0;">';
-    html += '<div class="draft-field"><div class="draft-field-label">Topic</div>';
-    html += '<input type="text" id="statement-topic" class="draft-field-input" placeholder="e.g. Regional Security, Trade Relations, Climate Policy" maxlength="100" style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:6px 10px;font-family:var(--font-sans);font-size:12px;width:100%;"></div>';
+    html += '<div class="draft-field"><div class="draft-field-label">Regarding Nation</div>';
+    if (ambPostings.length === 1) {
+        html += '<div class="draft-field-input" style="font-weight:600;">' + escapeHtml(defaultNation) + '</div>';
+        html += '<input type="hidden" id="statement-target-nation" value="' + escapeHtml(defaultNation) + '">';
+    } else {
+        html += '<select id="statement-target-nation" onchange="updateStatementPreview()" style="border:1px solid var(--border-subtle);background:var(--bg-3);color:var(--text-primary);padding:6px 10px;font-family:var(--font-sans);font-size:12px;width:100%;">';
+        for (const p of ambPostings) {
+            html += '<option value="' + escapeHtml(p.target_nation_name) + '">' + escapeHtml(p.target_nation_name) + '</option>';
+        }
+        html += '</select>';
+    }
+    html += '</div>';
 
     // Statement
     html += '<div class="draft-field" style="margin-top:8px;"><div class="draft-field-label">Statement <span id="statement-char-count" style="font-family:var(--font-mono);font-size:9px;color:var(--text-faint);">0/' + maxChars + '</span></div>';
@@ -12322,7 +12333,7 @@ function renderIssueStatementPanel(body, statusEl) {
     // Preview
     html += '<div style="margin-top:10px;padding:10px;background:var(--bg-2);border:1px solid var(--border-hair);border-radius:4px;">';
     html += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);margin-bottom:4px;font-weight:600;">Preview (World Events)</div>';
-    html += '<div id="statement-preview" style="font-size:11px;color:var(--text-secondary);line-height:1.5;font-style:italic;">The nation of ' + escapeHtml(currentNation?.name || '...') + ' has issued the following statement regarding <em>[topic]</em>: "<em>[statement]</em>"</div>';
+    html += '<div id="statement-preview" style="font-size:11px;color:var(--text-secondary);line-height:1.5;font-style:italic;">Regarding the nation of ' + escapeHtml(defaultNation) + ', the Foreign Office of ' + escapeHtml(currentNation?.name || '...') + ' has issued the following statement: &ldquo;<em>[statement]</em>&rdquo;</div>';
     html += '</div>';
     html += '</div>';
 
@@ -12339,9 +12350,7 @@ function renderIssueStatementPanel(body, statusEl) {
     body.innerHTML = html;
 
     // Attach live preview updater
-    const topicEl = document.getElementById('statement-topic');
     const textEl = document.getElementById('statement-text');
-    if (topicEl) topicEl.addEventListener('input', updateStatementPreview);
     if (textEl) textEl.addEventListener('input', updateStatementPreview);
 }
 
@@ -12355,25 +12364,25 @@ function updateStatementCharCount() {
 window.updateStatementCharCount = updateStatementCharCount;
 
 function updateStatementPreview() {
-    const topicEl = document.getElementById('statement-topic');
+    const nationEl = document.getElementById('statement-target-nation');
     const textEl = document.getElementById('statement-text');
     const previewEl = document.getElementById('statement-preview');
     if (!previewEl) return;
-    const topic = topicEl?.value?.trim() || '[topic]';
+    const targetNation = nationEl?.value?.trim() || '...';
     const text = textEl?.value?.trim() || '[statement]';
-    previewEl.innerHTML = 'The nation of ' + escapeHtml(currentNation?.name || '...') + ' has issued the following statement regarding ' + escapeHtml(topic) + ': &ldquo;' + escapeHtml(text) + '&rdquo;';
+    previewEl.innerHTML = 'Regarding the nation of ' + escapeHtml(targetNation) + ', the Foreign Office of ' + escapeHtml(currentNation?.name || '...') + ' has issued the following statement: &ldquo;' + escapeHtml(text) + '&rdquo;';
 }
 window.updateStatementPreview = updateStatementPreview;
 
 async function submitIssueStatement() {
     if (_submitStatementLock) return;
 
-    const topicEl = document.getElementById('statement-topic');
+    const nationEl = document.getElementById('statement-target-nation');
     const textEl = document.getElementById('statement-text');
-    const topic = topicEl?.value?.trim();
+    const targetNation = nationEl?.value?.trim();
     const statement = textEl?.value?.trim();
 
-    if (!topic) { alert('Please enter a topic for the statement.'); return; }
+    if (!targetNation) { alert('No target nation selected.'); return; }
     if (!statement) { alert('Please enter the statement text.'); return; }
     if (statement.length > 400) { alert('Statement exceeds 400 character limit.'); return; }
 
@@ -12399,12 +12408,12 @@ async function submitIssueStatement() {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const currentTick = shard?.current_tick || shardTick;
 
-        const description = 'The nation of ' + currentNation.name + ' has issued the following statement regarding ' + topic + ': \u201c' + statement + '\u201d';
+        const description = 'Regarding the nation of ' + targetNation + ', the Foreign Office of ' + currentNation.name + ' has issued the following statement: \u201c' + statement + '\u201d';
 
         // Post to event_log (visible in World Events for other nations, domestic events for own nation)
         const { error: eventErr } = await _supabase.from('event_log').insert({
             nation_id: currentNation.id,
-            event_name: 'Official Statement: ' + topic,
+            event_name: 'Official Statement: ' + targetNation,
             trigger_key: 'issue_statement',
             category: 'Diplomacy',
             description_chosen: description,
@@ -12429,7 +12438,7 @@ async function submitIssueStatement() {
         const apEl = document.getElementById('diplo-ap');
         if (apEl) apEl.textContent = currentFaction.action_points + ' AP';
 
-        alert('Statement issued regarding "' + topic + '" — posted to World Events.');
+        alert('Statement issued regarding ' + targetNation + ' — posted to World Events.');
         cancelDraft();
         await renderDiploHeader();
 

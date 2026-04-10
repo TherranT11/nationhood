@@ -204,11 +204,10 @@ export async function applyNoVotePenalty(supabase, bill, nationId, currentTick =
     // 4. Apply penalties to each non-voter
     const penalized = [];
     for (const faction of nonVoters) {
-        // -1d3 momentum for not voting
-        const momLoss = -(1 + Math.floor(Math.random() * 3));
+        // Flat -2 momentum for not voting
         await supabase.rpc('adjust_momentum', {
-            p_faction_id: faction.id, p_delta: momLoss,
-            p_label: `Absent from vote (${momLoss})`, p_tick: currentTick || 0
+            p_faction_id: faction.id, p_delta: -2,
+            p_label: 'Absent from vote (-2)', p_tick: currentTick || 0
         });
 
         // Visibility and credibility writes removed — 3-pillar election system.
@@ -2188,7 +2187,6 @@ export async function resolveExpiredVotes(supabase, nationId) {
             || lastResult?.result === 'president_desk';
         if (!skipMomentum) {
             try {
-                const articleCount = Math.max(1, (bill.bill_articles || []).filter(a => a.policies && a.policies.length > 0).length);
                 const billPassed = lastResult?.result === 'passed';
                 const supports = bill.bill_support || [];
 
@@ -2198,17 +2196,17 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     let label = '';
 
                     if (stance === 'yes' && billPassed) {
-                        delta = 2 * articleCount;
-                        label = `Bill passed: ${(bill.bill_name || '').slice(0, 25)}… (+${delta})`;
+                        delta = 1;
+                        label = `Bill passed: ${(bill.bill_name || '').slice(0, 25)}… (+1)`;
                     } else if (stance === 'yes' && !billPassed) {
                         delta = -1;
-                        label = `Bill failed: ${(bill.bill_name || '').slice(0, 25)}… (${delta})`;
+                        label = `Bill failed: ${(bill.bill_name || '').slice(0, 25)}… (-1)`;
                     } else if (stance === 'no' && !billPassed) {
-                        delta = 2 * articleCount;
-                        label = `Bill failed: ${(bill.bill_name || '').slice(0, 25)}… (+${delta})`;
+                        delta = 1;
+                        label = `Bill failed: ${(bill.bill_name || '').slice(0, 25)}… (+1)`;
                     } else if (stance === 'no' && billPassed) {
                         delta = -1;
-                        label = `Bill passed: ${(bill.bill_name || '').slice(0, 25)}… (${delta})`;
+                        label = `Bill passed: ${(bill.bill_name || '').slice(0, 25)}… (-1)`;
                     }
 
                     if (delta !== 0) {
