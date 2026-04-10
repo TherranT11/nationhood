@@ -1967,7 +1967,7 @@ async function loadLoansSection() {
     try {
     const { data: requests, error: reqErr } = await _supabase
         .from('finance_loan_requests')
-        .select('*, finance_loan_offers(*)')
+        .select('*, finance_loan_offers!request_id(*)')
         .eq('requesting_faction_id', faction.id)
         .in('status', ['open', 'funded'])
         .order('created_tick', { ascending: false });
