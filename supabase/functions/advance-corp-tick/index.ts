@@ -1892,6 +1892,125 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+//  FINANCE SECTOR — Loan Processing
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Each tick: expire unfunded loan requests, process repayments, handle defaults.
+async function processFinanceLoans(supabase, nationId, currentTick) {
+    const results = { expired: 0, payments: 0, defaults: 0 };
+
+    // 1. Expire unfunded loan requests past their deadline
+    const { data: expiredReqs } = await supabase
+        .from('finance_loan_requests')
+        .update({ status: 'expired' })
+        .eq('nation_id', nationId)
+        .eq('status', 'open')
+        .lte('expires_tick', currentTick)
+        .select('id');
+    results.expired = expiredReqs?.length || 0;
+
+    if (results.expired > 0) {
+        const expiredIds = expiredReqs.map(r => r.id);
+        await supabase
+            .from('finance_loan_offers')
+            .update({ status: 'declined' })
+            .in('request_id', expiredIds)
+            .eq('status', 'pending');
+    }
+
+    // 2. Process active loan payments (1 tick = 1 month)
+    const { data: activeLoans } = await supabase
+        .from('finance_active_loans')
+        .select('*')
+        .eq('nation_id', nationId)
+        .in('status', ['current', 'late', 'delinquent']);
+
+    if (!activeLoans || activeLoans.length === 0) return results;
+
+    for (const loan of activeLoans) {
+        const { data: borrower } = await supabase
+            .from('factions')
+            .select('corp_cash_reserves')
+            .eq('id', loan.borrower_faction_id)
+            .single();
+
+        const borrowerCash = Number(borrower?.corp_cash_reserves) || 0;
+        const payment = loan.monthly_payment;
+        const monthlyRate = (loan.interest_rate / 100) / 12;
+        const remainingPrincipal = loan.principal - loan.total_paid;
+        const interestPortion = Math.round(remainingPrincipal * monthlyRate);
+
+        if (borrowerCash >= payment) {
+            const newTotalPaid = loan.total_paid + payment;
+            const newInterestPaid = loan.total_interest_paid + interestPortion;
+            const newPaymentsMade = loan.payments_made + 1;
+            const isRepaid = newPaymentsMade >= loan.term_months;
+
+            await supabase.from('factions').update({
+                corp_cash_reserves: borrowerCash - payment
+            }).eq('id', loan.borrower_faction_id);
+
+            const { data: lender } = await supabase
+                .from('factions')
+                .select('corp_cash_reserves')
+                .eq('id', loan.lender_faction_id)
+                .single();
+            await supabase.from('factions').update({
+                corp_cash_reserves: (Number(lender?.corp_cash_reserves) || 0) + payment
+            }).eq('id', loan.lender_faction_id);
+
+            await supabase.from('finance_active_loans').update({
+                total_paid: newTotalPaid,
+                total_interest_paid: newInterestPaid,
+                payments_made: newPaymentsMade,
+                payments_missed: 0,
+                last_payment_tick: currentTick,
+                status: isRepaid ? 'repaid' : 'current',
+                completed_tick: isRepaid ? currentTick : null,
+            }).eq('id', loan.id);
+
+            results.payments++;
+        } else {
+            const newMissed = loan.payments_missed + 1;
+            let newStatus = loan.status;
+
+            if (newMissed >= 4) {
+                newStatus = 'defaulted';
+                results.defaults++;
+
+                let recovery = 0;
+                if (loan.collateral_type === 'equipment') recovery = 0.6;
+                else if (loan.collateral_type === 'property') recovery = 0.75;
+
+                if (recovery > 0) {
+                    const recoveredAmount = Math.round(remainingPrincipal * recovery);
+                    const { data: lender } = await supabase
+                        .from('factions')
+                        .select('corp_cash_reserves')
+                        .eq('id', loan.lender_faction_id)
+                        .single();
+                    await supabase.from('factions').update({
+                        corp_cash_reserves: (Number(lender?.corp_cash_reserves) || 0) + recoveredAmount
+                    }).eq('id', loan.lender_faction_id);
+                }
+            } else if (newMissed >= 3) {
+                newStatus = 'delinquent';
+            } else if (newMissed >= 1) {
+                newStatus = 'late';
+            }
+
+            await supabase.from('finance_active_loans').update({
+                payments_missed: newMissed,
+                status: newStatus,
+                completed_tick: newStatus === 'defaulted' ? currentTick : null,
+            }).eq('id', loan.id);
+        }
+    }
+
+    return results;
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 //  MAIN ORCHESTRATOR
 // ════════════════════════════════════════════════════════════════════════════════
 
@@ -2175,7 +2294,15 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // FUTURE: Energy production, grid management, fuel contracts
 
             // ── Finance Sector ───────────────────────────────────────────
-            // FUTURE: Lending, investment returns, interest rate effects
+            try {
+                const loanResults = await processFinanceLoans(supabase, nation.id, currentTick);
+                if (loanResults && (loanResults.expired > 0 || loanResults.payments > 0 || loanResults.defaults > 0)) {
+                    summary.finance = summary.finance || [];
+                    summary.finance.push({ nation: nation.name, ...loanResults });
+                }
+            } catch (finErr) {
+                console.error(`[advance-corp-tick] Finance loan processing failed for ${nation.name} (non-fatal):`, finErr);
+            }
 
             // ── Defense Sector ───────────────────────────────────────────
             // FUTURE: Arms contracts, military equipment production
