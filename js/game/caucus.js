@@ -6,10 +6,8 @@
  * caucuses can defect on bills that touch their dominant axis.
  */
 
-import { GAME_CONFIG } from './config.js';
 import { IDEOLOGY_AXES, IDEOLOGY_TO_AXIS } from './ideology.js';
 import { fetchActiveCoalition } from './government-structure.js';
-import { fireBillEvent } from './event-helpers.js';
 
 // ==================== CONSTANTS ====================
 
@@ -38,7 +36,7 @@ export const CAUCUS_CONFIG = {
     // REL_PLEDGE_HONOURED / REL_PLEDGE_BETRAYED: reserved for future pledge system
     REL_DECAY: -2,                 // unconditional decay per tick
     // Relationship = 0 means permanently opposed on any touching bill
-    REL_VOLATILE_THRESHOLD: 30,
+    // REL_VOLATILE_THRESHOLD: reserved for future volatile-caucus mechanics
     // Defection: caucus members leave to join ideologically compatible opposition
     DEFECTION_THRESHOLD: 20,       // relationship_score at or below this triggers defection
 };
@@ -527,10 +525,13 @@ export async function updateCaucusRelationships(supabase, billId, outcome, billA
         if (delta === 0) continue;
 
         const newScore = Math.max(0, Math.min(100, caucus.relationship_score + delta));
-        await supabase
+        const { error: updErr } = await supabase
             .from('caucus_factions')
             .update({ relationship_score: newScore })
             .eq('id', d.caucus_faction_id);
+        if (updErr) {
+            console.error(`[Caucus] Failed to update relationship for caucus ${d.caucus_faction_id}:`, updErr.message);
+        }
     }
 }
 
@@ -550,10 +551,13 @@ export async function decayCaucusRelationships(supabase, nationId) {
     for (const caucus of caucuses) {
         const newScore = Math.max(0, caucus.relationship_score + CAUCUS_CONFIG.REL_DECAY);
         if (newScore !== caucus.relationship_score) {
-            await supabase
+            const { error: updErr } = await supabase
                 .from('caucus_factions')
                 .update({ relationship_score: newScore })
                 .eq('id', caucus.id);
+            if (updErr) {
+                console.error(`[Caucus] Failed to decay relationship for caucus ${caucus.id}:`, updErr.message);
+            }
         }
     }
 }
