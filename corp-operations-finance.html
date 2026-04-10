@@ -1231,9 +1231,7 @@ function rdClose() {
 }
 
 function rdSetLoanRate(v) { rdLoanRate = Number(v); renderReviewDeal(); }
-function rdSetLoanAmount(v) { rdLoanAmount = Number(v); renderReviewDeal(); }
-function rdSetLoanTerm(v) { rdLoanTerm = Number(v); renderReviewDeal(); }
-function rdSetCollateral(v) { rdLoanCollateral = v; renderReviewDeal(); }
+// rdSetLoanAmount, rdSetLoanTerm, rdSetCollateral removed — borrower's terms are fixed
 function rdSetInsurePremium(v) { rdInsurePremium = Number(v); renderReviewDeal(); }
 function rdSetInsureCoverage(v) { rdInsureCoverage = Number(v); renderReviewDeal(); }
 function rdSetInsureDeductible(v) { rdInsureDeductible = Number(v); renderReviewDeal(); }
@@ -1272,7 +1270,8 @@ function renderReviewDeal() {
     const acceptProb = Math.max(10, Math.min(95, Math.round(baseAccept - rateAcceptMod - partialMod - collateralAcceptMod)));
     const acceptColor = acceptProb >= 70 ? '#5c5' : acceptProb >= 45 ? '#ca5' : acceptProb >= 25 ? '#c84' : '#c55';
 
-    const collTier = COLLATERAL_TIERS.find(c => c.id === rdLoanCollateral);
+    const collateralDisplayMap = { unsecured: 'none', equipment: 'equipment', property: 'property' };
+    const collTier = COLLATERAL_TIERS.find(c => c.id === (collateralDisplayMap[rdLoanCollateral] || rdLoanCollateral)) || COLLATERAL_TIERS[0];
     const loanExpectedReturn = Math.round(loanTotalInterest * (1 - defaultProb / 100));
 
     // ── Insurance calculations ──
@@ -1610,9 +1609,6 @@ function renderReviewDeal() {
 window.rdOpen = rdOpen;
 window.rdClose = rdClose;
 window.rdSetLoanRate = rdSetLoanRate;
-window.rdSetLoanAmount = rdSetLoanAmount;
-window.rdSetLoanTerm = rdSetLoanTerm;
-window.rdSetCollateral = rdSetCollateral;
 window.rdSetInsurePremium = rdSetInsurePremium;
 window.rdSetInsureCoverage = rdSetInsureCoverage;
 window.rdSetInsureDeductible = rdSetInsureDeductible;
