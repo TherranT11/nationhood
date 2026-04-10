@@ -641,7 +641,7 @@ async function submitTaxBill(nation) {
     var gdp = Number(nation.gdp || 0);
     var eff = Number(nation.efficiency || 50);
     var corr = Number(nation.corruption || 50);
-    var collectionRate = (eff + (100 - corr)) / 200;
+    var collectionRate = 0.35 + ((eff + (100 - corr)) / 200) * 0.65;
     var summaryLines = [];
     for (var i = 0; i < changedKeys.length; i++) {
         var key = changedKeys[i];
@@ -1267,7 +1267,7 @@ function computeSparklineRevenues(taxKey, gdpMultiplier) {
         var gdp = Number(snap.gdp || 0);
         var eff = Number(snap.efficiency || 50);
         var corr = Number(snap.corruption || 50);
-        var cr = (eff + (100 - corr)) / 200;
+        var cr = 0.35 + ((eff + (100 - corr)) / 200) * 0.65;
         revenues.push(gdp * (rate / 100) * gdpMultiplier * cr);
     }
     return revenues;
@@ -1425,7 +1425,7 @@ function renderTaxCard(config, nation, budget) {
     var gdp = Number(nation.gdp || 0);
     var eff = Number(nation.efficiency || 50);
     var corr = Number(nation.corruption || 50);
-    var collectionRate = (eff + (100 - corr)) / 200;
+    var collectionRate = 0.35 + ((eff + (100 - corr)) / 200) * 0.65;
     var projectedRevenue = gdp * (currentRate / 100) * config.gdpMultiplier * collectionRate;
     var revenueDelta = projectedRevenue - revenue;
 
@@ -2845,7 +2845,7 @@ function gatherTariffSimData(nation) {
     var currentRate = Number(nation.tariffs) || 0;
     var eff = Number(nation.efficiency) || 50;
     var corr = Number(nation.corruption) || 50;
-    var collectionRate = (eff + (100 - corr)) / 200;
+    var collectionRate = 0.35 + ((eff + (100 - corr)) / 200) * 0.65;
     var currentDampener = 1 - (currentRate / 200);
 
     var sectorImports = [];

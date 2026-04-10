@@ -103,14 +103,14 @@ Shows exactly where your money comes from:
 
 | Source | How It's Calculated |
 |--------|-------------------|
-| **Income Tax** | GDP x (rate/100) x 0.40 x collection rate |
-| **Sales Tax** | GDP x (rate/100) x 0.30 x collection rate |
-| **Corporate Tax** | GDP x (rate/100) x 0.10 x collection rate |
+| **Income Tax** | GDP x (rate/100) x 0.55 x collection rate |
+| **Sales Tax** | GDP x (rate/100) x 0.35 x collection rate |
+| **Corporate Tax** | GDP x (rate/100) x 0.15 x collection rate |
 | **Tariffs** | Actual tariff revenue from the trade engine (or GDP x (rate/100) x 0.05 x collection rate as fallback) |
 | **Oil & Gas** | GDP x (oil_and_gas/100) x 0.06 (only if oil_and_gas stat > 30, not subject to collection rate) |
 | **Foreign Aid** | Aid received from other nations or international bodies |
 
-**Collection Rate** is a hidden but crucial modifier: `(efficiency + (100 - corruption)) / 200`. Perfect efficiency (100) and zero corruption gives you 100% collection. Low efficiency and high corruption means you're losing tax revenue to waste and graft.
+**Collection Rate** is a hidden but crucial modifier: `0.35 + ((efficiency + (100 - corruption)) / 200) x 0.65`. Ranges from 35% (worst governance) to 100% (perfect). Even poorly-run nations collect some tax. High efficiency and low corruption maximize revenue.
 
 ### Expenditure Breakdown (Right Column)
 
@@ -371,11 +371,11 @@ Debt can become self-reinforcing:
 
 ### Revenue
 ```
-collection_rate = (efficiency + (100 - corruption)) / 200
+collection_rate = 0.35 + ((efficiency + (100 - corruption)) / 200) x 0.65
 
-income_tax_revenue  = GDP x (income_tax_rate / 100) x 0.40 x collection_rate
-sales_tax_revenue   = GDP x (sales_tax_rate / 100)  x 0.30 x collection_rate
-corporate_tax_rev   = GDP x (corp_tax_rate / 100)    x 0.10 x collection_rate
+income_tax_revenue  = GDP x (income_tax_rate / 100) x 0.55 x collection_rate
+sales_tax_revenue   = GDP x (sales_tax_rate / 100)  x 0.35 x collection_rate
+corporate_tax_rev   = GDP x (corp_tax_rate / 100)    x 0.15 x collection_rate
 tariff_revenue      = GDP x (tariff_rate / 100)      x 0.05 x collection_rate
 oil_gas_revenue     = GDP x (oil_and_gas / 100)      x 0.06  [if oil_and_gas > 30]
 ```

@@ -97,7 +97,7 @@ async function processSurplusConnectors(supabase: any, nation: any) {
     let surplusRatio = 0;
     try {
         const budget = calculateNationalBudget(nation);
-        const baseExpenditure = gdp * 0.08 * (1 + (100 - efficiency) / 200);
+        const baseExpenditure = gdp * 0.12 * (1 + (100 - efficiency) / 200);
         const surplus = budget.grossRevenue - baseExpenditure;
         surplusRatio = (surplus / gdp) * 100;
     } catch (_) {
