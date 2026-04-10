@@ -538,6 +538,18 @@ const ISSUE_TYPE_NAMES = {
 
 async function selectIssue(issueId) {
     selectedIssueId = issueId;
+
+    // Always fetch fresh from DB — allIssues may be stale after tick processing
+    const { data: freshIssue } = await _supabase
+        .from('bilateral_issues')
+        .select('*, nation_a:nations!bilateral_issues_nation_a_id_fkey(id, name), nation_b:nations!bilateral_issues_nation_b_id_fkey(id, name)')
+        .eq('id', issueId)
+        .single();
+    if (freshIssue) {
+        const idx = allIssues.findIndex(i => i.id === issueId);
+        if (idx >= 0) allIssues[idx] = freshIssue;
+        else allIssues.push(freshIssue);
+    }
     const issue = allIssues.find(i => i.id === issueId);
     if (!issue) return;
 

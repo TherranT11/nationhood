@@ -13642,7 +13642,7 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         console.log(`President re-elected: ${candidate.first_name} ${candidate.last_name} — term ${termsServed}`);
     }
 
-    // Insert president record (with trait_upside / trait_downside populated)
+    // Insert president record (trait resolved at display time, not stored)
     const { error: presErr } = await supabase.from('presidents').insert({
         nation_id: nationId,
         faction_id: factionId,
@@ -13651,8 +13651,8 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         age: candidate.age,
         ideology: candidate.ideology,
         trait: candidate.trait_key,
-        trait_upside: trait?.upside || null,
-        trait_downside: trait?.downside || null,
+        trait_upside: null,
+        trait_downside: null,
         elected_tick: currentTick,
         term_ends_tick: currentTick + getPresidentialTermTicks(nationForTerm),
         is_active: true,
