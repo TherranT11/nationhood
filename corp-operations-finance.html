@@ -1620,7 +1620,7 @@ function renderReviewDeal() {
     const footerReturn = rdType === 'LOAN' ? loanExpectedReturn : rdType === 'INSURE' ? insureExpectedProfit : bondExpectedReturn;
     const footerRisk = rdType === 'LOAN' ? defaultProb : rdType === 'INSURE' ? insureClaimProb : bondDefaultProb;
     const footerRiskColor = rdType === 'LOAN' ? defaultColor : rdType === 'INSURE' ? claimColor : bondDefaultColor;
-    const actionLabel = rdType === 'LOAN' ? 'ISSUE LOAN' : rdType === 'INSURE' ? 'WRITE POLICY' : 'BUY BONDS';
+    const actionLabel = rdType === 'LOAN' ? 'OFFER LOAN' : rdType === 'INSURE' ? 'WRITE POLICY' : 'BUY BONDS';
     const actionClass = rdType.toLowerCase();
 
     html += `<div class="rd-footer">
