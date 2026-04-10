@@ -1836,17 +1836,31 @@ async function resolveExpiredEvents(supabase, nationId, currentTick) {
             }
 
             if (policy) {
+                // Claims Office effect: 15% chance to reduce payout by 25%
+                let adjustedCost = costApplied;
+                const { data: claimsOffices } = await supabase
+                    .from('corp_properties')
+                    .select('id')
+                    .eq('faction_id', policy.lender_faction_id)
+                    .eq('type', 'claims_office')
+                    .eq('is_active', true)
+                    .limit(1);
+                if (claimsOffices && claimsOffices.length > 0 && Math.random() < 0.15) {
+                    adjustedCost = Math.round(costApplied * 0.75);
+                    console.log(`[Events] Claims Office investigation: payout reduced from $${costApplied} to $${adjustedCost}`);
+                }
+
                 // Insurance covers the cost — deduct from insurer instead
                 const { data: insurer } = await supabase.from('factions')
                     .select('corp_cash_reserves').eq('id', policy.lender_faction_id).single();
                 if (insurer) {
                     await supabase.from('factions').update({
-                        corp_cash_reserves: Math.max(0, Number(insurer.corp_cash_reserves || 0) - costApplied)
+                        corp_cash_reserves: Math.max(0, Number(insurer.corp_cash_reserves || 0) - adjustedCost)
                     }).eq('id', policy.lender_faction_id);
                 }
                 // Track claim on the policy
                 await supabase.from('finance_active_loans').update({
-                    claims_paid: (policy.claims_paid || 0) + costApplied
+                    claims_paid: (policy.claims_paid || 0) + adjustedCost
                 }).eq('id', policy.id);
                 insurancePaidClaim = true;
                 console.log(`[Events] Insurance claim: ${event.title} — insurer pays $${costApplied}`);
@@ -2039,11 +2053,24 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
 
         // Bonds: coupon payments come from nation treasury (increases debt)
         if (requestType === 'bond') {
-            const payment = loan.monthly_payment;
+            let payment = loan.monthly_payment;
             const newPaymentsMade = loan.payments_made + 1;
             const isMatured = newPaymentsMade >= loan.term_months && loan.term_months > 0;
 
-            // Nation pays coupon to bondholder
+            // Trading Floor bonus: +0.5% annualized bonus yield on bond principal
+            const { data: tradingFloors } = await supabase
+                .from('corp_properties')
+                .select('id')
+                .eq('faction_id', loan.lender_faction_id)
+                .eq('type', 'trading_floor')
+                .eq('is_active', true)
+                .limit(1);
+            if (tradingFloors && tradingFloors.length > 0) {
+                const bonusYield = Math.round(loan.principal * (0.005 / 12));
+                payment += bonusYield;
+            }
+
+            // Nation pays coupon to bondholder (including trading floor bonus)
             const { data: lender } = await supabase.from('factions')
                 .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
             if (lender) {
@@ -2515,6 +2542,41 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 }
             } catch (finErr) {
                 console.error(`[advance-corp-tick] Finance loan processing failed for ${nation.name} (non-fatal):`, finErr);
+            }
+
+            // ── Specialty Building Effects ────────────────────────────────
+            try {
+                const SPECIALTY_TYPES = ['branch_office', 'trading_floor', 'claims_office'];
+                const { data: specialtyProps } = await supabase
+                    .from('corp_properties')
+                    .select('faction_id, type, capacity')
+                    .eq('nation_id', nation.id)
+                    .eq('is_active', true)
+                    .in('type', SPECIALTY_TYPES);
+
+                if (specialtyProps && specialtyProps.length > 0) {
+                    // Group by faction, sum capacity across specialty buildings
+                    const corpSpecialty = {};
+                    for (const p of specialtyProps) {
+                        if (!corpSpecialty[p.faction_id]) corpSpecialty[p.faction_id] = 0;
+                        corpSpecialty[p.faction_id] += Number(p.capacity || 0);
+                    }
+
+                    // +1 reputation per 200 employees in specialty buildings (capped at +5/tick)
+                    for (const [factionId, totalCapacity] of Object.entries(corpSpecialty)) {
+                        const repBonus = Math.min(5, Math.floor(totalCapacity / 200));
+                        if (repBonus > 0) {
+                            const { data: corp } = await supabase.from('factions')
+                                .select('corp_reputation').eq('id', factionId).single();
+                            if (corp) {
+                                const newRep = Math.min(100, Number(corp.corp_reputation || 50) + repBonus);
+                                await supabase.from('factions').update({ corp_reputation: newRep }).eq('id', factionId);
+                            }
+                        }
+                    }
+                }
+            } catch (specErr) {
+                console.warn(`[advance-corp-tick] Specialty building effects failed for ${nation.name}:`, specErr.message);
             }
 
             // ── Defense Sector ───────────────────────────────────────────

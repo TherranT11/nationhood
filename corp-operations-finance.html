@@ -1691,6 +1691,36 @@ async function rdSubmitOffer() {
     if (rdDeal.type === 'LOAN') {
         const rate = rdLoanRate;
         if (rate < 1 || rate > 20) { alert('Interest rate must be 1-20%.'); _submittingOffer = false; return; }
+
+        // Branch Office lending cap: 50% base + 15% per branch office
+        const { data: branchOffices } = await _supabase
+            .from('corp_properties')
+            .select('id')
+            .eq('faction_id', faction.id)
+            .eq('type', 'branch_office')
+            .eq('is_active', true);
+        const branchCount = branchOffices?.length || 0;
+        const lendingCapPct = Math.min(100, 50 + branchCount * 15);
+        const lendingCap = Math.round(cash * lendingCapPct / 100);
+        // Check total deployed capital
+        const { data: existingLoans } = await _supabase
+            .from('finance_active_loans')
+            .select('principal')
+            .eq('lender_faction_id', faction.id)
+            .in('status', ['current', 'late', 'delinquent']);
+        const totalDeployed = (existingLoans || []).reduce((sum, l) => sum + Number(l.principal || 0), 0);
+        const availableToLend = Math.max(0, lendingCap - totalDeployed);
+
+        if (rdDeal.amount > availableToLend) {
+            alert(`Lending cap reached. You can deploy ${Math.round(lendingCapPct)}% of cash ($${(lendingCap / 1e6).toFixed(1)}M).` +
+                `\nAlready deployed: $${(totalDeployed / 1e6).toFixed(1)}M` +
+                `\nAvailable: $${(availableToLend / 1e6).toFixed(1)}M` +
+                `\nThis loan: $${(rdDeal.amount / 1e6).toFixed(1)}M` +
+                (branchCount === 0 ? '\n\nBuild a Branch Office to increase your lending cap (+15% each).' : ''));
+            _submittingOffer = false;
+            return;
+        }
+
         if (cash < rdDeal.amount) { alert('Insufficient cash reserves to fund this loan.'); _submittingOffer = false; return; }
 
         const collateralMap = { none: 'unsecured', equipment: 'equipment', property: 'property', full: 'property' };
