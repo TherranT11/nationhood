@@ -31018,10 +31018,9 @@ async function processSurplusConnectors(supabase: any, nation: any) {
     }
 }
 
-// ==================== FINANCE LOAN PROCESSING ====================
-// Each tick: expire unfunded requests, process loan repayments, handle defaults.
+// Finance loan processing lives in advance-corp-tick (runs at corp tick midpoint).
 
-async function processFinanceLoans(supabase, nationId, currentTick) {
+async function _unusedProcessFinanceLoans(supabase, nationId, currentTick) {
     const results = { expired: 0, payments: 0, defaults: 0 };
 
     // 1. Expire unfunded loan requests past their deadline
@@ -33056,17 +33055,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (seatErr) {
             console.error(`[advanceTick] Seat rebalancing failed for ${nation.name} (non-fatal):`, seatErr);
-        }
-
-        // Finance loan processing: expire requests, process repayments, handle defaults.
-        try {
-            const loanResults = await processFinanceLoans(supabase, nation.id, newTick);
-            if (loanResults && (loanResults.expired > 0 || loanResults.payments > 0 || loanResults.defaults > 0)) {
-                summary.financeLoans = summary.financeLoans || [];
-                summary.financeLoans.push({ nation: nation.name, ...loanResults });
-            }
-        } catch (loanErr) {
-            console.error(`[advanceTick] Finance loan processing failed for ${nation.name} (non-fatal):`, loanErr);
         }
 
         // Crises (persistent negative events that apply effects every tick)
