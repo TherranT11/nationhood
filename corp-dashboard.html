@@ -924,7 +924,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
         <div class="id-card__slogan" id="id-slogan">"--"</div>
         <div class="id-card__divider"></div>
         <div class="id-card__rows" id="id-rows"></div>
-        <div id="corp-logo-upload" style="padding:8px 14px;border-top:1px solid var(--border-0);"></div>
+        <div id="corp-logo-upload"></div>
         <div id="slogan-editor"></div>
       </div>
     </div>
@@ -1253,12 +1253,12 @@ async function init() {
         <div class="slogan-hint" id="slogan-hint">${canEditSlogan ? '60 characters max. 120 tick cooldown after change.' : ticksRemaining + ' ticks until you can change slogan.'}</div>
     `;
 
-    // ── Logo upload ──
+    // ── Logo upload (rendered as a standard id-row for visual consistency) ──
     const logoUploadEl = document.getElementById('corp-logo-upload');
     logoUploadEl.innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.5px;text-transform:uppercase;">Logo</span>
-            <label style="font-family:var(--font-mono);font-size:8px;color:var(--teal);cursor:pointer;text-decoration:underline;" id="corp-logo-label">
+        <div class="id-row">
+            <span class="id-row__label">Logo</span>
+            <label class="id-row__value" style="cursor:pointer;text-decoration:underline;" id="corp-logo-label">
                 ${faction.custom_logo_url ? 'Change Logo' : 'Upload Logo'}
                 <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" id="corp-logo-file" style="display:none;">
             </label>
