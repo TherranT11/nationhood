@@ -371,11 +371,10 @@ let dfSelected = -1;
 
 async function loadDealFlow() {
     if (!faction || !shard) return;
-    // Load open loan requests in the same nation (visible to finance corps)
+    // Load all open loan requests across the shard (finance corps can lend worldwide)
     const { data: requests } = await _supabase
         .from('finance_loan_requests')
         .select('*, requesting_faction:factions!requesting_faction_id(id, faction_name, abbreviation, corp_ticker, corp_subsector, corp_reputation, corp_credit_rating, nation_id)')
-        .eq('nation_id', faction.nation_id)
         .eq('status', 'open')
         .order('created_tick', { ascending: false });
 
