@@ -771,10 +771,13 @@ async function confirmNation() {
         const ceoLast = lastNames[Math.floor(Math.random() * lastNames.length)];
         const ceoAge = 40 + Math.floor(Math.random() * 36);
 
-        // Starting financials, scaled by currency strength
+        // Starting financials, scaled by currency strength + inflation for Finance corps
         const currencyMult = (Number(nation.currency_strength) || 50) / 50;
-        const baseCash = corpSetup.sector === 'Finance' ? 32_000_000 : 36_000_000;
-        const startingCash = Math.round(baseCash * currencyMult);
+        const inflationMult = corpSetup.sector === 'Finance'
+            ? Math.max(0.5, 1 - (Number(nation.inflation) || 0) / 200) // high inflation reduces starting capital
+            : 1;
+        const baseCash = corpSetup.sector === 'Finance' ? 225_000_000 : 36_000_000;
+        const startingCash = Math.round(baseCash * currencyMult * inflationMult);
         const startingLoans = Math.round(8_000_000 * currencyMult);
 
         // Check if user already has a faction (party) — if so, create corp as linked faction
