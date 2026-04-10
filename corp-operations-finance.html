@@ -400,6 +400,7 @@ async function loadDealFlow() {
         risk: 'MODERATE',
         isNew: !offeredSet.has(req.id),
         ticksLeft: (req.expires_tick || 0) - (shard?.current_tick || 0),
+        collateral: req.collateral_type || 'unsecured',
         requestId: req.id,
         alreadyOffered: offeredSet.has(req.id),
     }));
@@ -1209,7 +1210,7 @@ function rdOpen(dealIdx) {
         rdLoanRate = 8;
         rdLoanAmount = deal.amount;
         rdLoanTerm = deal.term || 24;
-        rdLoanCollateral = 'equipment';
+        rdLoanCollateral = deal.collateral || 'equipment';
     } else if (deal.type === 'INSURE') {
         rdInsurePremium = 3.5;
         rdInsureCoverage = deal.amount;
@@ -1358,45 +1359,13 @@ function renderReviewDeal() {
             <div class="rd-control__hints"><span>3% (generous)</span><span>18% (predatory)</span></div>
         </div>`;
 
-        // Loan Amount slider — $5M to $150M
-        const maxLoanAmt = 150000000;
-        const amtPct = ((rdLoanAmount - 5000000) / Math.max(1, maxLoanAmt - 5000000)) * 100;
+        // Borrower's requested terms (read-only)
         html += `<div class="rd-control">
-            <div class="rd-control__header">
-                <span class="rd-control__label">LOAN AMOUNT</span>
-                <span class="rd-control__value" style="font-size:14px;color:#e8e4dc;">${fmtMoney(rdLoanAmount)}</span>
-            </div>
-            <input type="range" class="rd-control__range" min="5000000" max="${maxLoanAmt}" step="5000000" value="${rdLoanAmount}"
-                oninput="rdSetLoanAmount(this.value)"
-                style="background:linear-gradient(90deg,#5a8aaa ${amtPct}%,#2a2a24 ${amtPct}%);">
-            <div class="rd-control__hints"><span>$5M</span><span>$150M</span></div>
-        </div>`;
-
-        // Term presets
-        html += `<div class="rd-control">
-            <div class="rd-control__header">
-                <span class="rd-control__label">TERM (MONTHS)</span>
-                <span class="rd-control__value" style="font-size:14px;color:#e8e4dc;">${rdLoanTerm}mo</span>
-            </div>
-            <div class="rd-presets">`;
-        for (const t of [12, 24, 36, 48, 60, 72, 84, 96, 108, 120]) {
-            const isActive = rdLoanTerm === t;
-            html += `<span class="rd-preset" onclick="rdSetLoanTerm(${t})" style="${isActive ? 'color:#000;background:#5a8aaa;border-color:#5a8aaa;' : ''}">${t}</span>`;
-        }
-        html += `</div></div>`;
-
-        // Collateral tiers
-        html += `<div class="rd-control">
-            <div class="rd-control__label" style="margin-bottom:6px;">COLLATERAL REQUIREMENT</div>
-            <div class="rd-presets">`;
-        for (const c of COLLATERAL_TIERS) {
-            const isActive = rdLoanCollateral === c.id;
-            html += `<div onclick="rdSetCollateral('${c.id}')" style="flex:1;padding:5px 4px;text-align:center;cursor:pointer;background:${isActive ? 'rgba(90,138,170,0.09)' : 'transparent'};border:1px solid ${isActive ? 'rgba(90,138,170,0.27)' : '#2a2a24'};">
-                <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:${isActive ? '#5a8aaa' : '#6a6660'};">${c.label}</div>
-            </div>`;
-        }
-        html += `</div>
-            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:4px;">${collTier.desc}</div>
+            <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:1px;margin-bottom:8px;text-transform:uppercase;">Borrower's Terms (Fixed)</div>
+            <div class="rd-risk-row"><span class="rd-risk-label">LOAN AMOUNT</span><span class="rd-risk-value" style="color:#e8e4dc;">${fmtMoney(rdLoanAmount)}</span></div>
+            <div class="rd-risk-row"><span class="rd-risk-label">TERM</span><span class="rd-risk-value" style="color:#e8e4dc;">${rdLoanTerm}mo</span></div>
+            <div class="rd-risk-row"><span class="rd-risk-label">COLLATERAL</span><span class="rd-risk-value" style="color:#e8e4dc;">${collTier.label}</span></div>
+            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:6px;">Amount, term, and collateral are set by the borrower. You set the interest rate.</div>
         </div>`;
     }
 
