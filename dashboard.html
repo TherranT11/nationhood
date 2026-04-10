@@ -1650,7 +1650,7 @@ async function loadActiveIssueEffects(nationId) {
     // Fetch issues involving this nation
     const { data: issues, error: issErr } = await _supabase
       .from('bilateral_issues')
-      .select('id, issue_type, nation_a_id, nation_b_id, tension, status')
+      .select('id, issue_type, nation_a_id, nation_b_id, tension, favor, status')
       .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
       .in('status', ['active', 'partial']);
 
