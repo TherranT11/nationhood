@@ -31,6 +31,12 @@ const CC_CIVIL = [
     'water_treatment','government_office','bridge_construction','transit_station',
     'waste_processing','flood_defense'
 ];
+// Private-sector civil engineering templates (used when issuer_type = PRIVATE)
+const CC_CIVIL_PRIVATE = [
+    'commercial_tower','retail_complex','residential_tower','hotel_resort',
+    'corporate_campus','logistics_center','mixed_use_development','medical_center',
+    'shopping_mall','parking_structure'
+];
 const CC_INDUSTRIAL = [
     'power_station','hydroelectric_dam','manufacturing_complex','oil_refinery',
     'shipping_port','military_installation','telecom_network','railway_corridor',
@@ -54,6 +60,17 @@ const CC_TEMPLATES = {
     transit_station:      { name: 'Public Transit Station', sector: 'civil_engineering', budget: [25e6,90e6], ticks: [36,46], desc: 'Bus terminal or rail stop' },
     waste_processing:     { name: 'Municipal Waste Processing Plant', sector: 'civil_engineering', budget: [50e6,130e6], ticks: [36,50], desc: 'Solid waste or sewage processing' },
     flood_defense:        { name: 'Coastal Flood Defense System', sector: 'civil_engineering', budget: [70e6,200e6], ticks: [40,56], desc: 'Seawalls, levees, drainage' },
+    // Private civil ($25M-$300M, timeline 36-60 months)
+    commercial_tower:     { name: 'Commercial Office Tower', sector: 'civil_engineering', budget: [80e6,250e6], ticks: [36,55], desc: '20-40 floor corporate office' },
+    retail_complex:       { name: 'Retail & Entertainment Complex', sector: 'civil_engineering', budget: [60e6,180e6], ticks: [36,52], desc: 'Shopping, dining, entertainment' },
+    residential_tower:    { name: 'Luxury Residential Tower', sector: 'civil_engineering', budget: [50e6,200e6], ticks: [36,52], desc: '100-300 premium apartments' },
+    hotel_resort:         { name: 'Hotel & Conference Center', sector: 'civil_engineering', budget: [70e6,220e6], ticks: [36,55], desc: '200-500 room hospitality venue' },
+    corporate_campus:     { name: 'Corporate Campus', sector: 'civil_engineering', budget: [100e6,300e6], ticks: [40,58], desc: 'Multi-building office park' },
+    logistics_center:     { name: 'Distribution & Logistics Center', sector: 'civil_engineering', budget: [40e6,120e6], ticks: [36,48], desc: 'Warehouse, sorting, dispatch' },
+    mixed_use_development:{ name: 'Mixed-Use Development', sector: 'civil_engineering', budget: [80e6,250e6], ticks: [38,56], desc: 'Residential + commercial + retail' },
+    medical_center:       { name: 'Private Medical Center', sector: 'civil_engineering', budget: [70e6,200e6], ticks: [36,52], desc: 'Private hospital, 100-250 beds' },
+    shopping_mall:        { name: 'Regional Shopping Mall', sector: 'civil_engineering', budget: [50e6,160e6], ticks: [36,50], desc: '80-200 retail units, anchor tenants' },
+    parking_structure:    { name: 'Multi-Level Parking Structure', sector: 'civil_engineering', budget: [25e6,80e6], ticks: [36,44], desc: '500-2000 vehicle capacity' },
     // Industrial ($180M-$2.5B, timeline 36-85 months)
     power_station:        { name: 'Power Station', sector: 'industrial', budget: [300e6,900e6], ticks: [45,70], desc: 'Coal, gas, or oil-fired generating plant' },
     hydroelectric_dam:    { name: 'Hydroelectric Dam', sector: 'industrial', budget: [600e6,2.5e9], ticks: [55,85], desc: 'River dam with power generation' },
@@ -90,6 +107,17 @@ const CC_REQUIREMENTS = {
     transit_station:      { mat: { concrete:[4,7],steel:[3,5],glass_facades:[2,4],em_systems:[2,4],aggregate:[2,3] }, equip: { work_trucks:[1,2],excavators:[1,1],concrete_mixers:[1,1] }, wf: { general:[50,90],skilled:[12,25] } },
     waste_processing:     { mat: { concrete:[5,9],steel:[4,7],em_systems:[4,7],heavy_parts:[3,5],aggregate:[3,5] }, equip: { work_trucks:[2,3],excavators:[1,2],bulldozers:[1,1],concrete_mixers:[1,1] }, wf: { general:[60,100],skilled:[18,30] } },
     flood_defense:        { mat: { concrete:[10,16],steel:[6,10],aggregate:[6,10],heavy_parts:[3,5] }, equip: { work_trucks:[3,5],excavators:[2,3],bulldozers:[1,2],pile_drivers:[1,2],heavy_haulers:[1,2] }, wf: { general:[100,160],skilled:[22,40] } },
+    // Private civil
+    commercial_tower:     { mat: { concrete:[6,10],steel:[5,8],glass_facades:[5,8],em_systems:[4,6],lumber:[1,2] }, equip: { work_trucks:[2,3],tower_cranes:[1,2],concrete_mixers:[1,1],excavators:[1,2] }, wf: { general:[80,130],skilled:[20,35] } },
+    retail_complex:       { mat: { concrete:[5,8],steel:[3,6],glass_facades:[3,6],em_systems:[3,5],lumber:[2,4],aggregate:[2,3] }, equip: { work_trucks:[2,3],excavators:[1,2],concrete_mixers:[1,1] }, wf: { general:[60,110],skilled:[15,28] } },
+    residential_tower:    { mat: { concrete:[6,10],steel:[4,7],glass_facades:[3,5],em_systems:[3,5],lumber:[3,5] }, equip: { work_trucks:[2,3],tower_cranes:[1,2],concrete_mixers:[1,1],excavators:[1,1] }, wf: { general:[70,120],skilled:[15,30] } },
+    hotel_resort:         { mat: { concrete:[5,9],steel:[4,7],glass_facades:[3,6],em_systems:[4,6],lumber:[2,4] }, equip: { work_trucks:[2,3],tower_cranes:[1,1],concrete_mixers:[1,1],excavators:[1,2] }, wf: { general:[70,120],skilled:[18,32] } },
+    corporate_campus:     { mat: { concrete:[8,12],steel:[5,8],glass_facades:[4,7],em_systems:[5,8],lumber:[2,3],aggregate:[2,4] }, equip: { work_trucks:[3,4],excavators:[1,2],concrete_mixers:[1,2],tower_cranes:[1,1] }, wf: { general:[90,150],skilled:[22,38] } },
+    logistics_center:     { mat: { concrete:[4,7],steel:[4,7],aggregate:[3,5],heavy_parts:[2,4],em_systems:[2,3] }, equip: { work_trucks:[2,3],excavators:[1,2],bulldozers:[1,1],concrete_mixers:[1,1] }, wf: { general:[50,80],skilled:[10,20] } },
+    mixed_use_development:{ mat: { concrete:[7,11],steel:[5,8],glass_facades:[3,6],em_systems:[4,6],lumber:[3,5],aggregate:[2,3] }, equip: { work_trucks:[2,4],tower_cranes:[1,2],excavators:[1,2],concrete_mixers:[1,1] }, wf: { general:[80,140],skilled:[20,35] } },
+    medical_center:       { mat: { concrete:[5,9],steel:[4,7],glass_facades:[2,4],em_systems:[4,7],lumber:[1,3],heavy_parts:[1,2] }, equip: { work_trucks:[2,3],excavators:[1,2],concrete_mixers:[1,1],tower_cranes:[1,1] }, wf: { general:[70,110],skilled:[22,38] } },
+    shopping_mall:        { mat: { concrete:[5,8],steel:[3,5],glass_facades:[3,5],em_systems:[2,4],lumber:[2,4],aggregate:[2,3] }, equip: { work_trucks:[1,3],excavators:[1,1],concrete_mixers:[1,1],bulldozers:[1,1] }, wf: { general:[50,90],skilled:[12,25] } },
+    parking_structure:    { mat: { concrete:[5,8],steel:[3,5],aggregate:[3,5] }, equip: { work_trucks:[1,2],excavators:[1,1],concrete_mixers:[1,1] }, wf: { general:[30,60],skilled:[8,16] } },
     // Industrial
     power_station:        { mat: { concrete:[10,16],steel:[10,16],heavy_parts:[6,10],em_systems:[6,10],aggregate:[5,8] }, equip: { work_trucks:[4,6],excavators:[2,4],tower_cranes:[2,3],heavy_haulers:[2,3],pile_drivers:[1,2],concrete_mixers:[2,3] }, wf: { general:[160,240],skilled:[50,80] } },
     hydroelectric_dam:    { mat: { concrete:[16,24],steel:[10,16],aggregate:[10,16],heavy_parts:[6,10],em_systems:[4,8] }, equip: { work_trucks:[5,8],excavators:[3,5],bulldozers:[2,3],tower_cranes:[2,3],heavy_haulers:[2,4],pile_drivers:[2,3],concrete_mixers:[2,4] }, wf: { general:[200,300],skilled:[60,100] } },
@@ -405,8 +433,8 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
     const toGenerate = Math.min(targetContracts, slotsAvailable);
     if (toGenerate === 0) return [];
 
-    // Check mega project cooldown
-    let megaAllowed = gdp >= 75;
+    // Check mega project cooldown — available at moderate GDP growth (was 75)
+    let megaAllowed = gdp >= 50;
     if (megaAllowed) {
         const { data: cooldown } = await supabase
             .from('mega_project_cooldowns')
@@ -426,7 +454,8 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
         if (megaAllowed && Math.random() < 0.15) {
             slots.push('mega_project');
             megaAllowed = false; // only one mega per cycle
-        } else if (gdp >= 51 && Math.random() < 0.4) {
+        } else if (gdp >= 25 && Math.random() < 0.35) {
+            // Industrial available even in struggling economies (was gdp>=51)
             slots.push('industrial');
         } else {
             slots.push('civil_engineering');
@@ -464,7 +493,8 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
     const generated = [];
     let contractSeq = 1; // sequence number within this generation batch
     for (const sector of slots) {
-        const pool = sector === 'mega_project' ? CC_MEGA : sector === 'industrial' ? CC_INDUSTRIAL : CC_CIVIL;
+        // Private issuers get private-appropriate civil templates (Commercial Tower, Hotel, etc.)
+        const pool = sector === 'mega_project' ? CC_MEGA : sector === 'industrial' ? CC_INDUSTRIAL : CC_CIVIL_PRIVATE;
         const key = ccPick(pool);
         const tmpl = CC_TEMPLATES[key];
         if (!tmpl) continue;
