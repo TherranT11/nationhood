@@ -1817,7 +1817,7 @@ async function loadActivePortfolio() {
 
     const { data: loans } = await _supabase
         .from('finance_active_loans')
-        .select('*, borrower:factions!borrower_faction_id(id, faction_name, abbreviation, corp_ticker), finance_loan_requests!inner(request_type)')
+        .select('*, borrower:factions!borrower_faction_id(id, faction_name, abbreviation, corp_ticker, nation), loan_nation:nations!nation_id(name), finance_loan_requests!inner(request_type)')
         .eq('lender_faction_id', faction.id)
         .in('status', ['current', 'late', 'delinquent'])
         .order('started_tick', { ascending: false });
@@ -1828,6 +1828,7 @@ async function loadActivePortfolio() {
         type: TYPE_MAP[loan.finance_loan_requests?.request_type] || 'LOAN',
         counterparty: loan.borrower?.faction_name || 'Unknown',
         abbr: loan.borrower?.abbreviation || loan.borrower?.corp_ticker || '??',
+        nation: loan.loan_nation?.name || loan.borrower?.nation || 'Unknown',
         remaining: loan.principal - loan.total_paid,
         principal: loan.principal,
         earned: loan.total_interest_paid || 0,
@@ -1858,7 +1859,7 @@ async function loadCollections() {
 
     const { data: loans } = await _supabase
         .from('finance_active_loans')
-        .select('*, borrower:factions!borrower_faction_id(id, faction_name, abbreviation, corp_ticker), finance_loan_requests!inner(request_type)')
+        .select('*, borrower:factions!borrower_faction_id(id, faction_name, abbreviation, corp_ticker, nation), loan_nation:nations!nation_id(name), finance_loan_requests!inner(request_type)')
         .eq('lender_faction_id', faction.id)
         .in('status', ['repaid', 'defaulted'])
         .order('completed_tick', { ascending: false });
@@ -1871,7 +1872,7 @@ async function loadCollections() {
             type: CTYPE_MAP[loan.finance_loan_requests?.request_type] || 'LOAN',
             counterparty: loan.borrower?.faction_name || 'Unknown',
             abbr: loan.borrower?.abbreviation || loan.borrower?.corp_ticker || '??',
-            nation: '',
+            nation: loan.loan_nation?.name || loan.borrower?.nation || '',
             outcome: loan.status === 'repaid' ? 'REPAID' : 'DEFAULTED',
             principal: loan.principal,
             earned,
