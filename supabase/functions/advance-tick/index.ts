@@ -8519,7 +8519,6 @@ async function resolveExpiredVotes(supabase, nationId) {
             || lastResult?.result === 'president_desk';
         if (!skipMomentum) {
             try {
-                const articleCount = Math.max(1, (bill.bill_articles || []).filter(a => a.policies && a.policies.length > 0).length);
                 const billPassed = lastResult?.result === 'passed';
                 const supports = bill.bill_support || [];
 
@@ -8539,7 +8538,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         label = `Bill failed: ${(bill.bill_name || '').slice(0, 25)}… (+1)`;
                     } else if (stance === 'no' && billPassed) {
                         delta = -1;
-                        label = `Bill passed: ${(bill.bill_name || '').slice(0, 25)}… (${delta})`;
+                        label = `Bill passed: ${(bill.bill_name || '').slice(0, 25)}… (-1)`;
                     }
 
                     if (delta !== 0) {

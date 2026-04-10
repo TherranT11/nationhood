@@ -2187,7 +2187,6 @@ export async function resolveExpiredVotes(supabase, nationId) {
             || lastResult?.result === 'president_desk';
         if (!skipMomentum) {
             try {
-                const articleCount = Math.max(1, (bill.bill_articles || []).filter(a => a.policies && a.policies.length > 0).length);
                 const billPassed = lastResult?.result === 'passed';
                 const supports = bill.bill_support || [];
 
