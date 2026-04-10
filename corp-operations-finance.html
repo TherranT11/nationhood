@@ -440,11 +440,12 @@ async function loadDealFlow() {
             creditRating: 50,
             risk: 'MODERATE',
             isNew: !offeredSet.has(req.id),
-        ticksLeft: (req.expires_tick || 0) - (shard?.current_tick || 0),
-        collateral: req.collateral_type || 'unsecured',
-        requestId: req.id,
-        alreadyOffered: offeredSet.has(req.id),
-    }));
+            ticksLeft: (req.expires_tick || 0) - (shard?.current_tick || 0),
+            collateral: req.collateral_type || 'unsecured',
+            requestId: req.id,
+            alreadyOffered: offeredSet.has(req.id),
+        };
+    });
     renderDealFlow();
 }
 

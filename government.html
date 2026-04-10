@@ -6696,7 +6696,6 @@ async function protestCrisisAction(actionType) {
 }
 
 // ==================== ISSUE GOVERNMENT BONDS ====================
-let _bondModalOpen = false;
 let _bondCouponRate = 5;
 let _bondTermMonths = 60;
 
@@ -6756,7 +6755,6 @@ function openBondIssuanceModal(ministryKey, apCost) {
         </div>
     </div>`;
     document.body.appendChild(overlay);
-    _bondModalOpen = true;
     renderBondTermPresets();
 }
 
@@ -6784,7 +6782,6 @@ function renderBondTermPresets() {
 function closeBondModal() {
     const overlay = document.getElementById('bond-modal-overlay');
     if (overlay) overlay.remove();
-    _bondModalOpen = false;
 }
 
 async function submitBondIssuance(apCost) {
