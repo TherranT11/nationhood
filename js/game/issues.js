@@ -3224,6 +3224,26 @@ async function insertHistory(supabase, issueId, tick, eventType, eventText, meta
 
 // ==================== ACTIONS SYSTEM ====================
 
+/** Publish an issue action to both nations' event_log feeds (Nation-Local + World). */
+async function dispatchIssueEvent(supabase, actingNationId, opponentNationId, action, verb, currentTick) {
+    try {
+        const [actRes, oppRes] = await Promise.all([
+            supabase.from('nations').select('name').eq('id', actingNationId).single(),
+            supabase.from('nations').select('name').eq('id', opponentNationId).single(),
+        ]);
+        const actName = actRes.data?.name || 'A nation';
+        const oppName = oppRes.data?.name || 'another nation';
+        const headline = `${actName} ${verb} ${oppName} in bilateral dispute: ${action.name}.`;
+        const row = { event_name: action.name, category: 'Conflict', description_chosen: headline, fired_at_tick: currentTick };
+        await supabase.from('event_log').insert([
+            { ...row, nation_id: actingNationId },
+            { ...row, nation_id: opponentNationId },
+        ]);
+    } catch (err) {
+        console.warn('[Issues] Event log dispatch failed:', err.message);
+    }
+}
+
 /**
  * Execute an issue action. Called from the frontend when a player clicks an action.
  *
@@ -3372,22 +3392,7 @@ export async function executeIssueAction(supabase, params) {
             { action_key: actionKey, acting_nation_id: actingNationId },
             actingNationId);
 
-        // Publish diplomatic proposal event to Nation-Local and Nation-World feeds
-        try {
-            const [actRes, oppRes] = await Promise.all([
-                supabase.from('nations').select('name').eq('id', actingNationId).single(),
-                supabase.from('nations').select('name').eq('id', opponentNationId).single(),
-            ]);
-            const actName = actRes.data?.name || 'A nation';
-            const oppName = oppRes.data?.name || 'another nation';
-            const headline = `${actName} proposes diplomatic resolution with ${oppName} in bilateral dispute: ${action.name}.`;
-            await supabase.from('event_log').insert([
-                { nation_id: actingNationId, event_name: action.name, category: 'Conflict', description_chosen: headline, fired_at_tick: currentTick },
-                { nation_id: opponentNationId, event_name: action.name, category: 'Conflict', description_chosen: headline, fired_at_tick: currentTick },
-            ]);
-        } catch (newsErr) {
-            console.warn('[Issues] Event log dispatch failed:', newsErr.message);
-        }
+        await dispatchIssueEvent(supabase, actingNationId, opponentNationId, action, 'proposes diplomatic resolution with', currentTick);
 
         return { success: true, result: { type: 'submitted', actionKey, apCost } };
     }
@@ -3581,31 +3586,10 @@ export async function executeIssueAction(supabase, params) {
             { tension_before: issue.tension, tension_after: newTension });
     }
 
-    // Publish event to Nation-Local and Nation-World feeds for both nations
-    try {
-        const [actingRes, opponentRes] = await Promise.all([
-            supabase.from('nations').select('name').eq('id', actingNationId).single(),
-            supabase.from('nations').select('name').eq('id', opponentNationId).single(),
-        ]);
-        const actingName = actingRes.data?.name || 'A nation';
-        const opponentName = opponentRes.data?.name || 'another nation';
-        const categoryLabel = action.category === 'diplomatic' ? 'diplomatic' : action.category === 'threatening' ? 'threatening' : 'unilateral';
-        const headline = `${actingName} takes ${categoryLabel} action against ${opponentName} in bilateral dispute: ${action.name}.`;
-        const eventRow = {
-            nation_id: actingNationId,
-            event_name: action.name,
-            category: 'Conflict',
-            description_chosen: headline,
-            fired_at_tick: currentTick,
-        };
-        // Insert for acting nation (Nation-Local) and opponent (their Nation-Local); both appear on World feed for everyone else
-        await supabase.from('event_log').insert([
-            eventRow,
-            { ...eventRow, nation_id: opponentNationId },
-        ]);
-    } catch (newsErr) {
-        console.warn('[Issues] Event log dispatch failed:', newsErr.message);
-    }
+    const verb = action.category === 'diplomatic' ? 'takes diplomatic action against'
+        : action.category === 'threatening' ? 'takes threatening action against'
+        : 'takes unilateral action against';
+    await dispatchIssueEvent(supabase, actingNationId, opponentNationId, action, verb, currentTick);
 
     return {
         success: true,
