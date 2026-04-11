@@ -3772,8 +3772,10 @@ function renderIndustriesTab(nation) {
     h += '<div style="font-size:0.7rem;color:var(--dtext-3);">Economy → Industries</div>';
     h += '</div>';
     h += '<div style="text-align:right;">';
-    h += '<div style="font-size:0.6rem;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px;">Combined GDP Share &nbsp; Combined Revenue</div>';
-    h += '<div style="font-size:0.85rem;font-weight:bold;"><span style="color:var(--damber);">' + combinedPct.toFixed(1) + '%</span> &nbsp; <span style="color:var(--dtext-1);">' + fmtIndustryMoney(combinedRevenue) + '</span></div>';
+    h += '<div style="display:flex;gap:20px;">';
+    h += '<div style="text-align:right;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px;">GDP Share</div><div style="font-size:1.1rem;font-weight:bold;color:var(--damber);">' + combinedPct.toFixed(1) + '%</div></div>';
+    h += '<div style="text-align:right;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px;">Revenue</div><div style="font-size:1.1rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(combinedRevenue) + '</div></div>';
+    h += '</div>';
     h += '</div></div>';
 
     // ── GDP composition bar ──
