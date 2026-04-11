@@ -248,64 +248,7 @@ initPage('conflicts', async (state) => {
         }
     });
 
-    // Event delegation for issue actions — highlight on click, confirm via button
-    const actionsPanel = document.getElementById('issues-actions-panel');
-    actionsPanel.addEventListener('click', async (e) => {
-        // Tab switching
-        const tab = e.target.closest('.ia-tab');
-        if (tab) {
-            const category = tab.dataset.cat;
-            if (!category) return;
-            actionsPanel.querySelectorAll('.ia-tab').forEach(t => t.classList.remove('ia-tab--active'));
-            tab.classList.add('ia-tab--active');
-            actionsPanel.querySelectorAll('.ia-list').forEach(l => l.style.display = 'none');
-            const list = document.getElementById('ia-list-' + category);
-            if (list) list.style.display = '';
-            // Clear selection when switching tabs
-            _selectedActionKey = null;
-            actionsPanel.querySelectorAll('.ia-item').forEach(i => i.classList.remove('ia-item--selected'));
-            const confirmBar = document.getElementById('ia-confirm-bar');
-            if (confirmBar) confirmBar.style.display = 'none';
-            return;
-        }
-
-        // Confirm button
-        // Execute button click → fire action directly
-        if (e.target.closest('#ia-confirm-btn') || e.target.closest('.ia-confirm-btn')) {
-            e.stopPropagation();
-            if (issueActionExecuting) return;
-            if (!_selectedActionKey || !_actionIssue) return;
-            await executeIssueActionFromUI(_selectedActionKey, _actionIssue);
-            return;
-        }
-
-        // Action item click → select it and show execute button
-        const item = e.target.closest('.ia-item:not(.ia-item--used):not(.ia-item--locked):not(.ia-item--wrong-role)');
-        if (!item) return;
-        const actionKey = item.dataset.actionKey;
-        if (!actionKey || !_actionIssue) return;
-
-        // Toggle selection
-        const wasSelected = item.classList.contains('ia-item--selected');
-        actionsPanel.querySelectorAll('.ia-item').forEach(i => i.classList.remove('ia-item--selected'));
-
-        const confirmBar = document.getElementById('ia-confirm-bar');
-        if (wasSelected) {
-            _selectedActionKey = null;
-            if (confirmBar) confirmBar.style.display = 'none';
-        } else {
-            item.classList.add('ia-item--selected');
-            _selectedActionKey = actionKey;
-            const action = ACTIONS[actionKey];
-            if (confirmBar && action) {
-                const btnLabel = action.category === 'diplomatic' ? 'Submit Action' : 'Execute Action';
-                confirmBar.innerHTML = `<button id="ia-confirm-btn" class="ia-confirm-btn ia-confirm-btn--${action.category}">${btnLabel}: ${escapeHtml(action.name)}</button>`;
-                confirmBar.style.display = '';
-            }
-        }
-    });
-
-    // Load current faction's government roles for issue action gating
+    // Old action panel delegation removed — card system handles interactions via window globals
     await loadFactionRoles();
 
     await loadIncidents();
