@@ -1313,8 +1313,19 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
     const ticksElapsed = currentTick - election.election_tick;
     if (ticksElapsed <= 0) return null;
 
+    // Load all parties (sorted by seats) — needed for penalties AND deadline trait check
+    const { data: allParties } = await supabase
+        .from('factions')
+        .select('id, faction_name, seats, leader_positive_traits')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party')
+        .order('seats', { ascending: false });
+
     const failedAttempts = nation.failed_formation_attempts || 0;
-    const deadline = failedAttempts >= 1 ? POST_SNAP_DEADLINE_TICKS : FORMATION_DEADLINE_TICKS;
+    // Deal Maker trait: lead party (largest by seats) extends formation deadline by 3 ticks
+    const leadPartyTraits = allParties?.[0]?.leader_positive_traits || [];
+    const dealMakerExtension = leadPartyTraits.includes('deal_maker') ? 3 : 0;
+    const deadline = (failedAttempts >= 1 ? POST_SNAP_DEADLINE_TICKS : FORMATION_DEADLINE_TICKS) + dealMakerExtension;
 
     const result = {
         nation: nation.name,
@@ -1325,12 +1336,6 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
 
     // ===== ONGOING PENALTIES (every tick during vacancy) =====
     // Top 2 parties by seats lose -2 approval each tick
-    const { data: allParties } = await supabase
-        .from('factions')
-        .select('id, faction_name, seats')
-        .eq('nation_id', nation.id)
-        .eq('faction_type', 'party')
-        .order('seats', { ascending: false });
 
     if (allParties && allParties.length > 0) {
         await supabase.rpc('adjust_momentum', { p_faction_id: allParties[0].id, p_delta: -2, p_label: 'Formation timeout (-2)', p_tick: currentTick });
@@ -1452,7 +1457,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
             nation_id: nation.id,
             event_name: 'FORMATION_SNAP_ELECTION',
             trigger_key: 'formation_snap_election',
-            description_used: `Snap election called in ${nation.name} after coalition formation failed. Parties had ${FORMATION_DEADLINE_TICKS} ticks to negotiate.`,
+            description_used: `Snap election called in ${nation.name} after coalition formation failed. Parties had ${deadline} ticks to negotiate.`,
             category: 'POLITICAL',
             effects_applied: {
                 stage: 1,
