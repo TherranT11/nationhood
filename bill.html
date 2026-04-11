@@ -835,14 +835,13 @@ function renderBill() {
     const isFoundational = bill.bill_type === 'foundational';
     // Ratification and procedural bills can always be sent to floor by the sponsor
     const isAutoFloor = ['ratification', 'no_confidence', 'impeachment_motion', 'veto_override', 'impeachment_conviction', 'minister_confirmation', 'confirmation'].includes(bill.bill_type);
-    let canSendToFloor = !isNoGovernment && (isAutoFloor ? true : isFoundational ? hasCosponsor : (hasMajority || hasCosponsor));
+    // Co-sponsor from a different party required to advance any bill to floor
+    let canSendToFloor = !isNoGovernment && (isAutoFloor ? true : hasCosponsor);
 
     const disabledAttr = canSendToFloor ? '' : 'disabled';
     const reason = isNoGovernment
         ? '<div style="color:var(--blue);font-size:0.78rem;margin-top:10px;text-align:center;">🏛️ Legislature is suspended until a new government is formed.</div>'
-        : (canSendToFloor ? '' : isFoundational
-        ? '<div style="color:var(--red);font-size:0.78rem;margin-top:10px;text-align:center;">⚠ Foundational laws require at least one co-sponsor to advance.</div>'
-        : '<div style="color:var(--red);font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or a simple majority of seats to send this to the floor.</div>');
+        : (canSendToFloor ? '' : '<div style="color:var(--red);font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor from another party to send this to the floor.</div>');
 
     const retractBtn = '<button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>';
     let referendumNote = '';

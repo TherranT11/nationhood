@@ -2204,10 +2204,8 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     } else if (stance === 'no' && !billPassed) {
                         delta = 1;
                         label = `Bill failed: ${(bill.bill_name || '').slice(0, 25)}… (+1)`;
-                    } else if (stance === 'no' && billPassed) {
-                        delta = -1;
-                        label = `Bill passed: ${(bill.bill_name || '').slice(0, 25)}… (-1)`;
                     }
+                    // NO voters on passing bills: no penalty (removed — opposition shouldn't be punished for opposing)
 
                     if (delta !== 0) {
                         await supabase.rpc('adjust_momentum', {
@@ -2219,12 +2217,19 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     }
                 }
 
-                // Sponsor bonus: +1 on passage
+                // Sponsor bonus: +1 on passage, -2 on failure
                 if (billPassed && bill.proposed_by) {
                     await supabase.rpc('adjust_momentum', {
                         p_faction_id: bill.proposed_by,
                         p_delta: 1,
                         p_label: `Sponsored bill passed: ${(bill.bill_name || '').slice(0, 25)}… (+1)`,
+                        p_tick: currentTick
+                    });
+                } else if (!billPassed && bill.proposed_by) {
+                    await supabase.rpc('adjust_momentum', {
+                        p_faction_id: bill.proposed_by,
+                        p_delta: -2,
+                        p_label: `Sponsored bill failed: ${(bill.bill_name || '').slice(0, 25)}… (-2)`,
                         p_tick: currentTick
                     });
                 }
