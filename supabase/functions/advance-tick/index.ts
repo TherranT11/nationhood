@@ -28184,28 +28184,35 @@ async function processIssueTick(supabase, nationList, currentTick) {
 
         // ── 7. Check tension 10 → escalation to incident ──
         if (newTension >= 10 && issue.status !== 'escalated') {
-            newStatus = 'escalated';
             const leverage = favorToLeverage(issue.favor);
+
+            // Determine actual government types for each nation
+            const govTypeA = nationA.government_type || 'democracy';
+            const govTypeB = nationB.government_type || 'democracy';
 
             // Spawn the actual incident via the existing incident system
             const incidentResult = await spawnIncidentFromIssue(
                 supabase, issue, nationA, nationB, leverage, currentTick
             );
 
-            results.escalations.push({
-                issue_id: issue.id,
-                issue_type: issue.issue_type,
-                incident_id: incidentResult?.incidentId || null,
-                nation_a_id: issue.nation_a_id,
-                nation_b_id: issue.nation_b_id,
-                favor: issue.favor,
-                starting_leverage: leverage,
-            });
+            // Only mark as escalated if the incident was actually created
+            if (incidentResult?.incidentId) {
+                newStatus = 'escalated';
 
-            await insertHistory(supabase, issue.id, currentTick, 'escalated',
-                'This issue has escalated to an incident.',
-                { tension: newTension, favor: issue.favor, leverage,
-                  incident_id: incidentResult?.incidentId });
+                results.escalations.push({
+                    issue_id: issue.id,
+                    issue_type: issue.issue_type,
+                    incident_id: incidentResult.incidentId,
+                    nation_a_id: issue.nation_a_id,
+                    nation_b_id: issue.nation_b_id,
+                    favor: issue.favor,
+                    starting_leverage: leverage,
+                });
+
+                await insertHistory(supabase, issue.id, currentTick, 'escalated',
+                    'This issue has escalated to an incident.',
+                    { tension: newTension, favor: issue.favor, leverage,
+                      incident_id: incidentResult.incidentId });
 
             // ── ESCALATION FAVOR BONUS/PENALTY ──
             // Favored nation: +7 gov_approval, +6 momentum to all government parties
@@ -28259,6 +28266,10 @@ async function processIssueTick(supabase, nationList, currentTick) {
                     { favored_nation_id: favoredNationId, disfavored_nation_id: disfavoredNationId,
                       favor: currentFavor, gov_approval_favored: 7, gov_approval_disfavored: -7,
                       momentum_favored: 4, momentum_disfavored: -6 });
+            }
+            } else {
+                // Incident creation failed (cap, duplicate, or DB error) — keep issue active at tension 10
+                console.warn(`[Issues] Escalation failed for issue ${issue.id} — incident not created, keeping issue active`);
             }
         }
 
@@ -28923,8 +28934,8 @@ async function spawnIncidentFromIssue(supabase, issue, nationA, nationB, leverag
         nation_b_id: issue.nation_b_id,
         nation_a_role: roleA,
         nation_b_role: roleB,
-        nation_a_gov_type: 'democracy',
-        nation_b_gov_type: 'democracy',
+        nation_a_gov_type: nationA.government_type || 'democracy',
+        nation_b_gov_type: nationB.government_type || 'democracy',
         leverage_a: Math.max(0, leverageA),
         leverage_b: Math.max(0, leverageB),
         started_tick: currentTick,

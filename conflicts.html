@@ -438,13 +438,13 @@ async function loadIssues() {
         _supabase.from('bilateral_issues')
             .select('*, nation_a:nations!bilateral_issues_nation_a_id_fkey(id, name), nation_b:nations!bilateral_issues_nation_b_id_fkey(id, name)')
             .or(`nation_a_id.eq.${currentNation.id},nation_b_id.eq.${currentNation.id}`)
-            .in('status', ['active', 'partial'])
+            .in('status', ['active', 'partial', 'escalated'])
             .order('tension', { ascending: false }),
         _supabase.from('bilateral_issues')
             .select('*, nation_a:nations!bilateral_issues_nation_a_id_fkey(id, name), nation_b:nations!bilateral_issues_nation_b_id_fkey(id, name)')
             .not('nation_a_id', 'eq', currentNation.id)
             .not('nation_b_id', 'eq', currentNation.id)
-            .in('status', ['active', 'partial'])
+            .in('status', ['active', 'partial', 'escalated'])
             .order('tension', { ascending: false }),
     ]);
 
@@ -1939,6 +1939,25 @@ async function executeAction(action, incident, stretchedThin) {
                 visibility: 'both'
             });
 
+            // Dashboard event_log for concession resolution
+            const crisisName = {
+                fishing_dispute: 'Fishing Dispute',
+                border_incursion: 'Border Incursion',
+                dam_water: 'Water Dispute',
+                trade_war: 'Trade War',
+                spy_arrest: 'Espionage Crisis'
+            }[incident.incident_type] || 'Diplomatic Incident';
+            for (const nId of [incident.nation_a_id, incident.nation_b_id]) {
+                await _supabase.from('event_log').insert({
+                    nation_id: nId,
+                    event_name: `${crisisName} Resolved`,
+                    trigger_key: 'incident_resolved',
+                    description_chosen: `${conceder} concedes. The ${crisisName.toLowerCase()} between ${nameA} and ${nameB} has been resolved.`,
+                    category: 'crisis',
+                    fired_at_tick: currentTick
+                }).then(function(r) { if (r.error) console.warn('Concession event_log failed:', r.error.message); });
+            }
+
             await refreshIncidentView(incident.id);
             return;
         }
@@ -2007,6 +2026,28 @@ async function executeAction(action, incident, stretchedThin) {
             stat_effects: backfired ? action.backfire_effects : action.effects_template,
             visibility: 'both'
         });
+
+        // Dashboard event_log entry for both nations
+        const crisisLabel = {
+            fishing_dispute: 'Fishing Dispute',
+            border_incursion: 'Border Incursion',
+            dam_water: 'Water Dispute',
+            trade_war: 'Trade War',
+            spy_arrest: 'Espionage Crisis'
+        }[incident.incident_type] || 'Diplomatic Incident';
+        const dashDesc = backfired
+            ? `${crisisLabel}: ${currentNation.name} attempted ${action.action_name} — it backfired.`
+            : `${crisisLabel}: ${currentNation.name} executed ${action.action_name}.`;
+        for (const nId of [incident.nation_a_id, incident.nation_b_id]) {
+            await _supabase.from('event_log').insert({
+                nation_id: nId,
+                event_name: crisisLabel,
+                trigger_key: 'incident_action',
+                description_chosen: dashDesc,
+                category: 'crisis',
+                fired_at_tick: currentTick
+            }).then(function(r) { if (r.error) console.warn('Incident action event_log failed:', r.error.message); });
+        }
 
         // System chat
         await _supabase.from('incident_chat_messages').insert({

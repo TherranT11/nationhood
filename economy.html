@@ -3681,7 +3681,7 @@ function renderIndustriesTab(nation) {
             var d1 = drivers[i];
             var v1 = Math.round(Number(nation[d1.key]) || 0);
             var c1 = v1 > 50 ? 'var(--dgreen)' : v1 > 30 ? 'var(--damber)' : 'var(--dred)';
-            var row = '<div style="display:flex;gap:16px;margin-bottom:4px;">';
+            var row = '<div class="industries-driver-row">';
             row += '<div style="flex:1;display:flex;align-items:center;gap:6px;font-size:0.7rem;">';
             row += '<span style="color:' + c1 + ';min-width:70px;">' + escapeHtml(d1.label) + '</span>';
             row += '<div style="flex:1;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + Math.min(100, v1) + '%;background:' + c1 + ';border-radius:3px;"></div></div>';
@@ -3766,14 +3766,16 @@ function renderIndustriesTab(nation) {
     var h = '<div class="econ-tab-body"><div class="econ-overview">';
 
     // ── Header bar ──
-    h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">';
+    h += '<div class="industries-header">';
     h += '<div>';
     h += '<div style="font-size:1rem;font-weight:bold;color:var(--dtext-1);letter-spacing:2px;text-transform:uppercase;">Industries</div>';
     h += '<div style="font-size:0.7rem;color:var(--dtext-3);">Economy → Industries</div>';
     h += '</div>';
     h += '<div style="text-align:right;">';
-    h += '<div style="font-size:0.6rem;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px;">Combined GDP Share &nbsp; Combined Revenue</div>';
-    h += '<div style="font-size:0.85rem;font-weight:bold;"><span style="color:var(--damber);">' + combinedPct.toFixed(1) + '%</span> &nbsp; <span style="color:var(--dtext-1);">' + fmtIndustryMoney(combinedRevenue) + '</span></div>';
+    h += '<div style="display:flex;gap:20px;">';
+    h += '<div style="text-align:right;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px;">GDP Share</div><div style="font-size:1.1rem;font-weight:bold;color:var(--damber);">' + combinedPct.toFixed(1) + '%</div></div>';
+    h += '<div style="text-align:right;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px;">Revenue</div><div style="font-size:1.1rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(combinedRevenue) + '</div></div>';
+    h += '</div>';
     h += '</div></div>';
 
     // ── GDP composition bar ──
@@ -3785,7 +3787,7 @@ function renderIndustriesTab(nation) {
     h += '<div style="width:' + vehBarW + '%;background:var(--dred);" title="Heavy Vehicles ' + vehiclePct.toFixed(1) + '%"></div>';
     h += '<div style="width:' + otherBarW + '%;background:var(--bg-elevated);"></div>';
     h += '</div>';
-    h += '<div style="display:flex;gap:12px;margin-top:4px;font-size:0.6rem;">';
+    h += '<div class="industries-legend">';
     h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--damber);margin-right:3px;"></span>Construction ' + constructionPct.toFixed(1) + '%</span>';
     h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--teal);margin-right:3px;"></span>Materials ' + materialsPct.toFixed(1) + '%</span>';
     h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--dred);margin-right:3px;"></span>Heavy Vehicles ' + vehiclePct.toFixed(1) + '%</span>';
@@ -3793,7 +3795,7 @@ function renderIndustriesTab(nation) {
     h += '</div></div>';
 
     // ── Three-column layout ──
-    h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">';
+    h += '<div class="industries-grid">';
 
     // Section header helper
     function secHeader(text, color) {
