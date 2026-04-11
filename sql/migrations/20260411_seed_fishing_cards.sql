@@ -136,6 +136,132 @@ INSERT INTO issue_card_definitions (
             { "stat_key": "efficiency", "delta": -0.05, "duration_ticks": 8, "target": "self" }
         ]
     }'::jsonb
+),
+
+-- ── CARD 5: Seasonal Restriction (Unilateral / HoG) ──
+(
+    'maritime_fishing_rights', 5, 'Seasonal Restriction', 'unilateral', 'head_of_government', 1,
+    'Marine biologists warn spawning season is approaching. The fish stocks need a break. But any nation that stops fishing while the other continues loses catch share permanently.',
+
+    'Dominant Fleet',
+    'Ignore Spawning Season',
+    'Keep fishing through breeding period. Your biologists say the stocks can handle it. Their biologists disagree.',
+    '{
+        "favor_delta": 0.5,
+        "tension_delta": 0.5,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "gdp_growth", "delta": 0.05, "duration_ticks": 6, "target": "self" },
+            { "stat_key": "arable_land", "delta": -0.1, "duration_ticks": 8, "target": "self" }
+        ]
+    }'::jsonb,
+
+    'Rival Fleet',
+    'Unilaterally Observe Spawning Ban',
+    'Pull your fleet out during breeding season. You lose catch. The fish recover. The world notices your restraint.',
+    '{
+        "favor_delta": 0.5,
+        "tension_delta": -1,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": 0.05, "duration_ticks": 8, "target": "self" },
+            { "stat_key": "gdp_growth", "delta": -0.05, "duration_ticks": 6, "target": "self" }
+        ]
+    }'::jsonb
+),
+
+-- ── CARD 6: Surveillance Deployment (Unilateral / MoD) ──
+(
+    'maritime_fishing_rights', 6, 'Surveillance Deployment', 'unilateral', 'minister_of_defense', 1,
+    'Both nations want to know exactly what the other is doing. How many boats. Where they fish. How much they catch. Information is leverage.',
+
+    'Dominant Fleet',
+    'Deploy Maritime Surveillance Drones',
+    'Unmanned aerial vehicles monitoring the entire zone. Every foreign vessel tracked. Every net documented.',
+    '{
+        "favor_delta": 0.5,
+        "tension_delta": 0.5,
+        "relation_delta": 0,
+        "treasury_cost": 8000000,
+        "stat_effects": [
+            { "stat_key": "digital_infrastructure", "delta": 0.05, "duration_ticks": 10, "target": "self" }
+        ]
+    }'::jsonb,
+
+    'Rival Fleet',
+    'Install Vessel Tracking Systems',
+    'Equip your fleet with transponders and cameras. Document your OWN movements. Transparent and verifiable. Useful in any future legal proceeding.',
+    '{
+        "favor_delta": -0.5,
+        "tension_delta": 0,
+        "relation_delta": 0,
+        "treasury_cost": 5000000,
+        "stat_effects": [
+            { "stat_key": "digital_infrastructure", "delta": 0.05, "duration_ticks": 8, "target": "self" }
+        ]
+    }'::jsonb
+),
+
+-- ── CARD 7: Anti-Dumping Complaint (Unilateral / Ambassador) ──
+(
+    'maritime_fishing_rights', 7, 'Anti-Dumping Complaint', 'unilateral', 'ambassador', 1,
+    'The other nation''s fish are appearing in global markets at suspiciously low prices. Below production cost. Subsidized catch undercutting your industry?',
+
+    'Dominant Fleet',
+    'File Formal Anti-Dumping Complaint',
+    'Complaint to the international trade body. Accuse them of selling below cost to destroy your fishing industry.',
+    '{
+        "favor_delta": 0.5,
+        "tension_delta": 0.5,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": -0.05, "duration_ticks": 10, "target": "opponent" }
+        ],
+        "add_modifier": "dumping_accusations"
+    }'::jsonb,
+
+    'Rival Fleet',
+    'File Formal Anti-Dumping Complaint',
+    'Their larger fleet produces excess catch that depresses global prices. Your small-scale fishermen can''t compete with industrial trawlers.',
+    '{
+        "favor_delta": -0.5,
+        "tension_delta": 0.5,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": -0.05, "duration_ticks": 10, "target": "opponent" }
+        ],
+        "add_modifier": "dumping_accusations"
+    }'::jsonb
+),
+
+-- ── CARD 8: Environmental Report (Unilateral / Ambassador) ──
+(
+    'maritime_fishing_rights', 8, 'Environmental Report', 'unilateral', 'ambassador', 1,
+    'An independent marine research institute publishes a report on fish stock health in the disputed zone. The findings are alarming. Both nations are blamed.',
+
+    'Dominant Fleet',
+    'Blame Opponent''s Overfishing',
+    'Use the report to publicly accuse the rival fleet of environmental destruction. Demand they reduce their catch unilaterally.',
+    '{
+        "favor_delta": 0.5,
+        "tension_delta": 0.5,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": -0.05, "duration_ticks": 8, "target": "opponent" }
+        ]
+    }'::jsonb,
+
+    'Rival Fleet',
+    'Propose International Environmental Review',
+    'Use the report to call for independent monitoring. The data will likely show the dominant fleet does more damage — they have more boats.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": -0.5,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": 0.05, "duration_ticks": 8, "target": "self" }
+        ]
+    }'::jsonb
 )
 
 ON CONFLICT (issue_type, card_number) DO NOTHING;
