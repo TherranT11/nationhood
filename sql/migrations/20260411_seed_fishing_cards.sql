@@ -362,3 +362,95 @@ INSERT INTO issue_card_definitions (
     '{ "tension_delta": -1, "remove_modifier": "seasonal_fishing_conflict" }'::jsonb,
     '{ "favor_delta_to_proposer": 0.5 }'::jsonb
 ) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 13: Joint Coast Guard Patrols (Diplomatic / MoD) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    diplomatic_accept_effects, diplomatic_reject_effects
+) VALUES (
+    'maritime_fishing_rights', 13, 'Joint Coast Guard Patrols', 'diplomatic', 'minister_of_defense', 1,
+    'An unidentified vessel is spotted dumping oil in the disputed zone. Both nations blame each other. Neither has jurisdiction to arrest the polluter.',
+
+    'Either Nation', 'Establish Joint Patrol Agreement',
+    'Combined coast guard patrols. Shared radio frequencies. Joint arrest authority. Unified rules of engagement.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    'Either Nation', 'Establish Joint Patrol Agreement',
+    'Combined coast guard patrols. Shared radio frequencies. Joint arrest authority. Unified rules of engagement.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    '{ "tension_delta": -2, "remove_modifier": "no_joint_enforcement", "stat_effects": [{ "stat_key": "crime_rate", "delta": -0.1, "duration_ticks": 15, "target": "both" }] }'::jsonb,
+    '{ "favor_delta_to_proposer": 0.5 }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 14: International Arbitration (Diplomatic / FM / 2 AP) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    diplomatic_accept_effects, diplomatic_reject_effects
+) VALUES (
+    'maritime_fishing_rights', 14, 'International Arbitration', 'diplomatic', 'foreign_minister', 2,
+    'The International Tribunal for the Law of the Sea has agreed to hear the case — if both parties submit. One hearing. One ruling. Final and binding.',
+
+    'Either Nation', 'Submit to Binding Arbitration',
+    'Let the tribunal decide. The ruling draws the line, sets the quotas. You might lose everything. But the dispute ends.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    'Either Nation', 'Submit to Binding Arbitration',
+    'Let the tribunal decide. The ruling draws the line, sets the quotas. You might lose everything. But the dispute ends.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    '{ "tension_delta": -3, "favor_reset": 0, "special": "arbitration_8_ticks" }'::jsonb,
+    '{ "favor_delta_to_proposer": 1, "stat_effects_rejector": [{ "stat_key": "international_reputation", "delta": -0.1, "duration_ticks": 10 }] }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 15: Conservation Partnership (Diplomatic / Ambassador) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    diplomatic_accept_effects, diplomatic_reject_effects
+) VALUES (
+    'maritime_fishing_rights', 15, 'Conservation Partnership', 'diplomatic', 'ambassador', 1,
+    'Marine biologists from both nations publish a joint paper. Three key species at risk of collapse. The science is clear. Both nations are killing them.',
+
+    'Either Nation', 'Launch Joint Conservation Program',
+    'Bilateral marine reserve. Shared research stations. Coordinated spawning season bans. Both fleets sacrifice equally.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    'Either Nation', 'Launch Joint Conservation Program',
+    'Bilateral marine reserve. Shared research stations. Coordinated spawning season bans. Both fleets sacrifice equally.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    '{ "tension_delta": -2, "remove_modifier": "overfishing", "stat_effects": [{ "stat_key": "arable_land", "delta": 0.1, "duration_ticks": 15, "target": "both" }, { "stat_key": "gdp_growth", "delta": -0.03, "duration_ticks": 10, "target": "both" }] }'::jsonb,
+    '{ "favor_delta_to_proposer": 0.5, "stat_effects_rejector": [{ "stat_key": "international_reputation", "delta": -0.1, "duration_ticks": 6 }] }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 16: Integrated Fishery Management (Diplomatic / HoG / 2 AP) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    diplomatic_accept_effects, diplomatic_reject_effects
+) VALUES (
+    'maritime_fishing_rights', 16, 'Integrated Fishery Management', 'diplomatic', 'head_of_government', 2,
+    'An economist publishes a paper arguing the disputed fishery would generate 40% more value if managed as a single unit rather than fought over. Cooperation is more profitable than competition.',
+
+    'Either Nation', 'Propose Integrated Fishery Management',
+    'Merge the fishery into a single managed entity. Joint ownership. Profits pooled and split. Neither nation''s fleet favored.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    'Either Nation', 'Propose Integrated Fishery Management',
+    'Merge the fishery into a single managed entity. Joint ownership. Profits pooled and split. Neither nation''s fleet favored.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    '{ "special": "resolve_issue", "tension_delta": -10, "relation_delta": 5, "stat_effects": [{ "stat_key": "gdp_growth", "delta": 0.05, "duration_ticks": 30, "target": "both" }] }'::jsonb,
+    '{ "favor_delta_to_proposer": 0.5 }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
