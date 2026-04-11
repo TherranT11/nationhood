@@ -346,38 +346,7 @@ function switchSubTab(tab) {
 }
 
 
-// ==================== ISSUE ACTION NOTIFICATIONS ====================
-
-async function loadIssueActionFlags() {
-    issueActionFlags = {};
-    if (allIssues.length === 0) return;
-
-    const issueIds = allIssues.map(i => i.id);
-    // Fetch actions from the current or previous tick
-    const minTick = Math.max(0, currentTick - 1);
-    const { data: actions } = await _supabase
-        .from('bilateral_issue_actions_taken')
-        .select('issue_id, submitted_tick')
-        .in('issue_id', issueIds)
-        .gte('submitted_tick', minTick)
-        .order('submitted_tick', { ascending: false });
-
-    if (actions && actions.length > 0) {
-        for (const a of actions) {
-            issueActionFlags[a.issue_id] = true;
-        }
-    }
-
-    // Update tab-level amber badge
-    const actionBadge = document.getElementById('issues-action-badge');
-    const actionCount = Object.keys(issueActionFlags).length;
-    if (actionCount > 0) {
-        actionBadge.textContent = actionCount;
-        actionBadge.style.display = '';
-    } else {
-        actionBadge.style.display = 'none';
-    }
-}
+// Card system handles action notifications via last_action_by_X_tick in sidebar renderer
 
 // ==================== LOAD ISSUES ====================
 
@@ -411,7 +380,7 @@ async function loadIssues() {
     }
 
     // Fetch recent actions across all issues to set amber notifications
-    await loadIssueActionFlags();
+    // Card system: notifications handled by sidebar renderer via last_action_by_X_tick
 
     if (allIssues.length === 0) {
         document.getElementById('issues-layout').style.display = 'none';
