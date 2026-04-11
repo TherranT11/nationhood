@@ -1453,18 +1453,15 @@
 /* ===== CARD SYSTEM RESPONSIVE ===== */
 
 @media (max-width: 900px) {
-    /* Stack card + timeline vertically */
-    .issues-detail [style*="display:flex"][style*="min-height:0"] {
+    /* Stack left panel + timeline vertically */
+    .issues-detail > div:first-child {
         flex-direction: column !important;
     }
     #issues-timeline-col {
         width: 100% !important;
-        max-height: 300px;
-        border-right: none !important;
+        max-height: 350px;
+        border-left: none !important;
         border-top: 1px solid rgba(200,196,184,0.06);
-    }
-    #issues-card-col {
-        border-right: none !important;
     }
 }
 

@@ -144,26 +144,31 @@
 
         <!-- Issue detail (hidden until selected) — Card System UI -->
         <div class="issues-detail" id="issues-detail" style="display:none;">
-            <div style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
+            <div style="display:flex;height:100%;overflow:hidden;">
 
-                <!-- Header -->
-                <div id="issues-header" style="padding:10px 20px 8px;border-bottom:1px solid rgba(200,196,184,0.06);"></div>
+                <!-- LEFT: Header + Intel + Status + Deck + Card + Hand -->
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;">
 
-                <!-- Bilateral Intel -->
-                <div id="issues-intel" style="display:none;border-bottom:1px solid rgba(200,196,184,0.06);"></div>
+                    <!-- Header -->
+                    <div id="issues-header" style="padding:10px 20px 8px;border-bottom:1px solid rgba(200,196,184,0.06);"></div>
 
-                <!-- Status strip + Deck viz -->
-                <div id="issues-status-bar" style="border-bottom:1px solid rgba(200,196,184,0.06);"></div>
-                <div id="issues-deck-strip" style="border-bottom:1px solid rgba(200,196,184,0.06);"></div>
+                    <!-- Bilateral Intel -->
+                    <div id="issues-intel" style="display:none;border-bottom:1px solid rgba(200,196,184,0.06);"></div>
 
-                <!-- Two-column: Card + Timeline -->
-                <div style="display:flex;flex:1;min-height:0;overflow:hidden;">
-                    <div id="issues-card-col" style="flex:1;min-width:0;overflow-y:auto;padding:14px 20px;border-right:1px solid rgba(200,196,184,0.06);"></div>
-                    <div id="issues-timeline-col" style="width:330px;flex-shrink:0;overflow-y:auto;padding:10px 14px;background:var(--bg-elevated,#1a1a17);"></div>
+                    <!-- Status strip + Deck viz -->
+                    <div id="issues-status-bar" style="border-bottom:1px solid rgba(200,196,184,0.06);"></div>
+                    <div id="issues-deck-strip" style="border-bottom:1px solid rgba(200,196,184,0.06);"></div>
+
+                    <!-- Active Card -->
+                    <div id="issues-card-col" style="flex:1;min-height:0;overflow-y:auto;padding:14px 20px;"></div>
+
+                    <!-- Hand strip (bottom) -->
+                    <div id="issues-hand-area" style="border-top:1px solid rgba(200,196,184,0.06);flex-shrink:0;"></div>
+
                 </div>
 
-                <!-- Hand strip (bottom) -->
-                <div id="issues-hand-area" style="border-top:1px solid rgba(200,196,184,0.06);flex-shrink:0;"></div>
+                <!-- RIGHT: Timeline (full height, scrollable) -->
+                <div id="issues-timeline-col" style="width:400px;flex-shrink:0;overflow-y:auto;padding:14px 18px;background:var(--bg-elevated,#1a1a17);border-left:1px solid rgba(200,196,184,0.06);"></div>
 
             </div>
         </div>
@@ -596,7 +601,7 @@ async function renderCardBilateralIntel(issue) {
         const approvalColor = approval >= 60 ? 'var(--teal)' : approval >= 40 ? 'var(--amber)' : 'var(--red)';
         const stabColor = stability >= 60 ? 'var(--teal)' : stability >= 40 ? 'var(--amber)' : 'var(--red)';
         let crisesHtml = '';
-        if (crises.length === 0) crisesHtml = '<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);font-style:italic;">None</span>';
+        if (crises.length === 0) crisesHtml = '<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">None</span>';
         else crisesHtml = crises.map(c => `<div style="font-size:9.5px;color:var(--text-muted);padding-left:10px;position:relative;margin-top:1px;"><span style="position:absolute;left:0;top:5px;width:4px;height:4px;border-radius:50%;background:var(--amber);"></span>${escapeHtml(c.crisis_templates?.name || 'Crisis')}</div>`).join('');
 
         return `<div style="flex:1;padding:6px 20px 8px;">
@@ -709,7 +714,7 @@ function renderCardActiveCard(issue, myHand, cardDefMap, mySide, isMyTurn) {
     _currentCardDefs = cardDefMap;
 
     if (!issue.deck_initialized) {
-        el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);font-size:11px;font-style:italic;">Card deck not yet initialized. It will activate on the next tick.</div>';
+        el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);font-size:11px;">Card deck not yet initialized. It will activate on the next tick.</div>';
         return;
     }
 
@@ -847,18 +852,18 @@ function renderCardTimeline(issue, history, cardPlays, cardDefMap, modifiers, my
 
     // ── Header with Add Event button ──
     let html = `<div style="display:flex;align-items:center;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid rgba(200,196,184,0.06);">
-        <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);flex:1;">Timeline of Events</span>
-        <button onclick="window._toggleNewEvent()" style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;padding:3px 8px;border:1px solid rgba(200,196,184,0.1);color:var(--text-dim);background:var(--bg-card,#1e1e1a);cursor:pointer;display:flex;align-items:center;gap:4px;"><span style="font-size:10px;">+</span> Add Event</button>
+        <span style="font-family:var(--font-mono);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);flex:1;">Timeline of Events</span>
+        <button onclick="window._toggleNewEvent()" style="font-family:var(--font-mono);font-size:8.5px;font-weight:700;text-transform:uppercase;padding:3px 8px;border:1px solid rgba(200,196,184,0.1);color:var(--text-dim);background:var(--bg-card,#1e1e1a);cursor:pointer;display:flex;align-items:center;gap:4px;"><span style="font-size:12px;">+</span> Add Event</button>
     </div>`;
 
     // ── New Event Form (hidden) ──
     html += `<div id="tl-new-event-form" style="display:none;background:var(--bg-card,#1e1e1a);padding:8px 10px;margin-bottom:8px;border:1px solid rgba(91,154,139,0.2);">
-        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;color:var(--teal);margin-bottom:6px;">Add Historical Event</div>
+        <div style="font-family:var(--font-mono);font-size:8.5px;font-weight:700;text-transform:uppercase;color:var(--teal);margin-bottom:6px;">Add Historical Event</div>
         <input type="text" id="tl-new-year" placeholder="Year" style="width:60px;padding:3px 5px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-primary);background:var(--bg-body,#141412);border:1px solid rgba(200,196,184,0.1);outline:none;margin-bottom:4px;" />
-        <textarea id="tl-new-text" placeholder="Describe the historical event..." style="width:100%;padding:4px 6px;font-family:var(--font-serif);font-size:11px;color:var(--text-muted);background:var(--bg-body,#141412);border:1px solid rgba(200,196,184,0.1);outline:none;resize:vertical;min-height:50px;line-height:1.45;font-style:italic;"></textarea>
+        <textarea id="tl-new-text" placeholder="Describe the historical event..." style="width:100%;padding:4px 6px;font-family:var(--font-sans);font-size:12px;color:var(--text-muted);background:var(--bg-body,#141412);border:1px solid rgba(200,196,184,0.1);outline:none;resize:vertical;min-height:50px;line-height:1.45;"></textarea>
         <div style="display:flex;gap:4px;margin-top:4px;">
-            <button onclick="window._saveNewEvent()" style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;padding:3px 8px;border:1px solid rgba(91,154,139,0.2);color:var(--teal);background:rgba(91,154,139,0.08);cursor:pointer;">Add to Timeline</button>
-            <button onclick="window._toggleNewEvent()" style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;padding:3px 8px;border:1px solid rgba(200,196,184,0.1);color:var(--text-dim);background:var(--bg-card,#1e1e1a);cursor:pointer;">Cancel</button>
+            <button onclick="window._saveNewEvent()" style="font-family:var(--font-mono);font-size:8.5px;font-weight:700;text-transform:uppercase;padding:3px 8px;border:1px solid rgba(91,154,139,0.2);color:var(--teal);background:rgba(91,154,139,0.08);cursor:pointer;">Add to Timeline</button>
+            <button onclick="window._toggleNewEvent()" style="font-family:var(--font-mono);font-size:8.5px;font-weight:700;text-transform:uppercase;padding:3px 8px;border:1px solid rgba(200,196,184,0.1);color:var(--text-dim);background:var(--bg-card,#1e1e1a);cursor:pointer;">Cancel</button>
         </div>
     </div>`;
 
@@ -867,7 +872,7 @@ function renderCardTimeline(issue, history, cardPlays, cardDefMap, modifiers, my
     const createdEvent = history.find(h => h.event_type === 'created');
 
     if (primerEvents.length > 0 || createdEvent) {
-        html += `<div style="font-family:var(--font-mono);font-size:7px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-top:10px;margin-bottom:6px;">Historical Background</div>`;
+        html += `<div style="font-family:var(--font-mono);font-size:8.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-top:10px;margin-bottom:6px;">Historical Background</div>`;
 
         // Primer entries (sorted by year in metadata)
         const sorted = [...primerEvents].sort((a, b) => {
@@ -888,10 +893,10 @@ function renderCardTimeline(issue, history, cardPlays, cardDefMap, modifiers, my
                 <div style="position:absolute;left:-4px;top:3px;width:7px;height:7px;border:1.5px solid;background:var(--bg-elevated,#1a1a17);${dotColor}"></div>
                 <div style="background:var(--bg-card,#1e1e1a);padding:6px 8px;border-left:2px solid var(--text-dim);${borderColor}" data-primer-id="${p.id}">
                     <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
-                        <span style="font-family:var(--font-mono);font-size:7px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);flex:1;${labelColor}">${escapeHtml(label)}</span>
-                        <button onclick="window._editPrimer('${p.id}')" style="font-family:var(--font-mono);font-size:7px;color:var(--teal);cursor:pointer;opacity:0;transition:opacity 0.15s;padding:1px 4px;border:1px solid rgba(91,154,139,0.2);background:rgba(91,154,139,0.08);" class="tl-edit-btn">Edit</button>
+                        <span style="font-family:var(--font-mono);font-size:8.5px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);flex:1;${labelColor}">${escapeHtml(label)}</span>
+                        <button onclick="window._editPrimer('${p.id}')" style="font-family:var(--font-mono);font-size:8.5px;color:var(--teal);cursor:pointer;opacity:0;transition:opacity 0.15s;padding:1px 4px;border:1px solid rgba(91,154,139,0.2);background:rgba(91,154,139,0.08);" class="tl-edit-btn">Edit</button>
                     </div>
-                    <div style="font-family:var(--font-serif);font-size:11px;color:var(--text-muted);line-height:1.45;font-style:italic;">${year ? `<span style="color:var(--text-primary);font-style:normal;font-weight:700;">${escapeHtml(String(year))}</span> — ` : ''}${escapeHtml(p.event_text)}</div>
+                    <div style="font-family:var(--font-sans);font-size:12px;color:var(--text-muted);line-height:1.45;">${year ? `<span style="color:var(--text-primary);font-weight:700;">${escapeHtml(String(year))}</span> — ` : ''}${escapeHtml(p.event_text)}</div>
                 </div>
             </div>`;
         }
@@ -900,9 +905,9 @@ function renderCardTimeline(issue, history, cardPlays, cardDefMap, modifiers, my
         if (createdEvent) {
             html += `<div style="position:relative;padding-left:20px;padding-bottom:10px;border-left:1px solid rgba(200,196,184,0.1);margin-left:5px;">
                 <div style="position:absolute;left:-4px;top:3px;width:7px;height:7px;border:1.5px solid var(--text-dim);background:var(--bg-card,#242420);"></div>
-                <div style="font-family:var(--font-mono);font-size:7.5px;font-weight:600;color:var(--text-dim);margin-bottom:2px;">Tick ${createdEvent.tick} / ${tickToDate(createdEvent.tick)}</div>
-                <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;color:var(--text-dim);margin-bottom:1px;">Game Start</div>
-                <div style="font-size:10.5px;color:var(--text-muted);line-height:1.4;">${escapeHtml(createdEvent.event_text)}</div>
+                <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--text-dim);margin-bottom:2px;">Tick ${createdEvent.tick} / ${tickToDate(createdEvent.tick)}</div>
+                <div style="font-family:var(--font-mono);font-size:8.5px;font-weight:700;text-transform:uppercase;color:var(--text-dim);margin-bottom:1px;">Game Start</div>
+                <div style="font-size:12.5px;color:var(--text-muted);line-height:1.4;">${escapeHtml(createdEvent.event_text)}</div>
             </div>`;
         }
     }
@@ -946,10 +951,10 @@ function renderCardTimeline(issue, history, cardPlays, cardDefMap, modifiers, my
             tick: play.played_tick,
             html: `<div style="position:relative;padding-left:20px;padding-bottom:10px;border-left:1px solid rgba(200,196,184,0.1);margin-left:5px;">
                 <div style="position:absolute;left:-4px;top:3px;width:7px;height:7px;border:1.5px solid;background:var(--bg-elevated,#1a1a17);${dotStyle}"></div>
-                <div style="font-family:var(--font-mono);font-size:7.5px;font-weight:600;color:var(--text-dim);margin-bottom:2px;">Tick ${play.played_tick} / ${tickToDate(play.played_tick)}</div>
-                <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;color:${nationColor};margin-bottom:1px;">${escapeHtml(playedByName)}</div>
-                <div style="font-size:10.5px;color:var(--text-muted);line-height:1.4;">${escapeHtml(cd?.card_name || 'Card #' + play.card_number)}. <span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 3px;text-transform:uppercase;color:${tcColors.color};background:${tcColors.bg};border:1px solid ${tcColors.border};vertical-align:middle;">${typeLabel[cd?.card_type] || '?'}</span></div>
-                ${effectText ? `<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">${escapeHtml(effectText)}</div>` : ''}
+                <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--text-dim);margin-bottom:2px;">Tick ${play.played_tick} / ${tickToDate(play.played_tick)}</div>
+                <div style="font-family:var(--font-mono);font-size:8.5px;font-weight:700;text-transform:uppercase;color:${nationColor};margin-bottom:1px;">${escapeHtml(playedByName)}</div>
+                <div style="font-size:12.5px;color:var(--text-muted);line-height:1.4;">${escapeHtml(cd?.card_name || 'Card #' + play.card_number)}. <span style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;padding:1px 3px;text-transform:uppercase;color:${tcColors.color};background:${tcColors.bg};border:1px solid ${tcColors.border};vertical-align:middle;">${typeLabel[cd?.card_type] || '?'}</span></div>
+                ${effectText ? `<div style="font-family:var(--font-mono);font-size:8.5px;color:var(--text-dim);margin-top:2px;">${escapeHtml(effectText)}</div>` : ''}
             </div>`,
         });
     }
@@ -962,8 +967,8 @@ function renderCardTimeline(issue, history, cardPlays, cardDefMap, modifiers, my
             tick: h.tick,
             html: `<div style="position:relative;padding-left:20px;padding-bottom:10px;border-left:1px solid rgba(200,196,184,0.1);margin-left:5px;">
                 <div style="position:absolute;left:-4px;top:3px;width:7px;height:7px;border:1.5px solid var(--text-dim);background:var(--bg-body,#141412);"></div>
-                <div style="font-family:var(--font-mono);font-size:7.5px;font-weight:600;color:var(--text-dim);margin-bottom:2px;">Tick ${h.tick} / ${tickToDate(h.tick)}</div>
-                <div style="font-size:10.5px;color:var(--text-muted);line-height:1.4;">${escapeHtml(h.event_text)}</div>
+                <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--text-dim);margin-bottom:2px;">Tick ${h.tick} / ${tickToDate(h.tick)}</div>
+                <div style="font-size:12.5px;color:var(--text-muted);line-height:1.4;">${escapeHtml(h.event_text)}</div>
             </div>`,
         });
     }
@@ -972,30 +977,30 @@ function renderCardTimeline(issue, history, cardPlays, cardDefMap, modifiers, my
     gameEvents.sort((a, b) => a.tick - b.tick);
 
     if (gameEvents.length > 0) {
-        html += `<div style="font-family:var(--font-mono);font-size:7px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-top:10px;margin-bottom:6px;">Gameplay Events</div>`;
+        html += `<div style="font-family:var(--font-mono);font-size:8.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-top:10px;margin-bottom:6px;">Gameplay Events</div>`;
         html += gameEvents.map(e => e.html).join('');
     }
 
     // ── "Now" marker ──
     html += `<div style="position:relative;padding-left:20px;padding-bottom:10px;border-left:1px solid transparent;margin-left:5px;opacity:0.5;">
         <div style="position:absolute;left:-4px;top:3px;width:7px;height:7px;border:1.5px solid var(--amber);background:var(--amber);"></div>
-        <div style="font-family:var(--font-mono);font-size:7.5px;font-weight:600;color:var(--amber);">Now — Tick ${currentTick}</div>
-        <div style="font-size:10.5px;color:var(--amber);font-style:italic;">${_selectedCardNumber ? 'Reviewing card...' : (issue.whose_turn === mySide ? 'Your turn' : 'Opponent\'s turn')}</div>
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--amber);">Now — Tick ${currentTick}</div>
+        <div style="font-size:12.5px;color:var(--amber);">${_selectedCardNumber ? 'Reviewing card...' : (issue.whose_turn === mySide ? 'Your turn' : 'Opponent\'s turn')}</div>
     </div>`;
 
     // ── Active Modifiers ──
     const activeMods = (modifiers || []).filter(m => m.is_active);
     if (activeMods.length > 0) {
         html += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(200,196,184,0.06);">
-            <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px;">Active Modifiers</div>`;
+            <div style="font-family:var(--font-mono);font-size:8.5px;font-weight:700;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px;">Active Modifiers</div>`;
         for (const mod of activeMods) {
             const config = MODIFIERS[mod.modifier_key] || {};
             const modColor = mod.category === 'structural' ? 'var(--amber)' : mod.category === 'escalation' ? 'var(--red)' : 'var(--blue)';
             const effectText = (config.stat_effects || []).map(e => `${e.stat_key} ${e.delta > 0 ? '+' : ''}${e.delta}/tick`).join(', ');
             const durText = mod.duration_remaining ? ` ${mod.duration_remaining}t` : '';
             html += `<div style="padding:3px 6px;margin-bottom:2px;background:var(--bg-card,#1e1e1a);border-left:2px solid ${modColor};">
-                <div style="font-size:9px;font-weight:500;">${escapeHtml(config.name || mod.modifier_key.replace(/_/g, ' '))}</div>
-                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${escapeHtml(effectText)}${durText}</div>
+                <div style="font-size:11px;font-weight:500;">${escapeHtml(config.name || mod.modifier_key.replace(/_/g, ' '))}</div>
+                <div style="font-family:var(--font-mono);font-size:8.5px;color:var(--text-dim);">${escapeHtml(effectText)}${durText}</div>
             </div>`;
         }
         html += '</div>';
@@ -1125,7 +1130,7 @@ window._editPrimer = async function(historyId) {
     primerEl.innerHTML = `
         <div style="font-family:var(--font-mono);font-size:7px;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px;">${escapeHtml(entry.metadata?.label || 'Edit Event')}</div>
         <input type="text" value="${escapeHtml(String(year))}" id="edit-primer-year-${historyId}" style="width:60px;padding:3px 5px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-primary);background:var(--bg-body,#141412);border:1px solid rgba(200,196,184,0.1);outline:none;margin-bottom:4px;" />
-        <textarea id="edit-primer-text-${historyId}" style="width:100%;padding:4px 6px;font-family:var(--font-serif);font-size:11px;color:var(--text-muted);background:var(--bg-body,#141412);border:1px solid rgba(200,196,184,0.1);outline:none;resize:vertical;min-height:50px;line-height:1.45;font-style:italic;">${escapeHtml(text)}</textarea>
+        <textarea id="edit-primer-text-${historyId}" style="width:100%;padding:4px 6px;font-family:var(--font-sans);font-size:12px;color:var(--text-muted);background:var(--bg-body,#141412);border:1px solid rgba(200,196,184,0.1);outline:none;resize:vertical;min-height:50px;line-height:1.45;">${escapeHtml(text)}</textarea>
         <div style="display:flex;gap:4px;margin-top:4px;">
             <button onclick="window._savePrimer('${historyId}')" style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;padding:3px 8px;border:1px solid rgba(91,154,139,0.2);color:var(--teal);background:rgba(91,154,139,0.08);cursor:pointer;">Save</button>
             <button onclick="selectIssue('${_currentIssueData.id}')" style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;padding:3px 8px;border:1px solid rgba(200,196,184,0.1);color:var(--text-dim);background:var(--bg-card,#1e1e1a);cursor:pointer;">Cancel</button>
