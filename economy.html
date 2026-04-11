@@ -3538,8 +3538,9 @@ var _industriesDeliveries = [];
 async function loadIndustriesData(nationId) {
     var [corpsRes, contractsRes, materialsRes, equipmentRes, deliveriesRes, propsRes] = await Promise.all([
         _supabase.from('factions')
-            .select('id, faction_name, corp_ticker, corp_company_type, corp_subsector, party_funds, nation_id')
+            .select('id, faction_name, corp_ticker, corp_company_type, corp_sector, corp_subsector, party_funds, nation_id')
             .eq('faction_type', 'corporation')
+            .eq('corp_sector', 'Construction')
             .is('abandoned_at', null),
         _supabase.from('construction_contracts')
             .select('id, budget_ceiling, status, awarded_to_faction, nation_id, template_key, sector')
