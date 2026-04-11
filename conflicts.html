@@ -438,13 +438,13 @@ async function loadIssues() {
         _supabase.from('bilateral_issues')
             .select('*, nation_a:nations!bilateral_issues_nation_a_id_fkey(id, name), nation_b:nations!bilateral_issues_nation_b_id_fkey(id, name)')
             .or(`nation_a_id.eq.${currentNation.id},nation_b_id.eq.${currentNation.id}`)
-            .in('status', ['active', 'partial'])
+            .in('status', ['active', 'partial', 'escalated'])
             .order('tension', { ascending: false }),
         _supabase.from('bilateral_issues')
             .select('*, nation_a:nations!bilateral_issues_nation_a_id_fkey(id, name), nation_b:nations!bilateral_issues_nation_b_id_fkey(id, name)')
             .not('nation_a_id', 'eq', currentNation.id)
             .not('nation_b_id', 'eq', currentNation.id)
-            .in('status', ['active', 'partial'])
+            .in('status', ['active', 'partial', 'escalated'])
             .order('tension', { ascending: false }),
     ]);
 
