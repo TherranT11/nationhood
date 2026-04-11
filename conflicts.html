@@ -1140,17 +1140,39 @@ window._editPrimer = async function(historyId) {
 window._savePrimer = async function(historyId) {
     const yearEl = document.getElementById('edit-primer-year-' + historyId);
     const textEl = document.getElementById('edit-primer-text-' + historyId);
-    const year = yearEl?.value?.trim() || '';
-    const text = textEl?.value?.trim() || '';
+    if (!yearEl || !textEl) {
+        console.error('[Issues] Edit fields not found for', historyId);
+        alert('Edit fields not found. Please try again.');
+        return;
+    }
+    const year = yearEl.value.trim();
+    const text = textEl.value.trim();
     if (!text) { alert('Please enter event text.'); return; }
 
-    const { data: existing } = await _supabase.from('bilateral_issue_history')
+    const { data: existing, error: fetchErr } = await _supabase.from('bilateral_issue_history')
         .select('metadata').eq('id', historyId).single();
+    if (fetchErr) {
+        console.error('[Issues] Failed to load primer for edit:', fetchErr);
+        alert('Failed to load entry.');
+        return;
+    }
 
-    await _supabase.from('bilateral_issue_history').update({
-        event_text: text,
-        metadata: { ...(existing?.metadata || {}), year },
-    }).eq('id', historyId);
+    const newMetadata = { ...(existing?.metadata || {}), year };
+    const { data: updated, error: updateErr } = await _supabase.from('bilateral_issue_history')
+        .update({ event_text: text, metadata: newMetadata })
+        .eq('id', historyId)
+        .select('id');
+
+    if (updateErr) {
+        console.error('[Issues] Failed to save primer:', updateErr);
+        alert('Failed to save: ' + updateErr.message);
+        return;
+    }
+    if (!updated || updated.length === 0) {
+        console.error('[Issues] Update returned 0 rows — possible RLS block');
+        alert('Save failed — you may not have permission to edit this entry.');
+        return;
+    }
 
     if (_currentIssueData) await selectIssue(_currentIssueData.id);
 };
