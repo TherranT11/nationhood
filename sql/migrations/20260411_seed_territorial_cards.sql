@@ -310,3 +310,141 @@ INSERT INTO issue_card_definitions (
     '{ "favor_reset": 0, "tension_delta": -3, "remove_modifier": "no_international_adjudication", "special": "arbitration_10_ticks" }'::jsonb,
     '{ "favor_delta_to_proposer": 1, "stat_effects_rejector": [{ "stat_key": "international_reputation", "delta": -0.1, "duration_ticks": 8 }] }'::jsonb
 ) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 11: Resource-Sharing Framework (Diplomatic / MoF) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    diplomatic_accept_effects, diplomatic_reject_effects
+) VALUES (
+    'territorial_ownership', 11, 'Resource-Sharing Framework', 'diplomatic', 'minister_of_finance', 1,
+    'New geological survey shows deposits in the territory are larger than estimated. Oil, rare earths, aquifer — the resource question can no longer be ignored. Both economies could benefit, but only if they agree on terms.',
+
+    'Occupying Nation', 'Offer 60/40 Revenue Split',
+    'Propose a resource-sharing agreement weighted toward the administering power. 60% of extraction revenue to you, 40% to them. Generous enough to tempt, skewed enough to maintain leverage.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    'Claimant Nation', 'Demand 50/50 Revenue Split',
+    'Propose equal revenue sharing. Half of all extraction proceeds go to each nation. Fair on paper — but it implicitly acknowledges joint ownership.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    '{ "tension_delta": -2, "remove_modifier": "resource_potential", "stat_effects": [{ "stat_key": "gdp_growth", "delta": 0.05, "duration_ticks": 20, "target": "both" }] }'::jsonb,
+    '{ "favor_delta_to_proposer": 0.5 }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 12: Cultural Heritage Preservation (Diplomatic / Ambassador) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    diplomatic_accept_effects, diplomatic_reject_effects
+) VALUES (
+    'territorial_ownership', 12, 'Cultural Heritage Preservation', 'diplomatic', 'ambassador', 1,
+    'UNESCO threatens to place the territory''s historic sites on the endangered heritage list. Ancient temples, medieval fortifications, colonial-era archives — all deteriorating while two nations argue over who should maintain them.',
+
+    'Either Nation', 'Propose Joint Heritage Commission',
+    'Establish a bilateral commission to preserve and restore the territory''s cultural sites. Shared funding, shared expertise, shared credit. The sites belong to humanity, not to politics.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    'Either Nation', 'Propose Joint Heritage Commission',
+    'Establish a bilateral commission to preserve and restore the territory''s cultural sites. Shared funding, shared expertise, shared credit. The sites belong to humanity, not to politics.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    '{ "tension_delta": -1, "remove_modifier": "historical_grievance_attached", "stat_effects": [{ "stat_key": "international_reputation", "delta": 0.05, "duration_ticks": 10, "target": "both" }] }'::jsonb,
+    '{ "favor_delta_to_proposer": 0.5, "stat_effects_rejector": [{ "stat_key": "international_reputation", "delta": -0.1, "duration_ticks": 6 }] }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 13: Border Crossing Normalization (Diplomatic / Ambassador) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    diplomatic_accept_effects, diplomatic_reject_effects
+) VALUES (
+    'territorial_ownership', 13, 'Border Crossing Normalization', 'diplomatic', 'ambassador', 1,
+    'A family on the claimant side has relatives in the territory. Three years without contact. Their story goes international — a grandmother who hasn''t held her grandchild. The human cost of the dispute has a face now.',
+
+    'Either Nation', 'Open Humanitarian Crossing Points',
+    'Establish designated crossing points for family reunification, medical emergencies, and cultural events. Not a political concession — a humanitarian one. Let the families see each other.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    'Either Nation', 'Open Humanitarian Crossing Points',
+    'Establish designated crossing points for family reunification, medical emergencies, and cultural events. Not a political concession — a humanitarian one. Let the families see each other.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    '{ "tension_delta": -2, "stat_effects": [{ "stat_key": "civil_unrest", "delta": -0.1, "duration_ticks": 15, "target": "both" }, { "stat_key": "happiness", "delta": 0.05, "duration_ticks": 15, "target": "both" }] }'::jsonb,
+    '{ "favor_delta_to_proposer": 0.5, "stat_effects_rejector": [{ "stat_key": "civil_unrest", "delta": 0.1, "duration_ticks": 8 }] }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 14: Economic Concession Offer (Diplomatic / HoG / 2 AP) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    diplomatic_accept_effects, diplomatic_reject_effects
+) VALUES (
+    'territorial_ownership', 14, 'Economic Concession Offer', 'diplomatic', 'head_of_government', 2,
+    'Back-channel talks suggest one side might trade the territorial claim for an economic package. Favorable trade terms, infrastructure investment, debt forgiveness. The price of peace — if anyone is willing to pay it.',
+
+    'Occupying Nation', 'Offer Trade Package for Claim Withdrawal',
+    'Propose a comprehensive economic package in exchange for the claimant formally renouncing their claim. Preferential trade terms for 30 ticks, infrastructure co-investment, and a public reconciliation ceremony.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    'Claimant Nation', 'Offer to Withdraw Claim for Economic Deal',
+    'Propose to formally withdraw your territorial claim in exchange for a comprehensive economic package. Trade access, investment guarantees, and debt restructuring. Pragmatism over pride.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    '{ "special": "resolve_issue", "relation_delta": 5, "stat_effects_acceptor": [{ "stat_key": "gov_approval", "delta": -1.5, "duration_ticks": 1, "target": "self" }], "stat_effects_proposer": [{ "stat_key": "gov_approval", "delta": 3, "duration_ticks": 1, "target": "self" }], "stat_effects": [{ "stat_key": "trade_balance", "delta": 0.2, "duration_ticks": 30, "target": "acceptor" }] }'::jsonb,
+    '{ "favor_delta_to_proposer": 0.5 }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 15: Demilitarized Zone Proposal (Diplomatic / MoD) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    diplomatic_accept_effects, diplomatic_reject_effects
+) VALUES (
+    'territorial_ownership', 15, 'Demilitarized Zone Proposal', 'diplomatic', 'minister_of_defense', 1,
+    'Military analysts warn that force concentration near the territory is creating "accidental war" risk. Patrols cross paths. Radar locks happen. One nervous lieutenant could start a shooting war.',
+
+    'Either Nation', 'Propose Mutual Demilitarization',
+    'Both sides withdraw military forces from a defined buffer zone around the territory. Observation posts staffed by neutral monitors. Weapons systems pulled back beyond engagement range.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    'Either Nation', 'Propose Mutual Demilitarization',
+    'Both sides withdraw military forces from a defined buffer zone around the territory. Observation posts staffed by neutral monitors. Weapons systems pulled back beyond engagement range.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    '{ "tension_delta": -3, "remove_modifier": "military_outpost", "stat_effects": [{ "stat_key": "stability", "delta": 0.1, "duration_ticks": 10, "target": "both" }] }'::jsonb,
+    '{ "favor_delta_to_proposer": 0.5, "tension_delta": 1 }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 16: Population Census Agreement (Diplomatic / FM) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    diplomatic_accept_effects, diplomatic_reject_effects
+) VALUES (
+    'territorial_ownership', 16, 'Population Census Agreement', 'diplomatic', 'foreign_minister', 1,
+    'Both nations claim demographic majority in the territory. Neither has reliable data. International demographers offer to conduct an independent, supervised census — but both sides must agree to accept the results.',
+
+    'Either Nation', 'Accept Independent Census',
+    'Allow international demographers to conduct a full census of the territory. Methodology reviewed by both sides. Results published globally. Whatever the numbers say, you accept them.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    'Either Nation', 'Accept Independent Census',
+    'Allow international demographers to conduct a full census of the territory. Methodology reviewed by both sides. Results published globally. Whatever the numbers say, you accept them.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    '{ "tension_delta": -1, "special": "census_favor_shift" }'::jsonb,
+    '{ "favor_delta_to_proposer": 1 }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
