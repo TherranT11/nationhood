@@ -3540,7 +3540,6 @@ async function loadIndustriesData(nationId) {
         _supabase.from('factions')
             .select('id, faction_name, corp_ticker, corp_company_type, corp_sector, corp_subsector, party_funds, nation_id')
             .eq('faction_type', 'corporation')
-            .eq('corp_sector', 'Construction')
             .is('abandoned_at', null),
         _supabase.from('construction_contracts')
             .select('id, budget_ceiling, status, awarded_to_faction, nation_id, template_key, sector')
@@ -3602,7 +3601,10 @@ function renderIndustriesTab(nation) {
     _industriesDeliveries.forEach(function(d) {
         corpRevMap[d.faction_id] = (corpRevMap[d.faction_id] || 0) + (d.payment_received || 0);
     });
-    var corpsSorted = allLocalCorps.slice().sort(function(a, b) {
+
+    // Construction column: only Construction-sector corps
+    var constructionCorps = allLocalCorps.filter(function(c) { return (c.corp_sector || '').toLowerCase() === 'construction'; });
+    var constructionCorpsSorted = constructionCorps.slice().sort(function(a, b) {
         return (corpRevMap[b.id] || 0) - (corpRevMap[a.id] || 0);
     });
 
@@ -3813,9 +3815,11 @@ function renderIndustriesTab(nation) {
     h += secHeader('Growth Drivers', 'var(--damber)');
     h += renderDrivers(conDrivers, 'var(--damber)');
     h += secHeader('Notable Corporations', 'var(--damber)');
-    h += renderCorpList(corpsSorted, corpRevMap, 3, 'var(--damber)');
-    var subNote = _industriesSubsidiaries.length > 0 ? ' · ' + _industriesSubsidiaries.length + ' subsidiar' + (_industriesSubsidiaries.length !== 1 ? 'ies' : 'y') : '';
-    h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + _industriesCorps.length + ' local corporation' + (_industriesCorps.length !== 1 ? 's' : '') + subNote + '</div>';
+    h += renderCorpList(constructionCorpsSorted, corpRevMap, 3, 'var(--damber)');
+    var conCorpCount = constructionCorps.filter(function(c) { return !subsidiaryIds.has(c.id); }).length;
+    var conSubCount = constructionCorps.filter(function(c) { return subsidiaryIds.has(c.id); }).length;
+    var subNote = conSubCount > 0 ? ' · ' + conSubCount + ' subsidiar' + (conSubCount !== 1 ? 'ies' : 'y') : '';
+    h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + conCorpCount + ' local construction corp' + (conCorpCount !== 1 ? 's' : '') + subNote + '</div>';
     h += '</div>';
 
     // ── COLUMN 2: MATERIALS ──
