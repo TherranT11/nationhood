@@ -106,6 +106,12 @@ let currentCoalition = null;
 let diplomaticRoles = { isHoG: false, isFM: false, isMoT: false, ambassadorTo: [] };
 let shardTick = 0;
 let totalUnreadMessages = 0;
+// Tab data cache — prevents re-fetching on every tab switch
+const _tabLoaded = { relations: false, agreements: false, initiative: false, inbox: false };
+function invalidateTabCache(tabName) {
+    if (tabName) _tabLoaded[tabName] = false;
+    else { _tabLoaded.relations = false; _tabLoaded.agreements = false; _tabLoaded.initiative = false; _tabLoaded.inbox = false; }
+}
 let _diploActionLock = false;
 
 // Cached list of other nations for dropdowns
@@ -935,7 +941,7 @@ window.toggleDiploMap = toggleDiploMap;
 
 // ==================== TAB SWITCHING ====================
 
-function showDiploTab(tabName) {
+function showDiploTab(tabName, forceRefresh) {
     // Update tab buttons
     document.querySelectorAll('.diplo-tab').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.tab === tabName);
@@ -944,11 +950,15 @@ function showDiploTab(tabName) {
     document.querySelectorAll('.diplo-tab-panel').forEach(panel => {
         panel.style.display = panel.id === 'tab-' + tabName ? '' : 'none';
     });
-    // Lazy-load / refresh tab content
-    if (tabName === 'relations') renderRelationsTab();
-    if (tabName === 'agreements') renderAgreementsTab();
-    if (tabName === 'initiative') renderInitiativeWizard();
-    if (tabName === 'inbox') renderInboxTab();
+    // Lazy-load: only fetch data on first visit or forced refresh
+    const needsLoad = forceRefresh || !_tabLoaded[tabName];
+    if (needsLoad) {
+        _tabLoaded[tabName] = true;
+        if (tabName === 'relations') renderRelationsTab();
+        if (tabName === 'agreements') renderAgreementsTab();
+        if (tabName === 'initiative') renderInitiativeWizard();
+        if (tabName === 'inbox') renderInboxTab();
+    }
 }
 
 // ==================== RELATIONS TAB ====================
@@ -1686,7 +1696,7 @@ async function renewTradeAgreement(agreementId) {
     });
 
     alert(`"${ta.agreement_name}" has been renewed for ${ta.duration_ticks || 48} ticks.`);
-    renderAgreementsTab();
+    invalidateTabCache('agreements'); renderAgreementsTab();
 
     } finally { _renewTradeLock = false; }
 }
@@ -1740,7 +1750,7 @@ async function renewDiplomaticAgreement(agreementId) {
     });
 
     alert(`"${agName}" has been renewed for ${durationYears} year(s).`);
-    renderAgreementsTab();
+    invalidateTabCache('agreements'); renderAgreementsTab();
 
     } finally { _renewDiploLock = false; }
 }
@@ -1834,7 +1844,7 @@ async function withdrawTradeAgreement(agreementId) {
         } catch (e) { /* non-blocking */ }
 
         alert('Embargo lifted immediately.' + (relBonus > 0 ? ' Relations improved by +' + relBonus + '.' : ''));
-        await renderAgreementsTab();
+        invalidateTabCache('agreements'); renderAgreementsTab();
         return;
     }
 
@@ -1878,7 +1888,7 @@ async function withdrawTradeAgreement(agreementId) {
         }
 
         alert('Retaliatory tariff lifted immediately.' + (relBonus > 0 ? ' Relations improved by +' + relBonus + '.' : ''));
-        await renderAgreementsTab();
+        invalidateTabCache('agreements'); renderAgreementsTab();
         return;
     }
 
@@ -1961,7 +1971,7 @@ async function withdrawTradeAgreement(agreementId) {
     const shockMsg = withdrawalEffects ? ' Economic disruption: GDP growth dip, reduced foreign investment.' : '';
     alert('Withdrawal notice filed. Agreement will terminate in ' + noticeTicks + ' ticks.' +
         (financialPenalty > 0 ? ' $' + financialPenalty + 'M deducted from treasury.' : '') + shockMsg);
-    await renderAgreementsTab();
+    invalidateTabCache('agreements'); renderAgreementsTab();
 
     } finally {
         _diploActionLock = false;
@@ -2047,7 +2057,7 @@ async function withdrawAgreement(agreementId) {
     alert('"' + (pd.name || 'Agreement') + '" withdrawn.');
 
     // Refresh
-    await renderAgreementsTab();
+    invalidateTabCache('agreements'); renderAgreementsTab();
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
 
     } finally {
@@ -4130,7 +4140,7 @@ async function resignAmbassador(ambassadorId, nationName) {
         // Refresh roles, header, and re-render
         diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
         { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
-        await renderRelationsTab();
+        invalidateTabCache('relations'); await renderRelationsTab();
 
     } catch (e) {
         console.error('Error resigning ambassador:', e);
@@ -4182,7 +4192,7 @@ async function cancelPendingAmbassador(ambassadorId, nationName) {
 
         diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
         { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
-        await renderRelationsTab();
+        invalidateTabCache('relations'); await renderRelationsTab();
 
     } catch (e) {
         console.error('Error canceling pending ambassador:', e);
@@ -13466,7 +13476,7 @@ async function executeRecallAmbassador() {
         diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
         const apEl = document.getElementById('diplo-ap');
         if (apEl) apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP';
-        await Promise.all([renderRelationsTab(), renderDraftBox()]);
+        invalidateTabCache('relations'); await Promise.all([renderRelationsTab(), renderDraftBox()]);
 
     } catch (e) {
         console.error('Error recalling ambassador:', e);
