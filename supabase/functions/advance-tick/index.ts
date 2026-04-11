@@ -13035,6 +13035,63 @@ async function processElections(supabase, nation, currentTick) {
             }
             console.log(`Seats synced to factions for ${nation.name}`);
 
+            // ── Political Party Registration Act: strip seats from below-threshold parties ──
+            const regThreshold = Number(nation.party_registration_threshold || 0);
+            if (regThreshold > 0 && electionType !== 'presidential') {
+                const totalSeats = nation.total_seats || 120;
+                const minSeats = Math.ceil(totalSeats * regThreshold / 100);
+                const seatResults = completedElection.results.seats || [];
+                const belowThreshold = seatResults.filter(r => r.seats > 0 && r.seats < minSeats);
+
+                if (belowThreshold.length > 0) {
+                    let seatsFreed = 0;
+                    const disbandedNames = [];
+                    for (const r of belowThreshold) {
+                        seatsFreed += r.seats;
+                        await supabase.from('factions')
+                            .update({ seats: 0, registration_act_disbanded: true })
+                            .eq('id', r.party_id);
+                        disbandedNames.push(r.party_name || 'Unknown');
+                        // Also update the results object so downstream code sees 0 seats
+                        r.seats = 0;
+                    }
+
+                    // Redistribute freed seats proportionally to surviving parties
+                    const survivors = seatResults.filter(r => r.seats > 0);
+                    const totalSurvivorSeats = survivors.reduce((sum, r) => sum + r.seats, 0);
+                    let distributed = 0;
+                    for (let i = 0; i < survivors.length; i++) {
+                        const share = totalSurvivorSeats > 0 ? survivors[i].seats / totalSurvivorSeats : 1 / survivors.length;
+                        const gain = (i === survivors.length - 1) ? (seatsFreed - distributed) : Math.round(seatsFreed * share);
+                        survivors[i].seats += gain;
+                        distributed += gain;
+                        await supabase.from('factions')
+                            .update({ seats: survivors[i].seats })
+                            .eq('id', survivors[i].party_id);
+                    }
+
+                    // Reset disbanded flag for parties that now meet the threshold
+                    for (const r of survivors) {
+                        await supabase.from('factions')
+                            .update({ registration_act_disbanded: false, registration_act_dismissed: false })
+                            .eq('id', r.party_id);
+                    }
+
+                    console.log(`[Election] Party Registration Act: ${belowThreshold.length} parties below ${regThreshold}% threshold (${minSeats} seats), ${seatsFreed} seats reallocated in ${nation.name}`);
+
+                    // Fire event log for visibility
+                    await supabase.from('event_log').insert({
+                        nation_id: nation.id,
+                        event_name: 'Registration Act Enforced',
+                        trigger_key: 'registration_act_enforced',
+                        category: 'government',
+                        description_chosen: `Political Party Registration Act enforced: ${disbandedNames.join(', ')} fell below the ${regThreshold}% threshold and lost their seats. ${seatsFreed} seats reallocated.`,
+                        effects_applied: { threshold: regThreshold, parties_affected: disbandedNames.length, seats_freed: seatsFreed },
+                        fired_at_tick: currentTick
+                    }).then(({ error: evErr }) => { if (evErr) console.warn('Registration act event log failed:', evErr.message); });
+                }
+            }
+
             // Post-election momentum seed: +1 per 5 seats gained (min 1 if any gained)
             for (const r of completedElection.results.seats) {
                 const gained = (r.seats || 0) - (oldSeats[r.party_id] || 0);
