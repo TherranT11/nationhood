@@ -1009,6 +1009,68 @@ body.light-mode .econ-health-threshold {
     }
 }
 
+/* ===== INDUSTRIES TAB ===== */
+
+.industries-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+}
+
+.industries-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+}
+
+.industries-legend {
+    display: flex;
+    gap: 12px;
+    margin-top: 4px;
+    font-size: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.industries-driver-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 4px;
+}
+
+@media (max-width: 1100px) {
+    .industries-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .industries-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .industries-header {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .industries-driver-row {
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .industries-legend {
+        gap: 8px;
+    }
+}
+
+@media (max-width: 480px) {
+    .industries-grid {
+        gap: 10px;
+    }
+}
+
 /* ===== LEGACY HERO BAR (kept for backward compat) ===== */
 
 .economy-hero {
