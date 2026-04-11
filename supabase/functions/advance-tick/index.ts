@@ -13058,6 +13058,9 @@ async function processElections(supabase, nation, currentTick) {
 
                     // Redistribute freed seats proportionally to surviving parties
                     const survivors = seatResults.filter(r => r.seats > 0);
+                    if (survivors.length === 0) {
+                        console.warn(`[Election] Party Registration Act: ALL parties below threshold in ${nation.name} — no survivors to receive seats`);
+                    }
                     const totalSurvivorSeats = survivors.reduce((sum, r) => sum + r.seats, 0);
                     let distributed = 0;
                     for (let i = 0; i < survivors.length; i++) {
