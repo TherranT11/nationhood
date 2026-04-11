@@ -13935,6 +13935,20 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
             .eq('id', nationId);
     }
 
+    // Redraw card hands for any active bilateral issues involving this nation
+    try {
+        const { data: activeIssues } = await supabase
+            .from('bilateral_issues')
+            .select('id, nation_a_id, nation_b_id, deck_initialized')
+            .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
+            .in('status', ['active', 'partial'])
+            .eq('deck_initialized', true);
+        for (const iss of (activeIssues || [])) {
+            const side = iss.nation_a_id === nationId ? 'a' : 'b';
+            await redrawHand(supabase, iss.id, side, fullNation?.international_reputation || 50, currentTick);
+        }
+    } catch (e) { console.warn('[inauguratePresident] Issue card redraw failed (non-blocking):', e); }
+
     return candidate;
 }
 

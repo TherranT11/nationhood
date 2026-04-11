@@ -501,13 +501,26 @@ function renderIssueSidebarItem(issue) {
     const isActive = issue.id === selectedIssueId;
     const typeName = ISSUE_TYPE_NAMES[issue.issue_type] || issue.issue_type;
 
-    const hasAction = issueActionFlags[issue.id];
-    return `<div class="sidebar-item issue-sidebar-item${isActive ? ' sidebar-item--active' : ''}${hasAction ? ' sidebar-item--has-action' : ''}" data-issue-id="${issue.id}">
-        <div class="sidebar-item-title">${hasAction ? '<span class="action-dot"></span>' : ''}${escapeHtml(typeName)}</div>
+    // Amber badge: opponent played a card since you last viewed
+    const mySide = issue.nation_a_id === currentNation.id ? 'a' : issue.nation_b_id === currentNation.id ? 'b' : null;
+    let hasNewAction = false;
+    if (mySide) {
+        const oppActionTick = mySide === 'a' ? (issue.last_action_by_b_tick || 0) : (issue.last_action_by_a_tick || 0);
+        const mySeenTick = mySide === 'a' ? (issue.a_seen_tick || 0) : (issue.b_seen_tick || 0);
+        hasNewAction = oppActionTick > mySeenTick;
+    }
+
+    // Deck info
+    const handSize = mySide === 'a' ? (issue.hand_a || []).length : mySide === 'b' ? (issue.hand_b || []).length : 0;
+    const totalCards = (issue.played_cards || []).length + (issue.hand_a || []).length + (issue.hand_b || []).length + (issue.deck_remaining || []).length;
+    const deckInfo = issue.deck_initialized ? `${totalCards - (issue.played_cards || []).length}/${totalCards}` : '';
+
+    return `<div class="sidebar-item issue-sidebar-item${isActive ? ' sidebar-item--active' : ''}${hasNewAction ? ' sidebar-item--has-action' : ''}" data-issue-id="${issue.id}">
+        <div class="sidebar-item-title">${hasNewAction ? '<span class="action-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--amber);margin-right:4px;vertical-align:middle;"></span>' : ''}${escapeHtml(typeName)}</div>
         <div class="sidebar-item-meta">
             <span class="sidebar-item-nation">${escapeHtml(nations)}</span>
             <span class="issue-tension issue-tension--${tInfo.cls}">${tInfo.label}</span>
-            <span class="sidebar-item-status">${issue.status === 'partial' ? 'Partial' : 'Unresolved'}</span>
+            ${deckInfo ? `<span style="font-family:var(--font-mono);font-size:6.5px;color:var(--text-dim);">${deckInfo}</span>` : ''}
         </div>
     </div>`;
 }
@@ -547,6 +560,13 @@ async function selectIssue(issueId) {
     // Show detail, hide empty
     document.getElementById('issues-empty-state').style.display = 'none';
     document.getElementById('issues-detail').style.display = '';
+
+    // Mark as seen for notification badge
+    const seenSide = issue.nation_a_id === currentNation.id ? 'a' : issue.nation_b_id === currentNation.id ? 'b' : null;
+    if (seenSide) {
+        const seenKey = seenSide === 'a' ? 'a_seen_tick' : 'b_seen_tick';
+        _supabase.from('bilateral_issues').update({ [seenKey]: currentTick }).eq('id', issueId).then(() => {});
+    }
 
     // Load modifiers, history, card plays, and card definitions
     const [modsResult, histResult, cardPlaysResult, cardDefsResult] = await Promise.allSettled([
