@@ -552,6 +552,11 @@ async function selectIssue(issueId) {
 // ==================== CARD SYSTEM RENDERERS ====================
 // ISSUE_TYPE_NAMES and getTensionInfo already declared above
 
+function faToDrawCount(intlRep) {
+    const fa = Math.max(0, Math.min(100, Number(intlRep) || 0));
+    return Math.max(1, Math.min(12, Math.ceil(fa / 8.33)));
+}
+
 function renderCardIssueHeader(issue) {
     const el = document.getElementById('issues-header');
     if (!el) return;
@@ -609,7 +614,7 @@ async function renderCardBilateralIntel(issue) {
             <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Head of Government</span><span style="font-size:11px;color:var(--text-muted);">${hogName}${hogParty}</span></div>
             <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Gov. Approval</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:${approvalColor};">${Math.round(approval)}</span></div>
             <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Stability</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:${stabColor};">${Math.round(stability)}</span></div>
-            <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Foreign Affairs</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;">${Math.round(fa)}</span></div>
+            <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Foreign Affairs</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;">${faToDrawCount(fa)}</span><span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-left:4px;">cards</span></div>
             <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Active Crises</span></div>
             ${crisesHtml}
         </div>`;
@@ -703,7 +708,7 @@ function renderCardDeckStrip(issue, totalCardDefs) {
         <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);">Deck</span>
         <div style="display:flex;gap:2px;">${pips}</div>
         <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${played} played / ${myHand.length} hand / ${deckLeft} deck</span>
-        <span style="font-family:var(--font-mono);font-size:8px;color:var(--teal,#5b9a8b);margin-left:auto;">Foreign Affairs: ${fa}</span>
+        <span style="font-family:var(--font-mono);font-size:8px;color:var(--teal,#5b9a8b);margin-left:auto;">Foreign Affairs: ${faToDrawCount(Number(currentNation.international_reputation))} cards</span>
     </div>`;
 }
 
