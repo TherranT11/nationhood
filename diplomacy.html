@@ -548,7 +548,9 @@ async function renderWorldNations() {
         if (theirAmbassadorsRes.error) console.warn('World Nations: their ambassadors query error:', theirAmbassadorsRes.error);
         if (ceasefireRes.error) console.warn('World Nations: ceasefire query error:', ceasefireRes.error);
 
-        const allNations = (nationsRes.data || []).filter(n => n.id !== currentNation.id);
+        const otherNations = (nationsRes.data || []).filter(n => n.id !== currentNation.id);
+        const ownNation = (nationsRes.data || []).find(n => n.id === currentNation.id);
+        const allNations = ownNation ? [ownNation, ...otherNations] : otherNations;
         const factions = factionsRes.data || [];
         const crises = crisesRes.data || [];
         const relations = relationsRes.data || [];
@@ -603,15 +605,16 @@ async function renderWorldNations() {
             const totalSeats = nation.total_seats || 100;
 
             // Relation
-            const rel = relations.find(r =>
+            const isOwnNation = nation.id === currentNation.id;
+            const rel = isOwnNation ? null : relations.find(r =>
                 (r.nation_a_id === currentNation.id && r.nation_b_id === nation.id) ||
                 (r.nation_a_id === nation.id && r.nation_b_id === currentNation.id)
             );
-            const score = rel?.relation_score ?? 35;
-            const hasCeasefire = ceasefireNations.has(nation.id);
-            const tier = getRelationTier(score, hasCeasefire);
-            const dotColor = tierToDotColor(tier);
-            const pillClass = tierToPillClass(tier);
+            const score = isOwnNation ? 100 : (rel?.relation_score ?? 35);
+            const hasCeasefire = isOwnNation ? false : ceasefireNations.has(nation.id);
+            const tier = isOwnNation ? 'allied' : getRelationTier(score, hasCeasefire);
+            const dotColor = isOwnNation ? 'var(--teal)' : tierToDotColor(tier);
+            const pillClass = isOwnNation ? 'wn-relation-pill--allied' : tierToPillClass(tier);
 
             // Embassy
             const hasOurAmb = ourAmbSet.has(nation.id);
@@ -713,11 +716,13 @@ async function renderWorldNations() {
                 ? nCrises.map(c => '<div class="wn-crisis-row"><span class="wn-crisis-pip"></span><span class="wn-crisis-name">' + escapeHtml(c.crisis_templates?.name || 'Unknown Crisis') + '</span></div>').join('')
                 : '<div class="wn-no-crisis">No active crises</div>';
 
-            html += '<div class="wn-card">' +
+            const ownBadge = isOwnNation ? '<span style="font-family:var(--font-mono);font-size:0.55rem;font-weight:700;padding:1px 6px;color:var(--teal);background:rgba(90,170,138,0.1);border:1px solid rgba(90,170,138,0.25);margin-left:6px;vertical-align:middle;">YOUR NATION</span>' : '';
+            html += '<div class="wn-card" style="' + (isOwnNation ? 'border:1px solid rgba(90,170,138,0.25);background:rgba(90,170,138,0.03);' : '') + '">' +
                 // Header
                 '<div class="wn-card__header">' +
                     (flagUrl ? '<img class="wn-card__flag" src="' + flagUrl + '" alt="' + escapeHtml(nation.name) + '">' : '') +
                     '<span class="wn-card__name">' + escapeHtml(nation.name) + '</span>' +
+                    ownBadge +
                     '<span class="wn-card__gov ' + govClass + '">' + govLabel + '</span>' +
                 '</div>' +
                 // Body
