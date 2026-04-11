@@ -30,7 +30,7 @@ function favorToLeverage(favor) {
 
 // ==================== MARITIME FISHING RIGHTS — 20 MODIFIERS ====================
 
-const MODIFIERS = {
+export const MODIFIERS = {
 
     // ── STRUCTURAL (assigned at issue creation) ──
 
@@ -804,940 +804,10 @@ const MODIFIERS = {
     },
 };
 
-// Role → ministry_key mapping for looking up which party's minister used an action
-const ROLE_TO_MINISTRY = {
-    'foreign_minister': 'foreign',
-    'minister_of_trade': 'trade',
-    'minister_of_defense': 'defense',
-    'minister_of_finance': 'finance',
-    'head_of_government': 'prime_minister',
-    'ambassador': null,
-};
-
-// ==================== MARITIME FISHING RIGHTS — 18 ACTIONS ====================
-
-const ACTIONS = {
-
-    // ── DIPLOMATIC (6) — require other nation to accept ──
-
-    propose_shared_maritime_survey: {
-        key: 'propose_shared_maritime_survey',
-        name: 'Propose Shared Maritime Survey',
-        category: 'diplomatic',
-        role: 'foreign_minister',
-        ap_cost: 2,
-        favor_delta: 0,
-        tension_delta: -2,
-        modifiers_removed: ['no_defined_maritime_territories'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Commission a joint hydrographic survey to map disputed waters. Results are binding.',
-    },
-
-    establish_joint_fishing_commission: {
-        key: 'establish_joint_fishing_commission',
-        name: 'Establish Joint Fishing Commission',
-        category: 'diplomatic',
-        role: 'foreign_minister',
-        ap_cost: 2,
-        favor_delta: 0,
-        tension_delta: -2,
-        modifiers_removed: ['no_regulatory_framework', 'foreign_vessels_in_waters'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Create a bilateral commission to manage the shared fishery with regulatory authority.',
-    },
-
-    negotiate_catch_quotas: {
-        key: 'negotiate_catch_quotas',
-        name: 'Negotiate Catch Quotas',
-        category: 'diplomatic',
-        role: 'minister_of_trade',
-        ap_cost: 2,
-        favor_delta: 0,
-        tension_delta: -1,
-        modifiers_removed: ['no_defined_quotas', 'overfishing'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Negotiate specific catch allocations per species per season for each nation.',
-    },
-
-    joint_coast_guard_patrols: {
-        key: 'joint_coast_guard_patrols',
-        name: 'Joint Coast Guard Patrols',
-        category: 'diplomatic',
-        role: 'minister_of_defense',
-        ap_cost: 2,
-        favor_delta: 0,
-        tension_delta: -1,
-        modifiers_removed: ['no_joint_enforcement', 'illegal_fishing_surge'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Coordinated patrols in the disputed zone with shared radio and joint arrest authority.',
-    },
-
-    invite_international_arbitration: {
-        key: 'invite_international_arbitration',
-        name: 'Invite International Arbitration',
-        category: 'diplomatic',
-        role: 'foreign_minister',
-        ap_cost: 3,
-        favor_delta: 0, // resets to 0
-        tension_delta: -3,
-        modifiers_removed: ['no_dispute_resolution_mechanism'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Submit the dispute to binding international arbitration. 8-tick process. Resolves issue entirely.',
-        special: 'arbitration', // after 8 ticks removes ALL structural modifiers, resets favor to 0
-    },
-
-    sign_seasonal_fishing_calendar: {
-        key: 'sign_seasonal_fishing_calendar',
-        name: 'Sign Seasonal Fishing Calendar',
-        category: 'diplomatic',
-        role: 'ambassador',
-        ap_cost: 1,
-        favor_delta: 0,
-        tension_delta: -1,
-        modifiers_removed: ['seasonal_fishing_conflict'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Agree on which months each nation\'s fleet can operate. Stops seasonal flare-ups.',
-    },
-
-    // ── UNILATERAL (6) — immediate, no acceptance needed ──
-
-    subsidize_domestic_fleet: {
-        key: 'subsidize_domestic_fleet',
-        name: 'Subsidize Domestic Fleet',
-        category: 'unilateral',
-        role: 'minister_of_finance',
-        ap_cost: 2,
-        favor_delta: 0.5,
-        tension_delta: 0.5,
-        modifiers_removed: [],
-        modifiers_added: ['domestic_fleet_expansion'],
-        treasury_cost: 15_000_000,
-        description: 'Fund expansion of your fishing fleet. More boats, better equipment. Costs $15M.',
-        modifier_target: 'acting', // added modifier applies to acting nation
-    },
-
-    invest_in_coastal_communities: {
-        key: 'invest_in_coastal_communities',
-        name: 'Invest in Coastal Communities',
-        category: 'unilateral',
-        role: 'minister_of_finance',
-        ap_cost: 2,
-        favor_delta: 0,
-        tension_delta: 0,
-        modifiers_removed: ['coastal_community_decline'],
-        modifiers_added: [],
-        treasury_cost: 20_000_000,
-        description: 'Job retraining, infrastructure, alternative industries for affected towns. $20M.',
-        modifier_remove_target: 'acting', // only removes from acting nation
-    },
-
-    impose_seasonal_restrictions: {
-        key: 'impose_seasonal_restrictions',
-        name: 'Impose Seasonal Restrictions',
-        category: 'unilateral',
-        role: 'minister_of_trade',
-        ap_cost: 1,
-        favor_delta: -0.5,
-        tension_delta: -1,
-        modifiers_removed: ['overfishing'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Restrict your own fleet during spawning seasons. Helps fish stocks recover.',
-        stat_effects_acting: [{ stat_key: 'manufacturing_output', delta: -0.1, duration: 10 }],
-    },
-
-    expand_fishing_fleet: {
-        key: 'expand_fishing_fleet',
-        name: 'Expand Fishing Fleet Operations',
-        category: 'unilateral',
-        role: 'minister_of_trade',
-        ap_cost: 1,
-        favor_delta: 1,
-        tension_delta: 1,
-        modifiers_removed: [],
-        modifiers_added: ['foreign_vessels_in_waters'],
-        treasury_cost: 0,
-        description: 'Push your fleet deeper into contested waters. Claim territory with hulls.',
-        modifier_target: 'opponent', // added modifier applies to opponent
-        stat_effects_acting: [{ stat_key: 'gdp_growth', delta: 0.1, duration: 10 }],
-    },
-
-    commission_legal_study: {
-        key: 'commission_legal_study',
-        name: 'Commission Legal Study',
-        category: 'unilateral',
-        role: 'foreign_minister',
-        ap_cost: 1,
-        favor_delta: 0, // +0.5 if your int'l reputation > theirs, checked at runtime
-        tension_delta: 0,
-        modifiers_removed: [],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Maritime lawyers produce a report supporting your claim. Positioning move.',
-        special: 'reputation_check', // favor only shifts if acting nation has higher int'l reputation
-    },
-
-    redirect_fleet: {
-        key: 'redirect_fleet',
-        name: 'Redirect Fleet to Other Waters',
-        category: 'unilateral',
-        role: 'minister_of_trade',
-        ap_cost: 1,
-        favor_delta: -1,
-        tension_delta: -1,
-        modifiers_removed: ['foreign_vessels_in_waters'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Pull your fleet back from the contested zone. De-escalation signal.',
-        modifier_remove_target: 'acting', // only removes if YOUR nation caused it
-        stat_effects_acting: [{ stat_key: 'manufacturing_output', delta: -0.1, duration: 10 }],
-    },
-
-    // ── THREATENING (6) — aggressive, escalates, risks incidents ──
-
-    public_denunciation: {
-        key: 'public_denunciation',
-        name: 'Public Denunciation',
-        category: 'threatening',
-        role: 'ambassador',
-        ap_cost: 1,
-        favor_delta: 1,
-        tension_delta: 1,
-        modifiers_removed: [],
-        modifiers_added: ['public_hostility', 'diplomatic_friction'],
-        treasury_cost: 0,
-        description: 'Ambassador publicly condemns the other nation\'s fishing practices. Gloves off.',
-        relations_delta: -2,
-        stat_effects_opponent: [{ stat_key: 'international_reputation', delta: -0.1, duration: 10 }],
-    },
-
-    deploy_coast_guard_cutters: {
-        key: 'deploy_coast_guard_cutters',
-        name: 'Deploy Coast Guard Cutters',
-        category: 'threatening',
-        role: 'minister_of_defense',
-        ap_cost: 2,
-        favor_delta: 1.5,
-        tension_delta: 2,
-        modifiers_removed: [],
-        modifiers_added: ['naval_presence'],
-        treasury_cost: 0,
-        description: 'Armed cutters patrol the disputed zone. Monitor, shadow, challenge.',
-        relations_delta: -4,
-        stat_effects_acting: [{ stat_key: 'military_readiness', delta: 0.1, duration: 20 }],
-    },
-
-    seize_foreign_vessel: {
-        key: 'seize_foreign_vessel',
-        name: 'Seize Foreign Fishing Vessel',
-        category: 'threatening',
-        role: 'minister_of_defense',
-        ap_cost: 3,
-        favor_delta: 2,
-        tension_delta: 3,
-        modifiers_removed: [],
-        modifiers_added: ['seized_vessel_held'],
-        treasury_cost: 0,
-        description: 'Board, inspect, impound a foreign vessel. Crew detained. 50% triggers Incident.',
-        relations_delta: -5,
-        modifier_target: 'opponent', // seized vessel modifier applies to opponent
-        special: 'incident_trigger_50',
-    },
-
-    impose_fishing_ban: {
-        key: 'impose_fishing_ban',
-        name: 'Impose Unilateral Fishing Ban',
-        category: 'threatening',
-        role: 'minister_of_trade',
-        ap_cost: 2,
-        favor_delta: 1,
-        tension_delta: 2,
-        modifiers_removed: [],
-        modifiers_added: ['fishing_ban_in_effect', 'illegal_fishing_surge'],
-        treasury_cost: 0,
-        description: 'Ban all fishing in the zone. Your vessels and theirs. Black market fills the gap.',
-        relations_delta: -3,
-    },
-
-    expel_foreign_vessels: {
-        key: 'expel_foreign_vessels',
-        name: 'Expel Foreign Vessels',
-        category: 'threatening',
-        role: 'minister_of_defense',
-        ap_cost: 2,
-        favor_delta: 2,
-        tension_delta: 2,
-        modifiers_removed: ['foreign_vessels_in_waters'],
-        modifiers_added: ['active_vessel_expulsion'],
-        treasury_cost: 0,
-        description: 'Order all foreign fishing vessels out. Any remaining will be boarded.',
-        relations_delta: -4,
-    },
-
-    threaten_naval_deployment: {
-        key: 'threaten_naval_deployment',
-        name: 'Threaten Naval Deployment',
-        category: 'threatening',
-        role: 'head_of_government',
-        ap_cost: 2,
-        favor_delta: 2,
-        tension_delta: 3,
-        modifiers_removed: [],
-        modifiers_added: ['public_hostility', 'diplomatic_friction'],
-        treasury_cost: 0,
-        description: '"All options are on the table." The ambiguity is the weapon.',
-        relations_delta: -5,
-        stat_effects_opponent: [{ stat_key: 'stability', delta: -0.2, duration: 15 }],
-        special: 'incident_trigger_25',
-    },
-
-
-    // ==================== TERRITORIAL OWNERSHIP DISPUTE — 18 ACTIONS ====================
-
-    // ── DIPLOMATIC (6) ──
-
-    propose_joint_sovereignty: {
-        key: 'propose_joint_sovereignty',
-        name: 'Propose Joint Sovereignty',
-        category: 'diplomatic',
-        role: 'head_of_government',
-        ap_cost: 3,
-        favor_delta: 0, // resets to 0
-        tension_delta: -3,
-        modifiers_removed: ['competing_sovereignty_claims', 'settler_population_growing', 'domestic_political_significance'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Propose that both nations exercise joint sovereignty over the territory. Both flags, both languages, shared tax revenue.',
-        special: 'favor_reset', // resets favor to 0 on acceptance
-        issue_type: 'territorial_ownership',
-    },
-
-    offer_economic_concession: {
-        key: 'offer_economic_concession',
-        name: 'Offer Economic Concession for Claim',
-        category: 'diplomatic',
-        role: 'minister_of_trade',
-        ap_cost: 3,
-        favor_delta: -3, // massive concession
-        tension_delta: -3,
-        modifiers_removed: [], // removes ALL on acceptance (special handling)
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Offer a comprehensive trade package in exchange for the other nation renouncing their territorial claim. You\'re buying peace with money.',
-        special: 'resolve_issue', // resolves the issue entirely on acceptance
-        issue_type: 'territorial_ownership',
-    },
-
-    submit_to_international_court: {
-        key: 'submit_to_international_court',
-        name: 'Submit to International Court',
-        category: 'diplomatic',
-        role: 'foreign_minister',
-        ap_cost: 3,
-        favor_delta: 0, // resets to 0
-        tension_delta: -3,
-        modifiers_removed: ['no_international_adjudication'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Submit the dispute to binding international court. 10-tick process. Ruling may resolve the issue entirely.',
-        special: 'court_ruling', // 10-tick process, stat-weighted outcome
-        issue_type: 'territorial_ownership',
-    },
-
-    propose_condominium_administration: {
-        key: 'propose_condominium_administration',
-        name: 'Propose Condominium Administration',
-        category: 'diplomatic',
-        role: 'foreign_minister',
-        ap_cost: 2,
-        favor_delta: 0,
-        tension_delta: -2,
-        modifiers_removed: ['no_international_adjudication'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Propose a formal condominium — the territory is administered jointly under an agreed framework. Practical shared management.',
-        stat_effects_acting: [{ stat_key: 'efficiency', delta: 0.05, duration: 20 }],
-        stat_effects_opponent: [{ stat_key: 'efficiency', delta: 0.05, duration: 20 }],
-        issue_type: 'territorial_ownership',
-    },
-
-    cultural_heritage_preservation: {
-        key: 'cultural_heritage_preservation',
-        name: 'Cultural Heritage Preservation Agreement',
-        category: 'diplomatic',
-        role: 'ambassador',
-        ap_cost: 1,
-        favor_delta: 0,
-        tension_delta: -1,
-        modifiers_removed: ['historical_grievance_attached', 'cultural_erasure_accusations', 'memorial_anniversary_tension'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Both nations agree to preserve the cultural heritage of both communities in the territory. Neither side erases the other\'s history.',
-        issue_type: 'territorial_ownership',
-    },
-
-    resource_sharing_framework: {
-        key: 'resource_sharing_framework',
-        name: 'Resource-Sharing Framework',
-        category: 'diplomatic',
-        role: 'minister_of_trade',
-        ap_cost: 2,
-        favor_delta: 0,
-        tension_delta: -2,
-        modifiers_removed: ['resource_potential', 'resource_exploitation_conflict', 'resource_extraction_underway'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Agree to jointly exploit the territory\'s resources regardless of who owns the land. Revenue split 50/50.',
-        special: 'requires_modifier', // only available if resource_potential is active
-        requires_modifier: 'resource_potential',
-        issue_type: 'territorial_ownership',
-    },
-
-    // ── UNILATERAL (6) ──
-
-    build_infrastructure_territory: {
-        key: 'build_infrastructure_territory',
-        name: 'Build Infrastructure in Territory',
-        category: 'unilateral',
-        role: 'minister_of_finance',
-        ap_cost: 3,
-        favor_delta: 2,
-        tension_delta: 1,
-        modifiers_removed: [],
-        modifiers_added: [], // competing_development_projects added if both nations build (handled in auto-spawn)
-        treasury_cost: 25_000_000,
-        description: 'Build roads, bridges, schools, hospitals. Every building is a claim. $25M.',
-        stat_effects_acting: [{ stat_key: 'physical_infrastructure', delta: 0.1, duration: 15 }],
-        issue_type: 'territorial_ownership',
-    },
-
-    settle_citizens_territory: {
-        key: 'settle_citizens_territory',
-        name: 'Settle Citizens in Territory',
-        category: 'unilateral',
-        role: 'head_of_government',
-        ap_cost: 2,
-        favor_delta: 1,
-        tension_delta: 2,
-        modifiers_removed: [],
-        modifiers_added: ['settler_population_growing'],
-        treasury_cost: 10_000_000,
-        description: 'Offer tax breaks, free land, subsidized housing. Change the demographic balance. $10M.',
-        issue_type: 'territorial_ownership',
-    },
-
-    commission_legal_claim: {
-        key: 'commission_legal_claim',
-        name: 'Commission Legal Claim Document',
-        category: 'unilateral',
-        role: 'foreign_minister',
-        ap_cost: 1,
-        favor_delta: 0, // +1 if int'l reputation > opponent's, +0.5 if equal
-        tension_delta: 0,
-        modifiers_removed: [],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Hire international lawyers to produce a legal document supporting your claim. Positioning move.',
-        special: 'reputation_check_territorial', // favor only shifts based on reputation comparison
-        issue_type: 'territorial_ownership',
-    },
-
-    name_territory_on_maps: {
-        key: 'name_territory_on_maps',
-        name: 'Name Territory on Official Maps',
-        category: 'unilateral',
-        role: 'head_of_government',
-        ap_cost: 1,
-        favor_delta: 0.5,
-        tension_delta: 0.5,
-        modifiers_removed: [],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Update all official maps to refer to the territory exclusively by your name. A quiet, persistent assertion of ownership.',
-        issue_type: 'territorial_ownership',
-    },
-
-    economic_development_program: {
-        key: 'economic_development_program',
-        name: 'Economic Development Program',
-        category: 'unilateral',
-        role: 'minister_of_finance',
-        ap_cost: 2,
-        favor_delta: 1,
-        tension_delta: 0,
-        modifiers_removed: [],
-        modifiers_added: [],
-        treasury_cost: 20_000_000,
-        description: 'Invest in the territory\'s economy. Local businesses, tourism, agriculture. Make it prosperous under your administration. $20M.',
-        stat_effects_acting: [
-            { stat_key: 'gdp_growth', delta: 0.05, duration: 20 },
-            { stat_key: 'standard_of_living', delta: 0.1, duration: 20 },
-        ],
-        issue_type: 'territorial_ownership',
-    },
-
-    establish_administrative_presence: {
-        key: 'establish_administrative_presence',
-        name: 'Establish Administrative Presence',
-        category: 'unilateral',
-        role: 'head_of_government',
-        ap_cost: 2,
-        favor_delta: 1,
-        tension_delta: 1,
-        modifiers_removed: [],
-        modifiers_added: [], // competing_development_projects if both establish (auto-spawn)
-        treasury_cost: 10_000_000,
-        description: 'Open government offices in the territory. Post office, tax office, courts. The bureaucratic assertion of sovereignty. $10M.',
-        stat_effects_acting: [{ stat_key: 'efficiency', delta: 0.1, duration: 15 }],
-        issue_type: 'territorial_ownership',
-    },
-
-    // ── THREATENING (6) ──
-
-    military_occupation_territory: {
-        key: 'military_occupation_territory',
-        name: 'Military Occupation of Territory',
-        category: 'threatening',
-        role: 'minister_of_defense',
-        ap_cost: 4,
-        favor_delta: 3,
-        tension_delta: 4,
-        modifiers_removed: [],
-        modifiers_added: ['military_occupation'],
-        treasury_cost: 0,
-        description: 'Send the army. Occupy the territory with military force. 60% triggers Border Incursion.',
-        relations_delta: -8,
-        stat_effects_acting: [{ stat_key: 'military_readiness', delta: 0.2, duration: 30 }],
-        stat_effects_opponent: [{ stat_key: 'stability', delta: -0.3, duration: 30 }],
-        special: 'incident_trigger_60',
-        issue_type: 'territorial_ownership',
-    },
-
-    forced_population_transfer_action: {
-        key: 'forced_population_transfer_action',
-        name: 'Forced Population Transfer',
-        category: 'threatening',
-        role: 'head_of_government',
-        ap_cost: 3,
-        favor_delta: 2,
-        tension_delta: 4,
-        modifiers_removed: [],
-        modifiers_added: ['forced_population_transfer'],
-        treasury_cost: 0,
-        description: 'Forcibly relocate the other nation\'s ethnic community from the territory. Ethnic cleansing by another name.',
-        relations_delta: -8,
-        stat_effects_acting: [
-            { stat_key: 'international_reputation', delta: -2 },
-            { stat_key: 'freedom_index', delta: -0.3, duration: 30 },
-        ],
-        issue_type: 'territorial_ownership',
-    },
-
-    resource_extraction_without_agreement: {
-        key: 'resource_extraction_without_agreement',
-        name: 'Resource Extraction Without Agreement',
-        category: 'threatening',
-        role: 'minister_of_trade',
-        ap_cost: 2,
-        favor_delta: 1,
-        tension_delta: 2,
-        modifiers_removed: [],
-        modifiers_added: ['resource_extraction_underway', 'resource_exploitation_conflict'],
-        treasury_cost: 0,
-        description: 'Begin extracting resources without agreement. You profit. They watch.',
-        relations_delta: -3,
-        stat_effects_acting: [{ stat_key: 'gdp_growth', delta: 0.2, duration: 25 }],
-        special: 'requires_modifier',
-        requires_modifier: 'resource_potential',
-        issue_type: 'territorial_ownership',
-    },
-
-    military_exercise_territory: {
-        key: 'military_exercise_territory',
-        name: 'Military Exercise in Territory',
-        category: 'threatening',
-        role: 'minister_of_defense',
-        ap_cost: 2,
-        favor_delta: 2,
-        tension_delta: 3,
-        modifiers_removed: [],
-        modifiers_added: ['military_exercises_conducted'],
-        treasury_cost: 0,
-        description: 'Conduct live-fire military exercises in the territory. Tanks, artillery, air assets. Intimidation campaign.',
-        relations_delta: -5,
-        stat_effects_acting: [{ stat_key: 'military_readiness', delta: 0.1, duration: 10 }],
-        stat_effects_opponent: [{ stat_key: 'stability', delta: -0.2, duration: 10 }],
-        issue_type: 'territorial_ownership',
-    },
-
-    expel_other_nations_citizens: {
-        key: 'expel_other_nations_citizens',
-        name: 'Expel Other Nation\'s Citizens',
-        category: 'threatening',
-        role: 'head_of_government',
-        ap_cost: 2,
-        favor_delta: 1,
-        tension_delta: 3,
-        modifiers_removed: [],
-        modifiers_added: ['citizen_expulsion', 'diaspora_mobilization'],
-        treasury_cost: 0,
-        description: 'Order all citizens of the other nation to leave the territory. 30-day deadline.',
-        relations_delta: -5,
-        stat_effects_acting: [{ stat_key: 'international_reputation', delta: -0.15, duration: 15 }],
-        modifier_target_map: { citizen_expulsion: 'opponent', diaspora_mobilization: 'opponent' },
-        issue_type: 'territorial_ownership',
-    },
-
-    declare_sovereignty: {
-        key: 'declare_sovereignty',
-        name: 'Declare Sovereignty',
-        category: 'threatening',
-        role: 'head_of_government',
-        ap_cost: 2,
-        favor_delta: 2,
-        tension_delta: 3,
-        modifiers_removed: [],
-        modifiers_added: ['sovereignty_declared'],
-        treasury_cost: 0,
-        description: 'Formal declaration that the territory is sovereign national territory. Political point of no return.',
-        relations_delta: -5,
-        stat_effects_acting: [{ stat_key: 'international_reputation', delta: -0.1, duration: 20 }],
-        stat_effects_opponent: [{ stat_key: 'stability', delta: -0.1, duration: 20 }],
-        special: 'sovereignty_nationalism_30', // 30% chance of also spawning nationalist_territorial_movement
-        issue_type: 'territorial_ownership',
-    },
-
-
-    // ==================== CHRONIC TRADE IMBALANCE — 18 ACTIONS ====================
-    // Surplus = administering, Deficit = non_administering
-    // Actions #12 and #17 use democracy-only versions (autocracy system not implemented)
-
-    // ── DIPLOMATIC (6) ──
-
-    negotiate_trade_rebalancing: {
-        key: 'negotiate_trade_rebalancing',
-        name: 'Negotiate Trade Rebalancing Agreement',
-        category: 'diplomatic',
-        role: 'minister_of_trade',
-        ap_cost: 2,
-        favor_delta: 0,
-        tension_delta: -2,
-        modifiers_removed: ['persistent_trade_deficit', 'no_trade_rebalancing_mechanism'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Negotiate a structured rebalancing plan. The surplus nation agrees to reduce export volume and purchase goods from the deficit nation.',
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    negotiate_voluntary_export_restraints: {
-        key: 'negotiate_voluntary_export_restraints',
-        name: 'Negotiate Voluntary Export Restraints',
-        category: 'diplomatic',
-        role: 'minister_of_trade',
-        ap_cost: 2,
-        favor_delta: 0,
-        tension_delta: -1,
-        modifiers_removed: ['domestic_industries_losing_share', 'dumping_accusations'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'The surplus nation voluntarily limits export volumes in specific sectors. Technically voluntary. Practically coerced.',
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    propose_currency_alignment: {
-        key: 'propose_currency_alignment',
-        name: 'Propose Currency Alignment Talks',
-        category: 'diplomatic',
-        role: 'minister_of_finance',
-        ap_cost: 2,
-        favor_delta: 0,
-        tension_delta: -1,
-        modifiers_removed: ['currency_misalignment_suspected'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Open formal talks between both nations\' central banks to address currency valuation and prevent competitive devaluation.',
-        special: 'requires_modifier',
-        requires_modifier: 'currency_misalignment_suspected',
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    joint_economic_development_fund: {
-        key: 'joint_economic_development_fund',
-        name: 'Joint Economic Development Fund',
-        category: 'diplomatic',
-        role: 'minister_of_finance',
-        ap_cost: 3,
-        favor_delta: 0,
-        tension_delta: -2,
-        modifiers_removed: ['factory_closures_deficit'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'The surplus nation invests directly in the deficit nation\'s economy. Build factories, create two-way supply chains. Not charity — strategic investment.',
-        stat_effects_opponent: [
-            { stat_key: 'gdp_growth', delta: 0.1, duration: 20 },
-            { stat_key: 'foreign_investment', delta: 0.1, duration: 20 },
-        ],
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    bilateral_free_trade_restructuring: {
-        key: 'bilateral_free_trade_restructuring',
-        name: 'Bilateral Free Trade Restructuring',
-        category: 'diplomatic',
-        role: 'head_of_government',
-        ap_cost: 4,
-        favor_delta: 0, // resets to 0
-        tension_delta: -3,
-        modifiers_removed: ['intellectual_property_friction', 'seasonal_trade_friction', 'surplus_market_dependency'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Renegotiate the entire trade relationship from scratch. Both sides make concessions. 8-tick process + parliamentary ratification.',
-        special: 'trade_restructuring', // 8-tick process, removes ALL structural on ratification
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    negotiate_supply_chain_diversification: {
-        key: 'negotiate_supply_chain_diversification',
-        name: 'Negotiate Supply Chain Diversification',
-        category: 'diplomatic',
-        role: 'minister_of_trade',
-        ap_cost: 2,
-        favor_delta: 0,
-        tension_delta: -1,
-        modifiers_removed: ['supply_chain_dependency'],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Both nations agree to reduce supply chain concentration so neither is critically dependent on the other for essential inputs.',
-        special: 'requires_modifier',
-        requires_modifier: 'supply_chain_dependency',
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    // ── UNILATERAL (6) ──
-
-    domestic_industry_subsidy: {
-        key: 'domestic_industry_subsidy',
-        name: 'Domestic Industry Subsidy Program',
-        category: 'unilateral',
-        role: 'minister_of_finance',
-        ap_cost: 2,
-        favor_delta: 0.5,
-        tension_delta: 0.5,
-        modifiers_removed: ['domestic_industries_losing_share', 'factory_closures_deficit'],
-        modifiers_added: [],
-        treasury_cost: 25_000_000,
-        description: 'Fund your domestic industries directly. Subsidies, tax breaks, low-interest loans. Expensive but keeps the lights on. $25M.',
-        stat_effects_acting: [
-            { stat_key: 'manufacturing_output', delta: 0.15, duration: 20 },
-            { stat_key: 'debt_growth', delta: 0.3, duration: 20 },
-        ],
-        modifier_remove_target: 'acting',
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    launch_import_substitution: {
-        key: 'launch_import_substitution',
-        name: 'Launch Import Substitution Program',
-        category: 'unilateral',
-        role: 'minister_of_trade',
-        ap_cost: 3,
-        favor_delta: 0.5,
-        tension_delta: 0.5,
-        modifiers_removed: ['no_import_substitution_strategy'],
-        modifiers_added: [],
-        treasury_cost: 30_000_000,
-        description: 'Develop domestic alternatives to imported goods. Expensive, slow, but structurally transformative. $30M.',
-        stat_effects_acting: [
-            { stat_key: 'manufacturing_output', delta: 0.1, duration: 20 },
-            { stat_key: 'cost_of_living', delta: 0.1, duration: 10 },
-        ],
-        modifier_remove_target: 'acting',
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    file_anti_dumping_complaint: {
-        key: 'file_anti_dumping_complaint',
-        name: 'File Anti-Dumping Complaint',
-        category: 'unilateral',
-        role: 'foreign_minister',
-        ap_cost: 1,
-        favor_delta: 0.5,
-        tension_delta: 0.5,
-        modifiers_removed: [],
-        modifiers_added: ['dumping_accusations'],
-        treasury_cost: 0,
-        description: 'File a formal anti-dumping complaint. Accuse the surplus nation of selling below cost. The accusation does damage regardless of truth.',
-        modifier_target: 'opponent',
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    buy_domestic_campaign: {
-        key: 'buy_domestic_campaign',
-        name: '"Buy Domestic" Campaign',
-        category: 'unilateral',
-        role: 'head_of_government',
-        ap_cost: 1,
-        favor_delta: 0.5,
-        tension_delta: 0,
-        modifiers_removed: [],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Launch a public campaign encouraging citizens to buy domestically produced goods. Government leads by example. Symbolic but meaningful.',
-        stat_effects_acting: [
-            { stat_key: 'gov_approval', delta: 0.05, duration: 15 },
-            { stat_key: 'manufacturing_output', delta: 0.05, duration: 15 },
-        ],
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    attract_alternative_partners: {
-        key: 'attract_alternative_partners',
-        name: 'Attract Alternative Trading Partners',
-        category: 'unilateral',
-        role: 'minister_of_trade',
-        ap_cost: 2,
-        favor_delta: -0.5,
-        tension_delta: -0.5,
-        modifiers_removed: [],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Pursue trade deals with third-party nations to reduce dependence on the surplus nation. Don\'t fix the relationship — go around it.',
-        stat_effects_acting: [{ stat_key: 'foreign_investment', delta: 0.05, duration: 15 }],
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    advocate_central_bank_shift: {
-        key: 'advocate_central_bank_shift',
-        name: 'Advocate for Central Bank Policy Shift',
-        category: 'unilateral',
-        role: 'minister_of_finance',
-        ap_cost: 1,
-        favor_delta: 0,
-        tension_delta: 0,
-        modifiers_removed: [],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Publicly urge the central bank to consider monetary policy adjustment. Democratic independence means 30% chance of effect.',
-        special: 'central_bank_30', // 30% chance of currency_strength -0.1 for 8 ticks
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    // ── THREATENING (6) ──
-
-    impose_targeted_tariffs: {
-        key: 'impose_targeted_tariffs',
-        name: 'Impose Targeted Tariffs',
-        category: 'threatening',
-        role: 'minister_of_trade',
-        ap_cost: 2,
-        favor_delta: 1,
-        tension_delta: 2,
-        modifiers_removed: [],
-        modifiers_added: ['tariff_wall_erected'],
-        treasury_cost: 0,
-        description: 'Impose 15-25% tariffs on the surplus nation\'s key exports. The line that turns a trade imbalance into a trade war.',
-        relations_delta: -3,
-        special: 'incident_trigger_50',
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    ban_key_imports: {
-        key: 'ban_key_imports',
-        name: 'Ban Key Imports',
-        category: 'threatening',
-        role: 'minister_of_trade',
-        ap_cost: 3,
-        favor_delta: 2,
-        tension_delta: 3,
-        modifiers_removed: [],
-        modifiers_added: ['import_ban_in_effect'],
-        treasury_cost: 0,
-        description: 'Ban imports of specific product categories entirely. Not tariffs — a full prohibition. Economic warfare.',
-        relations_delta: -5,
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    restrict_foreign_investment_trade: {
-        key: 'restrict_foreign_investment_trade',
-        name: 'Restrict Foreign Investment',
-        category: 'threatening',
-        role: 'foreign_minister',
-        ap_cost: 2,
-        favor_delta: 1,
-        tension_delta: 2,
-        modifiers_removed: [],
-        modifiers_added: ['investment_restrictions_active'],
-        treasury_cost: 0,
-        description: 'Block the surplus nation from investing in critical sectors. Frame it as national security.',
-        relations_delta: -3,
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    public_trade_ultimatum: {
-        key: 'public_trade_ultimatum',
-        name: 'Public Trade Ultimatum',
-        category: 'threatening',
-        role: 'head_of_government',
-        ap_cost: 2,
-        favor_delta: 1.5,
-        tension_delta: 2,
-        modifiers_removed: [],
-        modifiers_added: [],
-        treasury_cost: 0,
-        description: 'Give a public address setting a 4-tick deadline. If ignored, economic nationalism surges and favor shifts dramatically.',
-        relations_delta: -3,
-        stat_effects_acting: [{ stat_key: 'gov_approval', delta: 0.1, duration: 6 }],
-        special: 'trade_ultimatum_4', // 4-tick deadline tracked via history metadata
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    asset_freeze_sanctions: {
-        key: 'asset_freeze_sanctions',
-        name: 'Asset Freeze via Sanctions',
-        category: 'threatening',
-        role: 'foreign_minister',
-        ap_cost: 2,
-        favor_delta: 1,
-        tension_delta: 2,
-        modifiers_removed: [],
-        modifiers_added: ['investment_restrictions_active'],
-        treasury_cost: 0,
-        description: 'Freeze surplus nation assets through legal channels. Every foreign investor gets nervous.',
-        relations_delta: -5,
-        stat_effects_acting: [{ stat_key: 'foreign_investment', delta: -0.1, duration: 15 }],
-        stat_effects_opponent: [{ stat_key: 'foreign_investment', delta: -0.1, duration: 15 }],
-        issue_type: 'chronic_trade_imbalance',
-    },
-
-    publicly_blame_surplus: {
-        key: 'publicly_blame_surplus',
-        name: 'Publicly Blame Surplus Nation',
-        category: 'threatening',
-        role: 'head_of_government',
-        ap_cost: 1,
-        favor_delta: 1,
-        tension_delta: 2,
-        modifiers_removed: [],
-        modifiers_added: ['economic_nationalism_trade', 'dumping_accusations'],
-        treasury_cost: 0,
-        description: 'Hold a press conference. Display charts showing job losses. Point the finger. Channel domestic anger outward.',
-        relations_delta: -3,
-        stat_effects_acting: [{ stat_key: 'gov_approval', delta: 0.1, duration: 10 }],
-        stat_effects_opponent: [{ stat_key: 'international_reputation', delta: -0.1, duration: 15 }],
-        modifier_target_map: { economic_nationalism_trade: 'both', dumping_accusations: 'opponent' },
-        issue_type: 'chronic_trade_imbalance',
-    },
-};
-
+// Phase 0: ACTIONS object and ROLE_TO_MINISTRY removed — replaced by card system in Phase 1.
 // ==================== ISSUE TYPE DEFINITIONS ====================
 
-const ISSUE_TYPES = {
+export const ISSUE_TYPES = {
     maritime_fishing_rights: {
         key: 'maritime_fishing_rights',
         name: 'Maritime Fishing Rights',
@@ -1800,6 +870,746 @@ const ISSUE_TYPES = {
     },
 };
 
+
+// ==================== CARD DECK MECHANICS ====================
+
+/**
+ * Map a nation's international_reputation (0-100) to a card draw count (1-12).
+ * FA 0-8 → 1 card, FA 9-16 → 2, ..., FA 92-100 → 12.
+ */
+function getDrawCount(intlRep) {
+    const fa = Math.max(0, Math.min(100, Number(intlRep) || 0));
+    return Math.max(1, Math.min(12, Math.ceil(fa / 8.33)));
+}
+
+/**
+ * Fisher-Yates shuffle (in-place).
+ */
+function shuffleArray(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+/**
+ * Initialize the card deck for a bilateral issue.
+ * Loads card definitions, shuffles the full deck, deals hands
+ * to both nations based on their Foreign Affairs (international_reputation) stat.
+ *
+ * Called once per issue when deck_initialized is false.
+ * Safe to call multiple times — no-ops if already initialized.
+ *
+ * @param {object} supabase - Supabase client
+ * @param {object} issue - bilateral_issues row
+ * @param {object} nationA - nations row for nation_a
+ * @param {object} nationB - nations row for nation_b
+ * @param {number} currentTick - current game tick
+ * @returns {boolean} true if deck was initialized, false if already done or failed
+ */
+export async function initializeDeck(supabase, issue, nationA, nationB, currentTick) {
+    if (issue.deck_initialized) return false;
+
+    // Load card definitions for this issue type
+    const { data: cards, error: cardErr } = await supabase
+        .from('issue_card_definitions')
+        .select('card_number')
+        .eq('issue_type', issue.issue_type)
+        .order('card_number');
+
+    if (cardErr || !cards || cards.length === 0) {
+        console.warn(`[Issues] No card definitions found for issue type ${issue.issue_type} — cannot initialize deck`);
+        return false;
+    }
+
+    // Build and shuffle the full deck (array of card numbers)
+    const allCardNumbers = cards.map(c => c.card_number);
+    shuffleArray(allCardNumbers);
+
+    // Determine draw counts from Foreign Affairs (international_reputation)
+    const drawA = getDrawCount(nationA.international_reputation);
+    const drawB = getDrawCount(nationB.international_reputation);
+
+    // Deal hands from the top of the shuffled deck
+    const handA = allCardNumbers.splice(0, drawA);
+    const handB = allCardNumbers.splice(0, drawB);
+    const deckRemaining = allCardNumbers; // whatever is left
+
+    // Nation A goes first
+    const { error: updateErr } = await supabase
+        .from('bilateral_issues')
+        .update({
+            deck_remaining: deckRemaining,
+            hand_a: handA,
+            hand_b: handB,
+            played_cards: [],
+            whose_turn: 'a',
+            deck_initialized: true,
+            last_card_played_tick: currentTick,
+        })
+        .eq('id', issue.id);
+
+    if (updateErr) {
+        console.error(`[Issues] Failed to initialize deck for issue ${issue.id}:`, updateErr.message);
+        return false;
+    }
+
+    console.log(`[Issues] Deck initialized for ${issue.issue_type} (${issue.id}): ${allCardNumbers.length + handA.length + handB.length} cards total. Nation A drew ${drawA} (FA: ${Math.round(nationA.international_reputation || 0)}), Nation B drew ${drawB} (FA: ${Math.round(nationB.international_reputation || 0)}). Deck remaining: ${deckRemaining.length}.`);
+    return true;
+}
+
+/**
+ * Redraw hand for a nation after government change (new HoG elected).
+ * Old hand is shuffled back into the deck, then new cards drawn
+ * based on the new government's Foreign Affairs stat.
+ *
+ * @param {object} supabase - Supabase client
+ * @param {string} issueId - bilateral issue ID
+ * @param {string} side - 'a' or 'b'
+ * @param {number} newIntlRep - the nation's current international_reputation
+ * @param {number} currentTick - current game tick
+ */
+export async function redrawHand(supabase, issueId, side, newIntlRep, currentTick) {
+    const { data: issue, error: fetchErr } = await supabase
+        .from('bilateral_issues')
+        .select('deck_remaining, hand_a, hand_b, deck_initialized')
+        .eq('id', issueId)
+        .single();
+
+    if (fetchErr || !issue || !issue.deck_initialized) return;
+
+    const handKey = side === 'a' ? 'hand_a' : 'hand_b';
+    const oldHand = issue[handKey] || [];
+    const deck = [...(issue.deck_remaining || []), ...oldHand];
+    shuffleArray(deck);
+
+    const drawCount = getDrawCount(newIntlRep);
+    const newHand = deck.splice(0, drawCount);
+
+    const { error: updateErr } = await supabase
+        .from('bilateral_issues')
+        .update({
+            deck_remaining: deck,
+            [handKey]: newHand,
+        })
+        .eq('id', issueId);
+
+    if (updateErr) {
+        console.error(`[Issues] Failed to redraw hand for issue ${issueId} side ${side}:`, updateErr.message);
+    } else {
+        console.log(`[Issues] Redrew hand for issue ${issueId} side ${side}: ${drawCount} cards (FA: ${Math.round(newIntlRep || 0)}). Deck: ${deck.length} remaining.`);
+    }
+}
+
+// ==================== CARD PLAY EXECUTION ====================
+
+/**
+ * Play a card from the player's hand.
+ *
+ * @param {object} supabase - Supabase client
+ * @param {object} params
+ * @param {string} params.issueId - bilateral issue ID
+ * @param {number} params.cardNumber - card to play from hand
+ * @param {string} params.nationId - acting nation's ID
+ * @param {string} params.factionId - acting faction's ID
+ * @param {number} params.currentTick - current game tick
+ * @returns {{ success: boolean, error?: string, effects?: object }}
+ */
+export async function playIssueCard(supabase, params) {
+    const { issueId, cardNumber, nationId, factionId, currentTick } = params;
+
+    // 1. Load issue
+    const { data: issue, error: issueErr } = await supabase
+        .from('bilateral_issues')
+        .select('*')
+        .eq('id', issueId)
+        .single();
+    if (issueErr || !issue) return { success: false, error: 'Issue not found.' };
+    if (!issue.deck_initialized) return { success: false, error: 'Deck not initialized.' };
+
+    // Determine which side this nation is
+    const side = nationId === issue.nation_a_id ? 'a' : nationId === issue.nation_b_id ? 'b' : null;
+    if (!side) return { success: false, error: 'You are not involved in this issue.' };
+
+    // 2. Validate turn
+    if (issue.whose_turn !== side) return { success: false, error: 'It is not your turn.' };
+    if (issue.pending_diplomatic_card) return { success: false, error: 'A diplomatic proposal is pending response.' };
+
+    // 3. Validate card is in hand
+    const hand = side === 'a' ? (issue.hand_a || []) : (issue.hand_b || []);
+    if (!hand.includes(cardNumber)) return { success: false, error: 'Card not in your hand.' };
+
+    // 4. Load card definition
+    const { data: cardDef, error: cardErr } = await supabase
+        .from('issue_card_definitions')
+        .select('*')
+        .eq('issue_type', issue.issue_type)
+        .eq('card_number', cardNumber)
+        .single();
+    if (cardErr || !cardDef) return { success: false, error: 'Card definition not found.' };
+
+    // 5. Check diplomatic lock
+    if (cardDef.card_type === 'diplomatic' && issue.diplomatic_lock_until_tick && currentTick < issue.diplomatic_lock_until_tick) {
+        return { success: false, error: `Diplomatic cards locked until tick ${issue.diplomatic_lock_until_tick}.` };
+    }
+
+    // 6. Deduct AP
+    const { deductAP } = await import('./config.js');
+    const apResult = await deductAP(supabase, factionId, cardDef.ap_cost, {
+        reason: 'issue_card',
+        detail: `Issue card: ${cardDef.card_name}`,
+        tick: currentTick,
+    });
+    if (!apResult.success) return { success: false, error: `Not enough AP. Need ${cardDef.ap_cost}.` };
+
+    // 7. Determine which option applies (side a = option_a, side b = option_b)
+    const effects = side === 'a' ? cardDef.option_a_effects : cardDef.option_b_effects;
+    const optionChosen = side;
+
+    // Load both nations for stat effects
+    const { data: nationA } = await supabase.from('nations').select('*').eq('id', issue.nation_a_id).single();
+    const { data: nationB } = await supabase.from('nations').select('*').eq('id', issue.nation_b_id).single();
+    const myNation = side === 'a' ? nationA : nationB;
+    const oppNation = side === 'a' ? nationB : nationA;
+
+    const appliedEffects = { card_name: cardDef.card_name, card_type: cardDef.card_type };
+
+    // 8. Build issue update
+    const issueUpdate = { updated_at: new Date().toISOString() };
+
+    // 8a. Favor delta
+    let favorDelta = Number(effects.favor_delta) || 0;
+    // Conditional favor (e.g., Commission Legal Study)
+    if (effects.conditional?.if_stat_gt) {
+        const statKey = effects.conditional.if_stat_gt;
+        const myStat = Number(myNation?.[statKey] ?? 0);
+        const oppStat = Number(oppNation?.[statKey] ?? 0);
+        favorDelta = myStat > oppStat
+            ? Number(effects.conditional.then_favor)
+            : Number(effects.conditional.else_favor);
+    }
+    if (favorDelta !== 0) {
+        const newFavor = Math.max(-5, Math.min(5, Number(issue.favor) + favorDelta));
+        issueUpdate.favor = newFavor;
+        appliedEffects.favor_delta = favorDelta;
+    }
+
+    // 8b. Tension delta
+    if (effects.tension_delta) {
+        const newTension = Math.max(0, Math.min(10, Number(issue.tension) + effects.tension_delta));
+        issueUpdate.tension = newTension;
+        appliedEffects.tension_delta = effects.tension_delta;
+    }
+
+    // 8c. Relations delta
+    if (effects.relation_delta) {
+        await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, effects.relation_delta);
+        appliedEffects.relation_delta = effects.relation_delta;
+    }
+
+    // 8d. Treasury cost
+    if (effects.treasury_cost && myNation) {
+        const newFunds = Math.max(0, (myNation.gdp || 0) - effects.treasury_cost);
+        // Treasury deduction is approximated as party_funds for the acting faction
+        await supabase.from('factions').update({
+            party_funds: supabase.rpc ? undefined : Math.max(0, 0), // handled by AP system
+        }).eq('id', factionId);
+        appliedEffects.treasury_cost = effects.treasury_cost;
+    }
+
+    // 8e. Stat effects
+    if (effects.stat_effects && effects.stat_effects.length > 0) {
+        for (const se of effects.stat_effects) {
+            const targetNation = se.target === 'self' ? myNation
+                : se.target === 'opponent' ? oppNation
+                : se.target === 'both' ? null : myNation;
+            if (se.target === 'both') {
+                // Apply to both
+                if (nationA) await applyIssueStatEffects(supabase, nationA.id, nationA, [{ stat_key: se.stat_key, delta: se.delta }]);
+                if (nationB) await applyIssueStatEffects(supabase, nationB.id, nationB, [{ stat_key: se.stat_key, delta: se.delta }]);
+            } else if (targetNation) {
+                await applyIssueStatEffects(supabase, targetNation.id, targetNation, [{ stat_key: se.stat_key, delta: se.delta }]);
+            }
+        }
+        appliedEffects.stat_effects = effects.stat_effects;
+    }
+
+    // 8f. Add modifier
+    if (effects.add_modifier) {
+        // Card-driven modifiers use modifier_effects from the card, not MODIFIERS constant
+        const modFx = effects.modifier_effects || {};
+        await supabase.from('bilateral_issue_modifiers').insert({
+            issue_id: issue.id,
+            modifier_key: effects.add_modifier,
+            category: 'competitive',
+            applies_to: modFx.target || 'both',
+            stat_effects: modFx.stat_key ? [{ stat_key: modFx.stat_key, delta: modFx.delta || 0 }] : [],
+            duration_remaining: modFx.duration_ticks || null,
+            is_active: true,
+            created_by: `card:${cardNumber}`,
+            created_tick: currentTick,
+        });
+        appliedEffects.add_modifier = effects.add_modifier;
+    }
+
+    // 8g. Locks diplomatic cards
+    if (effects.locks_diplomatic) {
+        issueUpdate.diplomatic_lock_until_tick = currentTick + effects.locks_diplomatic;
+        appliedEffects.locks_diplomatic = effects.locks_diplomatic;
+    }
+
+    // 8h. Random roll (backfire check)
+    if (effects.random_roll) {
+        const roll = effects.random_roll;
+        if (roll.fail_chance && Math.random() < roll.fail_chance) {
+            // Backfire — override favor/tension with fail effects
+            appliedEffects.backfired = true;
+            if (roll.fail_effects?.favor_delta) {
+                issueUpdate.favor = Math.max(-5, Math.min(5, Number(issue.favor) + roll.fail_effects.favor_delta));
+            }
+            if (roll.fail_effects?.tension_delta) {
+                issueUpdate.tension = Math.max(0, Math.min(10, Number(issue.tension) + (roll.fail_effects.tension_delta || 0)));
+            }
+        }
+        if (roll.outcomes) {
+            // Weighted random outcome
+            const totalWeight = roll.outcomes.reduce((s, o) => s + (o.weight || 1), 0);
+            let r = Math.random() * totalWeight;
+            for (const outcome of roll.outcomes) {
+                r -= (outcome.weight || 1);
+                if (r <= 0) {
+                    appliedEffects.roll_outcome = outcome.label;
+                    if (outcome.stat_effects) {
+                        for (const se of outcome.stat_effects) {
+                            const target = se.target === 'opponent' ? oppNation : myNation;
+                            if (target) await applyIssueStatEffects(supabase, target.id, target, [{ stat_key: se.stat_key, delta: se.delta }]);
+                        }
+                    }
+                    if (outcome.tension_delta) {
+                        issueUpdate.tension = Math.max(0, Math.min(10, Number(issueUpdate.tension ?? issue.tension) + outcome.tension_delta));
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // 9. Handle diplomatic card type — set pending state instead of resolving
+    if (cardDef.card_type === 'diplomatic') {
+        issueUpdate.pending_diplomatic_card = cardNumber;
+        issueUpdate.pending_diplomatic_deadline_tick = currentTick + 3;
+        issueUpdate.pending_diplomatic_proposer = side;
+        issueUpdate.active_card = cardNumber;
+        issueUpdate.active_card_played_by = side;
+        issueUpdate.active_card_played_tick = currentTick;
+        appliedEffects.diplomatic_pending = true;
+    }
+
+    // 10. Remove card from hand, add to played_cards, advance turn
+    const newHand = hand.filter(c => c !== cardNumber);
+    const handKey = side === 'a' ? 'hand_a' : 'hand_b';
+    issueUpdate[handKey] = newHand;
+    issueUpdate.played_cards = [...(issue.played_cards || []), {
+        card_number: cardNumber,
+        played_by: side,
+        played_tick: currentTick,
+        option_chosen: optionChosen,
+    }];
+    issueUpdate.last_card_played_tick = currentTick;
+
+    // Advance turn (unless diplomatic — turn stays until resolved)
+    if (cardDef.card_type !== 'diplomatic') {
+        issueUpdate.whose_turn = side === 'a' ? 'b' : 'a';
+    }
+
+    // Notification badge: mark that this side acted
+    const actionKey = side === 'a' ? 'last_action_by_a_tick' : 'last_action_by_b_tick';
+    issueUpdate[actionKey] = currentTick;
+
+    // 11. Write issue update
+    const { error: updateErr } = await supabase
+        .from('bilateral_issues')
+        .update(issueUpdate)
+        .eq('id', issueId);
+
+    if (updateErr) {
+        console.error(`[Issues] Failed to update issue after card play:`, updateErr.message);
+        return { success: false, error: 'Failed to save card play.' };
+    }
+
+    // 12. Record in issue_card_plays
+    await supabase.from('issue_card_plays').insert({
+        issue_id: issueId,
+        card_number: cardNumber,
+        played_by: side,
+        played_by_nation_id: nationId,
+        played_by_faction_id: factionId,
+        option_chosen: optionChosen,
+        played_tick: currentTick,
+        ap_spent: cardDef.ap_cost,
+        effects_applied: appliedEffects,
+    });
+
+    // 13. History + event log
+    const cardLabel = `${cardDef.card_name} (#${cardNumber})`;
+    const nationName = myNation?.name || 'Unknown';
+    await insertHistory(supabase, issueId, currentTick, 'card_played',
+        `${nationName} played ${cardLabel}.`,
+        { card_number: cardNumber, side, option: optionChosen, effects: appliedEffects });
+
+    // Dashboard event
+    for (const nId of [issue.nation_a_id, issue.nation_b_id]) {
+        await supabase.from('event_log').insert({
+            nation_id: nId,
+            event_name: cardDef.card_name,
+            trigger_key: 'issue_card_played',
+            description_chosen: `${nationName} played ${cardLabel} in the ${ISSUE_TYPES[issue.issue_type]?.name || issue.issue_type}.`,
+            category: 'crisis',
+            fired_at_tick: currentTick,
+        }).then(({ error: evErr }) => { if (evErr) console.warn('Card play event_log failed:', evErr.message); });
+    }
+
+    return { success: true, effects: appliedEffects, newAp: apResult.newAp };
+}
+
+/**
+ * Respond to a pending diplomatic card (accept or reject).
+ *
+ * @param {object} supabase
+ * @param {string} issueId
+ * @param {string} nationId - responding nation
+ * @param {string} response - 'accept' or 'reject'
+ * @param {number} currentTick
+ */
+export async function respondToDiplomaticCard(supabase, issueId, nationId, response, currentTick) {
+    const { data: issue } = await supabase.from('bilateral_issues').select('*').eq('id', issueId).single();
+    if (!issue || !issue.pending_diplomatic_card) return { success: false, error: 'No diplomatic card pending.' };
+
+    const side = nationId === issue.nation_a_id ? 'a' : nationId === issue.nation_b_id ? 'b' : null;
+    if (!side) return { success: false, error: 'Not involved in this issue.' };
+    if (side === issue.pending_diplomatic_proposer) return { success: false, error: 'You proposed this — wait for their response.' };
+
+    const { data: cardDef } = await supabase
+        .from('issue_card_definitions')
+        .select('*')
+        .eq('issue_type', issue.issue_type)
+        .eq('card_number', issue.pending_diplomatic_card)
+        .single();
+    if (!cardDef) return { success: false, error: 'Card definition not found.' };
+
+    const { data: nationA } = await supabase.from('nations').select('*').eq('id', issue.nation_a_id).single();
+    const { data: nationB } = await supabase.from('nations').select('*').eq('id', issue.nation_b_id).single();
+
+    const issueUpdate = { updated_at: new Date().toISOString() };
+    const appliedEffects = { response, card_name: cardDef.card_name };
+
+    if (response === 'accept' && cardDef.diplomatic_accept_effects) {
+        const fx = cardDef.diplomatic_accept_effects;
+        if (fx.favor_reset !== undefined) issueUpdate.favor = fx.favor_reset;
+        if (fx.tension_delta) issueUpdate.tension = Math.max(0, Math.min(10, Number(issue.tension) + fx.tension_delta));
+        if (fx.relation_delta) await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, fx.relation_delta);
+        if (fx.remove_modifier) {
+            await supabase.from('bilateral_issue_modifiers')
+                .update({ is_active: false, resolved_by: `diplomatic_accept:${cardDef.card_number}`, resolved_tick: currentTick })
+                .eq('issue_id', issueId).eq('modifier_key', fx.remove_modifier).eq('is_active', true);
+        }
+        if (fx.stat_effects) {
+            for (const se of fx.stat_effects) {
+                if (se.target === 'both') {
+                    if (nationA) await applyIssueStatEffects(supabase, nationA.id, nationA, [{ stat_key: se.stat_key, delta: se.delta }]);
+                    if (nationB) await applyIssueStatEffects(supabase, nationB.id, nationB, [{ stat_key: se.stat_key, delta: se.delta }]);
+                }
+            }
+        }
+        if (fx.special === 'resolve_issue') {
+            issueUpdate.status = 'resolved';
+            issueUpdate.resolved_tick = currentTick;
+        }
+        appliedEffects.accepted = fx;
+    } else {
+        // Reject
+        const fx = cardDef.diplomatic_reject_effects || {};
+        if (fx.favor_delta_to_proposer) {
+            const favorDir = issue.pending_diplomatic_proposer === 'a' ? -1 : 1;
+            issueUpdate.favor = Math.max(-5, Math.min(5, Number(issue.favor) + (fx.favor_delta_to_proposer * favorDir)));
+        }
+        if (fx.tension_delta) issueUpdate.tension = Math.max(0, Math.min(10, Number(issue.tension) + fx.tension_delta));
+        if (fx.stat_effects_rejector) {
+            const rejector = side === 'a' ? nationA : nationB;
+            if (rejector) {
+                for (const se of fx.stat_effects_rejector) {
+                    await applyIssueStatEffects(supabase, rejector.id, rejector, [{ stat_key: se.stat_key, delta: se.delta }]);
+                }
+            }
+        }
+        appliedEffects.rejected = fx;
+    }
+
+    // Clear pending state, advance turn
+    issueUpdate.pending_diplomatic_card = null;
+    issueUpdate.pending_diplomatic_deadline_tick = null;
+    issueUpdate.pending_diplomatic_proposer = null;
+    issueUpdate.active_card = null;
+    issueUpdate.active_card_played_by = null;
+    issueUpdate.active_card_played_tick = null;
+    issueUpdate.whose_turn = side === 'a' ? 'b' : 'a'; // responding nation's turn ends
+
+    // Notification badge
+    const actionKey = side === 'a' ? 'last_action_by_a_tick' : 'last_action_by_b_tick';
+    issueUpdate[actionKey] = currentTick;
+
+    await supabase.from('bilateral_issues').update(issueUpdate).eq('id', issueId);
+
+    // Update card play record with response
+    await supabase.from('issue_card_plays')
+        .update({ diplomatic_response: response === 'accept' ? 'accepted' : 'rejected', diplomatic_response_tick: currentTick })
+        .eq('issue_id', issueId)
+        .eq('card_number', issue.pending_diplomatic_card)
+        .is('diplomatic_response', null);
+
+    const responderName = (side === 'a' ? nationA : nationB)?.name || 'Unknown';
+    await insertHistory(supabase, issueId, currentTick,
+        response === 'accept' ? 'diplomatic_accepted' : 'diplomatic_rejected',
+        `${responderName} ${response === 'accept' ? 'accepted' : 'rejected'} ${cardDef.card_name}.`,
+        { card_number: issue.pending_diplomatic_card, response, effects: appliedEffects });
+
+    return { success: true, effects: appliedEffects };
+}
+
+// ==================== DECK EXHAUSTION RESOLUTION ====================
+
+const PERMANENT_BLOCKERS = new Set([
+    'sovereignty_declared', 'military_outpost_constructed',
+    'forced_population_transfer', 'military_occupation',
+]);
+
+/**
+ * Resolve an issue when the deck is fully exhausted (all cards played, both hands empty).
+ * Returns { newStatus, issueUpdates } or null if the issue continues.
+ */
+async function resolveDeckExhaustion(supabase, issue, nationA, nationB, currentMods, currentTick) {
+    const tension = Number(issue.tension) || 0;
+    const favor = Number(issue.favor) || 0;
+    const favorAbs = Math.abs(favor);
+    const issueType = ISSUE_TYPES[issue.issue_type] || {};
+    const territoryName = issue.metadata?.territory_name || 'the disputed territory';
+    const nameA = nationA.name || 'Nation A';
+    const nameB = nationB.name || 'Nation B';
+
+    // Check for permanent modifier blockers
+    const activeMods = (currentMods || []).filter(m => m.is_active);
+    const hasBlocker = activeMods.some(m => PERMANENT_BLOCKERS.has(m.modifier_key));
+
+    // ── OUTCOME 8: Blocked by permanent modifier ──
+    if (hasBlocker) {
+        const blockerNames = activeMods.filter(m => PERMANENT_BLOCKERS.has(m.modifier_key)).map(m => m.modifier_key.replace(/_/g, ' '));
+        await reshuffleDeck(supabase, issue, 15, nationA, nationB, currentTick);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `Deck exhausted but resolution blocked by: ${blockerNames.join(', ')}. Deck reshuffled with 15 cards.`,
+            { outcome: 'blocked', blockers: blockerNames });
+        return null; // continues
+    }
+
+    // ── OUTCOME 7: Critical tension (9-10) — 70% border incursion ──
+    if (tension >= 9) {
+        const fires = Math.random() < 0.7;
+        if (fires) {
+            await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+                'Crisis Point', `Armed confrontation erupts near ${territoryName}. The territorial dispute escalates to a border incursion.`);
+            return { newStatus: 'escalated' }; // escalation handled by step 7
+        }
+        // Didn't fire — reshuffle with 10 cards
+        await reshuffleDeck(supabase, issue, 10, nationA, nationB, currentTick);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `Deck exhausted at critical tension. 70% incursion check failed. Deck reshuffled with 10 cards.`,
+            { outcome: 'crisis_point_survived', tension });
+        return null;
+    }
+
+    // ── OUTCOME 6: High tension (6-8) — 30% border incursion ──
+    if (tension >= 6) {
+        const fires = Math.random() < 0.3;
+        if (fires) {
+            await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+                'Brink of War', `Military tensions peak near ${territoryName}. Border incursion triggered.`);
+            return { newStatus: 'escalated' };
+        }
+        await reshuffleDeck(supabase, issue, 15, nationA, nationB, currentTick);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `Deck exhausted at high tension. 30% incursion check failed. Deck reshuffled with 15 cards.`,
+            { outcome: 'brink_survived', tension });
+        return null;
+    }
+
+    // ── OUTCOME 5: Moderate tension (3-5) — Frozen Conflict ──
+    if (tension >= 3) {
+        await reshuffleDeck(supabase, issue, 15, nationA, nationB, currentTick);
+        await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+            'Negotiations Stall', `Negotiations over ${territoryName} stall. The dispute continues.`);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `Deck exhausted at moderate tension. Frozen conflict — deck reshuffled with 15 cards.`,
+            { outcome: 'frozen_conflict', tension });
+        return null;
+    }
+
+    // ── Low tension (0-2) — actual resolution possible ──
+
+    // ── OUTCOME 4: Decisive Resolution (favor ±4-5) ──
+    if (favorAbs >= 4) {
+        const winnerIsA = favor < 0; // negative favor = nation_a (claimant) wins
+        const winner = winnerIsA ? nationA : nationB;
+        const loser = winnerIsA ? nationB : nationA;
+        const winnerName = winner.name;
+        const loserName = loser.name;
+
+        await applyIssueStatEffects(supabase, winner.id, winner, [
+            { stat_key: 'gov_approval', delta: 5 },
+        ]);
+        await applyIssueStatEffects(supabase, loser.id, loser, [
+            { stat_key: 'gov_approval', delta: -5 },
+            { stat_key: 'stability', delta: -3 },
+        ]);
+        // Momentum: +5 winner governing parties, -5 loser governing parties
+        await applyResolutionMomentum(supabase, winner.id, 5, `Decisive victory: ${territoryName}`, currentTick);
+        await applyResolutionMomentum(supabase, loser.id, -5, `Decisive defeat: ${territoryName}`, currentTick);
+        await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, -3);
+
+        await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+            'Decisive Resolution', `Decisive resolution of the ${territoryName} dispute in favor of ${winnerName}. ${loserName} suffers lasting political damage.`);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `Decisive resolution in favor of ${winnerName}. Favor: ${favor.toFixed(1)}.`,
+            { outcome: 'decisive', winner: winnerName, loser: loserName, favor });
+
+        return { newStatus: 'resolved' };
+    }
+
+    // ── OUTCOME 2/3: Diplomatic Victory (favor ±2-3) ──
+    if (favorAbs >= 2) {
+        const winnerIsA = favor < 0;
+        const winner = winnerIsA ? nationA : nationB;
+        const loser = winnerIsA ? nationB : nationA;
+        const winnerName = winner.name;
+        const loserName = loser.name;
+        const isOccupierWin = !winnerIsA; // favor > 0 means nation_b (occupier in territorial) consolidates
+
+        const desc = isOccupierWin
+            ? `${winnerName} consolidates control over ${territoryName}. International community tacitly accepts.`
+            : `Diplomatic pressure forces concessions on ${territoryName}. Administration shifts toward ${winnerName}.`;
+
+        await applyIssueStatEffects(supabase, winner.id, winner, [
+            { stat_key: 'gov_approval', delta: 2 },
+            { stat_key: 'international_reputation', delta: 0.5 },
+        ]);
+        await applyIssueStatEffects(supabase, loser.id, loser, [
+            { stat_key: 'gov_approval', delta: -2 },
+        ]);
+        await applyResolutionMomentum(supabase, winner.id, 3, `Diplomatic victory: ${territoryName}`, currentTick);
+        await applyResolutionMomentum(supabase, loser.id, -3, `Diplomatic defeat: ${territoryName}`, currentTick);
+        await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, 1);
+
+        await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+            isOccupierWin ? 'Occupier Consolidation' : 'Claimant Recovery', desc);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `${isOccupierWin ? 'Occupier consolidation' : 'Claimant recovery'}. Favor: ${favor.toFixed(1)}.`,
+            { outcome: isOccupierWin ? 'occupier_consolidation' : 'claimant_recovery', winner: winnerName, favor });
+
+        return { newStatus: 'resolved' };
+    }
+
+    // ── OUTCOME 1: Peaceful Stalemate (favor -1 to +1) ──
+    await applyIssueStatEffects(supabase, nationA.id, nationA, [
+        { stat_key: 'stability', delta: 1 },
+    ]);
+    await applyIssueStatEffects(supabase, nationB.id, nationB, [
+        { stat_key: 'stability', delta: 1 },
+    ]);
+    await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, 3);
+
+    await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+        'Peaceful Stalemate', `The ${territoryName} dispute enters a dormant phase. Both sides exhaust their options without decisive advantage.`);
+    await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+        `Peaceful stalemate. Tension: ${tension.toFixed(1)}, Favor: ${favor.toFixed(1)}. Issue goes dormant.`,
+        { outcome: 'peaceful_stalemate', tension, favor });
+
+    return { newStatus: 'dormant', issueUpdates: { status: 'dormant' } };
+}
+
+/**
+ * Reshuffle a reduced deck for frozen/blocked conflicts.
+ * Takes N cards from the full card pool, reshuffles, redeals hands.
+ */
+async function reshuffleDeck(supabase, issue, cardCount, nationA, nationB, currentTick) {
+    const { data: allCards } = await supabase
+        .from('issue_card_definitions')
+        .select('card_number')
+        .eq('issue_type', issue.issue_type)
+        .order('card_number');
+
+    if (!allCards || allCards.length === 0) return;
+
+    // All cards available for reshuffle (played cards can be replayed in a new round)
+    const allNumbers = allCards.map(c => c.card_number);
+    shuffleArray(allNumbers);
+    const deckCards = allNumbers.slice(0, Math.min(cardCount, allNumbers.length));
+
+    // Redeal based on current FA stats
+    const drawA = getDrawCount(nationA?.international_reputation);
+    const drawB = getDrawCount(nationB?.international_reputation);
+    const handA = deckCards.splice(0, Math.min(drawA, deckCards.length));
+    const handB = deckCards.splice(0, Math.min(drawB, deckCards.length));
+
+    await supabase.from('bilateral_issues').update({
+        deck_remaining: deckCards,
+        hand_a: handA,
+        hand_b: handB,
+        played_cards: issue.played_cards || [], // keep history
+        whose_turn: 'a',
+        last_card_played_tick: currentTick,
+    }).eq('id', issue.id);
+
+    console.log(`[Issues] Deck reshuffled for ${issue.id}: ${cardCount} cards, A drew ${handA.length}, B drew ${handB.length}, deck ${deckCards.length}.`);
+}
+
+/**
+ * Fire a resolution event to both nations' event logs + dashboard.
+ */
+async function fireResolutionEvent(supabase, issue, nameA, nameB, currentTick, eventName, description) {
+    for (const nId of [issue.nation_a_id, issue.nation_b_id]) {
+        await supabase.from('event_log').insert({
+            nation_id: nId,
+            event_name: eventName,
+            trigger_key: 'issue_resolution',
+            description_chosen: description,
+            category: 'crisis',
+            fired_at_tick: currentTick,
+        }).then(({ error }) => { if (error) console.warn('Resolution event_log failed:', error.message); });
+    }
+}
+
+/**
+ * Apply momentum to all governing parties in a nation.
+ */
+async function applyResolutionMomentum(supabase, nationId, delta, label, currentTick) {
+    const { data: govParties } = await supabase
+        .from('ministries')
+        .select('party_id')
+        .eq('nation_id', nationId)
+        .eq('is_active', true)
+        .not('party_id', 'is', null);
+
+    const seenIds = new Set();
+    for (const m of (govParties || [])) {
+        if (!m.party_id || seenIds.has(m.party_id)) continue;
+        seenIds.add(m.party_id);
+        await supabase.rpc('adjust_momentum', {
+            p_faction_id: m.party_id,
+            p_delta: delta,
+            p_label: label,
+            p_tick: currentTick,
+        });
+    }
+}
 
 // ==================== STAT EFFECT HELPERS ====================
 
@@ -1913,6 +1723,11 @@ export async function processIssueTick(supabase, nationList, currentTick) {
         const nationA = nationMap[issue.nation_a_id];
         const nationB = nationMap[issue.nation_b_id];
         if (!nationA || !nationB) continue;
+
+        // Initialize card deck if not yet done
+        if (!issue.deck_initialized) {
+            await initializeDeck(supabase, issue, nationA, nationB, currentTick);
+        }
 
         // Load active modifiers for this issue
         const { data: modifiers, error: modErr } = await supabase
@@ -2034,9 +1849,7 @@ export async function processIssueTick(supabase, nationList, currentTick) {
             }
         }
 
-        // ── 4. Auto-spawn competitive modifiers ──
-        const activeKeys = new Set((modifiers || []).filter(m => m.is_active).map(m => m.modifier_key));
-        await checkAutoSpawns(supabase, issue, activeKeys, modifiers || [], nationA, nationB, currentTick, results);
+        // Phase 0: Auto-spawn logic removed — cards drive modifier creation.
 
         // ── 4a. Process arbitration rulings ──
         await processArbitration(supabase, issue.id, currentTick);
@@ -2059,297 +1872,90 @@ export async function processIssueTick(supabase, nationList, currentTick) {
             tensionDrift = -0.25;
         }
 
+        // Card system: additional tension decay if no card played this tick
+        // -0.25/tick when both sides pass (stacks with structural cooling above)
+        const lastPlayTick = issue.last_card_played_tick || 0;
+        if (issue.deck_initialized && lastPlayTick < currentTick) {
+            tensionDrift -= 0.25;
+        }
+
         // Apply tension drift (accumulate fractional, clamp 0-10)
         const rawTension = Number(issue.tension) + tensionDrift;
         let newTension = Math.max(0, Math.min(10, Math.round(rawTension * 4) / 4)); // quarter-step precision
 
         // ── 4c. Favor-based Gov_Approval bleed ──
-        // The disfavored nation loses Gov_Approval proportional to |favor|
-        // This is separate from modifier effects — it's the base cost of losing the dispute
         if (Math.abs(issue.favor) >= 1) {
             const disfavoredSide = getDisfavoredSide(issue.favor);
             const disfavoredNation = disfavoredSide === 'nation_a' ? nationA : nationB;
             if (disfavoredNation) {
-                // -0.1 per point of favor against you (so favor ±3 = -0.3/tick)
                 const approvalDelta = -(Math.abs(issue.favor) * 0.1);
                 await applyIssueStatEffects(supabase, disfavoredNation.id, disfavoredNation,
                     [{ stat_key: 'gov_approval', delta: approvalDelta }]);
             }
         }
 
-        // ── 4d. Resolve submitted diplomatic actions (3-tick matching window) ──
-        // Nations have 3 ticks to match a diplomatic action. On the tick the window
-        // expires (submitted_tick + 3), unmatched submissions become a gaffe.
-        // Counter-play: if the opponent used a unilateral/threatening action during
-        // the 3-tick window, they get +3 gov_approval and +3 party momentum.
+        // ── 5. Card system: diplomatic deadline + turn management ──
+        const issueCardUpdate = {};
 
-        const DIPLOMATIC_WINDOW = 3; // ticks to match
+        // 5a. Diplomatic card deadline expiry — auto-reject after 3 ticks
+        if (issue.pending_diplomatic_card && issue.pending_diplomatic_deadline_tick && currentTick >= issue.pending_diplomatic_deadline_tick) {
+            // Load card definition for the reject effects
+            const { data: dipCard } = await supabase
+                .from('issue_card_definitions')
+                .select('diplomatic_reject_effects, card_name')
+                .eq('issue_type', issue.issue_type)
+                .eq('card_number', issue.pending_diplomatic_card)
+                .single();
 
-        // Fetch ALL pending diplomatic submissions for this issue (any tick)
-        const { data: submittedDipActions, error: dipQueryErr } = await supabase
-            .from('bilateral_issue_actions_taken')
-            .select('*')
-            .eq('issue_id', issue.id)
-            .eq('action_category', 'diplomatic')
-            .eq('status', 'submitted');
-        if (dipQueryErr) console.error('[Issues] Failed to query submitted diplomatic actions:', dipQueryErr.message);
-
-        let hadDiplomaticMatch = false;
-
-        if (submittedDipActions && submittedDipActions.length > 0) {
-            // Group by action_key
-            const byKey = {};
-            for (const sa of submittedDipActions) {
-                if (!byKey[sa.action_key]) byKey[sa.action_key] = [];
-                byKey[sa.action_key].push(sa);
-            }
-
-            // Track which submissions got matched
-            const matchedIds = new Set();
-
-            for (const [actionKey, submissions] of Object.entries(byKey)) {
-                // Check if both nations submitted the same action (within window)
-                const fromA = submissions.find(s => s.acting_nation_id === issue.nation_a_id);
-                const fromB = submissions.find(s => s.acting_nation_id === issue.nation_b_id);
-
-                if (fromA && fromB) {
-                    // ── MATCHED: apply diplomatic effects ──
-                    hadDiplomaticMatch = true;
-                    matchedIds.add(fromA.id);
-                    matchedIds.add(fromB.id);
-
-                    const dipAction = ACTIONS[actionKey];
-                    if (!dipAction) continue;
-
-                    // Apply tension delta
-                    newTension = Math.max(0, Math.min(10, newTension + dipAction.tension_delta));
-
-                    // Apply favor delta (diplomatic actions usually have 0)
-                    if (dipAction.favor_delta !== 0) {
-                        // Both agreed so favor stays neutral — no shift
-                    }
-
-                    // Remove modifiers
-                    for (const modKey of dipAction.modifiers_removed) {
-                        const { error: removeErr } = await supabase
-                            .from('bilateral_issue_modifiers')
-                            .update({ is_active: false, resolved_by: `diplomatic_match:${actionKey}`, resolved_tick: currentTick })
-                            .eq('issue_id', issue.id)
-                            .eq('modifier_key', modKey)
-                            .eq('is_active', true);
-                        if (!removeErr) {
-                            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
-                                `${MODIFIERS[modKey]?.name || modKey} resolved by ${dipAction.name}.`,
-                                { modifier_key: modKey, action_key: actionKey });
-                        }
-                    }
-
-                    // Remove diplomatic_friction on any successful match
-                    const { error: frictionRemoveErr } = await supabase
-                        .from('bilateral_issue_modifiers')
-                        .update({ is_active: false, resolved_by: `diplomatic_match:${actionKey}`, resolved_tick: currentTick })
-                        .eq('issue_id', issue.id)
-                        .eq('modifier_key', 'diplomatic_friction')
-                        .eq('is_active', true);
-                    if (frictionRemoveErr) console.error('[Issues] Failed to remove diplomatic_friction:', frictionRemoveErr.message);
-
-                    // Remove escalation modifiers on diplomatic success
-                    for (const escMod of ['active_vessel_expulsion', 'fishing_ban_in_effect']) {
-                        const { error: escRemoveErr } = await supabase
-                            .from('bilateral_issue_modifiers')
-                            .update({ is_active: false, resolved_by: `diplomatic_match:${actionKey}`, resolved_tick: currentTick })
-                            .eq('issue_id', issue.id)
-                            .eq('modifier_key', escMod)
-                            .eq('is_active', true);
-                        if (escRemoveErr) console.error(`[Issues] Failed to remove ${escMod}:`, escRemoveErr.message);
-                    }
-
-                    // Special: resolve_issue — immediately resolves by deactivating ALL structural modifiers
-                    if (dipAction.special === 'resolve_issue') {
-                        await supabase.from('bilateral_issue_modifiers')
-                            .update({ is_active: false, resolved_by: `diplomatic_match:${actionKey}`, resolved_tick: currentTick })
-                            .eq('issue_id', issue.id)
-                            .eq('is_active', true)
-                            .eq('category', 'structural');
-                        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
-                            `Both nations agreed to resolve the dispute via ${dipAction.name}. All structural issues addressed.`,
-                            { action_key: actionKey, resolution: 'diplomatic' });
-                    }
-
-                    // Special: arbitration
-                    if (dipAction.special === 'arbitration') {
-                        await supabase.from('bilateral_issue_history').insert({
-                            issue_id: issue.id,
-                            tick: currentTick,
-                            event_type: 'action_accepted',
-                            event_text: `International arbitration agreed upon. Ruling expected in 8 ticks (Tick ${currentTick + 8}).`,
-                            metadata: { arbitration_resolve_tick: currentTick + 8 },
-                        });
-                    }
-
-                    // Mark both as matched
-                    for (const sa of [fromA, fromB]) {
-                        const { error: matchErr } = await supabase.from('bilateral_issue_actions_taken').update({
-                            status: 'matched',
-                            response_tick: currentTick,
-                            effects_applied: {
-                                tension_delta: dipAction.tension_delta,
-                                modifiers_removed: dipAction.modifiers_removed,
-                                matched_with: sa === fromA ? fromB.id : fromA.id,
-                            },
-                        }).eq('id', sa.id);
-                        if (matchErr) console.error('[Issues] Failed to mark action as matched:', matchErr.message);
-                    }
-
-                    await insertHistory(supabase, issue.id, currentTick, 'diplomatic_matched',
-                        `Both nations agreed on ${dipAction.name}. Effects applied.`,
-                        { action_key: actionKey, tension_delta: dipAction.tension_delta,
-                          modifiers_removed: dipAction.modifiers_removed });
-
-                    // Fire event_log for both nations so match appears in World Events
-                    const matchHeadline = `${nationA.name} and ${nationB.name} reach diplomatic agreement in bilateral dispute: ${dipAction.name}.`;
-                    try {
-                        await supabase.from('event_log').insert([
-                            { nation_id: issue.nation_a_id, event_name: dipAction.name, category: 'Conflict', description_chosen: matchHeadline, fired_at_tick: currentTick },
-                            { nation_id: issue.nation_b_id, event_name: dipAction.name, category: 'Conflict', description_chosen: matchHeadline, fired_at_tick: currentTick },
-                        ]);
-                    } catch (e) { console.warn('[Issues] Diplomatic match event dispatch failed:', e.message); }
+            if (dipCard?.diplomatic_reject_effects) {
+                const rejectFx = dipCard.diplomatic_reject_effects;
+                // Proposer gains favor
+                if (rejectFx.favor_delta_to_proposer) {
+                    const favorDir = issue.pending_diplomatic_proposer === 'a' ? -1 : 1;
+                    const newFavor = Math.max(-5, Math.min(5, Number(issue.favor) + (rejectFx.favor_delta_to_proposer * favorDir)));
+                    issueCardUpdate.favor = newFavor;
+                }
+                if (rejectFx.tension_delta) {
+                    newTension = Math.max(0, Math.min(10, newTension + rejectFx.tension_delta));
                 }
             }
 
-            // ── EXPIRED (3-tick window): gaffe penalty + counter-play check ──
-            // Only process submissions whose window has expired (submitted 3+ ticks ago)
+            // Record the auto-rejection
+            await supabase.from('issue_card_plays').insert({
+                issue_id: issue.id,
+                card_number: issue.pending_diplomatic_card,
+                played_by: issue.pending_diplomatic_proposer,
+                played_by_nation_id: issue.pending_diplomatic_proposer === 'a' ? issue.nation_a_id : issue.nation_b_id,
+                option_chosen: issue.pending_diplomatic_proposer === 'a' ? 'a' : 'b',
+                played_tick: issue.active_card_played_tick || currentTick,
+                ap_spent: 0,
+                diplomatic_response: 'expired',
+                diplomatic_response_tick: currentTick,
+                effects_applied: dipCard?.diplomatic_reject_effects || {},
+            });
 
-            // Pre-fetch all executed (unilateral/threatening) actions for this issue
-            // to check counter-play without per-gaffe queries (avoids N+1).
-            const earliestSubmission = submittedDipActions.reduce(
-                (min, sa) => Math.min(min, sa.submitted_tick), currentTick);
-            const { data: executedActions, error: execErr } = await supabase
-                .from('bilateral_issue_actions_taken')
-                .select('acting_nation_id, acting_faction_id, action_key, action_category, submitted_tick')
-                .eq('issue_id', issue.id)
-                .eq('status', 'executed')
-                .in('action_category', ['unilateral', 'threatening'])
-                .gte('submitted_tick', earliestSubmission);
-            if (execErr) console.error('[Issues] Failed to fetch executed actions for counter-play:', execErr.message);
+            await insertHistory(supabase, issue.id, currentTick, 'diplomatic_expired',
+                `${dipCard?.card_name || 'Diplomatic proposal'} expired without response. Favor shifts to proposer.`,
+                { card_number: issue.pending_diplomatic_card, proposer: issue.pending_diplomatic_proposer });
 
-            for (const sa of submittedDipActions) {
-                if (matchedIds.has(sa.id)) continue;
+            // Clear pending state
+            issueCardUpdate.pending_diplomatic_card = null;
+            issueCardUpdate.pending_diplomatic_deadline_tick = null;
+            issueCardUpdate.pending_diplomatic_proposer = null;
+            issueCardUpdate.active_card = null;
+            issueCardUpdate.active_card_played_by = null;
+            issueCardUpdate.active_card_played_tick = null;
 
-                // Only expire if the 3-tick window has passed
-                const ticksElapsed = currentTick - sa.submitted_tick;
-                if (ticksElapsed < DIPLOMATIC_WINDOW) continue; // still within window
-
-                // This nation's diplomatic action expired without a match
-                const gaffeNationId = sa.acting_nation_id;
-                const gaffeNation = gaffeNationId === issue.nation_a_id ? nationA : nationB;
-
-                // -3 gov_approval penalty
-                if (gaffeNation) {
-                    await applyIssueStatEffects(supabase, gaffeNationId, gaffeNation,
-                        [{ stat_key: 'gov_approval', delta: -3 }]);
-                }
-
-                // +1 tension
-                newTension = Math.max(0, Math.min(10, newTension + 1));
-
-                // ── COUNTER-PLAY BONUS ──
-                // Check if the opponent used a unilateral or threatening action during
-                // the 3-tick window while this nation's diplomatic action was pending.
-                const opponentNationId = gaffeNationId === issue.nation_a_id ? issue.nation_b_id : issue.nation_a_id;
-                const opponentAction = (executedActions || []).find(a =>
-                    a.acting_nation_id === opponentNationId &&
-                    a.submitted_tick >= sa.submitted_tick &&
-                    a.submitted_tick < sa.submitted_tick + DIPLOMATIC_WINDOW
-                );
-                let counterPlayApplied = false;
-
-                if (opponentAction) {
-                    counterPlayApplied = true;
-                    const opponentNation = opponentNationId === issue.nation_a_id ? nationA : nationB;
-
-                    // +3 gov_approval for the opponent
-                    if (opponentNation) {
-                        await applyIssueStatEffects(supabase, opponentNationId, opponentNation,
-                            [{ stat_key: 'gov_approval', delta: 3 }]);
-                    }
-
-                    // +3 momentum for the party of the minister who used the action
-                    const oppActionDef = ACTIONS[opponentAction.action_key];
-                    const ministryKey = oppActionDef ? ROLE_TO_MINISTRY[oppActionDef.role] : null;
-                    if (ministryKey) {
-                        const { data: ministry } = await supabase
-                            .from('ministries')
-                            .select('party_id')
-                            .eq('nation_id', opponentNationId)
-                            .eq('ministry_key', ministryKey)
-                            .eq('is_active', true)
-                            .maybeSingle();
-                        if (ministry?.party_id) {
-                            await supabase.rpc('adjust_momentum', {
-                                p_faction_id: ministry.party_id,
-                                p_delta: 3,
-                                p_label: `Counter-play: ${oppActionDef.name} exploited opponent diplomacy`,
-                                p_tick: currentTick,
-                            });
-                        }
-                    }
-
-                    const oppActionName = oppActionDef?.name || opponentAction.action_key;
-                    await insertHistory(supabase, issue.id, currentTick, 'counter_play',
-                        `Counter-Play: ${oppActionName} exploited diplomatic overture. Gov Approval +3, Party Momentum +3.`,
-                        { action_key: opponentAction.action_key, acting_nation_id: opponentNationId,
-                          counter_play: true, gov_approval_bonus: 3, momentum_bonus: 3,
-                          exploited_action: sa.action_key },
-                        opponentNationId);
-
-                    // Fire event_log so counter-play appears in World Events
-                    const oppNation = opponentNationId === issue.nation_a_id ? nationA : nationB;
-                    const gaffeNationObj = gaffeNationId === issue.nation_a_id ? nationA : nationB;
-                    const counterHeadline = `${oppNation.name} exploits failed diplomacy by ${gaffeNationObj.name} in bilateral dispute: ${oppActionName}.`;
-                    try {
-                        await supabase.from('event_log').insert([
-                            { nation_id: opponentNationId, event_name: 'Diplomatic Counter-Play', category: 'Conflict', description_chosen: counterHeadline, fired_at_tick: currentTick },
-                            { nation_id: gaffeNationId, event_name: 'Diplomatic Counter-Play', category: 'Conflict', description_chosen: counterHeadline, fired_at_tick: currentTick },
-                        ]);
-                    } catch (e) { console.warn('[Issues] Counter-play event dispatch failed:', e.message); }
-                }
-
-                // Mark as gaffe
-                const gaffeEffects = {
-                    gaffe: true,
-                    gov_approval_penalty: -3,
-                    tension_delta: 1,
-                    window_ticks: DIPLOMATIC_WINDOW,
-                    reason: counterPlayApplied
-                        ? 'Opponent exploited your diplomatic overture with a forceful action.'
-                        : `No matching diplomatic action within ${DIPLOMATIC_WINDOW} ticks.`,
-                };
-                if (counterPlayApplied) {
-                    gaffeEffects.counter_play_opponent = opponentNationId;
-                }
-
-                const { error: gaffeErr } = await supabase.from('bilateral_issue_actions_taken').update({
-                    status: 'gaffe',
-                    response_tick: currentTick,
-                    effects_applied: gaffeEffects,
-                }).eq('id', sa.id);
-                if (gaffeErr) console.error('[Issues] Failed to mark action as gaffe:', gaffeErr.message);
-
-                const dipAction = ACTIONS[sa.action_key];
-                const gaffeText = counterPlayApplied
-                    ? `Political Gaffe: ${dipAction?.name || sa.action_key} — opponent exploited your diplomacy! Gov Approval -3, Tension +1.`
-                    : `Political Gaffe: ${dipAction?.name || sa.action_key} — unmatched after ${DIPLOMATIC_WINDOW} ticks. Gov Approval -3, Tension +1.`;
-                await insertHistory(supabase, issue.id, currentTick, 'diplomatic_gaffe',
-                    gaffeText,
-                    { action_key: sa.action_key, acting_nation_id: gaffeNationId,
-                      gov_approval_penalty: -3, tension_delta: 1, counter_play: counterPlayApplied },
-                    gaffeNationId);
-            }
+            console.log(`[Issues] Diplomatic card #${issue.pending_diplomatic_card} expired for issue ${issue.id}`);
         }
 
-        // ── 5. Increment idle tick counter ──
-        const newIdleTicks = hadDiplomaticMatch ? 0 : issue.ticks_without_diplomatic_action + 1;
+        // 5b. Turn alternation — switch turns each tick if no card was played
+        // (Card play itself switches turns in Phase 2C; this handles the "pass" case)
+        if (issue.deck_initialized && lastPlayTick < currentTick && !issue.pending_diplomatic_card) {
+            // No card played and no diplomatic pending — alternate turn
+            issueCardUpdate.whose_turn = issue.whose_turn === 'a' ? 'b' : 'a';
+        }
+
         const tensionChanged = newTension !== Number(issue.tension);
 
         // ── 6. Check resolution status ──
@@ -2370,6 +1976,24 @@ export async function processIssueTick(supabase, nationList, currentTick) {
             newStatus = 'resolved';
         } else if (resolvedStructural >= 3 && activeStructural.length > 0) {
             newStatus = 'partial';
+        }
+
+        // ── 6b. Deck exhaustion resolution ──
+        if (issue.deck_initialized && newStatus !== 'resolved' && newStatus !== 'escalated') {
+            const handALen = (issue.hand_a || []).length;
+            const handBLen = (issue.hand_b || []).length;
+            const deckLen = (issue.deck_remaining || []).length;
+            const allExhausted = handALen === 0 && handBLen === 0 && deckLen === 0;
+
+            if (allExhausted) {
+                const resolution = await resolveDeckExhaustion(
+                    supabase, issue, nationA, nationB, currentMods || [], currentTick
+                );
+                if (resolution) {
+                    if (resolution.newStatus) newStatus = resolution.newStatus;
+                    if (resolution.issueUpdates) Object.assign(issueCardUpdate, resolution.issueUpdates);
+                }
+            }
         }
 
         // ── 7. Check tension 10 → escalation to incident ──
@@ -2472,9 +2096,9 @@ export async function processIssueTick(supabase, nationList, currentTick) {
 
         // Update issue record
         const issueUpdate = {
-            ticks_without_diplomatic_action: newIdleTicks,
             tension: newTension,
             updated_at: new Date().toISOString(),
+            ...issueCardUpdate,
         };
         if (newStatus !== issue.status) {
             issueUpdate.status = newStatus;
@@ -2502,478 +2126,10 @@ export async function processIssueTick(supabase, nationList, currentTick) {
 }
 
 
-// ==================== AUTO-SPAWN LOGIC ====================
 
-/**
- * Check conditions for auto-spawning competitive modifiers.
- */
-async function checkAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, nationB, currentTick, results) {
-    // Dispatch to issue-type-specific auto-spawn logic
-    if (issue.issue_type === 'territorial_ownership') {
-        return checkTerritorialAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, nationB, currentTick, results);
-    }
-    if (issue.issue_type === 'chronic_trade_imbalance') {
-        return checkTradeImbalanceAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, nationB, currentTick, results);
-    }
+// Phase 0: Auto-spawn functions removed — cards drive modifier creation in Phase 1.
+// checkAutoSpawns, checkTerritorialAutoSpawns, checkTradeImbalanceAutoSpawns removed.
 
-    // ── Maritime Fishing Rights auto-spawns ──
-
-    // #6 Overfishing — 10 ticks with no diplomatic action
-    if (!activeKeys.has('overfishing') && !wasResolved(modifiers, 'overfishing')) {
-        if (issue.ticks_without_diplomatic_action >= 10) {
-            await spawnModifier(supabase, issue, 'overfishing', 'both', currentTick,
-                'auto:10_idle_ticks', results);
-        }
-    }
-
-    // #7 Fish Stock Depletion — overfishing active 10+ ticks
-    if (!activeKeys.has('fish_stock_depletion') && !wasResolved(modifiers, 'fish_stock_depletion')) {
-        if (activeKeys.has('overfishing')) {
-            const overfishMod = modifiers.find(m => m.modifier_key === 'overfishing' && m.is_active);
-            if (overfishMod) {
-                const ticksActive = currentTick - overfishMod.created_tick;
-                if (ticksActive >= 10) {
-                    await spawnModifier(supabase, issue, 'fish_stock_depletion', 'both', currentTick,
-                        'auto:overfishing_10_ticks', results);
-                }
-            }
-        }
-    }
-
-    // #10 Coastal Community Decline — favor ±3 against a nation
-    if (!activeKeys.has('coastal_community_decline') && !wasResolved(modifiers, 'coastal_community_decline')) {
-        if (Math.abs(issue.favor) >= 3) {
-            await spawnModifier(supabase, issue, 'coastal_community_decline', 'disfavored', currentTick,
-                'auto:favor_threshold_3', results);
-        }
-    }
-
-    // #13 International Attention — tension reaches High
-    if (!activeKeys.has('international_attention') && !wasResolved(modifiers, 'international_attention')) {
-        if (issue.tension >= 6) {
-            // Determine which nation is more aggressive (more threatening actions taken)
-            const { data: threatA } = await supabase
-                .from('bilateral_issue_actions_taken')
-                .select('id')
-                .eq('issue_id', issue.id)
-                .eq('acting_nation_id', issue.nation_a_id)
-                .eq('action_category', 'threatening');
-            const { data: threatB } = await supabase
-                .from('bilateral_issue_actions_taken')
-                .select('id')
-                .eq('issue_id', issue.id)
-                .eq('acting_nation_id', issue.nation_b_id)
-                .eq('action_category', 'threatening');
-
-            const countA = threatA?.length || 0;
-            const countB = threatB?.length || 0;
-            const aggressorSide = countA >= countB ? 'nation_a' : 'nation_b';
-            await spawnModifier(supabase, issue, 'international_attention', aggressorSide, currentTick,
-                'auto:tension_high', results);
-        }
-    }
-
-    // #15 Environmental Damage — overfishing AND fish_stock_depletion both active
-    if (!activeKeys.has('environmental_damage') && !wasResolved(modifiers, 'environmental_damage')) {
-        if (activeKeys.has('overfishing') && activeKeys.has('fish_stock_depletion')) {
-            await spawnModifier(supabase, issue, 'environmental_damage', 'both', currentTick,
-                'auto:dual_overfishing_depletion', results);
-        }
-    }
-
-    // #8 Foreign Vessels — natural escalation at tension High (if not already present from action)
-    if (!activeKeys.has('foreign_vessels_in_waters') && !wasResolved(modifiers, 'foreign_vessels_in_waters')) {
-        if (issue.tension >= 6) {
-            // Favor determines who is pushing — the favored nation's vessels are in the disfavored's waters
-            const appliesTo = getDisfavoredSide(issue.favor);
-            if (appliesTo) {
-                await spawnModifier(supabase, issue, 'foreign_vessels_in_waters', appliesTo, currentTick,
-                    'auto:tension_high', results);
-            }
-        }
-    }
-
-    // Remove #13 International Attention if tension drops to Moderate or below
-    if (activeKeys.has('international_attention') && issue.tension <= 5) {
-        const mod = modifiers.find(m => m.modifier_key === 'international_attention' && m.is_active);
-        if (mod) {
-            await supabase
-                .from('bilateral_issue_modifiers')
-                .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
-                .eq('id', mod.id);
-            mod.is_active = false; // sync in-memory so tension drift uses accurate state
-            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'international_attention' });
-            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
-                'International attention has subsided as tensions eased.',
-                { modifier_key: 'international_attention', reason: 'tension_dropped' });
-        }
-    }
-
-    // Remove #10 Coastal Community Decline if favor returns to ±1 or below
-    if (activeKeys.has('coastal_community_decline') && Math.abs(issue.favor) <= 1) {
-        const mod = modifiers.find(m => m.modifier_key === 'coastal_community_decline' && m.is_active);
-        if (mod) {
-            await supabase
-                .from('bilateral_issue_modifiers')
-                .update({ is_active: false, resolved_by: 'auto:favor_normalized', resolved_tick: currentTick })
-                .eq('id', mod.id);
-            mod.is_active = false; // sync in-memory so tension drift uses accurate state
-            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'coastal_community_decline' });
-            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
-                'Coastal community decline has eased as the dispute became more balanced.',
-                { modifier_key: 'coastal_community_decline', reason: 'favor_normalized' });
-        }
-    }
-
-    // Remove #20 Public Hostility if tension drops below High
-    if (activeKeys.has('public_hostility') && issue.tension < 6) {
-        const mod = modifiers.find(m => m.modifier_key === 'public_hostility' && m.is_active);
-        if (mod) {
-            await supabase
-                .from('bilateral_issue_modifiers')
-                .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
-                .eq('id', mod.id);
-            mod.is_active = false; // sync in-memory so tension drift uses accurate state
-            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'public_hostility' });
-            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
-                'Public hostility has cooled as tensions decreased.',
-                { modifier_key: 'public_hostility', reason: 'tension_dropped' });
-        }
-    }
-}
-
-/**
- * Territorial Ownership Dispute — auto-spawn competitive modifiers and auto-removals.
- */
-async function checkTerritorialAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, nationB, currentTick, results) {
-
-    // #9 Diaspora Mobilization — favor reaches ±3 against non-administering
-    if (!activeKeys.has('diaspora_mobilization') && !wasResolved(modifiers, 'diaspora_mobilization')) {
-        if (Math.abs(issue.favor) >= 3) {
-            await spawnModifier(supabase, issue, 'diaspora_mobilization', 'non_administering', currentTick,
-                'auto:favor_threshold_3', results);
-        }
-    }
-
-    // #10 International Legal Precedent — commission_legal_claim used + higher int'l rep
-    // (spawned by action, but auto-spawns if submit_to_international_court is pending)
-    if (!activeKeys.has('international_legal_precedent') && !wasResolved(modifiers, 'international_legal_precedent')) {
-        const { data: courtPending, error: courtErr } = await supabase
-            .from('bilateral_issue_actions_taken')
-            .select('id')
-            .eq('issue_id', issue.id)
-            .eq('action_key', 'submit_to_international_court')
-            .eq('status', 'submitted')
-            .limit(1);
-        if (courtErr) console.error('[Issues] Court pending query failed:', courtErr.message);
-        if (courtPending && courtPending.length > 0) {
-            // Determine legally weaker nation by international_reputation
-            const repA = Number(nationA.international_reputation ?? 50);
-            const repB = Number(nationB.international_reputation ?? 50);
-            const weakerSide = repA < repB ? 'nation_a' : repA > repB ? 'nation_b' : null;
-            if (weakerSide) {
-                await spawnModifier(supabase, issue, 'international_legal_precedent', weakerSide, currentTick,
-                    'auto:court_submission_pending', results);
-            }
-        }
-    }
-
-    // #12 Territory as Election Issue — election within 6 ticks
-    if (!activeKeys.has('territory_election_issue') && !wasResolved(modifiers, 'territory_election_issue')) {
-        const { data: upcomingElections } = await supabase
-            .from('elections')
-            .select('id')
-            .in('nation_id', [issue.nation_a_id, issue.nation_b_id])
-            .eq('status', 'scheduled')
-            .lte('election_tick', currentTick + 6)
-            .gte('election_tick', currentTick)
-            .limit(1);
-        if (upcomingElections && upcomingElections.length > 0) {
-            await spawnModifier(supabase, issue, 'territory_election_issue', 'both', currentTick,
-                'auto:election_within_6_ticks', results);
-        }
-    }
-
-    // #7 Competing Development Projects — both nations used build/establish/economic_development
-    if (!activeKeys.has('competing_development_projects') && !wasResolved(modifiers, 'competing_development_projects')) {
-        const buildActions = ['build_infrastructure_territory', 'economic_development_program', 'establish_administrative_presence'];
-        const { data: aBuild } = await supabase
-            .from('bilateral_issue_actions_taken')
-            .select('id')
-            .eq('issue_id', issue.id)
-            .eq('acting_nation_id', issue.nation_a_id)
-            .in('action_key', buildActions)
-            .eq('status', 'executed')
-            .limit(1);
-        const { data: bBuild } = await supabase
-            .from('bilateral_issue_actions_taken')
-            .select('id')
-            .eq('issue_id', issue.id)
-            .eq('acting_nation_id', issue.nation_b_id)
-            .in('action_key', buildActions)
-            .eq('status', 'executed')
-            .limit(1);
-        if (aBuild?.length > 0 && bBuild?.length > 0) {
-            await spawnModifier(supabase, issue, 'competing_development_projects', 'both', currentTick,
-                'auto:both_nations_invested', results);
-        }
-    }
-
-    // #11 Cultural Erasure Accusations — administering used maps + settlers + expel/transfer
-    if (!activeKeys.has('cultural_erasure_accusations') && !wasResolved(modifiers, 'cultural_erasure_accusations')) {
-        const adminId = issue.administering_nation_id;
-        if (adminId) {
-            const erasureActions = ['name_territory_on_maps', 'settle_citizens_territory'];
-            const escalationActions = ['expel_other_nations_citizens', 'forced_population_transfer_action'];
-            const { data: adminActions } = await supabase
-                .from('bilateral_issue_actions_taken')
-                .select('action_key')
-                .eq('issue_id', issue.id)
-                .eq('acting_nation_id', adminId)
-                .eq('status', 'executed');
-            const usedKeys = new Set((adminActions || []).map(a => a.action_key));
-            const hasAll = erasureActions.every(k => usedKeys.has(k)) &&
-                           escalationActions.some(k => usedKeys.has(k));
-            if (hasAll) {
-                await spawnModifier(supabase, issue, 'cultural_erasure_accusations', 'administering', currentTick,
-                    'auto:cultural_erasure_combo', results);
-            }
-        }
-    }
-
-    // #20 Nationalist Territorial Movement — tension Critical, or sovereignty_declared 5+ ticks
-    if (!activeKeys.has('nationalist_territorial_movement') && !wasResolved(modifiers, 'nationalist_territorial_movement')) {
-        let shouldSpawn = false;
-        if (issue.tension >= 9) {
-            shouldSpawn = true;
-        } else if (activeKeys.has('sovereignty_declared')) {
-            const sovMod = modifiers.find(m => m.modifier_key === 'sovereignty_declared' && m.is_active);
-            if (sovMod && (currentTick - sovMod.created_tick) >= 5) {
-                shouldSpawn = true;
-            }
-        } else if (activeKeys.has('forced_population_transfer')) {
-            shouldSpawn = true;
-        }
-        if (shouldSpawn) {
-            await spawnModifier(supabase, issue, 'nationalist_territorial_movement', 'both', currentTick,
-                'auto:escalation_conditions', results);
-        }
-    }
-
-    // ── Auto-REMOVALS ──
-
-    // #9 Diaspora Mobilization removed when favor returns to ±1 or below
-    if (activeKeys.has('diaspora_mobilization') && Math.abs(issue.favor) <= 1) {
-        const mod = modifiers.find(m => m.modifier_key === 'diaspora_mobilization' && m.is_active);
-        if (mod) {
-            await supabase.from('bilateral_issue_modifiers')
-                .update({ is_active: false, resolved_by: 'auto:favor_normalized', resolved_tick: currentTick })
-                .eq('id', mod.id);
-            mod.is_active = false;
-            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'diaspora_mobilization' });
-            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
-                'Diaspora mobilization has subsided as the dispute became more balanced.',
-                { modifier_key: 'diaspora_mobilization', reason: 'favor_normalized' });
-        }
-    }
-
-    // #20 Nationalist Territorial Movement removed when tension drops below High
-    if (activeKeys.has('nationalist_territorial_movement') && issue.tension < 6) {
-        const mod = modifiers.find(m => m.modifier_key === 'nationalist_territorial_movement' && m.is_active);
-        if (mod) {
-            await supabase.from('bilateral_issue_modifiers')
-                .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
-                .eq('id', mod.id);
-            mod.is_active = false;
-            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'nationalist_territorial_movement' });
-            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
-                'Nationalist territorial movement has subsided as tensions eased.',
-                { modifier_key: 'nationalist_territorial_movement', reason: 'tension_dropped' });
-        }
-    }
-}
-
-/**
- * Chronic Trade Imbalance — auto-spawn competitive/escalation modifiers and auto-removals.
- * Mirrors checkTradeImbalanceModifierAutoSpawns in the tick processor.
- */
-async function checkTradeImbalanceAutoSpawns(supabase, issue, activeKeys, modifiers, nationA, nationB, currentTick, results) {
-
-    // #6 Factory Closures — #3 active 15+ ticks without diplomatic/unilateral action
-    if (!activeKeys.has('factory_closures_deficit') && !wasResolved(modifiers, 'factory_closures_deficit')) {
-        if (activeKeys.has('domestic_industries_losing_share')) {
-            const mod3 = modifiers.find(m => m.modifier_key === 'domestic_industries_losing_share' && m.is_active);
-            if (mod3 && (currentTick - mod3.created_tick) >= 15) {
-                const { data: anyAction } = await supabase
-                    .from('bilateral_issue_actions_taken').select('id')
-                    .eq('issue_id', issue.id).in('action_category', ['diplomatic', 'unilateral'])
-                    .in('status', ['executed', 'matched', 'submitted']).limit(1);
-                if (!anyAction || anyAction.length === 0) {
-                    await spawnModifier(supabase, issue, 'factory_closures_deficit', 'non_administering', currentTick,
-                        'auto:industries_losing_share_15t_no_action', results);
-                }
-            }
-        }
-    }
-
-    // #8 Protectionist Movement — #6 active 5+ ticks OR tension High
-    if (!activeKeys.has('protectionist_movement') && !wasResolved(modifiers, 'protectionist_movement')) {
-        let shouldSpawn = false;
-        if (activeKeys.has('factory_closures_deficit')) {
-            const mod6 = modifiers.find(m => m.modifier_key === 'factory_closures_deficit' && m.is_active);
-            if (mod6 && (currentTick - mod6.created_tick) >= 5) shouldSpawn = true;
-        }
-        if (issue.tension >= 6) shouldSpawn = true;
-        if (shouldSpawn) {
-            await spawnModifier(supabase, issue, 'protectionist_movement', 'non_administering', currentTick,
-                'auto:factory_closures_or_tension_high', results);
-        }
-    }
-
-    // #9 Dumping Accusations — tension Moderate+ with #3 still active
-    if (!activeKeys.has('dumping_accusations') && !wasResolved(modifiers, 'dumping_accusations')) {
-        if (issue.tension >= 3 && activeKeys.has('domestic_industries_losing_share')) {
-            await spawnModifier(supabase, issue, 'dumping_accusations', 'administering', currentTick,
-                'auto:tension_moderate_with_industry_loss', results);
-        }
-    }
-
-    // #10 Supply Chain Dependency — issue active 15+ ticks with moderate+ tension
-    if (!activeKeys.has('supply_chain_dependency') && !wasResolved(modifiers, 'supply_chain_dependency')) {
-        const issueAge = currentTick - (issue.created_tick || 0);
-        if (issueAge >= 15 && issue.tension >= 5) {
-            await spawnModifier(supabase, issue, 'supply_chain_dependency', 'non_administering', currentTick,
-                'auto:deep_trade_integration_15t', results);
-        }
-    }
-
-    // #11 IP Friction — 30% chance every 15 ticks with corporate tax mismatch
-    if (!activeKeys.has('intellectual_property_friction') && !wasResolved(modifiers, 'intellectual_property_friction')) {
-        const issueAge = currentTick - (issue.created_tick || 0);
-        if (issueAge >= 15 && issueAge % 15 === 0 && Math.random() < 0.30) {
-            const surplusNation = issue.administering_nation_id === issue.nation_a_id ? nationA : nationB;
-            const deficitNation = issue.administering_nation_id === issue.nation_a_id ? nationB : nationA;
-            if (Number(surplusNation?.corporate_tax ?? 50) < Number(deficitNation?.corporate_tax ?? 50)) {
-                await spawnModifier(supabase, issue, 'intellectual_property_friction', 'both', currentTick,
-                    'auto:ip_friction_tax_mismatch', results);
-            }
-        }
-    }
-
-    // #12 Consumer Dependency — 20+ ticks unresolved
-    if (!activeKeys.has('consumer_import_dependency') && !wasResolved(modifiers, 'consumer_import_dependency')) {
-        if ((currentTick - (issue.created_tick || 0)) >= 20) {
-            await spawnModifier(supabase, issue, 'consumer_import_dependency', 'non_administering', currentTick,
-                'auto:unresolved_20_ticks', results);
-        }
-    }
-
-    // #7 Surplus Dependency — issue active 10+ ticks (latent)
-    if (!activeKeys.has('surplus_market_dependency') && !wasResolved(modifiers, 'surplus_market_dependency')) {
-        if ((currentTick - (issue.created_tick || 0)) >= 10) {
-            await spawnModifier(supabase, issue, 'surplus_market_dependency', 'administering', currentTick,
-                'auto:trade_dependency_10t', results);
-        }
-    }
-
-    // #17 Retaliatory Measures — both sides taken threatening actions
-    if (!activeKeys.has('retaliatory_measures_trade') && !wasResolved(modifiers, 'retaliatory_measures_trade')) {
-        const { data: threatA } = await supabase.from('bilateral_issue_actions_taken').select('id')
-            .eq('issue_id', issue.id).eq('acting_nation_id', issue.nation_a_id)
-            .eq('action_category', 'threatening').eq('status', 'executed').limit(1);
-        const { data: threatB } = await supabase.from('bilateral_issue_actions_taken').select('id')
-            .eq('issue_id', issue.id).eq('acting_nation_id', issue.nation_b_id)
-            .eq('action_category', 'threatening').eq('status', 'executed').limit(1);
-        if (threatA?.length > 0 && threatB?.length > 0) {
-            await spawnModifier(supabase, issue, 'retaliatory_measures_trade', 'both', currentTick,
-                'auto:both_sides_threatened', results);
-        }
-    }
-
-    // #18 Credit Downgrade — tension High + any active escalation modifier
-    if (!activeKeys.has('credit_downgrade_pressure') && !wasResolved(modifiers, 'credit_downgrade_pressure')) {
-        if (issue.tension >= 6) {
-            const hasEscalation = (modifiers || []).some(m =>
-                m.is_active && m.category === 'escalation' &&
-                m.modifier_key !== 'credit_downgrade_pressure' &&
-                m.modifier_key !== 'economic_nationalism_trade');
-            if (hasEscalation) {
-                await spawnModifier(supabase, issue, 'credit_downgrade_pressure', 'non_administering', currentTick,
-                    'auto:tension_high_escalation_active', results);
-            }
-        }
-    }
-
-    // #20 Economic Nationalism — tension Critical OR 2+ threatening by same nation
-    if (!activeKeys.has('economic_nationalism_trade') && !wasResolved(modifiers, 'economic_nationalism_trade')) {
-        let shouldSpawn = false;
-        if (issue.tension >= 9) {
-            shouldSpawn = true;
-        } else {
-            for (const nId of [issue.nation_a_id, issue.nation_b_id]) {
-                const { data: threats } = await supabase.from('bilateral_issue_actions_taken').select('id')
-                    .eq('issue_id', issue.id).eq('acting_nation_id', nId)
-                    .eq('action_category', 'threatening').eq('status', 'executed');
-                if (threats && threats.length >= 2) { shouldSpawn = true; break; }
-            }
-        }
-        if (shouldSpawn) {
-            await spawnModifier(supabase, issue, 'economic_nationalism_trade', 'both', currentTick,
-                'auto:tension_critical_or_double_threat', results);
-        }
-    }
-
-    // ── AUTO-REMOVALS ──
-
-    // #8 Protectionist Movement — removed when tension drops to Low
-    if (activeKeys.has('protectionist_movement') && issue.tension <= 2) {
-        const mod = modifiers.find(m => m.modifier_key === 'protectionist_movement' && m.is_active);
-        if (mod) {
-            await supabase.from('bilateral_issue_modifiers')
-                .update({ is_active: false, resolved_by: 'auto:tension_low', resolved_tick: currentTick })
-                .eq('id', mod.id);
-            mod.is_active = false;
-            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'protectionist_movement' });
-            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
-                'Protectionist political movement has subsided as tensions eased.',
-                { modifier_key: 'protectionist_movement', reason: 'tension_low' });
-        }
-    }
-
-    // #18 Credit Downgrade — removed when tension drops below Moderate
-    if (activeKeys.has('credit_downgrade_pressure') && issue.tension < 3) {
-        const mod = modifiers.find(m => m.modifier_key === 'credit_downgrade_pressure' && m.is_active);
-        if (mod) {
-            await supabase.from('bilateral_issue_modifiers')
-                .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
-                .eq('id', mod.id);
-            mod.is_active = false;
-            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'credit_downgrade_pressure' });
-            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
-                'Credit downgrade pressure has eased as trade tensions cooled.',
-                { modifier_key: 'credit_downgrade_pressure', reason: 'tension_dropped' });
-        }
-    }
-
-    // #20 Economic Nationalism — removed when tension drops below High
-    if (activeKeys.has('economic_nationalism_trade') && issue.tension < 6) {
-        const mod = modifiers.find(m => m.modifier_key === 'economic_nationalism_trade' && m.is_active);
-        if (mod) {
-            await supabase.from('bilateral_issue_modifiers')
-                .update({ is_active: false, resolved_by: 'auto:tension_dropped', resolved_tick: currentTick })
-                .eq('id', mod.id);
-            mod.is_active = false;
-            results.modifiersExpired.push({ issue_id: issue.id, modifier_key: 'economic_nationalism_trade' });
-            await insertHistory(supabase, issue.id, currentTick, 'modifier_removed',
-                'Economic nationalism surge has subsided as tensions decreased.',
-                { modifier_key: 'economic_nationalism_trade', reason: 'tension_dropped' });
-        }
-    }
-}
-
-/**
- * Check if a modifier was previously resolved (prevent re-spawning).
- */
 function wasResolved(modifiers, key) {
     return modifiers.some(m => m.modifier_key === key && !m.is_active && m.resolved_by);
 }
@@ -3261,392 +2417,10 @@ async function insertHistory(supabase, issueId, tick, eventType, eventText, meta
 }
 
 
-// ==================== ACTIONS SYSTEM ====================
 
-/** Publish an issue action to both nations' event_log feeds (Nation-Local + World). */
-async function dispatchIssueEvent(supabase, actingNationId, opponentNationId, action, verb, currentTick) {
-    try {
-        const [actRes, oppRes] = await Promise.all([
-            supabase.from('nations').select('name').eq('id', actingNationId).single(),
-            supabase.from('nations').select('name').eq('id', opponentNationId).single(),
-        ]);
-        const actName = actRes.data?.name || 'A nation';
-        const oppName = oppRes.data?.name || 'another nation';
-        const headline = `${actName} ${verb} ${oppName} in bilateral dispute: ${action.name}.`;
-        const row = { event_name: action.name, category: 'Conflict', description_chosen: headline, fired_at_tick: currentTick };
-        await supabase.from('event_log').insert([
-            { ...row, nation_id: actingNationId },
-            { ...row, nation_id: opponentNationId },
-        ]);
-    } catch (err) {
-        console.warn('[Issues] Event log dispatch failed:', err.message);
-    }
-}
+// Phase 0: ACTIONS SYSTEM removed — replaced by card system in Phase 1.
+// executeIssueAction, dispatchIssueEvent removed.
 
-/**
- * Execute an issue action. Called from the frontend when a player clicks an action.
- *
- * Validates: role, AP, one-per-tick, one-time-use, treasury, diplomatic friction AP penalty.
- * Handles: diplomatic (pending), unilateral (immediate), threatening (immediate + incident rolls).
- *
- * @param {object} supabase - Supabase client
- * @param {object} params - { issueId, actionKey, actingNationId, actingFactionId, currentTick }
- * @returns {object} { success, error?, result? }
- */
-export async function executeIssueAction(supabase, params) {
-    const { issueId, actionKey, actingNationId, actingFactionId, currentTick } = params;
-
-    const action = ACTIONS[actionKey];
-    if (!action) return { success: false, error: 'Unknown action.' };
-
-    // Load issue
-    const { data: issue, error: issueErr } = await supabase
-        .from('bilateral_issues')
-        .select('*')
-        .eq('id', issueId)
-        .single();
-    if (issueErr || !issue) return { success: false, error: 'Issue not found.' };
-    if (issue.status === 'escalated' || issue.status === 'resolved' || issue.status === 'dormant') {
-        return { success: false, error: `Issue is ${issue.status}. No actions allowed.` };
-    }
-
-    // Verify acting nation is part of this issue
-    const isNationA = actingNationId === issue.nation_a_id;
-    const isNationB = actingNationId === issue.nation_b_id;
-    if (!isNationA && !isNationB) {
-        return { success: false, error: 'Your nation is not involved in this issue.' };
-    }
-    const opponentNationId = isNationA ? issue.nation_b_id : issue.nation_a_id;
-
-    // Check one-time-use: has this action already been used by this nation?
-    const { data: prevAction } = await supabase
-        .from('bilateral_issue_actions_taken')
-        .select('id')
-        .eq('issue_id', issueId)
-        .eq('acting_nation_id', actingNationId)
-        .eq('action_key', actionKey)
-        .limit(1);
-    if (prevAction && prevAction.length > 0) {
-        return { success: false, error: 'This action has already been used.' };
-    }
-
-    // Check one-per-tick: has this nation taken any action this tick?
-    const { data: tickAction } = await supabase
-        .from('bilateral_issue_actions_taken')
-        .select('id')
-        .eq('issue_id', issueId)
-        .eq('acting_nation_id', actingNationId)
-        .eq('submitted_tick', currentTick)
-        .limit(1);
-    if (tickAction && tickAction.length > 0) {
-        return { success: false, error: 'Only one action per tick per nation.' };
-    }
-
-    // Calculate AP cost (check for diplomatic friction / territory election issue — +1 AP on diplomatic actions)
-    let apCost = action.ap_cost;
-    if (action.category === 'diplomatic') {
-        const { data: frictionMod } = await supabase
-            .from('bilateral_issue_modifiers')
-            .select('id')
-            .eq('issue_id', issueId)
-            .in('modifier_key', ['diplomatic_friction', 'territory_election_issue'])
-            .eq('is_active', true)
-            .limit(1);
-        if (frictionMod && frictionMod.length > 0) {
-            apCost += 1;
-        }
-    }
-
-    // Check requires_modifier (e.g. resource_extraction requires resource_potential)
-    if (action.requires_modifier) {
-        const { data: reqMod } = await supabase
-            .from('bilateral_issue_modifiers')
-            .select('id')
-            .eq('issue_id', issueId)
-            .eq('modifier_key', action.requires_modifier)
-            .eq('is_active', true)
-            .limit(1);
-        if (!reqMod || reqMod.length === 0) {
-            return { success: false, error: `Requires active ${MODIFIERS[action.requires_modifier]?.name || action.requires_modifier} modifier.` };
-        }
-    }
-
-    // Deduct AP
-    if (apCost > 0) {
-        const deductResult = await supabase.rpc('deduct_ap', {
-            p_faction_id: actingFactionId,
-            p_cost: apCost,
-        });
-        if (deductResult.error || deductResult.data < 0) {
-            return { success: false, error: `Insufficient AP (need ${apCost}).` };
-        }
-    }
-
-    // Deduct treasury cost by adding to national debt
-    // Nations don't have a separate treasury pool — costs are financed through borrowing
-    if (action.treasury_cost > 0) {
-        const { data: nationData } = await supabase
-            .from('nations')
-            .select('debt')
-            .eq('id', actingNationId)
-            .single();
-        const currentDebt = Number(nationData?.debt ?? 0);
-        await supabase.from('nations')
-            .update({ debt: currentDebt + action.treasury_cost })
-            .eq('id', actingNationId);
-    }
-
-    // Build the action record
-    const actionRecord = {
-        issue_id: issueId,
-        acting_nation_id: actingNationId,
-        acting_faction_id: actingFactionId,
-        action_key: actionKey,
-        action_category: action.category,
-        submitted_tick: currentTick,
-        ap_spent: apCost,
-        treasury_cost: action.treasury_cost || 0,
-    };
-
-    // ── DIPLOMATIC: submit for simultaneous matching ──
-    // Both nations must independently choose the same action on the same tick.
-    // The tick processor will match them or penalize unmatched submissions.
-    if (action.category === 'diplomatic') {
-        actionRecord.status = 'submitted';
-        actionRecord.target_nation_id = opponentNationId;
-
-        const { error: insertErr } = await supabase
-            .from('bilateral_issue_actions_taken')
-            .insert(actionRecord);
-        if (insertErr) {
-            // Refund AP since the action was not recorded
-            if (apCost > 0) {
-                await supabase.rpc('deduct_ap', { p_faction_id: actingFactionId, p_cost: -apCost });
-            }
-            return { success: false, error: 'Failed to submit diplomatic action: ' + insertErr.message };
-        }
-
-        await insertHistory(supabase, issueId, currentTick, 'action_submitted',
-            `${action.name} submitted. Awaiting matching action from other nation.`,
-            { action_key: actionKey, acting_nation_id: actingNationId },
-            actingNationId);
-
-        await dispatchIssueEvent(supabase, actingNationId, opponentNationId, action, 'proposes diplomatic resolution with', currentTick);
-
-        return { success: true, result: { type: 'submitted', actionKey, apCost } };
-    }
-
-    // ── UNILATERAL / THREATENING: immediate execution ──
-    actionRecord.status = 'executed';
-
-    // Apply favor delta
-    let newFavor = Number(issue.favor);
-    if (action.favor_delta !== 0) {
-        // Positive favor_delta pushes favor toward the acting nation
-        // If acting is nation_a: favor decreases (nation_a favored = negative)
-        // If acting is nation_b: favor increases (nation_b favored = positive)
-        const favorShift = isNationA ? -action.favor_delta : action.favor_delta;
-        newFavor = Math.max(-5, Math.min(5, newFavor + favorShift));
-    }
-
-    // Apply tension delta
-    let newTension = Number(issue.tension);
-    newTension = Math.max(0, Math.min(10, newTension + action.tension_delta));
-
-    // Apply relation delta (threatening actions)
-    if (action.relations_delta) {
-        await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, action.relations_delta);
-    }
-
-    // Apply stat effects to acting nation
-    if (action.stat_effects_acting) {
-        const { data: actNation } = await supabase
-            .from('nations').select('*').eq('id', actingNationId).single();
-        if (actNation) {
-            await applyIssueStatEffects(supabase, actingNationId, actNation, action.stat_effects_acting);
-        }
-    }
-
-    // Apply stat effects to opponent
-    if (action.stat_effects_opponent) {
-        const { data: oppNation } = await supabase
-            .from('nations').select('*').eq('id', opponentNationId).single();
-        if (oppNation) {
-            await applyIssueStatEffects(supabase, opponentNationId, oppNation, action.stat_effects_opponent);
-        }
-    }
-
-    // Add modifiers
-    for (const modKey of action.modifiers_added) {
-        const modConfig = MODIFIERS[modKey];
-        if (!modConfig) continue;
-
-        // Determine who the modifier applies to (per-modifier map overrides global target)
-        let appliesTo = modConfig.applies_to || 'both';
-        const perModTarget = action.modifier_target_map?.[modKey] || action.modifier_target;
-        if (perModTarget === 'acting') {
-            appliesTo = isNationA ? 'nation_a' : 'nation_b';
-        } else if (perModTarget === 'opponent') {
-            appliesTo = isNationA ? 'nation_b' : 'nation_a';
-        }
-
-        await spawnModifier(supabase, issue, modKey, appliesTo, currentTick,
-            `action:${actionKey}`, { modifiersSpawned: [] });
-    }
-
-    // Remove modifiers
-    for (const modKey of action.modifiers_removed) {
-        // For targeted removals (e.g. redirect_fleet only removes if YOU caused it)
-        let removeQuery = supabase
-            .from('bilateral_issue_modifiers')
-            .update({ is_active: false, resolved_by: `action:${actionKey}`, resolved_tick: currentTick })
-            .eq('issue_id', issueId)
-            .eq('modifier_key', modKey)
-            .eq('is_active', true);
-
-        // If modifier_remove_target is 'acting', only remove modifiers that apply to the acting nation
-        if (action.modifier_remove_target === 'acting') {
-            const actingSide = isNationA ? 'nation_a' : 'nation_b';
-            removeQuery = removeQuery.eq('applies_to', actingSide);
-        }
-
-        const { error: removeErr } = await removeQuery;
-        if (!removeErr) {
-            await insertHistory(supabase, issueId, currentTick, 'modifier_removed',
-                `${MODIFIERS[modKey]?.name || modKey} resolved by ${action.name}.`,
-                { modifier_key: modKey, action_key: actionKey },
-                actingNationId);
-        }
-    }
-
-    // Special: commission_legal_study — favor only if reputation > opponent's
-    if (action.special === 'reputation_check') {
-        const { data: actNation } = await supabase
-            .from('nations').select('international_reputation').eq('id', actingNationId).single();
-        const { data: oppNation } = await supabase
-            .from('nations').select('international_reputation').eq('id', opponentNationId).single();
-        if (actNation && oppNation &&
-            Number(actNation.international_reputation ?? 0) > Number(oppNation.international_reputation ?? 0)) {
-            const favorShift = isNationA ? -0.5 : 0.5;
-            newFavor = Math.max(-5, Math.min(5, newFavor + favorShift));
-        }
-    }
-
-    // Special: territorial legal claim — +1 if int'l rep > opponent, +0.5 if equal
-    if (action.special === 'reputation_check_territorial') {
-        const { data: actNation } = await supabase
-            .from('nations').select('international_reputation').eq('id', actingNationId).single();
-        const { data: oppNation } = await supabase
-            .from('nations').select('international_reputation').eq('id', opponentNationId).single();
-        const actRep = Number(actNation?.international_reputation ?? 50);
-        const oppRep = Number(oppNation?.international_reputation ?? 50);
-        if (actRep > oppRep) {
-            const favorShift = isNationA ? -1 : 1;
-            newFavor = Math.max(-5, Math.min(5, newFavor + favorShift));
-        } else if (actRep === oppRep) {
-            const favorShift = isNationA ? -0.5 : 0.5;
-            newFavor = Math.max(-5, Math.min(5, newFavor + favorShift));
-        }
-    }
-
-    // Special: incident trigger rolls (threatening actions)
-    let incidentTriggered = false;
-    if (action.special === 'incident_trigger_60' && Math.random() < 0.60) {
-        incidentTriggered = true;
-        newTension = 10;
-    } else if (action.special === 'incident_trigger_50' && Math.random() < 0.50) {
-        incidentTriggered = true;
-        newTension = 10; // force escalation
-    } else if (action.special === 'incident_trigger_25' && Math.random() < 0.25) {
-        incidentTriggered = true;
-        newTension = 10;
-    }
-
-    // Special: declare_sovereignty — 30% chance of spawning nationalist_territorial_movement
-    if (action.special === 'sovereignty_nationalism_30' && Math.random() < 0.30) {
-        await spawnModifier(supabase, issue, 'nationalist_territorial_movement', 'both', currentTick,
-            `action:${actionKey}:30pct_roll`, { modifiersSpawned: [] });
-    }
-
-    // Insert action record
-    actionRecord.effects_applied = {
-        favor_before: issue.favor, favor_after: newFavor,
-        tension_before: issue.tension, tension_after: newTension,
-        relations_delta: action.relations_delta || 0,
-        modifiers_added: action.modifiers_added,
-        modifiers_removed: action.modifiers_removed,
-        incident_triggered: incidentTriggered,
-    };
-    actionRecord.modifiers_added = action.modifiers_added;
-    actionRecord.modifiers_removed = action.modifiers_removed;
-
-    const { error: insertErr } = await supabase
-        .from('bilateral_issue_actions_taken')
-        .insert(actionRecord);
-    if (insertErr) {
-        // Refund AP and treasury — side effects (modifiers, stats) already applied but not recoverable here
-        if (apCost > 0) {
-            await supabase.rpc('deduct_ap', { p_faction_id: actingFactionId, p_cost: -apCost });
-        }
-        if (action.treasury_cost > 0) {
-            await supabase.from('nations')
-                .update({ treasury: Number(issue.treasury ?? 0) + action.treasury_cost })
-                .eq('id', actingNationId);
-        }
-        return { success: false, error: 'Failed to record action: ' + insertErr.message };
-    }
-
-    // Update issue
-    const issueUpdate = {
-        favor: newFavor,
-        tension: newTension,
-        updated_at: new Date().toISOString(),
-    };
-    await supabase.from('bilateral_issues').update(issueUpdate).eq('id', issueId);
-
-    // History
-    await insertHistory(supabase, issueId, currentTick, 'action_executed',
-        `${action.name} executed.`,
-        { action_key: actionKey, category: action.category, favor_delta: action.favor_delta,
-          tension_delta: action.tension_delta, incident_triggered: incidentTriggered },
-        actingNationId);
-
-    // Tension/favor change history
-    if (newFavor !== Number(issue.favor)) {
-        await insertHistory(supabase, issueId, currentTick, 'favor_changed',
-            `Favor shifted to ${newFavor > 0 ? '+' : ''}${newFavor.toFixed(2)}.`,
-            { favor_before: issue.favor, favor_after: newFavor });
-    }
-    const oldTensionLabel = getTensionLabel(issue.tension).label;
-    const newTensionLabel = getTensionLabel(newTension).label;
-    if (oldTensionLabel !== newTensionLabel) {
-        await insertHistory(supabase, issueId, currentTick, 'tension_changed',
-            `Tension shifted from ${oldTensionLabel} to ${newTensionLabel}.`,
-            { tension_before: issue.tension, tension_after: newTension });
-    }
-
-    const verb = action.category === 'diplomatic' ? 'takes diplomatic action against'
-        : action.category === 'threatening' ? 'takes threatening action against'
-        : 'takes unilateral action against';
-    await dispatchIssueEvent(supabase, actingNationId, opponentNationId, action, verb, currentTick);
-
-    return {
-        success: true,
-        result: {
-            type: 'executed',
-            actionKey,
-            apCost,
-            favorBefore: issue.favor,
-            favorAfter: newFavor,
-            tensionBefore: issue.tension,
-            tensionAfter: newTension,
-            incidentTriggered,
-        },
-    };
-}
-
-
-// respondToProposal removed — diplomatic actions now use simultaneous matching (step 4d in processIssueTick)
 
 
 /**
@@ -3713,244 +2487,3 @@ export async function processArbitration(supabase, issueId, currentTick) {
 
 // ==================== EXPORTS ====================
 
-// ==================== TRADE IMBALANCE AUTO-SPAWN ====================
-/**
- * Check bilateral trade data for sustained imbalances and auto-spawn
- * chronic_trade_imbalance issues when conditions are met.
- *
- * Called each tick AFTER processTradeFlows has written trade_partners rows.
- *
- * Logic:
- *   1. Query trade_partners for last N ticks (sustained_ticks config)
- *   2. Aggregate bilateral volumes per nation pair per tick
- *   3. If imbalance_pct > threshold for ALL N ticks (same direction), candidate
- *   4. Filter out existing active issues, cooldowns, max-per-nation caps
- *   5. Roll spawn_chance (50%) per candidate
- *   6. Create bilateral_issues row + starter modifiers + history
- */
-export async function checkTradeImbalanceAutoSpawn(supabase, nationList, currentTick) {
-    var typeDef = ISSUE_TYPES.chronic_trade_imbalance;
-    var config = typeDef.auto_spawn_config;
-    var threshold = config.imbalance_pct_threshold; // 50
-    var sustainedTicks = config.sustained_ticks;     // 5
-    var spawnChance = config.spawn_chance;            // 0.5
-    var maxPerNation = config.max_per_nation;         // 2
-    var cooldown = config.cooldown_after_resolution;  // 60
-
-    if (currentTick < sustainedTicks) return [];
-    if (!nationList || nationList.length < 2) return [];
-
-    // ── 1. Query bilateral trade volumes for last N ticks ──
-    var startTick = currentTick - sustainedTicks + 1;
-    var { data: partnerData, error: partnerErr } = await supabase
-        .from('trade_partners')
-        .select('tick, exporter_nation_id, importer_nation_id, trade_volume')
-        .gte('tick', startTick)
-        .lte('tick', currentTick);
-
-    if (partnerErr || !partnerData || partnerData.length === 0) return [];
-
-    // Build nation ID set for validation
-    var nationIds = new Set();
-    for (var ni = 0; ni < nationList.length; ni++) nationIds.add(nationList[ni].id);
-
-    // ── 2. Aggregate by canonical pair + tick ──
-    // pairMap[canonicalKey] = { a, b, ticks: { [tick]: { aToB, bToA } } }
-    var pairMap = {};
-
-    for (var i = 0; i < partnerData.length; i++) {
-        var row = partnerData[i];
-        if (!nationIds.has(row.exporter_nation_id) || !nationIds.has(row.importer_nation_id)) continue;
-
-        var a = row.exporter_nation_id < row.importer_nation_id
-            ? row.exporter_nation_id : row.importer_nation_id;
-        var b = row.exporter_nation_id < row.importer_nation_id
-            ? row.importer_nation_id : row.exporter_nation_id;
-        var key = a + '|' + b;
-
-        if (!pairMap[key]) pairMap[key] = { a: a, b: b, ticks: {} };
-        if (!pairMap[key].ticks[row.tick]) pairMap[key].ticks[row.tick] = { aToB: 0, bToA: 0 };
-
-        if (row.exporter_nation_id === a) {
-            pairMap[key].ticks[row.tick].aToB += Number(row.trade_volume) || 0;
-        } else {
-            pairMap[key].ticks[row.tick].bToA += Number(row.trade_volume) || 0;
-        }
-    }
-
-    // ── 3. Find pairs with sustained imbalance (same direction every tick) ──
-    var candidates = [];
-
-    for (var key in pairMap) {
-        var pair = pairMap[key];
-        var sustained = true;
-        var surplusIsA = 0;
-        var surplusIsB = 0;
-
-        for (var t = startTick; t <= currentTick; t++) {
-            var entry = pair.ticks[t];
-            if (!entry) { sustained = false; break; }
-
-            var totalVol = entry.aToB + entry.bToA;
-            // Minimum volume guard — ignore tiny trades
-            if (totalVol < 50000) { sustained = false; break; }
-
-            var imbalancePct = Math.abs(entry.aToB - entry.bToA) / totalVol * 100;
-            if (imbalancePct < threshold) { sustained = false; break; }
-
-            if (entry.aToB > entry.bToA) surplusIsA++;
-            else surplusIsB++;
-        }
-
-        if (!sustained) continue;
-
-        // Surplus direction must be consistent across all ticks
-        var surplusNationId;
-        if (surplusIsA >= sustainedTicks) {
-            surplusNationId = pair.a;
-        } else if (surplusIsB >= sustainedTicks) {
-            surplusNationId = pair.b;
-        } else {
-            continue; // direction flip-flopped
-        }
-
-        candidates.push({
-            nationA: pair.a,
-            nationB: pair.b,
-            surplusNationId: surplusNationId,
-            deficitNationId: surplusNationId === pair.a ? pair.b : pair.a,
-        });
-    }
-
-    if (candidates.length === 0) return [];
-
-    // ── 4. Filter: existing issues, cooldowns, max-per-nation ──
-    var { data: existingIssues, error: existErr } = await supabase
-        .from('bilateral_issues')
-        .select('nation_a_id, nation_b_id, status, resolved_tick, escalated_tick')
-        .eq('issue_type', 'chronic_trade_imbalance');
-
-    if (existErr) {
-        console.error('[TradeImbalanceAutoSpawn] Failed to query existing issues:', existErr.message);
-        return [];
-    }
-
-    var activePerNation = {};
-    var activePairs = new Set();
-    var cooldownPairs = new Set();
-
-    for (var ei = 0; ei < (existingIssues || []).length; ei++) {
-        var ex = existingIssues[ei];
-        var pairKey = ex.nation_a_id + '|' + ex.nation_b_id;
-
-        if (ex.status === 'active' || ex.status === 'partial') {
-            activePairs.add(pairKey);
-            activePerNation[ex.nation_a_id] = (activePerNation[ex.nation_a_id] || 0) + 1;
-            activePerNation[ex.nation_b_id] = (activePerNation[ex.nation_b_id] || 0) + 1;
-        }
-
-        // Cooldown: resolved or escalated within last N ticks
-        var resolvedAt = ex.resolved_tick || ex.escalated_tick;
-        if ((ex.status === 'resolved' || ex.status === 'escalated' || ex.status === 'dormant') && resolvedAt) {
-            if (currentTick - resolvedAt < cooldown) {
-                cooldownPairs.add(pairKey);
-            }
-        }
-    }
-
-    // ── 5. Spawn issues for qualifying candidates ──
-    var spawned = [];
-    var dummyResults = { modifiersSpawned: [] }; // for spawnModifier callback
-
-    for (var ci = 0; ci < candidates.length; ci++) {
-        var cand = candidates[ci];
-        var candKey = cand.nationA + '|' + cand.nationB;
-
-        if (activePairs.has(candKey)) continue;
-        if (cooldownPairs.has(candKey)) continue;
-        if ((activePerNation[cand.nationA] || 0) >= maxPerNation) continue;
-        if ((activePerNation[cand.nationB] || 0) >= maxPerNation) continue;
-
-        // Roll spawn chance
-        if (Math.random() > spawnChance) continue;
-
-        // Create the bilateral issue
-        var { data: issueRow, error: issueErr } = await supabase
-            .from('bilateral_issues')
-            .insert({
-                issue_type: 'chronic_trade_imbalance',
-                nation_a_id: cand.nationA,
-                nation_b_id: cand.nationB,
-                tension: 1,
-                favor: 0,
-                status: 'active',
-                created_tick: currentTick,
-                ticks_without_diplomatic_action: 0,
-                administering_nation_id: cand.surplusNationId,
-            })
-            .select('id')
-            .single();
-
-        if (issueErr || !issueRow) {
-            console.error('[TradeImbalanceAutoSpawn] Failed to create issue:', issueErr?.message);
-            continue;
-        }
-
-        // Insert starter modifiers (each has own spawn_chance)
-        var issueObj = { id: issueRow.id };
-        var starterKeys = typeDef.starter_modifiers;
-        for (var mi = 0; mi < starterKeys.length; mi++) {
-            var modKey = starterKeys[mi];
-            var modConfig = MODIFIERS[modKey];
-            if (!modConfig) continue;
-
-            // Per-modifier spawn chance (structural starters: 1.0, 0.6, or 0.4)
-            if (modConfig.spawn_chance !== undefined && Math.random() > modConfig.spawn_chance) continue;
-
-            await spawnModifier(supabase, issueObj, modKey, modConfig.applies_to || 'both',
-                currentTick, 'auto:trade_imbalance_detected', dummyResults);
-        }
-
-        // History entry
-        await insertHistory(supabase, issueRow.id, currentTick, 'created',
-            'Chronic trade imbalance detected. The surplus nation consistently exports far more than it imports from the deficit nation.',
-            {
-                issue_type: 'chronic_trade_imbalance',
-                surplus_nation_id: cand.surplusNationId,
-                deficit_nation_id: cand.deficitNationId,
-                sustained_ticks: sustainedTicks,
-                source: 'auto_trade_engine',
-            });
-
-        spawned.push({
-            issueId: issueRow.id,
-            nationA: cand.nationA,
-            nationB: cand.nationB,
-            surplusNationId: cand.surplusNationId,
-        });
-
-        // Update tracking for subsequent candidates this tick
-        activePerNation[cand.nationA] = (activePerNation[cand.nationA] || 0) + 1;
-        activePerNation[cand.nationB] = (activePerNation[cand.nationB] || 0) + 1;
-        activePairs.add(candKey);
-
-        console.log(`[TradeImbalanceAutoSpawn] Spawned chronic_trade_imbalance: ${cand.nationA.slice(0,8)}↔${cand.nationB.slice(0,8)}, surplus=${cand.surplusNationId.slice(0,8)}`);
-    }
-
-    return spawned;
-}
-
-export {
-    TENSION_LABELS,
-    getTensionLabel,
-    favorToLeverage,
-    MODIFIERS,
-    ACTIONS,
-    ISSUE_TYPES,
-    applyIssueStatEffects,
-    nudgeIssueRelations,
-    getDisfavoredSide,
-    insertHistory,
-    resolveTargets,
-    spawnModifier,
-};

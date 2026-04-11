@@ -373,7 +373,7 @@ export async function initNewspaper(supabase, state) {
 
                     <div class="nws-form-group">
                         <label for="nws-article-body">Article Body</label>
-                        <textarea id="nws-article-body" placeholder="Write your article (max 12000 characters). Use blank lines for paragraph breaks. Formatting: *italic*, **bold**, __underline__" maxlength="12000"></textarea>
+                        <textarea id="nws-article-body" placeholder="Write your article (minimum 4,000 characters, max 12,000). Use blank lines for paragraph breaks. Formatting: *italic*, **bold**, __underline__" maxlength="12000"></textarea>
                         <div class="nws-char-count" id="nws-char-count">0 / 12000</div>
                     </div>
 
@@ -471,7 +471,9 @@ function bindModalEvents() {
     if (bodyInput && charCount) {
         bodyInput.addEventListener('input', () => {
             const len = bodyInput.value.length;
-            charCount.textContent = `${len} / 12000`;
+            const belowMin = len < 4000;
+            charCount.textContent = belowMin ? `${len.toLocaleString()} / 4,000 min` : `${len.toLocaleString()} / 12,000`;
+            charCount.style.color = belowMin ? 'var(--dred, #c55)' : '';
             charCount.classList.toggle('nws-near-limit', len >= 11500);
         });
     }
@@ -544,7 +546,8 @@ function bindSubmitHandler() {
         if (!author) return showFormError('Please enter a writer name.');
         if (!category) return showFormError('Please select a category.');
         if (!body) return showFormError('Please write an article body.');
-        if (body.length > 12000) return showFormError('Article body must be 12000 characters or fewer.');
+        if (body.length < 4000) return showFormError('Article must be at least 4,000 characters. Currently: ' + body.length.toLocaleString() + '.');
+        if (body.length > 12000) return showFormError('Article body must be 12,000 characters or fewer.');
 
         const isEdit = !!_editingArticleId;
         submitBtn.disabled = true;

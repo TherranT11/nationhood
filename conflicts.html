@@ -142,47 +142,30 @@
             <div class="empty-subtitle">Select an issue from the sidebar to view details.</div>
         </div>
 
-        <!-- Issue detail (hidden until selected) -->
+        <!-- Issue detail (hidden until selected) — Card System UI -->
         <div class="issues-detail" id="issues-detail" style="display:none;">
-
-            <!-- Scrollable top section -->
-            <div class="issues-scroll" id="issues-scroll">
+            <div style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
 
                 <!-- Header -->
-                <div class="issues-header" id="issues-header"></div>
+                <div id="issues-header" style="padding:10px 20px 8px;border-bottom:1px solid rgba(200,196,184,0.06);"></div>
 
-                <!-- Action notification banner (opponent took action / your diplomatic pending) -->
-                <div class="issues-action-notification" id="issues-action-notification" style="display:none;"></div>
+                <!-- Bilateral Intel -->
+                <div id="issues-intel" style="display:none;border-bottom:1px solid rgba(200,196,184,0.06);"></div>
 
-                <!-- Bilateral Intel — nation comparison -->
-                <div class="issues-intel" id="issues-intel" style="display:none;"></div>
+                <!-- Status strip + Deck viz -->
+                <div id="issues-status-bar" style="border-bottom:1px solid rgba(200,196,184,0.06);"></div>
+                <div id="issues-deck-strip" style="border-bottom:1px solid rgba(200,196,184,0.06);"></div>
 
-                <!-- Status bar: Tension / Favor / Status -->
-                <div class="issues-status-bar" id="issues-status-bar"></div>
-
-                <!-- Active modifiers -->
-                <div class="issues-section" id="issues-modifiers-section">
-                    <div class="issues-section-label">Active Modifiers</div>
-                    <div id="issues-modifiers-list"></div>
+                <!-- Two-column: Card + Timeline -->
+                <div style="display:flex;flex:1;min-height:0;overflow:hidden;">
+                    <div id="issues-card-col" style="flex:1;min-width:0;overflow-y:auto;padding:14px 20px;border-right:1px solid rgba(200,196,184,0.06);"></div>
+                    <div id="issues-timeline-col" style="width:330px;flex-shrink:0;overflow-y:auto;padding:10px 14px;background:var(--bg-elevated,#1a1a17);"></div>
                 </div>
 
-                <!-- Current effects summary -->
-                <div class="issues-section" id="issues-effects-section">
-                    <div class="issues-section-label">Current Effects (per tick)</div>
-                    <div id="issues-effects-list"></div>
-                </div>
-
-                <!-- History -->
-                <div class="issues-section" id="issues-history-section">
-                    <div class="issues-section-label">History</div>
-                    <div id="issues-history-list"></div>
-                </div>
+                <!-- Hand strip (bottom) -->
+                <div id="issues-hand-area" style="border-top:1px solid rgba(200,196,184,0.06);flex-shrink:0;"></div>
 
             </div>
-
-            <!-- Actions panel (bottom, fixed) -->
-            <div class="issues-actions-panel" id="issues-actions-panel"></div>
-
         </div>
     </div>
 </div>
@@ -210,7 +193,8 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { ACTIONS, MODIFIERS, ISSUE_TYPES, executeIssueAction } from './js/game/issues.js';
+import { MODIFIERS, ISSUE_TYPES } from './js/game/issues.js';
+// Phase 0: ACTIONS and executeIssueAction removed — replaced by card system.
 
 let currentFaction = null;
 let currentNation = null;
@@ -223,11 +207,12 @@ let allIncidents = [];
 let allIssues = [];
 let selectedIssueId = null;
 let issuesLoaded = false;
-let issueActionFlags = {};  // { issueId: true } — issues with recent actions
-let issueActionExecuting = false;
-let _actionIssue = null;    // current issue for action click delegation
-let _actionMods = null;     // current modifiers for action click delegation
-let _selectedActionKey = null; // currently highlighted action
+// Card system state
+let _selectedCardNumber = null;  // currently selected card in hand
+let _currentIssueData = null;    // cached issue data for card play
+let _currentCardDefs = {};       // cached card definitions lookup
+let _cardPlayInProgress = false; // debounce lock
+const ACTIONS = {}; // stub for legacy references
 let _currentRoles = new Set(); // roles held by the current faction (e.g. 'foreign_minister', 'head_of_government')
 
 // ==================== INIT ====================
@@ -516,13 +501,26 @@ function renderIssueSidebarItem(issue) {
     const isActive = issue.id === selectedIssueId;
     const typeName = ISSUE_TYPE_NAMES[issue.issue_type] || issue.issue_type;
 
-    const hasAction = issueActionFlags[issue.id];
-    return `<div class="sidebar-item issue-sidebar-item${isActive ? ' sidebar-item--active' : ''}${hasAction ? ' sidebar-item--has-action' : ''}" data-issue-id="${issue.id}">
-        <div class="sidebar-item-title">${hasAction ? '<span class="action-dot"></span>' : ''}${escapeHtml(typeName)}</div>
+    // Amber badge: opponent played a card since you last viewed
+    const mySide = issue.nation_a_id === currentNation.id ? 'a' : issue.nation_b_id === currentNation.id ? 'b' : null;
+    let hasNewAction = false;
+    if (mySide) {
+        const oppActionTick = mySide === 'a' ? (issue.last_action_by_b_tick || 0) : (issue.last_action_by_a_tick || 0);
+        const mySeenTick = mySide === 'a' ? (issue.a_seen_tick || 0) : (issue.b_seen_tick || 0);
+        hasNewAction = oppActionTick > mySeenTick;
+    }
+
+    // Deck info
+    const handSize = mySide === 'a' ? (issue.hand_a || []).length : mySide === 'b' ? (issue.hand_b || []).length : 0;
+    const totalCards = (issue.played_cards || []).length + (issue.hand_a || []).length + (issue.hand_b || []).length + (issue.deck_remaining || []).length;
+    const deckInfo = issue.deck_initialized ? `${totalCards - (issue.played_cards || []).length}/${totalCards}` : '';
+
+    return `<div class="sidebar-item issue-sidebar-item${isActive ? ' sidebar-item--active' : ''}${hasNewAction ? ' sidebar-item--has-action' : ''}" data-issue-id="${issue.id}">
+        <div class="sidebar-item-title">${hasNewAction ? '<span class="action-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--amber);margin-right:4px;vertical-align:middle;"></span>' : ''}${escapeHtml(typeName)}</div>
         <div class="sidebar-item-meta">
             <span class="sidebar-item-nation">${escapeHtml(nations)}</span>
             <span class="issue-tension issue-tension--${tInfo.cls}">${tInfo.label}</span>
-            <span class="sidebar-item-status">${issue.status === 'partial' ? 'Partial' : 'Unresolved'}</span>
+            ${deckInfo ? `<span style="font-family:var(--font-mono);font-size:6.5px;color:var(--text-dim);">${deckInfo}</span>` : ''}
         </div>
     </div>`;
 }
@@ -558,12 +556,20 @@ async function selectIssue(issueId) {
         el.classList.toggle('sidebar-item--active', el.dataset.issueId === issueId);
     });
 
+
     // Show detail, hide empty
     document.getElementById('issues-empty-state').style.display = 'none';
     document.getElementById('issues-detail').style.display = '';
 
-    // Load modifiers, history, and pending actions
-    const [modsResult, histResult, actionsResult] = await Promise.allSettled([
+    // Mark as seen for notification badge
+    const seenSide = issue.nation_a_id === currentNation.id ? 'a' : issue.nation_b_id === currentNation.id ? 'b' : null;
+    if (seenSide) {
+        const seenKey = seenSide === 'a' ? 'a_seen_tick' : 'b_seen_tick';
+        _supabase.from('bilateral_issues').update({ [seenKey]: currentTick }).eq('id', issueId).then(() => {});
+    }
+
+    // Load modifiers, history, card plays, and card definitions
+    const [modsResult, histResult, cardPlaysResult, cardDefsResult] = await Promise.allSettled([
         _supabase.from('bilateral_issue_modifiers')
             .select('*')
             .eq('issue_id', issueId)
@@ -573,208 +579,63 @@ async function selectIssue(issueId) {
             .eq('issue_id', issueId)
             .order('tick', { ascending: false })
             .limit(50),
-        _supabase.from('bilateral_issue_actions_taken')
+        _supabase.from('issue_card_plays')
             .select('*')
             .eq('issue_id', issueId)
-            .order('submitted_tick', { ascending: false }),
+            .order('played_tick', { ascending: true }),
+        _supabase.from('issue_card_definitions')
+            .select('*')
+            .eq('issue_type', issue.issue_type)
+            .order('card_number'),
     ]);
 
     const modifiers = modsResult.status === 'fulfilled' ? (modsResult.value.data || []) : [];
     const history = histResult.status === 'fulfilled' ? (histResult.value.data || []) : [];
-    const actionsTaken = actionsResult.status === 'fulfilled' ? (actionsResult.value.data || []) : [];
+    const cardPlays = cardPlaysResult.status === 'fulfilled' ? (cardPlaysResult.value.data || []) : [];
+    const cardDefs = cardDefsResult.status === 'fulfilled' ? (cardDefsResult.value.data || []) : [];
 
-    renderIssueHeader(issue);
-    renderActionNotification(issue, actionsTaken);
-    await renderBilateralIntel(issue);
-    renderIssueStatusBar(issue);
-    renderIssueModifiers(issue, modifiers);
-    renderIssueEffects(issue, modifiers);
-    renderIssueHistory(issue, history);
-    renderIssueActions(issue, modifiers, actionsTaken);
+    // Build card lookup
+    const cardDefMap = {};
+    for (const cd of cardDefs) cardDefMap[cd.card_number] = cd;
+
+    // Determine which side the player is
+    const mySide = issue.nation_a_id === currentNation.id ? 'a' : issue.nation_b_id === currentNation.id ? 'b' : null;
+    const myHand = mySide === 'a' ? (issue.hand_a || []) : mySide === 'b' ? (issue.hand_b || []) : [];
+    const isMyTurn = mySide && issue.whose_turn === mySide;
+
+    renderCardIssueHeader(issue);
+    await renderCardBilateralIntel(issue);
+    renderCardStatusStrip(issue);
+    renderCardDeckStrip(issue, cardDefs.length);
+    renderCardActiveCard(issue, myHand, cardDefMap, mySide, isMyTurn);
+    renderCardTimeline(issue, history, cardPlays, cardDefMap, modifiers, mySide);
+    renderCardHand(issue, myHand, cardDefMap, mySide, isMyTurn);
 }
 
+// ==================== CARD SYSTEM RENDERERS ====================
+// ISSUE_TYPE_NAMES and getTensionInfo already declared above
 
-// ==================== RENDER ISSUE HEADER ====================
-
-function renderIssueHeader(issue) {
+function renderCardIssueHeader(issue) {
     const el = document.getElementById('issues-header');
+    if (!el) return;
     const typeName = ISSUE_TYPE_NAMES[issue.issue_type] || issue.issue_type;
     const otherNation = issue.nation_a_id === currentNation.id
         ? issue.nation_b?.name : issue.nation_a?.name;
     const isYours = issue.nation_a_id === currentNation.id || issue.nation_b_id === currentNation.id;
-
-    const statusBadge = issue.status === 'escalated'
-        ? '<span class="issue-badge issue-badge--escalated">Escalated</span>'
-        : issue.status === 'partial'
-            ? '<span class="issue-badge issue-badge--partial">Partial</span>'
-            : issue.status === 'resolved'
-                ? '<span class="issue-badge issue-badge--resolved">Resolved</span>'
-                : '<span class="issue-badge issue-badge--active">Unresolved</span>';
-
     const issueConfig = ISSUE_TYPES[issue.issue_type] || {};
-    const category = issueConfig.category || 'Unknown';
-    const description = issueConfig.description || '';
 
     el.innerHTML = `
-        <div class="issues-title-row">
-            <span class="issues-title">${escapeHtml(typeName)}</span>
-            ${isYours ? `<span class="issue-nation-tag">${escapeHtml(otherNation)}</span>` : ''}
-            ${statusBadge}
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+            <span style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-size:16px;font-weight:600;">${escapeHtml(typeName)}</span>
+            ${isYours && otherNation ? `<span style="font-family:var(--font-mono);font-size:8px;font-weight:700;text-transform:uppercase;padding:2px 6px;color:var(--red,#a65d5d);background:rgba(166,93,93,0.06);border:1px solid rgba(166,93,93,0.2);">${escapeHtml(otherNation)}</span>` : ''}
         </div>
-        <div class="issues-type">${escapeHtml(category)} / Since Tick ${issue.created_tick}</div>
-        <div class="issues-desc">${escapeHtml(description)}</div>
+        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim,#5c5a50);text-transform:uppercase;letter-spacing:0.06em;">${escapeHtml(issueConfig.category || 'Unknown')} / Since Tick ${issue.created_tick}</span>
     `;
 }
 
-
-// ==================== ACTION NOTIFICATION BANNER ====================
-
-const DIPLOMATIC_WINDOW = 3; // must match backend
-
-function renderActionNotification(issue, actionsTaken) {
-    const el = document.getElementById('issues-action-notification');
-    if (!el) return;
-    const actions = actionsTaken || [];
-    const isYours = issue.nation_a_id === currentNation.id || issue.nation_b_id === currentNation.id;
-
-    if (!isYours || issue.status === 'escalated' || issue.status === 'resolved' || !currentTick) {
-        el.style.display = 'none';
-        return;
-    }
-
-    const opponentNationId = issue.nation_a_id === currentNation.id
-        ? issue.nation_b_id : issue.nation_a_id;
-    const opponentName = issue.nation_a_id === currentNation.id
-        ? (issue.nation_b?.name || 'Other Nation') : (issue.nation_a?.name || 'Other Nation');
-
-    const notifications = [];
-
-    // 1. Check: opponent took an action recently (within last 3 ticks) — alert player to respond
-    const recentOpponentActions = actions.filter(a =>
-        a.acting_nation_id === opponentNationId &&
-        (a.status === 'executed' || a.status === 'submitted') &&
-        a.submitted_tick >= currentTick - DIPLOMATIC_WINDOW &&
-        a.submitted_tick <= currentTick
-    );
-
-    if (recentOpponentActions.length > 0) {
-        const mostRecent = recentOpponentActions.reduce((a, b) =>
-            a.submitted_tick > b.submitted_tick ? a : b);
-        const ticksAgo = currentTick - mostRecent.submitted_tick;
-        const ticksLeft = DIPLOMATIC_WINDOW - ticksAgo;
-
-        if (ticksLeft > 0) {
-            notifications.push({
-                type: 'opponent_acted',
-                html: `<strong>${escapeHtml(opponentName)}</strong> took an action`
-                    + ` &mdash; <strong>${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} to respond</strong>`,
-            });
-        }
-    }
-
-    // 2. Check: you have a pending diplomatic submission awaiting match
-    const myPending = actions.filter(a =>
-        a.acting_nation_id === currentNation.id &&
-        a.status === 'submitted' &&
-        a.action_category === 'diplomatic'
-    );
-
-    for (const pending of myPending) {
-        const ticksAgo = currentTick - pending.submitted_tick;
-        const ticksLeft = DIPLOMATIC_WINDOW - ticksAgo;
-        const actionDef = typeof ACTIONS !== 'undefined' ? ACTIONS[pending.action_key] : null;
-        const actionName = actionDef?.name || pending.action_key;
-
-        if (ticksLeft > 0) {
-            notifications.push({
-                type: 'your_pending',
-                html: `Your <em>${escapeHtml(actionName)}</em> awaiting match &mdash; `
-                    + `<strong>${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} remaining</strong>`,
-            });
-        }
-    }
-
-    if (notifications.length === 0) {
-        el.style.display = 'none';
-        return;
-    }
-
-    el.style.display = '';
-    el.innerHTML = notifications.map(n => {
-        const icon = n.type === 'opponent_acted' ? '&#9888;' : '&#9203;';
-        return `<div class="issue-notif-row issue-notif--${n.type}">${icon} ${n.html}</div>`;
-    }).join('');
-}
-
-
-// ==================== RENDER STATUS BAR ====================
-
-function renderIssueStatusBar(issue) {
-    const el = document.getElementById('issues-status-bar');
-    const tInfo = getTensionInfo(issue.tension);
-    const tensionPct = (issue.tension / 10) * 100;
-
-    // Favor display
-    const favorAbs = Math.abs(Number(issue.favor));
-    let favorLabel = 'Neutral';
-    let favorColor = 'var(--text-dim)';
-    if (favorAbs >= 0.5) {
-        const favoredNation = Number(issue.favor) > 0 ? issue.nation_b?.name : issue.nation_a?.name;
-        if (favorAbs >= 3) favorLabel = `Strongly ${favoredNation}`;
-        else if (favorAbs >= 1) favorLabel = `Slightly ${favoredNation}`;
-        else favorLabel = `Barely ${favoredNation}`;
-        favorColor = 'var(--blue)';
-    }
-
-    // Favor bar positioning: favor -5 to +5 maps to 0% to 100%
-    const favorPct = ((Number(issue.favor) + 5) / 10) * 100;
-    const favorLeft = Math.min(favorPct, 50);
-    const favorWidth = Math.abs(favorPct - 50);
-
-    // Tension color gradient
-    const tensionGradient = tensionPct <= 30
-        ? 'var(--green)' : tensionPct <= 60
-            ? 'linear-gradient(90deg, var(--green), var(--amber))' : tensionPct <= 80
-                ? 'linear-gradient(90deg, var(--amber), var(--red))'
-                : 'linear-gradient(90deg, var(--red), var(--crimson))';
-
-    el.innerHTML = `
-        <div class="issues-status-cell">
-            <div class="issues-status-label">Tension</div>
-            <div class="issues-status-value" style="color:var(--${tInfo.cls === 'low' ? 'green' : tInfo.cls === 'mod' ? 'amber' : tInfo.cls === 'high' ? 'red' : 'crimson'});">${tInfo.label}</div>
-            <div class="issues-status-detail">${issue.tension}/10</div>
-            <div class="issues-tension-meter">
-                <div class="issues-tension-fill" style="width:${tensionPct}%;background:${tensionGradient};"></div>
-            </div>
-        </div>
-        <div class="issues-status-cell">
-            <div class="issues-status-label">Favor</div>
-            <div class="issues-status-value" style="color:${favorColor};">${escapeHtml(favorLabel)}</div>
-            <div class="issues-status-detail">${Number(issue.favor) > 0 ? '+' : ''}${Number(issue.favor).toFixed(1)}</div>
-            <div class="issues-favor-bar">
-                <span class="issues-favor-label">${escapeHtml(issue.nation_a?.name || 'A')}</span>
-                <div class="issues-favor-track">
-                    <div class="issues-favor-center"></div>
-                    <div class="issues-favor-fill" style="left:${favorLeft}%;width:${favorWidth}%;"></div>
-                </div>
-                <span class="issues-favor-label" style="text-align:right;">${escapeHtml(issue.nation_b?.name || 'B')}</span>
-            </div>
-        </div>
-        <div class="issues-status-cell">
-            <div class="issues-status-label">Status</div>
-            <div class="issues-status-value">${issue.status === 'partial' ? 'Partially Resolved' : issue.status === 'escalated' ? 'Escalated' : 'Unresolved'}</div>
-            <div class="issues-status-detail">${issue.status === 'escalated' ? 'This issue has escalated to an incident.' : `Idle ${issue.ticks_without_diplomatic_action} ticks`}</div>
-        </div>
-    `;
-}
-
-
-// ==================== BILATERAL INTEL ====================
-
-async function renderBilateralIntel(issue) {
+async function renderCardBilateralIntel(issue) {
     const el = document.getElementById('issues-intel');
     if (!el) return;
-
     const isYours = issue.nation_a_id === currentNation.id || issue.nation_b_id === currentNation.id;
     if (!isYours) { el.style.display = 'none'; return; }
 
@@ -783,571 +644,637 @@ async function renderBilateralIntel(issue) {
     const ourName = currentNation.name;
     const theirName = issue.nation_a_id === ourNationId ? (issue.nation_b?.name || 'Unknown') : (issue.nation_a?.name || 'Unknown');
 
-    // Fetch both nations' data, their HoGs, and active crises/issues
-    const [theirNationRes, ourHogRes, theirHogRes, ourCrisesRes, theirCrisesRes, ourIssuesRes, theirIssuesRes] = await Promise.allSettled([
-        _supabase.from('nations').select('gov_approval, stability, polarization, civil_unrest, government_type, ruling_faction_id').eq('id', theirNationId).single(),
+    const [theirRes, ourHogRes, theirHogRes, ourCrisesRes, theirCrisesRes] = await Promise.allSettled([
+        _supabase.from('nations').select('gov_approval, stability, international_reputation').eq('id', theirNationId).single(),
         _supabase.from('head_of_government').select('first_name, last_name, factions:faction_id(faction_name, abbreviation)').eq('nation_id', ourNationId).eq('active', true).maybeSingle(),
         _supabase.from('head_of_government').select('first_name, last_name, factions:faction_id(faction_name, abbreviation)').eq('nation_id', theirNationId).eq('active', true).maybeSingle(),
         _supabase.from('active_crises').select('id, crisis_templates(name)').eq('nation_id', ourNationId),
         _supabase.from('active_crises').select('id, crisis_templates(name)').eq('nation_id', theirNationId),
-        _supabase.from('bilateral_issues').select('issue_type, nation_a:nations!bilateral_issues_nation_a_id_fkey(name), nation_b:nations!bilateral_issues_nation_b_id_fkey(name)').or(`nation_a_id.eq.${ourNationId},nation_b_id.eq.${ourNationId}`).in('status', ['active', 'partial']).neq('id', issue.id),
-        _supabase.from('bilateral_issues').select('issue_type, nation_a:nations!bilateral_issues_nation_a_id_fkey(name), nation_b:nations!bilateral_issues_nation_b_id_fkey(name)').or(`nation_a_id.eq.${theirNationId},nation_b_id.eq.${theirNationId}`).in('status', ['active', 'partial']).neq('id', issue.id),
     ]);
 
-    const theirNation = theirNationRes.status === 'fulfilled' ? theirNationRes.value.data : null;
+    const theirNation = theirRes.status === 'fulfilled' ? theirRes.value.data : null;
     const ourHog = ourHogRes.status === 'fulfilled' ? ourHogRes.value.data : null;
     const theirHog = theirHogRes.status === 'fulfilled' ? theirHogRes.value.data : null;
     const ourCrises = ourCrisesRes.status === 'fulfilled' ? (ourCrisesRes.value.data || []) : [];
     const theirCrises = theirCrisesRes.status === 'fulfilled' ? (theirCrisesRes.value.data || []) : [];
-    const ourIssues = ourIssuesRes.status === 'fulfilled' ? (ourIssuesRes.value.data || []) : [];
-    const theirIssues = theirIssuesRes.status === 'fulfilled' ? (theirIssuesRes.value.data || []) : [];
 
-    function statColor(val, good) {
-        if (val == null) return 'var(--text-dim)';
-        return good ? (val >= 60 ? 'var(--green)' : val >= 40 ? 'var(--amber)' : 'var(--red)')
-                     : (val <= 30 ? 'var(--green)' : val <= 60 ? 'var(--amber)' : 'var(--red)');
-    }
+    function intelCard(name, color, hog, approval, stability, fa, crises) {
+        const hogName = hog ? `<strong>${escapeHtml(hog.first_name)} ${escapeHtml(hog.last_name)}</strong>` : '<em>Vacant</em>';
+        const hogParty = hog?.factions?.abbreviation ? `<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-left:4px;">[${escapeHtml(hog.factions.abbreviation)}]</span>` : '';
+        const approvalColor = approval >= 60 ? 'var(--teal)' : approval >= 40 ? 'var(--amber)' : 'var(--red)';
+        const stabColor = stability >= 60 ? 'var(--teal)' : stability >= 40 ? 'var(--amber)' : 'var(--red)';
+        let crisesHtml = '';
+        if (crises.length === 0) crisesHtml = '<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);font-style:italic;">None</span>';
+        else crisesHtml = crises.map(c => `<div style="font-size:9.5px;color:var(--text-muted);padding-left:10px;position:relative;margin-top:1px;"><span style="position:absolute;left:0;top:5px;width:4px;height:4px;border-radius:50%;background:var(--amber);"></span>${escapeHtml(c.crisis_templates?.name || 'Crisis')}</div>`).join('');
 
-    function renderCard(name, color, nation, hog, crises, issues) {
-        const approval = Number(nation?.gov_approval ?? currentNation.gov_approval ?? 50);
-        const stability = Number(nation?.stability ?? currentNation.stability ?? 50);
-
-        let hogName = '—';
-        let hogParty = '';
-        if (hog) {
-            hogName = `<strong>${escapeHtml((hog.first_name || '') + ' ' + (hog.last_name || ''))}</strong>`;
-            const fac = hog.factions;
-            if (fac) hogParty = `<span class="issues-intel-party">[${escapeHtml(fac.abbreviation || fac.faction_name || '')}]</span>`;
-        }
-
-        let crisisHtml = '';
-        if (crises.length > 0) {
-            crisisHtml = crises.map(c => {
-                const cName = c.crisis_templates?.name || 'Active Crisis';
-                return `<div class="issues-intel-crisis issues-intel-crisis--active">${escapeHtml(cName)}</div>`;
-            }).join('');
-        }
-        if (issues.length > 0) {
-            crisisHtml += issues.map(iss => {
-                const typeName = ISSUE_TYPE_NAMES[iss.issue_type] || iss.issue_type;
-                const otherName = iss.nation_a?.name === name ? (iss.nation_b?.name || '?') : (iss.nation_a?.name || '?');
-                return `<div class="issues-intel-crisis issues-intel-crisis--issue">${escapeHtml(typeName)} w/ ${escapeHtml(otherName)}</div>`;
-            }).join('');
-        }
-        if (!crisisHtml) crisisHtml = '<div class="issues-intel-none">None</div>';
-
-        return `<div class="issues-intel-card">
-            <div class="issues-intel-nation" style="color:${color};">${escapeHtml(name)}</div>
-            <div class="issues-intel-line">
-                <span class="issues-intel-key">Head of Government</span>
-                <span class="issues-intel-val">${hogName} ${hogParty}</span>
-            </div>
-            <div class="issues-intel-line">
-                <span class="issues-intel-key">Government Approval</span>
-                <span class="issues-intel-val-num" style="color:${statColor(approval, true)};">${Math.round(approval)}</span>
-            </div>
-            <div class="issues-intel-line">
-                <span class="issues-intel-key">Stability</span>
-                <span class="issues-intel-val-num" style="color:${statColor(stability, true)};">${Math.round(stability)}</span>
-            </div>
-            <div class="issues-intel-line">
-                <span class="issues-intel-key">Active Crises & Issues</span>
-            </div>
-            <div class="issues-intel-crises">${crisisHtml}</div>
+        return `<div style="flex:1;padding:6px 20px 8px;">
+            <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px;color:${color};">${escapeHtml(name)}</div>
+            <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Head of Government</span><span style="font-size:11px;color:var(--text-muted);">${hogName}${hogParty}</span></div>
+            <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Gov. Approval</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:${approvalColor};">${Math.round(approval)}</span></div>
+            <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Stability</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:${stabColor};">${Math.round(stability)}</span></div>
+            <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Foreign Affairs</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;">${Math.round(fa)}</span></div>
+            <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Active Crises</span></div>
+            ${crisesHtml}
         </div>`;
     }
 
-    const ourColor = 'var(--teal)';
-    const theirColor = 'var(--red)';
+    const ourApproval = Number(currentNation.gov_approval ?? 50);
+    const ourStability = Number(currentNation.stability ?? 50);
+    const ourFA = Number(currentNation.international_reputation ?? 50);
+    const theirApproval = Number(theirNation?.gov_approval ?? 50);
+    const theirStability = Number(theirNation?.stability ?? 50);
+    const theirFA = Number(theirNation?.international_reputation ?? 50);
 
-    el.innerHTML = renderCard(ourName, ourColor, currentNation, ourHog, ourCrises, ourIssues)
-                 + renderCard(theirName, theirColor, theirNation, theirHog, theirCrises, theirIssues);
     el.style.display = '';
+    el.innerHTML = `<div style="display:flex;">${intelCard(ourName, 'var(--blue,#6b8cae)', ourHog, ourApproval, ourStability, ourFA, ourCrises)}<div style="border-left:1px solid rgba(200,196,184,0.06);"></div>${intelCard(theirName, 'var(--red,#a65d5d)', theirHog, theirApproval, theirStability, theirFA, theirCrises)}</div>`;
 }
 
+function renderCardStatusStrip(issue) {
+    const el = document.getElementById('issues-status-bar');
+    if (!el) return;
+    const tInfo = getTensionInfo(issue.tension);
+    const tensionPct = (Number(issue.tension) / 10) * 100;
 
-// ==================== RENDER MODIFIERS ====================
-
-const MODIFIER_NAMES = {
-    no_defined_maritime_territories: 'No Defined Maritime Territories',
-    no_regulatory_framework: 'No Regulatory Framework',
-    no_defined_quotas: 'No Defined Quotas',
-    no_joint_enforcement: 'No Joint Enforcement',
-    no_dispute_resolution_mechanism: 'No Dispute Resolution Mechanism',
-    overfishing: 'Overfishing in Disputed Waters',
-    fish_stock_depletion: 'Fish Stock Depletion',
-    foreign_vessels_in_waters: 'Foreign Vessels in Your Waters',
-    domestic_fleet_expansion: 'Domestic Fleet Expansion',
-    coastal_community_decline: 'Coastal Community Economic Decline',
-    illegal_fishing_surge: 'Illegal Fishing Surge',
-    diplomatic_friction: 'Diplomatic Friction Over Fishing',
-    international_attention: 'International Attention on Dispute',
-    seasonal_fishing_conflict: 'Seasonal Fishing Conflict',
-    environmental_damage: 'Environmental Damage to Fishery',
-    active_vessel_expulsion: 'Active Vessel Expulsion Order',
-    naval_presence: 'Naval Presence in Fishing Zone',
-    seized_vessel_held: 'Seized Vessel Held',
-    fishing_ban_in_effect: 'Fishing Ban in Effect',
-    public_hostility: 'Public Hostility Over Fishing',
-    // Territorial Ownership Dispute
-    competing_sovereignty_claims: 'Competing Sovereignty Claims',
-    no_international_adjudication: 'No International Adjudication',
-    domestic_political_significance: 'Domestic Political Significance',
-    resource_potential: 'Resource Potential',
-    historical_grievance_attached: 'Historical Grievance Attached',
-    settler_population_growing: 'Settler Population Growing',
-    competing_development_projects: 'Competing Development Projects',
-    resource_exploitation_conflict: 'Resource Exploitation Conflict',
-    diaspora_mobilization: 'Diaspora Mobilization',
-    international_legal_precedent: 'International Legal Precedent Forming',
-    cultural_erasure_accusations: 'Cultural Erasure Accusations',
-    territory_election_issue: 'Territory as Election Issue',
-    memorial_anniversary_tension: 'Memorial / Anniversary Tension',
-    military_occupation: 'Military Occupation in Effect',
-    forced_population_transfer: 'Forced Population Transfer in Progress',
-    resource_extraction_underway: 'Resource Extraction Underway',
-    military_exercises_conducted: 'Military Exercises Conducted',
-    citizen_expulsion: 'Citizen Expulsion in Progress',
-    sovereignty_declared: 'Sovereignty Declared',
-    nationalist_territorial_movement: 'Nationalist Territorial Movement',
-    // Chronic Trade Imbalance
-    persistent_trade_deficit: 'Persistent Trade Deficit',
-    no_trade_rebalancing_mechanism: 'No Bilateral Trade Rebalancing Mechanism',
-    domestic_industries_losing_share: 'Domestic Industries Losing Market Share',
-    no_import_substitution_strategy: 'No Import Substitution Strategy',
-    currency_misalignment_suspected: 'Currency Misalignment Suspected',
-    factory_closures_deficit: 'Factory Closures in Deficit Nation',
-    surplus_market_dependency: 'Surplus Nation Market Dependency',
-    protectionist_movement: 'Protectionist Political Movement',
-    dumping_accusations: 'Dumping Accusations',
-    supply_chain_dependency: 'Supply Chain Dependency',
-    intellectual_property_friction: 'Intellectual Property Friction',
-    consumer_import_dependency: 'Consumer Dependency on Imports',
-    seasonal_trade_friction: 'Seasonal Trade Friction',
-    tariff_wall_erected: 'Tariff Wall Erected',
-    import_ban_in_effect: 'Import Ban in Effect',
-    investment_restrictions_active: 'Investment Restrictions Active',
-    retaliatory_measures_trade: 'Retaliatory Measures in Effect',
-    credit_downgrade_pressure: 'Credit Downgrade Pressure',
-    economic_nationalism_trade: 'Economic Nationalism Surge',
-};
-
-function renderIssueModifiers(issue, modifiers) {
-    const el = document.getElementById('issues-modifiers-list');
-    const active = modifiers.filter(m => m.is_active);
-    const resolved = modifiers.filter(m => !m.is_active);
-    const sectionLabel = document.querySelector('#issues-modifiers-section .issues-section-label');
-    sectionLabel.textContent = `Active Modifiers (${active.length})`;
-
-    let html = '';
-    for (const mod of active) {
-        const name = MODIFIER_NAMES[mod.modifier_key] || mod.modifier_key;
-        const catCls = mod.category;
-        const effects = (mod.stat_effects || []).map(e =>
-            `${e.stat_key.replace(/_/g, ' ')} ${e.delta > 0 ? '+' : ''}${e.delta}/tick`
-        ).join(', ');
-        const duration = mod.duration_remaining !== null
-            ? `${mod.duration_remaining} ticks remaining`
-            : (mod.is_periodic && mod.is_periodic_active ? `${mod.duration_remaining || '?'} ticks (periodic)` : 'Until resolved');
-        const appliesLabel = mod.applies_to === 'both' ? 'Both nations' :
-            mod.applies_to === 'nation_a' ? (issue.nation_a?.name || 'Nation A') :
-            mod.applies_to === 'nation_b' ? (issue.nation_b?.name || 'Nation B') :
-            mod.applies_to === 'disfavored' ? 'Disfavored nation' : mod.applies_to;
-
-        html += `<div class="issue-modifier issue-modifier--${catCls}">
-            <div class="issue-mod-content">
-                <div class="issue-mod-name">${escapeHtml(name)}</div>
-                <div class="issue-mod-effect">${escapeHtml(effects)} (${escapeHtml(appliesLabel)}) — ${escapeHtml(duration)}</div>
-            </div>
-            <span class="issue-mod-tag issue-mod-tag--${catCls}">${catCls === 'structural' ? 'Structural' : catCls === 'competitive' ? 'Emergent' : 'Escalation'}</span>
-        </div>`;
+    // Favor
+    const favor = Number(issue.favor) || 0;
+    const favorAbs = Math.abs(favor);
+    let favorLabel = 'Neutral';
+    let favorColor = 'var(--text-dim)';
+    if (favorAbs >= 0.5) {
+        const favoredName = favor > 0 ? (issue.nation_b?.name || 'B') : (issue.nation_a?.name || 'A');
+        favorLabel = `${favoredName} +${favorAbs.toFixed(0)}`;
+        favorColor = favor > 0 ? 'var(--red)' : 'var(--blue)';
     }
+    const favorPct = ((favor + 5) / 10) * 100;
+    const favorLeft = Math.min(favorPct, 50) + '%';
+    const favorWidth = Math.abs(favorPct - 50) + '%';
+    const favorFillColor = favor > 0 ? 'var(--red)' : 'var(--blue)';
 
-    for (const mod of resolved) {
-        const name = MODIFIER_NAMES[mod.modifier_key] || mod.modifier_key;
-        html += `<div class="issue-modifier issue-modifier--resolved">
-            <div class="issue-mod-content">
-                <div class="issue-mod-name" style="text-decoration:line-through;">${escapeHtml(name)}</div>
-                <div class="issue-mod-effect">Resolved at Tick ${mod.resolved_tick || '?'} — ${escapeHtml(mod.resolved_by || 'unknown')}</div>
+    // Deck
+    const played = (issue.played_cards || []).length;
+    const handA = (issue.hand_a || []).length;
+    const handB = (issue.hand_b || []).length;
+    const deckLeft = (issue.deck_remaining || []).length;
+    const totalCards = played + handA + handB + deckLeft;
+
+    el.innerHTML = `<div style="display:flex;background:var(--bg-elevated,#1a1a17);">
+        <div style="flex:1;padding:6px 20px;border-right:1px solid rgba(200,196,184,0.06);">
+            <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:2px;">Tension</div>
+            <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${tInfo.color};">${tInfo.label}</div>
+            <div style="font-size:8px;color:var(--text-dim);margin-top:1px;">${Number(issue.tension).toFixed(1)}/10</div>
+            <div style="height:3px;background:var(--bg-body,#141412);margin-top:3px;"><div style="height:3px;width:${tensionPct}%;background:${tInfo.color};"></div></div>
+        </div>
+        <div style="flex:1;padding:6px 20px;border-right:1px solid rgba(200,196,184,0.06);">
+            <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:2px;">Favor</div>
+            <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${favorColor};">${favorLabel}</div>
+            <div style="display:flex;align-items:center;gap:5px;margin-top:3px;">
+                <span style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);min-width:20px;">${escapeHtml((issue.nation_a?.name || 'A').substring(0,3).toUpperCase())}</span>
+                <div style="flex:1;height:3px;background:var(--bg-body,#141412);position:relative;">
+                    <div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--text-dim);"></div>
+                    <div style="position:absolute;top:0;height:3px;left:${favorLeft};width:${favorWidth};background:${favorFillColor};"></div>
+                </div>
+                <span style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);min-width:20px;text-align:right;">${escapeHtml((issue.nation_b?.name || 'B').substring(0,3).toUpperCase())}</span>
             </div>
-            <span class="issue-mod-tag issue-mod-tag--resolved">Resolved</span>
-        </div>`;
-    }
-
-    el.innerHTML = html || '<div class="sidebar-empty">No modifiers.</div>';
+        </div>
+        <div style="flex:1;padding:6px 20px;">
+            <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:2px;">Deck</div>
+            <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;">${totalCards - played} / ${totalCards}</div>
+            <div style="font-size:8px;color:var(--text-dim);margin-top:1px;">${played} played. ${handA + handB} in hands. ${deckLeft} deck.</div>
+        </div>
+    </div>`;
 }
 
+function renderCardDeckStrip(issue, totalCardDefs) {
+    const el = document.getElementById('issues-deck-strip');
+    if (!el) return;
+    if (!issue.deck_initialized) { el.innerHTML = ''; return; }
 
-// ==================== RENDER EFFECTS SUMMARY ====================
+    const played = (issue.played_cards || []).length;
+    const myHand = issue.nation_a_id === currentNation.id ? (issue.hand_a || []) : (issue.hand_b || []);
+    const theirHand = issue.nation_a_id === currentNation.id ? (issue.hand_b || []) : (issue.hand_a || []);
+    const deckLeft = (issue.deck_remaining || []).length;
+    const activeCard = issue.active_card ? 1 : 0;
+    const fa = Math.round(Number(currentNation.international_reputation) || 0);
 
-function renderIssueEffects(issue, modifiers) {
-    const el = document.getElementById('issues-effects-list');
-    const active = modifiers.filter(m => m.is_active && (!m.is_periodic || m.is_periodic_active));
+    let pips = '';
+    for (let i = 0; i < played; i++) pips += '<div style="width:6px;height:10px;border:1px solid var(--text-dim);background:var(--text-dim);opacity:0.3;"></div>';
+    if (activeCard) pips += '<div style="width:6px;height:10px;border:1px solid var(--amber-border,rgba(176,154,91,0.2));background:var(--amber,#b09a5b);"></div>';
+    for (let i = 0; i < myHand.length - activeCard; i++) pips += '<div style="width:6px;height:10px;border:1px solid var(--teal-border,rgba(91,154,139,0.2));background:var(--teal,#5b9a8b);"></div>';
+    for (let i = 0; i < deckLeft + theirHand.length; i++) pips += '<div style="width:6px;height:10px;border:1px solid rgba(200,196,184,0.1);"></div>';
 
-    // Determine favored nation (gets 1/10th stat effects)
-    const favoredNationId = issue.favor > 0 ? issue.nation_b_id
-                          : issue.favor < 0 ? issue.nation_a_id
-                          : null;
+    el.innerHTML = `<div style="display:flex;align-items:center;gap:12px;padding:5px 20px;background:var(--bg-card,#1e1e1a);">
+        <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);">Deck</span>
+        <div style="display:flex;gap:2px;">${pips}</div>
+        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${played} played / ${myHand.length} hand / ${deckLeft} deck</span>
+        <span style="font-family:var(--font-mono);font-size:8px;color:var(--teal,#5b9a8b);margin-left:auto;">Foreign Affairs: ${fa}</span>
+    </div>`;
+}
 
-    // Aggregate effects per nation (split 'both' into separate entries per nation)
-    const effectMap = {};
-    for (const mod of active) {
-        for (const eff of (mod.stat_effects || [])) {
-            const targets = [];
-            if (mod.applies_to === 'both') {
-                targets.push({ nationId: issue.nation_a_id, name: issue.nation_a?.name || 'A' });
-                targets.push({ nationId: issue.nation_b_id, name: issue.nation_b?.name || 'B' });
-            } else if (mod.applies_to === 'nation_a') {
-                targets.push({ nationId: issue.nation_a_id, name: issue.nation_a?.name || 'A' });
-            } else if (mod.applies_to === 'nation_b') {
-                targets.push({ nationId: issue.nation_b_id, name: issue.nation_b?.name || 'B' });
-            } else if (mod.applies_to === 'disfavored') {
-                if (issue.favor > 0) targets.push({ nationId: issue.nation_a_id, name: issue.nation_a?.name || 'A' });
-                else if (issue.favor < 0) targets.push({ nationId: issue.nation_b_id, name: issue.nation_b?.name || 'B' });
-            } else if (mod.applies_to === 'favored') {
-                if (issue.favor > 0) targets.push({ nationId: issue.nation_b_id, name: issue.nation_b?.name || 'B' });
-                else if (issue.favor < 0) targets.push({ nationId: issue.nation_a_id, name: issue.nation_a?.name || 'A' });
-            }
+function renderCardActiveCard(issue, myHand, cardDefMap, mySide, isMyTurn) {
+    const el = document.getElementById('issues-card-col');
+    if (!el) return;
+    _currentIssueData = issue;
+    _currentCardDefs = cardDefMap;
 
-            for (const t of targets) {
-                const scale = (favoredNationId && t.nationId === favoredNationId) ? 0.1 : 1;
-                const key = `${eff.stat_key}::${t.nationId}`;
-                if (!effectMap[key]) effectMap[key] = { stat_key: eff.stat_key, nationName: t.name, nationId: t.nationId, delta: 0 };
-                effectMap[key].delta += eff.delta * scale;
-            }
+    if (!issue.deck_initialized) {
+        el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);font-size:11px;font-style:italic;">Card deck not yet initialized. It will activate on the next tick.</div>';
+        return;
+    }
+
+    // If a diplomatic card is pending response from us, show it
+    if (issue.pending_diplomatic_card && issue.pending_diplomatic_proposer !== mySide) {
+        const cd = cardDefMap[issue.pending_diplomatic_card];
+        if (cd) {
+            renderDiplomaticResponse(el, issue, cd, mySide);
+            return;
         }
     }
 
-    const effects = Object.values(effectMap)
-        .filter(e => e.nationId === currentNation.id) // only show your nation's effects
-        .sort((a, b) => a.delta - b.delta);
-    if (effects.length === 0) {
-        el.innerHTML = '<div class="sidebar-empty">No active effects.</div>';
+    // If no card selected, show prompt
+    if (!_selectedCardNumber || !myHand.includes(_selectedCardNumber)) {
+        const turnMsg = isMyTurn
+            ? '<div style="color:var(--teal);font-weight:600;">It is your turn. Select a card from your hand below.</div>'
+            : '<div style="color:var(--text-dim);">Waiting for opponent to play...</div>';
+        el.innerHTML = `<div style="padding:30px 20px;text-align:center;font-size:12px;">${turnMsg}</div>`;
         return;
     }
 
-    let html = '';
-    for (const eff of effects) {
-        const statLabel = eff.stat_key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        const isFavored = favoredNationId && eff.nationId === favoredNationId;
-        const favorTag = isFavored ? ' <span class="issue-effect-favor">(favored ×0.1)</span>' : '';
-        const isNeg = (eff.stat_key === 'pollution' || eff.stat_key === 'crime_rate' ||
-            eff.stat_key === 'civil_unrest' || eff.stat_key === 'cost_of_living' ||
-            eff.stat_key === 'corruption' || eff.stat_key === 'polarization' ||
-            eff.stat_key === 'emigration' || eff.stat_key === 'unemployment' ||
-            eff.stat_key === 'poverty_rate')
-            ? (eff.delta > 0 ? 'neg' : 'pos')
-            : (eff.delta < 0 ? 'neg' : 'pos');
+    // Render selected card
+    const cd = cardDefMap[_selectedCardNumber];
+    if (!cd) { el.innerHTML = ''; return; }
 
-        html += `<div class="issue-effect-row">
-            <div><span class="issue-effect-stat">${escapeHtml(statLabel)}</span><span class="issue-effect-nation">${escapeHtml(eff.nationName)}${favorTag}</span></div>
-            <span class="issue-effect-value issue-effect-value--${isNeg}">${eff.delta > 0 ? '+' : ''}${eff.delta.toFixed(2)}</span>
-        </div>`;
-    }
-    el.innerHTML = html;
-}
-
-
-// ==================== RENDER HISTORY ====================
-
-function renderIssueHistory(issue, history) {
-    const el = document.getElementById('issues-history-list');
-
-    if (history.length === 0) {
-        el.innerHTML = '<div class="sidebar-empty">No history yet.</div>';
-        return;
-    }
-
-    // Build nation ID → name map from the issue's joined data
-    const nationNames = {};
-    if (issue.nation_a) nationNames[issue.nation_a_id] = issue.nation_a.name;
-    if (issue.nation_b) nationNames[issue.nation_b_id] = issue.nation_b.name;
-
-    const dotColors = {
-        created: 'var(--text-dim)',
-        modifier_added: 'var(--amber)',
-        modifier_removed: 'var(--green)',
-        modifier_fired: 'var(--amber)',
-        action_submitted: 'var(--blue)',
-        diplomatic_matched: 'var(--green)',
-        diplomatic_gaffe: 'var(--red)',
-        counter_play: 'var(--teal)',
-        action_accepted: 'var(--green)',
-        action_executed: 'var(--blue)',
-        tension_changed: 'var(--amber)',
-        favor_changed: 'var(--blue)',
-        status_changed: 'var(--teal)',
-        escalated: 'var(--crimson)',
-        escalation_favor: 'var(--crimson)',
+    const typeColors = {
+        unilateral: { color: 'var(--amber)', bg: 'rgba(176,154,91,0.08)', border: 'rgba(176,154,91,0.2)', label: 'Unilateral' },
+        diplomatic: { color: 'var(--teal)', bg: 'rgba(91,154,139,0.08)', border: 'rgba(91,154,139,0.2)', label: 'Diplomatic' },
+        aggressive: { color: 'var(--red)', bg: 'rgba(166,93,93,0.06)', border: 'rgba(166,93,93,0.2)', label: 'Aggressive' },
+        special: { color: '#a88bc4', bg: 'rgba(168,139,196,0.08)', border: 'rgba(168,139,196,0.2)', label: 'Special' },
     };
+    const tc = typeColors[cd.card_type] || typeColors.unilateral;
 
-    let html = '';
-    for (const evt of history) {
-        const dotColor = dotColors[evt.event_type] || 'var(--text-dim)';
-        const dateStr = tickToDate(evt.tick);
-        const nationName = evt.caused_by_nation_id ? nationNames[evt.caused_by_nation_id] : null;
-        const nationTag = nationName
-            ? `<span class="issue-history-nation">${escapeHtml(nationName)}</span>`
-            : '';
-        html += `<div class="issue-history-entry">
-            <span class="issue-history-tick">${escapeHtml(dateStr)}</span>
-            <div class="issue-history-dot" style="background:${dotColor}"></div>
-            <span class="issue-history-text">${nationTag}${escapeHtml(evt.event_text)}</span>
-        </div>`;
+    const roleLabels = { head_of_government: 'HoG', foreign_minister: 'FM', ambassador: 'Amb', minister_of_defense: 'MoD', minister_of_finance: 'MoF' };
+
+    // My option = option matching my side, their option = the other
+    const myOption = mySide === 'a' ? { label: cd.option_a_label, title: cd.option_a_title, text: cd.option_a_text, effects: cd.option_a_effects }
+        : { label: cd.option_b_label, title: cd.option_b_title, text: cd.option_b_text, effects: cd.option_b_effects };
+    const theirOption = mySide === 'a' ? { label: cd.option_b_label, title: cd.option_b_title, text: cd.option_b_text, effects: cd.option_b_effects }
+        : { label: cd.option_a_label, title: cd.option_a_title, text: cd.option_a_text, effects: cd.option_a_effects };
+
+    function renderEffectTags(fx) {
+        if (!fx) return '';
+        const tags = [];
+        if (fx.favor_delta) {
+            const dir = fx.favor_delta > 0 ? (issue.nation_a?.name || 'A') : (issue.nation_b?.name || 'B');
+            tags.push(`<span style="font-family:var(--font-mono);font-size:6.5px;font-weight:600;padding:1px 4px;color:var(--blue);background:rgba(107,140,174,0.08);border:1px solid rgba(107,140,174,0.2);">Favor ${fx.favor_delta > 0 ? '+' : ''}${fx.favor_delta}</span>`);
+        }
+        if (fx.tension_delta) {
+            const tColor = fx.tension_delta > 0 ? 'var(--red)' : 'var(--green)';
+            const tBg = fx.tension_delta > 0 ? 'rgba(166,93,93,0.06)' : 'rgba(122,154,91,0.06)';
+            const tBorder = fx.tension_delta > 0 ? 'rgba(166,93,93,0.2)' : 'rgba(122,154,91,0.2)';
+            tags.push(`<span style="font-family:var(--font-mono);font-size:6.5px;font-weight:600;padding:1px 4px;color:${tColor};background:${tBg};border:1px solid ${tBorder};">Tension ${fx.tension_delta > 0 ? '+' : ''}${fx.tension_delta}</span>`);
+        }
+        if (fx.add_modifier) {
+            tags.push(`<span style="font-family:var(--font-mono);font-size:6.5px;font-weight:600;padding:1px 4px;color:var(--amber);background:rgba(176,154,91,0.08);border:1px solid rgba(176,154,91,0.2);">Adds: ${fx.add_modifier.replace(/_/g, ' ')}</span>`);
+        }
+        if (fx.relation_delta) {
+            tags.push(`<span style="font-family:var(--font-mono);font-size:6.5px;font-weight:600;padding:1px 4px;color:var(--text-dim);background:rgba(92,90,80,0.06);border:1px solid rgba(92,90,80,0.12);">Relations ${fx.relation_delta > 0 ? '+' : ''}${fx.relation_delta}</span>`);
+        }
+        if (cd.ap_cost > 1) {
+            tags.push(`<span style="font-family:var(--font-mono);font-size:6.5px;font-weight:600;padding:1px 4px;color:var(--text-dim);background:rgba(92,90,80,0.06);border:1px solid rgba(92,90,80,0.12);">${cd.ap_cost} AP</span>`);
+        }
+        return tags.length > 0 ? `<div style="display:flex;gap:4px;margin-top:3px;flex-wrap:wrap;">${tags.join('')}</div>` : '';
     }
-    el.innerHTML = html;
+
+    const totalCards = (issue.played_cards || []).length + (issue.hand_a || []).length + (issue.hand_b || []).length + (issue.deck_remaining || []).length;
+    const playBtnHtml = isMyTurn && !issue.pending_diplomatic_card
+        ? `<button onclick="window._playSelectedCard()" style="margin-top:6px;padding:7px 14px;font-family:var(--font-mono);font-size:9px;font-weight:700;text-transform:uppercase;border:1px solid rgba(107,140,174,0.2);color:var(--blue,#6b8cae);background:rgba(107,140,174,0.08);cursor:pointer;">Play This Card</button>`
+        : '';
+
+    el.innerHTML = `
+        <div style="max-width:560px;background:var(--bg-card,#1e1e1a);border:1px solid rgba(200,196,184,0.1);">
+            <div style="padding:8px 12px 6px;border-bottom:1px solid rgba(200,196,184,0.06);display:flex;align-items:center;gap:8px;">
+                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-dim);">#${cd.card_number} of ${totalCards}</span>
+                <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:1.5px 5px;text-transform:uppercase;color:${tc.color};background:${tc.bg};border:1px solid ${tc.border};">${tc.label}</span>
+                <span style="font-family:var(--font-serif);font-size:14px;font-weight:600;flex:1;">${escapeHtml(cd.card_name)}</span>
+                <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">Requires: ${roleLabels[cd.required_role] || cd.required_role}</span>
+            </div>
+            <div style="padding:10px 12px;">
+                <div style="font-size:11px;color:var(--text-muted,#8a8778);line-height:1.5;margin-bottom:10px;">${escapeHtml(cd.narrative)}</div>
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                    <div style="padding:8px 10px;border:1px solid rgba(200,196,184,0.1);border-left:3px solid var(--red);opacity:0.45;">
+                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+                            <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;padding:1px 4px;color:var(--red);background:rgba(166,93,93,0.06);border:1px solid rgba(166,93,93,0.2);">${escapeHtml(theirOption.label)}</span>
+                            <span style="font-family:var(--font-mono);font-size:8.5px;font-weight:700;text-transform:uppercase;color:var(--red);">${escapeHtml(theirOption.title)}</span>
+                        </div>
+                        <div style="font-size:10px;color:var(--text-muted);line-height:1.35;">${escapeHtml(theirOption.text)}</div>
+                        ${renderEffectTags(theirOption.effects)}
+                    </div>
+                    <div style="padding:8px 10px;border:1px solid rgba(200,196,184,0.1);border-left:3px solid var(--blue);${isMyTurn ? 'cursor:pointer;' : 'opacity:0.6;'}">
+                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+                            <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;padding:1px 4px;color:var(--blue);background:rgba(107,140,174,0.08);border:1px solid rgba(107,140,174,0.2);">${escapeHtml(myOption.label)}</span>
+                            <span style="font-family:var(--font-mono);font-size:8.5px;font-weight:700;text-transform:uppercase;color:var(--blue);">${escapeHtml(myOption.title)}</span>
+                        </div>
+                        <div style="font-size:10px;color:var(--text-muted);line-height:1.35;">${escapeHtml(myOption.text)}</div>
+                        ${renderEffectTags(myOption.effects)}
+                        ${playBtnHtml}
+                    </div>
+                </div>
+            </div>
+        </div>`;
 }
 
+function renderDiplomaticResponse(el, issue, cd, mySide) {
+    const ticksLeft = Math.max(0, (issue.pending_diplomatic_deadline_tick || 0) - currentTick);
+    const proposerName = issue.pending_diplomatic_proposer === 'a' ? (issue.nation_a?.name || 'A') : (issue.nation_b?.name || 'B');
+    const acceptFx = cd.diplomatic_accept_effects || {};
+    const rejectFx = cd.diplomatic_reject_effects || {};
 
-// ==================== ISSUE ACTIONS PANEL ====================
+    el.innerHTML = `
+        <div style="max-width:560px;background:var(--bg-card,#1e1e1a);border:1px solid rgba(91,154,139,0.2);">
+            <div style="padding:8px 12px 6px;border-bottom:1px solid rgba(200,196,184,0.06);display:flex;align-items:center;gap:8px;">
+                <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:1.5px 5px;text-transform:uppercase;color:var(--teal);background:rgba(91,154,139,0.08);border:1px solid rgba(91,154,139,0.2);">Diplomatic Proposal</span>
+                <span style="font-family:var(--font-serif);font-size:14px;font-weight:600;flex:1;">${escapeHtml(cd.card_name)}</span>
+                <span style="font-family:var(--font-mono);font-size:8px;color:var(--amber);">${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} to respond</span>
+            </div>
+            <div style="padding:10px 12px;">
+                <div style="font-size:11px;color:var(--text-muted);line-height:1.5;margin-bottom:6px;">${escapeHtml(proposerName)} proposes: ${escapeHtml(cd.narrative)}</div>
+                <div style="display:flex;gap:8px;margin-top:10px;">
+                    <button onclick="window._respondDiplomatic('accept')" style="flex:1;padding:8px;font-family:var(--font-mono);font-size:9px;font-weight:700;text-transform:uppercase;border:1px solid rgba(122,154,91,0.2);color:var(--green);background:rgba(122,154,91,0.06);cursor:pointer;">Accept</button>
+                    <button onclick="window._respondDiplomatic('reject')" style="flex:1;padding:8px;font-family:var(--font-mono);font-size:9px;font-weight:700;text-transform:uppercase;border:1px solid rgba(166,93,93,0.2);color:var(--red);background:rgba(166,93,93,0.06);cursor:pointer;">Reject</button>
+                </div>
+                <div style="font-size:8px;color:var(--text-dim);margin-top:6px;">If no response in ${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''}, auto-rejected.</div>
+            </div>
+        </div>`;
+}
 
-const ACTION_ROLE_LABELS = {
-    foreign_minister: 'FM',
-    minister_of_trade: 'MoT',
-    minister_of_defense: 'MoD',
-    minister_of_finance: 'MoF',
-    ambassador: 'Amb.',
-    head_of_government: 'HoG',
-};
+function renderCardTimeline(issue, history, cardPlays, cardDefMap, modifiers, mySide) {
+    const el = document.getElementById('issues-timeline-col');
+    if (!el) return;
 
-function renderIssueActions(issue, modifiers, actionsTaken) {
-    const el = document.getElementById('issues-actions-panel');
-    const isYours = issue.nation_a_id === currentNation.id || issue.nation_b_id === currentNation.id;
+    const nationAName = issue.nation_a?.name || 'Nation A';
+    const nationBName = issue.nation_b?.name || 'Nation B';
 
-    if (!isYours || issue.status === 'escalated' || issue.status === 'resolved') {
-        el.innerHTML = '';
-        el.style.display = 'none';
-        return;
+    // ── Header with Add Event button ──
+    let html = `<div style="display:flex;align-items:center;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid rgba(200,196,184,0.06);">
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);flex:1;">Timeline of Events</span>
+        <button onclick="window._toggleNewEvent()" style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;padding:3px 8px;border:1px solid rgba(200,196,184,0.1);color:var(--text-dim);background:var(--bg-card,#1e1e1a);cursor:pointer;display:flex;align-items:center;gap:4px;"><span style="font-size:10px;">+</span> Add Event</button>
+    </div>`;
+
+    // ── New Event Form (hidden) ──
+    html += `<div id="tl-new-event-form" style="display:none;background:var(--bg-card,#1e1e1a);padding:8px 10px;margin-bottom:8px;border:1px solid rgba(91,154,139,0.2);">
+        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;color:var(--teal);margin-bottom:6px;">Add Historical Event</div>
+        <input type="text" id="tl-new-year" placeholder="Year" style="width:60px;padding:3px 5px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-primary);background:var(--bg-body,#141412);border:1px solid rgba(200,196,184,0.1);outline:none;margin-bottom:4px;" />
+        <textarea id="tl-new-text" placeholder="Describe the historical event..." style="width:100%;padding:4px 6px;font-family:var(--font-serif);font-size:11px;color:var(--text-muted);background:var(--bg-body,#141412);border:1px solid rgba(200,196,184,0.1);outline:none;resize:vertical;min-height:50px;line-height:1.45;font-style:italic;"></textarea>
+        <div style="display:flex;gap:4px;margin-top:4px;">
+            <button onclick="window._saveNewEvent()" style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;padding:3px 8px;border:1px solid rgba(91,154,139,0.2);color:var(--teal);background:rgba(91,154,139,0.08);cursor:pointer;">Add to Timeline</button>
+            <button onclick="window._toggleNewEvent()" style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;padding:3px 8px;border:1px solid rgba(200,196,184,0.1);color:var(--text-dim);background:var(--bg-card,#1e1e1a);cursor:pointer;">Cancel</button>
+        </div>
+    </div>`;
+
+    // ── Historical Background (primers + user events from history) ──
+    const primerEvents = history.filter(h => h.event_type === 'primer' || h.event_type === 'user_event');
+    const createdEvent = history.find(h => h.event_type === 'created');
+
+    if (primerEvents.length > 0 || createdEvent) {
+        html += `<div style="font-family:var(--font-mono);font-size:7px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-top:10px;margin-bottom:6px;">Historical Background</div>`;
+
+        // Primer entries (sorted by year in metadata)
+        const sorted = [...primerEvents].sort((a, b) => {
+            const ya = Number(a.metadata?.year) || 0;
+            const yb = Number(b.metadata?.year) || 0;
+            return ya - yb;
+        });
+
+        for (const p of sorted) {
+            const year = p.metadata?.year || '';
+            const label = p.metadata?.label || (p.event_type === 'user_event' ? 'Player-Added Event' : 'Historical Event');
+            const isUser = p.event_type === 'user_event';
+            const dotColor = isUser ? 'border-color:var(--teal);background:var(--bg-body,#141412);' : 'border-color:var(--text-dim);background:var(--bg-body,#141412);';
+            const borderColor = isUser ? 'border-left-color:var(--teal);' : 'border-left-color:var(--text-dim);';
+            const labelColor = isUser ? 'color:var(--teal);' : '';
+
+            html += `<div style="position:relative;padding-left:20px;padding-bottom:10px;border-left:1px solid rgba(200,196,184,0.1);margin-left:5px;">
+                <div style="position:absolute;left:-4px;top:3px;width:7px;height:7px;border:1.5px solid;background:var(--bg-elevated,#1a1a17);${dotColor}"></div>
+                <div style="background:var(--bg-card,#1e1e1a);padding:6px 8px;border-left:2px solid var(--text-dim);${borderColor}" data-primer-id="${p.id}">
+                    <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
+                        <span style="font-family:var(--font-mono);font-size:7px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);flex:1;${labelColor}">${escapeHtml(label)}</span>
+                        <button onclick="window._editPrimer('${p.id}')" style="font-family:var(--font-mono);font-size:7px;color:var(--teal);cursor:pointer;opacity:0;transition:opacity 0.15s;padding:1px 4px;border:1px solid rgba(91,154,139,0.2);background:rgba(91,154,139,0.08);" class="tl-edit-btn">Edit</button>
+                    </div>
+                    <div style="font-family:var(--font-serif);font-size:11px;color:var(--text-muted);line-height:1.45;font-style:italic;">${year ? `<span style="color:var(--text-primary);font-style:normal;font-weight:700;">${escapeHtml(String(year))}</span> — ` : ''}${escapeHtml(p.event_text)}</div>
+                </div>
+            </div>`;
+        }
+
+        // Game start entry
+        if (createdEvent) {
+            html += `<div style="position:relative;padding-left:20px;padding-bottom:10px;border-left:1px solid rgba(200,196,184,0.1);margin-left:5px;">
+                <div style="position:absolute;left:-4px;top:3px;width:7px;height:7px;border:1.5px solid var(--text-dim);background:var(--bg-card,#242420);"></div>
+                <div style="font-family:var(--font-mono);font-size:7.5px;font-weight:600;color:var(--text-dim);margin-bottom:2px;">Tick ${createdEvent.tick} / ${tickToDate(createdEvent.tick)}</div>
+                <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;color:var(--text-dim);margin-bottom:1px;">Game Start</div>
+                <div style="font-size:10.5px;color:var(--text-muted);line-height:1.4;">${escapeHtml(createdEvent.event_text)}</div>
+            </div>`;
+        }
     }
-    el.style.display = '';
 
-    // Check for submitted diplomatic actions awaiting matching this tick
-    const mySubmitted = actionsTaken.filter(a =>
-        a.status === 'submitted' && a.acting_nation_id === currentNation.id && a.submitted_tick === currentTick
-    );
+    // ── Gameplay Events (card plays + system events) ──
+    const gameEvents = [];
 
-    // Build used-action sets for this nation
-    const myUsedActions = new Set(
-        actionsTaken.filter(a => a.acting_nation_id === currentNation.id).map(a => a.action_key)
-    );
-    // Check if already acted this tick
-    const actedThisTick = actionsTaken.some(a =>
-        a.acting_nation_id === currentNation.id && a.submitted_tick === currentTick
-    );
+    // Card plays → timeline entries
+    for (const play of cardPlays) {
+        const cd = cardDefMap[play.card_number];
+        const playedByName = play.played_by === 'a' ? nationAName : nationBName;
+        const isBlue = (play.played_by === 'a' && mySide === 'a') || (play.played_by === 'b' && mySide === 'b');
+        const nationColor = isBlue ? 'var(--blue)' : 'var(--red)';
+        const typeTag = { unilateral: 'u', diplomatic: 'd', aggressive: 'a', special: 's' };
+        const typeLabel = { unilateral: 'Unilateral', diplomatic: 'Diplomatic', aggressive: 'Aggressive', special: 'Special' };
+        const typeColors = {
+            u: { color: 'var(--amber)', bg: 'rgba(176,154,91,0.08)', border: 'rgba(176,154,91,0.2)' },
+            d: { color: 'var(--teal)', bg: 'rgba(91,154,139,0.08)', border: 'rgba(91,154,139,0.2)' },
+            a: { color: 'var(--red)', bg: 'rgba(166,93,93,0.06)', border: 'rgba(166,93,93,0.2)' },
+            s: { color: '#a88bc4', bg: 'rgba(168,139,196,0.08)', border: 'rgba(168,139,196,0.2)' },
+        };
 
-    // Check diplomatic friction (adds +1 AP to diplomatic actions)
-    const hasFriction = modifiers.some(m => m.modifier_key === 'diplomatic_friction' && m.is_active);
+        let effectText = '';
+        const fx = play.effects_applied || {};
+        const parts = [];
+        if (fx.favor_delta) parts.push(`Favor ${fx.favor_delta > 0 ? '+' : ''}${fx.favor_delta}`);
+        if (fx.tension_delta) parts.push(`Tension ${fx.tension_delta > 0 ? '+' : ''}${fx.tension_delta}`);
+        if (fx.add_modifier) parts.push(`Added: ${fx.add_modifier.replace(/_/g, ' ')}`);
+        if (fx.backfired) parts.push('BACKFIRED');
+        if (fx.roll_outcome) parts.push(fx.roll_outcome);
+        if (play.diplomatic_response === 'accepted') parts.push('Accepted');
+        if (play.diplomatic_response === 'rejected') parts.push('Rejected');
+        if (play.diplomatic_response === 'expired') parts.push('Expired (auto-reject)');
+        effectText = parts.join('. ');
 
-    // Group actions by category, filtered to this issue's type
-    // Actions without issue_type are fishing rights (original set) — only show for maritime_fishing_rights
-    const issueType = issue.issue_type || 'maritime_fishing_rights';
-    const allRelevant = Object.values(ACTIONS).filter(a =>
-        a.issue_type === issueType || (!a.issue_type && issueType === 'maritime_fishing_rights')
-    );
-    const diplomatic = allRelevant.filter(a => a.category === 'diplomatic');
-    const unilateral = allRelevant.filter(a => a.category === 'unilateral');
-    const threatening = allRelevant.filter(a => a.category === 'threatening');
+        const tc = typeTag[cd?.card_type] || 'u';
+        const tcColors = typeColors[tc];
+        const dotStyle = `border-color:${tcColors.color};background:${tcColors.bg};`;
 
-    let html = '';
+        gameEvents.push({
+            tick: play.played_tick,
+            html: `<div style="position:relative;padding-left:20px;padding-bottom:10px;border-left:1px solid rgba(200,196,184,0.1);margin-left:5px;">
+                <div style="position:absolute;left:-4px;top:3px;width:7px;height:7px;border:1.5px solid;background:var(--bg-elevated,#1a1a17);${dotStyle}"></div>
+                <div style="font-family:var(--font-mono);font-size:7.5px;font-weight:600;color:var(--text-dim);margin-bottom:2px;">Tick ${play.played_tick} / ${tickToDate(play.played_tick)}</div>
+                <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;color:${nationColor};margin-bottom:1px;">${escapeHtml(playedByName)}</div>
+                <div style="font-size:10.5px;color:var(--text-muted);line-height:1.4;">${escapeHtml(cd?.card_name || 'Card #' + play.card_number)}. <span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 3px;text-transform:uppercase;color:${tcColors.color};background:${tcColors.bg};border:1px solid ${tcColors.border};vertical-align:middle;">${typeLabel[cd?.card_type] || '?'}</span></div>
+                ${effectText ? `<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">${escapeHtml(effectText)}</div>` : ''}
+            </div>`,
+        });
+    }
 
-    // Submitted diplomatic actions banner (awaiting tick-end matching)
-    if (mySubmitted.length > 0) {
-        html += '<div class="issue-pending-banner">';
-        html += `<div class="issue-pending-title">Submitted This Tick (awaiting match)</div>`;
-        for (const s of mySubmitted) {
-            const actionDef = ACTIONS[s.action_key];
-            if (!actionDef) continue;
-            html += `<div class="issue-pending-item">
-                <div class="issue-pending-name">${escapeHtml(actionDef.name)}</div>
-                <div class="issue-pending-desc">Will resolve when the tick processes. Both nations must choose this same action.</div>
+    // System history events (tension changes, modifier events, escalation)
+    const systemTypes = new Set(['tension_changed', 'modifier_added', 'modifier_removed', 'modifier_fired', 'escalated', 'status_changed', 'escalation_favor']);
+    for (const h of history) {
+        if (!systemTypes.has(h.event_type)) continue;
+        gameEvents.push({
+            tick: h.tick,
+            html: `<div style="position:relative;padding-left:20px;padding-bottom:10px;border-left:1px solid rgba(200,196,184,0.1);margin-left:5px;">
+                <div style="position:absolute;left:-4px;top:3px;width:7px;height:7px;border:1.5px solid var(--text-dim);background:var(--bg-body,#141412);"></div>
+                <div style="font-family:var(--font-mono);font-size:7.5px;font-weight:600;color:var(--text-dim);margin-bottom:2px;">Tick ${h.tick} / ${tickToDate(h.tick)}</div>
+                <div style="font-size:10.5px;color:var(--text-muted);line-height:1.4;">${escapeHtml(h.event_text)}</div>
+            </div>`,
+        });
+    }
+
+    // Sort by tick ascending and render
+    gameEvents.sort((a, b) => a.tick - b.tick);
+
+    if (gameEvents.length > 0) {
+        html += `<div style="font-family:var(--font-mono);font-size:7px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-top:10px;margin-bottom:6px;">Gameplay Events</div>`;
+        html += gameEvents.map(e => e.html).join('');
+    }
+
+    // ── "Now" marker ──
+    html += `<div style="position:relative;padding-left:20px;padding-bottom:10px;border-left:1px solid transparent;margin-left:5px;opacity:0.5;">
+        <div style="position:absolute;left:-4px;top:3px;width:7px;height:7px;border:1.5px solid var(--amber);background:var(--amber);"></div>
+        <div style="font-family:var(--font-mono);font-size:7.5px;font-weight:600;color:var(--amber);">Now — Tick ${currentTick}</div>
+        <div style="font-size:10.5px;color:var(--amber);font-style:italic;">${_selectedCardNumber ? 'Reviewing card...' : (issue.whose_turn === mySide ? 'Your turn' : 'Opponent\'s turn')}</div>
+    </div>`;
+
+    // ── Active Modifiers ──
+    const activeMods = (modifiers || []).filter(m => m.is_active);
+    if (activeMods.length > 0) {
+        html += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(200,196,184,0.06);">
+            <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px;">Active Modifiers</div>`;
+        for (const mod of activeMods) {
+            const config = MODIFIERS[mod.modifier_key] || {};
+            const modColor = mod.category === 'structural' ? 'var(--amber)' : mod.category === 'escalation' ? 'var(--red)' : 'var(--blue)';
+            const effectText = (config.stat_effects || []).map(e => `${e.stat_key} ${e.delta > 0 ? '+' : ''}${e.delta}/tick`).join(', ');
+            const durText = mod.duration_remaining ? ` ${mod.duration_remaining}t` : '';
+            html += `<div style="padding:3px 6px;margin-bottom:2px;background:var(--bg-card,#1e1e1a);border-left:2px solid ${modColor};">
+                <div style="font-size:9px;font-weight:500;">${escapeHtml(config.name || mod.modifier_key.replace(/_/g, ' '))}</div>
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${escapeHtml(effectText)}${durText}</div>
             </div>`;
         }
         html += '</div>';
     }
 
-    // Action category tabs
-    html += `<div class="ia-tabs">
-        <div class="ia-tab ia-tab--active ia-tab--teal" data-cat="diplomatic">Diplomatic</div>
-        <div class="ia-tab ia-tab--amber" data-cat="unilateral">Unilateral</div>
-        <div class="ia-tab ia-tab--red" data-cat="threatening">Threatening</div>
-    </div>`;
-
-    // Action lists
-    html += renderActionList('diplomatic', diplomatic, myUsedActions, actedThisTick, hasFriction, issue);
-    html += renderActionList('unilateral', unilateral, myUsedActions, actedThisTick, false, issue);
-    html += renderActionList('threatening', threatening, myUsedActions, actedThisTick, false, issue);
-
-    // Confirm bar (hidden until an action is selected)
-    html += '<div class="ia-confirm-bar" id="ia-confirm-bar" style="display:none;"></div>';
-
-    // Store for event delegation handler
-    _actionIssue = issue;
-    _actionMods = modifiers;
-    _selectedActionKey = null;
-
     el.innerHTML = html;
+
+    // Make edit buttons visible on hover
+    el.querySelectorAll('[data-primer-id]').forEach(primer => {
+        const btn = primer.querySelector('.tl-edit-btn');
+        if (btn) {
+            primer.addEventListener('mouseenter', () => btn.style.opacity = '1');
+            primer.addEventListener('mouseleave', () => btn.style.opacity = '0');
+        }
+    });
 }
 
-function renderActionList(category, actions, usedActions, actedThisTick, hasFriction, issue) {
-    const colorMap = { diplomatic: 'teal', unilateral: 'amber', threatening: 'red' };
-    const color = colorMap[category];
-    const hidden = category !== 'diplomatic' ? 'style="display:none"' : '';
-
-    let html = `<div class="ia-list" id="ia-list-${category}" ${hidden}>`;
-    let idx = 0;
-    for (const action of actions) {
-        idx++;
-        const isUsed = usedActions.has(action.key);
-        const isLocked = actedThisTick && !isUsed;
-        const hasRole = !action.role || _currentRoles.has(action.role);
-        const cls = isUsed ? 'ia-item--used' : isLocked ? 'ia-item--locked' : !hasRole ? 'ia-item--wrong-role' : '';
-        const apCost = action.ap_cost + (hasFriction && category === 'diplomatic' ? 1 : 0);
-        const roleLabel = ACTION_ROLE_LABELS[action.role] || action.role;
-
-        // Build effect tags
-        let tags = '';
-        if (action.tension_delta < 0) tags += `<span class="ia-tag ia-tag--tension-down">Tension ${action.tension_delta}</span>`;
-        if (action.tension_delta > 0) tags += `<span class="ia-tag ia-tag--tension-up">Tension +${action.tension_delta}</span>`;
-        if (action.favor_delta !== 0) tags += `<span class="ia-tag ia-tag--favor">Favor ${action.favor_delta > 0 ? '+' : ''}${action.favor_delta}</span>`;
-        for (const m of action.modifiers_removed) {
-            tags += `<span class="ia-tag ia-tag--modifier">Removes: ${MODIFIERS[m]?.name || m}</span>`;
-        }
-        for (const m of action.modifiers_added) {
-            tags += `<span class="ia-tag ia-tag--modifier">Adds: ${MODIFIERS[m]?.name || m}</span>`;
-        }
-        if (action.treasury_cost > 0) tags += `<span class="ia-tag ia-tag--ap">$${(action.treasury_cost / 1_000_000).toFixed(0)}M</span>`;
-        tags += `<span class="ia-tag ia-tag--ap">${apCost} AP</span>`;
-        if (action.special === 'incident_trigger_50') tags += `<span class="ia-tag ia-tag--danger">50% triggers Incident</span>`;
-        if (action.special === 'incident_trigger_25') tags += `<span class="ia-tag ia-tag--danger">25% triggers Incident</span>`;
-
-        html += `<div class="ia-item ${cls}" data-action-key="${action.key}" style="${(!isUsed && !isLocked) ? 'cursor:pointer;' : ''}">
-            <div class="ia-icon ia-icon--${color}">${idx}</div>
-            <div class="ia-info">
-                <div class="ia-name ia-name--${color}">${escapeHtml(action.name)}</div>
-                <div class="ia-desc">${escapeHtml(isUsed ? (action.category === 'diplomatic' ? 'Already submitted.' : 'Already used.') : action.description)}</div>
-                <div class="ia-effects">${tags}</div>
-            </div>
-            <span class="ia-role">${roleLabel}</span>
-        </div>`;
+function renderCardHand(issue, myHand, cardDefMap, mySide, isMyTurn) {
+    const el = document.getElementById('issues-hand-area');
+    if (!el) return;
+    if (!issue.deck_initialized || myHand.length === 0) {
+        el.innerHTML = '';
+        return;
     }
-    html += '</div>';
-    return html;
+
+    const fa = Math.round(Number(currentNation.international_reputation) || 0);
+    const played = (issue.played_cards || []).filter(p => p.played_by === mySide).length;
+
+    const typeShort = { unilateral: 'Uni', diplomatic: 'Dip', aggressive: 'Agg', special: 'Spc' };
+    const typeClass = { unilateral: 'u', diplomatic: 'd', aggressive: 'a', special: 's' };
+    const typeColors = {
+        u: { color: 'var(--amber)', bg: 'rgba(176,154,91,0.08)', border: 'rgba(176,154,91,0.2)' },
+        d: { color: 'var(--teal)', bg: 'rgba(91,154,139,0.08)', border: 'rgba(91,154,139,0.2)' },
+        a: { color: 'var(--red)', bg: 'rgba(166,93,93,0.06)', border: 'rgba(166,93,93,0.2)' },
+        s: { color: '#a88bc4', bg: 'rgba(168,139,196,0.08)', border: 'rgba(168,139,196,0.2)' },
+    };
+    const roleShort = { head_of_government: 'HoG', foreign_minister: 'FM', ambassador: 'Amb', minister_of_defense: 'MoD', minister_of_finance: 'MoF' };
+
+    const cardsHtml = myHand.map(cn => {
+        const cd = cardDefMap[cn];
+        if (!cd) return '';
+        const tc = typeClass[cd.card_type] || 'u';
+        const tColors = typeColors[tc];
+        const isActive = _selectedCardNumber === cn;
+        const activeBorder = isActive ? 'border-color:rgba(176,154,91,0.2);background:var(--bg-card,#242420);box-shadow:0 0 0 1px rgba(176,154,91,0.2);' : '';
+
+        // Preview: show key effect
+        const fx = mySide === 'a' ? cd.option_a_effects : cd.option_b_effects;
+        let preview = '';
+        if (fx) {
+            const parts = [];
+            if (fx.favor_delta) parts.push(`Favor ${fx.favor_delta > 0 ? '+' : ''}${fx.favor_delta}`);
+            if (fx.tension_delta) parts.push(`Tension ${fx.tension_delta > 0 ? '+' : ''}${fx.tension_delta}`);
+            if (fx.add_modifier) parts.push(fx.add_modifier.replace(/_/g, ' '));
+            preview = parts.join(' / ');
+        }
+
+        return `<div onclick="window._selectHandCard(${cn})" style="min-width:148px;max-width:148px;padding:6px 8px;background:var(--bg-elevated,#1a1a17);border:1px solid rgba(200,196,184,0.1);cursor:pointer;flex-shrink:0;display:flex;flex-direction:column;gap:2px;transition:all 0.15s;${activeBorder}">
+            <div style="display:flex;align-items:center;gap:4px;">
+                <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-dim);">#${cn}</span>
+                <span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 3px;text-transform:uppercase;color:${tColors.color};background:${tColors.bg};border:1px solid ${tColors.border};">${typeShort[cd.card_type] || '?'}</span>
+                <span style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);margin-left:auto;">${roleShort[cd.required_role] || ''}</span>
+            </div>
+            <div style="font-size:9px;font-weight:500;line-height:1.25;">${escapeHtml(cd.card_name)}</div>
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${escapeHtml(preview)}</div>
+        </div>`;
+    }).join('');
+
+    el.innerHTML = `<div style="padding:8px 20px 10px;background:var(--bg-card,#1e1e1a);">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);">Your Hand</span>
+            <span style="font-family:var(--font-mono);font-size:8px;color:var(--teal);">${myHand.length} cards (FA: ${fa}, played ${played})</span>
+        </div>
+        <div style="display:flex;gap:5px;overflow-x:auto;padding-bottom:4px;">${cardsHtml}</div>
+    </div>`;
 }
 
-// ==================== EXECUTE ACTION FROM UI ====================
 
-async function executeIssueActionFromUI(actionKey, issue) {
-    if (issueActionExecuting) return;
-    if (!currentFaction || !currentNation) { alert('No faction assigned. Cannot take actions.'); return; }
-    if (currentTick <= 0) { alert('Tick data not loaded. Please reload the page.'); return; }
-    issueActionExecuting = true;
+// ==================== TIMELINE INTERACTION HANDLERS ====================
 
+window._toggleNewEvent = function() {
+    const form = document.getElementById('tl-new-event-form');
+    if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+};
+
+window._saveNewEvent = async function() {
+    if (!_currentIssueData) return;
+    const yearInput = document.getElementById('tl-new-year');
+    const textInput = document.getElementById('tl-new-text');
+    const year = yearInput?.value?.trim() || '';
+    const text = textInput?.value?.trim() || '';
+    if (!text) { alert('Please enter event text.'); return; }
+
+    const { insertHistory } = await import('./js/game/issues.js');
+
+    // Can't directly call insertHistory (it's not exported), so insert directly
+    await _supabase.from('bilateral_issue_history').insert({
+        issue_id: _currentIssueData.id,
+        tick: 0,  // primer events use tick 0
+        event_type: 'user_event',
+        event_text: text,
+        metadata: { year, label: 'Player-Added Event' },
+        caused_by_nation_id: currentNation.id,
+    });
+
+    // Refresh
+    window._toggleNewEvent();
+    await selectIssue(_currentIssueData.id);
+};
+
+window._editPrimer = async function(historyId) {
+    if (!_currentIssueData) return;
+    // Load the history entry
+    const { data: entry } = await _supabase.from('bilateral_issue_history')
+        .select('*').eq('id', historyId).single();
+    if (!entry) return;
+
+    const year = entry.metadata?.year || '';
+    const text = entry.event_text || '';
+
+    // Replace the primer display with an edit form
+    const primerEl = document.querySelector(`[data-primer-id="${historyId}"]`);
+    if (!primerEl) return;
+
+    primerEl.style.borderLeftColor = 'var(--teal)';
+    primerEl.style.background = 'var(--bg-card,#242420)';
+    primerEl.innerHTML = `
+        <div style="font-family:var(--font-mono);font-size:7px;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px;">${escapeHtml(entry.metadata?.label || 'Edit Event')}</div>
+        <input type="text" value="${escapeHtml(String(year))}" id="edit-primer-year-${historyId}" style="width:60px;padding:3px 5px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-primary);background:var(--bg-body,#141412);border:1px solid rgba(200,196,184,0.1);outline:none;margin-bottom:4px;" />
+        <textarea id="edit-primer-text-${historyId}" style="width:100%;padding:4px 6px;font-family:var(--font-serif);font-size:11px;color:var(--text-muted);background:var(--bg-body,#141412);border:1px solid rgba(200,196,184,0.1);outline:none;resize:vertical;min-height:50px;line-height:1.45;font-style:italic;">${escapeHtml(text)}</textarea>
+        <div style="display:flex;gap:4px;margin-top:4px;">
+            <button onclick="window._savePrimer('${historyId}')" style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;padding:3px 8px;border:1px solid rgba(91,154,139,0.2);color:var(--teal);background:rgba(91,154,139,0.08);cursor:pointer;">Save</button>
+            <button onclick="selectIssue('${_currentIssueData.id}')" style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;padding:3px 8px;border:1px solid rgba(200,196,184,0.1);color:var(--text-dim);background:var(--bg-card,#1e1e1a);cursor:pointer;">Cancel</button>
+        </div>`;
+};
+
+window._savePrimer = async function(historyId) {
+    const yearEl = document.getElementById('edit-primer-year-' + historyId);
+    const textEl = document.getElementById('edit-primer-text-' + historyId);
+    const year = yearEl?.value?.trim() || '';
+    const text = textEl?.value?.trim() || '';
+    if (!text) { alert('Please enter event text.'); return; }
+
+    const { data: existing } = await _supabase.from('bilateral_issue_history')
+        .select('metadata').eq('id', historyId).single();
+
+    await _supabase.from('bilateral_issue_history').update({
+        event_text: text,
+        metadata: { ...(existing?.metadata || {}), year },
+    }).eq('id', historyId);
+
+    if (_currentIssueData) await selectIssue(_currentIssueData.id);
+};
+
+// ==================== CARD INTERACTION HANDLERS ====================
+
+window._selectHandCard = function(cardNumber) {
+    _selectedCardNumber = cardNumber;
+    if (_currentIssueData) {
+        const mySide = _currentIssueData.nation_a_id === currentNation.id ? 'a' : 'b';
+        const myHand = mySide === 'a' ? (_currentIssueData.hand_a || []) : (_currentIssueData.hand_b || []);
+        const isMyTurn = _currentIssueData.whose_turn === mySide;
+        renderCardActiveCard(_currentIssueData, myHand, _currentCardDefs, mySide, isMyTurn);
+        renderCardHand(_currentIssueData, myHand, _currentCardDefs, mySide, isMyTurn);
+    }
+};
+
+window._playSelectedCard = async function() {
+    if (_cardPlayInProgress || !_selectedCardNumber || !_currentIssueData) return;
+    _cardPlayInProgress = true;
     try {
-        const result = await executeIssueAction(_supabase, {
-            issueId: issue.id,
-            actionKey,
-            actingNationId: currentNation.id,
-            actingFactionId: currentFaction.id,
+        const { playIssueCard } = await import('./js/game/issues.js');
+        const result = await playIssueCard(_supabase, {
+            issueId: _currentIssueData.id,
+            cardNumber: _selectedCardNumber,
+            nationId: currentNation.id,
+            factionId: currentFaction.id,
             currentTick,
         });
-
         if (!result.success) {
-            alert(result.error || 'Action failed.');
-            return;
+            alert('Card play failed: ' + (result.error || 'Unknown error'));
+        } else {
+            _selectedCardNumber = null;
+            await selectIssue(_currentIssueData.id);
         }
-
-        // Refresh the faction AP
-        const { data: freshFaction } = await _supabase
-            .from('factions')
-            .select('action_points')
-            .eq('id', currentFaction.id)
-            .single();
-        if (freshFaction) currentFaction.action_points = freshFaction.action_points;
-
-        // Re-fetch the issue from DB so display cards reflect the new tension/favor/status
-        const { data: freshIssue } = await _supabase
-            .from('bilateral_issues')
-            .select('*, nation_a:nations!bilateral_issues_nation_a_id_fkey(id, name), nation_b:nations!bilateral_issues_nation_b_id_fkey(id, name)')
-            .eq('id', issue.id)
-            .single();
-        if (freshIssue) {
-            const idx = allIssues.findIndex(i => i.id === issue.id);
-            if (idx >= 0) allIssues[idx] = freshIssue;
-            else allIssues.push(freshIssue);
-        }
-
-        // Refresh the issue view
-        await selectIssue(issue.id);
-
     } catch (err) {
-        console.error('[Issues] Action execution error:', err);
-        alert('Action failed: ' + err.message);
+        alert('Card play error: ' + err.message);
     } finally {
-        issueActionExecuting = false;
+        _cardPlayInProgress = false;
     }
-}
+};
 
-
-// ==================== LOAD INCIDENTS ====================
-
-async function loadIncidents() {
-    const [yourResult, intlResult, resolvedResult] = await Promise.allSettled([
-        _supabase.from('incidents')
-            .select('*, nation_a:nations!incidents_nation_a_id_fkey(id, name), nation_b:nations!incidents_nation_b_id_fkey(id, name)')
-            .or(`nation_a_id.eq.${currentNation.id},nation_b_id.eq.${currentNation.id}`)
-            .in('status', ['active', 'mediating'])
-            .order('leverage_a', { ascending: false }),
-        _supabase.from('incidents')
-            .select('*, nation_a:nations!incidents_nation_a_id_fkey(id, name), nation_b:nations!incidents_nation_b_id_fkey(id, name)')
-            .not('nation_a_id', 'eq', currentNation.id)
-            .not('nation_b_id', 'eq', currentNation.id)
-            .in('status', ['active', 'mediating'])
-            .order('started_tick', { ascending: false }),
-        _supabase.from('incidents')
-            .select('*, nation_a:nations!incidents_nation_a_id_fkey(id, name), nation_b:nations!incidents_nation_b_id_fkey(id, name)')
-            .eq('status', 'resolved')
-            .gte('resolved_tick', currentTick - 10)
-            .order('resolved_tick', { ascending: false })
-    ]);
-
-    const yours = yourResult.status === 'fulfilled' ? (yourResult.value.data || []) : [];
-    const intl = intlResult.status === 'fulfilled' ? (intlResult.value.data || []) : [];
-    const resolved = resolvedResult.status === 'fulfilled' ? (resolvedResult.value.data || []) : [];
-
-    allIncidents = [...yours, ...intl, ...resolved];
-
-    // Update badge counts
-    const incidentsBadge = document.getElementById('incidents-count-badge');
-    if (yours.length > 0) {
-        incidentsBadge.textContent = yours.length;
-        incidentsBadge.style.display = '';
-    } else {
-        incidentsBadge.style.display = 'none';
-    }
-
-    // Render sidebar
-    renderSidebar(yours, intl, resolved);
-
-    // Show global empty if nothing at all
-    const totalActive = yours.length + intl.length;
-    if (totalActive === 0 && resolved.length === 0) {
-        document.getElementById('conflicts-layout').style.display = 'none';
-        document.getElementById('global-empty').style.display = '';
-    } else {
-        document.getElementById('conflicts-layout').style.display = '';
-        document.getElementById('global-empty').style.display = 'none';
-
-        // Auto-select first incident
-        if (yours.length > 0) {
-            selectIncident(yours[0].id);
-        } else if (intl.length > 0) {
-            selectIncident(intl[0].id);
-        } else if (resolved.length > 0) {
-            selectIncident(resolved[0].id);
+window._respondDiplomatic = async function(response) {
+    if (_cardPlayInProgress || !_currentIssueData) return;
+    _cardPlayInProgress = true;
+    try {
+        const { respondToDiplomaticCard } = await import('./js/game/issues.js');
+        const result = await respondToDiplomaticCard(
+            _supabase, _currentIssueData.id, currentNation.id, response, currentTick
+        );
+        if (!result.success) {
+            alert('Response failed: ' + (result.error || 'Unknown error'));
+        } else {
+            await selectIssue(_currentIssueData.id);
         }
+    } catch (err) {
+        alert('Response error: ' + err.message);
+    } finally {
+        _cardPlayInProgress = false;
     }
-}
-
+};
 
 // ==================== SIDEBAR RENDERING ====================
 
