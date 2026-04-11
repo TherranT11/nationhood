@@ -650,3 +650,299 @@ INSERT INTO issue_card_definitions (
         ]
     }'::jsonb
 ) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 22: Public Denunciation (Aggressive / Ambassador) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects
+) VALUES (
+    'maritime_fishing_rights', 22, 'Public Denunciation', 'aggressive', 'ambassador', 1,
+    'International media is paying attention. A journalist asks the ambassador: "Are you accusing them of piracy?" The ambassador has a choice of words.',
+
+    'Dominant Fleet',
+    'Accuse Rival of Illegal Fishing',
+    'Press conference. Satellite photos. Catch volume estimates. The word "piracy" is used. Deliberately.',
+    '{
+        "favor_delta": 1,
+        "tension_delta": 1,
+        "relation_delta": -3,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": -0.1, "duration_ticks": 10, "target": "opponent" }
+        ],
+        "add_modifier": "public_hostility_over_fishing"
+    }'::jsonb,
+
+    'Rival Fleet',
+    'Accuse Dominant Fleet of Plundering',
+    'Footage of massive trawlers dwarfing your small boats. Dead fish floating. "They are strip-mining our ocean." The environmental angle wins sympathy.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": 1,
+        "relation_delta": -2,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": 0.05, "duration_ticks": 8, "target": "self" },
+            { "stat_key": "international_reputation", "delta": -0.05, "duration_ticks": 8, "target": "opponent" }
+        ]
+    }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 23: Expel Foreign Vessels (Aggressive / MoD / 2 AP) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects
+) VALUES (
+    'maritime_fishing_rights', 23, 'Expel Foreign Vessels', 'aggressive', 'minister_of_defense', 2,
+    'The order comes at 0400. All foreign fishing vessels to leave immediately. No warning shots — yet. But the weapons are loaded.',
+
+    'Dominant Fleet',
+    'Forcibly Clear the Disputed Zone',
+    'Coast guard sweeps. Every foreign vessel approached and ordered out. Those that resist are boarded. Catches confiscated.',
+    '{
+        "favor_delta": 2,
+        "tension_delta": 3,
+        "relation_delta": -5,
+        "stat_effects": [
+            { "stat_key": "trade_balance", "delta": -0.2, "duration_ticks": 15, "target": "both" }
+        ],
+        "add_modifier": "active_vessel_expulsion",
+        "incident_trigger_chance": 0.3
+    }'::jsonb,
+
+    'Rival Fleet',
+    'Send Your Fleet En Masse',
+    'Respond to expulsion by sending EVERY available vessel into the zone. Overwhelm their coast guard with numbers. 200 fishing boats.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": 2,
+        "relation_delta": -3,
+        "stat_effects": [
+            { "stat_key": "gov_approval", "delta": 0.15, "duration_ticks": 6, "target": "self" }
+        ]
+    }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 24: Threaten Naval Blockade (Aggressive / HoG / 3 AP) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects
+) VALUES (
+    'maritime_fishing_rights', 24, 'Threaten Naval Blockade', 'aggressive', 'head_of_government', 3,
+    'The Head of Government addresses the nation. "We will not allow our waters to be pillaged. If diplomacy fails, we are prepared to enforce our sovereign rights. All options are on the table."',
+
+    'Dominant Fleet',
+    'Announce Naval Blockade',
+    'The navy will prevent any foreign vessel from entering. Total exclusion. An act of war in all but name.',
+    '{
+        "favor_delta": 3,
+        "tension_delta": 4,
+        "relation_delta": -8,
+        "stat_effects": [
+            { "stat_key": "military_readiness", "delta": 0.2, "duration_ticks": 10, "target": "self" },
+            { "stat_key": "stability", "delta": -0.3, "duration_ticks": 10, "target": "opponent" },
+            { "stat_key": "international_reputation", "delta": -0.15, "duration_ticks": 15, "target": "self" }
+        ],
+        "add_modifier": "naval_blockade_declared",
+        "modifier_effects": { "incident_trigger_multiplier": 3.0 },
+        "incident_trigger_chance": 0.5
+    }'::jsonb,
+
+    'Rival Fleet',
+    'Demand International Naval Escort',
+    'Appeal to the international community. Frame it as freedom of navigation. The dominant nation is using military force to steal your fish.',
+    '{
+        "favor_delta": -2,
+        "tension_delta": 2,
+        "relation_delta": -5,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": 0.1, "duration_ticks": 8, "target": "self" }
+        ],
+        "random_roll": {
+            "success_chance": 0.4,
+            "success_label": "Third-party deploys naval observers",
+            "success_effects": { "stat_effects": [{ "stat_key": "stability", "delta": 0.1, "duration_ticks": 10, "target": "self" }] },
+            "fail_label": "International community issues statement only",
+            "fail_effects": {}
+        }
+    }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ══════════════════════════════════════════════════════════════
+-- SPECIAL CARDS (unique mechanics, RNG, synergy)
+-- ══════════════════════════════════════════════════════════════
+
+-- ── CARD 25: The Dead Catch (Special / HoG) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    special_behavior
+) VALUES (
+    'maritime_fishing_rights', 25, 'The Dead Catch', 'special', 'head_of_government', 1,
+    'Thousands of dead fish wash ashore on both coastlines. The water in the disputed zone has turned milky green. An algal bloom — or something worse. Marine biologists rush to collect samples. The fishery might be dying.',
+
+    'Dominant Fleet',
+    'Blame Rival Nation''s Pollution',
+    'Accuse their industrial runoff. Demand compensation. Use the crisis to push for exclusive management — "they can''t be trusted."',
+    '{
+        "favor_delta": 1,
+        "tension_delta": 1,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": -0.1, "duration_ticks": 8, "target": "opponent" }
+        ],
+        "random_roll": { "fail_chance": 0.3, "fail_label": "Investigation proves YOUR pollution caused it", "fail_effects": { "favor_delta": -2, "stat_effects": [{ "stat_key": "international_reputation", "delta": -0.15, "duration_ticks": 10, "target": "self" }] } }
+    }'::jsonb,
+
+    'Rival Fleet',
+    'Call for Emergency Joint Investigation',
+    'No blame yet — just data. Whatever killed the fish doesn''t care about borders. Save the fishery first, argue later.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": -1,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": 0.1, "duration_ticks": 6, "target": "self" }
+        ],
+        "add_modifier": "fish_stock_emergency",
+        "modifier_effects": { "stat_key": "gdp_growth", "delta": -0.1, "duration_ticks": 12, "target": "both" }
+    }'::jsonb,
+
+    '{ "type": "random_roll", "description": "Dominant blame has 30% chance of backfiring if investigation reveals their own pollution." }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 26: The Stowaway (Special / FM) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    special_behavior
+) VALUES (
+    'maritime_fishing_rights', 26, 'The Stowaway', 'special', 'foreign_minister', 1,
+    'A crew member from the other nation''s fishing vessel seeks asylum after docking in your port. They claim evidence of systematic violations — banned nets, protected species, falsified catch logs.',
+
+    'Dominant Fleet',
+    'Use Testimony to Justify Enforcement',
+    'Grant asylum. Televise testimony. "This proves they cannot fish responsibly." Justify expanded coast guard operations.',
+    '{
+        "favor_delta": 2,
+        "tension_delta": 1,
+        "relation_delta": -2,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": -0.1, "duration_ticks": 12, "target": "opponent" }
+        ],
+        "random_roll": {
+            "outcomes": [
+                { "weight": 3, "label": "Banned nets evidence", "stat_effects": [{ "stat_key": "pollution", "delta": 0.1, "duration_ticks": 10, "target": "opponent" }] },
+                { "weight": 2, "label": "Falsified catch logs", "stat_effects": [{ "stat_key": "corruption", "delta": 0.1, "duration_ticks": 10, "target": "opponent" }] },
+                { "weight": 1, "label": "Protected species — international outcry", "stat_effects": [{ "stat_key": "international_reputation", "delta": -0.2, "duration_ticks": 12, "target": "opponent" }] }
+            ]
+        }
+    }'::jsonb,
+
+    'Rival Fleet',
+    'Use Testimony to Build Legal Case',
+    'Grant asylum quietly. Document everything. Feed evidence to arbitration bodies. Build the case brick by brick.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": 0.5,
+        "relation_delta": 0,
+        "random_roll": {
+            "outcomes": [
+                { "weight": 3, "label": "Banned nets evidence", "stat_effects": [{ "stat_key": "pollution", "delta": 0.1, "duration_ticks": 10, "target": "opponent" }] },
+                { "weight": 2, "label": "Falsified catch logs", "stat_effects": [{ "stat_key": "corruption", "delta": 0.1, "duration_ticks": 10, "target": "opponent" }] },
+                { "weight": 1, "label": "Protected species — international outcry", "stat_effects": [{ "stat_key": "international_reputation", "delta": -0.2, "duration_ticks": 12, "target": "opponent" }] }
+            ]
+        }
+    }'::jsonb,
+
+    '{ "type": "random_roll", "description": "Testimony content rolled on play. Both sides get the same evidence but use it differently." }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 27: The Miracle Catch (Special / MoF) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    special_behavior
+) VALUES (
+    'maritime_fishing_rights', 27, 'The Miracle Catch', 'special', 'minister_of_finance', 1,
+    'A massive school of bluefin tuna — one of the largest ever recorded — migrates through the disputed zone. Worth millions. Both nations'' fleets race to intercept. There''s enough for everyone. But greed rarely works that way.',
+
+    'Dominant Fleet',
+    'Maximize Catch — Take Everything',
+    'Order entire fleet to intercept. Full nets. Overtime crews. Take as much as possible before they do. First come, first served.',
+    '{
+        "favor_delta": 1,
+        "tension_delta": 2,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "gdp_growth", "delta": 0.2, "duration_ticks": 4, "target": "self" },
+            { "stat_key": "arable_land", "delta": -0.2, "duration_ticks": 4, "target": "self" }
+        ]
+    }'::jsonb,
+
+    'Rival Fleet',
+    'Propose Emergency Catch-Share',
+    'Contact the other nation''s ministry. "Enough for everyone. Split 50/50 and both profit without destroying it."',
+    '{
+        "favor_delta": 0,
+        "tension_delta": -1,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "gdp_growth", "delta": 0.1, "duration_ticks": 4, "target": "self" }
+        ]
+    }'::jsonb,
+
+    '{ "type": "both_play_synergy", "both_cooperative_effects": { "tension_delta": -2, "relation_delta": 3, "stat_effects": [{ "stat_key": "gdp_growth", "delta": 0.15, "duration_ticks": 4, "target": "both" }], "add_modifier": "cooperative_precedent", "modifier_effects": { "diplomatic_ap_discount": -1, "duration_ticks": 8 } }, "both_greedy_effects": { "tension_delta": 3, "relation_delta": -3, "stat_effects": [{ "stat_key": "gdp_growth", "delta": 0.1, "duration_ticks": 4, "target": "both" }, { "stat_key": "arable_land", "delta": -0.3, "duration_ticks": 4, "target": "both" }], "add_modifier": "overfishing_crisis", "modifier_effects": { "stat_key": "pop_growth", "delta": -0.1, "duration_ticks": 15, "target": "both" } } }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 28: The Fisherman's Death (Special / HoG) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    special_behavior
+) VALUES (
+    'maritime_fishing_rights', 28, 'The Fisherman''s Death', 'special', 'head_of_government', 1,
+    'A fishing vessel capsizes in the disputed zone during rough seas. Eight crew in the water. The nearest rescue vessel belongs to the other nation — 20 minutes away. Your coast guard is 45 minutes away.',
+
+    'Responder Nation',
+    'Launch Immediate Rescue',
+    'Send your coast guard. Save their fishermen. No hesitation. No conditions. Humanity first.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": -2,
+        "relation_delta": 3,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": 0.15, "duration_ticks": 10, "target": "self" },
+            { "stat_key": "gov_approval", "delta": 0.15, "duration_ticks": 6, "target": "self" }
+        ]
+    }'::jsonb,
+
+    'Responder Nation',
+    'Delay Response',
+    '"We didn''t receive the distress call in time." Your coast guard arrives 40 minutes late. Three fishermen drowned.',
+    '{
+        "favor_delta": 3,
+        "tension_delta": 3,
+        "relation_delta": -8,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": -0.3, "duration_ticks": 15, "target": "self" },
+            { "stat_key": "gov_approval", "delta": 0.2, "duration_ticks": 8, "target": "opponent" },
+            { "stat_key": "civil_unrest", "delta": 0.3, "duration_ticks": 8, "target": "opponent" }
+        ],
+        "incident_trigger_chance": 0.6
+    }'::jsonb,
+
+    '{ "type": "victim_responder", "description": "Card randomly assigns one nation as victim (drowning crew) and the other as responder. Victim has no action — outcome depends entirely on responder choice." }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
