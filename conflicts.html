@@ -210,7 +210,8 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { ACTIONS, MODIFIERS, ISSUE_TYPES, executeIssueAction } from './js/game/issues.js';
+import { MODIFIERS, ISSUE_TYPES } from './js/game/issues.js';
+// Phase 0: ACTIONS and executeIssueAction removed — replaced by card system.
 
 let currentFaction = null;
 let currentNation = null;
@@ -223,11 +224,13 @@ let allIncidents = [];
 let allIssues = [];
 let selectedIssueId = null;
 let issuesLoaded = false;
-let issueActionFlags = {};  // { issueId: true } — issues with recent actions
+// Phase 0: Action state variables stubbed — card system replaces in Phase 1
+let issueActionFlags = {};
 let issueActionExecuting = false;
-let _actionIssue = null;    // current issue for action click delegation
-let _actionMods = null;     // current modifiers for action click delegation
-let _selectedActionKey = null; // currently highlighted action
+let _actionIssue = null;
+let _actionMods = null;
+let _selectedActionKey = null;
+const ACTIONS = {}; // stub so references don't crash
 let _currentRoles = new Set(); // roles held by the current faction (e.g. 'foreign_minister', 'head_of_government')
 
 // ==================== INIT ====================
