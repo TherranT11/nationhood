@@ -25994,7 +25994,7 @@ const MODIFIERS = {
             { stat_key: 'polarization', delta: 0.05 },
         ],
         duration: null,
-        removed_by: [], // CANNOT be directly removed — persists until issue resolves
+        removed_by: ['propose_joint_sovereignty', 'offer_economic_concession'],
         spawn_chance: 1.0,
     },
 
@@ -26777,7 +26777,7 @@ const ACTIONS = {
         ap_cost: 3,
         favor_delta: 0, // resets to 0
         tension_delta: -3,
-        modifiers_removed: ['competing_sovereignty_claims', 'settler_population_growing'],
+        modifiers_removed: ['competing_sovereignty_claims', 'settler_population_growing', 'domestic_political_significance'],
         modifiers_added: [],
         treasury_cost: 0,
         description: 'Propose that both nations exercise joint sovereignty over the territory. Both flags, both languages, shared tax revenue.',
@@ -27829,6 +27829,18 @@ async function processIssueTick(supabase, nationList, currentTick) {
                             .eq('modifier_key', escMod)
                             .eq('is_active', true);
                         if (escRemoveErr) console.error(`[Issues] Failed to remove ${escMod}:`, escRemoveErr.message);
+                    }
+
+                    // Special: resolve_issue — immediately resolves by deactivating ALL structural modifiers
+                    if (dipAction.special === 'resolve_issue') {
+                        await supabase.from('bilateral_issue_modifiers')
+                            .update({ is_active: false, resolved_by: `diplomatic_match:${actionKey}`, resolved_tick: currentTick })
+                            .eq('issue_id', issue.id)
+                            .eq('is_active', true)
+                            .eq('category', 'structural');
+                        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+                            `Both nations agreed to resolve the dispute via ${dipAction.name}. All structural issues addressed.`,
+                            { action_key: actionKey, resolution: 'diplomatic' });
                     }
 
                     // Special: arbitration
