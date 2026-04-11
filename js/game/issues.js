@@ -1263,27 +1263,89 @@ export async function processIssueTick(supabase, nationList, currentTick) {
             tensionDrift = -0.25;
         }
 
+        // Card system: additional tension decay if no card played this tick
+        // -0.25/tick when both sides pass (stacks with structural cooling above)
+        const lastPlayTick = issue.last_card_played_tick || 0;
+        if (issue.deck_initialized && lastPlayTick < currentTick) {
+            tensionDrift -= 0.25;
+        }
+
         // Apply tension drift (accumulate fractional, clamp 0-10)
         const rawTension = Number(issue.tension) + tensionDrift;
         let newTension = Math.max(0, Math.min(10, Math.round(rawTension * 4) / 4)); // quarter-step precision
 
         // ── 4c. Favor-based Gov_Approval bleed ──
-        // The disfavored nation loses Gov_Approval proportional to |favor|
-        // This is separate from modifier effects — it's the base cost of losing the dispute
         if (Math.abs(issue.favor) >= 1) {
             const disfavoredSide = getDisfavoredSide(issue.favor);
             const disfavoredNation = disfavoredSide === 'nation_a' ? nationA : nationB;
             if (disfavoredNation) {
-                // -0.1 per point of favor against you (so favor ±3 = -0.3/tick)
                 const approvalDelta = -(Math.abs(issue.favor) * 0.1);
                 await applyIssueStatEffects(supabase, disfavoredNation.id, disfavoredNation,
                     [{ stat_key: 'gov_approval', delta: approvalDelta }]);
             }
         }
 
+        // ── 5. Card system: diplomatic deadline + turn management ──
+        const issueCardUpdate = {};
 
-        // Phase 0: Diplomatic action matching (3-tick window) removed — replaced by card plays.
-        // Phase 1 will add: card turn tracking, tension decay on pass (-0.25/tick).
+        // 5a. Diplomatic card deadline expiry — auto-reject after 3 ticks
+        if (issue.pending_diplomatic_card && issue.pending_diplomatic_deadline_tick && currentTick >= issue.pending_diplomatic_deadline_tick) {
+            // Load card definition for the reject effects
+            const { data: dipCard } = await supabase
+                .from('issue_card_definitions')
+                .select('diplomatic_reject_effects, card_name')
+                .eq('issue_type', issue.issue_type)
+                .eq('card_number', issue.pending_diplomatic_card)
+                .single();
+
+            if (dipCard?.diplomatic_reject_effects) {
+                const rejectFx = dipCard.diplomatic_reject_effects;
+                // Proposer gains favor
+                if (rejectFx.favor_delta_to_proposer) {
+                    const favorDir = issue.pending_diplomatic_proposer === 'a' ? -1 : 1;
+                    const newFavor = Math.max(-5, Math.min(5, Number(issue.favor) + (rejectFx.favor_delta_to_proposer * favorDir)));
+                    issueCardUpdate.favor = newFavor;
+                }
+                if (rejectFx.tension_delta) {
+                    newTension = Math.max(0, Math.min(10, newTension + rejectFx.tension_delta));
+                }
+            }
+
+            // Record the auto-rejection
+            await supabase.from('issue_card_plays').insert({
+                issue_id: issue.id,
+                card_number: issue.pending_diplomatic_card,
+                played_by: issue.pending_diplomatic_proposer,
+                played_by_nation_id: issue.pending_diplomatic_proposer === 'a' ? issue.nation_a_id : issue.nation_b_id,
+                option_chosen: issue.pending_diplomatic_proposer === 'a' ? 'a' : 'b',
+                played_tick: issue.active_card_played_tick || currentTick,
+                ap_spent: 0,
+                diplomatic_response: 'expired',
+                diplomatic_response_tick: currentTick,
+                effects_applied: dipCard?.diplomatic_reject_effects || {},
+            });
+
+            await insertHistory(supabase, issue.id, currentTick, 'diplomatic_expired',
+                `${dipCard?.card_name || 'Diplomatic proposal'} expired without response. Favor shifts to proposer.`,
+                { card_number: issue.pending_diplomatic_card, proposer: issue.pending_diplomatic_proposer });
+
+            // Clear pending state
+            issueCardUpdate.pending_diplomatic_card = null;
+            issueCardUpdate.pending_diplomatic_deadline_tick = null;
+            issueCardUpdate.pending_diplomatic_proposer = null;
+            issueCardUpdate.active_card = null;
+            issueCardUpdate.active_card_played_by = null;
+            issueCardUpdate.active_card_played_tick = null;
+
+            console.log(`[Issues] Diplomatic card #${issue.pending_diplomatic_card} expired for issue ${issue.id}`);
+        }
+
+        // 5b. Turn alternation — switch turns each tick if no card was played
+        // (Card play itself switches turns in Phase 2C; this handles the "pass" case)
+        if (issue.deck_initialized && lastPlayTick < currentTick && !issue.pending_diplomatic_card) {
+            // No card played and no diplomatic pending — alternate turn
+            issueCardUpdate.whose_turn = issue.whose_turn === 'a' ? 'b' : 'a';
+        }
 
         const tensionChanged = newTension !== Number(issue.tension);
 
@@ -1409,6 +1471,7 @@ export async function processIssueTick(supabase, nationList, currentTick) {
         const issueUpdate = {
             tension: newTension,
             updated_at: new Date().toISOString(),
+            ...issueCardUpdate,
         };
         if (newStatus !== issue.status) {
             issueUpdate.status = newStatus;
