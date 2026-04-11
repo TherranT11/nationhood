@@ -8549,14 +8549,18 @@ async function resolveExpiredVotes(supabase, nationId) {
                     }
                 }
 
-                // Sponsor bonus: +1 on passage, -2 on failure
+                // Sponsor bonus: +1 on passage (opposition only), -2 on failure
                 if (billPassed && bill.proposed_by) {
-                    await supabase.rpc('adjust_momentum', {
-                        p_faction_id: bill.proposed_by,
-                        p_delta: 1,
-                        p_label: `Sponsored bill passed: ${(bill.bill_name || '').slice(0, 25)}… (+1)`,
-                        p_tick: currentTick
-                    });
+                    const sponsorCoalition = await fetchActiveCoalition(supabase, bill.nation_id);
+                    const isGovSponsor = sponsorCoalition?.party_ids?.includes(bill.proposed_by);
+                    if (!isGovSponsor) {
+                        await supabase.rpc('adjust_momentum', {
+                            p_faction_id: bill.proposed_by,
+                            p_delta: 1,
+                            p_label: `Sponsored bill passed (opposition): ${(bill.bill_name || '').slice(0, 25)}… (+1)`,
+                            p_tick: currentTick
+                        });
+                    }
                 } else if (!billPassed && bill.proposed_by) {
                     await supabase.rpc('adjust_momentum', {
                         p_faction_id: bill.proposed_by,
