@@ -1377,6 +1377,240 @@ export async function respondToDiplomaticCard(supabase, issueId, nationId, respo
     return { success: true, effects: appliedEffects };
 }
 
+// ==================== DECK EXHAUSTION RESOLUTION ====================
+
+const PERMANENT_BLOCKERS = new Set([
+    'sovereignty_declared', 'military_outpost_constructed',
+    'forced_population_transfer', 'military_occupation',
+]);
+
+/**
+ * Resolve an issue when the deck is fully exhausted (all cards played, both hands empty).
+ * Returns { newStatus, issueUpdates } or null if the issue continues.
+ */
+async function resolveDeckExhaustion(supabase, issue, nationA, nationB, currentMods, currentTick) {
+    const tension = Number(issue.tension) || 0;
+    const favor = Number(issue.favor) || 0;
+    const favorAbs = Math.abs(favor);
+    const issueType = ISSUE_TYPES[issue.issue_type] || {};
+    const territoryName = issue.metadata?.territory_name || 'the disputed territory';
+    const nameA = nationA.name || 'Nation A';
+    const nameB = nationB.name || 'Nation B';
+
+    // Check for permanent modifier blockers
+    const activeMods = (currentMods || []).filter(m => m.is_active);
+    const hasBlocker = activeMods.some(m => PERMANENT_BLOCKERS.has(m.modifier_key));
+
+    // ── OUTCOME 8: Blocked by permanent modifier ──
+    if (hasBlocker) {
+        const blockerNames = activeMods.filter(m => PERMANENT_BLOCKERS.has(m.modifier_key)).map(m => m.modifier_key.replace(/_/g, ' '));
+        await reshuffleDeck(supabase, issue, 15, nationA, nationB, currentTick);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `Deck exhausted but resolution blocked by: ${blockerNames.join(', ')}. Deck reshuffled with 15 cards.`,
+            { outcome: 'blocked', blockers: blockerNames });
+        return null; // continues
+    }
+
+    // ── OUTCOME 7: Critical tension (9-10) — 70% border incursion ──
+    if (tension >= 9) {
+        const fires = Math.random() < 0.7;
+        if (fires) {
+            await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+                'Crisis Point', `Armed confrontation erupts near ${territoryName}. The territorial dispute escalates to a border incursion.`);
+            return { newStatus: 'escalated' }; // escalation handled by step 7
+        }
+        // Didn't fire — reshuffle with 10 cards
+        await reshuffleDeck(supabase, issue, 10, nationA, nationB, currentTick);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `Deck exhausted at critical tension. 70% incursion check failed. Deck reshuffled with 10 cards.`,
+            { outcome: 'crisis_point_survived', tension });
+        return null;
+    }
+
+    // ── OUTCOME 6: High tension (6-8) — 30% border incursion ──
+    if (tension >= 6) {
+        const fires = Math.random() < 0.3;
+        if (fires) {
+            await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+                'Brink of War', `Military tensions peak near ${territoryName}. Border incursion triggered.`);
+            return { newStatus: 'escalated' };
+        }
+        await reshuffleDeck(supabase, issue, 15, nationA, nationB, currentTick);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `Deck exhausted at high tension. 30% incursion check failed. Deck reshuffled with 15 cards.`,
+            { outcome: 'brink_survived', tension });
+        return null;
+    }
+
+    // ── OUTCOME 5: Moderate tension (3-5) — Frozen Conflict ──
+    if (tension >= 3) {
+        await reshuffleDeck(supabase, issue, 15, nationA, nationB, currentTick);
+        await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+            'Negotiations Stall', `Negotiations over ${territoryName} stall. The dispute continues.`);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `Deck exhausted at moderate tension. Frozen conflict — deck reshuffled with 15 cards.`,
+            { outcome: 'frozen_conflict', tension });
+        return null;
+    }
+
+    // ── Low tension (0-2) — actual resolution possible ──
+
+    // ── OUTCOME 4: Decisive Resolution (favor ±4-5) ──
+    if (favorAbs >= 4) {
+        const winnerIsA = favor < 0; // negative favor = nation_a (claimant) wins
+        const winner = winnerIsA ? nationA : nationB;
+        const loser = winnerIsA ? nationB : nationA;
+        const winnerName = winner.name;
+        const loserName = loser.name;
+
+        await applyIssueStatEffects(supabase, winner.id, winner, [
+            { stat_key: 'gov_approval', delta: 5 },
+        ]);
+        await applyIssueStatEffects(supabase, loser.id, loser, [
+            { stat_key: 'gov_approval', delta: -5 },
+            { stat_key: 'stability', delta: -3 },
+        ]);
+        // Momentum: +5 winner governing parties, -5 loser governing parties
+        await applyResolutionMomentum(supabase, winner.id, 5, `Decisive victory: ${territoryName}`, currentTick);
+        await applyResolutionMomentum(supabase, loser.id, -5, `Decisive defeat: ${territoryName}`, currentTick);
+        await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, -3);
+
+        await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+            'Decisive Resolution', `Decisive resolution of the ${territoryName} dispute in favor of ${winnerName}. ${loserName} suffers lasting political damage.`);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `Decisive resolution in favor of ${winnerName}. Favor: ${favor.toFixed(1)}.`,
+            { outcome: 'decisive', winner: winnerName, loser: loserName, favor });
+
+        return { newStatus: 'resolved' };
+    }
+
+    // ── OUTCOME 2/3: Diplomatic Victory (favor ±2-3) ──
+    if (favorAbs >= 2) {
+        const winnerIsA = favor < 0;
+        const winner = winnerIsA ? nationA : nationB;
+        const loser = winnerIsA ? nationB : nationA;
+        const winnerName = winner.name;
+        const loserName = loser.name;
+        const isOccupierWin = !winnerIsA; // favor > 0 means nation_b (occupier in territorial) consolidates
+
+        const desc = isOccupierWin
+            ? `${winnerName} consolidates control over ${territoryName}. International community tacitly accepts.`
+            : `Diplomatic pressure forces concessions on ${territoryName}. Administration shifts toward ${winnerName}.`;
+
+        await applyIssueStatEffects(supabase, winner.id, winner, [
+            { stat_key: 'gov_approval', delta: 2 },
+            { stat_key: 'international_reputation', delta: 0.5 },
+        ]);
+        await applyIssueStatEffects(supabase, loser.id, loser, [
+            { stat_key: 'gov_approval', delta: -2 },
+        ]);
+        await applyResolutionMomentum(supabase, winner.id, 3, `Diplomatic victory: ${territoryName}`, currentTick);
+        await applyResolutionMomentum(supabase, loser.id, -3, `Diplomatic defeat: ${territoryName}`, currentTick);
+        await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, 1);
+
+        await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+            isOccupierWin ? 'Occupier Consolidation' : 'Claimant Recovery', desc);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `${isOccupierWin ? 'Occupier consolidation' : 'Claimant recovery'}. Favor: ${favor.toFixed(1)}.`,
+            { outcome: isOccupierWin ? 'occupier_consolidation' : 'claimant_recovery', winner: winnerName, favor });
+
+        return { newStatus: 'resolved' };
+    }
+
+    // ── OUTCOME 1: Peaceful Stalemate (favor -1 to +1) ──
+    await applyIssueStatEffects(supabase, nationA.id, nationA, [
+        { stat_key: 'stability', delta: 1 },
+    ]);
+    await applyIssueStatEffects(supabase, nationB.id, nationB, [
+        { stat_key: 'stability', delta: 1 },
+    ]);
+    await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, 3);
+
+    await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+        'Peaceful Stalemate', `The ${territoryName} dispute enters a dormant phase. Both sides exhaust their options without decisive advantage.`);
+    await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+        `Peaceful stalemate. Tension: ${tension.toFixed(1)}, Favor: ${favor.toFixed(1)}. Issue goes dormant.`,
+        { outcome: 'peaceful_stalemate', tension, favor });
+
+    return { newStatus: 'dormant', issueUpdates: { status: 'dormant' } };
+}
+
+/**
+ * Reshuffle a reduced deck for frozen/blocked conflicts.
+ * Takes N cards from the full card pool, reshuffles, redeals hands.
+ */
+async function reshuffleDeck(supabase, issue, cardCount, nationA, nationB, currentTick) {
+    const { data: allCards } = await supabase
+        .from('issue_card_definitions')
+        .select('card_number')
+        .eq('issue_type', issue.issue_type)
+        .order('card_number');
+
+    if (!allCards || allCards.length === 0) return;
+
+    // All cards available for reshuffle (played cards can be replayed in a new round)
+    const allNumbers = allCards.map(c => c.card_number);
+    shuffleArray(allNumbers);
+    const deckCards = allNumbers.slice(0, Math.min(cardCount, allNumbers.length));
+
+    // Redeal based on current FA stats
+    const drawA = getDrawCount(nationA?.international_reputation);
+    const drawB = getDrawCount(nationB?.international_reputation);
+    const handA = deckCards.splice(0, Math.min(drawA, deckCards.length));
+    const handB = deckCards.splice(0, Math.min(drawB, deckCards.length));
+
+    await supabase.from('bilateral_issues').update({
+        deck_remaining: deckCards,
+        hand_a: handA,
+        hand_b: handB,
+        played_cards: issue.played_cards || [], // keep history
+        whose_turn: 'a',
+        last_card_played_tick: currentTick,
+    }).eq('id', issue.id);
+
+    console.log(`[Issues] Deck reshuffled for ${issue.id}: ${cardCount} cards, A drew ${handA.length}, B drew ${handB.length}, deck ${deckCards.length}.`);
+}
+
+/**
+ * Fire a resolution event to both nations' event logs + dashboard.
+ */
+async function fireResolutionEvent(supabase, issue, nameA, nameB, currentTick, eventName, description) {
+    for (const nId of [issue.nation_a_id, issue.nation_b_id]) {
+        await supabase.from('event_log').insert({
+            nation_id: nId,
+            event_name: eventName,
+            trigger_key: 'issue_resolution',
+            description_chosen: description,
+            category: 'crisis',
+            fired_at_tick: currentTick,
+        }).then(({ error }) => { if (error) console.warn('Resolution event_log failed:', error.message); });
+    }
+}
+
+/**
+ * Apply momentum to all governing parties in a nation.
+ */
+async function applyResolutionMomentum(supabase, nationId, delta, label, currentTick) {
+    const { data: govParties } = await supabase
+        .from('ministries')
+        .select('party_id')
+        .eq('nation_id', nationId)
+        .eq('is_active', true)
+        .not('party_id', 'is', null);
+
+    const seenIds = new Set();
+    for (const m of (govParties || [])) {
+        if (!m.party_id || seenIds.has(m.party_id)) continue;
+        seenIds.add(m.party_id);
+        await supabase.rpc('adjust_momentum', {
+            p_faction_id: m.party_id,
+            p_delta: delta,
+            p_label: label,
+            p_tick: currentTick,
+        });
+    }
+}
+
 // ==================== STAT EFFECT HELPERS ====================
 
 /**
@@ -1742,6 +1976,24 @@ export async function processIssueTick(supabase, nationList, currentTick) {
             newStatus = 'resolved';
         } else if (resolvedStructural >= 3 && activeStructural.length > 0) {
             newStatus = 'partial';
+        }
+
+        // ── 6b. Deck exhaustion resolution ──
+        if (issue.deck_initialized && newStatus !== 'resolved' && newStatus !== 'escalated') {
+            const handALen = (issue.hand_a || []).length;
+            const handBLen = (issue.hand_b || []).length;
+            const deckLen = (issue.deck_remaining || []).length;
+            const allExhausted = handALen === 0 && handBLen === 0 && deckLen === 0;
+
+            if (allExhausted) {
+                const resolution = await resolveDeckExhaustion(
+                    supabase, issue, nationA, nationB, currentMods || [], currentTick
+                );
+                if (resolution) {
+                    if (resolution.newStatus) newStatus = resolution.newStatus;
+                    if (resolution.issueUpdates) Object.assign(issueCardUpdate, resolution.issueUpdates);
+                }
+            }
         }
 
         // ── 7. Check tension 10 → escalation to incident ──
