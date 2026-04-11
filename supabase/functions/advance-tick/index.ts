@@ -7682,6 +7682,25 @@ async function resolveExpiredVotes(supabase, nationId) {
                     }).eq('id', ministry.id);
                 }
 
+                // PM rejection penalty: -3 gov approval, -3 momentum for president's party
+                if (mKey === 'prime_minister') {
+                    await supabase.from('nations').update({
+                        gov_approval: Math.max(0, (nation?.gov_approval ?? 50) - 3),
+                        pm_nomination_attempts: (nation?.pm_nomination_attempts || 0) + 1
+                    }).eq('id', bill.nation_id);
+                    // Find president's faction and apply -3 momentum
+                    const { data: activePresident } = await supabase.from('presidents')
+                        .select('faction_id').eq('nation_id', bill.nation_id).eq('is_active', true).maybeSingle();
+                    if (activePresident?.faction_id) {
+                        await supabase.rpc('adjust_momentum', {
+                            p_faction_id: activePresident.faction_id,
+                            p_delta: -3,
+                            p_label: 'PM nomination rejected (-3)',
+                            p_tick: currentTick
+                        });
+                    }
+                }
+
                 await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
             }
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'minister_confirmation', earlyResolution: bill.early_resolution_status || null });
@@ -13883,6 +13902,30 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         console.error(`[inauguratePresident] Failed to create new administration for ${nationId}:`, adminErr.message);
     }
 
+    // Auto-generate VP (head_of_state) as a distinct NPC — not the president
+    if (hasElectedPresident(fullNation)) {
+        const { firstNames: vpFirstPool, lastNames: vpLastPool } = getNationNames(fullNation?.name || '');
+        const vpFirst = vpFirstPool[Math.floor(Math.random() * vpFirstPool.length)];
+        const vpLast = vpLastPool[Math.floor(Math.random() * vpLastPool.length)];
+        const vpAge = 45 + Math.floor(Math.random() * 20);
+        await supabase.from('nations').update({
+            head_of_state_first_name: vpFirst,
+            head_of_state_last_name: vpLast,
+            head_of_state_age: vpAge
+        }).eq('id', nationId);
+    }
+
+    // Semi-presidential: clear existing PM — president must nominate via ratification bill
+    if (isSemiPresidential(fullNation)) {
+        await supabase.from('head_of_government')
+            .update({ active: false })
+            .eq('nation_id', nationId)
+            .eq('active', true);
+        await supabase.from('nations')
+            .update({ pm_nomination_attempts: 0 })
+            .eq('id', nationId);
+    }
+
     return candidate;
 }
 
@@ -14577,6 +14620,9 @@ async function autoSelectPresidentialCandidates(supabase, nation, currentTick) {
  */
 async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
     if (!hasParliamentaryPM(nation)) return;
+
+    // Semi-presidential: PM is nominated by president via ratification bill, not auto-appointed
+    if (isSemiPresidential(nation)) return;
 
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     if (!coalition || coalition.status !== 'formed') return;

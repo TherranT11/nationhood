@@ -1980,9 +1980,9 @@ function openNominatePMModal() {
         const candLogo = p.party_logo;
         const candCustomLogo = p.custom_logo_url;
         const candLogoHtml = candLogo || candCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: candCustomLogo, iconKey: candLogo, size: 14, color: pColor })}</span>` : '';
-        return `<div class="candidate-card" data-party-id="${p.id}" data-first="${escapeHtml(p.leader_first_name)}" data-last="${escapeHtml(p.leader_last_name)}" data-age="${p.leader_age || 50}" data-party-name="${escapeHtml(p.faction_name)}" onclick="selectPMCandidate(this)" style="border-left:3px solid ${pColor};cursor:pointer;">
-            <div><div class="candidate-name">${escapeHtml(p.leader_first_name)} ${escapeHtml(p.leader_last_name)}</div>
-            <div class="candidate-details">Age ${p.leader_age || '?'} · <span class="candidate-party-tag ${isPresParty ? 'ruling' : 'other'}">${candLogoHtml}${escapeHtml(p.faction_name)}</span> (${p.seats} seats)</div></div>
+        return `<div class="candidate-card" data-party-id="${p.id}" data-party-name="${escapeHtml(p.faction_name)}" onclick="selectPMCandidate(this)" style="border-left:3px solid ${pColor};cursor:pointer;">
+            <div><div class="candidate-name">${candLogoHtml}${escapeHtml(p.faction_name)}</div>
+            <div class="candidate-details">${p.seats} seats · Leader: ${escapeHtml(p.leader_first_name)} ${escapeHtml(p.leader_last_name)}</div></div>
             ${isPresParty ? '<span class="ruling-label">PRESIDENT\'S PARTY</span>' : ''}
         </div>`;
     }).join('');
@@ -2006,10 +2006,7 @@ function selectPMCandidate(card) {
     card.classList.add('selected');
     _pmNomineeSelected = {
         partyId: card.dataset.partyId,
-        partyName: card.dataset.partyName,
-        firstName: card.dataset.first,
-        lastName: card.dataset.last,
-        age: parseInt(card.dataset.age) || 50
+        partyName: card.dataset.partyName
     };
     const confirmBtn = document.getElementById('assign-confirm-btn');
     if (confirmBtn) confirmBtn.disabled = false;
@@ -2018,8 +2015,20 @@ function selectPMCandidate(card) {
 async function confirmPMNomination() {
     if (!_pmNomineeSelected || !currentFaction || !currentNation) return;
     try {
-        await nominatePMCandidate(_supabase, currentNation.id, currentFaction.id, _pmNomineeSelected);
-        alert(`PM nomination submitted — parliament will vote on ${_pmNomineeSelected.firstName} ${_pmNomineeSelected.lastName}.`);
+        // Auto-generate PM name from nation name pool (PM is an NPC, not the party leader)
+        const { firstNames, lastNames } = getNationNames(currentNation.name);
+        const genFirst = firstNames[Math.floor(Math.random() * firstNames.length)];
+        const genLast = lastNames[Math.floor(Math.random() * lastNames.length)];
+        const genAge = 40 + Math.floor(Math.random() * 20);
+        const nominee = {
+            partyId: _pmNomineeSelected.partyId,
+            partyName: _pmNomineeSelected.partyName,
+            firstName: genFirst,
+            lastName: genLast,
+            age: genAge
+        };
+        await nominatePMCandidate(_supabase, currentNation.id, currentFaction.id, nominee);
+        alert(`PM nomination submitted — parliament will vote on ${genFirst} ${genLast} from ${nominee.partyName}.`);
         closeAssignModal();
         await renderGovernmentPage();
     } catch (e) {
