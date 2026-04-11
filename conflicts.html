@@ -257,6 +257,26 @@ initPage('conflicts', async (state) => {
     switchSubTab('issues');
 });
 
+async function loadIncidents() {
+    try {
+        const { data, error } = await _supabase
+            .from('incidents')
+            .select('*, nation_a:nations!incidents_nation_a_id_fkey(id, name), nation_b:nations!incidents_nation_b_id_fkey(id, name)')
+            .in('status', ['active', 'mediating'])
+            .order('started_tick', { ascending: false });
+        if (error) throw error;
+        allIncidents = data || [];
+        renderSidebar(
+            allIncidents.filter(i => i.nation_a_id === currentNation.id || i.nation_b_id === currentNation.id),
+            allIncidents.filter(i => i.nation_a_id !== currentNation.id && i.nation_b_id !== currentNation.id),
+            []
+        );
+    } catch (err) {
+        console.error('[Conflicts] Failed to load incidents:', err);
+        allIncidents = [];
+    }
+}
+
 async function loadFactionRoles() {
     _currentRoles = new Set();
     if (!currentFaction || !currentNation) return;
