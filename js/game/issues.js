@@ -871,6 +871,137 @@ export const ISSUE_TYPES = {
 };
 
 
+// ==================== CARD DECK MECHANICS ====================
+
+/**
+ * Map a nation's international_reputation (0-100) to a card draw count (1-12).
+ * FA 0-8 → 1 card, FA 9-16 → 2, ..., FA 92-100 → 12.
+ */
+function getDrawCount(intlRep) {
+    const fa = Math.max(0, Math.min(100, Number(intlRep) || 0));
+    return Math.max(1, Math.min(12, Math.ceil(fa / 8.33)));
+}
+
+/**
+ * Fisher-Yates shuffle (in-place).
+ */
+function shuffleArray(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+/**
+ * Initialize the card deck for a bilateral issue.
+ * Loads card definitions, shuffles the full deck, deals hands
+ * to both nations based on their Foreign Affairs (international_reputation) stat.
+ *
+ * Called once per issue when deck_initialized is false.
+ * Safe to call multiple times — no-ops if already initialized.
+ *
+ * @param {object} supabase - Supabase client
+ * @param {object} issue - bilateral_issues row
+ * @param {object} nationA - nations row for nation_a
+ * @param {object} nationB - nations row for nation_b
+ * @param {number} currentTick - current game tick
+ * @returns {boolean} true if deck was initialized, false if already done or failed
+ */
+export async function initializeDeck(supabase, issue, nationA, nationB, currentTick) {
+    if (issue.deck_initialized) return false;
+
+    // Load card definitions for this issue type
+    const { data: cards, error: cardErr } = await supabase
+        .from('issue_card_definitions')
+        .select('card_number')
+        .eq('issue_type', issue.issue_type)
+        .order('card_number');
+
+    if (cardErr || !cards || cards.length === 0) {
+        console.warn(`[Issues] No card definitions found for issue type ${issue.issue_type} — cannot initialize deck`);
+        return false;
+    }
+
+    // Build and shuffle the full deck (array of card numbers)
+    const allCardNumbers = cards.map(c => c.card_number);
+    shuffleArray(allCardNumbers);
+
+    // Determine draw counts from Foreign Affairs (international_reputation)
+    const drawA = getDrawCount(nationA.international_reputation);
+    const drawB = getDrawCount(nationB.international_reputation);
+
+    // Deal hands from the top of the shuffled deck
+    const handA = allCardNumbers.splice(0, drawA);
+    const handB = allCardNumbers.splice(0, drawB);
+    const deckRemaining = allCardNumbers; // whatever is left
+
+    // Nation A goes first
+    const { error: updateErr } = await supabase
+        .from('bilateral_issues')
+        .update({
+            deck_remaining: deckRemaining,
+            hand_a: handA,
+            hand_b: handB,
+            played_cards: [],
+            whose_turn: 'a',
+            deck_initialized: true,
+            last_card_played_tick: currentTick,
+        })
+        .eq('id', issue.id);
+
+    if (updateErr) {
+        console.error(`[Issues] Failed to initialize deck for issue ${issue.id}:`, updateErr.message);
+        return false;
+    }
+
+    console.log(`[Issues] Deck initialized for ${issue.issue_type} (${issue.id}): ${allCardNumbers.length + handA.length + handB.length} cards total. Nation A drew ${drawA} (FA: ${Math.round(nationA.international_reputation || 0)}), Nation B drew ${drawB} (FA: ${Math.round(nationB.international_reputation || 0)}). Deck remaining: ${deckRemaining.length}.`);
+    return true;
+}
+
+/**
+ * Redraw hand for a nation after government change (new HoG elected).
+ * Old hand is shuffled back into the deck, then new cards drawn
+ * based on the new government's Foreign Affairs stat.
+ *
+ * @param {object} supabase - Supabase client
+ * @param {string} issueId - bilateral issue ID
+ * @param {string} side - 'a' or 'b'
+ * @param {number} newIntlRep - the nation's current international_reputation
+ * @param {number} currentTick - current game tick
+ */
+export async function redrawHand(supabase, issueId, side, newIntlRep, currentTick) {
+    const { data: issue, error: fetchErr } = await supabase
+        .from('bilateral_issues')
+        .select('deck_remaining, hand_a, hand_b, deck_initialized')
+        .eq('id', issueId)
+        .single();
+
+    if (fetchErr || !issue || !issue.deck_initialized) return;
+
+    const handKey = side === 'a' ? 'hand_a' : 'hand_b';
+    const oldHand = issue[handKey] || [];
+    const deck = [...(issue.deck_remaining || []), ...oldHand];
+    shuffleArray(deck);
+
+    const drawCount = getDrawCount(newIntlRep);
+    const newHand = deck.splice(0, drawCount);
+
+    const { error: updateErr } = await supabase
+        .from('bilateral_issues')
+        .update({
+            deck_remaining: deck,
+            [handKey]: newHand,
+        })
+        .eq('id', issueId);
+
+    if (updateErr) {
+        console.error(`[Issues] Failed to redraw hand for issue ${issueId} side ${side}:`, updateErr.message);
+    } else {
+        console.log(`[Issues] Redrew hand for issue ${issueId} side ${side}: ${drawCount} cards (FA: ${Math.round(newIntlRep || 0)}). Deck: ${deck.length} remaining.`);
+    }
+}
+
 // ==================== STAT EFFECT HELPERS ====================
 
 /**
@@ -983,6 +1114,11 @@ export async function processIssueTick(supabase, nationList, currentTick) {
         const nationA = nationMap[issue.nation_a_id];
         const nationB = nationMap[issue.nation_b_id];
         if (!nationA || !nationB) continue;
+
+        // Initialize card deck if not yet done
+        if (!issue.deck_initialized) {
+            await initializeDeck(supabase, issue, nationA, nationB, currentTick);
+        }
 
         // Load active modifiers for this issue
         const { data: modifiers, error: modErr } = await supabase

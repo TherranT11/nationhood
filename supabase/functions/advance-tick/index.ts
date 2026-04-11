@@ -26618,6 +26618,96 @@ const MODIFIERS = {
 
 // Phase 0: ACTIONS object and ROLE_TO_MINISTRY removed — replaced by card system.
 
+// ==================== CARD DECK MECHANICS ====================
+
+function getDrawCount(intlRep) {
+    const fa = Math.max(0, Math.min(100, Number(intlRep) || 0));
+    return Math.max(1, Math.min(12, Math.ceil(fa / 8.33)));
+}
+
+function shuffleDeck(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+async function initializeDeck(supabase, issue, nationA, nationB, currentTick) {
+    if (issue.deck_initialized) return false;
+
+    const { data: cards, error: cardErr } = await supabase
+        .from('issue_card_definitions')
+        .select('card_number')
+        .eq('issue_type', issue.issue_type)
+        .order('card_number');
+
+    if (cardErr || !cards || cards.length === 0) {
+        console.warn(`[Issues] No card definitions found for issue type ${issue.issue_type}`);
+        return false;
+    }
+
+    const allCardNumbers = cards.map(c => c.card_number);
+    shuffleDeck(allCardNumbers);
+
+    const drawA = getDrawCount(nationA.international_reputation);
+    const drawB = getDrawCount(nationB.international_reputation);
+
+    const handA = allCardNumbers.splice(0, drawA);
+    const handB = allCardNumbers.splice(0, drawB);
+    const deckRemaining = allCardNumbers;
+
+    const { error: updateErr } = await supabase
+        .from('bilateral_issues')
+        .update({
+            deck_remaining: deckRemaining,
+            hand_a: handA,
+            hand_b: handB,
+            played_cards: [],
+            whose_turn: 'a',
+            deck_initialized: true,
+            last_card_played_tick: currentTick,
+        })
+        .eq('id', issue.id);
+
+    if (updateErr) {
+        console.error(`[Issues] Failed to initialize deck for issue ${issue.id}:`, updateErr.message);
+        return false;
+    }
+
+    console.log(`[Issues] Deck initialized for ${issue.issue_type} (${issue.id}): A drew ${drawA} (FA: ${Math.round(nationA.international_reputation || 0)}), B drew ${drawB} (FA: ${Math.round(nationB.international_reputation || 0)}). Deck: ${deckRemaining.length}.`);
+    return true;
+}
+
+async function redrawHand(supabase, issueId, side, newIntlRep, currentTick) {
+    const { data: issue, error: fetchErr } = await supabase
+        .from('bilateral_issues')
+        .select('deck_remaining, hand_a, hand_b, deck_initialized')
+        .eq('id', issueId)
+        .single();
+
+    if (fetchErr || !issue || !issue.deck_initialized) return;
+
+    const handKey = side === 'a' ? 'hand_a' : 'hand_b';
+    const oldHand = issue[handKey] || [];
+    const deck = [...(issue.deck_remaining || []), ...oldHand];
+    shuffleDeck(deck);
+
+    const drawCount = getDrawCount(newIntlRep);
+    const newHand = deck.splice(0, drawCount);
+
+    const { error: updateErr } = await supabase
+        .from('bilateral_issues')
+        .update({ deck_remaining: deck, [handKey]: newHand })
+        .eq('id', issueId);
+
+    if (updateErr) {
+        console.error(`[Issues] Redraw failed for issue ${issueId} side ${side}:`, updateErr.message);
+    } else {
+        console.log(`[Issues] Redrew hand for ${issueId} side ${side}: ${drawCount} cards. Deck: ${deck.length}.`);
+    }
+}
+
 // ==================== ISSUE TYPE DEFINITIONS ====================
 
 const ISSUE_TYPES = {
@@ -26796,6 +26886,11 @@ async function processIssueTick(supabase, nationList, currentTick) {
         const nationA = nationMap[issue.nation_a_id];
         const nationB = nationMap[issue.nation_b_id];
         if (!nationA || !nationB) continue;
+
+        // Initialize card deck if not yet done
+        if (!issue.deck_initialized) {
+            await initializeDeck(supabase, issue, nationA, nationB, currentTick);
+        }
 
         // Load active modifiers for this issue
         const { data: modifiers, error: modErr } = await supabase
