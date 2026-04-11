@@ -19,6 +19,25 @@ DECLARE
     v_label TEXT;
     v_rec RECORD;
     v_has_user BOOLEAN;
+    -- Seat redistribution variables
+    v_nation_id UUID;
+    v_old_seats INT;
+    v_total INT;
+    v_sum INT;
+    v_vacant INT;
+    v_ids UUID[];
+    v_cur INT[];
+    v_new INT[];
+    v_frac NUMERIC[];
+    v_quota NUMERIC;
+    v_raw NUMERIC;
+    v_guaranteed INT;
+    v_allocated INT := 0;
+    v_remaining INT;
+    v_best_idx INT;
+    v_best_frac NUMERIC;
+    v_len INT;
+    i INT;
     deletes TEXT[][] := ARRAY[
         -- [label, sql]  —  use %s as placeholder for the faction UUID
         ARRAY['nations.ruling_faction_id',    $$UPDATE nations SET ruling_faction_id = NULL WHERE ruling_faction_id = '%s'$$],
@@ -88,7 +107,6 @@ DECLARE
         ARRAY['protest_log.faction_id',        $$UPDATE protest_log SET faction_id = NULL WHERE faction_id = '%s'$$],
         ARRAY['event_log.faction_id',          $$UPDATE event_log SET faction_id = NULL WHERE faction_id = '%s'$$]
     ];
-    i INT;
 BEGIN
     -- SAFEGUARD: block deletion of factions owned by real players unless p_force = true.
     -- A faction is "owned" if its id matches an auth.users row or it has a linked_user_id.
@@ -104,6 +122,89 @@ BEGIN
                 'error', 'BLOCKED: This faction belongs to a real player. Use p_force=true to override.',
                 'faction_id', p_faction_id
             );
+        END IF;
+    END IF;
+
+    -- ---- SEAT REDISTRIBUTION before cascade delete ----
+    -- Look up the faction's nation and seats; redistribute to remaining parties
+    SELECT nation_id, COALESCE(seats, 0) INTO v_nation_id, v_old_seats
+    FROM factions WHERE id = p_faction_id;
+
+    IF v_nation_id IS NOT NULL AND v_old_seats > 0 THEN
+        SELECT COALESCE(total_seats, 120) INTO v_total FROM nations WHERE id = v_nation_id;
+
+        -- Gather remaining parties (excluding the one being deleted)
+        SELECT array_agg(f.id ORDER BY f.id),
+               array_agg(COALESCE(f.seats, 0) ORDER BY f.id)
+        INTO v_ids, v_cur
+        FROM factions f
+        WHERE f.nation_id = v_nation_id
+          AND f.faction_type = 'party'
+          AND f.id != p_faction_id
+          AND f.abandoned_at IS NULL;
+
+        v_len := COALESCE(array_length(v_ids, 1), 0);
+
+        IF v_len > 0 THEN
+            v_sum := 0;
+            FOR i IN 1..v_len LOOP
+                v_sum := v_sum + v_cur[i];
+            END LOOP;
+
+            v_vacant := v_total - v_sum;
+
+            IF v_vacant > 0 THEN
+                v_new  := array_fill(0, ARRAY[v_len]);
+                v_frac := array_fill(0.0::NUMERIC, ARRAY[v_len]);
+                v_allocated := 0;
+
+                IF v_sum = 0 THEN
+                    -- All remaining parties at 0 — distribute evenly
+                    FOR i IN 1..v_len LOOP
+                        v_new[i] := v_total / v_len;
+                    END LOOP;
+                    v_remaining := v_total - (v_total / v_len) * v_len;
+                    FOR i IN 1..v_remaining LOOP
+                        v_new[i] := v_new[i] + 1;
+                    END LOOP;
+                ELSE
+                    -- Largest Remainder (Hamilton) method
+                    v_quota := v_sum::NUMERIC / v_total;
+                    FOR i IN 1..v_len LOOP
+                        v_raw := v_cur[i]::NUMERIC / v_quota;
+                        v_guaranteed := floor(v_raw)::INT;
+                        v_new[i] := v_guaranteed;
+                        v_frac[i] := v_raw - v_guaranteed;
+                        v_allocated := v_allocated + v_guaranteed;
+                    END LOOP;
+
+                    v_remaining := v_total - v_allocated;
+                    FOR r IN 1..v_remaining LOOP
+                        v_best_idx := 1;
+                        v_best_frac := -1;
+                        FOR i IN 1..v_len LOOP
+                            IF v_frac[i] > v_best_frac THEN
+                                v_best_frac := v_frac[i];
+                                v_best_idx := i;
+                            END IF;
+                        END LOOP;
+                        v_new[v_best_idx] := v_new[v_best_idx] + 1;
+                        v_frac[v_best_idx] := -1;
+                    END LOOP;
+                END IF;
+
+                -- Apply new seat counts
+                FOR i IN 1..v_len LOOP
+                    IF v_new[i] != v_cur[i] THEN
+                        UPDATE factions SET seats = v_new[i] WHERE id = v_ids[i];
+                    END IF;
+                END LOOP;
+
+                result := result || jsonb_build_object(
+                    'seats_redistributed', v_vacant,
+                    'old_seats', v_old_seats
+                );
+            END IF;
         END IF;
     END IF;
 

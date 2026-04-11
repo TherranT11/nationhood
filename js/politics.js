@@ -26,7 +26,8 @@ function toMap(arr, key = 'id') {
 }
 
 function computeGovernanceScore(nation, statsAtStart, startedAtTick, currentTick) {
-    if (!statsAtStart) return { score: 0, deltas: [], decayCycles: 0, multiplier: 1 };
+    const ticksInPower = currentTick - (startedAtTick || currentTick);
+    if (!statsAtStart) return { score: 0, deltas: [], decayCycles: 0, multiplier: 1, ticksInPower };
     let sum = 0, count = 0;
     const deltas = [];
     for (const key of NATION_STAT_COLUMNS) {
@@ -42,7 +43,6 @@ function computeGovernanceScore(nation, statsAtStart, startedAtTick, currentTick
         count++;
     }
     let score = count > 0 ? sum / count : 0;
-    const ticksInPower = currentTick - (startedAtTick || currentTick);
     const decayCycles = Math.floor(ticksInPower / 12);
     const multiplier = score > 0 ? Math.pow(0.95, decayCycles) : 1;
     score *= multiplier;

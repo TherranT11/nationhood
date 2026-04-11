@@ -489,6 +489,11 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
         if (targetDelta === 0) targetDelta = sign; // preserve direction even at minimum
     }
 
+    // Crowd Pleaser: +2 bonus momentum from rallies
+    if ((faction.leader_positive_traits || []).includes('crowd_pleaser')) {
+        targetDelta += 2;
+    }
+
     // ── 7. Apply momentum from rally outcome ──
     const effects = [];
     const momSign = targetDelta >= 0 ? '+' : '';

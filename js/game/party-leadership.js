@@ -222,6 +222,11 @@ export function getTraitApprovalMultiplier(faction, actionType, blocDisposition)
         mult *= 1.3;
     }
 
+    // crowd_pleaser: Rally momentum gains +30%
+    if (pos.includes('crowd_pleaser') && actionType === 'rally') {
+        mult *= 1.3;
+    }
+
     // divisive_figure: Outreach approval gains with non-BASE blocs halved
     if (neg.includes('divisive_figure') && actionType === 'outreach' && blocDisposition !== 'BASE') {
         mult *= 0.5;
