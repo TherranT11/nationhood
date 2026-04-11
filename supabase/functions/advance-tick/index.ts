@@ -28186,10 +28186,6 @@ async function processIssueTick(supabase, nationList, currentTick) {
         if (newTension >= 10 && issue.status !== 'escalated') {
             const leverage = favorToLeverage(issue.favor);
 
-            // Determine actual government types for each nation
-            const govTypeA = nationA.government_type || 'democracy';
-            const govTypeB = nationB.government_type || 'democracy';
-
             // Spawn the actual incident via the existing incident system
             const incidentResult = await spawnIncidentFromIssue(
                 supabase, issue, nationA, nationB, leverage, currentTick
