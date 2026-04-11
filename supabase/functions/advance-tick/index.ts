@@ -27428,9 +27428,9 @@ const ISSUE_TYPES = {
         required_proximity: 20,
         description: 'A specific named territory is claimed by both nations based on historical, ethnic, or treaty grounds. One nation administers it. The other wants it.',
         category: 'Military',
-        incident_type: 'border_military_incursion', // 66% — or fishing_dispute at 33% if maritime
-        incident_type_alt: 'fishing_dispute',
-        incident_type_alt_weight: 0.33,
+        incident_type: 'border_incursion',
+        incident_type_alt: null,
+        incident_type_alt_weight: 0,
         has_administering_nation: true,
         starter_modifiers: [
             'competing_sovereignty_claims',
