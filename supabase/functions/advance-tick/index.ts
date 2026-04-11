@@ -4338,7 +4338,7 @@ function buildMinistryBaselines(ministryKey, nation) {
  */
 const MINISTER_APPROVAL_CONFIG = {
     // Per-tick sensitivity: how much each point of average delta moves approval
-    DELTA_SENSITIVITY: 0.6,
+    DELTA_SENSITIVITY: 0.4,
 
     // Baseline decay: approval always erodes by this amount per tick unless stats improve
     BASELINE_DECAY: -0.5,
@@ -22350,8 +22350,10 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
             }
         }
 
+        // PM approval capped at 70 — broad stat ownership makes 100% too easy
+        const approvalCeiling = ministry.ministry_key === 'prime_minister' ? 70 : 100;
         // minister_approval is an integer column — round to whole number
-        newApproval = Math.round(Math.max(0, Math.min(100, newApproval)));
+        newApproval = Math.round(Math.max(0, Math.min(approvalCeiling, newApproval)));
 
         // Keep stat_baselines as the original appointment snapshot (never overwrite).
         // The UI uses baselines to show cumulative change since appointment.

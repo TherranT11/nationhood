@@ -1770,7 +1770,8 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         const pmAppr = primeMinister?.minister_approval ?? null;
         const pmApprHtml = pmAppr !== null ? (() => {
             const cls = pmAppr < 35 ? 'low' : pmAppr < 50 ? 'mid' : 'high';
-            return `<div class="minister-approval" style="margin-top:6px;">Approval: <span class="${cls}">${Math.round(pmAppr)}%</span></div>`;
+            const perfPanel = primeMinister ? renderMinistryStatBreakdown('prime_minister', primeMinister) : '';
+            return `<div class="minister-approval" style="margin-top:6px;">Approval: <span class="${cls}">${Math.round(pmAppr)}%</span></div>${perfPanel}`;
         })() : '';
         // Fetch any coalition parties missing from allParties (handles presidential virtual coalitions)
         const missingGovIds = coalition.party_ids.filter(id => !allParties.find(x => x.id === id));
@@ -3387,7 +3388,7 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
     const stats = MINISTRY_TO_STATS[ministryKey];
     if (!stats || stats.length === 0 || !currentNation) return '';
 
-    const DELTA_SENSITIVITY = 0.6; // must match MINISTER_APPROVAL_CONFIG.DELTA_SENSITIVITY
+    const DELTA_SENSITIVITY = 0.4; // must match MINISTER_APPROVAL_CONFIG.DELTA_SENSITIVITY
     const BASELINE_DECAY = -0.5;   // must match MINISTER_APPROVAL_CONFIG.BASELINE_DECAY
 
     const panelId = 'mstat-' + ministryKey;

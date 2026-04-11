@@ -1860,8 +1860,10 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
             }
         }
 
+        // PM approval capped at 70 — broad stat ownership makes 100% too easy
+        const approvalCeiling = ministry.ministry_key === 'prime_minister' ? 70 : 100;
         // minister_approval is an integer column — round to whole number
-        newApproval = Math.round(Math.max(0, Math.min(100, newApproval)));
+        newApproval = Math.round(Math.max(0, Math.min(approvalCeiling, newApproval)));
 
         // Keep stat_baselines as the original appointment snapshot (never overwrite).
         // The UI uses baselines to show cumulative change since appointment.

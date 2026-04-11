@@ -640,7 +640,7 @@ export function buildMinistryBaselines(ministryKey, nation) {
  */
 export const MINISTER_APPROVAL_CONFIG = {
     // Per-tick sensitivity: how much each point of average delta moves approval
-    DELTA_SENSITIVITY: 0.6,
+    DELTA_SENSITIVITY: 0.4,
 
     // Baseline decay: approval always erodes by this amount per tick unless stats improve
     BASELINE_DECAY: -0.5,
