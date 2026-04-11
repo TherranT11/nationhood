@@ -3564,7 +3564,6 @@ async function loadIndustriesData(nationId) {
     var allCorps = corpsRes.data || [];
     _industriesCorps = allCorps.filter(function(c) { return c.nation_id === nationId; });
     // Subsidiaries: corps HQ'd elsewhere but with properties in this nation
-    var localCorpIds = new Set(_industriesCorps.map(function(c) { return c.id; }));
     var propFactionIds = new Set((propsRes.data || []).map(function(p) { return p.faction_id; }));
     _industriesSubsidiaries = allCorps.filter(function(c) {
         return c.nation_id !== nationId && propFactionIds.has(c.id);
@@ -3745,12 +3744,6 @@ function renderIndustriesTab(nation) {
 
     // Industry badge
     var badge = '<span style="font-size:0.55rem;padding:2px 8px;border-radius:3px;background:rgba(200,166,78,0.12);color:var(--damber);border:1px solid rgba(200,166,78,0.3);font-weight:700;letter-spacing:1px;vertical-align:middle;">INDUSTRY</span>';
-
-    // Active contracts count per corp
-    var corpContractCount = {};
-    activeContracts.forEach(function(c) {
-        if (c.winner_faction_id) corpContractCount[c.winner_faction_id] = (corpContractCount[c.winner_faction_id] || 0) + 1;
-    });
 
     var h = '<div class="econ-tab-body"><div class="econ-overview">';
 
