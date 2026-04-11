@@ -448,3 +448,175 @@ INSERT INTO issue_card_definitions (
     '{ "tension_delta": -1, "special": "census_favor_shift" }'::jsonb,
     '{ "favor_delta_to_proposer": 1 }'::jsonb
 ) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ══════════════════════════════════════════════════════════════
+-- SPECIAL CARDS (unique mechanics, RNG elements, synergy)
+-- ══════════════════════════════════════════════════════════════
+
+-- ── CARD 25: The Defector (Special / FM) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    special_behavior
+) VALUES (
+    'territorial_ownership', 25, 'The Defector', 'special', 'foreign_minister', 1,
+    'A high-ranking official from the occupying nation''s territorial administration defects to the claimant nation. They carry documents. Names. Proof. The question is what they prove — and whether the occupying nation can discredit them before the story takes hold.',
+
+    'Occupying Nation',
+    'Discredit the Defector',
+    'Character assassination. They were fired for corruption. Personal grudge. Unstable. Flood the media with counter-narratives before the testimony gains traction.',
+    '{
+        "favor_delta": 1,
+        "tension_delta": 1,
+        "relation_delta": 0,
+        "random_roll": { "fail_chance": 0.3, "fail_effects": { "favor_delta": -2, "tension_delta": 2 } }
+    }'::jsonb,
+
+    'Claimant Nation',
+    'Grant Asylum and Publicize Testimony',
+    'Protect the defector. Broadcast their testimony globally. Documents verified by independent analysts. What they know could change everything — corruption, secret military plans, or human rights evidence.',
+    '{
+        "favor_delta": -2,
+        "tension_delta": 1,
+        "relation_delta": 0,
+        "random_roll": {
+            "outcomes": [
+                { "weight": 3, "label": "Corruption evidence", "stat_effects": [{ "stat_key": "corruption", "delta": 0.2, "duration_ticks": 10, "target": "opponent" }] },
+                { "weight": 2, "label": "Secret military plans", "tension_delta": 2, "add_modifier": "military_intelligence_leaked" },
+                { "weight": 1, "label": "Human rights evidence", "stat_effects": [{ "stat_key": "international_reputation", "delta": -0.2, "duration_ticks": 15, "target": "opponent" }] }
+            ]
+        }
+    }'::jsonb,
+
+    '{ "type": "random_roll", "description": "Defector testimony is rolled on play. Occupying discredit has 30% chance of backfiring." }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 26: The Discovery (Special / MoF) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    special_behavior
+) VALUES (
+    'territorial_ownership', 26, 'The Discovery', 'special', 'minister_of_finance', 1,
+    'A geological survey finds something in the territory that changes everything. The economic calculus of the dispute shifts overnight — whoever controls the territory controls a fortune.',
+
+    'Occupying Nation',
+    'Claim Exclusive Development Rights',
+    'Your territory. Your discovery. Begin development immediately under your mining authority. The revenue will fund your administration for decades.',
+    '{
+        "favor_delta": 2,
+        "tension_delta": 2,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "gdp_growth", "delta": 0.2, "duration_ticks": 25, "target": "self" }
+        ],
+        "stat_effects_opponent": [
+            { "stat_key": "gdp_growth", "delta": -0.1, "duration_ticks": 25, "target": "opponent" }
+        ]
+    }'::jsonb,
+
+    'Claimant Nation',
+    'Demand International Resource Moratorium',
+    'Freeze all development until ownership is settled. Take it to the UN General Assembly. No extraction, no permits, no revenue — for anyone — until the legal question is resolved.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": 1,
+        "relation_delta": 0,
+        "random_roll": {
+            "success_chance": 0.5,
+            "success_label": "Moratorium adopted",
+            "success_effects": { "remove_all_resource_effects": true },
+            "fail_label": "Moratorium rejected — occupier proceeds",
+            "fail_effects": {}
+        }
+    }'::jsonb,
+
+    '{ "type": "random_roll", "discovery_roll": { "outcomes": ["Major oil deposit", "Rare earth minerals", "Ancient archaeological site", "Underground aquifer"], "rolled_on_draw": true } }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 27: The Crisis Within (Special / HoG) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    special_behavior
+) VALUES (
+    'territorial_ownership', 27, 'The Crisis Within', 'special', 'head_of_government', 1,
+    'A natural disaster strikes the territory. Earthquake, flood, wildfire. The territory needs help — and for once, the question isn''t who owns it but who will save the people living there.',
+
+    'Occupying Nation',
+    'Lead the Relief Effort',
+    'Military disaster relief. Helicopters, field hospitals, combat engineers clearing roads. Your flag on every aid truck. Show the world — and the territory''s residents — who takes care of them.',
+    '{
+        "favor_delta": 1,
+        "tension_delta": -2,
+        "relation_delta": 0,
+        "treasury_cost": 15000000,
+        "stat_effects": [
+            { "stat_key": "gov_approval", "delta": 0.2, "duration_ticks": 6, "target": "self" },
+            { "stat_key": "international_reputation", "delta": 0.1, "duration_ticks": 6, "target": "self" }
+        ]
+    }'::jsonb,
+
+    'Claimant Nation',
+    'Send Aid Regardless of Politics',
+    'Humanitarian assistance despite the dispute. Medical teams. Water purification. Shelter materials. No conditions, no flags, no cameras. Just help. The moral high ground is worth more than any legal brief.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": -2,
+        "relation_delta": 2,
+        "treasury_cost": 10000000,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": 0.15, "duration_ticks": 8, "target": "self" }
+        ]
+    }'::jsonb,
+
+    '{ "type": "both_play_synergy", "both_play_effects": { "tension_delta": -4, "relation_delta": 5, "add_modifier": "disaster_cooperation", "modifier_effects": { "halve_negative_modifiers": true, "duration_ticks": 8 } } }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 28: The Election Bomb (Special / HoG) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    special_behavior
+) VALUES (
+    'territorial_ownership', 28, 'The Election Bomb', 'special', 'head_of_government', 1,
+    'An election approaches. The territorial dispute becomes the number one campaign issue. Every candidate is asked: what will you do? There is no safe answer. Promising peace looks weak. Promising action risks war. The territory becomes a political grenade.',
+
+    'Occupying Nation',
+    'Campaign on Permanent Sovereignty',
+    'Promise voters the territory will never be negotiated away. Write it into the party platform. Make it a red line. The crowd roars — and your diplomatic flexibility dies.',
+    '{
+        "favor_delta": 1,
+        "tension_delta": 2,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "gov_approval", "delta": 0.2, "duration_ticks": 6, "target": "self" }
+        ],
+        "locks_diplomatic": 3,
+        "add_modifier": "election_commitment"
+    }'::jsonb,
+
+    'Claimant Nation',
+    'Campaign on Recovery of Territory',
+    'Promise voters recovery through diplomacy. Frame it as patience, not weakness. The territory will return — through law, through negotiation, through the arc of justice.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": 1,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "gov_approval", "delta": 0.15, "duration_ticks": 6, "target": "self" }
+        ],
+        "locks_diplomatic": 3,
+        "add_modifier": "election_commitment"
+    }'::jsonb,
+
+    '{ "type": "both_play_synergy", "both_play_effects": { "tension_delta": 3, "locks_diplomatic": 10, "description": "Both nations campaigned on the territory. Diplomatic resolution nearly impossible for 10 ticks." } }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
