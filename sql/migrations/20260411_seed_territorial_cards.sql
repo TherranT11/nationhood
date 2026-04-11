@@ -620,3 +620,316 @@ INSERT INTO issue_card_definitions (
 
     '{ "type": "both_play_synergy", "both_play_effects": { "tension_delta": 3, "locks_diplomatic": 10, "description": "Both nations campaigned on the territory. Diplomatic resolution nearly impossible for 10 ticks." } }'::jsonb
 ) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ══════════════════════════════════════════════════════════════
+-- AGGRESSIVE CARDS (high tension, high favor, relations damage)
+-- ══════════════════════════════════════════════════════════════
+
+-- ── CARD 17: Military Exercises (Aggressive / MoD) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects
+) VALUES (
+    'territorial_ownership', 17, 'Military Exercises', 'aggressive', 'minister_of_defense', 1,
+    'Satellite imagery shows troops massing near the territory. Explosions audible across the border. Artillery ranges active. Air sorties increasing. The message is unmistakable — even if no border is crossed.',
+
+    'Occupying Nation',
+    'Conduct Live-Fire Exercises in Territory',
+    'Tanks, artillery, air assets. Full-spectrum military display inside the territory itself. Every explosion says: we are here, we are strong, and we are not leaving.',
+    '{
+        "favor_delta": 2,
+        "tension_delta": 3,
+        "relation_delta": -5,
+        "stat_effects": [
+            { "stat_key": "stability", "delta": -0.2, "duration_ticks": 8, "target": "opponent" }
+        ],
+        "add_modifier": "military_exercises",
+        "modifier_effects": { "incident_trigger_multiplier": 1.5, "duration_ticks": 10 }
+    }'::jsonb,
+
+    'Claimant Nation',
+    'Conduct Exercises at the Border',
+    'Mirror exercises on YOUR side of the border. Matching force with force. Not crossing the line — but making sure they can see you from theirs.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": 2,
+        "relation_delta": -3
+    }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 18: Expel Foreign Citizens (Aggressive / HoG) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects
+) VALUES (
+    'territorial_ownership', 18, 'Expel Foreign Citizens', 'aggressive', 'head_of_government', 1,
+    'A fight between communities turns into a riot. Police restore order — then start checking identity papers. The question shifts from "who started it" to "who belongs here."',
+
+    'Occupying Nation',
+    'Expel Claimant Nation''s Citizens',
+    '30-day deadline. Remaining face arrest. Property confiscated. Buses provided — one way. The territory will be homogeneous, whatever the cost.',
+    '{
+        "favor_delta": 2,
+        "tension_delta": 3,
+        "relation_delta": -5,
+        "stat_effects": [
+            { "stat_key": "civil_unrest", "delta": 0.2, "duration_ticks": 15, "target": "opponent" },
+            { "stat_key": "international_reputation", "delta": -0.15, "duration_ticks": 15, "target": "self" }
+        ],
+        "add_modifier": "citizen_expulsion"
+    }'::jsonb,
+
+    'Claimant Nation',
+    'Expel Occupying Nation''s Businesses',
+    'Revoke business licenses. Banks, retailers, contractors — all out. If they won''t share the territory, they won''t share your market.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": 2,
+        "relation_delta": -4,
+        "stat_effects": [
+            { "stat_key": "trade_balance", "delta": -0.1, "duration_ticks": 12, "target": "both" }
+        ]
+    }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 19: Sovereignty Declaration (Aggressive / HoG) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects
+) VALUES (
+    'territorial_ownership', 19, 'Sovereignty Declaration', 'aggressive', 'head_of_government', 1,
+    'Hardliners demand a formal statement. No more ambiguity. No more "disputed." No more diplomatic language. Declare it — in writing, in law, in the constitution. Once spoken, it cannot be unsaid.',
+
+    'Occupying Nation',
+    'Declare Formal Sovereignty',
+    'Constitutional amendment. UN notification. Press conference. The territory is sovereign national soil — permanently, irrevocably, non-negotiably. Cannot be retracted.',
+    '{
+        "favor_delta": 2,
+        "tension_delta": 3,
+        "relation_delta": -8,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": -0.1, "duration_ticks": 20, "target": "self" },
+            { "stat_key": "gov_approval", "delta": 0.15, "duration_ticks": 10, "target": "self" }
+        ],
+        "add_modifier": "sovereignty_declared",
+        "modifier_effects": { "incident_trigger_multiplier": 2.0, "permanent": true }
+    }'::jsonb,
+
+    'Claimant Nation',
+    'Declare Irredentist Claim',
+    'Formal declaration that the territory is rightfully yours. Written into the government platform. A permanent national commitment — recovery through any means necessary.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": 2,
+        "relation_delta": -5,
+        "stat_effects": [
+            { "stat_key": "gov_approval", "delta": 0.1, "duration_ticks": 10, "target": "self" },
+            { "stat_key": "polarization", "delta": 0.1, "duration_ticks": 10, "target": "self" }
+        ]
+    }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 20: Blockade Territory Access (Aggressive / MoD) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects
+) VALUES (
+    'territorial_ownership', 20, 'Blockade Territory Access', 'aggressive', 'minister_of_defense', 1,
+    'Supply trucks delayed at checkpoints. Inspections that take hours. Paperwork that doesn''t exist. The border isn''t closed — it''s just impossible to cross. The slow squeeze.',
+
+    'Occupying Nation',
+    'Restrict Claimant Nation''s Access',
+    'Close all crossings to their citizens and goods. Only your people pass. The territory is sealed — economically, socially, completely.',
+    '{
+        "favor_delta": 1,
+        "tension_delta": 2,
+        "relation_delta": -4,
+        "stat_effects": [
+            { "stat_key": "trade_balance", "delta": -0.1, "duration_ticks": 15, "target": "both" },
+            { "stat_key": "civil_unrest", "delta": 0.1, "duration_ticks": 15, "target": "both" }
+        ],
+        "add_modifier": "border_crossing_restricted"
+    }'::jsonb,
+
+    'Claimant Nation',
+    'Blockade Occupying Supply Routes',
+    'Disrupt supply routes into the territory from their side. Road maintenance. Safety inspections. Bureaucratic creativity at its finest.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": 2,
+        "relation_delta": -3,
+        "stat_effects": [
+            { "stat_key": "efficiency", "delta": -0.1, "duration_ticks": 10, "target": "opponent" },
+            { "stat_key": "cost_of_living", "delta": 0.1, "duration_ticks": 10, "target": "opponent" }
+        ]
+    }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 21: Provocative Construction (Aggressive / MoD / 2 AP) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects
+) VALUES (
+    'territorial_ownership', 21, 'Provocative Construction', 'aggressive', 'minister_of_defense', 2,
+    'Bulldozers in the territory. Security fencing going up. Military guards at the perimeter. Something is being built — and whatever it is, it''s designed to stay.',
+
+    'Occupying Nation',
+    'Build Military Outpost',
+    'Permanent installation. Barracks, watchtower, vehicle depot, communications array. A military fact on the ground that would take a war to remove.',
+    '{
+        "favor_delta": 2,
+        "tension_delta": 3,
+        "relation_delta": -5,
+        "treasury_cost": 15000000,
+        "stat_effects": [
+            { "stat_key": "stability", "delta": -0.2, "duration_ticks": 20, "target": "opponent" }
+        ],
+        "add_modifier": "military_outpost_constructed",
+        "modifier_effects": { "incident_trigger_multiplier": 3.0, "permanent": true }
+    }'::jsonb,
+
+    'Claimant Nation',
+    'Build Memorial Monument at Border',
+    'Massive monument visible from the territory. Statue, wall of names, eternal flame. Not a military threat — a permanent reminder of what was lost.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": 1,
+        "relation_delta": -2,
+        "treasury_cost": 5000000,
+        "stat_effects": [
+            { "stat_key": "gov_approval", "delta": 0.1, "duration_ticks": 8, "target": "self" },
+            { "stat_key": "polarization", "delta": 0.1, "duration_ticks": 8, "target": "self" }
+        ]
+    }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 22: Arrest Dissidents (Aggressive / FM) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects
+) VALUES (
+    'territorial_ownership', 22, 'Arrest Dissidents', 'aggressive', 'foreign_minister', 1,
+    'Activists opposing the occupation organize openly. Meetings in basements. Pamphlets on street corners. The claimant nation''s flag waved in public squares. The occupier must decide: tolerate dissent, or crush it.',
+
+    'Occupying Nation',
+    'Crack Down on Political Opposition',
+    'Arrest organizers. Ban meetings. Confiscate pamphlets. Remove flags. Anyone caught with the claimant''s flag faces imprisonment. Order will be maintained.',
+    '{
+        "favor_delta": 1,
+        "tension_delta": 2,
+        "relation_delta": -4,
+        "stat_effects": [
+            { "stat_key": "freedom_index", "delta": -0.2, "duration_ticks": 12, "target": "self" },
+            { "stat_key": "international_reputation", "delta": -0.1, "duration_ticks": 12, "target": "self" },
+            { "stat_key": "civil_unrest", "delta": -0.1, "duration_ticks": 12, "target": "self" }
+        ],
+        "add_modifier": "crackdown_in_progress"
+    }'::jsonb,
+
+    'Claimant Nation',
+    'Amplify Dissident Voices',
+    'International platforms. Journalist interviews. Covert funding for the opposition movement. Risky — 25% chance of exposure, which would be diplomatically devastating.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": 1,
+        "relation_delta": -2,
+        "stat_effects": [
+            { "stat_key": "civil_unrest", "delta": 0.1, "duration_ticks": 10, "target": "opponent" }
+        ],
+        "random_roll": { "fail_chance": 0.25, "fail_label": "Covert funding exposed", "fail_effects": { "relation_delta": -5, "tension_delta": 2, "stat_effects": [{ "stat_key": "international_reputation", "delta": -0.1, "duration_ticks": 8, "target": "self" }] } }
+    }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 23: Forced Population Transfer (Aggressive / HoG / 3 AP) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects
+) VALUES (
+    'territorial_ownership', 23, 'Forced Population Transfer', 'aggressive', 'head_of_government', 3,
+    'A leaked document outlines systematic relocation of the "wrong" ethnic group. Buses requisitioned. Assembly points designated. Property registries pulled. This is ethnic cleansing with a bureaucratic face.',
+
+    'Occupying Nation',
+    'Execute Population Transfer',
+    'Forced relocation. Buses, deadlines, confiscated property. The territory will be demographically yours — permanently. The world will condemn you. History will judge you. But the territory will be yours.',
+    '{
+        "favor_delta": 3,
+        "tension_delta": 4,
+        "relation_delta": -10,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": -0.3, "duration_ticks": 30, "target": "self" },
+            { "stat_key": "freedom_index", "delta": -0.3, "duration_ticks": 30, "target": "self" },
+            { "stat_key": "civil_unrest", "delta": 0.3, "duration_ticks": 30, "target": "both" }
+        ],
+        "add_modifier": "forced_population_transfer",
+        "modifier_effects": { "incident_trigger_multiplier": 3.0 },
+        "incident_trigger_chance": 0.6
+    }'::jsonb,
+
+    'Claimant Nation',
+    'Evacuate Your Citizens',
+    'Humanitarian evacuation. Get your people out safely before it gets worse. Document everything — every bus, every demolished home, every confiscated deed. The evidence will matter later.',
+    '{
+        "favor_delta": -2,
+        "tension_delta": 1,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "immigration", "delta": 0.2, "duration_ticks": 10, "target": "self" },
+            { "stat_key": "cost_of_living", "delta": 0.1, "duration_ticks": 10, "target": "self" },
+            { "stat_key": "international_reputation", "delta": 0.1, "duration_ticks": 10, "target": "self" }
+        ]
+    }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 24: Military Occupation (Aggressive / MoD / 4 AP) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects
+) VALUES (
+    'territorial_ownership', 24, 'Military Occupation', 'aggressive', 'minister_of_defense', 4,
+    'Dawn. Engines. Boots on asphalt. Columns of armored vehicles crossing into the territory. Helicopters overhead. This is no longer a dispute about maps and treaties. This is force.',
+
+    'Occupying Nation',
+    'Full Military Lockdown',
+    'Martial law. Military government. Curfews. Checkpoints on every road. Total control of the territory by armed force. The civilians will comply or be detained. There is no middle ground now.',
+    '{
+        "favor_delta": 3,
+        "tension_delta": 4,
+        "relation_delta": -8,
+        "stat_effects": [
+            { "stat_key": "stability", "delta": -0.3, "duration_ticks": 20, "target": "opponent" },
+            { "stat_key": "international_reputation", "delta": -0.2, "duration_ticks": 20, "target": "self" }
+        ],
+        "add_modifier": "military_occupation",
+        "modifier_effects": { "incident_trigger_multiplier": 4.0 },
+        "incident_trigger_chance": 0.6
+    }'::jsonb,
+
+    'Claimant Nation',
+    'Emergency Military Mobilization',
+    'Call the reserves. Move forces to the border. Defensive posture — but unmistakable. Two armies now face each other across a line that exists only on paper.',
+    '{
+        "favor_delta": -2,
+        "tension_delta": 3,
+        "relation_delta": -5,
+        "stat_effects": [
+            { "stat_key": "stability", "delta": -0.1, "duration_ticks": 10, "target": "self" }
+        ],
+        "incident_trigger_chance": 0.3
+    }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
