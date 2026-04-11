@@ -13678,23 +13678,32 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
     // Sort for runner-up info in event
     const sorted = [...candidateResults].sort((a, b) => b.votes - a.votes);
 
-    // Fire system event
+    // Fire presidential election event with full description for dashboard news
     try {
-        await supabase.rpc('fire_system_event', {
-            p_trigger_key: 'presidential_election',
-            p_nation_id: nation.id,
-            p_tick: currentTick,
-            p_placeholders: {
-                nation: nation.name,
-                winning_party: winner.party_name,
+        const winPct = winner.vote_percentage || (totalVotes > 0 ? ((winner.votes / totalVotes) * 100).toFixed(1) : '?');
+        const runnerUp = sorted[1];
+        const runnerPct = runnerUp && totalVotes > 0 ? ((runnerUp.votes / totalVotes) * 100).toFixed(1) : null;
+        const resultsSummary = sorted
+            .filter(c => c.votes > 0)
+            .map(c => `${c.candidate_name} (${c.party_name}): ${totalVotes > 0 ? ((c.votes / totalVotes) * 100).toFixed(1) : '?'}%`)
+            .join(', ');
+        const runoffNote = wasRunoff ? ' after a runoff vote' : '';
+        const desc = `${winner.candidate_name} of ${winner.party_name} wins the presidential election${runoffNote} with ${winPct}% of the vote.${runnerUp ? ` Runner-up: ${runnerUp.candidate_name} (${runnerUp.party_name}) with ${runnerPct}%.` : ''}`;
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'Presidential Election',
+            trigger_key: 'presidential_election',
+            category: 'government',
+            description_chosen: desc,
+            effects_applied: {
                 winning_candidate: winner.candidate_name,
-                votes: winner.votes,
-                vote_percentage: winner.vote_percentage || '?',
-                runner_up: sorted[1]?.candidate_name || 'N/A',
-                runner_up_party: sorted[1]?.party_name || 'N/A',
-                was_runoff: wasRunoff ? 'true' : 'false',
-                incumbent_win: isIncumbentWin ? 'true' : 'false'
-            }
+                winning_party: winner.party_name,
+                vote_percentage: winPct,
+                was_runoff: wasRunoff,
+                incumbent_win: isIncumbentWin,
+                results: resultsSummary
+            },
+            fired_at_tick: currentTick
         });
     } catch (e) { console.warn('Presidential election event fire failed (non-blocking):', e); }
 
