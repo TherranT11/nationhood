@@ -3538,7 +3538,7 @@ var _industriesDeliveries = [];
 async function loadIndustriesData(nationId) {
     var [corpsRes, contractsRes, materialsRes, equipmentRes, deliveriesRes, propsRes] = await Promise.all([
         _supabase.from('factions')
-            .select('id, faction_name, corp_ticker, corp_company_type, corp_subsector, party_funds, nation_id')
+            .select('id, faction_name, corp_ticker, corp_company_type, corp_sector, corp_subsector, party_funds, nation_id')
             .eq('faction_type', 'corporation')
             .is('abandoned_at', null),
         _supabase.from('construction_contracts')
@@ -3601,7 +3601,10 @@ function renderIndustriesTab(nation) {
     _industriesDeliveries.forEach(function(d) {
         corpRevMap[d.faction_id] = (corpRevMap[d.faction_id] || 0) + (d.payment_received || 0);
     });
-    var corpsSorted = allLocalCorps.slice().sort(function(a, b) {
+
+    // Construction column: only Construction-sector corps
+    var constructionCorps = allLocalCorps.filter(function(c) { return (c.corp_sector || '').toLowerCase() === 'construction'; });
+    var constructionCorpsSorted = constructionCorps.slice().sort(function(a, b) {
         return (corpRevMap[b.id] || 0) - (corpRevMap[a.id] || 0);
     });
 
@@ -3672,25 +3675,25 @@ function renderIndustriesTab(nation) {
         { key: 'interest_rates', label: 'Interest Rates' }
     ];
 
-    function renderDrivers(drivers) {
+    function renderDrivers(drivers, accentColor) {
         var rows = '';
         for (var i = 0; i < drivers.length; i += 2) {
             var d1 = drivers[i];
             var v1 = Math.round(Number(nation[d1.key]) || 0);
             var c1 = v1 > 50 ? 'var(--dgreen)' : v1 > 30 ? 'var(--damber)' : 'var(--dred)';
-            var row = '<div style="display:flex;gap:16px;">';
+            var row = '<div style="display:flex;gap:16px;margin-bottom:4px;">';
             row += '<div style="flex:1;display:flex;align-items:center;gap:6px;font-size:0.7rem;">';
-            row += '<span style="color:var(--dtext-3)">' + escapeHtml(d1.label) + '</span>';
-            row += '<div style="flex:1;height:3px;background:var(--bg-card);border-radius:2px;overflow:hidden;"><div style="height:100%;width:' + Math.min(100, v1) + '%;background:' + c1 + ';border-radius:2px;"></div></div>';
-            row += '<span style="color:' + c1 + ';font-weight:600;min-width:24px;text-align:right;">' + v1 + '</span></div>';
+            row += '<span style="color:' + c1 + ';min-width:70px;">' + escapeHtml(d1.label) + '</span>';
+            row += '<div style="flex:1;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + Math.min(100, v1) + '%;background:' + c1 + ';border-radius:3px;"></div></div>';
+            row += '<span style="color:' + c1 + ';font-weight:700;min-width:28px;text-align:right;font-size:0.75rem;">' + v1 + '</span></div>';
             if (i + 1 < drivers.length) {
                 var d2 = drivers[i + 1];
                 var v2 = Math.round(Number(nation[d2.key]) || 0);
                 var c2 = v2 > 50 ? 'var(--dgreen)' : v2 > 30 ? 'var(--damber)' : 'var(--dred)';
                 row += '<div style="flex:1;display:flex;align-items:center;gap:6px;font-size:0.7rem;">';
-                row += '<span style="color:var(--dtext-3)">' + escapeHtml(d2.label) + '</span>';
-                row += '<div style="flex:1;height:3px;background:var(--bg-card);border-radius:2px;overflow:hidden;"><div style="height:100%;width:' + Math.min(100, v2) + '%;background:' + c2 + ';border-radius:2px;"></div></div>';
-                row += '<span style="color:' + c2 + ';font-weight:600;min-width:24px;text-align:right;">' + v2 + '</span></div>';
+                row += '<span style="color:' + c2 + ';min-width:70px;">' + escapeHtml(d2.label) + '</span>';
+                row += '<div style="flex:1;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + Math.min(100, v2) + '%;background:' + c2 + ';border-radius:3px;"></div></div>';
+                row += '<span style="color:' + c2 + ';font-weight:700;min-width:28px;text-align:right;font-size:0.75rem;">' + v2 + '</span></div>';
             }
             row += '</div>';
             rows += row;
@@ -3698,39 +3701,54 @@ function renderIndustriesTab(nation) {
         return rows;
     }
 
-    function renderCorpList(corps, revenueMap, limit) {
+    function renderCorpList(corps, revenueMap, limit, barColor) {
         if (corps.length === 0) return '<div style="color:var(--dtext-3);font-size:0.7rem;padding:8px 0;font-style:italic;">No corporations registered.</div>';
+        var maxRev = 0;
+        for (var j = 0; j < Math.min(limit, corps.length); j++) maxRev = Math.max(maxRev, revenueMap[corps[j].id] || 0);
         var rows = '';
         for (var i = 0; i < Math.min(limit, corps.length); i++) {
             var c = corps[i];
             var rev = revenueMap[c.id] || 0;
+            var barW = maxRev > 0 ? Math.max(2, (rev / maxRev) * 100) : 0;
             var isSub = subsidiaryIds.has(c.id);
-            rows += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
+            rows += '<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
+            rows += '<div style="display:flex;justify-content:space-between;align-items:center;">';
             rows += '<div>';
-            rows += '<div style="font-size:0.8rem;font-weight:600;color:var(--dtext-1);">' + (i + 1) + '. ' + escapeHtml(c.faction_name);
+            rows += '<div style="font-size:0.8rem;font-weight:700;color:var(--dtext-1);">' + (i + 1) + '. ' + escapeHtml(c.faction_name);
             if (isSub) rows += ' <span style="font-size:0.55rem;padding:1px 5px;border-radius:3px;background:rgba(90,175,165,0.12);color:var(--teal);border:1px solid rgba(90,175,165,0.3);vertical-align:middle;">SUBSIDIARY</span>';
             rows += '</div>';
             rows += '<div style="font-size:0.65rem;color:var(--dtext-3);">' + escapeHtml(c.corp_ticker || '') + ' · ' + escapeHtml(c.corp_company_type || 'Private') + ' · ' + escapeHtml(c.corp_subsector || 'General');
-            if (isSub) rows += ' <span style="color:var(--dtext-3);font-style:italic;">· HQ: foreign</span>';
+            if (isSub) rows += ' <span style="font-style:italic;">· HQ: foreign</span>';
+            rows += '</div></div>';
+            rows += '<div style="font-size:0.85rem;font-weight:700;color:var(--dgreen);">' + fmtIndustryMoney(rev) + '</div>';
             rows += '</div>';
-            rows += '</div>';
-            rows += '<div style="font-size:0.8rem;font-weight:600;color:var(--dgreen);">' + fmtIndustryMoney(rev) + '</div>';
+            if (maxRev > 0) rows += '<div style="height:4px;background:rgba(255,255,255,0.04);border-radius:2px;margin-top:4px;overflow:hidden;"><div style="height:100%;width:' + barW + '%;background:' + barColor + ';border-radius:2px;opacity:0.7;"></div></div>';
             rows += '</div>';
         }
         return rows;
     }
 
-    function renderPurchaserList(purchasers, label) {
+    function renderPurchaserList(purchasers, barColor) {
         if (purchasers.length === 0) return '<div style="color:var(--dtext-3);font-size:0.7rem;padding:8px 0;font-style:italic;">No purchasers recorded.</div>';
+        var maxVal = purchasers.length > 0 ? purchasers[0][1] : 0;
         var rows = '';
         for (var i = 0; i < purchasers.length; i++) {
             var fId = purchasers[i][0];
             var val = purchasers[i][1];
-            var corp = _industriesCorps.find(function(c) { return c.id === fId; });
+            var barW = maxVal > 0 ? Math.max(2, (val / maxVal) * 100) : 0;
+            var allCorps = _industriesCorps.concat(_industriesSubsidiaries);
+            var corp = allCorps.find(function(c) { return c.id === fId; });
             var name = corp ? corp.faction_name : 'Unknown';
-            rows += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
-            rows += '<div style="font-size:0.8rem;font-weight:600;color:var(--dtext-1);">' + (i + 1) + '. ' + escapeHtml(name) + '</div>';
-            rows += '<div style="font-size:0.8rem;font-weight:600;color:var(--dgreen);">' + fmtIndustryMoney(val) + '</div>';
+            var detail = corp ? (corp.corp_subsector || corp.corp_company_type || '') : '';
+            rows += '<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
+            rows += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+            rows += '<div>';
+            rows += '<div style="font-size:0.8rem;font-weight:700;color:var(--dtext-1);">' + (i + 1) + '. ' + escapeHtml(name) + '</div>';
+            if (detail) rows += '<div style="font-size:0.6rem;color:var(--dtext-3);">' + escapeHtml(detail) + '</div>';
+            rows += '</div>';
+            rows += '<div style="font-size:0.85rem;font-weight:700;color:var(--dgreen);">' + fmtIndustryMoney(val) + '</div>';
+            rows += '</div>';
+            if (maxVal > 0) rows += '<div style="height:4px;background:rgba(255,255,255,0.04);border-radius:2px;margin-top:4px;overflow:hidden;"><div style="height:100%;width:' + barW + '%;background:' + barColor + ';border-radius:2px;opacity:0.7;"></div></div>';
             rows += '</div>';
         }
         return rows;
@@ -3777,91 +3795,87 @@ function renderIndustriesTab(nation) {
     // ── Three-column layout ──
     h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">';
 
+    // Section header helper
+    function secHeader(text, color) {
+        return '<div style="font-size:0.65rem;color:' + color + ';text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px;font-weight:700;">' + text + '</div>';
+    }
+
     // ── COLUMN 1: CONSTRUCTION ──
-    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-radius:8px;padding:16px;">';
-    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
-    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:var(--damber);"></div><span style="font-size:0.85rem;font-weight:bold;color:var(--dtext-1);letter-spacing:1px;">CONSTRUCTION</span></div>';
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid var(--damber);border-radius:8px;padding:16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:var(--damber);"></div><span style="font-size:0.85rem;font-weight:bold;color:var(--damber);letter-spacing:1px;">CONSTRUCTION</span></div>';
     h += badge;
     h += '</div>';
-    // KPIs
-    h += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
-    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">% of GDP</div><div style="font-size:1.1rem;font-weight:bold;color:var(--dtext-1);">' + constructionPct.toFixed(1) + '%</div></div>';
-    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Total Revenue</div><div style="font-size:1.1rem;font-weight:bold;color:var(--dtext-1);">' + fmtIndustryMoney(constructionRevenue) + '</div></div>';
-    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Active Projects</div><div style="font-size:1.1rem;font-weight:bold;color:var(--dtext-1);">' + activeContracts.length + '</div></div>';
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">% of GDP</div><div style="font-size:1.15rem;font-weight:bold;color:var(--damber);">' + constructionPct.toFixed(1) + '%</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Total Revenue</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(constructionRevenue) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Active Projects</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + activeContracts.length + '</div></div>';
     h += '</div>';
-    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:12px;">Total value of all active construction projects, contracts awarded, and maintenance work this tick.</div>';
-    // Growth drivers
-    h += '<div style="font-size:0.65rem;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Growth Drivers</div>';
-    h += renderDrivers(conDrivers);
-    // Notable Corporations
-    h += '<div style="font-size:0.65rem;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px;">Notable Corporations</div>';
-    h += renderCorpList(corpsSorted, corpRevMap, 3);
-    var subNote = _industriesSubsidiaries.length > 0 ? ' · ' + _industriesSubsidiaries.length + ' subsidiar' + (_industriesSubsidiaries.length !== 1 ? 'ies' : 'y') : '';
-    h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + _industriesCorps.length + ' local corporation' + (_industriesCorps.length !== 1 ? 's' : '') + subNote + '</div>';
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Total value of all active construction projects, contracts awarded, and maintenance work this tick.</div>';
+    h += secHeader('Growth Drivers', 'var(--damber)');
+    h += renderDrivers(conDrivers, 'var(--damber)');
+    h += secHeader('Notable Corporations', 'var(--damber)');
+    h += renderCorpList(constructionCorpsSorted, corpRevMap, 3, 'var(--damber)');
+    var conCorpCount = constructionCorps.filter(function(c) { return !subsidiaryIds.has(c.id); }).length;
+    var conSubCount = constructionCorps.filter(function(c) { return subsidiaryIds.has(c.id); }).length;
+    var subNote = conSubCount > 0 ? ' · ' + conSubCount + ' subsidiar' + (conSubCount !== 1 ? 'ies' : 'y') : '';
+    h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + conCorpCount + ' local construction corp' + (conCorpCount !== 1 ? 's' : '') + subNote + '</div>';
     h += '</div>';
 
     // ── COLUMN 2: MATERIALS ──
-    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-radius:8px;padding:16px;">';
-    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
-    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:var(--teal);"></div><span style="font-size:0.85rem;font-weight:bold;color:var(--dtext-1);letter-spacing:1px;">MATERIALS</span></div>';
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid var(--teal);border-radius:8px;padding:16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:var(--teal);"></div><span style="font-size:0.85rem;font-weight:bold;color:var(--teal);letter-spacing:1px;">MATERIALS</span></div>';
     h += badge;
     h += '</div>';
-    // KPIs
-    h += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
-    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">% of GDP</div><div style="font-size:1.1rem;font-weight:bold;color:var(--dtext-1);">' + materialsPct.toFixed(1) + '%</div></div>';
-    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Total Value</div><div style="font-size:1.1rem;font-weight:bold;color:var(--dtext-1);">' + fmtIndustryMoney(materialsRevenue) + '</div></div>';
-    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Material Types</div><div style="font-size:1.1rem;font-weight:bold;color:var(--dtext-1);">' + materialKeys.length + '</div></div>';
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">% of GDP</div><div style="font-size:1.15rem;font-weight:bold;color:var(--teal);">' + materialsPct.toFixed(1) + '%</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Total Value</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(materialsRevenue) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Material Types</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + materialKeys.length + '</div></div>';
     h += '</div>';
-    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:12px;">Total value of construction materials in warehouses — concrete, steel, lumber, aggregate, and specialty components.</div>';
-    // Materials breakdown
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Total value of construction materials in warehouses — concrete, steel, lumber, aggregate, and specialty components.</div>';
     if (materialKeys.length > 0) {
-        h += '<div style="font-size:0.65rem;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Inventory Breakdown</div>';
+        h += secHeader('Inventory Breakdown', 'var(--teal)');
         for (var mi = 0; mi < Math.min(6, materialKeys.length); mi++) {
             var mk = materialKeys[mi];
-            h += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:3px 0;">';
-            h += '<span style="color:var(--dtext-2);text-transform:capitalize;">' + escapeHtml(mk.replace(/_/g, ' ')) + '</span>';
-            h += '<span style="color:var(--dtext-1);font-weight:600;">' + materialTotals[mk].toLocaleString() + ' units</span>';
+            h += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:4px 0;">';
+            h += '<span style="color:var(--teal);text-transform:capitalize;">' + escapeHtml(mk.replace(/_/g, ' ')) + '</span>';
+            h += '<span style="color:var(--dtext-1);font-weight:700;">' + materialTotals[mk].toLocaleString() + ' units</span>';
             h += '</div>';
         }
     }
-    // Growth drivers
-    h += '<div style="font-size:0.65rem;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px;">Growth Drivers</div>';
-    h += renderDrivers(matDrivers);
-    // Notable Purchasers
-    h += '<div style="font-size:0.65rem;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px;">Notable Purchasers</div>';
-    h += renderPurchaserList(matPurchasers, 'Materials');
+    h += secHeader('Growth Drivers', 'var(--teal)');
+    h += renderDrivers(matDrivers, 'var(--teal)');
+    h += secHeader('Notable Purchasers', 'var(--teal)');
+    h += renderPurchaserList(matPurchasers, 'var(--teal)');
     h += '</div>';
 
     // ── COLUMN 3: HEAVY VEHICLES ──
-    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-radius:8px;padding:16px;">';
-    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
-    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:var(--dred);"></div><span style="font-size:0.85rem;font-weight:bold;color:var(--dtext-1);letter-spacing:1px;">HEAVY VEHICLES</span></div>';
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid var(--dred);border-radius:8px;padding:16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:var(--dred);"></div><span style="font-size:0.85rem;font-weight:bold;color:var(--dred);letter-spacing:1px;">HEAVY VEHICLES</span></div>';
     h += badge;
     h += '</div>';
-    // KPIs
-    h += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
-    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">% of GDP</div><div style="font-size:1.1rem;font-weight:bold;color:var(--dtext-1);">' + vehiclePct.toFixed(1) + '%</div></div>';
-    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Maint. Cost</div><div style="font-size:1.1rem;font-weight:bold;color:var(--dtext-1);">' + fmtIndustryMoney(equipRevenue) + '</div></div>';
-    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Vehicle Types</div><div style="font-size:1.1rem;font-weight:bold;color:var(--dtext-1);">' + equipKeys.length + '</div></div>';
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">% of GDP</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dred);">' + vehiclePct.toFixed(1) + '%</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Maint. Cost</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(equipRevenue) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Vehicle Types</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + equipKeys.length + '</div></div>';
     h += '</div>';
-    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:12px;">Total value of heavy equipment and vehicles sold domestically — excavators, cranes, haulers, and industrial machinery.</div>';
-    // Equipment breakdown
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Total value of heavy equipment and vehicles sold domestically — excavators, cranes, haulers, and industrial machinery.</div>';
     if (equipKeys.length > 0) {
-        h += '<div style="font-size:0.65rem;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Fleet Breakdown</div>';
+        h += secHeader('Fleet Breakdown', 'var(--dred)');
         for (var ei = 0; ei < Math.min(6, equipKeys.length); ei++) {
             var ek = equipKeys[ei];
-            h += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:3px 0;">';
-            h += '<span style="color:var(--dtext-2);text-transform:capitalize;">' + escapeHtml(ek.replace(/_/g, ' ')) + '</span>';
-            h += '<span style="color:var(--dtext-1);font-weight:600;">' + equipTotals[ek] + ' units</span>';
+            h += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:4px 0;">';
+            h += '<span style="color:var(--dred);text-transform:capitalize;">' + escapeHtml(ek.replace(/_/g, ' ')) + '</span>';
+            h += '<span style="color:var(--dtext-1);font-weight:700;">' + equipTotals[ek] + ' units</span>';
             h += '</div>';
         }
     }
-    // Growth drivers
-    h += '<div style="font-size:0.65rem;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px;">Growth Drivers</div>';
-    h += renderDrivers(vehDrivers);
-    // Notable Purchasers
-    h += '<div style="font-size:0.65rem;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px;">Notable Purchasers</div>';
-    h += renderPurchaserList(eqPurchasers, 'Vehicles');
+    h += secHeader('Growth Drivers', 'var(--dred)');
+    h += renderDrivers(vehDrivers, 'var(--dred)');
+    h += secHeader('Notable Purchasers', 'var(--dred)');
+    h += renderPurchaserList(eqPurchasers, 'var(--dred)');
     h += '</div>';
 
     h += '</div>'; // close grid
