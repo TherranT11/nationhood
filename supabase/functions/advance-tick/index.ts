@@ -18338,6 +18338,11 @@ function getTraitApprovalMultiplier(faction, actionType, blocDisposition) {
         mult *= 1.3;
     }
 
+    // crowd_pleaser: Rally momentum gains +30%
+    if (pos.includes('crowd_pleaser') && actionType === 'rally') {
+        mult *= 1.3;
+    }
+
     // divisive_figure: Outreach approval gains with non-BASE blocs halved
     if (neg.includes('divisive_figure') && actionType === 'outreach' && blocDisposition !== 'BASE') {
         mult *= 0.5;
@@ -20988,6 +20993,11 @@ async function executeRally(supabase, factionId, nationId, blocId, currentTick) 
         const diminish = Math.max(0.25, 1 - rallyEscalation * 0.25);
         targetDelta = Math.round(targetDelta * diminish);
         if (targetDelta === 0) targetDelta = sign; // preserve direction even at minimum
+    }
+
+    // Crowd Pleaser: +2 bonus momentum from rallies
+    if ((faction.leader_positive_traits || []).includes('crowd_pleaser')) {
+        targetDelta += 2;
     }
 
     // ── 7. Apply momentum from rally outcome ──
@@ -32336,7 +32346,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
       try {
         const { data: factions } = await supabase
             .from('factions')
-            .select('id, faction_type, leader_positive_traits, leader_negative_traits')
+            .select('id, faction_name, faction_type, leader_positive_traits, leader_negative_traits')
             .eq('nation_id', nation.id)
             .eq('faction_type', 'party');
 
@@ -32398,6 +32408,60 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 });
                 failedNationIds.add(nation.id);
                 failedFactionIds.add(faction.id);
+            }
+
+            // ── Per-tick leader trait momentum effects ──
+            const momTraitDelta =
+                (posTraits.includes('born_leader') ? 3 : 0) +
+                (posTraits.includes('telegenic') ? 2 : 0) +
+                (posTraits.includes('base_energizer') ? 1 : 0) +
+                (negTraits.includes('unelectable') ? -2 : 0) +
+                (negTraits.includes('wooden_speaker') ? -1 : 0);
+
+            if (momTraitDelta !== 0) {
+                const traitParts = [];
+                if (posTraits.includes('born_leader')) traitParts.push('Born Leader +3');
+                if (posTraits.includes('telegenic')) traitParts.push('Telegenic +2');
+                if (posTraits.includes('base_energizer')) traitParts.push('Base Energizer +1');
+                if (negTraits.includes('unelectable')) traitParts.push('Unelectable -2');
+                if (negTraits.includes('wooden_speaker')) traitParts.push('Wooden Speaker -1');
+                const { error: momTraitErr } = await supabase.rpc('adjust_momentum', {
+                    p_faction_id: faction.id,
+                    p_delta: momTraitDelta,
+                    p_label: `Leader traits: ${traitParts.join(', ')}`,
+                    p_tick: newTick
+                });
+                if (momTraitErr) console.warn(`[advanceTick] Momentum trait RPC failed for faction ${faction.id}:`, momTraitErr.message);
+            }
+
+            // gaffe_prone: 20% chance per tick of -2 governance and -3 momentum
+            if (negTraits.includes('gaffe_prone') && Math.random() < 0.2) {
+                const { error: gaffeErr } = await supabase.rpc('adjust_momentum', {
+                    p_faction_id: faction.id,
+                    p_delta: -3,
+                    p_label: 'Leader gaffe (-3 momentum)',
+                    p_tick: newTick
+                });
+                if (gaffeErr) console.warn(`[advanceTick] Gaffe momentum RPC failed for faction ${faction.id}:`, gaffeErr.message);
+                // -2 governance: reduce party_approval directly
+                const { data: gaffeStanding } = await supabase.from('faction_electoral_standing')
+                    .select('party_approval')
+                    .eq('faction_id', faction.id).eq('nation_id', nation.id)
+                    .maybeSingle();
+                if (gaffeStanding) {
+                    await supabase.from('faction_electoral_standing')
+                        .update({ party_approval: Math.max(10, (gaffeStanding.party_approval || 25) - 2) })
+                        .eq('faction_id', faction.id).eq('nation_id', nation.id);
+                }
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: 'LEADER_GAFFE',
+                    trigger_key: 'leader_gaffe',
+                    description_used: `${faction.faction_name || 'A party'} leader committed a public gaffe, costing momentum and governance.`,
+                    category: 'POLITICAL',
+                    effects_applied: { momentum: -3, governance: -2, faction_id: faction.id },
+                    fired_at_tick: newTick
+                }).then(({ error }) => { if (error) console.warn('Gaffe event log failed:', error.message); });
             }
         }
         } // end factions.length > 0
