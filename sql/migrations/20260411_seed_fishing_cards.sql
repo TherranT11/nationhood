@@ -454,3 +454,199 @@ INSERT INTO issue_card_definitions (
     '{ "special": "resolve_issue", "tension_delta": -10, "relation_delta": 5, "stat_effects": [{ "stat_key": "gdp_growth", "delta": 0.05, "duration_ticks": 30, "target": "both" }] }'::jsonb,
     '{ "favor_delta_to_proposer": 0.5 }'::jsonb
 ) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ══════════════════════════════════════════════════════════════
+-- AGGRESSIVE CARDS (high tension, high favor, relations damage)
+-- ══════════════════════════════════════════════════════════════
+
+-- ── CARD 17: Vessel Harassment (Aggressive / MoD) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects
+) VALUES (
+    'maritime_fishing_rights', 17, 'Vessel Harassment', 'aggressive', 'minister_of_defense', 1,
+    'Radio chatter from the disputed zone: "Unidentified vessel, alter course immediately." Both coast guards broadcasting the same warning at each other.',
+
+    'Dominant Fleet',
+    'Shadow and Intimidate Foreign Vessels',
+    'Your cutters follow their fishing boats. Close. Spotlight at night. Horn blasts at dawn. Technically legal. Absolutely threatening.',
+    '{
+        "favor_delta": 1,
+        "tension_delta": 2,
+        "relation_delta": -3,
+        "stat_effects": [
+            { "stat_key": "civil_unrest", "delta": 0.1, "duration_ticks": 10, "target": "opponent" }
+        ],
+        "add_modifier": "active_harassment_campaign"
+    }'::jsonb,
+
+    'Rival Fleet',
+    'Escort Your Fishing Fleet',
+    'Send coast guard cutters to accompany your boats. Armed escort. Not aggressive — protective. But armed.',
+    '{
+        "favor_delta": -0.5,
+        "tension_delta": 1,
+        "relation_delta": -2,
+        "stat_effects": [
+            { "stat_key": "military_readiness", "delta": 0.05, "duration_ticks": 8, "target": "self" }
+        ]
+    }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 18: Seize Foreign Vessel (Aggressive / MoD / 2 AP) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects
+) VALUES (
+    'maritime_fishing_rights', 18, 'Seize Foreign Vessel', 'aggressive', 'minister_of_defense', 2,
+    'Your coast guard intercepts a foreign fishing vessel. The captain refuses inspection. The crew is defiant. Your sailors have their hands on their weapons.',
+
+    'Dominant Fleet',
+    'Board and Impound',
+    'Armed boarding. Crew detained. Catch confiscated. Vessel towed to your port. International law is ambiguous.',
+    '{
+        "favor_delta": 2,
+        "tension_delta": 3,
+        "relation_delta": -5,
+        "stat_effects": [
+            { "stat_key": "gov_approval", "delta": -0.3, "duration_ticks": 10, "target": "opponent" },
+            { "stat_key": "civil_unrest", "delta": 0.2, "duration_ticks": 10, "target": "opponent" }
+        ],
+        "add_modifier": "seized_vessel_held",
+        "incident_trigger_chance": 0.5
+    }'::jsonb,
+
+    'Rival Fleet',
+    'Detain Vessel for Safety Inspection',
+    'Board under pretense of safety violation. Impound for investigation. Hold 48 hours. A message.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": 2,
+        "relation_delta": -3,
+        "stat_effects": [
+            { "stat_key": "gov_approval", "delta": -0.1, "duration_ticks": 8, "target": "opponent" }
+        ],
+        "incident_trigger_chance": 0.25
+    }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 19: Naval Deployment (Aggressive / MoD / 2 AP) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects
+) VALUES (
+    'maritime_fishing_rights', 19, 'Naval Deployment', 'aggressive', 'minister_of_defense', 2,
+    'The coast guard isn''t enough anymore. Navy vessels redeployed from other duties. Warships heading toward the fishing zone. The line between coast guard and navy just disappeared.',
+
+    'Dominant Fleet',
+    'Deploy Naval Patrol to Disputed Zone',
+    'A frigate and two patrol boats. Armed with more than water cannons. This is no longer a fisheries dispute.',
+    '{
+        "favor_delta": 2,
+        "tension_delta": 3,
+        "relation_delta": -5,
+        "stat_effects": [
+            { "stat_key": "military_readiness", "delta": 0.1, "duration_ticks": 15, "target": "self" },
+            { "stat_key": "stability", "delta": -0.2, "duration_ticks": 15, "target": "opponent" }
+        ],
+        "add_modifier": "naval_presence_in_fishing_zone",
+        "modifier_effects": { "incident_trigger_multiplier": 2.0, "duration_ticks": 15 }
+    }'::jsonb,
+
+    'Rival Fleet',
+    'Request Allied Naval Presence',
+    'Ask a friendly third-party nation to conduct a freedom of navigation exercise through the zone. Their warship. Your message.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": 2,
+        "relation_delta": -4,
+        "random_roll": {
+            "success_chance": 0.3,
+            "success_label": "Third-party agrees",
+            "success_effects": { "stat_effects": [{ "stat_key": "stability", "delta": -0.1, "duration_ticks": 10, "target": "opponent" }] },
+            "fail_label": "Request declined",
+            "fail_effects": {}
+        }
+    }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 20: Unilateral Fishing Ban (Aggressive / HoG) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects
+) VALUES (
+    'maritime_fishing_rights', 20, 'Unilateral Fishing Ban', 'aggressive', 'head_of_government', 1,
+    'The Head of Government goes on television. "Effective immediately, all fishing in the disputed zone is prohibited. Any vessel that enters will be impounded."',
+
+    'Dominant Fleet',
+    'Declare Exclusion Zone',
+    'Ban all fishing. Enforce with coast guard. Nobody eats.',
+    '{
+        "favor_delta": 1,
+        "tension_delta": 2,
+        "relation_delta": -3,
+        "stat_effects": [
+            { "stat_key": "cost_of_living", "delta": 0.15, "duration_ticks": 15, "target": "both" },
+            { "stat_key": "manufacturing_output", "delta": -0.1, "duration_ticks": 15, "target": "both" }
+        ],
+        "add_modifier": "fishing_ban_in_effect"
+    }'::jsonb,
+
+    'Rival Fleet',
+    'Defy the Ban',
+    'Publicly reject it as illegitimate. Order your fleet to continue under armed escort. Dare them to enforce it.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": 2,
+        "relation_delta": -3,
+        "stat_effects": [
+            { "stat_key": "gov_approval", "delta": 0.1, "duration_ticks": 6, "target": "self" }
+        ],
+        "incident_trigger_chance": 0.4
+    }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 21: Trade Retaliation (Aggressive / MoF) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects
+) VALUES (
+    'maritime_fishing_rights', 21, 'Trade Retaliation', 'aggressive', 'minister_of_finance', 1,
+    'If they won''t respect your rights on the water, you''ll make them pay on land. The trade minister opens a file labeled "economic countermeasures."',
+
+    'Dominant Fleet',
+    'Impose Tariffs on Rival''s Seafood Exports',
+    '25% duty on all fish products from the rival nation. Their processors lose their biggest customer overnight.',
+    '{
+        "favor_delta": 1,
+        "tension_delta": 2,
+        "relation_delta": -3,
+        "stat_effects": [
+            { "stat_key": "trade_balance", "delta": -0.15, "duration_ticks": 12, "target": "opponent" },
+            { "stat_key": "cost_of_living", "delta": 0.1, "duration_ticks": 12, "target": "self" }
+        ]
+    }'::jsonb,
+
+    'Rival Fleet',
+    'Embargo Dominant Fleet''s Fuel Supply',
+    'If their boats refuel at your ports, cut them off. No diesel. No lubricants. No dock access. Their operational range drops overnight.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": 2,
+        "relation_delta": -4,
+        "stat_effects": [
+            { "stat_key": "gdp_growth", "delta": -0.05, "duration_ticks": 10, "target": "opponent" },
+            { "stat_key": "trade_balance", "delta": -0.1, "duration_ticks": 10, "target": "both" }
+        ]
+    }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
