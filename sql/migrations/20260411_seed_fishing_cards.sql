@@ -265,3 +265,100 @@ INSERT INTO issue_card_definitions (
 )
 
 ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ══════════════════════════════════════════════════════════════
+-- DIPLOMATIC CARDS (require opponent to accept or reject)
+-- If rejected: proposing nation gains favor +0.5
+-- ══════════════════════════════════════════════════════════════
+
+-- ── CARD 9: Joint Fishing Commission (Diplomatic / FM) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    diplomatic_accept_effects, diplomatic_reject_effects
+) VALUES (
+    'maritime_fishing_rights', 9, 'Joint Fishing Commission', 'diplomatic', 'foreign_minister', 1,
+    'A retired admiral from a third-party nation offers to chair a bilateral fishing commission. He has credibility with both sides. It''s a rare window.',
+
+    'Either Nation', 'Establish Joint Fishing Commission',
+    'Bilateral body with regulatory authority over the disputed zone. Shared data. Coordinated enforcement.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    'Either Nation', 'Establish Joint Fishing Commission',
+    'Bilateral body with regulatory authority over the disputed zone. Shared data. Coordinated enforcement.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    '{ "tension_delta": -2, "relation_delta": 2, "remove_modifier": "no_regulatory_framework", "stat_effects": [{ "stat_key": "efficiency", "delta": 0.05, "duration_ticks": 15, "target": "both" }] }'::jsonb,
+    '{ "favor_delta_to_proposer": 0.5 }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 10: Catch Quota Negotiation (Diplomatic / MoF) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    diplomatic_accept_effects, diplomatic_reject_effects
+) VALUES (
+    'maritime_fishing_rights', 10, 'Catch Quota Negotiation', 'diplomatic', 'minister_of_finance', 1,
+    'Fish stock data is finally available. Both nations know how much is out there. The question is who gets how much.',
+
+    'Dominant Fleet', 'Offer 60/40 Quota Split',
+    'You catch more, you get more. Proportional to current fleet size. Generous enough to tempt, skewed enough to maintain leverage.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    'Rival Fleet', 'Demand 50/50 Quota Split',
+    'Equal rights to equal waters. Legal claim, not fleet size, should determine the allocation.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    '{ "tension_delta": -1, "remove_modifier": "no_defined_quotas", "stat_effects": [{ "stat_key": "gdp_growth", "delta": 0.025, "duration_ticks": 20, "target": "both" }] }'::jsonb,
+    '{ "favor_delta_to_proposer": 0.5 }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 11: Maritime Boundary Survey (Diplomatic / FM) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    diplomatic_accept_effects, diplomatic_reject_effects
+) VALUES (
+    'maritime_fishing_rights', 11, 'Maritime Boundary Survey', 'diplomatic', 'foreign_minister', 1,
+    'The UN Convention on the Law of the Sea provides a framework for resolving overlapping EEZ claims. Both nations are signatories. Neither has invoked it.',
+
+    'Either Nation', 'Commission Joint Hydrographic Survey',
+    'Neutral experts map the seabed, measure continental shelf, produce a definitive boundary recommendation. Both nations accept the methodology in advance.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    'Either Nation', 'Commission Joint Hydrographic Survey',
+    'Neutral experts map the seabed, measure continental shelf, produce a definitive boundary recommendation. Both nations accept the methodology in advance.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    '{ "tension_delta": -2, "remove_modifier": "no_defined_maritime_territories", "special": "survey_8_ticks" }'::jsonb,
+    '{ "favor_delta_to_proposer": 1, "stat_effects_rejector": [{ "stat_key": "international_reputation", "delta": -0.1, "duration_ticks": 8 }] }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 12: Seasonal Fishing Calendar (Diplomatic / Ambassador) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    diplomatic_accept_effects, diplomatic_reject_effects
+) VALUES (
+    'maritime_fishing_rights', 12, 'Seasonal Fishing Calendar', 'diplomatic', 'ambassador', 1,
+    'The same boats chase the same fish through the same seasonal migration. Spring mackerel. Summer tuna. Autumn sardine. Both fleets collide on a predictable schedule.',
+
+    'Either Nation', 'Sign Seasonal Fishing Calendar',
+    'Agree which months each fleet operates in which zone. Time-share the waters. Simple. Practical.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    'Either Nation', 'Sign Seasonal Fishing Calendar',
+    'Agree which months each fleet operates in which zone. Time-share the waters. Simple. Practical.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    '{ "tension_delta": -1, "remove_modifier": "seasonal_fishing_conflict" }'::jsonb,
+    '{ "favor_delta_to_proposer": 0.5 }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
