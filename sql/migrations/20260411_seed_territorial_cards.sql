@@ -186,6 +186,127 @@ INSERT INTO issue_card_definitions (
             { "stat_key": "international_reputation", "delta": 0.05, "duration_ticks": 6, "target": "self" }
         ]
     }'::jsonb
+),
+
+-- ── CARD 7: Administrative Expansion (Unilateral / FM) ──
+(
+    'territorial_ownership', 7, 'Administrative Expansion', 'unilateral', 'foreign_minister', 1,
+    'Bureaucratic creep. One nation quietly expanding its administrative footprint — new post offices, tax collection points, police stations. Every office is a flag planted in paperwork.',
+
+    'Occupying Nation',
+    'Establish Full Administrative Presence',
+    'Courts, tax authority, passport office. Full government services operating under your jurisdiction. Citizens in the territory interact only with your bureaucracy.',
+    '{
+        "favor_delta": 1,
+        "tension_delta": 1,
+        "relation_delta": 0,
+        "treasury_cost": 10000000,
+        "stat_effects": [
+            { "stat_key": "efficiency", "delta": 0.1, "duration_ticks": 12, "target": "self" }
+        ]
+    }'::jsonb,
+
+    'Claimant Nation',
+    'Protest Administrative Overreach',
+    'Formal objection filed with every international body. A detailed report documenting every new office, every new official, every new stamp. Frame it as creeping annexation.',
+    '{
+        "favor_delta": -0.5,
+        "tension_delta": 0.5,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "international_reputation", "delta": -0.05, "duration_ticks": 10, "target": "opponent" }
+        ]
+    }'::jsonb
+),
+
+-- ── CARD 8: Diaspora Mobilization (Unilateral / Ambassador) ──
+(
+    'territorial_ownership', 8, 'Diaspora Mobilization', 'unilateral', 'ambassador', 1,
+    'Expatriates from the territory organize politically abroad. Advocacy groups, fundraising campaigns, lobbying foreign governments. The diaspora becomes a weapon — or a liability.',
+
+    'Occupying Nation',
+    'Discredit Diaspora Organization',
+    'State media investigation into the diaspora group. Suggest foreign intelligence connections. Question their funding sources. Make the international community doubt their legitimacy.',
+    '{
+        "favor_delta": 0.5,
+        "tension_delta": 0.5,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "polarization", "delta": 0.1, "duration_ticks": 10, "target": "opponent" }
+        ]
+    }'::jsonb,
+
+    'Claimant Nation',
+    'Elevate Diaspora Voice',
+    'Official recognition of the diaspora organization. Their leader meets the Foreign Minister. Testimony enters the parliamentary record. Give them a platform and a megaphone.',
+    '{
+        "favor_delta": -1,
+        "tension_delta": 0.5,
+        "relation_delta": 0,
+        "stat_effects": [
+            { "stat_key": "gov_approval", "delta": 0.1, "duration_ticks": 10, "target": "self" },
+            { "stat_key": "polarization", "delta": 0.1, "duration_ticks": 10, "target": "self" }
+        ]
+    }'::jsonb
+),
+
+-- ══════════════════════════════════════════════════════════════
+-- DIPLOMATIC CARDS (require opponent to accept or reject)
+-- If rejected: proposing nation gains favor +0.5
+-- ══════════════════════════════════════════════════════════════
+
 )
 
 ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ══════════════════════════════════════════════════════════════
+-- DIPLOMATIC CARDS (require opponent to accept or reject)
+-- If rejected: proposing nation gains favor +0.5
+-- Inserted separately because they use diplomatic_accept/reject columns.
+-- ══════════════════════════════════════════════════════════════
+
+-- ── CARD 9: Joint Sovereignty Proposal (Diplomatic / HoG) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    diplomatic_accept_effects, diplomatic_reject_effects
+) VALUES (
+    'territorial_ownership', 9, 'Joint Sovereignty Proposal', 'diplomatic', 'head_of_government', 1,
+    'An elder statesperson publishes an op-ed arguing that the only sustainable solution is shared sovereignty. Both flags. Both languages. Both anthems. The idea is radical — and it won''t go away.',
+
+    'Either Nation', 'Offer Joint Governance Framework',
+    'Propose co-administration. Shared revenue from territory resources. Dual citizenship for residents. Joint police patrols. Equal representation in a territorial council.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    'Either Nation', 'Offer Joint Governance Framework',
+    'Propose co-administration. Shared revenue from territory resources. Dual citizenship for residents. Joint police patrols. Equal representation in a territorial council.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    '{ "favor_reset": 0, "tension_delta": -3, "relation_delta": 3, "remove_modifier": "competing_sovereignty_claims" }'::jsonb,
+    '{ "favor_delta_to_proposer": 0.5, "tension_delta": 0.5 }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
+
+-- ── CARD 10: International Court Submission (Diplomatic / FM) ──
+INSERT INTO issue_card_definitions (
+    issue_type, card_number, card_name, card_type, required_role, ap_cost,
+    narrative,
+    option_a_label, option_a_title, option_a_text, option_a_effects,
+    option_b_label, option_b_title, option_b_text, option_b_effects,
+    diplomatic_accept_effects, diplomatic_reject_effects
+) VALUES (
+    'territorial_ownership', 10, 'International Court Submission', 'diplomatic', 'foreign_minister', 1,
+    'Legal scholars from both nations recommend submitting the dispute to the International Court of Justice for a binding ruling. It would take time — but the result would be final.',
+
+    'Either Nation', 'Submit to Binding Adjudication',
+    'Accept the court''s jurisdiction. Present your case. Abide by the ruling. If you believe your administration is legitimate, let the law confirm it.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    'Either Nation', 'Submit to Binding Adjudication',
+    'Accept the court''s jurisdiction. Present your case. Abide by the ruling. If your historical claim is sound, the court will validate it.',
+    '{ "favor_delta": 0, "tension_delta": 0, "relation_delta": 0 }'::jsonb,
+
+    '{ "favor_reset": 0, "tension_delta": -3, "remove_modifier": "no_international_adjudication", "special": "arbitration_10_ticks" }'::jsonb,
+    '{ "favor_delta_to_proposer": 1, "stat_effects_rejector": [{ "stat_key": "international_reputation", "delta": -0.1, "duration_ticks": 8 }] }'::jsonb
+) ON CONFLICT (issue_type, card_number) DO NOTHING;
