@@ -5180,12 +5180,12 @@ async function detectHeadFaction(supabase, nationId, allParties, allPartySeats, 
 
 // ==================== COALITION FETCHING ====================
 
+// Per-tick in-memory cache — cleared at start of each advanceTick() call
+const _coalitionCache = new Map();
+
 async function fetchActiveCoalition(supabase, nationId) {
-    const cacheKey = 'coalition_' + nationId;
-    if (typeof qCache === 'function') {
-        const cached = qCache(cacheKey);
-        if (cached) return cached;
-    }
+    // Check per-tick cache first (eliminates ~5 redundant queries per nation)
+    if (_coalitionCache.has(nationId)) return _coalitionCache.get(nationId);
 
     // === PRESIDENTIAL SYSTEMS: return virtual coalition from active president ===
     const { data: nationRow } = await supabase
@@ -5204,7 +5204,7 @@ async function fetchActiveCoalition(supabase, nationId) {
             .limit(1)
             .maybeSingle();
 
-        if (!president) return null; // No active president yet (candidate selection pending)
+        if (!president) { _coalitionCache.set(nationId, null); return null; } // No active president yet
 
         // Build ministry_allocations from active ministries
         const { data: ministries } = await supabase
@@ -5232,7 +5232,7 @@ async function fetchActiveCoalition(supabase, nationId) {
             status: 'formed',  // Always 'formed' while president is active
             _source: 'presidential'
         };
-        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 15 * 1000);
+        _coalitionCache.set(nationId, result);
         return result;
     }
 
@@ -5299,7 +5299,7 @@ async function fetchActiveCoalition(supabase, nationId) {
             } catch (e) { console.warn('Coalition table reconciliation failed:', e); }
         }
 
-        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 15 * 1000);
+        _coalitionCache.set(nationId, result);
         return result;
     }
 
@@ -5314,8 +5314,8 @@ async function fetchActiveCoalition(supabase, nationId) {
 
     if (data) {
         await inferCaretakerStatus(data);
-        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 15 * 1000);
     }
+    _coalitionCache.set(nationId, data || null);
     return data;
 }
 
@@ -30222,6 +30222,8 @@ async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
 // ==================== ADVANCE TICK ====================
 
 async function advanceTick(supabase, { force = false, reprocess = false } = {}) {
+    // Clear per-tick caches
+    _coalitionCache.clear();
     // 1. Pre-compute next tick metadata
     const { data: shard } = await supabase
         .from('shard')
