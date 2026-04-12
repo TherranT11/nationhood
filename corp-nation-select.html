@@ -782,7 +782,7 @@ async function confirmNation() {
         const inflationMult = corpSetup.sector === 'Finance'
             ? Math.max(0.5, 1 - (Number(nation.inflation) || 0) / 200) // high inflation reduces starting capital
             : 1;
-        const baseCash = corpSetup.sector === 'Finance' ? 225_000_000 : 36_000_000;
+        const baseCash = corpSetup.sector === 'Finance' ? 225_000_000 : corpSetup.sector === 'Shipping' ? 80_000_000 : 36_000_000;
         const startingCash = Math.round(baseCash * currencyMult * inflationMult);
         const startingLoans = Math.round(8_000_000 * currencyMult);
 
@@ -834,6 +834,14 @@ async function confirmNation() {
         } else {
             const { error: upsertError } = await _supabase.from('factions').upsert(corpRow);
             if (upsertError) throw upsertError;
+        }
+
+        // Set fleet capacity for shipping corps
+        if (corpSetup.sector === 'Shipping') {
+            await _supabase.from('factions').update({
+                shipping_fleet_capacity: 2,
+                shipping_fleet_deployed: 0,
+            }).eq('id', isLinkedCorp ? currentUser.id : corpRow.id);
         }
 
         // Seed starting equipment + warehouse for construction corps
