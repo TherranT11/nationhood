@@ -1500,6 +1500,91 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Stockpile processing failed (non-fatal):', stockErr);
     }
 
+    // 3.5e Stockpile purchase execution — process active stockpile_purchase agreements
+    // These are one-time transfers: on enactment, seller's reserves decrease,
+    // buyer's reserves increase. Mark as completed after execution.
+    try {
+        const { data: pendingPurchases } = await supabase
+            .from('trade_agreements')
+            .select('id, nation_a_id, nation_b_id, articles')
+            .eq('agreement_type', 'stockpile_purchase')
+            .eq('status', 'active');
+
+        if (pendingPurchases && pendingPurchases.length > 0) {
+            for (const sp of pendingPurchases) {
+                const arts = sp.articles || [];
+                const transferArt = arts.find((a: any) => a.type === 'stockpile_transfer');
+                if (!transferArt || !transferArt.data) continue;
+
+                const d = transferArt.data;
+                const sector = d.sector;
+                const quantityValue = Number(d.quantity_value) || 0;
+                if (!sector || quantityValue <= 0) continue;
+
+                // Resolve buyer/seller
+                const authorId = d.author_nation_id || sp.nation_a_id;
+                const partnerId = (authorId === sp.nation_a_id) ? sp.nation_b_id : sp.nation_a_id;
+                const buyerId = d.direction === 'we_buy' ? authorId : partnerId;
+                const sellerId = d.direction === 'we_buy' ? partnerId : authorId;
+
+                // Fetch seller's stockpile
+                const { data: sellerStock } = await supabase
+                    .from('food_stockpiles')
+                    .select('reserve_value')
+                    .eq('nation_id', sellerId)
+                    .eq('sector', sector)
+                    .single();
+
+                if (!sellerStock) {
+                    console.log(`[advanceTick] Stockpile purchase ${sp.id}: seller has no stockpile for ${sector}`);
+                    await supabase.from('trade_agreements').update({ status: 'failed' }).eq('id', sp.id);
+                    continue;
+                }
+
+                const sellerReserve = Number(sellerStock.reserve_value) || 0;
+                // Transfer only what the seller actually has
+                const actualTransfer = Math.min(quantityValue, sellerReserve);
+                if (actualTransfer <= 0) {
+                    console.log(`[advanceTick] Stockpile purchase ${sp.id}: seller reserves empty`);
+                    await supabase.from('trade_agreements').update({ status: 'failed' }).eq('id', sp.id);
+                    continue;
+                }
+
+                // Deduct from seller
+                await supabase.from('food_stockpiles')
+                    .update({ reserve_value: Math.max(0, sellerReserve - actualTransfer) })
+                    .eq('nation_id', sellerId)
+                    .eq('sector', sector);
+
+                // Add to buyer (fetch current + add, capped at capacity)
+                const { data: buyerStock } = await supabase
+                    .from('food_stockpiles')
+                    .select('reserve_value, max_capacity')
+                    .eq('nation_id', buyerId)
+                    .eq('sector', sector)
+                    .single();
+
+                const buyerReserve = buyerStock ? Number(buyerStock.reserve_value) || 0 : 0;
+                const buyerCap = buyerStock ? Number(buyerStock.max_capacity) || 0 : 0;
+                const newBuyerReserve = Math.min(buyerReserve + actualTransfer, Math.max(buyerCap, buyerReserve + actualTransfer));
+
+                await supabase.from('food_stockpiles')
+                    .update({ reserve_value: newBuyerReserve })
+                    .eq('nation_id', buyerId)
+                    .eq('sector', sector);
+
+                // Mark agreement as completed (one-time transfer)
+                await supabase.from('trade_agreements')
+                    .update({ status: 'completed' })
+                    .eq('id', sp.id);
+
+                console.log(`[advanceTick] Stockpile purchase ${sp.id}: transferred $${Math.round(actualTransfer).toLocaleString()} of ${sector} from seller to buyer`);
+            }
+        }
+    } catch (spErr) {
+        console.error('[advanceTick] Stockpile purchase execution failed (non-fatal):', spErr);
+    }
+
     // 3.6 Expire trade agreements (including economic aid) that have passed their expires_at_tick
     try {
         const expiredAgreements = await processExpiredTradeAgreements(supabase, newTick);
