@@ -7254,6 +7254,8 @@ function actExecute(actionId, role) {
     switch (actionId) {
         case 'statement': return actOpenStatement();
         case 'loan': return lrOpen();
+        case 'restructure': return actOpenRestructure();
+        case 'rebrand': return actOpenRebrand();
         default: console.log('Action not yet wired:', actionId, role);
     }
 }
@@ -7684,6 +7686,272 @@ async function lrSubmit() {
     }
 
     lrClose();
+}
+
+// ═══════════════════════════════════════════════════
+// COO: Restructure Operations
+// ═══════════════════════════════════════════════════
+// Lay off 10-20% of workforce, cuts ~7% of debt, reputation -1d10-3
+
+function actOpenRestructure() {
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    const debt = Number(faction?.corp_loans ?? 0);
+    const rep = Number(faction?.corp_reputation ?? 50);
+    const gen = Number(faction?.corp_general_workforce ?? 0);
+    const skl = Number(faction?.corp_skilled_workforce ?? 0);
+    const inn = Number(faction?.corp_innovative_workforce ?? 0);
+    const totalWf = gen + skl + inn;
+
+    // Calculate layoff range (10-20%)
+    const layoffPct = 10 + Math.floor(Math.random() * 11); // 10-20
+    const layoffCount = Math.round(totalWf * layoffPct / 100);
+    const debtCut = Math.round(debt * 0.07);
+    const repLoss = 3 + Math.floor(Math.random() * 10); // 1d10 + 3
+
+    // Distribute layoffs proportionally
+    const genCut = Math.round(gen / totalWf * layoffCount) || 0;
+    const sklCut = Math.round(skl / totalWf * layoffCount) || 0;
+    const innCut = Math.min(inn, layoffCount - genCut - sklCut);
+
+    const overlay = document.createElement('div');
+    overlay.id = 'restr-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:600;display:flex;align-items:center;justify-content:center;';
+    overlay.onclick = function(e) { if (e.target === overlay) actCloseRestructure(); };
+
+    overlay.innerHTML = `<div onclick="event.stopPropagation()" style="width:440px;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="padding:10px 16px;border-bottom:1px solid #2a2a24;background:#1c1c18;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:8px;color:#8b9a6b;">&#9679;</span>
+                    <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:2px;color:#9e9a92;text-transform:uppercase;">Restructure Operations</span>
+                </div>
+                <span onclick="actCloseRestructure()" style="font-family:var(--font-mono);font-size:14px;color:#6a6660;cursor:pointer;">&#215;</span>
+            </div>
+        </div>
+        <div style="padding:12px 16px;">
+            <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:8px;">Impact Preview</div>
+            <div style="background:#1c1c18;border:1px solid #2a2a24;padding:8px 12px;">
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a24;">
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">WORKFORCE REDUCTION</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c55;">-${layoffCount} employees (${layoffPct}%)</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a24;">
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">General: ${gen} &rarr; ${gen - genCut}</span>
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#c84;">-${genCut}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a24;">
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">Skilled: ${skl} &rarr; ${skl - sklCut}</span>
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#c84;">-${sklCut}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a24;">
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">Innovative: ${inn} &rarr; ${inn - innCut}</span>
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#c84;">-${innCut}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a24;">
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">DEBT REDUCTION (~7%)</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#5cb85c;">-${hfFmtBig(debtCut)}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;">
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">REPUTATION HIT</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c55;">-${repLoss} (${rep} &rarr; ${Math.max(0, rep - repLoss)})</span>
+                </div>
+            </div>
+            <div style="font-family:var(--font-mono);font-size:7px;color:#c84;margin-top:6px;">&#9888; This action cannot be undone. Laid-off workers must be re-hired.</div>
+        </div>
+        <div style="padding:8px 16px;border-top:1px solid #2a2a24;display:flex;justify-content:flex-end;gap:6px;">
+            <div onclick="actCloseRestructure()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
+            <div id="restr-btn" onclick="actSubmitRestructure(${layoffPct},${debtCut},${repLoss},${genCut},${sklCut},${innCut})" style="padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:#8b9a6b;cursor:pointer;">RESTRUCTURE</div>
+        </div>
+        <div id="restr-error" style="padding:4px 16px;font-family:var(--font-mono);font-size:8px;color:#c55;display:none;"></div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+}
+
+function actCloseRestructure() {
+    const o = document.getElementById('restr-overlay');
+    if (o) o.remove();
+}
+
+async function actSubmitRestructure(layoffPct, debtCut, repLoss, genCut, sklCut, innCut) {
+    if (!faction) return;
+    const btn = document.getElementById('restr-btn');
+    if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
+
+    const gen = Number(faction.corp_general_workforce ?? 0);
+    const skl = Number(faction.corp_skilled_workforce ?? 0);
+    const inn = Number(faction.corp_innovative_workforce ?? 0);
+    const debt = Number(faction.corp_loans ?? 0);
+    const rep = Number(faction.corp_reputation ?? 50);
+
+    const updates = {
+        corp_general_workforce: Math.max(0, gen - genCut),
+        corp_skilled_workforce: Math.max(0, skl - sklCut),
+        corp_innovative_workforce: Math.max(0, inn - innCut),
+        corp_loans: Math.max(0, debt - debtCut),
+        corp_reputation: Math.max(0, rep - repLoss),
+    };
+
+    const { error } = await _supabase.from('factions').update(updates).eq('id', faction.id);
+    if (error) {
+        const errEl = document.getElementById('restr-error');
+        if (errEl) { errEl.textContent = 'Failed: ' + error.message; errEl.style.display = 'block'; }
+        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+        return;
+    }
+
+    // Update local state
+    Object.assign(faction, updates);
+
+    // Log event
+    const currentTick = shard?.current_tick || 0;
+    await _supabase.from('event_log').insert({
+        nation_id: faction.nation_id,
+        faction_id: faction.id,
+        event_name: (faction.faction_name || 'Corporation') + ' — Restructuring',
+        description_used: (faction.faction_name || 'A corporation') + ' has announced a restructuring, laying off ' + layoffPct + '% of its workforce.',
+        category: 'business',
+        trigger_key: 'corp_restructure',
+        effects_applied: { layoff_pct: layoffPct, debt_cut: debtCut, rep_loss: repLoss },
+        fired_at_tick: currentTick,
+    });
+
+    actCloseRestructure();
+    renderActionsTab();
+}
+
+// ═══════════════════════════════════════════════════
+// CMO: Rebrand Corporation ($20M, rename + new abbr, -5 rep)
+// ═══════════════════════════════════════════════════
+
+function actOpenRebrand() {
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    const rep = Number(faction?.corp_reputation ?? 50);
+    const corpName = faction?.faction_name || '';
+    const ticker = faction?.abbreviation || faction?.corp_ticker || '';
+
+    const overlay = document.createElement('div');
+    overlay.id = 'rebrand-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:600;display:flex;align-items:center;justify-content:center;';
+    overlay.onclick = function(e) { if (e.target === overlay) actCloseRebrand(); };
+
+    overlay.innerHTML = `<div onclick="event.stopPropagation()" style="width:440px;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="padding:10px 16px;border-bottom:1px solid #2a2a24;background:#1c1c18;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:8px;color:#c84;">&#9679;</span>
+                    <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:2px;color:#9e9a92;text-transform:uppercase;">Rebrand Corporation</span>
+                </div>
+                <span onclick="actCloseRebrand()" style="font-family:var(--font-mono);font-size:14px;color:#6a6660;cursor:pointer;">&#215;</span>
+            </div>
+        </div>
+        <div style="padding:12px 16px;">
+            <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;margin-bottom:6px;">NEW CORPORATION NAME</div>
+            <input id="rebrand-name" type="text" maxlength="40" value="${escapeHtml(corpName)}" placeholder="Corporation name"
+                style="width:100%;padding:6px 10px;font-family:var(--font-ui);font-size:12px;color:#e8e4dc;background:#1c1c18;border:1px solid #2a2a24;outline:none;box-sizing:border-box;" />
+            <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;margin-top:10px;margin-bottom:6px;">NEW ABBREVIATION / TICKER</div>
+            <input id="rebrand-abbr" type="text" maxlength="5" value="${escapeHtml(ticker)}" placeholder="e.g. SZC" style="width:100px;padding:6px 10px;font-family:var(--font-mono);font-size:12px;font-weight:700;color:#c8a832;background:#1c1c18;border:1px solid #2a2a24;outline:none;text-transform:uppercase;" />
+        </div>
+        <div style="padding:8px 16px;border-top:1px solid #2a2a24;">
+            <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:6px;">Impact</div>
+            <div style="background:#1c1c18;border:1px solid #2a2a24;padding:6px 10px;">
+                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">COST</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c84;">$20M</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">REPUTATION</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c55;">-5 (${rep} &rarr; ${Math.max(0, rep - 5)})</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:3px 0;">
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">CASH AFTER</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${cash < 20000000 ? '#c55' : '#e8e4dc'};">${hfFmtBig(cash - 20000000)}</span>
+                </div>
+            </div>
+        </div>
+        <div style="padding:8px 16px;border-top:1px solid #2a2a24;display:flex;justify-content:flex-end;gap:6px;">
+            <div onclick="actCloseRebrand()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
+            <div id="rebrand-btn" onclick="actSubmitRebrand()" style="padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:#c84;cursor:${cash >= 20000000 ? 'pointer' : 'not-allowed'};${cash < 20000000 ? 'opacity:0.4;pointer-events:none;' : ''}">REBRAND</div>
+        </div>
+        <div id="rebrand-error" style="padding:4px 16px;font-family:var(--font-mono);font-size:8px;color:#c55;display:none;"></div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+}
+
+function actCloseRebrand() {
+    const o = document.getElementById('rebrand-overlay');
+    if (o) o.remove();
+}
+
+async function actSubmitRebrand() {
+    if (!faction) return;
+    const errEl = document.getElementById('rebrand-error');
+    const newName = (document.getElementById('rebrand-name')?.value || '').trim();
+    const newAbbr = (document.getElementById('rebrand-abbr')?.value || '').trim().toUpperCase();
+
+    if (!newName || newName.length < 2) {
+        if (errEl) { errEl.textContent = 'Name must be at least 2 characters.'; errEl.style.display = 'block'; }
+        return;
+    }
+    if (!newAbbr || newAbbr.length < 2 || newAbbr.length > 5) {
+        if (errEl) { errEl.textContent = 'Abbreviation must be 2-5 characters.'; errEl.style.display = 'block'; }
+        return;
+    }
+
+    const cash = Number(faction.corp_cash_reserves ?? 0);
+    if (cash < 20000000) {
+        if (errEl) { errEl.textContent = 'Insufficient cash. Need $20M.'; errEl.style.display = 'block'; }
+        return;
+    }
+
+    const btn = document.getElementById('rebrand-btn');
+    if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
+
+    const rep = Number(faction.corp_reputation ?? 50);
+    const oldName = faction.faction_name || 'Corporation';
+
+    const { error } = await _supabase.from('factions').update({
+        faction_name: newName,
+        abbreviation: newAbbr,
+        corp_ticker: newAbbr,
+        corp_cash_reserves: cash - 20000000,
+        corp_reputation: Math.max(0, rep - 5),
+    }).eq('id', faction.id);
+
+    if (error) {
+        if (errEl) { errEl.textContent = 'Failed: ' + error.message; errEl.style.display = 'block'; }
+        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+        return;
+    }
+
+    // Update local state
+    faction.faction_name = newName;
+    faction.abbreviation = newAbbr;
+    faction.corp_ticker = newAbbr;
+    faction.corp_cash_reserves = cash - 20000000;
+    faction.corp_reputation = Math.max(0, rep - 5);
+
+    // Log event
+    const currentTick = shard?.current_tick || 0;
+    await _supabase.from('event_log').insert({
+        nation_id: faction.nation_id,
+        faction_id: faction.id,
+        event_name: oldName + ' rebrands as ' + newName,
+        description_used: oldName + ' has rebranded to ' + newName + ' (' + newAbbr + '). The rebrand costs $20M and reputation takes a temporary hit.',
+        category: 'business',
+        trigger_key: 'corp_rebrand',
+        effects_applied: { old_name: oldName, new_name: newName, new_abbr: newAbbr, rep_loss: 5, cost: 20000000 },
+        fired_at_tick: currentTick,
+    });
+
+    actCloseRebrand();
+    renderActionsTab();
+
+    // Update top bar
+    document.getElementById('corp-name-bar').textContent = newName;
+    const logoEl = document.getElementById('corp-logo');
+    if (logoEl) logoEl.textContent = newAbbr.slice(0, 2);
 }
 
 function actSelectExec(idx) {
@@ -10933,6 +11201,12 @@ window.actExecute = actExecute;
 window.actOpenStatement = actOpenStatement;
 window.actCloseStatement = actCloseStatement;
 window.actSubmitStatement = actSubmitStatement;
+window.actOpenRestructure = actOpenRestructure;
+window.actCloseRestructure = actCloseRestructure;
+window.actSubmitRestructure = actSubmitRestructure;
+window.actOpenRebrand = actOpenRebrand;
+window.actCloseRebrand = actCloseRebrand;
+window.actSubmitRebrand = actSubmitRebrand;
 window.lrOpen = lrOpen;
 window.lrClose = lrClose;
 window.lrSubmit = lrSubmit;
