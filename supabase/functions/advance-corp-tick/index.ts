@@ -2043,7 +2043,7 @@ async function resolveExpiredEvents(supabase, nationId, currentTick) {
             if (insReq) {
                 const { data: activePol } = await supabase
                     .from('finance_active_loans')
-                    .select('id, lender_faction_id, principal, interest_rate, claims_paid')
+                    .select('id, lender_faction_id, principal, interest_rate, claims_paid, claims_count, deductible_pct')
                     .eq('request_id', insReq.id)
                     .eq('status', 'current')
                     .maybeSingle();
@@ -2051,8 +2051,15 @@ async function resolveExpiredEvents(supabase, nationId, currentTick) {
             }
 
             if (policy) {
+                // Apply deductible: construction corp pays the deductible portion
+                const deductiblePct = Number(policy.deductible_pct) || 0;
+                const deductibleAmt = Math.round(costApplied * (deductiblePct / 100));
+                // Insurance covers cost minus deductible
+                let adjustedCost = costApplied - deductibleAmt;
+                // Cap at coverage amount (principal)
+                adjustedCost = Math.min(adjustedCost, Math.max(0, (policy.principal || 0) - (policy.claims_paid || 0)));
+
                 // Claims Office effect: 15% chance to reduce payout by 25%
-                let adjustedCost = costApplied;
                 const { data: claimsOffices } = await supabase
                     .from('corp_properties')
                     .select('id')
@@ -2075,10 +2082,23 @@ async function resolveExpiredEvents(supabase, nationId, currentTick) {
                 }
                 // Track claim on the policy
                 await supabase.from('finance_active_loans').update({
-                    claims_paid: (policy.claims_paid || 0) + adjustedCost
+                    claims_paid: (policy.claims_paid || 0) + adjustedCost,
+                    claims_count: (policy.claims_count || 0) + 1,
                 }).eq('id', policy.id);
+
+                // Construction corp still pays the deductible portion
+                if (deductibleAmt > 0) {
+                    const { data: deductCorp } = await supabase.from('factions')
+                        .select('corp_cash_reserves').eq('id', event.faction_id).single();
+                    if (deductCorp) {
+                        await supabase.from('factions').update({
+                            corp_cash_reserves: Math.max(0, Number(deductCorp.corp_cash_reserves || 0) - deductibleAmt)
+                        }).eq('id', event.faction_id);
+                    }
+                }
+
                 insurancePaidClaim = true;
-                console.log(`[Events] Insurance claim: ${event.title} — insurer pays $${costApplied}`);
+                console.log(`[Events] Insurance claim: ${event.title} — insurer pays $${adjustedCost}, deductible $${deductibleAmt}`);
             }
         }
 
@@ -2549,7 +2569,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 try {
                     const { data: activePolicies } = await supabase
                         .from('finance_active_loans')
-                        .select('id, borrower_faction_id, lender_faction_id, monthly_payment, request_id, finance_loan_requests!inner(request_type, insured_contract_id)')
+                        .select('id, borrower_faction_id, lender_faction_id, monthly_payment, payments_made, total_paid, total_interest_paid, request_id, finance_loan_requests!inner(request_type, insured_contract_id)')
                         .eq('status', 'current')
                         .eq('nation_id', nation.id)
                         .eq('finance_loan_requests.request_type', 'insurance');
@@ -2588,6 +2608,13 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 corp_cash_reserves: Number(insurer.corp_cash_reserves || 0) + premium
                             }).eq('id', policy.lender_faction_id);
                         }
+
+                        // Track premium payment on the policy record
+                        await supabase.from('finance_active_loans').update({
+                            payments_made: (policy.payments_made || 0) + 1,
+                            total_paid: (policy.total_paid || 0) + premium,
+                            total_interest_paid: (policy.total_interest_paid || 0) + premium,
+                        }).eq('id', policy.id);
                     }
                 } catch (insErr) {
                     console.warn(`[Insurance] Premium collection error for ${nation.name}:`, insErr.message);

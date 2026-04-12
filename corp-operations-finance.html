@@ -1825,6 +1825,7 @@ async function rdSubmitOffer() {
             purpose: 'Insurance Policy — ' + rdDeal.applicant,
             monthly_payment: monthlyPremiumAmt,
             started_tick: currentTick,
+            deductible_pct: deductible,
         });
         if (policyErr) { alert('Failed to create policy record: ' + policyErr.message); _submittingOffer = false; return; }
     } else {
@@ -1853,15 +1854,16 @@ async function loadActivePortfolio() {
         .order('started_tick', { ascending: false });
 
     const TYPE_MAP = { loan: 'LOAN', bond: 'BOND', insurance: 'INSURE' };
+    const isInsurance = (loan) => loan.finance_loan_requests?.request_type === 'insurance';
     apPortfolio = (loans || []).map(loan => ({
         id: loan.id,
         type: TYPE_MAP[loan.finance_loan_requests?.request_type] || 'LOAN',
         counterparty: loan.borrower?.faction_name || 'Unknown',
         abbr: loan.borrower?.abbreviation || loan.borrower?.corp_ticker || '??',
         nation: loan.loan_nation?.name || loan.borrower?.nation || 'Unknown',
-        remaining: loan.principal - loan.total_paid,
+        remaining: isInsurance(loan) ? 0 : loan.principal - loan.total_paid,
         principal: loan.principal,
-        earned: loan.total_interest_paid || 0,
+        earned: isInsurance(loan) ? ((loan.monthly_payment || 0) * (loan.payments_made || 0)) : (loan.total_interest_paid || 0),
         rate: loan.interest_rate,
         term: loan.term_months,
         paymentsMade: loan.payments_made,
@@ -1877,6 +1879,12 @@ async function loadActivePortfolio() {
             : loan.status === 'late'
             ? `${loan.payments_missed} missed payment${loan.payments_missed > 1 ? 's' : ''}. Monitor closely.`
             : null,
+        // Insurance-specific fields
+        coverage: isInsurance(loan) ? loan.principal : undefined,
+        premiumsCollected: isInsurance(loan) ? ((loan.monthly_payment || 0) * (loan.payments_made || 0)) : undefined,
+        paidOut: isInsurance(loan) ? (loan.claims_paid || 0) : undefined,
+        claims: isInsurance(loan) ? (loan.claims_count || 0) : undefined,
+        deductible: isInsurance(loan) ? (loan.deductible_pct || 0) : undefined,
     }));
 
     renderActivePortfolio();
