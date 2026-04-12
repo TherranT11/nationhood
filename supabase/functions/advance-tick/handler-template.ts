@@ -1345,17 +1345,24 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Trade imbalance auto-spawn failed (non-fatal):', tiErr);
     }
 
+    // Fetch food sub-sector trade flows once — used by steps 3.5c and 3.5d
+    let foodFlowRows: any[] = [];
+    try {
+        const { data } = await supabase
+            .from('trade_flows')
+            .select('nation_id, sector, export_capacity, export_volume, import_demand, import_volume')
+            .eq('tick', newTick)
+            .in('sector', FOOD_SUBSECTOR_KEYS);
+        if (data) foodFlowRows = data;
+    } catch (fetchErr) {
+        console.error('[advanceTick] Food flow fetch failed (non-fatal):', fetchErr);
+    }
+
     // 3.5c Food sub-sector stat effects — apply ongoing supply/shortage/environmental nudges
     // Runs after trade engine so trade_flows reflect current tick data.
     // Effects: supplied sectors give positive nudges, shortage penalizes stats,
     // livestock/cash crops generate environmental + structural effects.
     try {
-        const { data: foodFlowRows } = await supabase
-            .from('trade_flows')
-            .select('nation_id, sector, export_capacity, export_volume, import_demand, import_volume')
-            .eq('tick', newTick)
-            .in('sector', FOOD_SUBSECTOR_KEYS);
-
         if (foodFlowRows && foodFlowRows.length > 0) {
             // Group by nation
             const nationFoodFlows: Record<string, Record<string, any>> = {};
@@ -1402,6 +1409,188 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (foodEffErr) {
         console.error('[advanceTick] Food stat effects failed (non-fatal):', foodEffErr);
+    }
+
+    // 3.5d Stockpile processing — accumulate surplus, apply spoilage, draw down on shortage
+    // Runs for stockpilable sectors (grains_staples, cash_crops) after trade flows are computed.
+    try {
+        const stockpileSectors = ['grains_staples', 'cash_crops'];
+        const { data: stockpileRows } = await supabase
+            .from('food_stockpiles')
+            .select('nation_id, sector, reserve_value, max_capacity');
+
+        if (stockpileRows && stockpileRows.length > 0) {
+            // Group by nation
+            const stockByNation: Record<string, Record<string, any>> = {};
+            for (const row of stockpileRows) {
+                if (!stockByNation[row.nation_id]) stockByNation[row.nation_id] = {};
+                stockByNation[row.nation_id][row.sector] = row;
+            }
+
+            let stockUpdates = 0;
+            for (let ni = 0; ni < nationList.length; ni++) {
+                const n = nationList[ni];
+                const nationStocks = stockByNation[n.id];
+                if (!nationStocks) continue;
+
+                for (let si = 0; si < stockpileSectors.length; si++) {
+                    const sKey = stockpileSectors[si];
+                    const stock = nationStocks[sKey];
+                    if (!stock) continue;
+
+                    // Get trade flow data for this sector
+                    const flow = (foodFlowRows || []).find(
+                        (f: any) => f.nation_id === n.id && f.sector === sKey
+                    );
+
+                    const expCap = flow ? Number(flow.export_capacity) || 0 : 0;
+                    const expVol = flow ? Number(flow.export_volume) || 0 : 0;
+                    const impDem = flow ? Number(flow.import_demand) || 0 : 0;
+                    const impVol = flow ? Number(flow.import_volume) || 0 : 0;
+
+                    // Domestic retained = production - exports
+                    const domesticRetained = Math.max(0, expCap - expVol);
+                    // Domestic need = what we need + unmet import demand
+                    const domesticNeed = domesticRetained + impDem;
+                    // Total supply this tick = domestic retained + actual imports
+                    const totalSupply = domesticRetained + impVol;
+                    // Surplus = supply exceeds need
+                    const surplus = totalSupply - domesticNeed;
+
+                    // Calculate max capacity
+                    const maxCap = calculateStockpileCapacity(sKey, n);
+
+                    // Calculate spoilage
+                    const spoilagePct = calculateStockpileSpoilage(sKey, n);
+                    const currentReserve = Number(stock.reserve_value) || 0;
+                    const spoilageLoss = Math.round(currentReserve * (spoilagePct / 100));
+
+                    // Apply: spoilage first, then surplus/deficit
+                    let newReserve = currentReserve - spoilageLoss;
+                    let inflow = 0;
+                    let outflow = spoilageLoss;
+
+                    if (surplus > 0) {
+                        // Surplus flows into reserves (capped at capacity)
+                        inflow = Math.min(surplus, Math.max(0, maxCap - newReserve));
+                        newReserve += inflow;
+                    } else if (surplus < 0) {
+                        // Shortage draws from reserves
+                        const drawdown = Math.min(Math.abs(surplus), newReserve);
+                        outflow += drawdown;
+                        newReserve -= drawdown;
+                    }
+
+                    newReserve = Math.max(0, Math.round(newReserve));
+
+                    await supabase.from('food_stockpiles')
+                        .update({
+                            reserve_value: newReserve,
+                            max_capacity: maxCap,
+                            last_spoilage: spoilageLoss,
+                            last_inflow: inflow,
+                            last_outflow: outflow,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('nation_id', n.id)
+                        .eq('sector', sKey);
+
+                    stockUpdates++;
+                }
+            }
+
+            if (stockUpdates > 0) {
+                console.log(`[advanceTick] Stockpiles updated: ${stockUpdates} entries`);
+            }
+        }
+    } catch (stockErr) {
+        console.error('[advanceTick] Stockpile processing failed (non-fatal):', stockErr);
+    }
+
+    // 3.5e Stockpile purchase execution — process active stockpile_purchase agreements
+    // These are one-time transfers: on enactment, seller's reserves decrease,
+    // buyer's reserves increase. Mark as completed after execution.
+    try {
+        const { data: pendingPurchases } = await supabase
+            .from('trade_agreements')
+            .select('id, nation_a_id, nation_b_id, articles')
+            .eq('agreement_type', 'stockpile_purchase')
+            .eq('status', 'active');
+
+        if (pendingPurchases && pendingPurchases.length > 0) {
+            for (const sp of pendingPurchases) {
+                const arts = sp.articles || [];
+                const transferArt = arts.find((a: any) => a.type === 'stockpile_transfer');
+                if (!transferArt || !transferArt.data) continue;
+
+                const d = transferArt.data;
+                const sector = d.sector;
+                const quantityValue = Number(d.quantity_value) || 0;
+                if (!sector || quantityValue <= 0) continue;
+
+                // Resolve buyer/seller
+                const authorId = d.author_nation_id || sp.nation_a_id;
+                const partnerId = (authorId === sp.nation_a_id) ? sp.nation_b_id : sp.nation_a_id;
+                const buyerId = d.direction === 'we_buy' ? authorId : partnerId;
+                const sellerId = d.direction === 'we_buy' ? partnerId : authorId;
+
+                // Fetch seller's stockpile
+                const { data: sellerStock } = await supabase
+                    .from('food_stockpiles')
+                    .select('reserve_value')
+                    .eq('nation_id', sellerId)
+                    .eq('sector', sector)
+                    .single();
+
+                if (!sellerStock) {
+                    console.log(`[advanceTick] Stockpile purchase ${sp.id}: seller has no stockpile for ${sector}`);
+                    await supabase.from('trade_agreements').update({ status: 'failed' }).eq('id', sp.id);
+                    continue;
+                }
+
+                const sellerReserve = Number(sellerStock.reserve_value) || 0;
+                // Transfer only what the seller actually has
+                const actualTransfer = Math.min(quantityValue, sellerReserve);
+                if (actualTransfer <= 0) {
+                    console.log(`[advanceTick] Stockpile purchase ${sp.id}: seller reserves empty`);
+                    await supabase.from('trade_agreements').update({ status: 'failed' }).eq('id', sp.id);
+                    continue;
+                }
+
+                // Deduct from seller
+                await supabase.from('food_stockpiles')
+                    .update({ reserve_value: Math.max(0, sellerReserve - actualTransfer) })
+                    .eq('nation_id', sellerId)
+                    .eq('sector', sector);
+
+                // Add to buyer (fetch current + add, capped at capacity)
+                const { data: buyerStock } = await supabase
+                    .from('food_stockpiles')
+                    .select('reserve_value, max_capacity')
+                    .eq('nation_id', buyerId)
+                    .eq('sector', sector)
+                    .single();
+
+                const buyerReserve = buyerStock ? Number(buyerStock.reserve_value) || 0 : 0;
+                const buyerCap = buyerStock ? Number(buyerStock.max_capacity) || 0 : 0;
+                // Cap at capacity (if capacity is set), otherwise allow the transfer
+                const newBuyerReserve = buyerCap > 0 ? Math.min(buyerReserve + actualTransfer, buyerCap) : buyerReserve + actualTransfer;
+
+                await supabase.from('food_stockpiles')
+                    .update({ reserve_value: newBuyerReserve })
+                    .eq('nation_id', buyerId)
+                    .eq('sector', sector);
+
+                // Mark agreement as completed (one-time transfer)
+                await supabase.from('trade_agreements')
+                    .update({ status: 'completed' })
+                    .eq('id', sp.id);
+
+                console.log(`[advanceTick] Stockpile purchase ${sp.id}: transferred $${Math.round(actualTransfer).toLocaleString()} of ${sector} from seller to buyer`);
+            }
+        }
+    } catch (spErr) {
+        console.error('[advanceTick] Stockpile purchase execution failed (non-fatal):', spErr);
     }
 
     // 3.6 Expire trade agreements (including economic aid) that have passed their expires_at_tick

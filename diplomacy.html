@@ -92,7 +92,7 @@ import { fetchActiveCoalition, detectHeadFaction, loadSeats } from './js/game/go
 import { GAME_CONFIG, deductAP } from './js/game/config.js';
 import { DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkCreditForTradeAgreement } from './js/game/diplomacy-constants.js';
 import { syncVoteTallies } from './js/game/bills.js';
-import { TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume, FOOD_SUBSECTOR_MAP, isFoodSubsector, calculateFoodExportCapacity, calculateFoodImportDemand, DEFAULT_FOOD_ALLOCATION } from './js/game/trade-constants.js';
+import { TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume, FOOD_SUBSECTOR_MAP, isFoodSubsector, calculateFoodExportCapacity, calculateFoodImportDemand, DEFAULT_FOOD_ALLOCATION, getGlobalAverageUnitPrice, formatPricePerTonne } from './js/game/trade-constants.js';
 import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
 import { getNationNames } from './js/game/political-actions.js';
 /**
@@ -5163,6 +5163,7 @@ function renderTradeArticleEditorLocal(container, articleType) {
         case 'aid_terms': html += renderAidTermsEditor(); break;
         case 'aid_condition': html += renderAidConditionEditor(); break;
         case 'tariff_surcharge': html += renderTariffSurchargeEditor(); break;
+        case 'stockpile_transfer': html += renderStockpileTransferEditor(); break;
     }
 
     html += `
@@ -5276,6 +5277,15 @@ function saveWizardTradeArticle(articleType) {
             const pct = Math.min(50, Math.max(5, parseInt(document.getElementById('surcharge-pct')?.value || '25')));
             if (!sector) { alert('Please select a sector.'); return; }
             articleData = { sector, surcharge_pct: pct, imposer_nation_id: currentNation.id };
+            break;
+        }
+        case 'stockpile_transfer': {
+            const sector = document.getElementById('stockpile-sector')?.value;
+            const direction = document.querySelector('input[name="stockpile-dir"]:checked')?.value || 'we_buy';
+            const quantity = Math.max(1000000, parseInt(document.getElementById('stockpile-quantity')?.value || '100000000'));
+            const price = Math.max(10, Math.min(500, parseInt(document.getElementById('stockpile-price')?.value || '100')));
+            if (!sector) { alert('Please select a commodity.'); return; }
+            articleData = { sector, direction, quantity_value: quantity, price_per_tonne: price, author_nation_id: currentNation.id };
             break;
         }
     }
@@ -6621,6 +6631,14 @@ function renderTradeEffectSummary(articles) {
             case 'supply_commitment':
                 tags.push({ label: (d.commitment_pct || 0) + '% Commitment', cls: 'effect-tag--neutral' });
                 break;
+            case 'stockpile_transfer': {
+                const stSec = TRADEABLE_SECTOR_MAP[d.sector];
+                const stQty = Number(d.quantity_value) || 0;
+                const stLabel = stQty >= 1e9 ? '$' + (stQty / 1e9).toFixed(1) + 'B' : '$' + (stQty / 1e6).toFixed(0) + 'M';
+                tags.push({ label: stLabel + ' ' + (stSec?.label || d.sector || '?'), cls: 'effect-tag--money-neg' });
+                tags.push({ label: '$' + (d.price_per_tonne || 100) + '/t', cls: 'effect-tag--neutral' });
+                break;
+            }
         }
     }
     if (!tags.length) return '';
@@ -6703,6 +6721,16 @@ function renderTradeArticleSummary(article, viewerNationId, authorNationId) {
         case 'tariff_surcharge': {
             const sector = TRADEABLE_SECTOR_MAP[d.sector];
             return (sector?.label || d.sector || 'Unknown') + ': +' + (d.surcharge_pct || 0) + '% tariff surcharge';
+        }
+        case 'stockpile_transfer': {
+            const sector = TRADEABLE_SECTOR_MAP[d.sector];
+            let stDir = d.direction;
+            if (flipPerspective) stDir = stDir === 'we_buy' ? 'we_sell' : 'we_buy';
+            const dirLabel = stDir === 'we_buy' ? 'We purchase' : 'We sell';
+            const qty = Number(d.quantity_value) || 0;
+            const qtyLabel = qty >= 1e9 ? '$' + (qty / 1e9).toFixed(1) + 'B' : '$' + (qty / 1e6).toFixed(0) + 'M';
+            const price = Number(d.price_per_tonne) || 100;
+            return dirLabel + ' ' + qtyLabel + ' of ' + (sector?.label || d.sector || '?') + ' at $' + price + '/tonne';
         }
         default:
             return 'Unknown article type: ' + article.type;
@@ -7567,6 +7595,80 @@ function updateSurchargeWarning(val) {
     }
 }
 
+// ── Stockpile Transfer Editor ──
+function renderStockpileTransferEditor() {
+    const stockpileSectors = TRADEABLE_SECTORS.filter(s =>
+        s.key === 'grains_staples' || s.key === 'cash_crops'
+    );
+    const opts = stockpileSectors.map(s =>
+        '<option value="' + s.key + '">' + escapeHtml(s.label) + '</option>'
+    ).join('');
+    return `
+        <div class="trade-field">
+            <label>Commodity</label>
+            <select id="stockpile-sector" onchange="updateStockpileTransferHint()">${opts}</select>
+            <div style="font-size:0.62rem;color:var(--text-dim);margin-top:2px;">Only stockpilable sectors (grains, cash crops) available.</div>
+        </div>
+        <div class="trade-field">
+            <label>Direction</label>
+            <div class="trade-radio-group">
+                <label class="trade-radio-option selected" onclick="selectRadioOption(this); updateStockpileTransferHint()">
+                    <input type="radio" name="stockpile-dir" value="we_buy" checked />
+                    <div>
+                        <div class="trade-radio-label">We BUY from partner</div>
+                        <div class="trade-radio-hint">We purchase from their reserves</div>
+                    </div>
+                </label>
+                <label class="trade-radio-option" onclick="selectRadioOption(this); updateStockpileTransferHint()">
+                    <input type="radio" name="stockpile-dir" value="we_sell" />
+                    <div>
+                        <div class="trade-radio-label">We SELL to partner</div>
+                        <div class="trade-radio-hint">They purchase from our reserves</div>
+                    </div>
+                </label>
+            </div>
+        </div>
+        <div class="trade-field">
+            <label>Quantity (dollar value)</label>
+            <input type="number" id="stockpile-quantity" value="100000000" min="1000000" max="10000000000" step="10000000" oninput="updateStockpileTransferHint()" />
+            <div style="font-size:0.62rem;color:var(--text-dim);margin-top:2px;">Value of goods to transfer (in dollars).</div>
+        </div>
+        <div class="trade-field">
+            <label>Price Per Tonne</label>
+            <input type="number" id="stockpile-price" value="100" min="10" max="500" step="5" oninput="updateStockpileTransferHint()" />
+            <div id="stockpile-price-hint" style="font-size:0.7rem;color:var(--text-dim);margin-top:4px;"></div>
+        </div>
+        <div id="stockpile-transfer-summary" class="trade-info-box info" style="margin-top:8px;"></div>
+    `;
+}
+
+function updateStockpileTransferHint() {
+    var sector = document.getElementById('stockpile-sector')?.value;
+    var quantity = Number(document.getElementById('stockpile-quantity')?.value) || 0;
+    var price = Number(document.getElementById('stockpile-price')?.value) || 100;
+    var priceHint = document.getElementById('stockpile-price-hint');
+    var summary = document.getElementById('stockpile-transfer-summary');
+
+    // Show global average price for reference
+    if (priceHint && sector) {
+        // Use base price ($100/tonne) as reference — diplomacy page doesn't load trade_flows
+        var globalAvg = getGlobalAverageUnitPrice(sector, 1.0);
+        var diff = price - globalAvg;
+        var diffPct = globalAvg > 0 ? Math.round((diff / globalAvg) * 100) : 0;
+        var diffColor = diff > 0 ? '#d9534f' : diff < 0 ? '#5cb85c' : 'var(--text-dim)';
+        var diffLabel = diff > 0 ? '+' + diffPct + '% above base' : diff < 0 ? diffPct + '% below base' : 'at base rate';
+        priceHint.innerHTML = 'Base price: <strong>' + formatPricePerTonne(globalAvg) + '</strong> &mdash; <span style="color:' + diffColor + ';">' + diffLabel + '</span>';
+    }
+
+    // Calculate physical volume and total cost
+    if (summary && quantity > 0 && price > 0) {
+        var tonnes = Math.round(quantity / price);
+        var tonnesStr = tonnes >= 1000000 ? (tonnes / 1000000).toFixed(1) + 'M' : tonnes >= 1000 ? Math.round(tonnes / 1000) + 'K' : tonnes;
+        var costStr = quantity >= 1e9 ? '$' + (quantity / 1e9).toFixed(1) + 'B' : '$' + (quantity / 1e6).toFixed(0) + 'M';
+        summary.innerHTML = '<strong>' + tonnesStr + ' tonnes</strong> at <strong>' + formatPricePerTonne(price) + '</strong> = <strong>' + costStr + '</strong> total';
+    }
+}
+
 // ── Save Article (reads editor values and appends to negotiation) ──
 async function saveTradeArticle(negotiationId, articleType) {
     let articleData = {};
@@ -7674,6 +7776,15 @@ async function saveTradeArticle(negotiationId, articleType) {
             const pct = Math.min(50, Math.max(5, parseInt(document.getElementById('surcharge-pct')?.value || '25')));
             if (!sector) { alert('Please select a sector.'); return; }
             articleData = { sector: sector, surcharge_pct: pct, imposer_nation_id: currentNation.id };
+            break;
+        }
+        case 'stockpile_transfer': {
+            const sector = document.getElementById('stockpile-sector')?.value;
+            const direction = document.querySelector('input[name="stockpile-dir"]:checked')?.value || 'we_buy';
+            const quantity = Math.max(1000000, parseInt(document.getElementById('stockpile-quantity')?.value || '100000000'));
+            const price = Math.max(10, Math.min(500, parseInt(document.getElementById('stockpile-price')?.value || '100')));
+            if (!sector) { alert('Please select a commodity.'); return; }
+            articleData = { sector, direction, quantity_value: quantity, price_per_tonne: price, author_nation_id: currentNation.id };
             break;
         }
     }
@@ -8544,6 +8655,7 @@ function renderCounterArticleEditor(container, articleType, proposalId) {
         case 'aid_terms': html += renderAidTermsEditor(); break;
         case 'aid_condition': html += renderAidConditionEditor(); break;
         case 'tariff_surcharge': html += renderTariffSurchargeEditor(); break;
+        case 'stockpile_transfer': html += renderStockpileTransferEditor(); break;
     }
 
     html += `
@@ -8658,6 +8770,15 @@ function saveCounterTradeArticle(articleType, proposalId) {
             const pct = Math.min(50, Math.max(5, parseInt(document.getElementById('surcharge-pct')?.value || '25')));
             if (!sector) { alert('Please select a sector.'); return; }
             articleData = { sector, surcharge_pct: pct, imposer_nation_id: currentNation.id };
+            break;
+        }
+        case 'stockpile_transfer': {
+            const sector = document.getElementById('stockpile-sector')?.value;
+            const direction = document.querySelector('input[name="stockpile-dir"]:checked')?.value || 'we_buy';
+            const quantity = Math.max(1000000, parseInt(document.getElementById('stockpile-quantity')?.value || '100000000'));
+            const price = Math.max(10, Math.min(500, parseInt(document.getElementById('stockpile-price')?.value || '100')));
+            if (!sector) { alert('Please select a commodity.'); return; }
+            articleData = { sector, direction, quantity_value: quantity, price_per_tonne: price, author_nation_id: currentNation.id };
             break;
         }
     }

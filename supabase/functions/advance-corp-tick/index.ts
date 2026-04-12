@@ -293,6 +293,221 @@ const NOTIFICATION_EVENTS = [
             { stat: 'happiness', baseline: 60, perPoint: -0.02, direction: 'above' },
         ],
     },
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PERMIT-LINKED EVENTS (N11-N26): Fire when corresponding permit policy
+    // is NOT enacted or corp doesn't hold the permit. Probability reduced by
+    // permit event_modifiers when the corp holds the relevant permit.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // ── N11: NOISE COMPLAINT SHUTDOWN (noise_vibration permit) ──
+    {
+        key: 'noise_complaint_shutdown', type: 'POLITICAL', severity: 'MODERATE',
+        category: 'notification', phaseWindow: 'EARLY_MID', probability: 0.09,
+        appliesTo: ['civil_engineering'],
+        title: 'Noise Complaint Shutdown',
+        desc: 'Residents near the construction site have filed a formal noise complaint with the local government. An injunction has been issued halting work during daytime hours until noise mitigation measures are installed.',
+        impact: 'Construction halted. Noise barriers and restricted hours add cost and delay.',
+        effects: { delay: 1, cost: 50000 },
+        statModifiers: [
+            { stat: 'urbanization', baseline: 55, perPoint: 0.02, direction: 'above' },
+        ],
+    },
+    // ── N12: CHEMICAL SPILL (hazmat_handling permit) ──
+    {
+        key: 'environmental_contamination', type: 'REGULATORY', severity: 'CRITICAL',
+        category: 'notification', phaseWindow: 'MID', probability: 0.05,
+        appliesTo: ['industrial', 'mega_project'],
+        title: 'Chemical Spill at Construction Site',
+        desc: 'Hazardous materials stored improperly at the construction site have leaked into the surrounding soil. Environmental authorities have ordered an immediate site lockdown, soil remediation, and a full contamination assessment.',
+        impact: 'Site locked down. Massive fines, remediation costs, and project delay.',
+        effects: { delay: 3, cost: 500000, quality: -5 },
+        statModifiers: [
+            { stat: 'manufacturing_output', baseline: 50, perPoint: 0.01, direction: 'above' },
+        ],
+    },
+    // ── N13: WATER TABLE CONTAMINATION (water_resource permit) ──
+    {
+        key: 'flooding_damage', type: 'WEATHER', severity: 'HIGH',
+        category: 'notification', phaseWindow: 'EARLY_MID', probability: 0.07,
+        appliesTo: ['civil_engineering', 'industrial', 'mega_project'],
+        title: 'Water Table Contamination',
+        desc: 'Construction runoff has contaminated the local groundwater supply. The environmental agency has ordered water testing, site drainage redesign, and compensation for affected residents.',
+        impact: 'Groundwater remediation required. Public health concern.',
+        effects: { delay: 2, cost: 200000, quality: -3 },
+        statModifiers: [
+            { stat: 'physical_infrastructure', baseline: 30, perPoint: 0.02, direction: 'below' },
+        ],
+    },
+    // ── N14: COASTAL EROSION DAMAGE (coastal_maritime permit) ──
+    {
+        key: 'storm_damage', type: 'WEATHER', severity: 'HIGH',
+        category: 'notification', phaseWindow: 'MID', probability: 0.06,
+        appliesTo: ['civil_engineering', 'industrial', 'mega_project'],
+        title: 'Coastal Erosion Damage',
+        desc: 'Storm surge and tidal action have undermined the foundations of the coastal structure. The site requires emergency stabilization, foundation reinforcement, and a revised engineering assessment.',
+        impact: 'Foundation compromised. Emergency repair and engineering review.',
+        effects: { delay: 2, cost: 300000, quality: -4 },
+        statModifiers: [
+            { stat: 'physical_infrastructure', baseline: 40, perPoint: 0.02, direction: 'below' },
+        ],
+    },
+    // ── N15: GRID INTEGRATION FAILURE (renewable_energy permit) ──
+    {
+        key: 'grid_integration_failure', type: 'EQUIPMENT', severity: 'MODERATE',
+        category: 'notification', phaseWindow: 'LATE', probability: 0.08,
+        appliesTo: ['civil_engineering', 'industrial', 'mega_project'],
+        title: 'Grid Integration Failure',
+        desc: 'The renewable energy installation cannot connect to the national power grid. The grid operator has rejected the connection application citing non-compliance with grid stability standards. Rewiring and recertification required.',
+        impact: 'Project cannot be commissioned until grid compliance achieved.',
+        effects: { delay: 2, cost: 120000 },
+        statModifiers: [
+            { stat: 'energy_generation', baseline: 40, perPoint: 0.02, direction: 'below' },
+        ],
+    },
+    // ── N16: SIGNAL INTERFERENCE (telecom_infrastructure permit) ──
+    {
+        key: 'signal_interference', type: 'REGULATORY', severity: 'LOW',
+        category: 'notification', phaseWindow: 'LATE', probability: 0.07,
+        appliesTo: ['civil_engineering', 'industrial'],
+        title: 'Signal Interference Complaint',
+        desc: 'The telecommunications installation is causing electromagnetic interference with existing networks. The spectrum regulator has ordered a temporary shutdown and compliance review.',
+        impact: 'Installation offline pending spectrum recalibration.',
+        effects: { delay: 1, cost: 30000 },
+        statModifiers: [
+            { stat: 'digital_infrastructure', baseline: 45, perPoint: 0.01, direction: 'above' },
+        ],
+    },
+    // ── N17: ILLEGAL LAND CLEARING (agri_land_conversion permit) ──
+    {
+        key: 'illegal_land_clearing', type: 'POLITICAL', severity: 'HIGH',
+        category: 'notification', phaseWindow: 'EARLY', probability: 0.06,
+        appliesTo: ['civil_engineering', 'industrial'],
+        title: 'Illegal Agricultural Land Clearing',
+        desc: 'The construction site was cleared without proper food security impact review. Environmental and agricultural authorities have issued stop-work orders, and local farming communities are demanding compensation.',
+        impact: 'Political fallout. Community anger. Food security concerns raised.',
+        effects: { delay: 2, cost: 200000, reputation: -3 },
+        statModifiers: [
+            { stat: 'urbanization', baseline: 60, perPoint: 0.02, direction: 'above' },
+        ],
+    },
+    // ── N18: HERITAGE SITE DESTROYED (heritage_preservation permit) ──
+    {
+        key: 'heritage_damage', type: 'POLITICAL', severity: 'CRITICAL',
+        category: 'notification', phaseWindow: 'EARLY_MID', probability: 0.04,
+        appliesTo: ['civil_engineering', 'mega_project'],
+        title: 'Heritage Site Destroyed',
+        desc: 'Construction equipment has damaged an unregistered but culturally significant archaeological site. International heritage organizations have condemned the destruction. Media coverage is intense and the government faces pressure to halt the project.',
+        impact: 'International condemnation. Severe reputation damage. Possible project cancellation.',
+        effects: { delay: 3, cost: 400000, quality: -5, reputation: -5 },
+        statModifiers: [
+            { stat: 'stability', baseline: 60, perPoint: 0.01, direction: 'above' },
+        ],
+    },
+    // ── N19: BUILDING COLLAPSE — SEISMIC (seismic_resilience permit) ──
+    {
+        key: 'structural_failure', type: 'EQUIPMENT', severity: 'CRITICAL',
+        category: 'notification', phaseWindow: 'MID_LATE', probability: 0.04,
+        appliesTo: ['civil_engineering', 'industrial', 'mega_project'],
+        title: 'Seismic Structural Failure',
+        desc: 'A seismic event has caused partial structural collapse at the construction site. The building was not designed to earthquake-resistant standards. Emergency services have been called and a full structural reassessment is required.',
+        impact: 'Catastrophic failure. Casualties possible. Project may be condemned.',
+        effects: { delay: 4, cost: 600000, quality: -15, reputation: -8 },
+        statModifiers: [
+            { stat: 'stability', baseline: 30, perPoint: 0.03, direction: 'below' },
+        ],
+    },
+    // ── N20: EMERGENCY SYSTEM FAILURE (disaster_preparedness permit) ──
+    {
+        key: 'disaster_casualties', type: 'REGULATORY', severity: 'HIGH',
+        category: 'notification', phaseWindow: 'LATE', probability: 0.05,
+        appliesTo: ['civil_engineering', 'mega_project'],
+        title: 'Emergency System Failure',
+        desc: 'During a safety drill, the building\'s emergency evacuation systems were found non-functional. Fire exits are blocked, backup power failed, and shelter capacity is inadequate. The building fails its emergency preparedness certification.',
+        impact: 'Cannot pass final inspection. Retrofit required.',
+        effects: { delay: 2, cost: 180000, quality: -5 },
+        statModifiers: [
+            { stat: 'stability', baseline: 35, perPoint: 0.02, direction: 'below' },
+        ],
+    },
+    // ── N21: FOREIGN INFLUENCE SCANDAL (foreign_investment_clearance permit) ──
+    {
+        key: 'foreign_influence_scandal', type: 'POLITICAL', severity: 'HIGH',
+        category: 'notification', phaseWindow: 'ANY', probability: 0.05,
+        appliesTo: ['industrial', 'mega_project'],
+        title: 'Foreign Influence Scandal',
+        desc: 'Investigative journalists have revealed that the project\'s foreign funding comes with undisclosed political strings. The foreign investor has connections to a foreign government and the project may be a vector for foreign influence in national infrastructure.',
+        impact: 'Diplomatic incident. Reputation damage. Government scrutiny.',
+        effects: { cost: 150000, reputation: -4 },
+        statModifiers: [
+            { stat: 'foreign_investment', baseline: 60, perPoint: 0.01, direction: 'above' },
+        ],
+    },
+    // ── N22: BRIBERY SCANDAL (anti_corruption permit) ──
+    {
+        key: 'corruption_scandal', type: 'POLITICAL', severity: 'HIGH',
+        category: 'notification', phaseWindow: 'ANY', probability: 0.06,
+        appliesTo: ['civil_engineering', 'industrial', 'mega_project'],
+        title: 'Construction Bribery Scandal',
+        desc: 'An employee has been caught offering bribes to government officials to expedite permit approvals and inspection sign-offs. The anti-corruption bureau has launched a formal investigation into the corporation.',
+        impact: 'Criminal investigation. Severe reputation damage. Possible contract cancellation.',
+        effects: { delay: 2, cost: 250000, quality: -3, reputation: -6 },
+        statModifiers: [
+            { stat: 'corruption', baseline: 50, perPoint: 0.02, direction: 'above' },
+        ],
+    },
+    // ── N23: LABOR EXPLOITATION ALLEGATION (local_workforce permit) ──
+    {
+        key: 'labor_exploitation', type: 'LABOR', severity: 'MODERATE',
+        category: 'notification', phaseWindow: 'MID', probability: 0.07,
+        appliesTo: ['civil_engineering', 'industrial', 'mega_project'],
+        title: 'Labor Exploitation Allegation',
+        desc: 'A media report has accused the corporation of using imported workers at below minimum wage while local residents remain unemployed. Union leaders are calling for a boycott and the labor ministry is investigating.',
+        impact: 'Public backlash. Union pressure. Possible fines.',
+        effects: { cost: 80000, reputation: -2 },
+        statModifiers: [
+            { stat: 'unemployment', baseline: 40, perPoint: 0.02, direction: 'above' },
+        ],
+    },
+    // ── N24: SKILLS SHORTAGE FAILURE (apprenticeship_training permit) ──
+    {
+        key: 'skills_shortage', type: 'LABOR', severity: 'MODERATE',
+        category: 'notification', phaseWindow: 'MID_LATE', probability: 0.07,
+        appliesTo: ['civil_engineering', 'industrial', 'mega_project'],
+        title: 'Critical Skills Shortage',
+        desc: 'The project requires specialized technical work but the crew lacks qualified tradespeople. No apprenticeship programs exist to develop these skills locally. Work quality on complex systems is suffering and the project timeline is slipping.',
+        impact: 'Quality degradation on technical phases. Delay while specialists recruited.',
+        effects: { delay: 1, cost: 60000, quality: -5 },
+        statModifiers: [
+            { stat: 'higher_education', baseline: 40, perPoint: 0.02, direction: 'below' },
+        ],
+    },
+    // ── N25: COMMUNITY PROTEST BLOCKADE (community_consultation permit) ──
+    {
+        key: 'community_protest_blockade', type: 'POLITICAL', severity: 'HIGH',
+        category: 'notification', phaseWindow: 'EARLY', probability: 0.06,
+        appliesTo: ['civil_engineering', 'mega_project'],
+        title: 'Community Protest Blockade',
+        desc: 'Residents who were not consulted about the construction project have physically blockaded the site entrance. Demolition of existing homes began without community input. Local politicians are demanding the project be halted pending public hearings.',
+        impact: 'Site blockaded. Political crisis. Construction halted.',
+        effects: { delay: 2, cost: 100000, reputation: -3 },
+        statModifiers: [
+            { stat: 'urbanization', baseline: 65, perPoint: 0.02, direction: 'above' },
+            { stat: 'civil_unrest', baseline: 40, perPoint: 0.02, direction: 'above' },
+        ],
+    },
+    // ── N26: ACCESSIBILITY LAWSUIT (public_accessibility permit) ──
+    {
+        key: 'accessibility_lawsuit', type: 'REGULATORY', severity: 'MODERATE',
+        category: 'notification', phaseWindow: 'LATE', probability: 0.07,
+        appliesTo: ['civil_engineering', 'mega_project'],
+        title: 'Accessibility Lawsuit Filed',
+        desc: 'Disability advocacy groups have filed a lawsuit alleging the building fails to meet basic accessibility standards. No wheelchair ramps, no elevator to upper floors, no tactile wayfinding. The court has ordered a compliance review and potential forced retrofit.',
+        impact: 'Forced retrofit at 2x cost. Legal fees. Reputation damage.',
+        effects: { delay: 1, cost: 150000, quality: -2, reputation: -2 },
+        statModifiers: [
+            { stat: 'healthcare_accessibility', baseline: 40, perPoint: 0.02, direction: 'below' },
+        ],
+    },
 ];
 
 // Phase window lookup including combo windows

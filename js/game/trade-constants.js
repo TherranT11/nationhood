@@ -427,6 +427,111 @@ export var DEFAULT_FOOD_ALLOCATION = {
     cash_crops_pct: 20
 };
 
+// ==================== GLOBAL AVERAGE UNIT PRICE ====================
+
+/**
+ * Base price per physical unit (tonnes) for food sub-sectors.
+ * Derived from SECTOR_DISPLAY_UNITS: factor = 1/100000000 means $100M = 1M tonnes,
+ * so 1 tonne = $100 at price_modifier 1.0.
+ */
+export var FOOD_BASE_PRICE_PER_TONNE = 100;
+
+/**
+ * Get the global average price per tonne for a food sub-sector.
+ *
+ * @param {string} sectorKey  – food sub-sector key
+ * @param {number} priceMod   – current price_modifier from trade_flows (0.5–2.0)
+ * @returns {number} price per tonne in dollars
+ */
+export function getGlobalAverageUnitPrice(sectorKey, priceMod) {
+    var mod = Number(priceMod) || 1.0;
+    return Math.round(FOOD_BASE_PRICE_PER_TONNE * mod * 100) / 100;
+}
+
+/**
+ * Format a price per tonne for display.
+ * @param {number} pricePerTonne – dollars per tonne
+ * @returns {string} e.g. "$92/tonne"
+ */
+export function formatPricePerTonne(pricePerTonne) {
+    var p = Number(pricePerTonne) || 0;
+    if (p >= 1000) return '$' + (p / 1000).toFixed(1) + 'K/tonne';
+    return '$' + Math.round(p) + '/tonne';
+}
+
+// ==================== STOCKPILE MECHANICS ====================
+
+/**
+ * Stockpile configuration for sectors where stockpilable = true.
+ *
+ * Spoilage: percentage of reserves lost per tick to degradation.
+ * Scales with infrastructure — good warehousing halves spoilage.
+ *
+ * Capacity: max reserve = GDP × capacityFactor × (physical_infrastructure / 50).
+ * Converted to tonnes via display unit factor.
+ */
+export var STOCKPILE_CONFIG = {
+    grains_staples: {
+        baseSpoilagePct: 2.0,       // 2% per tick (grain stores well)
+        infraThreshold: 60,          // infra above this halves spoilage
+        capacityFactor: 0.005,       // 0.5% of GDP as max reserve value
+        securityMonths: 6            // months of reserves for "food secure" bonus
+    },
+    cash_crops: {
+        baseSpoilagePct: 4.0,       // 4% per tick (cocoa, coffee degrade faster)
+        infraThreshold: 60,
+        capacityFactor: 0.003,       // 0.3% of GDP (less strategic need)
+        securityMonths: 3
+    }
+};
+
+/**
+ * Calculate spoilage rate for a nation's stockpile.
+ *
+ * @param {string} sectorKey – stockpilable sector key
+ * @param {Object} nation    – nation row with physical_infrastructure
+ * @returns {number} spoilage percentage per tick (0–100)
+ */
+export function calculateStockpileSpoilage(sectorKey, nation) {
+    var cfg = STOCKPILE_CONFIG[sectorKey];
+    if (!cfg) return 0;
+    var basePct = cfg.baseSpoilagePct;
+    var infra = Number(nation.physical_infrastructure) || 0;
+    if (infra >= cfg.infraThreshold) {
+        basePct *= 0.5; // Good warehousing halves spoilage
+    } else if (infra < 30) {
+        basePct *= 2.0; // Poor infrastructure doubles spoilage
+    }
+    return Math.round(basePct * 100) / 100;
+}
+
+/**
+ * Calculate maximum stockpile capacity in dollar value.
+ *
+ * @param {string} sectorKey – stockpilable sector key
+ * @param {Object} nation    – nation row with gdp, physical_infrastructure
+ * @returns {number} max capacity in dollars
+ */
+export function calculateStockpileCapacity(sectorKey, nation) {
+    var cfg = STOCKPILE_CONFIG[sectorKey];
+    if (!cfg) return 0;
+    var gdp = Number(nation.gdp) || 0;
+    var infra = Number(nation.physical_infrastructure) || 50;
+    return Math.round(gdp * cfg.capacityFactor * (infra / 50));
+}
+
+/**
+ * Calculate months of reserves coverage.
+ *
+ * @param {number} reserveValue     – current stockpile in dollars
+ * @param {number} monthlyConsumption – domestic consumption per tick (dollars)
+ * @returns {number} months of coverage
+ */
+export function calculateReserveMonths(reserveValue, monthlyConsumption) {
+    if (!monthlyConsumption || monthlyConsumption <= 0) return 99;
+    return Math.round((reserveValue / monthlyConsumption) * 10) / 10;
+}
+
 // ==================== FOOD SECURITY STATUS ====================
 
 /**

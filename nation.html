@@ -793,7 +793,8 @@ function parseDecayEffects(nation, map) {
         if (currentVal === config.target) continue;
         var dir = currentVal > config.target ? 'down' : 'up';
         var label = config.type === 'erosion' ? 'Natural Erosion' : 'Natural Decay';
-        addEffectToMap(map, statKey, label, dir, 'Decay');
+        // Pass config.speed as the rate so the UI shows the numeric decay value
+        addEffectToMap(map, statKey, label, dir, 'Decay', config.speed);
     }
 }
 

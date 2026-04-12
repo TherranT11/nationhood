@@ -213,6 +213,16 @@ export const TRADE_AGREEMENT_TYPES = {
         icon: 'aid',
         requires_mot: false  // FM/PM/Ambassador negotiate — no Minister of Trade needed
     },
+    stockpile_purchase: {
+        key: 'stockpile_purchase',
+        label: 'Stockpile Purchase',
+        shortLabel: 'SP',
+        description: 'One-time bulk purchase or sale of stockpiled goods (grains, cash crops) from strategic reserves. Transfers happen immediately on enactment.',
+        bilateral: true,
+        required_articles: ['stockpile_transfer'],
+        optional_articles: ['text_article'],
+        icon: 'truck'
+    },
     retaliatory_tariff: {
         key: 'retaliatory_tariff',
         label: 'Retaliatory Tariff',
@@ -406,13 +416,28 @@ export const TRADE_ARTICLE_TYPES = {
         }
     },
 
+    // ── Stockpile Transfer (Stockpile Purchase, required) ──
+    stockpile_transfer: {
+        key: 'stockpile_transfer',
+        label: 'Stockpile Transfer',
+        description: 'One-time bulk purchase/sale of stockpiled goods from strategic reserves.',
+        repeatable: false,
+        applies_to: ['stockpile_purchase'],
+        schema: {
+            sector: 'string',                   // grains_staples or cash_crops only
+            direction: 'we_buy|we_sell',        // who is buyer vs seller
+            quantity_value: 'number',           // dollar value of goods to transfer
+            price_per_tonne: 'number'           // agreed price per tonne
+        }
+    },
+
     // ── Text Article (optional for all types) ──
     text_article: {
         key: 'text_article',
         label: 'Text Article',
         description: 'Free-text article for flavor/RP. No mechanical effect.',
         repeatable: true,
-        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy', 'economic_aid', 'retaliatory_tariff'],
+        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy', 'economic_aid', 'retaliatory_tariff', 'stockpile_purchase'],
         schema: {
             title: 'string',
             body: 'string'
