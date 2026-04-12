@@ -566,7 +566,7 @@ function renderNations() {
     grid.innerHTML = filtered.map(nation => {
         const np = nation.nation_profiles;
         const profileFlag = Array.isArray(np) ? np[0]?.flag_url : np?.flag_url;
-        const flagUrl = profileFlag || nation.flag_url || FLAG_URLS[nation.name] || '';
+        const flagUrl = FLAG_URLS[nation.name] || (profileFlag || '').trim() || (nation.flag_url || '').trim() || '';
         const govClass = getGovClass(nation);
         const govLabel = getGovLabel(nation);
         const demand = getDemand(nation.id);
