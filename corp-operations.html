@@ -5955,6 +5955,39 @@ async function loadAvailableRoutes() {
     renderAvailableRoutes();
 }
 
+// Demand driver mapping — which nation stats drive demand for each trade sector
+var AR_DEMAND_DRIVERS = {
+    fuel_energy:        [{ stat: 'industrialization', label: 'Industrialization' }, { stat: 'urbanization', label: 'Urbanization' }],
+    minerals:           [{ stat: 'industrialization', label: 'Industrialization' }, { stat: 'manufacturing', label: 'Manufacturing' }],
+    grains_staples:     [{ stat: 'population_growth', label: 'Population Growth' }, { stat: 'food_security', label: 'Food Security' }],
+    livestock_dairy:    [{ stat: 'standard_of_living', label: 'Std of Living' }, { stat: 'food_security', label: 'Food Security' }],
+    cash_crops:         [{ stat: 'trade_balance', label: 'Trade Balance' }, { stat: 'foreign_investment', label: 'Foreign Investment' }],
+    manufactured_goods: [{ stat: 'standard_of_living', label: 'Std of Living' }, { stat: 'urbanization', label: 'Urbanization' }],
+    technology:         [{ stat: 'technology', label: 'Technology' }, { stat: 'higher_education', label: 'Higher Education' }],
+    fruits_vegetables:  [{ stat: 'standard_of_living', label: 'Std of Living' }, { stat: 'urbanization', label: 'Urbanization' }],
+    arms:               [{ stat: 'military_spending', label: 'Military Spending' }, { stat: 'stability', label: 'Stability' }],
+};
+
+function arGetDemandDrivers(tradeSector) {
+    return AR_DEMAND_DRIVERS[tradeSector] || [];
+}
+
+function arGetNote(route) {
+    var comp = Number(route.competition_count || 0);
+    var demand = route.demand_level || '';
+    var isGov = route.scope === 'GOVERNMENT';
+
+    if (isGov) return 'Fixed payment. No demand risk. Vessel locked for contract duration.';
+    if (comp === 0 && demand === 'CRITICAL') return 'Unserved critical corridor. High volume, no competition — claim immediately.';
+    if (comp === 0 && demand === 'HIGH') return 'Virgin route with strong demand. First-mover advantage available.';
+    if (comp === 0) return 'No competition on this route. Market share starts at 100%.';
+    if (demand === 'CRITICAL' && comp <= 2) return 'Underserved critical route. Demand exceeds current capacity.';
+    if (demand === 'LOW') return 'Thin route. Revenue may not justify vessel deployment.';
+    if (comp >= 3) return 'Crowded route. Market share will be split ' + (comp + 1) + ' ways.';
+    if (Number(route.tariff_rate || 0) > 15) return 'High tariff rate cuts into margins. Watch for trade policy changes.';
+    return null;
+}
+
 function renderAvailableRoutes() {
     const filtered = arGetFiltered();
 
@@ -6071,7 +6104,88 @@ function renderAvailableRoutes() {
         }
         html += '</div>';
 
-        // Phase 3 will add expanded detail here
+        // Expanded detail (on selection)
+        if (isSel) {
+            html += '<div style="margin-top:6px;">';
+
+            // Gov contract description
+            if (isGov && route.goods_description) {
+                html += '<div style="font-size:10px;color:var(--text-muted);line-height:1.5;margin-bottom:6px">'
+                    + escapeHtml(route.goods_description) + '</div>';
+            }
+
+            // Trade agreement box (intl routes)
+            if (route.trade_agreement_name) {
+                html += '<div style="padding:4px 8px;margin-bottom:5px;background:rgba(90,138,170,0.05);border:1px solid rgba(90,138,170,0.12)">'
+                    + '<div style="display:flex;justify-content:space-between;align-items:center">'
+                    + '<div>'
+                    + '<div style="font-family:var(--font-mono);font-size:7px;color:#5a8aaa;letter-spacing:0.5px">TRADE AGREEMENT</div>'
+                    + '<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted);margin-top:1px">' + escapeHtml(route.trade_agreement_name) + '</div>'
+                    + '</div>'
+                    + '<div style="text-align:right">'
+                    + '<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim)">TARIFF</div>'
+                    + '<div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:' + (Number(route.tariff_rate || 0) > 10 ? '#c84' : '#5c5') + '">' + Number(route.tariff_rate || 0).toFixed(1) + '%</div>'
+                    + '</div>'
+                    + '</div></div>';
+            }
+
+            // Route specs
+            html += '<div style="background:var(--bg-0);border:1px solid var(--border-0);padding:4px 8px;margin-bottom:5px">';
+            html += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border-0)">'
+                + '<span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim)">VESSEL CLASS</span>'
+                + '<span style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted)">' + escapeHtml(route.vessel_class || '?') + '</span></div>';
+            if (route.vessel_note) {
+                html += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border-0)">'
+                    + '<span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim)">REQUIREMENTS</span>'
+                    + '<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-muted);text-align:right;max-width:200px">' + escapeHtml(route.vessel_note) + '</span></div>';
+            }
+            html += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border-0)">'
+                + '<span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim)">PROXIMITY</span>'
+                + '<span style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted)">' + (route.proximity != null ? route.proximity : '?') + ' / 100</span></div>';
+            html += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border-0)">'
+                + '<span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim)">CARGO</span>'
+                + '<span style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted)">' + escapeHtml(route.goods_name || '?') + '</span></div>';
+            if (route.goods_description && !isGov) {
+                html += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border-0)">'
+                    + '<span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim)">CONTENTS</span>'
+                    + '<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-muted);text-align:right;max-width:200px">' + escapeHtml(route.goods_description) + '</span></div>';
+            }
+            html += '<div style="display:flex;justify-content:space-between;padding:2px 0">'
+                + '<span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim)">VOLUME</span>'
+                + '<span style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted)">'
+                + Number(route.volume_physical || 0).toLocaleString() + ' ' + escapeHtml(route.volume_unit || 'tons') + '</span></div>';
+            html += '</div>';
+
+            // Demand drivers — derive from trade sector + nationStats
+            if (nationStats && !isGov) {
+                var drivers = arGetDemandDrivers(route.trade_sector);
+                if (drivers.length > 0) {
+                    html += '<div style="background:var(--bg-0);border:1px solid var(--border-0);padding:4px 8px;margin-bottom:5px">'
+                        + '<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.8px;margin-bottom:3px">DEMAND DRIVERS</div>';
+                    for (var di = 0; di < drivers.length; di++) {
+                        var drv = drivers[di];
+                        var dVal = Number(nationStats[drv.stat] ?? 50);
+                        var dColor = dVal >= 50 ? '#5c5' : dVal >= 30 ? '#ca5' : '#c84';
+                        html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0">'
+                            + '<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-muted);width:100px">' + escapeHtml(drv.label) + '</span>'
+                            + '<div style="width:40px;height:2px;background:var(--border-0)"><div style="width:' + dVal + '%;height:100%;background:' + dColor + '"></div></div>'
+                            + '<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-bright)">' + Math.round(dVal) + '</span>'
+                            + '</div>';
+                    }
+                    html += '</div>';
+                }
+            }
+
+            // Contextual note
+            var note = arGetNote(route);
+            if (note) {
+                html += '<div style="padding:4px 8px;background:' + sm.color + '08;border:1px solid ' + sm.color + '15">'
+                    + '<div style="font-size:9px;color:var(--text-muted);line-height:1.5">' + escapeHtml(note) + '</div>'
+                    + '</div>';
+            }
+
+            html += '</div>';
+        }
 
         html += '</div></div>';
     }
