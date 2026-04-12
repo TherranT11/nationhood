@@ -1369,8 +1369,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 const effects = computeFoodStatEffects(nationFoodFlows[nationId]);
                 if (!effects || Object.keys(effects).length === 0) continue;
 
+                // Filter out imperceptible effects (< 0.05 rounds to 0 change)
+                const affectedKeys = Object.keys(effects).filter(k => Math.abs(effects[k]) >= 0.05);
+                if (affectedKeys.length === 0) continue;
+
                 // Fetch current nation stats for the affected keys
-                const affectedKeys = Object.keys(effects);
                 const { data: nationRow } = await supabase
                     .from('nations')
                     .select(affectedKeys.join(', '))

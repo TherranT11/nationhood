@@ -2377,13 +2377,13 @@ function renderFoodSubsectorDetail(nation, subsectorKey) {
     h += '<div class="sector-drivers">';
     for (var ddi = 0; ddi < sub.demand_drivers.length; ddi++) {
         var dd = sub.demand_drivers[ddi];
-        var ddVal;
+        var ddVal, ddLabel;
         if (dd.type === 'population') {
             ddVal = Math.min(100, Math.round((Number(nation.population) || 0) / 250000));
-            var ddLabel = 'Population (' + Math.round((Number(nation.population) || 0) / 1000000) + 'M)';
+            ddLabel = 'Population (' + Math.round((Number(nation.population) || 0) / 1000000) + 'M)';
         } else {
             ddVal = Number(nation[dd.stat]) || 0;
-            var ddLabel = formatStatLabel(dd.stat);
+            ddLabel = formatStatLabel(dd.stat);
         }
         var ddPct = Math.min(100, Math.max(0, Math.round(ddVal)));
         var ddColor = ddPct >= 70 ? '#d9534f' : ddPct >= 40 ? '#888' : '#5cb85c';

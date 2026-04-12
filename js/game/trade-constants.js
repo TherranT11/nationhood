@@ -180,9 +180,6 @@ export var FOOD_SUBSECTORS = [
             { stat: 'population', weight: 1.0, type: 'population' },
             { stat: 'population_growth', weight: 0.3, type: 'pressure' }
         ],
-        demand_cost_drivers: [
-            { stat: 'fuel_prices', weight: 0.3 }
-        ],
         stat_effects: {
             supplied: {
                 poverty_rate: -0.15,
@@ -225,9 +222,6 @@ export var FOOD_SUBSECTORS = [
             { stat: 'standard_of_living', weight: 0.8, type: 'wealth' },
             { stat: 'population', weight: 0.5, type: 'population' }
         ],
-        demand_cost_drivers: [
-            { stat: 'fuel_prices', weight: 0.2 }
-        ],
         stat_effects: {
             supplied: {
                 standard_of_living: 0.10,
@@ -269,9 +263,6 @@ export var FOOD_SUBSECTORS = [
             { stat: 'urbanization', weight: 0.6, type: 'demand' },
             { stat: 'population', weight: 0.5, type: 'population' },
             { stat: 'standard_of_living', weight: 0.3, type: 'wealth' }
-        ],
-        demand_cost_drivers: [
-            { stat: 'fuel_prices', weight: 0.2 }
         ],
         stat_effects: {
             supplied: {
@@ -321,7 +312,6 @@ export var FOOD_SUBSECTORS = [
             { stat: 'standard_of_living', weight: 0.3, type: 'wealth' },
             { stat: 'population', weight: 0.2, type: 'population' }
         ],
-        demand_cost_drivers: [],
         stat_effects: {
             supplied: {
                 gdp_growth: 0.10,
@@ -425,14 +415,6 @@ export function calculateSpoilageMultiplier(nation) {
 
     return 1 - (spoilagePct / 100);
 }
-
-// Display units for food sub-sectors
-export var FOOD_SECTOR_DISPLAY_UNITS = {
-    grains_staples:     { baseUnit: 'tonnes/year', scaleLabel: 'million',  scaleFactor: 1e6, factor: 1 / 100000000 },
-    livestock_dairy:    { baseUnit: 'tonnes/year', scaleLabel: 'million',  scaleFactor: 1e6, factor: 1 / 100000000 },
-    fruits_vegetables:  { baseUnit: 'tonnes/year', scaleLabel: 'million',  scaleFactor: 1e6, factor: 1 / 100000000 },
-    cash_crops:         { baseUnit: 'tonnes/year', scaleLabel: 'million',  scaleFactor: 1e6, factor: 1 / 100000000 }
-};
 
 /**
  * Default arable land allocation if no food_land_allocation row exists.

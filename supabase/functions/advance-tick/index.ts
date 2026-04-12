@@ -650,9 +650,6 @@ var FOOD_SUBSECTORS = [
             { stat: 'population', weight: 1.0, type: 'population' },
             { stat: 'population_growth', weight: 0.3, type: 'pressure' }
         ],
-        demand_cost_drivers: [
-            { stat: 'fuel_prices', weight: 0.3 }
-        ],
         stat_effects: {
             supplied: {
                 poverty_rate: -0.15,
@@ -695,9 +692,6 @@ var FOOD_SUBSECTORS = [
             { stat: 'standard_of_living', weight: 0.8, type: 'wealth' },
             { stat: 'population', weight: 0.5, type: 'population' }
         ],
-        demand_cost_drivers: [
-            { stat: 'fuel_prices', weight: 0.2 }
-        ],
         stat_effects: {
             supplied: {
                 standard_of_living: 0.10,
@@ -739,9 +733,6 @@ var FOOD_SUBSECTORS = [
             { stat: 'urbanization', weight: 0.6, type: 'demand' },
             { stat: 'population', weight: 0.5, type: 'population' },
             { stat: 'standard_of_living', weight: 0.3, type: 'wealth' }
-        ],
-        demand_cost_drivers: [
-            { stat: 'fuel_prices', weight: 0.2 }
         ],
         stat_effects: {
             supplied: {
@@ -791,7 +782,6 @@ var FOOD_SUBSECTORS = [
             { stat: 'standard_of_living', weight: 0.3, type: 'wealth' },
             { stat: 'population', weight: 0.2, type: 'population' }
         ],
-        demand_cost_drivers: [],
         stat_effects: {
             supplied: {
                 gdp_growth: 0.10,
@@ -895,14 +885,6 @@ function calculateSpoilageMultiplier(nation) {
 
     return 1 - (spoilagePct / 100);
 }
-
-// Display units for food sub-sectors
-var FOOD_SECTOR_DISPLAY_UNITS = {
-    grains_staples:     { baseUnit: 'tonnes/year', scaleLabel: 'million',  scaleFactor: 1e6, factor: 1 / 100000000 },
-    livestock_dairy:    { baseUnit: 'tonnes/year', scaleLabel: 'million',  scaleFactor: 1e6, factor: 1 / 100000000 },
-    fruits_vegetables:  { baseUnit: 'tonnes/year', scaleLabel: 'million',  scaleFactor: 1e6, factor: 1 / 100000000 },
-    cash_crops:         { baseUnit: 'tonnes/year', scaleLabel: 'million',  scaleFactor: 1e6, factor: 1 / 100000000 }
-};
 
 /**
  * Default arable land allocation if no food_land_allocation row exists.
@@ -31684,8 +31666,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 const effects = computeFoodStatEffects(nationFoodFlows[nationId]);
                 if (!effects || Object.keys(effects).length === 0) continue;
 
+                // Filter out imperceptible effects (< 0.05 rounds to 0 change)
+                const affectedKeys = Object.keys(effects).filter(k => Math.abs(effects[k]) >= 0.05);
+                if (affectedKeys.length === 0) continue;
+
                 // Fetch current nation stats for the affected keys
-                const affectedKeys = Object.keys(effects);
                 const { data: nationRow } = await supabase
                     .from('nations')
                     .select(affectedKeys.join(', '))
