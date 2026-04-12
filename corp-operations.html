@@ -7256,6 +7256,7 @@ function actExecute(actionId, role) {
         case 'loan': return lrOpen();
         case 'restructure': return actOpenRestructure();
         case 'rebrand': return actOpenRebrand();
+        case 'donate': return actOpenDonation();
         default: console.log('Action not yet wired:', actionId, role);
     }
 }
@@ -7952,6 +7953,209 @@ async function actSubmitRebrand() {
     document.getElementById('corp-name-bar').textContent = newName;
     const logoEl = document.getElementById('corp-logo');
     if (logoEl) logoEl.textContent = newAbbr.slice(0, 2);
+}
+
+// ═══════════════════════════════════════════════════
+// Lobbyist: Political Donation ($10M → party gets 5 AP, once/tick)
+// ═══════════════════════════════════════════════════
+
+let _donateParties = [];
+let _donateSelected = -1;
+
+async function actOpenDonation() {
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+
+    // Load all political parties in this nation + active government formation
+    const [partiesRes, govRes] = await Promise.all([
+        _supabase.from('factions')
+            .select('id, faction_name, abbreviation, party_color, action_points, seats, nation, leader_ideology')
+            .eq('faction_type', 'party')
+            .eq('nation_id', faction.nation_id)
+            .is('abandoned_at', null)
+            .order('seats', { ascending: false }),
+        _supabase.from('government_formations')
+            .select('party_ids')
+            .eq('nation_id', faction.nation_id)
+            .in('status', ['formed', 'active', 'caretaker'])
+            .order('created_at', { ascending: false })
+            .limit(1),
+    ]);
+    const govPartyIds = (govRes.data?.[0]?.party_ids || []).map(id => typeof id === 'string' ? id : String(id));
+    _donateParties = (partiesRes.data || []).map(p => ({
+        ...p,
+        isGovernment: govPartyIds.includes(p.id),
+    }));
+    _donateSelected = -1;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'donate-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:600;display:flex;align-items:center;justify-content:center;';
+    overlay.onclick = function(e) { if (e.target === overlay) actCloseDonation(); };
+    document.body.appendChild(overlay);
+
+    renderDonationModal();
+}
+
+function actCloseDonation() {
+    const o = document.getElementById('donate-overlay');
+    if (o) o.remove();
+    _donateParties = [];
+    _donateSelected = -1;
+}
+
+function donateSelectParty(idx) {
+    _donateSelected = idx;
+    renderDonationModal();
+}
+
+function renderDonationModal() {
+    const overlay = document.getElementById('donate-overlay');
+    if (!overlay) return;
+
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    const sel = _donateSelected >= 0 ? _donateParties[_donateSelected] : null;
+    const canAfford = cash >= 10000000;
+
+    let html = `<div onclick="event.stopPropagation()" style="width:480px;max-height:80vh;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">`;
+
+    // Header
+    html += `<div style="padding:10px 16px;border-bottom:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:8px;color:#8a6aaa;">&#9679;</span>
+                <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:2px;color:#9e9a92;text-transform:uppercase;">Political Donation</span>
+            </div>
+            <span onclick="actCloseDonation()" style="font-family:var(--font-mono);font-size:14px;color:#6a6660;cursor:pointer;">&#215;</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+            <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">Cost:</span>
+            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#ca5;">$10M</span>
+            <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">&rarr; Target party receives</span>
+            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#5cb85c;">+5 AP</span>
+        </div>
+    </div>`;
+
+    // Party list
+    html += '<div style="flex:1;overflow-y:auto;padding:8px 0;">';
+    html += '<div style="padding:0 16px 6px;font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;">Select a Party</div>';
+
+    if (_donateParties.length === 0) {
+        html += '<div style="padding:16px;text-align:center;font-family:var(--font-mono);font-size:9px;color:#6a6660;">No political parties in this nation.</div>';
+    }
+
+    for (let i = 0; i < _donateParties.length; i++) {
+        const p = _donateParties[i];
+        const isSel = _donateSelected === i;
+        const color = p.party_color || '#8a6aaa';
+
+        const govLabel = p.isGovernment ? 'GOV' : 'OPP';
+        const govColor = p.isGovernment ? '#5cb85c' : '#c84';
+        const ideo = p.leader_ideology ? p.leader_ideology.toUpperCase() : null;
+
+        html += `<div onclick="donateSelectParty(${i})" style="
+            padding:8px 16px;
+            border-bottom:1px solid #2a2a24;
+            border-left:3px solid ${isSel ? color : 'transparent'};
+            background:${isSel ? color + '08' : 'transparent'};
+            cursor:pointer;
+        ">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div style="width:8px;height:8px;background:${color};flex-shrink:0;"></div>
+                    <div>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span style="font-size:11px;font-weight:600;color:${isSel ? '#e8e4dc' : '#9e9a92'};">${escapeHtml(p.faction_name)}</span>
+                            <span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 4px;color:${govColor};background:${govColor}12;border:1px solid ${govColor}25;">${govLabel}</span>
+                            ${ideo ? `<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 4px;color:#9e9a92;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);">${ideo}</span>` : ''}
+                        </div>
+                        <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;margin-top:1px;">${escapeHtml(p.abbreviation || '??')} &middot; ${escapeHtml(p.nation || '')} &middot; ${p.seats || 0} seats &middot; ${p.action_points || 0} AP</div>
+                    </div>
+                </div>
+                ${isSel ? '<span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:#5cb85c;">SELECTED</span>' : ''}
+            </div>
+        </div>`;
+    }
+
+    html += '</div>';
+
+    // Footer
+    html += `<div style="padding:10px 16px;border-top:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;gap:12px;">
+            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">COST</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#ca5;">$10M</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">CASH</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${canAfford ? '#e8e4dc' : '#c55'};">${hfFmtBig(cash)}</div></div>
+            ${sel ? `<div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">RECIPIENT</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#e8e4dc;">${escapeHtml(sel.abbreviation || sel.faction_name)}</div></div>` : ''}
+        </div>
+        <div style="display:flex;gap:6px;">
+            <div onclick="actCloseDonation()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
+            <div id="donate-btn" onclick="actSubmitDonation()" style="padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:${sel && canAfford ? '#000' : '#6a6660'};background:${sel && canAfford ? '#8a6aaa' : '#2a2a24'};cursor:${sel && canAfford ? 'pointer' : 'not-allowed'};${!sel || !canAfford ? 'opacity:0.4;pointer-events:none;' : ''}">DONATE</div>
+        </div>
+    </div>`;
+    html += '<div id="donate-error" style="padding:4px 16px;font-family:var(--font-mono);font-size:8px;color:#c55;display:none;"></div>';
+
+    html += '</div>';
+    overlay.innerHTML = html;
+}
+
+async function actSubmitDonation() {
+    if (!faction || _donateSelected < 0) return;
+    const party = _donateParties[_donateSelected];
+    if (!party) return;
+
+    const cash = Number(faction.corp_cash_reserves ?? 0);
+    if (cash < 10000000) {
+        const errEl = document.getElementById('donate-error');
+        if (errEl) { errEl.textContent = 'Insufficient cash. Need $10M.'; errEl.style.display = 'block'; }
+        return;
+    }
+
+    const btn = document.getElementById('donate-btn');
+    if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
+
+    // Deduct $10M from corp
+    const { error: cashErr } = await _supabase.from('factions').update({
+        corp_cash_reserves: cash - 10000000,
+    }).eq('id', faction.id);
+
+    if (cashErr) {
+        const errEl = document.getElementById('donate-error');
+        if (errEl) { errEl.textContent = 'Failed: ' + cashErr.message; errEl.style.display = 'block'; }
+        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+        return;
+    }
+
+    // Grant +5 AP to target party
+    const currentAP = Number(party.action_points ?? 0);
+    const { error: apErr } = await _supabase.from('factions').update({
+        action_points: currentAP + 5,
+    }).eq('id', party.id);
+
+    if (apErr) {
+        // Refund on failure
+        await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
+        const errEl = document.getElementById('donate-error');
+        if (errEl) { errEl.textContent = 'Failed to grant AP: ' + apErr.message; errEl.style.display = 'block'; }
+        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+        return;
+    }
+
+    // Update local state
+    faction.corp_cash_reserves = cash - 10000000;
+
+    // Log event
+    const currentTick = shard?.current_tick || 0;
+    const corpName = faction.faction_name || 'Corporation';
+    await _supabase.from('event_log').insert({
+        nation_id: faction.nation_id,
+        faction_id: faction.id,
+        event_name: corpName + ' — Political Donation',
+        description_used: corpName + ' has donated $10M to ' + (party.faction_name || 'a political party') + '. The party receives 5 action points.',
+        category: 'business',
+        trigger_key: 'corp_donation',
+        effects_applied: { cost: 10000000, recipient_faction_id: party.id, recipient_name: party.faction_name, ap_granted: 5 },
+        fired_at_tick: currentTick,
+    });
+
+    actCloseDonation();
 }
 
 function actSelectExec(idx) {
@@ -11207,6 +11411,10 @@ window.actSubmitRestructure = actSubmitRestructure;
 window.actOpenRebrand = actOpenRebrand;
 window.actCloseRebrand = actCloseRebrand;
 window.actSubmitRebrand = actSubmitRebrand;
+window.actOpenDonation = actOpenDonation;
+window.actCloseDonation = actCloseDonation;
+window.actSubmitDonation = actSubmitDonation;
+window.donateSelectParty = donateSelectParty;
 window.lrOpen = lrOpen;
 window.lrClose = lrClose;
 window.lrSubmit = lrSubmit;
