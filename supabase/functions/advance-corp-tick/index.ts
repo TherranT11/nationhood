@@ -2802,6 +2802,80 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 console.error(`[advance-corp-tick] Shipping route generation failed (non-fatal):`, shipErr);
             }
 
+            // ── Shipping Sector — Transit Cycles & Revenue ───────────────
+            // Process active shipping claims: advance vessel status, collect
+            // revenue on completed transits, restart transit cycles.
+            try {
+                const { data: activeClaims } = await supabase
+                    .from('shipping_claims')
+                    .select('id, route_id, faction_id, vessel_status, transit_started_tick, transit_arrives_tick, revenue_per_transit, total_revenue, transits_completed, shipping_routes!inner(transit_ticks, status)')
+                    .eq('status', 'active')
+                    .eq('nation_id', nation.id);
+
+                if (activeClaims && activeClaims.length > 0) {
+                    let revenueCollected = 0;
+                    let transitsCompleted = 0;
+
+                    for (const claim of activeClaims) {
+                        // Skip if route expired
+                        if (claim.shipping_routes?.status !== 'active') {
+                            await supabase.from('shipping_claims').update({
+                                status: 'released', released_at_tick: currentTick, vessel_status: 'idle'
+                            }).eq('id', claim.id);
+                            await supabase.from('factions').update({
+                                shipping_fleet_deployed: Math.max(0, (await supabase.from('factions').select('shipping_fleet_deployed').eq('id', claim.faction_id).single()).data?.shipping_fleet_deployed - 1 || 0)
+                            }).eq('id', claim.faction_id);
+                            continue;
+                        }
+
+                        const transitTicks = claim.shipping_routes?.transit_ticks || 2;
+
+                        if (claim.vessel_status === 'loading') {
+                            // Start transit next tick
+                            await supabase.from('shipping_claims').update({
+                                vessel_status: 'in_transit',
+                                transit_started_tick: currentTick,
+                                transit_arrives_tick: currentTick + transitTicks,
+                            }).eq('id', claim.id);
+
+                        } else if (claim.vessel_status === 'in_transit' && currentTick >= (claim.transit_arrives_tick || 0)) {
+                            // Transit complete — collect revenue and restart cycle
+                            const revenue = Number(claim.revenue_per_transit) || 0;
+
+                            // Credit revenue to corp
+                            if (revenue > 0) {
+                                const { data: corp } = await supabase.from('factions')
+                                    .select('corp_cash_reserves').eq('id', claim.faction_id).single();
+                                if (corp) {
+                                    await supabase.from('factions').update({
+                                        corp_cash_reserves: Number(corp.corp_cash_reserves || 0) + revenue
+                                    }).eq('id', claim.faction_id);
+                                }
+                                revenueCollected += revenue;
+                            }
+
+                            // Update claim: increment transits, add revenue, restart loading
+                            await supabase.from('shipping_claims').update({
+                                vessel_status: 'loading',
+                                transits_completed: (claim.transits_completed || 0) + 1,
+                                total_revenue: (Number(claim.total_revenue) || 0) + revenue,
+                                transit_started_tick: null,
+                                transit_arrives_tick: null,
+                            }).eq('id', claim.id);
+
+                            transitsCompleted++;
+                        }
+                        // 'in_transit' but not yet arrived — no action needed
+                    }
+
+                    if (revenueCollected > 0 || transitsCompleted > 0) {
+                        console.log(`[advance-corp-tick] Shipping ${nation.name}: ${transitsCompleted} transits, $${Math.round(revenueCollected).toLocaleString()} revenue`);
+                    }
+                }
+            } catch (shipRevErr) {
+                console.error(`[advance-corp-tick] Shipping revenue failed for ${nation.name} (non-fatal):`, shipRevErr);
+            }
+
             // ── Specialty Building Effects ────────────────────────────────
             try {
                 const SPECIALTY_TYPES = ['branch_office', 'trading_floor', 'claims_office'];
