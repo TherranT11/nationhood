@@ -7082,13 +7082,42 @@ function renderActionsTab() {
     renderActionsRightPanel();
 }
 
+// ─── Action definitions per role ────────────────────────────────────────────
+
+const EXEC_ACTIONS = {
+    CEO: [
+        { id: 'statement', name: 'Issue Statement', desc: 'Issue a press release to the public events feed. Other players and media corps see it.', cost: '$20k', costColor: '#5cb85c', tags: ['REPUTATION'] },
+        { id: 'ipo', name: 'IPO', desc: 'Take the corporation public. Sell ~30% of shares for a massive cash injection. Permanent loss of full control.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['STRUCTURAL'], locked: true, lockReason: 'Coming soon' },
+    ],
+    CFO: [
+        { id: 'loan', name: 'Request Loan', desc: 'Submit a loan application to all finance corporations. Set amount, purpose, term, and collateral. Receive competing offers.', cost: 'FREE', costColor: '#5cb85c', tags: ['FINANCIAL'] },
+    ],
+    COO: [
+        { id: 'restructure', name: 'Restructure Operations', desc: 'Cut overhead by laying off 10-20% of employees or selling a subsidiary. Saves money and cuts ~7% of debt, but reduces reputation by 1d10+3.', cost: 'FREE', costColor: '#5cb85c', tags: ['OPERATIONAL'] },
+    ],
+    CTO: [
+        { id: 'research', name: 'Begin Research', desc: 'Start researching a tech tree node. Opens the tech tree interface.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['INNOVATION'], locked: true, lockReason: 'Coming soon' },
+    ],
+    CMO: [
+        { id: 'rebrand', name: 'Rebrand Corporation', desc: 'Change name, abbreviation, and motto. Reputation drops by 5 but future gains are accelerated. The fresh start.', cost: '$20M', costColor: '#ca5', tags: ['STRUCTURAL'] },
+    ],
+    CLO: [
+        { id: 'sue_corp', name: 'Sue Corporation', desc: 'File a lawsuit against another corporation for patent infringement, contract breach, or predatory practices.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['LEGAL'], locked: true, lockReason: 'Coming soon' },
+    ],
+    Lobbyist: [
+        { id: 'donate', name: 'Political Donation', desc: 'Choose a political party and donate $10M. The target party receives 5 AP. Can be done once per tick.', cost: '$10M', costColor: '#ca5', tags: ['POLITICAL'] },
+    ],
+};
+
 function renderActionsRightPanel() {
     const panel = document.getElementById('actions-right-panel');
     if (!panel) return;
     const role = EXEC_ROLES[_selectedExecIdx];
     const meta = EXEC_ROLE_META[role];
     const exec = getExecForRole(role);
+    const actions = EXEC_ACTIONS[role] || [];
 
+    // ── Vacant state ──
     if (!exec) {
         panel.innerHTML = `<div style="padding:40px;text-align:center;background:var(--bg-2,#1a1a17);border:1px solid var(--border-0,rgba(255,255,255,0.06));">
             <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${meta.color};margin-bottom:4px;">${escapeHtml(role)}</div>
@@ -7099,9 +7128,11 @@ function renderActionsRightPanel() {
         return;
     }
 
-    // Placeholder for Phase 2C — executive detail + actions
-    panel.innerHTML = `<div style="padding:20px;background:var(--bg-2,#1a1a17);border:1px solid var(--border-0,rgba(255,255,255,0.06));">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+    let html = '';
+
+    // ── Executive detail header ──
+    html += `<div style="padding:10px 16px;background:var(--bg-2,#1a1a17);border:1px solid var(--border-0,rgba(255,255,255,0.06));border-bottom:none;display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;align-items:center;gap:10px;">
             <div style="width:44px;height:44px;background:${meta.color}15;border:1px solid ${meta.color}33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:14px;font-weight:700;color:${meta.color};">${escapeHtml(getInitials(exec.first_name, exec.last_name))}</div>
             <div>
                 <div style="display:flex;align-items:baseline;gap:6px;">
@@ -7111,8 +7142,110 @@ function renderActionsRightPanel() {
                 <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:1px;">${escapeHtml(meta.fullTitle)}</div>
             </div>
         </div>
-        <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Actions will appear here.</div>
+        <div style="display:flex;gap:12px;align-items:center;">
+            <div style="text-align:right;">
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.8px;">SKILL</div>
+                <div style="display:flex;align-items:center;gap:4px;margin-top:1px;">
+                    <div style="width:40px;height:3px;background:var(--border-0,rgba(255,255,255,0.06));">
+                        <div style="width:${exec.skill}%;height:100%;background:${skillColor(exec.skill)};"></div>
+                    </div>
+                    <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${skillColor(exec.skill)};">${exec.skill}</span>
+                </div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.8px;">SALARY</div>
+                <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text-muted);margin-top:1px;">${actFmtSalary(exec.salary_per_year)}/yr</div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.8px;">CONTRACT</div>
+                <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text-muted);margin-top:1px;">${exec.contract_years}yr</div>
+            </div>
+        </div>
     </div>`;
+
+    // ── Actions list ──
+    html += `<div style="background:var(--bg-2,#1a1a17);border:1px solid var(--border-0,rgba(255,255,255,0.06));border-top:1px solid var(--border-0,rgba(255,255,255,0.06));flex:1;">`;
+
+    for (let ai = 0; ai < actions.length; ai++) {
+        const action = actions[ai];
+        const isLocked = !!action.locked;
+
+        html += `<div onmouseenter="this.dataset.hover='1';this.style.background='${!isLocked ? meta.color + '06' : 'transparent'}'" onmouseleave="this.dataset.hover='';this.style.background='transparent';var eb=this.querySelector('.act-exec-btn');if(eb)eb.style.display='none'" style="
+            padding:12px 16px;
+            ${ai < actions.length - 1 ? 'border-bottom:1px solid var(--border-0,rgba(255,255,255,0.06));' : ''}
+            opacity:${isLocked ? '0.4' : '1'};
+            cursor:${isLocked ? 'not-allowed' : 'pointer'};
+        ">`;
+
+        // Row 1: Action name + tags + cost
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:13px;font-weight:700;color:${isLocked ? 'var(--text-dim)' : 'var(--text-bright,#f0efe6)'};">${escapeHtml(action.name)}</span>`;
+
+        for (const tag of action.tags) {
+            const tagColor = tag === 'IRREVERSIBLE' ? '#c55' : tag === 'OFFENSIVE' ? '#c84' : tag === 'STRUCTURAL' ? '#ca5' : tag === 'POLITICAL' ? '#8a6aaa' : 'var(--text-dim)';
+            html += `<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;letter-spacing:0.3px;padding:1px 4px;line-height:11px;color:${tagColor};background:var(--bg-3,#252525);border:1px solid var(--border-0,rgba(255,255,255,0.06));">${escapeHtml(tag)}</span>`;
+        }
+
+        html += `</div>
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${action.costColor};">${escapeHtml(action.cost)}</span>
+            </div>
+        </div>`;
+
+        // Row 2: Description
+        html += `<div style="font-size:10px;color:${isLocked ? 'var(--text-dim)' : 'var(--text-muted,#666)'};line-height:1.5;">${escapeHtml(action.desc)}</div>`;
+
+        // Lock reason
+        if (isLocked && action.lockReason) {
+            html += `<div style="margin-top:4px;font-family:var(--font-mono);font-size:7px;color:#c84;display:flex;align-items:center;gap:4px;">
+                <span>&#8856;</span><span>${escapeHtml(action.lockReason)}</span>
+            </div>`;
+        }
+
+        // Execute button (shown on hover via JS)
+        if (!isLocked) {
+            html += `<div class="act-exec-btn" style="display:none;margin-top:8px;text-align:right;">
+                <span onclick="event.stopPropagation();actExecute('${action.id}','${role}')" style="display:inline-block;padding:4px 18px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:${meta.color};cursor:pointer;">EXECUTE</span>
+            </div>`;
+        }
+
+        html += '</div>';
+    }
+
+    html += '</div>'; // close actions list
+
+    // ── Skill effect note ──
+    html += `<div style="padding:6px 16px;background:var(--bg-3,#252525);border:1px solid var(--border-0,rgba(255,255,255,0.06));border-top:none;">
+        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">
+            <span style="color:${meta.color};font-weight:700;">${escapeHtml(role)}</span> skill (${exec.skill}/100) affects action outcomes.
+            ${exec.skill >= 70
+                ? ' High skill increases success probability and reduces costs.'
+                : exec.skill >= 50
+                    ? ' Moderate skill — outcomes are average. Consider recruiting a stronger executive.'
+                    : ' Low skill — actions are less effective and more expensive. Replacement recommended.'
+            }
+        </div>
+    </div>`;
+
+    panel.innerHTML = html;
+
+    // Wire hover show/hide for execute buttons
+    panel.querySelectorAll('[onmouseenter]').forEach(el => {
+        el.addEventListener('mouseenter', function() {
+            const btn = this.querySelector('.act-exec-btn');
+            if (btn) btn.style.display = 'block';
+        });
+        el.addEventListener('mouseleave', function() {
+            const btn = this.querySelector('.act-exec-btn');
+            if (btn) btn.style.display = 'none';
+        });
+    });
+}
+
+function actExecute(actionId, role) {
+    // Phase 3: Wire live action handlers
+    console.log('Execute action:', actionId, 'by', role);
 }
 
 function actSelectExec(idx) {
