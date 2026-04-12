@@ -1254,9 +1254,12 @@ export async function playIssueCard(supabase, params) {
     // 13. History + event log
     const cardLabel = `${cardDef.card_name} (#${cardNumber})`;
     const nationName = myNation?.name || 'Unknown';
+    const optionTitle = side === 'a' ? cardDef.option_a_title : cardDef.option_b_title;
+    const optionText = side === 'a' ? cardDef.option_a_text : cardDef.option_b_text;
+    const historyText = `${nationName} played ${cardLabel}. ${optionTitle}: ${optionText}`;
     await insertHistory(supabase, issueId, currentTick, 'card_played',
-        `${nationName} played ${cardLabel}.`,
-        { card_number: cardNumber, side, option: optionChosen, effects: appliedEffects });
+        historyText,
+        { card_number: cardNumber, side, option: optionChosen, effects: appliedEffects, narrative: cardDef.narrative });
 
     // Dashboard event
     for (const nId of [issue.nation_a_id, issue.nation_b_id]) {
@@ -1897,14 +1900,15 @@ export async function processIssueTick(supabase, nationList, currentTick) {
         // ── 5. Card system: inaction tension decay + turn management ──
         const issueCardUpdate = {};
 
-        // 5a. Inaction tension decay — if no card was played this tick, tensions quietly decrease
+        // 5a. Inaction: timeline entry + turn alternation when no card played this tick
+        // (Tension decay of -0.25 already applied via tensionDrift in step 4b above)
         if (issue.deck_initialized && lastPlayTick < currentTick && !issue.pending_diplomatic_card) {
-            // No card played this tick — tensions cool by 0.25
-            newTension = Math.max(0, newTension - 0.25);
-
             await insertHistory(supabase, issue.id, currentTick, 'tension_decay',
                 'Tensions have quietly decreased.',
                 { tension_delta: -0.25 });
+
+            // Alternate turn (card play switches turns in Phase 2C; this handles the "pass" case)
+            issueCardUpdate.whose_turn = issue.whose_turn === 'a' ? 'b' : 'a';
         }
 
         // 5b. Diplomatic card deadline expiry — silently withdraw, no effects
@@ -1922,12 +1926,6 @@ export async function processIssueTick(supabase, nationList, currentTick) {
                 { card_number: issue.pending_diplomatic_card });
         }
 
-        // 5c. Turn alternation — switch turns each tick if no card was played
-        // (Card play itself switches turns in Phase 2C; this handles the "pass" case)
-        if (issue.deck_initialized && lastPlayTick < currentTick && !issue.pending_diplomatic_card) {
-            // No card played and no diplomatic pending — alternate turn
-            issueCardUpdate.whose_turn = issue.whose_turn === 'a' ? 'b' : 'a';
-        }
 
         const tensionChanged = newTension !== Number(issue.tension);
 
