@@ -1288,7 +1288,18 @@ async function init() {
         if (!eqErr) equipMaint = calculateTotalMaintenance(eqRows || []);
     }
 
-    renderFinances(nationStats, shard, wfData, faction, propData.propertyMaintenance || 0, equipMaint);
+    // Load executive salaries
+    let execCompensation = 0;
+    if (faction?.id) {
+        const { data: execRows } = await _supabase
+            .from('corp_executives')
+            .select('salary_per_year')
+            .eq('faction_id', faction.id)
+            .eq('status', 'active');
+        execCompensation = (execRows || []).reduce((sum, ex) => sum + (Number(ex.salary_per_year) || 0), 0);
+    }
+
+    renderFinances(nationStats, shard, wfData, faction, propData.propertyMaintenance || 0, equipMaint, execCompensation);
     renderValuation(nationStats, nationName, faction, wfData, propData);
 
     // Messaging bubble
@@ -1437,7 +1448,7 @@ function renderWorkforce(nation, nationName, factionData) {
     return { totalWages, generalTotal, skilledTotal, innovativeTotal, monthlyWages: Math.round(totalWages / 12) };
 }
 
-function renderFinances(nation, shard, wfData, faction, propertyMaint, equipmentMaint) {
+function renderFinances(nation, shard, wfData, faction, propertyMaint, equipmentMaint, execCompensation) {
     const currentTick = shard?.current_tick || 0;
     document.getElementById('fin-tick').textContent = 'TICK ' + currentTick;
 
@@ -1478,8 +1489,9 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
     const debtService = outstandingDebt > 0
         ? Math.round((outstandingDebt * (LOAN_ANNUAL_RATE / 12)) / (1 - Math.pow(1 + LOAN_ANNUAL_RATE / 12, -LOAN_TERM_MONTHS)))
         : 0;
+    const execSalaries = Math.round((execCompensation || 0) / 12);
     const FIXED_OVERHEAD = 75000; // minimum operating costs (matches tick processor)
-    const totalExpenses = wages + materials + properties + equipment + debtService + taxes + FIXED_OVERHEAD;
+    const totalExpenses = wages + execSalaries + materials + properties + equipment + debtService + taxes + FIXED_OVERHEAD;
     const netProfit = totalRevenue - totalExpenses;
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const debt = outstandingDebt;
@@ -1532,6 +1544,7 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
         <div class="fin-section">
             <div class="fin-section__title" style="color:var(--red);">Expenses</div>
             <div class="fin-row"><span class="fin-row__label">Workforce Wages</span><span class="fin-row__value" style="color:#a44">${fmtMoney(wages)}</span></div>
+            <div class="fin-row"><span class="fin-row__label">Executive Compensation</span><span class="fin-row__value" style="color:#a44">${fmtMoney(execSalaries)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Materials & Supplies</span><span class="fin-row__value" style="color:#a44">${fmtMoney(materials)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Properties</span><span class="fin-row__value" style="color:#a44">${fmtMoney(properties)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Equipment</span><span class="fin-row__value" style="color:#a44">${fmtMoney(equipment)}</span></div>
