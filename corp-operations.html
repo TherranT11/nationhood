@@ -2757,7 +2757,7 @@ import { escapeHtml } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
 import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, conditionColor, calculateTotalMaintenance, calculateEquipmentPrice, calculateEquipmentSupply, calculateEquipmentImportCost } from './js/game/equipment.js';
-import { EXEC_ROLES, EXEC_ROLE_META } from './js/game/corp-executives.js';
+import { EXEC_ROLES, EXEC_ROLE_META, generateExecutivePool } from './js/game/corp-executives.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -6968,6 +6968,32 @@ async function loadExecutives() {
     if (poolRes.error) console.warn('Failed to load executive pool:', poolRes.error.message);
     _executives = execRes.data || [];
     _execPool = poolRes.data || [];
+
+    // Auto-seed CEO from faction leader data if no CEO row exists
+    const hasCEO = _executives.some(e => e.role === 'CEO');
+    if (!hasCEO && faction.leader_first_name && faction.leader_last_name) {
+        const skill = 25 + Math.floor(Math.random() * 21); // 25-45
+        const contractYears = 2 + Math.floor(Math.random() * 4); // 2-5
+        const totalComp = 25000000 + (skill - 25) * 1500000;
+        const annualSalary = Math.round(totalComp / contractYears);
+        const currentTick = shard?.current_tick || 0;
+        const ceoRow = {
+            faction_id: faction.id,
+            role: 'CEO',
+            first_name: faction.leader_first_name,
+            last_name: faction.leader_last_name,
+            age: faction.leader_age || 50,
+            origin_nation: faction.nation || null,
+            skill: skill,
+            salary_per_year: annualSalary,
+            contract_years: contractYears,
+            contract_start_tick: currentTick,
+            contract_end_tick: currentTick + (contractYears * 12),
+            status: 'active',
+        };
+        const { data: inserted, error: ceoErr } = await _supabase.from('corp_executives').insert(ceoRow).select();
+        if (!ceoErr && inserted) _executives.push(inserted[0]);
+    }
 }
 
 // ═══════════════════════════════════════════════════
@@ -7015,7 +7041,7 @@ function renderActionsTab() {
     html += '<div style="display:flex;gap:8px;">';
 
     // ═══ LEFT PANEL: Executive cards ═══
-    html += '<div style="width:210px;display:flex;flex-direction:column;gap:4px;flex-shrink:0;">';
+    html += '<div style="width:262px;display:flex;flex-direction:column;gap:5px;flex-shrink:0;">';
 
     for (let i = 0; i < EXEC_ROLES.length; i++) {
         const role = EXEC_ROLES[i];
@@ -7026,7 +7052,7 @@ function renderActionsTab() {
         const isVacant = !exec;
 
         html += `<div onclick="actSelectExec(${i})" style="
-            padding:8px 10px;
+            padding:10px 12px;
             background:${isSel ? color + '0a' : 'var(--bg-2,#1a1a17)'};
             border:1px solid ${isSel ? color + '44' : 'var(--border-0,rgba(255,255,255,0.06))'};
             border-left:3px solid ${isSel ? color : 'var(--border-0,rgba(255,255,255,0.06))'};
@@ -7035,15 +7061,15 @@ function renderActionsTab() {
 
         if (isVacant && role !== 'CEO') {
             // Vacant slot
-            html += `<div style="display:flex;align-items:center;gap:8px;">
-                <div style="width:36px;height:36px;background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);flex-shrink:0;">?</div>
+            html += `<div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:45px;height:45px;background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);flex-shrink:0;">?</div>
                 <div style="flex:1;min-width:0;">
                     <div style="display:flex;align-items:center;gap:4px;">
-                        <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${color};">${escapeHtml(role)}</span>
+                        <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${color};">${escapeHtml(role)}</span>
                     </div>
-                    <div style="font-size:10px;font-weight:600;color:var(--text-dim);margin-top:1px;">VACANT</div>
-                    <div style="margin-top:3px;">
-                        <span onclick="event.stopPropagation();openExecSearch('${role}')" style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;padding:2px 6px;color:#5a8aaa;border:1px solid rgba(90,138,170,0.25);background:rgba(90,138,170,0.06);cursor:pointer;">EXECUTIVE SEARCH</span>
+                    <div style="font-size:13px;font-weight:600;color:var(--text-dim);margin-top:2px;">VACANT</div>
+                    <div style="margin-top:4px;">
+                        <span onclick="event.stopPropagation();openExecSearch('${role}')" style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.5px;padding:3px 8px;color:#5a8aaa;border:1px solid rgba(90,138,170,0.25);background:rgba(90,138,170,0.06);cursor:pointer;">EXECUTIVE SEARCH</span>
                     </div>
                 </div>
             </div>`;
@@ -7055,21 +7081,21 @@ function renderActionsTab() {
             const sal = exec ? exec.salary_per_year : 0;
             const portrait = exec ? getInitials(exec.first_name, exec.last_name) : '—';
 
-            html += `<div style="display:flex;align-items:center;gap:8px;">
-                <div style="width:36px;height:36px;background:${color}15;border:1px solid ${color}33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;font-weight:700;color:${color};flex-shrink:0;">${escapeHtml(portrait)}</div>
+            html += `<div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:45px;height:45px;background:${color}15;border:1px solid ${color}33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:14px;font-weight:700;color:${color};flex-shrink:0;">${escapeHtml(portrait)}</div>
                 <div style="flex:1;min-width:0;">
                     <div style="display:flex;align-items:center;gap:4px;">
-                        <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${color};">${escapeHtml(role)}</span>
+                        <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${color};">${escapeHtml(role)}</span>
                     </div>
-                    <div style="font-size:10px;font-weight:600;color:${isSel ? 'var(--text-bright,#f0efe6)' : 'var(--text-muted,#666)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(name)}${age ? ` <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">(${age})</span>` : ''}</div>
-                    <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
+                    <div style="font-size:13px;font-weight:600;color:${isSel ? 'var(--text-bright,#f0efe6)' : 'var(--text-muted,#666)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(name)}${age ? ` <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">(${age})</span>` : ''}</div>
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
                         <div style="display:flex;align-items:center;gap:3px;flex:1;">
-                            <div style="flex:1;height:2px;background:var(--border-0,rgba(255,255,255,0.06));">
+                            <div style="flex:1;height:3px;background:var(--border-0,rgba(255,255,255,0.06));">
                                 <div style="width:${sk}%;height:100%;background:${skillColor(sk)};"></div>
                             </div>
-                            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-muted);width:16px;text-align:right;">${sk}</span>
+                            <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);width:18px;text-align:right;">${sk}</span>
                         </div>
-                        <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${actFmtSalary(sal)}/yr</span>
+                        <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${actFmtSalary(sal)}/yr</span>
                     </div>
                 </div>
             </div>`;
@@ -8193,10 +8219,22 @@ function actSelectExec(idx) {
     renderActionsTab();
 }
 
-function openExecSearch(role) {
+async function openExecSearch(role) {
     _execSearchRole = role;
     _execSearchSelected = -1;
     document.getElementById('exec-search-overlay').style.display = 'flex';
+
+    // Auto-generate executive pool for this nation if none exists
+    if (_execPool.length === 0 && faction?.nation_id && faction?.nation) {
+        const poolRows = generateExecutivePool(faction.nation_id, faction.nation);
+        if (poolRows.length > 0) {
+            const { data: inserted, error: poolErr } = await _supabase.from('executive_pool').insert(poolRows).select();
+            if (!poolErr && inserted) {
+                _execPool = inserted;
+            }
+        }
+    }
+
     renderExecSearchModal();
 }
 
