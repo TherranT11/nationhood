@@ -131,6 +131,316 @@ export function formatSectorVolume(val, sectorKey) {
     return sign + raw.toLocaleString() + '\u00a0' + def.baseUnit;
 }
 
+// ==================== FOOD & AGRICULTURE — 4-SECTOR SPLIT ====================
+//
+// The single "food_agriculture" trade sector is split into four sub-sectors,
+// each competing for a nation's arable land allocation:
+//
+//   grains_staples      — survival sector, stockpilable, famine events
+//   livestock_dairy     — middle class diet, demand scales with wealth
+//   fruits_vegetables   — infrastructure-dependent, spoilage mechanic
+//   cash_crops          — export revenue vs food security tension
+//
+// Arable land allocation: grains% + livestock% + perishables% + cash_crops% = 100%
+// Stored in food_land_allocation table; effective land = nation.arable_land × (allocation% / 100)
+
+/**
+ * Food sub-sector definitions.
+ *
+ * Each sub-sector has:
+ *   key               – unique identifier (used in trade_flows.sector column)
+ *   label             – display name
+ *   parent_sector     – parent trade sector key (always 'food_agriculture')
+ *   allocation_key    – column name in food_land_allocation table
+ *   export_threshold  – minimum effective arable land to generate exports (0-100 scale)
+ *   export_multiplier – capacity reduction factor (domestic consumption priority)
+ *   drivers           – nation stats that boost production capacity
+ *   demand_drivers    – nation stats that drive import demand
+ *   stat_effects      – stats affected by supply/shortage of this sub-sector
+ */
+export var FOOD_SUBSECTORS = [
+    {
+        key: 'grains_staples',
+        label: 'Grains & Staples',
+        description: 'Wheat, rice, corn, soybeans, legumes, cooking oils, sugar',
+        parent_sector: 'food_agriculture',
+        allocation_key: 'grains_pct',
+        export_threshold: 8,
+        export_multiplier: 0.20,
+        drivers: [
+            { stat: 'arable_land', weight: 1.0 },
+            { stat: 'physical_infrastructure', weight: 0.3 },
+            { stat: 'rail_network', weight: 0.2 }
+        ],
+        demand_drivers: [
+            { stat: 'population', weight: 1.0, type: 'population' },
+            { stat: 'population_growth', weight: 0.3, type: 'pressure' }
+        ],
+        demand_cost_drivers: [
+            { stat: 'fuel_prices', weight: 0.3 }
+        ],
+        stat_effects: {
+            supplied: {
+                poverty_rate: -0.15,
+                cost_of_living: -0.10,
+                inflation: -0.05,
+                stability: 0.10,
+                legitimacy: 0.10,
+                happiness: 0.05,
+                lifespan: 0.05
+            },
+            shortage: {
+                poverty_rate: 0.30,
+                cost_of_living: 0.20,
+                inflation: 0.15,
+                stability: -0.20,
+                legitimacy: -0.20,
+                civil_unrest: 0.25,
+                political_violence: 0.15,
+                emigration: 0.10,
+                happiness: -0.15
+            }
+        },
+        food_security_weight: 0.50,
+        stockpilable: true
+    },
+    {
+        key: 'livestock_dairy',
+        label: 'Livestock & Dairy',
+        description: 'Cattle, poultry, pigs, sheep, eggs, milk, cheese',
+        parent_sector: 'food_agriculture',
+        allocation_key: 'livestock_pct',
+        export_threshold: 10,
+        export_multiplier: 0.15,
+        drivers: [
+            { stat: 'arable_land', weight: 1.0 },
+            { stat: 'physical_infrastructure', weight: 0.25 },
+            { stat: 'unemployment', weight: 0.15, inverted: true }
+        ],
+        demand_drivers: [
+            { stat: 'standard_of_living', weight: 0.8, type: 'wealth' },
+            { stat: 'population', weight: 0.5, type: 'population' }
+        ],
+        demand_cost_drivers: [
+            { stat: 'fuel_prices', weight: 0.2 }
+        ],
+        stat_effects: {
+            supplied: {
+                standard_of_living: 0.10,
+                happiness: 0.10,
+                healthcare_quality: 0.05,
+                lifespan: 0.05,
+                unemployment: -0.08,
+                labor_force_participation: 0.05
+            },
+            shortage: {
+                cost_of_living: 0.15,
+                inflation: 0.10,
+                standard_of_living: -0.10,
+                happiness: -0.10
+            }
+        },
+        environmental_effects: {
+            carbon_emissions: 0.10,
+            pollution: 0.08
+        },
+        food_security_weight: 0.20,
+        stockpilable: false
+    },
+    {
+        key: 'fruits_vegetables',
+        label: 'Fruits, Vegetables & Perishables',
+        description: 'Fresh produce, market gardens, fishing, aquaculture',
+        parent_sector: 'food_agriculture',
+        allocation_key: 'perishables_pct',
+        export_threshold: 12,
+        export_multiplier: 0.12,
+        drivers: [
+            { stat: 'arable_land', weight: 1.0 },
+            { stat: 'physical_infrastructure', weight: 0.5, critical: true },
+            { stat: 'rail_network', weight: 0.5, critical: true },
+            { stat: 'energy_generation', weight: 0.3 }
+        ],
+        demand_drivers: [
+            { stat: 'urbanization', weight: 0.6, type: 'demand' },
+            { stat: 'population', weight: 0.5, type: 'population' },
+            { stat: 'standard_of_living', weight: 0.3, type: 'wealth' }
+        ],
+        demand_cost_drivers: [
+            { stat: 'fuel_prices', weight: 0.2 }
+        ],
+        stat_effects: {
+            supplied: {
+                happiness: 0.12,
+                healthcare_quality: 0.10,
+                lifespan: 0.08,
+                standard_of_living: 0.08
+            },
+            shortage: {
+                cost_of_living: 0.15,
+                inflation: 0.10,
+                happiness: -0.10,
+                healthcare_quality: -0.05
+            }
+        },
+        environmental_effects: {
+            pollution: 0.05
+        },
+        // UNIQUE MECHANIC: Spoilage multiplier
+        // When rail_network or physical_infrastructure fall below threshold,
+        // effective supply is reduced regardless of production levels.
+        spoilage: {
+            rail_threshold: 40,
+            infra_threshold: 35,
+            energy_threshold: 30,
+            max_spoilage_pct: 60
+        },
+        food_security_weight: 0.15,
+        stockpilable: false
+    },
+    {
+        key: 'cash_crops',
+        label: 'Cash Crops & Plantation Agriculture',
+        description: 'Coffee, tea, cocoa, tobacco, cotton, rubber, spices, palm oil',
+        parent_sector: 'food_agriculture',
+        allocation_key: 'cash_crops_pct',
+        export_threshold: 8,
+        export_multiplier: 0.35,
+        drivers: [
+            { stat: 'arable_land', weight: 1.0 },
+            { stat: 'foreign_investment', weight: 0.4 },
+            { stat: 'currency_strength', weight: 0.3, inverted: true },
+            { stat: 'corruption', weight: 0.2 }
+        ],
+        demand_drivers: [
+            // Cash crops are primarily EXPORT-driven; import demand is low
+            { stat: 'standard_of_living', weight: 0.3, type: 'wealth' },
+            { stat: 'population', weight: 0.2, type: 'population' }
+        ],
+        demand_cost_drivers: [],
+        stat_effects: {
+            supplied: {
+                gdp_growth: 0.10,
+                foreign_investment: 0.08,
+                unemployment: -0.08,
+                labor_force_participation: 0.06,
+                currency_strength: 0.05
+            },
+            shortage: {
+                // Cash crop shortage doesn't cause food insecurity
+                // but hurts export revenue
+                gdp_growth: -0.05,
+                foreign_investment: -0.05
+            }
+        },
+        // Negative externalities of plantation agriculture
+        structural_effects: {
+            income_inequality: 0.08,
+            poverty_rate: 0.05,
+            social_mobility: -0.05,
+            corruption: 0.05,
+            union_strength: 0.03
+        },
+        environmental_effects: {
+            pollution: 0.08,
+            carbon_emissions: 0.06
+        },
+        food_security_weight: 0.00,
+        stockpilable: true
+    }
+];
+
+// Lookup maps for food sub-sectors
+export var FOOD_SUBSECTOR_KEYS = [];
+export var FOOD_SUBSECTOR_MAP = {};
+for (var _fsi = 0; _fsi < FOOD_SUBSECTORS.length; _fsi++) {
+    FOOD_SUBSECTOR_KEYS.push(FOOD_SUBSECTORS[_fsi].key);
+    FOOD_SUBSECTOR_MAP[FOOD_SUBSECTORS[_fsi].key] = FOOD_SUBSECTORS[_fsi];
+}
+
+/**
+ * Check if a sector key is a food sub-sector.
+ */
+export function isFoodSubsector(sectorKey) {
+    return FOOD_SUBSECTOR_MAP.hasOwnProperty(sectorKey);
+}
+
+/**
+ * Get the effective arable land for a specific food sub-sector.
+ *
+ * effectiveLand = nation.arable_land × (allocation_pct / 100)
+ *
+ * @param {Object} nation      – nation row with arable_land stat (0-100)
+ * @param {string} subsectorKey – food sub-sector key
+ * @param {Object} allocation  – food_land_allocation row { grains_pct, livestock_pct, perishables_pct, cash_crops_pct }
+ * @returns {number} effective arable land (0-100 scale)
+ */
+export function getEffectiveArableLand(nation, subsectorKey, allocation) {
+    var subsector = FOOD_SUBSECTOR_MAP[subsectorKey];
+    if (!subsector || !allocation) return 0;
+    var totalArable = Number(nation.arable_land) || 0;
+    var allocPct = Number(allocation[subsector.allocation_key]) || 0;
+    return totalArable * (allocPct / 100);
+}
+
+/**
+ * Calculate the spoilage multiplier for perishables.
+ *
+ * When rail_network and/or physical_infrastructure fall below thresholds,
+ * effective supply is reduced — the nation can produce abundantly and still
+ * face shortage due to logistics failure.
+ *
+ * @param {Object} nation – nation row with infrastructure stats
+ * @returns {number} multiplier 0.4–1.0 (1.0 = no spoilage, 0.4 = maximum spoilage)
+ */
+export function calculateSpoilageMultiplier(nation) {
+    var cfg = FOOD_SUBSECTOR_MAP.fruits_vegetables.spoilage;
+    var rail = Number(nation.rail_network) || 0;
+    var infra = Number(nation.physical_infrastructure) || 0;
+    var energy = Number(nation.energy_generation) || 0;
+
+    var spoilagePct = 0;
+
+    // Rail below threshold: major spoilage (cannot move perishables fast enough)
+    if (rail < cfg.rail_threshold) {
+        spoilagePct += ((cfg.rail_threshold - rail) / cfg.rail_threshold) * 30;
+    }
+
+    // Infrastructure below threshold: cold chain failure
+    if (infra < cfg.infra_threshold) {
+        spoilagePct += ((cfg.infra_threshold - infra) / cfg.infra_threshold) * 20;
+    }
+
+    // Energy below threshold: refrigeration failure
+    if (energy < cfg.energy_threshold) {
+        spoilagePct += ((cfg.energy_threshold - energy) / cfg.energy_threshold) * 10;
+    }
+
+    // Cap at maximum spoilage
+    spoilagePct = Math.min(spoilagePct, cfg.max_spoilage_pct);
+
+    return 1 - (spoilagePct / 100);
+}
+
+// Display units for food sub-sectors
+export var FOOD_SECTOR_DISPLAY_UNITS = {
+    grains_staples:     { baseUnit: 'tonnes/year', scaleLabel: 'million',  scaleFactor: 1e6, factor: 1 / 100000000 },
+    livestock_dairy:    { baseUnit: 'tonnes/year', scaleLabel: 'million',  scaleFactor: 1e6, factor: 1 / 100000000 },
+    fruits_vegetables:  { baseUnit: 'tonnes/year', scaleLabel: 'million',  scaleFactor: 1e6, factor: 1 / 100000000 },
+    cash_crops:         { baseUnit: 'tonnes/year', scaleLabel: 'million',  scaleFactor: 1e6, factor: 1 / 100000000 }
+};
+
+/**
+ * Default arable land allocation if no food_land_allocation row exists.
+ * Mirrors the schema defaults in the food_land_allocation table.
+ */
+export var DEFAULT_FOOD_ALLOCATION = {
+    grains_pct: 40,
+    livestock_pct: 20,
+    perishables_pct: 20,
+    cash_crops_pct: 20
+};
+
 // ==================== TRADE CALCULATION FUNCTIONS (STUBS) ====================
 
 /**
