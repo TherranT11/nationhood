@@ -1404,6 +1404,102 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Food stat effects failed (non-fatal):', foodEffErr);
     }
 
+    // 3.5d Stockpile processing — accumulate surplus, apply spoilage, draw down on shortage
+    // Runs for stockpilable sectors (grains_staples, cash_crops) after trade flows are computed.
+    try {
+        const stockpileSectors = ['grains_staples', 'cash_crops'];
+        const { data: stockpileRows } = await supabase
+            .from('food_stockpiles')
+            .select('nation_id, sector, reserve_value, max_capacity');
+
+        if (stockpileRows && stockpileRows.length > 0) {
+            // Group by nation
+            const stockByNation: Record<string, Record<string, any>> = {};
+            for (const row of stockpileRows) {
+                if (!stockByNation[row.nation_id]) stockByNation[row.nation_id] = {};
+                stockByNation[row.nation_id][row.sector] = row;
+            }
+
+            let stockUpdates = 0;
+            for (let ni = 0; ni < nationList.length; ni++) {
+                const n = nationList[ni];
+                const nationStocks = stockByNation[n.id];
+                if (!nationStocks) continue;
+
+                for (let si = 0; si < stockpileSectors.length; si++) {
+                    const sKey = stockpileSectors[si];
+                    const stock = nationStocks[sKey];
+                    if (!stock) continue;
+
+                    // Get trade flow data for this sector
+                    const flow = (foodFlowRows || []).find(
+                        (f: any) => f.nation_id === n.id && f.sector === sKey
+                    );
+
+                    const expCap = flow ? Number(flow.export_capacity) || 0 : 0;
+                    const expVol = flow ? Number(flow.export_volume) || 0 : 0;
+                    const impDem = flow ? Number(flow.import_demand) || 0 : 0;
+                    const impVol = flow ? Number(flow.import_volume) || 0 : 0;
+
+                    // Domestic retained = production - exports
+                    const domesticRetained = Math.max(0, expCap - expVol);
+                    // Domestic need = what we need + unmet import demand
+                    const domesticNeed = domesticRetained + impDem;
+                    // Total supply this tick = domestic retained + actual imports
+                    const totalSupply = domesticRetained + impVol;
+                    // Surplus = supply exceeds need
+                    const surplus = totalSupply - domesticNeed;
+
+                    // Calculate max capacity
+                    const maxCap = calculateStockpileCapacity(sKey, n);
+
+                    // Calculate spoilage
+                    const spoilagePct = calculateStockpileSpoilage(sKey, n);
+                    const currentReserve = Number(stock.reserve_value) || 0;
+                    const spoilageLoss = Math.round(currentReserve * (spoilagePct / 100));
+
+                    // Apply: spoilage first, then surplus/deficit
+                    let newReserve = currentReserve - spoilageLoss;
+                    let inflow = 0;
+                    let outflow = spoilageLoss;
+
+                    if (surplus > 0) {
+                        // Surplus flows into reserves (capped at capacity)
+                        inflow = Math.min(surplus, Math.max(0, maxCap - newReserve));
+                        newReserve += inflow;
+                    } else if (surplus < 0) {
+                        // Shortage draws from reserves
+                        const drawdown = Math.min(Math.abs(surplus), newReserve);
+                        outflow += drawdown;
+                        newReserve -= drawdown;
+                    }
+
+                    newReserve = Math.max(0, Math.round(newReserve));
+
+                    await supabase.from('food_stockpiles')
+                        .update({
+                            reserve_value: newReserve,
+                            max_capacity: maxCap,
+                            last_spoilage: spoilageLoss,
+                            last_inflow: inflow,
+                            last_outflow: outflow,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('nation_id', n.id)
+                        .eq('sector', sKey);
+
+                    stockUpdates++;
+                }
+            }
+
+            if (stockUpdates > 0) {
+                console.log(`[advanceTick] Stockpiles updated: ${stockUpdates} entries`);
+            }
+        }
+    } catch (stockErr) {
+        console.error('[advanceTick] Stockpile processing failed (non-fatal):', stockErr);
+    }
+
     // 3.6 Expire trade agreements (including economic aid) that have passed their expires_at_tick
     try {
         const expiredAgreements = await processExpiredTradeAgreements(supabase, newTick);

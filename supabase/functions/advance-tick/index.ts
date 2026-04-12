@@ -897,6 +897,111 @@ var DEFAULT_FOOD_ALLOCATION = {
     cash_crops_pct: 20
 };
 
+// ==================== GLOBAL AVERAGE UNIT PRICE ====================
+
+/**
+ * Base price per physical unit (tonnes) for food sub-sectors.
+ * Derived from SECTOR_DISPLAY_UNITS: factor = 1/100000000 means $100M = 1M tonnes,
+ * so 1 tonne = $100 at price_modifier 1.0.
+ */
+var FOOD_BASE_PRICE_PER_TONNE = 100;
+
+/**
+ * Get the global average price per tonne for a food sub-sector.
+ *
+ * @param {string} sectorKey  – food sub-sector key
+ * @param {number} priceMod   – current price_modifier from trade_flows (0.5–2.0)
+ * @returns {number} price per tonne in dollars
+ */
+function getGlobalAverageUnitPrice(sectorKey, priceMod) {
+    var mod = Number(priceMod) || 1.0;
+    return Math.round(FOOD_BASE_PRICE_PER_TONNE * mod * 100) / 100;
+}
+
+/**
+ * Format a price per tonne for display.
+ * @param {number} pricePerTonne – dollars per tonne
+ * @returns {string} e.g. "$92/tonne"
+ */
+function formatPricePerTonne(pricePerTonne) {
+    var p = Number(pricePerTonne) || 0;
+    if (p >= 1000) return '$' + (p / 1000).toFixed(1) + 'K/tonne';
+    return '$' + Math.round(p) + '/tonne';
+}
+
+// ==================== STOCKPILE MECHANICS ====================
+
+/**
+ * Stockpile configuration for sectors where stockpilable = true.
+ *
+ * Spoilage: percentage of reserves lost per tick to degradation.
+ * Scales with infrastructure — good warehousing halves spoilage.
+ *
+ * Capacity: max reserve = GDP × capacityFactor × (physical_infrastructure / 50).
+ * Converted to tonnes via display unit factor.
+ */
+var STOCKPILE_CONFIG = {
+    grains_staples: {
+        baseSpoilagePct: 2.0,       // 2% per tick (grain stores well)
+        infraThreshold: 60,          // infra above this halves spoilage
+        capacityFactor: 0.005,       // 0.5% of GDP as max reserve value
+        securityMonths: 6            // months of reserves for "food secure" bonus
+    },
+    cash_crops: {
+        baseSpoilagePct: 4.0,       // 4% per tick (cocoa, coffee degrade faster)
+        infraThreshold: 60,
+        capacityFactor: 0.003,       // 0.3% of GDP (less strategic need)
+        securityMonths: 3
+    }
+};
+
+/**
+ * Calculate spoilage rate for a nation's stockpile.
+ *
+ * @param {string} sectorKey – stockpilable sector key
+ * @param {Object} nation    – nation row with physical_infrastructure
+ * @returns {number} spoilage percentage per tick (0–100)
+ */
+function calculateStockpileSpoilage(sectorKey, nation) {
+    var cfg = STOCKPILE_CONFIG[sectorKey];
+    if (!cfg) return 0;
+    var basePct = cfg.baseSpoilagePct;
+    var infra = Number(nation.physical_infrastructure) || 0;
+    if (infra >= cfg.infraThreshold) {
+        basePct *= 0.5; // Good warehousing halves spoilage
+    } else if (infra < 30) {
+        basePct *= 2.0; // Poor infrastructure doubles spoilage
+    }
+    return Math.round(basePct * 100) / 100;
+}
+
+/**
+ * Calculate maximum stockpile capacity in dollar value.
+ *
+ * @param {string} sectorKey – stockpilable sector key
+ * @param {Object} nation    – nation row with gdp, physical_infrastructure
+ * @returns {number} max capacity in dollars
+ */
+function calculateStockpileCapacity(sectorKey, nation) {
+    var cfg = STOCKPILE_CONFIG[sectorKey];
+    if (!cfg) return 0;
+    var gdp = Number(nation.gdp) || 0;
+    var infra = Number(nation.physical_infrastructure) || 50;
+    return Math.round(gdp * cfg.capacityFactor * (infra / 50));
+}
+
+/**
+ * Calculate months of reserves coverage.
+ *
+ * @param {number} reserveValue     – current stockpile in dollars
+ * @param {number} monthlyConsumption – domestic consumption per tick (dollars)
+ * @returns {number} months of coverage
+ */
+function calculateReserveMonths(reserveValue, monthlyConsumption) {
+    if (!monthlyConsumption || monthlyConsumption <= 0) return 99;
+    return Math.round((reserveValue / monthlyConsumption) * 10) / 10;
+}
+
 // ==================== FOOD SECURITY STATUS ====================
 
 /**
@@ -31704,6 +31809,102 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (foodEffErr) {
         console.error('[advanceTick] Food stat effects failed (non-fatal):', foodEffErr);
+    }
+
+    // 3.5d Stockpile processing — accumulate surplus, apply spoilage, draw down on shortage
+    // Runs for stockpilable sectors (grains_staples, cash_crops) after trade flows are computed.
+    try {
+        const stockpileSectors = ['grains_staples', 'cash_crops'];
+        const { data: stockpileRows } = await supabase
+            .from('food_stockpiles')
+            .select('nation_id, sector, reserve_value, max_capacity');
+
+        if (stockpileRows && stockpileRows.length > 0) {
+            // Group by nation
+            const stockByNation: Record<string, Record<string, any>> = {};
+            for (const row of stockpileRows) {
+                if (!stockByNation[row.nation_id]) stockByNation[row.nation_id] = {};
+                stockByNation[row.nation_id][row.sector] = row;
+            }
+
+            let stockUpdates = 0;
+            for (let ni = 0; ni < nationList.length; ni++) {
+                const n = nationList[ni];
+                const nationStocks = stockByNation[n.id];
+                if (!nationStocks) continue;
+
+                for (let si = 0; si < stockpileSectors.length; si++) {
+                    const sKey = stockpileSectors[si];
+                    const stock = nationStocks[sKey];
+                    if (!stock) continue;
+
+                    // Get trade flow data for this sector
+                    const flow = (foodFlowRows || []).find(
+                        (f: any) => f.nation_id === n.id && f.sector === sKey
+                    );
+
+                    const expCap = flow ? Number(flow.export_capacity) || 0 : 0;
+                    const expVol = flow ? Number(flow.export_volume) || 0 : 0;
+                    const impDem = flow ? Number(flow.import_demand) || 0 : 0;
+                    const impVol = flow ? Number(flow.import_volume) || 0 : 0;
+
+                    // Domestic retained = production - exports
+                    const domesticRetained = Math.max(0, expCap - expVol);
+                    // Domestic need = what we need + unmet import demand
+                    const domesticNeed = domesticRetained + impDem;
+                    // Total supply this tick = domestic retained + actual imports
+                    const totalSupply = domesticRetained + impVol;
+                    // Surplus = supply exceeds need
+                    const surplus = totalSupply - domesticNeed;
+
+                    // Calculate max capacity
+                    const maxCap = calculateStockpileCapacity(sKey, n);
+
+                    // Calculate spoilage
+                    const spoilagePct = calculateStockpileSpoilage(sKey, n);
+                    const currentReserve = Number(stock.reserve_value) || 0;
+                    const spoilageLoss = Math.round(currentReserve * (spoilagePct / 100));
+
+                    // Apply: spoilage first, then surplus/deficit
+                    let newReserve = currentReserve - spoilageLoss;
+                    let inflow = 0;
+                    let outflow = spoilageLoss;
+
+                    if (surplus > 0) {
+                        // Surplus flows into reserves (capped at capacity)
+                        inflow = Math.min(surplus, Math.max(0, maxCap - newReserve));
+                        newReserve += inflow;
+                    } else if (surplus < 0) {
+                        // Shortage draws from reserves
+                        const drawdown = Math.min(Math.abs(surplus), newReserve);
+                        outflow += drawdown;
+                        newReserve -= drawdown;
+                    }
+
+                    newReserve = Math.max(0, Math.round(newReserve));
+
+                    await supabase.from('food_stockpiles')
+                        .update({
+                            reserve_value: newReserve,
+                            max_capacity: maxCap,
+                            last_spoilage: spoilageLoss,
+                            last_inflow: inflow,
+                            last_outflow: outflow,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('nation_id', n.id)
+                        .eq('sector', sKey);
+
+                    stockUpdates++;
+                }
+            }
+
+            if (stockUpdates > 0) {
+                console.log(`[advanceTick] Stockpiles updated: ${stockUpdates} entries`);
+            }
+        }
+    } catch (stockErr) {
+        console.error('[advanceTick] Stockpile processing failed (non-fatal):', stockErr);
     }
 
     // 3.6 Expire trade agreements (including economic aid) that have passed their expires_at_tick
