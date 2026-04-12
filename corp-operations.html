@@ -7244,8 +7244,156 @@ function renderActionsRightPanel() {
 }
 
 function actExecute(actionId, role) {
-    // Phase 3: Wire live action handlers
-    console.log('Execute action:', actionId, 'by', role);
+    switch (actionId) {
+        case 'statement': return actOpenStatement();
+        default: console.log('Action not yet wired:', actionId, role);
+    }
+}
+
+// ═══════════════════════════════════════════════════
+// CEO: Issue Statement ($20k → event_log)
+// ═══════════════════════════════════════════════════
+
+let _statementOpen = false;
+
+function actOpenStatement() {
+    if (_statementOpen) return;
+    _statementOpen = true;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'stmt-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:600;display:flex;align-items:center;justify-content:center;';
+    overlay.onclick = function(e) { if (e.target === overlay) actCloseStatement(); };
+
+    const corpName = faction?.faction_name || 'Corporation';
+    const ticker = (faction?.abbreviation || faction?.corp_ticker || '??').toUpperCase();
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    const ceo = getExecForRole('CEO');
+    const ceoName = ceo ? `${ceo.first_name} ${ceo.last_name}` : 'CEO';
+
+    overlay.innerHTML = `<div onclick="event.stopPropagation()" style="width:480px;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="padding:10px 16px;border-bottom:1px solid #2a2a24;background:#1c1c18;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:8px;color:#c8a832;">&#9679;</span>
+                    <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:2px;color:#9e9a92;text-transform:uppercase;">Issue Statement</span>
+                </div>
+                <span onclick="actCloseStatement()" style="font-family:var(--font-mono);font-size:14px;color:#6a6660;cursor:pointer;">&#215;</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">From:</span>
+                <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c8a832;">${escapeHtml(ticker)}</span>
+                <span style="font-size:10px;color:#e8e4dc;">${escapeHtml(corpName)}</span>
+                <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">&middot; ${escapeHtml(ceoName)}</span>
+            </div>
+        </div>
+        <div style="padding:12px 16px;">
+            <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;margin-bottom:6px;">PRESS RELEASE</div>
+            <textarea id="stmt-text" rows="4" maxlength="500" placeholder="Type your public statement here. All players will see this in the events feed."
+                style="width:100%;padding:8px 10px;font-family:var(--font-ui);font-size:11px;color:#e8e4dc;background:#1c1c18;border:1px solid #2a2a24;outline:none;resize:none;box-sizing:border-box;line-height:1.5;"></textarea>
+            <div style="display:flex;justify-content:space-between;margin-top:4px;">
+                <span style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">Visible to all players in all nations</span>
+                <span id="stmt-chars" style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">0/500</span>
+            </div>
+        </div>
+        <div style="padding:8px 16px;border-top:1px solid #2a2a24;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;gap:12px;">
+                    <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">COST</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#5cb85c;">$20k</div></div>
+                    <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">CASH</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${cash < 20000 ? '#c55' : '#e8e4dc'};">${hfFmtBig(cash)}</div></div>
+                </div>
+                <div style="display:flex;gap:6px;">
+                    <div onclick="actCloseStatement()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
+                    <div id="stmt-submit-btn" onclick="actSubmitStatement()" style="padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:#c8a832;cursor:pointer;">PUBLISH</div>
+                </div>
+            </div>
+            <div id="stmt-error" style="margin-top:4px;font-family:var(--font-mono);font-size:8px;color:#c55;display:none;"></div>
+        </div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+
+    // Wire char counter
+    const ta = document.getElementById('stmt-text');
+    const counter = document.getElementById('stmt-chars');
+    if (ta && counter) {
+        ta.addEventListener('input', function() {
+            counter.textContent = this.value.length + '/500';
+        });
+        ta.focus();
+    }
+}
+
+function actCloseStatement() {
+    const overlay = document.getElementById('stmt-overlay');
+    if (overlay) overlay.remove();
+    _statementOpen = false;
+}
+
+async function actSubmitStatement() {
+    if (!faction || !shard) return;
+    const ta = document.getElementById('stmt-text');
+    const errEl = document.getElementById('stmt-error');
+    const text = (ta?.value || '').trim();
+
+    if (!text) {
+        if (errEl) { errEl.textContent = 'Statement cannot be empty.'; errEl.style.display = 'block'; }
+        return;
+    }
+    if (text.length > 500) {
+        if (errEl) { errEl.textContent = 'Statement too long (max 500 chars).'; errEl.style.display = 'block'; }
+        return;
+    }
+
+    const cash = Number(faction.corp_cash_reserves ?? 0);
+    if (cash < 20000) {
+        if (errEl) { errEl.textContent = 'Insufficient cash. Need $20k.'; errEl.style.display = 'block'; }
+        return;
+    }
+
+    const btn = document.getElementById('stmt-submit-btn');
+    if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
+
+    const corpName = faction.faction_name || 'Corporation';
+    const ceo = getExecForRole('CEO');
+    const ceoName = ceo ? `${ceo.first_name} ${ceo.last_name}` : 'CEO';
+    const currentTick = shard.current_tick || 0;
+
+    // Deduct $20k
+    const { error: cashErr } = await _supabase.from('factions').update({
+        corp_cash_reserves: cash - 20000,
+    }).eq('id', faction.id);
+
+    if (cashErr) {
+        if (errEl) { errEl.textContent = 'Failed to deduct cost: ' + cashErr.message; errEl.style.display = 'block'; }
+        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+        return;
+    }
+
+    // Insert event
+    const { error: eventErr } = await _supabase.from('event_log').insert({
+        nation_id: faction.nation_id,
+        faction_id: faction.id,
+        event_name: corpName + ' — Press Release',
+        description_used: ceoName + ', CEO of ' + corpName + ': "' + text + '"',
+        category: 'business',
+        trigger_key: 'ceo_statement',
+        effects_applied: { cost: 20000, ceo: ceoName },
+        fired_at_tick: currentTick,
+    });
+
+    if (eventErr) {
+        // Refund on failure
+        await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
+        if (errEl) { errEl.textContent = 'Failed to publish: ' + eventErr.message; errEl.style.display = 'block'; }
+        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+        return;
+    }
+
+    // Update local state
+    faction.corp_cash_reserves = cash - 20000;
+
+    actCloseStatement();
 }
 
 function actSelectExec(idx) {
@@ -10492,6 +10640,9 @@ window.declineAllBids = declineAllBids;
 window.switchToActions = switchToActions;
 window.actSelectExec = actSelectExec;
 window.actExecute = actExecute;
+window.actOpenStatement = actOpenStatement;
+window.actCloseStatement = actCloseStatement;
+window.actSubmitStatement = actSubmitStatement;
 window.openExecSearch = openExecSearch;
 window.closeExecSearch = closeExecSearch;
 window.esSelectCandidate = esSelectCandidate;
