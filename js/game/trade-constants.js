@@ -99,11 +99,11 @@ for (var _tsi = 0; _tsi < TRADE_SECTORS.length; _tsi++) {
 //   others      $100M → 1 unit                   (mid-tier exporter ≈ 50 units)
 export var SECTOR_DISPLAY_UNITS = {
     fuel_energy:        { baseUnit: 'barrels per day',    scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 2500000000 },
-    food_agriculture:   { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
-    grains_staples:     { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
-    livestock_dairy:    { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
-    fruits_vegetables:  { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
-    cash_crops:         { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
+    food_agriculture:   { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 4000000000 },
+    grains_staples:     { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 4000000000 },
+    livestock_dairy:    { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 4000000000 },
+    fruits_vegetables:  { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 4000000000 },
+    cash_crops:         { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 4000000000 },
     minerals:           { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
     manufactured_goods: { baseUnit: 'TEU/year',           scaleLabel: 'thousand', scaleFactor: 1e3,  factor: 1 / 100000000  },
     arms:               { baseUnit: 'units/year',         scaleLabel: 'thousand', scaleFactor: 1e3,  factor: 1 / 100000000  },
@@ -431,10 +431,11 @@ export var DEFAULT_FOOD_ALLOCATION = {
 
 /**
  * Base price per physical unit (tonnes) for food sub-sectors.
- * Derived from SECTOR_DISPLAY_UNITS: factor = 1/100000000 means $100M = 1M tonnes,
- * so 1 tonne = $100 at price_modifier 1.0.
+ * Derived from SECTOR_DISPLAY_UNITS: factor = 1/4000000000 means $4B = 1M tonnes,
+ * so 1 tonne = $4,000 game-scale at price_modifier 1.0.
+ * This absorbs the BASE_TRADE_MULTIPLIER inflation to produce realistic tonnage.
  */
-export var FOOD_BASE_PRICE_PER_TONNE = 100;
+export var FOOD_BASE_PRICE_PER_TONNE = 4000;
 
 /**
  * Get the global average price per tonne for a food sub-sector.
