@@ -86,64 +86,64 @@ CREATE POLICY food_land_allocation_update ON food_land_allocation
 -- Design constraint: global demand should exceed supply by ~20%
 -- to create natural scarcity and trade pressure.
 
--- Vostia (arable=62, pop=22.5M)
--- Large agricultural nation, breadbasket of Meridian
+-- Vostia (arable=62, pop=22.5M) — MERIDIAN
+-- Breadbasket of Meridian. Heavy grain focus, minimal pastoral.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
-SELECT id, 45, 20, 15, 20 FROM nations WHERE name = 'Vostia'
+SELECT id, 55, 10, 10, 25 FROM nations WHERE name = 'Vostia'
 ON CONFLICT (nation_id) DO NOTHING;
 
--- Montequilla (arable=74, pop=4.2M)
--- Fertile heartland, agricultural powerhouse for its size
+-- Montequilla (arable=74, pop=4.2M) — CRUCERA
+-- Fertile heartland, agricultural powerhouse. Strong cash crop exports.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
-SELECT id, 35, 25, 15, 25 FROM nations WHERE name = 'Montequilla'
+SELECT id, 40, 15, 10, 35 FROM nations WHERE name = 'Montequilla'
 ON CONFLICT (nation_id) DO NOTHING;
 
--- Sangreza (arable=61, pop=12.5M)
--- Large diversified economy, substantial agricultural base
+-- Sangreza (arable=61, pop=12.5M) — CRUCERA
+-- Large diversified economy. Substantial cash crop and grain base.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
-SELECT id, 40, 20, 15, 25 FROM nations WHERE name = 'Sangreza'
+SELECT id, 45, 10, 10, 35 FROM nations WHERE name = 'Sangreza'
 ON CONFLICT (nation_id) DO NOTHING;
 
--- Melizea (arable=50, pop=5.8M)
--- Autocracy: food security focus + plantation cash crops
+-- Melizea (arable=50, pop=5.8M) — CRUCERA
+-- Autocracy: plantation economics dominate, food security secondary.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
-SELECT id, 40, 15, 15, 30 FROM nations WHERE name = 'Melizea'
+SELECT id, 40, 10, 10, 40 FROM nations WHERE name = 'Melizea'
 ON CONFLICT (nation_id) DO NOTHING;
 
--- San Estrella (arable=42, pop=~8M)
--- Island nation: tropical cash crops and fishing
+-- San Estrella (arable=42, pop=~8M) — CRUCERA
+-- Island nation: tropical cash crops dominate, fishing supplements perishables.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
-SELECT id, 35, 15, 20, 30 FROM nations WHERE name = 'San Estrella'
+SELECT id, 30, 10, 20, 40 FROM nations WHERE name = 'San Estrella'
 ON CONFLICT (nation_id) DO NOTHING;
 
--- Flandis (arable=34, pop=15.9M)
--- Limited land, huge population: prioritize staples
+-- Flandis (arable=34, pop=15.9M) — MERIDIAN
+-- Limited land, huge population. Grains maximized, minimal pastoral.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
-SELECT id, 50, 15, 15, 20 FROM nations WHERE name = 'Flandis'
+SELECT id, 60, 10, 10, 20 FROM nations WHERE name = 'Flandis'
 ON CONFLICT (nation_id) DO NOTHING;
 
--- Avelia (arable=29, pop=9.5M)
--- Wealthy developed nation: diverse diet, less cash crop dependency
+-- Avelia (arable=29, pop=9.5M) — CRUCERA
+-- Wealthy developed nation: diverse diet, imports heavily.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
-SELECT id, 40, 20, 25, 15 FROM nations WHERE name = 'Avelia'
+SELECT id, 45, 15, 20, 20 FROM nations WHERE name = 'Avelia'
 ON CONFLICT (nation_id) DO NOTHING;
 
--- Palvera (arable=25, pop=6.65M)
--- Limited land, moderate economy: staple-focused with some export crops
+-- Palvera (arable=25, pop=6.65M) — CRUCERA
+-- Limited land, moderate economy: staple-focused with cash crop exports.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
-SELECT id, 45, 15, 15, 25 FROM nations WHERE name = 'Palvera'
+SELECT id, 45, 10, 10, 35 FROM nations WHERE name = 'Palvera'
 ON CONFLICT (nation_id) DO NOTHING;
 
--- Calveth (arable=19, pop=13M)
--- Constitutional monarchy, minimal land: staples and imports
+-- Calveth (arable=19, pop=13M) — MERIDIAN
+-- Constitutional monarchy, minimal land. Grains maximized, minimal pastoral.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
-SELECT id, 45, 20, 20, 15 FROM nations WHERE name = 'Calveth'
+SELECT id, 55, 10, 10, 25 FROM nations WHERE name = 'Calveth'
 ON CONFLICT (nation_id) DO NOTHING;
 
--- Sierramar (arable=18, pop=3.8M)
--- Tiny island: fishing, tropical fruits, coffee/sugarcane
+-- Sierramar (arable=18, pop=3.8M) — CRUCERA
+-- Tiny island: fishing, tropical fruits, coffee/sugarcane. Cash crops dominate.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
-SELECT id, 30, 10, 30, 30 FROM nations WHERE name = 'Sierramar'
+SELECT id, 25, 10, 25, 40 FROM nations WHERE name = 'Sierramar'
 ON CONFLICT (nation_id) DO NOTHING;
 
 COMMIT;
