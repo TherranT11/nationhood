@@ -1345,6 +1345,62 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Trade imbalance auto-spawn failed (non-fatal):', tiErr);
     }
 
+    // 3.5c Food sub-sector stat effects — apply ongoing supply/shortage/environmental nudges
+    // Runs after trade engine so trade_flows reflect current tick data.
+    // Effects: supplied sectors give positive nudges, shortage penalizes stats,
+    // livestock/cash crops generate environmental + structural effects.
+    try {
+        const { data: foodFlowRows } = await supabase
+            .from('trade_flows')
+            .select('nation_id, sector, export_capacity, export_volume, import_demand, import_volume')
+            .eq('tick', newTick)
+            .in('sector', FOOD_SUBSECTOR_KEYS);
+
+        if (foodFlowRows && foodFlowRows.length > 0) {
+            // Group by nation
+            const nationFoodFlows: Record<string, Record<string, any>> = {};
+            for (const row of foodFlowRows) {
+                if (!nationFoodFlows[row.nation_id]) nationFoodFlows[row.nation_id] = {};
+                nationFoodFlows[row.nation_id][row.sector] = row;
+            }
+
+            let foodEffectCount = 0;
+            for (const nationId in nationFoodFlows) {
+                const effects = computeFoodStatEffects(nationFoodFlows[nationId]);
+                if (!effects || Object.keys(effects).length === 0) continue;
+
+                // Fetch current nation stats for the affected keys
+                const affectedKeys = Object.keys(effects);
+                const { data: nationRow } = await supabase
+                    .from('nations')
+                    .select(affectedKeys.join(', '))
+                    .eq('id', nationId)
+                    .single();
+
+                if (!nationRow) continue;
+
+                const updates: Record<string, number> = {};
+                for (const statKey of affectedKeys) {
+                    const currentVal = Number(nationRow[statKey] ?? 50);
+                    const delta = effects[statKey];
+                    const newVal = Math.round(Math.max(0, Math.min(100, currentVal + delta)) * 10) / 10;
+                    if (newVal !== currentVal) updates[statKey] = newVal;
+                }
+
+                if (Object.keys(updates).length > 0) {
+                    await supabase.from('nations').update(updates).eq('id', nationId);
+                    foodEffectCount++;
+                }
+            }
+
+            if (foodEffectCount > 0) {
+                console.log(`[advanceTick] Food stat effects applied to ${foodEffectCount} nation(s)`);
+            }
+        }
+    } catch (foodEffErr) {
+        console.error('[advanceTick] Food stat effects failed (non-fatal):', foodEffErr);
+    }
+
     // 3.6 Expire trade agreements (including economic aid) that have passed their expires_at_tick
     try {
         const expiredAgreements = await processExpiredTradeAgreements(supabase, newTick);
