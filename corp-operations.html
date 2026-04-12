@@ -2713,8 +2713,8 @@ body.light-mode .av-empty__text { color: #1a1a17; }
 </div>
 
 <!-- Executive Search Modal -->
-<div id="exec-search-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;">
-  <div style="width:680px;max-height:94vh;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
+<div id="exec-search-overlay" onclick="closeExecSearch()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;">
+  <div onclick="event.stopPropagation()" style="width:680px;max-height:94vh;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
     <div id="exec-search-content" style="display:flex;flex-direction:column;overflow:hidden;max-height:94vh;"></div>
   </div>
 </div>
@@ -7262,12 +7262,254 @@ function openExecSearch(role) {
 
 function closeExecSearch() {
     document.getElementById('exec-search-overlay').style.display = 'none';
+    _execSearchRole = null;
+    _execSearchSelected = -1;
+}
+
+function getPoolCandidatesForRole(role) {
+    return _execPool.filter(c =>
+        c.status === 'available' &&
+        Array.isArray(c.specializations) &&
+        c.specializations.includes(role)
+    ).sort((a, b) => b.skill - a.skill);
+}
+
+function esSelectCandidate(idx) {
+    _execSearchSelected = idx;
+    renderExecSearchModal();
+}
+
+async function esHireCandidate() {
+    if (!faction || !_execSearchRole || _execSearchSelected < 0) return;
+    const candidates = getPoolCandidatesForRole(_execSearchRole);
+    const cand = candidates[_execSearchSelected];
+    if (!cand) return;
+
+    const currentTick = shard?.current_tick || 0;
+
+    // Disable button
+    const btn = document.getElementById('es-hire-btn');
+    if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
+
+    // Insert into corp_executives
+    const { error: insertErr } = await _supabase.from('corp_executives').insert({
+        faction_id: faction.id,
+        role: _execSearchRole,
+        first_name: cand.first_name,
+        last_name: cand.last_name,
+        age: cand.age,
+        origin_nation: cand.origin_nation,
+        skill: cand.skill,
+        salary_per_year: cand.required_salary,
+        contract_years: cand.required_years,
+        contract_start_tick: currentTick,
+        contract_end_tick: currentTick + (cand.required_years * 12),
+        status: 'active',
+    });
+
+    if (insertErr) {
+        const errEl = document.getElementById('es-error');
+        if (errEl) { errEl.textContent = 'Failed: ' + insertErr.message; errEl.style.display = 'block'; }
+        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+        return;
+    }
+
+    // Mark pool candidate as hired
+    await _supabase.from('executive_pool').update({
+        status: 'hired',
+        hired_by_faction_id: faction.id,
+    }).eq('id', cand.id);
+
+    // Refresh data + close modal + re-render
+    closeExecSearch();
+    await loadExecutives();
+    // Select the newly hired role
+    _selectedExecIdx = EXEC_ROLES.indexOf(_execSearchRole);
+    if (_selectedExecIdx < 0) _selectedExecIdx = 0;
+    renderActionsTab();
 }
 
 function renderExecSearchModal() {
     const container = document.getElementById('exec-search-content');
-    if (!container) return;
-    container.innerHTML = `<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">Executive Search — coming in Phase 2D</div>`;
+    if (!container || !_execSearchRole) return;
+
+    const role = _execSearchRole;
+    const meta = EXEC_ROLE_META[role];
+    const candidates = getPoolCandidatesForRole(role);
+    const sel = _execSearchSelected >= 0 ? candidates[_execSearchSelected] : null;
+
+    let html = '';
+
+    // ── Header ──
+    html += `<div style="padding:10px 16px;border-bottom:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:8px;color:${meta.color};">&#9679;</span>
+                <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:2px;color:#9e9a92;text-transform:uppercase;">Executive Search</span>
+            </div>
+            <span onclick="closeExecSearch()" style="font-family:var(--font-mono);font-size:14px;color:#6a6660;cursor:pointer;">&#215;</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+            <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">Hiring:</span>
+            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${meta.color};">${escapeHtml(role)}</span>
+            <span style="font-size:10px;color:var(--text-bright,#f0efe6);">${escapeHtml(meta.fullTitle)}</span>
+        </div>
+    </div>`;
+
+    // ── Two-panel body ──
+    html += '<div style="display:flex;flex:1;min-height:0;overflow:hidden;">';
+
+    // ═══ LEFT: Candidate list ═══
+    html += '<div style="width:240px;border-right:1px solid #2a2a24;overflow-y:auto;flex-shrink:0;">';
+
+    if (candidates.length === 0) {
+        html += `<div style="padding:24px 16px;text-align:center;">
+            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">No candidates available for this role in your nation.</div>
+        </div>`;
+    }
+
+    for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i];
+        const isSel = _execSearchSelected === i;
+        const skC = skillColor(c.skill);
+
+        html += `<div onclick="esSelectCandidate(${i})" style="
+            padding:8px 12px;
+            border-bottom:1px solid #2a2a24;
+            border-left:3px solid ${isSel ? meta.color : 'transparent'};
+            background:${isSel ? meta.color + '08' : 'transparent'};
+            cursor:pointer;
+        ">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:32px;height:32px;background:${meta.color}10;border:1px solid ${meta.color}22;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;font-weight:700;color:${meta.color};flex-shrink:0;">${escapeHtml(getInitials(c.first_name, c.last_name))}</div>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:10px;font-weight:600;color:${isSel ? 'var(--text-bright,#f0efe6)' : '#9e9a92'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}</div>
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
+                        <div style="display:flex;align-items:center;gap:3px;flex:1;">
+                            <div style="flex:1;height:2px;background:#2a2a24;">
+                                <div style="width:${c.skill}%;height:100%;background:${skC};"></div>
+                            </div>
+                            <span style="font-family:var(--font-mono);font-size:7px;color:${skC};width:14px;text-align:right;">${c.skill}</span>
+                        </div>
+                        <span style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">${actFmtSalary(c.required_salary)}/yr</span>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    html += '</div>'; // close left panel
+
+    // ═══ RIGHT: Candidate detail ═══
+    html += '<div style="flex:1;overflow-y:auto;">';
+
+    if (!sel) {
+        html += `<div style="padding:40px 20px;text-align:center;">
+            <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-bottom:8px;">Select a candidate</div>
+            <div style="font-size:10px;color:#6a6660;">${candidates.length} candidate${candidates.length !== 1 ? 's' : ''} available for ${escapeHtml(role)}</div>
+        </div>`;
+    } else {
+        const totalComp = sel.required_salary * sel.required_years;
+        const skC = skillColor(sel.skill);
+
+        // Identity header
+        html += `<div style="padding:16px;border-bottom:1px solid #2a2a24;">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <div style="width:52px;height:52px;background:${meta.color}12;border:1px solid ${meta.color}28;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:16px;font-weight:700;color:${meta.color};">${escapeHtml(getInitials(sel.first_name, sel.last_name))}</div>
+                <div>
+                    <div style="font-size:16px;font-weight:700;color:var(--text-bright,#f0efe6);">${escapeHtml(sel.first_name)} ${escapeHtml(sel.last_name)}</div>
+                    <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;margin-top:2px;">${escapeHtml(sel.origin_nation)} &middot; Age ${sel.age}</div>
+                </div>
+            </div>
+        </div>`;
+
+        // Stats row
+        html += `<div style="display:flex;gap:0;border-bottom:1px solid #2a2a24;">
+            <div style="flex:1;padding:10px 12px;text-align:center;border-right:1px solid #2a2a24;">
+                <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">SKILL</div>
+                <div style="display:flex;align-items:center;justify-content:center;gap:4px;margin-top:4px;">
+                    <div style="width:50px;height:3px;background:#2a2a24;">
+                        <div style="width:${sel.skill}%;height:100%;background:${skC};"></div>
+                    </div>
+                    <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${skC};">${sel.skill}</span>
+                </div>
+            </div>
+            <div style="flex:1;padding:10px 12px;text-align:center;border-right:1px solid #2a2a24;">
+                <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">AGE</div>
+                <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--text-bright,#f0efe6);margin-top:4px;">${sel.age}</div>
+            </div>
+            <div style="flex:1;padding:10px 12px;text-align:center;">
+                <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">ORIGIN</div>
+                <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-bright,#f0efe6);margin-top:4px;">${escapeHtml(sel.origin_nation)}</div>
+            </div>
+        </div>`;
+
+        // Specializations
+        html += `<div style="padding:10px 16px;border-bottom:1px solid #2a2a24;">
+            <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:6px;">Role Specializations</div>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">`;
+        for (const spec of (sel.specializations || [])) {
+            const specMeta = EXEC_ROLE_META[spec];
+            const isTarget = spec === role;
+            html += `<span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 8px;color:${isTarget ? '#000' : (specMeta?.color || '#9e9a92')};background:${isTarget ? (specMeta?.color || '#5a8aaa') : (specMeta?.color || '#5a8aaa') + '10'};border:1px solid ${isTarget ? 'transparent' : (specMeta?.color || '#5a8aaa') + '30'};">${escapeHtml(spec)}</span>`;
+        }
+        html += '</div></div>';
+
+        // Compensation breakdown
+        html += `<div style="padding:10px 16px;border-bottom:1px solid #2a2a24;">
+            <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:6px;">Contract Terms</div>
+            <div style="background:#1c1c18;border:1px solid #2a2a24;padding:8px 12px;">
+                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">CONTRACT LENGTH</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-bright,#f0efe6);">${sel.required_years} years</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">ANNUAL SALARY</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c84;">${actFmtSalary(sel.required_salary)}/yr</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:3px 0;">
+                    <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:var(--text-bright,#f0efe6);">TOTAL CONTRACT VALUE</span>
+                    <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c55;">${actFmtSalary(totalComp)}</span>
+                </div>
+            </div>
+            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:4px;">Salary is deducted from cash reserves each tick as an operating expense.</div>
+        </div>`;
+
+        // Skill assessment
+        const skillLabel = sel.skill >= 80 ? 'EXCEPTIONAL' : sel.skill >= 65 ? 'STRONG' : sel.skill >= 50 ? 'COMPETENT' : sel.skill >= 35 ? 'DEVELOPING' : 'WEAK';
+        const skillDescr = sel.skill >= 80 ? 'Elite talent. Actions have high success rate and reduced costs.' : sel.skill >= 65 ? 'Strong performer. Reliable outcomes across most actions.' : sel.skill >= 50 ? 'Adequate for the role. Outcomes are average.' : sel.skill >= 35 ? 'Below average. Actions may fail or cost more. Consider alternatives.' : 'Poor fit. High failure rates. Replacement recommended.';
+        html += `<div style="padding:10px 16px;">
+            <div style="padding:6px 10px;background:${skC}08;border:1px solid ${skC}18;">
+                <div style="font-family:var(--font-mono);font-size:8px;color:${skC};letter-spacing:0.8px;margin-bottom:2px;">${skillLabel}</div>
+                <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">${skillDescr}</div>
+            </div>
+        </div>`;
+    }
+
+    html += '</div>'; // close right panel
+    html += '</div>'; // close two-panel body
+
+    // ── Footer ──
+    html += `<div style="padding:10px 16px;border-top:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;gap:12px;">`;
+    if (sel) {
+        html += `<div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">CANDIDATE</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text-bright,#f0efe6);">${escapeHtml(sel.first_name)} ${escapeHtml(sel.last_name)}</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">SKILL</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${skillColor(sel.skill)};">${sel.skill}</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">SALARY</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#c84;">${actFmtSalary(sel.required_salary)}/yr</div></div>`;
+    } else {
+        html += `<div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">Select a candidate to hire</div>`;
+    }
+    html += `</div>
+        <div style="display:flex;gap:6px;">
+            <div onclick="closeExecSearch()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
+            <div id="es-hire-btn" onclick="esHireCandidate()" style="padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:${sel ? '#000' : '#6a6660'};background:${sel ? meta.color : '#2a2a24'};cursor:${sel ? 'pointer' : 'not-allowed'};${sel ? '' : 'opacity:0.4;pointer-events:none;'}">HIRE</div>
+        </div>
+    </div>`;
+
+    // Error display
+    html += '<div id="es-error" style="padding:4px 16px;font-family:var(--font-mono);font-size:8px;color:#c55;display:none;"></div>';
+
+    container.innerHTML = html;
 }
 
 function hfGetCapacity() {
@@ -10249,8 +10491,11 @@ window.declineAllBids = declineAllBids;
 
 window.switchToActions = switchToActions;
 window.actSelectExec = actSelectExec;
+window.actExecute = actExecute;
 window.openExecSearch = openExecSearch;
 window.closeExecSearch = closeExecSearch;
+window.esSelectCandidate = esSelectCandidate;
+window.esHireCandidate = esHireCandidate;
 window.switchToExpansion = switchToExpansion;
 window.switchToOperations = switchToOperations;
 window.hfSetChange = hfSetChange;
