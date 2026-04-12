@@ -5901,6 +5901,32 @@ function renderDeliveries() {
     list.innerHTML = html;
 }
 
+// ── Shipping shared helpers ──
+let _arClaimPending = false;
+let _avReleasePending = false;
+
+function fmtCash(n) {
+    if (Math.abs(n) >= 1e9) return '$' + (n / 1e9).toFixed(1) + 'B';
+    if (Math.abs(n) >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
+    if (Math.abs(n) >= 1e3) return '$' + Math.round(n / 1000) + 'k';
+    return '$' + Math.round(n);
+}
+
+async function refreshFactionAndCash() {
+    var { data: updated, error: fetchErr } = await _supabase.from('factions').select('*').eq('id', faction.id).single();
+    if (fetchErr) { console.warn('Faction refresh failed:', fetchErr.message); return; }
+    if (updated) faction = updated;
+    var cashEl = document.getElementById('topbar-cash');
+    if (cashEl) cashEl.textContent = 'CASH: ' + fmtCash(Number(faction.corp_cash_reserves ?? 0));
+}
+
+const DEMAND_COLORS = {
+    CRITICAL: '#c55',
+    HIGH:     '#5c5',
+    MODERATE: '#ca5',
+    LOW:      '#6a6660',
+};
+
 // ── Available Routes (Shipping corps) ──
 let arRoutes = [];
 let arFilter = 'ALL';
@@ -5946,12 +5972,12 @@ async function loadAvailableRoutes() {
         .order('estimated_revenue', { ascending: false });
 
     if (error) {
-        console.warn('Failed to load available routes:', error.message);
         arRoutes = [];
     } else {
         arRoutes = data || [];
     }
 
+    arSelected = -1;
     renderAvailableRoutes();
 }
 
@@ -5994,10 +6020,10 @@ function renderAvailableRoutes() {
     // Header count
     document.getElementById('ar-count').textContent = arRoutes.length + ' ROUTES';
 
-    // Footer scope counts
-    const coastal = arRoutes.filter(r => r.scope === 'COASTAL').length;
-    const intl = arRoutes.filter(r => r.scope === 'INTERNATIONAL').length;
-    const gov = arRoutes.filter(r => r.scope === 'GOVERNMENT').length;
+    // Footer scope counts (single pass)
+    var counts = { COASTAL: 0, INTERNATIONAL: 0, GOVERNMENT: 0 };
+    arRoutes.forEach(function(r) { if (counts[r.scope] !== undefined) counts[r.scope]++; });
+    var coastal = counts.COASTAL, intl = counts.INTERNATIONAL, gov = counts.GOVERNMENT;
     document.getElementById('ar-footer-counts').innerHTML =
         '<div class="ar-footer__count"><div class="ar-footer__count-dot" style="background:#8b9a6b"></div><span class="ar-footer__count-label">COASTAL</span><span class="ar-footer__count-num">' + coastal + '</span></div>'
         + '<div class="ar-footer__count"><div class="ar-footer__count-dot" style="background:#5a8aaa"></div><span class="ar-footer__count-label">INTL</span><span class="ar-footer__count-num">' + intl + '</span></div>'
@@ -6024,7 +6050,7 @@ function renderAvailableRoutes() {
         const isSel = arSelected === i;
         const sm = AR_SCOPE_META[route.scope] || AR_SCOPE_META.INTERNATIONAL;
         const isGov = route.scope === 'GOVERNMENT';
-        const dm = route.demand_level ? { CRITICAL: { color: '#c55', label: 'CRITICAL' }, HIGH: { color: '#5c5', label: 'HIGH' }, MODERATE: { color: '#ca5', label: 'MODERATE' }, LOW: { color: '#6a6660', label: 'LOW' } }[route.demand_level] : null;
+        const dm = route.demand_level && DEMAND_COLORS[route.demand_level] ? { color: DEMAND_COLORS[route.demand_level], label: route.demand_level } : null;
         const comp = Number(route.competition_count || 0);
         const compColor = comp === 0 ? '#5c5' : comp <= 2 ? '#ca5' : '#c84';
 
@@ -6081,7 +6107,7 @@ function renderAvailableRoutes() {
                 + '</div>';
             html += '<div style="flex:0.6;padding:3px 8px;border-right:1px solid var(--border-0);text-align:center">'
                 + '<div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);letter-spacing:0.5px">TRANSIT</div>'
-                + '<div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-muted);margin-top:1px">' + (route.transit_ticks || '?') + ' ticks</div>'
+                + '<div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-muted);margin-top:1px">' + (route.transit_ticks || '?') + ' tick' + ((route.transit_ticks || 0) !== 1 ? 's' : '') + '</div>'
                 + '</div>';
             html += '<div style="flex:1;padding:3px 8px;text-align:right">'
                 + '<div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);letter-spacing:0.5px">EST. REV</div>'
@@ -6144,7 +6170,7 @@ function renderAvailableRoutes() {
                 + '<span style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted)">' + (route.proximity != null ? route.proximity : '?') + ' / 100</span></div>';
             html += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border-0)">'
                 + '<span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim)">CARGO</span>'
-                + '<span style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted)">' + escapeHtml(route.goods_name || '?') + '</span></div>';
+                + '<span style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted)">' + escapeHtml(route.goods_name || 'Unknown') + '</span></div>';
             if (route.goods_description && !isGov) {
                 html += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border-0)">'
                     + '<span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim)">CONTENTS</span>'
@@ -6198,12 +6224,11 @@ function arSelectRoute(idx) {
 }
 
 async function arClaimRoute() {
-    if (arSelected < 0 || !faction || !shard) return;
+    if (_arClaimPending || arSelected < 0 || !faction || !shard) return;
     var filtered = arGetFiltered();
     var route = filtered[arSelected];
     if (!route) return;
 
-    // Check fleet capacity before calling RPC
     var fleetCap = Number(faction.shipping_fleet_capacity ?? 0);
     var fleetDep = Number(faction.shipping_fleet_deployed ?? 0);
     if (fleetDep >= fleetCap) {
@@ -6211,44 +6236,31 @@ async function arClaimRoute() {
         return;
     }
 
-    // Disable button during request
+    _arClaimPending = true;
     var btn = document.getElementById('ar-claim-btn');
-    var prevText = btn.textContent;
     btn.textContent = 'CLAIMING...';
     btn.className = 'ar-claim-btn';
 
-    var { data, error } = await _supabase.rpc('claim_shipping_route', {
-        p_faction_id: faction.id,
-        p_route_id: route.id,
-        p_current_tick: shard.current_tick
-    });
+    try {
+        var { data, error } = await _supabase.rpc('claim_shipping_route', {
+            p_faction_id: faction.id,
+            p_route_id: route.id,
+            p_current_tick: shard.current_tick
+        });
 
-    if (error) {
-        alert('Claim failed: ' + error.message);
-        btn.textContent = prevText;
-        btn.className = 'ar-claim-btn active';
-        return;
+        if (error) { alert('Claim failed: ' + error.message); return; }
+        if (data && !data.success) { alert(data.error || 'Claim failed.'); return; }
+
+        await refreshFactionAndCash();
+        arSelected = -1;
+        await Promise.all([loadAvailableRoutes(), loadActiveVoyages()]);
+    } catch (e) {
+        alert('Claim failed: ' + (e.message || 'Network error'));
+    } finally {
+        _arClaimPending = false;
+        btn.textContent = 'CLAIM ROUTE';
+        btn.className = 'ar-claim-btn' + (arSelected >= 0 ? ' active' : '');
     }
-    if (data && !data.success) {
-        alert(data.error || 'Claim failed.');
-        btn.textContent = prevText;
-        btn.className = 'ar-claim-btn active';
-        return;
-    }
-
-    // Refresh faction data (fleet counts + cash)
-    var { data: updated } = await _supabase.from('factions').select('*').eq('id', faction.id).single();
-    if (updated) faction = updated;
-
-    // Update cash display
-    var cash = Number(faction.corp_cash_reserves ?? 0);
-    var cashStr = cash >= 1e9 ? '$' + (cash / 1e9).toFixed(1) + 'B' : cash >= 1e6 ? '$' + (cash / 1e6).toFixed(1) + 'M' : '$' + Math.round(cash / 1000) + 'k';
-    var cashEl = document.getElementById('topbar-cash');
-    if (cashEl) cashEl.textContent = 'CASH: ' + cashStr;
-
-    // Clear selection and refresh both containers
-    arSelected = -1;
-    await Promise.all([loadAvailableRoutes(), loadActiveVoyages()]);
 }
 
 // ── Active Voyages (Shipping corps) ──
@@ -6281,24 +6293,27 @@ function avToggle(idx) {
 }
 
 async function avRelease(claimId) {
-    if (!faction || !shard) return;
-    const { data, error } = await _supabase.rpc('release_shipping_route', {
-        p_faction_id: faction.id,
-        p_claim_id: claimId,
-        p_current_tick: shard.current_tick
-    });
-    if (error) { console.error('Release failed:', error.message); return; }
-    if (data && !data.success) { console.error('Release failed:', data.error); return; }
+    if (_avReleasePending || !faction || !shard) return;
+    _avReleasePending = true;
 
-    avSelected = -1;
-    const { data: updated } = await _supabase.from('factions').select('*').eq('id', faction.id).single();
-    if (updated) faction = updated;
-    await loadActiveVoyages();
+    try {
+        var { data, error } = await _supabase.rpc('release_shipping_route', {
+            p_faction_id: faction.id,
+            p_claim_id: claimId,
+            p_current_tick: shard.current_tick
+        });
 
-    const cash = Number(faction.corp_cash_reserves ?? 0);
-    const cashStr = cash >= 1e9 ? '$' + (cash / 1e9).toFixed(1) + 'B' : cash >= 1e6 ? '$' + (cash / 1e6).toFixed(1) + 'M' : '$' + Math.round(cash / 1000) + 'k';
-    const cashEl = document.getElementById('topbar-cash');
-    if (cashEl) cashEl.textContent = 'CASH: ' + cashStr;
+        if (error) { alert('Release failed: ' + error.message); return; }
+        if (data && !data.success) { alert(data.error || 'Release failed.'); return; }
+
+        avSelected = -1;
+        await refreshFactionAndCash();
+        await Promise.all([loadAvailableRoutes(), loadActiveVoyages()]);
+    } catch (e) {
+        alert('Release failed: ' + (e.message || 'Network error'));
+    } finally {
+        _avReleasePending = false;
+    }
 }
 
 function renderActiveVoyages() {
@@ -6362,7 +6377,7 @@ function renderActiveVoyages() {
             const started = claim.transit_started_tick || currentTick;
             const arrives = claim.transit_arrives_tick || (started + (route.transit_ticks || 2));
             const total = arrives - started;
-            const elapsed = Math.min(currentTick - started, total);
+            const elapsed = Math.max(0, Math.min(currentTick - started, total));
             const pct = total > 0 ? Math.round((elapsed / total) * 100) : 0;
             statusLabel = 'IN TRANSIT (' + elapsed + '/' + total + ')';
             transitBar = '<div class="av-transit-bar"><div class="av-transit-bar__fill" style="width:' + pct + '%"></div></div>';
@@ -6372,14 +6387,14 @@ function renderActiveVoyages() {
         const share = Number(claim.market_share_pct || 0);
         const transits = claim.transits_completed || 0;
         const claimRev = Number(claim.total_revenue || 0);
-        const demandColor = route.demand_level === 'CRITICAL' ? 'var(--red)' : route.demand_level === 'HIGH' ? 'var(--orange)' : route.demand_level === 'MODERATE' ? 'var(--amber)' : 'var(--teal)';
+        const demandColor = DEMAND_COLORS[route.demand_level] || '#6a6660';
 
         html += '<div class="av-item" onclick="avToggle(' + i + ')">'
             + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px;">'
             + '<div class="av-item__route">' + escapeHtml(route.origin_port || '?') + ' → ' + escapeHtml(route.destination_port || '?') + '</div>'
             + '<span class="av-status ' + statusClass + '">' + statusLabel + '</span>'
             + '</div>'
-            + '<div class="av-item__cargo">' + escapeHtml(route.goods_name || 'Unknown Cargo') + ' · ' + escapeHtml(route.vessel_class || '?') + '</div>'
+            + '<div class="av-item__cargo">' + escapeHtml(route.goods_name || 'Unknown') + ' · ' + escapeHtml(route.vessel_class || '?') + '</div>'
             + transitBar
             + '<div class="av-item__stats">'
             + '<div class="av-stat"><div class="av-stat__label">REV/TRIP</div><div class="av-stat__value" style="color:var(--green)">' + fmtBig(revTrip) + '</div></div>'
@@ -6397,7 +6412,7 @@ function renderActiveVoyages() {
                 + '<div class="av-detail-row"><span class="av-detail-label">TRANSIT TIME</span><span class="av-detail-value">' + (route.transit_ticks || '?') + ' ticks</span></div>'
                 + '<div class="av-detail-row"><span class="av-detail-label">TRADE VOLUME</span><span class="av-detail-value">' + fmtBig(Number(route.trade_volume || 0)) + '</span></div>'
                 + '<div class="av-detail-row"><span class="av-detail-label">TARIFF</span><span class="av-detail-value">' + Number(route.tariff_rate || 0).toFixed(1) + '%</span></div>'
-                + '<div class="av-detail-row"><span class="av-detail-label">COMPETITION</span><span class="av-detail-value">' + (route.competition_count || 1) + ' corps</span></div>'
+                + '<div class="av-detail-row"><span class="av-detail-label">COMPETITION</span><span class="av-detail-value">' + (route.competition_count ?? 0) + ' corps</span></div>'
                 + '<div class="av-detail-row"><span class="av-detail-label">DEMAND</span><span class="av-detail-value" style="color:' + demandColor + '">' + (route.demand_level || '?') + '</span></div>'
                 + (route.trade_agreement_name ? '<div class="av-detail-row"><span class="av-detail-label">AGREEMENT</span><span class="av-detail-value" style="color:var(--teal)">' + escapeHtml(route.trade_agreement_name) + '</span></div>' : '')
                 + '<div class="av-detail-row"><span class="av-detail-label">CLAIMED</span><span class="av-detail-value">Tick ' + (claim.claimed_at_tick || '?') + '</span></div>'
@@ -6715,9 +6730,7 @@ async function init() {
     // Cash display next to abbreviation
     const cashEl = document.getElementById('topbar-cash');
     if (cashEl) {
-        const cash = Number(faction.corp_cash_reserves ?? 0);
-        const cashStr = cash >= 1e9 ? '$' + (cash / 1e9).toFixed(1) + 'B' : cash >= 1e6 ? '$' + (cash / 1e6).toFixed(1) + 'M' : '$' + Math.round(cash / 1000) + 'k';
-        cashEl.textContent = 'CASH: ' + cashStr;
+        cashEl.textContent = 'CASH: ' + fmtCash(Number(faction.corp_cash_reserves ?? 0));
     }
     // AP not used for corporations — hide the display
     const apEl = document.getElementById('topbar-ap');
