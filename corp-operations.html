@@ -2344,7 +2344,7 @@ body.light-mode .av-empty__text { color: #1a1a17; }
     <a href="corp-dashboard.html" class="corp-nav__tab" data-tab="home">Home</a>
     <a href="corp-operations.html" class="corp-nav__tab active" data-tab="operations">Operations</a>
     <a href="#" class="corp-nav__tab" data-tab="expansion" onclick="switchToExpansion(event)">Expansion</a>
-    <a href="#" class="corp-nav__tab" data-tab="industries" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Industries</a>
+    <a href="#" class="corp-nav__tab" data-tab="actions" onclick="switchToActions(event)">Actions</a>
     <a href="#" class="corp-nav__tab" data-tab="innovation" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Innovation</a>
     <a href="#" class="corp-nav__tab" data-tab="lobbying" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Lobbying</a>
     <a href="news.html" class="corp-nav__tab" data-tab="news">News</a>
@@ -2704,6 +2704,18 @@ body.light-mode .av-empty__text { color: #1a1a17; }
       <div id="corporations-container"></div>
     </div>
 
+    <!-- Actions content (hidden by default) -->
+    <div id="actions-content" style="display:none;padding:0;width:100%;">
+      <div id="actions-container"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Executive Search Modal -->
+<div id="exec-search-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;">
+  <div style="width:680px;max-height:94vh;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
+    <div id="exec-search-content" style="display:flex;flex-direction:column;overflow:hidden;max-height:94vh;"></div>
   </div>
 </div>
 
@@ -2738,6 +2750,7 @@ import { escapeHtml } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
 import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, conditionColor, calculateTotalMaintenance, calculateEquipmentPrice, calculateEquipmentSupply, calculateEquipmentImportCost } from './js/game/equipment.js';
+import { EXEC_ROLES, EXEC_ROLE_META } from './js/game/corp-executives.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -2758,6 +2771,13 @@ let prPurchaseQty = 500;
 let equipmentData = [];   // rows from corp_equipment
 let modifierDefs = {};    // { modifier_key: { name, icon, cost_multiplier, reputation_bonus, required_permits, ... } }
 let eqExpandedTier = 0;   // which tier is expanded (-1 = none)
+
+// Actions tab state
+let _executives = [];
+let _execPool = [];
+let _selectedExecIdx = 0;
+let _execSearchRole = null;
+let _execSearchSelected = -1;
 
 // Equipment Market state
 let emSelectedType = 'trucks';
@@ -6789,10 +6809,14 @@ async function init() {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = 'block';
 
-    // Check for ?tab=expansion to auto-switch on load
-    if (new URLSearchParams(window.location.search).get('tab') === 'expansion') {
+    // Check for ?tab= param to auto-switch on load
+    const urlTab = new URLSearchParams(window.location.search).get('tab');
+    if (urlTab === 'expansion') {
         const expTab = document.querySelector('[data-tab="expansion"]');
         if (expTab) switchToExpansion({ preventDefault: () => {}, target: expTab });
+    } else if (urlTab === 'actions') {
+        const actTab = document.querySelector('[data-tab="actions"]');
+        if (actTab) switchToActions({ preventDefault: () => {}, target: actTab });
     }
 }
 
@@ -6885,6 +6909,7 @@ function hfFmtBig(n) {
 async function switchToExpansion(e) {
     e.preventDefault();
     document.getElementById('operations-content').style.display = 'none';
+    document.getElementById('actions-content').style.display = 'none';
     const expEl = document.getElementById('expansion-content');
     expEl.style.display = 'flex';
     expEl.style.justifyContent = 'center';
@@ -6910,8 +6935,36 @@ function switchToOperations(e) {
     if (e) e.preventDefault();
     document.getElementById('operations-content').style.display = 'flex';
     document.getElementById('expansion-content').style.display = 'none';
+    document.getElementById('actions-content').style.display = 'none';
     document.querySelectorAll('.corp-nav__tab').forEach(t => t.classList.remove('active'));
     document.querySelector('[data-tab="operations"]')?.classList.add('active');
+}
+
+async function switchToActions(e) {
+    e.preventDefault();
+    document.getElementById('operations-content').style.display = 'none';
+    document.getElementById('expansion-content').style.display = 'none';
+    document.getElementById('actions-content').style.display = 'block';
+    document.querySelectorAll('.corp-nav__tab').forEach(t => t.classList.remove('active'));
+    (e.target || document.querySelector('[data-tab="actions"]')).classList.add('active');
+    await loadExecutives();
+    renderActionsTab();
+}
+
+async function loadExecutives() {
+    if (!faction) return;
+    const [execRes, poolRes] = await Promise.all([
+        _supabase.from('corp_executives').select('*').eq('faction_id', faction.id).eq('status', 'active'),
+        _supabase.from('executive_pool').select('*').eq('nation_id', faction.nation_id).eq('status', 'available').order('skill', { ascending: false }),
+    ]);
+    _executives = execRes.data || [];
+    _execPool = poolRes.data || [];
+}
+
+function renderActionsTab() {
+    const container = document.getElementById('actions-container');
+    if (!container) return;
+    container.innerHTML = '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">Loading actions...</div>';
 }
 
 function hfGetCapacity() {
@@ -9891,6 +9944,7 @@ window.reviewSelectBid = reviewSelectBid;
 window.acceptBid = acceptBid;
 window.declineAllBids = declineAllBids;
 
+window.switchToActions = switchToActions;
 window.switchToExpansion = switchToExpansion;
 window.switchToOperations = switchToOperations;
 window.hfSetChange = hfSetChange;

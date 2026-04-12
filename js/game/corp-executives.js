@@ -37,7 +37,19 @@ var NAME_POOLS = [
 // ROLE DEFINITIONS
 // ═══════════════════════════════════════════════════
 
-var EXEC_ROLES = ['CFO', 'COO', 'CTO', 'CMO', 'CLO', 'Lobbyist'];
+export var EXEC_ROLES = ['CEO', 'CFO', 'COO', 'CTO', 'CMO', 'CLO', 'Lobbyist'];
+
+export var EXEC_ROLE_META = {
+    CEO:      { fullTitle: 'Chief Executive Officer',  color: '#c8a832' },
+    CFO:      { fullTitle: 'Chief Financial Officer',  color: '#5cb85c' },
+    COO:      { fullTitle: 'Chief Operating Officer',  color: '#8b9a6b' },
+    CTO:      { fullTitle: 'Chief Technology Officer', color: '#5a8aaa' },
+    CMO:      { fullTitle: 'Chief Marketing Officer',  color: '#c84'    },
+    CLO:      { fullTitle: 'Chief Legal Officer',      color: '#c55'    },
+    Lobbyist: { fullTitle: 'Corporate Lobbyist',       color: '#8a6aaa' },
+};
+
+var HIREABLE_ROLES = ['CFO', 'COO', 'CTO', 'CMO', 'CLO', 'Lobbyist'];
 
 // Which roles each candidate can fill (randomly assigned 1-3 specializations)
 var ROLE_GROUPS = [
@@ -66,7 +78,7 @@ var ROLE_GROUPS = [
  * @param {number} skill - 25 to 90
  * @returns {number} total contract value in dollars
  */
-function calculateCompensation(skill) {
+export function calculateCompensation(skill) {
     // Linear interpolation from $12M (skill 25) to $100M (skill 90)
     // with slight exponential curve for top talent
     var t = (skill - 25) / 65; // 0 to 1
