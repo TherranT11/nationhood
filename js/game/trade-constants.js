@@ -170,7 +170,7 @@ export var FOOD_SUBSECTORS = [
         parent_sector: 'food_agriculture',
         allocation_key: 'grains_pct',
         export_threshold: 5,
-        export_multiplier: 0.12,
+        export_multiplier: 0.07,
         drivers: [
             { stat: 'arable_land', weight: 1.0 },
             { stat: 'physical_infrastructure', weight: 0.3 },
@@ -212,7 +212,7 @@ export var FOOD_SUBSECTORS = [
         parent_sector: 'food_agriculture',
         allocation_key: 'livestock_pct',
         export_threshold: 3,
-        export_multiplier: 0.10,
+        export_multiplier: 0.06,
         drivers: [
             { stat: 'arable_land', weight: 1.0 },
             { stat: 'physical_infrastructure', weight: 0.25 },
@@ -252,7 +252,7 @@ export var FOOD_SUBSECTORS = [
         parent_sector: 'food_agriculture',
         allocation_key: 'perishables_pct',
         export_threshold: 3,
-        export_multiplier: 0.08,
+        export_multiplier: 0.05,
         drivers: [
             { stat: 'arable_land', weight: 1.0 },
             { stat: 'physical_infrastructure', weight: 0.5, critical: true },
@@ -300,7 +300,7 @@ export var FOOD_SUBSECTORS = [
         parent_sector: 'food_agriculture',
         allocation_key: 'cash_crops_pct',
         export_threshold: 4,
-        export_multiplier: 0.22,
+        export_multiplier: 0.14,
         drivers: [
             { stat: 'arable_land', weight: 1.0 },
             { stat: 'foreign_investment', weight: 0.4 },
@@ -795,7 +795,7 @@ export function calculateFoodExportCapacity(nation, subsector, allocation) {
     capacity *= currencyModifier;
 
     // Floor: minimal organic trade
-    var minCapacity = Math.round(0.01 * cfg.BASE_TRADE_MULTIPLIER * econScale);
+    var minCapacity = Math.round(0.002 * cfg.BASE_TRADE_MULTIPLIER * econScale);
     return Math.max(minCapacity, Math.round(capacity));
 }
 
@@ -888,7 +888,7 @@ export function calculateFoodImportDemand(nation, subsector, allocation) {
     rawDemand *= tariffDampener;
 
     // Floor
-    var minDemand = Math.round(0.02 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
+    var minDemand = Math.round(0.005 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
     return Math.max(minDemand, Math.round(rawDemand));
 }
 
@@ -978,7 +978,7 @@ export function calculateExportCapacity(nation, sector, opts) {
     capacity *= currencyModifier;
 
     // Floor: even distressed nations maintain some organic trade (5% of GDP-scaled baseline)
-    var minCapacity = Math.round(0.05 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
+    var minCapacity = Math.round(0.02 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
     return Math.max(minCapacity, Math.round(capacity));
 }
 
@@ -1111,7 +1111,7 @@ export function calculateImportDemand(nation, sector, opts) {
     rawDemand *= tariffDampener;
 
     // Floor: even distressed nations import essential goods (5% of GDP-scaled baseline)
-    var minDemand = Math.round(0.05 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
+    var minDemand = Math.round(0.02 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
     return Math.max(minDemand, Math.round(rawDemand));
 }
 
