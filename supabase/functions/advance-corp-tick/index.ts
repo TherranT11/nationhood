@@ -2202,6 +2202,14 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
                           + (innovativeCount * calcWage(INNOVATIVE_MULT));
         const monthlyWages = Math.round(annualWages / 12);
 
+        // Executive salaries (C-suite: CEO, CFO, COO, CTO, CMO, CLO, Lobbyist)
+        const { data: executives } = await supabase.from('corp_executives')
+            .select('salary_per_year')
+            .eq('faction_id', corp.id)
+            .eq('status', 'active');
+        const totalExecAnnual = (executives || []).reduce((sum, ex) => sum + (Number(ex.salary_per_year) || 0), 0);
+        const monthlyExecSalaries = Math.round(totalExecAnnual / 12);
+
         // Scale market revenue by workforce utilization — 0 employees = 0 revenue
         const WORKFORCE_TARGET = 3000; // default corp workforce capacity
         const workforceUtil = Math.min(1, totalEmployees / WORKFORCE_TARGET);
@@ -2211,7 +2219,7 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
         // Property maintenance, admin, insurance, utilities
         const FIXED_OVERHEAD_MONTHLY = 75_000;
 
-        const monthlyIncome = corpMonthlyRev - monthlyWages - FIXED_OVERHEAD_MONTHLY;
+        const monthlyIncome = corpMonthlyRev - monthlyWages - monthlyExecSalaries - FIXED_OVERHEAD_MONTHLY;
 
         // Compute monthly loan payment (amortized) and split into interest + principal
         let debtPayment = 0;
