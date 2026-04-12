@@ -2389,6 +2389,30 @@ function renderTradeExplanation(nation, sectorKey, sector, flow) {
                 var arableLand = Number(nation.arable_land) || 0;
                 if (arableLand < 50) importReasons.push('Limited arable land ('+Math.round(arableLand)+') cannot feed the population');
                 else importReasons.push('Population outpaces domestic food production');
+            } else if (sectorKey === 'grains_staples') {
+                var arableLand = Number(nation.arable_land) || 0;
+                var pop = Number(nation.population) || 0;
+                if (arableLand < 40) importReasons.push('Limited arable land ('+Math.round(arableLand)+') insufficient for grain production');
+                if (pop > 8000000) importReasons.push('Large population ('+Math.round(pop/1000000)+'M) creates high staple demand');
+                if (importReasons.length === 0) importReasons.push('Population demand outpaces domestic grain production');
+            } else if (sectorKey === 'livestock_dairy') {
+                var sol = Number(nation.standard_of_living) || 0;
+                var arableLand = Number(nation.arable_land) || 0;
+                if (sol > 50) importReasons.push('High standard of living ('+Math.round(sol)+') drives meat and dairy demand');
+                if (arableLand < 40) importReasons.push('Limited pastureland constrains domestic livestock (Arable: '+Math.round(arableLand)+')');
+                if (importReasons.length === 0) importReasons.push('Domestic livestock cannot meet population demand');
+            } else if (sectorKey === 'fruits_vegetables') {
+                var rail = Number(nation.rail_network) || 0;
+                var infra = Number(nation.physical_infrastructure) || 0;
+                var urban = Number(nation.urbanization) || 0;
+                if (rail < 40) importReasons.push('Weak rail network ('+Math.round(rail)+') causes spoilage — cold chain failure');
+                if (infra < 35) importReasons.push('Poor infrastructure ('+Math.round(infra)+') disrupts perishable distribution');
+                if (urban > 60) importReasons.push('High urbanization ('+Math.round(urban)+') concentrates demand beyond local supply');
+                if (importReasons.length === 0) importReasons.push('Domestic produce insufficient for population needs');
+            } else if (sectorKey === 'cash_crops') {
+                var sol = Number(nation.standard_of_living) || 0;
+                if (sol > 50) importReasons.push('Wealthy population (Std. Living: '+Math.round(sol)+') imports premium goods (coffee, cocoa, tea)');
+                else importReasons.push('Modest domestic demand for imported cash crop products');
             } else if (sectorKey === 'minerals') {
                 var minerals = Number(nation.rare_minerals) || 0;
                 var manuf = Number(nation.manufacturing_output) || 0;
@@ -2453,6 +2477,10 @@ function renderTradeExplanation(nation, sectorKey, sector, flow) {
             var penalties = [];
             if (sectorKey === 'fuel_energy') penalties = ['Energy Generation \u2193', 'Manufacturing Output \u2193', 'Inflation \u2191', 'Cost of Living \u2191'];
             else if (sectorKey === 'food_agriculture') penalties = ['Happiness \u2193', 'Civil Unrest \u2191', 'Healthcare Quality \u2193'];
+            else if (sectorKey === 'grains_staples') penalties = ['Stability \u2193', 'Legitimacy \u2193', 'Civil Unrest \u2191', 'Poverty Rate \u2191', 'Happiness \u2193'];
+            else if (sectorKey === 'livestock_dairy') penalties = ['Standard of Living \u2193', 'Happiness \u2193', 'Cost of Living \u2191'];
+            else if (sectorKey === 'fruits_vegetables') penalties = ['Healthcare Quality \u2193', 'Happiness \u2193', 'Cost of Living \u2191'];
+            else if (sectorKey === 'cash_crops') penalties = ['GDP Growth \u2193', 'Foreign Investment \u2193'];
             else if (sectorKey === 'minerals') penalties = ['Manufacturing Output \u2193', 'Infrastructure \u2193'];
             else if (sectorKey === 'manufactured_goods') penalties = ['Standard of Living \u2193', 'Cost of Living \u2191'];
             else if (sectorKey === 'technology') penalties = ['Digital Infrastructure \u2193', 'Innovation Index \u2193'];
@@ -2523,6 +2551,20 @@ function renderTradeExplanation(nation, sectorKey, sector, flow) {
                 if (arable < 50) {
                     recs.push({icon: '\uD83C\uDF3E', text: 'Invest in agricultural development (Arable Land: ' + Math.round(arable) + ') to reduce food import dependency'});
                 }
+            } else if (sectorKey === 'grains_staples') {
+                var arable = Number(nation.arable_land) || 0;
+                if (arable < 50) recs.push({icon: '\uD83C\uDF3E', text: 'Increase arable land ('+Math.round(arable)+') to boost grain production'});
+                recs.push({icon: '\uD83D\uDCCA', text: 'Shift arable land allocation toward grains to improve food security'});
+            } else if (sectorKey === 'livestock_dairy') {
+                recs.push({icon: '\uD83D\uDCCA', text: 'Increase livestock land allocation or invest in pastoral infrastructure'});
+            } else if (sectorKey === 'fruits_vegetables') {
+                var rail = Number(nation.rail_network) || 0;
+                var infra = Number(nation.physical_infrastructure) || 0;
+                if (rail < 40) recs.push({icon: '\uD83D\uDE82', text: 'Rail network ('+Math.round(rail)+') below cold-chain threshold — spoilage is destroying supply'});
+                if (infra < 35) recs.push({icon: '\uD83C\uDFD7\uFE0F', text: 'Physical infrastructure ('+Math.round(infra)+') too weak for perishable distribution'});
+                recs.push({icon: '\uD83C\uDF3F', text: 'Improve logistics infrastructure to reduce spoilage before increasing production'});
+            } else if (sectorKey === 'cash_crops') {
+                recs.push({icon: '\u26A0\uFE0F', text: 'Cash crop imports have minimal food security value — consider reallocating land to staples'});
             } else if (sectorKey === 'minerals') {
                 recs.push({icon: '\u26CF\uFE0F', text: 'Develop domestic mining capacity to reduce mineral import needs'});
             } else if (sectorKey === 'manufactured_goods') {
@@ -2631,6 +2673,26 @@ var TRADE_IMPORT_DRIVERS = {
     ],
     food_agriculture: [
         { key: 'arable_land', inverted: true }
+    ],
+    grains_staples: [
+        { key: 'arable_land', inverted: true },
+        { key: 'physical_infrastructure', inverted: true },
+        { key: 'rail_network', inverted: true }
+    ],
+    livestock_dairy: [
+        { key: 'arable_land', inverted: true },
+        { key: 'standard_of_living', inverted: false },
+        { key: 'physical_infrastructure', inverted: true }
+    ],
+    fruits_vegetables: [
+        { key: 'arable_land', inverted: true },
+        { key: 'rail_network', inverted: true },
+        { key: 'physical_infrastructure', inverted: true },
+        { key: 'energy_generation', inverted: true },
+        { key: 'urbanization', inverted: false }
+    ],
+    cash_crops: [
+        { key: 'standard_of_living', inverted: false }
     ],
     manufactured_goods: [
         { key: 'standard_of_living', inverted: false },
@@ -3385,6 +3447,10 @@ var TRADE_EXPORT_HINTS = {
     fuel_energy:        'Driven by: Oil & Gas + Energy Generation',
     minerals:           'Driven by: Rare Minerals',
     food_agriculture:   'Driven by: Arable Land',
+    grains_staples:     'Driven by: Arable Land (Grains Allocation) + Infrastructure + Rail',
+    livestock_dairy:    'Driven by: Arable Land (Livestock Allocation) + Infrastructure',
+    fruits_vegetables:  'Driven by: Arable Land (Perishables Allocation) + Rail + Infrastructure + Energy',
+    cash_crops:         'Driven by: Arable Land (Cash Crops Allocation) + Foreign Investment + Currency',
     manufactured_goods: 'Driven by: Manufacturing Output',
     technology:         'Driven by: Digital Infrastructure + Higher Education',
     arms:               'Driven by: Manufacturing + Defense Spending %',
@@ -3395,6 +3461,10 @@ var TRADE_IMPORT_HINTS = {
     fuel_energy:        'Driven by: Low Oil & Gas + Low Energy Generation + Manufacturing + Urbanization + Low Rail Network',
     minerals:           'Driven by: Low Rare Minerals × Manufacturing Need',
     food_agriculture:   'Driven by: Population vs. Arable Land',
+    grains_staples:     'Driven by: Population × Growth Pressure vs. Grain Land Allocation',
+    livestock_dairy:    'Driven by: Standard of Living × Population vs. Livestock Land',
+    fruits_vegetables:  'Driven by: Urbanization × Population vs. Perishables Land (spoilage reduces effective supply)',
+    cash_crops:         'Driven by: Standard of Living (luxury imports — coffee, cocoa, tea)',
     manufactured_goods: 'Driven by: Consumer Demand (Pop × Std. of Living) minus Manufacturing',
     technology:         'Driven by: Digital Need (Pop × Digital Infra) minus Tech Capacity',
     arms:               'Driven by: Defense Budget minus Domestic Arms Capacity'

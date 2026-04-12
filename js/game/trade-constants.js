@@ -445,6 +445,178 @@ export var DEFAULT_FOOD_ALLOCATION = {
     cash_crops_pct: 20
 };
 
+// ==================== FOOD SECURITY STATUS ====================
+
+/**
+ * Food security status labels and thresholds.
+ *
+ * Computed from the ratio of effective food supply (production + imports)
+ * to food demand across the 3 food-security sectors (grains, livestock,
+ * perishables). Cash crops are excluded — they don't feed people.
+ */
+export var FOOD_SECURITY_LEVELS = [
+    { key: 'surplus',     label: 'Surplus',          min: 1.10, color: '#5cb85c', description: 'Production exceeds demand. Food exports generate revenue.' },
+    { key: 'secure',      label: 'Secure',           min: 0.90, color: '#4a9a5b', description: 'Adequate supply. Minor shortfalls covered by imports.' },
+    { key: 'adequate',    label: 'Adequate',          min: 0.75, color: '#8ab563', description: 'Sufficient but fragile. Disruptions could trigger shortage.' },
+    { key: 'strained',    label: 'Strained',          min: 0.60, color: '#d48a3c', description: 'Import-dependent. Trade disruption risks food shortage.' },
+    { key: 'shortage',    label: 'Shortage',          min: 0.40, color: '#c0392b', description: 'Significant food deficit. Rationing likely.' },
+    { key: 'crisis',      label: 'Crisis',            min: 0.20, color: '#8b0000', description: 'Severe food insecurity. Famine conditions emerging.' },
+    { key: 'famine',      label: 'Famine',            min: 0.00, color: '#4a0000', description: 'Catastrophic food failure. Mass starvation imminent.' }
+];
+
+/**
+ * Compute food security status for a nation based on trade_flows data.
+ *
+ * Uses the 3 food-security sectors (grains, livestock, perishables) weighted
+ * by their food_security_weight values. Cash crops are excluded.
+ *
+ * Supply = domestic production (export_capacity) + actual imports (import_volume)
+ * Demand = import_demand + domestic consumption (approximated from export_capacity)
+ *
+ * For simplicity, the ratio is computed as:
+ *   (total supply that reached the population) / (total demand the population has)
+ *
+ * @param {Object} flows – { [sectorKey]: { export_capacity, export_volume, import_demand, import_volume } }
+ * @returns {Object} { ratio, level, label, color, description, perSector }
+ */
+export function computeFoodSecurityStatus(flows) {
+    if (!flows) return { ratio: 1.0, level: 'secure', label: 'Secure', color: '#4a9a5b', description: 'No data available.', perSector: {} };
+
+    var totalWeightedSupply = 0;
+    var totalWeightedDemand = 0;
+    var perSector = {};
+
+    for (var i = 0; i < FOOD_SUBSECTORS.length; i++) {
+        var sub = FOOD_SUBSECTORS[i];
+        if (sub.food_security_weight <= 0) continue; // Skip cash crops
+
+        var flow = flows[sub.key];
+        if (!flow) continue;
+
+        var expCap = Number(flow.export_capacity) || 0;
+        var expVol = Number(flow.export_volume) || 0;
+        var impVol = Number(flow.import_volume) || 0;
+        var impDem = Number(flow.import_demand) || 0;
+
+        // Domestic supply = what we produced minus what we exported + what we imported
+        var domesticProduction = expCap; // Total production capacity
+        var domesticRetained = Math.max(0, domesticProduction - expVol); // Kept for domestic use
+        var totalSupply = domesticRetained + impVol;
+
+        // Total demand = domestic need + desired imports (import_demand represents the gap)
+        // Domestic need ≈ production capacity (we produce to meet demand)
+        // But actual total demand = domestic consumption + the unmet portion
+        var totalDemand = domesticRetained + impDem;
+        if (totalDemand <= 0) totalDemand = 1; // Prevent division by zero
+
+        var sectorRatio = totalSupply / totalDemand;
+        var weight = sub.food_security_weight;
+
+        totalWeightedSupply += sectorRatio * weight;
+        totalWeightedDemand += weight;
+
+        perSector[sub.key] = {
+            supply: totalSupply,
+            demand: totalDemand,
+            ratio: Math.round(sectorRatio * 100) / 100,
+            label: sub.label
+        };
+    }
+
+    var ratio = totalWeightedDemand > 0 ? totalWeightedSupply / totalWeightedDemand : 1.0;
+    ratio = Math.round(ratio * 100) / 100;
+
+    // Find matching security level
+    var level = FOOD_SECURITY_LEVELS[FOOD_SECURITY_LEVELS.length - 1];
+    for (var j = 0; j < FOOD_SECURITY_LEVELS.length; j++) {
+        if (ratio >= FOOD_SECURITY_LEVELS[j].min) {
+            level = FOOD_SECURITY_LEVELS[j];
+            break;
+        }
+    }
+
+    return {
+        ratio: ratio,
+        level: level.key,
+        label: level.label,
+        color: level.color,
+        description: level.description,
+        perSector: perSector
+    };
+}
+
+/**
+ * Compute stat effects from food sub-sector supply/shortage conditions.
+ *
+ * Called per-tick to apply ongoing stat nudges based on whether each
+ * food sub-sector is well-supplied or in shortage. Effects are defined
+ * in the FOOD_SUBSECTORS[].stat_effects config.
+ *
+ * @param {Object} flows – trade_flows for this nation { [sectorKey]: { ... } }
+ * @returns {Object} accumulated stat deltas { statKey: delta, ... }
+ */
+export function computeFoodStatEffects(flows) {
+    var effects = {};
+    if (!flows) return effects;
+
+    for (var i = 0; i < FOOD_SUBSECTORS.length; i++) {
+        var sub = FOOD_SUBSECTORS[i];
+        var flow = flows[sub.key];
+        if (!flow) continue;
+
+        var impDem = Number(flow.import_demand) || 0;
+        var impVol = Number(flow.import_volume) || 0;
+        var expCap = Number(flow.export_capacity) || 0;
+
+        // Determine supply status
+        var unmetRatio = impDem > 0 ? Math.max(0, (impDem - impVol) / impDem) : 0;
+        var isShortage = unmetRatio >= 0.10;
+        var isWellSupplied = unmetRatio < 0.05 && expCap > 0;
+
+        var effectSet;
+        var intensity;
+        if (isShortage) {
+            effectSet = sub.stat_effects.shortage;
+            intensity = Math.min(1.0, unmetRatio); // Scale with severity
+        } else if (isWellSupplied) {
+            effectSet = sub.stat_effects.supplied;
+            intensity = 1.0;
+        } else {
+            continue; // Neutral zone — no effects
+        }
+
+        if (!effectSet) continue;
+
+        for (var statKey in effectSet) {
+            var delta = effectSet[statKey] * intensity;
+            if (!effects[statKey]) effects[statKey] = 0;
+            effects[statKey] += delta;
+        }
+
+        // Environmental effects (always active when producing)
+        if (sub.environmental_effects && expCap > 0) {
+            var envIntensity = Math.min(1.0, expCap / 500000000); // Scale with production volume
+            for (var envKey in sub.environmental_effects) {
+                var envDelta = sub.environmental_effects[envKey] * envIntensity;
+                if (!effects[envKey]) effects[envKey] = 0;
+                effects[envKey] += envDelta;
+            }
+        }
+
+        // Structural effects for cash crops (always active when producing)
+        if (sub.structural_effects && expCap > 0) {
+            var structIntensity = Math.min(1.0, expCap / 500000000);
+            for (var structKey in sub.structural_effects) {
+                var structDelta = sub.structural_effects[structKey] * structIntensity;
+                if (!effects[structKey]) effects[structKey] = 0;
+                effects[structKey] += structDelta;
+            }
+        }
+    }
+
+    return effects;
+}
+
 /**
  * Build the effective sector list for trade processing.
  * Replaces 'food_agriculture' with the 4 food sub-sectors.
