@@ -5856,7 +5856,7 @@ async function processAidConditionReview(supabase, nation, currentTick) {
  */
 async function processExpiredTradeAgreements(supabase, currentTick) {
     const { data: expired } = await supabase.from('trade_agreements')
-        .select('id, agreement_type, agreement_name, nation_a_id, nation_b_id')
+        .select('id, agreement_type, agreement_name, nation_a_id, nation_b_id, auto_renew, duration_ticks')
         .eq('status', 'active')
         .not('expires_at_tick', 'is', null)
         .lte('expires_at_tick', currentTick);
@@ -5865,6 +5865,17 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
 
     const results = [];
     for (const agreement of expired) {
+        // Auto-renew: extend the agreement by another duration period instead of expiring
+        if (agreement.auto_renew && agreement.duration_ticks > 0) {
+            const newExpiry = currentTick + agreement.duration_ticks;
+            await supabase.from('trade_agreements').update({
+                expires_at_tick: newExpiry
+            }).eq('id', agreement.id);
+            console.log(`[processExpiredTradeAgreements] Auto-renewed: ${agreement.agreement_name} — new expiry tick ${newExpiry}`);
+            results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type, renewed: true });
+            continue;
+        }
+
         await supabase.from('trade_agreements').update({
             status: 'expired'
         }).eq('id', agreement.id);
