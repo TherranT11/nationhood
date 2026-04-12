@@ -4040,6 +4040,9 @@ function renderIndustriesTab(nation) {
         corpRevMap[d.faction_id] = (corpRevMap[d.faction_id] || 0) + (d.payment_received || 0);
     });
 
+    // Combine local corps + subsidiaries for display
+    var allLocalCorps = _industriesCorps.concat(_industriesSubsidiaries);
+
     // Construction column: only Construction-sector corps
     var constructionCorps = allLocalCorps.filter(function(c) { return (c.corp_sector || '').toLowerCase() === 'construction'; });
     var constructionCorpsSorted = constructionCorps.slice().sort(function(a, b) {
@@ -4084,7 +4087,6 @@ function renderIndustriesTab(nation) {
     var eqPurchasers = Object.entries(eqPurchaserMap).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 3);
 
     // ── FINANCE: loans, bonds, insurance ──
-    var allLocalCorps = _industriesCorps.concat(_industriesSubsidiaries);
     var financeCorps = allLocalCorps.filter(function(c) { return (c.corp_sector || '').toLowerCase() === 'finance'; });
     var bankingCorps = financeCorps.filter(function(c) { return (c.corp_subsector || '').toLowerCase() === 'banking'; });
     var investmentCorps = financeCorps.filter(function(c) { return (c.corp_subsector || '').toLowerCase() === 'investment'; });
