@@ -443,6 +443,7 @@ import { escapeHtml } from './js/utils.js';
 import { getNationNames } from './js/game/political-actions.js';
 import { getStartingEquipment } from './js/game/equipment.js';
 import { hasElectedPresident } from './js/game/government-types.js';
+import { generateExecutivePool, createCEORecord } from './js/game/corp-executives.js';
 
 const FLAG_URLS = {
     'Melizea': 'assets/flags/Melizea.png',
@@ -876,6 +877,22 @@ async function confirmNation() {
                 purchased_at_tick: currentTick,
                 is_active: true,
             });
+        }
+
+        // Seed CEO executive record from faction leader data
+        const corpFactionId = isLinkedCorp ? corpId : currentUser.id;
+        const ceoRecord = createCEORecord(corpFactionId, ceoFirst, ceoLast, ceoAge, nation.name, currentTick);
+        await _supabase.from('corp_executives').insert(ceoRecord);
+
+        // Generate executive pool for this nation if not already seeded
+        const { data: existingPool } = await _supabase
+            .from('executive_pool')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .limit(1);
+        if (!existingPool || existingPool.length === 0) {
+            const pool = generateExecutivePool(nation.id, nation.name);
+            await _supabase.from('executive_pool').insert(pool);
         }
 
         sessionStorage.removeItem('pending_faction_type');
