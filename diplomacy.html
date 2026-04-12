@@ -7657,15 +7657,14 @@ function updateStockpileTransferHint() {
     var summary = document.getElementById('stockpile-transfer-summary');
 
     // Show global average price for reference
-    if (priceHint && sector && tradeData && tradeData.flows) {
-        var flow = tradeData.flows[sector];
-        var priceMod = flow ? Number(flow.price_modifier) || 1.0 : 1.0;
-        var globalAvg = getGlobalAverageUnitPrice(sector, priceMod);
+    if (priceHint && sector) {
+        // Use base price ($100/tonne) as reference — diplomacy page doesn't load trade_flows
+        var globalAvg = getGlobalAverageUnitPrice(sector, 1.0);
         var diff = price - globalAvg;
         var diffPct = globalAvg > 0 ? Math.round((diff / globalAvg) * 100) : 0;
         var diffColor = diff > 0 ? '#d9534f' : diff < 0 ? '#5cb85c' : 'var(--text-dim)';
-        var diffLabel = diff > 0 ? '+' + diffPct + '% above market' : diff < 0 ? diffPct + '% below market' : 'at market rate';
-        priceHint.innerHTML = 'Global avg: <strong>' + formatPricePerTonne(globalAvg) + '</strong> &mdash; <span style="color:' + diffColor + ';">' + diffLabel + '</span>';
+        var diffLabel = diff > 0 ? '+' + diffPct + '% above base' : diff < 0 ? diffPct + '% below base' : 'at base rate';
+        priceHint.innerHTML = 'Base price: <strong>' + formatPricePerTonne(globalAvg) + '</strong> &mdash; <span style="color:' + diffColor + ';">' + diffLabel + '</span>';
     }
 
     // Calculate physical volume and total cost

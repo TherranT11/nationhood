@@ -31777,17 +31777,24 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Trade imbalance auto-spawn failed (non-fatal):', tiErr);
     }
 
+    // Fetch food sub-sector trade flows once — used by steps 3.5c and 3.5d
+    let foodFlowRows: any[] = [];
+    try {
+        const { data } = await supabase
+            .from('trade_flows')
+            .select('nation_id, sector, export_capacity, export_volume, import_demand, import_volume')
+            .eq('tick', newTick)
+            .in('sector', FOOD_SUBSECTOR_KEYS);
+        if (data) foodFlowRows = data;
+    } catch (fetchErr) {
+        console.error('[advanceTick] Food flow fetch failed (non-fatal):', fetchErr);
+    }
+
     // 3.5c Food sub-sector stat effects — apply ongoing supply/shortage/environmental nudges
     // Runs after trade engine so trade_flows reflect current tick data.
     // Effects: supplied sectors give positive nudges, shortage penalizes stats,
     // livestock/cash crops generate environmental + structural effects.
     try {
-        const { data: foodFlowRows } = await supabase
-            .from('trade_flows')
-            .select('nation_id, sector, export_capacity, export_volume, import_demand, import_volume')
-            .eq('tick', newTick)
-            .in('sector', FOOD_SUBSECTOR_KEYS);
-
         if (foodFlowRows && foodFlowRows.length > 0) {
             // Group by nation
             const nationFoodFlows: Record<string, Record<string, any>> = {};
@@ -31998,7 +32005,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
                 const buyerReserve = buyerStock ? Number(buyerStock.reserve_value) || 0 : 0;
                 const buyerCap = buyerStock ? Number(buyerStock.max_capacity) || 0 : 0;
-                const newBuyerReserve = Math.min(buyerReserve + actualTransfer, Math.max(buyerCap, buyerReserve + actualTransfer));
+                // Cap at capacity (if capacity is set), otherwise allow the transfer
+                const newBuyerReserve = buyerCap > 0 ? Math.min(buyerReserve + actualTransfer, buyerCap) : buyerReserve + actualTransfer;
 
                 await supabase.from('food_stockpiles')
                     .update({ reserve_value: newBuyerReserve })

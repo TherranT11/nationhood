@@ -33,6 +33,9 @@ CREATE POLICY food_stockpiles_read ON food_stockpiles
 CREATE POLICY food_stockpiles_update ON food_stockpiles
     FOR UPDATE TO authenticated USING (true);
 
+CREATE POLICY food_stockpiles_insert ON food_stockpiles
+    FOR INSERT TO authenticated WITH CHECK (true);
+
 -- ============================================================
 -- B. SEED INITIAL STOCKPILES (empty reserves for all nations)
 -- ============================================================
