@@ -570,6 +570,10 @@ for (var _tsi = 0; _tsi < TRADE_SECTORS.length; _tsi++) {
 var SECTOR_DISPLAY_UNITS = {
     fuel_energy:        { baseUnit: 'barrels per day',    scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 2500000000 },
     food_agriculture:   { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
+    grains_staples:     { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
+    livestock_dairy:    { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
+    fruits_vegetables:  { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
+    cash_crops:         { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
     minerals:           { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
     manufactured_goods: { baseUnit: 'TEU/year',           scaleLabel: 'thousand', scaleFactor: 1e3,  factor: 1 / 100000000  },
     arms:               { baseUnit: 'units/year',         scaleLabel: 'thousand', scaleFactor: 1e3,  factor: 1 / 100000000  },
@@ -601,7 +605,658 @@ function formatSectorVolume(val, sectorKey) {
     return sign + raw.toLocaleString() + '\u00a0' + def.baseUnit;
 }
 
-// ==================== TRADE CALCULATION FUNCTIONS (STUBS) ====================
+// ==================== FOOD & AGRICULTURE — 4-SECTOR SPLIT ====================
+//
+// The single "food_agriculture" trade sector is split into four sub-sectors,
+// each competing for a nation's arable land allocation:
+//
+//   grains_staples      — survival sector, stockpilable, famine events
+//   livestock_dairy     — middle class diet, demand scales with wealth
+//   fruits_vegetables   — infrastructure-dependent, spoilage mechanic
+//   cash_crops          — export revenue vs food security tension
+//
+// Arable land allocation: grains% + livestock% + perishables% + cash_crops% = 100%
+// Stored in food_land_allocation table; effective land = nation.arable_land × (allocation% / 100)
+
+/**
+ * Food sub-sector definitions.
+ *
+ * Each sub-sector has:
+ *   key               – unique identifier (used in trade_flows.sector column)
+ *   label             – display name
+ *   parent_sector     – parent trade sector key (always 'food_agriculture')
+ *   allocation_key    – column name in food_land_allocation table
+ *   export_threshold  – minimum effective arable land to generate exports (0-100 scale)
+ *   export_multiplier – capacity reduction factor (domestic consumption priority)
+ *   drivers           – nation stats that boost production capacity
+ *   demand_drivers    – nation stats that drive import demand
+ *   stat_effects      – stats affected by supply/shortage of this sub-sector
+ */
+var FOOD_SUBSECTORS = [
+    {
+        key: 'grains_staples',
+        label: 'Grains & Staples',
+        description: 'Wheat, rice, corn, soybeans, legumes, cooking oils, sugar',
+        parent_sector: 'food_agriculture',
+        allocation_key: 'grains_pct',
+        export_threshold: 5,
+        export_multiplier: 0.12,
+        drivers: [
+            { stat: 'arable_land', weight: 1.0 },
+            { stat: 'physical_infrastructure', weight: 0.3 },
+            { stat: 'rail_network', weight: 0.2 }
+        ],
+        demand_drivers: [
+            { stat: 'population', weight: 1.0, type: 'population' },
+            { stat: 'population_growth', weight: 0.3, type: 'pressure' }
+        ],
+        stat_effects: {
+            supplied: {
+                poverty_rate: -0.15,
+                cost_of_living: -0.10,
+                inflation: -0.05,
+                stability: 0.10,
+                legitimacy: 0.10,
+                happiness: 0.05,
+                lifespan: 0.05
+            },
+            shortage: {
+                poverty_rate: 0.30,
+                cost_of_living: 0.20,
+                inflation: 0.15,
+                stability: -0.20,
+                legitimacy: -0.20,
+                civil_unrest: 0.25,
+                political_violence: 0.15,
+                emigration: 0.10,
+                happiness: -0.15
+            }
+        },
+        food_security_weight: 0.50,
+        stockpilable: true
+    },
+    {
+        key: 'livestock_dairy',
+        label: 'Livestock & Dairy',
+        description: 'Cattle, poultry, pigs, sheep, eggs, milk, cheese',
+        parent_sector: 'food_agriculture',
+        allocation_key: 'livestock_pct',
+        export_threshold: 3,
+        export_multiplier: 0.10,
+        drivers: [
+            { stat: 'arable_land', weight: 1.0 },
+            { stat: 'physical_infrastructure', weight: 0.25 },
+            { stat: 'unemployment', weight: 0.15, inverted: true }
+        ],
+        demand_drivers: [
+            { stat: 'standard_of_living', weight: 0.8, type: 'wealth' },
+            { stat: 'population', weight: 0.5, type: 'population' }
+        ],
+        stat_effects: {
+            supplied: {
+                standard_of_living: 0.10,
+                happiness: 0.10,
+                healthcare_quality: 0.05,
+                lifespan: 0.05,
+                unemployment: -0.08,
+                labor_force_participation: 0.05
+            },
+            shortage: {
+                cost_of_living: 0.15,
+                inflation: 0.10,
+                standard_of_living: -0.10,
+                happiness: -0.10
+            }
+        },
+        environmental_effects: {
+            carbon_emissions: 0.10,
+            pollution: 0.08
+        },
+        food_security_weight: 0.20,
+        stockpilable: false
+    },
+    {
+        key: 'fruits_vegetables',
+        label: 'Fruits, Vegetables & Perishables',
+        description: 'Fresh produce, market gardens, fishing, aquaculture',
+        parent_sector: 'food_agriculture',
+        allocation_key: 'perishables_pct',
+        export_threshold: 3,
+        export_multiplier: 0.08,
+        drivers: [
+            { stat: 'arable_land', weight: 1.0 },
+            { stat: 'physical_infrastructure', weight: 0.5, critical: true },
+            { stat: 'rail_network', weight: 0.5, critical: true },
+            { stat: 'energy_generation', weight: 0.3 }
+        ],
+        demand_drivers: [
+            { stat: 'urbanization', weight: 0.6, type: 'demand' },
+            { stat: 'population', weight: 0.5, type: 'population' },
+            { stat: 'standard_of_living', weight: 0.3, type: 'wealth' }
+        ],
+        stat_effects: {
+            supplied: {
+                happiness: 0.12,
+                healthcare_quality: 0.10,
+                lifespan: 0.08,
+                standard_of_living: 0.08
+            },
+            shortage: {
+                cost_of_living: 0.15,
+                inflation: 0.10,
+                happiness: -0.10,
+                healthcare_quality: -0.05
+            }
+        },
+        environmental_effects: {
+            pollution: 0.05
+        },
+        // UNIQUE MECHANIC: Spoilage multiplier
+        // When rail_network or physical_infrastructure fall below threshold,
+        // effective supply is reduced regardless of production levels.
+        spoilage: {
+            rail_threshold: 40,
+            infra_threshold: 35,
+            energy_threshold: 30,
+            max_spoilage_pct: 60
+        },
+        food_security_weight: 0.15,
+        stockpilable: false
+    },
+    {
+        key: 'cash_crops',
+        label: 'Cash Crops & Plantation Agriculture',
+        description: 'Coffee, tea, cocoa, tobacco, cotton, rubber, spices, palm oil',
+        parent_sector: 'food_agriculture',
+        allocation_key: 'cash_crops_pct',
+        export_threshold: 4,
+        export_multiplier: 0.22,
+        drivers: [
+            { stat: 'arable_land', weight: 1.0 },
+            { stat: 'foreign_investment', weight: 0.4 },
+            { stat: 'currency_strength', weight: 0.3, inverted: true },
+            { stat: 'corruption', weight: 0.2 }
+        ],
+        demand_drivers: [
+            // Cash crops are primarily EXPORT-driven; import demand is low
+            { stat: 'standard_of_living', weight: 0.3, type: 'wealth' },
+            { stat: 'population', weight: 0.2, type: 'population' }
+        ],
+        stat_effects: {
+            supplied: {
+                gdp_growth: 0.10,
+                foreign_investment: 0.08,
+                unemployment: -0.08,
+                labor_force_participation: 0.06,
+                currency_strength: 0.05
+            },
+            shortage: {
+                // Cash crop shortage doesn't cause food insecurity
+                // but hurts export revenue
+                gdp_growth: -0.05,
+                foreign_investment: -0.05
+            }
+        },
+        // Negative externalities of plantation agriculture
+        structural_effects: {
+            income_inequality: 0.08,
+            poverty_rate: 0.05,
+            social_mobility: -0.05,
+            corruption: 0.05,
+            union_strength: 0.03
+        },
+        environmental_effects: {
+            pollution: 0.08,
+            carbon_emissions: 0.06
+        },
+        food_security_weight: 0.00,
+        stockpilable: true
+    }
+];
+
+// Lookup maps for food sub-sectors
+var FOOD_SUBSECTOR_KEYS = [];
+var FOOD_SUBSECTOR_MAP = {};
+for (var _fsi = 0; _fsi < FOOD_SUBSECTORS.length; _fsi++) {
+    FOOD_SUBSECTOR_KEYS.push(FOOD_SUBSECTORS[_fsi].key);
+    FOOD_SUBSECTOR_MAP[FOOD_SUBSECTORS[_fsi].key] = FOOD_SUBSECTORS[_fsi];
+}
+
+/**
+ * Check if a sector key is a food sub-sector.
+ */
+function isFoodSubsector(sectorKey) {
+    return FOOD_SUBSECTOR_MAP.hasOwnProperty(sectorKey);
+}
+
+/**
+ * Get the effective arable land for a specific food sub-sector.
+ *
+ * effectiveLand = nation.arable_land × (allocation_pct / 100)
+ *
+ * @param {Object} nation      – nation row with arable_land stat (0-100)
+ * @param {string} subsectorKey – food sub-sector key
+ * @param {Object} allocation  – food_land_allocation row { grains_pct, livestock_pct, perishables_pct, cash_crops_pct }
+ * @returns {number} effective arable land (0-100 scale)
+ */
+function getEffectiveArableLand(nation, subsectorKey, allocation) {
+    var subsector = FOOD_SUBSECTOR_MAP[subsectorKey];
+    if (!subsector || !allocation) return 0;
+    var totalArable = Number(nation.arable_land) || 0;
+    var allocPct = Number(allocation[subsector.allocation_key]) || 0;
+    return totalArable * (allocPct / 100);
+}
+
+/**
+ * Calculate the spoilage multiplier for perishables.
+ *
+ * When rail_network and/or physical_infrastructure fall below thresholds,
+ * effective supply is reduced — the nation can produce abundantly and still
+ * face shortage due to logistics failure.
+ *
+ * @param {Object} nation – nation row with infrastructure stats
+ * @returns {number} multiplier 0.4–1.0 (1.0 = no spoilage, 0.4 = maximum spoilage)
+ */
+function calculateSpoilageMultiplier(nation) {
+    var cfg = FOOD_SUBSECTOR_MAP.fruits_vegetables.spoilage;
+    var rail = Number(nation.rail_network) || 0;
+    var infra = Number(nation.physical_infrastructure) || 0;
+    var energy = Number(nation.energy_generation) || 0;
+
+    var spoilagePct = 0;
+
+    // Rail below threshold: major spoilage (cannot move perishables fast enough)
+    if (rail < cfg.rail_threshold) {
+        spoilagePct += ((cfg.rail_threshold - rail) / cfg.rail_threshold) * 30;
+    }
+
+    // Infrastructure below threshold: cold chain failure
+    if (infra < cfg.infra_threshold) {
+        spoilagePct += ((cfg.infra_threshold - infra) / cfg.infra_threshold) * 20;
+    }
+
+    // Energy below threshold: refrigeration failure
+    if (energy < cfg.energy_threshold) {
+        spoilagePct += ((cfg.energy_threshold - energy) / cfg.energy_threshold) * 10;
+    }
+
+    // Cap at maximum spoilage
+    spoilagePct = Math.min(spoilagePct, cfg.max_spoilage_pct);
+
+    return 1 - (spoilagePct / 100);
+}
+
+/**
+ * Default arable land allocation if no food_land_allocation row exists.
+ * Mirrors the schema defaults in the food_land_allocation table.
+ */
+var DEFAULT_FOOD_ALLOCATION = {
+    grains_pct: 40,
+    livestock_pct: 20,
+    perishables_pct: 20,
+    cash_crops_pct: 20
+};
+
+// ==================== FOOD SECURITY STATUS ====================
+
+/**
+ * Food security status labels and thresholds.
+ *
+ * Computed from the ratio of effective food supply (production + imports)
+ * to food demand across the 3 food-security sectors (grains, livestock,
+ * perishables). Cash crops are excluded — they don't feed people.
+ */
+var FOOD_SECURITY_LEVELS = [
+    { key: 'surplus',     label: 'Surplus',          min: 1.10, color: '#5cb85c', description: 'Production exceeds demand. Food exports generate revenue.' },
+    { key: 'secure',      label: 'Secure',           min: 0.90, color: '#4a9a5b', description: 'Adequate supply. Minor shortfalls covered by imports.' },
+    { key: 'adequate',    label: 'Adequate',          min: 0.75, color: '#8ab563', description: 'Sufficient but fragile. Disruptions could trigger shortage.' },
+    { key: 'strained',    label: 'Strained',          min: 0.60, color: '#d48a3c', description: 'Import-dependent. Trade disruption risks food shortage.' },
+    { key: 'shortage',    label: 'Shortage',          min: 0.40, color: '#c0392b', description: 'Significant food deficit. Rationing likely.' },
+    { key: 'crisis',      label: 'Crisis',            min: 0.20, color: '#8b0000', description: 'Severe food insecurity. Famine conditions emerging.' },
+    { key: 'famine',      label: 'Famine',            min: 0.00, color: '#4a0000', description: 'Catastrophic food failure. Mass starvation imminent.' }
+];
+
+/**
+ * Compute food security status for a nation based on trade_flows data.
+ *
+ * Uses the 3 food-security sectors (grains, livestock, perishables) weighted
+ * by their food_security_weight values. Cash crops are excluded.
+ *
+ * Supply = domestic production (export_capacity) + actual imports (import_volume)
+ * Demand = import_demand + domestic consumption (approximated from export_capacity)
+ *
+ * For simplicity, the ratio is computed as:
+ *   (total supply that reached the population) / (total demand the population has)
+ *
+ * @param {Object} flows – { [sectorKey]: { export_capacity, export_volume, import_demand, import_volume } }
+ * @returns {Object} { ratio, level, label, color, description, perSector }
+ */
+function computeFoodSecurityStatus(flows) {
+    if (!flows) return { ratio: 1.0, level: 'secure', label: 'Secure', color: '#4a9a5b', description: 'No data available.', perSector: {} };
+
+    var totalWeightedSupply = 0;
+    var totalWeightedDemand = 0;
+    var perSector = {};
+
+    for (var i = 0; i < FOOD_SUBSECTORS.length; i++) {
+        var sub = FOOD_SUBSECTORS[i];
+        if (sub.food_security_weight <= 0) continue; // Skip cash crops
+
+        var flow = flows[sub.key];
+        if (!flow) continue;
+
+        var expCap = Number(flow.export_capacity) || 0;
+        var expVol = Number(flow.export_volume) || 0;
+        var impVol = Number(flow.import_volume) || 0;
+        var impDem = Number(flow.import_demand) || 0;
+
+        // Domestic supply = what we produced minus what we exported + what we imported
+        var domesticProduction = expCap; // Total production capacity
+        var domesticRetained = Math.max(0, domesticProduction - expVol); // Kept for domestic use
+        var totalSupply = domesticRetained + impVol;
+
+        // Total demand = domestic need + desired imports (import_demand represents the gap)
+        // Domestic need ≈ production capacity (we produce to meet demand)
+        // But actual total demand = domestic consumption + the unmet portion
+        var totalDemand = domesticRetained + impDem;
+        if (totalDemand <= 0) totalDemand = 1; // Prevent division by zero
+
+        var sectorRatio = totalSupply / totalDemand;
+        var weight = sub.food_security_weight;
+
+        totalWeightedSupply += sectorRatio * weight;
+        totalWeightedDemand += weight;
+
+        perSector[sub.key] = {
+            supply: totalSupply,
+            demand: totalDemand,
+            ratio: Math.round(sectorRatio * 100) / 100,
+            label: sub.label
+        };
+    }
+
+    var ratio = totalWeightedDemand > 0 ? totalWeightedSupply / totalWeightedDemand : 1.0;
+    ratio = Math.round(ratio * 100) / 100;
+
+    // Find matching security level
+    var level = FOOD_SECURITY_LEVELS[FOOD_SECURITY_LEVELS.length - 1];
+    for (var j = 0; j < FOOD_SECURITY_LEVELS.length; j++) {
+        if (ratio >= FOOD_SECURITY_LEVELS[j].min) {
+            level = FOOD_SECURITY_LEVELS[j];
+            break;
+        }
+    }
+
+    return {
+        ratio: ratio,
+        level: level.key,
+        label: level.label,
+        color: level.color,
+        description: level.description,
+        perSector: perSector
+    };
+}
+
+/**
+ * Compute stat effects from food sub-sector supply/shortage conditions.
+ *
+ * Called per-tick to apply ongoing stat nudges based on whether each
+ * food sub-sector is well-supplied or in shortage. Effects are defined
+ * in the FOOD_SUBSECTORS[].stat_effects config.
+ *
+ * @param {Object} flows – trade_flows for this nation { [sectorKey]: { ... } }
+ * @returns {Object} accumulated stat deltas { statKey: delta, ... }
+ */
+function computeFoodStatEffects(flows) {
+    var effects = {};
+    if (!flows) return effects;
+
+    for (var i = 0; i < FOOD_SUBSECTORS.length; i++) {
+        var sub = FOOD_SUBSECTORS[i];
+        var flow = flows[sub.key];
+        if (!flow) continue;
+
+        var impDem = Number(flow.import_demand) || 0;
+        var impVol = Number(flow.import_volume) || 0;
+        var expCap = Number(flow.export_capacity) || 0;
+
+        // Determine supply status
+        var unmetRatio = impDem > 0 ? Math.max(0, (impDem - impVol) / impDem) : 0;
+        var isShortage = unmetRatio >= 0.10;
+        var isWellSupplied = unmetRatio < 0.05 && expCap > 0;
+
+        var effectSet;
+        var intensity;
+        if (isShortage) {
+            effectSet = sub.stat_effects.shortage;
+            intensity = Math.min(1.0, unmetRatio); // Scale with severity
+        } else if (isWellSupplied) {
+            effectSet = sub.stat_effects.supplied;
+            intensity = 1.0;
+        } else {
+            continue; // Neutral zone — no effects
+        }
+
+        if (!effectSet) continue;
+
+        for (var statKey in effectSet) {
+            var delta = effectSet[statKey] * intensity;
+            if (!effects[statKey]) effects[statKey] = 0;
+            effects[statKey] += delta;
+        }
+
+        // Environmental effects (always active when producing)
+        if (sub.environmental_effects && expCap > 0) {
+            var envIntensity = Math.min(1.0, expCap / 500000000); // Scale with production volume
+            for (var envKey in sub.environmental_effects) {
+                var envDelta = sub.environmental_effects[envKey] * envIntensity;
+                if (!effects[envKey]) effects[envKey] = 0;
+                effects[envKey] += envDelta;
+            }
+        }
+
+        // Structural effects for cash crops (always active when producing)
+        if (sub.structural_effects && expCap > 0) {
+            var structIntensity = Math.min(1.0, expCap / 500000000);
+            for (var structKey in sub.structural_effects) {
+                var structDelta = sub.structural_effects[structKey] * structIntensity;
+                if (!effects[structKey]) effects[structKey] = 0;
+                effects[structKey] += structDelta;
+            }
+        }
+    }
+
+    return effects;
+}
+
+/**
+ * Build the effective sector list for trade processing.
+ * Replaces 'food_agriculture' with the 4 food sub-sectors.
+ * Non-food sectors pass through unchanged.
+ *
+ * @returns {Array} sector objects for trade engine iteration
+ */
+function buildEffectiveSectorList() {
+    var result = [];
+    for (var i = 0; i < TRADE_SECTORS.length; i++) {
+        if (TRADE_SECTORS[i].key === 'food_agriculture') {
+            // Replace with 4 sub-sectors
+            for (var j = 0; j < FOOD_SUBSECTORS.length; j++) {
+                result.push(FOOD_SUBSECTORS[j]);
+            }
+        } else {
+            result.push(TRADE_SECTORS[i]);
+        }
+    }
+    return result;
+}
+
+// ==================== FOOD SUB-SECTOR CALCULATION FUNCTIONS ====================
+
+/**
+ * Calculate export capacity for a food sub-sector.
+ *
+ * Uses effective arable land (total arable × allocation %) as the primary
+ * driver, modified by sub-sector-specific stat drivers.
+ *
+ * @param {Object} nation      – nation row with all stats
+ * @param {Object} subsector   – FOOD_SUBSECTORS entry
+ * @param {Object} allocation  – food_land_allocation row (or DEFAULT_FOOD_ALLOCATION)
+ * @returns {number} export capacity in dollars
+ */
+function calculateFoodExportCapacity(nation, subsector, allocation) {
+    var cfg = TRADE_CONFIG;
+
+    var gdp = Number(nation.gdp) || 0;
+    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    if (gdpModifier <= 0) return 0;
+
+    // Food production is LAND-driven, not GDP-driven.
+    // Use sqrt(gdpModifier) so economy matters but land dominates.
+    var econScale = Math.sqrt(gdpModifier);
+
+    // Effective arable land for this sub-sector
+    var effectiveLand = getEffectiveArableLand(nation, subsector.key, allocation);
+
+    // Threshold check
+    if (effectiveLand <= (subsector.export_threshold || 0)) return 0;
+
+    // Normalize to 0-20 scale
+    var normalizedScore = effectiveLand / 5;
+
+    // Apply stat driver bonuses (secondary drivers boost capacity by up to ~30%)
+    var driverBonus = 1.0;
+    var drivers = subsector.drivers;
+    for (var i = 0; i < drivers.length; i++) {
+        var d = drivers[i];
+        if (d.stat === 'arable_land') continue; // Already accounted for via effective land
+        var val = Number(nation[d.stat]) || 0;
+        if (d.inverted) val = 100 - val; // e.g. weak currency boosts cash crop exports
+        var bonus = ((val - 50) / 50) * d.weight * 0.3;
+        driverBonus += bonus;
+    }
+    driverBonus = Math.max(0.5, Math.min(1.5, driverBonus));
+
+    // Base capacity: land × economy-scale × driver bonus
+    var capacity = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * econScale * driverBonus;
+
+    // Sub-sector export multiplier (domestic consumption priority)
+    capacity *= subsector.export_multiplier;
+
+    // Spoilage for perishables: reduces effective supply
+    if (subsector.key === 'fruits_vegetables') {
+        capacity *= calculateSpoilageMultiplier(nation);
+    }
+
+    // Stability modifier (same as regular sectors)
+    var stability = Number(nation.stability ?? 50);
+    var stabilityMod = Math.min(1.0, stability / 40);
+    capacity *= stabilityMod;
+
+    // Currency strength modifier
+    var currencyStrength = Number(nation.currency_strength ?? 50);
+    var currencyModifier = currencyStrength / 50;
+    capacity *= currencyModifier;
+
+    // Floor: minimal organic trade
+    var minCapacity = Math.round(0.01 * cfg.BASE_TRADE_MULTIPLIER * econScale);
+    return Math.max(minCapacity, Math.round(capacity));
+}
+
+/**
+ * Calculate import demand for a food sub-sector.
+ *
+ * Each sub-sector has distinct demand drivers:
+ *   grains_staples:    population-driven (everyone eats)
+ *   livestock_dairy:   wealth-driven (standard_of_living scales demand)
+ *   fruits_vegetables: urbanization + wealth driven
+ *   cash_crops:        low import demand (export-oriented sector)
+ *
+ * @param {Object} nation      – nation row
+ * @param {Object} subsector   – FOOD_SUBSECTORS entry
+ * @param {Object} allocation  – food_land_allocation row (or DEFAULT_FOOD_ALLOCATION)
+ * @returns {number} import demand in dollars
+ */
+function calculateFoodImportDemand(nation, subsector, allocation) {
+    var cfg = TRADE_CONFIG;
+    var gdp = Number(nation.gdp) || 0;
+    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    var popNorm = (Number(nation.population) || 1) / 5000000;
+
+    var grossDemand = 0;
+    var domesticCoverage = 0;
+
+    // Effective arable land for this sub-sector
+    var effectiveLand = getEffectiveArableLand(nation, subsector.key, allocation);
+
+    if (subsector.key === 'grains_staples') {
+        // GRAINS: population-driven. Everyone needs staples.
+        // Population growth creates additional pressure.
+        var popGrowth = Number(nation.population_growth ?? 50);
+        var growthPressure = Math.max(0, (popGrowth - 40) / 60) * 0.3;
+        grossDemand = popNorm * (1.0 + growthPressure) * cfg.BASE_TRADE_MULTIPLIER * 0.45;
+
+        // Domestic coverage: effective land scaled by population pressure
+        // Large populations outstrip local farming even with good land
+        domesticCoverage = (effectiveLand / 100) / Math.max(0.3, popNorm * 0.5);
+    }
+
+    else if (subsector.key === 'livestock_dairy') {
+        // LIVESTOCK: wealth-driven. Demand scales with standard of living.
+        // Poor nations eat little meat; wealthy nations demand a lot.
+        var sol = (Number(nation.standard_of_living ?? 50)) / 100;
+        grossDemand = popNorm * (0.3 + sol * 0.7) * cfg.BASE_TRADE_MULTIPLIER * 0.25;
+
+        // Domestic coverage: effective land, but less efficient (feed crops compete)
+        domesticCoverage = (effectiveLand / 100) / Math.max(0.2, popNorm * 0.4);
+    }
+
+    else if (subsector.key === 'fruits_vegetables') {
+        // PERISHABLES: urbanization + wealth driven.
+        // Urban populations need organized food supply chains.
+        var urban = (Number(nation.urbanization ?? 50)) / 100;
+        var sol = (Number(nation.standard_of_living ?? 50)) / 100;
+        grossDemand = popNorm * (0.4 + urban * 0.4 + sol * 0.3) * cfg.BASE_TRADE_MULTIPLIER * 0.2;
+
+        // Domestic coverage reduced by spoilage — production means nothing
+        // without distribution infrastructure
+        var spoilage = calculateSpoilageMultiplier(nation);
+        domesticCoverage = ((effectiveLand / 100) / Math.max(0.2, popNorm * 0.5)) * spoilage;
+    }
+
+    else if (subsector.key === 'cash_crops') {
+        // CASH CROPS: low import demand. These are export commodities.
+        // Nations import coffee, tea, cocoa for domestic consumption but
+        // volumes are small compared to staples.
+        var sol = (Number(nation.standard_of_living ?? 50)) / 100;
+        grossDemand = popNorm * (0.15 + sol * 0.2) * cfg.BASE_TRADE_MULTIPLIER * 0.12;
+
+        // High domestic coverage if you grow them
+        domesticCoverage = (effectiveLand / 100) / Math.max(0.15, popNorm * 0.3);
+    }
+
+    // Apply domestic coverage
+    domesticCoverage = Math.min(1.0, Math.max(0, domesticCoverage));
+    var rawDemand = grossDemand * (1 - domesticCoverage);
+
+    if (rawDemand <= 0) return 0;
+
+    // Currency strength: weak currency = imports cost more = can afford less
+    var currencyStrength = Number(nation.currency_strength ?? 50);
+    var affordability = currencyStrength / 50;
+    rawDemand *= affordability;
+
+    // Tariff dampener
+    var tariffs = Number(nation.tariffs) || 0;
+    var tariffDampener = 1 - (tariffs / 200);
+    rawDemand *= tariffDampener;
+
+    // Floor
+    var minDemand = Math.round(0.02 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
+    return Math.max(minDemand, Math.round(rawDemand));
+}
+
+// ==================== TRADE CALCULATION FUNCTIONS ====================
 
 /**
  * Calculate a nation's export capacity for a given sector.
@@ -1076,13 +1731,23 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     }
 
     var cfg = TRADE_CONFIG;
-    var sectors = TRADE_SECTORS;
+    var sectors = buildEffectiveSectorList(); // Replaces food_agriculture with 4 sub-sectors
     var nationCount = nationList.length;
 
     // Build nation lookup by id
     var nationMap = {};
     for (var ni = 0; ni < nationCount; ni++) {
         nationMap[nationList[ni].id] = nationList[ni];
+    }
+
+    // ── Step 0: Fetch food land allocations for all nations ──
+    var foodAllocMap = {}; // foodAllocMap[nationId] = { grains_pct, livestock_pct, ... }
+    var { data: foodAllocRows } = await supabase.from('food_land_allocation')
+        .select('nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct');
+    if (foodAllocRows) {
+        for (var fi = 0; fi < foodAllocRows.length; fi++) {
+            foodAllocMap[foodAllocRows[fi].nation_id] = foodAllocRows[fi];
+        }
     }
 
     // ── Step 1: Compute per-nation budget info (for arms sector opts) ──
@@ -1105,35 +1770,44 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     for (var ni = 0; ni < nationCount; ni++) {
         var n = nationList[ni];
         nationFlows[n.id] = {};
+        var foodAlloc = foodAllocMap[n.id] || DEFAULT_FOOD_ALLOCATION;
 
         for (var si = 0; si < sectors.length; si++) {
             var sector = sectors[si];
+            var expCap, impDem;
 
-            // Arms sector needs special opts
-            var exportOpts = null;
-            var importOpts = null;
-            if (sector.key === 'arms') {
-                // Estimate defense allocation as 10% of available budget (default assumption)
-                var avail = budgetMap[n.id].availableBudget || 0;
-                var defenseBudget = avail * 0.10;
-                exportOpts = { defense_pct: 10 };
-                importOpts = { defense_budget: defenseBudget, has_arms_exports: false };
-            }
+            if (isFoodSubsector(sector.key)) {
+                // ── Food sub-sector: use specialized calculation ──
+                expCap = calculateFoodExportCapacity(n, sector, foodAlloc);
+                impDem = calculateFoodImportDemand(n, sector, foodAlloc);
+            } else {
+                // ── Regular sector ──
+                var exportOpts = null;
+                var importOpts = null;
+                if (sector.key === 'arms') {
+                    var avail = budgetMap[n.id].availableBudget || 0;
+                    var defenseBudget = avail * 0.10;
+                    exportOpts = { defense_pct: 10 };
+                    importOpts = { defense_budget: defenseBudget, has_arms_exports: false };
+                }
 
-            var expCap = calculateExportCapacity(n, sector, exportOpts);
-            var impDem = calculateImportDemand(n, sector, importOpts);
-
-            // Check if this nation can export arms (for import reduction)
-            if (sector.key === 'arms' && expCap > 0 && importOpts) {
-                importOpts.has_arms_exports = true;
+                expCap = calculateExportCapacity(n, sector, exportOpts);
                 impDem = calculateImportDemand(n, sector, importOpts);
+
+                if (sector.key === 'arms' && expCap > 0 && importOpts) {
+                    importOpts.has_arms_exports = true;
+                    impDem = calculateImportDemand(n, sector, importOpts);
+                }
             }
 
-            // Export controls: nations can cap exports per sector (e.g., OPEC strategy)
-            // export_caps is a JSONB object like { energy: 50, minerals: 75 } meaning % of capacity
+            // Export controls: nations can cap exports per sector
             var exportCaps = n.export_caps;
             if (exportCaps && exportCaps[sector.key] != null) {
                 expCap = Math.round(expCap * (exportCaps[sector.key] / 100));
+            }
+            // Also check parent food_agriculture cap for sub-sectors
+            if (isFoodSubsector(sector.key) && exportCaps && exportCaps['food_agriculture'] != null) {
+                expCap = Math.round(expCap * (exportCaps['food_agriculture'] / 100));
             }
 
             nationFlows[n.id][sector.key] = { exportCapacity: expCap, importDemand: impDem };
@@ -1229,6 +1903,13 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     var embargoMap = {};
     var activeRSCs = [];
 
+    // Helper: expand a sector key to account for food sub-sectors.
+    // If an agreement references 'food_agriculture', it applies to all 4 sub-sectors.
+    function expandSectorKey(sectorKey) {
+        if (sectorKey === 'food_agriculture') return FOOD_SUBSECTOR_KEYS;
+        return [sectorKey];
+    }
+
     if (activeTradeAgreements) {
         for (var ti = 0; ti < activeTradeAgreements.length; ti++) {
             var ta = activeTradeAgreements[ti];
@@ -1275,15 +1956,20 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 
                     // your_exports: partner (importer) reduces tariffs on author's (exporter's) goods
                     // their_exports: author (importer) reduces tariffs on partner's (exporter's) goods
-                    if (direction === 'mutual' || direction === 'your_exports') {
-                        var impExpKey = partnerId + '|' + authorId;
-                        if (!tariffModMap[impExpKey]) tariffModMap[impExpKey] = {};
-                        tariffModMap[impExpKey][d.sector] = Math.max(tariffModMap[impExpKey][d.sector] || 0, reduction);
-                    }
-                    if (direction === 'mutual' || direction === 'their_exports') {
-                        var impExpKey = authorId + '|' + partnerId;
-                        if (!tariffModMap[impExpKey]) tariffModMap[impExpKey] = {};
-                        tariffModMap[impExpKey][d.sector] = Math.max(tariffModMap[impExpKey][d.sector] || 0, reduction);
+                    // Expand food_agriculture to all sub-sectors
+                    var ptaSectors = expandSectorKey(d.sector);
+                    for (var psi = 0; psi < ptaSectors.length; psi++) {
+                        var ptaSec = ptaSectors[psi];
+                        if (direction === 'mutual' || direction === 'your_exports') {
+                            var impExpKey = partnerId + '|' + authorId;
+                            if (!tariffModMap[impExpKey]) tariffModMap[impExpKey] = {};
+                            tariffModMap[impExpKey][ptaSec] = Math.max(tariffModMap[impExpKey][ptaSec] || 0, reduction);
+                        }
+                        if (direction === 'mutual' || direction === 'their_exports') {
+                            var impExpKey2 = authorId + '|' + partnerId;
+                            if (!tariffModMap[impExpKey2]) tariffModMap[impExpKey2] = {};
+                            tariffModMap[impExpKey2][ptaSec] = Math.max(tariffModMap[impExpKey2][ptaSec] || 0, reduction);
+                        }
                     }
                 }
             } else if (ta.agreement_type === 'resource_supply') {
@@ -1303,8 +1989,11 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                     // Key: importer (imposer) | exporter (target) — surcharge on imports FROM target
                     var surKey = imposerId + '|' + targetId;
                     if (!tariffSurchargeMap[surKey]) tariffSurchargeMap[surKey] = {};
-                    // Stack surcharges per sector (take max if multiple)
-                    tariffSurchargeMap[surKey][d.sector] = Math.max(tariffSurchargeMap[surKey][d.sector] || 0, surcharge);
+                    // Expand food_agriculture to sub-sectors
+                    var rtSectors = expandSectorKey(d.sector);
+                    for (var rti = 0; rti < rtSectors.length; rti++) {
+                        tariffSurchargeMap[surKey][rtSectors[rti]] = Math.max(tariffSurchargeMap[surKey][rtSectors[rti]] || 0, surcharge);
+                    }
                 }
             } else if (ta.agreement_type === 'export_subsidy') {
                 // Export subsidy: unilateral — nation_a subsidizes its own exports in a sector
@@ -1315,7 +2004,11 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                     var subsidyPct = (d.subsidy_pct || 0) / 100;
                     var nationId = ta.nation_a_id;
                     if (!exportSubsidyMap[nationId]) exportSubsidyMap[nationId] = {};
-                    exportSubsidyMap[nationId][d.sector] = Math.max(exportSubsidyMap[nationId][d.sector] || 0, subsidyPct);
+                    // Expand food_agriculture to sub-sectors
+                    var esSectors = expandSectorKey(d.sector);
+                    for (var esi = 0; esi < esSectors.length; esi++) {
+                        exportSubsidyMap[nationId][esSectors[esi]] = Math.max(exportSubsidyMap[nationId][esSectors[esi]] || 0, subsidyPct);
+                    }
                 }
             } else if (ta.agreement_type === 'impose_embargo') {
                 // Impose embargo: per-sector trade blocking between imposer (nation_a) and target (nation_b)
@@ -1330,8 +2023,12 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                     var ek2 = embTargetId + '|' + imposerId;
                     if (!embargoMap[ek1]) embargoMap[ek1] = {};
                     if (!embargoMap[ek2]) embargoMap[ek2] = {};
-                    embargoMap[ek1][d.sector] = true;
-                    embargoMap[ek2][d.sector] = true;
+                    // Expand food_agriculture to sub-sectors
+                    var embSectors = expandSectorKey(d.sector);
+                    for (var embi = 0; embi < embSectors.length; embi++) {
+                        embargoMap[ek1][embSectors[embi]] = true;
+                        embargoMap[ek2][embSectors[embi]] = true;
+                    }
                 }
             }
         }
@@ -1373,6 +2070,9 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 
             if (!supplyArt || !supplyArt.sector || !supplyArt.commitment_pct) continue;
 
+            // Expand food_agriculture RSCs to all sub-sectors (split commitment proportionally)
+            var rscSectors = expandSectorKey(supplyArt.sector);
+
             // Resolve buyer/seller from direction + author_nation_id
             var authorNationId = supplyArt.author_nation_id || rsc.nation_a_id;
             var otherNationId = (authorNationId === rsc.nation_a_id) ? rsc.nation_b_id : rsc.nation_a_id;
@@ -1385,37 +2085,39 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 buyerNationId = otherNationId;
             }
 
-            // Calculate guaranteed volume from seller's export capacity
             var sellerFlows = nationFlows[sellerNationId];
             var buyerFlows = nationFlows[buyerNationId];
             if (!sellerFlows || !buyerFlows) continue;
 
-            var sellerExport = (sellerFlows[supplyArt.sector] && sellerFlows[supplyArt.sector].exportCapacity) || 0;
-            var buyerDemand = (buyerFlows[supplyArt.sector] && buyerFlows[supplyArt.sector].importDemand) || 0;
-            if (sellerExport <= 0 || buyerDemand <= 0) continue;
+            for (var rsi = 0; rsi < rscSectors.length; rsi++) {
+                var rscSec = rscSectors[rsi];
 
-            var guaranteedVolume = Math.round(sellerExport * (supplyArt.commitment_pct / 100));
-            guaranteedVolume = Math.min(guaranteedVolume, buyerDemand);
+                var sellerExport = (sellerFlows[rscSec] && sellerFlows[rscSec].exportCapacity) || 0;
+                var buyerDemand = (buyerFlows[rscSec] && buyerFlows[rscSec].importDemand) || 0;
+                if (sellerExport <= 0 || buyerDemand <= 0) continue;
 
-            // Apply price modifier based on price_terms article
-            var sectorPriceMod = priceModifiers[supplyArt.sector] || 1.0;
-            var rscPriceMod = sectorPriceMod;
-            if (priceArt) {
-                if (priceArt.price_type === 'fixed') rscPriceMod = 1.0;
-                else if (priceArt.price_type === 'discounted') rscPriceMod = sectorPriceMod * (1 - (priceArt.modifier_pct || 0) / 100);
-                else if (priceArt.price_type === 'premium') rscPriceMod = sectorPriceMod * (1 + (priceArt.modifier_pct || 0) / 100);
+                var guaranteedVolume = Math.round(sellerExport * (supplyArt.commitment_pct / 100));
+                guaranteedVolume = Math.min(guaranteedVolume, buyerDemand);
+
+                var sectorPriceMod = priceModifiers[rscSec] || 1.0;
+                var rscPriceMod = sectorPriceMod;
+                if (priceArt) {
+                    if (priceArt.price_type === 'fixed') rscPriceMod = 1.0;
+                    else if (priceArt.price_type === 'discounted') rscPriceMod = sectorPriceMod * (1 - (priceArt.modifier_pct || 0) / 100);
+                    else if (priceArt.price_type === 'premium') rscPriceMod = sectorPriceMod * (1 + (priceArt.modifier_pct || 0) / 100);
+                }
+
+                var adjustedVolume = Math.round(guaranteedVolume * rscPriceMod);
+                if (adjustedVolume <= 0) continue;
+
+                rscPreAllocations.push({
+                    sellerNationId: sellerNationId,
+                    buyerNationId: buyerNationId,
+                    sector: rscSec,
+                    volume: adjustedVolume,
+                    agreementId: rsc.id
+                });
             }
-
-            var adjustedVolume = Math.round(guaranteedVolume * rscPriceMod);
-            if (adjustedVolume <= 0) continue;
-
-            rscPreAllocations.push({
-                sellerNationId: sellerNationId,
-                buyerNationId: buyerNationId,
-                sector: supplyArt.sector,
-                volume: adjustedVolume,
-                agreementId: rsc.id
-            });
         }
     }
 
@@ -1571,9 +2273,9 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 if (remainingDem <= 0) continue;
 
                 var aff = affinityMap[exporter.id + '|' + importer.id] || 0;
-                // Strategic necessity: fuel & energy trades even through poor relations
+                // Strategic necessity: fuel & grains trade even through poor relations
                 // Floor scales with exporter capacity — major producers always find buyers
-                if (sector.key === 'fuel_energy' && !(pairFlags && pairFlags.has_embargo)) {
+                if ((sector.key === 'fuel_energy' || sector.key === 'grains_staples') && !(pairFlags && pairFlags.has_embargo)) {
                     var strategicFloor = Math.min(15, Math.round(nationFlows[exporter.id][sector.key].exportCapacity / 6));
                     if (aff < strategicFloor) aff = strategicFloor;
                 }
@@ -1838,13 +2540,40 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 nationUpdates.manufacturing_output = Math.round(Math.max(0, (Number(n.manufacturing_output ?? 50)) - fuelManufPen) * 10) / 10;
                 nationUpdates.inflation = Math.round(Math.min(100, (nationUpdates.inflation != null ? nationUpdates.inflation : (Number(n.inflation ?? 50))) + fuelInflation) * 10) / 10;
                 nationUpdates.cost_of_living = Math.round(Math.min(100, (Number(n.cost_of_living ?? 50)) + fuelCol) * 10) / 10;
-            } else if (sKey3 === 'food_agriculture') {
-                var foodHappiness = severity * 1.2;
-                var foodUnrest = severity * 1.5;
-                var foodHealth = severity * 0.8;
-                nationUpdates.happiness = Math.round(Math.max(0, (Number(n.happiness ?? 50)) - foodHappiness) * 10) / 10;
-                nationUpdates.civil_unrest = Math.round(Math.min(100, (Number(n.civil_unrest) || 0) + foodUnrest) * 10) / 10;
-                nationUpdates.healthcare_quality = Math.round(Math.max(0, (Number(n.healthcare_quality ?? 50)) - foodHealth) * 10) / 10;
+            } else if (sKey3 === 'grains_staples') {
+                // Grain shortage: famine risk — stability, legitimacy, civil unrest, emigration
+                var grainHappiness = severity * 1.5;
+                var grainUnrest = severity * 2.0;
+                var grainStability = severity * 1.5;
+                var grainLegitimacy = severity * 1.5;
+                var grainPoverty = severity * 2.0;
+                nationUpdates.happiness = Math.round(Math.max(0, (Number(n.happiness ?? 50)) - grainHappiness) * 10) / 10;
+                nationUpdates.civil_unrest = Math.round(Math.min(100, (Number(n.civil_unrest) || 0) + grainUnrest) * 10) / 10;
+                nationUpdates.stability = Math.round(Math.max(0, (nationUpdates.stability != null ? nationUpdates.stability : (Number(n.stability ?? 50))) - grainStability) * 10) / 10;
+                nationUpdates.legitimacy = Math.round(Math.max(0, (Number(n.legitimacy ?? 50)) - grainLegitimacy) * 10) / 10;
+                nationUpdates.poverty_rate = Math.round(Math.min(100, (Number(n.poverty_rate) || 0) + grainPoverty) * 10) / 10;
+            } else if (sKey3 === 'livestock_dairy') {
+                // Livestock shortage: quality of life decline
+                var livestockSol = severity * 1.0;
+                var livestockHappy = severity * 0.8;
+                var livestockCol = severity * 0.8;
+                nationUpdates.standard_of_living = Math.round(Math.max(0, (Number(n.standard_of_living ?? 50)) - livestockSol) * 10) / 10;
+                nationUpdates.happiness = Math.round(Math.max(0, (nationUpdates.happiness != null ? nationUpdates.happiness : (Number(n.happiness ?? 50))) - livestockHappy) * 10) / 10;
+                nationUpdates.cost_of_living = Math.round(Math.min(100, (nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living ?? 50))) + livestockCol) * 10) / 10;
+            } else if (sKey3 === 'fruits_vegetables') {
+                // Perishables shortage: health and happiness impact
+                var fvHealth = severity * 1.0;
+                var fvHappy = severity * 1.0;
+                var fvCol = severity * 0.6;
+                nationUpdates.healthcare_quality = Math.round(Math.max(0, (Number(n.healthcare_quality ?? 50)) - fvHealth) * 10) / 10;
+                nationUpdates.happiness = Math.round(Math.max(0, (nationUpdates.happiness != null ? nationUpdates.happiness : (Number(n.happiness ?? 50))) - fvHappy) * 10) / 10;
+                nationUpdates.cost_of_living = Math.round(Math.min(100, (nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living ?? 50))) + fvCol) * 10) / 10;
+            } else if (sKey3 === 'cash_crops') {
+                // Cash crop shortage: GDP and investment impact (not food security)
+                var ccGdp = severity * 0.8;
+                var ccFdi = severity * 0.6;
+                nationUpdates.gdp_growth = Math.round(Math.max(0, (nationUpdates.gdp_growth != null ? nationUpdates.gdp_growth : (Number(n.gdp_growth ?? 50))) - ccGdp) * 10) / 10;
+                nationUpdates.foreign_investment = Math.round(Math.max(0, (Number(n.foreign_investment ?? 50)) - ccFdi) * 10) / 10;
             } else if (sKey3 === 'minerals') {
                 var minManuf = severity * 1.0;
                 var minInfra = severity * 0.7;
@@ -2143,7 +2872,10 @@ const TRADE_AGREEMENT_TYPES = {
 const TRADEABLE_SECTORS = [
     { key: 'fuel_energy',        label: 'Fuel & Energy',            raw_resource: true  },
     { key: 'minerals',           label: 'Minerals & Raw Materials', raw_resource: true  },
-    { key: 'food_agriculture',   label: 'Food & Agriculture',       raw_resource: true  },
+    { key: 'grains_staples',     label: 'Grains & Staples',          raw_resource: true  },
+    { key: 'livestock_dairy',    label: 'Livestock & Dairy',         raw_resource: true  },
+    { key: 'fruits_vegetables',  label: 'Fruits & Vegetables',       raw_resource: true  },
+    { key: 'cash_crops',         label: 'Cash Crops & Plantation',   raw_resource: true  },
     { key: 'manufactured_goods', label: 'Manufactured Goods',       raw_resource: false },
     { key: 'technology',         label: 'Technology & Electronics', raw_resource: false },
     { key: 'arms',               label: 'Arms & Military Equipment', raw_resource: false }
@@ -2154,6 +2886,8 @@ var TRADEABLE_SECTOR_MAP = {};
 for (var _tasi = 0; _tasi < TRADEABLE_SECTORS.length; _tasi++) {
     TRADEABLE_SECTOR_MAP[TRADEABLE_SECTORS[_tasi].key] = TRADEABLE_SECTORS[_tasi];
 }
+// Backward compatibility: old trade agreements may reference 'food_agriculture'
+TRADEABLE_SECTOR_MAP['food_agriculture'] = { key: 'food_agriculture', label: 'Food & Agriculture', raw_resource: true };
 
 /**
  * Article type definitions for trade agreements.
@@ -4103,7 +4837,7 @@ const STAT_TO_MINISTRY = {
  * Each bloc has 1-2 priority_issues (e.g., ['Economics', 'Labor']).
  */
 const ISSUE_CATEGORY_STATS = {
-    Agriculture:     ['arable_land', 'fuel_prices', 'trade_balance', 'poverty_rate'],
+    Agriculture:     ['arable_land', 'fuel_prices', 'trade_balance', 'poverty_rate', 'cost_of_living', 'standard_of_living', 'happiness', 'pollution', 'carbon_emissions'],
     Economics:       ['gdp', 'gdp_growth', 'inflation', 'unemployment', 'currency_strength', 'trade_balance', 'debt', 'manufacturing_output', 'service_output'],
     Education:       ['literacy', 'higher_education', 'education_accessibility', 'academic_immigration'],
     Governance:      ['stability', 'legitimacy', 'efficiency', 'corruption', 'freedom_index'],
@@ -7682,25 +8416,6 @@ async function resolveExpiredVotes(supabase, nationId) {
                     }).eq('id', ministry.id);
                 }
 
-                // PM rejection penalty: -3 gov approval, -3 momentum for president's party
-                if (mKey === 'prime_minister') {
-                    await supabase.from('nations').update({
-                        gov_approval: Math.max(0, (nation?.gov_approval ?? 50) - 3),
-                        pm_nomination_attempts: (nation?.pm_nomination_attempts || 0) + 1
-                    }).eq('id', bill.nation_id);
-                    // Find president's faction and apply -3 momentum
-                    const { data: activePresident } = await supabase.from('presidents')
-                        .select('faction_id').eq('nation_id', bill.nation_id).eq('is_active', true).maybeSingle();
-                    if (activePresident?.faction_id) {
-                        await supabase.rpc('adjust_momentum', {
-                            p_faction_id: activePresident.faction_id,
-                            p_delta: -3,
-                            p_label: 'PM nomination rejected (-3)',
-                            p_tick: currentTick
-                        });
-                    }
-                }
-
                 await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
             }
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'minister_confirmation', earlyResolution: bill.early_resolution_status || null });
@@ -8556,7 +9271,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         delta = 1;
                         label = `Bill failed: ${(bill.bill_name || '').slice(0, 25)}… (+1)`;
                     }
-                    // NO voters on passing bills: no penalty (opposition shouldn't be punished for opposing)
+                    // NO voters on passing bills: no penalty (removed — opposition shouldn't be punished for opposing)
 
                     if (delta !== 0) {
                         await supabase.rpc('adjust_momentum', {
@@ -8569,6 +9284,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 }
 
                 // Sponsor bonus: +1 on passage (opposition only), -2 on failure
+                // Government sponsors get +0 — they already benefit from legislative success
                 if (billPassed && bill.proposed_by) {
                     const sponsorCoalition = await fetchActiveCoalition(supabase, bill.nation_id);
                     const isGovSponsor = sponsorCoalition?.party_ids?.includes(bill.proposed_by);
@@ -13043,7 +13759,7 @@ async function processElections(supabase, nation, currentTick) {
             const { data: oldSeatData } = await supabase.from('factions')
                 .select('id, seats').eq('nation_id', nation.id)
                 .eq('faction_type', 'party').is('abandoned_at', null);
-            const oldSeats: Record<string, number> = {};
+            const oldSeats = {};
             if (oldSeatData) for (const f of oldSeatData) oldSeats[f.id] = f.seats || 0;
 
             for (const r of completedElection.results.seats) {
@@ -13053,66 +13769,6 @@ async function processElections(supabase, nation, currentTick) {
                     .eq('id', r.party_id);
             }
             console.log(`Seats synced to factions for ${nation.name}`);
-
-            // ── Political Party Registration Act: strip seats from below-threshold parties ──
-            const regThreshold = Number(nation.party_registration_threshold || 0);
-            if (regThreshold > 0 && electionType !== 'presidential') {
-                const totalSeats = nation.total_seats || 120;
-                const minSeats = Math.ceil(totalSeats * regThreshold / 100);
-                const seatResults = completedElection.results.seats || [];
-                const belowThreshold = seatResults.filter(r => r.seats > 0 && r.seats < minSeats);
-
-                if (belowThreshold.length > 0) {
-                    let seatsFreed = 0;
-                    const disbandedNames = [];
-                    for (const r of belowThreshold) {
-                        seatsFreed += r.seats;
-                        await supabase.from('factions')
-                            .update({ seats: 0, registration_act_disbanded: true })
-                            .eq('id', r.party_id);
-                        disbandedNames.push(r.party_name || 'Unknown');
-                        // Also update the results object so downstream code sees 0 seats
-                        r.seats = 0;
-                    }
-
-                    // Redistribute freed seats proportionally to surviving parties
-                    const survivors = seatResults.filter(r => r.seats > 0);
-                    if (survivors.length === 0) {
-                        console.warn(`[Election] Party Registration Act: ALL parties below threshold in ${nation.name} — no survivors to receive seats`);
-                    }
-                    const totalSurvivorSeats = survivors.reduce((sum, r) => sum + r.seats, 0);
-                    let distributed = 0;
-                    for (let i = 0; i < survivors.length; i++) {
-                        const share = totalSurvivorSeats > 0 ? survivors[i].seats / totalSurvivorSeats : 1 / survivors.length;
-                        const gain = (i === survivors.length - 1) ? (seatsFreed - distributed) : Math.round(seatsFreed * share);
-                        survivors[i].seats += gain;
-                        distributed += gain;
-                        await supabase.from('factions')
-                            .update({ seats: survivors[i].seats })
-                            .eq('id', survivors[i].party_id);
-                    }
-
-                    // Reset disbanded flag for parties that now meet the threshold
-                    for (const r of survivors) {
-                        await supabase.from('factions')
-                            .update({ registration_act_disbanded: false, registration_act_dismissed: false })
-                            .eq('id', r.party_id);
-                    }
-
-                    console.log(`[Election] Party Registration Act: ${belowThreshold.length} parties below ${regThreshold}% threshold (${minSeats} seats), ${seatsFreed} seats reallocated in ${nation.name}`);
-
-                    // Fire event log for visibility
-                    await supabase.from('event_log').insert({
-                        nation_id: nation.id,
-                        event_name: 'Registration Act Enforced',
-                        trigger_key: 'registration_act_enforced',
-                        category: 'government',
-                        description_chosen: `Political Party Registration Act enforced: ${disbandedNames.join(', ')} fell below the ${regThreshold}% threshold and lost their seats. ${seatsFreed} seats reallocated.`,
-                        effects_applied: { threshold: regThreshold, parties_affected: disbandedNames.length, seats_freed: seatsFreed },
-                        fired_at_tick: currentTick
-                    }).then(({ error: evErr }) => { if (evErr) console.warn('Registration act event log failed:', evErr.message); });
-                }
-            }
 
             // Post-election momentum seed: +1 per 5 seats gained (min 1 if any gained)
             for (const r of completedElection.results.seats) {
@@ -13678,32 +14334,23 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
     // Sort for runner-up info in event
     const sorted = [...candidateResults].sort((a, b) => b.votes - a.votes);
 
-    // Fire presidential election event with full description for dashboard news
+    // Fire system event
     try {
-        const winPct = winner.vote_percentage || (totalVotes > 0 ? ((winner.votes / totalVotes) * 100).toFixed(1) : '?');
-        const runnerUp = sorted[1];
-        const runnerPct = runnerUp && totalVotes > 0 ? ((runnerUp.votes / totalVotes) * 100).toFixed(1) : null;
-        const resultsSummary = sorted
-            .filter(c => c.votes > 0)
-            .map(c => `${c.candidate_name} (${c.party_name}): ${totalVotes > 0 ? ((c.votes / totalVotes) * 100).toFixed(1) : '?'}%`)
-            .join(', ');
-        const runoffNote = wasRunoff ? ' after a runoff vote' : '';
-        const desc = `${winner.candidate_name} of ${winner.party_name} wins the presidential election${runoffNote} with ${winPct}% of the vote.${runnerUp ? ` Runner-up: ${runnerUp.candidate_name} (${runnerUp.party_name}) with ${runnerPct}%.` : ''}`;
-        await supabase.from('event_log').insert({
-            nation_id: nation.id,
-            event_name: 'Presidential Election',
-            trigger_key: 'presidential_election',
-            category: 'government',
-            description_chosen: desc,
-            effects_applied: {
-                winning_candidate: winner.candidate_name,
+        await supabase.rpc('fire_system_event', {
+            p_trigger_key: 'presidential_election',
+            p_nation_id: nation.id,
+            p_tick: currentTick,
+            p_placeholders: {
+                nation: nation.name,
                 winning_party: winner.party_name,
-                vote_percentage: winPct,
-                was_runoff: wasRunoff,
-                incumbent_win: isIncumbentWin,
-                results: resultsSummary
-            },
-            fired_at_tick: currentTick
+                winning_candidate: winner.candidate_name,
+                votes: winner.votes,
+                vote_percentage: winner.vote_percentage || '?',
+                runner_up: sorted[1]?.candidate_name || 'N/A',
+                runner_up_party: sorted[1]?.party_name || 'N/A',
+                was_runoff: wasRunoff ? 'true' : 'false',
+                incumbent_win: isIncumbentWin ? 'true' : 'false'
+            }
         });
     } catch (e) { console.warn('Presidential election event fire failed (non-blocking):', e); }
 
@@ -13910,44 +14557,6 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
     if (adminErr) {
         console.error(`[inauguratePresident] Failed to create new administration for ${nationId}:`, adminErr.message);
     }
-
-    // Auto-generate VP (head_of_state) as a distinct NPC — not the president
-    if (hasElectedPresident(fullNation)) {
-        const { firstNames: vpFirstPool, lastNames: vpLastPool } = getNationNames(fullNation?.name || '');
-        const vpFirst = vpFirstPool[Math.floor(Math.random() * vpFirstPool.length)];
-        const vpLast = vpLastPool[Math.floor(Math.random() * vpLastPool.length)];
-        const vpAge = 45 + Math.floor(Math.random() * 20);
-        await supabase.from('nations').update({
-            head_of_state_first_name: vpFirst,
-            head_of_state_last_name: vpLast,
-            head_of_state_age: vpAge
-        }).eq('id', nationId);
-    }
-
-    // Semi-presidential: clear existing PM — president must nominate via ratification bill
-    if (isSemiPresidential(fullNation)) {
-        await supabase.from('head_of_government')
-            .update({ active: false })
-            .eq('nation_id', nationId)
-            .eq('active', true);
-        await supabase.from('nations')
-            .update({ pm_nomination_attempts: 0 })
-            .eq('id', nationId);
-    }
-
-    // Redraw card hands for any active bilateral issues involving this nation
-    try {
-        const { data: activeIssues } = await supabase
-            .from('bilateral_issues')
-            .select('id, nation_a_id, nation_b_id, deck_initialized')
-            .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
-            .in('status', ['active', 'partial'])
-            .eq('deck_initialized', true);
-        for (const iss of (activeIssues || [])) {
-            const side = iss.nation_a_id === nationId ? 'a' : 'b';
-            await redrawHand(supabase, iss.id, side, fullNation?.international_reputation || 50, currentTick);
-        }
-    } catch (e) { console.warn('[inauguratePresident] Issue card redraw failed (non-blocking):', e); }
 
     return candidate;
 }
@@ -14643,9 +15252,6 @@ async function autoSelectPresidentialCandidates(supabase, nation, currentTick) {
  */
 async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
     if (!hasParliamentaryPM(nation)) return;
-
-    // Semi-presidential: PM is nominated by president via ratification bill, not auto-appointed
-    if (isSemiPresidential(nation)) return;
 
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     if (!coalition || coalition.status !== 'formed') return;
@@ -16142,7 +16748,7 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     // 1. Load all active parties with momentum
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, faction_name, seats, momentum, last_seen_tick, founded_tick, abandoned_at, leader_positive_traits')
+        .select('id, faction_name, seats, momentum, last_seen_tick, founded_tick, abandoned_at')
         .eq('nation_id', nationId)
         .eq('faction_type', 'party')
         .is('abandoned_at', null);
@@ -16276,9 +16882,7 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         let partyApproval = Number(existing.party_approval ?? CFG.DEFAULT_PARTY_APPROVAL);
         if (governingIds.has(f.id)) {
             // Governing: nudge toward gov_approval
-            // Deal Maker trait: +5 governance target while in a coalition
-            const dealMakerBonus = (f.leader_positive_traits || []).includes('deal_maker') ? 5 : 0;
-            const target = govApproval + dealMakerBonus;
+            const target = govApproval;
             const nudge = clamp((target - partyApproval) / CFG.APPROVAL_GOV_NUDGE_DIVISOR,
                 -CFG.APPROVAL_GOV_NUDGE_CAP, CFG.APPROVAL_GOV_NUDGE_CAP);
             partyApproval = clamp(partyApproval + nudge, CFG.APPROVAL_MIN, CFG.APPROVAL_MAX);
@@ -26415,100 +27019,7 @@ const MODIFIERS = {
     },
 };
 
-// Role → ministry_key mapping for looking up which party's minister used an action
-
-// Phase 0: ACTIONS object and ROLE_TO_MINISTRY removed — replaced by card system.
-
-// ==================== CARD DECK MECHANICS ====================
-
-function getDrawCount(intlRep) {
-    const fa = Math.max(0, Math.min(100, Number(intlRep) || 0));
-    return Math.max(1, Math.min(12, Math.ceil(fa / 8.33)));
-}
-
-function shuffleDeck(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
-}
-
-async function initializeDeck(supabase, issue, nationA, nationB, currentTick) {
-    if (issue.deck_initialized) return false;
-
-    const { data: cards, error: cardErr } = await supabase
-        .from('issue_card_definitions')
-        .select('card_number')
-        .eq('issue_type', issue.issue_type)
-        .order('card_number');
-
-    if (cardErr || !cards || cards.length === 0) {
-        console.warn(`[Issues] No card definitions found for issue type ${issue.issue_type}`);
-        return false;
-    }
-
-    const allCardNumbers = cards.map(c => c.card_number);
-    shuffleDeck(allCardNumbers);
-
-    const drawA = getDrawCount(nationA.international_reputation);
-    const drawB = getDrawCount(nationB.international_reputation);
-
-    const handA = allCardNumbers.splice(0, drawA);
-    const handB = allCardNumbers.splice(0, drawB);
-    const deckRemaining = allCardNumbers;
-
-    const { error: updateErr } = await supabase
-        .from('bilateral_issues')
-        .update({
-            deck_remaining: deckRemaining,
-            hand_a: handA,
-            hand_b: handB,
-            played_cards: [],
-            whose_turn: 'a',
-            deck_initialized: true,
-            last_card_played_tick: currentTick,
-        })
-        .eq('id', issue.id);
-
-    if (updateErr) {
-        console.error(`[Issues] Failed to initialize deck for issue ${issue.id}:`, updateErr.message);
-        return false;
-    }
-
-    console.log(`[Issues] Deck initialized for ${issue.issue_type} (${issue.id}): A drew ${drawA} (FA: ${Math.round(nationA.international_reputation || 0)}), B drew ${drawB} (FA: ${Math.round(nationB.international_reputation || 0)}). Deck: ${deckRemaining.length}.`);
-    return true;
-}
-
-async function redrawHand(supabase, issueId, side, newIntlRep, currentTick) {
-    const { data: issue, error: fetchErr } = await supabase
-        .from('bilateral_issues')
-        .select('deck_remaining, hand_a, hand_b, deck_initialized')
-        .eq('id', issueId)
-        .single();
-
-    if (fetchErr || !issue || !issue.deck_initialized) return;
-
-    const handKey = side === 'a' ? 'hand_a' : 'hand_b';
-    const oldHand = issue[handKey] || [];
-    const deck = [...(issue.deck_remaining || []), ...oldHand];
-    shuffleDeck(deck);
-
-    const drawCount = getDrawCount(newIntlRep);
-    const newHand = deck.splice(0, drawCount);
-
-    const { error: updateErr } = await supabase
-        .from('bilateral_issues')
-        .update({ deck_remaining: deck, [handKey]: newHand })
-        .eq('id', issueId);
-
-    if (updateErr) {
-        console.error(`[Issues] Redraw failed for issue ${issueId} side ${side}:`, updateErr.message);
-    } else {
-        console.log(`[Issues] Redrew hand for ${issueId} side ${side}: ${drawCount} cards. Deck: ${deck.length}.`);
-    }
-}
-
+// Phase 0: ACTIONS object and ROLE_TO_MINISTRY removed — replaced by card system in Phase 1.
 // ==================== ISSUE TYPE DEFINITIONS ====================
 
 const ISSUE_TYPES = {
@@ -26574,6 +27085,746 @@ const ISSUE_TYPES = {
     },
 };
 
+
+// ==================== CARD DECK MECHANICS ====================
+
+/**
+ * Map a nation's international_reputation (0-100) to a card draw count (1-12).
+ * FA 0-8 → 1 card, FA 9-16 → 2, ..., FA 92-100 → 12.
+ */
+function getDrawCount(intlRep) {
+    const fa = Math.max(0, Math.min(100, Number(intlRep) || 0));
+    return Math.max(1, Math.min(12, Math.ceil(fa / 8.33)));
+}
+
+/**
+ * Fisher-Yates shuffle (in-place).
+ */
+function shuffleArray(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+/**
+ * Initialize the card deck for a bilateral issue.
+ * Loads card definitions, shuffles the full deck, deals hands
+ * to both nations based on their Foreign Affairs (international_reputation) stat.
+ *
+ * Called once per issue when deck_initialized is false.
+ * Safe to call multiple times — no-ops if already initialized.
+ *
+ * @param {object} supabase - Supabase client
+ * @param {object} issue - bilateral_issues row
+ * @param {object} nationA - nations row for nation_a
+ * @param {object} nationB - nations row for nation_b
+ * @param {number} currentTick - current game tick
+ * @returns {boolean} true if deck was initialized, false if already done or failed
+ */
+async function initializeDeck(supabase, issue, nationA, nationB, currentTick) {
+    if (issue.deck_initialized) return false;
+
+    // Load card definitions for this issue type
+    const { data: cards, error: cardErr } = await supabase
+        .from('issue_card_definitions')
+        .select('card_number')
+        .eq('issue_type', issue.issue_type)
+        .order('card_number');
+
+    if (cardErr || !cards || cards.length === 0) {
+        console.warn(`[Issues] No card definitions found for issue type ${issue.issue_type} — cannot initialize deck`);
+        return false;
+    }
+
+    // Build and shuffle the full deck (array of card numbers)
+    const allCardNumbers = cards.map(c => c.card_number);
+    shuffleArray(allCardNumbers);
+
+    // Determine draw counts from Foreign Affairs (international_reputation)
+    const drawA = getDrawCount(nationA.international_reputation);
+    const drawB = getDrawCount(nationB.international_reputation);
+
+    // Deal hands from the top of the shuffled deck
+    const handA = allCardNumbers.splice(0, drawA);
+    const handB = allCardNumbers.splice(0, drawB);
+    const deckRemaining = allCardNumbers; // whatever is left
+
+    // Nation A goes first
+    const { error: updateErr } = await supabase
+        .from('bilateral_issues')
+        .update({
+            deck_remaining: deckRemaining,
+            hand_a: handA,
+            hand_b: handB,
+            played_cards: [],
+            whose_turn: 'a',
+            deck_initialized: true,
+            last_card_played_tick: currentTick,
+        })
+        .eq('id', issue.id);
+
+    if (updateErr) {
+        console.error(`[Issues] Failed to initialize deck for issue ${issue.id}:`, updateErr.message);
+        return false;
+    }
+
+    console.log(`[Issues] Deck initialized for ${issue.issue_type} (${issue.id}): ${allCardNumbers.length + handA.length + handB.length} cards total. Nation A drew ${drawA} (FA: ${Math.round(nationA.international_reputation || 0)}), Nation B drew ${drawB} (FA: ${Math.round(nationB.international_reputation || 0)}). Deck remaining: ${deckRemaining.length}.`);
+    return true;
+}
+
+/**
+ * Redraw hand for a nation after government change (new HoG elected).
+ * Old hand is shuffled back into the deck, then new cards drawn
+ * based on the new government's Foreign Affairs stat.
+ *
+ * @param {object} supabase - Supabase client
+ * @param {string} issueId - bilateral issue ID
+ * @param {string} side - 'a' or 'b'
+ * @param {number} newIntlRep - the nation's current international_reputation
+ * @param {number} currentTick - current game tick
+ */
+async function redrawHand(supabase, issueId, side, newIntlRep, currentTick) {
+    const { data: issue, error: fetchErr } = await supabase
+        .from('bilateral_issues')
+        .select('deck_remaining, hand_a, hand_b, deck_initialized')
+        .eq('id', issueId)
+        .single();
+
+    if (fetchErr || !issue || !issue.deck_initialized) return;
+
+    const handKey = side === 'a' ? 'hand_a' : 'hand_b';
+    const oldHand = issue[handKey] || [];
+    const deck = [...(issue.deck_remaining || []), ...oldHand];
+    shuffleArray(deck);
+
+    const drawCount = getDrawCount(newIntlRep);
+    const newHand = deck.splice(0, drawCount);
+
+    const { error: updateErr } = await supabase
+        .from('bilateral_issues')
+        .update({
+            deck_remaining: deck,
+            [handKey]: newHand,
+        })
+        .eq('id', issueId);
+
+    if (updateErr) {
+        console.error(`[Issues] Failed to redraw hand for issue ${issueId} side ${side}:`, updateErr.message);
+    } else {
+        console.log(`[Issues] Redrew hand for issue ${issueId} side ${side}: ${drawCount} cards (FA: ${Math.round(newIntlRep || 0)}). Deck: ${deck.length} remaining.`);
+    }
+}
+
+// ==================== CARD PLAY EXECUTION ====================
+
+/**
+ * Play a card from the player's hand.
+ *
+ * @param {object} supabase - Supabase client
+ * @param {object} params
+ * @param {string} params.issueId - bilateral issue ID
+ * @param {number} params.cardNumber - card to play from hand
+ * @param {string} params.nationId - acting nation's ID
+ * @param {string} params.factionId - acting faction's ID
+ * @param {number} params.currentTick - current game tick
+ * @returns {{ success: boolean, error?: string, effects?: object }}
+ */
+async function playIssueCard(supabase, params) {
+    const { issueId, cardNumber, nationId, factionId, currentTick } = params;
+
+    // 1. Load issue
+    const { data: issue, error: issueErr } = await supabase
+        .from('bilateral_issues')
+        .select('*')
+        .eq('id', issueId)
+        .single();
+    if (issueErr || !issue) return { success: false, error: 'Issue not found.' };
+    if (!issue.deck_initialized) return { success: false, error: 'Deck not initialized.' };
+
+    // Determine which side this nation is
+    const side = nationId === issue.nation_a_id ? 'a' : nationId === issue.nation_b_id ? 'b' : null;
+    if (!side) return { success: false, error: 'You are not involved in this issue.' };
+
+    // 2. Validate turn
+    if (issue.whose_turn !== side) return { success: false, error: 'It is not your turn.' };
+    if (issue.pending_diplomatic_card) return { success: false, error: 'A diplomatic proposal is pending response.' };
+
+    // 3. Validate card is in hand
+    const hand = side === 'a' ? (issue.hand_a || []) : (issue.hand_b || []);
+    if (!hand.includes(cardNumber)) return { success: false, error: 'Card not in your hand.' };
+
+    // 4. Load card definition
+    const { data: cardDef, error: cardErr } = await supabase
+        .from('issue_card_definitions')
+        .select('*')
+        .eq('issue_type', issue.issue_type)
+        .eq('card_number', cardNumber)
+        .single();
+    if (cardErr || !cardDef) return { success: false, error: 'Card definition not found.' };
+
+    // 5. Check diplomatic lock
+    if (cardDef.card_type === 'diplomatic' && issue.diplomatic_lock_until_tick && currentTick < issue.diplomatic_lock_until_tick) {
+        return { success: false, error: `Diplomatic cards locked until tick ${issue.diplomatic_lock_until_tick}.` };
+    }
+
+    // 6. Deduct AP
+    const { deductAP } = await import('./config.js');
+    const apResult = await deductAP(supabase, factionId, cardDef.ap_cost, {
+        reason: 'issue_card',
+        detail: `Issue card: ${cardDef.card_name}`,
+        tick: currentTick,
+    });
+    if (!apResult.success) return { success: false, error: `Not enough AP. Need ${cardDef.ap_cost}.` };
+
+    // 7. Determine which option applies (side a = option_a, side b = option_b)
+    const effects = side === 'a' ? cardDef.option_a_effects : cardDef.option_b_effects;
+    const optionChosen = side;
+
+    // Load both nations for stat effects
+    const { data: nationA } = await supabase.from('nations').select('*').eq('id', issue.nation_a_id).single();
+    const { data: nationB } = await supabase.from('nations').select('*').eq('id', issue.nation_b_id).single();
+    const myNation = side === 'a' ? nationA : nationB;
+    const oppNation = side === 'a' ? nationB : nationA;
+
+    const appliedEffects = { card_name: cardDef.card_name, card_type: cardDef.card_type };
+
+    // 8. Build issue update
+    const issueUpdate = { updated_at: new Date().toISOString() };
+
+    // 8a. Favor delta
+    let favorDelta = Number(effects.favor_delta) || 0;
+    // Conditional favor (e.g., Commission Legal Study)
+    if (effects.conditional?.if_stat_gt) {
+        const statKey = effects.conditional.if_stat_gt;
+        const myStat = Number(myNation?.[statKey] ?? 0);
+        const oppStat = Number(oppNation?.[statKey] ?? 0);
+        favorDelta = myStat > oppStat
+            ? Number(effects.conditional.then_favor)
+            : Number(effects.conditional.else_favor);
+    }
+    if (favorDelta !== 0) {
+        const newFavor = Math.max(-5, Math.min(5, Number(issue.favor) + favorDelta));
+        issueUpdate.favor = newFavor;
+        appliedEffects.favor_delta = favorDelta;
+    }
+
+    // 8b. Tension delta
+    if (effects.tension_delta) {
+        const newTension = Math.max(0, Math.min(10, Number(issue.tension) + effects.tension_delta));
+        issueUpdate.tension = newTension;
+        appliedEffects.tension_delta = effects.tension_delta;
+    }
+
+    // 8c. Relations delta
+    if (effects.relation_delta) {
+        await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, effects.relation_delta);
+        appliedEffects.relation_delta = effects.relation_delta;
+    }
+
+    // 8d. Treasury cost
+    if (effects.treasury_cost && myNation) {
+        const newFunds = Math.max(0, (myNation.gdp || 0) - effects.treasury_cost);
+        // Treasury deduction is approximated as party_funds for the acting faction
+        await supabase.from('factions').update({
+            party_funds: supabase.rpc ? undefined : Math.max(0, 0), // handled by AP system
+        }).eq('id', factionId);
+        appliedEffects.treasury_cost = effects.treasury_cost;
+    }
+
+    // 8e. Stat effects
+    if (effects.stat_effects && effects.stat_effects.length > 0) {
+        for (const se of effects.stat_effects) {
+            const targetNation = se.target === 'self' ? myNation
+                : se.target === 'opponent' ? oppNation
+                : se.target === 'both' ? null : myNation;
+            if (se.target === 'both') {
+                // Apply to both
+                if (nationA) await applyIssueStatEffects(supabase, nationA.id, nationA, [{ stat_key: se.stat_key, delta: se.delta }]);
+                if (nationB) await applyIssueStatEffects(supabase, nationB.id, nationB, [{ stat_key: se.stat_key, delta: se.delta }]);
+            } else if (targetNation) {
+                await applyIssueStatEffects(supabase, targetNation.id, targetNation, [{ stat_key: se.stat_key, delta: se.delta }]);
+            }
+        }
+        appliedEffects.stat_effects = effects.stat_effects;
+    }
+
+    // 8f. Add modifier
+    if (effects.add_modifier) {
+        // Card-driven modifiers use modifier_effects from the card, not MODIFIERS constant
+        const modFx = effects.modifier_effects || {};
+        await supabase.from('bilateral_issue_modifiers').insert({
+            issue_id: issue.id,
+            modifier_key: effects.add_modifier,
+            category: 'competitive',
+            applies_to: modFx.target || 'both',
+            stat_effects: modFx.stat_key ? [{ stat_key: modFx.stat_key, delta: modFx.delta || 0 }] : [],
+            duration_remaining: modFx.duration_ticks || null,
+            is_active: true,
+            created_by: `card:${cardNumber}`,
+            created_tick: currentTick,
+        });
+        appliedEffects.add_modifier = effects.add_modifier;
+    }
+
+    // 8g. Locks diplomatic cards
+    if (effects.locks_diplomatic) {
+        issueUpdate.diplomatic_lock_until_tick = currentTick + effects.locks_diplomatic;
+        appliedEffects.locks_diplomatic = effects.locks_diplomatic;
+    }
+
+    // 8h. Random roll (backfire check)
+    if (effects.random_roll) {
+        const roll = effects.random_roll;
+        if (roll.fail_chance && Math.random() < roll.fail_chance) {
+            // Backfire — override favor/tension with fail effects
+            appliedEffects.backfired = true;
+            if (roll.fail_effects?.favor_delta) {
+                issueUpdate.favor = Math.max(-5, Math.min(5, Number(issue.favor) + roll.fail_effects.favor_delta));
+            }
+            if (roll.fail_effects?.tension_delta) {
+                issueUpdate.tension = Math.max(0, Math.min(10, Number(issue.tension) + (roll.fail_effects.tension_delta || 0)));
+            }
+        }
+        if (roll.outcomes) {
+            // Weighted random outcome
+            const totalWeight = roll.outcomes.reduce((s, o) => s + (o.weight || 1), 0);
+            let r = Math.random() * totalWeight;
+            for (const outcome of roll.outcomes) {
+                r -= (outcome.weight || 1);
+                if (r <= 0) {
+                    appliedEffects.roll_outcome = outcome.label;
+                    if (outcome.stat_effects) {
+                        for (const se of outcome.stat_effects) {
+                            const target = se.target === 'opponent' ? oppNation : myNation;
+                            if (target) await applyIssueStatEffects(supabase, target.id, target, [{ stat_key: se.stat_key, delta: se.delta }]);
+                        }
+                    }
+                    if (outcome.tension_delta) {
+                        issueUpdate.tension = Math.max(0, Math.min(10, Number(issueUpdate.tension ?? issue.tension) + outcome.tension_delta));
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // 9. Handle diplomatic card type — set pending state instead of resolving
+    if (cardDef.card_type === 'diplomatic') {
+        issueUpdate.pending_diplomatic_card = cardNumber;
+        issueUpdate.pending_diplomatic_deadline_tick = currentTick + 3;
+        issueUpdate.pending_diplomatic_proposer = side;
+        issueUpdate.active_card = cardNumber;
+        issueUpdate.active_card_played_by = side;
+        issueUpdate.active_card_played_tick = currentTick;
+        appliedEffects.diplomatic_pending = true;
+    }
+
+    // 10. Remove card from hand, add to played_cards, advance turn
+    const newHand = hand.filter(c => c !== cardNumber);
+    const handKey = side === 'a' ? 'hand_a' : 'hand_b';
+    issueUpdate[handKey] = newHand;
+    issueUpdate.played_cards = [...(issue.played_cards || []), {
+        card_number: cardNumber,
+        played_by: side,
+        played_tick: currentTick,
+        option_chosen: optionChosen,
+    }];
+    issueUpdate.last_card_played_tick = currentTick;
+
+    // Advance turn (unless diplomatic — turn stays until resolved)
+    if (cardDef.card_type !== 'diplomatic') {
+        issueUpdate.whose_turn = side === 'a' ? 'b' : 'a';
+    }
+
+    // Notification badge: mark that this side acted
+    const actionKey = side === 'a' ? 'last_action_by_a_tick' : 'last_action_by_b_tick';
+    issueUpdate[actionKey] = currentTick;
+
+    // 11. Write issue update
+    const { error: updateErr } = await supabase
+        .from('bilateral_issues')
+        .update(issueUpdate)
+        .eq('id', issueId);
+
+    if (updateErr) {
+        console.error(`[Issues] Failed to update issue after card play:`, updateErr.message);
+        return { success: false, error: 'Failed to save card play.' };
+    }
+
+    // 12. Record in issue_card_plays
+    await supabase.from('issue_card_plays').insert({
+        issue_id: issueId,
+        card_number: cardNumber,
+        played_by: side,
+        played_by_nation_id: nationId,
+        played_by_faction_id: factionId,
+        option_chosen: optionChosen,
+        played_tick: currentTick,
+        ap_spent: cardDef.ap_cost,
+        effects_applied: appliedEffects,
+    });
+
+    // 13. History + event log
+    const cardLabel = `${cardDef.card_name} (#${cardNumber})`;
+    const nationName = myNation?.name || 'Unknown';
+    await insertHistory(supabase, issueId, currentTick, 'card_played',
+        `${nationName} played ${cardLabel}.`,
+        { card_number: cardNumber, side, option: optionChosen, effects: appliedEffects });
+
+    // Dashboard event
+    for (const nId of [issue.nation_a_id, issue.nation_b_id]) {
+        await supabase.from('event_log').insert({
+            nation_id: nId,
+            event_name: cardDef.card_name,
+            trigger_key: 'issue_card_played',
+            description_chosen: `${nationName} played ${cardLabel} in the ${ISSUE_TYPES[issue.issue_type]?.name || issue.issue_type}.`,
+            category: 'crisis',
+            fired_at_tick: currentTick,
+        }).then(({ error: evErr }) => { if (evErr) console.warn('Card play event_log failed:', evErr.message); });
+    }
+
+    return { success: true, effects: appliedEffects, newAp: apResult.newAp };
+}
+
+/**
+ * Respond to a pending diplomatic card (accept or reject).
+ *
+ * @param {object} supabase
+ * @param {string} issueId
+ * @param {string} nationId - responding nation
+ * @param {string} response - 'accept' or 'reject'
+ * @param {number} currentTick
+ */
+async function respondToDiplomaticCard(supabase, issueId, nationId, response, currentTick) {
+    const { data: issue } = await supabase.from('bilateral_issues').select('*').eq('id', issueId).single();
+    if (!issue || !issue.pending_diplomatic_card) return { success: false, error: 'No diplomatic card pending.' };
+
+    const side = nationId === issue.nation_a_id ? 'a' : nationId === issue.nation_b_id ? 'b' : null;
+    if (!side) return { success: false, error: 'Not involved in this issue.' };
+    if (side === issue.pending_diplomatic_proposer) return { success: false, error: 'You proposed this — wait for their response.' };
+
+    const { data: cardDef } = await supabase
+        .from('issue_card_definitions')
+        .select('*')
+        .eq('issue_type', issue.issue_type)
+        .eq('card_number', issue.pending_diplomatic_card)
+        .single();
+    if (!cardDef) return { success: false, error: 'Card definition not found.' };
+
+    const { data: nationA } = await supabase.from('nations').select('*').eq('id', issue.nation_a_id).single();
+    const { data: nationB } = await supabase.from('nations').select('*').eq('id', issue.nation_b_id).single();
+
+    const issueUpdate = { updated_at: new Date().toISOString() };
+    const appliedEffects = { response, card_name: cardDef.card_name };
+
+    if (response === 'accept' && cardDef.diplomatic_accept_effects) {
+        const fx = cardDef.diplomatic_accept_effects;
+        if (fx.favor_reset !== undefined) issueUpdate.favor = fx.favor_reset;
+        if (fx.tension_delta) issueUpdate.tension = Math.max(0, Math.min(10, Number(issue.tension) + fx.tension_delta));
+        if (fx.relation_delta) await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, fx.relation_delta);
+        if (fx.remove_modifier) {
+            await supabase.from('bilateral_issue_modifiers')
+                .update({ is_active: false, resolved_by: `diplomatic_accept:${cardDef.card_number}`, resolved_tick: currentTick })
+                .eq('issue_id', issueId).eq('modifier_key', fx.remove_modifier).eq('is_active', true);
+        }
+        if (fx.stat_effects) {
+            for (const se of fx.stat_effects) {
+                if (se.target === 'both') {
+                    if (nationA) await applyIssueStatEffects(supabase, nationA.id, nationA, [{ stat_key: se.stat_key, delta: se.delta }]);
+                    if (nationB) await applyIssueStatEffects(supabase, nationB.id, nationB, [{ stat_key: se.stat_key, delta: se.delta }]);
+                }
+            }
+        }
+        if (fx.special === 'resolve_issue') {
+            issueUpdate.status = 'resolved';
+            issueUpdate.resolved_tick = currentTick;
+        }
+        appliedEffects.accepted = fx;
+    } else {
+        // Reject
+        const fx = cardDef.diplomatic_reject_effects || {};
+        if (fx.favor_delta_to_proposer) {
+            const favorDir = issue.pending_diplomatic_proposer === 'a' ? -1 : 1;
+            issueUpdate.favor = Math.max(-5, Math.min(5, Number(issue.favor) + (fx.favor_delta_to_proposer * favorDir)));
+        }
+        if (fx.tension_delta) issueUpdate.tension = Math.max(0, Math.min(10, Number(issue.tension) + fx.tension_delta));
+        if (fx.stat_effects_rejector) {
+            const rejector = side === 'a' ? nationA : nationB;
+            if (rejector) {
+                for (const se of fx.stat_effects_rejector) {
+                    await applyIssueStatEffects(supabase, rejector.id, rejector, [{ stat_key: se.stat_key, delta: se.delta }]);
+                }
+            }
+        }
+        appliedEffects.rejected = fx;
+    }
+
+    // Clear pending state, advance turn
+    issueUpdate.pending_diplomatic_card = null;
+    issueUpdate.pending_diplomatic_deadline_tick = null;
+    issueUpdate.pending_diplomatic_proposer = null;
+    issueUpdate.active_card = null;
+    issueUpdate.active_card_played_by = null;
+    issueUpdate.active_card_played_tick = null;
+    issueUpdate.whose_turn = side === 'a' ? 'b' : 'a'; // responding nation's turn ends
+
+    // Notification badge
+    const actionKey = side === 'a' ? 'last_action_by_a_tick' : 'last_action_by_b_tick';
+    issueUpdate[actionKey] = currentTick;
+
+    await supabase.from('bilateral_issues').update(issueUpdate).eq('id', issueId);
+
+    // Update card play record with response
+    await supabase.from('issue_card_plays')
+        .update({ diplomatic_response: response === 'accept' ? 'accepted' : 'rejected', diplomatic_response_tick: currentTick })
+        .eq('issue_id', issueId)
+        .eq('card_number', issue.pending_diplomatic_card)
+        .is('diplomatic_response', null);
+
+    const responderName = (side === 'a' ? nationA : nationB)?.name || 'Unknown';
+    await insertHistory(supabase, issueId, currentTick,
+        response === 'accept' ? 'diplomatic_accepted' : 'diplomatic_rejected',
+        `${responderName} ${response === 'accept' ? 'accepted' : 'rejected'} ${cardDef.card_name}.`,
+        { card_number: issue.pending_diplomatic_card, response, effects: appliedEffects });
+
+    return { success: true, effects: appliedEffects };
+}
+
+// ==================== DECK EXHAUSTION RESOLUTION ====================
+
+const PERMANENT_BLOCKERS = new Set([
+    'sovereignty_declared', 'military_outpost_constructed',
+    'forced_population_transfer', 'military_occupation',
+]);
+
+/**
+ * Resolve an issue when the deck is fully exhausted (all cards played, both hands empty).
+ * Returns { newStatus, issueUpdates } or null if the issue continues.
+ */
+async function resolveDeckExhaustion(supabase, issue, nationA, nationB, currentMods, currentTick) {
+    const tension = Number(issue.tension) || 0;
+    const favor = Number(issue.favor) || 0;
+    const favorAbs = Math.abs(favor);
+    const issueType = ISSUE_TYPES[issue.issue_type] || {};
+    const territoryName = issue.metadata?.territory_name || 'the disputed territory';
+    const nameA = nationA.name || 'Nation A';
+    const nameB = nationB.name || 'Nation B';
+
+    // Check for permanent modifier blockers
+    const activeMods = (currentMods || []).filter(m => m.is_active);
+    const hasBlocker = activeMods.some(m => PERMANENT_BLOCKERS.has(m.modifier_key));
+
+    // ── OUTCOME 8: Blocked by permanent modifier ──
+    if (hasBlocker) {
+        const blockerNames = activeMods.filter(m => PERMANENT_BLOCKERS.has(m.modifier_key)).map(m => m.modifier_key.replace(/_/g, ' '));
+        await reshuffleDeck(supabase, issue, 15, nationA, nationB, currentTick);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `Deck exhausted but resolution blocked by: ${blockerNames.join(', ')}. Deck reshuffled with 15 cards.`,
+            { outcome: 'blocked', blockers: blockerNames });
+        return null; // continues
+    }
+
+    // ── OUTCOME 7: Critical tension (9-10) — 70% border incursion ──
+    if (tension >= 9) {
+        const fires = Math.random() < 0.7;
+        if (fires) {
+            await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+                'Crisis Point', `Armed confrontation erupts near ${territoryName}. The territorial dispute escalates to a border incursion.`);
+            return { newStatus: 'escalated' }; // escalation handled by step 7
+        }
+        // Didn't fire — reshuffle with 10 cards
+        await reshuffleDeck(supabase, issue, 10, nationA, nationB, currentTick);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `Deck exhausted at critical tension. 70% incursion check failed. Deck reshuffled with 10 cards.`,
+            { outcome: 'crisis_point_survived', tension });
+        return null;
+    }
+
+    // ── OUTCOME 6: High tension (6-8) — 30% border incursion ──
+    if (tension >= 6) {
+        const fires = Math.random() < 0.3;
+        if (fires) {
+            await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+                'Brink of War', `Military tensions peak near ${territoryName}. Border incursion triggered.`);
+            return { newStatus: 'escalated' };
+        }
+        await reshuffleDeck(supabase, issue, 15, nationA, nationB, currentTick);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `Deck exhausted at high tension. 30% incursion check failed. Deck reshuffled with 15 cards.`,
+            { outcome: 'brink_survived', tension });
+        return null;
+    }
+
+    // ── OUTCOME 5: Moderate tension (3-5) — Frozen Conflict ──
+    if (tension >= 3) {
+        await reshuffleDeck(supabase, issue, 15, nationA, nationB, currentTick);
+        await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+            'Negotiations Stall', `Negotiations over ${territoryName} stall. The dispute continues.`);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `Deck exhausted at moderate tension. Frozen conflict — deck reshuffled with 15 cards.`,
+            { outcome: 'frozen_conflict', tension });
+        return null;
+    }
+
+    // ── Low tension (0-2) — actual resolution possible ──
+
+    // ── OUTCOME 4: Decisive Resolution (favor ±4-5) ──
+    if (favorAbs >= 4) {
+        const winnerIsA = favor < 0; // negative favor = nation_a (claimant) wins
+        const winner = winnerIsA ? nationA : nationB;
+        const loser = winnerIsA ? nationB : nationA;
+        const winnerName = winner.name;
+        const loserName = loser.name;
+
+        await applyIssueStatEffects(supabase, winner.id, winner, [
+            { stat_key: 'gov_approval', delta: 5 },
+        ]);
+        await applyIssueStatEffects(supabase, loser.id, loser, [
+            { stat_key: 'gov_approval', delta: -5 },
+            { stat_key: 'stability', delta: -3 },
+        ]);
+        // Momentum: +5 winner governing parties, -5 loser governing parties
+        await applyResolutionMomentum(supabase, winner.id, 5, `Decisive victory: ${territoryName}`, currentTick);
+        await applyResolutionMomentum(supabase, loser.id, -5, `Decisive defeat: ${territoryName}`, currentTick);
+        await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, -3);
+
+        await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+            'Decisive Resolution', `Decisive resolution of the ${territoryName} dispute in favor of ${winnerName}. ${loserName} suffers lasting political damage.`);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `Decisive resolution in favor of ${winnerName}. Favor: ${favor.toFixed(1)}.`,
+            { outcome: 'decisive', winner: winnerName, loser: loserName, favor });
+
+        return { newStatus: 'resolved' };
+    }
+
+    // ── OUTCOME 2/3: Diplomatic Victory (favor ±2-3) ──
+    if (favorAbs >= 2) {
+        const winnerIsA = favor < 0;
+        const winner = winnerIsA ? nationA : nationB;
+        const loser = winnerIsA ? nationB : nationA;
+        const winnerName = winner.name;
+        const loserName = loser.name;
+        const isOccupierWin = !winnerIsA; // favor > 0 means nation_b (occupier in territorial) consolidates
+
+        const desc = isOccupierWin
+            ? `${winnerName} consolidates control over ${territoryName}. International community tacitly accepts.`
+            : `Diplomatic pressure forces concessions on ${territoryName}. Administration shifts toward ${winnerName}.`;
+
+        await applyIssueStatEffects(supabase, winner.id, winner, [
+            { stat_key: 'gov_approval', delta: 2 },
+            { stat_key: 'international_reputation', delta: 0.5 },
+        ]);
+        await applyIssueStatEffects(supabase, loser.id, loser, [
+            { stat_key: 'gov_approval', delta: -2 },
+        ]);
+        await applyResolutionMomentum(supabase, winner.id, 3, `Diplomatic victory: ${territoryName}`, currentTick);
+        await applyResolutionMomentum(supabase, loser.id, -3, `Diplomatic defeat: ${territoryName}`, currentTick);
+        await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, 1);
+
+        await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+            isOccupierWin ? 'Occupier Consolidation' : 'Claimant Recovery', desc);
+        await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+            `${isOccupierWin ? 'Occupier consolidation' : 'Claimant recovery'}. Favor: ${favor.toFixed(1)}.`,
+            { outcome: isOccupierWin ? 'occupier_consolidation' : 'claimant_recovery', winner: winnerName, favor });
+
+        return { newStatus: 'resolved' };
+    }
+
+    // ── OUTCOME 1: Peaceful Stalemate (favor -1 to +1) ──
+    await applyIssueStatEffects(supabase, nationA.id, nationA, [
+        { stat_key: 'stability', delta: 1 },
+    ]);
+    await applyIssueStatEffects(supabase, nationB.id, nationB, [
+        { stat_key: 'stability', delta: 1 },
+    ]);
+    await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, 3);
+
+    await fireResolutionEvent(supabase, issue, nameA, nameB, currentTick,
+        'Peaceful Stalemate', `The ${territoryName} dispute enters a dormant phase. Both sides exhaust their options without decisive advantage.`);
+    await insertHistory(supabase, issue.id, currentTick, 'status_changed',
+        `Peaceful stalemate. Tension: ${tension.toFixed(1)}, Favor: ${favor.toFixed(1)}. Issue goes dormant.`,
+        { outcome: 'peaceful_stalemate', tension, favor });
+
+    return { newStatus: 'dormant', issueUpdates: { status: 'dormant' } };
+}
+
+/**
+ * Reshuffle a reduced deck for frozen/blocked conflicts.
+ * Takes N cards from the full card pool, reshuffles, redeals hands.
+ */
+async function reshuffleDeck(supabase, issue, cardCount, nationA, nationB, currentTick) {
+    const { data: allCards } = await supabase
+        .from('issue_card_definitions')
+        .select('card_number')
+        .eq('issue_type', issue.issue_type)
+        .order('card_number');
+
+    if (!allCards || allCards.length === 0) return;
+
+    // All cards available for reshuffle (played cards can be replayed in a new round)
+    const allNumbers = allCards.map(c => c.card_number);
+    shuffleArray(allNumbers);
+    const deckCards = allNumbers.slice(0, Math.min(cardCount, allNumbers.length));
+
+    // Redeal based on current FA stats
+    const drawA = getDrawCount(nationA?.international_reputation);
+    const drawB = getDrawCount(nationB?.international_reputation);
+    const handA = deckCards.splice(0, Math.min(drawA, deckCards.length));
+    const handB = deckCards.splice(0, Math.min(drawB, deckCards.length));
+
+    await supabase.from('bilateral_issues').update({
+        deck_remaining: deckCards,
+        hand_a: handA,
+        hand_b: handB,
+        played_cards: issue.played_cards || [], // keep history
+        whose_turn: 'a',
+        last_card_played_tick: currentTick,
+    }).eq('id', issue.id);
+
+    console.log(`[Issues] Deck reshuffled for ${issue.id}: ${cardCount} cards, A drew ${handA.length}, B drew ${handB.length}, deck ${deckCards.length}.`);
+}
+
+/**
+ * Fire a resolution event to both nations' event logs + dashboard.
+ */
+async function fireResolutionEvent(supabase, issue, nameA, nameB, currentTick, eventName, description) {
+    for (const nId of [issue.nation_a_id, issue.nation_b_id]) {
+        await supabase.from('event_log').insert({
+            nation_id: nId,
+            event_name: eventName,
+            trigger_key: 'issue_resolution',
+            description_chosen: description,
+            category: 'crisis',
+            fired_at_tick: currentTick,
+        }).then(({ error }) => { if (error) console.warn('Resolution event_log failed:', error.message); });
+    }
+}
+
+/**
+ * Apply momentum to all governing parties in a nation.
+ */
+async function applyResolutionMomentum(supabase, nationId, delta, label, currentTick) {
+    const { data: govParties } = await supabase
+        .from('ministries')
+        .select('party_id')
+        .eq('nation_id', nationId)
+        .eq('is_active', true)
+        .not('party_id', 'is', null);
+
+    const seenIds = new Set();
+    for (const m of (govParties || [])) {
+        if (!m.party_id || seenIds.has(m.party_id)) continue;
+        seenIds.add(m.party_id);
+        await supabase.rpc('adjust_momentum', {
+            p_faction_id: m.party_id,
+            p_delta: delta,
+            p_label: label,
+            p_tick: currentTick,
+        });
+    }
+}
 
 // ==================== STAT EFFECT HELPERS ====================
 
@@ -26832,17 +28083,20 @@ async function processIssueTick(supabase, nationList, currentTick) {
         if (escalationCount > 0 || competitiveCount > 0) {
             tensionDrift = (escalationCount * 0.5) + (competitiveCount * 0.25);
         } else {
+            // Only structural — slow cooling
             tensionDrift = -0.25;
         }
 
-        // Card system: tension decay if no card played this tick
+        // Card system: additional tension decay if no card played this tick
+        // -0.25/tick when both sides pass (stacks with structural cooling above)
         const lastPlayTick = issue.last_card_played_tick || 0;
         if (issue.deck_initialized && lastPlayTick < currentTick) {
             tensionDrift -= 0.25;
         }
 
+        // Apply tension drift (accumulate fractional, clamp 0-10)
         const rawTension = Number(issue.tension) + tensionDrift;
-        let newTension = Math.max(0, Math.min(10, Math.round(rawTension * 4) / 4));
+        let newTension = Math.max(0, Math.min(10, Math.round(rawTension * 4) / 4)); // quarter-step precision
 
         // ── 4c. Favor-based Gov_Approval bleed ──
         if (Math.abs(issue.favor) >= 1) {
@@ -26856,10 +28110,11 @@ async function processIssueTick(supabase, nationList, currentTick) {
         }
 
         // ── 5. Card system: diplomatic deadline + turn management ──
-        const issueCardUpdate: Record<string, any> = {};
+        const issueCardUpdate = {};
 
         // 5a. Diplomatic card deadline expiry — auto-reject after 3 ticks
         if (issue.pending_diplomatic_card && issue.pending_diplomatic_deadline_tick && currentTick >= issue.pending_diplomatic_deadline_tick) {
+            // Load card definition for the reject effects
             const { data: dipCard } = await supabase
                 .from('issue_card_definitions')
                 .select('diplomatic_reject_effects, card_name')
@@ -26869,15 +28124,18 @@ async function processIssueTick(supabase, nationList, currentTick) {
 
             if (dipCard?.diplomatic_reject_effects) {
                 const rejectFx = dipCard.diplomatic_reject_effects;
+                // Proposer gains favor
                 if (rejectFx.favor_delta_to_proposer) {
                     const favorDir = issue.pending_diplomatic_proposer === 'a' ? -1 : 1;
-                    issueCardUpdate.favor = Math.max(-5, Math.min(5, Number(issue.favor) + (rejectFx.favor_delta_to_proposer * favorDir)));
+                    const newFavor = Math.max(-5, Math.min(5, Number(issue.favor) + (rejectFx.favor_delta_to_proposer * favorDir)));
+                    issueCardUpdate.favor = newFavor;
                 }
                 if (rejectFx.tension_delta) {
                     newTension = Math.max(0, Math.min(10, newTension + rejectFx.tension_delta));
                 }
             }
 
+            // Record the auto-rejection
             await supabase.from('issue_card_plays').insert({
                 issue_id: issue.id,
                 card_number: issue.pending_diplomatic_card,
@@ -26895,6 +28153,7 @@ async function processIssueTick(supabase, nationList, currentTick) {
                 `${dipCard?.card_name || 'Diplomatic proposal'} expired without response. Favor shifts to proposer.`,
                 { card_number: issue.pending_diplomatic_card, proposer: issue.pending_diplomatic_proposer });
 
+            // Clear pending state
             issueCardUpdate.pending_diplomatic_card = null;
             issueCardUpdate.pending_diplomatic_deadline_tick = null;
             issueCardUpdate.pending_diplomatic_proposer = null;
@@ -26905,8 +28164,10 @@ async function processIssueTick(supabase, nationList, currentTick) {
             console.log(`[Issues] Diplomatic card #${issue.pending_diplomatic_card} expired for issue ${issue.id}`);
         }
 
-        // 5b. Turn alternation on pass (no card played, no diplomatic pending)
+        // 5b. Turn alternation — switch turns each tick if no card was played
+        // (Card play itself switches turns in Phase 2C; this handles the "pass" case)
         if (issue.deck_initialized && lastPlayTick < currentTick && !issue.pending_diplomatic_card) {
+            // No card played and no diplomatic pending — alternate turn
             issueCardUpdate.whose_turn = issue.whose_turn === 'a' ? 'b' : 'a';
         }
 
@@ -26930,6 +28191,24 @@ async function processIssueTick(supabase, nationList, currentTick) {
             newStatus = 'resolved';
         } else if (resolvedStructural >= 3 && activeStructural.length > 0) {
             newStatus = 'partial';
+        }
+
+        // ── 6b. Deck exhaustion resolution ──
+        if (issue.deck_initialized && newStatus !== 'resolved' && newStatus !== 'escalated') {
+            const handALen = (issue.hand_a || []).length;
+            const handBLen = (issue.hand_b || []).length;
+            const deckLen = (issue.deck_remaining || []).length;
+            const allExhausted = handALen === 0 && handBLen === 0 && deckLen === 0;
+
+            if (allExhausted) {
+                const resolution = await resolveDeckExhaustion(
+                    supabase, issue, nationA, nationB, currentMods || [], currentTick
+                );
+                if (resolution) {
+                    if (resolution.newStatus) newStatus = resolution.newStatus;
+                    if (resolution.issueUpdates) Object.assign(issueCardUpdate, resolution.issueUpdates);
+                }
+            }
         }
 
         // ── 7. Check tension 10 → escalation to incident ──
@@ -27014,7 +28293,7 @@ async function processIssueTick(supabase, nationList, currentTick) {
                       momentum_favored: 4, momentum_disfavored: -6 });
             }
             } else {
-                // Incident creation failed (cap, duplicate, or DB error) — keep issue active at tension 10
+                // Incident creation failed — keep issue active at tension 10
                 console.warn(`[Issues] Escalation failed for issue ${issue.id} — incident not created, keeping issue active`);
             }
         }
@@ -27031,7 +28310,7 @@ async function processIssueTick(supabase, nationList, currentTick) {
         }
 
         // Update issue record
-        const issueUpdate: Record<string, any> = {
+        const issueUpdate = {
             tension: newTension,
             updated_at: new Date().toISOString(),
             ...issueCardUpdate,
@@ -27063,7 +28342,8 @@ async function processIssueTick(supabase, nationList, currentTick) {
 
 
 
-// Phase 0: Auto-spawn functions removed — cards drive modifier creation.
+// Phase 0: Auto-spawn functions removed — cards drive modifier creation in Phase 1.
+// checkAutoSpawns, checkTerritorialAutoSpawns, checkTradeImbalanceAutoSpawns removed.
 
 function wasResolved(modifiers, key) {
     return modifiers.some(m => m.modifier_key === key && !m.is_active && m.resolved_by);
@@ -27353,8 +28633,75 @@ async function insertHistory(supabase, issueId, tick, eventType, eventText, meta
 
 
 
-// Phase 0: ACTIONS SYSTEM, executeIssueAction, processArbitration, checkTradeImbalanceAutoSpawn removed.
-// Card system replaces these in Phase 1.
+// Phase 0: ACTIONS SYSTEM removed — replaced by card system in Phase 1.
+// executeIssueAction, dispatchIssueEvent removed.
+
+
+
+/**
+ * Process pending arbitration rulings.
+ * Called each tick from processIssueTick to check if any arbitration has reached its resolve tick.
+ */
+async function processArbitration(supabase, issueId, currentTick) {
+    // Check history for arbitration events
+    const { data: arbEvents } = await supabase
+        .from('bilateral_issue_history')
+        .select('metadata')
+        .eq('issue_id', issueId)
+        .eq('event_type', 'action_accepted')
+        .not('metadata', 'is', null);
+
+    if (!arbEvents) return false;
+
+    for (const evt of arbEvents) {
+        const resolveTick = evt.metadata?.arbitration_resolve_tick;
+        if (resolveTick && currentTick >= resolveTick) {
+            // Check if this arbitration was already resolved (idempotent)
+            const { data: alreadyDone } = await supabase
+                .from('bilateral_issue_history')
+                .select('id')
+                .eq('issue_id', issueId)
+                .eq('event_type', 'action_executed')
+                .contains('metadata', { reason: 'arbitration_ruling' })
+                .limit(1);
+
+            if (alreadyDone && alreadyDone.length > 0) continue;
+
+            // Find if structural modifiers still exist
+            const { data: structMods } = await supabase
+                .from('bilateral_issue_modifiers')
+                .select('id, modifier_key')
+                .eq('issue_id', issueId)
+                .eq('category', 'structural')
+                .eq('is_active', true);
+
+            if (structMods && structMods.length > 0) {
+                // Remove ALL remaining structural modifiers
+                for (const mod of structMods) {
+                    await supabase
+                        .from('bilateral_issue_modifiers')
+                        .update({ is_active: false, resolved_by: 'arbitration_ruling', resolved_tick: currentTick })
+                        .eq('id', mod.id);
+
+                    await insertHistory(supabase, issueId, currentTick, 'modifier_removed',
+                        `${MODIFIERS[mod.modifier_key]?.name || mod.modifier_key} resolved by international arbitration ruling.`,
+                        { modifier_key: mod.modifier_key, reason: 'arbitration_ruling' });
+                }
+
+                await insertHistory(supabase, issueId, currentTick, 'action_executed',
+                    'International arbitration ruling delivered. All structural disputes resolved.',
+                    { reason: 'arbitration_ruling', modifiers_resolved: structMods.map(m => m.modifier_key) });
+
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+
+// ==================== EXPORTS ====================
+
 
 // ────────── incidents ──────────
 
@@ -28884,122 +30231,6 @@ async function processSurplusConnectors(supabase: any, nation: any) {
     }
 }
 
-// Finance loan processing lives in advance-corp-tick (runs at corp tick midpoint).
-
-async function _unusedProcessFinanceLoans(supabase, nationId, currentTick) {
-    const results = { expired: 0, payments: 0, defaults: 0 };
-
-    // 1. Expire unfunded loan requests past their deadline
-    const { data: expiredReqs } = await supabase
-        .from('finance_loan_requests')
-        .update({ status: 'expired' })
-        .eq('nation_id', nationId)
-        .eq('status', 'open')
-        .lte('expires_tick', currentTick)
-        .select('id');
-    results.expired = expiredReqs?.length || 0;
-
-    if (results.expired > 0) {
-        const expiredIds = expiredReqs.map(r => r.id);
-        await supabase
-            .from('finance_loan_offers')
-            .update({ status: 'declined' })
-            .in('request_id', expiredIds)
-            .eq('status', 'pending');
-    }
-
-    // 2. Process active loan payments (1 tick = 1 month)
-    const { data: activeLoans } = await supabase
-        .from('finance_active_loans')
-        .select('*')
-        .eq('nation_id', nationId)
-        .in('status', ['current', 'late', 'delinquent']);
-
-    if (!activeLoans || activeLoans.length === 0) return results;
-
-    for (const loan of activeLoans) {
-        const { data: borrower } = await supabase
-            .from('factions')
-            .select('corp_cash_reserves')
-            .eq('id', loan.borrower_faction_id)
-            .single();
-
-        const borrowerCash = Number(borrower?.corp_cash_reserves) || 0;
-        const payment = loan.monthly_payment;
-        const monthlyRate = (loan.interest_rate / 100) / 12;
-        const remainingPrincipal = loan.principal - loan.total_paid;
-        const interestPortion = Math.round(remainingPrincipal * monthlyRate);
-
-        if (borrowerCash >= payment) {
-            const newTotalPaid = loan.total_paid + payment;
-            const newInterestPaid = loan.total_interest_paid + interestPortion;
-            const newPaymentsMade = loan.payments_made + 1;
-            const isRepaid = newPaymentsMade >= loan.term_months;
-
-            await supabase.from('factions').update({
-                corp_cash_reserves: borrowerCash - payment
-            }).eq('id', loan.borrower_faction_id);
-
-            const { data: lender } = await supabase
-                .from('factions')
-                .select('corp_cash_reserves')
-                .eq('id', loan.lender_faction_id)
-                .single();
-            await supabase.from('factions').update({
-                corp_cash_reserves: (Number(lender?.corp_cash_reserves) || 0) + payment
-            }).eq('id', loan.lender_faction_id);
-
-            await supabase.from('finance_active_loans').update({
-                total_paid: newTotalPaid,
-                total_interest_paid: newInterestPaid,
-                payments_made: newPaymentsMade,
-                payments_missed: 0,
-                last_payment_tick: currentTick,
-                status: isRepaid ? 'repaid' : 'current',
-                completed_tick: isRepaid ? currentTick : null,
-            }).eq('id', loan.id);
-
-            results.payments++;
-        } else {
-            const newMissed = loan.payments_missed + 1;
-            let newStatus = loan.status;
-
-            if (newMissed >= 4) {
-                newStatus = 'defaulted';
-                results.defaults++;
-
-                let recovery = 0;
-                if (loan.collateral_type === 'equipment') recovery = 0.6;
-                else if (loan.collateral_type === 'property') recovery = 0.75;
-
-                if (recovery > 0) {
-                    const recoveredAmount = Math.round(remainingPrincipal * recovery);
-                    const { data: lender } = await supabase
-                        .from('factions')
-                        .select('corp_cash_reserves')
-                        .eq('id', loan.lender_faction_id)
-                        .single();
-                    await supabase.from('factions').update({
-                        corp_cash_reserves: (Number(lender?.corp_cash_reserves) || 0) + recoveredAmount
-                    }).eq('id', loan.lender_faction_id);
-                }
-            } else if (newMissed >= 3) {
-                newStatus = 'delinquent';
-            } else if (newMissed >= 1) {
-                newStatus = 'late';
-            }
-
-            await supabase.from('finance_active_loans').update({
-                payments_missed: newMissed,
-                status: newStatus,
-                completed_tick: newStatus === 'defaulted' ? currentTick : null,
-            }).eq('id', loan.id);
-        }
-    }
-
-    return results;
-}
-
 // ==================== TARIFF → RELATIONS PENALTY ====================
 // Nations with tariffs > 25% lose -0.5 relations/tick with ALL other nations (floor 10)
 
@@ -30067,7 +31298,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
       try {
         const { data: factions } = await supabase
             .from('factions')
-            .select('id, faction_name, faction_type, leader_positive_traits, leader_negative_traits')
+            .select('id, faction_type, leader_positive_traits, leader_negative_traits')
             .eq('nation_id', nation.id)
             .eq('faction_type', 'party');
 
@@ -30129,60 +31360,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 });
                 failedNationIds.add(nation.id);
                 failedFactionIds.add(faction.id);
-            }
-
-            // ── Per-tick leader trait momentum effects ──
-            const momTraitDelta =
-                (posTraits.includes('born_leader') ? 3 : 0) +
-                (posTraits.includes('telegenic') ? 2 : 0) +
-                (posTraits.includes('base_energizer') ? 1 : 0) +
-                (negTraits.includes('unelectable') ? -2 : 0) +
-                (negTraits.includes('wooden_speaker') ? -1 : 0);
-
-            if (momTraitDelta !== 0) {
-                const traitParts = [];
-                if (posTraits.includes('born_leader')) traitParts.push('Born Leader +3');
-                if (posTraits.includes('telegenic')) traitParts.push('Telegenic +2');
-                if (posTraits.includes('base_energizer')) traitParts.push('Base Energizer +1');
-                if (negTraits.includes('unelectable')) traitParts.push('Unelectable -2');
-                if (negTraits.includes('wooden_speaker')) traitParts.push('Wooden Speaker -1');
-                const { error: momTraitErr } = await supabase.rpc('adjust_momentum', {
-                    p_faction_id: faction.id,
-                    p_delta: momTraitDelta,
-                    p_label: `Leader traits: ${traitParts.join(', ')}`,
-                    p_tick: newTick
-                });
-                if (momTraitErr) console.warn(`[advanceTick] Momentum trait RPC failed for faction ${faction.id}:`, momTraitErr.message);
-            }
-
-            // gaffe_prone: 20% chance per tick of -2 governance and -3 momentum
-            if (negTraits.includes('gaffe_prone') && Math.random() < 0.2) {
-                const { error: gaffeErr } = await supabase.rpc('adjust_momentum', {
-                    p_faction_id: faction.id,
-                    p_delta: -3,
-                    p_label: 'Leader gaffe (-3 momentum)',
-                    p_tick: newTick
-                });
-                if (gaffeErr) console.warn(`[advanceTick] Gaffe momentum RPC failed for faction ${faction.id}:`, gaffeErr.message);
-                // -2 governance: reduce party_approval directly
-                const { data: gaffeStanding } = await supabase.from('faction_electoral_standing')
-                    .select('party_approval')
-                    .eq('faction_id', faction.id).eq('nation_id', nation.id)
-                    .maybeSingle();
-                if (gaffeStanding) {
-                    await supabase.from('faction_electoral_standing')
-                        .update({ party_approval: Math.max(10, (gaffeStanding.party_approval || 25) - 2) })
-                        .eq('faction_id', faction.id).eq('nation_id', nation.id);
-                }
-                await supabase.from('event_log').insert({
-                    nation_id: nation.id,
-                    event_name: 'LEADER_GAFFE',
-                    trigger_key: 'leader_gaffe',
-                    description_used: `${faction.faction_name || 'A party'} leader committed a public gaffe, costing momentum and governance.`,
-                    category: 'POLITICAL',
-                    effects_applied: { momentum: -3, governance: -2, faction_id: faction.id },
-                    fired_at_tick: newTick
-                }).then(({ error }) => { if (error) console.warn('Gaffe event log failed:', error.message); });
             }
         }
         } // end factions.length > 0
@@ -30247,7 +31424,76 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Trade processing failed (non-fatal):', tradeErr);
     }
 
-    // Phase 0: Trade imbalance auto-spawn removed — card system will handle issue creation.
+    // 3.5b Trade imbalance auto-spawn — detect sustained bilateral imbalances → create issues
+    // Runs every 5 ticks to reduce CPU — needs 5 ticks of sustained data anyway
+    if (newTick % 5 === 0) try {
+        const tradeIssuesSpawned = await checkTradeImbalanceAutoSpawn(supabase, nationList, newTick);
+        if (tradeIssuesSpawned.length > 0) {
+            summary.tradeIssuesSpawned = tradeIssuesSpawned.length;
+            console.log(`[advanceTick] Trade imbalance: spawned ${tradeIssuesSpawned.length} new issue(s)`);
+        }
+    } catch (tiErr) {
+        console.error('[advanceTick] Trade imbalance auto-spawn failed (non-fatal):', tiErr);
+    }
+
+    // 3.5c Food sub-sector stat effects — apply ongoing supply/shortage/environmental nudges
+    // Runs after trade engine so trade_flows reflect current tick data.
+    // Effects: supplied sectors give positive nudges, shortage penalizes stats,
+    // livestock/cash crops generate environmental + structural effects.
+    try {
+        const { data: foodFlowRows } = await supabase
+            .from('trade_flows')
+            .select('nation_id, sector, export_capacity, export_volume, import_demand, import_volume')
+            .eq('tick', newTick)
+            .in('sector', FOOD_SUBSECTOR_KEYS);
+
+        if (foodFlowRows && foodFlowRows.length > 0) {
+            // Group by nation
+            const nationFoodFlows: Record<string, Record<string, any>> = {};
+            for (const row of foodFlowRows) {
+                if (!nationFoodFlows[row.nation_id]) nationFoodFlows[row.nation_id] = {};
+                nationFoodFlows[row.nation_id][row.sector] = row;
+            }
+
+            let foodEffectCount = 0;
+            for (const nationId in nationFoodFlows) {
+                const effects = computeFoodStatEffects(nationFoodFlows[nationId]);
+                if (!effects || Object.keys(effects).length === 0) continue;
+
+                // Filter out imperceptible effects (< 0.05 rounds to 0 change)
+                const affectedKeys = Object.keys(effects).filter(k => Math.abs(effects[k]) >= 0.05);
+                if (affectedKeys.length === 0) continue;
+
+                // Fetch current nation stats for the affected keys
+                const { data: nationRow } = await supabase
+                    .from('nations')
+                    .select(affectedKeys.join(', '))
+                    .eq('id', nationId)
+                    .single();
+
+                if (!nationRow) continue;
+
+                const updates: Record<string, number> = {};
+                for (const statKey of affectedKeys) {
+                    const currentVal = Number(nationRow[statKey] ?? 50);
+                    const delta = effects[statKey];
+                    const newVal = Math.round(Math.max(0, Math.min(100, currentVal + delta)) * 10) / 10;
+                    if (newVal !== currentVal) updates[statKey] = newVal;
+                }
+
+                if (Object.keys(updates).length > 0) {
+                    await supabase.from('nations').update(updates).eq('id', nationId);
+                    foodEffectCount++;
+                }
+            }
+
+            if (foodEffectCount > 0) {
+                console.log(`[advanceTick] Food stat effects applied to ${foodEffectCount} nation(s)`);
+            }
+        }
+    } catch (foodEffErr) {
+        console.error('[advanceTick] Food stat effects failed (non-fatal):', foodEffErr);
+    }
 
     // 3.6 Expire trade agreements (including economic aid) that have passed their expires_at_tick
     try {

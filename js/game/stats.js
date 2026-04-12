@@ -405,7 +405,7 @@ export const STAT_TO_MINISTRY = {
  * Each bloc has 1-2 priority_issues (e.g., ['Economics', 'Labor']).
  */
 export const ISSUE_CATEGORY_STATS = {
-    Agriculture:     ['arable_land', 'fuel_prices', 'trade_balance', 'poverty_rate'],
+    Agriculture:     ['arable_land', 'fuel_prices', 'trade_balance', 'poverty_rate', 'cost_of_living', 'standard_of_living', 'happiness', 'pollution', 'carbon_emissions'],
     Economics:       ['gdp', 'gdp_growth', 'inflation', 'unemployment', 'currency_strength', 'trade_balance', 'debt', 'manufacturing_output', 'service_output'],
     Education:       ['literacy', 'higher_education', 'education_accessibility', 'academic_immigration'],
     Governance:      ['stability', 'legitimacy', 'efficiency', 'corruption', 'freedom_index'],
