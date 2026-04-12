@@ -2332,6 +2332,9 @@ body.light-mode .tft-row-clickable:hover {
 .econ-cards-5 {
     grid-template-columns: repeat(5, 1fr);
 }
+.econ-cards-6 {
+    grid-template-columns: repeat(6, 1fr);
+}
 
 body.light-mode .food-subsector-tab {
     color: var(--text-secondary);
@@ -2353,6 +2356,9 @@ body.light-mode .food-alloc-label {
         flex: 1 1 45%;
     }
     .econ-cards-5 {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    .econ-cards-6 {
         grid-template-columns: repeat(3, 1fr);
     }
     .food-alloc-legend {
