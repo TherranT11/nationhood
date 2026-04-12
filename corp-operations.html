@@ -6961,10 +6961,180 @@ async function loadExecutives() {
     _execPool = poolRes.data || [];
 }
 
+// ═══════════════════════════════════════════════════
+// ACTIONS TAB — RENDERING
+// ═══════════════════════════════════════════════════
+
+function actFmtSalary(n) {
+    if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'k';
+    return '$' + n;
+}
+
+function getExecForRole(role) {
+    return _executives.find(e => e.role === role) || null;
+}
+
+function getInitials(first, last) {
+    return (first || '?')[0] + (last || '?')[0];
+}
+
+function skillColor(s) {
+    if (s >= 70) return '#5cb85c';
+    if (s >= 50) return '#ca5';
+    return '#c84';
+}
+
 function renderActionsTab() {
     const container = document.getElementById('actions-container');
     if (!container) return;
-    container.innerHTML = '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">Loading actions...</div>';
+
+    const corpName = faction?.faction_name || 'Corporation';
+    const ticker = (faction?.abbreviation || faction?.corp_ticker || '??').toUpperCase();
+
+    let html = '';
+
+    // ── Page header ──
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:0 2px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:2px;color:#8b9a6b;text-transform:uppercase;">Actions</span>
+            <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${escapeHtml(corpName)} &middot; ${escapeHtml(ticker)}</span>
+        </div>
+    </div>`;
+
+    // ── Main layout: left panel + right panel ──
+    html += '<div style="display:flex;gap:8px;">';
+
+    // ═══ LEFT PANEL: Executive cards ═══
+    html += '<div style="width:210px;display:flex;flex-direction:column;gap:4px;flex-shrink:0;">';
+
+    for (let i = 0; i < EXEC_ROLES.length; i++) {
+        const role = EXEC_ROLES[i];
+        const meta = EXEC_ROLE_META[role];
+        const exec = getExecForRole(role);
+        const isSel = _selectedExecIdx === i;
+        const color = meta.color;
+        const isVacant = !exec;
+
+        html += `<div onclick="actSelectExec(${i})" style="
+            padding:8px 10px;
+            background:${isSel ? color + '0a' : 'var(--bg-2,#1a1a17)'};
+            border:1px solid ${isSel ? color + '44' : 'var(--border-0,rgba(255,255,255,0.06))'};
+            border-left:3px solid ${isSel ? color : 'var(--border-0,rgba(255,255,255,0.06))'};
+            cursor:pointer;
+        ">`;
+
+        if (isVacant && role !== 'CEO') {
+            // Vacant slot
+            html += `<div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:36px;height:36px;background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);flex-shrink:0;">?</div>
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${color};">${escapeHtml(role)}</span>
+                    </div>
+                    <div style="font-size:10px;font-weight:600;color:var(--text-dim);margin-top:1px;">VACANT</div>
+                    <div style="margin-top:3px;">
+                        <span onclick="event.stopPropagation();openExecSearch('${role}')" style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;padding:2px 6px;color:#5a8aaa;border:1px solid rgba(90,138,170,0.25);background:rgba(90,138,170,0.06);cursor:pointer;">EXECUTIVE SEARCH</span>
+                    </div>
+                </div>
+            </div>`;
+        } else {
+            // Filled slot (CEO always filled, others if hired)
+            const name = exec ? `${exec.first_name} ${exec.last_name}` : '—';
+            const age = exec ? exec.age : 0;
+            const sk = exec ? exec.skill : 0;
+            const sal = exec ? exec.salary_per_year : 0;
+            const portrait = exec ? getInitials(exec.first_name, exec.last_name) : '—';
+
+            html += `<div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:36px;height:36px;background:${color}15;border:1px solid ${color}33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;font-weight:700;color:${color};flex-shrink:0;">${escapeHtml(portrait)}</div>
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${color};">${escapeHtml(role)}</span>
+                    </div>
+                    <div style="font-size:10px;font-weight:600;color:${isSel ? 'var(--text-bright,#f0efe6)' : 'var(--text-muted,#666)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(name)}${age ? ` <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">(${age})</span>` : ''}</div>
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
+                        <div style="display:flex;align-items:center;gap:3px;flex:1;">
+                            <div style="flex:1;height:2px;background:var(--border-0,rgba(255,255,255,0.06));">
+                                <div style="width:${sk}%;height:100%;background:${skillColor(sk)};"></div>
+                            </div>
+                            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-muted);width:16px;text-align:right;">${sk}</span>
+                        </div>
+                        <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${actFmtSalary(sal)}/yr</span>
+                    </div>
+                </div>
+            </div>`;
+        }
+        html += '</div>';
+    }
+
+    html += '</div>'; // close left panel
+
+    // ═══ RIGHT PANEL: placeholder (Phase 2C) ═══
+    html += `<div style="flex:1;display:flex;flex-direction:column;gap:0;">
+        <div id="actions-right-panel"></div>
+    </div>`;
+
+    html += '</div>'; // close main layout
+    container.innerHTML = html;
+
+    // Render right panel
+    renderActionsRightPanel();
+}
+
+function renderActionsRightPanel() {
+    const panel = document.getElementById('actions-right-panel');
+    if (!panel) return;
+    const role = EXEC_ROLES[_selectedExecIdx];
+    const meta = EXEC_ROLE_META[role];
+    const exec = getExecForRole(role);
+
+    if (!exec) {
+        panel.innerHTML = `<div style="padding:40px;text-align:center;background:var(--bg-2,#1a1a17);border:1px solid var(--border-0,rgba(255,255,255,0.06));">
+            <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${meta.color};margin-bottom:4px;">${escapeHtml(role)}</div>
+            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-bottom:12px;">${escapeHtml(meta.fullTitle)}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:16px;">This position is vacant. Hire an executive to unlock actions.</div>
+            <div onclick="openExecSearch('${role}')" style="display:inline-block;padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:#5a8aaa;cursor:pointer;">EXECUTIVE SEARCH</div>
+        </div>`;
+        return;
+    }
+
+    // Placeholder for Phase 2C — executive detail + actions
+    panel.innerHTML = `<div style="padding:20px;background:var(--bg-2,#1a1a17);border:1px solid var(--border-0,rgba(255,255,255,0.06));">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+            <div style="width:44px;height:44px;background:${meta.color}15;border:1px solid ${meta.color}33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:14px;font-weight:700;color:${meta.color};">${escapeHtml(getInitials(exec.first_name, exec.last_name))}</div>
+            <div>
+                <div style="display:flex;align-items:baseline;gap:6px;">
+                    <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${meta.color};">${escapeHtml(role)}</span>
+                    <span style="font-size:14px;font-weight:700;color:var(--text-bright,#f0efe6);">${escapeHtml(exec.first_name)} ${escapeHtml(exec.last_name)}</span>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:1px;">${escapeHtml(meta.fullTitle)}</div>
+            </div>
+        </div>
+        <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Actions will appear here.</div>
+    </div>`;
+}
+
+function actSelectExec(idx) {
+    _selectedExecIdx = idx;
+    renderActionsTab();
+}
+
+function openExecSearch(role) {
+    _execSearchRole = role;
+    _execSearchSelected = -1;
+    document.getElementById('exec-search-overlay').style.display = 'flex';
+    renderExecSearchModal();
+}
+
+function closeExecSearch() {
+    document.getElementById('exec-search-overlay').style.display = 'none';
+}
+
+function renderExecSearchModal() {
+    const container = document.getElementById('exec-search-content');
+    if (!container) return;
+    container.innerHTML = `<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">Executive Search — coming in Phase 2D</div>`;
 }
 
 function hfGetCapacity() {
@@ -9945,6 +10115,9 @@ window.acceptBid = acceptBid;
 window.declineAllBids = declineAllBids;
 
 window.switchToActions = switchToActions;
+window.actSelectExec = actSelectExec;
+window.openExecSearch = openExecSearch;
+window.closeExecSearch = closeExecSearch;
 window.switchToExpansion = switchToExpansion;
 window.switchToOperations = switchToOperations;
 window.hfSetChange = hfSetChange;
