@@ -2786,6 +2786,22 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 console.error(`[advance-corp-tick] Finance loan processing failed for ${nation.name} (non-fatal):`, finErr);
             }
 
+            // ── Shipping Sector — Route Generation ───────────────────────
+            // Generate shipping routes from bilateral trade_partners data.
+            // Runs once per nation (routes are bilateral so each pair is processed once).
+            try {
+                if (!summary._shippingRoutesGenerated) {
+                    const routeResult = await generateShippingRoutes(supabase, currentTick);
+                    if (routeResult.generated > 0 || routeResult.expired > 0) {
+                        summary.shipping = routeResult;
+                        console.log(`[advance-corp-tick] Shipping routes: ${routeResult.generated} generated, ${routeResult.expired} expired`);
+                    }
+                    summary._shippingRoutesGenerated = true; // Only run once across all nations
+                }
+            } catch (shipErr) {
+                console.error(`[advance-corp-tick] Shipping route generation failed (non-fatal):`, shipErr);
+            }
+
             // ── Specialty Building Effects ────────────────────────────────
             try {
                 const SPECIALTY_TYPES = ['branch_office', 'trading_floor', 'claims_office'];
