@@ -2388,9 +2388,6 @@ const CA_ACTIONS = [
     { id: 'take_stance', name: 'Take a Stance', ap: STANCE_CONFIG.AP_COST, color: '#38bdf8', icon: '⚑',
       category: 'appeal', affects: 'Appeal + Ideology',
       desc: 'Declare your party\'s official position on a national issue. Builds platform appeal with aligned voters and shifts your ideology. Stances decay each tick — reinforce before they fade.' },
-    { id: 'outreach', name: 'Community Outreach', ap: 3, color: '#60a5fa', icon: '🤝',
-      category: 'appeal', affects: 'Appeal',
-      desc: 'Engage directly with communities through town halls and local events. +3 Platform Appeal. Cost starts at 3 AP and escalates by +1 each use. Decays by 1 each tick you don\'t use it.' },
     // TOOLS
     { id: 'poll_now', name: 'Poll Now', ap: 1, color: '#22d3ee', icon: '📊',
       category: 'tools', affects: 'Informational',
@@ -2405,7 +2402,6 @@ let _caTargetAxis = null;
 let _caTargetDirection = null;
 let _caPivotIdeo = null; // cached faction ideology for pivot cost calculation
 let _caPollTier = 1; // poll investment: 1 AP (±5%) or 3 AP (±3%)
-let _caOutreachEscalation = 0; // outreach cost escalation: +1 per use, -1 per tick of non-use
 let _caRallyEscalation = 0;    // rally cost escalation: +1 per use, -1 per tick
 let _caPressEscalation = 0;    // press conference cost escalation: +1 per use, -1 per tick
 window._selectPollTier = function(tier) { _caPollTier = tier; const rerender = document.getElementById('ca-config-panel'); if (rerender) { rerender.innerHTML = renderPollNowConfig(); } };
@@ -2437,7 +2433,6 @@ function caIsReady() {
     if (_caSelected === 'take_stance') return !!_caStanceIssue && !!_caStanceAxis && !!_caStanceSide && !!_caStanceIntensity;
     if (_caSelected === 'poll_now') return true;
     if (_caSelected === 'press_conference') return true;
-    if (_caSelected === 'outreach') return true;
     if (_caSelected === 'fund_think_tank') return !!_caTargetAxis && !!_caTargetDirection;
     if (_caSelected === 'media_campaign') return !!_caTargetAxis && !!_caTargetDirection;
     if (_caSelected === 'grassroots_movement') return !!_caTargetAxis && !!_caTargetDirection;
@@ -2469,11 +2464,6 @@ function caGetCost() {
         return cost;
     }
     if (_caSelected === 'poll_now') return _caPollTier; // 1 or 3 AP based on tier
-    if (_caSelected === 'outreach') {
-        const _f = _currentFaction;
-        const _t = _currentShard?.current_tick || 0;
-        return Math.max(1, 3 + (_caOutreachEscalation || 0) + (_f ? getTraitAPModifier('outreach', _f, _t) : 0));
-    }
     if (_caSelected === 'rally') {
         const _fr = _currentFaction;
         const _tr = _currentShard?.current_tick || 0;
@@ -2653,7 +2643,7 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
     _caActiveActions = activeShiftActions || [];
 
     // Compute escalation for repeatable actions: +1 per use, decays -1 per tick of non-use
-    for (const [actionType, setter] of [['outreach', v => _caOutreachEscalation = v], ['rally', v => _caRallyEscalation = v], ['press_conference', v => _caPressEscalation = v]]) {
+    for (const [actionType, setter] of [['rally', v => _caRallyEscalation = v], ['press_conference', v => _caPressEscalation = v]]) {
         const acts = (recentActions || []).filter(a => a.action_type === actionType);
         if (acts.length > 0) {
             const lastTick = Math.max(...acts.map(a => a.tick_performed));
@@ -2745,9 +2735,9 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
                 continue;
             }
 
-            let displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'outreach' ? (3 + (_caOutreachEscalation || 0)) : act.id === 'rally' ? (RALLY_CONFIG.AP_COST + (_caRallyEscalation || 0)) : act.id === 'press_conference' ? (1 + (_caPressEscalation || 0)) : act.ap;
+            let displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'rally' ? (RALLY_CONFIG.AP_COST + (_caRallyEscalation || 0)) : act.id === 'press_conference' ? (1 + (_caPressEscalation || 0)) : act.ap;
             // Apply leader trait modifiers to displayed cost
-            if (['outreach', 'press_conference', 'rally', 'attack'].includes(act.id) && f.leader_positive_traits) {
+            if (['press_conference', 'rally', 'attack'].includes(act.id) && f.leader_positive_traits) {
                 displayCost = Math.max(1, displayCost + getTraitAPModifier(act.id, f, tick));
             }
             const dbActionType = act.id;
@@ -2981,7 +2971,6 @@ function renderActionConfig(sel, otherParties, factionIdeo, nation, ap, tick) {
     if (sel.id === 'grassroots_movement') return renderGrassrootsConfig();
     if (sel.id === 'pivot') return renderPivotConfig(nation);
     if (sel.id === 'press_conference') return `<div class="ca-info-box">Hold a press conference to make a public statement. Result depends on your position and approval.<br><br><strong>Base roll:</strong> -2 to +2 Momentum<br><strong>Opposition bonus:</strong> +1<br><strong>Government bonus:</strong> +2 (if gov approval ≥ 40)</div>`;
-    if (sel.id === 'outreach') return `<div class="ca-info-box">Engage directly with communities through town halls, door-knocking, and local events.<br><br><strong>Effect:</strong> +3 Platform Appeal</div>`;
     return '';
 }
 
@@ -4088,28 +4077,6 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, factionI
                 result = { success: true, newAp: apResult.newAp, headline: 'Press Conference',
                     effects: [{ label: 'Press Coverage', value: `${sign}${baseRoll}` }],
                     outcomeName: `Press conference — ${sign}${baseRoll} momentum` };
-            }
-        } else if (sel.id === 'outreach') {
-            // Community Outreach: +3 platform appeal, escalating cost (base 3 + escalation)
-            const { deductAP: _deductAP2 } = await import('./game/config.js');
-            const { getTraitAPModifier: _getTraitMod2 } = await import('./game/party-leadership.js');
-            const outreachCost = Math.max(1, 3 + (_caOutreachEscalation || 0) + _getTraitMod2('outreach', f, tick));
-            const apResult = await _deductAP2(_supabase, f.id, outreachCost, { reason: 'outreach', detail: 'Community Outreach', tick });
-            if (!apResult.success) { result = { success: false, error: apResult.error || 'Insufficient AP' }; }
-            else {
-                const { data: standing } = await _supabase.from('faction_electoral_standing')
-                    .select('id, platform_appeal').eq('faction_id', f.id).eq('nation_id', n.id).maybeSingle();
-                if (standing) {
-                    const newAppeal = Math.min(100, (Number(standing.platform_appeal) || 0) + 3);
-                    await _supabase.from('faction_electoral_standing').update({ platform_appeal: newAppeal }).eq('id', standing.id);
-                }
-                await _supabase.from('campaign_actions').insert({
-                    party_id: f.id, nation_id: n.id, action_type: 'outreach',
-                    ap_cost: outreachCost, tick_performed: tick, result: { appealBoost: 3 }
-                });
-                result = { success: true, newAp: apResult.newAp, headline: 'Community Outreach',
-                    effects: [{ label: 'Appeal', value: '+3' }],
-                    outcomeName: 'Community outreach — +3 platform appeal' };
             }
         } else if (sel.id === 'pivot') {
             result = await executeIdeologicalPivot(_supabase, f.id, n.id, _caTargetAxis, _caTargetDirection, tick);
