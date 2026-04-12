@@ -98,7 +98,7 @@
 .sidebar-section { margin-bottom: 4px; }
 .sidebar-section-header {
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -113,7 +113,7 @@
 .sidebar-toggle-icon { font-size: 8px; margin-left: 4px; }
 .sidebar-empty {
     font-family: var(--font-sans);
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-dim);
     padding: 6px 14px;
     font-style: italic;
@@ -139,7 +139,7 @@
 }
 .sidebar-item-name {
     font-family: var(--font-sans);
-    font-size: 11px;
+    font-size: 14px;
     font-weight: 500;
     color: var(--text-primary);
     white-space: nowrap;
@@ -153,17 +153,17 @@
 }
 .sidebar-item-parties {
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 11px;
     color: var(--text-dim);
 }
 .sidebar-item-leverage {
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 11px;
     color: var(--text-muted);
 }
 .sidebar-item-status {
     font-family: var(--font-mono);
-    font-size: 8px;
+    font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -250,14 +250,14 @@
 }
 .leverage-nation {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 14px;
     font-weight: 600;
 }
 .leverage-nation--a { color: var(--blue); }
 .leverage-nation--b { color: var(--crimson); }
 .leverage-label {
     font-family: var(--font-mono);
-    font-size: 8px;
+    font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.15em;
     text-transform: uppercase;
@@ -330,7 +330,7 @@
 }
 .incident-title {
     font-family: var(--font-serif);
-    font-size: 15px;
+    font-size: 19px;
     font-weight: 600;
     color: var(--text-primary);
     margin-bottom: 6px;
@@ -342,7 +342,7 @@
 }
 .meta-tag {
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 11px;
     color: var(--text-dim);
     background: var(--bg-3);
     padding: 2px 8px;
@@ -351,7 +351,7 @@
 }
 .status-badge {
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -399,7 +399,7 @@
 }
 .timeline-tick {
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 11px;
     color: var(--text-dim);
 }
 .lev-badge {
@@ -415,13 +415,13 @@
 
 .timeline-event-text {
     font-family: var(--font-sans);
-    font-size: 11px;
+    font-size: 14px;
     color: var(--text-primary);
     line-height: 1.5;
 }
 .timeline-source {
     font-family: var(--font-mono);
-    font-size: 8px;
+    font-size: 10px;
     color: var(--text-dim);
     margin-top: 3px;
 }
@@ -595,7 +595,7 @@
 .action-info { flex: 1; min-width: 0; }
 .action-name {
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -603,7 +603,7 @@
 }
 .action-detail {
     font-family: var(--font-sans);
-    font-size: 8.5px;
+    font-size: 11px;
     color: var(--text-dim);
     margin-top: 1px;
 }
@@ -852,7 +852,7 @@
 /* Issue sidebar items */
 .issue-tension {
     font-family: var(--font-mono);
-    font-size: 7px;
+    font-size: 9px;
     font-weight: 700;
     padding: 1px 4px;
     border-radius: 1px;
@@ -890,7 +890,7 @@
 }
 .issue-notif-row {
     padding: 8px 20px;
-    font-size: 11px;
+    font-size: 14px;
     line-height: 1.5;
     border-bottom: 1px solid var(--border-hair);
 }
@@ -919,12 +919,12 @@
 }
 .issues-title {
     font-family: var(--font-serif);
-    font-size: 18px;
+    font-size: 22px;
     font-weight: 600;
 }
 .issue-nation-tag {
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 700;
     color: var(--blue);
     text-transform: uppercase;
@@ -935,7 +935,7 @@
 }
 .issue-badge {
     font-family: var(--font-mono);
-    font-size: 7px;
+    font-size: 9px;
     font-weight: 700;
     padding: 1.5px 5px;
     border-radius: 1px;
@@ -947,14 +947,14 @@
 .issue-badge--escalated { color: var(--crimson); background: var(--crimson-faint); border: 1px solid var(--crimson-border); }
 .issues-type {
     font-family: var(--font-mono);
-    font-size: 8px;
+    font-size: 10px;
     color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.06em;
 }
 .issues-desc {
     font-family: var(--font-sans);
-    font-size: 12px;
+    font-size: 15px;
     color: var(--text-muted);
     line-height: 1.5;
     margin-top: 8px;
@@ -975,7 +975,7 @@
 .issues-status-cell:last-child { border-right: none; }
 .issues-status-label {
     font-family: var(--font-mono);
-    font-size: 7px;
+    font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.1em;
@@ -984,12 +984,12 @@
 }
 .issues-status-value {
     font-family: var(--font-mono);
-    font-size: 13px;
+    font-size: 16px;
     font-weight: 700;
 }
 .issues-status-detail {
     font-family: var(--font-sans);
-    font-size: 9px;
+    font-size: 11px;
     color: var(--text-dim);
     margin-top: 2px;
 }
@@ -1047,7 +1047,7 @@
 }
 .issues-section-label {
     font-family: var(--font-mono);
-    font-size: 8px;
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.1em;
@@ -1060,12 +1060,12 @@
 .issues-intel { display:flex; border-bottom:1px solid var(--border-subtle); }
 .issues-intel-card { flex:1; padding:10px 18px; }
 .issues-intel-card + .issues-intel-card { border-left:1px solid var(--border-subtle); }
-.issues-intel-nation { font-family:var(--font-mono); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:6px; }
+.issues-intel-nation { font-family:var(--font-mono); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:6px; }
 .issues-intel-line { display:flex; align-items:baseline; padding:2px 0; }
-.issues-intel-key { font-family:var(--font-mono); font-size:8px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.04em; min-width:130px; flex-shrink:0; }
-.issues-intel-val { font-family:var(--font-sans); font-size:12px; color:var(--text-secondary); }
+.issues-intel-key { font-family:var(--font-mono); font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.04em; min-width:130px; flex-shrink:0; }
+.issues-intel-val { font-family:var(--font-sans); font-size:15px; color:var(--text-secondary); }
 .issues-intel-val strong { font-weight:600; color:var(--text-primary); }
-.issues-intel-val-num { font-family:var(--font-mono); font-size:11px; font-weight:600; }
+.issues-intel-val-num { font-family:var(--font-mono); font-size:14px; font-weight:600; }
 .issues-intel-party { font-family:var(--font-mono); font-size:8px; color:var(--text-dim); margin-left:4px; }
 .issues-intel-crises { margin-top:4px; }
 .issues-intel-crisis { font-family:var(--font-sans); font-size:10px; color:var(--text-secondary); padding:1px 0 1px 10px; position:relative; }
