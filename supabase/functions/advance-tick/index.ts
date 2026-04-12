@@ -18376,10 +18376,6 @@ function getTraitAPModifier(actionType, faction, currentTick) {
         mod += 1;
     }
 
-    // divisive_figure: Outreach costs +1 AP
-        mod += 1;
-    }
-
     // policy_wonk: Draft bill costs -1 AP
     if (pos.includes('policy_wonk') && actionType === 'draft_bill') {
         mod -= 1;
@@ -18442,10 +18438,6 @@ function getTraitApprovalMultiplier(faction, actionType, blocDisposition) {
     // crowd_pleaser: Rally momentum gains +30%
     if (pos.includes('crowd_pleaser') && actionType === 'rally') {
         mult *= 1.3;
-    }
-
-    // divisive_figure: Outreach approval gains with non-BASE blocs halved
-        mult *= 0.5;
     }
 
     return mult;
