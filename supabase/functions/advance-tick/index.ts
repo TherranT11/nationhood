@@ -2486,6 +2486,20 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
+    // ── Step 5b: Cap exports at production capacity ──
+    // The allocation algorithm can overshoot when priceMod > 1.0 inflates adjustedCap.
+    // Enforce the physical constraint: you cannot export more than you produce.
+    for (var ni = 0; ni < nationCount; ni++) {
+        var nId = nationList[ni].id;
+        for (var si = 0; si < sectors.length; si++) {
+            var sKey = sectors[si].key;
+            var cap = nationFlows[nId][sKey].exportCapacity;
+            if (actualExports[nId][sKey] > cap) {
+                actualExports[nId][sKey] = cap;
+            }
+        }
+    }
+
     // ── Step 6: Build trade_flows + trade_summary rows, update nation stats ──
     var flowRows = [];
     var summaryRows = [];
