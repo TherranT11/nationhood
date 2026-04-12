@@ -30,8 +30,8 @@ UPDATE nations SET arable_land = 74 WHERE name = 'Montequilla';
 -- Flandis: large population, limited arable land relative to size
 UPDATE nations SET arable_land = 34 WHERE name = 'Flandis';
 
--- Avelia: wealthy developed nation, limited farmland
-UPDATE nations SET arable_land = 29 WHERE name = 'Avelia';
+-- Avelia: wealthy developed nation, very limited farmland
+UPDATE nations SET arable_land = 22 WHERE name = 'Avelia';
 
 -- Sangreza: large diverse economy with substantial farmland
 UPDATE nations SET arable_land = 61 WHERE name = 'Sangreza';
@@ -42,8 +42,8 @@ UPDATE nations SET arable_land = 42 WHERE name = 'San Estrella';
 -- Melizea: autocracy, reduced farmland
 UPDATE nations SET arable_land = 35 WHERE name = 'Melizea';
 
--- Vostia: less arable than previously estimated
-UPDATE nations SET arable_land = 25 WHERE name = 'Vostia';
+-- Vostia: major Meridian agricultural nation
+UPDATE nations SET arable_land = 49 WHERE name = 'Vostia';
 
 -- Also update seed_stats for nations that store them
 UPDATE nations SET seed_stats = jsonb_set(seed_stats, '{arable_land}', '18')
@@ -92,16 +92,16 @@ CREATE POLICY food_land_allocation_update ON food_land_allocation
 -- Design constraint: global demand should exceed supply by ~20%
 -- to create natural scarcity and trade pressure.
 
--- Vostia (arable=25, pop=22.5M) — MERIDIAN
+-- Vostia (arable=49, pop=22.5M) — MERIDIAN
 -- Heavy grain focus, minimal pastoral.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
 SELECT id, 55, 10, 10, 25 FROM nations WHERE name = 'Vostia'
 ON CONFLICT (nation_id) DO NOTHING;
 
 -- Montequilla (arable=74, pop=4.2M) — CRUCERA
--- Fertile heartland, agricultural powerhouse. Minimal livestock, heavy cash crops.
+-- Fertile heartland, grain powerhouse. Minimal livestock.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
-SELECT id, 40, 5, 10, 45 FROM nations WHERE name = 'Montequilla'
+SELECT id, 60, 5, 10, 25 FROM nations WHERE name = 'Montequilla'
 ON CONFLICT (nation_id) DO NOTHING;
 
 -- Sangreza (arable=61, pop=12.5M) — CRUCERA
@@ -128,8 +128,8 @@ INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishab
 SELECT id, 60, 10, 10, 20 FROM nations WHERE name = 'Flandis'
 ON CONFLICT (nation_id) DO NOTHING;
 
--- Avelia (arable=29, pop=9.5M) — CRUCERA
--- Wealthy developed nation: diverse diet, imports heavily.
+-- Avelia (arable=22, pop=9.5M) — CRUCERA
+-- Wealthy developed nation: very limited land, imports heavily.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
 SELECT id, 45, 15, 20, 20 FROM nations WHERE name = 'Avelia'
 ON CONFLICT (nation_id) DO NOTHING;
@@ -147,9 +147,9 @@ SELECT id, 55, 10, 10, 25 FROM nations WHERE name = 'Calveth'
 ON CONFLICT (nation_id) DO NOTHING;
 
 -- Sierramar (arable=18, pop=3.8M) — CRUCERA
--- Tiny island: fishing, tropical fruits, coffee/sugarcane. Cash crops dominate.
+-- Tiny island: tropical fruits dominate, fishing supplements. Minimal grains.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
-SELECT id, 25, 10, 25, 40 FROM nations WHERE name = 'Sierramar'
+SELECT id, 20, 10, 40, 30 FROM nations WHERE name = 'Sierramar'
 ON CONFLICT (nation_id) DO NOTHING;
 
 COMMIT;
