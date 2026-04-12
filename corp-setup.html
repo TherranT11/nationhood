@@ -458,6 +458,13 @@ const SECTORS = [
         available: true,
     },
     {
+        key: 'shipping',
+        name: 'Shipping',
+        desc: 'Move goods across oceans and borders. Bulk carriers haul fuel and grain, container ships transport manufactured goods, and specialized vessels handle arms and hazardous cargo. Not available in landlocked nations.',
+        available: true,
+        coastalOnly: true,
+    },
+    {
         key: 'energy',
         name: 'Energy',
         desc: 'Power the nation through oil, gas, renewables, and nuclear. Control the energy grid and fuel economic growth.',
@@ -534,6 +541,23 @@ const SUBSECTORS = {
             key: 'megaprojects',
             name: 'Megaprojects',
             desc: 'Nation-defining projects: international airports, hydroelectric dams, national rail networks. Very long timelines (20-40+ ticks), enormous capital requirements, massive payoff on success and devastating loss on failure.',
+        },
+    ],
+    shipping: [
+        {
+            key: 'bulk_cargo',
+            name: 'Bulk Cargo',
+            desc: 'Haul raw commodities in bulk carriers — fuel, minerals, grain, livestock feed, and cash crops. Highest volume, lowest margins. Revenue driven by commodity prices and trade agreement volumes. Your ships move the raw materials that keep economies running.',
+        },
+        {
+            key: 'container_freight',
+            name: 'Container Freight',
+            desc: 'Move manufactured goods, electronics, and perishables in standardized containers. The backbone of global trade — port efficiency, container turnaround, and cold chain logistics for perishables determine your competitive edge.',
+        },
+        {
+            key: 'specialized_transport',
+            name: 'Specialized Transport',
+            desc: 'Handle arms, military equipment, oversized cargo, and hazardous materials. Fewest routes but highest margins. Requires government security clearance and specialized insurance. Defense contracts are exclusive to this subsector.',
         },
     ],
     finance: [

@@ -551,6 +551,9 @@ function getGovLabel(nation) {
 }
 
 // ── Render ──
+// Landlocked nations cannot host Shipping corporations
+const LANDLOCKED_NATIONS = ['Montequilla'];
+
 function renderNations() {
     const grid = document.getElementById('nations-grid');
     const filtered = allNations.filter(n => (n.continent || 'Crucera') === activeContinent);
@@ -569,13 +572,16 @@ function renderNations() {
         const demand = getDemand(nation.id);
         const corpCount = (corpsByNation[nation.id] || []).length;
         const isSelected = selectedNationId === nation.id;
+        const isLandlocked = LANDLOCKED_NATIONS.includes(nation.name);
+        const isShippingBlocked = corpSetup && corpSetup.sector === 'Shipping' && isLandlocked;
 
         const pop = nation.population ? nation.population.toLocaleString() : '—';
         const gdp = nation.gdp ? '$' + (nation.gdp / 1e9).toFixed(1) + 'B' : '—';
         const stab = nation.stability != null ? Math.round(nation.stability) : '—';
 
         return `
-            <div class="nation-card${isSelected ? ' selected' : ''}" data-id="${nation.id}" onclick="selectNation('${nation.id}')">
+            <div class="nation-card${isSelected ? ' selected' : ''}${isShippingBlocked ? ' disabled' : ''}" data-id="${nation.id}" onclick="${isShippingBlocked ? '' : "selectNation(\'" + nation.id + "\')"}">
+                ${isShippingBlocked ? '<span class="option-card__badge option-card__badge--soon" style="background:#d9534f;">Landlocked</span>' : ''}
                 <div class="nation-card__header">
                     ${flagUrl ? `<img class="nation-card__flag" src="${flagUrl}" alt="${escapeHtml(nation.name)}" onerror="this.style.display='none'">` : ''}
                     <span class="nation-card__name">${escapeHtml(nation.name)}</span>
