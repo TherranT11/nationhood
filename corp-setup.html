@@ -498,6 +498,7 @@ function renderStep1() {
                          data-sector="${s.key}" data-name="${s.name}"
                          onclick="${s.available ? 'selectSector(this)' : ''}">
                         ${!s.available ? '<span class="option-card__badge option-card__badge--soon">Coming Soon</span>' : ''}
+                        ${s.coastalOnly ? '<span class="option-card__badge" style="background:#2a3a4a;color:#6aa3d9;font-size:0.55rem;">Coastal Nations Only</span>' : ''}
                         <div class="option-card__name">${s.name}</div>
                         <div class="option-card__desc">${s.desc}</div>
                     </div>
