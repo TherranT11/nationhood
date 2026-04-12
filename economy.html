@@ -2268,14 +2268,18 @@ function renderFoodSubsectorDetail(nation, subsectorKey) {
     h += '</div>';
     h += '<div class="econ-section-subtitle">' + escapeHtml(sub.description) + '</div>';
 
-    // ── Top cards: Production / Demand / Exports / Imports / Net ──
-    h += '<div class="econ-cards-row econ-cards-5" style="margin-top:12px;">';
+    // ── Top cards: Production / Demand / Exports / Imports / Unmet / Net ──
+    var totalSupply = expCap + impVol;
+    var unmetDemand = Math.max(0, impDem - totalSupply);
+    var unmetPct = impDem > 0 ? Math.round(unmetDemand / impDem * 100) : 0;
+
+    h += '<div class="econ-cards-row econ-cards-6" style="margin-top:12px;">';
 
     var prodLabel = formatSectorVolume(expCap, subsectorKey);
     h += renderOverviewCard('Production', prodLabel || formatBudgetCurrency(expCap), 'neutral', 'capacity / year');
 
     var demLabel = formatSectorVolume(impDem, subsectorKey);
-    h += renderOverviewCard('Demand', demLabel || formatBudgetCurrency(impDem), impDem > expCap ? 'deficit' : 'neutral', 'import need');
+    h += renderOverviewCard('Demand', demLabel || formatBudgetCurrency(impDem), impDem > expCap ? 'deficit' : 'neutral', 'total need');
 
     var expLabel = formatSectorVolume(expVol, subsectorKey);
     h += renderOverviewCard('Exports', expLabel || formatBudgetCurrency(expVol), expVol > 0 ? 'surplus' : 'neutral', null);
@@ -2283,10 +2287,29 @@ function renderFoodSubsectorDetail(nation, subsectorKey) {
     var impLabel = formatSectorVolume(impVol, subsectorKey);
     h += renderOverviewCard('Imports', impLabel || formatBudgetCurrency(impVol), impVol > 0 ? 'deficit' : 'neutral', null);
 
+    var unmetLabel = formatSectorVolume(unmetDemand, subsectorKey);
+    h += renderOverviewCard('Unmet Demand', unmetLabel || formatBudgetCurrency(unmetDemand), unmetDemand > 0 ? 'deficit' : 'surplus', unmetPct > 0 ? unmetPct + '% unmet' : 'fully supplied');
+
     var netColor = net > 0 ? 'surplus' : net < 0 ? 'deficit' : 'neutral';
     h += renderOverviewCard('Net Flow', formatBudgetCurrency(Math.abs(net)), netColor, net >= 0 ? 'net exporter' : 'net importer');
 
     h += '</div>';
+
+    // ── Unmet Demand stat penalty warning ──
+    if (unmetPct >= 5 && sub.stat_effects && sub.stat_effects.shortage) {
+        var shortageStats = sub.stat_effects.shortage;
+        var penaltyTags = Object.keys(shortageStats).map(function(statKey) {
+            var weight = shortageStats[statKey];
+            var arrow = weight > 0 ? '\u2191' : '\u2193';
+            var label = statKey.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+            return '<span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:rgba(217,83,79,0.08);color:#d9534f;border:1px solid rgba(217,83,79,0.2);white-space:nowrap;">' + escapeHtml(label) + ' ' + arrow + '</span>';
+        }).join(' ');
+
+        h += '<div style="padding:8px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
+        h += '<span style="font-size:0.6rem;text-transform:uppercase;color:#d9534f;letter-spacing:1px;font-weight:700;">SHORTAGE EFFECTS</span>';
+        h += penaltyTags;
+        h += '</div>';
+    }
 
     // ── Food Security Status (for food-security sectors only) ──
     if (sub.food_security_weight > 0) {
@@ -2632,6 +2655,19 @@ function renderSectorDetail(nation, sectorKey) {
         var netSign = net > 0 ? '+' : '';
         h += '<div class="sector-vol-item"><span class="sector-vol-label">NET</span><span class="sector-vol-value" style="color:' + netColor + '">' + netSign + formatTradeVolume(net, sectorKey) + '</span></div>';
         h += '</div>';
+
+        // Unmet demand row (always visible for importable sectors)
+        if (!sector.export_only) {
+            var totalSectorSupply = supplyVal + impVol;
+            var sectorUnmet = Math.max(0, demandVal - totalSectorSupply);
+            var sectorUnmetPct = demandVal > 0 ? Math.round(sectorUnmet / demandVal * 100) : 0;
+            var unmetColor = sectorUnmetPct >= 30 ? '#d9534f' : sectorUnmetPct >= 10 ? '#d48a3c' : sectorUnmetPct > 0 ? '#c9a54e' : '#5cb85c';
+            var unmetStatus = sectorUnmetPct === 0 ? 'FULLY SUPPLIED' : sectorUnmetPct + '% UNMET';
+            h += '<div class="sector-vol-row">';
+            h += '<div class="sector-vol-item"><span class="sector-vol-label">UNMET DEMAND</span><span class="sector-vol-value" style="color:' + unmetColor + '">' + formatTradeVolume(sectorUnmet, sectorKey) + '</span></div>';
+            h += '<div class="sector-vol-item"><span class="sector-vol-label">STATUS</span><span class="sector-vol-value" style="color:' + unmetColor + '">' + unmetStatus + '</span></div>';
+            h += '</div>';
+        }
 
         // Price modifier
         var priceColor = priceMod >= 1.05 ? '#5cb85c' : priceMod <= 0.95 ? '#d9534f' : '#888';
