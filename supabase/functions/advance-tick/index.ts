@@ -5180,12 +5180,12 @@ async function detectHeadFaction(supabase, nationId, allParties, allPartySeats, 
 
 // ==================== COALITION FETCHING ====================
 
+// Per-tick in-memory cache — cleared at start of each advanceTick() call
+const _coalitionCache = new Map();
+
 async function fetchActiveCoalition(supabase, nationId) {
-    const cacheKey = 'coalition_' + nationId;
-    if (typeof qCache === 'function') {
-        const cached = qCache(cacheKey);
-        if (cached) return cached;
-    }
+    // Check per-tick cache first (eliminates ~5 redundant queries per nation)
+    if (_coalitionCache.has(nationId)) return _coalitionCache.get(nationId);
 
     // === PRESIDENTIAL SYSTEMS: return virtual coalition from active president ===
     const { data: nationRow } = await supabase
@@ -5204,7 +5204,7 @@ async function fetchActiveCoalition(supabase, nationId) {
             .limit(1)
             .maybeSingle();
 
-        if (!president) return null; // No active president yet (candidate selection pending)
+        if (!president) { _coalitionCache.set(nationId, null); return null; } // No active president yet
 
         // Build ministry_allocations from active ministries
         const { data: ministries } = await supabase
@@ -5232,7 +5232,7 @@ async function fetchActiveCoalition(supabase, nationId) {
             status: 'formed',  // Always 'formed' while president is active
             _source: 'presidential'
         };
-        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 15 * 1000);
+        _coalitionCache.set(nationId, result);
         return result;
     }
 
@@ -5299,7 +5299,7 @@ async function fetchActiveCoalition(supabase, nationId) {
             } catch (e) { console.warn('Coalition table reconciliation failed:', e); }
         }
 
-        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 15 * 1000);
+        _coalitionCache.set(nationId, result);
         return result;
     }
 
@@ -5314,8 +5314,8 @@ async function fetchActiveCoalition(supabase, nationId) {
 
     if (data) {
         await inferCaretakerStatus(data);
-        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 15 * 1000);
     }
+    _coalitionCache.set(nationId, data || null);
     return data;
 }
 
@@ -11665,8 +11665,8 @@ async function rolloverAdministration(supabase, nationId, nation, endReason, coa
  * Nation enters formation period (processGovernmentVacancy handles penalties).
  */
 async function dissolveCoalition(supabase, nationId, excludeFormationId) {
-    // Bust coalition cache so pages immediately see the dissolved state
-    if (typeof qCacheBust === 'function') qCacheBust('coalition_' + nationId);
+    // Invalidate coalition cache so subsequent calls in this tick see the dissolved state
+    _coalitionCache.delete(nationId);
 
     // Dissolve government_formations (skip the new formation if one is being created)
     let dissolveQuery = supabase
@@ -17325,33 +17325,6 @@ async function onRally(supabase, factionId, nationId, outcomeId, currentTick) {
 }
 
 /**
- * Hook called after executeOutreach() to update electorate tables.
- *
- * Outreach boosts both visibility and approval slightly.
- *
- * @param {object} supabase
- * @param {string} factionId
- * @param {string} nationId
- * @param {number} alignmentScore - 0-100 alignment with target
- * @param {number} diminishedEffect - Final effect after diminishing returns
- * @param {number} currentTick
- */
-async function onOutreach(supabase, factionId, nationId, alignmentScore, diminishedEffect, currentTick) {
-    // Visibility boost scales with alignment
-    const visBoost = Math.max(3, Math.round(diminishedEffect * 1.5));
-    await boostVisibility(supabase, factionId, nationId, visBoost);
-
-    // Approval nudge: small positive based on alignment
-    const approvalNudge = round2(Math.max(0.5, diminishedEffect * 0.3));
-    await supabase.rpc('adjust_momentum', { p_faction_id: factionId, p_delta: approvalNudge, p_label: `Outreach (+${approvalNudge})`, p_tick: currentTick });
-
-    await logActivity(supabase, factionId, nationId, 'outreach',
-        'Outreach', `Outreach — effect: ${diminishedEffect}, alignment: ${alignmentScore}`,
-        'success', 4, currentTick
-    );
-}
-
-/**
  * Hook called after executeAttack() to update electorate tables.
  *
  * Attack damages target's credibility (on success) or attacker's (on backfire).
@@ -17421,7 +17394,7 @@ async function onAttack(supabase, factionId, targetFactionId, nationId, outcomeI
  * @param {object} supabase
  * @param {string} factionId
  * @param {string} nationId
- * @param {string} actionType - e.g., 'rally', 'outreach', 'attack', 'take_stance'
+ * @param {string} actionType - e.g., 'rally', 'attack', 'take_stance'
  * @param {string} actionLabel - Short display label
  * @param {string} description - Longer description
  * @param {string} outcome - 'success', 'failure', 'backfire', 'neutral', 'pending'
@@ -18363,7 +18336,7 @@ CONTRADICTION_PAIRS.forEach(([a, b]) => {
 /**
  * Compute the net AP cost modifier for a campaign action based on leader traits.
  *
- * @param {string} actionType - 'rally' | 'outreach' | 'attack' | 'promise' | 'draft_bill' | 'executive_order'
+ * @param {string} actionType - 'rally' | 'attack' | 'promise' | 'draft_bill' | 'executive_order'
  * @param {object} faction - Faction row with leader_positive_traits, leader_negative_traits, last_action_tick
  * @param {number} currentTick - Current game tick
  * @returns {number} Net AP adjustment (negative = cheaper, positive = more expensive). Final cost should be Math.max(1, base + modifier).
@@ -18374,7 +18347,7 @@ function getTraitAPModifier(actionType, faction, currentTick) {
     let mod = 0;
 
     // efficient_operator: All campaign actions cost -1 AP
-    if (pos.includes('efficient_operator') && ['rally', 'outreach', 'attack', 'promise', 'press_conference'].includes(actionType)) {
+    if (pos.includes('efficient_operator') && ['rally', 'attack', 'promise', 'press_conference'].includes(actionType)) {
         mod -= 1;
     }
 
@@ -18394,17 +18367,16 @@ function getTraitAPModifier(actionType, faction, currentTick) {
     }
 
     // delegation: Outreach and Rally cost -1 AP each
-    if (pos.includes('delegation') && ['rally', 'outreach'].includes(actionType)) {
+    if (pos.includes('delegation') && ['rally'].includes(actionType)) {
         mod -= 1;
     }
 
     // high_maintenance: Outreach and Rally cost +1 AP each
-    if (neg.includes('high_maintenance') && ['rally', 'outreach'].includes(actionType)) {
+    if (neg.includes('high_maintenance') && ['rally'].includes(actionType)) {
         mod += 1;
     }
 
     // divisive_figure: Outreach costs +1 AP
-    if (neg.includes('divisive_figure') && actionType === 'outreach') {
         mod += 1;
     }
 
@@ -18451,9 +18423,9 @@ function applyRallyTraitModifiers(weights, faction) {
 }
 
 /**
- * Compute the approval multiplier for outreach/rally gains based on leader traits.
+ * Compute the approval multiplier for rally gains based on leader traits.
  * @param {object} faction - Faction row with leader_positive_traits, leader_negative_traits
- * @param {string} actionType - 'rally' | 'outreach'
+ * @param {string} actionType - 'rally'
  * @param {string} blocDisposition - 'BASE' | 'LEAN' | 'SWING' | 'SKEPTICAL' | 'HOSTILE'
  * @returns {number} Multiplier to apply to approval gain (e.g. 1.3 for telegenic, 0.5 for divisive_figure non-BASE)
  */
@@ -18463,7 +18435,7 @@ function getTraitApprovalMultiplier(faction, actionType, blocDisposition) {
     let mult = 1.0;
 
     // telegenic: Campaign message effectiveness +30%
-    if (pos.includes('telegenic') && ['rally', 'outreach'].includes(actionType)) {
+    if (pos.includes('telegenic') && ['rally'].includes(actionType)) {
         mult *= 1.3;
     }
 
@@ -18473,7 +18445,6 @@ function getTraitApprovalMultiplier(faction, actionType, blocDisposition) {
     }
 
     // divisive_figure: Outreach approval gains with non-BASE blocs halved
-    if (neg.includes('divisive_figure') && actionType === 'outreach' && blocDisposition !== 'BASE') {
         mult *= 0.5;
     }
 
@@ -21209,185 +21180,9 @@ function _deriveBlocTags(bloc) {
 
 // ==================== VOTER OUTREACH ====================
 
-const OUTREACH_CONFIG = {
-    AP_COST: 4,
-    COOLDOWN_WINDOW: 4, // look back 4 ticks for diminishing returns
-};
 
-const OUTREACH_AXIS_KEYS = [
-    'liberty_equality', 'tradition_progress', 'security_freedom',
-    'globalism_nationalism', 'individualism_collectivism'
-];
+// Outreach system removed — voter_blocs table no longer exists.
 
-/**
- * Compute ideology alignment between a faction and a voter bloc (0-100).
- * Legacy stub — returns 50 (neutral) since bloc-targeting was removed.
- */
-function computeOutreachAlignment(factionIdeology, bloc) {
-    return 50;
-}
-
-/**
- * Compute the base outreach effect and diminishing returns.
- * @returns {{ alignment, base, diminished, penalty }}
- */
-function calcOutreachEffect(alignment, recentOutreachCount) {
-    // base: 3 at alignment 0, up to 5 at alignment 100
-    const base = Math.round(3 + (alignment / 100) * 2);
-    const diminished = Math.max(1, base - recentOutreachCount);
-    return { alignment, base, diminished, penalty: base - diminished };
-}
-
-/**
- * Compute friction — opposed blocs that lose approval when you outreach to a target bloc.
- * Two blocs are "opposed" if they sit on opposite sides (one <40, other >60) of any axis
- * where the target bloc holds a strong opinion (< 35 or > 65).
- */
-function calcOutreachFriction(targetBloc, allBlocs, factionIdeology) {
-    const frictions = [];
-    const targetAxes = [];
-
-    // Find axes where target bloc has a strong leaning
-    for (const axisKey of OUTREACH_AXIS_KEYS) {
-        const val = targetBloc['axis_' + axisKey] ?? 50;
-        if (val < 35 || val > 65) targetAxes.push({ key: axisKey, val });
-    }
-
-    for (const other of allBlocs) {
-        if (other.id === targetBloc.id) continue;
-
-        // Check if this bloc is ideologically opposed on any of the target's strong axes
-        let isOpposed = false;
-        for (const { key, val: tVal } of targetAxes) {
-            const oVal = other['axis_' + key] ?? 50;
-            // Opposed: one is < 35 and the other is > 65 (opposite sides)
-            if ((tVal < 35 && oVal > 65) || (tVal > 65 && oVal < 35)) {
-                isOpposed = true;
-                break;
-            }
-        }
-
-        if (!isOpposed) continue;
-
-        // Friction penalty scales with how aligned YOUR party is with the opposed bloc
-        const yourAlignment = factionIdeology
-            ? computeOutreachAlignment(factionIdeology, other)
-            : 50;
-
-        // High alignment with opposed bloc = more friction
-        const penalty = yourAlignment > 60 ? -2 : yourAlignment > 40 ? -1 : 0;
-        if (penalty < 0) {
-            frictions.push({ blocId: other.id, blocName: other.bloc_name, penalty, alignment: yourAlignment });
-        }
-    }
-
-    return frictions;
-}
-
-/**
- * Execute voter outreach targeting a specific voter bloc.
- * Guaranteed result — no randomness, no polarization, no headline.
- * Returns { success, effects, newAp }
- */
-async function executeOutreach(supabase, factionId, nationId, blocId, currentTick) {
-    // ── 1. Validate AP (with leader trait modifiers) ──
-    const { data: faction } = await supabase
-        .from('factions').select('action_points, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
-    if (!faction) return { success: false, error: 'Faction not found.' };
-    const outreachApMod = getTraitAPModifier('outreach', faction, currentTick);
-    const effectiveOutreachCost = Math.max(1, OUTREACH_CONFIG.AP_COST + outreachApMod);
-    if ((faction.action_points || 0) < effectiveOutreachCost)
-        return { success: false, error: `Not enough AP. Need ${effectiveOutreachCost}.` };
-
-    // ── 2. Load recent outreach actions for diminishing returns ──
-    const { data: recentOutreach } = await supabase
-        .from('campaign_actions')
-        .select('tick_performed, result')
-        .eq('party_id', factionId)
-        .eq('action_type', 'outreach')
-        .gte('tick_performed', currentTick - OUTREACH_CONFIG.COOLDOWN_WINDOW)
-        .order('tick_performed', { ascending: false });
-
-    const outreachedThisTick = (recentOutreach || []).some(r => r.tick_performed === currentTick);
-    if (outreachedThisTick)
-        return { success: false, error: 'Already conducted outreach this tick.' };
-
-    const recentToBloc = (recentOutreach || []).filter(r => r.result?.blocId === blocId).length;
-
-    // ── 3. Load faction ideology ──
-    const { data: factionIdeo } = await supabase
-        .from('faction_ideology')
-        .select('liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-        .eq('faction_id', factionId)
-        .maybeSingle();
-
-    // ── 4. Load all blocs (voter_blocs table removed; default to empty) ──
-    const allBlocs = [];
-
-    const targetBloc = allBlocs.find(b => b.id === blocId);
-    if (!targetBloc) return { success: false, error: 'Voter bloc not found.' };
-
-    // ── 5. Compute alignment and effect ──
-    const alignment = factionIdeo ? computeOutreachAlignment(factionIdeo, targetBloc) : 50;
-    let { diminished } = calcOutreachEffect(alignment, recentToBloc);
-
-    // Apply leader trait multipliers: telegenic (+30%), divisive_figure (halved for non-BASE)
-    // Default to SWING disposition (electorate system handles approval now)
-    const blocDisp = 'SWING';
-    const effectiveDisp = getEffectiveBlocDisposition(blocDisp, faction);
-    let outreachMult = getTraitApprovalMultiplier(faction, 'outreach', effectiveDisp);
-    if (outreachMult !== 1.0) {
-        diminished = Math.max(1, Math.round(diminished * outreachMult));
-    }
-
-    // ── 6. Effects (legacy bloc-approval writes removed; electorate hook handles approval now) ──
-    const effects = [];
-
-    // ── 9. Deduct AP + track last_action_tick ──
-    const outreachDetail = 'Community Outreach' + (outreachApMod !== 0 ? ' (trait ' + (outreachApMod > 0 ? '+' : '') + outreachApMod + ')' : '');
-    const apResult = await deductAP(supabase, factionId, effectiveOutreachCost, { reason: 'outreach', detail: outreachDetail, tick: currentTick });
-    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Outreach] last_action_tick update failed:', error.message); });
-
-    // ── 10. Log ──
-    await supabase.from('campaign_actions').insert({
-        party_id: factionId,
-        nation_id: nationId,
-        action_type: 'outreach',
-        ap_cost: effectiveOutreachCost,
-        money_cost: 0,
-        tick_performed: currentTick,
-        result: {
-            blocId, blocName: targetBloc.bloc_name,
-            alignment, diminished,
-            effects,
-            recentToBloc,
-            tags: _deriveBlocTags(targetBloc),
-        }
-    });
-
-    // Electorate engine: update visibility + approval + activity log
-    try { await onOutreach(supabase, factionId, nationId, alignment, diminished, currentTick); } catch (e) {
-        console.error('[Outreach] Electorate hook failed (non-fatal):', e.message);
-    }
-
-    return {
-        success: true,
-        effects,
-        alignment,
-        diminished,
-        newAp: apResult.newAp ?? ((faction.action_points || 0) - effectiveOutreachCost),
-    };
-}
-
-/**
- * Set or change a party endorsement preference.
- *
- * Rules:
- * - First endorsement preference for a faction is free.
- * - Changing to a different endorsed faction costs 1 AP (atomic deduct_ap RPC).
- * - Re-selecting the same endorsed faction is a no-op (no AP cost).
- * - Always writes a campaign_actions audit row with a reason string.
- */
 async function executeEndorsementPreference(supabase, factionId, nationId, endorsedFactionId, currentTick, reason = 'endorsement_preference_update') {
     // faction_endorsements table has been removed; endorsements are not currently available.
     return { success: false, error: 'Endorsements are not available.' };
@@ -30222,6 +30017,8 @@ async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
 // ==================== ADVANCE TICK ====================
 
 async function advanceTick(supabase, { force = false, reprocess = false } = {}) {
+    // Clear per-tick caches
+    _coalitionCache.clear();
     // 1. Pre-compute next tick metadata
     const { data: shard } = await supabase
         .from('shard')
@@ -30733,13 +30530,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 .eq('faction_type', 'party')
                 .gt('momentum', 0);
 
-            for (const f of (decayFactions || [])) {
-                const oldMom = Number(f.momentum) || 0;
-                const decay = Math.max(0.5, Math.round(oldMom * 0.08 * 100) / 100);
-                const newMom = Math.max(0, Math.round((oldMom - decay) * 100) / 100);
-                await supabase.from('factions')
-                    .update({ momentum: newMom })
-                    .eq('id', f.id);
+            // Batch all decay updates in parallel instead of sequential per-faction
+            if (decayFactions && decayFactions.length > 0) {
+                await Promise.all(decayFactions.map(f => {
+                    const oldMom = Number(f.momentum) || 0;
+                    const decay = Math.max(0.5, Math.round(oldMom * 0.08 * 100) / 100);
+                    const newMom = Math.max(0, Math.round((oldMom - decay) * 100) / 100);
+                    return supabase.from('factions').update({ momentum: newMom }).eq('id', f.id);
+                }));
             }
         } catch (momDecayErr) {
             console.error(`[advanceTick] Momentum decay failed for ${nation.name} (non-fatal):`, momDecayErr);
@@ -30757,19 +30555,21 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 await supabase.from('nations').update({ timed_momentum_effects: afterCleanup }).eq('id', nation.id);
                 nation.timed_momentum_effects = afterCleanup;
 
-                // Now apply momentum boosts for this tick (using pre-decrement values)
+                // Apply momentum boosts in parallel (using pre-decrement values)
+                const momCalls = [];
                 for (const eff of effects) {
                     if (eff.remaining_ticks > 0 && Array.isArray(eff.party_ids)) {
                         for (const partyId of eff.party_ids) {
-                            await supabase.rpc('adjust_momentum', {
+                            momCalls.push(supabase.rpc('adjust_momentum', {
                                 p_faction_id: partyId,
                                 p_delta: eff.delta_per_tick,
                                 p_label: eff.source || 'timed_effect',
                                 p_tick: newTick
-                            });
+                            }));
                         }
                     }
                 }
+                if (momCalls.length > 0) await Promise.all(momCalls);
             }
         } catch (timedMomErr) {
             console.error(`[advanceTick] Timed momentum effects failed for ${nation.name} (non-fatal):`, timedMomErr);
@@ -30848,10 +30648,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // Caucus system: activate/deactivate internal factions based on seat share
+        // All three functions are independent — run in parallel
         try {
-            await evaluateCaucusActivation(supabase, nation.id, GAME_CONFIG.TOTAL_SEATS);
-            await decayCaucusRelationships(supabase, nation.id);
-            await processCaucusDefections(supabase, nation.id, newTick);
+            await Promise.all([
+                evaluateCaucusActivation(supabase, nation.id, GAME_CONFIG.TOTAL_SEATS),
+                decayCaucusRelationships(supabase, nation.id),
+                processCaucusDefections(supabase, nation.id, newTick),
+            ]);
         } catch (caucusErr) {
             console.error(`[advanceTick] Caucus processing failed for ${nation.name} (non-fatal):`, caucusErr);
         }

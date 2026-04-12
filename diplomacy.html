@@ -106,6 +106,12 @@ let currentCoalition = null;
 let diplomaticRoles = { isHoG: false, isFM: false, isMoT: false, ambassadorTo: [] };
 let shardTick = 0;
 let totalUnreadMessages = 0;
+// Tab data cache — prevents re-fetching on every tab switch
+const _tabLoaded = { relations: false, agreements: false, initiative: false, inbox: false };
+function invalidateTabCache(tabName) {
+    if (tabName) _tabLoaded[tabName] = false;
+    else { _tabLoaded.relations = false; _tabLoaded.agreements = false; _tabLoaded.initiative = false; _tabLoaded.inbox = false; }
+}
 let _diploActionLock = false;
 
 // Cached list of other nations for dropdowns
@@ -294,7 +300,7 @@ initPage('diplomacy', async (state) => {
             AMB_LAST_NAMES = lastNames;
         }
 
-        // Load shard tick for term calculations
+        // Load shard tick — cached globally, used by all functions instead of re-querying
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         shardTick = shard?.current_tick || 0;
 
@@ -548,7 +554,9 @@ async function renderWorldNations() {
         if (theirAmbassadorsRes.error) console.warn('World Nations: their ambassadors query error:', theirAmbassadorsRes.error);
         if (ceasefireRes.error) console.warn('World Nations: ceasefire query error:', ceasefireRes.error);
 
-        const allNations = (nationsRes.data || []).filter(n => n.id !== currentNation.id);
+        const otherNations = (nationsRes.data || []).filter(n => n.id !== currentNation.id);
+        const ownNation = (nationsRes.data || []).find(n => n.id === currentNation.id);
+        const allNations = ownNation ? [ownNation, ...otherNations] : otherNations;
         const factions = factionsRes.data || [];
         const crises = crisesRes.data || [];
         const relations = relationsRes.data || [];
@@ -603,15 +611,16 @@ async function renderWorldNations() {
             const totalSeats = nation.total_seats || 100;
 
             // Relation
-            const rel = relations.find(r =>
+            const isOwnNation = nation.id === currentNation.id;
+            const rel = isOwnNation ? null : relations.find(r =>
                 (r.nation_a_id === currentNation.id && r.nation_b_id === nation.id) ||
                 (r.nation_a_id === nation.id && r.nation_b_id === currentNation.id)
             );
-            const score = rel?.relation_score ?? 35;
-            const hasCeasefire = ceasefireNations.has(nation.id);
-            const tier = getRelationTier(score, hasCeasefire);
-            const dotColor = tierToDotColor(tier);
-            const pillClass = tierToPillClass(tier);
+            const score = isOwnNation ? 100 : (rel?.relation_score ?? 35);
+            const hasCeasefire = isOwnNation ? false : ceasefireNations.has(nation.id);
+            const tier = isOwnNation ? 'allied' : getRelationTier(score, hasCeasefire);
+            const dotColor = isOwnNation ? 'var(--teal)' : tierToDotColor(tier);
+            const pillClass = isOwnNation ? 'wn-relation-pill--allied' : tierToPillClass(tier);
 
             // Embassy
             const hasOurAmb = ourAmbSet.has(nation.id);
@@ -713,11 +722,13 @@ async function renderWorldNations() {
                 ? nCrises.map(c => '<div class="wn-crisis-row"><span class="wn-crisis-pip"></span><span class="wn-crisis-name">' + escapeHtml(c.crisis_templates?.name || 'Unknown Crisis') + '</span></div>').join('')
                 : '<div class="wn-no-crisis">No active crises</div>';
 
-            html += '<div class="wn-card">' +
+            const ownBadge = isOwnNation ? '<span style="font-family:var(--font-mono);font-size:0.55rem;font-weight:700;padding:1px 6px;color:var(--teal);background:rgba(90,170,138,0.1);border:1px solid rgba(90,170,138,0.25);margin-left:6px;vertical-align:middle;">YOUR NATION</span>' : '';
+            html += '<div class="wn-card" style="' + (isOwnNation ? 'border:1px solid rgba(90,170,138,0.25);background:rgba(90,170,138,0.03);' : '') + '">' +
                 // Header
                 '<div class="wn-card__header">' +
                     (flagUrl ? '<img class="wn-card__flag" src="' + flagUrl + '" alt="' + escapeHtml(nation.name) + '">' : '') +
                     '<span class="wn-card__name">' + escapeHtml(nation.name) + '</span>' +
+                    ownBadge +
                     '<span class="wn-card__gov ' + govClass + '">' + govLabel + '</span>' +
                 '</div>' +
                 // Body
@@ -930,7 +941,7 @@ window.toggleDiploMap = toggleDiploMap;
 
 // ==================== TAB SWITCHING ====================
 
-function showDiploTab(tabName) {
+function showDiploTab(tabName, forceRefresh) {
     // Update tab buttons
     document.querySelectorAll('.diplo-tab').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.tab === tabName);
@@ -939,11 +950,15 @@ function showDiploTab(tabName) {
     document.querySelectorAll('.diplo-tab-panel').forEach(panel => {
         panel.style.display = panel.id === 'tab-' + tabName ? '' : 'none';
     });
-    // Lazy-load / refresh tab content
-    if (tabName === 'relations') renderRelationsTab();
-    if (tabName === 'agreements') renderAgreementsTab();
-    if (tabName === 'initiative') renderInitiativeWizard();
-    if (tabName === 'inbox') renderInboxTab();
+    // Lazy-load: only fetch data on first visit or forced refresh
+    const needsLoad = forceRefresh || !_tabLoaded[tabName];
+    if (needsLoad) {
+        _tabLoaded[tabName] = true;
+        if (tabName === 'relations') renderRelationsTab();
+        if (tabName === 'agreements') renderAgreementsTab();
+        if (tabName === 'initiative') renderInitiativeWizard();
+        if (tabName === 'inbox') renderInboxTab();
+    }
 }
 
 // ==================== RELATIONS TAB ====================
@@ -1654,8 +1669,7 @@ async function renewTradeAgreement(agreementId) {
     try {
 
     // Get current tick
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
 
     // Reactivate with new duration
     const newExpiry = currentTick + (ta.duration_ticks || 48);
@@ -1682,7 +1696,7 @@ async function renewTradeAgreement(agreementId) {
     });
 
     alert(`"${ta.agreement_name}" has been renewed for ${ta.duration_ticks || 48} ticks.`);
-    renderAgreementsTab();
+    invalidateTabCache('agreements'); renderAgreementsTab();
 
     } finally { _renewTradeLock = false; }
 }
@@ -1710,8 +1724,7 @@ async function renewDiplomaticAgreement(agreementId) {
     _renewDiploLock = true;
     try {
 
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
 
     // Reactivate
     const durationYears = pd.duration_years || 5;
@@ -1737,7 +1750,7 @@ async function renewDiplomaticAgreement(agreementId) {
     });
 
     alert(`"${agName}" has been renewed for ${durationYears} year(s).`);
-    renderAgreementsTab();
+    invalidateTabCache('agreements'); renderAgreementsTab();
 
     } finally { _renewDiploLock = false; }
 }
@@ -1831,7 +1844,7 @@ async function withdrawTradeAgreement(agreementId) {
         } catch (e) { /* non-blocking */ }
 
         alert('Embargo lifted immediately.' + (relBonus > 0 ? ' Relations improved by +' + relBonus + '.' : ''));
-        await renderAgreementsTab();
+        invalidateTabCache('agreements'); renderAgreementsTab();
         return;
     }
 
@@ -1875,7 +1888,7 @@ async function withdrawTradeAgreement(agreementId) {
         }
 
         alert('Retaliatory tariff lifted immediately.' + (relBonus > 0 ? ' Relations improved by +' + relBonus + '.' : ''));
-        await renderAgreementsTab();
+        invalidateTabCache('agreements'); renderAgreementsTab();
         return;
     }
 
@@ -1958,7 +1971,7 @@ async function withdrawTradeAgreement(agreementId) {
     const shockMsg = withdrawalEffects ? ' Economic disruption: GDP growth dip, reduced foreign investment.' : '';
     alert('Withdrawal notice filed. Agreement will terminate in ' + noticeTicks + ' ticks.' +
         (financialPenalty > 0 ? ' $' + financialPenalty + 'M deducted from treasury.' : '') + shockMsg);
-    await renderAgreementsTab();
+    invalidateTabCache('agreements'); renderAgreementsTab();
 
     } finally {
         _diploActionLock = false;
@@ -2008,8 +2021,7 @@ async function withdrawAgreement(agreementId) {
     try {
 
     // Get current tick
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
 
     // Set agreement to withdrawn
     const { error: updateErr } = await _supabase
@@ -2045,7 +2057,7 @@ async function withdrawAgreement(agreementId) {
     alert('"' + (pd.name || 'Agreement') + '" withdrawn.');
 
     // Refresh
-    await renderAgreementsTab();
+    invalidateTabCache('agreements'); renderAgreementsTab();
     { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
 
     } finally {
@@ -2787,8 +2799,7 @@ async function fmApprove(proposalId) {
     _diploActionLock = true;
     try {
 
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
 
     // Activate the proposal
     const updatedPipeline = { ...(pd.pipeline || {}), fm_approved_at: currentTick, fm_approved_by: currentFaction.id };
@@ -2852,8 +2863,7 @@ async function fmEscalate(proposalId) {
     _diploActionLock = true;
     try {
 
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
 
     // Create a ratification bill
     const billTitle = 'Ratify: ' + (pd.name || 'Diplomatic Agreement');
@@ -2941,8 +2951,7 @@ async function fmReject(proposalId) {
     _diploActionLock = true;
     try {
 
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
 
     const updatedPipeline = { ...(pd.pipeline || {}), rejected_at: 'fm', rejected_at_tick: currentTick };
     pd.pipeline = updatedPipeline;
@@ -3007,8 +3016,7 @@ async function forwardMajorToParliament(proposalId) {
     _forwardMajorLock = true;
     try {
 
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
 
     // Build preamble with article details so parliamentarians know what they're voting on
     const articleSummaries = articles.map((art, i) => {
@@ -3221,8 +3229,7 @@ async function counterMajorInitiative(proposalId) {
     _counterMajorLock = true;
     try {
 
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
 
     // Deduct AP
     const apResult = await deductAP(_supabase, currentFaction.id, apCost);
@@ -4107,12 +4114,7 @@ async function resignAmbassador(ambassadorId, nationName) {
     )) return;
 
     try {
-        const { data: shard } = await _supabase
-            .from('shard')
-            .select('current_tick')
-            .eq('name', 'Alpha Shard')
-            .single();
-        const tick = shard?.current_tick || 0;
+        const tick = shardTick;
 
         // Get ambassador details
         const { data: amb } = await _supabase
@@ -4138,7 +4140,7 @@ async function resignAmbassador(ambassadorId, nationName) {
         // Refresh roles, header, and re-render
         diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
         { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
-        await renderRelationsTab();
+        invalidateTabCache('relations'); await renderRelationsTab();
 
     } catch (e) {
         console.error('Error resigning ambassador:', e);
@@ -4190,7 +4192,7 @@ async function cancelPendingAmbassador(ambassadorId, nationName) {
 
         diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
         { const _apEl = document.getElementById('diplo-ap'); if (_apEl) _apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP'; };
-        await renderRelationsTab();
+        invalidateTabCache('relations'); await renderRelationsTab();
 
     } catch (e) {
         console.error('Error canceling pending ambassador:', e);
@@ -4348,13 +4350,7 @@ async function sendDiploMessage(targetNationId, targetNationName) {
     _diploActionLock = true;
 
     try {
-        // Get current tick
-        const { data: shard } = await _supabase
-            .from('shard')
-            .select('current_tick')
-            .eq('name', 'Alpha Shard')
-            .single();
-        const tick = shard?.current_tick || 0;
+        const tick = shardTick;
 
         // Get our ambassador's last name for sender display
         const { data: amb } = await _supabase
@@ -5445,8 +5441,7 @@ async function submitAidProposal() {
     if (diplomaticRoles.isFM) myRole = 'foreign_minister';
     if (diplomaticRoles.isHoG) myRole = 'prime_minister';
 
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
 
     // Canonical ordering
     const aId = currentNation.id < wizardTargetNation ? currentNation.id : wizardTargetNation;
@@ -5654,8 +5649,7 @@ async function wizardSubmit() {
     const theirAmbName = ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim() + (theirAmb.factions?.abbreviation ? ' (' + theirAmb.factions.abbreviation + ')' : '');
 
     // Get current tick
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
 
     // Determine proposal tier based on classification
     const proposalTier = typeInfo.classification === 'MAJOR' ? 3 : 1;
@@ -5765,8 +5759,7 @@ async function submitTradeProposal() {
     currentFaction.action_points = apResult.newAp;
 
     // Get current tick
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
 
     // Fetch target nation name
     const { data: targetNation } = await _supabase.from('nations').select('name').eq('id', wizardTargetNation).single();
@@ -8099,8 +8092,7 @@ async function submitInitiative() {
     const theirAmbName = ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim() + (theirAmb.factions?.abbreviation ? ' (' + theirAmb.factions.abbreviation + ')' : '');
 
     // Get current tick
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
 
     // Determine classification: MAJOR if any article is MAJOR type
     const hasMajorArticle = initiativeArticles.some(a => {
@@ -8324,8 +8316,7 @@ async function acceptProposal(proposalId) {
     try {
 
     // Get current tick
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
 
     if (isMajor) {
         // MAJOR pipeline: Ambassador accepted → FM review
@@ -8420,12 +8411,12 @@ async function rejectProposal(proposalId) {
 
     // Fire timeline event
     try {
-        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        
         const triggerKey = proposal.proposal_type === 'trade_agreement' ? 'trade_agreement_rejected' : 'diplomatic_initiative_rejected';
         await _supabase.rpc('fire_system_event', {
             p_trigger_key: triggerKey,
             p_nation_id: currentNation.id,
-            p_tick: shard?.current_tick || 0,
+            p_tick: shardTick,
             p_placeholders: { proposer_nation: proposal.proposing_nation_id, target_nation: proposal.target_nation_id }
         });
     } catch (e) { /* non-blocking */ }
@@ -8872,8 +8863,7 @@ async function renderStateVisitDraftPanel(body, statusEl) {
     const targetNationId = targetNation.id;
 
     // Fetch context data in parallel
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
 
     const relation = await fetchDiplomaticRelation(currentNation.id, targetNationId);
     const relScore = relation?.relation_score ?? 0;
@@ -9307,8 +9297,7 @@ async function acceptStateVisit(proposalId) {
     }
 
     // Check if accept window expired
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
     const pd = proposal.proposal_data || {};
 
     if (proposal.fm_review_expires_tick && currentTick > proposal.fm_review_expires_tick) {
@@ -9630,8 +9619,7 @@ async function declineStateVisit(proposalId) {
     // Fire event for all nations
     try {
         const pd = proposal.proposal_data || {};
-        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(); // Fixed: was 'game_shards'
-        const tick = shard?.current_tick || 0;
+        const tick = shardTick;
         const { data: allNations } = await _supabase.from('nations').select('id');
         if (allNations && allNations.length > 0) {
             const eventRows = allNations.map(n => ({
@@ -10043,8 +10031,7 @@ window.selectDraftTarget = selectDraftTarget;
 async function hasBilateralTalksDiscount(targetNationId) {
     if (!currentNation?.id || !targetNationId) return false;
     try {
-        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const tick = shard?.current_tick || 0;
+        const tick = shardTick;
         const { data: logs } = await _supabase
             .from('diplomatic_action_log')
             .select('action_data')
@@ -11407,8 +11394,7 @@ async function submitRTDraft() {
         return;
     }
 
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
 
     const articles = [];
     checked.forEach(cb => {
@@ -11598,8 +11584,7 @@ async function submitESDraft() {
         return;
     }
 
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shardTick;
 
     const sectorLabel = TRADEABLE_SECTORS.find(s => s.key === sector)?.label || sector;
     const agreementName = sectorLabel + ' Export Subsidy';
@@ -11708,8 +11693,7 @@ async function renderUTRDraftPanel(body, statusEl) {
 
     // Fetch current trade flows with target + our tariff rate
     var baseTariff = Number(currentNation.tariffs ?? 0);
-    var { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    var latestTick = shard?.current_tick || 0;
+    var latestTick = shardTick;
     var { data: tradeRows } = await _supabase.from('trade_partners')
         .select('sector, trade_volume, exporter_nation_id, importer_nation_id')
         .eq('tick', latestTick)
@@ -11836,8 +11820,7 @@ async function submitUTRDraft() {
         var apResult = await deductAP(_supabase, currentFaction.id, 3);
         if (!apResult.success) { alert(apResult.error || 'Not enough AP.'); _utrDraftLock = false; return; }
 
-        var { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        var currentTick = shard?.current_tick || 0;
+        var currentTick = shardTick;
 
         // Canonical nation ordering (lexicographic UUID — required by check constraint)
         var issuerId = currentNation.id;
@@ -11928,8 +11911,8 @@ async function renderEmbargoDraftPanel(body, statusEl) {
     }
 
     // Fetch trade flow data between our nation and target
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const latestTick = shard?.current_tick || 0;
+    
+    const latestTick = shardTick;
 
     const { data: tradeRows } = await _supabase
         .from('trade_partners')
@@ -12101,8 +12084,7 @@ async function submitEmbargoDraft() {
         return;
     }
 
-    var { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    var currentTick = shard?.current_tick || 0;
+    var currentTick = shardTick;
 
     var articles = [];
     var sectorNames = [];
@@ -12405,8 +12387,8 @@ async function submitIssueStatement() {
             return;
         }
 
-        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const currentTick = shard?.current_tick || shardTick;
+        
+        const currentTick = shardTick;
 
         const description = 'Regarding the nation of ' + targetNation + ', the Foreign Office of ' + currentNation.name + ' has issued the following statement: \u201c' + statement + '\u201d';
 
@@ -13288,13 +13270,7 @@ async function executeRecallAmbassador() {
     const ambName = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim();
 
     try {
-        // 3. Get current tick
-        const { data: shard } = await _supabase
-            .from('shard')
-            .select('current_tick')
-            .eq('name', 'Alpha Shard')
-            .single();
-        const currentTick = shard?.current_tick || 0;
+        const currentTick = shardTick;
 
         // 4. Deduct AP
         const apResult = await deductAP(_supabase, currentFaction.id, DIPLOMACY_CONFIG.RECALL_AMBASSADOR_AP);
@@ -13500,7 +13476,7 @@ async function executeRecallAmbassador() {
         diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
         const apEl = document.getElementById('diplo-ap');
         if (apEl) apEl.textContent = (currentFaction?.action_points ?? 0) + ' AP';
-        await Promise.all([renderRelationsTab(), renderDraftBox()]);
+        invalidateTabCache('relations'); await Promise.all([renderRelationsTab(), renderDraftBox()]);
 
     } catch (e) {
         console.error('Error recalling ambassador:', e);
@@ -13747,13 +13723,7 @@ async function executeAppointAmbassador() {
         }
         currentFaction.action_points = apResult.newAp;
 
-        // 6. Get current tick
-        const { data: shard } = await _supabase
-            .from('shard')
-            .select('current_tick')
-            .eq('name', 'Alpha Shard')
-            .single();
-        const currentTick = shard?.current_tick || 0;
+        const currentTick = shardTick;
 
         // 7. Create confirmation bill
         let confirmationBillId = null;
@@ -13919,8 +13889,8 @@ async function submitMinorInitiative() {
             return;
         }
 
-        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const currentTick = shard?.current_tick || shardTick;
+        
+        const currentTick = shardTick;
 
         const { error } = await _supabase.from('diplomatic_proposals').insert({
             proposing_nation_id: currentNation.id,
@@ -14205,8 +14175,8 @@ async function submitMajorInitiative() {
             return;
         }
 
-        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const currentTick = shard?.current_tick || shardTick;
+        
+        const currentTick = shardTick;
 
         const { error } = await _supabase.from('diplomatic_proposals').insert({
             proposing_nation_id: currentNation.id,

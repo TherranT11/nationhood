@@ -118,7 +118,7 @@ export { POSITIVE_MAP, NEGATIVE_MAP };
 /**
  * Compute the net AP cost modifier for a campaign action based on leader traits.
  *
- * @param {string} actionType - 'rally' | 'outreach' | 'attack' | 'promise' | 'draft_bill' | 'executive_order'
+ * @param {string} actionType - 'rally' | 'attack' | 'promise' | 'draft_bill' | 'executive_order'
  * @param {object} faction - Faction row with leader_positive_traits, leader_negative_traits, last_action_tick
  * @param {number} currentTick - Current game tick
  * @returns {number} Net AP adjustment (negative = cheaper, positive = more expensive). Final cost should be Math.max(1, base + modifier).
@@ -129,7 +129,7 @@ export function getTraitAPModifier(actionType, faction, currentTick) {
     let mod = 0;
 
     // efficient_operator: All campaign actions cost -1 AP
-    if (pos.includes('efficient_operator') && ['rally', 'outreach', 'attack', 'promise', 'press_conference'].includes(actionType)) {
+    if (pos.includes('efficient_operator') && ['rally', 'attack', 'promise', 'press_conference'].includes(actionType)) {
         mod -= 1;
     }
 
@@ -149,17 +149,12 @@ export function getTraitAPModifier(actionType, faction, currentTick) {
     }
 
     // delegation: Outreach and Rally cost -1 AP each
-    if (pos.includes('delegation') && ['rally', 'outreach'].includes(actionType)) {
+    if (pos.includes('delegation') && ['rally'].includes(actionType)) {
         mod -= 1;
     }
 
     // high_maintenance: Outreach and Rally cost +1 AP each
-    if (neg.includes('high_maintenance') && ['rally', 'outreach'].includes(actionType)) {
-        mod += 1;
-    }
-
-    // divisive_figure: Outreach costs +1 AP
-    if (neg.includes('divisive_figure') && actionType === 'outreach') {
+    if (neg.includes('high_maintenance') && ['rally'].includes(actionType)) {
         mod += 1;
     }
 
@@ -206,9 +201,9 @@ export function applyRallyTraitModifiers(weights, faction) {
 }
 
 /**
- * Compute the approval multiplier for outreach/rally gains based on leader traits.
+ * Compute the approval multiplier for rally gains based on leader traits.
  * @param {object} faction - Faction row with leader_positive_traits, leader_negative_traits
- * @param {string} actionType - 'rally' | 'outreach'
+ * @param {string} actionType - 'rally'
  * @param {string} blocDisposition - 'BASE' | 'LEAN' | 'SWING' | 'SKEPTICAL' | 'HOSTILE'
  * @returns {number} Multiplier to apply to approval gain (e.g. 1.3 for telegenic, 0.5 for divisive_figure non-BASE)
  */
@@ -218,18 +213,13 @@ export function getTraitApprovalMultiplier(faction, actionType, blocDisposition)
     let mult = 1.0;
 
     // telegenic: Campaign message effectiveness +30%
-    if (pos.includes('telegenic') && ['rally', 'outreach'].includes(actionType)) {
+    if (pos.includes('telegenic') && ['rally'].includes(actionType)) {
         mult *= 1.3;
     }
 
     // crowd_pleaser: Rally momentum gains +30%
     if (pos.includes('crowd_pleaser') && actionType === 'rally') {
         mult *= 1.3;
-    }
-
-    // divisive_figure: Outreach approval gains with non-BASE blocs halved
-    if (neg.includes('divisive_figure') && actionType === 'outreach' && blocDisposition !== 'BASE') {
-        mult *= 0.5;
     }
 
     return mult;
