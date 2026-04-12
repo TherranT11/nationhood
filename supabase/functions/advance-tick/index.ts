@@ -2872,7 +2872,10 @@ const TRADE_AGREEMENT_TYPES = {
 const TRADEABLE_SECTORS = [
     { key: 'fuel_energy',        label: 'Fuel & Energy',            raw_resource: true  },
     { key: 'minerals',           label: 'Minerals & Raw Materials', raw_resource: true  },
-    { key: 'food_agriculture',   label: 'Food & Agriculture',       raw_resource: true  },
+    { key: 'grains_staples',     label: 'Grains & Staples',          raw_resource: true  },
+    { key: 'livestock_dairy',    label: 'Livestock & Dairy',         raw_resource: true  },
+    { key: 'fruits_vegetables',  label: 'Fruits & Vegetables',       raw_resource: true  },
+    { key: 'cash_crops',         label: 'Cash Crops & Plantation',   raw_resource: true  },
     { key: 'manufactured_goods', label: 'Manufactured Goods',       raw_resource: false },
     { key: 'technology',         label: 'Technology & Electronics', raw_resource: false },
     { key: 'arms',               label: 'Arms & Military Equipment', raw_resource: false }
@@ -2883,6 +2886,8 @@ var TRADEABLE_SECTOR_MAP = {};
 for (var _tasi = 0; _tasi < TRADEABLE_SECTORS.length; _tasi++) {
     TRADEABLE_SECTOR_MAP[TRADEABLE_SECTORS[_tasi].key] = TRADEABLE_SECTORS[_tasi];
 }
+// Backward compatibility: old trade agreements may reference 'food_agriculture'
+TRADEABLE_SECTOR_MAP['food_agriculture'] = { key: 'food_agriculture', label: 'Food & Agriculture', raw_resource: true };
 
 /**
  * Article type definitions for trade agreements.

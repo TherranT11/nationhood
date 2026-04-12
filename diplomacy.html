@@ -92,7 +92,7 @@ import { fetchActiveCoalition, detectHeadFaction, loadSeats } from './js/game/go
 import { GAME_CONFIG, deductAP } from './js/game/config.js';
 import { DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkCreditForTradeAgreement } from './js/game/diplomacy-constants.js';
 import { syncVoteTallies } from './js/game/bills.js';
-import { TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume } from './js/game/trade-constants.js';
+import { TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume, FOOD_SUBSECTOR_MAP, isFoodSubsector, calculateFoodExportCapacity, calculateFoodImportDemand, DEFAULT_FOOD_ALLOCATION } from './js/game/trade-constants.js';
 import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
 import { getNationNames } from './js/game/political-actions.js';
 /**
@@ -7217,11 +7217,20 @@ function updateSupplyVolumeHint() {
     const dir = document.querySelector('input[name="supply-dir"]:checked')?.value || 'we_buy';
     const pct = parseInt(document.getElementById('supply-pct')?.value || '60');
     if (!sector || !currentNation) { hint.textContent = ''; return; }
-    const sectorDef = TRADE_SECTOR_MAP[sector];
-    if (!sectorDef) { hint.textContent = ''; return; }
-    const baseVal = dir === 'we_sell'
-        ? calculateExportCapacity(currentNation, sectorDef)
-        : calculateImportDemand(currentNation, sectorDef);
+    var baseVal;
+    if (isFoodSubsector(sector)) {
+        var foodSub = FOOD_SUBSECTOR_MAP[sector];
+        if (!foodSub) { hint.textContent = ''; return; }
+        baseVal = dir === 'we_sell'
+            ? calculateFoodExportCapacity(currentNation, foodSub, DEFAULT_FOOD_ALLOCATION)
+            : calculateFoodImportDemand(currentNation, foodSub, DEFAULT_FOOD_ALLOCATION);
+    } else {
+        const sectorDef = TRADE_SECTOR_MAP[sector];
+        if (!sectorDef) { hint.textContent = ''; return; }
+        baseVal = dir === 'we_sell'
+            ? calculateExportCapacity(currentNation, sectorDef)
+            : calculateImportDemand(currentNation, sectorDef);
+    }
     const committedVal = baseVal * pct / 100;
     const unitStr = formatSectorVolume(committedVal, sector);
     hint.textContent = unitStr ? '\u2248\u00a0' + unitStr : '';
