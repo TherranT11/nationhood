@@ -39,6 +39,12 @@ UPDATE nations SET arable_land = 61 WHERE name = 'Sangreza';
 -- San Estrella: island archipelago, moderate farmland
 UPDATE nations SET arable_land = 42 WHERE name = 'San Estrella';
 
+-- Melizea: autocracy, reduced farmland
+UPDATE nations SET arable_land = 35 WHERE name = 'Melizea';
+
+-- Vostia: less arable than previously estimated
+UPDATE nations SET arable_land = 25 WHERE name = 'Vostia';
+
 -- Also update seed_stats for nations that store them
 UPDATE nations SET seed_stats = jsonb_set(seed_stats, '{arable_land}', '18')
 WHERE name = 'Sierramar' AND seed_stats IS NOT NULL;
@@ -86,16 +92,16 @@ CREATE POLICY food_land_allocation_update ON food_land_allocation
 -- Design constraint: global demand should exceed supply by ~20%
 -- to create natural scarcity and trade pressure.
 
--- Vostia (arable=62, pop=22.5M) — MERIDIAN
--- Breadbasket of Meridian. Heavy grain focus, minimal pastoral.
+-- Vostia (arable=25, pop=22.5M) — MERIDIAN
+-- Heavy grain focus, minimal pastoral.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
 SELECT id, 55, 10, 10, 25 FROM nations WHERE name = 'Vostia'
 ON CONFLICT (nation_id) DO NOTHING;
 
 -- Montequilla (arable=74, pop=4.2M) — CRUCERA
--- Fertile heartland, agricultural powerhouse. Strong cash crop exports.
+-- Fertile heartland, agricultural powerhouse. Minimal livestock, heavy cash crops.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
-SELECT id, 40, 15, 10, 35 FROM nations WHERE name = 'Montequilla'
+SELECT id, 40, 5, 10, 45 FROM nations WHERE name = 'Montequilla'
 ON CONFLICT (nation_id) DO NOTHING;
 
 -- Sangreza (arable=61, pop=12.5M) — CRUCERA
@@ -104,7 +110,7 @@ INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishab
 SELECT id, 45, 10, 10, 35 FROM nations WHERE name = 'Sangreza'
 ON CONFLICT (nation_id) DO NOTHING;
 
--- Melizea (arable=50, pop=5.8M) — CRUCERA
+-- Melizea (arable=35, pop=5.8M) — CRUCERA
 -- Autocracy: plantation economics dominate, food security secondary.
 INSERT INTO food_land_allocation (nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct)
 SELECT id, 40, 10, 10, 40 FROM nations WHERE name = 'Melizea'
