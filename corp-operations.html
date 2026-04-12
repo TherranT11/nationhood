@@ -6198,7 +6198,57 @@ function arSelectRoute(idx) {
 }
 
 async function arClaimRoute() {
-    // Phase 4 will wire this
+    if (arSelected < 0 || !faction || !shard) return;
+    var filtered = arGetFiltered();
+    var route = filtered[arSelected];
+    if (!route) return;
+
+    // Check fleet capacity before calling RPC
+    var fleetCap = Number(faction.shipping_fleet_capacity ?? 0);
+    var fleetDep = Number(faction.shipping_fleet_deployed ?? 0);
+    if (fleetDep >= fleetCap) {
+        alert('No available vessels. Fleet capacity: ' + fleetCap + ', deployed: ' + fleetDep + '.');
+        return;
+    }
+
+    // Disable button during request
+    var btn = document.getElementById('ar-claim-btn');
+    var prevText = btn.textContent;
+    btn.textContent = 'CLAIMING...';
+    btn.className = 'ar-claim-btn';
+
+    var { data, error } = await _supabase.rpc('claim_shipping_route', {
+        p_faction_id: faction.id,
+        p_route_id: route.id,
+        p_current_tick: shard.current_tick
+    });
+
+    if (error) {
+        alert('Claim failed: ' + error.message);
+        btn.textContent = prevText;
+        btn.className = 'ar-claim-btn active';
+        return;
+    }
+    if (data && !data.success) {
+        alert(data.error || 'Claim failed.');
+        btn.textContent = prevText;
+        btn.className = 'ar-claim-btn active';
+        return;
+    }
+
+    // Refresh faction data (fleet counts + cash)
+    var { data: updated } = await _supabase.from('factions').select('*').eq('id', faction.id).single();
+    if (updated) faction = updated;
+
+    // Update cash display
+    var cash = Number(faction.corp_cash_reserves ?? 0);
+    var cashStr = cash >= 1e9 ? '$' + (cash / 1e9).toFixed(1) + 'B' : cash >= 1e6 ? '$' + (cash / 1e6).toFixed(1) + 'M' : '$' + Math.round(cash / 1000) + 'k';
+    var cashEl = document.getElementById('topbar-cash');
+    if (cashEl) cashEl.textContent = 'CASH: ' + cashStr;
+
+    // Clear selection and refresh both containers
+    arSelected = -1;
+    await Promise.all([loadAvailableRoutes(), loadActiveVoyages()]);
 }
 
 // ── Active Voyages (Shipping corps) ──
