@@ -3973,7 +3973,7 @@ var _industriesLoans = [];
 var _industriesInsurance = [];
 
 async function loadIndustriesData(nationId) {
-    var [corpsRes, contractsRes, materialsRes, equipmentRes, deliveriesRes, propsRes, loansRes, insuranceRes] = await Promise.all([
+    var [corpsRes, contractsRes, materialsRes, equipmentRes, deliveriesRes, propsRes, loansRes] = await Promise.all([
         _supabase.from('factions')
             .select('id, faction_name, corp_ticker, corp_company_type, corp_sector, corp_subsector, party_funds, nation_id')
             .eq('faction_type', 'corporation')
@@ -3999,11 +3999,7 @@ async function loadIndustriesData(nationId) {
             .eq('is_active', true),
         _supabase.from('finance_active_loans')
             .select('id, lender_faction_id, borrower_faction_id, principal, interest_rate, total_paid, total_interest_paid, status, monthly_payment, term_months, purpose')
-            .eq('nation_id', nationId),
-        _supabase.from('finance_active_loans')
-            .select('id, lender_faction_id, principal, total_paid, status, purpose')
             .eq('nation_id', nationId)
-            .eq('purpose', 'Construction Insurance')
     ]);
     var allCorps = corpsRes.data || [];
     _industriesCorps = allCorps.filter(function(c) { return c.nation_id === nationId; });
@@ -4016,7 +4012,7 @@ async function loadIndustriesData(nationId) {
     _industriesEquipment = equipmentRes.data || [];
     _industriesDeliveries = deliveriesRes.data || [];
     _industriesLoans = loansRes.data || [];
-    _industriesInsurance = insuranceRes.data || [];
+    _industriesInsurance = _industriesLoans.filter(function(l) { return l.purpose === 'Construction Insurance'; });
 }
 
 function fmtIndustryMoney(val) {
@@ -4119,9 +4115,8 @@ function renderIndustriesTab(nation) {
         finLenderMap[l.lender_faction_id] = (finLenderMap[l.lender_faction_id] || 0) + (Number(l.principal) || 0);
     });
 
-    // Combined (all industries)
-    var finTotalRevenue = financeOutstanding + investmentOutstanding + insuranceOutstanding;
-    var combinedRevenue = constructionRevenue + materialsRevenue + equipRevenue + finTotalRevenue;
+    // Combined (all industries — investment is a subset of finance, don't double-count)
+    var combinedRevenue = constructionRevenue + materialsRevenue + equipRevenue + financeOutstanding + insuranceOutstanding;
     var combinedPct = gdp > 0 ? ((combinedRevenue / gdp) * 100) : 0;
 
     // ── Growth Drivers (hardcoded per industry) ──
@@ -4257,7 +4252,9 @@ function renderIndustriesTab(nation) {
     var conBarW = Math.max(0.5, constructionPct);
     var matBarW = Math.max(0.5, materialsPct);
     var vehBarW = Math.max(0.5, vehiclePct);
-    var finBarW = Math.max(0.5, financePct);
+    // Finance bar excludes investment subset to prevent overlap in the composition bar
+    var finBankingPct = Math.max(0, financePct - investmentPct);
+    var finBarW = Math.max(0.5, finBankingPct);
     var invBarW = Math.max(0.5, investmentPct);
     var insBarW = Math.max(0.5, insurancePct);
     var otherBarW = Math.max(0, 100 - conBarW - matBarW - vehBarW - finBarW - invBarW - insBarW);
@@ -4287,7 +4284,7 @@ function renderIndustriesTab(nation) {
     h += '<div style="width:' + conBarW + '%;background:var(--damber);" title="Construction ' + constructionPct.toFixed(1) + '%"></div>';
     h += '<div style="width:' + matBarW + '%;background:var(--teal);" title="Materials ' + materialsPct.toFixed(1) + '%"></div>';
     h += '<div style="width:' + vehBarW + '%;background:var(--dred);" title="Heavy Vehicles ' + vehiclePct.toFixed(1) + '%"></div>';
-    h += '<div style="width:' + finBarW + '%;background:#5a8aaa;" title="Finance ' + financePct.toFixed(1) + '%"></div>';
+    h += '<div style="width:' + finBarW + '%;background:#5a8aaa;" title="Banking ' + finBankingPct.toFixed(1) + '%"></div>';
     h += '<div style="width:' + invBarW + '%;background:#8a6aaa;" title="Investment ' + investmentPct.toFixed(1) + '%"></div>';
     h += '<div style="width:' + insBarW + '%;background:#aa7a5a;" title="Insurance ' + insurancePct.toFixed(1) + '%"></div>';
     h += '<div style="width:' + otherBarW + '%;background:var(--bg-elevated);"></div>';
@@ -4296,7 +4293,7 @@ function renderIndustriesTab(nation) {
     h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--damber);margin-right:3px;"></span>Construction ' + constructionPct.toFixed(1) + '%</span>';
     h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--teal);margin-right:3px;"></span>Materials ' + materialsPct.toFixed(1) + '%</span>';
     h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--dred);margin-right:3px;"></span>Heavy Vehicles ' + vehiclePct.toFixed(1) + '%</span>';
-    h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#5a8aaa;margin-right:3px;"></span>Finance ' + financePct.toFixed(1) + '%</span>';
+    h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#5a8aaa;margin-right:3px;"></span>Banking ' + finBankingPct.toFixed(1) + '%</span>';
     h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#8a6aaa;margin-right:3px;"></span>Investment ' + investmentPct.toFixed(1) + '%</span>';
     h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#aa7a5a;margin-right:3px;"></span>Insurance ' + insurancePct.toFixed(1) + '%</span>';
     h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--bg-elevated);margin-right:3px;"></span>Other ' + (100 - combinedPct).toFixed(1) + '%</span>';
