@@ -6964,6 +6964,8 @@ async function loadExecutives() {
         _supabase.from('corp_executives').select('*').eq('faction_id', faction.id).eq('status', 'active'),
         _supabase.from('executive_pool').select('*').eq('nation_id', faction.nation_id).eq('status', 'available').order('skill', { ascending: false }),
     ]);
+    if (execRes.error) console.warn('Failed to load executives:', execRes.error.message);
+    if (poolRes.error) console.warn('Failed to load executive pool:', poolRes.error.message);
     _executives = execRes.data || [];
     _execPool = poolRes.data || [];
 }
@@ -7077,7 +7079,7 @@ function renderActionsTab() {
 
     html += '</div>'; // close left panel
 
-    // ═══ RIGHT PANEL: placeholder (Phase 2C) ═══
+    // ═══ RIGHT PANEL ═══
     html += `<div style="flex:1;display:flex;flex-direction:column;gap:0;">
         <div id="actions-right-panel"></div>
     </div>`;
@@ -7257,7 +7259,7 @@ function actExecute(actionId, role) {
         case 'restructure': return actOpenRestructure();
         case 'rebrand': return actOpenRebrand();
         case 'donate': return actOpenDonation();
-        default: console.log('Action not yet wired:', actionId, role);
+        default: break;
     }
 }
 
@@ -7341,8 +7343,9 @@ function actCloseStatement() {
     _statementOpen = false;
 }
 
+let _stmtSubmitting = false;
 async function actSubmitStatement() {
-    if (!faction || !shard) return;
+    if (!faction || !shard || _stmtSubmitting) return;
     const ta = document.getElementById('stmt-text');
     const errEl = document.getElementById('stmt-error');
     const text = (ta?.value || '').trim();
@@ -7362,6 +7365,7 @@ async function actSubmitStatement() {
         return;
     }
 
+    _stmtSubmitting = true;
     const btn = document.getElementById('stmt-submit-btn');
     if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
 
@@ -7376,6 +7380,7 @@ async function actSubmitStatement() {
     }).eq('id', faction.id);
 
     if (cashErr) {
+        _stmtSubmitting = false;
         if (errEl) { errEl.textContent = 'Failed to deduct cost: ' + cashErr.message; errEl.style.display = 'block'; }
         if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
         return;
@@ -7386,7 +7391,7 @@ async function actSubmitStatement() {
         nation_id: faction.nation_id,
         faction_id: faction.id,
         event_name: corpName + ' — Press Release',
-        description_used: ceoName + ', CEO of ' + corpName + ': "' + text + '"',
+        description_used: ceoName + ', CEO of ' + corpName + ': "' + text.replace(/[<>"]/g, '') + '"',
         category: 'business',
         trigger_key: 'ceo_statement',
         effects_applied: { cost: 20000, ceo: ceoName },
@@ -7396,6 +7401,7 @@ async function actSubmitStatement() {
     if (eventErr) {
         // Refund on failure
         await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
+        _stmtSubmitting = false;
         if (errEl) { errEl.textContent = 'Failed to publish: ' + eventErr.message; errEl.style.display = 'block'; }
         if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
         return;
@@ -7403,7 +7409,7 @@ async function actSubmitStatement() {
 
     // Update local state
     faction.corp_cash_reserves = cash - 20000;
-
+    _stmtSubmitting = false;
     actCloseStatement();
 }
 
@@ -7652,8 +7658,9 @@ function renderLoanModal() {
     container.innerHTML = html;
 }
 
+let _lrSubmitting = false;
 async function lrSubmit() {
-    if (!faction || !shard) return;
+    if (!faction || !shard || _lrSubmitting) return;
     const errEl = document.getElementById('lr-error');
 
     if (lrAmount < 1000000) { errEl.textContent = 'Minimum loan amount is $1M.'; errEl.style.display = 'block'; return; }
@@ -7663,6 +7670,7 @@ async function lrSubmit() {
     const fullPurpose = purposeLabel + (lrNote ? ' \u2014 ' + lrNote : '');
 
     const btn = document.getElementById('lr-submit-btn');
+    _lrSubmitting = true;
     btn.style.opacity = '0.5';
     btn.style.pointerEvents = 'none';
 
@@ -7681,11 +7689,15 @@ async function lrSubmit() {
     btn.style.pointerEvents = 'auto';
 
     if (error) {
+        _lrSubmitting = false;
         errEl.textContent = 'Failed to submit: ' + error.message;
         errEl.style.display = 'block';
+        btn.style.opacity = '1';
+        btn.style.pointerEvents = 'auto';
         return;
     }
 
+    _lrSubmitting = false;
     lrClose();
 }
 
@@ -7695,13 +7707,18 @@ async function lrSubmit() {
 // Lay off 10-20% of workforce, cuts ~7% of debt, reputation -1d10-3
 
 function actOpenRestructure() {
-    const cash = Number(faction?.corp_cash_reserves ?? 0);
-    const debt = Number(faction?.corp_loans ?? 0);
-    const rep = Number(faction?.corp_reputation ?? 50);
-    const gen = Number(faction?.corp_general_workforce ?? 0);
-    const skl = Number(faction?.corp_skilled_workforce ?? 0);
-    const inn = Number(faction?.corp_innovative_workforce ?? 0);
+    if (!faction) return;
+    const debt = Number(faction.corp_loans ?? 0);
+    const rep = Number(faction.corp_reputation ?? 50);
+    const gen = Number(faction.corp_general_workforce ?? 0);
+    const skl = Number(faction.corp_skilled_workforce ?? 0);
+    const inn = Number(faction.corp_innovative_workforce ?? 0);
     const totalWf = gen + skl + inn;
+
+    if (totalWf === 0) {
+        alert('Cannot restructure — no employees to lay off.');
+        return;
+    }
 
     // Calculate layoff range (10-20%)
     const layoffPct = 10 + Math.floor(Math.random() * 11); // 10-20
@@ -7710,9 +7727,9 @@ function actOpenRestructure() {
     const repLoss = 3 + Math.floor(Math.random() * 10); // 1d10 + 3
 
     // Distribute layoffs proportionally
-    const genCut = Math.round(gen / totalWf * layoffCount) || 0;
-    const sklCut = Math.round(skl / totalWf * layoffCount) || 0;
-    const innCut = Math.min(inn, layoffCount - genCut - sklCut);
+    const genCut = Math.round(gen / totalWf * layoffCount);
+    const sklCut = Math.round(skl / totalWf * layoffCount);
+    const innCut = Math.max(0, Math.min(inn, layoffCount - genCut - sklCut));
 
     const overlay = document.createElement('div');
     overlay.id = 'restr-overlay';
@@ -7774,8 +7791,10 @@ function actCloseRestructure() {
     if (o) o.remove();
 }
 
+let _restrSubmitting = false;
 async function actSubmitRestructure(layoffPct, debtCut, repLoss, genCut, sklCut, innCut) {
-    if (!faction) return;
+    if (!faction || !shard || _restrSubmitting) return;
+    _restrSubmitting = true;
     const btn = document.getElementById('restr-btn');
     if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
 
@@ -7795,6 +7814,7 @@ async function actSubmitRestructure(layoffPct, debtCut, repLoss, genCut, sklCut,
 
     const { error } = await _supabase.from('factions').update(updates).eq('id', faction.id);
     if (error) {
+        _restrSubmitting = false;
         const errEl = document.getElementById('restr-error');
         if (errEl) { errEl.textContent = 'Failed: ' + error.message; errEl.style.display = 'block'; }
         if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
@@ -7805,7 +7825,7 @@ async function actSubmitRestructure(layoffPct, debtCut, repLoss, genCut, sklCut,
     Object.assign(faction, updates);
 
     // Log event
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shard.current_tick || 0;
     await _supabase.from('event_log').insert({
         nation_id: faction.nation_id,
         faction_id: faction.id,
@@ -7817,6 +7837,7 @@ async function actSubmitRestructure(layoffPct, debtCut, repLoss, genCut, sklCut,
         fired_at_tick: currentTick,
     });
 
+    _restrSubmitting = false;
     actCloseRestructure();
     renderActionsTab();
 }
@@ -7885,11 +7906,12 @@ function actCloseRebrand() {
     if (o) o.remove();
 }
 
+let _rebrandSubmitting = false;
 async function actSubmitRebrand() {
-    if (!faction) return;
+    if (!faction || !shard || _rebrandSubmitting) return;
     const errEl = document.getElementById('rebrand-error');
-    const newName = (document.getElementById('rebrand-name')?.value || '').trim();
-    const newAbbr = (document.getElementById('rebrand-abbr')?.value || '').trim().toUpperCase();
+    const newName = (document.getElementById('rebrand-name')?.value || '').trim().replace(/[<>"]/g, '');
+    const newAbbr = (document.getElementById('rebrand-abbr')?.value || '').trim().toUpperCase().replace(/[<>"]/g, '');
 
     if (!newName || newName.length < 2) {
         if (errEl) { errEl.textContent = 'Name must be at least 2 characters.'; errEl.style.display = 'block'; }
@@ -7906,6 +7928,7 @@ async function actSubmitRebrand() {
         return;
     }
 
+    _rebrandSubmitting = true;
     const btn = document.getElementById('rebrand-btn');
     if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
 
@@ -7921,6 +7944,7 @@ async function actSubmitRebrand() {
     }).eq('id', faction.id);
 
     if (error) {
+        _rebrandSubmitting = false;
         if (errEl) { errEl.textContent = 'Failed: ' + error.message; errEl.style.display = 'block'; }
         if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
         return;
@@ -7934,7 +7958,7 @@ async function actSubmitRebrand() {
     faction.corp_reputation = Math.max(0, rep - 5);
 
     // Log event
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shard.current_tick || 0;
     await _supabase.from('event_log').insert({
         nation_id: faction.nation_id,
         faction_id: faction.id,
@@ -7946,6 +7970,7 @@ async function actSubmitRebrand() {
         fired_at_tick: currentTick,
     });
 
+    _rebrandSubmitting = false;
     actCloseRebrand();
     renderActionsTab();
 
@@ -8096,8 +8121,9 @@ function renderDonationModal() {
     overlay.innerHTML = html;
 }
 
+let _donateSubmitting = false;
 async function actSubmitDonation() {
-    if (!faction || _donateSelected < 0) return;
+    if (!faction || !shard || _donateSelected < 0 || _donateSubmitting) return;
     const party = _donateParties[_donateSelected];
     if (!party) return;
 
@@ -8108,6 +8134,7 @@ async function actSubmitDonation() {
         return;
     }
 
+    _donateSubmitting = true;
     const btn = document.getElementById('donate-btn');
     if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
 
@@ -8118,6 +8145,7 @@ async function actSubmitDonation() {
 
     if (cashErr) {
         const errEl = document.getElementById('donate-error');
+        _donateSubmitting = false;
         if (errEl) { errEl.textContent = 'Failed: ' + cashErr.message; errEl.style.display = 'block'; }
         if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
         return;
@@ -8133,6 +8161,7 @@ async function actSubmitDonation() {
         // Refund on failure
         await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
         const errEl = document.getElementById('donate-error');
+        _donateSubmitting = false;
         if (errEl) { errEl.textContent = 'Failed to grant AP: ' + apErr.message; errEl.style.display = 'block'; }
         if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
         return;
@@ -8142,7 +8171,7 @@ async function actSubmitDonation() {
     faction.corp_cash_reserves = cash - 10000000;
 
     // Log event
-    const currentTick = shard?.current_tick || 0;
+    const currentTick = shard.current_tick || 0;
     const corpName = faction.faction_name || 'Corporation';
     await _supabase.from('event_log').insert({
         nation_id: faction.nation_id,
@@ -8155,6 +8184,7 @@ async function actSubmitDonation() {
         fired_at_tick: currentTick,
     });
 
+    _donateSubmitting = false;
     actCloseDonation();
 }
 
@@ -8189,13 +8219,15 @@ function esSelectCandidate(idx) {
     renderExecSearchModal();
 }
 
+let _esHiring = false;
 async function esHireCandidate() {
-    if (!faction || !_execSearchRole || _execSearchSelected < 0) return;
+    if (!faction || !shard || !_execSearchRole || _execSearchSelected < 0 || _esHiring) return;
     const candidates = getPoolCandidatesForRole(_execSearchRole);
     const cand = candidates[_execSearchSelected];
     if (!cand) return;
 
-    const currentTick = shard?.current_tick || 0;
+    _esHiring = true;
+    const currentTick = shard.current_tick || 0;
 
     // Disable button
     const btn = document.getElementById('es-hire-btn');
@@ -8218,6 +8250,7 @@ async function esHireCandidate() {
     });
 
     if (insertErr) {
+        _esHiring = false;
         const errEl = document.getElementById('es-error');
         if (errEl) { errEl.textContent = 'Failed: ' + insertErr.message; errEl.style.display = 'block'; }
         if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
@@ -8231,6 +8264,7 @@ async function esHireCandidate() {
     }).eq('id', cand.id);
 
     // Refresh data + close modal + re-render
+    _esHiring = false;
     closeExecSearch();
     await loadExecutives();
     // Select the newly hired role
