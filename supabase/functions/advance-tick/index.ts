@@ -11665,8 +11665,8 @@ async function rolloverAdministration(supabase, nationId, nation, endReason, coa
  * Nation enters formation period (processGovernmentVacancy handles penalties).
  */
 async function dissolveCoalition(supabase, nationId, excludeFormationId) {
-    // Bust coalition cache so pages immediately see the dissolved state
-    if (typeof qCacheBust === 'function') qCacheBust('coalition_' + nationId);
+    // Invalidate coalition cache so subsequent calls in this tick see the dissolved state
+    _coalitionCache.delete(nationId);
 
     // Dissolve government_formations (skip the new formation if one is being created)
     let dissolveQuery = supabase
