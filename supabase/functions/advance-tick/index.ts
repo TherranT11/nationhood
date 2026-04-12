@@ -30733,13 +30733,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 .eq('faction_type', 'party')
                 .gt('momentum', 0);
 
-            for (const f of (decayFactions || [])) {
-                const oldMom = Number(f.momentum) || 0;
-                const decay = Math.max(0.5, Math.round(oldMom * 0.08 * 100) / 100);
-                const newMom = Math.max(0, Math.round((oldMom - decay) * 100) / 100);
-                await supabase.from('factions')
-                    .update({ momentum: newMom })
-                    .eq('id', f.id);
+            // Batch all decay updates in parallel instead of sequential per-faction
+            if (decayFactions && decayFactions.length > 0) {
+                await Promise.all(decayFactions.map(f => {
+                    const oldMom = Number(f.momentum) || 0;
+                    const decay = Math.max(0.5, Math.round(oldMom * 0.08 * 100) / 100);
+                    const newMom = Math.max(0, Math.round((oldMom - decay) * 100) / 100);
+                    return supabase.from('factions').update({ momentum: newMom }).eq('id', f.id);
+                }));
             }
         } catch (momDecayErr) {
             console.error(`[advanceTick] Momentum decay failed for ${nation.name} (non-fatal):`, momDecayErr);
@@ -30757,19 +30758,21 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 await supabase.from('nations').update({ timed_momentum_effects: afterCleanup }).eq('id', nation.id);
                 nation.timed_momentum_effects = afterCleanup;
 
-                // Now apply momentum boosts for this tick (using pre-decrement values)
+                // Apply momentum boosts in parallel (using pre-decrement values)
+                const momCalls = [];
                 for (const eff of effects) {
                     if (eff.remaining_ticks > 0 && Array.isArray(eff.party_ids)) {
                         for (const partyId of eff.party_ids) {
-                            await supabase.rpc('adjust_momentum', {
+                            momCalls.push(supabase.rpc('adjust_momentum', {
                                 p_faction_id: partyId,
                                 p_delta: eff.delta_per_tick,
                                 p_label: eff.source || 'timed_effect',
                                 p_tick: newTick
-                            });
+                            }));
                         }
                     }
                 }
+                if (momCalls.length > 0) await Promise.all(momCalls);
             }
         } catch (timedMomErr) {
             console.error(`[advanceTick] Timed momentum effects failed for ${nation.name} (non-fatal):`, timedMomErr);
@@ -30848,10 +30851,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // Caucus system: activate/deactivate internal factions based on seat share
+        // All three functions are independent — run in parallel
         try {
-            await evaluateCaucusActivation(supabase, nation.id, GAME_CONFIG.TOTAL_SEATS);
-            await decayCaucusRelationships(supabase, nation.id);
-            await processCaucusDefections(supabase, nation.id, newTick);
+            await Promise.all([
+                evaluateCaucusActivation(supabase, nation.id, GAME_CONFIG.TOTAL_SEATS),
+                decayCaucusRelationships(supabase, nation.id),
+                processCaucusDefections(supabase, nation.id, newTick),
+            ]);
         } catch (caucusErr) {
             console.error(`[advanceTick] Caucus processing failed for ${nation.name} (non-fatal):`, caucusErr);
         }
