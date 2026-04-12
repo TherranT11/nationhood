@@ -7154,11 +7154,11 @@ function renderActionsRightPanel() {
 
     // ── Vacant state ──
     if (!exec) {
-        panel.innerHTML = `<div style="padding:40px;text-align:center;background:var(--bg-2,#1a1a17);border:1px solid var(--border-0,rgba(255,255,255,0.06));">
-            <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${meta.color};margin-bottom:4px;">${escapeHtml(role)}</div>
-            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-bottom:12px;">${escapeHtml(meta.fullTitle)}</div>
-            <div style="font-size:11px;color:var(--text-muted);margin-bottom:16px;">This position is vacant. Hire an executive to unlock actions.</div>
-            <div onclick="openExecSearch('${role}')" style="display:inline-block;padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:#5a8aaa;cursor:pointer;">EXECUTIVE SEARCH</div>
+        panel.innerHTML = `<div style="padding:48px;text-align:center;background:var(--bg-2,#1a1a17);border:1px solid var(--border-0,rgba(255,255,255,0.06));">
+            <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:${meta.color};margin-bottom:6px;">${escapeHtml(role)}</div>
+            <div style="font-family:var(--font-mono);font-size:13px;color:var(--text-dim);margin-bottom:14px;">${escapeHtml(meta.fullTitle)}</div>
+            <div style="font-size:16px;color:var(--text-muted);margin-bottom:20px;">This position is vacant. Hire an executive to unlock actions.</div>
+            <div onclick="openExecSearch('${role}')" style="display:inline-block;padding:8px 24px;font-family:var(--font-mono);font-size:13px;font-weight:700;letter-spacing:1px;color:#000;background:#5a8aaa;cursor:pointer;">EXECUTIVE SEARCH</div>
         </div>`;
         return;
     }
@@ -7166,34 +7166,34 @@ function renderActionsRightPanel() {
     let html = '';
 
     // ── Executive detail header ──
-    html += `<div style="padding:10px 16px;background:var(--bg-2,#1a1a17);border:1px solid var(--border-0,rgba(255,255,255,0.06));border-bottom:none;display:flex;justify-content:space-between;align-items:center;">
-        <div style="display:flex;align-items:center;gap:10px;">
-            <div style="width:44px;height:44px;background:${meta.color}15;border:1px solid ${meta.color}33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:14px;font-weight:700;color:${meta.color};">${escapeHtml(getInitials(exec.first_name, exec.last_name))}</div>
+    html += `<div style="padding:14px 20px;background:var(--bg-2,#1a1a17);border:1px solid var(--border-0,rgba(255,255,255,0.06));border-bottom:none;display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;align-items:center;gap:12px;">
+            <div style="width:56px;height:56px;background:${meta.color}15;border:1px solid ${meta.color}33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:18px;font-weight:700;color:${meta.color};">${escapeHtml(getInitials(exec.first_name, exec.last_name))}</div>
             <div>
-                <div style="display:flex;align-items:baseline;gap:6px;">
-                    <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${meta.color};">${escapeHtml(role)}</span>
-                    <span style="font-size:14px;font-weight:700;color:var(--text-bright,#f0efe6);">${escapeHtml(exec.first_name)} ${escapeHtml(exec.last_name)}</span>
+                <div style="display:flex;align-items:baseline;gap:8px;">
+                    <span style="font-family:var(--font-mono);font-size:22px;font-weight:700;color:${meta.color};">${escapeHtml(role)}</span>
+                    <span style="font-size:19px;font-weight:700;color:var(--text-bright,#f0efe6);">${escapeHtml(exec.first_name)} ${escapeHtml(exec.last_name)}</span>
                 </div>
-                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:1px;">${escapeHtml(meta.fullTitle)}</div>
+                <div style="font-family:var(--font-mono);font-size:13px;color:var(--text-dim);margin-top:2px;">${escapeHtml(meta.fullTitle)}</div>
             </div>
         </div>
-        <div style="display:flex;gap:12px;align-items:center;">
+        <div style="display:flex;gap:16px;align-items:center;">
             <div style="text-align:right;">
-                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.8px;">SKILL</div>
-                <div style="display:flex;align-items:center;gap:4px;margin-top:1px;">
-                    <div style="width:40px;height:3px;background:var(--border-0,rgba(255,255,255,0.06));">
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:0.8px;">SKILL</div>
+                <div style="display:flex;align-items:center;gap:5px;margin-top:2px;">
+                    <div style="width:50px;height:4px;background:var(--border-0,rgba(255,255,255,0.06));">
                         <div style="width:${exec.skill}%;height:100%;background:${skillColor(exec.skill)};"></div>
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${skillColor(exec.skill)};">${exec.skill}</span>
+                    <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${skillColor(exec.skill)};">${exec.skill}</span>
                 </div>
             </div>
             <div style="text-align:right;">
-                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.8px;">SALARY</div>
-                <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text-muted);margin-top:1px;">${actFmtSalary(exec.salary_per_year)}/yr</div>
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:0.8px;">SALARY</div>
+                <div style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--text-muted);margin-top:2px;">${actFmtSalary(exec.salary_per_year)}/yr</div>
             </div>
             <div style="text-align:right;">
-                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.8px;">CONTRACT</div>
-                <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text-muted);margin-top:1px;">${exec.contract_years}yr</div>
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:0.8px;">CONTRACT</div>
+                <div style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--text-muted);margin-top:2px;">${exec.contract_years}yr</div>
             </div>
         </div>
     </div>`;
@@ -7206,42 +7206,42 @@ function renderActionsRightPanel() {
         const isLocked = !!action.locked;
 
         html += `<div onmouseenter="this.dataset.hover='1';this.style.background='${!isLocked ? meta.color + '06' : 'transparent'}'" onmouseleave="this.dataset.hover='';this.style.background='transparent';var eb=this.querySelector('.act-exec-btn');if(eb)eb.style.display='none'" style="
-            padding:12px 16px;
+            padding:16px 20px;
             ${ai < actions.length - 1 ? 'border-bottom:1px solid var(--border-0,rgba(255,255,255,0.06));' : ''}
             opacity:${isLocked ? '0.4' : '1'};
             cursor:${isLocked ? 'not-allowed' : 'pointer'};
         ">`;
 
         // Row 1: Action name + tags + cost
-        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-            <div style="display:flex;align-items:center;gap:8px;">
-                <span style="font-size:13px;font-weight:700;color:${isLocked ? 'var(--text-dim)' : 'var(--text-bright,#f0efe6)'};">${escapeHtml(action.name)}</span>`;
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:18px;font-weight:700;color:${isLocked ? 'var(--text-dim)' : 'var(--text-bright,#f0efe6)'};">${escapeHtml(action.name)}</span>`;
 
         for (const tag of action.tags) {
             const tagColor = tag === 'IRREVERSIBLE' ? '#c55' : tag === 'OFFENSIVE' ? '#c84' : tag === 'STRUCTURAL' ? '#ca5' : tag === 'POLITICAL' ? '#8a6aaa' : 'var(--text-dim)';
-            html += `<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;letter-spacing:0.3px;padding:1px 4px;line-height:11px;color:${tagColor};background:var(--bg-3,#252525);border:1px solid var(--border-0,rgba(255,255,255,0.06));">${escapeHtml(tag)}</span>`;
+            html += `<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.3px;padding:2px 6px;line-height:14px;color:${tagColor};background:var(--bg-3,#252525);border:1px solid var(--border-0,rgba(255,255,255,0.06));">${escapeHtml(tag)}</span>`;
         }
 
         html += `</div>
-            <div style="display:flex;align-items:center;gap:6px;">
-                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${action.costColor};">${escapeHtml(action.cost)}</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${action.costColor};">${escapeHtml(action.cost)}</span>
             </div>
         </div>`;
 
         // Row 2: Description
-        html += `<div style="font-size:10px;color:${isLocked ? 'var(--text-dim)' : 'var(--text-muted,#666)'};line-height:1.5;">${escapeHtml(action.desc)}</div>`;
+        html += `<div style="font-size:14px;color:${isLocked ? 'var(--text-dim)' : 'var(--text-muted,#666)'};line-height:1.6;">${escapeHtml(action.desc)}</div>`;
 
         // Lock reason
         if (isLocked && action.lockReason) {
-            html += `<div style="margin-top:4px;font-family:var(--font-mono);font-size:7px;color:#c84;display:flex;align-items:center;gap:4px;">
+            html += `<div style="margin-top:6px;font-family:var(--font-mono);font-size:11px;color:#c84;display:flex;align-items:center;gap:4px;">
                 <span>&#8856;</span><span>${escapeHtml(action.lockReason)}</span>
             </div>`;
         }
 
         // Execute button (shown on hover via JS)
         if (!isLocked) {
-            html += `<div class="act-exec-btn" style="display:none;margin-top:8px;text-align:right;">
-                <span onclick="event.stopPropagation();actExecute('${action.id}','${role}')" style="display:inline-block;padding:4px 18px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:${meta.color};cursor:pointer;">EXECUTE</span>
+            html += `<div class="act-exec-btn" style="display:none;margin-top:10px;text-align:right;">
+                <span onclick="event.stopPropagation();actExecute('${action.id}','${role}')" style="display:inline-block;padding:6px 24px;font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:1px;color:#000;background:${meta.color};cursor:pointer;">EXECUTE</span>
             </div>`;
         }
 
@@ -7251,8 +7251,8 @@ function renderActionsRightPanel() {
     html += '</div>'; // close actions list
 
     // ── Skill effect note ──
-    html += `<div style="padding:6px 16px;background:var(--bg-3,#252525);border:1px solid var(--border-0,rgba(255,255,255,0.06));border-top:none;">
-        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">
+    html += `<div style="padding:8px 20px;background:var(--bg-3,#252525);border:1px solid var(--border-0,rgba(255,255,255,0.06));border-top:none;">
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">
             <span style="color:${meta.color};font-weight:700;">${escapeHtml(role)}</span> skill (${exec.skill}/100) affects action outcomes.
             ${exec.skill >= 70
                 ? ' High skill increases success probability and reduces costs.'
@@ -8225,14 +8225,23 @@ async function openExecSearch(role) {
     document.getElementById('exec-search-overlay').style.display = 'flex';
 
     // Auto-generate executive pool for this nation if none exists
-    if (_execPool.length === 0 && faction?.nation_id && faction?.nation) {
-        const poolRows = generateExecutivePool(faction.nation_id, faction.nation);
-        if (poolRows.length > 0) {
-            const { data: inserted, error: poolErr } = await _supabase.from('executive_pool').insert(poolRows).select();
-            if (!poolErr && inserted) {
-                _execPool = inserted;
-            }
+    if (_execPool.length === 0 && faction?.nation_id) {
+        // Check DB directly — pool may exist but loadExecutives returned empty
+        const { data: existingPool } = await _supabase.from('executive_pool')
+            .select('id').eq('nation_id', faction.nation_id).limit(1);
+
+        if (!existingPool || existingPool.length === 0) {
+            const nationName = faction.nation || '';
+            const poolRows = generateExecutivePool(faction.nation_id, nationName);
+            const { error: poolErr } = await _supabase.from('executive_pool').insert(poolRows);
+            if (poolErr) console.warn('Failed to generate executive pool:', poolErr.message);
         }
+
+        // Reload pool from DB
+        const { data: freshPool } = await _supabase.from('executive_pool')
+            .select('*').eq('nation_id', faction.nation_id).eq('status', 'available')
+            .order('skill', { ascending: false });
+        _execPool = freshPool || [];
     }
 
     renderExecSearchModal();
