@@ -372,6 +372,7 @@ let allUserFactions = [];
 let faction = null;
 let nationStats = null;
 let shard = null;
+let _hasDeregulation = false; // Financial Sector Deregulation Act active
 
 function fmtMoney(n) {
     if (Math.abs(n) >= 1_000_000) return '$' + (n / 1_000_000).toFixed(1) + 'M';
@@ -934,10 +935,12 @@ function renderReservesRisk() {
     const deployed = totalExposure;
     const totalAssets = cash + deployed;
 
-    const requiredReserve = Math.round(totalExposure * 0.15);
+    const reserveReqPct = _hasDeregulation ? 0.12 : 0.15; // Deregulation: 15% → 12%
+    const requiredReserve = Math.round(totalExposure * reserveReqPct);
     const reserveRatio = totalExposure > 0 ? Math.round((cash / totalExposure) * 100) : 100;
-    const reserveHealth = reserveRatio >= 30 ? 'HEALTHY' : reserveRatio >= 20 ? 'ADEQUATE' : reserveRatio >= 15 ? 'THIN' : 'CRITICAL';
-    const reserveColor = reserveRatio >= 30 ? '#5c5' : reserveRatio >= 20 ? '#ca5' : reserveRatio >= 15 ? '#c84' : '#c55';
+    const minRatioPct = Math.round(reserveReqPct * 100);
+    const reserveHealth = reserveRatio >= 30 ? 'HEALTHY' : reserveRatio >= 20 ? 'ADEQUATE' : reserveRatio >= minRatioPct ? 'THIN' : 'CRITICAL';
+    const reserveColor = reserveRatio >= 30 ? '#5c5' : reserveRatio >= 20 ? '#ca5' : reserveRatio >= minRatioPct ? '#c84' : '#c55';
     const availableCapital = Math.max(0, cash - requiredReserve);
 
     // Concentration by nation
@@ -977,6 +980,15 @@ function renderReservesRisk() {
 
     html += '<div style="flex:1;overflow-y:auto;">';
 
+    // ── Deregulation policy banner ──
+    if (_hasDeregulation) {
+        html += `<div style="padding:5px 14px;background:rgba(200,168,50,0.06);border-bottom:1px solid rgba(200,168,50,0.15);display:flex;align-items:center;gap:6px;">
+            <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:1px 5px;color:#c8a832;background:rgba(200,168,50,0.12);border:1px solid rgba(200,168,50,0.25);">POLICY</span>
+            <span style="font-family:var(--font-mono);font-size:8px;color:#c8a832;">Financial Sector Deregulation Act</span>
+            <span style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">Reserve req: ${minRatioPct}% &middot; Interest: +10%</span>
+        </div>`;
+    }
+
     // ── Capital Position ──
     html += '<div class="rr-section-bar">Capital Position</div>';
     html += '<div class="rr-section">';
@@ -999,10 +1011,10 @@ function renderReservesRisk() {
     </div>`;
     html += `<div class="rd-bar" style="height:5px;"><div class="rd-bar__fill" style="width:${Math.min(reserveRatio / 60 * 100, 100)}%;background:${reserveColor};"></div></div>`;
     html += `<div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:3px;">
-        <span style="color:#c55;">15% minimum</span><span>30% healthy</span><span style="color:#5c5;">60%+</span>
+        <span style="color:#c55;">${minRatioPct}% minimum</span><span>30% healthy</span><span style="color:#5c5;">60%+</span>
     </div>`;
     html += `<div class="rr-reserve-cells">
-        <div class="rr-reserve-cell"><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">REQUIRED (15%)</div><div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c84;margin-top:1px;">${fmtMoney(requiredReserve)}</div></div>
+        <div class="rr-reserve-cell"><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">REQUIRED (${minRatioPct}%)</div><div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c84;margin-top:1px;">${fmtMoney(requiredReserve)}</div></div>
         <div class="rr-reserve-cell"><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">AVAILABLE TO DEPLOY</div><div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${availableCapital > 0 ? '#5c5' : '#c55'};margin-top:1px;">${fmtMoney(availableCapital)}</div></div>
     </div>`;
     html += '</div>';
@@ -2018,6 +2030,15 @@ async function init() {
 
     // Faction switcher
     renderFactionSwitcher();
+
+    // Check for Financial Sector Deregulation Act
+    if (faction.nation_id) {
+        const { data: laws } = await _supabase.from('active_laws')
+            .select('id, policy:policies!policy_id(policy_key)')
+            .eq('nation_id', faction.nation_id).limit(100);
+        _hasDeregulation = (laws || []).some(l =>
+            l.policy?.policy_key?.startsWith('financial_sector_deregulation'));
+    }
 
     // Load data and render containers
     await loadDealFlow();
