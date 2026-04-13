@@ -884,23 +884,24 @@ export function updateTopBarInfo(faction, shard, nation) {
         const navEl = document.querySelector('.nav-tabs');
         if (navEl) {
             const currentTab = window.__currentTab || '';
+            const sector = faction.corp_sector || 'Construction';
+            const opsHref = sector === 'Finance' ? 'corp-operations-finance.html' : 'corp-operations.html';
             const corpTabs = [
                 { id: 'home', label: 'Home', href: 'corp-dashboard.html' },
-                { id: 'operations', label: 'Operations' },
-                { id: 'workforce', label: 'Workforce' },
-                { id: 'expansion', label: 'Expansion' },
-                { id: 'industries', label: 'Industries' },
-                { id: 'innovation', label: 'Innovation' },
-                { id: 'lobbying', label: 'Lobbying' },
+                { id: 'operations', label: 'Operations', href: opsHref },
+                { id: 'expansion', label: 'Expansion', href: 'corp-operations.html?tab=expansion' },
+                { id: 'actions', label: 'Actions', href: 'corp-operations.html?tab=actions' },
+                { id: 'innovation', label: 'Innovation', disabled: true },
+                { id: 'lobbying', label: 'Lobbying', disabled: true },
                 { id: 'news', label: 'News', href: 'news.html' },
                 { id: 'wiki', label: 'Wiki', href: 'wiki.html' },
             ];
             navEl.innerHTML = corpTabs.map(t => {
                 const isActive = t.id === currentTab;
-                if (t.href) {
-                    return `<a href="${t.href}" class="nav-tab ${isActive ? 'active' : ''}" data-tab="${t.id}">${t.label}</a>`;
+                if (t.disabled) {
+                    return `<a href="#" class="nav-tab" data-tab="${t.id}" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">${t.label}</a>`;
                 }
-                return `<a href="#" class="nav-tab" data-tab="${t.id}" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">${t.label}</a>`;
+                return `<a href="${t.href}" class="nav-tab ${isActive ? 'active' : ''}" data-tab="${t.id}">${t.label}</a>`;
             }).join('');
         }
         // Update nation badge to show corp name instead
