@@ -2306,11 +2306,12 @@ const SALE_REASONS = [
 
 async function generateShipMarketListings(supabase, currentTick) {
     // Expire old NPC listings (24 ticks old)
-    await supabase.from('ship_market_listings')
+    var { error: expireErr } = await supabase.from('ship_market_listings')
         .update({ status: 'expired' })
         .eq('status', 'available')
         .eq('seller_type', 'LOCAL')
         .lt('listed_at_tick', currentTick - 24);
+    if (expireErr) console.warn('[Ship Market] Failed to expire old listings:', expireErr.message);
 
     // Load all nations
     const { data: nations } = await supabase.from('nations').select('id, name');
@@ -2410,9 +2411,10 @@ async function processVesselOrderDeliveries(supabase, currentTick) {
             .select('budget_reserves').eq('id', order.shipyard_nation_id).single();
         if (shipyardNation) {
             var currentBudget = Number(shipyardNation.budget_reserves || 0);
-            await supabase.from('nations').update({
+            var { error: budgetErr } = await supabase.from('nations').update({
                 budget_reserves: currentBudget + balance,
             }).eq('id', order.shipyard_nation_id);
+            if (budgetErr) console.warn('[Vessel Orders] Budget credit failed:', budgetErr.message);
         }
 
         // Create the vessel
