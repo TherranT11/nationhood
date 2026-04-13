@@ -7354,6 +7354,9 @@ function renderActionsRightPanel() {
                 <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:0.8px;">CONTRACT</div>
                 <div style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--text-muted);margin-top:2px;">${exec.contract_years}yr</div>
             </div>
+            ${role !== 'CEO' ? `<div style="text-align:right;">
+                <span onclick="event.stopPropagation();confirmFireExec('${exec.id}','${escapeHtml(role)}','${escapeHtml(exec.first_name + ' ' + exec.last_name)}',${exec.salary_per_year},${exec.contract_end_tick || 0})" style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.5px;padding:5px 12px;color:#d9534f;border:1px solid rgba(217,83,79,0.25);background:rgba(217,83,79,0.06);cursor:pointer;">FIRE</span>
+            </div>` : ''}
         </div>
     </div>`;
 
@@ -7435,6 +7438,68 @@ function renderActionsRightPanel() {
             if (btn) btn.style.display = 'none';
         });
     });
+}
+
+// ─── Fire Executive ────────────────────────────────────────────
+function confirmFireExec(execId, role, name, salaryPerYear, contractEndTick) {
+    const currentTick = shard?.current_tick || 0;
+    const ticksRemaining = Math.max(0, contractEndTick - currentTick);
+    const proratedPayout = Math.round(salaryPerYear * (ticksRemaining / 12));
+
+    const msg = `FIRE ${role}: ${name}\n\n` +
+        `Contract remaining: ${ticksRemaining} ticks\n` +
+        `Payout (prorated): $${(proratedPayout / 1e6).toFixed(2)}M\n\n` +
+        `This amount will be deducted from your cash reserves immediately.\n\n` +
+        `Are you sure?`;
+
+    if (!confirm(msg)) return;
+    executeFireExec(execId, role, proratedPayout);
+}
+
+async function executeFireExec(execId, role, payout) {
+    try {
+        // Check cash
+        const currentCash = Number(faction?.corp_cash_reserves ?? 0);
+        if (currentCash < payout) {
+            alert(`Insufficient funds. You need $${(payout / 1e6).toFixed(2)}M but only have $${(currentCash / 1e6).toFixed(2)}M.`);
+            return;
+        }
+
+        // Deduct payout from corp cash
+        const newCash = currentCash - payout;
+        const { error: cashErr } = await _supabase
+            .from('factions')
+            .update({ corp_cash_reserves: newCash })
+            .eq('id', faction.id);
+
+        if (cashErr) {
+            alert('Failed to process payout: ' + cashErr.message);
+            return;
+        }
+
+        // Mark executive as fired
+        const { error: fireErr } = await _supabase
+            .from('corp_executives')
+            .update({ status: 'fired', updated_at: new Date().toISOString() })
+            .eq('id', execId);
+
+        if (fireErr) {
+            // Rollback cash
+            await _supabase.from('factions').update({ corp_cash_reserves: currentCash }).eq('id', faction.id);
+            alert('Failed to fire executive: ' + fireErr.message);
+            return;
+        }
+
+        // Update local state
+        faction.corp_cash_reserves = newCash;
+        _executives = _executives.filter(e => e.id !== execId);
+
+        // Re-render
+        renderActionsTab();
+    } catch (err) {
+        console.error('[CorpOps] Fire executive error:', err);
+        alert('An error occurred.');
+    }
 }
 
 function actExecute(actionId, role) {
@@ -12697,6 +12762,7 @@ window.declineAllBids = declineAllBids;
 window.switchToActions = switchToActions;
 window.actSelectExec = actSelectExec;
 window.actExecute = actExecute;
+window.confirmFireExec = confirmFireExec;
 window.actOpenStatement = actOpenStatement;
 window.actCloseStatement = actCloseStatement;
 window.actSubmitStatement = actSubmitStatement;
