@@ -13,9 +13,9 @@
 <div id="top-bar"></div>
 
 <div id="content-area">
-    <div class="loading-container">
-        <div class="loading-spinner"></div>
-        <div>Loading government data...</div>
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:calc(100vh - 100px);text-align:center;color:var(--text-secondary);">
+        <div style="font-family:var(--font-mono);font-size:0.9rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;">UI 2.0 IS COMING</div>
+        <div style="font-size:0.85rem;color:var(--text-muted);">Please be patient while we roll this out.</div>
     </div>
 </div>
 
@@ -970,6 +970,7 @@ const FORMATION_MINISTRIES = [
 ];
 
 initPage('government', async (state) => {
+    return; // UI 2.0 placeholder — full government page disabled
     const { nation, faction } = state;
     currentNation = nation;
     currentFaction = faction;

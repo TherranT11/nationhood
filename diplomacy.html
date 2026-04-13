@@ -23,11 +23,17 @@
 
 <!-- ===== CONTENT AREA ===== -->
 <div id="content-area">
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:calc(100vh - 100px);text-align:center;color:var(--text-secondary);">
+        <div style="font-family:var(--font-mono);font-size:0.9rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;">UI 2.0 IS COMING</div>
+        <div style="font-size:0.85rem;color:var(--text-muted);">Please be patient while we roll this out.</div>
+    </div>
+</div>
+
+<!-- Original content hidden during UI 2.0 rollout -->
+<div id="content-area-disabled" style="display:none;">
     <div class="page-header" id="diplo-header"></div>
     <div class="dashboard">
-        <!-- ═══ ROW 1: Three equal columns ═══ -->
         <div class="row">
-            <!-- Foreign Relations -->
             <div class="box box--third box--h450" id="box-relations">
                 <div class="box-header">
                     <div class="box-dot box-dot--teal"></div>
@@ -36,7 +42,6 @@
                 </div>
                 <div class="box-body" id="relations-body"></div>
             </div>
-            <!-- Diplomatic Actions -->
             <div class="box box--third box--h450" id="box-actions">
                 <div class="box-header">
                     <div class="box-dot box-dot--blue"></div>
@@ -44,7 +49,6 @@
                 </div>
                 <div class="box-body" id="actions-body"></div>
             </div>
-            <!-- Agreements -->
             <div class="box box--third box--h450" id="box-negotiations">
                 <div class="box-header">
                     <div class="box-dot box-dot--amber"></div>
@@ -289,6 +293,7 @@ let activeDraftAction = null;  // { key, label, apCost, type, role }
 let activeDraftTarget = null;  // nation object
 
 initPage('diplomacy', async (state) => {
+    return; // UI 2.0 placeholder — full diplomacy page disabled
     try {
         currentFaction = state.faction;
         currentNation  = state.nation;
