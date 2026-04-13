@@ -2613,108 +2613,72 @@ function renderSectorDetail(nation, sectorKey) {
     if (sector.export_only) h += ' <span class="sector-badge">EXPORT ONLY</span>';
     h += '</div>';
 
-    h += '<div class="sector-header-grid">';
-
-    // Left: score gauge
-    h += '<div class="sector-score-panel">';
-    h += '<div class="sector-score-label">EXPORT CAPACITY</div>';
-    h += '<div class="sector-score-big" style="color:' + scoreColor + '">' + pct + '</div>';
-    h += '<div class="sector-score-track">';
-    h += '<div class="sector-score-fill" style="width:' + pct + '%;background:' + borderColor + '"></div>';
-    h += '<div class="sector-score-threshold" style="left:' + sector.export_threshold + '%" title="Export threshold: ' + sector.export_threshold + '"></div>';
-    h += '</div>';
-    if (aboveThreshold) {
-        h += '<div class="sector-threshold-status sector-above">Above threshold (' + sector.export_threshold + ')</div>';
-    } else {
-        h += '<div class="sector-threshold-status sector-below">Below threshold (' + sector.export_threshold + ') — no exports</div>';
-    }
-    h += '</div>';
-
-    // Right: volume cards
-    h += '<div class="sector-volume-panel">';
+    // ── 2×3 card layout (matching food subsector design) ──
     if (flow) {
-        // Supply & Demand capacity row
         var supplyVal = Number(flow.export_capacity) || 0;
         var demandVal = Number(flow.import_demand) || 0;
-        h += '<div class="sector-vol-row">';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">SUPPLY</span><span class="sector-vol-value" style="color:#6aa3d9">' + formatTradeVolume(supplyVal, sectorKey) + '</span></div>';
+
+        var organicExp = expVol;
+        var tradeDealExp = 0; // RSC pre-allocations tracked separately in future
+        var untradedSurplus = Math.max(0, supplyVal - expVol);
+        var surplusAtCurrentPrice = Math.round(untradedSurplus * priceMod);
+        var surplusAtFullPrice = untradedSurplus;
+
+        // Row 1: Production | Demand | Exports — Organic
+        h += '<div class="econ-cards-row econ-cards-3" style="margin-top:12px;">';
+        h += renderOverviewCard('Production', formatTradeVolume(supplyVal, sectorKey), 'neutral', 'capacity / year');
         if (!sector.export_only) {
-            h += '<div class="sector-vol-item"><span class="sector-vol-label">DEMAND</span><span class="sector-vol-value" style="color:#c9a54e">' + formatTradeVolume(demandVal, sectorKey) + '</span></div>';
+            h += renderOverviewCard('Demand', formatTradeVolume(demandVal, sectorKey), demandVal > supplyVal ? 'deficit' : 'neutral', 'total need');
+        } else {
+            h += renderOverviewCard('Revenue', formatBudgetCurrency(expVol), 'surplus', 'export revenue');
         }
+        h += renderOverviewCard('Exports \u2014 Organic', formatTradeVolume(organicExp, sectorKey), organicExp > 0 ? 'surplus' : 'neutral', organicExp > 0 ? 'no trade deal required' : 'no organic exports');
         h += '</div>';
 
-        // Available capacity row — only shown when RSC agreements are locking some capacity.
-        // Without commitments the values are identical to SUPPLY/DEMAND above, so omit to avoid noise.
-        if (rscExportCommittedPct > 0 || rscImportCommittedPct > 0) {
-            var availableSupply = Math.max(0, supplyVal * (1 - rscExportCommittedPct / 100));
-            var availableDemand = Math.max(0, demandVal * (1 - rscImportCommittedPct / 100));
-            var availSupplyColor = rscExportCommittedPct > 75 ? '#d9534f' : rscExportCommittedPct > 40 ? '#f0ad4e' : '#5cb85c';
-            var availDemandColor = rscImportCommittedPct > 75 ? '#d9534f' : rscImportCommittedPct > 40 ? '#f0ad4e' : '#5cb85c';
-            var supplyTitle = rscExportCommittedPct.toFixed(0) + '% committed via RSC: ' + rscExportPartners.join(', ');
-            var demandTitle = rscImportCommittedPct.toFixed(0) + '% committed via RSC: ' + rscImportPartners.join(', ');
-            h += '<div class="sector-vol-row">';
-            h += '<div class="sector-vol-item" title="' + escapeHtml(supplyTitle) + '"><span class="sector-vol-label">AVAILABLE</span><span class="sector-vol-value" style="color:' + availSupplyColor + '">' + formatTradeVolume(availableSupply, sectorKey) + (rscExportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscExportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
-            if (!sector.export_only) {
-                h += '<div class="sector-vol-item" title="' + escapeHtml(demandTitle) + '"><span class="sector-vol-label">UNMET DEMAND</span><span class="sector-vol-value" style="color:' + availDemandColor + '">' + formatTradeVolume(availableDemand, sectorKey) + (rscImportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscImportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
-            }
+        // Row 2: Exports — Trade Deals | Imports | Untraded Surplus
+        h += '<div class="econ-cards-row econ-cards-3" style="margin-top:0;">';
+        h += renderOverviewCard('Exports \u2014 Trade Deals', formatTradeVolume(tradeDealExp, sectorKey), tradeDealExp > 0 ? 'surplus' : 'neutral', tradeDealExp > 0 ? 'active agreements' : 'no active deals');
+        if (!sector.export_only) {
+            h += renderOverviewCard('Imports', formatTradeVolume(impVol, sectorKey), impVol > 0 ? 'deficit' : 'neutral', impVol > 0 ? 'foreign supply' : 'no imports');
+        } else {
+            h += renderOverviewCard('Visitors / Clients', formatTradeVolume(impVol, sectorKey), 'neutral', 'inbound demand');
+        }
+        h += renderOverviewCard('Untraded Surplus \u2014 Seek Buyers', formatTradeVolume(untradedSurplus, sectorKey), untradedSurplus > 0 ? 'deficit' : 'surplus', untradedSurplus > 0 ? 'sitting idle \u00b7 no buyer secured' : 'all production allocated');
+        h += '</div>';
+
+        // Surplus value calculation
+        if (untradedSurplus > 0) {
+            h += '<div style="padding:4px 16px;text-align:right;font-family:var(--font-mono);font-size:0.65rem;color:var(--text-dim);">';
+            h += 'At current ' + priceMod.toFixed(2) + 'x&nbsp;&nbsp;&nbsp;' + formatBudgetCurrency(surplusAtCurrentPrice) + ' / yr';
+            h += '<br>At full price 1.0x&nbsp;&nbsp;&nbsp;' + formatBudgetCurrency(surplusAtFullPrice) + ' / yr';
             h += '</div>';
         }
 
-        // Actual trade volumes row
-        h += '<div class="sector-vol-row">';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">EXPORTS</span><span class="sector-vol-value" style="color:#5cb85c">' + formatTradeVolume(expVol, sectorKey) + '</span></div>';
-        if (!sector.export_only) {
-            h += '<div class="sector-vol-item"><span class="sector-vol-label">IMPORTS</span><span class="sector-vol-value" style="color:#d9534f">' + formatTradeVolume(impVol, sectorKey) + '</span></div>';
-        }
-        var netColor = net > 0 ? '#5cb85c' : net < 0 ? '#d9534f' : '#888';
-        var netSign = net > 0 ? '+' : '';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">NET</span><span class="sector-vol-value" style="color:' + netColor + '">' + netSign + formatTradeVolume(net, sectorKey) + '</span></div>';
+        // Footer: Global Price + Net flow
+        var priceColor = priceMod >= 1.3 ? '#d9534f' : priceMod <= 0.7 ? '#5cb85c' : 'var(--text-secondary)';
+        var priceLabel = priceMod >= 1.5 ? 'high' : priceMod >= 1.2 ? 'elevated' : priceMod >= 0.8 ? 'stable' : priceMod >= 0.6 ? 'low' : 'oversupply';
+        h += '<div style="display:flex;gap:20px;padding:8px 16px;flex-wrap:wrap;align-items:center;">';
+        h += '<div style="font-size:0.75rem;color:var(--text-muted);">Global Price <span style="color:' + priceColor + ';font-weight:bold;">' + priceMod.toFixed(2) + 'x</span> <span style="font-size:0.65rem;">(' + priceLabel + ')</span></div>';
+        h += '<div style="margin-left:auto;font-size:0.75rem;">Net flow: <span style="font-weight:bold;color:' + (net >= 0 ? '#5cb85c' : '#d9534f') + ';">' + formatBudgetCurrency(net) + '</span> \u00b7 ' + (net >= 0 ? 'net exporter' : 'net importer') + '</div>';
         h += '</div>';
-
-        // Unmet demand row (always visible for importable sectors)
-        if (!sector.export_only) {
-            var totalSectorSupply = supplyVal + impVol;
-            var sectorUnmet = Math.max(0, demandVal - totalSectorSupply);
-            var sectorUnmetPct = demandVal > 0 ? Math.round(sectorUnmet / demandVal * 100) : 0;
-            var unmetColor = sectorUnmetPct >= 30 ? '#d9534f' : sectorUnmetPct >= 10 ? '#d48a3c' : sectorUnmetPct > 0 ? '#c9a54e' : '#5cb85c';
-            var unmetStatus = sectorUnmetPct === 0 ? 'FULLY SUPPLIED' : sectorUnmetPct + '% UNMET';
-            h += '<div class="sector-vol-row">';
-            h += '<div class="sector-vol-item"><span class="sector-vol-label">UNMET DEMAND</span><span class="sector-vol-value" style="color:' + unmetColor + '">' + formatTradeVolume(sectorUnmet, sectorKey) + '</span></div>';
-            h += '<div class="sector-vol-item"><span class="sector-vol-label">STATUS</span><span class="sector-vol-value" style="color:' + unmetColor + '">' + unmetStatus + '</span></div>';
-            h += '</div>';
-        }
-
-        // Price modifier
-        var priceColor = priceMod >= 1.05 ? '#5cb85c' : priceMod <= 0.95 ? '#d9534f' : '#888';
-        h += '<div class="sector-price-mod">';
-        h += 'Price modifier: <strong style="color:' + priceColor + '">' + priceMod.toFixed(2) + 'x</strong>';
-        h += '</div>';
-
-        // Tick trend
-        var prevFlow = (tradeData && tradeData.prevFlows) ? tradeData.prevFlows[sectorKey] : null;
-        if (prevFlow) {
-            var prevExp = Number(prevFlow.export_volume) || 0;
-            var prevImp = Number(prevFlow.import_volume) || 0;
-            var prevNet = prevExp - prevImp;
-            h += '<div class="sector-trend-line">';
-            h += 'vs. prev tick: ' + tradeTrendHtml(net, prevNet, false);
-            h += '</div>';
-        }
     } else {
-        h += '<div class="sector-no-data">No trade flow data yet.</div>';
+        h += '<div style="padding:20px 16px;font-size:0.8rem;color:var(--text-dim);font-style:italic;">No trade flow data yet.</div>';
     }
-    h += '</div>';
 
-    h += '</div>'; // .sector-header-grid
-
-    // Net importer warning
-    if (isNetImporter && !sector.export_only) {
-        h += '<div class="sector-warning">';
-        h += 'NET IMPORTER — This nation imports more ' + escapeHtml(sector.label).toLowerCase() + ' than it exports.';
-        if (TRADE_IMPORT_HINTS[sectorKey]) {
-            h += ' ' + escapeHtml(TRADE_IMPORT_HINTS[sectorKey]) + '.';
+    // Unmet demand warning (non-export-only sectors)
+    if (flow && !sector.export_only) {
+        var demandVal2 = Number(flow.import_demand) || 0;
+        var supplyVal2 = Number(flow.export_capacity) || 0;
+        var totalSectorSupply = supplyVal2 + impVol;
+        var sectorUnmet = Math.max(0, demandVal2 - totalSectorSupply);
+        var sectorUnmetPct = demandVal2 > 0 ? Math.round(sectorUnmet / demandVal2 * 100) : 0;
+        if (sectorUnmetPct >= 5) {
+            var urgency = sectorUnmetPct >= 50 ? '#d9534f' : '#d48a3c';
+            var urgencyLabel = sectorUnmetPct >= 50 ? 'CRITICAL' : 'WARNING';
+            h += '<div style="margin:8px 16px;padding:10px 14px;border-radius:4px;border:1px solid ' + urgency + ';background:' + urgency + '15;">';
+            h += '<div style="font-size:0.75rem;font-weight:bold;color:' + urgency + ';margin-bottom:4px;">' + urgencyLabel + ': ' + sectorUnmetPct + '% of import demand unmet</div>';
+            h += '</div>';
         }
-        h += '</div>';
     }
 
     h += '</div>'; // .econ-section
