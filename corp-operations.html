@@ -2377,7 +2377,7 @@ body.light-mode .av-empty__text { color: #1a1a17; }
     <a href="#" class="corp-nav__tab" data-tab="expansion" onclick="switchToExpansion(event)">Expansion</a>
     <a href="#" class="corp-nav__tab" data-tab="actions" onclick="switchToActions(event)">Actions</a>
     <a href="#" class="corp-nav__tab" data-tab="innovation" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Innovation</a>
-    <a href="#" class="corp-nav__tab" data-tab="lobbying" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Lobbying</a>
+    <a href="corp-nations.html" class="corp-nav__tab" data-tab="nations">Nations</a>
     <a href="news.html" class="corp-nav__tab" data-tab="news">News</a>
     <a href="wiki.html" class="corp-nav__tab" data-tab="wiki">Wiki</a>
   </nav>
@@ -7918,7 +7918,7 @@ async function actSubmitRestructure(layoffPct, debtCut, repLoss, genCut, sklCut,
 
     // Log event
     const currentTick = shard.current_tick || 0;
-    await _supabase.from('event_log').insert({
+    const { error: restrLogErr } = await _supabase.from('event_log').insert({
         nation_id: faction.nation_id,
         faction_id: faction.id,
         event_name: (faction.faction_name || 'Corporation') + ' — Restructuring',
@@ -7928,6 +7928,7 @@ async function actSubmitRestructure(layoffPct, debtCut, repLoss, genCut, sklCut,
         effects_applied: { layoff_pct: layoffPct, debt_cut: debtCut, rep_loss: repLoss },
         fired_at_tick: currentTick,
     });
+    if (restrLogErr) console.warn('Failed to log restructure event:', restrLogErr.message);
 
     _restrSubmitting = false;
     markActionUsed('restructure');
@@ -8063,7 +8064,7 @@ async function actSubmitRebrand(costOverride, repLossOverride) {
 
     // Log event
     const currentTick = shard.current_tick || 0;
-    await _supabase.from('event_log').insert({
+    const { error: rebrandLogErr } = await _supabase.from('event_log').insert({
         nation_id: faction.nation_id,
         faction_id: faction.id,
         event_name: oldName + ' rebrands as ' + newName,
@@ -8073,6 +8074,7 @@ async function actSubmitRebrand(costOverride, repLossOverride) {
         effects_applied: { old_name: oldName, new_name: newName, new_abbr: newAbbr, rep_loss: rebrandRepLoss, cost: rebrandCost },
         fired_at_tick: currentTick,
     });
+    if (rebrandLogErr) console.warn('Failed to log rebrand event:', rebrandLogErr.message);
 
     _rebrandSubmitting = false;
     markActionUsed('rebrand');
@@ -8284,7 +8286,7 @@ async function actSubmitDonation() {
     // Log event
     const currentTick = shard.current_tick || 0;
     const corpName = faction.faction_name || 'Corporation';
-    await _supabase.from('event_log').insert({
+    const { error: donateLogErr } = await _supabase.from('event_log').insert({
         nation_id: faction.nation_id,
         faction_id: faction.id,
         event_name: corpName + ' — Political Donation',
@@ -8294,6 +8296,7 @@ async function actSubmitDonation() {
         effects_applied: { cost: donateCost, recipient_faction_id: party.id, recipient_name: party.faction_name, ap_granted: 5, skill: lobbySkill },
         fired_at_tick: currentTick,
     });
+    if (donateLogErr) console.warn('Failed to log donation event:', donateLogErr.message);
 
     _donateSubmitting = false;
     markActionUsed('donate');
@@ -8391,10 +8394,11 @@ async function esHireCandidate() {
     }
 
     // Mark pool candidate as hired
-    await _supabase.from('executive_pool').update({
+    const { error: poolUpdErr } = await _supabase.from('executive_pool').update({
         status: 'hired',
         hired_by_faction_id: faction.id,
     }).eq('id', cand.id);
+    if (poolUpdErr) console.warn('Failed to mark pool candidate as hired:', poolUpdErr.message);
 
     // Refresh data + close modal + re-render
     _esHiring = false;

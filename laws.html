@@ -43,6 +43,45 @@
         <div class="add-text-article-section" id="add-permit-section" onclick="showPermitForm()">
             <span class="add-text-article-btn-text">+ Add Permit</span>
         </div>
+        <div class="add-text-article-section" id="add-tariff-section" onclick="showTariffForm()">
+            <span class="add-text-article-btn-text">+ Tariff Article</span>
+        </div>
+        <div id="add-tariff-form" style="display:none;">
+            <div class="form-group">
+                <label class="form-label" style="color:var(--amber);">Select Sector or Good</label>
+                <select class="form-select" id="tariff-sector-select" onchange="onTariffSectorChange()">
+                    <option value="">-- Choose a sector --</option>
+                    <option value="fuel_energy">Fuel & Energy</option>
+                    <option value="minerals">Minerals & Raw Materials</option>
+                    <option value="grains_staples">Grains & Staples</option>
+                    <option value="livestock_dairy">Livestock & Dairy</option>
+                    <option value="fruits_vegetables">Fruits & Vegetables</option>
+                    <option value="cash_crops">Cash Crops & Plantation</option>
+                    <option value="manufactured_goods">Manufactured Goods</option>
+                    <option value="technology">Technology & Electronics</option>
+                    <option value="arms">Arms & Military Equipment</option>
+                </select>
+            </div>
+            <div id="tariff-controls" style="display:none;">
+                <div class="form-group">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                        <label class="form-label" style="margin:0;">Tariff Rate</label>
+                        <span id="tariff-rate-display" style="font-family:var(--font-mono);font-size:1.2rem;font-weight:700;color:var(--amber);">0%</span>
+                    </div>
+                    <input type="range" id="tariff-rate-slider" class="form-select" min="0" max="100" step="1" value="0" oninput="onTariffRateChange()" style="width:100%;accent-color:var(--amber);height:6px;padding:0;border:none;background:transparent;" />
+                    <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-top:2px;">
+                        <span>0% (Free Trade)</span>
+                        <span>50% (Protectionist)</span>
+                        <span>100% (Embargo)</span>
+                    </div>
+                </div>
+                <div id="tariff-preview" style="margin:8px 0;padding:10px;background:var(--bg-card);border:1px solid var(--border-main);border-radius:4px;font-size:0.75rem;color:var(--text-muted);line-height:1.6;"></div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button class="btn-cancel" onclick="hideTariffForm()">Cancel</button>
+                    <button class="btn-add" id="add-tariff-btn" disabled onclick="addTariffArticle()">Add to Bill</button>
+                </div>
+            </div>
+        </div>
         <div id="add-permit-form" style="display:none;">
             <div class="form-group">
                 <label class="form-label" style="color:var(--amber);">Select Permit Policy</label>
@@ -57,10 +96,20 @@
             </div>
         </div>
         <div id="add-article-form" style="display:none;">
-            <div class="form-group">
+            <div style="display:flex;gap:8px;margin-bottom:8px;">
+                <div onclick="setSearchMode('sector')" id="search-mode-sector" class="form-toggle active" style="flex:1;text-align:center;padding:6px 0;font-family:var(--font-mono);font-size:0.7rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border-mid);color:var(--text-bright);background:rgba(255,255,255,0.04);">Search by Sector</div>
+                <div onclick="setSearchMode('stat')" id="search-mode-stat" class="form-toggle" style="flex:1;text-align:center;padding:6px 0;font-family:var(--font-mono);font-size:0.7rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border-mid);color:var(--text-dim);background:transparent;">Search by Stat</div>
+            </div>
+            <div class="form-group" id="sector-search-group">
                 <label class="form-label">Select Sector</label>
                 <select class="form-select" id="sector-select" onchange="onSectorChange()">
                     <option value="">-- Choose a sector --</option>
+                </select>
+            </div>
+            <div class="form-group" id="global-stat-search-group" style="display:none;">
+                <label class="form-label">Select Stat</label>
+                <select class="form-select" id="global-stat-select" onchange="onGlobalStatSearch()">
+                    <option value="">-- Choose a stat --</option>
                 </select>
             </div>
             <div class="form-group" id="stat-filter-group" style="display:none;">
@@ -1554,6 +1603,7 @@ function _hideAllArticleForms() {
     document.getElementById('add-funding-article-form').style.display = 'none';
     document.getElementById('add-entrenchment-form').style.display = 'none';
     document.getElementById('add-permit-form').style.display = 'none';
+    document.getElementById('add-tariff-form').style.display = 'none';
 }
 function _showAllArticleButtons() {
     document.getElementById('add-article-section').style.display = 'block';
@@ -1563,6 +1613,7 @@ function _showAllArticleButtons() {
     const hasFoundational = draftArticles.some(a => a.isFoundational);
     document.getElementById('add-entrenchment-section').style.display = (hasEntrenchment || hasFoundational) ? 'none' : 'block';
     document.getElementById('add-permit-section').style.display = 'block';
+    document.getElementById('add-tariff-section').style.display = 'block';
 }
 function _hideAllArticleButtons() {
     document.getElementById('add-article-section').style.display = 'none';
@@ -1570,6 +1621,7 @@ function _hideAllArticleButtons() {
     document.getElementById('add-funding-article-section').style.display = 'none';
     document.getElementById('add-entrenchment-section').style.display = 'none';
     document.getElementById('add-permit-section').style.display = 'none';
+    document.getElementById('add-tariff-section').style.display = 'none';
 }
 
 function showAddArticleForm() {
@@ -1891,6 +1943,109 @@ function hidePermitForm() {
     _selectedPermitPolicy = null;
 }
 
+// ==================== TARIFF ARTICLES ====================
+
+const TARIFF_SECTOR_LABELS = {
+    fuel_energy: 'Fuel & Energy', minerals: 'Minerals & Raw Materials',
+    grains_staples: 'Grains & Staples', livestock_dairy: 'Livestock & Dairy',
+    fruits_vegetables: 'Fruits & Vegetables', cash_crops: 'Cash Crops & Plantation',
+    manufactured_goods: 'Manufactured Goods', technology: 'Technology & Electronics',
+    arms: 'Arms & Military Equipment',
+};
+
+function showTariffForm() {
+    _hideAllArticleButtons(); _hideAllArticleForms();
+    document.getElementById('add-tariff-form').style.display = 'block';
+    document.getElementById('tariff-sector-select').value = '';
+    document.getElementById('tariff-controls').style.display = 'none';
+    document.getElementById('add-tariff-btn').disabled = true;
+}
+
+function hideTariffForm() {
+    _showAllArticleButtons(); _hideAllArticleForms();
+}
+
+function onTariffSectorChange() {
+    const sector = document.getElementById('tariff-sector-select').value;
+    if (!sector) {
+        document.getElementById('tariff-controls').style.display = 'none';
+        document.getElementById('add-tariff-btn').disabled = true;
+        return;
+    }
+    document.getElementById('tariff-controls').style.display = 'block';
+    document.getElementById('tariff-rate-slider').value = 0;
+    onTariffRateChange();
+}
+
+function onTariffRateChange() {
+    const rate = Number(document.getElementById('tariff-rate-slider').value);
+    const sector = document.getElementById('tariff-sector-select').value;
+    const label = TARIFF_SECTOR_LABELS[sector] || sector;
+    document.getElementById('tariff-rate-display').textContent = rate + '%';
+    document.getElementById('tariff-rate-display').style.color = rate >= 80 ? '#d9534f' : rate >= 50 ? '#c84' : rate >= 20 ? '#ca5' : '#5cb85c';
+    document.getElementById('add-tariff-btn').disabled = !sector;
+
+    // Preview
+    const preview = document.getElementById('tariff-preview');
+    let desc = '';
+    if (rate === 0) desc = 'Free trade — no tariff on ' + label + ' imports. Maximum import flow.';
+    else if (rate <= 15) desc = 'Low tariff (' + rate + '%) on ' + label + '. Minor revenue, minimal trade disruption.';
+    else if (rate <= 35) desc = 'Moderate tariff (' + rate + '%) on ' + label + '. Protects domestic producers. Import costs rise.';
+    else if (rate <= 60) desc = 'High tariff (' + rate + '%) on ' + label + '. Significant trade barrier. Trading partners may retaliate.';
+    else if (rate <= 85) desc = 'Severe tariff (' + rate + '%) on ' + label + '. Near-prohibitive. Expect diplomatic consequences.';
+    else desc = 'Embargo-level tariff (' + rate + '%) on ' + label + '. Effectively blocks all imports in this sector.';
+
+    preview.innerHTML = '<div style="margin-bottom:6px;">' + desc + '</div>' +
+        '<div style="display:flex;gap:16px;font-family:var(--font-mono);font-size:0.7rem;">' +
+        '<span style="color:var(--green);">Revenue ↑</span>' +
+        '<span style="color:var(--red);">Import volume ↓</span>' +
+        (rate >= 30 ? '<span style="color:var(--red);">Cost of living ↑</span>' : '') +
+        (rate >= 50 ? '<span style="color:var(--red);">Foreign investment ↓</span>' : '') +
+        (rate >= 80 ? '<span style="color:var(--red);">Diplomatic tension ↑</span>' : '') +
+        '</div>';
+}
+
+function addTariffArticle() {
+    if (_draftArticleLock) return;
+    const sector = document.getElementById('tariff-sector-select').value;
+    const rate = Number(document.getElementById('tariff-rate-slider').value);
+    if (!sector) return;
+
+    _draftArticleLock = true;
+    try {
+        const label = TARIFF_SECTOR_LABELS[sector] || sector;
+        const articleNum = draftArticles.length + 2;
+
+        draftArticles.push({
+            articleNumber: articleNum,
+            isTariff: true,
+            policy: {
+                id: null,
+                policy_name: label + ' Tariff — ' + rate + '%',
+                description: 'Sets a ' + rate + '% tariff on all ' + label + ' imports.',
+            },
+            effect_data: {
+                type: 'TARIFF_RATE_CHANGE',
+                sector: sector,
+                new_rate: rate,
+            },
+        });
+
+        renderDraftArticles();
+        _showAllArticleButtons(); _hideAllArticleForms();
+        document.getElementById('bill-name-section').style.display = 'block';
+        updateSubmitButtonCost();
+    } finally {
+        _draftArticleLock = false;
+    }
+}
+
+window.showTariffForm = showTariffForm;
+window.hideTariffForm = hideTariffForm;
+window.onTariffSectorChange = onTariffSectorChange;
+window.onTariffRateChange = onTariffRateChange;
+window.addTariffArticle = addTariffArticle;
+
 function onFundingMinistryChange() {
     const key = document.getElementById('funding-ministry-select').value;
     if (!key) { document.getElementById('funding-controls').style.display = 'none'; document.getElementById('add-funding-btn').disabled = true; return; }
@@ -2101,6 +2256,85 @@ function onSectorChange() {
     document.getElementById('policy-group').style.display = 'block';
 }
 
+let _searchMode = 'sector';
+
+function setSearchMode(mode) {
+    _searchMode = mode;
+    const sectorBtn = document.getElementById('search-mode-sector');
+    const statBtn = document.getElementById('search-mode-stat');
+    const sectorGroup = document.getElementById('sector-search-group');
+    const globalStatGroup = document.getElementById('global-stat-search-group');
+
+    if (mode === 'stat') {
+        sectorBtn.style.color = 'var(--text-dim)'; sectorBtn.style.background = 'transparent';
+        statBtn.style.color = 'var(--text-bright)'; statBtn.style.background = 'rgba(255,255,255,0.04)';
+        sectorGroup.style.display = 'none';
+        globalStatGroup.style.display = 'block';
+        document.getElementById('stat-filter-group').style.display = 'none';
+        // Populate global stat dropdown from ALL policies
+        _populateGlobalStatDropdown();
+        // Reset policy view
+        document.getElementById('policy-group').style.display = 'none';
+        document.getElementById('ideology-hint').style.display = 'none';
+    } else {
+        statBtn.style.color = 'var(--text-dim)'; statBtn.style.background = 'transparent';
+        sectorBtn.style.color = 'var(--text-bright)'; sectorBtn.style.background = 'rgba(255,255,255,0.04)';
+        sectorGroup.style.display = 'block';
+        globalStatGroup.style.display = 'none';
+        // Reset
+        document.getElementById('sector-select').value = '';
+        onSectorChange();
+    }
+}
+
+function _populateGlobalStatDropdown() {
+    const select = document.getElementById('global-stat-select');
+    const statSet = new Set();
+    for (const p of allPolicies) {
+        for (const e of _getStatEffectsFromPolicy(p)) {
+            if (e.stat_key) statSet.add(e.stat_key);
+        }
+    }
+    const sorted = [...statSet].sort((a, b) => formatStatName(a).localeCompare(formatStatName(b)));
+    select.innerHTML = '<option value="">-- Choose a stat --</option>' + sorted.map(s =>
+        `<option value="${s}">${formatStatName(s)}</option>`
+    ).join('');
+}
+
+function onGlobalStatSearch() {
+    const statKey = document.getElementById('global-stat-select').value;
+    selectedFoundationalType = null;
+    if (!statKey) {
+        document.getElementById('policy-group').style.display = 'none';
+        document.getElementById('ideology-hint').style.display = 'none';
+        return;
+    }
+
+    // Get ALL compatible policies across ALL sectors that affect this stat
+    // Collect unique sectors from allPolicies, run getCompatiblePolicies for each, merge
+    const sectors = [...new Set(allPolicies.map(p => p.major_sector).filter(Boolean))];
+    const excludeIds = draftArticles.map(a => a.policy?.id).filter(Boolean);
+    const _activePolicyIds = new Set(activeLaws.filter(al => !al.is_reversal).map(al => al.policy_id));
+    const merged = [];
+    const seen = new Set();
+    for (const sector of sectors) {
+        const compatible = getCompatiblePolicies(sector, allPolicies, currentFaction, excludeIds, _activePolicyIds);
+        for (const p of compatible) {
+            if (seen.has(p.id)) continue;
+            if (_getStatEffectsFromPolicy(p).some(e => e.stat_key === statKey)) {
+                seen.add(p.id);
+                merged.push(p);
+            }
+        }
+    }
+
+    _currentSectorPolicies = merged;
+    document.getElementById('ideology-hint').style.display = 'block';
+    document.getElementById('stat-filter-group').style.display = 'none';
+    renderPolicyOptions(merged, 'policy-options', 'add-article-btn');
+    document.getElementById('policy-group').style.display = 'block';
+}
+
 function onStatFilterChange() {
     const statKey = document.getElementById('stat-filter-select').value;
     const filtered = _filterPoliciesByStat(_currentSectorPolicies, statKey);
@@ -2113,6 +2347,8 @@ window.onStatFilterChange = onStatFilterChange;
 
 // Keep handlers explicitly on window for inline onchange attributes.
 window.onSectorChange = onSectorChange;
+window.setSearchMode = setSearchMode;
+window.onGlobalStatSearch = onGlobalStatSearch;
 
 let selectedFoundationalType = null;
 
@@ -3156,6 +3392,19 @@ function renderDraftArticles() {
                 <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
             </div>`;
         }
+        if (art.isTariff) {
+            const rate = art.effect_data?.new_rate || 0;
+            const rateColor = rate >= 80 ? 'var(--red)' : rate >= 50 ? '#c84' : rate >= 20 ? 'var(--amber)' : 'var(--green)';
+            return `<div class="draft-article-card" style="border-left:3px solid var(--amber);">
+                <div class="draft-article-info">
+                    <div class="draft-article-num">Article ${art.articleNumber}${_costBadge}</div>
+                    <div class="draft-article-name">${escapeHtml(art.policy.policy_name)} <span class="article-ideology" style="background:rgba(200,168,50,0.10);color:#c8a832;border:1px solid rgba(200,168,50,0.30);">TARIFF</span></div>
+                    <div class="draft-article-meta">${escapeHtml(art.policy.description || '')}</div>
+                    <div style="margin-top:4px;font-family:var(--font-mono);font-size:0.8rem;font-weight:700;color:${rateColor};">Rate: ${rate}%</div>
+                </div>
+                <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+            </div>`;
+        }
         const ideos = art.policy.ideologies || (art.policy.ideology ? [art.policy.ideology] : []);
         const ideoHTML = ideos.map(i => {
             const colorClass = getIdeologyChipClass(i, factionIdeology);
@@ -3708,6 +3957,14 @@ async function submitToCommittee() {
                 }
                 if (art.isText) {
                     return { bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id, article_title: art.textTitle, article_text: art.textBody };
+                }
+                if (art.isTariff) {
+                    return {
+                        bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id,
+                        article_title: art.policy.policy_name,
+                        article_text: art.policy.description,
+                        effect_data: art.effect_data,
+                    };
                 }
                 if (art.isFunding) {
                     const fd = art.fundingData;
