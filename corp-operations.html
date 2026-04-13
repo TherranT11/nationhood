@@ -11910,7 +11910,10 @@ function renderFleetCard() {
                     const insurePending = _vesselInsurancePending && _vesselInsurancePending[v.id];
                     html += '<div style="display:flex;gap:4px;margin-top:4px;">';
                     if (hasInsurance) {
-                        html += `<div style="flex:1;padding:4px 0;text-align:center;font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:#5c5;border:1px solid rgba(92,204,92,0.2);background:rgba(92,204,92,0.04);">INSURED ✓</div>`;
+                        html += `<div style="flex:1;display:flex;gap:2px;">
+                            <div style="flex:1;padding:4px 0;text-align:center;font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:#5c5;border:1px solid rgba(92,204,92,0.2);background:rgba(92,204,92,0.04);">INSURED ✓</div>
+                            <div onclick="event.stopPropagation();flFileClaim('${v.id}','${escapeHtml(v.vessel_name).replace(/'/g, '')}')" style="flex:1;padding:4px 0;text-align:center;cursor:pointer;font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:#c55;border:1px solid rgba(204,85,85,0.2);background:rgba(204,85,85,0.04);">FILE CLAIM</div>
+                        </div>`;
                     } else if (insurePending) {
                         html += `<div style="flex:1;padding:4px 0;text-align:center;font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:#ca5;border:1px solid rgba(202,165,50,0.2);background:rgba(202,165,50,0.04);">PENDING ⏳</div>`;
                     } else {
@@ -12104,7 +12107,62 @@ async function flRequestInsurance(vesselId, vesselName, vesselValue) {
     alert('Insurance request posted to Deal Flow.\n\nInsurance corporations can now offer coverage for ' + vesselName + '.');
     await loadFleet();
 }
+async function flFileClaim(vesselId, vesselName) {
+    if (!faction || !shard) return;
+
+    const reason = prompt('Describe the claim reason:\n\ne.g., "Storm damage during transit — hull breach repaired at sea" or "Engine failure requiring emergency dry dock"');
+    if (!reason || reason.trim().length < 5) return;
+
+    const currentTick = shard.current_tick || 0;
+
+    // Find the active insurance policy for this vessel
+    const { data: policy } = await _supabase.from('finance_active_loans')
+        .select('id, lender_faction_id, principal, deductible_pct')
+        .eq('insured_vessel_id', vesselId)
+        .eq('status', 'current')
+        .limit(1)
+        .maybeSingle();
+
+    if (!policy) { alert('No active insurance policy found for this vessel.'); return; }
+
+    const coverage = Number(policy.principal || 0);
+    const deductiblePct = Number(policy.deductible_pct || 10);
+    const deductibleAmt = Math.round(coverage * deductiblePct / 100);
+
+    if (!confirm('File insurance claim for ' + vesselName + '?\n\nCoverage: ' + hfFmtBig(coverage) + '\nDeductible: ' + deductiblePct + '% (' + hfFmtBig(deductibleAmt) + ')\n\nReason: ' + reason.trim() + '\n\nThe insurer will review this claim and determine the payout.')) return;
+
+    // Log the claim as an event
+    const { error: claimErr } = await _supabase.from('event_log').insert({
+        nation_id: faction.nation_id,
+        faction_id: faction.id,
+        event_name: (faction.faction_name || 'Corporation') + ' — Insurance Claim Filed',
+        description_used: (faction.faction_name || 'A shipping corporation') + ' has filed an insurance claim for vessel ' + vesselName + '. Reason: ' + reason.trim().replace(/[<>"]/g, ''),
+        category: 'business',
+        trigger_key: 'vessel_insurance_claim',
+        effects_applied: {
+            vessel_id: vesselId,
+            vessel_name: vesselName,
+            policy_id: policy.id,
+            insurer_faction_id: policy.lender_faction_id,
+            coverage: coverage,
+            deductible_pct: deductiblePct,
+            claim_reason: reason.trim(),
+        },
+        fired_at_tick: currentTick,
+    });
+    if (claimErr) console.warn('Failed to log insurance claim event:', claimErr.message);
+
+    // Update claims_paid counter on the policy
+    const { error: policyErr } = await _supabase.from('finance_active_loans').update({
+        claims_paid: (policy.claims_paid || 0) + 1,
+    }).eq('id', policy.id);
+    if (policyErr) console.warn('Failed to update claims_paid:', policyErr.message);
+
+    alert('Insurance claim filed for ' + vesselName + '.\n\nThe insurer (' + hfFmtBig(coverage) + ' coverage) has been notified. Claim details are visible in the events feed.');
+}
+
 window.flRequestInsurance = flRequestInsurance;
+window.flFileClaim = flFileClaim;
 
 // ════════════════════════════════════════════════════════════════════════════════
 // SHIP MARKET (Shipping corps)

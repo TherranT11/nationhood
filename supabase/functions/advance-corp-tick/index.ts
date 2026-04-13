@@ -2496,8 +2496,43 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
     for (const loan of activeLoans) {
         const requestType = loan.finance_loan_requests?.request_type || 'loan';
 
-        // Skip insurance — premiums collected separately
-        if (requestType === 'insurance') continue;
+        // Insurance: collect premium from policyholder, credit to insurer
+        if (requestType === 'insurance') {
+            const premium = Number(loan.monthly_payment) || 0;
+            if (premium <= 0) continue;
+
+            // Deduct premium from policyholder (borrower)
+            const { data: holder } = await supabase.from('factions')
+                .select('corp_cash_reserves').eq('id', loan.borrower_faction_id).single();
+            if (holder) {
+                var holderCash = Number(holder.corp_cash_reserves || 0);
+                var { error: holderErr } = await supabase.from('factions').update({
+                    corp_cash_reserves: Math.max(0, holderCash - premium),
+                }).eq('id', loan.borrower_faction_id);
+                if (holderErr) console.warn('[Insurance] Premium deduction failed:', holderErr.message);
+            }
+
+            // Credit premium to insurer (lender)
+            const { data: insurer } = await supabase.from('factions')
+                .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
+            if (insurer) {
+                var { error: insurerErr } = await supabase.from('factions').update({
+                    corp_cash_reserves: Number(insurer.corp_cash_reserves || 0) + premium,
+                }).eq('id', loan.lender_faction_id);
+                if (insurerErr) console.warn('[Insurance] Premium credit failed:', insurerErr.message);
+            }
+
+            // Update payment tracking
+            var { error: trackErr } = await supabase.from('finance_active_loans').update({
+                payments_made: (loan.payments_made || 0) + 1,
+                total_paid: (Number(loan.total_paid) || 0) + premium,
+                last_payment_tick: currentTick,
+            }).eq('id', loan.id);
+            if (trackErr) console.warn('[Insurance] Payment tracking update failed:', trackErr.message);
+
+            results.payments++;
+            continue;
+        }
 
         // Bonds: coupon payments come from nation treasury (increases debt)
         if (requestType === 'bond') {
