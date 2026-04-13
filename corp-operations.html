@@ -12107,8 +12107,9 @@ async function flRequestInsurance(vesselId, vesselName, vesselValue) {
     alert('Insurance request posted to Deal Flow.\n\nInsurance corporations can now offer coverage for ' + vesselName + '.');
     await loadFleet();
 }
+let _flClaimFiling = false;
 async function flFileClaim(vesselId, vesselName) {
-    if (!faction || !shard) return;
+    if (_flClaimFiling || !faction || !shard) return;
 
     const reason = prompt('Describe the claim reason:\n\ne.g., "Storm damage during transit — hull breach repaired at sea" or "Engine failure requiring emergency dry dock"');
     if (!reason || reason.trim().length < 5) return;
@@ -12130,6 +12131,8 @@ async function flFileClaim(vesselId, vesselName) {
     const deductibleAmt = Math.round(coverage * deductiblePct / 100);
 
     if (!confirm('File insurance claim for ' + vesselName + '?\n\nCoverage: ' + hfFmtBig(coverage) + '\nDeductible: ' + deductiblePct + '% (' + hfFmtBig(deductibleAmt) + ')\n\nReason: ' + reason.trim() + '\n\nThe insurer will review this claim and determine the payout.')) return;
+
+    _flClaimFiling = true;
 
     // Log the claim as an event
     const { error: claimErr } = await _supabase.from('event_log').insert({
@@ -12158,6 +12161,7 @@ async function flFileClaim(vesselId, vesselName) {
     }).eq('id', policy.id);
     if (policyErr) console.warn('Failed to update claims_paid:', policyErr.message);
 
+    _flClaimFiling = false;
     alert('Insurance claim filed for ' + vesselName + '.\n\nThe insurer (' + hfFmtBig(coverage) + ' coverage) has been notified. Claim details are visible in the events feed.');
 }
 
