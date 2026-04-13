@@ -144,7 +144,7 @@ export async function initLedger(supabase, state) {
     const root = document.getElementById('ledger-root');
     if (!root) return;
 
-    root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">Loading ledger...</div>';
+    root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);font-family:var(--font-mono);font-size:17px;">Loading ledger...</div>';
 
     // Fetch all nations
     const { data: nations, error } = await supabase
@@ -154,7 +154,7 @@ export async function initLedger(supabase, state) {
 
     if (error) {
         console.error('[Ledger] Failed to load nations:', error.message);
-        root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--red);font-size:10px;">Failed to load data.</div>';
+        root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--red);font-size:17px;">Failed to load data.</div>';
         return;
     }
 
@@ -184,7 +184,7 @@ function renderLedger(root) {
                 <div class="lg-mode-btn ${_mode === 'rankings' ? 'active' : ''}" data-mode="rankings">GLOBAL RANKINGS</div>
             </div>
         </div>
-        <div id="lg-body">${_mode === 'single' ? renderSingleMode() : _mode === 'compare' ? renderCompareMode() : renderSingleMode()}</div>
+        <div id="lg-body">${_mode === 'single' ? renderSingleMode() : _mode === 'compare' ? renderCompareMode() : _mode === 'rankings' ? renderRankingsMode() : renderSingleMode()}</div>
     </div>`;
 
     // Mode switcher
@@ -218,6 +218,22 @@ function renderLedger(root) {
             } else if (_compareIds.length < 4) {
                 _compareIds.push(nid);
             }
+            renderLedger(root);
+            return;
+        }
+        // Rankings mode: category picker
+        const rankCat = e.target.closest('.lg-rank-cat');
+        if (rankCat) {
+            _rankingCategory = rankCat.dataset.cat;
+            const newCat = STAT_CATEGORIES.find(c => c.id === _rankingCategory);
+            if (newCat && newCat.stats.length > 0) _rankingStat = newCat.stats[0].id;
+            renderLedger(root);
+            return;
+        }
+        // Rankings mode: stat picker
+        const rankStat = e.target.closest('.lg-rank-stat');
+        if (rankStat) {
+            _rankingStat = rankStat.dataset.stat;
             renderLedger(root);
             return;
         }
@@ -267,7 +283,7 @@ function renderSingleMode() {
             <div class="lg-nation-title">${esc(nation.name)}</div>
             <div class="lg-nation-sub">${esc(nation.government_type || '')} \u00B7 Pop: ${Number(nation.population || 0).toLocaleString()}</div>
         </div>
-        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">
+        <div style="font-family:var(--font-mono);font-size:17px;color:var(--text-dim);">
             GDP Growth: <span style="color:var(--text-bright);font-weight:700;">${fmtVal(nation.gdp_growth)}</span>
         </div>
     </div>` : '';
@@ -331,11 +347,11 @@ function renderCompareMode() {
         const isIn = _compareIds.includes(n.id);
         return `<div class="lg-comp-nation" data-nation-id="${n.id}" style="
             padding:3px 8px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;
-            font-family:var(--font-mono);font-size:7px;font-weight:${isIn ? '700' : '400'};
+            font-family:var(--font-mono);font-size:16px;font-weight:${isIn ? '700' : '400'};
             color:${isIn ? 'var(--text-bright)' : 'var(--text-dim)'};
             background:${isIn ? 'var(--amber-faint)' : 'transparent'};
             border:1px solid ${isIn ? 'var(--amber-border)' : 'var(--border-main)'};
-        ">${esc(n.name)}${n.id === myNationId ? ' <span style="color:var(--green);font-size:6px;">YOU</span>' : ''}</div>`;
+        ">${esc(n.name)}${n.id === myNationId ? ' <span style="color:var(--green);font-size:17px;">YOU</span>' : ''}</div>`;
     }).join('');
 
     // Category tabs
@@ -348,8 +364,8 @@ function renderCompareMode() {
         const n = _allNations.find(x => x.id === nid);
         if (!n) return '';
         return `<div style="flex:1;text-align:center;">
-            <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-bright);">${esc(n.name)}</div>
-            <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">${esc(n.government_type || '')}</div>
+            <div style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--text-bright);">${esc(n.name)}</div>
+            <div style="font-family:var(--font-mono);font-size:17px;color:var(--text-dim);">${esc(n.government_type || '')}</div>
         </div>`;
     }).join('');
 
@@ -370,13 +386,13 @@ function renderCompareMode() {
             const val = Number(_allNations.find(n => n.id === nid)?.[stat.id] ?? 0);
             const isBest = nid === bestId;
             return `<div style="flex:1;text-align:center;">
-                <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${isBest ? 'var(--accent)' : 'var(--text-bright)'};">${fmtVal(val)}</span>
-                ${isBest ? '<span style="font-family:var(--font-mono);font-size:7px;color:var(--accent);margin-left:2px;">\u2605</span>' : ''}
+                <span style="font-family:var(--font-mono);font-size:17px;font-weight:700;color:${isBest ? 'var(--accent)' : 'var(--text-bright)'};">${fmtVal(val)}</span>
+                ${isBest ? '<span style="font-family:var(--font-mono);font-size:16px;color:var(--accent);margin-left:2px;">\u2605</span>' : ''}
             </div>`;
         }).join('');
 
         return `<div style="display:flex;padding:5px 14px;align-items:center;border-bottom:${si < (cat?.stats.length || 0) - 1 ? '1px solid rgba(200,196,184,0.03)' : 'none'};">
-            <span style="width:160px;font-size:9px;color:var(--text-secondary);">${esc(stat.name)}</span>
+            <span style="width:160px;font-size:16px;color:var(--text-secondary);">${esc(stat.name)}</span>
             ${cellsHtml}
         </div>`;
     }).join('');
@@ -384,15 +400,99 @@ function renderCompareMode() {
     return `<div>
         <div style="background:var(--bg-panel);border:1px solid var(--border-main);padding:8px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
             <div style="display:flex;gap:4px;flex-wrap:wrap;">${pickerHtml}</div>
-            <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${_compareIds.length}/4 selected</span>
+            <span style="font-family:var(--font-mono);font-size:16px;color:var(--text-dim);">${_compareIds.length}/4 selected</span>
         </div>
         <div class="lg-cat-bar">${catHtml}</div>
         <div class="lg-table">
             <div style="display:flex;padding:8px 14px;background:var(--bg-card);border-bottom:1px solid var(--border-main);">
-                <span style="width:160px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">STAT</span>
+                <span style="width:160px;font-family:var(--font-mono);font-size:16px;color:var(--text-dim);">STAT</span>
                 ${colHeaders}
             </div>
             ${statsHtml}
+        </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════
+// GLOBAL RANKINGS MODE
+// ═══════════════════════════════════════════════════
+
+function renderRankingsMode() {
+    const myNationId = _state.nation?.id;
+    const rankCat = STAT_CATEGORIES.find(c => c.id === _rankingCategory);
+    const statDef = rankCat?.stats.find(s => s.id === _rankingStat);
+    const hb = isHigherBetter(_rankingStat);
+
+    // Sort nations by selected stat
+    const sorted = [..._allNations].sort((a, b) => {
+        const va = Number(a[_rankingStat] ?? 0);
+        const vb = Number(b[_rankingStat] ?? 0);
+        return hb !== false ? vb - va : va - vb;
+    });
+
+    const maxVal = sorted.length > 0 ? Math.abs(Number(sorted[0][_rankingStat] ?? 0)) : 1;
+
+    // Category tabs
+    const catHtml = STAT_CATEGORIES.map(c =>
+        `<div class="lg-rank-cat" data-cat="${c.id}" style="
+            padding:3px 8px;font-family:var(--font-mono);font-size:16px;font-weight:700;cursor:pointer;
+            color:${_rankingCategory === c.id ? 'var(--text-bright)' : 'var(--text-dim)'};
+            background:${_rankingCategory === c.id ? 'var(--bg-card)' : 'transparent'};
+            border:1px solid ${_rankingCategory === c.id ? 'var(--border-main)' : 'transparent'};
+        ">${esc(c.name.toUpperCase())}</div>`
+    ).join('');
+
+    // Stat picker
+    const statPickerHtml = (rankCat?.stats || []).map(s =>
+        `<div class="lg-rank-stat" data-stat="${s.id}" style="
+            padding:3px 10px;font-family:var(--font-mono);font-size:17px;cursor:pointer;
+            font-weight:${_rankingStat === s.id ? '700' : '400'};
+            color:${_rankingStat === s.id ? 'var(--accent)' : 'var(--text-secondary)'};
+            background:${_rankingStat === s.id ? 'var(--amber-faint)' : 'transparent'};
+            border:1px solid ${_rankingStat === s.id ? 'var(--amber-border)' : 'var(--border-main)'};
+        ">${esc(s.name)}</div>`
+    ).join('');
+
+    // Ranked rows
+    const rowsHtml = sorted.map((n, i) => {
+        const val = Number(n[_rankingStat] ?? 0);
+        const pct = maxVal > 0 ? (Math.abs(val) / maxVal) * 100 : 0;
+        const isPlayer = n.id === myNationId;
+        const medal = i === 0 ? '\uD83E\uDD47' : i === 1 ? '\uD83E\uDD48' : i === 2 ? '\uD83E\uDD49' : `#${i + 1}`;
+        const medalColor = i === 0 ? 'var(--accent)' : i === 1 ? 'var(--text-secondary)' : i === 2 ? 'var(--orange)' : 'var(--text-dim)';
+        const barColor = isPlayer ? 'var(--accent)' : i === 0 ? 'var(--accent)' : i < 3 ? 'var(--green)' : i < Math.ceil(sorted.length * 0.5) ? 'var(--amber)' : 'var(--text-dim)';
+
+        return `<div style="display:flex;padding:6px 14px;align-items:center;border-bottom:1px solid rgba(200,196,184,0.03);background:${isPlayer ? 'var(--amber-faint)' : 'transparent'};">
+            <span style="width:40px;font-family:var(--font-mono);font-size:${i < 3 ? '13' : '10'}px;font-weight:700;color:${medalColor};">${medal}</span>
+            <div style="flex:1;display:flex;align-items:center;gap:8px;">
+                <div>
+                    <span style="font-size:14px;font-weight:${isPlayer ? '700' : '500'};color:${isPlayer ? 'var(--accent)' : 'var(--text-bright)'};">${esc(n.name)}</span>
+                    ${isPlayer ? '<span style="font-family:var(--font-mono);font-size:17px;color:var(--green);font-weight:700;margin-left:6px;">YOU</span>' : ''}
+                    <div style="font-family:var(--font-mono);font-size:16px;color:var(--text-dim);">${esc(n.government_type || '')}</div>
+                </div>
+            </div>
+            <span style="width:100px;font-family:var(--font-mono);font-size:16px;font-weight:700;color:${i === 0 ? 'var(--accent)' : 'var(--text-bright)'};text-align:right;">${fmtVal(val)}</span>
+            <div style="width:160px;display:flex;align-items:center;gap:6px;justify-content:flex-end;">
+                <div style="width:130px;height:6px;background:var(--border-main);">
+                    <div style="width:${pct}%;height:100%;background:${barColor};"></div>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+
+    return `<div>
+        <div style="background:var(--bg-panel);border:1px solid var(--border-main);padding:8px 14px;margin-bottom:6px;">
+            <div style="display:flex;gap:2px;margin-bottom:6px;flex-wrap:wrap;">${catHtml}</div>
+            <div style="display:flex;gap:3px;flex-wrap:wrap;">${statPickerHtml}</div>
+        </div>
+        <div class="lg-table">
+            <div style="display:flex;padding:6px 14px;background:var(--bg-card);border-bottom:1px solid var(--border-main);">
+                <span style="width:40px;font-family:var(--font-mono);font-size:16px;color:var(--text-dim);">RANK</span>
+                <span style="flex:1;font-family:var(--font-mono);font-size:16px;color:var(--text-dim);">NATION</span>
+                <span style="width:100px;font-family:var(--font-mono);font-size:16px;color:var(--text-dim);text-align:right;">${esc(statDef?.name?.toUpperCase() || 'VALUE')}</span>
+                <span style="width:160px;font-family:var(--font-mono);font-size:16px;color:var(--text-dim);text-align:right;">BAR</span>
+            </div>
+            ${rowsHtml}
         </div>
     </div>`;
 }
