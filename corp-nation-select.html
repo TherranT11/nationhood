@@ -837,12 +837,52 @@ async function confirmNation() {
             if (upsertError) throw upsertError;
         }
 
-        // Set fleet capacity for shipping corps
+        // Set fleet capacity for shipping corps + seed starting vessels
         if (corpSetup.sector === 'Shipping') {
+            const fleetCapacity = corpSetup.subsector === 'Bulk Cargo' ? 3 : 2;
             await _supabase.from('factions').update({
-                shipping_fleet_capacity: 2,
+                shipping_fleet_capacity: fleetCapacity,
                 shipping_fleet_deployed: 0,
             }).eq('id', isLinkedCorp ? currentUser.id : corpRow.id);
+
+            // Seed starting vessels based on subsector
+            const VESSEL_SPECS = {
+                Coastal:   { capacity_dwt: 14000, capacity_unit: 'DWT', base_maintenance: 180000, fuel_capacity: 800,  purchase_price: 3000000 },
+                Container: { capacity_dwt: 4800,  capacity_unit: 'TEU', base_maintenance: 290000, fuel_capacity: 2100, purchase_price: 65000000 },
+                Bulk:      { capacity_dwt: 28000, capacity_unit: 'DWT', base_maintenance: 350000, fuel_capacity: 1800, purchase_price: 3000000 },
+                Tanker:    { capacity_dwt: 42000, capacity_unit: 'DWT', base_maintenance: 380000, fuel_capacity: 2400, purchase_price: 53000000 },
+                Reefer:    { capacity_dwt: 12000, capacity_unit: 'DWT', base_maintenance: 280000, fuel_capacity: 1600, purchase_price: 6000000 },
+                LNG:       { capacity_dwt: 18000, capacity_unit: 'DWT', base_maintenance: 580000, fuel_capacity: 1400, purchase_price: 78000000 },
+            };
+
+            const STARTING_FLEET = {
+                'Bulk Cargo':             [{ cls: 'Coastal', idx: 1 }, { cls: 'Coastal', idx: 2 }, { cls: 'Reefer', idx: 3 }],
+                'Container Freight':      [{ cls: 'Coastal', idx: 1 }, { cls: 'Container', idx: 2 }],
+                'Specialized Transport':  [{ cls: 'Tanker', idx: 1 }, { cls: 'Bulk', idx: 2 }],
+            };
+
+            const startingShips = STARTING_FLEET[corpSetup.subsector] || STARTING_FLEET['Bulk Cargo'];
+            const vesselRows = startingShips.map(ship => {
+                const specs = VESSEL_SPECS[ship.cls];
+                return {
+                    faction_id: corpId,
+                    nation_id: nation.id,
+                    vessel_name: ticker + '-' + corpName.split(' ')[0] + ' ' + ship.idx,
+                    vessel_class: ship.cls,
+                    condition: 85 + Math.floor(Math.random() * 16), // 85-100
+                    fuel: 70 + Math.floor(Math.random() * 31),      // 70-100
+                    status: 'in_port',
+                    capacity_dwt: specs.capacity_dwt,
+                    capacity_unit: specs.capacity_unit,
+                    base_maintenance: specs.base_maintenance,
+                    fuel_capacity: specs.fuel_capacity,
+                    purchase_price: specs.purchase_price,
+                    built_at_tick: currentTick,
+                    current_port_nation_id: nation.id,
+                };
+            });
+            const { error: vesselSeedErr } = await _supabase.from('corp_vessels').insert(vesselRows);
+            if (vesselSeedErr) console.warn('Failed to seed starting fleet:', vesselSeedErr.message);
         }
 
         // Seed starting equipment + warehouse for construction corps

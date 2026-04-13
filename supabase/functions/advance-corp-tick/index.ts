@@ -2273,6 +2273,179 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+//  SHIP MARKET — Generate NPC listings + process vessel order deliveries
+// ════════════════════════════════════════════════════════════════════════════════
+
+const VESSEL_SPECS = {
+    Coastal:   { capacity_dwt: 14000, capacity_unit: 'DWT', base_maintenance: 180000, fuel_capacity: 800,  purchase_price: 3000000 },
+    Container: { capacity_dwt: 4800,  capacity_unit: 'TEU', base_maintenance: 290000, fuel_capacity: 2100, purchase_price: 65000000 },
+    Bulk:      { capacity_dwt: 28000, capacity_unit: 'DWT', base_maintenance: 350000, fuel_capacity: 1800, purchase_price: 3000000 },
+    Tanker:    { capacity_dwt: 42000, capacity_unit: 'DWT', base_maintenance: 380000, fuel_capacity: 2400, purchase_price: 53000000 },
+    Reefer:    { capacity_dwt: 12000, capacity_unit: 'DWT', base_maintenance: 280000, fuel_capacity: 1600, purchase_price: 6000000 },
+    LNG:       { capacity_dwt: 18000, capacity_unit: 'DWT', base_maintenance: 580000, fuel_capacity: 1400, purchase_price: 78000000 },
+};
+
+const VESSEL_CLASSES = ['Coastal', 'Container', 'Bulk', 'Tanker', 'Reefer', 'LNG'];
+
+const NPC_SELLERS = [
+    'Port Authority Auctions', 'Maritime Registry', 'Coastal Trade Corp',
+    'National Shipping Board', 'Harbor Master Office', 'Naval Surplus Division',
+    'Maritime Heritage Trust', 'Commercial Fleet Services',
+];
+
+const SALE_REASONS = [
+    'Owner retired — well-maintained vessel',
+    'Fleet downsizing — excess capacity',
+    'Seized asset — previous owner defaulted on port fees',
+    'Government decommission — surplus to requirements',
+    'Corporate restructure — divesting non-core assets',
+    'Replaced by newer vessel — good working condition',
+    'Estate sale — reliable workhorse available',
+    'Bankruptcy liquidation — priced to sell',
+];
+
+async function generateShipMarketListings(supabase, currentTick) {
+    // Expire old NPC listings (24 ticks old)
+    await supabase.from('ship_market_listings')
+        .update({ status: 'expired' })
+        .eq('status', 'available')
+        .eq('seller_type', 'LOCAL')
+        .lt('listed_at_tick', currentTick - 24);
+
+    // Load all nations
+    const { data: nations } = await supabase.from('nations').select('id, name');
+    if (!nations || nations.length === 0) return;
+
+    var generated = 0;
+    for (var ni = 0; ni < nations.length; ni++) {
+        var nation = nations[ni];
+
+        // 1 random vessel per nation
+        var cls = VESSEL_CLASSES[Math.floor(Math.random() * VESSEL_CLASSES.length)];
+        var specs = VESSEL_SPECS[cls];
+        var ageTicks = 24 + Math.floor(Math.random() * 168); // 2-16 years old
+        var condition = Math.max(20, 90 - Math.floor(ageTicks / 12) * 3 - Math.floor(Math.random() * 15));
+        var fuel = 20 + Math.floor(Math.random() * 60);
+        var priceRatio = (condition / 100) * 0.7; // 70% of new price at 100% condition
+        var askingPrice = Math.round(specs.purchase_price * priceRatio);
+
+        // Vary capacity slightly (+/- 20%)
+        var capMod = 0.8 + Math.random() * 0.4;
+        var capacity = Math.round(specs.capacity_dwt * capMod);
+
+        // Pick NPC seller name and reason
+        var seller = NPC_SELLERS[Math.floor(Math.random() * NPC_SELLERS.length)];
+        var reason = SALE_REASONS[Math.floor(Math.random() * SALE_REASONS.length)];
+
+        // Generate a name
+        var prefixes = ['MV', 'SS', 'MT'];
+        var names = ['Atlas', 'Horizon', 'Vanguard', 'Orinoco', 'Sierra', 'Estrella', 'Pacific', 'Cordillera', 'Bahía', 'Nordkapp', 'Costa', 'Meridian', 'Austral', 'Ventana', 'Cumbre'];
+        var vesselName = prefixes[Math.floor(Math.random() * prefixes.length)] + " '" + names[Math.floor(Math.random() * names.length)] + "'";
+
+        var { error: insertErr } = await supabase.from('ship_market_listings').insert({
+            nation_id: nation.id,
+            vessel_name: vesselName,
+            vessel_class: cls,
+            capacity_dwt: capacity,
+            capacity_unit: specs.capacity_unit,
+            condition: condition,
+            fuel: fuel,
+            age_ticks: ageTicks,
+            fuel_capacity: specs.fuel_capacity,
+            base_maintenance: specs.base_maintenance,
+            asking_price: askingPrice,
+            purchase_price_new: specs.purchase_price,
+            seller_type: 'LOCAL',
+            seller_name: seller + ' — ' + nation.name,
+            sale_reason: reason,
+            status: 'available',
+            listed_at_tick: currentTick,
+            expires_at_tick: currentTick + 24,
+        });
+        if (insertErr) console.warn('[Ship Market] Failed to generate listing for ' + nation.name + ':', insertErr.message);
+        else generated++;
+    }
+
+    if (generated > 0) console.log('[Ship Market] Generated ' + generated + ' new listings at tick ' + currentTick);
+}
+
+async function processVesselOrderDeliveries(supabase, currentTick) {
+    // Find orders due for delivery
+    const { data: dueOrders, error: fetchErr } = await supabase.from('vessel_orders')
+        .select('*')
+        .eq('status', 'building')
+        .lte('delivery_tick', currentTick);
+
+    if (fetchErr || !dueOrders || dueOrders.length === 0) return;
+
+    for (var oi = 0; oi < dueOrders.length; oi++) {
+        var order = dueOrders[oi];
+
+        // Deduct balance from corp cash
+        const { data: corpData } = await supabase.from('factions')
+            .select('corp_cash_reserves, nation_id').eq('id', order.faction_id).single();
+        if (!corpData) { console.warn('[Vessel Orders] Corp not found for order:', order.id); continue; }
+
+        var corpCash = Number(corpData.corp_cash_reserves || 0);
+        var balance = Number(order.balance_due || 0);
+
+        if (corpCash < balance) {
+            // Can't afford balance — cancel order, forfeit deposit
+            var { error: cancelErr } = await supabase.from('vessel_orders').update({
+                status: 'cancelled', cancelled_at_tick: currentTick,
+            }).eq('id', order.id);
+            if (cancelErr) console.warn('[Vessel Orders] Cancel failed:', cancelErr.message);
+            console.log('[Vessel Orders] Order cancelled (insufficient funds) for ' + order.vessel_name);
+            continue;
+        }
+
+        // Deduct balance
+        var { error: cashErr } = await supabase.from('factions').update({
+            corp_cash_reserves: corpCash - balance,
+        }).eq('id', order.faction_id);
+        if (cashErr) { console.warn('[Vessel Orders] Cash deduction failed:', cashErr.message); continue; }
+
+        // Credit balance to shipyard nation budget
+        const { data: shipyardNation } = await supabase.from('nations')
+            .select('budget_reserves').eq('id', order.shipyard_nation_id).single();
+        if (shipyardNation) {
+            var currentBudget = Number(shipyardNation.budget_reserves || 0);
+            await supabase.from('nations').update({
+                budget_reserves: currentBudget + balance,
+            }).eq('id', order.shipyard_nation_id);
+        }
+
+        // Create the vessel
+        var specs = VESSEL_SPECS[order.vessel_class] || VESSEL_SPECS.Coastal;
+        var { error: vesselErr } = await supabase.from('corp_vessels').insert({
+            faction_id: order.faction_id,
+            nation_id: corpData.nation_id,
+            vessel_name: order.vessel_name,
+            vessel_class: order.vessel_class,
+            condition: 100,
+            fuel: 100,
+            status: 'in_port',
+            capacity_dwt: order.capacity_dwt || specs.capacity_dwt,
+            capacity_unit: order.capacity_unit || specs.capacity_unit,
+            base_maintenance: order.base_maintenance || specs.base_maintenance,
+            fuel_capacity: order.fuel_capacity || specs.fuel_capacity,
+            purchase_price: Number(order.total_cost),
+            built_at_tick: currentTick,
+            current_port_nation_id: corpData.nation_id,
+        });
+        if (vesselErr) { console.warn('[Vessel Orders] Vessel creation failed:', vesselErr.message); continue; }
+
+        // Mark order as delivered
+        var { error: deliverErr } = await supabase.from('vessel_orders').update({
+            status: 'delivered', delivered_at_tick: currentTick,
+        }).eq('id', order.id);
+        if (deliverErr) console.warn('[Vessel Orders] Delivery status update failed:', deliverErr.message);
+
+        console.log('[Vessel Orders] Delivered ' + order.vessel_name + ' (' + order.vessel_class + ') to ' + order.faction_id);
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 //  FINANCE SECTOR — Loan Processing
 // ════════════════════════════════════════════════════════════════════════════════
 
@@ -2843,13 +3016,33 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 console.error(`[advance-corp-tick] Shipping route generation failed (non-fatal):`, shipErr);
             }
 
+            // ── Ship Market — Generate listings every 8 ticks ────────────
+            try {
+                if (!summary._shipMarketGenerated && currentTick % 8 === 0) {
+                    await generateShipMarketListings(supabase, currentTick);
+                    summary._shipMarketGenerated = true;
+                }
+            } catch (mktErr) {
+                console.error(`[advance-corp-tick] Ship market generation failed (non-fatal):`, mktErr);
+            }
+
+            // ── Vessel Orders — Deliver completed commissions ────────────
+            try {
+                if (!summary._vesselOrdersProcessed) {
+                    await processVesselOrderDeliveries(supabase, currentTick);
+                    summary._vesselOrdersProcessed = true;
+                }
+            } catch (ordErr) {
+                console.error(`[advance-corp-tick] Vessel order delivery failed (non-fatal):`, ordErr);
+            }
+
             // ── Shipping Sector — Transit Cycles & Revenue ───────────────
             // Process active shipping claims: advance vessel status, collect
             // revenue on completed transits, restart transit cycles.
             try {
                 const { data: activeClaims } = await supabase
                     .from('shipping_claims')
-                    .select('id, route_id, faction_id, vessel_status, transit_started_tick, transit_arrives_tick, revenue_per_transit, total_revenue, transits_completed, shipping_routes!inner(transit_ticks, status)')
+                    .select('id, route_id, faction_id, vessel_status, transit_started_tick, transit_arrives_tick, revenue_per_transit, total_revenue, transits_completed, shipping_routes!inner(transit_ticks, status, destination_nation_id)')
                     .eq('status', 'active')
                     .eq('nation_id', nation.id);
 
@@ -2858,7 +3051,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     let transitsCompleted = 0;
 
                     for (const claim of activeClaims) {
-                        // Skip if route expired
+                        // Skip if route expired — release claim and free vessel
                         if (claim.shipping_routes?.status !== 'active') {
                             await supabase.from('shipping_claims').update({
                                 status: 'released', released_at_tick: currentTick, vessel_status: 'idle'
@@ -2866,6 +3059,11 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             await supabase.from('factions').update({
                                 shipping_fleet_deployed: Math.max(0, (await supabase.from('factions').select('shipping_fleet_deployed').eq('id', claim.faction_id).single()).data?.shipping_fleet_deployed - 1 || 0)
                             }).eq('id', claim.faction_id);
+                            // Free the assigned vessel
+                            var { error: freeErr } = await supabase.from('corp_vessels').update({
+                                status: 'in_port', active_claim_id: null,
+                            }).eq('active_claim_id', claim.id).eq('faction_id', claim.faction_id);
+                            if (freeErr) console.warn('[advance-corp-tick] Failed to free vessel on route expiry:', freeErr.message);
                             continue;
                         }
 
@@ -2878,6 +3076,12 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 transit_started_tick: currentTick,
                                 transit_arrives_tick: currentTick + transitTicks,
                             }).eq('id', claim.id);
+
+                            // Update assigned vessel to in_transit
+                            var { error: transitErr } = await supabase.from('corp_vessels').update({
+                                status: 'in_transit', current_port_nation_id: null,
+                            }).eq('active_claim_id', claim.id).eq('faction_id', claim.faction_id);
+                            if (transitErr) console.warn('[advance-corp-tick] Vessel transit update failed:', transitErr.message);
 
                         } else if (claim.vessel_status === 'in_transit' && currentTick >= (claim.transit_arrives_tick || 0)) {
                             // Transit complete — collect revenue and restart cycle
@@ -2904,6 +3108,13 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 transit_arrives_tick: null,
                             }).eq('id', claim.id);
 
+                            // Update assigned vessel: arrived at destination port
+                            const destNationId = claim.shipping_routes?.destination_nation_id || claim.nation_id;
+                            var { error: arriveErr } = await supabase.from('corp_vessels').update({
+                                status: 'in_port', current_port_nation_id: destNationId,
+                            }).eq('active_claim_id', claim.id).eq('faction_id', claim.faction_id);
+                            if (arriveErr) console.warn('[advance-corp-tick] Vessel arrival update failed:', arriveErr.message);
+
                             transitsCompleted++;
                         }
                         // 'in_transit' but not yet arrived — no action needed
@@ -2915,6 +3126,75 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 }
             } catch (shipRevErr) {
                 console.error(`[advance-corp-tick] Shipping revenue failed for ${nation.name} (non-fatal):`, shipRevErr);
+            }
+
+            // ── Vessel Decay & Maintenance ──────────────────────────────
+            // Condition degrades 1d2% per tick for all vessels.
+            // Fuel degrades 1d10+5% for vessels in transit.
+            // Maintenance deducted from corp cash.
+            // Dry dock completion restores condition.
+            try {
+                const { data: vessels } = await supabase.from('corp_vessels')
+                    .select('id, vessel_name, vessel_class, condition, fuel, status, base_maintenance, drydock_until_tick, active_claim_id, current_port_nation_id')
+                    .eq('faction_id', corp.id);
+
+                if (vessels && vessels.length > 0) {
+                    let totalMaintenance = 0;
+
+                    for (const v of vessels) {
+                        const updates = {};
+
+                        // Dry dock completion check
+                        if (v.status === 'dry_dock' && v.drydock_until_tick && currentTick >= v.drydock_until_tick) {
+                            updates.status = 'in_port';
+                            updates.condition = 85 + Math.floor(Math.random() * 16); // restore to 85-100
+                            updates.drydock_until_tick = null;
+                            updates.last_refurbish_tick = currentTick;
+                            console.log(`[advance-corp-tick] Vessel ${v.vessel_name}: dry dock complete, condition → ${updates.condition}%`);
+                        }
+
+                        // Condition decay: 1d2% per tick (all vessels except dry dock)
+                        if (v.status !== 'dry_dock') {
+                            const condDecay = 1 + Math.floor(Math.random() * 2); // 1-2%
+                            const newCond = Math.max(0, (updates.condition || v.condition) - condDecay);
+                            updates.condition = newCond;
+
+                            // Forced dry dock if condition drops below 20%
+                            if (newCond < 20 && v.status !== 'in_transit') {
+                                updates.status = 'dry_dock';
+                                updates.drydock_until_tick = currentTick + 3; // 3 ticks to repair
+                                updates.active_claim_id = null;
+                                console.log(`[advance-corp-tick] Vessel ${v.vessel_name}: forced dry dock (condition ${newCond}%)`);
+                            }
+                        }
+
+                        // Fuel decay: 1d10+5% for vessels in transit
+                        if (v.status === 'in_transit') {
+                            const fuelBurn = 5 + Math.floor(Math.random() * 10) + 1; // 6-15%
+                            updates.fuel = Math.max(0, v.fuel - fuelBurn);
+                        }
+
+                        // Maintenance cost (all vessels, even dry dock)
+                        totalMaintenance += v.base_maintenance;
+
+                        // Apply updates
+                        if (Object.keys(updates).length > 0) {
+                            const { error: vErr } = await supabase.from('corp_vessels').update(updates).eq('id', v.id);
+                            if (vErr) console.warn(`[advance-corp-tick] Vessel update failed for ${v.vessel_name}:`, vErr.message);
+                        }
+                    }
+
+                    // Deduct total fleet maintenance from corp cash
+                    if (totalMaintenance > 0) {
+                        const corpCash = Number(corp.corp_cash_reserves ?? 0);
+                        const { error: maintErr } = await supabase.from('factions').update({
+                            corp_cash_reserves: Math.max(0, corpCash - totalMaintenance),
+                        }).eq('id', corp.id);
+                        if (maintErr) console.warn(`[advance-corp-tick] Fleet maintenance deduction failed for ${corp.faction_name}:`, maintErr.message);
+                    }
+                }
+            } catch (vesselErr) {
+                console.error(`[advance-corp-tick] Vessel decay failed for ${corp.faction_name} (non-fatal):`, vesselErr);
             }
 
             // ── Specialty Building Effects ────────────────────────────────
