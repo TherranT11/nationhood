@@ -420,12 +420,14 @@ function initNationHighlight(allNations, state) {
     if (!body || !allNations.length) return;
 
     const myNationId = state.nation?.id;
+    _worldAllNations = allNations;
+    _worldState = state;
 
     // Show your own nation by default
     const myNation = allNations.find(n => n.id === myNationId);
-    if (myNation) renderNationHighlight(myNation, state);
+    if (myNation) selectWorldNation(myNation.id);
 
-    // Add a clickable nation list at the bottom of the panel
+    // Add clickable nation list below highlight
     const listHtml = allNations.map(n => {
         const isYou = n.id === myNationId;
         return `<div class="world-highlight-stat-row" style="cursor:pointer;padding:6px 0;" data-nation-id="${n.id}">
@@ -434,36 +436,84 @@ function initNationHighlight(allNations, state) {
         </div>`;
     }).join('');
 
-    // Append nation list below the highlight content
-    const listContainer = document.createElement('div');
-    listContainer.id = 'world-nation-list';
-    listContainer.innerHTML = `<div class="world-highlight-section">ALL NATIONS</div>${listHtml}`;
-    body.after(listContainer);
-
-    // Actually put it inside the highlight body
-    body.parentElement.querySelector('#world-nation-list')?.remove();
     const listDiv = document.createElement('div');
     listDiv.style.cssText = 'padding:0 14px 14px;border-top:1px solid var(--border-main);';
     listDiv.innerHTML = `<div class="world-highlight-section" style="margin-top:8px;">ALL NATIONS</div>${listHtml}`;
     body.after(listDiv);
 
-    // Click handler
     listDiv.addEventListener('click', (e) => {
         const row = e.target.closest('[data-nation-id]');
         if (!row) return;
-        const nation = allNations.find(n => n.id === row.dataset.nationId);
-        if (nation) renderNationHighlight(nation, state);
+        selectWorldNation(row.dataset.nationId);
     });
 }
 
-function renderNationHighlight(nation, state) {
+let _worldAllNations = [];
+let _worldState = null;
+let _worldRelations = null;
+let _worldAgreements = null;
+
+async function selectWorldNation(nationId) {
+    const nation = _worldAllNations.find(n => n.id === nationId);
+    if (!nation) return;
+
+    const myNationId = _worldState.nation?.id;
+
+    // Fetch diplomatic data if not cached
+    if (!_worldRelations) {
+        const [relResult, agreeResult, ambResult] = await Promise.all([
+            _supabase.from('diplomatic_relations').select('*'),
+            _supabase.from('trade_agreements').select('*').eq('status', 'active'),
+            _supabase.from('ambassadors').select('*').eq('status', 'active'),
+        ]);
+        _worldRelations = relResult.data || [];
+        _worldAgreements = agreeResult.data || [];
+        _worldAmbassadors = ambResult.data || [];
+    }
+
+    renderNationHighlight(nation, _worldState, _worldRelations, _worldAgreements, _worldAmbassadors);
+}
+
+let _worldAmbassadors = [];
+
+function renderNationHighlight(nation, state, relations, agreements, ambassadors) {
     const body = document.getElementById('world-highlight-body');
     if (!body) return;
 
-    const isYou = nation.id === state.nation?.id;
+    const myNationId = state.nation?.id;
+    const isYou = nation.id === myNationId;
     const pop = Number(nation.population || 0);
     const popLabel = pop >= 1e6 ? (pop / 1e6).toFixed(1) + 'M' : pop.toLocaleString();
 
+    // Find diplomatic relation between us and selected nation
+    let relScore = null;
+    let proximity = null;
+    if (!isYou && myNationId) {
+        const a = myNationId < nation.id ? myNationId : nation.id;
+        const b = myNationId < nation.id ? nation.id : myNationId;
+        const rel = (relations || []).find(r => r.nation_a_id === a && r.nation_b_id === b);
+        if (rel) {
+            relScore = Number(rel.relation_score ?? 0);
+            proximity = Number(rel.proximity ?? 0);
+        }
+    }
+
+    // Find active agreements between us and selected nation
+    const bilateralAgreements = isYou ? [] : (agreements || []).filter(ag =>
+        (ag.nation_a_id === myNationId && ag.nation_b_id === nation.id) ||
+        (ag.nation_a_id === nation.id && ag.nation_b_id === myNationId)
+    );
+
+    // Find ambassadors
+    const ourAmbassador = (ambassadors || []).find(a => a.home_nation_id === myNationId && a.host_nation_id === nation.id);
+    const theirAmbassador = (ambassadors || []).find(a => a.home_nation_id === nation.id && a.host_nation_id === myNationId);
+
+    // All agreements for this nation (when viewing yourself)
+    const allNationAgreements = isYou ? (agreements || []).filter(ag =>
+        ag.nation_a_id === nation.id || ag.nation_b_id === nation.id
+    ) : [];
+
+    // Key stats
     const stats = [
         { label: 'GDP Growth', value: (nation.gdp_growth ?? 0).toFixed(1), color: nation.gdp_growth >= 50 ? 'var(--green)' : 'var(--text-bright)' },
         { label: 'Stability', value: (nation.stability ?? 0).toFixed(1), color: nation.stability >= 50 ? 'var(--green)' : nation.stability >= 30 ? 'var(--amber)' : 'var(--red)' },
@@ -471,21 +521,100 @@ function renderNationHighlight(nation, state) {
         { label: 'Corruption', value: (nation.corruption ?? 0).toFixed(1), color: nation.corruption <= 30 ? 'var(--green)' : nation.corruption <= 60 ? 'var(--amber)' : 'var(--red)' },
         { label: 'Unemployment', value: (nation.unemployment ?? 0).toFixed(1), color: nation.unemployment <= 30 ? 'var(--green)' : 'var(--amber)' },
         { label: 'Healthcare', value: (nation.healthcare_quality ?? 0).toFixed(1) },
-        { label: 'Education', value: (nation.higher_education ?? 0).toFixed(1) },
         { label: 'Civil Unrest', value: (nation.civil_unrest ?? 0).toFixed(1), color: nation.civil_unrest <= 20 ? 'var(--green)' : nation.civil_unrest <= 50 ? 'var(--amber)' : 'var(--red)' },
     ];
 
-    body.innerHTML = `
+    // Relation label
+    let relLabel = '', relColor = 'var(--text-dim)';
+    if (relScore !== null) {
+        if (relScore >= 60) { relLabel = 'FRIENDLY'; relColor = 'var(--green)'; }
+        else if (relScore >= 30) { relLabel = 'WARM'; relColor = 'var(--green)'; }
+        else if (relScore >= -10) { relLabel = 'NEUTRAL'; relColor = 'var(--amber)'; }
+        else if (relScore >= -40) { relLabel = 'COOL'; relColor = 'var(--orange)'; }
+        else { relLabel = 'HOSTILE'; relColor = 'var(--red)'; }
+    }
+
+    // Agreement type labels
+    const AGREE_TYPE_LABELS = {
+        free_trade: 'Free Trade Agreement',
+        preferential_trade: 'Preferential Trade',
+        resource_supply: 'Resource Supply Contract',
+        export_subsidy: 'Export Subsidy',
+        economic_aid: 'Economic Aid',
+        retaliatory_tariff: 'Retaliatory Tariff',
+        impose_embargo: 'Embargo',
+    };
+
+    let html = `
         <div style="margin-bottom:10px;">
             <div class="world-highlight-name">${escapeHtml(nation.name)}${isYou ? ' <span style="font-family:var(--font-mono);font-size:8px;color:var(--green);font-weight:700;">YOU</span>' : ''}</div>
-            <div class="world-highlight-meta">${escapeHtml(nation.government_type || 'Unknown')} &middot; Pop: ${popLabel}</div>
-        </div>
-        <div class="world-highlight-section">KEY STATS</div>
-        ${stats.map(s => `<div class="world-highlight-stat-row">
-            <span class="world-highlight-stat-label">${escapeHtml(s.label)}</span>
-            <span class="world-highlight-stat-value" style="${s.color ? 'color:' + s.color : ''}">${s.value}</span>
-        </div>`).join('')}
-    `;
+            <div class="world-highlight-meta">${escapeHtml(nation.government_type || 'Unknown')} \u00B7 Pop: ${popLabel}</div>
+        </div>`;
+
+    // Diplomatic relation (only when viewing another nation)
+    if (!isYou && relScore !== null) {
+        html += `<div class="world-highlight-section">DIPLOMATIC RELATIONS</div>`;
+        html += `<div class="world-highlight-stat-row">
+            <span class="world-highlight-stat-label">Relation Score</span>
+            <span class="world-highlight-stat-value" style="color:${relColor};">${relScore} \u2014 ${relLabel}</span>
+        </div>`;
+        if (proximity !== null) {
+            html += `<div class="world-highlight-stat-row">
+                <span class="world-highlight-stat-label">Proximity</span>
+                <span class="world-highlight-stat-value">${proximity}</span>
+            </div>`;
+        }
+        html += `<div class="world-highlight-stat-row">
+            <span class="world-highlight-stat-label">Our Ambassador</span>
+            <span class="world-highlight-stat-value" style="color:${ourAmbassador ? 'var(--green)' : 'var(--text-dim)'};">${ourAmbassador ? 'Posted' : 'None'}</span>
+        </div>`;
+        html += `<div class="world-highlight-stat-row">
+            <span class="world-highlight-stat-label">Their Ambassador</span>
+            <span class="world-highlight-stat-value" style="color:${theirAmbassador ? 'var(--green)' : 'var(--text-dim)'};">${theirAmbassador ? 'Posted' : 'None'}</span>
+        </div>`;
+    }
+
+    // Active agreements
+    if (!isYou && bilateralAgreements.length > 0) {
+        html += `<div class="world-highlight-section">ACTIVE AGREEMENTS (${bilateralAgreements.length})</div>`;
+        for (const ag of bilateralAgreements) {
+            const typeLabel = AGREE_TYPE_LABELS[ag.agreement_type] || ag.agreement_type;
+            const isHostile = ag.agreement_type === 'retaliatory_tariff' || ag.agreement_type === 'impose_embargo';
+            html += `<div style="padding:4px 0;border-bottom:1px solid var(--border-light);">
+                <div style="font-size:9px;font-weight:600;color:${isHostile ? 'var(--red)' : 'var(--text-bright)'};">${escapeHtml(ag.agreement_name || typeLabel)}</div>
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${escapeHtml(typeLabel)}</div>
+            </div>`;
+        }
+    } else if (!isYou && bilateralAgreements.length === 0) {
+        html += `<div class="world-highlight-section">AGREEMENTS</div>`;
+        html += `<div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);font-style:italic;">No active agreements.</div>`;
+    }
+
+    // Your nation: show total agreement count
+    if (isYou && allNationAgreements.length > 0) {
+        html += `<div class="world-highlight-section">YOUR AGREEMENTS (${allNationAgreements.length})</div>`;
+        for (const ag of allNationAgreements.slice(0, 8)) {
+            const otherNationId = ag.nation_a_id === nation.id ? ag.nation_b_id : ag.nation_a_id;
+            const otherNation = _worldAllNations.find(n => n.id === otherNationId);
+            const typeLabel = AGREE_TYPE_LABELS[ag.agreement_type] || ag.agreement_type;
+            html += `<div style="padding:3px 0;border-bottom:1px solid var(--border-light);">
+                <div style="font-size:9px;font-weight:600;color:var(--text-bright);">${escapeHtml(ag.agreement_name || typeLabel)}</div>
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">with ${escapeHtml(otherNation?.name || 'Unknown')} \u00B7 ${escapeHtml(typeLabel)}</div>
+            </div>`;
+        }
+        if (allNationAgreements.length > 8) {
+            html += `<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">+ ${allNationAgreements.length - 8} more</div>`;
+        }
+    }
+
+    // Key stats
+    html += `<div class="world-highlight-section">KEY STATS</div>`;
+    html += stats.map(s => `<div class="world-highlight-stat-row">
+        <span class="world-highlight-stat-label">${escapeHtml(s.label)}</span>
+        <span class="world-highlight-stat-value" style="${s.color ? 'color:' + s.color : ''}">${s.value}</span>
+    </div>`).join('');
+
+    body.innerHTML = html;
 }
 
 initPage('diplomacy', async (state) => {
