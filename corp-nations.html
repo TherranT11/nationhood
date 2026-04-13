@@ -212,9 +212,11 @@ let allUserFactions = [];
 let faction = null;
 let shard = null;
 let _allNations = [];
-let _continents = {};  // { 'Crucera': [nation, ...], 'Meridian': [...] }
+let _continents = {};
 let _selectedContinent = '';
 let _selectedNationIdx = 0;
+let _presenceMap = {};  // { nationId: { hq: bool, subsidiaries: N, properties: N, projects: N } }
+let _corpsByNation = {}; // { nationId: [{ faction_name, abbreviation, corp_sector, corp_subsector, corp_cash_reserves }] }
 
 function fmtMoney(n) {
     if (n === null || n === undefined) return '—';
@@ -265,6 +267,36 @@ async function init() {
     }
     _selectedContinent = Object.keys(_continents)[0] || '';
     _selectedNationIdx = 0;
+
+    // Load presence data: properties, subsidiaries, active corporations per nation
+    try {
+        const [propsRes, corpsRes] = await Promise.all([
+            _supabase.from('corp_properties').select('nation_id').eq('faction_id', faction.id).eq('is_active', true),
+            _supabase.from('factions')
+                .select('id, faction_name, abbreviation, corp_sector, corp_subsector, corp_cash_reserves, nation_id, corp_ticker')
+                .eq('faction_type', 'corporation').is('abandoned_at', null),
+        ]);
+
+        // Build presence map for YOUR corp
+        _presenceMap = {};
+        const myNationId = faction.nation_id;
+        for (const n of _allNations) {
+            _presenceMap[n.id] = { hq: n.id === myNationId, properties: 0, subsidiaries: 0 };
+        }
+        for (const p of (propsRes.data || [])) {
+            if (_presenceMap[p.nation_id]) _presenceMap[p.nation_id].properties++;
+        }
+
+        // Build corps per nation (all corporations, not just yours)
+        _corpsByNation = {};
+        for (const c of (corpsRes.data || [])) {
+            if (!c.nation_id) continue;
+            if (!_corpsByNation[c.nation_id]) _corpsByNation[c.nation_id] = [];
+            _corpsByNation[c.nation_id].push(c);
+        }
+    } catch (presErr) {
+        console.warn('Failed to load presence data:', presErr.message);
+    }
 
     // Populate top bar
     const ticker = faction.corp_ticker || faction.abbreviation || '';
@@ -338,6 +370,11 @@ function selectNation(idx) {
     renderNationDetail();
 }
 
+function statColor(v, invert) {
+    if (invert) return v >= 60 ? '#c55' : v >= 40 ? '#ca5' : '#5c5';
+    return v >= 60 ? '#5c5' : v >= 40 ? '#ca5' : v >= 20 ? '#c84' : '#c55';
+}
+
 function renderNationList() {
     const container = document.getElementById('nations-list');
     const nations = _continents[_selectedContinent] || [];
@@ -345,12 +382,68 @@ function renderNationList() {
         container.innerHTML = '<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">No nations in this region.</div>';
         return;
     }
-    // Placeholder — Phase 3 will build the full nation cards
+
     container.innerHTML = nations.map((n, i) => {
         const isSel = _selectedNationIdx === i;
-        return `<div onclick="selectNation(${i})" style="padding:10px 14px;border-bottom:1px solid var(--border-0);cursor:pointer;border-left:3px solid ${isSel ? '#8b9a6b' : 'transparent'};background:${isSel ? 'rgba(139,154,107,0.03)' : 'transparent'};">
-            <div style="font-size:14px;font-weight:700;color:var(--text-bright);">${escapeHtml(n.name)}</div>
-            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">Pop: ${((n.population || 0) / 1e6).toFixed(1)}M · GDP: ${fmtMoney(n.gdp)}</div>
+        const presence = _presenceMap[n.id] || {};
+        const hasPresence = presence.hq || presence.properties > 0;
+        const stability = Number(n.stability ?? 50);
+        const corpTax = Number(n.corporate_tax ?? 0);
+        const gdpGrowth = Number(n.gdp_growth ?? 50);
+        const civilUnrest = Number(n.civil_unrest ?? 50);
+        const corruption = Number(n.corruption ?? 50);
+        const gdpGrowthPct = ((gdpGrowth - 50) / 50 * 3).toFixed(1);
+        const govType = (n.government_type || 'Democracy').replace(/_/g, ' ');
+
+        // Warnings
+        const warnings = [];
+        if (civilUnrest > 60) warnings.push({ label: 'HIGH UNREST', color: '#c84' });
+        if (stability < 30) warnings.push({ label: 'UNSTABLE', color: '#c55' });
+        if (corruption > 65) warnings.push({ label: 'CORRUPT', color: '#c84' });
+
+        const corpCount = (_corpsByNation[n.id] || []).length;
+
+        return `<div onclick="selectNation(${i})" style="
+            padding:10px 14px;border-bottom:1px solid var(--border-0);cursor:pointer;
+            border-left:3px solid ${isSel ? '#8b9a6b' : 'transparent'};
+            background:${isSel ? 'rgba(139,154,107,0.03)' : 'transparent'};
+        ">
+            <!-- Row 1: Name + badges -->
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+                <span style="font-size:14px;font-weight:700;color:var(--text-bright);">${escapeHtml(n.name)}</span>
+                ${hasPresence ? `<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 5px;line-height:11px;color:#5c5;background:rgba(92,204,92,0.06);border:1px solid rgba(92,204,92,0.15);">YOU OPERATE HERE</span>` : ''}
+                ${presence.hq ? `<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 5px;line-height:11px;color:var(--gold);background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.2);">HQ</span>` : ''}
+            </div>
+
+            <!-- Row 2: Gov type + corp count -->
+            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:5px;">
+                ${escapeHtml(govType)} · ${corpCount} corp${corpCount !== 1 ? 's' : ''} · Pop: ${((n.population || 0) / 1e6).toFixed(1)}M
+            </div>
+
+            <!-- Row 3: Key stats mini bar -->
+            <div style="display:flex;gap:0;background:var(--bg-3);border:1px solid var(--border-0);">
+                <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-0);text-align:center;">
+                    <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">STAB</div>
+                    <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${statColor(stability)};margin-top:1px;">${stability}</div>
+                </div>
+                <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-0);text-align:center;">
+                    <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">CORP TAX</div>
+                    <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${statColor(corpTax, true)};margin-top:1px;">${corpTax}%</div>
+                </div>
+                <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-0);text-align:center;">
+                    <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">GDP ▲</div>
+                    <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${Number(gdpGrowthPct) > 0 ? '#5c5' : '#c55'};margin-top:1px;">${Number(gdpGrowthPct) > 0 ? '+' : ''}${gdpGrowthPct}%</div>
+                </div>
+                <div style="flex:1.2;padding:3px 6px;text-align:center;">
+                    <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">GDP</div>
+                    <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-primary);margin-top:1px;">${fmtMoney(n.gdp)}</div>
+                </div>
+            </div>
+
+            <!-- Row 4: Warning tags -->
+            ${warnings.length > 0 ? `<div style="display:flex;gap:3px;margin-top:4px;flex-wrap:wrap;">
+                ${warnings.map(w => `<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 4px;line-height:11px;color:${w.color};background:${w.color}0a;border:1px solid ${w.color}20;">${w.label}</span>`).join('')}
+            </div>` : ''}
         </div>`;
     }).join('');
 }
