@@ -11790,13 +11790,23 @@ function renderFleetCard() {
                 }
                 html += '</div>';
 
-                // Action buttons (Phase 4 will wire these)
+                // Action buttons
                 const locked = isTransit || isDock;
+                const refurbCost = Math.round((v.purchase_price || 3000000) * 0.08 * (1 + (100 - v.condition) / 100));
+                const refuelCost = Math.round((v.fuel_capacity || 1000) * 50 * (1 - v.fuel / 100));
+                const sellPrice = Math.round((v.purchase_price || 3000000) * (v.condition / 100) * 0.6);
+
                 html += `<div style="display:flex;gap:4px;">
-                    <div style="flex:1;padding:5px 0;text-align:center;cursor:${locked ? 'not-allowed' : 'pointer'};font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.5px;color:${locked ? 'var(--text-dim)' : '#5c5'};border:1px solid ${locked ? 'var(--border-0)' : '#2a5a3a'};background:${locked ? 'transparent' : 'rgba(74,170,136,0.06)'};opacity:${locked ? 0.35 : 1};">REFURBISH</div>
-                    <div style="flex:1;padding:5px 0;text-align:center;cursor:${isTransit ? 'not-allowed' : 'pointer'};font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.5px;color:${isTransit ? 'var(--text-dim)' : '#c86a4a'};border:1px solid ${isTransit ? 'var(--border-0)' : 'rgba(200,106,74,0.3)'};opacity:${isTransit ? 0.35 : 1};">REFUEL</div>
-                    <div style="flex:1;padding:5px 0;text-align:center;cursor:${locked ? 'not-allowed' : 'pointer'};font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.5px;color:${locked ? 'var(--text-dim)' : '#c84'};border:1px solid ${locked ? 'var(--border-0)' : 'rgba(204,136,68,0.3)'};opacity:${locked ? 0.35 : 1};">SELL</div>
+                    <div onclick="${locked ? '' : "flRefurbish('" + v.id + "'," + refurbCost + ")"}" style="flex:1;padding:5px 0;text-align:center;cursor:${locked ? 'not-allowed' : 'pointer'};font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:${locked ? 'var(--text-dim)' : '#5c5'};border:1px solid ${locked ? 'var(--border-0)' : '#2a5a3a'};background:${locked ? 'transparent' : 'rgba(74,170,136,0.06)'};opacity:${locked ? 0.35 : 1};">REFURBISH<br><span style="font-weight:400;font-size:6px;">${hfFmtBig(refurbCost)}</span></div>
+                    <div onclick="${isTransit ? '' : "flRefuel('" + v.id + "'," + refuelCost + ")"}" style="flex:1;padding:5px 0;text-align:center;cursor:${isTransit ? 'not-allowed' : 'pointer'};font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:${isTransit ? 'var(--text-dim)' : '#c86a4a'};border:1px solid ${isTransit ? 'var(--border-0)' : 'rgba(200,106,74,0.3)'};opacity:${isTransit ? 0.35 : 1};">REFUEL<br><span style="font-weight:400;font-size:6px;">${hfFmtBig(refuelCost)}</span></div>
+                    <div onclick="${locked ? '' : "flSell('" + v.id + "','" + escapeHtml(v.vessel_name).replace(/'/g, '') + "'," + sellPrice + ")"}" style="flex:1;padding:5px 0;text-align:center;cursor:${locked ? 'not-allowed' : 'pointer'};font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:${locked ? 'var(--text-dim)' : '#c84'};border:1px solid ${locked ? 'var(--border-0)' : 'rgba(204,136,68,0.3)'};opacity:${locked ? 0.35 : 1};">SELL<br><span style="font-weight:400;font-size:6px;">${hfFmtBig(sellPrice)}</span></div>
                 </div>`;
+
+                // Rename button
+                if (!isTransit) {
+                    html += `<div onclick="flRename('${v.id}','${escapeHtml(v.vessel_name).replace(/'/g, '')}')" style="margin-top:4px;padding:4px 0;text-align:center;cursor:pointer;font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:var(--text-muted);border:1px solid var(--border-0);">RENAME VESSEL</div>`;
+                }
+
                 if (isTransit) html += '<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">⊘ Vessel at sea — actions available on arrival</div>';
                 if (isDock) html += '<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">⊘ Vessel in dry dock — repairs in progress</div>';
                 html += '</div>';
@@ -11826,7 +11836,106 @@ function renderFleetCard() {
     footerEl.innerHTML = footerHtml;
 }
 
+// ── Vessel Actions ──
+
+let _flActionLock = false;
+
+async function flRefurbish(vesselId, cost) {
+    if (_flActionLock || !faction) return;
+    const cash = Number(faction.corp_cash_reserves ?? 0);
+    if (cash < cost) { alert('Insufficient cash. Need ' + hfFmtBig(cost) + '.'); return; }
+    if (!confirm('Send vessel to dry dock for repairs?\n\nCost: ' + hfFmtBig(cost) + '\nDuration: 3 ticks\nCondition will be restored to 85-100%.')) return;
+
+    _flActionLock = true;
+    const currentTick = shard?.current_tick || 0;
+
+    const { error: cashErr } = await _supabase.from('factions').update({
+        corp_cash_reserves: cash - cost,
+    }).eq('id', faction.id);
+    if (cashErr) { alert('Failed: ' + cashErr.message); _flActionLock = false; return; }
+
+    const { error: vesselErr } = await _supabase.from('corp_vessels').update({
+        status: 'dry_dock',
+        drydock_until_tick: currentTick + 3,
+        active_claim_id: null,
+    }).eq('id', vesselId);
+    if (vesselErr) {
+        await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
+        alert('Failed: ' + vesselErr.message);
+        _flActionLock = false;
+        return;
+    }
+
+    faction.corp_cash_reserves = cash - cost;
+    _flActionLock = false;
+    await loadFleet();
+}
+
+async function flRefuel(vesselId, cost) {
+    if (_flActionLock || !faction) return;
+    const cash = Number(faction.corp_cash_reserves ?? 0);
+    if (cash < cost) { alert('Insufficient cash. Need ' + hfFmtBig(cost) + '.'); return; }
+    if (cost <= 0) { alert('Fuel tanks are already full.'); return; }
+
+    _flActionLock = true;
+
+    const { error: cashErr } = await _supabase.from('factions').update({
+        corp_cash_reserves: cash - cost,
+    }).eq('id', faction.id);
+    if (cashErr) { alert('Failed: ' + cashErr.message); _flActionLock = false; return; }
+
+    const { error: vesselErr } = await _supabase.from('corp_vessels').update({
+        fuel: 100,
+    }).eq('id', vesselId);
+    if (vesselErr) {
+        await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
+        alert('Failed: ' + vesselErr.message);
+        _flActionLock = false;
+        return;
+    }
+
+    faction.corp_cash_reserves = cash - cost;
+    _flActionLock = false;
+    await loadFleet();
+}
+
+async function flSell(vesselId, vesselName, price) {
+    if (_flActionLock || !faction) return;
+    if (!confirm('Sell ' + vesselName + ' for ' + hfFmtBig(price) + '?\n\nThis cannot be undone.')) return;
+
+    _flActionLock = true;
+    const cash = Number(faction.corp_cash_reserves ?? 0);
+
+    const { error: cashErr } = await _supabase.from('factions').update({
+        corp_cash_reserves: cash + price,
+    }).eq('id', faction.id);
+
+    const { error: delErr } = await _supabase.from('corp_vessels').delete().eq('id', vesselId);
+    if (delErr) { alert('Failed to remove vessel: ' + delErr.message); _flActionLock = false; return; }
+
+    faction.corp_cash_reserves = cash + price;
+    _flActionLock = false;
+    _fleetSelectedIdx = null;
+    await loadFleet();
+}
+
+async function flRename(vesselId, currentName) {
+    const newName = prompt('Rename vessel:', currentName);
+    if (!newName || newName.trim() === currentName || newName.trim().length < 2) return;
+
+    const { error } = await _supabase.from('corp_vessels').update({
+        vessel_name: newName.trim().slice(0, 40),
+    }).eq('id', vesselId);
+    if (error) { alert('Failed: ' + error.message); return; }
+
+    await loadFleet();
+}
+
 window.flSelectVessel = flSelectVessel;
+window.flRefurbish = flRefurbish;
+window.flRefuel = flRefuel;
+window.flSell = flSell;
+window.flRename = flRename;
 
 window.openBidReview = openBidReview;
 window.closeBidReview = closeBidReview;
