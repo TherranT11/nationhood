@@ -2815,11 +2815,16 @@ export async function enactBill(supabase, bill, currentTick) {
         } else if (effect.type === 'TARIFF_RATE_CHANGE' && effect.sector) {
             // Per-sector tariff: merge into nation's sector_tariffs jsonb
             const tariffRate = Math.max(0, Math.min(100, Number(effect.new_rate)));
-            const { data: nationRow } = await supabase.from('nations').select('sector_tariffs').eq('id', bill.nation_id).single();
-            const existingTariffs = nationRow?.sector_tariffs || {};
-            existingTariffs[effect.sector] = tariffRate;
-            await supabase.from('nations').update({ sector_tariffs: existingTariffs }).eq('id', bill.nation_id);
-            console.log(`[enactBill] Sector tariff: ${effect.sector} → ${tariffRate}%`);
+            const { data: nationRow, error: tariffReadErr } = await supabase.from('nations').select('sector_tariffs').eq('id', bill.nation_id).single();
+            if (tariffReadErr) {
+                console.error('[enactBill] Failed to read sector_tariffs:', tariffReadErr.message);
+            } else {
+                const existingTariffs = nationRow?.sector_tariffs || {};
+                existingTariffs[effect.sector] = tariffRate;
+                const { error: tariffWriteErr } = await supabase.from('nations').update({ sector_tariffs: existingTariffs }).eq('id', bill.nation_id);
+                if (tariffWriteErr) console.error('[enactBill] Failed to write sector_tariffs:', tariffWriteErr.message);
+                else console.log(`[enactBill] Sector tariff: ${effect.sector} → ${tariffRate}%`);
+            }
         } else if (typeof effect.target_stat === 'string' && typeof effect.delta === 'number') {
             // Backward compatibility: parse legacy stat_effect-like payloads
             const key = effect.target_stat.toLowerCase();

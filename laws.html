@@ -2012,29 +2012,32 @@ function addTariffArticle() {
     if (!sector) return;
 
     _draftArticleLock = true;
-    const label = TARIFF_SECTOR_LABELS[sector] || sector;
-    const articleNum = draftArticles.length + 2;
+    try {
+        const label = TARIFF_SECTOR_LABELS[sector] || sector;
+        const articleNum = draftArticles.length + 2;
 
-    draftArticles.push({
-        articleNumber: articleNum,
-        isTariff: true,
-        policy: {
-            id: null,
-            policy_name: label + ' Tariff — ' + rate + '%',
-            description: 'Sets a ' + rate + '% tariff on all ' + label + ' imports.',
-        },
-        effect_data: {
-            type: 'TARIFF_RATE_CHANGE',
-            sector: sector,
-            new_rate: rate,
-        },
-    });
+        draftArticles.push({
+            articleNumber: articleNum,
+            isTariff: true,
+            policy: {
+                id: null,
+                policy_name: label + ' Tariff — ' + rate + '%',
+                description: 'Sets a ' + rate + '% tariff on all ' + label + ' imports.',
+            },
+            effect_data: {
+                type: 'TARIFF_RATE_CHANGE',
+                sector: sector,
+                new_rate: rate,
+            },
+        });
 
-    renderDraftArticles();
-    _showAllArticleButtons(); _hideAllArticleForms();
-    document.getElementById('bill-name-section').style.display = 'block';
-    updateSubmitButtonCost();
-    _draftArticleLock = false;
+        renderDraftArticles();
+        _showAllArticleButtons(); _hideAllArticleForms();
+        document.getElementById('bill-name-section').style.display = 'block';
+        updateSubmitButtonCost();
+    } finally {
+        _draftArticleLock = false;
+    }
 }
 
 window.showTariffForm = showTariffForm;
