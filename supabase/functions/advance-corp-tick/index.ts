@@ -2917,6 +2917,75 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 console.error(`[advance-corp-tick] Shipping revenue failed for ${nation.name} (non-fatal):`, shipRevErr);
             }
 
+            // ── Vessel Decay & Maintenance ──────────────────────────────
+            // Condition degrades 1d2% per tick for all vessels.
+            // Fuel degrades 1d10+5% for vessels in transit.
+            // Maintenance deducted from corp cash.
+            // Dry dock completion restores condition.
+            try {
+                const { data: vessels } = await supabase.from('corp_vessels')
+                    .select('id, vessel_name, vessel_class, condition, fuel, status, base_maintenance, drydock_until_tick, active_claim_id, current_port_nation_id')
+                    .eq('faction_id', corp.id);
+
+                if (vessels && vessels.length > 0) {
+                    let totalMaintenance = 0;
+
+                    for (const v of vessels) {
+                        const updates = {};
+
+                        // Dry dock completion check
+                        if (v.status === 'dry_dock' && v.drydock_until_tick && currentTick >= v.drydock_until_tick) {
+                            updates.status = 'in_port';
+                            updates.condition = 85 + Math.floor(Math.random() * 16); // restore to 85-100
+                            updates.drydock_until_tick = null;
+                            updates.last_refurbish_tick = currentTick;
+                            console.log(`[advance-corp-tick] Vessel ${v.vessel_name}: dry dock complete, condition → ${updates.condition}%`);
+                        }
+
+                        // Condition decay: 1d2% per tick (all vessels except dry dock)
+                        if (v.status !== 'dry_dock') {
+                            const condDecay = 1 + Math.floor(Math.random() * 2); // 1-2%
+                            const newCond = Math.max(0, (updates.condition || v.condition) - condDecay);
+                            updates.condition = newCond;
+
+                            // Forced dry dock if condition drops below 20%
+                            if (newCond < 20 && v.status !== 'in_transit') {
+                                updates.status = 'dry_dock';
+                                updates.drydock_until_tick = currentTick + 3; // 3 ticks to repair
+                                updates.active_claim_id = null;
+                                console.log(`[advance-corp-tick] Vessel ${v.vessel_name}: forced dry dock (condition ${newCond}%)`);
+                            }
+                        }
+
+                        // Fuel decay: 1d10+5% for vessels in transit
+                        if (v.status === 'in_transit') {
+                            const fuelBurn = 5 + Math.floor(Math.random() * 10) + 1; // 6-15%
+                            updates.fuel = Math.max(0, v.fuel - fuelBurn);
+                        }
+
+                        // Maintenance cost (all vessels, even dry dock)
+                        totalMaintenance += v.base_maintenance;
+
+                        // Apply updates
+                        if (Object.keys(updates).length > 0) {
+                            const { error: vErr } = await supabase.from('corp_vessels').update(updates).eq('id', v.id);
+                            if (vErr) console.warn(`[advance-corp-tick] Vessel update failed for ${v.vessel_name}:`, vErr.message);
+                        }
+                    }
+
+                    // Deduct total fleet maintenance from corp cash
+                    if (totalMaintenance > 0) {
+                        const corpCash = Number(corp.corp_cash_reserves ?? 0);
+                        const { error: maintErr } = await supabase.from('factions').update({
+                            corp_cash_reserves: Math.max(0, corpCash - totalMaintenance),
+                        }).eq('id', corp.id);
+                        if (maintErr) console.warn(`[advance-corp-tick] Fleet maintenance deduction failed for ${corp.faction_name}:`, maintErr.message);
+                    }
+                }
+            } catch (vesselErr) {
+                console.error(`[advance-corp-tick] Vessel decay failed for ${corp.faction_name} (non-fatal):`, vesselErr);
+            }
+
             // ── Specialty Building Effects ────────────────────────────────
             try {
                 const SPECIALTY_TYPES = ['branch_office', 'trading_floor', 'claims_office'];
