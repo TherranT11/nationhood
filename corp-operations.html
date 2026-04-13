@@ -6353,11 +6353,14 @@ async function arClaimRoute() {
                 return v.status === 'in_port' && !v.active_claim_id && v.fuel >= 10;
             });
             if (availableVessel) {
-                await _supabase.from('corp_vessels').update({
+                var { error: vesselAssignErr } = await _supabase.from('corp_vessels').update({
                     status: 'in_transit',
                     active_claim_id: data.claim_id,
                     current_port_nation_id: null,
                 }).eq('id', availableVessel.id);
+                if (vesselAssignErr) console.warn('Failed to assign vessel to route:', vesselAssignErr.message);
+            } else {
+                console.warn('Route claimed but no available vessel with fuel >= 10% to assign.');
             }
         }
 
@@ -6417,9 +6420,10 @@ async function avRelease(claimId) {
         if (data && !data.success) { alert(data.error || 'Release failed.'); return; }
 
         // Free the vessel assigned to this claim
-        await _supabase.from('corp_vessels').update({
+        var { error: freeVesselErr } = await _supabase.from('corp_vessels').update({
             status: 'in_port', active_claim_id: null,
         }).eq('active_claim_id', claimId).eq('faction_id', faction.id);
+        if (freeVesselErr) console.warn('Failed to free vessel on release:', freeVesselErr.message);
 
         avSelected = -1;
         await refreshFactionAndCash();
@@ -11676,7 +11680,7 @@ function flCondColor(v) { return v >= 75 ? '#5c5' : v >= 50 ? '#ca5' : v >= 25 ?
 function flFuelColor(v) { return v >= 60 ? '#5c5' : v >= 30 ? '#ca5' : v >= 15 ? '#c84' : '#c55'; }
 
 async function loadFleet() {
-    if (!faction) return;
+    if (!faction || faction.corp_sector !== 'Shipping') return;
     const { data, error } = await _supabase.from('corp_vessels')
         .select('*')
         .eq('faction_id', faction.id)
@@ -11928,9 +11932,14 @@ async function flSell(vesselId, vesselName, price) {
     const { error: cashErr } = await _supabase.from('factions').update({
         corp_cash_reserves: cash + price,
     }).eq('id', faction.id);
+    if (cashErr) { alert('Failed to credit sale price: ' + cashErr.message); _flActionLock = false; return; }
 
     const { error: delErr } = await _supabase.from('corp_vessels').delete().eq('id', vesselId);
-    if (delErr) { alert('Failed to remove vessel: ' + delErr.message); _flActionLock = false; return; }
+    if (delErr) {
+        // Refund cash on delete failure
+        await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
+        alert('Failed to remove vessel: ' + delErr.message); _flActionLock = false; return;
+    }
 
     faction.corp_cash_reserves = cash + price;
     _flActionLock = false;

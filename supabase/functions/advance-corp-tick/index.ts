@@ -2867,9 +2867,10 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 shipping_fleet_deployed: Math.max(0, (await supabase.from('factions').select('shipping_fleet_deployed').eq('id', claim.faction_id).single()).data?.shipping_fleet_deployed - 1 || 0)
                             }).eq('id', claim.faction_id);
                             // Free the assigned vessel
-                            await supabase.from('corp_vessels').update({
+                            var { error: freeErr } = await supabase.from('corp_vessels').update({
                                 status: 'in_port', active_claim_id: null,
                             }).eq('active_claim_id', claim.id).eq('faction_id', claim.faction_id);
+                            if (freeErr) console.warn('[advance-corp-tick] Failed to free vessel on route expiry:', freeErr.message);
                             continue;
                         }
 
@@ -2884,9 +2885,10 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             }).eq('id', claim.id);
 
                             // Update assigned vessel to in_transit
-                            await supabase.from('corp_vessels').update({
+                            var { error: transitErr } = await supabase.from('corp_vessels').update({
                                 status: 'in_transit', current_port_nation_id: null,
                             }).eq('active_claim_id', claim.id).eq('faction_id', claim.faction_id);
+                            if (transitErr) console.warn('[advance-corp-tick] Vessel transit update failed:', transitErr.message);
 
                         } else if (claim.vessel_status === 'in_transit' && currentTick >= (claim.transit_arrives_tick || 0)) {
                             // Transit complete — collect revenue and restart cycle
@@ -2915,9 +2917,10 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
                             // Update assigned vessel: arrived at destination port
                             const destNationId = claim.shipping_routes?.destination_nation_id || claim.nation_id;
-                            await supabase.from('corp_vessels').update({
+                            var { error: arriveErr } = await supabase.from('corp_vessels').update({
                                 status: 'in_port', current_port_nation_id: destNationId,
                             }).eq('active_claim_id', claim.id).eq('faction_id', claim.faction_id);
+                            if (arriveErr) console.warn('[advance-corp-tick] Vessel arrival update failed:', arriveErr.message);
 
                             transitsCompleted++;
                         }

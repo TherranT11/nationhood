@@ -881,7 +881,8 @@ async function confirmNation() {
                     current_port_nation_id: nation.id,
                 };
             });
-            await _supabase.from('corp_vessels').insert(vesselRows);
+            const { error: vesselSeedErr } = await _supabase.from('corp_vessels').insert(vesselRows);
+            if (vesselSeedErr) console.warn('Failed to seed starting fleet:', vesselSeedErr.message);
         }
 
         // Seed starting equipment + warehouse for construction corps
