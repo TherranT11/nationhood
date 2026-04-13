@@ -7,6 +7,7 @@
 
 <link rel="stylesheet" href="css/dashboard.css">
 <link rel="stylesheet" href="css/news.css">
+<link rel="stylesheet" href="css/radio.css">
 
 <!-- Fonts: news page needs Playfair Display, Source Serif 4, Inter, Outfit, Noto Sans -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -104,16 +105,10 @@
     <div id="newspaper-root"></div>
 </div>
 
-<!-- BROADCAST panel — radio system (Phase 3+) -->
+<!-- BROADCAST panel — radio system -->
 <div class="home-panel" id="panel-broadcast">
     <div id="broadcast-root">
-        <div class="broadcast-placeholder">
-            <div class="broadcast-placeholder-icon">&#128225;</div>
-            <div class="broadcast-placeholder-title">Radio Broadcast</div>
-            <div class="broadcast-placeholder-desc">
-                Create stations, recruit radio personalities, and broadcast to your nation. Coming soon.
-            </div>
-        </div>
+        <div style="display:flex;align-items:center;justify-content:center;min-height:300px;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">Loading radio...</div>
     </div>
 </div>
 
@@ -121,9 +116,11 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { initNewspaper } from './js/news.js';
+import { initRadio } from './js/radio.js';
 
 let _state = null;
 let _newsInitialized = false;
+let _radioInitialized = false;
 
 // Subtab switching
 function switchPanel(panelKey) {
@@ -135,6 +132,12 @@ function switchPanel(panelKey) {
     if (panelKey === 'news' && !_newsInitialized && _state) {
         _newsInitialized = true;
         initNewspaper(_supabase, _state);
+    }
+
+    // Lazy-init radio on first switch to broadcast
+    if (panelKey === 'broadcast' && !_radioInitialized && _state) {
+        _radioInitialized = true;
+        initRadio(_supabase, _state);
     }
 }
 
