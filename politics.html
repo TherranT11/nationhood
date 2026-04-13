@@ -32,11 +32,10 @@
     </div>
 </div>
 
-<!-- PARTIES panel (placeholder) -->
+<!-- PARTIES panel -->
 <div class="pa-panel" id="panel-parties">
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:calc(100vh - 140px);text-align:center;color:var(--text-secondary);">
-        <div style="font-family:var(--font-mono);font-size:0.9rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;">UI 2.0 IS COMING</div>
-        <div style="font-size:0.85rem;color:var(--text-muted);">Please be patient while we roll this out.</div>
+    <div id="pa-parties-root">
+        <div style="display:flex;align-items:center;justify-content:center;min-height:300px;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">Loading...</div>
     </div>
 </div>
 
@@ -60,9 +59,11 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { initPartyActions } from './js/party-actions.js';
+import { initPartyOverview } from './js/party-overview.js';
 
 let _state = null;
 let _actionsInitialized = false;
+let _partiesInitialized = false;
 
 function switchPanel(key) {
     document.querySelectorAll('.pa-subtab').forEach(t => t.classList.toggle('active', t.dataset.panel === key));
@@ -72,6 +73,10 @@ function switchPanel(key) {
     if (key === 'actions' && !_actionsInitialized && _state) {
         _actionsInitialized = true;
         initPartyActions(_supabase, _state);
+    }
+    if (key === 'parties' && !_partiesInitialized && _state) {
+        _partiesInitialized = true;
+        initPartyOverview(_supabase, _state, 'pa-parties-root');
     }
 }
 
