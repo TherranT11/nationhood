@@ -161,6 +161,15 @@
 .pa-platform-slot.filled {
     border-color: var(--amber-border); color: var(--accent); background: var(--amber-faint);
 }
+.pa-platform-slot.fulfilled {
+    border-color: var(--green-border); color: var(--green); background: var(--green-faint);
+}
+.pa-platform-slot.failed {
+    border-color: var(--red-border); color: var(--red); background: var(--red-faint);
+}
+.pa-platform-slot.abated {
+    border-color: var(--border-mid); color: var(--text-dim); background: var(--bg-card);
+}
 
 /* Actions list */
 .pa-actions-list {

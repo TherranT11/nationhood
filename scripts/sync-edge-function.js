@@ -57,6 +57,8 @@ const MODULE_FILES = [
     'shipping.js',
     'issues.js',
     'incidents.js',
+    'platforms.js',
+    'platform-promises.js',
 ];
 
 // Read and process each module

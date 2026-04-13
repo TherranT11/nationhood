@@ -2,6 +2,7 @@
 // Renders leader sidebar, actions panel, platform slots.
 
 import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, platformMomentumInfo } from './game/platforms.js';
+import { getPromiseProgress } from './game/platform-promises.js';
 
 let _supabase = null;
 let _state = null;
@@ -128,15 +129,19 @@ function renderPage(root) {
     const approval = faction.approval_rating ?? 0;
     const momentum = faction.momentum ?? 50;
 
-    // Platform slots display
-    const slotLabels = [];
+    // Platform slots display with promise progress
+    const promiseProgress = getPromiseProgress(_myPlatforms, nation);
+    const slotData = [];
     for (let i = 1; i <= 3; i++) {
         const p = _myPlatforms.find(fp => fp.slot === i);
         if (p) {
             const def = PLATFORMS.find(d => d.id === p.platform_key);
-            slotLabels.push(def?.name || p.platform_key);
+            const pp = promiseProgress.find(pr => pr.id === p.id);
+            const metCount = pp ? pp.stats.filter(s => s.met).length : 0;
+            const totalCount = pp ? pp.stats.length : 0;
+            slotData.push({ name: def?.name || p.platform_key, status: p.status, metCount, totalCount, slot: i });
         } else {
-            slotLabels.push(null);
+            slotData.push(null);
         }
     }
 
@@ -180,10 +185,13 @@ function renderPage(root) {
                 <div class="pa-status-item">
                     <div class="pa-status-label">Platforms</div>
                     <div style="display:flex;gap:4px;margin-top:3px;">
-                        ${slotLabels.map(s => s
-                            ? `<span class="pa-platform-slot filled">${esc(s)}</span>`
-                            : '<span class="pa-platform-slot">No Platform</span>'
-                        ).join('')}
+                        ${slotData.map(s => {
+                            if (!s) return '<span class="pa-platform-slot">No Platform</span>';
+                            const statusIcon = s.status === 'fulfilled' ? ' \u2713' : s.status === 'failed' ? ' \u2717' : s.status === 'abated' ? ' \u2014' : '';
+                            const statusClass = s.status === 'fulfilled' ? 'fulfilled' : s.status === 'failed' ? 'failed' : s.status === 'abated' ? 'abated' : 'filled';
+                            const progress = s.totalCount > 0 ? `${s.metCount}/${s.totalCount}` : '';
+                            return `<span class="pa-platform-slot ${statusClass}" title="${s.metCount} of ${s.totalCount} stats on target">${esc(s.name)}${progress ? ` (${progress})` : ''}${statusIcon}</span>`;
+                        }).join('')}
                     </div>
                 </div>
             </div>
