@@ -10371,7 +10371,10 @@ async function subViewBids(saleId) {
     await subAcceptBid(sale, acceptedBid);
 }
 
+let _acceptBidLock = false;
 async function subAcceptBid(sale, bid) {
+    if (_acceptBidLock) return;
+    _acceptBidLock = true;
     try {
         const currentTick = shard?.current_tick || 0;
 
@@ -10384,11 +10387,18 @@ async function subAcceptBid(sale, bid) {
             return;
         }
 
-        await _supabase.from('factions').update({ corp_cash_reserves: buyerCash - bid.bid_amount }).eq('id', bid.bidder_faction_id);
+        var { error: buyErr } = await _supabase.from('factions').update({ corp_cash_reserves: buyerCash - bid.bid_amount }).eq('id', bid.bidder_faction_id);
+        if (buyErr) { alert('Failed to deduct from buyer: ' + buyErr.message); return; }
 
         // 2. Credit to seller
         const sellerCash = Number(faction?.corp_cash_reserves ?? 0);
-        await _supabase.from('factions').update({ corp_cash_reserves: sellerCash + bid.bid_amount }).eq('id', faction.id);
+        var { error: sellErr } = await _supabase.from('factions').update({ corp_cash_reserves: sellerCash + bid.bid_amount }).eq('id', faction.id);
+        if (sellErr) {
+            // Rollback buyer deduction
+            await _supabase.from('factions').update({ corp_cash_reserves: buyerCash }).eq('id', bid.bidder_faction_id);
+            alert('Failed to credit seller: ' + sellErr.message);
+            return;
+        }
         faction.corp_cash_reserves = sellerCash + bid.bid_amount;
 
         // 3. Transfer subsidiary ownership
@@ -10413,6 +10423,8 @@ async function subAcceptBid(sale, bid) {
     } catch (err) {
         console.error('[SubMarket] Accept bid error:', err);
         alert('Transfer failed: ' + err.message);
+    } finally {
+        _acceptBidLock = false;
     }
 }
 
