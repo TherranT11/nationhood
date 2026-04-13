@@ -6347,9 +6347,23 @@ async function arClaimRoute() {
         if (error) { alert('Claim failed: ' + error.message); return; }
         if (data && !data.success) { alert(data.error || 'Claim failed.'); return; }
 
+        // Assign an available vessel to this claim
+        if (data?.claim_id) {
+            var availableVessel = (_fleetVessels || []).find(function(v) {
+                return v.status === 'in_port' && !v.active_claim_id && v.fuel >= 10;
+            });
+            if (availableVessel) {
+                await _supabase.from('corp_vessels').update({
+                    status: 'in_transit',
+                    active_claim_id: data.claim_id,
+                    current_port_nation_id: null,
+                }).eq('id', availableVessel.id);
+            }
+        }
+
         await refreshFactionAndCash();
         arSelected = -1;
-        await Promise.all([loadAvailableRoutes(), loadActiveVoyages()]);
+        await Promise.all([loadAvailableRoutes(), loadActiveVoyages(), loadFleet()]);
     } catch (e) {
         alert('Claim failed: ' + (e.message || 'Network error'));
     } finally {
@@ -6402,9 +6416,14 @@ async function avRelease(claimId) {
         if (error) { alert('Release failed: ' + error.message); return; }
         if (data && !data.success) { alert(data.error || 'Release failed.'); return; }
 
+        // Free the vessel assigned to this claim
+        await _supabase.from('corp_vessels').update({
+            status: 'in_port', active_claim_id: null,
+        }).eq('active_claim_id', claimId).eq('faction_id', faction.id);
+
         avSelected = -1;
         await refreshFactionAndCash();
-        await Promise.all([loadAvailableRoutes(), loadActiveVoyages()]);
+        await Promise.all([loadAvailableRoutes(), loadActiveVoyages(), loadFleet()]);
     } catch (e) {
         alert('Release failed: ' + (e.message || 'Network error'));
     } finally {

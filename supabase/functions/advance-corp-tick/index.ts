@@ -2849,7 +2849,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             try {
                 const { data: activeClaims } = await supabase
                     .from('shipping_claims')
-                    .select('id, route_id, faction_id, vessel_status, transit_started_tick, transit_arrives_tick, revenue_per_transit, total_revenue, transits_completed, shipping_routes!inner(transit_ticks, status)')
+                    .select('id, route_id, faction_id, vessel_status, transit_started_tick, transit_arrives_tick, revenue_per_transit, total_revenue, transits_completed, shipping_routes!inner(transit_ticks, status, destination_nation_id)')
                     .eq('status', 'active')
                     .eq('nation_id', nation.id);
 
@@ -2858,7 +2858,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     let transitsCompleted = 0;
 
                     for (const claim of activeClaims) {
-                        // Skip if route expired
+                        // Skip if route expired — release claim and free vessel
                         if (claim.shipping_routes?.status !== 'active') {
                             await supabase.from('shipping_claims').update({
                                 status: 'released', released_at_tick: currentTick, vessel_status: 'idle'
@@ -2866,6 +2866,10 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             await supabase.from('factions').update({
                                 shipping_fleet_deployed: Math.max(0, (await supabase.from('factions').select('shipping_fleet_deployed').eq('id', claim.faction_id).single()).data?.shipping_fleet_deployed - 1 || 0)
                             }).eq('id', claim.faction_id);
+                            // Free the assigned vessel
+                            await supabase.from('corp_vessels').update({
+                                status: 'in_port', active_claim_id: null,
+                            }).eq('active_claim_id', claim.id).eq('faction_id', claim.faction_id);
                             continue;
                         }
 
@@ -2878,6 +2882,11 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 transit_started_tick: currentTick,
                                 transit_arrives_tick: currentTick + transitTicks,
                             }).eq('id', claim.id);
+
+                            // Update assigned vessel to in_transit
+                            await supabase.from('corp_vessels').update({
+                                status: 'in_transit', current_port_nation_id: null,
+                            }).eq('active_claim_id', claim.id).eq('faction_id', claim.faction_id);
 
                         } else if (claim.vessel_status === 'in_transit' && currentTick >= (claim.transit_arrives_tick || 0)) {
                             // Transit complete — collect revenue and restart cycle
@@ -2903,6 +2912,12 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 transit_started_tick: null,
                                 transit_arrives_tick: null,
                             }).eq('id', claim.id);
+
+                            // Update assigned vessel: arrived at destination port
+                            const destNationId = claim.shipping_routes?.destination_nation_id || claim.nation_id;
+                            await supabase.from('corp_vessels').update({
+                                status: 'in_port', current_port_nation_id: destNationId,
+                            }).eq('active_claim_id', claim.id).eq('faction_id', claim.faction_id);
 
                             transitsCompleted++;
                         }
