@@ -265,7 +265,11 @@ function renderPartyOverview(container) {
                 ${renderActivityFeed(o)}
                 ${renderQuickInfoCards()}
             </div>
-            <div class="po-col-right" id="po-right-col"></div>
+            <div class="po-col-right" id="po-right-col">
+                ${renderRivalParties(o, faction)}
+                ${renderElectionFormula(o)}
+                ${renderDecayNote(o)}
+            </div>
         </div>
     </div>`;
 
@@ -605,6 +609,124 @@ function renderQuickInfoCards() {
             <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);margin-top:1px;line-height:1.5;">
                 <span style="color:var(--text-bright);font-weight:700;">Press Conf.</span> (1 AP) \u2014 Reactive narrative control.
             </div>
+        </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════
+// RIGHT COLUMN
+// ═══════════════════════════════════════════════════
+
+function renderRivalParties(o, myFaction) {
+    const rivals = o.rivalParties;
+    const admin = o.administration;
+    const coalitionIds = new Set((admin?.coalition_parties || []).map(p => p.party_id));
+    const pmPartyId = admin?.pm_party_id;
+    const totalSeats = _state.nation?.total_seats || 100;
+
+    const AXIS_LABELS = ['SEC/FRE', 'TRA/PRO', 'IND/COL', 'LIB/EQL', 'GLB/NAT'];
+    const AXIS_KEYS = ['security_freedom', 'tradition_progress', 'individualism_collectivism', 'liberty_equality', 'globalism_nationalism'];
+
+    const rivalHtml = rivals.map(party => {
+        const pColor = party.color || '#666';
+        const abbr = party.abbreviation || party.faction_name?.slice(0, 3)?.toUpperCase() || '?';
+        const leaderName = (party.leader_first_name && party.leader_last_name)
+            ? `${party.leader_first_name} ${party.leader_last_name}` : 'Unknown';
+        const seats = party.seats || 0;
+
+        // Governing status
+        const isPM = party.id === pmPartyId;
+        const isCoalition = coalitionIds.has(party.id);
+        let statusLabel, statusColor;
+        if (isPM) {
+            statusLabel = 'GOVERNING \u2014 LEAD';
+            statusColor = 'var(--green)';
+        } else if (isCoalition) {
+            statusLabel = 'GOVERNING \u2014 JUNIOR';
+            statusColor = 'var(--green)';
+        } else {
+            statusLabel = 'OPPOSITION';
+            statusColor = 'var(--orange)';
+        }
+
+        // Seat diff vs you
+        const seatDiff = seats - (myFaction?.seats || 0);
+        const diffColor = seatDiff > 0 ? 'var(--green)' : seatDiff < 0 ? 'var(--red)' : 'var(--text-dim)';
+
+        // Mini ideology axes
+        const ideo = o.factionIdeology[party.id];
+        const miniAxesHtml = AXIS_KEYS.map((key, i) => {
+            const score = ideo ? Number(ideo[key] ?? 0) : 0;
+            const pos = (score + 100) / 200;
+            return `<div style="display:flex;align-items:center;gap:4px;">
+                <span style="font-family:var(--font-mono);font-size:5px;color:var(--text-dim);width:32px;text-align:right;">${AXIS_LABELS[i]}</span>
+                <div style="flex:1;height:4px;background:var(--border-main);position:relative;">
+                    <div style="position:absolute;top:50%;left:${pos * 100}%;transform:translate(-50%,-50%);width:6px;height:6px;border-radius:50%;background:${pColor};"></div>
+                </div>
+            </div>`;
+        }).join('');
+
+        return `<div style="padding:8px 12px;border-bottom:1px solid var(--border-main);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <div style="width:24px;height:24px;background:${pColor}15;border:1px solid ${pColor}33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:8px;font-weight:700;color:${pColor};">${esc(abbr)}</div>
+                    <div>
+                        <div style="font-size:10px;font-weight:700;color:var(--text-bright);">${esc(party.faction_name)}</div>
+                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${esc(leaderName)}</div>
+                    </div>
+                </div>
+                <span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 5px;color:${statusColor};background:${statusColor}0a;border:1px solid ${statusColor}44;white-space:nowrap;">${statusLabel}</span>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:6px;">
+                <div style="display:flex;align-items:center;gap:4px;">
+                    <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">SEATS</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${seats > 0 ? 'var(--text-bright)' : 'var(--text-dim)'};">${seats}</span>
+                    <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">/ ${totalSeats}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;">
+                    <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">VS YOU</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${diffColor};">${seatDiff > 0 ? '+' : ''}${seatDiff}</span>
+                </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px;">${miniAxesHtml}</div>
+        </div>`;
+    }).join('');
+
+    return `<div class="po-card">
+        <div class="po-card-header">
+            <span class="po-card-title">RIVAL PARTIES</span>
+            <span class="po-card-subtitle">${rivals.length} parties</span>
+        </div>
+        ${rivalHtml || '<div style="padding:16px 12px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No rival parties.</div>'}
+    </div>`;
+}
+
+function renderElectionFormula(o) {
+    const govColor = o.governanceScore >= 0 ? 'var(--green)' : 'var(--red)';
+    return `<div class="po-card" style="padding:8px 12px;">
+        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:4px;">ELECTION FORMULA</div>
+        <div style="display:flex;gap:6px;">
+            <div style="flex:1;padding:6px 8px;text-align:center;background:var(--bg-card);border:1px solid var(--border-main);">
+                <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${govColor};">40%</div>
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-secondary);margin-top:2px;">Governance</div>
+            </div>
+            <div style="flex:1;padding:6px 8px;text-align:center;background:var(--bg-card);border:1px solid var(--border-main);">
+                <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--orange);">30%</div>
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-secondary);margin-top:2px;">Momentum</div>
+            </div>
+            <div style="flex:1;padding:6px 8px;text-align:center;background:var(--bg-card);border:1px solid var(--border-main);">
+                <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--accent);">30%</div>
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-secondary);margin-top:2px;">Ideology</div>
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderDecayNote() {
+    return `<div style="background:var(--bg-card);border:1px solid var(--border-main);padding:8px 12px;">
+        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);line-height:1.6;">
+            <span style="color:var(--amber);font-weight:700;">\u26A0 INCUMBENCY DECAY:</span> Positive governance scores erode 3% every 24 ticks. Long-serving governments must keep delivering results.
+            <span style="color:var(--text-bright);font-weight:700;"> Momentum resets to 0</span> after every election. Rebuild each cycle.
         </div>
     </div>`;
 }
