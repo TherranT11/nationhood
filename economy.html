@@ -4009,6 +4009,8 @@ var _industriesLoans = [];
 var _industriesInsurance = [];
 var _industriesShippingClaims = [];
 var _industriesShippingVessels = [];
+var _industriesShipMarket = [];
+var _industriesVesselOrders = [];
 
 async function loadIndustriesData(nationId) {
     var [corpsRes, contractsRes, materialsRes, equipmentRes, deliveriesRes, propsRes, loansRes] = await Promise.all([
@@ -4040,12 +4042,16 @@ async function loadIndustriesData(nationId) {
             .eq('nation_id', nationId)
     ]);
     // Load shipping data
-    var [shippingClaimsRes, shippingVesselsRes] = await Promise.all([
+    var [shippingClaimsRes, shippingVesselsRes, shipMarketRes, vesselOrdersRes] = await Promise.all([
         _supabase.from('shipping_claims').select('id, faction_id, revenue_per_transit, total_revenue, transits_completed, status').eq('nation_id', nationId),
         _supabase.from('corp_vessels').select('id, faction_id, vessel_class, status, condition, base_maintenance').eq('nation_id', nationId),
+        _supabase.from('ship_market_listings').select('id, vessel_name, vessel_class, asking_price, condition, seller_type, seller_name, status, purchased_at_tick, listed_at_tick').eq('nation_id', nationId).order('listed_at_tick', { ascending: false }).limit(20),
+        _supabase.from('vessel_orders').select('id, faction_id, vessel_name, vessel_class, total_cost, deposit_paid, balance_due, shipyard_nation, delivery_tick, build_ticks, status, ordered_at_tick').eq('shipyard_nation_id', nationId).order('ordered_at_tick', { ascending: false }).limit(20),
     ]);
     _industriesShippingClaims = shippingClaimsRes.data || [];
     _industriesShippingVessels = shippingVesselsRes.data || [];
+    _industriesShipMarket = shipMarketRes.data || [];
+    _industriesVesselOrders = vesselOrdersRes.data || [];
 
     var allCorps = corpsRes.data || [];
     _industriesCorps = allCorps.filter(function(c) { return c.nation_id === nationId; });
@@ -4591,9 +4597,67 @@ function renderIndustriesTab(nation) {
     h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + shipCorpCount + ' local shipping corp' + (shipCorpCount !== 1 ? 's' : '') + '</div>';
     h += '</div>';
 
-    // Placeholder cards for Ships Sold/Being Built and Freight Moved (Phases 2-3)
-    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid #8b9a6b;border-radius:8px;padding:16px;display:flex;align-items:center;justify-content:center;">';
-    h += '<div style="text-align:center;color:var(--dtext-3);font-size:0.75rem;">Ships Sold / Being Built<br><span style="font-size:0.6rem;">Phase 2</span></div>';
+    // ── SHIPS SOLD / BEING BUILT ──
+    var soldListings = _industriesShipMarket.filter(function(l) { return l.status === 'sold'; });
+    var availableListings = _industriesShipMarket.filter(function(l) { return l.status === 'available'; });
+    var activeOrders = _industriesVesselOrders.filter(function(o) { return o.status === 'building'; });
+    var completedOrders = _industriesVesselOrders.filter(function(o) { return o.status === 'delivered'; });
+    var totalSoldValue = soldListings.reduce(function(s, l) { return s + (Number(l.asking_price) || 0); }, 0);
+    var totalOrderValue = _industriesVesselOrders.reduce(function(s, o) { return s + (Number(o.total_cost) || 0); }, 0);
+    var shipyardRevenue = totalSoldValue + totalOrderValue;
+    var shipyardColor = '#8b9a6b';
+
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid ' + shipyardColor + ';border-radius:8px;padding:16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:' + shipyardColor + ';"></div><span style="font-size:0.85rem;font-weight:bold;color:' + shipyardColor + ';letter-spacing:1px;">SHIPS SOLD / BUILDING</span></div>';
+    h += badge;
+    h += '</div>';
+
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Ships Sold</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + soldListings.length + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Being Built</div><div style="font-size:1.15rem;font-weight:bold;color:var(--damber);">' + activeOrders.length + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">On Market</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + availableListings.length + '</div></div>';
+    h += '</div>';
+
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Sales Revenue</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(totalSoldValue) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Order Value</div><div style="font-size:1.15rem;font-weight:bold;color:var(--damber);">' + fmtIndustryMoney(totalOrderValue) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Delivered</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + completedOrders.length + '</div></div>';
+    h += '</div>';
+
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Shipyard activity in this nation — vessels sold on the market, new builds commissioned, and orders delivered.</div>';
+
+    // Recent activity
+    h += secHeader('Recent Sales', shipyardColor);
+    if (soldListings.length === 0) {
+        h += '<div style="color:var(--dtext-3);font-size:0.7rem;padding:8px 0;font-style:italic;">No ships sold recently.</div>';
+    } else {
+        for (var si = 0; si < Math.min(3, soldListings.length); si++) {
+            var sl = soldListings[si];
+            h += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;justify-content:space-between;align-items:center;">';
+            h += '<div><div style="font-size:0.8rem;font-weight:700;color:var(--dtext-1);">' + escapeHtml(sl.vessel_name) + '</div>';
+            h += '<div style="font-size:0.6rem;color:var(--dtext-3);">' + escapeHtml(sl.vessel_class) + ' · ' + sl.condition + '% condition · ' + escapeHtml(sl.seller_type) + '</div></div>';
+            h += '<div style="font-size:0.85rem;font-weight:700;color:var(--dgreen);">' + fmtIndustryMoney(sl.asking_price) + '</div>';
+            h += '</div>';
+        }
+    }
+
+    h += secHeader('Active Commissions', shipyardColor);
+    if (activeOrders.length === 0) {
+        h += '<div style="color:var(--dtext-3);font-size:0.7rem;padding:8px 0;font-style:italic;">No vessels under construction.</div>';
+    } else {
+        var currentTick = (tradeData && tradeData.flows) ? Object.values(tradeData.flows)[0]?.tick || 0 : 0;
+        for (var oi = 0; oi < Math.min(3, activeOrders.length); oi++) {
+            var ao = activeOrders[oi];
+            var ticksLeft = Math.max(0, (ao.delivery_tick || 0) - (nation.last_budget_tick || 0));
+            h += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;justify-content:space-between;align-items:center;">';
+            h += '<div><div style="font-size:0.8rem;font-weight:700;color:var(--dtext-1);">' + escapeHtml(ao.vessel_name) + '</div>';
+            h += '<div style="font-size:0.6rem;color:var(--dtext-3);">' + escapeHtml(ao.vessel_class) + ' · ' + ao.build_ticks + ' tick build · ' + ticksLeft + ' ticks left</div></div>';
+            h += '<div style="font-size:0.85rem;font-weight:700;color:var(--damber);">' + fmtIndustryMoney(ao.total_cost) + '</div>';
+            h += '</div>';
+        }
+    }
+
     h += '</div>';
 
     h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid #c86a4a;border-radius:8px;padding:16px;display:flex;align-items:center;justify-content:center;">';
