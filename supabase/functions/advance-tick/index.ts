@@ -2818,6 +2818,10 @@ async function processMigrationFlows(supabase, nationList, currentTick) {
 
     var flowRows = [];
     var totalFlows = 0;
+    var netMigration = {}; // { nationId: netPeople } (positive = gaining, negative = losing)
+    for (var ni = 0; ni < nationList.length; ni++) {
+        netMigration[nationList[ni].id] = 0;
+    }
 
     for (var oi = 0; oi < nationList.length; oi++) {
         var origin = nationList[oi];
@@ -2862,7 +2866,10 @@ async function processMigrationFlows(supabase, nationList, currentTick) {
                 flowRows.push({ tick: currentTick, origin_nation_id: origin.id, dest_nation_id: dest.id, category: 'illegal', flow_count: illegalCount, pull_score: pullScore, reasons: reasons });
             }
 
-            totalFlows += legalCount + academicCount + illegalCount;
+            var pairTotal = legalCount + academicCount + illegalCount;
+            totalFlows += pairTotal;
+            netMigration[origin.id] -= pairTotal;  // origin loses people
+            netMigration[dest.id] += pairTotal;     // destination gains people
         }
     }
 
@@ -2883,6 +2890,17 @@ async function processMigrationFlows(supabase, nationList, currentTick) {
             var { error: flowErr } = await supabase.from('migration_flows').insert(chunk);
             if (flowErr) console.error('[processMigrationFlows] insert error:', flowErr.message);
         }
+    }
+
+    // Apply net migration to population for each nation
+    for (var pi = 0; pi < nationList.length; pi++) {
+        var nation = nationList[pi];
+        var netPeople = netMigration[nation.id] || 0;
+        if (netPeople === 0) continue;
+        var currentPop = Number(nation.population) || 1000000;
+        var newPop = Math.max(100000, currentPop + netPeople); // floor at 100k — nations don't depopulate to zero
+        var { error: popErr } = await supabase.from('nations').update({ population: newPop }).eq('id', nation.id);
+        if (popErr) console.error('[processMigrationFlows] Population update failed for ' + nation.name + ':', popErr.message);
     }
 
     console.log('[processMigrationFlows] tick ' + currentTick + ': ' + flowRows.length + ' flow rows, ' + totalFlows + ' total people moved');
