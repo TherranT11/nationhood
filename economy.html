@@ -4007,6 +4007,8 @@ var _industriesEquipment = [];
 var _industriesDeliveries = [];
 var _industriesLoans = [];
 var _industriesInsurance = [];
+var _industriesShippingClaims = [];
+var _industriesShippingVessels = [];
 
 async function loadIndustriesData(nationId) {
     var [corpsRes, contractsRes, materialsRes, equipmentRes, deliveriesRes, propsRes, loansRes] = await Promise.all([
@@ -4037,6 +4039,14 @@ async function loadIndustriesData(nationId) {
             .select('id, lender_faction_id, borrower_faction_id, principal, interest_rate, total_paid, total_interest_paid, status, monthly_payment, term_months, purpose')
             .eq('nation_id', nationId)
     ]);
+    // Load shipping data
+    var [shippingClaimsRes, shippingVesselsRes] = await Promise.all([
+        _supabase.from('shipping_claims').select('id, faction_id, revenue_per_transit, total_revenue, transits_completed, status').eq('nation_id', nationId),
+        _supabase.from('corp_vessels').select('id, faction_id, vessel_class, status, condition, base_maintenance').eq('nation_id', nationId),
+    ]);
+    _industriesShippingClaims = shippingClaimsRes.data || [];
+    _industriesShippingVessels = shippingVesselsRes.data || [];
+
     var allCorps = corpsRes.data || [];
     _industriesCorps = allCorps.filter(function(c) { return c.nation_id === nationId; });
     var propFactionIds = new Set((propsRes.data || []).map(function(p) { return p.faction_id; }));
@@ -4154,7 +4164,11 @@ function renderIndustriesTab(nation) {
     });
 
     // Combined (all industries — investment is a subset of finance, don't double-count)
-    var combinedRevenue = constructionRevenue + materialsRevenue + equipRevenue + financeOutstanding + insuranceOutstanding;
+    // ── SHIPPING: revenue from claims ──
+    var shippingRevenue = _industriesShippingClaims.reduce(function(s, cl) { return s + (Number(cl.total_revenue) || 0); }, 0);
+    var shippingPct = gdp > 0 ? ((shippingRevenue / gdp) * 100) : 0;
+
+    var combinedRevenue = constructionRevenue + materialsRevenue + equipRevenue + financeOutstanding + insuranceOutstanding + shippingRevenue;
     var combinedPct = gdp > 0 ? ((combinedRevenue / gdp) * 100) : 0;
 
     // ── Growth Drivers (hardcoded per industry) ──
@@ -4295,7 +4309,8 @@ function renderIndustriesTab(nation) {
     var finBarW = Math.max(0.5, finBankingPct);
     var invBarW = Math.max(0.5, investmentPct);
     var insBarW = Math.max(0.5, insurancePct);
-    var otherBarW = Math.max(0, 100 - conBarW - matBarW - vehBarW - finBarW - invBarW - insBarW);
+    var shipBarW = Math.max(0.5, shippingPct);
+    var otherBarW = Math.max(0, 100 - conBarW - matBarW - vehBarW - finBarW - invBarW - insBarW - shipBarW);
 
     // Industry badge
     var badge = '<span style="font-size:0.55rem;padding:2px 8px;border-radius:3px;background:rgba(200,166,78,0.12);color:var(--damber);border:1px solid rgba(200,166,78,0.3);font-weight:700;letter-spacing:1px;vertical-align:middle;">INDUSTRY</span>';
@@ -4325,6 +4340,7 @@ function renderIndustriesTab(nation) {
     h += '<div style="width:' + finBarW + '%;background:#5a8aaa;" title="Banking ' + finBankingPct.toFixed(1) + '%"></div>';
     h += '<div style="width:' + invBarW + '%;background:#8a6aaa;" title="Investment ' + investmentPct.toFixed(1) + '%"></div>';
     h += '<div style="width:' + insBarW + '%;background:#aa7a5a;" title="Insurance ' + insurancePct.toFixed(1) + '%"></div>';
+    h += '<div style="width:' + shipBarW + '%;background:#5aafa5;" title="Shipping ' + shippingPct.toFixed(1) + '%"></div>';
     h += '<div style="width:' + otherBarW + '%;background:var(--bg-elevated);"></div>';
     h += '</div>';
     h += '<div class="industries-legend">';
@@ -4334,6 +4350,7 @@ function renderIndustriesTab(nation) {
     h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#5a8aaa;margin-right:3px;"></span>Banking ' + finBankingPct.toFixed(1) + '%</span>';
     h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#8a6aaa;margin-right:3px;"></span>Investment ' + investmentPct.toFixed(1) + '%</span>';
     h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#aa7a5a;margin-right:3px;"></span>Insurance ' + insurancePct.toFixed(1) + '%</span>';
+    h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#5aafa5;margin-right:3px;"></span>Shipping ' + shippingPct.toFixed(1) + '%</span>';
     h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--bg-elevated);margin-right:3px;"></span>Other ' + (100 - combinedPct).toFixed(1) + '%</span>';
     h += '</div></div>';
 
@@ -4513,6 +4530,74 @@ function renderIndustriesTab(nation) {
     h += renderPurchaserList(insLenders, '#aa7a5a');
     var insCorpCount = insuranceCorps.filter(function(c) { return !subsidiaryIds.has(c.id); }).length;
     h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + insCorpCount + ' local insurance corp' + (insCorpCount !== 1 ? 's' : '') + '</div>';
+    h += '</div>';
+
+    // ── ROW 3: SHIPPING ──
+
+    // Shipping corps
+    var shippingCorps = allLocalCorps.filter(function(c) { return (c.corp_sector || '').toLowerCase() === 'shipping'; });
+    var shippingCorpsSorted = shippingCorps.slice().sort(function(a, b) {
+        var revA = _industriesShippingClaims.filter(function(cl) { return cl.faction_id === a.id; }).reduce(function(s, cl) { return s + (Number(cl.total_revenue) || 0); }, 0);
+        var revB = _industriesShippingClaims.filter(function(cl) { return cl.faction_id === b.id; }).reduce(function(s, cl) { return s + (Number(cl.total_revenue) || 0); }, 0);
+        return revB - revA;
+    });
+
+    var activeRoutes = _industriesShippingClaims.filter(function(cl) { return cl.status === 'active'; }).length;
+    var totalVessels = _industriesShippingVessels.length;
+    var totalFleetMaint = _industriesShippingVessels.reduce(function(s, v) { return s + (v.base_maintenance || 0); }, 0);
+
+    // Revenue map for corp list
+    var shippingRevMap = {};
+    _industriesShippingClaims.forEach(function(cl) {
+        shippingRevMap[cl.faction_id] = (shippingRevMap[cl.faction_id] || 0) + (Number(cl.total_revenue) || 0);
+    });
+
+    var shipDrivers = [
+        { key: 'trade_balance', label: 'Trade Balance' },
+        { key: 'physical_infrastructure', label: 'Phys. Infra' },
+        { key: 'urbanization', label: 'Urbanization' },
+        { key: 'fuel_prices', label: 'Fuel Prices' },
+        { key: 'foreign_investment', label: 'Foreign Invest.' },
+        { key: 'currency_strength', label: 'Currency Str.' }
+    ];
+
+    var shippingColor = '#5aafa5';
+
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid ' + shippingColor + ';border-radius:8px;padding:16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:' + shippingColor + ';"></div><span style="font-size:0.85rem;font-weight:bold;color:' + shippingColor + ';letter-spacing:1px;">SHIPPING</span></div>';
+    h += badge;
+    h += '</div>';
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">% of GDP</div><div style="font-size:1.15rem;font-weight:bold;color:' + shippingColor + ';">' + shippingPct.toFixed(1) + '%</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Total Revenue</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(shippingRevenue) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Active Routes</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + activeRoutes + '</div></div>';
+    h += '</div>';
+
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Vessels</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + totalVessels + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Fleet Maint.</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dred);">' + fmtIndustryMoney(totalFleetMaint) + '/tick</div></div>';
+    h += '<div style="flex:1;"></div>';
+    h += '</div>';
+
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Maritime shipping corporations operating routes through this nation. Revenue from freight transit, route claims, and cargo handling.</div>';
+
+    h += secHeader('Growth Drivers', shippingColor);
+    h += renderDrivers(shipDrivers, shippingColor);
+
+    h += secHeader('Notable Corporations', shippingColor);
+    h += renderCorpList(shippingCorpsSorted, shippingRevMap, 3, shippingColor);
+    var shipCorpCount = shippingCorps.filter(function(c) { return !subsidiaryIds.has(c.id); }).length;
+    h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + shipCorpCount + ' local shipping corp' + (shipCorpCount !== 1 ? 's' : '') + '</div>';
+    h += '</div>';
+
+    // Placeholder cards for Ships Sold/Being Built and Freight Moved (Phases 2-3)
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid #8b9a6b;border-radius:8px;padding:16px;display:flex;align-items:center;justify-content:center;">';
+    h += '<div style="text-align:center;color:var(--dtext-3);font-size:0.75rem;">Ships Sold / Being Built<br><span style="font-size:0.6rem;">Phase 2</span></div>';
+    h += '</div>';
+
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid #c86a4a;border-radius:8px;padding:16px;display:flex;align-items:center;justify-content:center;">';
+    h += '<div style="text-align:center;color:var(--dtext-3);font-size:0.75rem;">Freight Moved<br><span style="font-size:0.6rem;">Phase 3</span></div>';
     h += '</div>';
 
     h += '</div>'; // close grid
