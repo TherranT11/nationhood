@@ -2343,12 +2343,6 @@ function renderFoodSubsectorDetail(nation, subsectorKey) {
         h += '<span style="font-size:0.65rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:1px;">Overall</span>';
         h += '<span style="font-size:0.8rem;font-weight:bold;color:' + securityStatus.color + ';padding:3px 10px;border:1px solid ' + securityStatus.color + ';border-radius:4px;background:' + securityStatus.color + '15;">' + escapeHtml(securityStatus.label) + '</span>';
         h += '</div>';
-        // Trade balance for this sector
-        var tradeBalance = expVol - impVol;
-        h += '<div style="display:flex;align-items:center;gap:8px;margin-left:auto;">';
-        h += '<span style="font-size:0.65rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:1px;">Trade Balance</span>';
-        h += '<span style="font-size:0.85rem;font-weight:bold;color:' + (tradeBalance >= 0 ? '#5cb85c' : '#d9534f') + ';">' + (tradeBalance >= 0 ? '+' : '') + formatBudgetCurrency(tradeBalance) + '</span>';
-        h += '</div>';
         h += '</div>';
     }
 
@@ -2635,15 +2629,17 @@ function renderSectorDetail(nation, sectorKey) {
         h += renderOverviewCard('Exports \u2014 Organic', formatTradeVolume(organicExp, sectorKey), organicExp > 0 ? 'surplus' : 'neutral', organicExp > 0 ? 'no trade deal required' : 'no organic exports');
         h += '</div>';
 
-        // Row 2: Exports — Trade Deals | Imports | Untraded Surplus
+        // Row 2
         h += '<div class="econ-cards-row econ-cards-3" style="margin-top:0;">';
-        h += renderOverviewCard('Exports \u2014 Trade Deals', formatTradeVolume(tradeDealExp, sectorKey), tradeDealExp > 0 ? 'surplus' : 'neutral', tradeDealExp > 0 ? 'active agreements' : 'no active deals');
-        if (!sector.export_only) {
-            h += renderOverviewCard('Imports', formatTradeVolume(impVol, sectorKey), impVol > 0 ? 'deficit' : 'neutral', impVol > 0 ? 'foreign supply' : 'no imports');
+        if (sector.export_only) {
+            h += renderOverviewCard('Agreements', formatTradeVolume(tradeDealExp, sectorKey), tradeDealExp > 0 ? 'surplus' : 'neutral', tradeDealExp > 0 ? 'active partnerships' : 'no active partnerships');
+            h += renderOverviewCard('Inbound Demand', formatTradeVolume(impVol, sectorKey), impVol > 0 ? 'neutral' : 'neutral', 'visitors \u00b7 clients \u00b7 contracts');
+            h += renderOverviewCard('Unrealized Capacity', formatTradeVolume(untradedSurplus, sectorKey), untradedSurplus > 0 ? 'deficit' : 'surplus', untradedSurplus > 0 ? 'capacity not generating revenue' : 'fully utilized');
         } else {
-            h += renderOverviewCard('Visitors / Clients', formatTradeVolume(impVol, sectorKey), 'neutral', 'inbound demand');
+            h += renderOverviewCard('Exports \u2014 Trade Deals', formatTradeVolume(tradeDealExp, sectorKey), tradeDealExp > 0 ? 'surplus' : 'neutral', tradeDealExp > 0 ? 'active agreements' : 'no active deals');
+            h += renderOverviewCard('Imports', formatTradeVolume(impVol, sectorKey), impVol > 0 ? 'deficit' : 'neutral', impVol > 0 ? 'foreign supply' : 'no imports');
+            h += renderOverviewCard('Untraded Surplus \u2014 Seek Buyers', formatTradeVolume(untradedSurplus, sectorKey), untradedSurplus > 0 ? 'deficit' : 'surplus', untradedSurplus > 0 ? 'sitting idle \u00b7 no buyer secured' : 'all production allocated');
         }
-        h += renderOverviewCard('Untraded Surplus \u2014 Seek Buyers', formatTradeVolume(untradedSurplus, sectorKey), untradedSurplus > 0 ? 'deficit' : 'surplus', untradedSurplus > 0 ? 'sitting idle \u00b7 no buyer secured' : 'all production allocated');
         h += '</div>';
 
         // Surplus value calculation
