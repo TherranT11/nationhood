@@ -2358,11 +2358,27 @@ body.light-mode .food-alloc-label {
         min-width: 45%;
         flex: 1 1 45%;
     }
+    .econ-cards-3 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .econ-cards-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
     .econ-cards-5 {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(2, 1fr);
     }
     .econ-cards-6 {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .econ-card-value {
+        font-size: 1rem;
+        word-break: break-word;
+    }
+    .econ-card-label {
+        font-size: 0.55rem;
+    }
+    .econ-card {
+        padding: 8px 10px;
     }
     .food-alloc-legend {
         gap: 8px;
@@ -2723,6 +2739,18 @@ body.light-mode .sector-score-threshold {
 
     .sector-driver-track {
         display: none;
+    }
+
+    .econ-cards-3, .econ-cards-4, .econ-cards-5, .econ-cards-6 {
+        grid-template-columns: 1fr;
+    }
+
+    .econ-card-value {
+        font-size: 0.9rem;
+    }
+
+    .econ-section-header {
+        font-size: 0.8rem;
     }
 }
 
