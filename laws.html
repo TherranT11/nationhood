@@ -448,6 +448,10 @@ function renderIdeologyChips(policy, isRepeal) {
     const ideos = (policy.ideologies && Array.isArray(policy.ideologies) && policy.ideologies.length > 0)
         ? policy.ideologies : (policy.ideology ? [policy.ideology] : []);
     return ideos.map(i => {
+        // Special tag for corporation-affecting policies
+        if (i === 'Corporations Affected') {
+            return `<span class="article-ideology corp-affected">${i}</span>`;
+        }
         const rawClass = getIdeologyChipClass(i, factionIdeology);
         // Invert alignment for repeals: repealing an opposed policy is good for you
         const colorClass = isRepeal ? (rawClass === 'aligned' ? 'opposed' : rawClass === 'opposed' ? 'aligned' : rawClass) : rawClass;
@@ -459,6 +463,9 @@ function renderIdeologyChips(policy, isRepeal) {
  * Render ideology chip for the All Laws panel tag style.
  */
 function renderIdeoTag(ideologyTag) {
+    if (ideologyTag === 'Corporations Affected') {
+        return `<span class="tag tag-ideo" style="background:rgba(200,168,50,0.10);color:#c8a832;border-color:rgba(200,168,50,0.30);">${ideologyTag}</span>`;
+    }
     const colorClass = getIdeologyChipClass(ideologyTag, factionIdeology);
     return `<span class="tag tag-ideo ${colorClass}">${ideologyTag}</span>`;
 }

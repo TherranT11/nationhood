@@ -1259,9 +1259,11 @@ function calculateFoodExportCapacity(nation, subsector, allocation) {
     var stabilityMod = Math.min(1.0, stability / 40);
     capacity *= stabilityMod;
 
-    // Currency strength modifier
+    // Currency strength modifier on EXPORTS:
+    // Strong currency = exports expensive = less competitive. Weak = cheap = more competitive.
+    // currency_strength 50 = 1.0, 75 = 0.67x, 25 = 2.0x
     var currencyStrength = Number(nation.currency_strength ?? 50);
-    var currencyModifier = currencyStrength / 50;
+    var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
     capacity *= currencyModifier;
 
     // Floor: minimal organic trade
@@ -1441,10 +1443,11 @@ function calculateExportCapacity(nation, sector, opts) {
 
     // ── Currency strength modifier ──
     // Affects export VALUE (what appears on trade page).
-    // Weak currency = exports are cheaper = lower value per unit.
-    // currency_strength 50 = 1.0 (neutral), 25 = 0.5 (cheap), 75 = 1.5 (premium)
+    // Strong currency = exports expensive in foreign markets = less competitive.
+    // Weak currency = exports cheap = more competitive.
+    // currency_strength 50 = 1.0 (neutral), 75 = 0.67x, 25 = 2.0x
     var currencyStrength = Number(nation.currency_strength ?? 50);
-    var currencyModifier = currencyStrength / 50;
+    var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
     capacity *= currencyModifier;
 
     // Floor: even distressed nations maintain some organic trade (5% of GDP-scaled baseline)
@@ -13798,18 +13801,6 @@ async function processElections(supabase, nation, currentTick) {
     for (const election of sorted) {
         const electionType = election.election_type || 'parliamentary';
         console.log(`Processing ${electionType} election for ${nation.name} (tick ${currentTick})`);
-
-        // Safety check: skip snap elections if a government has already been formed
-        if (electionType === 'parliamentary') {
-            const existingGov = await fetchActiveCoalition(supabase, nation.id);
-            if (existingGov && (existingGov.status === 'formed' || existingGov.status === 'active')) {
-                console.log(`Skipping parliamentary election for ${nation.name} — government already formed (status: ${existingGov.status})`);
-                await supabase.from('elections')
-                    .update({ status: 'cancelled' })
-                    .eq('id', election.id);
-                continue;
-            }
-        }
 
         // Partial election — only allocate delta seats (from foundational bill)
         if (election.partial_seats && election.partial_seats > 0) {

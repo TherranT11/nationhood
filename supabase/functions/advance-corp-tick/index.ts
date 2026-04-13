@@ -2163,7 +2163,7 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
     const ns = (key) => Number(nation[key] ?? 50);
 
     // Revenue: same formula as corp-dashboard.html renderFinances
-    const BASE_RATE = 50_000_000;
+    const BASE_RATE = 87_000_000;
     const gdpFactor     = 1 + (ns('gdp_growth') - 50) / 100 * 0.4;
     const urbanFactor   = 1 + (ns('urbanization') - 50) / 100 * 0.3;
     const popFactor     = 1 + (ns('population_growth') - 50) / 100 * 0.2;
@@ -2279,6 +2279,16 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
 // Each tick: expire unfunded loan requests, process repayments, handle defaults.
 async function processFinanceLoans(supabase, nationId, currentTick) {
     const results = { expired: 0, payments: 0, defaults: 0 };
+
+    // Check for Financial Sector Deregulation Act
+    const { data: deregLaw } = await supabase
+        .from('active_laws')
+        .select('id, policy:policies!policy_id(policy_key)')
+        .eq('nation_id', nationId)
+        .limit(100);
+    const hasDeregulation = (deregLaw || []).some(l =>
+        l.policy?.policy_key?.startsWith('financial_sector_deregulation'));
+    const interestBonus = hasDeregulation ? 0.10 : 0; // +10% interest income
 
     // 1. Expire unfunded loan requests past their deadline
     const { data: expiredReqs } = await supabase
@@ -2405,13 +2415,16 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                 corp_cash_reserves: borrowerCash - payment
             }).eq('id', loan.borrower_faction_id);
 
+            // Lender receives payment + deregulation interest bonus
+            const deregBonus = Math.round(interestPortion * interestBonus);
+            const lenderReceives = payment + deregBonus;
             const { data: lender } = await supabase
                 .from('factions')
                 .select('corp_cash_reserves')
                 .eq('id', loan.lender_faction_id)
                 .single();
             await supabase.from('factions').update({
-                corp_cash_reserves: (Number(lender?.corp_cash_reserves) || 0) + payment
+                corp_cash_reserves: (Number(lender?.corp_cash_reserves) || 0) + lenderReceives
             }).eq('id', loan.lender_faction_id);
 
             await supabase.from('finance_active_loans').update({

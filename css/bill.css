@@ -83,6 +83,7 @@ html { overflow-y: scroll !important; height: auto !important; }
         .article-ideology.aligned { background: var(--green-faint); color: var(--green); border: 1px solid var(--green-border); }
         .article-ideology.opposed { background: var(--red-faint); color: var(--red); border: 1px solid var(--red-border); }
         .article-ideology.neutral { background: rgba(255,255,255,0.04); color: var(--text-muted); border: 1px solid var(--border-mid); }
+        .article-ideology.corp-affected { background: rgba(200,168,50,0.10); color: #c8a832; border: 1px solid rgba(200,168,50,0.30); }
         .article-description { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.6; margin-bottom: 12px; font-style: italic; font-family: var(--font-ui); }
         .article-costs { display: flex; gap: 24px; padding-top: 12px; border-top: 1px solid var(--border-main); }
         .cost-item { display: flex; align-items: center; gap: 8px; }

@@ -6727,9 +6727,10 @@ async function init() {
     }
 
     // Redirect non-Construction corps to their sector-specific operations page
-    // BUT allow them to stay for the shared Expansion tab
-    const isExpansionTab = new URLSearchParams(window.location.search).get('tab') === 'expansion';
-    if (faction.corp_sector && faction.corp_sector !== 'Construction' && !isExpansionTab) {
+    // BUT allow them to stay for the shared Expansion and Actions tabs
+    const urlTab = new URLSearchParams(window.location.search).get('tab');
+    const isSharedTab = urlTab === 'expansion' || urlTab === 'actions';
+    if (faction.corp_sector && faction.corp_sector !== 'Construction' && !isSharedTab) {
         const SECTOR_OPS = { Finance: 'corp-operations-finance.html' };
         const targetPage = SECTOR_OPS[faction.corp_sector];
         if (targetPage) {

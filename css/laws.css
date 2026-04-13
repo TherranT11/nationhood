@@ -102,6 +102,7 @@
         .article-ideology.aligned { background:var(--green-faint); color:var(--green); border-color:var(--green-border); }
         .article-ideology.opposed { background:var(--red-faint); color:var(--red); border-color:var(--red-border); }
         .article-ideology.neutral { background:rgba(255,255,255,0.04); color:var(--text-muted); border-color:var(--border-mid); }
+        .article-ideology.corp-affected { background:rgba(200,168,50,0.10); color:#c8a832; border-color:rgba(200,168,50,0.30); }
         .article-author { font-size:0.75rem; color:var(--text-secondary); }
         .article-desc { font-size:0.8rem; color:var(--text-secondary); margin-top:4px; font-style:italic; }
         .party-stances { margin-top:16px; }
