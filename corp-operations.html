@@ -7152,28 +7152,47 @@ function renderActionsTab() {
 
 const EXEC_ACTIONS = {
     CEO: [
-        { id: 'statement', name: 'Issue Statement', desc: 'Issue a press release to the public events feed. Other players and media corps see it.', cost: '$20k', costColor: '#5cb85c', tags: ['REPUTATION'] },
+        { id: 'statement', name: 'Issue Statement', desc: 'Issue a press release to the public events feed. Other players and media corps see it. Cost scales with CEO skill.', cost: '~$20k', costColor: '#5cb85c', tags: ['REPUTATION'], cooldown: 'once/tick' },
         { id: 'ipo', name: 'IPO', desc: 'Take the corporation public. Sell ~30% of shares for a massive cash injection. Permanent loss of full control.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['STRUCTURAL'], locked: true, lockReason: 'Coming soon' },
     ],
     CFO: [
         { id: 'loan', name: 'Request Loan', desc: 'Submit a loan application to all finance corporations. Set amount, purpose, term, and collateral. Receive competing offers.', cost: 'FREE', costColor: '#5cb85c', tags: ['FINANCIAL'] },
     ],
     COO: [
-        { id: 'restructure', name: 'Restructure Operations', desc: 'Cut overhead by laying off 10-20% of employees or selling a subsidiary. Saves money and cuts ~7% of debt, but reduces reputation by 1d10+3.', cost: 'FREE', costColor: '#5cb85c', tags: ['OPERATIONAL'] },
+        { id: 'restructure', name: 'Restructure Operations', desc: 'Lay off 10-20% of workforce, cut ~7% of debt. Reputation hit scales with COO skill — high skill minimizes damage.', cost: 'FREE', costColor: '#5cb85c', tags: ['OPERATIONAL'], cooldown: 'once/tick' },
     ],
     CTO: [
         { id: 'research', name: 'Begin Research', desc: 'Start researching a tech tree node. Opens the tech tree interface.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['INNOVATION'], locked: true, lockReason: 'Coming soon' },
     ],
     CMO: [
-        { id: 'rebrand', name: 'Rebrand Corporation', desc: 'Change name, abbreviation, and motto. Reputation drops by 5 but future gains are accelerated. The fresh start.', cost: '$20M', costColor: '#ca5', tags: ['STRUCTURAL'] },
+        { id: 'rebrand', name: 'Rebrand Corporation', desc: 'Change name and abbreviation. Cost and reputation hit scale with CMO skill — high skill reduces both.', cost: '~$20M', costColor: '#ca5', tags: ['STRUCTURAL'], cooldown: 'once/tick' },
     ],
     CLO: [
         { id: 'sue_corp', name: 'Sue Corporation', desc: 'File a lawsuit against another corporation for patent infringement, contract breach, or predatory practices.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['LEGAL'], locked: true, lockReason: 'Coming soon' },
     ],
     Lobbyist: [
-        { id: 'donate', name: 'Political Donation', desc: 'Choose a political party and donate $10M. The target party receives 5 AP. Can be done once per tick.', cost: '$10M', costColor: '#ca5', tags: ['POLITICAL'] },
+        { id: 'donate', name: 'Political Donation', desc: 'Choose a political party and donate $10M. The target party receives 5 AP. Cost scales with Lobbyist skill. Once per tick.', cost: '~$10M', costColor: '#ca5', tags: ['POLITICAL'], cooldown: 'once/tick' },
     ],
 };
+
+// ─── Skill modifier: >50 = cheaper/less damage, <50 = more expensive/more damage ──
+// Returns a multiplier: skill 0 → 1.5, skill 50 → 1.0, skill 100 → 0.5
+function skillCostMod(skill) {
+    return 1.5 - (skill / 100);
+}
+
+// ─── Cooldown tracking: actions limited to once per tick ──
+let _actionCooldowns = {}; // { actionId: lastTickUsed }
+
+function isActionOnCooldown(actionId) {
+    const currentTick = shard?.current_tick || 0;
+    return _actionCooldowns[actionId] === currentTick;
+}
+
+function markActionUsed(actionId) {
+    const currentTick = shard?.current_tick || 0;
+    _actionCooldowns[actionId] = currentTick;
+}
 
 function renderActionsRightPanel() {
     const panel = document.getElementById('actions-right-panel');
@@ -7310,6 +7329,12 @@ function renderActionsRightPanel() {
 }
 
 function actExecute(actionId, role) {
+    // Check once-per-tick cooldown
+    const actionDef = (EXEC_ACTIONS[role] || []).find(a => a.id === actionId);
+    if (actionDef?.cooldown === 'once/tick' && isActionOnCooldown(actionId)) {
+        alert('This action can only be used once per tick. Wait for the next tick.');
+        return;
+    }
     switch (actionId) {
         case 'statement': return actOpenStatement();
         case 'loan': return lrOpen();
@@ -7416,9 +7441,12 @@ async function actSubmitStatement() {
         return;
     }
 
+    const ceo = getExecForRole('CEO');
+    const ceoSkill = ceo ? ceo.skill : 50;
+    const stmtCost = Math.round(20000 * skillCostMod(ceoSkill));
     const cash = Number(faction.corp_cash_reserves ?? 0);
-    if (cash < 20000) {
-        if (errEl) { errEl.textContent = 'Insufficient cash. Need $20k.'; errEl.style.display = 'block'; }
+    if (cash < stmtCost) {
+        if (errEl) { errEl.textContent = 'Insufficient cash. Need ' + hfFmtBig(stmtCost) + '.'; errEl.style.display = 'block'; }
         return;
     }
 
@@ -7427,13 +7455,12 @@ async function actSubmitStatement() {
     if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
 
     const corpName = faction.faction_name || 'Corporation';
-    const ceo = getExecForRole('CEO');
     const ceoName = ceo ? `${ceo.first_name} ${ceo.last_name}` : 'CEO';
     const currentTick = shard.current_tick || 0;
 
-    // Deduct $20k
+    // Deduct cost (skill-scaled)
     const { error: cashErr } = await _supabase.from('factions').update({
-        corp_cash_reserves: cash - 20000,
+        corp_cash_reserves: cash - stmtCost,
     }).eq('id', faction.id);
 
     if (cashErr) {
@@ -7451,7 +7478,7 @@ async function actSubmitStatement() {
         description_used: ceoName + ', CEO of ' + corpName + ': "' + text.replace(/[<>"]/g, '') + '"',
         category: 'business',
         trigger_key: 'ceo_statement',
-        effects_applied: { cost: 20000, ceo: ceoName },
+        effects_applied: { cost: stmtCost, ceo: ceoName, skill: ceoSkill },
         fired_at_tick: currentTick,
     });
 
@@ -7465,8 +7492,9 @@ async function actSubmitStatement() {
     }
 
     // Update local state
-    faction.corp_cash_reserves = cash - 20000;
+    faction.corp_cash_reserves = cash - stmtCost;
     _stmtSubmitting = false;
+    markActionUsed('statement');
     actCloseStatement();
 }
 
@@ -7777,11 +7805,18 @@ function actOpenRestructure() {
         return;
     }
 
+    // Skill-scaled effects: high COO skill → less rep damage, more debt cut
+    const coo = getExecForRole('COO');
+    const cooSkill = coo ? coo.skill : 50;
+    const cooMod = skillCostMod(cooSkill); // >50 = <1.0, <50 = >1.0
+
     // Calculate layoff range (10-20%)
     const layoffPct = 10 + Math.floor(Math.random() * 11); // 10-20
     const layoffCount = Math.round(totalWf * layoffPct / 100);
-    const debtCut = Math.round(debt * 0.07);
-    const repLoss = 3 + Math.floor(Math.random() * 10); // 1d10 + 3
+    const baseDebtCut = Math.round(debt * 0.07);
+    const debtCut = Math.round(baseDebtCut * (2 - cooMod)); // high skill = MORE debt cut
+    const baseRepLoss = 3 + Math.floor(Math.random() * 10); // 1d10 + 3
+    const repLoss = Math.max(1, Math.round(baseRepLoss * cooMod)); // high skill = LESS rep loss
 
     // Distribute layoffs proportionally
     const genCut = Math.round(gen / totalWf * layoffCount);
@@ -7895,15 +7930,21 @@ async function actSubmitRestructure(layoffPct, debtCut, repLoss, genCut, sklCut,
     });
 
     _restrSubmitting = false;
+    markActionUsed('restructure');
     actCloseRestructure();
     renderActionsTab();
 }
 
 // ═══════════════════════════════════════════════════
-// CMO: Rebrand Corporation ($20M, rename + new abbr, -5 rep)
+// CMO: Rebrand Corporation (skill-scaled cost + rep hit)
 // ═══════════════════════════════════════════════════
 
 function actOpenRebrand() {
+    const cmo = getExecForRole('CMO');
+    const cmoSkill = cmo ? cmo.skill : 50;
+    const cmoMod = skillCostMod(cmoSkill);
+    const rebrandCost = Math.round(20000000 * cmoMod);
+    const rebrandRepLoss = Math.max(1, Math.round(5 * cmoMod));
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const rep = Number(faction?.corp_reputation ?? 50);
     const corpName = faction?.faction_name || '';
@@ -7936,21 +7977,25 @@ function actOpenRebrand() {
             <div style="background:#1c1c18;border:1px solid #2a2a24;padding:6px 10px;">
                 <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
                     <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">COST</span>
-                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c84;">$20M</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c84;">${hfFmtBig(rebrandCost)}</span>
                 </div>
                 <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
                     <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">REPUTATION</span>
-                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c55;">-5 (${rep} &rarr; ${Math.max(0, rep - 5)})</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c55;">-${rebrandRepLoss} (${rep} &rarr; ${Math.max(0, rep - rebrandRepLoss)})</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">SKILL MODIFIER</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${cmoMod <= 1 ? '#5cb85c' : '#c84'};">&times;${cmoMod.toFixed(2)}</span>
                 </div>
                 <div style="display:flex;justify-content:space-between;padding:3px 0;">
                     <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">CASH AFTER</span>
-                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${cash < 20000000 ? '#c55' : '#e8e4dc'};">${hfFmtBig(cash - 20000000)}</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${cash < rebrandCost ? '#c55' : '#e8e4dc'};">${hfFmtBig(cash - rebrandCost)}</span>
                 </div>
             </div>
         </div>
         <div style="padding:8px 16px;border-top:1px solid #2a2a24;display:flex;justify-content:flex-end;gap:6px;">
             <div onclick="actCloseRebrand()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
-            <div id="rebrand-btn" onclick="actSubmitRebrand()" style="padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:#c84;cursor:${cash >= 20000000 ? 'pointer' : 'not-allowed'};${cash < 20000000 ? 'opacity:0.4;pointer-events:none;' : ''}">REBRAND</div>
+            <div id="rebrand-btn" onclick="actSubmitRebrand(${rebrandCost},${rebrandRepLoss})" style="padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:#c84;cursor:${cash >= rebrandCost ? 'pointer' : 'not-allowed'};${cash < rebrandCost ? 'opacity:0.4;pointer-events:none;' : ''}">REBRAND</div>
         </div>
         <div id="rebrand-error" style="padding:4px 16px;font-family:var(--font-mono);font-size:8px;color:#c55;display:none;"></div>
     </div>`;
@@ -7964,8 +8009,10 @@ function actCloseRebrand() {
 }
 
 let _rebrandSubmitting = false;
-async function actSubmitRebrand() {
+async function actSubmitRebrand(costOverride, repLossOverride) {
     if (!faction || !shard || _rebrandSubmitting) return;
+    const rebrandCost = costOverride || 20000000;
+    const rebrandRepLoss = repLossOverride || 5;
     const errEl = document.getElementById('rebrand-error');
     const newName = (document.getElementById('rebrand-name')?.value || '').trim().replace(/[<>"]/g, '');
     const newAbbr = (document.getElementById('rebrand-abbr')?.value || '').trim().toUpperCase().replace(/[<>"]/g, '');
@@ -7980,8 +8027,8 @@ async function actSubmitRebrand() {
     }
 
     const cash = Number(faction.corp_cash_reserves ?? 0);
-    if (cash < 20000000) {
-        if (errEl) { errEl.textContent = 'Insufficient cash. Need $20M.'; errEl.style.display = 'block'; }
+    if (cash < rebrandCost) {
+        if (errEl) { errEl.textContent = 'Insufficient cash. Need ' + hfFmtBig(rebrandCost) + '.'; errEl.style.display = 'block'; }
         return;
     }
 
@@ -7996,8 +8043,8 @@ async function actSubmitRebrand() {
         faction_name: newName,
         abbreviation: newAbbr,
         corp_ticker: newAbbr,
-        corp_cash_reserves: cash - 20000000,
-        corp_reputation: Math.max(0, rep - 5),
+        corp_cash_reserves: cash - rebrandCost,
+        corp_reputation: Math.max(0, rep - rebrandRepLoss),
     }).eq('id', faction.id);
 
     if (error) {
@@ -8011,8 +8058,8 @@ async function actSubmitRebrand() {
     faction.faction_name = newName;
     faction.abbreviation = newAbbr;
     faction.corp_ticker = newAbbr;
-    faction.corp_cash_reserves = cash - 20000000;
-    faction.corp_reputation = Math.max(0, rep - 5);
+    faction.corp_cash_reserves = cash - rebrandCost;
+    faction.corp_reputation = Math.max(0, rep - rebrandRepLoss);
 
     // Log event
     const currentTick = shard.current_tick || 0;
@@ -8023,11 +8070,12 @@ async function actSubmitRebrand() {
         description_used: oldName + ' has rebranded to ' + newName + ' (' + newAbbr + '). The rebrand costs $20M and reputation takes a temporary hit.',
         category: 'business',
         trigger_key: 'corp_rebrand',
-        effects_applied: { old_name: oldName, new_name: newName, new_abbr: newAbbr, rep_loss: 5, cost: 20000000 },
+        effects_applied: { old_name: oldName, new_name: newName, new_abbr: newAbbr, rep_loss: rebrandRepLoss, cost: rebrandCost },
         fired_at_tick: currentTick,
     });
 
     _rebrandSubmitting = false;
+    markActionUsed('rebrand');
     actCloseRebrand();
     renderActionsTab();
 
@@ -8094,9 +8142,12 @@ function renderDonationModal() {
     const overlay = document.getElementById('donate-overlay');
     if (!overlay) return;
 
+    const lobbyist = getExecForRole('Lobbyist');
+    const lobbySkill = lobbyist ? lobbyist.skill : 50;
+    const donateCost = Math.round(10000000 * skillCostMod(lobbySkill));
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const sel = _donateSelected >= 0 ? _donateParties[_donateSelected] : null;
-    const canAfford = cash >= 10000000;
+    const canAfford = cash >= donateCost;
 
     let html = `<div onclick="event.stopPropagation()" style="width:480px;max-height:80vh;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">`;
 
@@ -8111,7 +8162,7 @@ function renderDonationModal() {
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
             <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">Cost:</span>
-            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#ca5;">$10M</span>
+            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#ca5;">${hfFmtBig(donateCost)}</span>
             <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">&rarr; Target party receives</span>
             <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#5cb85c;">+5 AP</span>
         </div>
@@ -8163,7 +8214,7 @@ function renderDonationModal() {
     // Footer
     html += `<div style="padding:10px 16px;border-top:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
         <div style="display:flex;gap:12px;">
-            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">COST</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#ca5;">$10M</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">COST</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#ca5;">${hfFmtBig(donateCost)}</div></div>
             <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">CASH</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${canAfford ? '#e8e4dc' : '#c55'};">${hfFmtBig(cash)}</div></div>
             ${sel ? `<div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">RECIPIENT</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#e8e4dc;">${escapeHtml(sel.abbreviation || sel.faction_name)}</div></div>` : ''}
         </div>
@@ -8184,10 +8235,13 @@ async function actSubmitDonation() {
     const party = _donateParties[_donateSelected];
     if (!party) return;
 
+    const lobbyist = getExecForRole('Lobbyist');
+    const lobbySkill = lobbyist ? lobbyist.skill : 50;
+    const donateCost = Math.round(10000000 * skillCostMod(lobbySkill));
     const cash = Number(faction.corp_cash_reserves ?? 0);
-    if (cash < 10000000) {
+    if (cash < donateCost) {
         const errEl = document.getElementById('donate-error');
-        if (errEl) { errEl.textContent = 'Insufficient cash. Need $10M.'; errEl.style.display = 'block'; }
+        if (errEl) { errEl.textContent = 'Insufficient cash. Need ' + hfFmtBig(donateCost) + '.'; errEl.style.display = 'block'; }
         return;
     }
 
@@ -8197,7 +8251,7 @@ async function actSubmitDonation() {
 
     // Deduct $10M from corp
     const { error: cashErr } = await _supabase.from('factions').update({
-        corp_cash_reserves: cash - 10000000,
+        corp_cash_reserves: cash - donateCost,
     }).eq('id', faction.id);
 
     if (cashErr) {
@@ -8225,7 +8279,7 @@ async function actSubmitDonation() {
     }
 
     // Update local state
-    faction.corp_cash_reserves = cash - 10000000;
+    faction.corp_cash_reserves = cash - donateCost;
 
     // Log event
     const currentTick = shard.current_tick || 0;
@@ -8234,14 +8288,15 @@ async function actSubmitDonation() {
         nation_id: faction.nation_id,
         faction_id: faction.id,
         event_name: corpName + ' — Political Donation',
-        description_used: corpName + ' has donated $10M to ' + (party.faction_name || 'a political party') + '. The party receives 5 action points.',
+        description_used: corpName + ' has donated ' + hfFmtBig(donateCost) + ' to ' + (party.faction_name || 'a political party') + '. The party receives 5 action points.',
         category: 'business',
         trigger_key: 'corp_donation',
-        effects_applied: { cost: 10000000, recipient_faction_id: party.id, recipient_name: party.faction_name, ap_granted: 5 },
+        effects_applied: { cost: donateCost, recipient_faction_id: party.id, recipient_name: party.faction_name, ap_granted: 5, skill: lobbySkill },
         fired_at_tick: currentTick,
     });
 
     _donateSubmitting = false;
+    markActionUsed('donate');
     actCloseDonation();
 }
 
