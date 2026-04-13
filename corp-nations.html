@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nations | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0: #0e0e0c;
+  --bg-1: #1a1a1a;
+  --bg-2: #1a1a17;
+  --bg-3: #252525;
+  --bg-4: #24241f;
+  --bg-5: #2c2c26;
+  --bg-hover: #282822;
+  --text-bright: #f0efe6;
+  --text-primary: #c4c2b8;
+  --text-secondary: #888;
+  --text-muted: #666;
+  --text-dim: #4a4940;
+  --text-ghost: #333229;
+  --border-hair: rgba(255,255,255,0.04);
+  --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08);
+  --border-2: rgba(255,255,255,0.12);
+  --green: #5cb85c;
+  --green-faint: rgba(92,184,92,0.08);
+  --green-border: rgba(92,184,92,0.18);
+  --red: #d9534f;
+  --amber: #c8a64e;
+  --amber-faint: rgba(200,166,78,0.08);
+  --amber-border: rgba(200,166,78,0.18);
+  --blue: #5b9bd5;
+  --blue-faint: rgba(91,155,213,0.08);
+  --blue-border: rgba(91,155,213,0.18);
+  --teal: #5aafa5;
+  --teal-faint: rgba(90,175,165,0.08);
+  --teal-border: rgba(90,175,165,0.18);
+  --gold: #c8a832;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+  --font-serif: 'IBM Plex Serif', Georgia, serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  min-height: 100vh;
+}
+
+/* ── Top bar ── */
+.top-bar-row1 {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 22px; height: 53px;
+  background: var(--bg-2); border-bottom: 1px solid var(--border-0);
+}
+.top-bar-left { display: flex; align-items: center; gap: 0; }
+.top-bar-sep { width: 1px; height: 31px; background: rgba(255,255,255,0.08); margin: 0 16px; flex-shrink: 0; }
+.corp-badge { display: flex; align-items: center; gap: 8px; }
+.corp-logo {
+  width: 35px; height: 35px; background: var(--bg-3); border: 1px solid var(--border-0); border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--text-dim);
+}
+.corp-name-bar { font-family: var(--font-serif); font-size: 14px; font-weight: 500; color: var(--text-bright); letter-spacing: 0.02em; white-space: nowrap; }
+.tick-info { display: flex; gap: 20px; align-items: center; }
+.tick-item { display: flex; flex-direction: column; gap: 1px; }
+.tick-label { font-family: var(--font-mono); font-size: 9.5px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: #7a7868; }
+.tick-value { font-family: var(--font-mono); font-size: 13px; font-weight: 500; color: var(--text-bright); }
+.top-bar-right { display: flex; align-items: center; gap: 10px; }
+.topbar-cash { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: var(--gold); padding: 3px 8px; background: rgba(200,168,50,0.08); border: 1px solid rgba(200,168,50,0.2); }
+.corp-name-badge { font-family: var(--font-mono); font-size: 11px; font-weight: 600; padding: 4px 10px; background: rgba(90,175,165,0.08); border: 1px solid var(--teal-border); color: var(--teal); letter-spacing: 0.5px; cursor: pointer; }
+.corp-faction-dropdown { display: none; position: absolute; top: 100%; right: 0; background: var(--bg-3); border: 1px solid var(--border-1); z-index: 100; min-width: 180px; }
+.corp-faction-dropdown.open { display: block; }
+.corp-faction-dropdown__item { padding: 8px 12px; cursor: pointer; font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+.corp-faction-dropdown__item:hover { background: var(--bg-hover); color: var(--text-bright); }
+.corp-faction-dropdown__item.active { color: var(--teal); }
+.theme-toggle-btn, .logout-btn { font-family: var(--font-mono); font-size: 9px; padding: 4px 10px; background: var(--bg-3); border: 1px solid var(--border-1); color: var(--text-secondary); cursor: pointer; }
+.loading-msg { padding: 40px; text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
+
+/* ── Nav ── */
+.corp-hamburger { display: none; background: var(--bg-2); border: 1px solid var(--border-0); color: var(--text-secondary); font-size: 18px; padding: 6px 12px; cursor: pointer; width: 100%; text-align: left; }
+.corp-nav { display: flex; padding: 0 22px; gap: 0; height: 40px; background: var(--bg-2); border-bottom: 1px solid var(--border-0); }
+.corp-nav__tab {
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase;
+  color: #8a8978; text-decoration: none; padding: 0 14px; display: flex; align-items: center;
+  border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s;
+}
+.corp-nav__tab:hover { color: #a8a797; }
+.corp-nav__tab.active { color: var(--text-bright); border-bottom-color: var(--text-bright); }
+
+/* ── Content ── */
+.content { padding: 20px; }
+
+/* ── Continent tabs ── */
+.continent-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.continent-tab {
+  padding: 6px 20px; cursor: pointer;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  border: 1px solid var(--border-0); text-transform: uppercase;
+}
+.continent-tab.active { color: #000; background: #8b9a6b; border-color: #8b9a6b; }
+.continent-tab:not(.active) { color: var(--text-dim); background: transparent; }
+
+/* ── Main layout ── */
+.nations-layout { display: flex; gap: 8px; }
+.nations-list { width: 340px; background: var(--bg-2); border: 1px solid var(--border-0); display: flex; flex-direction: column; max-height: calc(100vh - 160px); overflow: hidden; flex-shrink: 0; }
+.nations-list-scroll { flex: 1; overflow-y: auto; }
+.nations-detail { flex: 1; background: var(--bg-2); border: 1px solid var(--border-0); display: flex; flex-direction: column; max-height: calc(100vh - 160px); overflow: hidden; }
+.nations-detail-scroll { flex: 1; overflow-y: auto; }
+
+/* ── Mobile ── */
+@media (max-width: 820px) {
+  .corp-hamburger { display: block; }
+  .corp-nav { display: none; flex-direction: column; height: auto; padding: 0; }
+  .corp-nav.nav-open { display: flex; }
+  .corp-nav.nav-open .corp-nav__tab { padding: 10px 22px; border-bottom: none; border-left: 2px solid transparent; }
+  .corp-nav.nav-open .corp-nav__tab.active { border-left-color: var(--text-bright); border-bottom: none; }
+  .nations-layout { flex-direction: column; }
+  .nations-list { width: 100%; max-height: 300px; }
+  .nations-detail { max-height: none; }
+}
+</style>
+</head>
+<body>
+
+<div id="loading" class="loading-msg">LOADING NATIONS...</div>
+
+<div id="page-content" style="display:none;">
+  <!-- Top bar -->
+  <div class="top-bar-row1">
+    <div class="top-bar-left">
+      <div class="corp-badge">
+        <div class="corp-logo" id="corp-logo"></div>
+        <span class="corp-name-bar" id="corp-name-bar">Loading...</span>
+      </div>
+      <div class="top-bar-sep"></div>
+      <div class="tick-info">
+        <div class="tick-item">
+          <div class="tick-label">Game Date</div>
+          <div class="tick-value" id="game-date">--</div>
+        </div>
+        <div class="tick-item">
+          <div class="tick-label">Tick</div>
+          <div class="tick-value" id="tick-number">--</div>
+        </div>
+        <div class="tick-item">
+          <div class="tick-label">Next Tick</div>
+          <div class="tick-value" id="tick-countdown">--</div>
+        </div>
+      </div>
+    </div>
+    <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.1.5.0</div>
+    <div class="top-bar-right">
+      <span class="topbar-cash" id="topbar-cash">CASH: --</span>
+      <div class="faction-switcher" id="faction-switcher" style="position:relative;">
+        <span class="corp-name-badge" id="corp-name-badge" onclick="toggleCorpDropdown()" style="cursor:pointer;">--</span>
+        <div class="corp-faction-dropdown" id="corp-faction-dropdown"></div>
+      </div>
+      <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle">Light</button>
+      <button class="logout-btn" onclick="doLogout()">Logout</button>
+    </div>
+  </div>
+
+  <!-- Nav tabs -->
+  <button class="corp-hamburger" onclick="document.querySelector('.corp-nav').classList.toggle('nav-open')">&#9776;</button>
+  <nav class="corp-nav" id="corp-nav">
+    <a href="corp-dashboard.html" class="corp-nav__tab" data-tab="home">Home</a>
+    <a href="corp-operations.html" class="corp-nav__tab" data-tab="operations" id="nav-operations">Operations</a>
+    <a href="corp-operations.html?tab=expansion" class="corp-nav__tab" data-tab="expansion">Expansion</a>
+    <a href="corp-operations.html?tab=actions" class="corp-nav__tab" data-tab="actions">Actions</a>
+    <a href="#" class="corp-nav__tab" data-tab="innovation" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Innovation</a>
+    <a href="corp-nations.html" class="corp-nav__tab active" data-tab="nations">Nations</a>
+    <a href="news.html" class="corp-nav__tab" data-tab="news">News</a>
+    <a href="wiki.html" class="corp-nav__tab" data-tab="wiki">Wiki</a>
+  </nav>
+
+  <div class="content">
+    <!-- Page header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:2px;color:#8b9a6b;text-transform:uppercase;">Nations</span>
+        <span id="nation-count" style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">-- nations tracked</span>
+      </div>
+    </div>
+
+    <!-- Continent tabs -->
+    <div class="continent-tabs" id="continent-tabs"></div>
+
+    <!-- Main layout -->
+    <div class="nations-layout">
+      <div class="nations-list">
+        <div class="nations-list-scroll" id="nations-list"></div>
+      </div>
+      <div class="nations-detail">
+        <div class="nations-detail-scroll" id="nations-detail">
+          <div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">Select a nation to view details.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { escapeHtml } from './js/utils.js';
+
+let allUserFactions = [];
+let faction = null;
+let shard = null;
+let _allNations = [];
+let _continents = {};  // { 'Crucera': [nation, ...], 'Meridian': [...] }
+let _selectedContinent = '';
+let _selectedNationIdx = 0;
+
+function fmtMoney(n) {
+    if (n === null || n === undefined) return '—';
+    const abs = Math.abs(n);
+    const sign = n < 0 ? '-' : '';
+    if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(1) + 'B';
+    if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(1) + 'M';
+    if (abs >= 1e3) return sign + '$' + (abs / 1e3).toFixed(0) + 'k';
+    return sign + '$' + abs.toLocaleString();
+}
+
+// ── Init ──
+async function init() {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) { window.location.href = 'login.html'; return; }
+
+    const { data: allFactions } = await _supabase.from('factions')
+        .select('*').or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
+    allUserFactions = (allFactions || []).filter(f => f.nation_id);
+
+    const activeFactionId = sessionStorage.getItem('active_faction_id');
+    faction = allUserFactions.find(f => f.id === activeFactionId)
+        || allUserFactions.find(f => f.faction_type === 'corporation')
+        || allUserFactions[0];
+
+    if (!faction) { await _supabase.auth.signOut(); window.location.href = 'login.html'; return; }
+    if (faction.faction_type !== 'corporation') { window.location.href = 'dashboard.html'; return; }
+
+    // Load shard + all nations
+    const [shardRes, nationsRes] = await Promise.all([
+        _supabase.from('shard').select('current_tick, current_date, next_tick_at, tick_interval_hours').eq('name', 'Alpha Shard').single(),
+        _supabase.from('nations').select('*').order('name'),
+    ]);
+    shard = shardRes.data;
+    _allNations = nationsRes.data || [];
+
+    // Group by continent (use first word of name or hardcode mapping)
+    // For now, all nations are on the same continent — group all together
+    _continents = {};
+    for (const n of _allNations) {
+        const cont = n.continent || 'Crucera';
+        if (!_continents[cont]) _continents[cont] = [];
+        _continents[cont].push(n);
+    }
+    // If no continent field, put all in one group
+    if (Object.keys(_continents).length === 1 && _continents['Crucera']?.length === _allNations.length) {
+        _continents = { 'All Nations': _allNations };
+    }
+    _selectedContinent = Object.keys(_continents)[0] || '';
+    _selectedNationIdx = 0;
+
+    // Populate top bar
+    const ticker = faction.corp_ticker || faction.abbreviation || '';
+    document.getElementById('corp-logo').textContent = ticker.slice(0, 2) || '—';
+    document.getElementById('corp-name-bar').textContent = faction.faction_name || 'Corporation';
+    document.getElementById('corp-name-badge').textContent = ticker.toUpperCase() || '--';
+    document.getElementById('topbar-cash').textContent = 'CASH: ' + fmtMoney(Number(faction.corp_cash_reserves) || 0);
+    document.getElementById('nation-count').textContent = _allNations.length + ' nations tracked';
+
+    if (shard) {
+        document.getElementById('game-date').textContent = shard.current_date || '--';
+        document.getElementById('tick-number').textContent = shard.current_tick || '--';
+    }
+
+    // If non-Construction corp, update Operations link
+    if (faction.corp_sector && faction.corp_sector !== 'Construction') {
+        const SECTOR_OPS = { Finance: 'corp-operations-finance.html' };
+        const sectorPage = SECTOR_OPS[faction.corp_sector];
+        if (sectorPage) {
+            const opsTab = document.querySelector('[data-tab="operations"]');
+            if (opsTab) opsTab.href = sectorPage;
+        }
+    }
+
+    // Render
+    renderContinentTabs();
+    renderNationList();
+    renderNationDetail();
+
+    // Faction switcher
+    renderFactionSwitcher();
+
+    // Show page
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('page-content').style.display = 'block';
+
+    // Tick countdown
+    if (shard?.next_tick_at) {
+        const updateCountdown = () => {
+            const ms = new Date(shard.next_tick_at).getTime() - Date.now();
+            if (ms <= 0) { document.getElementById('tick-countdown').textContent = 'NOW'; return; }
+            const h = Math.floor(ms / 3600000);
+            const m = Math.floor((ms % 3600000) / 60000);
+            const s = Math.floor((ms % 60000) / 1000);
+            document.getElementById('tick-countdown').textContent = `${h}h ${m}m ${s}s`;
+        };
+        updateCountdown();
+        setInterval(updateCountdown, 1000);
+    }
+}
+
+function renderContinentTabs() {
+    const container = document.getElementById('continent-tabs');
+    container.innerHTML = Object.keys(_continents).map(c => {
+        const isActive = c === _selectedContinent;
+        return `<div onclick="selectContinent('${escapeHtml(c)}')" class="continent-tab${isActive ? ' active' : ''}">${escapeHtml(c.toUpperCase())} (${_continents[c].length})</div>`;
+    }).join('');
+}
+
+function selectContinent(c) {
+    _selectedContinent = c;
+    _selectedNationIdx = 0;
+    renderContinentTabs();
+    renderNationList();
+    renderNationDetail();
+}
+
+function selectNation(idx) {
+    _selectedNationIdx = idx;
+    renderNationList();
+    renderNationDetail();
+}
+
+function renderNationList() {
+    const container = document.getElementById('nations-list');
+    const nations = _continents[_selectedContinent] || [];
+    if (nations.length === 0) {
+        container.innerHTML = '<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">No nations in this region.</div>';
+        return;
+    }
+    // Placeholder — Phase 3 will build the full nation cards
+    container.innerHTML = nations.map((n, i) => {
+        const isSel = _selectedNationIdx === i;
+        return `<div onclick="selectNation(${i})" style="padding:10px 14px;border-bottom:1px solid var(--border-0);cursor:pointer;border-left:3px solid ${isSel ? '#8b9a6b' : 'transparent'};background:${isSel ? 'rgba(139,154,107,0.03)' : 'transparent'};">
+            <div style="font-size:14px;font-weight:700;color:var(--text-bright);">${escapeHtml(n.name)}</div>
+            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">Pop: ${((n.population || 0) / 1e6).toFixed(1)}M · GDP: ${fmtMoney(n.gdp)}</div>
+        </div>`;
+    }).join('');
+}
+
+function renderNationDetail() {
+    const container = document.getElementById('nations-detail');
+    const nations = _continents[_selectedContinent] || [];
+    const sel = nations[_selectedNationIdx];
+    if (!sel) {
+        container.innerHTML = '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">Select a nation to view details.</div>';
+        return;
+    }
+    // Placeholder — Phase 4 will build the full detail view
+    container.innerHTML = `<div style="padding:16px;">
+        <div style="font-size:18px;font-weight:700;color:var(--text-bright);margin-bottom:8px;">${escapeHtml(sel.name)}</div>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Detail view coming in Phase 4</div>
+    </div>`;
+}
+
+// ── Faction switcher ──
+function renderFactionSwitcher() {
+    const dropdown = document.getElementById('corp-faction-dropdown');
+    if (!dropdown || allUserFactions.length <= 1) return;
+    let html = '';
+    for (const f of allUserFactions) {
+        const isActive = f.id === faction.id;
+        const label = f.faction_type === 'corporation' ? 'CORP' : 'PARTY';
+        html += `<div class="corp-faction-dropdown__item${isActive ? ' active' : ''}" onclick="switchToFaction('${f.id}')">
+            <span style="font-size:7px;padding:1px 4px;border:1px solid var(--border-1);margin-right:4px;">${label}</span>
+            ${escapeHtml(f.faction_name || 'Unknown')}
+        </div>`;
+    }
+    dropdown.innerHTML = html;
+}
+
+function toggleCorpDropdown() {
+    document.getElementById('corp-faction-dropdown')?.classList.toggle('open');
+}
+
+function switchToFaction(factionId) {
+    sessionStorage.setItem('active_faction_id', factionId);
+    const f = allUserFactions.find(x => x.id === factionId);
+    if (f?.faction_type === 'party') window.location.href = 'dashboard.html';
+    else window.location.href = 'corp-dashboard.html';
+}
+
+async function doLogout() {
+    await _supabase.auth.signOut();
+    window.location.href = 'login.html';
+}
+
+function toggleTheme() {
+    document.body.classList.toggle('light-mode');
+    const btn = document.getElementById('theme-toggle');
+    if (btn) btn.textContent = document.body.classList.contains('light-mode') ? 'Dark' : 'Light';
+}
+
+window.selectContinent = selectContinent;
+window.selectNation = selectNation;
+window.toggleCorpDropdown = toggleCorpDropdown;
+window.switchToFaction = switchToFaction;
+window.doLogout = doLogout;
+window.toggleTheme = toggleTheme;
+
+init();
+</script>
+</body>
+</html>
