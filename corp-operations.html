@@ -2824,6 +2824,13 @@ body.light-mode .av-empty__text { color: #1a1a17; }
   </div>
 </div>
 
+<!-- Commission Vessel Modal -->
+<div id="comm-overlay" onclick="smCloseCommission()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;">
+  <div onclick="event.stopPropagation()" style="width:420px;max-height:94vh;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
+    <div id="comm-content" style="display:flex;flex-direction:column;overflow:hidden;max-height:94vh;"></div>
+  </div>
+</div>
+
 <!-- Contract Detail Modal -->
 <div class="cd-overlay" id="cd-overlay" onclick="closeContractDetail(event)">
   <div class="cd-modal" id="cd-modal" onclick="event.stopPropagation()">
@@ -12231,14 +12238,282 @@ async function smPurchase(listingId, totalPrice) {
     await Promise.all([loadFleet(), loadShipMarket()]);
 }
 
+// ── Commission Vessel Modal ──
+
+const COMM_VESSEL_TYPES = [
+    { cls: 'Coastal',   baseCost: 12000000,  baseBuild: 3, cargo: 'Bulk, Containers (coastal)' },
+    { cls: 'Container', baseCost: 65000000,  baseBuild: 5, cargo: 'Manufactured, Tech, General' },
+    { cls: 'Bulk',      baseCost: 38000000,  baseBuild: 4, cargo: 'Minerals, Aggregate, Military' },
+    { cls: 'Tanker',    baseCost: 52000000,  baseBuild: 5, cargo: 'Fuel, Petroleum, Chemicals' },
+    { cls: 'Reefer',    baseCost: 45000000,  baseBuild: 4, cargo: 'Food, Perishables, Agriculture' },
+    { cls: 'LNG',       baseCost: 78000000,  baseBuild: 6, cargo: 'Liquefied Natural Gas only' },
+];
+
+let _commClass = 'Coastal';
+let _commNationIdx = 0;
+let _commName = '';
+let _commNations = []; // loaded from DB
+
 function smOpenCommission() {
-    // Phase 4 will build the commission modal
-    alert('Commission modal coming in Phase 4');
+    _commClass = (SM_SUBSECTOR_CLASSES[faction?.corp_subsector] || ['Coastal'])[0];
+    _commNationIdx = 0;
+    _commName = '';
+
+    // Build nation list from all nations with manufacturing data
+    _commNations = [];
+    // We need nations data — use the ones already loaded or fetch
+    document.getElementById('comm-overlay').style.display = 'flex';
+    loadCommissionNations();
+}
+
+async function loadCommissionNations() {
+    const { data } = await _supabase.from('nations')
+        .select('id, name, manufacturing_output, physical_infrastructure, tariffs')
+        .order('name');
+    _commNations = (data || []).map(n => {
+        const mfg = Number(n.manufacturing_output ?? 50);
+        // Cost modifier: high MFG = more expensive (better quality). Low MFG = cheaper (lower quality).
+        const costMod = Math.round((0.75 + (mfg / 100) * 0.5) * 100) / 100; // 0.75 at MFG 0, 1.25 at MFG 100
+        // Build speed modifier: high MFG = faster. Low MFG = slower.
+        const buildMod = Math.round((1.5 - (mfg / 100) * 0.65) * 100) / 100; // 1.5 at MFG 0, 0.85 at MFG 100
+        const isHome = n.id === faction?.nation_id;
+        return { id: n.id, name: n.name, mfg, costMod, buildMod, isHome, tariffs: Number(n.tariffs ?? 0) };
+    });
+    // Put home nation first
+    _commNations.sort((a, b) => (b.isHome ? 1 : 0) - (a.isHome ? 1 : 0));
+    renderCommissionModal();
+}
+
+function smCloseCommission() {
+    document.getElementById('comm-overlay').style.display = 'none';
+}
+
+function commSetClass(cls) { _commClass = cls; renderCommissionModal(); }
+function commSetNation(idx) { _commNationIdx = idx; renderCommissionModal(); }
+function commSetName(val) { _commName = val; }
+
+function renderCommissionModal() {
+    const container = document.getElementById('comm-content');
+    if (!container) return;
+
+    const currentTick = shard?.current_tick || 0;
+    const vt = COMM_VESSEL_TYPES.find(v => v.cls === _commClass) || COMM_VESSEL_TYPES[0];
+    const nation = _commNations[_commNationIdx] || { name: '—', costMod: 1, buildMod: 1, mfg: 50, isHome: false };
+    const cm = FL_CLASS_META[_commClass] || { color: '#666', label: '?' };
+    const totalCost = Math.round(vt.baseCost * nation.costMod);
+    const buildTicks = Math.max(2, Math.round(vt.baseBuild * nation.buildMod));
+    const deposit = Math.round(totalCost * 0.5);
+    const balance = totalCost - deposit;
+    const deliveryTick = currentTick + buildTicks;
+    const allowedClasses = SM_SUBSECTOR_CLASSES[faction?.corp_subsector] || [];
+
+    let html = '';
+
+    // Header
+    html += `<div style="padding:10px 16px;border-bottom:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:8px;color:#c8a832;">&#9679;</span>
+                <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:2px;color:#9e9a92;text-transform:uppercase;">Commission Vessel</span>
+            </div>
+            <span onclick="smCloseCommission()" style="font-family:var(--font-mono);font-size:14px;color:#6a6660;cursor:pointer;">&#215;</span>
+        </div>
+    </div>`;
+
+    html += '<div style="flex:1;overflow-y:auto;">';
+
+    // Vessel Type
+    html += `<div style="padding:8px 16px;border-bottom:1px solid #2a2a24;">
+        <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Vessel Type</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;">`;
+    for (const v of COMM_VESSEL_TYPES) {
+        const vcm = FL_CLASS_META[v.cls] || { color: '#666', label: '?' };
+        const active = _commClass === v.cls;
+        const allowed = allowedClasses.includes(v.cls);
+        html += `<div onclick="${allowed ? "commSetClass('" + v.cls + "')" : ''}" style="padding:5px 4px;text-align:center;cursor:${allowed ? 'pointer' : 'not-allowed'};background:${active ? vcm.color + '18' : 'transparent'};border:1px solid ${active ? vcm.color + '44' : '#2a2a24'};opacity:${allowed ? 1 : 0.3};">
+            <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:${active ? vcm.color : '#6a6660'};">${vcm.label}</div>
+            <div style="font-family:var(--font-mono);font-size:6px;color:#6a6660;margin-top:2px;">${hfFmtBig(v.baseCost)} base</div>
+        </div>`;
+    }
+    html += '</div>';
+    html += `<div style="margin-top:4px;font-family:var(--font-mono);font-size:8px;color:${cm.color};">${vt.cargo}</div>`;
+    html += '</div>';
+
+    // Origin Shipyard
+    html += `<div style="padding:8px 16px;border-bottom:1px solid #2a2a24;">
+        <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Origin Shipyard</div>`;
+    for (let ni = 0; ni < _commNations.length; ni++) {
+        const n = _commNations[ni];
+        const active = _commNationIdx === ni;
+        const costColor = n.costMod > 1 ? '#c84' : n.costMod < 1 ? '#5c5' : '#6a6660';
+        const buildColor = n.buildMod > 1 ? '#c84' : n.buildMod < 1 ? '#5c5' : '#6a6660';
+        html += `<div onclick="commSetNation(${ni})" style="display:flex;align-items:center;padding:5px 8px;margin-bottom:2px;cursor:pointer;background:${active ? 'rgba(139,154,107,0.04)' : 'transparent'};border:1px solid ${active ? '#8b9a6b44' : '#2a2a24'};border-left:2px solid ${active ? '#8b9a6b' : 'transparent'};">
+            <div style="flex:1;">
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="font-size:11px;font-weight:600;color:${active ? '#e8e4dc' : '#9e9a92'};">${escapeHtml(n.name)}</span>
+                    ${n.isHome ? '<span style="font-family:var(--font-mono);font-size:6px;padding:0 3px;color:#c8a832;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.2);line-height:11px;">HOME</span>' : ''}
+                </div>
+                <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:2px;">${n.isHome ? 'Home port — no tariff' : 'Foreign shipyard'}</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <div style="text-align:center;"><div style="font-family:var(--font-mono);font-size:6px;color:#6a6660;">MFG</div><div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#9e9a92;">${n.mfg}</div></div>
+                <div style="text-align:center;"><div style="font-family:var(--font-mono);font-size:6px;color:#6a6660;">COST</div><div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${costColor};">×${n.costMod.toFixed(2)}</div></div>
+                <div style="text-align:center;"><div style="font-family:var(--font-mono);font-size:6px;color:#6a6660;">SPEED</div><div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${buildColor};">×${n.buildMod.toFixed(2)}</div></div>
+            </div>
+        </div>`;
+    }
+    html += '</div>';
+
+    // Vessel Name
+    html += `<div style="padding:8px 16px;border-bottom:1px solid #2a2a24;">
+        <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Vessel Name</div>
+        <input id="comm-name-input" value="${escapeHtml(_commName)}" oninput="commSetName(this.value)" placeholder="e.g., MV 'Sierra Nevada'" style="width:100%;padding:6px 10px;font-family:var(--font-mono);font-size:11px;color:#e8e4dc;background:#1c1c18;border:1px solid #2a2a24;outline:none;box-sizing:border-box;" />
+    </div>`;
+
+    // Build Summary
+    html += `<div style="padding:8px 16px;border-bottom:1px solid #2a2a24;">
+        <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Build Summary</div>
+        <div style="background:#1c1c18;border:1px solid #2a2a24;padding:6px 10px;">`;
+    const summaryRows = [
+        { label: 'VESSEL CLASS', value: _commClass, color: cm.color },
+        { label: 'SHIPYARD', value: nation.name, color: '#9e9a92' },
+        { label: 'BASE COST', value: hfFmtBig(vt.baseCost) + ' × ' + nation.costMod.toFixed(2), color: '#9e9a92' },
+        { label: 'BUILD TIME', value: buildTicks + ' ticks', color: buildTicks > vt.baseBuild ? '#c84' : buildTicks < vt.baseBuild ? '#5c5' : '#9e9a92' },
+        { label: 'COMPLETION', value: '~Tick ' + deliveryTick, color: '#9e9a92' },
+    ];
+    for (const r of summaryRows) {
+        html += `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
+            <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">${r.label}</span>
+            <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${r.color};">${r.value}</span>
+        </div>`;
+    }
+    // Total cost hero
+    html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a24;">
+        <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#e8e4dc;">TOTAL COST</span>
+        <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:#c8a832;">${hfFmtBig(totalCost)}</span>
+    </div>`;
+    html += `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
+        <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">DEPOSIT (50% NOW)</span>
+        <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c55;">${hfFmtBig(deposit)}</span>
+    </div>`;
+    html += `<div style="display:flex;justify-content:space-between;padding:3px 0;">
+        <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">BALANCE ON COMPLETION</span>
+        <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c84;">${hfFmtBig(balance)}</span>
+    </div>`;
+    html += '</div></div>';
+
+    // Payment terms
+    html += `<div style="padding:6px 16px;">
+        <div style="padding:5px 8px;background:rgba(200,168,50,0.04);border:1px solid rgba(200,168,50,0.12);">
+            <div style="font-family:var(--font-mono);font-size:8px;color:#c8a832;margin-bottom:2px;">PAYMENT TERMS</div>
+            <div style="font-size:9px;color:#6a6660;line-height:1.5;">50% deposit due immediately. Remaining 50% due on delivery at tick ${deliveryTick}. Vessel delivered at 100% condition, fully fueled, to your nearest port. Cancellation forfeits deposit.</div>
+        </div>
+    </div>`;
+
+    html += '</div>'; // close scrollable
+
+    // Footer
+    const nameOk = _commName.trim().length >= 2;
+    html += `<div style="padding:10px 16px;border-top:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">DEPOSIT DUE NOW</div>
+            <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:#c55;">${hfFmtBig(deposit)}</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+            <div onclick="smCloseCommission()" style="padding:5px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
+            <div id="comm-order-btn" onclick="${nameOk ? 'smPlaceOrder()' : ''}" style="padding:5px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:${nameOk ? '#000' : '#6a6660'};background:${nameOk ? '#c8a832' : 'transparent'};border:1px solid ${nameOk ? '#c8a832' : '#2a2a24'};cursor:${nameOk ? 'pointer' : 'default'};opacity:${nameOk ? 1 : 0.4};">PLACE ORDER</div>
+        </div>
+    </div>`;
+
+    container.innerHTML = html;
+}
+
+let _commOrdering = false;
+async function smPlaceOrder() {
+    if (_commOrdering || !faction || !shard) return;
+    const name = _commName.trim();
+    if (name.length < 2) return;
+
+    const vt = COMM_VESSEL_TYPES.find(v => v.cls === _commClass) || COMM_VESSEL_TYPES[0];
+    const nation = _commNations[_commNationIdx];
+    if (!nation) return;
+
+    const totalCost = Math.round(vt.baseCost * nation.costMod);
+    const buildTicks = Math.max(2, Math.round(vt.baseBuild * nation.buildMod));
+    const deposit = Math.round(totalCost * 0.5);
+    const balance = totalCost - deposit;
+    const currentTick = shard.current_tick || 0;
+    const cash = Number(faction.corp_cash_reserves ?? 0);
+
+    if (cash < deposit) { alert('Insufficient cash for deposit. Need ' + hfFmtBig(deposit) + '.'); return; }
+    if (!confirm('Commission ' + _commClass + ' from ' + nation.name + '?\n\nDeposit: ' + hfFmtBig(deposit) + ' (non-refundable)\nBalance: ' + hfFmtBig(balance) + ' on delivery at tick ' + (currentTick + buildTicks))) return;
+
+    _commOrdering = true;
+    const btn = document.getElementById('comm-order-btn');
+    if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
+
+    // Deduct deposit
+    const { error: cashErr } = await _supabase.from('factions').update({
+        corp_cash_reserves: cash - deposit,
+    }).eq('id', faction.id);
+    if (cashErr) { alert('Failed: ' + cashErr.message); _commOrdering = false; return; }
+
+    // Credit deposit to shipyard nation budget
+    const { data: shipyardNation } = await _supabase.from('nations').select('budget_reserves').eq('id', nation.id).single();
+    if (shipyardNation) {
+        await _supabase.from('nations').update({
+            budget_reserves: Number(shipyardNation.budget_reserves || 0) + deposit,
+        }).eq('id', nation.id);
+    }
+
+    // Create order
+    const specs = { Coastal: { dwt: 14000, unit: 'DWT', maint: 180000, fuel: 800 }, Container: { dwt: 4800, unit: 'TEU', maint: 290000, fuel: 2100 }, Bulk: { dwt: 28000, unit: 'DWT', maint: 350000, fuel: 1800 }, Tanker: { dwt: 42000, unit: 'DWT', maint: 380000, fuel: 2400 }, Reefer: { dwt: 12000, unit: 'DWT', maint: 280000, fuel: 1600 }, LNG: { dwt: 18000, unit: 'DWT', maint: 580000, fuel: 1400 } };
+    const s = specs[_commClass] || specs.Coastal;
+
+    const { error: orderErr } = await _supabase.from('vessel_orders').insert({
+        faction_id: faction.id,
+        vessel_name: name,
+        vessel_class: _commClass,
+        capacity_dwt: s.dwt,
+        capacity_unit: s.unit,
+        base_maintenance: s.maint,
+        fuel_capacity: s.fuel,
+        purchase_price: vt.baseCost,
+        shipyard_nation_id: nation.id,
+        shipyard_nation: nation.name,
+        cost_modifier: nation.costMod,
+        build_modifier: nation.buildMod,
+        total_cost: totalCost,
+        deposit_paid: deposit,
+        balance_due: balance,
+        ordered_at_tick: currentTick,
+        delivery_tick: currentTick + buildTicks,
+        build_ticks: buildTicks,
+        status: 'building',
+    });
+
+    if (orderErr) {
+        // Refund deposit
+        await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
+        alert('Failed to place order: ' + orderErr.message);
+        _commOrdering = false;
+        return;
+    }
+
+    faction.corp_cash_reserves = cash - deposit;
+    _commOrdering = false;
+    smCloseCommission();
+    alert(name + ' commissioned!\n\nClass: ' + _commClass + '\nShipyard: ' + nation.name + '\nDeposit: ' + hfFmtBig(deposit) + '\nDelivery: Tick ' + (currentTick + buildTicks));
 }
 
 window.smSelectListing = smSelectListing;
 window.smPurchase = smPurchase;
 window.smOpenCommission = smOpenCommission;
+window.smCloseCommission = smCloseCommission;
+window.commSetClass = commSetClass;
+window.commSetNation = commSetNation;
+window.commSetName = commSetName;
+window.smPlaceOrder = smPlaceOrder;
 
 window.flSelectVessel = flSelectVessel;
 window.flRefurbish = flRefurbish;
