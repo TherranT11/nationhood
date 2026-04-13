@@ -40,8 +40,7 @@ const LEADER_ACTIONS = [
         costColor: '#5cc55c',
         ap: 1,
         tags: ['PUBLIC', 'NARRATIVE'],
-        locked: true, // Phase 3 unlocks this
-        lockReason: 'Coming in a future update.',
+        locked: false,
     },
     {
         id: 'platform',
@@ -62,6 +61,30 @@ const TAG_COLORS = {
     DEFENSIVE: '#5cc55c', CAMPAIGN: '#c84', VOTER: '#c8a832',
     OFFENSIVE: '#c84', REACTIVE: '#ca5', STRUCTURAL: '#9e9a92',
 };
+
+// Statement topics
+const STATEMENT_TOPICS = [
+    { id: 'economy', label: 'Economy & Jobs', icon: '💰' },
+    { id: 'healthcare', label: 'Healthcare', icon: '🏥' },
+    { id: 'education', label: 'Education', icon: '🎓' },
+    { id: 'security', label: 'National Security', icon: '🛡️' },
+    { id: 'environment', label: 'Environment', icon: '🌱' },
+    { id: 'corruption', label: 'Anti-Corruption', icon: '🔍' },
+    { id: 'infrastructure', label: 'Infrastructure', icon: '🏗️' },
+    { id: 'immigration', label: 'Immigration', icon: '🌐' },
+    { id: 'housing', label: 'Housing & Cost of Living', icon: '🏠' },
+    { id: 'crime', label: 'Crime & Justice', icon: '⚖️' },
+    { id: 'labor', label: 'Labor & Workers', icon: '🔨' },
+    { id: 'foreign_policy', label: 'Foreign Policy', icon: '🕊️' },
+];
+
+// Headline templates for statements (mirrors valdorian-templates.js)
+const STATEMENT_HEADLINES = [
+    '{party_name} Calls for Action on {topic}',
+    '{leader_name}: \'{topic}\' Must Be National Priority',
+    '{leader_name} Pledges Bold Agenda on {topic}',
+    '{party_name} Leader Addresses Nation on {topic}',
+];
 
 // ════════════════════════ INIT ════════════════════════
 
@@ -178,6 +201,9 @@ function renderPage(root) {
                 </div>
             </div>
         </div>
+
+        <!-- Statement Modal -->
+        <div class="pa-modal-overlay" id="pa-statement-modal"></div>
     `;
 
     // Bind leader card clicks
@@ -196,7 +222,9 @@ function renderPage(root) {
         const item = e.target.closest('.pa-action-item');
         if (!item || item.classList.contains('locked')) return;
         const actionId = item.dataset.actionId;
-        if (actionId === 'platform') {
+        if (actionId === 'statement') {
+            openStatementModal(root);
+        } else if (actionId === 'platform') {
             // Phase 4 will implement the platform modal
         }
     });
@@ -312,4 +340,190 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             <span style="color:${role.color};font-weight:700;">${role.title}</span> actions are executed by the party leader. Effectiveness depends on party approval and momentum.
         </div>
     `;
+}
+
+// ════════════════════════ ISSUE STATEMENT MODAL ════════════════════════
+
+function openStatementModal(root) {
+    const overlay = document.getElementById('pa-statement-modal');
+    if (!overlay) return;
+
+    const faction = _state.faction;
+    const partyColor = faction?.color || '#c8a832';
+    const leaderName = (faction?.leader_first_name && faction?.leader_last_name)
+        ? `${faction.leader_first_name} ${faction.leader_last_name}` : 'Party Leader';
+
+    const topicsHtml = STATEMENT_TOPICS.map(t =>
+        `<div class="pa-topic-card" data-topic="${t.id}" style="padding:8px 10px;cursor:pointer;border:1px solid var(--border-mid);display:flex;align-items:center;gap:8px;transition:all 0.12s;">
+            <span style="font-size:14px;">${t.icon}</span>
+            <span style="font-size:10px;font-weight:600;color:var(--text-secondary);">${esc(t.label)}</span>
+        </div>`
+    ).join('');
+
+    overlay.innerHTML = `
+        <div class="pa-modal" style="width:520px;">
+            <div class="pa-modal-header">
+                <div class="pa-modal-header-left">
+                    <div class="pa-modal-dot" style="background:${partyColor};"></div>
+                    <span class="pa-modal-title">Issue Statement</span>
+                </div>
+                <button class="pa-modal-close" id="pa-stmt-close">&times;</button>
+            </div>
+            <div style="padding:8px 16px;border-bottom:1px solid var(--border-main);background:${partyColor}08;display:flex;align-items:center;gap:8px;">
+                <span style="width:5px;height:5px;border-radius:50%;background:${partyColor};display:inline-block;"></span>
+                <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-secondary);">Speaking as:</span>
+                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${partyColor};">${esc(leaderName)}</span>
+                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">&middot; Party Leader</span>
+            </div>
+            <div class="pa-modal-body" style="gap:14px;">
+                <div>
+                    <div class="pa-modal-step-label">1 &mdash; Topic</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;" id="pa-stmt-topics">${topicsHtml}</div>
+                </div>
+                <div>
+                    <div class="pa-modal-step-label">2 &mdash; Statement</div>
+                    <textarea class="pa-modal-input" id="pa-stmt-body" rows="5" placeholder="Write your public statement..." style="resize:none;font-family:var(--font-ui);font-size:11px;line-height:1.6;"></textarea>
+                    <div style="display:flex;justify-content:space-between;margin-top:3px;">
+                        <span id="pa-stmt-charcount" style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">0 characters</span>
+                        <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">Min 50 characters</span>
+                    </div>
+                </div>
+                <div style="padding:6px 10px;background:var(--amber-faint);border:1px solid var(--amber-border);">
+                    <div style="font-family:var(--font-mono);font-size:8px;color:var(--accent);margin-bottom:2px;">COST</div>
+                    <div style="font-size:9px;color:var(--text-dim);line-height:1.5;">
+                        Issuing a statement costs <strong style="color:var(--text-bright);">1 AP</strong>.
+                        The statement will appear in the national news and may shift voter bloc reactions.
+                    </div>
+                </div>
+            </div>
+            <div class="pa-modal-footer">
+                <button class="pa-modal-btn pa-modal-btn--cancel" id="pa-stmt-cancel">Cancel</button>
+                <button class="pa-modal-btn pa-modal-btn--submit" id="pa-stmt-submit" disabled>Issue Statement</button>
+            </div>
+        </div>
+    `;
+
+    overlay.classList.add('active');
+
+    let selectedTopic = null;
+    let submitting = false;
+
+    const close = () => overlay.classList.remove('active');
+    document.getElementById('pa-stmt-close')?.addEventListener('click', close);
+    document.getElementById('pa-stmt-cancel')?.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    // Topic selection
+    document.getElementById('pa-stmt-topics')?.addEventListener('click', (e) => {
+        const card = e.target.closest('.pa-topic-card');
+        if (!card) return;
+        selectedTopic = card.dataset.topic;
+        document.querySelectorAll('.pa-topic-card').forEach(c => {
+            const isActive = c.dataset.topic === selectedTopic;
+            c.style.borderColor = isActive ? partyColor : '';
+            c.style.background = isActive ? partyColor + '0a' : '';
+            const label = c.querySelector('span:last-child');
+            if (label) label.style.color = isActive ? 'var(--text-bright)' : '';
+        });
+        updateSubmitState();
+    });
+
+    // Body input
+    const updateSubmitState = () => {
+        const body = document.getElementById('pa-stmt-body')?.value?.trim() || '';
+        const btn = document.getElementById('pa-stmt-submit');
+        const cc = document.getElementById('pa-stmt-charcount');
+        if (cc) cc.textContent = `${body.length} characters`;
+        if (btn) btn.disabled = !(selectedTopic && body.length >= 50);
+    };
+    document.getElementById('pa-stmt-body')?.addEventListener('input', updateSubmitState);
+
+    // Submit
+    document.getElementById('pa-stmt-submit')?.addEventListener('click', async () => {
+        if (submitting) return;
+        const body = document.getElementById('pa-stmt-body')?.value?.trim();
+        if (!selectedTopic || !body || body.length < 50) return;
+
+        submitting = true;
+        const btn = document.getElementById('pa-stmt-submit');
+        if (btn) { btn.disabled = true; btn.textContent = 'Issuing...'; }
+
+        try {
+            const tick = _state.shard?.current_tick || 0;
+            const topicDef = STATEMENT_TOPICS.find(t => t.id === selectedTopic);
+            const topicLabel = topicDef?.label || selectedTopic;
+
+            // 1. Deduct AP
+            const { data: apResult, error: apErr } = await _supabase.rpc('deduct_ap', {
+                p_faction_id: faction.id,
+                p_cost: 1,
+            });
+
+            if (apErr || (apResult != null && apResult < 0)) {
+                const currentAp = apResult != null ? -(apResult) - 1 : '?';
+                alert(`Not enough AP. You have ${currentAp} AP, need 1.`);
+                return;
+            }
+
+            // 2. Generate headline
+            const template = STATEMENT_HEADLINES[Math.floor(Math.random() * STATEMENT_HEADLINES.length)];
+            const headline = template
+                .replace('{party_name}', faction.faction_name || 'Unknown Party')
+                .replace('{leader_name}', leaderName)
+                .replace('{topic}', topicLabel);
+
+            // 3. Write to campaign_actions
+            const { error: actionErr } = await _supabase.from('campaign_actions').insert({
+                party_id: faction.id,
+                nation_id: _state.nation?.id,
+                action_type: 'issue_statement',
+                ap_cost: 1,
+                money_cost: 0,
+                tick_performed: tick,
+                result: {
+                    topic: selectedTopic,
+                    topicLabel: topicLabel,
+                    headline: headline,
+                    body: body,
+                    leaderName: leaderName,
+                },
+            });
+
+            if (actionErr) {
+                console.error('[PartyActions] Statement log failed:', actionErr.message);
+            }
+
+            // 4. Write to valdorian_articles (system news)
+            const { error: articleErr } = await _supabase.from('valdorian_articles').insert({
+                nation_id: _state.nation?.id,
+                event_type: 'issue_statement',
+                tier: 3,
+                section: 'politics',
+                headline: headline,
+                subheadline: topicLabel,
+                lede: body.substring(0, 200) + (body.length > 200 ? '...' : ''),
+                body_paragraphs: JSON.stringify(body.split(/\n\n+/).filter(p => p.trim())),
+                quotes: JSON.stringify([{ posture: 'assertive', text: body.substring(0, 150) }]),
+                byline_reporter: 'Political Desk',
+                topic_tags: JSON.stringify([selectedTopic]),
+                source_event_id: 'statement_' + Date.now(),
+                tick: tick,
+            });
+
+            if (articleErr) {
+                console.error('[PartyActions] Article creation failed:', articleErr.message);
+            }
+
+            // 5. Update local state and close
+            if (faction) faction.action_points = apResult;
+            close();
+            renderPage(root);
+        } catch (err) {
+            console.error('[PartyActions] Statement error:', err);
+            alert('Failed to issue statement. Please try again.');
+        } finally {
+            submitting = false;
+            if (btn) { btn.disabled = false; btn.textContent = 'Issue Statement'; }
+        }
+    });
 }
