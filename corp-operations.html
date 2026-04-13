@@ -2040,6 +2040,37 @@ body.light-mode .av-empty__text { color: #1a1a17; }
   .oc-card, .ap-card, .wh-card, .pr-card, .eq-card, .em-card, .pm-card, .dl-card, .ar-card, .av-card { max-width: 100%; }
 }
 
+/* ── Actions tab mobile ── */
+@media (max-width: 820px) {
+  #actions-container > div > div:first-child {
+    /* Left panel: stack vertically on mobile */
+    width: 100% !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+  #actions-container > div {
+    flex-direction: column !important;
+  }
+  #exec-search-overlay > div {
+    width: 95vw !important;
+    max-width: 95vw !important;
+  }
+  #exec-search-content > div:nth-child(2) {
+    flex-direction: column !important;
+  }
+  #exec-search-content > div:nth-child(2) > div:first-child {
+    width: 100% !important;
+    max-height: 200px !important;
+    border-right: none !important;
+    border-bottom: 1px solid #2a2a24 !important;
+  }
+  #lr-overlay > div {
+    width: 95vw !important;
+    max-width: 95vw !important;
+  }
+}
+
 /* ════════════════════════════════════════════════════════════════════════════════
    ACTIVE PROJECT MODAL — 720px, four tabs
    ════════════════════════════════════════════════════════════════════════════════ */
@@ -2721,7 +2752,7 @@ body.light-mode .av-empty__text { color: #1a1a17; }
 
 <!-- Executive Search Modal -->
 <div id="exec-search-overlay" onclick="closeExecSearch()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;">
-  <div onclick="event.stopPropagation()" style="width:680px;max-height:94vh;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
+  <div onclick="event.stopPropagation()" style="width:850px;max-height:94vh;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
     <div id="exec-search-content" style="display:flex;flex-direction:column;overflow:hidden;max-height:94vh;"></div>
   </div>
 </div>
@@ -7121,28 +7152,47 @@ function renderActionsTab() {
 
 const EXEC_ACTIONS = {
     CEO: [
-        { id: 'statement', name: 'Issue Statement', desc: 'Issue a press release to the public events feed. Other players and media corps see it.', cost: '$20k', costColor: '#5cb85c', tags: ['REPUTATION'] },
+        { id: 'statement', name: 'Issue Statement', desc: 'Issue a press release to the public events feed. Other players and media corps see it. Cost scales with CEO skill.', cost: '~$20k', costColor: '#5cb85c', tags: ['REPUTATION'], cooldown: 'once/tick' },
         { id: 'ipo', name: 'IPO', desc: 'Take the corporation public. Sell ~30% of shares for a massive cash injection. Permanent loss of full control.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['STRUCTURAL'], locked: true, lockReason: 'Coming soon' },
     ],
     CFO: [
         { id: 'loan', name: 'Request Loan', desc: 'Submit a loan application to all finance corporations. Set amount, purpose, term, and collateral. Receive competing offers.', cost: 'FREE', costColor: '#5cb85c', tags: ['FINANCIAL'] },
     ],
     COO: [
-        { id: 'restructure', name: 'Restructure Operations', desc: 'Cut overhead by laying off 10-20% of employees or selling a subsidiary. Saves money and cuts ~7% of debt, but reduces reputation by 1d10+3.', cost: 'FREE', costColor: '#5cb85c', tags: ['OPERATIONAL'] },
+        { id: 'restructure', name: 'Restructure Operations', desc: 'Lay off 10-20% of workforce, cut ~7% of debt. Reputation hit scales with COO skill — high skill minimizes damage.', cost: 'FREE', costColor: '#5cb85c', tags: ['OPERATIONAL'], cooldown: 'once/tick' },
     ],
     CTO: [
         { id: 'research', name: 'Begin Research', desc: 'Start researching a tech tree node. Opens the tech tree interface.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['INNOVATION'], locked: true, lockReason: 'Coming soon' },
     ],
     CMO: [
-        { id: 'rebrand', name: 'Rebrand Corporation', desc: 'Change name, abbreviation, and motto. Reputation drops by 5 but future gains are accelerated. The fresh start.', cost: '$20M', costColor: '#ca5', tags: ['STRUCTURAL'] },
+        { id: 'rebrand', name: 'Rebrand Corporation', desc: 'Change name and abbreviation. Cost and reputation hit scale with CMO skill — high skill reduces both.', cost: '~$20M', costColor: '#ca5', tags: ['STRUCTURAL'], cooldown: 'once/tick' },
     ],
     CLO: [
         { id: 'sue_corp', name: 'Sue Corporation', desc: 'File a lawsuit against another corporation for patent infringement, contract breach, or predatory practices.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['LEGAL'], locked: true, lockReason: 'Coming soon' },
     ],
     Lobbyist: [
-        { id: 'donate', name: 'Political Donation', desc: 'Choose a political party and donate $10M. The target party receives 5 AP. Can be done once per tick.', cost: '$10M', costColor: '#ca5', tags: ['POLITICAL'] },
+        { id: 'donate', name: 'Political Donation', desc: 'Choose a political party and donate $10M. The target party receives 5 AP. Cost scales with Lobbyist skill. Once per tick.', cost: '~$10M', costColor: '#ca5', tags: ['POLITICAL'], cooldown: 'once/tick' },
     ],
 };
+
+// ─── Skill modifier: >50 = cheaper/less damage, <50 = more expensive/more damage ──
+// Returns a multiplier: skill 0 → 1.5, skill 50 → 1.0, skill 100 → 0.5
+function skillCostMod(skill) {
+    return 1.5 - (skill / 100);
+}
+
+// ─── Cooldown tracking: actions limited to once per tick ──
+let _actionCooldowns = {}; // { actionId: lastTickUsed }
+
+function isActionOnCooldown(actionId) {
+    const currentTick = shard?.current_tick || 0;
+    return _actionCooldowns[actionId] === currentTick;
+}
+
+function markActionUsed(actionId) {
+    const currentTick = shard?.current_tick || 0;
+    _actionCooldowns[actionId] = currentTick;
+}
 
 function renderActionsRightPanel() {
     const panel = document.getElementById('actions-right-panel');
@@ -7279,6 +7329,12 @@ function renderActionsRightPanel() {
 }
 
 function actExecute(actionId, role) {
+    // Check once-per-tick cooldown
+    const actionDef = (EXEC_ACTIONS[role] || []).find(a => a.id === actionId);
+    if (actionDef?.cooldown === 'once/tick' && isActionOnCooldown(actionId)) {
+        alert('This action can only be used once per tick. Wait for the next tick.');
+        return;
+    }
     switch (actionId) {
         case 'statement': return actOpenStatement();
         case 'loan': return lrOpen();
@@ -7385,9 +7441,12 @@ async function actSubmitStatement() {
         return;
     }
 
+    const ceo = getExecForRole('CEO');
+    const ceoSkill = ceo ? ceo.skill : 50;
+    const stmtCost = Math.round(20000 * skillCostMod(ceoSkill));
     const cash = Number(faction.corp_cash_reserves ?? 0);
-    if (cash < 20000) {
-        if (errEl) { errEl.textContent = 'Insufficient cash. Need $20k.'; errEl.style.display = 'block'; }
+    if (cash < stmtCost) {
+        if (errEl) { errEl.textContent = 'Insufficient cash. Need ' + hfFmtBig(stmtCost) + '.'; errEl.style.display = 'block'; }
         return;
     }
 
@@ -7396,13 +7455,12 @@ async function actSubmitStatement() {
     if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
 
     const corpName = faction.faction_name || 'Corporation';
-    const ceo = getExecForRole('CEO');
     const ceoName = ceo ? `${ceo.first_name} ${ceo.last_name}` : 'CEO';
     const currentTick = shard.current_tick || 0;
 
-    // Deduct $20k
+    // Deduct cost (skill-scaled)
     const { error: cashErr } = await _supabase.from('factions').update({
-        corp_cash_reserves: cash - 20000,
+        corp_cash_reserves: cash - stmtCost,
     }).eq('id', faction.id);
 
     if (cashErr) {
@@ -7420,7 +7478,7 @@ async function actSubmitStatement() {
         description_used: ceoName + ', CEO of ' + corpName + ': "' + text.replace(/[<>"]/g, '') + '"',
         category: 'business',
         trigger_key: 'ceo_statement',
-        effects_applied: { cost: 20000, ceo: ceoName },
+        effects_applied: { cost: stmtCost, ceo: ceoName, skill: ceoSkill },
         fired_at_tick: currentTick,
     });
 
@@ -7434,8 +7492,9 @@ async function actSubmitStatement() {
     }
 
     // Update local state
-    faction.corp_cash_reserves = cash - 20000;
+    faction.corp_cash_reserves = cash - stmtCost;
     _stmtSubmitting = false;
+    markActionUsed('statement');
     actCloseStatement();
 }
 
@@ -7746,11 +7805,18 @@ function actOpenRestructure() {
         return;
     }
 
+    // Skill-scaled effects: high COO skill → less rep damage, more debt cut
+    const coo = getExecForRole('COO');
+    const cooSkill = coo ? coo.skill : 50;
+    const cooMod = skillCostMod(cooSkill); // >50 = <1.0, <50 = >1.0
+
     // Calculate layoff range (10-20%)
     const layoffPct = 10 + Math.floor(Math.random() * 11); // 10-20
     const layoffCount = Math.round(totalWf * layoffPct / 100);
-    const debtCut = Math.round(debt * 0.07);
-    const repLoss = 3 + Math.floor(Math.random() * 10); // 1d10 + 3
+    const baseDebtCut = Math.round(debt * 0.07);
+    const debtCut = Math.round(baseDebtCut * (2 - cooMod)); // high skill = MORE debt cut
+    const baseRepLoss = 3 + Math.floor(Math.random() * 10); // 1d10 + 3
+    const repLoss = Math.max(1, Math.round(baseRepLoss * cooMod)); // high skill = LESS rep loss
 
     // Distribute layoffs proportionally
     const genCut = Math.round(gen / totalWf * layoffCount);
@@ -7864,15 +7930,21 @@ async function actSubmitRestructure(layoffPct, debtCut, repLoss, genCut, sklCut,
     });
 
     _restrSubmitting = false;
+    markActionUsed('restructure');
     actCloseRestructure();
     renderActionsTab();
 }
 
 // ═══════════════════════════════════════════════════
-// CMO: Rebrand Corporation ($20M, rename + new abbr, -5 rep)
+// CMO: Rebrand Corporation (skill-scaled cost + rep hit)
 // ═══════════════════════════════════════════════════
 
 function actOpenRebrand() {
+    const cmo = getExecForRole('CMO');
+    const cmoSkill = cmo ? cmo.skill : 50;
+    const cmoMod = skillCostMod(cmoSkill);
+    const rebrandCost = Math.round(20000000 * cmoMod);
+    const rebrandRepLoss = Math.max(1, Math.round(5 * cmoMod));
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const rep = Number(faction?.corp_reputation ?? 50);
     const corpName = faction?.faction_name || '';
@@ -7905,21 +7977,25 @@ function actOpenRebrand() {
             <div style="background:#1c1c18;border:1px solid #2a2a24;padding:6px 10px;">
                 <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
                     <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">COST</span>
-                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c84;">$20M</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c84;">${hfFmtBig(rebrandCost)}</span>
                 </div>
                 <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
                     <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">REPUTATION</span>
-                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c55;">-5 (${rep} &rarr; ${Math.max(0, rep - 5)})</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c55;">-${rebrandRepLoss} (${rep} &rarr; ${Math.max(0, rep - rebrandRepLoss)})</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">SKILL MODIFIER</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${cmoMod <= 1 ? '#5cb85c' : '#c84'};">&times;${cmoMod.toFixed(2)}</span>
                 </div>
                 <div style="display:flex;justify-content:space-between;padding:3px 0;">
                     <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">CASH AFTER</span>
-                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${cash < 20000000 ? '#c55' : '#e8e4dc'};">${hfFmtBig(cash - 20000000)}</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${cash < rebrandCost ? '#c55' : '#e8e4dc'};">${hfFmtBig(cash - rebrandCost)}</span>
                 </div>
             </div>
         </div>
         <div style="padding:8px 16px;border-top:1px solid #2a2a24;display:flex;justify-content:flex-end;gap:6px;">
             <div onclick="actCloseRebrand()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
-            <div id="rebrand-btn" onclick="actSubmitRebrand()" style="padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:#c84;cursor:${cash >= 20000000 ? 'pointer' : 'not-allowed'};${cash < 20000000 ? 'opacity:0.4;pointer-events:none;' : ''}">REBRAND</div>
+            <div id="rebrand-btn" onclick="actSubmitRebrand(${rebrandCost},${rebrandRepLoss})" style="padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:#c84;cursor:${cash >= rebrandCost ? 'pointer' : 'not-allowed'};${cash < rebrandCost ? 'opacity:0.4;pointer-events:none;' : ''}">REBRAND</div>
         </div>
         <div id="rebrand-error" style="padding:4px 16px;font-family:var(--font-mono);font-size:8px;color:#c55;display:none;"></div>
     </div>`;
@@ -7933,8 +8009,10 @@ function actCloseRebrand() {
 }
 
 let _rebrandSubmitting = false;
-async function actSubmitRebrand() {
+async function actSubmitRebrand(costOverride, repLossOverride) {
     if (!faction || !shard || _rebrandSubmitting) return;
+    const rebrandCost = costOverride || 20000000;
+    const rebrandRepLoss = repLossOverride || 5;
     const errEl = document.getElementById('rebrand-error');
     const newName = (document.getElementById('rebrand-name')?.value || '').trim().replace(/[<>"]/g, '');
     const newAbbr = (document.getElementById('rebrand-abbr')?.value || '').trim().toUpperCase().replace(/[<>"]/g, '');
@@ -7949,8 +8027,8 @@ async function actSubmitRebrand() {
     }
 
     const cash = Number(faction.corp_cash_reserves ?? 0);
-    if (cash < 20000000) {
-        if (errEl) { errEl.textContent = 'Insufficient cash. Need $20M.'; errEl.style.display = 'block'; }
+    if (cash < rebrandCost) {
+        if (errEl) { errEl.textContent = 'Insufficient cash. Need ' + hfFmtBig(rebrandCost) + '.'; errEl.style.display = 'block'; }
         return;
     }
 
@@ -7965,8 +8043,8 @@ async function actSubmitRebrand() {
         faction_name: newName,
         abbreviation: newAbbr,
         corp_ticker: newAbbr,
-        corp_cash_reserves: cash - 20000000,
-        corp_reputation: Math.max(0, rep - 5),
+        corp_cash_reserves: cash - rebrandCost,
+        corp_reputation: Math.max(0, rep - rebrandRepLoss),
     }).eq('id', faction.id);
 
     if (error) {
@@ -7980,8 +8058,8 @@ async function actSubmitRebrand() {
     faction.faction_name = newName;
     faction.abbreviation = newAbbr;
     faction.corp_ticker = newAbbr;
-    faction.corp_cash_reserves = cash - 20000000;
-    faction.corp_reputation = Math.max(0, rep - 5);
+    faction.corp_cash_reserves = cash - rebrandCost;
+    faction.corp_reputation = Math.max(0, rep - rebrandRepLoss);
 
     // Log event
     const currentTick = shard.current_tick || 0;
@@ -7992,11 +8070,12 @@ async function actSubmitRebrand() {
         description_used: oldName + ' has rebranded to ' + newName + ' (' + newAbbr + '). The rebrand costs $20M and reputation takes a temporary hit.',
         category: 'business',
         trigger_key: 'corp_rebrand',
-        effects_applied: { old_name: oldName, new_name: newName, new_abbr: newAbbr, rep_loss: 5, cost: 20000000 },
+        effects_applied: { old_name: oldName, new_name: newName, new_abbr: newAbbr, rep_loss: rebrandRepLoss, cost: rebrandCost },
         fired_at_tick: currentTick,
     });
 
     _rebrandSubmitting = false;
+    markActionUsed('rebrand');
     actCloseRebrand();
     renderActionsTab();
 
@@ -8063,9 +8142,12 @@ function renderDonationModal() {
     const overlay = document.getElementById('donate-overlay');
     if (!overlay) return;
 
+    const lobbyist = getExecForRole('Lobbyist');
+    const lobbySkill = lobbyist ? lobbyist.skill : 50;
+    const donateCost = Math.round(10000000 * skillCostMod(lobbySkill));
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const sel = _donateSelected >= 0 ? _donateParties[_donateSelected] : null;
-    const canAfford = cash >= 10000000;
+    const canAfford = cash >= donateCost;
 
     let html = `<div onclick="event.stopPropagation()" style="width:480px;max-height:80vh;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">`;
 
@@ -8080,7 +8162,7 @@ function renderDonationModal() {
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
             <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">Cost:</span>
-            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#ca5;">$10M</span>
+            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#ca5;">${hfFmtBig(donateCost)}</span>
             <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">&rarr; Target party receives</span>
             <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#5cb85c;">+5 AP</span>
         </div>
@@ -8132,7 +8214,7 @@ function renderDonationModal() {
     // Footer
     html += `<div style="padding:10px 16px;border-top:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
         <div style="display:flex;gap:12px;">
-            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">COST</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#ca5;">$10M</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">COST</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#ca5;">${hfFmtBig(donateCost)}</div></div>
             <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">CASH</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${canAfford ? '#e8e4dc' : '#c55'};">${hfFmtBig(cash)}</div></div>
             ${sel ? `<div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">RECIPIENT</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#e8e4dc;">${escapeHtml(sel.abbreviation || sel.faction_name)}</div></div>` : ''}
         </div>
@@ -8153,10 +8235,13 @@ async function actSubmitDonation() {
     const party = _donateParties[_donateSelected];
     if (!party) return;
 
+    const lobbyist = getExecForRole('Lobbyist');
+    const lobbySkill = lobbyist ? lobbyist.skill : 50;
+    const donateCost = Math.round(10000000 * skillCostMod(lobbySkill));
     const cash = Number(faction.corp_cash_reserves ?? 0);
-    if (cash < 10000000) {
+    if (cash < donateCost) {
         const errEl = document.getElementById('donate-error');
-        if (errEl) { errEl.textContent = 'Insufficient cash. Need $10M.'; errEl.style.display = 'block'; }
+        if (errEl) { errEl.textContent = 'Insufficient cash. Need ' + hfFmtBig(donateCost) + '.'; errEl.style.display = 'block'; }
         return;
     }
 
@@ -8166,7 +8251,7 @@ async function actSubmitDonation() {
 
     // Deduct $10M from corp
     const { error: cashErr } = await _supabase.from('factions').update({
-        corp_cash_reserves: cash - 10000000,
+        corp_cash_reserves: cash - donateCost,
     }).eq('id', faction.id);
 
     if (cashErr) {
@@ -8194,7 +8279,7 @@ async function actSubmitDonation() {
     }
 
     // Update local state
-    faction.corp_cash_reserves = cash - 10000000;
+    faction.corp_cash_reserves = cash - donateCost;
 
     // Log event
     const currentTick = shard.current_tick || 0;
@@ -8203,14 +8288,15 @@ async function actSubmitDonation() {
         nation_id: faction.nation_id,
         faction_id: faction.id,
         event_name: corpName + ' — Political Donation',
-        description_used: corpName + ' has donated $10M to ' + (party.faction_name || 'a political party') + '. The party receives 5 action points.',
+        description_used: corpName + ' has donated ' + hfFmtBig(donateCost) + ' to ' + (party.faction_name || 'a political party') + '. The party receives 5 action points.',
         category: 'business',
         trigger_key: 'corp_donation',
-        effects_applied: { cost: 10000000, recipient_faction_id: party.id, recipient_name: party.faction_name, ap_granted: 5 },
+        effects_applied: { cost: donateCost, recipient_faction_id: party.id, recipient_name: party.faction_name, ap_granted: 5, skill: lobbySkill },
         fired_at_tick: currentTick,
     });
 
     _donateSubmitting = false;
+    markActionUsed('donate');
     actCloseDonation();
 }
 
@@ -8332,18 +8418,18 @@ function renderExecSearchModal() {
     let html = '';
 
     // ── Header ──
-    html += `<div style="padding:10px 16px;border-bottom:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;">
+    html += `<div style="padding:12px 20px;border-bottom:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-            <div style="display:flex;align-items:center;gap:8px;">
-                <span style="font-size:8px;color:${meta.color};">&#9679;</span>
-                <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:2px;color:#9e9a92;text-transform:uppercase;">Executive Search</span>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:10px;color:${meta.color};">&#9679;</span>
+                <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;letter-spacing:2px;color:#9e9a92;text-transform:uppercase;">Executive Search</span>
             </div>
-            <span onclick="closeExecSearch()" style="font-family:var(--font-mono);font-size:14px;color:#6a6660;cursor:pointer;">&#215;</span>
+            <span onclick="closeExecSearch()" style="font-family:var(--font-mono);font-size:18px;color:#6a6660;cursor:pointer;">&#215;</span>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
-            <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">Hiring:</span>
-            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${meta.color};">${escapeHtml(role)}</span>
-            <span style="font-size:10px;color:var(--text-bright,#f0efe6);">${escapeHtml(meta.fullTitle)}</span>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:5px;">
+            <span style="font-family:var(--font-mono);font-size:11px;color:#6a6660;">Hiring:</span>
+            <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:${meta.color};">${escapeHtml(role)}</span>
+            <span style="font-size:13px;color:var(--text-bright,#f0efe6);">${escapeHtml(meta.fullTitle)}</span>
         </div>
     </div>`;
 
@@ -8351,11 +8437,11 @@ function renderExecSearchModal() {
     html += '<div style="display:flex;flex:1;min-height:0;overflow:hidden;">';
 
     // ═══ LEFT: Candidate list ═══
-    html += '<div style="width:240px;border-right:1px solid #2a2a24;overflow-y:auto;flex-shrink:0;">';
+    html += '<div style="width:300px;border-right:1px solid #2a2a24;overflow-y:auto;flex-shrink:0;">';
 
     if (candidates.length === 0) {
-        html += `<div style="padding:24px 16px;text-align:center;">
-            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">No candidates available for this role in your nation.</div>
+        html += `<div style="padding:30px 20px;text-align:center;">
+            <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">No candidates available for this role in your nation.</div>
         </div>`;
     }
 
@@ -8365,24 +8451,24 @@ function renderExecSearchModal() {
         const skC = skillColor(c.skill);
 
         html += `<div onclick="esSelectCandidate(${i})" style="
-            padding:8px 12px;
+            padding:10px 14px;
             border-bottom:1px solid #2a2a24;
             border-left:3px solid ${isSel ? meta.color : 'transparent'};
             background:${isSel ? meta.color + '08' : 'transparent'};
             cursor:pointer;
         ">
-            <div style="display:flex;align-items:center;gap:8px;">
-                <div style="width:32px;height:32px;background:${meta.color}10;border:1px solid ${meta.color}22;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;font-weight:700;color:${meta.color};flex-shrink:0;">${escapeHtml(getInitials(c.first_name, c.last_name))}</div>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:40px;height:40px;background:${meta.color}10;border:1px solid ${meta.color}22;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:12px;font-weight:700;color:${meta.color};flex-shrink:0;">${escapeHtml(getInitials(c.first_name, c.last_name))}</div>
                 <div style="flex:1;min-width:0;">
-                    <div style="font-size:10px;font-weight:600;color:${isSel ? 'var(--text-bright,#f0efe6)' : '#9e9a92'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}</div>
-                    <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
-                        <div style="display:flex;align-items:center;gap:3px;flex:1;">
-                            <div style="flex:1;height:2px;background:#2a2a24;">
+                    <div style="font-size:13px;font-weight:600;color:${isSel ? 'var(--text-bright,#f0efe6)' : '#9e9a92'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}</div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-top:3px;">
+                        <div style="display:flex;align-items:center;gap:4px;flex:1;">
+                            <div style="flex:1;height:3px;background:#2a2a24;">
                                 <div style="width:${c.skill}%;height:100%;background:${skC};"></div>
                             </div>
-                            <span style="font-family:var(--font-mono);font-size:7px;color:${skC};width:14px;text-align:right;">${c.skill}</span>
+                            <span style="font-family:var(--font-mono);font-size:9px;color:${skC};width:18px;text-align:right;">${c.skill}</span>
                         </div>
-                        <span style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">${actFmtSalary(c.required_salary)}/yr</span>
+                        <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">${actFmtSalary(c.required_salary)}/yr</span>
                     </div>
                 </div>
             </div>
@@ -8395,84 +8481,84 @@ function renderExecSearchModal() {
     html += '<div style="flex:1;overflow-y:auto;">';
 
     if (!sel) {
-        html += `<div style="padding:40px 20px;text-align:center;">
-            <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-bottom:8px;">Select a candidate</div>
-            <div style="font-size:10px;color:#6a6660;">${candidates.length} candidate${candidates.length !== 1 ? 's' : ''} available for ${escapeHtml(role)}</div>
+        html += `<div style="padding:50px 24px;text-align:center;">
+            <div style="font-family:var(--font-mono);font-size:14px;color:var(--text-dim);margin-bottom:10px;">Select a candidate</div>
+            <div style="font-size:12px;color:#6a6660;">${candidates.length} candidate${candidates.length !== 1 ? 's' : ''} available for ${escapeHtml(role)}</div>
         </div>`;
     } else {
         const totalComp = sel.required_salary * sel.required_years;
         const skC = skillColor(sel.skill);
 
         // Identity header
-        html += `<div style="padding:16px;border-bottom:1px solid #2a2a24;">
-            <div style="display:flex;align-items:center;gap:12px;">
-                <div style="width:52px;height:52px;background:${meta.color}12;border:1px solid ${meta.color}28;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:16px;font-weight:700;color:${meta.color};">${escapeHtml(getInitials(sel.first_name, sel.last_name))}</div>
+        html += `<div style="padding:20px;border-bottom:1px solid #2a2a24;">
+            <div style="display:flex;align-items:center;gap:14px;">
+                <div style="width:64px;height:64px;background:${meta.color}12;border:1px solid ${meta.color}28;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:20px;font-weight:700;color:${meta.color};">${escapeHtml(getInitials(sel.first_name, sel.last_name))}</div>
                 <div>
-                    <div style="font-size:16px;font-weight:700;color:var(--text-bright,#f0efe6);">${escapeHtml(sel.first_name)} ${escapeHtml(sel.last_name)}</div>
-                    <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;margin-top:2px;">${escapeHtml(sel.origin_nation)} &middot; Age ${sel.age}</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--text-bright,#f0efe6);">${escapeHtml(sel.first_name)} ${escapeHtml(sel.last_name)}</div>
+                    <div style="font-family:var(--font-mono);font-size:11px;color:#6a6660;margin-top:3px;">${escapeHtml(sel.origin_nation)} &middot; Age ${sel.age}</div>
                 </div>
             </div>
         </div>`;
 
         // Stats row
         html += `<div style="display:flex;gap:0;border-bottom:1px solid #2a2a24;">
-            <div style="flex:1;padding:10px 12px;text-align:center;border-right:1px solid #2a2a24;">
-                <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">SKILL</div>
-                <div style="display:flex;align-items:center;justify-content:center;gap:4px;margin-top:4px;">
-                    <div style="width:50px;height:3px;background:#2a2a24;">
+            <div style="flex:1;padding:12px 14px;text-align:center;border-right:1px solid #2a2a24;">
+                <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.5px;">SKILL</div>
+                <div style="display:flex;align-items:center;justify-content:center;gap:5px;margin-top:5px;">
+                    <div style="width:60px;height:4px;background:#2a2a24;">
                         <div style="width:${sel.skill}%;height:100%;background:${skC};"></div>
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${skC};">${sel.skill}</span>
+                    <span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:${skC};">${sel.skill}</span>
                 </div>
             </div>
-            <div style="flex:1;padding:10px 12px;text-align:center;border-right:1px solid #2a2a24;">
-                <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">AGE</div>
-                <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--text-bright,#f0efe6);margin-top:4px;">${sel.age}</div>
+            <div style="flex:1;padding:12px 14px;text-align:center;border-right:1px solid #2a2a24;">
+                <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.5px;">AGE</div>
+                <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--text-bright,#f0efe6);margin-top:5px;">${sel.age}</div>
             </div>
-            <div style="flex:1;padding:10px 12px;text-align:center;">
-                <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">ORIGIN</div>
-                <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-bright,#f0efe6);margin-top:4px;">${escapeHtml(sel.origin_nation)}</div>
+            <div style="flex:1;padding:12px 14px;text-align:center;">
+                <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.5px;">ORIGIN</div>
+                <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--text-bright,#f0efe6);margin-top:5px;">${escapeHtml(sel.origin_nation)}</div>
             </div>
         </div>`;
 
         // Specializations
-        html += `<div style="padding:10px 16px;border-bottom:1px solid #2a2a24;">
-            <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:6px;">Role Specializations</div>
-            <div style="display:flex;gap:4px;flex-wrap:wrap;">`;
+        html += `<div style="padding:12px 20px;border-bottom:1px solid #2a2a24;">
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:8px;">Role Specializations</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">`;
         for (const spec of (sel.specializations || [])) {
             const specMeta = EXEC_ROLE_META[spec];
             const isTarget = spec === role;
-            html += `<span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 8px;color:${isTarget ? '#000' : (specMeta?.color || '#9e9a92')};background:${isTarget ? (specMeta?.color || '#5a8aaa') : (specMeta?.color || '#5a8aaa') + '10'};border:1px solid ${isTarget ? 'transparent' : (specMeta?.color || '#5a8aaa') + '30'};">${escapeHtml(spec)}</span>`;
+            html += `<span style="font-family:var(--font-mono);font-size:10px;font-weight:700;padding:3px 10px;color:${isTarget ? '#000' : (specMeta?.color || '#9e9a92')};background:${isTarget ? (specMeta?.color || '#5a8aaa') : (specMeta?.color || '#5a8aaa') + '10'};border:1px solid ${isTarget ? 'transparent' : (specMeta?.color || '#5a8aaa') + '30'};">${escapeHtml(spec)}</span>`;
         }
         html += '</div></div>';
 
         // Compensation breakdown
-        html += `<div style="padding:10px 16px;border-bottom:1px solid #2a2a24;">
-            <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:6px;">Contract Terms</div>
-            <div style="background:#1c1c18;border:1px solid #2a2a24;padding:8px 12px;">
-                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
-                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">CONTRACT LENGTH</span>
-                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-bright,#f0efe6);">${sel.required_years} years</span>
+        html += `<div style="padding:12px 20px;border-bottom:1px solid #2a2a24;">
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:8px;">Contract Terms</div>
+            <div style="background:#1c1c18;border:1px solid #2a2a24;padding:10px 14px;">
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a24;">
+                    <span style="font-family:var(--font-mono);font-size:10px;color:#6a6660;">CONTRACT LENGTH</span>
+                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--text-bright,#f0efe6);">${sel.required_years} years</span>
                 </div>
-                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
-                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">ANNUAL SALARY</span>
-                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c84;">${actFmtSalary(sel.required_salary)}/yr</span>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a24;">
+                    <span style="font-family:var(--font-mono);font-size:10px;color:#6a6660;">ANNUAL SALARY</span>
+                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:#c84;">${actFmtSalary(sel.required_salary)}/yr</span>
                 </div>
-                <div style="display:flex;justify-content:space-between;padding:3px 0;">
-                    <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:var(--text-bright,#f0efe6);">TOTAL CONTRACT VALUE</span>
-                    <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c55;">${actFmtSalary(totalComp)}</span>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;">
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-bright,#f0efe6);">TOTAL CONTRACT VALUE</span>
+                    <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:#c55;">${actFmtSalary(totalComp)}</span>
                 </div>
             </div>
-            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:4px;">Salary is deducted from cash reserves each tick as an operating expense.</div>
+            <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;margin-top:5px;">Salary is deducted from cash reserves each tick as an operating expense.</div>
         </div>`;
 
         // Skill assessment
         const skillLabel = sel.skill >= 80 ? 'EXCEPTIONAL' : sel.skill >= 65 ? 'STRONG' : sel.skill >= 50 ? 'COMPETENT' : sel.skill >= 35 ? 'DEVELOPING' : 'WEAK';
         const skillDescr = sel.skill >= 80 ? 'Elite talent. Actions have high success rate and reduced costs.' : sel.skill >= 65 ? 'Strong performer. Reliable outcomes across most actions.' : sel.skill >= 50 ? 'Adequate for the role. Outcomes are average.' : sel.skill >= 35 ? 'Below average. Actions may fail or cost more. Consider alternatives.' : 'Poor fit. High failure rates. Replacement recommended.';
-        html += `<div style="padding:10px 16px;">
-            <div style="padding:6px 10px;background:${skC}08;border:1px solid ${skC}18;">
-                <div style="font-family:var(--font-mono);font-size:8px;color:${skC};letter-spacing:0.8px;margin-bottom:2px;">${skillLabel}</div>
-                <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">${skillDescr}</div>
+        html += `<div style="padding:12px 20px;">
+            <div style="padding:8px 12px;background:${skC}08;border:1px solid ${skC}18;">
+                <div style="font-family:var(--font-mono);font-size:10px;color:${skC};letter-spacing:0.8px;margin-bottom:3px;">${skillLabel}</div>
+                <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">${skillDescr}</div>
             </div>
         </div>`;
     }
@@ -8481,24 +8567,24 @@ function renderExecSearchModal() {
     html += '</div>'; // close two-panel body
 
     // ── Footer ──
-    html += `<div style="padding:10px 16px;border-top:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
-        <div style="display:flex;gap:12px;">`;
+    html += `<div style="padding:12px 20px;border-top:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;gap:14px;">`;
     if (sel) {
-        html += `<div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">CANDIDATE</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text-bright,#f0efe6);">${escapeHtml(sel.first_name)} ${escapeHtml(sel.last_name)}</div></div>
-            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">SKILL</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${skillColor(sel.skill)};">${sel.skill}</div></div>
-            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">SALARY</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#c84;">${actFmtSalary(sel.required_salary)}/yr</div></div>`;
+        html += `<div><div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">CANDIDATE</div><div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:var(--text-bright,#f0efe6);">${escapeHtml(sel.first_name)} ${escapeHtml(sel.last_name)}</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">SKILL</div><div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:${skillColor(sel.skill)};">${sel.skill}</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">SALARY</div><div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:#c84;">${actFmtSalary(sel.required_salary)}/yr</div></div>`;
     } else {
-        html += `<div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">Select a candidate to hire</div>`;
+        html += `<div style="font-family:var(--font-mono);font-size:11px;color:#6a6660;">Select a candidate to hire</div>`;
     }
     html += `</div>
-        <div style="display:flex;gap:6px;">
-            <div onclick="closeExecSearch()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
-            <div id="es-hire-btn" onclick="esHireCandidate()" style="padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:${sel ? '#000' : '#6a6660'};background:${sel ? meta.color : '#2a2a24'};cursor:${sel ? 'pointer' : 'not-allowed'};${sel ? '' : 'opacity:0.4;pointer-events:none;'}">HIRE</div>
+        <div style="display:flex;gap:8px;">
+            <div onclick="closeExecSearch()" style="padding:8px 20px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
+            <div id="es-hire-btn" onclick="esHireCandidate()" style="padding:8px 24px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:${sel ? '#000' : '#6a6660'};background:${sel ? meta.color : '#2a2a24'};cursor:${sel ? 'pointer' : 'not-allowed'};${sel ? '' : 'opacity:0.4;pointer-events:none;'}">HIRE</div>
         </div>
     </div>`;
 
     // Error display
-    html += '<div id="es-error" style="padding:4px 16px;font-family:var(--font-mono);font-size:8px;color:#c55;display:none;"></div>';
+    html += '<div id="es-error" style="padding:5px 20px;font-family:var(--font-mono);font-size:10px;color:#c55;display:none;"></div>';
 
     container.innerHTML = html;
 }
@@ -9336,24 +9422,24 @@ function renderConstructionModal() {
     overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
 
     overlay.innerHTML = `
-    <div style="width:440px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;max-height:90vh;">
-        <div style="padding:10px 16px;border-bottom:1px solid ${C.border};background:${C.card};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
-            <div style="display:flex;align-items:center;gap:6px;">
-                <span style="font-size:8px;color:${C.gold}">●</span>
-                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Construction Project</span>
+    <div style="width:570px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;max-height:90vh;">
+        <div style="padding:12px 20px;border-bottom:1px solid ${C.border};background:${C.card};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:10px;color:${C.gold}">●</span>
+                <span style="font-family:${mono};font-size:14px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Construction Project</span>
             </div>
-            <span onclick="cpClose()" style="font-family:${mono};font-size:14px;color:${C.dim};cursor:pointer">×</span>
+            <span onclick="cpClose()" style="font-family:${mono};font-size:18px;color:${C.dim};cursor:pointer">×</span>
         </div>
-        <div style="padding:12px 16px;overflow:auto;flex:1;">
+        <div style="padding:14px 20px;overflow:auto;flex:1;">
 
-            <div style="margin-bottom:12px;">
-                <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Building Name</div>
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Building Name</div>
                 <input id="cp-name-input" value="${_cpData.name.replace(/"/g, '&quot;')}" placeholder="e.g., McKenna Tower"
-                    style="width:100%;padding:6px 10px;font-family:${mono};font-size:11px;color:${C.text};background:${C.card};border:1px solid ${C.border};outline:none;box-sizing:border-box;" />
+                    style="width:100%;padding:8px 12px;font-family:${mono};font-size:14px;color:${C.text};background:${C.card};border:1px solid ${C.border};outline:none;box-sizing:border-box;" />
             </div>
 
-            <div style="margin-bottom:12px;">
-                <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Type</div>
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Type</div>
                 <div style="display:flex;gap:4px;flex-wrap:wrap;">
                     ${['Regional HQ', 'Office Building',
                        ...(faction?.corp_sector === 'Construction' ? ['Warehouse'] : []),
@@ -9364,98 +9450,98 @@ function renderConstructionModal() {
                         const isSpecial = ['Branch Office', 'Trading Floor', 'Claims Office'].includes(t);
                         const specialColor = '#8a6aaa';
                         const activeColor = t === 'Warehouse' ? C.orange : isSpecial ? specialColor : C.accent;
-                        return `<span onclick="cpSetField('type','${t}')" style="flex:1;min-width:80px;text-align:center;padding:5px 0;font-family:${mono};font-size:9px;font-weight:700;cursor:pointer;color:${_cpData.type === t ? '#000' : C.dim};background:${_cpData.type === t ? activeColor : 'transparent'};border:1px solid ${_cpData.type === t ? activeColor : C.border}">${t}</span>`;
+                        return `<span onclick="cpSetField('type','${t}')" style="flex:1;min-width:100px;text-align:center;padding:6px 0;font-family:${mono};font-size:12px;font-weight:700;cursor:pointer;color:${_cpData.type === t ? '#000' : C.dim};background:${_cpData.type === t ? activeColor : 'transparent'};border:1px solid ${_cpData.type === t ? activeColor : C.border}">${t}</span>`;
                     }).join('')}
                 </div>
-                ${_cpData.type === 'Warehouse' ? `<div style="font-family:${mono};font-size:7px;color:${C.orange};margin-top:4px;">Warehouse: 75% construction cost, stores up to $20M in materials</div>` : ''}
-                ${_cpData.type === 'Branch Office' ? `<div style="font-family:${mono};font-size:7px;color:#8a6aaa;margin-top:4px;">Branch Office: Increases lending capacity. +1 reputation per 200 employees. Enables cross-nation lending.</div>` : ''}
-                ${_cpData.type === 'Trading Floor' ? `<div style="font-family:${mono};font-size:7px;color:#8a6aaa;margin-top:4px;">Trading Floor: Enables secondary bond market. +1 reputation per 200 employees. Portfolio management bonuses.</div>` : ''}
-                ${_cpData.type === 'Claims Office' ? `<div style="font-family:${mono};font-size:7px;color:#8a6aaa;margin-top:4px;">Claims Office: Faster claim processing. +1 reputation per 200 employees. Local presence reduces premiums.</div>` : ''}
+                ${_cpData.type === 'Warehouse' ? `<div style="font-family:${mono};font-size:9px;color:${C.orange};margin-top:5px;">Warehouse: 75% construction cost, stores up to $20M in materials</div>` : ''}
+                ${_cpData.type === 'Branch Office' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Branch Office: Increases lending capacity. +1 reputation per 200 employees. Enables cross-nation lending.</div>` : ''}
+                ${_cpData.type === 'Trading Floor' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Trading Floor: Enables secondary bond market. +1 reputation per 200 employees. Portfolio management bonuses.</div>` : ''}
+                ${_cpData.type === 'Claims Office' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Claims Office: Faster claim processing. +1 reputation per 200 employees. Local presence reduces premiums.</div>` : ''}
             </div>
 
-            <div style="margin-bottom:12px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                    <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase">Size (Employees)</span>
-                    <span style="font-family:${mono};font-size:14px;font-weight:700;color:${C.text}">${_cpData.size.toLocaleString()}</span>
+            <div style="margin-bottom:14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+                    <span style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase">Size (Employees)</span>
+                    <span style="font-family:${mono};font-size:18px;font-weight:700;color:${C.text}">${_cpData.size.toLocaleString()}</span>
                 </div>
                 <input type="range" min="500" max="18000" step="500" value="${_cpData.size}" oninput="cpSetField('size',+this.value)"
-                    style="width:100%;accent-color:${C.accent};height:4px;" />
-                <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:7px;color:${C.dim};margin-top:2px">
+                    style="width:100%;accent-color:${C.accent};height:5px;" />
+                <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;color:${C.dim};margin-top:3px">
                     <span>500 min</span><span>18,000 max</span>
                 </div>
             </div>
 
-            <div style="margin-bottom:12px;">
-                <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Style</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;">${stylesHtml}</div>
-                <div style="margin-top:4px;font-family:${mono};font-size:8px;color:${CP_STYLE_META[_cpData.style].color}">${CP_STYLE_META[_cpData.style].desc}</div>
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Style</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">${stylesHtml}</div>
+                <div style="margin-top:5px;font-family:${mono};font-size:10px;color:${CP_STYLE_META[_cpData.style].color}">${CP_STYLE_META[_cpData.style].desc}</div>
             </div>
 
-            <div style="margin-bottom:12px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                    <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase">Timeline</span>
-                    <span style="font-family:${mono};font-size:12px;font-weight:700;color:${C.text}">${_cpData.timeline} months</span>
+            <div style="margin-bottom:14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+                    <span style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase">Timeline</span>
+                    <span style="font-family:${mono};font-size:16px;font-weight:700;color:${C.text}">${_cpData.timeline} months</span>
                 </div>
                 <input type="range" min="24" max="60" step="6" value="${_cpData.timeline}" oninput="cpSetField('timeline',+this.value)"
-                    style="width:100%;accent-color:${C.gold};height:4px;" />
-                <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:7px;color:${C.dim};margin-top:2px">
+                    style="width:100%;accent-color:${C.gold};height:5px;" />
+                <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;color:${C.dim};margin-top:3px">
                     <span>24 months</span><span>60 months</span>
                 </div>
             </div>
 
-            <div style="margin-bottom:12px;">
-                <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Budget</div>
-                <div style="background:${C.card};border:1px solid ${C.border};padding:8px 10px;">
-                    <div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid ${C.border}">
-                        <span style="font-family:${mono};font-size:8px;color:${C.dim}">BASE (${_cpData.size.toLocaleString()} × $100k × ${budget.inflMod.toFixed(2)} × ${budget.styleMod.toFixed(1)})</span>
-                        <span style="font-family:${mono};font-size:9px;color:${C.muted}">${hfFmtBig(budget.baseBudget)}</span>
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Budget</div>
+                <div style="background:${C.card};border:1px solid ${C.border};padding:10px 12px;">
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border}">
+                        <span style="font-family:${mono};font-size:10px;color:${C.dim}">BASE (${_cpData.size.toLocaleString()} × $100k × ${budget.inflMod.toFixed(2)} × ${budget.styleMod.toFixed(1)})</span>
+                        <span style="font-family:${mono};font-size:12px;color:${C.muted}">${hfFmtBig(budget.baseBudget)}</span>
                     </div>
-                    <div style="padding:6px 0">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-                            <span style="font-family:${mono};font-size:8px;color:${C.dim}">ADJUSTMENT</span>
-                            <span style="font-family:${mono};font-size:10px;font-weight:700;color:${_cpData.budgetMod > 0 ? C.greenBright : _cpData.budgetMod < 0 ? C.red : C.dim}">${_cpData.budgetMod > 0 ? '+' : ''}${_cpData.budgetMod}%</span>
+                    <div style="padding:8px 0">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                            <span style="font-family:${mono};font-size:10px;color:${C.dim}">ADJUSTMENT</span>
+                            <span style="font-family:${mono};font-size:13px;font-weight:700;color:${_cpData.budgetMod > 0 ? C.greenBright : _cpData.budgetMod < 0 ? C.red : C.dim}">${_cpData.budgetMod > 0 ? '+' : ''}${_cpData.budgetMod}%</span>
                         </div>
                         <input type="range" min="-15" max="15" step="1" value="${_cpData.budgetMod}" oninput="cpSetField('budgetMod',+this.value)"
-                            style="width:100%;accent-color:${C.accent};height:4px;" />
-                        <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:7px;color:${C.dim};margin-top:2px">
+                            style="width:100%;accent-color:${C.accent};height:5px;" />
+                        <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;color:${C.dim};margin-top:3px">
                             <span>-15% (budget cut)</span><span>+15% (quality invest)</span>
                         </div>
                     </div>
-                    <div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid ${C.border}">
-                        <span style="font-family:${mono};font-size:9px;font-weight:700;color:${C.text}">TOTAL BUDGET</span>
-                        <span style="font-family:${mono};font-size:14px;font-weight:700;color:${C.gold}">${hfFmtBig(budget.adjusted)}</span>
+                    <div style="display:flex;justify-content:space-between;padding:5px 0;border-top:1px solid ${C.border}">
+                        <span style="font-family:${mono};font-size:12px;font-weight:700;color:${C.text}">TOTAL BUDGET</span>
+                        <span style="font-family:${mono};font-size:18px;font-weight:700;color:${C.gold}">${hfFmtBig(budget.adjusted)}</span>
                     </div>
-                    <div style="display:flex;justify-content:space-between;padding:2px 0">
-                        <span style="font-family:${mono};font-size:8px;color:${C.dim}">EST. MONTHLY MAINTENANCE</span>
-                        <span style="font-family:${mono};font-size:9px;color:${C.redDim}">${hfFmtBig(budget.maint)}/mo</span>
+                    <div style="display:flex;justify-content:space-between;padding:3px 0">
+                        <span style="font-family:${mono};font-size:10px;color:${C.dim}">EST. MONTHLY MAINTENANCE</span>
+                        <span style="font-family:${mono};font-size:12px;color:${C.redDim}">${hfFmtBig(budget.maint)}/mo</span>
                     </div>
                 </div>
             </div>
 
-            <div style="padding:6px 8px;background:rgba(200,168,50,0.04);border:1px solid rgba(200,168,50,0.12);margin-bottom:8px;">
-                <div style="font-family:${mono};font-size:8px;color:${C.gold};margin-bottom:2px">WHAT HAPPENS NEXT</div>
-                <div style="font-size:9px;color:${C.dim};line-height:1.5">
+            <div style="padding:8px 10px;background:rgba(200,168,50,0.04);border:1px solid rgba(200,168,50,0.12);margin-bottom:10px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.gold};margin-bottom:3px">WHAT HAPPENS NEXT</div>
+                <div style="font-size:12px;color:${C.dim};line-height:1.5">
                     This project will appear as a Civil Engineering bid in the Open Contracts pool for all construction corporations with an HQ or Regional HQ in ${nationName}. The lowest qualified bidder wins the contract and begins construction.
                 </div>
             </div>
 
-            <div style="padding:6px 8px;background:rgba(139,154,107,0.04);border:1px solid rgba(139,154,107,0.12);">
+            <div style="padding:8px 10px;background:rgba(139,154,107,0.04);border:1px solid rgba(139,154,107,0.12);">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-family:${mono};font-size:9px;color:${C.accent}">EXPECTED REPUTATION GAIN</span>
-                    <span style="font-family:${mono};font-size:16px;font-weight:700;color:${repColor}">+${repGain}</span>
+                    <span style="font-family:${mono};font-size:12px;color:${C.accent}">EXPECTED REPUTATION GAIN</span>
+                    <span style="font-family:${mono};font-size:20px;font-weight:700;color:${repColor}">+${repGain}</span>
                 </div>
-                <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:2px">${_cpData.style} style · ${repGain === 5 ? 'Maximum prestige' : repGain >= 4 ? 'Impressive presence' : repGain >= 3 ? 'Strong statement' : repGain >= 2 ? 'Solid investment' : 'Functional addition'}</div>
+                <div style="font-family:${mono};font-size:9px;color:${C.dim};margin-top:3px">${_cpData.style} style · ${repGain === 5 ? 'Maximum prestige' : repGain >= 4 ? 'Impressive presence' : repGain >= 3 ? 'Strong statement' : repGain >= 2 ? 'Solid investment' : 'Functional addition'}</div>
             </div>
 
         </div>
-        <div style="padding:10px 16px;border-top:1px solid ${C.border};background:${C.card};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+        <div style="padding:12px 20px;border-top:1px solid ${C.border};background:${C.card};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
             <div>
-                <div style="font-family:${mono};font-size:7px;color:${C.dim}">TOTAL PROJECT</div>
-                <div style="font-family:${mono};font-size:14px;font-weight:700;color:${C.gold}">${hfFmtBig(budget.adjusted)}</div>
+                <div style="font-family:${mono};font-size:9px;color:${C.dim}">TOTAL PROJECT</div>
+                <div style="font-family:${mono};font-size:18px;font-weight:700;color:${C.gold}">${hfFmtBig(budget.adjusted)}</div>
             </div>
-            <div style="display:flex;gap:6px;">
-                <div onclick="cpClose()" style="padding:5px 16px;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:${C.dim};border:1px solid ${C.border};cursor:pointer">CANCEL</div>
-                <div onclick="cpSubmitFromModal()" style="padding:5px 16px;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:${C.gold};cursor:pointer;opacity:${_cpData.name.trim().length > 0 ? 1 : 0.4}">SUBMIT PROJECT</div>
+            <div style="display:flex;gap:8px;">
+                <div onclick="cpClose()" style="padding:7px 20px;font-family:${mono};font-size:12px;font-weight:700;letter-spacing:1px;color:${C.dim};border:1px solid ${C.border};cursor:pointer">CANCEL</div>
+                <div onclick="cpSubmitFromModal()" style="padding:7px 20px;font-family:${mono};font-size:12px;font-weight:700;letter-spacing:1px;color:#000;background:${C.gold};cursor:pointer;opacity:${_cpData.name.trim().length > 0 ? 1 : 0.4}">SUBMIT PROJECT</div>
             </div>
         </div>
     </div>`;
@@ -10419,6 +10505,7 @@ window.subSetSubsector = subSetSubsector;
 
 let _allCorps = [];
 let _corpSelected = 0;
+let _investigatedCorps = {}; // { corpId: tickInvestigated }
 let _corpFilterNation = 'ALL';
 let _corpSortBy = 'REPUTATION';
 
@@ -10443,6 +10530,31 @@ async function loadAllCorporations() {
 function corpSelect(idx) { _corpSelected = idx; renderCorporationsCard(); }
 function corpFilterNation(n) { _corpFilterNation = n; _corpSelected = 0; renderCorporationsCard(); }
 function corpSort(s) { _corpSortBy = s; _corpSelected = 0; renderCorporationsCard(); }
+
+async function corpInvestigate(targetCorpId) {
+    if (!faction || !shard) return;
+    const cash = Number(faction.corp_cash_reserves ?? 0);
+    if (cash < 500000) { alert('Insufficient cash. Need $500k.'); return; }
+
+    const { error } = await _supabase.from('factions').update({
+        corp_cash_reserves: cash - 500000,
+    }).eq('id', faction.id);
+    if (error) { alert('Failed: ' + error.message); return; }
+
+    faction.corp_cash_reserves = cash - 500000;
+    _investigatedCorps[targetCorpId] = shard.current_tick || 0;
+
+    // Reload the target corp's full data (including hidden financials)
+    const { data: fullCorpData } = await _supabase.from('factions')
+        .select('corp_cash_reserves, corp_loans, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
+        .eq('id', targetCorpId).single();
+    if (fullCorpData) {
+        const corp = _allCorps.find(c => c.id === targetCorpId);
+        if (corp) Object.assign(corp, fullCorpData);
+    }
+
+    renderCorporationsCard();
+}
 
 function renderCorporationsCard() {
     const container = document.getElementById('corporations-container');
@@ -10472,7 +10584,9 @@ function renderCorporationsCard() {
 
     if (_corpSelected >= filtered.length) _corpSelected = 0;
     const sel = filtered[_corpSelected] || null;
-    const isPrivateHidden = sel && sel.status === 'PRIVATE';
+    const currentTick = shard?.current_tick || 0;
+    const isInvestigated = sel && _investigatedCorps[sel.id] === currentTick;
+    const isPrivateHidden = sel && sel.status === 'PRIVATE' && !isInvestigated;
     const isState = sel && sel.status === 'STATE';
 
     // Left table rows
@@ -10544,7 +10658,7 @@ function renderCorporationsCard() {
         <div style="padding:6px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
             <div style="font-family:${mono};font-size:8px;letter-spacing:1.5px;color:${C.dim};text-transform:uppercase;margin-bottom:6px">Actions</div>
             <div style="display:flex;gap:4px;margin-bottom:4px;">
-                <div style="flex:1;padding:5px 0;text-align:center;cursor:${isPrivateHidden ? 'pointer' : 'default'};font-family:${mono};font-size:8px;font-weight:700;color:${isPrivateHidden ? C.blue : C.dim};border:1px solid ${isPrivateHidden ? C.blue + '44' : C.border};opacity:${isPrivateHidden ? 1 : 0.3}">INVESTIGATE — $500k</div>
+                <div onclick="${isPrivateHidden ? `corpInvestigate('${sel.id}')` : ''}" style="flex:1;padding:5px 0;text-align:center;cursor:${isPrivateHidden ? 'pointer' : 'default'};font-family:${mono};font-size:8px;font-weight:700;color:${isPrivateHidden ? C.blue : isInvestigated ? C.greenBright : C.dim};border:1px solid ${isPrivateHidden ? C.blue + '44' : isInvestigated ? C.greenBright + '44' : C.border};opacity:${isPrivateHidden ? 1 : 0.3}">${isInvestigated ? 'INVESTIGATED ✓' : 'INVESTIGATE — $500k'}</div>
                 <div style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;color:${C.accent};border:1px solid ${C.accent}44">PARTNER</div>
             </div>
             <div style="display:flex;gap:4px;">
@@ -10603,6 +10717,7 @@ function renderCorporationsCard() {
 }
 
 window.corpSelect = corpSelect;
+window.corpInvestigate = corpInvestigate;
 window.corpFilterNation = corpFilterNation;
 window.corpSort = corpSort;
 
