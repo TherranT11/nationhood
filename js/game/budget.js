@@ -559,6 +559,16 @@ export async function processExpiredTradeAgreements(supabase, currentTick) {
             await supabase.from('trade_agreements').update({
                 expires_at_tick: newExpiry
             }).eq('id', agreement.id);
+
+            // For economic aid, clear any suspension so renewed agreement flows through the budget
+            if (agreement.agreement_type === 'economic_aid') {
+                await supabase.from('aid_agreement_state').update({
+                    is_suspended: false,
+                    suspended_at_tick: null,
+                    suspension_reason: null
+                }).eq('agreement_id', agreement.id);
+            }
+
             console.log(`[processExpiredTradeAgreements] Auto-renewed: ${agreement.agreement_name} — new expiry tick ${newExpiry}`);
             results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type, renewed: true });
             continue;
