@@ -2163,7 +2163,7 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
     const ns = (key) => Number(nation[key] ?? 50);
 
     // Revenue: same formula as corp-dashboard.html renderFinances
-    const BASE_RATE = 47_000_000;
+    const BASE_RATE = 87_000_000;
     const gdpFactor     = 1 + (ns('gdp_growth') - 50) / 100 * 0.4;
     const urbanFactor   = 1 + (ns('urbanization') - 50) / 100 * 0.3;
     const popFactor     = 1 + (ns('population_growth') - 50) / 100 * 0.2;
