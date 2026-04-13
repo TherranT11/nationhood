@@ -1868,3 +1868,11 @@
     .ct-hero__content { padding: 24px; }
     .ct-analysis-story__headline { font-size: 20px; }
 }
+@media (max-width: 480px) {
+    .ct-hero__headline { font-size: 20px; }
+    .ct-hero__content { padding: 16px; }
+    .ct-story-card__content { padding: 12px; }
+    .ct-analysis-story__headline { font-size: 17px; }
+    .ct-analysis-band { padding: 16px; }
+    .ct-footer__inner { padding: 16px; }
+}

@@ -1573,4 +1573,12 @@ body.light-mode .loading-spinner {
     .imm-pull-grid { grid-template-columns: 1fr; }
     .imm-matrix-table { font-size: 10px; }
     .imm-matrix-table th, .imm-matrix-table td { padding: 6px 6px; }
+    .featured-card { width: 100%; min-width: unset; max-width: 100%; }
+    .nation-summary__card--health { width: auto; }
+}
+@media (max-width: 480px) {
+    .imm-hero-row { grid-template-columns: 1fr; }
+    .ill-origin-row { grid-template-columns: 1fr; gap: 4px; }
+    .imm-matrix-table { font-size: 9px; }
+    .imm-matrix-table th, .imm-matrix-table td { padding: 4px 4px; }
 }

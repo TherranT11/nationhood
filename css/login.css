@@ -280,11 +280,27 @@ body {
     color: var(--text-bright);
 }
 
-/* Responsive — login card stays at 340px, page padding shrinks */
+/* Responsive */
+@media (max-width: 768px) {
+    .login-card {
+        width: 100%;
+        max-width: 340px;
+    }
+}
+
+@media (max-width: 480px) {
+    .login-card {
+        width: 100%;
+        max-width: none;
+        margin: 0 12px;
+        border-radius: 0;
+    }
+}
+
 @media (max-width: 400px) {
     .login-card {
         width: 100%;
-        margin: 0 12px;
+        margin: 0 8px;
         border-radius: 0;
     }
 }

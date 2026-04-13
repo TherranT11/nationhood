@@ -341,6 +341,28 @@ body { overflow-y: auto !important; height: auto !important; min-height: 100vh; 
     color: var(--text-secondary);
 }
 
+/* ── Mobile: 768px ── */
+@media (max-width: 768px) {
+    .sc-page { padding: 20px 16px 40px; }
+    .sc-header { margin-bottom: 20px; }
+    .sc-header h1 { font-size: 1.2rem; }
+    .sc-candidates { gap: 14px; }
+    .sc-card-header { padding: 14px 14px 12px; }
+    .sc-no-candidates { padding: 40px; }
+}
+
+/* ── Mobile: 480px ── */
+@media (max-width: 480px) {
+    .sc-page { padding: 12px 8px 24px; }
+    .sc-header-icon { font-size: 2rem; }
+    .sc-header h1 { font-size: 1rem; }
+    .sc-candidates { gap: 10px; }
+    .sc-card { border-radius: 8px; }
+    .sc-card-header { padding: 12px; }
+    .sc-card-body { padding: 12px; }
+    .sc-no-candidates { padding: 24px; }
+}
+
 /* Ideology tag colors */
 .ideo-liberty { background: #9C27B0; }
 .ideo-equality { background: #E91E63; }

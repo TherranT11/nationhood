@@ -1215,6 +1215,44 @@ body.light-mode .coalition-party-card.locked { background: var(--orange-faint); 
     .loading-container { height: auto; min-height: 60vh; }
 }
 
+@media (max-width: 480px) {
+    /* Top bar — tighter spacing */
+    .top-bar-row1 { padding: 4px 8px; }
+    .tick-info { gap: 8px; }
+    .tick-label { font-size: 8px; }
+    .tick-value, .tick-countdown { font-size: 11px; }
+    .nation-flag { width: 28px; height: 28px; font-size: 10px; }
+    .nation-name { font-size: 12px; white-space: normal; }
+    .party-badge { font-size: 10px; padding: 2px 6px; letter-spacing: 0.03em; }
+    .topbar-ap { padding: 2px 6px; }
+    .topbar-ap__count { font-size: 10px; min-width: 14px; }
+    .topbar-ap__pip { width: 7px; height: 14px; }
+    .hamburger-btn { font-size: 1rem; padding: 3px 8px; }
+
+    /* Nav dropdown tighter */
+    .nav-tabs.nav-open .nav-tab { padding: 8px 12px; font-size: 9px; }
+
+    /* Content & panels */
+    .panel-padding { padding: 16px; }
+    .nation-hero { padding: 20px 16px 16px; }
+    .nation-hero h2 { font-size: 1.5rem; }
+
+    /* Grids — single column */
+    .stat-grid { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+    .parties-display-grid,
+    .coalition-grid { grid-template-columns: 1fr; }
+    .party-layout { padding: 16px; gap: 14px; }
+
+    /* Modals & overlays */
+    .modal-content { width: 96%; padding: 16px; }
+    .guide-panel { padding: 16px; }
+    .guide-panel-title { font-size: 0.7rem; }
+    .guide-panel h2 { font-size: 0.7rem; }
+
+    /* Loading */
+    .loading-container { min-height: 50vh; }
+}
+
 @media (max-width: 1200px) {
     .parties-display-grid { grid-template-columns: repeat(2, 1fr); }
     .coalition-grid { grid-template-columns: repeat(2, 1fr); }

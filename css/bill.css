@@ -616,3 +616,14 @@ html { overflow-y: scroll !important; height: auto !important; }
     /* Early resolution */
     .bill-early-resolution { padding: 10px 12px; font-size: 0.78rem; }
 }
+
+@media (max-width: 480px) {
+    .bill-page { padding: 4px; gap: 8px; }
+    .bill-header { padding: 10px; }
+    .bill-title { font-size: 1rem; }
+    .bill-totals { padding: 10px; }
+    .total-value { font-size: 1rem; }
+    .bill-articles { padding: 8px; }
+    .article { padding: 10px; }
+    .modal-content { padding: 12px; width: 96%; }
+}
