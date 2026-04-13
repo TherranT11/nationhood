@@ -2318,9 +2318,12 @@ function getCoalitionIdeologies(partyIds) {
 }
 
 function renderIdeologyChips(ideologies) {
-    return ideologies.map(i =>
-        `<span class="ideology-chip ${i.toLowerCase()}">${i}</span>`
-    ).join('');
+    return ideologies.map(i => {
+        if (i === 'Corporations Affected') {
+            return `<span class="ideology-chip" style="background:rgba(200,168,50,0.10);color:#c8a832;border:1px solid rgba(200,168,50,0.30);">${i}</span>`;
+        }
+        return `<span class="ideology-chip ${i.toLowerCase()}">${i}</span>`;
+    }).join('');
 }
 
 // ===== Formation Proposals List =====
