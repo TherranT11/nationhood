@@ -1494,7 +1494,7 @@
     .conflicts-layout { flex-direction: column; height: auto; min-height: auto; }
     .conflicts-sidebar { display: none; }
     .conflicts-chat { display: none; }
-    .conflicts-main { width: 100%; height: auto; }
+    .conflicts-center { width: 100%; height: auto; }
     /* Hand cards tighter */
     #issues-hand-area [style*="min-width:148px"] {
         min-width: 100px !important;

@@ -560,16 +560,26 @@ export async function processExpiredTradeAgreements(supabase, currentTick) {
                 expires_at_tick: newExpiry
             }).eq('id', agreement.id);
 
-            // For economic aid, clear any suspension so renewed agreement flows through the budget
+            // For economic aid, clear any suspension and restore amount so renewed agreement
+            // flows through the budget. If conditions are still failing, the per-tick
+            // processAidConditionReview will re-suspend on this same tick.
             if (agreement.agreement_type === 'economic_aid') {
-                await supabase.from('aid_agreement_state').update({
+                const { data: aidState } = await supabase.from('aid_agreement_state')
+                    .select('original_annual_amount')
+                    .eq('agreement_id', agreement.id)
+                    .maybeSingle();
+
+                const { error: aidErr } = await supabase.from('aid_agreement_state').update({
                     is_suspended: false,
                     suspended_at_tick: null,
-                    suspension_reason: null
+                    suspension_reason: null,
+                    current_annual_amount: aidState?.original_annual_amount || 0
                 }).eq('agreement_id', agreement.id);
+
+                if (aidErr) console.error(`[processExpiredTradeAgreements] Failed to clear aid suspension for ${agreement.id}: ${aidErr.message}`);
             }
 
-            console.log(`[processExpiredTradeAgreements] Auto-renewed: ${agreement.agreement_name} — new expiry tick ${newExpiry}`);
+            console.log(`[processExpiredTradeAgreements] Auto-renewed: ${agreement.agreement_name} — new expiry tick ${newExpiry}${agreement.agreement_type === 'economic_aid' ? ' (suspension cleared)' : ''}`);
             results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type, renewed: true });
             continue;
         }
