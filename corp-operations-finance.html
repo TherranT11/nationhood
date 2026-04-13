@@ -398,6 +398,7 @@ const DF_RISK_META = {
 let dfDeals = [];
 
 let dfFilter = 'ALL';
+let dfNationFilter = 'all'; // 'all' or 'mine'
 let dfSelected = -1;
 
 async function loadDealFlow() {
@@ -552,7 +553,10 @@ function renderDealFlow() {
     const container = document.getElementById('df-container');
     if (!container) return;
 
-    const deals = dfFilter === 'ALL' ? dfDeals : dfDeals.filter(d => d.type === dfFilter);
+    let deals = dfFilter === 'ALL' ? dfDeals : dfDeals.filter(d => d.type === dfFilter);
+    if (dfNationFilter === 'mine' && faction?.nation_id) {
+        deals = deals.filter(d => d.nation_id === faction.nation_id);
+    }
     const newCount = dfDeals.filter(d => d.isNew).length;
     const totalCount = dfDeals.length;
 
@@ -579,6 +583,7 @@ function renderDealFlow() {
     for (const f of filters) {
         html += `<span class="df-pill${dfFilter === f.id ? ' ' + f.activeClass : ''}" onclick="dfSetFilter('${f.id}')">${f.label}</span>`;
     }
+    html += `<span style="margin-left:auto;font-family:var(--font-mono);font-size:7px;cursor:pointer;padding:2px 6px;border:1px solid ${dfNationFilter === 'mine' ? '#5c544' : '#2a2a24'};color:${dfNationFilter === 'mine' ? '#5c5' : '#6a6660'};background:${dfNationFilter === 'mine' ? 'rgba(92,204,92,0.06)' : 'transparent'};" onclick="dfToggleNation()">${dfNationFilter === 'mine' ? 'MY NATION' : 'ALL NATIONS'}</span>`;
     html += '</div>';
 
     // Deal list
@@ -713,7 +718,13 @@ function renderDealFlow() {
     container.innerHTML = html;
 }
 
+function dfToggleNation() {
+    dfNationFilter = dfNationFilter === 'all' ? 'mine' : 'all';
+    dfSelected = -1;
+    renderDealFlow();
+}
 window.dfSetFilter = dfSetFilter;
+window.dfToggleNation = dfToggleNation;
 window.dfSelectDeal = dfSelectDeal;
 
 // ==================== ACTIVE PORTFOLIO ====================
@@ -919,11 +930,23 @@ function renderActivePortfolio() {
 
     html += '</div>'; // close list
 
+    // ROI metrics
+    const totalDeployed = apPortfolio.reduce((s, p) => s + (p.principal || p.coverage || p.faceValue || 0), 0);
+    const roiPct = totalDeployed > 0 ? Math.round((totalEarned / totalDeployed) * 10000) / 100 : 0;
+    const avgRate = apPortfolio.length > 0
+        ? Math.round(apPortfolio.reduce((s, p) => s + (p.rate || 0), 0) / apPortfolio.length * 10) / 10
+        : 0;
+    const lateCount = apPortfolio.filter(p => p.status === 'LATE' || p.status === 'DELINQUENT').length;
+    const defaultRate = apPortfolio.length > 0 ? Math.round(lateCount / apPortfolio.length * 100) : 0;
+
     // Footer
-    html += `<div class="df-footer">
-        <div style="display:flex;gap:10px;">
+    html += `<div class="df-footer" style="flex-direction:column;gap:6px;">
+        <div style="display:flex;gap:8px;justify-content:space-between;width:100%;">
             <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">EXPOSURE</div><div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c55;">${fmtMoney(totalExposure)}</div></div>
             <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">EARNED</div><div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#5c5;">${fmtMoney(totalEarned)}</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">ROI</div><div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${roiPct >= 0 ? '#5c5' : '#c55'};">${roiPct}%</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">AVG RATE</div><div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#ca5;">${avgRate}%</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">RISK</div><div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${defaultRate > 20 ? '#c55' : defaultRate > 0 ? '#ca5' : '#5c5'};">${defaultRate}%</div></div>
         </div>
         <div style="display:flex;gap:6px;">
             ${['LOAN', 'INSURE', 'BOND'].map(t => {
@@ -1332,6 +1355,54 @@ function renderReservesRisk() {
     if (nationConc.length === 0 && sectorConc.length === 0) {
         html += '<div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;text-align:center;padding:8px 0;">No positions to analyze</div>';
     }
+    html += '</div>';
+
+    // ── Risk Management Actions ──
+    html += '<div class="rr-section-bar">Actions</div>';
+    html += '<div class="rr-section">';
+
+    // Lending cap info
+    html += `<div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">Max single-deal size (${minRatioPct}% reserve)</span>
+        <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#e8e4dc;">${fmtMoney(availableCapital)}</span>
+    </div>`;
+
+    // Diversification recommendation
+    if (topNationPct > 50 && nationConc.length > 1) {
+        const overweight = nationConc[0];
+        const targetPct = Math.round(100 / nationConc.length);
+        const idealExp = Math.round(totalExposure * targetPct / 100);
+        const excess = overweight.exposure - idealExp;
+        html += `<div style="padding:6px 8px;background:rgba(200,136,68,0.06);border:1px solid rgba(200,136,68,0.15);margin-bottom:6px;">
+            <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:#c84;margin-bottom:2px;">DIVERSIFICATION TIP</div>
+            <div style="font-family:var(--font-mono);font-size:8px;color:#9e9a92;line-height:1.5;">
+                ${escapeHtml(overweight.name)} is ${overweight.pct}% of your book (target: ~${targetPct}%).
+                Reduce exposure by ~${fmtMoney(excess)} or grow positions in other nations.
+            </div>
+        </div>`;
+    }
+
+    // Portfolio health score
+    const healthFactors = [];
+    if (reserveRatio >= 30) healthFactors.push('reserves'); // +1
+    if (topNationPct <= 40) healthFactors.push('diversified'); // +1
+    if (lateCount === 0) healthFactors.push('no_delinquent'); // +1
+    if (apPortfolio.length >= 3) healthFactors.push('scale'); // +1
+    const healthScore = healthFactors.length;
+    const healthLabel = healthScore >= 4 ? 'EXCELLENT' : healthScore >= 3 ? 'GOOD' : healthScore >= 2 ? 'FAIR' : 'POOR';
+    const healthColor = healthScore >= 4 ? '#5c5' : healthScore >= 3 ? '#ca5' : healthScore >= 2 ? '#c84' : '#c55';
+
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">PORTFOLIO HEALTH</span>
+        <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${healthColor};">${healthLabel} (${healthScore}/4)</span>
+    </div>`;
+    html += `<div style="margin-top:4px;display:flex;gap:3px;">
+        ${['Reserves', 'Diversified', 'No Defaults', 'Scale'].map((label, i) => {
+            const passed = healthFactors.length > i && healthFactors.includes(['reserves', 'diversified', 'no_delinquent', 'scale'][i]);
+            return `<span style="flex:1;text-align:center;padding:2px 0;font-family:var(--font-mono);font-size:6px;font-weight:700;color:${passed ? '#5c5' : '#6a6660'};border:1px solid ${passed ? 'rgba(92,204,92,0.2)' : '#2a2a24'};background:${passed ? 'rgba(92,204,92,0.04)' : 'transparent'};">${passed ? '✓' : '✗'} ${label}</span>`;
+        }).join('')}
+    </div>`;
+
     html += '</div>';
 
     // Concentration warning
