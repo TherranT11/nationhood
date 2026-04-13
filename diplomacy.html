@@ -15,17 +15,41 @@
     <!-- Shared Styles -->
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/diplomacy.css">
+    <link rel="stylesheet" href="css/world.css">
 </head>
 <body>
 
 <!-- ===== TOP BAR (rendered by common.js) ===== -->
 <div id="top-bar"></div>
 
-<!-- ===== CONTENT AREA ===== -->
-<div id="content-area">
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:calc(100vh - 100px);text-align:center;color:var(--text-secondary);">
-        <div style="font-family:var(--font-mono);font-size:0.9rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;">UI 2.0 IS COMING</div>
-        <div style="font-size:0.85rem;color:var(--text-muted);">Please be patient while we roll this out.</div>
+<!-- ===== WORLD PAGE ===== -->
+<div class="world-page">
+    <!-- Map panel -->
+    <div class="world-map-panel" id="world-map-panel">
+        <img id="world-map-img" src="./assets/map/World Map Crucera 2.5.svg" alt="World Map" draggable="false"
+             style="width:100%;height:auto;">
+        <div class="world-map-controls">
+            <div class="world-map-btn" id="map-zoom-in">+</div>
+            <div class="world-map-btn" id="map-zoom-out">&minus;</div>
+            <div class="world-map-btn" id="map-zoom-reset">&#8634;</div>
+        </div>
+        <div class="world-map-zoom" id="map-zoom-label">100%</div>
+        <div class="world-map-hint">scroll to zoom &middot; drag to pan</div>
+    </div>
+
+    <!-- Nation highlight panel -->
+    <div class="world-highlight" id="world-highlight">
+        <div class="world-highlight-header">
+            <div class="world-highlight-dot" style="background:var(--accent);"></div>
+            <span class="world-highlight-title">Nation Overview</span>
+        </div>
+        <div class="world-highlight-body" id="world-highlight-body">
+            <div class="world-highlight-empty">
+                <div style="font-size:1.5rem;margin-bottom:8px;opacity:0.4;">&#127758;</div>
+                <div style="font-family:var(--font-mono);font-size:10px;">Select a nation</div>
+                <div style="font-family:var(--font-mono);font-size:8px;margin-top:4px;">Click on the map or use the list below</div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -292,8 +316,191 @@ function updateUnseenBadge() {
 let activeDraftAction = null;  // { key, label, apCost, type, role }
 let activeDraftTarget = null;  // nation object
 
+// ═══════════════════════════════════════════════════
+// WORLD MAP — Pan + Zoom
+// ═══════════════════════════════════════════════════
+
+function initWorldMap() {
+    const panel = document.getElementById('world-map-panel');
+    const img = document.getElementById('world-map-img');
+    if (!panel || !img) return;
+
+    let scale = 1, panX = 0, panY = 0, dragging = false, startX = 0, startY = 0;
+    const minScale = 0.5, maxScale = 4;
+
+    function applyTransform() {
+        img.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+        const label = document.getElementById('map-zoom-label');
+        if (label) label.textContent = Math.round(scale * 100) + '%';
+    }
+
+    // Scroll to zoom
+    panel.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect = panel.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const oldScale = scale;
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        scale = Math.max(minScale, Math.min(maxScale, scale * delta));
+        // Zoom toward mouse position
+        panX = mx - (mx - panX) * (scale / oldScale);
+        panY = my - (my - panY) * (scale / oldScale);
+        applyTransform();
+    }, { passive: false });
+
+    // Drag to pan
+    panel.addEventListener('mousedown', (e) => {
+        dragging = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
+        panel.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        panX = e.clientX - startX;
+        panY = e.clientY - startY;
+        applyTransform();
+    });
+    window.addEventListener('mouseup', () => {
+        dragging = false;
+        panel.style.cursor = 'grab';
+    });
+
+    // Touch support
+    let lastTouchDist = 0;
+    panel.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            dragging = true;
+            startX = e.touches[0].clientX - panX;
+            startY = e.touches[0].clientY - panY;
+        } else if (e.touches.length === 2) {
+            lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        }
+    }, { passive: true });
+    panel.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 1 && dragging) {
+            panX = e.touches[0].clientX - startX;
+            panY = e.touches[0].clientY - startY;
+            applyTransform();
+        } else if (e.touches.length === 2) {
+            const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            if (lastTouchDist > 0) {
+                scale = Math.max(minScale, Math.min(maxScale, scale * (dist / lastTouchDist)));
+                applyTransform();
+            }
+            lastTouchDist = dist;
+        }
+    }, { passive: true });
+    panel.addEventListener('touchend', () => { dragging = false; lastTouchDist = 0; });
+
+    // Button controls
+    document.getElementById('map-zoom-in')?.addEventListener('click', () => {
+        scale = Math.min(maxScale, scale * 1.25);
+        applyTransform();
+    });
+    document.getElementById('map-zoom-out')?.addEventListener('click', () => {
+        scale = Math.max(minScale, scale * 0.8);
+        applyTransform();
+    });
+    document.getElementById('map-zoom-reset')?.addEventListener('click', () => {
+        scale = 1; panX = 0; panY = 0;
+        applyTransform();
+    });
+
+    applyTransform();
+}
+
+// ═══════════════════════════════════════════════════
+// NATION HIGHLIGHT PANEL
+// ═══════════════════════════════════════════════════
+
+function initNationHighlight(allNations, state) {
+    const body = document.getElementById('world-highlight-body');
+    if (!body || !allNations.length) return;
+
+    const myNationId = state.nation?.id;
+
+    // Show your own nation by default
+    const myNation = allNations.find(n => n.id === myNationId);
+    if (myNation) renderNationHighlight(myNation, state);
+
+    // Add a clickable nation list at the bottom of the panel
+    const listHtml = allNations.map(n => {
+        const isYou = n.id === myNationId;
+        return `<div class="world-highlight-stat-row" style="cursor:pointer;padding:6px 0;" data-nation-id="${n.id}">
+            <span style="font-size:10px;font-weight:${isYou ? '700' : '500'};color:${isYou ? 'var(--accent)' : 'var(--text-bright)'};">${escapeHtml(n.name)}${isYou ? ' (You)' : ''}</span>
+            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${escapeHtml(n.government_type || '')}</span>
+        </div>`;
+    }).join('');
+
+    // Append nation list below the highlight content
+    const listContainer = document.createElement('div');
+    listContainer.id = 'world-nation-list';
+    listContainer.innerHTML = `<div class="world-highlight-section">ALL NATIONS</div>${listHtml}`;
+    body.after(listContainer);
+
+    // Actually put it inside the highlight body
+    body.parentElement.querySelector('#world-nation-list')?.remove();
+    const listDiv = document.createElement('div');
+    listDiv.style.cssText = 'padding:0 14px 14px;border-top:1px solid var(--border-main);';
+    listDiv.innerHTML = `<div class="world-highlight-section" style="margin-top:8px;">ALL NATIONS</div>${listHtml}`;
+    body.after(listDiv);
+
+    // Click handler
+    listDiv.addEventListener('click', (e) => {
+        const row = e.target.closest('[data-nation-id]');
+        if (!row) return;
+        const nation = allNations.find(n => n.id === row.dataset.nationId);
+        if (nation) renderNationHighlight(nation, state);
+    });
+}
+
+function renderNationHighlight(nation, state) {
+    const body = document.getElementById('world-highlight-body');
+    if (!body) return;
+
+    const isYou = nation.id === state.nation?.id;
+    const pop = Number(nation.population || 0);
+    const popLabel = pop >= 1e6 ? (pop / 1e6).toFixed(1) + 'M' : pop.toLocaleString();
+
+    const stats = [
+        { label: 'GDP Growth', value: (nation.gdp_growth ?? 0).toFixed(1), color: nation.gdp_growth >= 50 ? 'var(--green)' : 'var(--text-bright)' },
+        { label: 'Stability', value: (nation.stability ?? 0).toFixed(1), color: nation.stability >= 50 ? 'var(--green)' : nation.stability >= 30 ? 'var(--amber)' : 'var(--red)' },
+        { label: 'Freedom Index', value: (nation.freedom_index ?? 0).toFixed(1), color: nation.freedom_index >= 50 ? 'var(--green)' : 'var(--amber)' },
+        { label: 'Corruption', value: (nation.corruption ?? 0).toFixed(1), color: nation.corruption <= 30 ? 'var(--green)' : nation.corruption <= 60 ? 'var(--amber)' : 'var(--red)' },
+        { label: 'Unemployment', value: (nation.unemployment ?? 0).toFixed(1), color: nation.unemployment <= 30 ? 'var(--green)' : 'var(--amber)' },
+        { label: 'Healthcare', value: (nation.healthcare_quality ?? 0).toFixed(1) },
+        { label: 'Education', value: (nation.higher_education ?? 0).toFixed(1) },
+        { label: 'Civil Unrest', value: (nation.civil_unrest ?? 0).toFixed(1), color: nation.civil_unrest <= 20 ? 'var(--green)' : nation.civil_unrest <= 50 ? 'var(--amber)' : 'var(--red)' },
+    ];
+
+    body.innerHTML = `
+        <div style="margin-bottom:10px;">
+            <div class="world-highlight-name">${escapeHtml(nation.name)}${isYou ? ' <span style="font-family:var(--font-mono);font-size:8px;color:var(--green);font-weight:700;">YOU</span>' : ''}</div>
+            <div class="world-highlight-meta">${escapeHtml(nation.government_type || 'Unknown')} &middot; Pop: ${popLabel}</div>
+        </div>
+        <div class="world-highlight-section">KEY STATS</div>
+        ${stats.map(s => `<div class="world-highlight-stat-row">
+            <span class="world-highlight-stat-label">${escapeHtml(s.label)}</span>
+            <span class="world-highlight-stat-value" style="${s.color ? 'color:' + s.color : ''}">${s.value}</span>
+        </div>`).join('')}
+    `;
+}
+
 initPage('diplomacy', async (state) => {
-    return; // UI 2.0 placeholder — full diplomacy page disabled
+    // ── World Map: Pan + Zoom ──
+    initWorldMap();
+
+    // ── Nation highlight: load all nations for the panel ──
+    try {
+        const { data: allNations } = await _supabase.from('nations').select('*').order('name');
+        initNationHighlight(allNations || [], state);
+    } catch (err) {
+        console.error('[World] Failed to load nations:', err);
+    }
+
+    return; // Original diplomacy code preserved below but disabled
     try {
         currentFaction = state.faction;
         currentNation  = state.nation;

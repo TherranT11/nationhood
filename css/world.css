@@ -13,3 +13,103 @@
         #Montequilla.land.selected-nation { fill: #66cc44; }
         #SanEstrella.land.selected-nation { fill: #ff8833; }
         #Palvera.land.selected-nation { fill: #d47070; }
+
+/* ══════════════════════════════════════════════════════════════
+   WORLD PAGE — Map + Nation Highlight
+   ══════════════════════════════════════════════════════════════ */
+
+.world-page {
+    display: flex; gap: 12px; padding: 12px;
+    height: calc(100vh - 100px); overflow: hidden;
+}
+
+/* ── Map panel (left/center) ── */
+.world-map-panel {
+    width: 1140px; height: 900px;
+    max-height: calc(100vh - 120px);
+    background: var(--ocean-bg, #87CEEB);
+    border: 1px solid var(--border-main);
+    overflow: hidden; position: relative;
+    cursor: grab; user-select: none; flex-shrink: 0;
+}
+.world-map-panel:active { cursor: grabbing; }
+.world-map-panel img {
+    display: block; transform-origin: 0 0;
+    pointer-events: none; will-change: transform;
+}
+.world-map-controls {
+    position: absolute; bottom: 12px; right: 12px;
+    display: flex; flex-direction: column; gap: 2px; z-index: 10;
+}
+.world-map-btn {
+    width: 28px; height: 28px;
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+    color: var(--text-secondary); font-family: var(--font-mono);
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+}
+.world-map-btn:hover { background: var(--bg-hover); color: var(--text-bright); }
+.world-map-zoom {
+    position: absolute; top: 10px; left: 10px;
+    font-family: var(--font-mono); font-size: 9px;
+    color: rgba(0,0,0,0.4); background: rgba(255,255,255,0.5);
+    padding: 2px 6px; z-index: 10;
+}
+.world-map-hint {
+    position: absolute; bottom: 10px; left: 10px;
+    font-family: var(--font-mono); font-size: 8px;
+    color: rgba(0,0,0,0.3); z-index: 10;
+}
+
+/* ── Nation highlight panel (right) ── */
+.world-highlight {
+    width: 380px; height: 450px;
+    max-height: calc(100vh - 120px);
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+    display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;
+}
+.world-highlight-header {
+    padding: 10px 14px; border-bottom: 1px solid var(--border-main);
+    background: var(--bg-card); display: flex; align-items: center; gap: 8px;
+}
+.world-highlight-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.world-highlight-title {
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.1em; color: var(--text-secondary); text-transform: uppercase;
+}
+.world-highlight-body { flex: 1; overflow-y: auto; padding: 12px 14px; }
+.world-highlight-empty {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; height: 100%; text-align: center; color: var(--text-dim);
+}
+.world-highlight-name { font-size: 16px; font-weight: 700; color: var(--text-bright); margin-bottom: 4px; }
+.world-highlight-meta { font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); }
+.world-highlight-section {
+    font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+    letter-spacing: 0.08em; color: var(--text-dim); text-transform: uppercase;
+    margin: 12px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--border-main);
+}
+.world-highlight-stat-row {
+    display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid var(--border-light);
+}
+.world-highlight-stat-row:last-child { border-bottom: none; }
+.world-highlight-stat-label {
+    font-family: var(--font-mono); font-size: 8px; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.04em;
+}
+.world-highlight-stat-value {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--text-bright);
+}
+
+/* ── Responsive ── */
+@media (max-width: 1200px) {
+    .world-page { flex-direction: column; align-items: center; height: auto; overflow: auto; }
+    .world-map-panel { width: 100%; max-width: 1140px; height: 500px; }
+    .world-highlight { width: 100%; max-width: 600px; height: auto; max-height: 400px; }
+}
+@media (max-width: 768px) {
+    .world-page { padding: 8px; gap: 8px; }
+    .world-map-panel { height: 350px; }
+    .world-highlight { max-height: 350px; }
+}
