@@ -8,6 +8,8 @@ let _selectedStationId = null;
 let _broadcasts = [];
 let _personalities = [];
 let _factionIdeology = null; // cached faction_ideology row for political station gating
+let _myGoodListens = new Set(); // broadcast IDs the current faction has good-listened
+let _expandedBroadcastId = null; // currently expanded broadcast in the feed
 
 // Station type config
 const STATION_TYPES = [
@@ -141,6 +143,7 @@ function renderRadioPage(root) {
                     <span class="radio-station-count">${stationCount} station${stationCount !== 1 ? 's' : ''}</span>
                 </div>
                 <div class="radio-header-actions">
+                    <button class="radio-btn radio-btn--outline" id="radio-broadcast-btn" style="display:none;">Start Broadcast</button>
                     <button class="radio-btn radio-btn--primary" id="radio-create-btn">Create Station</button>
                 </div>
             </div>
@@ -155,6 +158,9 @@ function renderRadioPage(root) {
 
         <!-- Create Personality Modal -->
         <div class="radio-modal-overlay" id="radio-personality-modal"></div>
+
+        <!-- Start Broadcast Modal -->
+        <div class="radio-modal-overlay" id="radio-broadcast-modal"></div>
     `;
 
     // Bind create button
@@ -247,14 +253,26 @@ async function selectStation(stationId) {
         }
     });
 
-    // Fetch personalities + broadcasts in parallel
-    const [persResult, bcResult] = await Promise.all([
+    // Fetch personalities, broadcasts, and user's good listens in parallel
+    const factionId = _state.faction?.id;
+    const [persResult, bcResult, glResult] = await Promise.all([
         _supabase.from('radio_personalities').select('*').eq('station_id', stationId),
         _supabase.from('radio_broadcasts').select('*').eq('station_id', stationId).order('created_at', { ascending: false }).limit(50),
+        factionId ? _supabase.from('broadcast_good_listens').select('broadcast_id').eq('faction_id', factionId) : { data: [] },
     ]);
 
     _personalities = persResult.data || [];
     _broadcasts = bcResult.data || [];
+    _myGoodListens = new Set((glResult.data || []).map(r => r.broadcast_id));
+    _expandedBroadcastId = null;
+
+    // Show/hide Start Broadcast button based on whether user has a personality on this station
+    const myPers = _personalities.filter(p => p.faction_id === factionId);
+    const bcBtn = document.getElementById('radio-broadcast-btn');
+    if (bcBtn) {
+        bcBtn.style.display = myPers.length > 0 ? '' : 'none';
+        bcBtn.onclick = () => openBroadcastModal(station);
+    }
 
     renderSidebar(station);
     renderFeed(station);
@@ -331,7 +349,7 @@ function renderFeed(station) {
     const scrollEl = document.getElementById('radio-feed-scroll');
     if (!countEl || !scrollEl) return;
 
-    countEl.textContent = `${_broadcasts.length} this tick`;
+    countEl.textContent = `${_broadcasts.length} broadcast${_broadcasts.length !== 1 ? 's' : ''}`;
 
     if (_broadcasts.length === 0) {
         scrollEl.innerHTML = `
@@ -345,35 +363,274 @@ function renderFeed(station) {
 
     scrollEl.innerHTML = _broadcasts.map(bc => {
         const tags = (bc.tags || []);
-        const tagsHtml = tags.map(t => {
-            const tc = 'var(--text-dim)';
-            return `<span style="padding:1px 5px;font-family:var(--font-mono);font-size:6px;font-weight:700;color:${tc};border:1px solid var(--border-mid);line-height:11px;">${esc(t)}</span>`;
-        }).join('');
+        const tagsHtml = tags.map(t =>
+            `<span style="padding:1px 5px;font-family:var(--font-mono);font-size:6px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-mid);line-height:11px;">${esc(t)}</span>`
+        ).join('');
 
         const personality = _personalities.find(p => p.id === bc.personality_id);
         const persName = personality?.name || 'Unknown';
+        const isExpanded = _expandedBroadcastId === bc.id;
+        const isGoodListened = _myGoodListens.has(bc.id);
+
+        const bodyStyle = isExpanded
+            ? 'font-family:var(--font-serif);font-size:11px;color:var(--text-secondary);line-height:1.7;margin-bottom:8px;'
+            : 'font-family:var(--font-serif);font-size:11px;color:var(--text-secondary);line-height:1.6;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;';
+
+        const glBtnStyle = isGoodListened
+            ? 'padding:3px 10px;cursor:pointer;font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.04em;color:var(--bg-body);background:var(--green);border:1px solid var(--green);'
+            : 'padding:3px 10px;cursor:pointer;font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.04em;color:var(--green);background:transparent;border:1px solid var(--green-border);';
 
         return `
-            <div style="border-bottom:1px solid var(--border-main);padding:10px 16px;cursor:pointer;" data-broadcast-id="${bc.id}">
-                <div style="font-family:var(--font-serif);font-size:14px;font-weight:600;color:var(--text-bright);line-height:1.3;margin-bottom:4px;">${esc(bc.subject)}</div>
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-                    <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);">${esc(persName)}</span>
-                    <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">&middot;</span>
-                    <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">Tick ${bc.published_tick || '?'}</span>
-                </div>
-                <div style="font-family:var(--font-serif);font-size:11px;color:var(--text-secondary);line-height:1.6;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${esc(bc.body)}</div>
-                ${tagsHtml ? `<div style="display:flex;gap:3px;margin-top:6px;flex-wrap:wrap;">${tagsHtml}</div>` : ''}
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:6px;border-top:1px solid var(--border-main);">
-                    <div style="display:flex;gap:10px;">
-                        <div style="display:flex;align-items:center;gap:3px;">
-                            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">GOOD LISTENS</span>
-                            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--green);">${bc.good_listen_count || 0}</span>
+            <div style="border-bottom:1px solid var(--border-main);">
+                <div style="padding:10px 16px;cursor:pointer;" data-bc-toggle="${bc.id}">
+                    <div style="font-family:var(--font-serif);font-size:14px;font-weight:600;color:var(--text-bright);line-height:1.3;margin-bottom:4px;">${esc(bc.subject)}</div>
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);">${esc(persName)}</span>
+                        <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">&middot;</span>
+                        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">Tick ${bc.published_tick || '?'}</span>
+                    </div>
+                    <div style="${bodyStyle}">${esc(bc.body)}</div>
+                    ${tagsHtml ? `<div style="display:flex;gap:3px;margin-top:6px;flex-wrap:wrap;">${tagsHtml}</div>` : ''}
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:6px;border-top:1px solid var(--border-main);">
+                        <div style="display:flex;gap:10px;">
+                            <div style="display:flex;align-items:center;gap:3px;">
+                                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">GOOD LISTENS</span>
+                                <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--green);" id="gl-count-${bc.id}">${bc.good_listen_count || 0}</span>
+                            </div>
                         </div>
+                        <div style="${glBtnStyle}" data-gl-btn="${bc.id}" id="gl-btn-${bc.id}">${isGoodListened ? '\u2713 GOOD LISTEN' : 'GOOD LISTEN'}</div>
                     </div>
                 </div>
             </div>
         `;
     }).join('');
+
+    // Bind expand/collapse
+    scrollEl.addEventListener('click', (e) => {
+        // Good Listen button
+        const glBtn = e.target.closest('[data-gl-btn]');
+        if (glBtn) {
+            e.stopPropagation();
+            toggleGoodListen(glBtn.dataset.glBtn);
+            return;
+        }
+        // Expand/collapse toggle
+        const toggle = e.target.closest('[data-bc-toggle]');
+        if (toggle) {
+            const bcId = toggle.dataset.bcToggle;
+            _expandedBroadcastId = _expandedBroadcastId === bcId ? null : bcId;
+            renderFeed(station);
+        }
+    });
+}
+
+// ════════════════════════ GOOD LISTEN ════════════════════════
+
+let _glInFlight = new Set();
+
+async function toggleGoodListen(broadcastId) {
+    if (_glInFlight.has(broadcastId)) return;
+    _glInFlight.add(broadcastId);
+
+    const btn = document.getElementById('gl-btn-' + broadcastId);
+    const countEl = document.getElementById('gl-count-' + broadcastId);
+    if (btn) btn.style.opacity = '0.5';
+
+    try {
+        const tick = _state.shard?.current_tick || 0;
+        const { data, error } = await _supabase.rpc('toggle_broadcast_good_listen', {
+            p_broadcast_id: broadcastId,
+            p_faction_id: _state.faction.id,
+            p_tick: tick,
+        });
+
+        if (error) {
+            console.error('[Radio] Good listen failed:', error.message);
+            return;
+        }
+
+        // Update local state
+        if (data.liked) {
+            _myGoodListens.add(broadcastId);
+        } else {
+            _myGoodListens.delete(broadcastId);
+        }
+
+        // Update cached broadcast
+        const bc = _broadcasts.find(b => b.id === broadcastId);
+        if (bc) bc.good_listen_count = data.good_listen_count;
+
+        // Update UI inline (avoid full re-render to preserve scroll)
+        if (btn) {
+            if (data.liked) {
+                btn.style.color = 'var(--bg-body)';
+                btn.style.background = 'var(--green)';
+                btn.style.borderColor = 'var(--green)';
+                btn.textContent = '\u2713 GOOD LISTEN';
+            } else {
+                btn.style.color = 'var(--green)';
+                btn.style.background = 'transparent';
+                btn.style.borderColor = 'var(--green-border)';
+                btn.textContent = 'GOOD LISTEN';
+            }
+        }
+        if (countEl) countEl.textContent = data.good_listen_count;
+    } catch (err) {
+        console.error('[Radio] Good listen error:', err);
+    } finally {
+        _glInFlight.delete(broadcastId);
+        if (btn) btn.style.opacity = '1';
+    }
+}
+
+// ════════════════════════ START BROADCAST MODAL ════════════════════════
+
+const BROADCAST_TAGS = ['POLITICS', 'ECONOMY', 'CONSTRUCTION', 'LABOR', 'CORRUPTION', 'BUSINESS', 'MILITARY', 'SOCIAL'];
+
+function openBroadcastModal(station) {
+    const overlay = document.getElementById('radio-broadcast-modal');
+    if (!overlay) return;
+
+    const color = TYPE_COLORS[station.station_type] || 'var(--text-dim)';
+    const myPers = _personalities.filter(p => p.faction_id === _state.faction?.id);
+    if (myPers.length === 0) return; // shouldn't happen — button is hidden
+
+    const persOptions = myPers.map((p, i) =>
+        `<option value="${p.id}" ${i === 0 ? 'selected' : ''}>${esc(p.name)}${p.title ? ' — ' + esc(p.title) : ''}</option>`
+    ).join('');
+
+    const tagsHtml = BROADCAST_TAGS.map(t =>
+        `<span class="radio-bc-tag" data-tag="${t}" style="padding:3px 7px;font-family:var(--font-mono);font-size:7px;font-weight:700;cursor:pointer;color:var(--text-dim);background:transparent;border:1px solid var(--border-mid);letter-spacing:0.04em;user-select:none;">${t}</span>`
+    ).join('');
+
+    overlay.innerHTML = `
+        <div class="radio-modal" style="width:500px;">
+            <div class="radio-modal-header">
+                <div class="radio-modal-header-left">
+                    <div class="radio-modal-dot" style="background:${color};"></div>
+                    <span class="radio-modal-title">Start Broadcast</span>
+                </div>
+                <button class="radio-modal-close" id="radio-bc-close">&times;</button>
+            </div>
+            <div style="padding:8px 16px;border-bottom:1px solid var(--border-main);background:${color}08;display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="width:5px;height:5px;border-radius:50%;background:${color};display:inline-block;"></span>
+                    <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-secondary);">Broadcasting on:</span>
+                    <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${color};">${esc(station.callsign)}</span>
+                    <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${esc(station.frequency)}</span>
+                </div>
+            </div>
+            <div class="radio-modal-body" style="gap:14px;">
+                <div>
+                    <div class="radio-modal-step-label">1 &mdash; Personality</div>
+                    <select class="radio-modal-input" id="radio-bc-personality" style="font-family:var(--font-ui);font-size:11px;">
+                        ${persOptions}
+                    </select>
+                </div>
+                <div>
+                    <div class="radio-modal-step-label">2 &mdash; Subject</div>
+                    <input class="radio-modal-input" id="radio-bc-subject" placeholder="e.g., Breaking: Port Workers Announce Strike" style="font-family:var(--font-serif);font-size:13px;">
+                </div>
+                <div>
+                    <div class="radio-modal-step-label">3 &mdash; Broadcast Content</div>
+                    <textarea class="radio-modal-input" id="radio-bc-body" rows="7" placeholder="Write your broadcast script..." style="resize:none;font-family:var(--font-serif);font-size:11px;line-height:1.65;"></textarea>
+                    <div style="display:flex;justify-content:space-between;margin-top:3px;">
+                        <span id="radio-bc-charcount" style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">0 characters</span>
+                    </div>
+                </div>
+                <div>
+                    <div class="radio-modal-step-label">4 &mdash; Tags</div>
+                    <div style="display:flex;gap:3px;flex-wrap:wrap;" id="radio-bc-tags">${tagsHtml}</div>
+                </div>
+            </div>
+            <div class="radio-modal-footer">
+                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-right:auto;">FREE</span>
+                <button class="radio-modal-btn radio-modal-btn--cancel" id="radio-bc-cancel">Cancel</button>
+                <button class="radio-modal-btn radio-modal-btn--submit" id="radio-bc-submit" disabled style="background:var(--accent);">Go Live</button>
+            </div>
+        </div>
+    `;
+
+    overlay.classList.add('active');
+
+    const selectedTags = new Set();
+
+    // Close handlers
+    const close = () => overlay.classList.remove('active');
+    document.getElementById('radio-bc-close')?.addEventListener('click', close);
+    document.getElementById('radio-bc-cancel')?.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    // Tag toggle
+    document.getElementById('radio-bc-tags')?.addEventListener('click', (e) => {
+        const el = e.target.closest('.radio-bc-tag');
+        if (!el) return;
+        const tag = el.dataset.tag;
+        if (selectedTags.has(tag)) {
+            selectedTags.delete(tag);
+            el.style.color = 'var(--text-dim)';
+            el.style.background = 'transparent';
+            el.style.borderColor = 'var(--border-mid)';
+        } else {
+            selectedTags.add(tag);
+            el.style.color = 'var(--accent)';
+            el.style.background = 'var(--amber-faint)';
+            el.style.borderColor = 'var(--amber-border)';
+        }
+    });
+
+    // Character count + submit enable
+    const updateSubmit = () => {
+        const subject = document.getElementById('radio-bc-subject')?.value?.trim();
+        const body = document.getElementById('radio-bc-body')?.value?.trim();
+        const btn = document.getElementById('radio-bc-submit');
+        if (btn) btn.disabled = !(subject && body);
+        const cc = document.getElementById('radio-bc-charcount');
+        if (cc) cc.textContent = `${(body || '').length} characters`;
+    };
+    document.getElementById('radio-bc-subject')?.addEventListener('input', updateSubmit);
+    document.getElementById('radio-bc-body')?.addEventListener('input', updateSubmit);
+
+    // Submit
+    let submitting = false;
+    document.getElementById('radio-bc-submit')?.addEventListener('click', async () => {
+        if (submitting) return;
+        const subject = document.getElementById('radio-bc-subject')?.value?.trim();
+        const body = document.getElementById('radio-bc-body')?.value?.trim();
+        const personalityId = document.getElementById('radio-bc-personality')?.value;
+        if (!subject || !body || !personalityId) return;
+
+        submitting = true;
+        const btn = document.getElementById('radio-bc-submit');
+        if (btn) { btn.disabled = true; btn.textContent = 'Broadcasting...'; }
+
+        try {
+            const { data, error } = await _supabase.from('radio_broadcasts').insert({
+                station_id: station.id,
+                personality_id: personalityId,
+                faction_id: _state.faction.id,
+                subject: subject,
+                body: body,
+                tags: [...selectedTags],
+                published_tick: _state.shard?.current_tick || null,
+            }).select('*').single();
+
+            if (error) {
+                console.error('[Radio] Broadcast failed:', error.message);
+                alert('Failed to broadcast: ' + error.message);
+                return;
+            }
+
+            _broadcasts.unshift(data);
+            close();
+            renderFeed(station);
+        } catch (err) {
+            console.error('[Radio] Broadcast error:', err);
+        } finally {
+            submitting = false;
+            if (btn) { btn.disabled = false; btn.textContent = 'Go Live'; }
+        }
+    });
 }
 
 // ════════════════════════ CREATE PERSONALITY MODAL ════════════════════════
