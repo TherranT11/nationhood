@@ -1124,7 +1124,8 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
         try {
             // 1. Reset shard clock to tick 1, January 2000
             logMsg('Resetting shard clock...');
-            const nextTick = new Date(Date.now() + currentTickInterval * 60 * 60 * 1000);
+            const tickHours = currentTickInterval || 1; // fallback to 1 hour if undefined
+            const nextTick = new Date(Date.now() + tickHours * 60 * 60 * 1000);
             const { error: shardErr } = await _supabase.from('shard').update({
                 current_date: 'January, 2000', current_tick: 1,
                 next_tick_at: nextTick.toISOString()
@@ -1181,12 +1182,17 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
                 }
                 // Only restore columns that exist in NATION_STAT_COLUMNS + known extras
                 const update = {};
-                const validKeys = new Set([...NATION_STAT_COLUMNS, 'total_seats', 'government_type']);
+                const validKeys = new Set([...NATION_STAT_COLUMNS,
+                    'total_seats', 'government_type', 'gov_approval',
+                    'head_of_state_first_name', 'head_of_state_last_name',
+                    'parliamentary_term_ticks', 'presidential_term_ticks',
+                ]);
                 for (const [k, v] of Object.entries(nation.seed_stats)) {
                     if (validKeys.has(k)) update[k] = v;
                 }
-                // Clear leader references (they point to deleted factions)
+                // Clear references that point to deleted factions/state
                 update.ruling_faction_id = null;
+                update.gov_approval = 50; // reset to neutral
                 // Reset foundational law terms to defaults
                 update.parliamentary_term_ticks = nation.seed_stats.parliamentary_term_ticks || 48;
                 update.presidential_term_ticks = nation.seed_stats.presidential_term_ticks || null;
@@ -1213,9 +1219,13 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
                     logMsg(`  — ${nation.name}: no term length in seed, skipping`, '#888');
                     continue;
                 }
+                // Schedule first election at half the term length so players
+                // don't wait a full cycle after reset. E.g., 48-tick term → first
+                // election at tick 24, then every 48 ticks after.
+                const firstElectionTick = Math.max(6, Math.round(parlTerm / 2));
                 const { error: elErr } = await _supabase.from('elections').insert({
                     nation_id: nation.id,
-                    election_tick: parlTerm,
+                    election_tick: firstElectionTick,
                     election_type: 'parliamentary',
                     status: 'scheduled'
                 });
