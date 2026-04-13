@@ -446,7 +446,7 @@ export function renderTopBar(activeTab) {
         mobileNav.className = 'mobile-bottom-nav';
         mobileNav.innerHTML = [
             { id: 'dashboard', label: 'Home',  icon: '\uD83C\uDFE0', href: 'dashboard.html' },
-            { id: 'politics',  label: 'Party', icon: '\uD83C\uDFDB\uFE0F', href: 'politics.html' },
+            { id: 'politics',  label: 'Actions', icon: '\u2694\uFE0F', href: 'politics.html' },
             { id: 'government',label: 'Gov',   icon: '\u2696\uFE0F',  href: 'government.html' },
             { id: 'nation',    label: 'Nation', icon: '\uD83C\uDF0D', href: 'nation.html' },
             { id: 'diplomacy', label: 'World', icon: '\uD83C\uDF10', href: 'diplomacy.html' },
@@ -475,7 +475,7 @@ export function renderTopBar(activeTab) {
 export function renderNavTabs(activeTab) {
     const tabs = [
         { id: 'dashboard', label: 'Home', href: 'dashboard.html' },
-        { id: 'politics', label: 'Party', href: 'politics.html' },
+        { id: 'politics', label: 'Actions', href: 'politics.html' },
         { id: 'government', label: 'Government', href: 'government.html' },
         { id: 'nation', label: 'Nation', href: 'nation.html' },
         { id: 'diplomacy', label: 'World', href: 'diplomacy.html' },
