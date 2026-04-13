@@ -2329,6 +2329,9 @@ body.light-mode .tft-row-clickable:hover {
 }
 
 /* ── 5-column cards row ── */
+.econ-cards-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
 .econ-cards-5 {
     grid-template-columns: repeat(5, 1fr);
 }

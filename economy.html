@@ -2268,34 +2268,47 @@ function renderFoodSubsectorDetail(nation, subsectorKey) {
     h += '</div>';
     h += '<div class="econ-section-subtitle">' + escapeHtml(sub.description) + '</div>';
 
-    // ── Top cards: Production / Demand / Exports / Imports / Unmet / Net ──
+    // ── Top cards: 2 rows × 3 columns (Cash Crops layout) ──
+    // Organic exports = current export volume (no trade deal needed)
+    // Trade deal exports = 0 for now (RSC pre-allocations tracked separately in future)
+    var organicExports = expVol;
+    var tradeDealExports = 0;
+    // Untraded surplus = production capacity beyond what's exported + consumed domestically
+    var untradedSurplus = Math.max(0, expCap - expVol);
+    var surplusAtCurrentPrice = Math.round(untradedSurplus * priceMod);
+    var surplusAtFullPrice = untradedSurplus;
+
+    var prodLabel = formatSectorVolume(expCap, subsectorKey);
+    var demLabel = formatSectorVolume(impDem, subsectorKey);
+    var orgExpLabel = formatSectorVolume(organicExports, subsectorKey);
+    var tdExpLabel = formatSectorVolume(tradeDealExports, subsectorKey);
+    var impLabel = formatSectorVolume(impVol, subsectorKey);
+    var surplusLabel = formatSectorVolume(untradedSurplus, subsectorKey);
+
+    h += '<div class="econ-cards-row econ-cards-3" style="margin-top:12px;">';
+    h += renderOverviewCard('Production', prodLabel || formatBudgetCurrency(expCap), 'neutral', 'capacity / year');
+    h += renderOverviewCard('Demand', demLabel || formatBudgetCurrency(impDem), impDem > expCap ? 'deficit' : 'neutral', 'total need');
+    h += renderOverviewCard('Exports \u2014 Organic', orgExpLabel || formatBudgetCurrency(organicExports), organicExports > 0 ? 'surplus' : 'neutral', organicExports > 0 ? 'no trade deal required' : 'no organic exports');
+    h += '</div>';
+
+    h += '<div class="econ-cards-row econ-cards-3" style="margin-top:0;">';
+    h += renderOverviewCard('Exports \u2014 Trade Deals', tdExpLabel || formatBudgetCurrency(tradeDealExports), tradeDealExports > 0 ? 'surplus' : 'neutral', tradeDealExports > 0 ? 'active agreements' : 'no active deals');
+    h += renderOverviewCard('Imports', impLabel || formatBudgetCurrency(impVol), impVol > 0 ? 'deficit' : 'neutral', impVol > 0 ? 'specialty varieties' : 'no imports');
+    h += renderOverviewCard('Untraded Surplus \u2014 Seek Buyers', surplusLabel || formatBudgetCurrency(untradedSurplus), untradedSurplus > 0 ? 'deficit' : 'surplus', untradedSurplus > 0 ? 'sitting idle \u00b7 no buyer secured' : 'all production allocated');
+    h += '</div>';
+
+    // Surplus value calculation
+    if (untradedSurplus > 0) {
+        h += '<div style="padding:4px 16px;text-align:right;font-family:var(--font-mono);font-size:0.65rem;color:var(--text-dim);">';
+        h += 'At current ' + priceMod.toFixed(2) + 'x&nbsp;&nbsp;&nbsp;' + formatBudgetCurrency(surplusAtCurrentPrice) + ' / yr';
+        h += '<br>At full price 1.0x&nbsp;&nbsp;&nbsp;' + formatBudgetCurrency(surplusAtFullPrice) + ' / yr';
+        h += '</div>';
+    }
+
+    // ── Unmet Demand stat penalty warning ──
     var totalSupply = expCap + impVol;
     var unmetDemand = Math.max(0, impDem - totalSupply);
     var unmetPct = impDem > 0 ? Math.round(unmetDemand / impDem * 100) : 0;
-
-    h += '<div class="econ-cards-row econ-cards-6" style="margin-top:12px;">';
-
-    var prodLabel = formatSectorVolume(expCap, subsectorKey);
-    h += renderOverviewCard('Production', prodLabel || formatBudgetCurrency(expCap), 'neutral', 'capacity / year');
-
-    var demLabel = formatSectorVolume(impDem, subsectorKey);
-    h += renderOverviewCard('Demand', demLabel || formatBudgetCurrency(impDem), impDem > expCap ? 'deficit' : 'neutral', 'total need');
-
-    var expLabel = formatSectorVolume(expVol, subsectorKey);
-    h += renderOverviewCard('Exports', expLabel || formatBudgetCurrency(expVol), expVol > 0 ? 'surplus' : 'neutral', null);
-
-    var impLabel = formatSectorVolume(impVol, subsectorKey);
-    h += renderOverviewCard('Imports', impLabel || formatBudgetCurrency(impVol), impVol > 0 ? 'deficit' : 'neutral', null);
-
-    var unmetLabel = formatSectorVolume(unmetDemand, subsectorKey);
-    h += renderOverviewCard('Unmet Demand', unmetLabel || formatBudgetCurrency(unmetDemand), unmetDemand > 0 ? 'deficit' : 'surplus', unmetPct > 0 ? unmetPct + '% unmet' : 'fully supplied');
-
-    var netColor = net > 0 ? 'surplus' : net < 0 ? 'deficit' : 'neutral';
-    h += renderOverviewCard('Net Flow', formatBudgetCurrency(Math.abs(net)), netColor, net >= 0 ? 'net exporter' : 'net importer');
-
-    h += '</div>';
-
-    // ── Unmet Demand stat penalty warning ──
     if (unmetPct >= 5 && sub.stat_effects && sub.stat_effects.shortage) {
         var shortageStats = sub.stat_effects.shortage;
         var penaltyTags = Object.keys(shortageStats).map(function(statKey) {
@@ -2343,9 +2356,11 @@ function renderFoodSubsectorDetail(nation, subsectorKey) {
     var avgPrice = getGlobalAverageUnitPrice(subsectorKey, priceMod);
     var priceColor = priceMod >= 1.3 ? '#d9534f' : priceMod <= 0.7 ? '#5cb85c' : 'var(--text-secondary)';
     var priceLabel = priceMod >= 1.5 ? 'high' : priceMod >= 1.2 ? 'elevated' : priceMod >= 0.8 ? 'stable' : priceMod >= 0.6 ? 'low' : 'oversupply';
+    var sectorTradeBalance = expVol - impVol;
     h += '<div style="display:flex;gap:20px;padding:8px 16px;flex-wrap:wrap;align-items:center;">';
     h += '<div style="font-size:0.75rem;color:var(--text-muted);">Global Price <span style="color:' + priceColor + ';font-weight:bold;">' + priceMod.toFixed(2) + 'x</span> <span style="font-size:0.65rem;">(' + priceLabel + ')</span></div>';
     h += '<div style="font-size:0.75rem;color:var(--text-muted);">Global Avg Unit Price <span style="color:' + priceColor + ';font-weight:bold;">' + formatPricePerTonne(avgPrice) + '</span></div>';
+    h += '<div style="margin-left:auto;font-size:0.75rem;">Net flow: <span style="font-weight:bold;color:' + (sectorTradeBalance >= 0 ? '#5cb85c' : '#d9534f') + ';">' + formatBudgetCurrency(sectorTradeBalance) + '</span> · ' + (sectorTradeBalance >= 0 ? 'net exporter' : 'net importer') + '</div>';
     h += '</div>';
 
     h += '</div>'; // end header section
