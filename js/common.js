@@ -892,7 +892,7 @@ export function updateTopBarInfo(faction, shard, nation) {
                 { id: 'expansion', label: 'Expansion', href: 'corp-operations.html?tab=expansion' },
                 { id: 'actions', label: 'Actions', href: 'corp-operations.html?tab=actions' },
                 { id: 'innovation', label: 'Innovation', disabled: true },
-                { id: 'lobbying', label: 'Lobbying', disabled: true },
+                { id: 'nations', label: 'Nations', href: 'corp-nations.html' },
                 { id: 'news', label: 'News', href: 'news.html' },
                 { id: 'wiki', label: 'Wiki', href: 'wiki.html' },
             ];
