@@ -1472,7 +1472,7 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
     // Expenses — workforce wages from wfData, divided by 12 (monthly)
     const annualWages = wfData?.totalWages || 0;
     const wages = Math.round(annualWages / 12);
-    const materials = 0, taxes = 0;
+    const materials = 0;
     const properties = propertyMaint || 0;
     const equipment = equipmentMaint || 0;
     // Debt service: monthly payment on outstanding loans (5% annual rate, 10-year amortization)
@@ -1484,7 +1484,12 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
         : 0;
     const execSalaries = Math.round((execCompensation || 0) / 12);
     const FIXED_OVERHEAD = 75000; // minimum operating costs (matches tick processor)
-    const totalExpenses = wages + execSalaries + materials + properties + equipment + debtService + taxes + FIXED_OVERHEAD;
+    // Corporate tax: applied to positive income (matches tick processor formula)
+    const corpTaxRate = Math.max(0, Math.min(1, (Number(nation?.corporate_tax ?? 0) / 100) || 0));
+    const preExpenses = wages + execSalaries + materials + properties + equipment + debtService + FIXED_OVERHEAD;
+    const taxableIncome = Math.max(0, totalRevenue - preExpenses);
+    const taxes = Math.round(taxableIncome * corpTaxRate);
+    const totalExpenses = preExpenses + taxes;
     const netProfit = totalRevenue - totalExpenses;
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const debt = outstandingDebt;
@@ -2642,7 +2647,8 @@ async function confirmConvertProperty(propId, cost, ticks) {
         }).eq('id', propId);
 
         closePropModal();
-        const propData = await renderProperty(nationStats, nationStats?.name || faction?.nation, faction, shard);
+        const nation = window._nationStats;
+        await renderProperty(nation, nation?.name || faction?.nation, faction, shard);
     } catch (err) {
         alert('Conversion failed: ' + err.message);
     }

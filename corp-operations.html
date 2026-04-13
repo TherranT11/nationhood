@@ -10505,6 +10505,7 @@ window.subSetSubsector = subSetSubsector;
 
 let _allCorps = [];
 let _corpSelected = 0;
+let _investigatedCorps = {}; // { corpId: tickInvestigated }
 let _corpFilterNation = 'ALL';
 let _corpSortBy = 'REPUTATION';
 
@@ -10529,6 +10530,31 @@ async function loadAllCorporations() {
 function corpSelect(idx) { _corpSelected = idx; renderCorporationsCard(); }
 function corpFilterNation(n) { _corpFilterNation = n; _corpSelected = 0; renderCorporationsCard(); }
 function corpSort(s) { _corpSortBy = s; _corpSelected = 0; renderCorporationsCard(); }
+
+async function corpInvestigate(targetCorpId) {
+    if (!faction || !shard) return;
+    const cash = Number(faction.corp_cash_reserves ?? 0);
+    if (cash < 500000) { alert('Insufficient cash. Need $500k.'); return; }
+
+    const { error } = await _supabase.from('factions').update({
+        corp_cash_reserves: cash - 500000,
+    }).eq('id', faction.id);
+    if (error) { alert('Failed: ' + error.message); return; }
+
+    faction.corp_cash_reserves = cash - 500000;
+    _investigatedCorps[targetCorpId] = shard.current_tick || 0;
+
+    // Reload the target corp's full data (including hidden financials)
+    const { data: fullCorpData } = await _supabase.from('factions')
+        .select('corp_cash_reserves, corp_loans, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
+        .eq('id', targetCorpId).single();
+    if (fullCorpData) {
+        const corp = _allCorps.find(c => c.id === targetCorpId);
+        if (corp) Object.assign(corp, fullCorpData);
+    }
+
+    renderCorporationsCard();
+}
 
 function renderCorporationsCard() {
     const container = document.getElementById('corporations-container');
@@ -10558,7 +10584,9 @@ function renderCorporationsCard() {
 
     if (_corpSelected >= filtered.length) _corpSelected = 0;
     const sel = filtered[_corpSelected] || null;
-    const isPrivateHidden = sel && sel.status === 'PRIVATE';
+    const currentTick = shard?.current_tick || 0;
+    const isInvestigated = sel && _investigatedCorps[sel.id] === currentTick;
+    const isPrivateHidden = sel && sel.status === 'PRIVATE' && !isInvestigated;
     const isState = sel && sel.status === 'STATE';
 
     // Left table rows
@@ -10630,7 +10658,7 @@ function renderCorporationsCard() {
         <div style="padding:6px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
             <div style="font-family:${mono};font-size:8px;letter-spacing:1.5px;color:${C.dim};text-transform:uppercase;margin-bottom:6px">Actions</div>
             <div style="display:flex;gap:4px;margin-bottom:4px;">
-                <div style="flex:1;padding:5px 0;text-align:center;cursor:${isPrivateHidden ? 'pointer' : 'default'};font-family:${mono};font-size:8px;font-weight:700;color:${isPrivateHidden ? C.blue : C.dim};border:1px solid ${isPrivateHidden ? C.blue + '44' : C.border};opacity:${isPrivateHidden ? 1 : 0.3}">INVESTIGATE — $500k</div>
+                <div onclick="${isPrivateHidden ? `corpInvestigate('${sel.id}')` : ''}" style="flex:1;padding:5px 0;text-align:center;cursor:${isPrivateHidden ? 'pointer' : 'default'};font-family:${mono};font-size:8px;font-weight:700;color:${isPrivateHidden ? C.blue : isInvestigated ? C.greenBright : C.dim};border:1px solid ${isPrivateHidden ? C.blue + '44' : isInvestigated ? C.greenBright + '44' : C.border};opacity:${isPrivateHidden ? 1 : 0.3}">${isInvestigated ? 'INVESTIGATED ✓' : 'INVESTIGATE — $500k'}</div>
                 <div style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;color:${C.accent};border:1px solid ${C.accent}44">PARTNER</div>
             </div>
             <div style="display:flex;gap:4px;">
@@ -10689,6 +10717,7 @@ function renderCorporationsCard() {
 }
 
 window.corpSelect = corpSelect;
+window.corpInvestigate = corpInvestigate;
 window.corpFilterNation = corpFilterNation;
 window.corpSort = corpSort;
 
