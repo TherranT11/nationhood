@@ -215,8 +215,8 @@ let _allNations = [];
 let _continents = {};
 let _selectedContinent = '';
 let _selectedNationIdx = 0;
-let _presenceMap = {};  // { nationId: { hq: bool, subsidiaries: N, properties: N, projects: N } }
-let _corpsByNation = {}; // { nationId: [{ faction_name, abbreviation, corp_sector, corp_subsector, corp_cash_reserves }] }
+let _presenceMap = {};  // { nationId: { hq, properties, projects, voyages, loanExposure, bondExposure, totalExposure } }
+let _corpsByNation = {}; // { nationId: [corp, ...] }
 
 function fmtMoney(n) {
     if (n === null || n === undefined) return '—';
@@ -268,10 +268,13 @@ async function init() {
     _selectedContinent = Object.keys(_continents)[0] || '';
     _selectedNationIdx = 0;
 
-    // Load presence data: properties, subsidiaries, active corporations per nation
+    // Load presence data: properties, projects, voyages, loans, bonds, corporations
     try {
-        const [propsRes, corpsRes] = await Promise.all([
+        const [propsRes, projectsRes, voyagesRes, loansRes, corpsRes] = await Promise.all([
             _supabase.from('corp_properties').select('nation_id').eq('faction_id', faction.id).eq('is_active', true),
+            _supabase.from('construction_contracts').select('nation_id, budget_ceiling').eq('awarded_to_faction', faction.id).in('status', ['awarded', 'in_progress']),
+            _supabase.from('shipping_claims').select('id, shipping_routes(origin_nation_id, destination_nation_id)').eq('faction_id', faction.id).eq('status', 'active'),
+            _supabase.from('finance_active_loans').select('nation_id, principal, status, lender_faction_id, borrower_faction_id, finance_loan_requests(request_type)').in('status', ['current', 'late', 'delinquent']),
             _supabase.from('factions')
                 .select('id, faction_name, abbreviation, corp_sector, corp_subsector, corp_cash_reserves, nation_id, corp_ticker')
                 .eq('faction_type', 'corporation').is('abandoned_at', null),
@@ -281,10 +284,44 @@ async function init() {
         _presenceMap = {};
         const myNationId = faction.nation_id;
         for (const n of _allNations) {
-            _presenceMap[n.id] = { hq: n.id === myNationId, properties: 0, subsidiaries: 0 };
+            _presenceMap[n.id] = { hq: n.id === myNationId, properties: 0, projects: 0, voyages: 0, loanExposure: 0, bondExposure: 0, totalExposure: 0 };
         }
+
+        // Properties
         for (const p of (propsRes.data || [])) {
             if (_presenceMap[p.nation_id]) _presenceMap[p.nation_id].properties++;
+        }
+
+        // Active construction projects
+        for (const p of (projectsRes.data || [])) {
+            if (_presenceMap[p.nation_id]) _presenceMap[p.nation_id].projects++;
+        }
+
+        // Shipping voyages (count both origin and destination nations)
+        for (const v of (voyagesRes.data || [])) {
+            const route = v.shipping_routes;
+            if (route?.origin_nation_id && _presenceMap[route.origin_nation_id]) _presenceMap[route.origin_nation_id].voyages++;
+            if (route?.destination_nation_id && _presenceMap[route.destination_nation_id]) _presenceMap[route.destination_nation_id].voyages++;
+        }
+
+        // Loan and bond exposure (where YOUR corp is lender)
+        for (const loan of (loansRes.data || [])) {
+            if (loan.lender_faction_id !== faction.id) continue;
+            const nId = loan.nation_id;
+            if (!_presenceMap[nId]) continue;
+            const principal = Number(loan.principal || 0);
+            const reqType = loan.finance_loan_requests?.request_type || 'loan';
+            if (reqType === 'bond') {
+                _presenceMap[nId].bondExposure += principal;
+            } else {
+                _presenceMap[nId].loanExposure += principal;
+            }
+        }
+
+        // Calculate total exposure per nation
+        for (const nId of Object.keys(_presenceMap)) {
+            const p = _presenceMap[nId];
+            p.totalExposure = p.loanExposure + p.bondExposure;
         }
 
         // Build corps per nation (all corporations, not just yours)
@@ -592,17 +629,40 @@ function renderNationDetail() {
 function renderYourPresence(nation) {
     const container = document.getElementById('your-presence-container');
     if (!container) return;
-    const presence = _presenceMap[nation.id] || {};
-    container.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;background:var(--bg-3);border:1px solid var(--border-0);">
-        <div style="padding:5px 10px;border-right:1px solid var(--border-0);border-bottom:1px solid var(--border-0);">
-            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.5px;">HQ</div>
-            <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${presence.hq ? 'var(--gold)' : 'var(--text-dim)'};margin-top:1px;">${presence.hq ? 'YES' : '—'}</div>
-        </div>
-        <div style="padding:5px 10px;border-bottom:1px solid var(--border-0);">
-            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.5px;">PROPERTIES</div>
-            <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${presence.properties > 0 ? '#8b9a6b' : 'var(--text-dim)'};margin-top:1px;">${presence.properties || '—'}</div>
-        </div>
+    const p = _presenceMap[nation.id] || {};
+
+    const presenceItems = [
+        { label: 'HQ', value: p.hq ? 'YES' : '—', color: p.hq ? 'var(--gold)' : 'var(--text-dim)' },
+        { label: 'PROPERTIES', value: p.properties || '—', color: p.properties > 0 ? '#8b9a6b' : 'var(--text-dim)' },
+        { label: 'ACTIVE PROJECTS', value: p.projects || '—', color: p.projects > 0 ? 'var(--text-bright)' : 'var(--text-dim)' },
+        { label: 'ACTIVE VOYAGES', value: p.voyages || '—', color: p.voyages > 0 ? '#5a8aaa' : 'var(--text-dim)' },
+        { label: 'LOAN EXPOSURE', value: p.loanExposure > 0 ? fmtMoney(p.loanExposure) : '—', color: p.loanExposure > 0 ? '#c84' : 'var(--text-dim)' },
+        { label: 'BOND EXPOSURE', value: p.bondExposure > 0 ? fmtMoney(p.bondExposure) : '—', color: p.bondExposure > 0 ? '#c84' : 'var(--text-dim)' },
+    ];
+
+    let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;background:var(--bg-3);border:1px solid var(--border-0);margin-bottom:6px;">';
+    for (let i = 0; i < presenceItems.length; i++) {
+        const item = presenceItems[i];
+        html += `<div style="padding:5px 10px;${i % 2 === 0 ? 'border-right:1px solid var(--border-0);' : ''}${i < presenceItems.length - 2 ? 'border-bottom:1px solid var(--border-0);' : ''}">
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.5px;">${item.label}</div>
+            <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${item.color};margin-top:1px;">${item.value}</div>
+        </div>`;
+    }
+    html += '</div>';
+
+    // Total exposure hero number
+    const exposureColor = p.totalExposure > 50000000 ? '#c55' : p.totalExposure > 10000000 ? '#c84' : p.totalExposure > 0 ? '#ca5' : 'var(--text-dim)';
+    html += `<div style="padding:8px 10px;background:${p.totalExposure > 50000000 ? 'rgba(204,85,85,0.04)' : p.totalExposure > 0 ? 'rgba(200,168,50,0.03)' : 'transparent'};border:1px solid ${p.totalExposure > 50000000 ? 'rgba(204,85,85,0.15)' : 'var(--border-0)'};display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-bright);">TOTAL EXPOSURE</span>
+        <span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:${exposureColor};">${p.totalExposure > 0 ? fmtMoney(p.totalExposure) : '—'}</span>
     </div>`;
+
+    // No presence message
+    if (!p.hq && !p.properties && !p.projects && !p.voyages && p.totalExposure === 0) {
+        html += '<div style="padding:8px 0;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);text-align:center;">No operations in this nation.</div>';
+    }
+
+    container.innerHTML = html;
 }
 
 // ── Faction switcher ──
