@@ -6848,8 +6848,7 @@ async function init() {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = 'block';
 
-    // Check for ?tab= param to auto-switch on load
-    const urlTab = new URLSearchParams(window.location.search).get('tab');
+    // Check for ?tab= param to auto-switch on load (urlTab declared above in redirect check)
     if (urlTab === 'expansion') {
         const expTab = document.querySelector('[data-tab="expansion"]');
         if (expTab) switchToExpansion({ preventDefault: () => {}, target: expTab });
