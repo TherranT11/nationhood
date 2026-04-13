@@ -10109,6 +10109,109 @@ async function renderRelationDetail(nationId) {
             }
         } catch (_tradeErr) { /* non-critical — snapshot section simply omitted */ }
 
+        // ── Trade Compatibility (YOUR ECONOMY vs THEIRS) ──
+        try {
+            if (currentNation && currentNation.id !== nationId) {
+                // Load both nations' trade flows
+                const { data: tickRow } = await _supabase.from('trade_flows')
+                    .select('tick').eq('nation_id', currentNation.id)
+                    .order('tick', { ascending: false }).limit(1);
+                const myTick = tickRow?.[0]?.tick;
+
+                const [myFlowsRes, theirFlowsRes] = await Promise.all([
+                    myTick != null
+                        ? _supabase.from('trade_flows').select('sector, export_capacity, import_demand').eq('nation_id', currentNation.id).eq('tick', myTick)
+                        : Promise.resolve({ data: null }),
+                    _supabase.from('trade_flows').select('sector, export_capacity, import_demand').eq('nation_id', nationId).order('tick', { ascending: false }).limit(20),
+                ]);
+
+                const myFlows = (myFlowsRes.data || []).filter(f => f.sector !== 'food_agriculture');
+                const theirFlows = (theirFlowsRes.data || []).filter(f => f.sector !== 'food_agriculture');
+
+                const _tcLabels = {
+                    fuel_energy: 'Fuel & Energy', minerals: 'Minerals',
+                    grains_staples: 'Grains & Staples', livestock_dairy: 'Livestock & Dairy',
+                    fruits_vegetables: 'Fruits & Vegetables', cash_crops: 'Cash Crops',
+                    manufactured_goods: 'Manufactured Goods', technology: 'Technology', arms: 'Arms',
+                    tourism: 'Tourism', services_finance: 'Services & Finance'
+                };
+
+                // Build sector maps
+                const myMap = {};
+                for (const f of myFlows) myMap[f.sector] = f;
+                const theirMap = {};
+                for (const f of theirFlows) theirMap[f.sector] = f;
+
+                // Find matches: your surplus → their deficit
+                const youCanSell = [];
+                for (const f of myFlows) {
+                    if ((f.export_capacity || 0) > 0 && theirMap[f.sector] && (theirMap[f.sector].import_demand || 0) > 0) {
+                        youCanSell.push({
+                            sector: f.sector,
+                            label: _tcLabels[f.sector] || f.sector,
+                            yourSurplus: f.export_capacity,
+                            theirNeed: theirMap[f.sector].import_demand,
+                            matchValue: Math.min(f.export_capacity, theirMap[f.sector].import_demand),
+                        });
+                    }
+                }
+                youCanSell.sort((a, b) => b.matchValue - a.matchValue);
+
+                // Find matches: their surplus → your deficit
+                const youCanBuy = [];
+                for (const f of theirFlows) {
+                    if ((f.export_capacity || 0) > 0 && myMap[f.sector] && (myMap[f.sector].import_demand || 0) > 0) {
+                        youCanBuy.push({
+                            sector: f.sector,
+                            label: _tcLabels[f.sector] || f.sector,
+                            theirSurplus: f.export_capacity,
+                            yourNeed: myMap[f.sector].import_demand,
+                            matchValue: Math.min(f.export_capacity, myMap[f.sector].import_demand),
+                        });
+                    }
+                }
+                youCanBuy.sort((a, b) => b.matchValue - a.matchValue);
+
+                if (youCanSell.length > 0 || youCanBuy.length > 0) {
+                    html += '<div class="ts-divider"></div>';
+                    html += '<div class="ts-section-label" style="display:flex;align-items:center;gap:8px;">Trade Compatibility<span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:rgba(200,168,50,0.08);color:#c8a832;border:1px solid rgba(200,168,50,0.2);font-weight:normal;letter-spacing:0.5px;">YOUR ECONOMY vs THEIRS</span></div>';
+
+                    // You can sell to them
+                    if (youCanSell.length > 0) {
+                        html += '<div style="font-family:var(--font-mono);font-size:0.6rem;color:#4ecb82;text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px;padding:0 2px;">You Can Export to Them</div>';
+                        for (const m of youCanSell.slice(0, 6)) {
+                            html += '<div class="ts-commodity" style="border-left:3px solid #4ecb82;padding-left:10px;">';
+                            html += '<div class="ts-commodity-top"><span class="ts-commodity-name" style="color:#4ecb82;">' + escapeHtml(m.label) + ' <span style="font-size:0.6rem;padding:1px 4px;background:rgba(78,203,130,0.1);color:#4ecb82;border:1px solid rgba(78,203,130,0.2);border-radius:2px;">MATCH</span></span><span class="ts-commodity-value">' + fmtBudgetCurrency(m.matchValue) + '</span></div>';
+                            html += '<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-top:2px;">';
+                            html += '<span>Your surplus: ' + fmtBudgetCurrency(m.yourSurplus) + '</span>';
+                            html += '<span>Their need: ' + fmtBudgetCurrency(m.theirNeed) + '</span>';
+                            html += '</div>';
+                            html += '</div>';
+                        }
+                    }
+
+                    // You can buy from them
+                    if (youCanBuy.length > 0) {
+                        html += '<div style="font-family:var(--font-mono);font-size:0.6rem;color:#5b9bd5;text-transform:uppercase;letter-spacing:1px;margin:12px 0 4px;padding:0 2px;">You Can Import from Them</div>';
+                        for (const m of youCanBuy.slice(0, 6)) {
+                            html += '<div class="ts-commodity" style="border-left:3px solid #5b9bd5;padding-left:10px;">';
+                            html += '<div class="ts-commodity-top"><span class="ts-commodity-name" style="color:#5b9bd5;">' + escapeHtml(m.label) + ' <span style="font-size:0.6rem;padding:1px 4px;background:rgba(91,155,213,0.1);color:#5b9bd5;border:1px solid rgba(91,155,213,0.2);border-radius:2px;">MATCH</span></span><span class="ts-commodity-value">' + fmtBudgetCurrency(m.matchValue) + '</span></div>';
+                            html += '<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-top:2px;">';
+                            html += '<span>Their surplus: ' + fmtBudgetCurrency(m.theirSurplus) + '</span>';
+                            html += '<span>Your need: ' + fmtBudgetCurrency(m.yourNeed) + '</span>';
+                            html += '</div>';
+                            html += '</div>';
+                        }
+                    }
+
+                    // No matches
+                    if (youCanSell.length === 0 && youCanBuy.length === 0) {
+                        html += '<div style="padding:12px;text-align:center;font-size:0.75rem;color:var(--text-dim);">No complementary trade opportunities found.</div>';
+                    }
+                }
+            }
+        } catch (_compatErr) { /* non-critical */ }
+
         // Action buttons
         html += '<div class="detail-actions">';
         html += '<button class="detail-btn" onclick="selectDraftTarget(\'' + nationId + '\')">Draft Initiative</button>';
