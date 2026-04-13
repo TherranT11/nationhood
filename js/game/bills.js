@@ -2812,6 +2812,14 @@ export async function enactBill(supabase, bill, currentTick) {
             const newRate = Math.max(0, Math.min(50, Number(effect.new_rate)));
             taxUpdates[effect.tax_key] = newRate;
             console.log(`[enactBill] Tax rate change: ${effect.tax_key} ${effect.old_rate}% → ${newRate}%`);
+        } else if (effect.type === 'TARIFF_RATE_CHANGE' && effect.sector) {
+            // Per-sector tariff: merge into nation's sector_tariffs jsonb
+            const tariffRate = Math.max(0, Math.min(100, Number(effect.new_rate)));
+            const { data: nationRow } = await supabase.from('nations').select('sector_tariffs').eq('id', bill.nation_id).single();
+            const existingTariffs = nationRow?.sector_tariffs || {};
+            existingTariffs[effect.sector] = tariffRate;
+            await supabase.from('nations').update({ sector_tariffs: existingTariffs }).eq('id', bill.nation_id);
+            console.log(`[enactBill] Sector tariff: ${effect.sector} → ${tariffRate}%`);
         } else if (typeof effect.target_stat === 'string' && typeof effect.delta === 'number') {
             // Backward compatibility: parse legacy stat_effect-like payloads
             const key = effect.target_stat.toLowerCase();
