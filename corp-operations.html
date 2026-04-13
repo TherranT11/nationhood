@@ -11867,7 +11867,7 @@ function renderFleetCard() {
                 html += `<div style="display:flex;gap:4px;">
                     <div onclick="${locked ? '' : "flRefurbish('" + v.id + "'," + refurbCost + ")"}" style="flex:1;padding:5px 0;text-align:center;cursor:${locked ? 'not-allowed' : 'pointer'};font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:${locked ? 'var(--text-dim)' : '#5c5'};border:1px solid ${locked ? 'var(--border-0)' : '#2a5a3a'};background:${locked ? 'transparent' : 'rgba(74,170,136,0.06)'};opacity:${locked ? 0.35 : 1};">REFURBISH<br><span style="font-weight:400;font-size:6px;">${hfFmtBig(refurbCost)}</span></div>
                     <div onclick="${isTransit ? '' : "flRefuel('" + v.id + "'," + refuelCost + ")"}" style="flex:1;padding:5px 0;text-align:center;cursor:${isTransit ? 'not-allowed' : 'pointer'};font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:${isTransit ? 'var(--text-dim)' : '#c86a4a'};border:1px solid ${isTransit ? 'var(--border-0)' : 'rgba(200,106,74,0.3)'};opacity:${isTransit ? 0.35 : 1};">REFUEL<br><span style="font-weight:400;font-size:6px;">${hfFmtBig(refuelCost)}</span></div>
-                    <div onclick="${locked ? '' : "flSell('" + v.id + "','" + escapeHtml(v.vessel_name).replace(/'/g, '') + "'," + sellPrice + ")"}" style="flex:1;padding:5px 0;text-align:center;cursor:${locked ? 'not-allowed' : 'pointer'};font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:${locked ? 'var(--text-dim)' : '#c84'};border:1px solid ${locked ? 'var(--border-0)' : 'rgba(204,136,68,0.3)'};opacity:${locked ? 0.35 : 1};">SELL<br><span style="font-weight:400;font-size:6px;">${hfFmtBig(sellPrice)}</span></div>
+                    <div onclick="${locked ? '' : "flSell('" + v.id + "','" + escapeHtml(v.vessel_name).replace(/'/g, '') + "'," + sellPrice + ")"}" style="flex:1;padding:5px 0;text-align:center;cursor:${locked ? 'not-allowed' : 'pointer'};font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:${locked ? 'var(--text-dim)' : '#c84'};border:1px solid ${locked ? 'var(--border-0)' : 'rgba(204,136,68,0.3)'};opacity:${locked ? 0.35 : 1};">LIST<br><span style="font-weight:400;font-size:6px;">${hfFmtBig(sellPrice)}</span></div>
                 </div>`;
 
                 // Rename button
@@ -11968,28 +11968,55 @@ async function flRefuel(vesselId, cost) {
 }
 
 async function flSell(vesselId, vesselName, price) {
-    if (_flActionLock || !faction) return;
-    if (!confirm('Sell ' + vesselName + ' for ' + hfFmtBig(price) + '?\n\nThis cannot be undone.')) return;
+    if (_flActionLock || !faction || !shard) return;
+    if (!confirm('List ' + vesselName + ' on the Ship Market for ' + hfFmtBig(price) + '?\n\nThe vessel will be removed from your fleet and listed for sale. You will receive payment when another corporation purchases it.')) return;
 
     _flActionLock = true;
-    const cash = Number(faction.corp_cash_reserves ?? 0);
+    const currentTick = shard.current_tick || 0;
 
-    const { error: cashErr } = await _supabase.from('factions').update({
-        corp_cash_reserves: cash + price,
-    }).eq('id', faction.id);
-    if (cashErr) { alert('Failed to credit sale price: ' + cashErr.message); _flActionLock = false; return; }
+    // Find the vessel to get its full data for the listing
+    const vessel = _fleetVessels.find(v => v.id === vesselId);
+    if (!vessel) { _flActionLock = false; return; }
 
+    const ageTicks = Math.max(0, currentTick - (vessel.built_at_tick || 0));
+
+    // Create market listing
+    const { error: listErr } = await _supabase.from('ship_market_listings').insert({
+        nation_id: faction.nation_id,
+        vessel_name: vessel.vessel_name,
+        vessel_class: vessel.vessel_class,
+        capacity_dwt: vessel.capacity_dwt,
+        capacity_unit: vessel.capacity_unit,
+        condition: vessel.condition,
+        fuel: vessel.fuel,
+        age_ticks: ageTicks,
+        fuel_capacity: vessel.fuel_capacity,
+        base_maintenance: vessel.base_maintenance,
+        asking_price: price,
+        purchase_price_new: vessel.purchase_price || price,
+        seller_type: 'CORP',
+        seller_name: faction.faction_name,
+        seller_faction_id: faction.id,
+        sale_reason: 'Listed for sale by ' + (faction.faction_name || 'corporation'),
+        status: 'available',
+        listed_at_tick: currentTick,
+    });
+    if (listErr) { alert('Failed to create listing: ' + listErr.message); _flActionLock = false; return; }
+
+    // Remove vessel from fleet
     const { error: delErr } = await _supabase.from('corp_vessels').delete().eq('id', vesselId);
     if (delErr) {
-        // Refund cash on delete failure
-        await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
-        alert('Failed to remove vessel: ' + delErr.message); _flActionLock = false; return;
+        // Clean up the listing we just created
+        await _supabase.from('ship_market_listings').delete()
+            .eq('seller_faction_id', faction.id).eq('vessel_name', vessel.vessel_name).eq('listed_at_tick', currentTick);
+        alert('Failed to remove vessel: ' + delErr.message);
+        _flActionLock = false;
+        return;
     }
 
-    faction.corp_cash_reserves = cash + price;
     _flActionLock = false;
     _fleetSelectedIdx = null;
-    await loadFleet();
+    await Promise.all([loadFleet(), loadShipMarket()]);
 }
 
 async function flRename(vesselId, currentName) {
@@ -12219,17 +12246,19 @@ async function smPurchase(listingId, totalPrice) {
     }
 
     // Mark listing as sold
-    await _supabase.from('ship_market_listings').update({
+    var { error: soldErr } = await _supabase.from('ship_market_listings').update({
         status: 'sold', purchased_by: faction.id, purchased_at_tick: currentTick,
     }).eq('id', listingId);
+    if (soldErr) console.warn('Failed to mark listing as sold:', soldErr.message);
 
     // Credit seller if CORP type
     if (listing.seller_faction_id) {
         const { data: sellerData } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', listing.seller_faction_id).single();
         if (sellerData) {
-            await _supabase.from('factions').update({
+            var { error: creditErr } = await _supabase.from('factions').update({
                 corp_cash_reserves: Number(sellerData.corp_cash_reserves || 0) + listing.asking_price,
             }).eq('id', listing.seller_faction_id);
+            if (creditErr) console.warn('Failed to credit seller:', creditErr.message);
         }
     }
 
@@ -12461,9 +12490,10 @@ async function smPlaceOrder() {
     // Credit deposit to shipyard nation budget
     const { data: shipyardNation } = await _supabase.from('nations').select('budget_reserves').eq('id', nation.id).single();
     if (shipyardNation) {
-        await _supabase.from('nations').update({
+        var { error: budgetErr } = await _supabase.from('nations').update({
             budget_reserves: Number(shipyardNation.budget_reserves || 0) + deposit,
         }).eq('id', nation.id);
+        if (budgetErr) console.warn('Failed to credit shipyard nation budget:', budgetErr.message);
     }
 
     // Create order
