@@ -7076,6 +7076,8 @@ async function switchToExpansion(e) {
     renderManageSubsidiariesCard();
     await loadAllCorporations();
     renderCorporationsCard();
+    await loadMarketplaceListings();
+    renderSubsidiaryMarketplaceCard();
 }
 
 function switchToOperations(e) {
@@ -10053,7 +10055,7 @@ function renderManageSubsidiariesCard() {
                 </div>
                 <div style="display:flex;gap:4px;">
                     <div onclick="subMerge('${sub.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${C.accent};border:1px solid ${C.accent}">MERGE</div>
-                    <div onclick="subSell('${sub.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${C.orange};border:1px solid ${C.orange}">SELL</div>
+                    <div onclick="subPutForSale('${sub.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${C.orange};border:1px solid ${C.orange}">PUT UP FOR SALE</div>
                     <div onclick="${canDissolve ? "subDissolve('" + sub.id + "')" : ''}" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${canDissolve ? C.red : C.dim};border:1px solid ${canDissolve ? C.red : C.border};opacity:${canDissolve ? 1 : 0.3}">DISSOLVE</div>
                 </div>
                 ${sub.projects > 0 ? `<div style="margin-top:4px;font-family:${mono};font-size:7px;color:${C.dim}">Cannot dissolve with active projects.</div>` : ''}
@@ -10150,6 +10152,277 @@ async function _subLiquidate(propId, mode) {
     finally { _subActionLock = false; }
 }
 function subSell(propId) { _subLiquidate(propId, 'sell'); }
+
+// ─── PUT UP FOR SALE: list subsidiary on marketplace ───
+async function subPutForSale(propId) {
+    if (_subActionLock) return;
+    const hq = _ownedProperties.find(p => p.id === propId);
+    if (!hq) return;
+
+    const nationName = subGetNationName(hq.nation_id);
+    const nationProps = subGetNationProps(hq.nation_id);
+    const valuation = nationProps.reduce((s, p) => s + Math.round((p.purchase_price || 0) * 0.8 * (p.condition || 50) / 100), 0);
+    const subCash = Number(hq.sub_cash || 0);
+    const monthlyRev = Math.round(subCash * 0.05); // rough estimate
+
+    if (!confirm(
+        'PUT UP FOR SALE: "' + hq.name + '"\n\n' +
+        'Nation: ' + nationName + '\n' +
+        'Estimated Valuation: ' + hfFmtBig(valuation) + '\n' +
+        'Subsidiary Cash: ' + hfFmtBig(subCash) + '\n' +
+        'Subsector: ' + (hq.subsector || 'General') + '\n\n' +
+        'This will list your subsidiary on the marketplace.\n' +
+        'Other corporations can place bids (minimum $1M).\n' +
+        'You review and accept bids.\n\n' +
+        'Continue?'
+    )) return;
+
+    _subActionLock = true;
+    try {
+        const currentTick = shard?.current_tick || 0;
+        const { data, error } = await _supabase.from('subsidiary_sales').insert({
+            subsidiary_id: propId,
+            seller_faction_id: faction.id,
+            nation_id: hq.nation_id,
+            subsidiary_name: hq.name,
+            subsector: hq.subsector || null,
+            valuation: valuation,
+            monthly_revenue: monthlyRev,
+            sub_cash_at_listing: subCash,
+            employee_count: hq.capacity || 0,
+            status: 'listed',
+            listed_at_tick: currentTick,
+        }).select('*').single();
+
+        if (error) {
+            alert('Failed to list: ' + error.message);
+            return;
+        }
+
+        alert('"' + hq.name + '" is now listed for sale.\n\nOther corporations will see it on the Expansion tab and can place bids.');
+        await subReloadCards();
+    } catch (err) {
+        alert('Failed: ' + err.message);
+    } finally {
+        _subActionLock = false;
+    }
+}
+
+// ─── SUBSIDIARY MARKETPLACE: show listings + bids ───
+let _marketplaceListings = [];
+
+async function loadMarketplaceListings() {
+    const { data, error } = await _supabase
+        .from('subsidiary_sales')
+        .select('*, subsidiary_bids(*)')
+        .eq('status', 'listed')
+        .order('listed_at_tick', { ascending: false });
+
+    if (error) { console.error('[SubMarket] Load failed:', error.message); return; }
+    _marketplaceListings = data || [];
+}
+
+function renderSubsidiaryMarketplaceCard() {
+    let el = document.getElementById('sub-marketplace-card');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'sub-marketplace-card';
+        document.getElementById('expansion-content')?.appendChild(el);
+    }
+
+    const listings = _marketplaceListings.filter(l => l.seller_faction_id !== faction?.id);
+    const myListings = _marketplaceListings.filter(l => l.seller_faction_id === faction?.id);
+
+    const mono = "'JetBrains Mono',monospace";
+    const C = { surface: '#1a1a17', card: '#1c1c18', border: 'rgba(255,255,255,0.06)', dim: '#4a4940', muted: '#666', text: '#c4c2b8', bright: '#f0efe6', orange: '#c84', green: '#5cb85c', blue: '#5a8aaa', red: '#d9534f', gold: '#c8a832' };
+
+    let html = `<div style="width:760px;background:${C.surface};border:1px solid ${C.border};font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:10px 14px;border-bottom:1px solid ${C.border};display:flex;align-items:center;gap:8px;">
+            <span style="width:6px;height:6px;border-radius:50%;background:${C.orange};display:inline-block;"></span>
+            <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:1.5px;color:${C.orange};text-transform:uppercase;">Subsidiary Marketplace</span>
+            <span style="font-family:${mono};font-size:9px;color:${C.dim};">${listings.length} available</span>
+        </div>`;
+
+    // My active listings (seller view)
+    if (myListings.length > 0) {
+        html += `<div style="padding:8px 14px;border-bottom:1px solid ${C.border};background:${C.card};">
+            <div style="font-family:${mono};font-size:8px;letter-spacing:1px;color:${C.gold};text-transform:uppercase;margin-bottom:6px;">YOUR LISTINGS</div>`;
+        for (const l of myListings) {
+            const bids = l.subsidiary_bids || [];
+            const pendingBids = bids.filter(b => b.status === 'pending');
+            html += `<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03);display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <span style="font-size:11px;font-weight:700;color:${C.bright};">${escapeHtml(l.subsidiary_name)}</span>
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim};margin-left:6px;">${escapeHtml(l.subsector || '')}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-family:${mono};font-size:9px;color:${pendingBids.length > 0 ? C.green : C.dim};">${pendingBids.length} bid${pendingBids.length !== 1 ? 's' : ''}</span>
+                    ${pendingBids.length > 0 ? `<span onclick="subViewBids('${l.id}')" style="font-family:${mono};font-size:8px;font-weight:700;padding:3px 8px;color:${C.green};border:1px solid ${C.green}44;cursor:pointer;">VIEW BIDS</span>` : ''}
+                    <span onclick="subCancelSale('${l.id}')" style="font-family:${mono};font-size:8px;font-weight:700;padding:3px 8px;color:${C.red};border:1px solid ${C.red}44;cursor:pointer;">CANCEL</span>
+                </div>
+            </div>`;
+        }
+        html += '</div>';
+    }
+
+    // Available listings (buyer view)
+    if (listings.length === 0) {
+        html += `<div style="padding:24px 14px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim};font-style:italic;">No subsidiaries for sale right now.</div>`;
+    } else {
+        for (const l of listings) {
+            const myBid = (l.subsidiary_bids || []).find(b => b.bidder_faction_id === faction?.id && b.status === 'pending');
+            const nationObj = (_allNations || []).find(n => n.id === l.nation_id);
+            const nationName = nationObj?.name || 'Unknown';
+
+            html += `<div style="padding:10px 14px;border-bottom:1px solid ${C.border};">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:12px;font-weight:700;color:${C.bright};">${escapeHtml(l.subsidiary_name)}</span>
+                        <span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${C.orange};border:1px solid ${C.orange}44;background:${C.orange}0a;">${escapeHtml(l.subsector || 'General')}</span>
+                    </div>
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim};">${escapeHtml(nationName)}</span>
+                </div>
+                <div style="display:flex;gap:16px;font-family:${mono};font-size:8px;color:${C.muted};margin-bottom:8px;">
+                    <span>Valuation: <strong style="color:${C.text};">${hfFmtBig(l.valuation)}</strong></span>
+                    <span>Revenue: <strong style="color:${C.text};">${hfFmtBig(l.monthly_revenue)}/mo</strong></span>
+                    <span>Cash: <strong style="color:${C.text};">${hfFmtBig(l.sub_cash_at_listing)}</strong></span>
+                    <span>Staff: <strong style="color:${C.text};">${l.employee_count}</strong></span>
+                </div>
+                <div style="display:flex;justify-content:flex-end;">
+                    ${myBid
+                        ? `<span style="font-family:${mono};font-size:8px;font-weight:700;color:${C.green};">✓ BID PLACED: ${hfFmtBig(myBid.bid_amount)}</span>`
+                        : `<span onclick="subPlaceBid('${l.id}','${escapeHtml(l.subsidiary_name)}',${l.valuation})" style="font-family:${mono};font-size:8px;font-weight:700;padding:4px 14px;color:#000;background:${C.orange};cursor:pointer;">PLACE BID</span>`
+                    }
+                </div>
+            </div>`;
+        }
+    }
+
+    html += '</div>';
+    el.innerHTML = html;
+}
+
+async function subPlaceBid(saleId, subName, valuation) {
+    const amountStr = prompt('Place bid for "' + subName + '"\n\nValuation: ' + hfFmtBig(valuation) + '\nMinimum bid: $1M\n\nEnter bid amount ($):');
+    if (!amountStr) return;
+    const amount = Math.round(Number(amountStr));
+    if (isNaN(amount) || amount < 1000000) {
+        alert('Minimum bid is $1,000,000.');
+        return;
+    }
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    if (amount > cash) {
+        alert('Insufficient funds. You have ' + hfFmtBig(cash) + '.');
+        return;
+    }
+
+    const { error } = await _supabase.from('subsidiary_bids').insert({
+        sale_id: saleId,
+        bidder_faction_id: faction.id,
+        bid_amount: amount,
+        status: 'pending',
+        placed_at_tick: shard?.current_tick || 0,
+    });
+
+    if (error) {
+        if (error.message.includes('duplicate') || error.message.includes('unique')) {
+            alert('You already have a bid on this subsidiary.');
+        } else {
+            alert('Failed to place bid: ' + error.message);
+        }
+        return;
+    }
+
+    alert('Bid of ' + hfFmtBig(amount) + ' placed on "' + subName + '".\nThe seller will review your bid.');
+    await loadMarketplaceListings();
+    renderSubsidiaryMarketplaceCard();
+}
+
+async function subViewBids(saleId) {
+    const sale = _marketplaceListings.find(l => l.id === saleId);
+    if (!sale) return;
+    const bids = (sale.subsidiary_bids || []).filter(b => b.status === 'pending');
+    if (bids.length === 0) { alert('No pending bids.'); return; }
+
+    // Fetch bidder names
+    const bidderIds = bids.map(b => b.bidder_faction_id);
+    const { data: bidders } = await _supabase.from('factions').select('id, faction_name').in('id', bidderIds);
+    const nameMap = {};
+    (bidders || []).forEach(f => { nameMap[f.id] = f.faction_name; });
+
+    let msg = 'Bids for "' + sale.subsidiary_name + '":\n\n';
+    const sortedBids = bids.sort((a, b) => b.bid_amount - a.bid_amount);
+    for (let i = 0; i < sortedBids.length; i++) {
+        const b = sortedBids[i];
+        msg += (i + 1) + '. ' + (nameMap[b.bidder_faction_id] || 'Unknown') + ': ' + hfFmtBig(b.bid_amount) + '\n';
+    }
+    msg += '\nEnter the number of the bid to accept (or cancel):';
+
+    const choice = prompt(msg);
+    if (!choice) return;
+    const idx = parseInt(choice, 10) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= sortedBids.length) { alert('Invalid selection.'); return; }
+
+    const acceptedBid = sortedBids[idx];
+    const bidderName = nameMap[acceptedBid.bidder_faction_id] || 'Unknown';
+
+    if (!confirm('Accept bid of ' + hfFmtBig(acceptedBid.bid_amount) + ' from ' + bidderName + '?\n\nThis will transfer ownership of "' + sale.subsidiary_name + '" to them.\nYou will receive ' + hfFmtBig(acceptedBid.bid_amount) + ' in cash.\n\nThis cannot be undone.')) return;
+
+    await subAcceptBid(sale, acceptedBid);
+}
+
+async function subAcceptBid(sale, bid) {
+    try {
+        const currentTick = shard?.current_tick || 0;
+
+        // 1. Deduct from buyer
+        const { data: buyer } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', bid.bidder_faction_id).single();
+        const buyerCash = Number(buyer?.corp_cash_reserves ?? 0);
+        if (buyerCash < bid.bid_amount) {
+            alert('Buyer has insufficient funds. Bid cannot be completed.');
+            await _supabase.from('subsidiary_bids').update({ status: 'rejected', resolved_at_tick: currentTick }).eq('id', bid.id);
+            return;
+        }
+
+        await _supabase.from('factions').update({ corp_cash_reserves: buyerCash - bid.bid_amount }).eq('id', bid.bidder_faction_id);
+
+        // 2. Credit to seller
+        const sellerCash = Number(faction?.corp_cash_reserves ?? 0);
+        await _supabase.from('factions').update({ corp_cash_reserves: sellerCash + bid.bid_amount }).eq('id', faction.id);
+        faction.corp_cash_reserves = sellerCash + bid.bid_amount;
+
+        // 3. Transfer subsidiary ownership
+        await _supabase.from('corp_properties').update({ faction_id: bid.bidder_faction_id }).eq('id', sale.subsidiary_id);
+
+        // 4. Transfer all properties in that nation to buyer
+        const subNationProps = _ownedProperties.filter(p => p.nation_id === sale.nation_id && p.faction_id === faction.id);
+        for (const prop of subNationProps) {
+            await _supabase.from('corp_properties').update({ faction_id: bid.bidder_faction_id }).eq('id', prop.id);
+        }
+
+        // 5. Mark sale completed, bid accepted, other bids rejected
+        await _supabase.from('subsidiary_sales').update({ status: 'completed', completed_at_tick: currentTick, accepted_bid_id: bid.id }).eq('id', sale.id);
+        await _supabase.from('subsidiary_bids').update({ status: 'accepted', resolved_at_tick: currentTick }).eq('id', bid.id);
+        await _supabase.from('subsidiary_bids').update({ status: 'rejected', resolved_at_tick: currentTick }).eq('sale_id', sale.id).neq('id', bid.id);
+
+        subUpdateTopbarCash(faction.corp_cash_reserves);
+        alert('Sale complete! Received ' + hfFmtBig(bid.bid_amount) + '.\n\n"' + sale.subsidiary_name + '" has been transferred to the buyer.');
+        await subReloadCards();
+        await loadMarketplaceListings();
+        renderSubsidiaryMarketplaceCard();
+    } catch (err) {
+        console.error('[SubMarket] Accept bid error:', err);
+        alert('Transfer failed: ' + err.message);
+    }
+}
+
+async function subCancelSale(saleId) {
+    if (!confirm('Cancel this listing? The subsidiary will no longer be for sale.')) return;
+    const { error } = await _supabase.from('subsidiary_sales').update({ status: 'cancelled' }).eq('id', saleId);
+    if (error) { alert('Failed: ' + error.message); return; }
+    await loadMarketplaceListings();
+    renderSubsidiaryMarketplaceCard();
+}
 function subDissolve(propId) { _subLiquidate(propId, 'dissolve'); }
 
 // ─── INJECT / WITHDRAW: unified cash transfer between parent ↔ subsidiary ───
@@ -10315,6 +10588,10 @@ window.subInjectCapital = subInjectCapital;
 window.subWithdraw = subWithdraw;
 window.subMerge = subMerge;
 window.subSell = subSell;
+window.subPutForSale = subPutForSale;
+window.subPlaceBid = subPlaceBid;
+window.subViewBids = subViewBids;
+window.subCancelSale = subCancelSale;
 window.selectSubsidiary = function(i) { _mSubSelected = i; renderManageSubsidiariesCard(); };
 
 // ==================== CREATE SUBSIDIARY ====================
