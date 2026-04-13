@@ -284,6 +284,22 @@
 
 /* ── Platform modal cards ── */
 /* ── Hire Agitator modal rows ── */
+/* ── Lawsuit modal targets & basis ── */
+.pa-lawsuit-target {
+    padding: 8px 6px; text-align: center; cursor: pointer;
+    border: 1px solid var(--border-mid); display: flex; flex-direction: column;
+    align-items: center; gap: 2px; transition: all 0.12s;
+}
+.pa-lawsuit-target:hover { background: var(--bg-hover); }
+.pa-lawsuit-target.selected { border-color: #d44a4a44; background: rgba(212,74,74,0.06); }
+.pa-lawsuit-basis {
+    padding: 8px 12px; cursor: pointer;
+    border: 1px solid var(--border-mid); transition: all 0.12s;
+}
+.pa-lawsuit-basis:hover { background: var(--bg-hover); }
+.pa-lawsuit-basis.selected { border-color: #d44a4a44; background: rgba(212,74,74,0.04); }
+
+/* ── Hire Agitator modal rows ── */
 .pa-hire-row {
     display: flex; align-items: center; gap: 8px;
     padding: 8px 12px; cursor: pointer;

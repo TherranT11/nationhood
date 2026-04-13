@@ -4,6 +4,7 @@
 import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, platformMomentumInfo } from './game/platforms.js';
 import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, checkOppositionStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
+import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
 
 let _supabase = null;
 let _state = null;
@@ -227,6 +228,8 @@ function renderPage(root) {
         <div class="pa-modal-overlay" id="pa-platform-modal"></div>
         <!-- Hire Agitator Modal -->
         <div class="pa-modal-overlay" id="pa-hire-modal"></div>
+        <!-- File Lawsuit Modal -->
+        <div class="pa-modal-overlay" id="pa-lawsuit-modal"></div>
     `;
 
     // Bind leader card clicks
@@ -249,6 +252,8 @@ function renderPage(root) {
             openStatementModal(root);
         } else if (actionId === 'platform') {
             openPlatformModal(root);
+        } else if (actionId === 'file_lawsuit') {
+            openLawsuitModal(root);
         }
     });
 
@@ -428,8 +433,7 @@ const AGITATOR_ACTIONS = [
         costColor: '#5cc55c',
         ap: 0,
         tags: ['LEGAL', 'OFFENSIVE'],
-        locked: true, // Phase 3 unlocks this
-        lockReason: 'Coming in the next update.',
+        locked: false,
     },
 ];
 
@@ -643,6 +647,168 @@ async function openHireAgitatorModal(root) {
         });
     }
 
+    render();
+}
+
+// ════════════════════════ FILE LAWSUIT MODAL ════════════════════════
+
+let _lawsuitSubmitting = false;
+
+function openLawsuitModal(root) {
+    const overlay = document.getElementById('pa-lawsuit-modal');
+    if (!overlay) return;
+
+    if (!_administration) {
+        alert('No active government to file against.');
+        return;
+    }
+
+    const faction = _state.faction;
+    const ag = _agitator;
+    let selectedTarget = null;
+    let selectedBasis = null;
+
+    function render() {
+        const canFile = selectedTarget && selectedBasis;
+
+        const targetsHtml = LAWSUIT_TARGETS.map(t => {
+            const isSel = selectedTarget === t.key;
+            return `<div class="pa-lawsuit-target ${isSel ? 'selected' : ''}" data-target="${t.key}">
+                <span style="font-size:14px;">${t.icon}</span>
+                <span style="font-size:9px;font-weight:600;color:${isSel ? 'var(--text-bright)' : 'var(--text-secondary)'};">${esc(t.label)}</span>
+            </div>`;
+        }).join('');
+
+        const basesHtml = LAWSUIT_BASES.map(b => {
+            const isSel = selectedBasis === b.key;
+            return `<div class="pa-lawsuit-basis ${isSel ? 'selected' : ''}" data-basis="${b.key}">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div style="width:12px;height:12px;border-radius:50%;border:2px solid ${isSel ? '#d44a4a' : 'var(--border-mid)'};display:flex;align-items:center;justify-content:center;">
+                        ${isSel ? '<div style="width:6px;height:6px;border-radius:50%;background:#d44a4a;"></div>' : ''}
+                    </div>
+                    <div>
+                        <div style="font-size:10px;font-weight:600;color:${isSel ? 'var(--text-bright)' : 'var(--text-secondary)'};">${esc(b.label)}</div>
+                        <div style="font-size:8px;color:var(--text-dim);margin-top:1px;">${esc(b.desc)}</div>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:560px;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:#d44a4a;"></div>
+                        <span class="pa-modal-title">File Lawsuit</span>
+                        <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:2px 6px;color:#5a8aaa;background:rgba(90,138,170,0.08);border:1px solid rgba(90,138,170,0.2);margin-left:6px;">LEGAL</span>
+                        <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:2px 6px;color:#c84;background:rgba(200,132,0,0.08);border:1px solid rgba(200,132,0,0.2);">OFFENSIVE</span>
+                    </div>
+                    <button class="pa-modal-close" id="pa-lawsuit-close">&times;</button>
+                </div>
+
+                ${ag ? `<div style="padding:6px 16px;border-bottom:1px solid var(--border-main);background:rgba(212,74,74,0.04);display:flex;align-items:center;gap:8px;">
+                    <span style="width:5px;height:5px;border-radius:50%;background:#d44a4a;display:inline-block;"></span>
+                    <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-secondary);">Filed by:</span>
+                    <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#d44a4a;">${esc(ag.first_name)} ${esc(ag.last_name)}</span>
+                    <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">Skill ${ag.skill}</span>
+                </div>` : ''}
+
+                <div class="pa-modal-body" style="gap:16px;">
+                    <div>
+                        <div class="pa-modal-step-label">1 &mdash; Target Ministry</div>
+                        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;" id="pa-lawsuit-targets">${targetsHtml}</div>
+                    </div>
+
+                    <div>
+                        <div class="pa-modal-step-label">2 &mdash; Legal Basis</div>
+                        <div style="display:flex;flex-direction:column;gap:4px;" id="pa-lawsuit-bases">${basesHtml}</div>
+                    </div>
+
+                    <div style="padding:8px 10px;background:var(--bg-card);border:1px solid var(--border-main);">
+                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:3px;">INTELLIGENCE</div>
+                        <div style="font-size:9px;color:var(--text-dim);font-style:italic;">No intelligence gathered. File FOIA requests first to assess corruption levels.</div>
+                    </div>
+
+                    <div style="padding:8px 10px;background:rgba(212,74,74,0.04);border:1px solid rgba(212,74,74,0.12);">
+                        <div style="font-family:var(--font-mono);font-size:7px;color:#d44a4a;letter-spacing:0.06em;margin-bottom:4px;">COST &amp; RISK</div>
+                        <div style="font-size:9px;color:var(--text-dim);line-height:1.6;">
+                            <strong style="color:var(--text-bright);">FREE</strong> &middot; Duration: <strong style="color:var(--text-bright);">8 ticks</strong><br>
+                            If corruption growth is low (0-5):<br>
+                            <span style="color:var(--red);">YOU: -5 Momentum, -2 Governance</span><br>
+                            <span style="color:var(--green);">THEM: +3 Momentum, +1 Governance</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pa-modal-footer">
+                    <button class="pa-modal-btn pa-modal-btn--cancel" id="pa-lawsuit-cancel">Cancel</button>
+                    <button class="pa-modal-btn pa-modal-btn--submit" id="pa-lawsuit-submit" ${canFile ? '' : 'disabled'} style="background:#d44a4a;">File Lawsuit</button>
+                </div>
+            </div>
+        `;
+
+        // Bind
+        const close = () => overlay.classList.remove('active');
+        document.getElementById('pa-lawsuit-close')?.addEventListener('click', close);
+        document.getElementById('pa-lawsuit-cancel')?.addEventListener('click', close);
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+        document.getElementById('pa-lawsuit-targets')?.addEventListener('click', (e) => {
+            const el = e.target.closest('.pa-lawsuit-target');
+            if (!el) return;
+            selectedTarget = el.dataset.target;
+            render();
+        });
+
+        document.getElementById('pa-lawsuit-bases')?.addEventListener('click', (e) => {
+            const el = e.target.closest('.pa-lawsuit-basis');
+            if (!el) return;
+            selectedBasis = el.dataset.basis;
+            render();
+        });
+
+        document.getElementById('pa-lawsuit-submit')?.addEventListener('click', async () => {
+            if (_lawsuitSubmitting || !selectedTarget || !selectedBasis) return;
+            _lawsuitSubmitting = true;
+            const btn = document.getElementById('pa-lawsuit-submit');
+            if (btn) { btn.disabled = true; btn.textContent = 'Filing...'; }
+
+            try {
+                const tick = _state.shard?.current_tick || 0;
+                const result = await fileLawsuit(_supabase, {
+                    factionId: faction?.id,
+                    nationId: _state.nation?.id,
+                    agitatorId: ag?.id,
+                    targetMinistry: selectedTarget,
+                    basis: selectedBasis,
+                    currentTick: tick,
+                    partyName: faction?.faction_name || 'Opposition',
+                    administration: _administration,
+                });
+
+                if (!result.success) {
+                    alert(result.error || 'Failed to file lawsuit.');
+                    return;
+                }
+
+                const tierInfo = calculateTier(result.lawsuit?.corruption_growth || 0);
+                const effects = TIER_EFFECTS[result.tier] || TIER_EFFECTS[1];
+                close();
+
+                // Show a brief result notification
+                alert(`Lawsuit filed against ${LAWSUIT_TARGETS.find(t => t.key === selectedTarget)?.label || selectedTarget}.\nCorruption Growth: ${result.lawsuit?.corruption_growth?.toFixed(1) || '?'} \u2192 Tier ${result.tier}: ${tierInfo.label}\nResolves in 8 ticks.`);
+
+                renderPage(root);
+            } catch (err) {
+                console.error('[PartyActions] File lawsuit error:', err);
+                alert('An error occurred. Please try again.');
+            } finally {
+                _lawsuitSubmitting = false;
+            }
+        });
+    }
+
+    overlay.classList.add('active');
     render();
 }
 
