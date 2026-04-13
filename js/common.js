@@ -449,14 +449,10 @@ export function renderTopBar(activeTab) {
 export function renderNavTabs(activeTab) {
     const tabs = [
         { id: 'dashboard', label: 'Home', href: 'dashboard.html' },
-        { id: 'nation', label: 'Nation', href: 'nation.html' },
+        { id: 'politics', label: 'Party', href: 'politics.html' },
         { id: 'government', label: 'Government', href: 'government.html' },
-        { id: 'politics', label: 'Politics', href: 'politics.html' },
-        { id: 'laws', label: 'Bills', href: 'laws.html' },
-        { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
-        { id: 'news', label: 'News', href: 'news.html' },
-        { id: 'conflicts', label: 'Conflicts', href: 'conflicts.html' },
-        { id: 'economy', label: 'Economy', href: 'economy.html' },
+        { id: 'nation', label: 'Nation', href: 'nation.html' },
+        { id: 'diplomacy', label: 'World', href: 'diplomacy.html' },
         { id: 'wiki', label: 'Wiki', href: 'wiki.html' }
     ];
 
@@ -472,14 +468,8 @@ export function renderNavTabs(activeTab) {
         if (overrideFactionId) params.push('faction_id=' + overrideFactionId);
         if (params.length) href += '?' + params.join('&');
         let badgeHtml = '';
-        if (tab.id === 'laws') {
-            badgeHtml = '<span class="nav-badge" id="bills-badge" style="display:none;"></span>';
-        }
         if (tab.id === 'diplomacy') {
             badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>';
-        }
-        if (tab.id === 'conflicts') {
-            badgeHtml = '<span class="nav-badge nav-badge--amber" id="conflicts-badge" style="display:none;"></span>';
         }
         return `
             <a href="${href}"

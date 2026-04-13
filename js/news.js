@@ -21,7 +21,7 @@ const PUBLICATION_CONFIG = {
         key: 'cruceran',
         name: 'The Cruceran',
         tagline: 'Truth in the service of the people',
-        nations: ['Avelia', 'Palvera', 'San Estrella', 'Montequilla', 'Melizea', 'Sangreza'],
+        nations: ['Avelia', 'Palvera', 'San Estrella', 'Montequilla', 'Melizea', 'Sangreza', 'Sierramar'],
         style: 'cruceran' // CSS class prefix
     },
     continental: {
@@ -889,6 +889,12 @@ function renderArticleView(root, article) {
                     ${bodyHtml}
                 </div>
                 <hr class="nws-reader-rule">
+                <div class="nws-like-bar" id="nws-like-bar">
+                    <button class="nws-like-btn" id="nws-like-btn" data-article-id="${article.id}">
+                        <span class="nws-like-icon" id="nws-like-icon">&#9825;</span> Like
+                    </button>
+                    <span class="nws-like-count" id="nws-like-count">${article.like_count || 0}</span>
+                </div>
                 <button class="nws-back-link" id="nws-back-btn-bottom">${backLabel}</button>
             </div>
         </div>
@@ -908,8 +914,73 @@ function renderArticleView(root, article) {
     document.getElementById('nws-back-btn')?.addEventListener('click', goBack);
     document.getElementById('nws-back-btn-bottom')?.addEventListener('click', goBack);
 
+    // Like button
+    initLikeButton(article);
+
     // Scroll to top
     root.scrollTop = 0;
+}
+
+// === ARTICLE LIKE SYSTEM ===
+
+async function initLikeButton(article) {
+    const btn = document.getElementById('nws-like-btn');
+    const icon = document.getElementById('nws-like-icon');
+    const countEl = document.getElementById('nws-like-count');
+    if (!btn || !_supabase || !_state?.faction?.id) return;
+
+    const factionId = _state.faction.id;
+    let isLiking = false;
+
+    // Check if current user already liked this article
+    const { data: existing } = await _supabase
+        .from('article_likes')
+        .select('id')
+        .eq('article_id', article.id)
+        .eq('faction_id', factionId)
+        .maybeSingle();
+
+    if (existing) {
+        btn.classList.add('nws-like-btn--liked');
+        icon.innerHTML = '&#9829;';
+    }
+
+    btn.addEventListener('click', async () => {
+        if (isLiking) return;
+        isLiking = true;
+        btn.disabled = true;
+
+        try {
+            const tick = _state.shard?.current_tick || 0;
+            const { data, error } = await _supabase.rpc('toggle_article_like', {
+                p_article_id: article.id,
+                p_faction_id: factionId,
+                p_tick: tick
+            });
+
+            if (error) {
+                console.error('[News] Like failed:', error.message);
+                return;
+            }
+
+            if (data.liked) {
+                btn.classList.add('nws-like-btn--liked');
+                icon.innerHTML = '&#9829;';
+            } else {
+                btn.classList.remove('nws-like-btn--liked');
+                icon.innerHTML = '&#9825;';
+            }
+            countEl.textContent = data.like_count;
+
+            // Update cached article
+            article.like_count = data.like_count;
+        } catch (err) {
+            console.error('[News] Like error:', err);
+        } finally {
+            isLiking = false;
+            btn.disabled = false;
+        }
+    });
 }
 
 // === LOAD & DISPLAY ARTICLES ===
