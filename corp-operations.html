@@ -2367,6 +2367,8 @@ body.light-mode .av-empty__text { color: #1a1a17; }
   .pm-metrics { grid-template-columns:1fr 1fr; }
 }
 </style>
+<link rel="stylesheet" href="css/corp-auto-services.css">
+<link rel="stylesheet" href="css/corp-sub-dashboard.css">
 </head>
 <body>
 
@@ -2788,6 +2790,9 @@ body.light-mode .av-empty__text { color: #1a1a17; }
       <div class="sm-card__footer" id="sm-footer"></div>
     </div>
 
+    <!-- Auto Insurance & Credit from Finance Subsidiaries -->
+    <div id="auto-services-container" style="width:760px;"></div>
+
     </div><!-- /operations-content -->
 
     <!-- Expansion content (hidden by default) -->
@@ -2863,6 +2868,8 @@ import { initMessaging } from './js/messaging.js';
 import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
 import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, conditionColor, calculateTotalMaintenance, calculateEquipmentPrice, calculateEquipmentSupply, calculateEquipmentImportCost } from './js/game/equipment.js';
 import { EXEC_ROLES, EXEC_ROLE_META, generateExecutivePool } from './js/game/corp-executives.js';
+import { initAutoServices } from './js/corp-auto-services.js';
+import { initSubDashboard } from './js/corp-sub-dashboard.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -6953,6 +6960,12 @@ async function init() {
     // Messaging bubble
     initMessaging(faction, nationStats, shard);
 
+    // Auto-rate financial services (insurance & loans from finance subsidiaries)
+    // Available to all corps — shows what's available in their nation
+    try {
+        await initAutoServices(_supabase, { faction, nation: nationStats, shard }, 'auto-services-container');
+    } catch (e) { console.error('[CorpOps] Auto-services init failed:', e); }
+
     // Show page
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = 'block';
@@ -10046,7 +10059,7 @@ function renderManageSubsidiariesCard() {
                 </div>
                 <div style="width:100%;height:4px;background:${C.border}"><div style="width:${sub.reputation}%;height:100%;background:${repColor}"></div></div>
             </div>
-            <div style="flex:1"></div>
+            ${(sub.subsector === 'Insurance' || sub.subsector === 'Banking') ? `<div id="sub-dashboard-${sub.id}" style="flex:1;overflow-y:auto;"></div>` : '<div style="flex:1"></div>'}
             <div style="padding:6px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
                 <div style="font-family:${mono};font-size:8px;letter-spacing:1.5px;color:${C.dim};text-transform:uppercase;margin-bottom:6px">Actions</div>
                 <div style="display:flex;gap:4px;margin-bottom:4px;">
@@ -10100,6 +10113,17 @@ function renderManageSubsidiariesCard() {
             </div>
         </div>
     </div>`;
+
+    // Init service dashboard for Insurance/Banking subsidiaries after DOM update
+    if (sub && (sub.subsector === 'Insurance' || sub.subsector === 'Banking')) {
+        const dashId = 'sub-dashboard-' + sub.id;
+        setTimeout(() => {
+            if (document.getElementById(dashId)) {
+                initSubDashboard(_supabase, { faction, nation: nationStats, shard }, dashId, sub.id)
+                    .catch(e => console.error('[SubDash] Init failed:', e));
+            }
+        }, 50);
+    }
 }
 
 // ─── SELL / DISSOLVE: unified liquidation (different multiplier) ───
