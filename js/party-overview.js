@@ -160,7 +160,7 @@ export async function initPartyOverview(supabase, state, containerId) {
         ] = await Promise.all([
             checkOppositionStatus(supabase, nationId, factionId),
             supabase.from('factions').select('*').eq('nation_id', nationId).eq('faction_type', 'party'),
-            supabase.from('faction_ideology').select('*').eq('nation_id', nationId),
+            supabase.from('faction_ideology').select('*'),  // fetch all, filter by party IDs after
             supabase.from('faction_electoral_standing').select('*').eq('nation_id', nationId),
             supabase.from('campaign_actions').select('*').eq('party_id', factionId).order('tick_performed', { ascending: false }).limit(20),
             supabase.from('caucus_factions').select('*').eq('party_id', factionId),
