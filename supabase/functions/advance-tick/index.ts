@@ -2875,13 +2875,15 @@ async function processMigrationFlows(supabase, nationList, currentTick) {
 
     // Clean up old data (keep last 24 ticks)
     if (currentTick > 24) {
-        await supabase.from('migration_flows').delete().lt('tick', currentTick - 24);
+        var { error: cleanErr } = await supabase.from('migration_flows').delete().lt('tick', currentTick - 24);
+        if (cleanErr) console.warn('[processMigrationFlows] cleanup error:', cleanErr.message);
     }
 
     // Write new flows
     if (flowRows.length > 0) {
         // Delete existing rows for this tick first (idempotent re-runs)
-        await supabase.from('migration_flows').delete().eq('tick', currentTick);
+        var { error: delErr } = await supabase.from('migration_flows').delete().eq('tick', currentTick);
+        if (delErr) console.warn('[processMigrationFlows] delete error:', delErr.message);
 
         // Batch insert
         var BATCH = 500;
