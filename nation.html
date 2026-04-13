@@ -1682,13 +1682,24 @@ function getLatestMigrationTick() {
 }
 
 async function loadMigrationFlows(nationId) {
-    // Fetch ALL migration flows (not just this nation) for the matrix view
-    var { data } = await _supabase
+    // Get the latest tick that has migration data
+    var { data: tickRow } = await _supabase
         .from('migration_flows')
-        .select('*, origin:origin_nation_id(id, name), dest:dest_nation_id(id, name)')
+        .select('tick')
         .order('tick', { ascending: false })
-        .limit(500);
-    migrationFlowData = data || [];
+        .limit(1);
+    var latestFlowTick = tickRow?.[0]?.tick;
+
+    if (latestFlowTick != null) {
+        // Fetch all flows for the latest tick only (all nations)
+        var { data } = await _supabase
+            .from('migration_flows')
+            .select('*, origin:origin_nation_id(id, name), dest:dest_nation_id(id, name)')
+            .eq('tick', latestFlowTick);
+        migrationFlowData = data || [];
+    } else {
+        migrationFlowData = [];
+    }
 }
 
 function renderMigrationSourcesPanel(nation) {
