@@ -139,7 +139,49 @@ DECLARE
         'direct_messages',
         'group_chat_messages',
         'group_chat_members',
-        'group_chats'
+        'group_chats',
+
+        -- ══ Radio broadcast system ══
+        'broadcast_good_listens',
+        'radio_broadcasts',
+        'radio_personalities',
+        'radio_stations',
+
+        -- ══ Article likes ══
+        'article_likes',
+
+        -- ══ Party platforms ══
+        'faction_platforms',
+
+        -- ══ Agitator & lawsuits ══
+        'lawsuit_events',
+        'lawsuits',
+        'faction_agitators',
+        'agitator_pool',
+
+        -- ══ Subsidiary services ══
+        'subsidiary_auto_policies',
+        'subsidiary_auto_rates',
+        'subsidiary_bids',
+        'subsidiary_sales',
+
+        -- ══ Corp properties & executives ══
+        'corp_properties',
+        'corp_executives',
+        'executive_pool',
+        'corp_material_inventory',
+
+        -- ══ Corp vessels ══
+        'corp_vessels',
+
+        -- ══ Finance system ══
+        'finance_active_loans',
+        'finance_loan_offers',
+        'finance_loan_requests',
+
+        -- ══ Construction contracts ══
+        'contract_bids',
+        'construction_contracts'
     ];
 BEGIN
     -- First: null out FKs on nations so factions can be deleted
