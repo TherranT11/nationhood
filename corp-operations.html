@@ -2894,6 +2894,8 @@ let _execSearchSelected = -1;
 // Fleet state
 let _fleetVessels = [];
 let _fleetSelectedIdx = null;
+let _vesselInsuranceMap = {};   // { vesselId: true } — vessels with active insurance
+let _vesselInsurancePending = {}; // { vesselId: true } — vessels with pending insurance requests
 
 // Ship Market state
 let _marketListings = [];
@@ -11733,6 +11735,38 @@ async function loadFleet() {
     if (error) console.warn('Failed to load fleet:', error.message);
     _fleetVessels = data || [];
     _fleetSelectedIdx = null;
+
+    // Load insurance status for fleet vessels
+    _vesselInsuranceMap = {};
+    _vesselInsurancePending = {};
+    try {
+        const vesselIds = _fleetVessels.map(v => v.id);
+        if (vesselIds.length > 0) {
+            // Active policies
+            const { data: policies } = await _supabase.from('finance_active_loans')
+                .select('insured_vessel_id')
+                .in('insured_vessel_id', vesselIds)
+                .in('status', ['current']);
+            for (const p of (policies || [])) {
+                if (p.insured_vessel_id) _vesselInsuranceMap[p.insured_vessel_id] = true;
+            }
+            // Pending requests
+            const { data: requests } = await _supabase.from('finance_loan_requests')
+                .select('insured_vessel_id')
+                .eq('requesting_faction_id', faction.id)
+                .eq('request_type', 'insurance')
+                .eq('status', 'open')
+                .not('insured_vessel_id', 'is', null);
+            for (const r of (requests || [])) {
+                if (r.insured_vessel_id && !_vesselInsuranceMap[r.insured_vessel_id]) {
+                    _vesselInsurancePending[r.insured_vessel_id] = true;
+                }
+            }
+        }
+    } catch (insErr) {
+        console.warn('Failed to load vessel insurance status:', insErr.message);
+    }
+
     renderFleetCard();
 }
 
@@ -11870,9 +11904,20 @@ function renderFleetCard() {
                     <div onclick="${locked ? '' : "flSell('" + v.id + "','" + escapeHtml(v.vessel_name).replace(/'/g, '') + "'," + sellPrice + ")"}" style="flex:1;padding:5px 0;text-align:center;cursor:${locked ? 'not-allowed' : 'pointer'};font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:${locked ? 'var(--text-dim)' : '#c84'};border:1px solid ${locked ? 'var(--border-0)' : 'rgba(204,136,68,0.3)'};opacity:${locked ? 0.35 : 1};">LIST<br><span style="font-weight:400;font-size:6px;">${hfFmtBig(sellPrice)}</span></div>
                 </div>`;
 
-                // Rename button
+                // Insurance + Rename buttons
                 if (!isTransit) {
-                    html += `<div onclick="flRename('${v.id}','${escapeHtml(v.vessel_name).replace(/'/g, '')}')" style="margin-top:4px;padding:4px 0;text-align:center;cursor:pointer;font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:var(--text-muted);border:1px solid var(--border-0);">RENAME VESSEL</div>`;
+                    const hasInsurance = _vesselInsuranceMap && _vesselInsuranceMap[v.id];
+                    const insurePending = _vesselInsurancePending && _vesselInsurancePending[v.id];
+                    html += '<div style="display:flex;gap:4px;margin-top:4px;">';
+                    if (hasInsurance) {
+                        html += `<div style="flex:1;padding:4px 0;text-align:center;font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:#5c5;border:1px solid rgba(92,204,92,0.2);background:rgba(92,204,92,0.04);">INSURED ✓</div>`;
+                    } else if (insurePending) {
+                        html += `<div style="flex:1;padding:4px 0;text-align:center;font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:#ca5;border:1px solid rgba(202,165,50,0.2);background:rgba(202,165,50,0.04);">PENDING ⏳</div>`;
+                    } else {
+                        html += `<div onclick="event.stopPropagation();flRequestInsurance('${v.id}','${escapeHtml(v.vessel_name).replace(/'/g, '')}',${v.purchase_price || 0})" style="flex:1;padding:4px 0;text-align:center;cursor:pointer;font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:#aa7a5a;border:1px solid rgba(170,122,90,0.3);background:rgba(170,122,90,0.04);">INSURE</div>`;
+                    }
+                    html += `<div onclick="flRename('${v.id}','${escapeHtml(v.vessel_name).replace(/'/g, '')}')" style="flex:1;padding:4px 0;text-align:center;cursor:pointer;font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:var(--text-muted);border:1px solid var(--border-0);">RENAME</div>`;
+                    html += '</div>';
                 }
 
                 if (isTransit) html += '<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">⊘ Vessel at sea — actions available on arrival</div>';
@@ -12030,6 +12075,36 @@ async function flRename(vesselId, currentName) {
 
     await loadFleet();
 }
+
+async function flRequestInsurance(vesselId, vesselName, vesselValue) {
+    if (!faction || !shard) return;
+    if (!confirm('Request insurance for ' + vesselName + '?\n\nInsurance corporations will see this in their Deal Flow and can offer coverage terms.\n\nVessel value: ' + hfFmtBig(vesselValue))) return;
+
+    const currentTick = shard.current_tick || 0;
+    const { error } = await _supabase.from('finance_loan_requests').insert({
+        requesting_faction_id: faction.id,
+        nation_id: faction.nation_id,
+        request_type: 'insurance',
+        insured_vessel_id: vesselId,
+        amount: vesselValue,
+        term_months: 0,
+        purpose: 'Vessel Insurance — ' + vesselName,
+        status: 'open',
+        created_tick: currentTick,
+        expires_tick: currentTick + 12,
+    });
+    if (error) {
+        if (error.message.includes('duplicate') || error.message.includes('unique')) {
+            alert('Insurance already requested for this vessel.');
+        } else {
+            alert('Failed to request insurance: ' + error.message);
+        }
+        return;
+    }
+    alert('Insurance request posted to Deal Flow.\n\nInsurance corporations can now offer coverage for ' + vesselName + '.');
+    await loadFleet();
+}
+window.flRequestInsurance = flRequestInsurance;
 
 // ════════════════════════════════════════════════════════════════════════════════
 // SHIP MARKET (Shipping corps)
