@@ -1919,6 +1919,30 @@
   /* ── Appoint table rows: allow wrapping ── */
   .appoint-row { flex-wrap: wrap; gap: 4px; }
   .appoint-table-header { display: none; }
+
+  /* ── Dashboard: tighter padding ── */
+  .dashboard { padding: 8px 6px 16px; gap: 8px; }
+  .box--h450, .box--h480 { max-height: 50vh; }
+  .box-header { height: 34px; min-height: 34px; padding: 0 8px; }
+  .box-label { font-size: 8px; }
+
+  /* ── Page header ── */
+  .page-header { padding: 10px 10px 0; }
+  .page-title { font-size: 14px; }
+  .diplo-header-stats { gap: 6px; }
+
+  /* ── Foreign relations: compact ── */
+  .nation-flag-sm { width: 16px; height: 12px; }
+  .nation-name-cell { font-size: 10px; }
+  .nation-rel-score { font-size: 10px; }
+
+  /* ── Config labels ── */
+  .config-label { min-width: 0; }
+  .config-row { gap: 4px; }
+
+  /* ── Buttons: larger tap targets ── */
+  .btn { padding: 8px 14px; min-height: 36px; font-size: 9px; }
+  .detail-btn { padding: 7px 12px; min-height: 34px; }
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -2632,6 +2656,14 @@
 @media (max-width: 1080px) {
   .sv-page-wrap { flex-direction: column; }
   .sv-box--main, .sv-box--side { width: 100%; max-width: none; }
+}
+@media (max-width: 768px) {
+  .sv-box--side { min-width: 0; max-width: none; }
+  .sv-page-wrap { padding: 10px; gap: 10px; }
+}
+@media (max-width: 480px) {
+  .sv-page-wrap { padding: 6px; gap: 8px; }
+  .sv-box-header { height: 34px; min-height: 34px; padding: 0 8px; }
 }
 
 /* ── Incoming Message Badge ── */
@@ -5188,6 +5220,16 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   .ipo-empty-state { padding: 30px 20px; }
   .ipo-empty-title { font-size: 16px; }
   .ipo-empty-desc { font-size: 12px; }
+}
+
+@media (max-width: 480px) {
+  .ipo-view { padding: 6px; min-height: auto; }
+  .ipo-sidebar { max-height: 150px; }
+  .ipo-modal-content { max-width: 96vw; width: 96%; padding: 14px; }
+  .ipo-header { padding: 6px 10px; }
+  .ipo-panel-body { max-height: 280px; }
+  .ipo-vote-type-card { padding: 6px 8px; }
+  .ipo-footer { padding: 4px 10px; }
 }
 
 /* ══════════════════════════════════════════════════════ */

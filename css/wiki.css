@@ -1207,3 +1207,15 @@ body.light-mode .wiki-tag-autocomplete {
 body.light-mode .wiki-tag-autocomplete-item:hover {
     background: #f0f0f0;
 }
+
+/* ── Mobile: 480px ── */
+@media (max-width: 480px) {
+    .wiki-container { padding: 16px 10px; }
+    .wiki-page-layout { gap: 12px; }
+    .wiki-search-input { width: 100%; }
+    .wiki-editor-form { padding: 0 8px; }
+    .ql-container.ql-snow { min-height: 200px; }
+    .wiki-page-row { padding: 8px 10px; }
+    .wiki-page-title { font-size: 0.85rem; }
+    .wiki-home-columns { gap: 12px; }
+}

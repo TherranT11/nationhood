@@ -49,3 +49,31 @@
         .bloc-vote-count.top-party { color: #ffcc00; font-weight: bold; }
         .bloc-abstentions { margin-top: 8px; font-size: 0.78rem; color: var(--red); padding-top: 8px; border-top: 1px solid #222; }
         .breakdown-loading { text-align: center; padding: 24px; color: #888; font-size: 0.85rem; }
+
+        /* ── Mobile: 768px ── */
+        @media (max-width: 768px) {
+            .shakeup-sides { grid-template-columns: 1fr; gap: 12px; }
+            .shakeup-vs { margin: 8px 0; }
+            .shakeup-vote-buttons { flex-direction: column; gap: 10px; }
+            .shakeup-vote-btn { padding: 12px 20px; width: 100%; }
+            .strongman-banner { flex-direction: column; text-align: center; gap: 12px; }
+            .bloc-vote-name { width: 120px; }
+            .bloc-vote-count { width: 90px; }
+        }
+
+        /* ── Mobile: 480px ── */
+        @media (max-width: 480px) {
+            .shakeup-banner { padding: 14px; margin-bottom: 16px; }
+            .shakeup-title { font-size: 1.1rem; letter-spacing: 1px; }
+            .shakeup-desc { font-size: 0.8rem; }
+            .shakeup-side { padding: 14px; }
+            .shakeup-side-name { font-size: 0.95rem; }
+            .strongman-banner { padding: 14px; }
+            .strongman-icon { font-size: 2rem; }
+            .bloc-row-header { padding: 10px 12px; }
+            .bloc-row-content { padding: 0 12px 12px; }
+            .bloc-vote-name { width: 80px; font-size: 0.75rem; }
+            .bloc-vote-count { width: 60px; font-size: 0.72rem; }
+            .bloc-vote-row { gap: 4px; }
+            .bloc-tags-row { gap: 4px; }
+        }

@@ -4111,3 +4111,14 @@ body.light-mode .trade-diag-affinity-breakdown { color: #aaa; }
 body.light-mode .dual-period-mo {
     color: #999;
 }
+
+/* ── Mobile: 768px — Tax summary, slider rows ── */
+@media (max-width: 768px) {
+    .tax-summary-bar { flex-wrap: wrap; gap: 16px 24px; padding: 12px 16px 14px; }
+}
+
+/* ── Mobile: 480px — Tax, compact displays ── */
+@media (max-width: 480px) {
+    .tax-summary-bar { gap: 12px 16px; padding: 10px 12px; }
+    .tax-summary-label { font-size: 0.55rem; }
+}

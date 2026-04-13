@@ -216,3 +216,22 @@
         }
         .badge-met { background: #1a2a1a; color: var(--green); border: 1px solid var(--green); }
         .badge-failed { background: #2a1a1a; color: var(--red); border: 1px solid var(--red); }
+
+        /* ── Mobile: 768px ── */
+        @media (max-width: 768px) {
+            .sub-tabs { flex-wrap: wrap; gap: 0; }
+            .sub-tab { padding: 8px 14px; font-size: 0.75rem; }
+            .demand-header { flex-direction: column; gap: 6px; }
+            .demand-deadline { text-align: left; }
+            .demand-card { padding: 14px; }
+        }
+
+        /* ── Mobile: 480px ── */
+        @media (max-width: 480px) {
+            .sub-tab { padding: 6px 10px; font-size: 0.7rem; letter-spacing: 0.5px; }
+            .demand-card { padding: 12px; margin-bottom: 10px; }
+            .demand-bloc-name { font-size: 0.9rem; }
+            .demand-deadline-value { font-size: 0.95rem; }
+            .empty-state { padding: 24px 14px; }
+            .empty-state-icon { font-size: 2rem; }
+        }

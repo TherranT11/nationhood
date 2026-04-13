@@ -5170,3 +5170,85 @@ body.light-mode .elec-box { background: #fafaf8; border-color: rgba(0,0,0,0.08);
     .elec-box { flex: 1 1 280px; max-width: 380px; }
     .elec-box--wide { max-width: 100%; }
 }
+
+/* ════════════════════════ MOBILE 768px ════════════════════════ */
+@media (max-width: 768px) {
+    /* Campaign action panels — stack list + detail */
+    .ca-wrap { flex-direction: column; }
+    .ca-list { width: 100%; }
+
+    /* Grid wrapper — collapse sidebar */
+    .pol-grid-wrapper { grid-template-columns: 1fr; }
+    .pol-activity-feed {
+        border-left: none;
+        border-top: 1px solid var(--dborder-0);
+        max-height: 300px;
+    }
+
+    /* Page tabs — horizontal scroll */
+    .pol-page-tabs {
+        padding: 8px 8px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .pol-page-tab { padding: 5px 10px; font-size: 11px; white-space: nowrap; flex-shrink: 0; }
+
+    /* Pillar cards stack */
+    .pc-cards-row { flex-direction: column; max-width: 100%; }
+    .pc-pillar-label { width: 100px; }
+
+    /* Electorate spread */
+    .es-outer { max-width: 100%; }
+    .es-summary { flex-wrap: wrap; gap: 10px; justify-content: center; }
+
+    /* Election boxes */
+    .elec-row { flex-direction: column; align-items: stretch; }
+    .elec-box { max-width: 100%; height: auto; max-height: 420px; }
+
+    /* Actions grid */
+    .pol-actions-grid { grid-template-columns: 1fr; }
+
+    /* Tables — horizontal scroll */
+    .pol-el-table, .pol-blocs-table { display: block; overflow-x: auto; }
+
+    /* Modal sizing */
+    .sm-modal { width: 100%; max-width: 95vw; }
+}
+
+/* ════════════════════════ MOBILE 480px ════════════════════════ */
+@media (max-width: 480px) {
+    /* Campaign action panels — tighter */
+    .ca-panel { padding: 12px; }
+    .ca-item { padding: 8px 10px; }
+    .ca-item-name { font-size: 13px; }
+    .ca-item-desc { font-size: 10px; }
+
+    /* Grid wrapper */
+    .pol-activity-feed { max-height: 250px; }
+    .pol-feed-item { padding: 6px 10px; }
+
+    /* Page tabs: smaller */
+    .pol-page-tabs { padding: 6px 4px; }
+    .pol-page-tab { padding: 4px 8px; font-size: 10px; }
+
+    /* Pillar contribution cards */
+    .pc-card { padding: 12px 14px; }
+    .pc-pillar-label { width: 80px; }
+
+    /* Electorate */
+    .es-body { padding: 12px 10px 10px; }
+    .es-sb-val { font-size: 16px; }
+    .es-sb-div { height: 24px; }
+    .es-legend-bar { padding: 8px 10px; gap: 6px; }
+
+    /* Election boxes */
+    .elec-box { max-height: 360px; }
+
+    /* Other parties */
+    .op-page { padding: 10px 6px 24px; }
+    .op-grid { grid-template-columns: 1fr; }
+
+    /* Protest */
+    .protest-tab { font-size: 7px; padding: 4px 6px; }
+    .protest-crisis-card { padding: 10px; }
+}
