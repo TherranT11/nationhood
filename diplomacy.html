@@ -38,6 +38,7 @@
     </div>
 
     <!-- Nation highlight panel -->
+    <div style="display:flex;flex-direction:column;gap:12px;flex-shrink:0;">
     <div class="world-highlight" id="world-highlight">
         <div class="world-highlight-header">
             <div class="world-highlight-dot" style="background:var(--accent);"></div>
@@ -50,6 +51,19 @@
                 <div style="font-family:var(--font-mono);font-size:8px;margin-top:4px;">Click on the map or use the list below</div>
             </div>
         </div>
+    </div>
+
+    <!-- World events feed -->
+    <div class="world-events-panel" id="world-events-panel">
+        <div class="world-highlight-header">
+            <div class="world-highlight-dot" style="background:var(--blue);"></div>
+            <span class="world-highlight-title">World Events</span>
+            <span id="world-events-filter-label" style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-left:auto;">ALL NATIONS</span>
+        </div>
+        <div class="world-events-scroll" id="world-events-scroll">
+            <div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Loading events...</div>
+        </div>
+    </div>
     </div>
 </div>
 
@@ -317,6 +331,79 @@ let activeDraftAction = null;  // { key, label, apCost, type, role }
 let activeDraftTarget = null;  // nation object
 
 // ═══════════════════════════════════════════════════
+// WORLD EVENTS FEED
+// ═══════════════════════════════════════════════════
+
+const EVENT_CAT_COLORS = {
+    government: { color: '#c8a832', bg: 'rgba(200,168,50,0.06)', border: 'rgba(200,168,50,0.2)' },
+    economy: { color: '#5a8aaa', bg: 'rgba(90,138,170,0.06)', border: 'rgba(90,138,170,0.2)' },
+    diplomacy: { color: '#5aaa8a', bg: 'rgba(90,170,138,0.06)', border: 'rgba(90,170,138,0.2)' },
+    military: { color: '#c55', bg: 'rgba(204,85,85,0.06)', border: 'rgba(204,85,85,0.2)' },
+    crisis: { color: '#c84', bg: 'rgba(200,132,68,0.06)', border: 'rgba(200,132,68,0.2)' },
+    legislation: { color: '#8b9a6b', bg: 'rgba(139,154,107,0.06)', border: 'rgba(139,154,107,0.2)' },
+    business: { color: '#aa7a5a', bg: 'rgba(170,122,90,0.06)', border: 'rgba(170,122,90,0.2)' },
+};
+
+let _worldEvents = [];
+let _worldEventNationFilter = null; // null = all nations
+
+async function loadWorldEvents(state) {
+    const currentTick = state.shard?.current_tick || 0;
+    const lookback = Math.max(1, currentTick - 48); // last 48 ticks of events
+
+    const { data: events, error } = await _supabase
+        .from('event_log')
+        .select('id, nation_id, event_name, category, fired_at_tick, description_chosen')
+        .gte('fired_at_tick', lookback)
+        .order('fired_at_tick', { ascending: false })
+        .limit(100);
+
+    if (error) {
+        console.error('[WorldEvents] Load failed:', error.message);
+        return;
+    }
+
+    _worldEvents = events || [];
+    renderWorldEvents();
+}
+
+function renderWorldEvents() {
+    const scroll = document.getElementById('world-events-scroll');
+    const filterLabel = document.getElementById('world-events-filter-label');
+    if (!scroll) return;
+
+    let events = _worldEvents;
+    if (_worldEventNationFilter) {
+        events = events.filter(e => e.nation_id === _worldEventNationFilter);
+        const nation = (_worldAllNations || []).find(n => n.id === _worldEventNationFilter);
+        if (filterLabel) filterLabel.textContent = nation?.name?.toUpperCase() || 'FILTERED';
+    } else {
+        if (filterLabel) filterLabel.textContent = 'ALL NATIONS';
+    }
+
+    if (events.length === 0) {
+        scroll.innerHTML = '<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No recent events.</div>';
+        return;
+    }
+
+    scroll.innerHTML = events.map(ev => {
+        const cat = ev.category || 'government';
+        const catStyle = EVENT_CAT_COLORS[cat] || EVENT_CAT_COLORS.government;
+        const nation = (_worldAllNations || []).find(n => n.id === ev.nation_id);
+        const nationName = nation?.name || '?';
+        const desc = ev.description_chosen || ev.event_name || '';
+        const truncDesc = desc.length > 120 ? desc.slice(0, 117) + '...' : desc;
+
+        return `<div class="world-event-row">
+            <span class="world-event-tick">${ev.fired_at_tick}</span>
+            <span class="world-event-cat" style="color:${catStyle.color};border-color:${catStyle.border};background:${catStyle.bg};">${escapeHtml(cat)}</span>
+            <span class="world-event-text">${escapeHtml(truncDesc)}</span>
+            <span class="world-event-nation">${escapeHtml(nationName)}</span>
+        </div>`;
+    }).join('');
+}
+
+// ═══════════════════════════════════════════════════
 // WORLD MAP — Pan + Zoom
 // ═══════════════════════════════════════════════════
 
@@ -472,6 +559,11 @@ async function selectWorldNation(nationId) {
     }
 
     renderNationHighlight(nation, _worldState, _worldRelations, _worldAgreements, _worldAmbassadors);
+
+    // Filter events to selected nation (or all if viewing yourself)
+    const isYou = nation.id === _worldState.nation?.id;
+    _worldEventNationFilter = isYou ? null : nation.id;
+    renderWorldEvents();
 }
 
 let _worldAmbassadors = [];
@@ -627,6 +719,13 @@ initPage('diplomacy', async (state) => {
         initNationHighlight(allNations || [], state);
     } catch (err) {
         console.error('[World] Failed to load nations:', err);
+    }
+
+    // ── World events feed ──
+    try {
+        await loadWorldEvents(state);
+    } catch (err) {
+        console.error('[World] Failed to load events:', err);
     }
 
     return; // Original diplomacy code preserved below but disabled

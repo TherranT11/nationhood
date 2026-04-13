@@ -102,11 +102,38 @@
     font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--text-bright);
 }
 
+/* ── World events feed ── */
+.world-events-panel {
+    width: 380px; flex: 1; min-height: 200px;
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+    display: flex; flex-direction: column; overflow: hidden;
+}
+.world-events-scroll { flex: 1; overflow-y: auto; }
+.world-event-row {
+    display: flex; gap: 8px; padding: 6px 14px;
+    border-bottom: 1px solid var(--border-light); align-items: flex-start;
+}
+.world-event-row:last-child { border-bottom: none; }
+.world-event-tick {
+    font-family: var(--font-mono); font-size: 8px; color: var(--text-dim);
+    min-width: 28px; flex-shrink: 0; text-align: right;
+}
+.world-event-cat {
+    font-family: var(--font-mono); font-size: 6px; font-weight: 700;
+    padding: 1px 4px; border: 1px solid; flex-shrink: 0;
+    text-transform: uppercase; letter-spacing: 0.03em; line-height: 10px;
+}
+.world-event-text { font-size: 9px; color: var(--text-secondary); flex: 1; line-height: 1.4; }
+.world-event-nation {
+    font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); flex-shrink: 0;
+}
+
 /* ── Responsive ── */
 @media (max-width: 1200px) {
     .world-page { flex-direction: column; align-items: center; height: auto; overflow: auto; }
     .world-map-panel { width: 100%; max-width: 1140px; height: 500px; }
     .world-highlight { width: 100%; max-width: 600px; height: auto; max-height: 400px; }
+    .world-events-panel { width: 100%; max-width: 600px; max-height: 300px; }
 }
 @media (max-width: 768px) {
     .world-page { padding: 8px; gap: 8px; }
