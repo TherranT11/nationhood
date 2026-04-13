@@ -184,7 +184,7 @@ function renderLedger(root) {
                 <div class="lg-mode-btn ${_mode === 'rankings' ? 'active' : ''}" data-mode="rankings">GLOBAL RANKINGS</div>
             </div>
         </div>
-        <div id="lg-body">${renderSingleMode()}</div>
+        <div id="lg-body">${_mode === 'single' ? renderSingleMode() : _mode === 'compare' ? renderCompareMode() : renderSingleMode()}</div>
     </div>`;
 
     // Mode switcher
@@ -195,7 +195,7 @@ function renderLedger(root) {
         renderLedger(root);
     });
 
-    // Nation selector clicks
+    // Nation selector clicks (single mode)
     root.addEventListener('click', (e) => {
         const row = e.target.closest('.lg-nation-row');
         if (row) {
@@ -207,6 +207,19 @@ function renderLedger(root) {
         if (catBtn) {
             _activeCategory = catBtn.dataset.cat;
             renderLedger(root);
+            return;
+        }
+        // Compare mode: toggle nation
+        const compBtn = e.target.closest('.lg-comp-nation');
+        if (compBtn) {
+            const nid = compBtn.dataset.nationId;
+            if (_compareIds.includes(nid)) {
+                if (_compareIds.length > 1) _compareIds = _compareIds.filter(id => id !== nid);
+            } else if (_compareIds.length < 4) {
+                _compareIds.push(nid);
+            }
+            renderLedger(root);
+            return;
         }
     });
 
@@ -301,6 +314,85 @@ function renderSingleMode() {
                 </div>
                 ${statsHtml}
             </div>
+        </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════
+// COMPARISON MODE
+// ═══════════════════════════════════════════════════
+
+function renderCompareMode() {
+    const cat = STAT_CATEGORIES.find(c => c.id === _activeCategory);
+    const myNationId = _state.nation?.id;
+
+    // Nation picker
+    const pickerHtml = _allNations.map(n => {
+        const isIn = _compareIds.includes(n.id);
+        return `<div class="lg-comp-nation" data-nation-id="${n.id}" style="
+            padding:3px 8px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;
+            font-family:var(--font-mono);font-size:7px;font-weight:${isIn ? '700' : '400'};
+            color:${isIn ? 'var(--text-bright)' : 'var(--text-dim)'};
+            background:${isIn ? 'var(--amber-faint)' : 'transparent'};
+            border:1px solid ${isIn ? 'var(--amber-border)' : 'var(--border-main)'};
+        ">${esc(n.name)}${n.id === myNationId ? ' <span style="color:var(--green);font-size:6px;">YOU</span>' : ''}</div>`;
+    }).join('');
+
+    // Category tabs
+    const catHtml = STAT_CATEGORIES.map(c =>
+        `<div class="lg-cat-btn ${c.id === _activeCategory ? 'active' : ''}" data-cat="${c.id}">${esc(c.name.toUpperCase())}</div>`
+    ).join('');
+
+    // Column headers
+    const colHeaders = _compareIds.map(nid => {
+        const n = _allNations.find(x => x.id === nid);
+        if (!n) return '';
+        return `<div style="flex:1;text-align:center;">
+            <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-bright);">${esc(n.name)}</div>
+            <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">${esc(n.government_type || '')}</div>
+        </div>`;
+    }).join('');
+
+    // Stat rows
+    const statsHtml = (cat?.stats || []).map((stat, si) => {
+        const hb = isHigherBetter(stat.id);
+        const vals = _compareIds.map(nid => ({ id: nid, val: Number(_allNations.find(n => n.id === nid)?.[stat.id] ?? 0) }));
+        const numVals = vals.filter(v => !isNaN(v.val));
+
+        let bestId = null;
+        if (numVals.length > 0 && hb !== null) {
+            bestId = hb
+                ? numVals.reduce((a, b) => b.val > a.val ? b : a).id
+                : numVals.reduce((a, b) => b.val < a.val ? b : a).id;
+        }
+
+        const cellsHtml = _compareIds.map(nid => {
+            const val = Number(_allNations.find(n => n.id === nid)?.[stat.id] ?? 0);
+            const isBest = nid === bestId;
+            return `<div style="flex:1;text-align:center;">
+                <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${isBest ? 'var(--accent)' : 'var(--text-bright)'};">${fmtVal(val)}</span>
+                ${isBest ? '<span style="font-family:var(--font-mono);font-size:7px;color:var(--accent);margin-left:2px;">\u2605</span>' : ''}
+            </div>`;
+        }).join('');
+
+        return `<div style="display:flex;padding:5px 14px;align-items:center;border-bottom:${si < (cat?.stats.length || 0) - 1 ? '1px solid rgba(200,196,184,0.03)' : 'none'};">
+            <span style="width:160px;font-size:9px;color:var(--text-secondary);">${esc(stat.name)}</span>
+            ${cellsHtml}
+        </div>`;
+    }).join('');
+
+    return `<div>
+        <div style="background:var(--bg-panel);border:1px solid var(--border-main);padding:8px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">${pickerHtml}</div>
+            <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${_compareIds.length}/4 selected</span>
+        </div>
+        <div class="lg-cat-bar">${catHtml}</div>
+        <div class="lg-table">
+            <div style="display:flex;padding:8px 14px;background:var(--bg-card);border-bottom:1px solid var(--border-main);">
+                <span style="width:160px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">STAT</span>
+                ${colHeaders}
+            </div>
+            ${statsHtml}
         </div>
     </div>`;
 }
