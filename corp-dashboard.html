@@ -1292,7 +1292,7 @@ async function init() {
         execCompensation = (execRows || []).reduce((sum, ex) => sum + (Number(ex.salary_per_year) || 0), 0);
     }
 
-    renderFinances(nationStats, shard, wfData, faction, propData.propertyMaintenance || 0, equipMaint, execCompensation);
+    renderFinances(nationStats, shard, wfData, faction, propData.propertyMaintenance || 0, equipMaint, execCompensation, propData);
     renderValuation(nationStats, nationName, faction, wfData, propData);
 
     // Messaging bubble
@@ -1441,7 +1441,7 @@ function renderWorkforce(nation, nationName, factionData) {
     return { totalWages, generalTotal, skilledTotal, innovativeTotal, monthlyWages: Math.round(totalWages / 12) };
 }
 
-function renderFinances(nation, shard, wfData, faction, propertyMaint, equipmentMaint, execCompensation) {
+function renderFinances(nation, shard, wfData, faction, propertyMaint, equipmentMaint, execCompensation, propData) {
     const currentTick = shard?.current_tick || 0;
     document.getElementById('fin-tick').textContent = 'TICK ' + currentTick;
 
@@ -1460,10 +1460,12 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
     const multiplier = gdpFactor * urbanFactor * popFactor * solFactor * infraFactor * inflFactor * intFactor;
     const annualMarketRev = Math.round(BASE_RATE * multiplier);
 
-    // Scale revenue by workforce utilization — 0 employees = 0 revenue (matches tick processor)
+    // Scale revenue by workforce utilization — property capacity determines target (matches tick processor)
     const totalEmployees = (faction.corp_general_workforce || 0) + (faction.corp_skilled_workforce || 0) + (faction.corp_innovative_workforce || 0);
-    const workforceUtil = Math.min(1, totalEmployees / 3000);
-    const marketRev = Math.round(Math.round(annualMarketRev / 12) * workforceUtil);
+    const workforceTarget = Math.max(500, propData?.totalCapacity || 500);
+    const workforceUtil = Math.min(1, totalEmployees / workforceTarget);
+    const propertyRevBonus = propData?.propertyRevBonus || 0;
+    const marketRev = Math.round(Math.round(annualMarketRev / 12) * workforceUtil) + propertyRevBonus;
 
     const govContracts = 0;
     const pvtContracts = 0;
@@ -1532,7 +1534,8 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
             </div>
             <div class="fin-row"><span class="fin-row__label">Government Contracts</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(govContracts)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Private Contracts</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(pvtContracts)}</span></div>
-            <div class="fin-row"><span class="fin-row__label">Market Revenue<span class="fin-row__badge">DERIVED</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(marketRev)}</span></div>
+            <div class="fin-row"><span class="fin-row__label">Market Revenue<span class="fin-row__badge">DERIVED</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(marketRev - propertyRevBonus)}</span></div>
+            ${propertyRevBonus > 0 ? `<div class="fin-row"><span class="fin-row__label">Property Revenue<span class="fin-row__badge">BUILDINGS</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(propertyRevBonus)}</span></div>` : ''}
             <div class="fin-total">
                 <span class="fin-total__label">Total Revenue</span>
                 <span class="fin-total__value" style="color:var(--green)">${fmtMoney(totalRevenue)}</span>
@@ -2011,7 +2014,18 @@ async function renderProperty(nation, nationName, factionData, shard) {
         </div>
     `;
 
-    return { propertyValue: totalValue, propertyMaintenance: totalMaint };
+    // Calculate property revenue bonus: $50/seat/month at good condition
+    let propertyRevBonus = 0;
+    // HQ contributes at full condition
+    propertyRevBonus += Math.round(hqCapacity * 50);
+    for (const p of ownedProps) {
+        if (p.refurbish_until_tick && (shard?.current_tick || 0) < p.refurbish_until_tick) continue;
+        const cond = Number(p.condition || 0) / 100;
+        if (cond >= 0.6) {
+            propertyRevBonus += Math.round(Number(p.capacity || 0) * cond * 50);
+        }
+    }
+    return { propertyValue: totalValue, propertyMaintenance: totalMaint, totalCapacity, propertyRevBonus };
 }
 
 function renderValuation(nation, nationName, faction, wfData, propData) {
