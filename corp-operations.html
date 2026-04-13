@@ -9422,24 +9422,24 @@ function renderConstructionModal() {
     overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
 
     overlay.innerHTML = `
-    <div style="width:440px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;max-height:90vh;">
-        <div style="padding:10px 16px;border-bottom:1px solid ${C.border};background:${C.card};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
-            <div style="display:flex;align-items:center;gap:6px;">
-                <span style="font-size:8px;color:${C.gold}">●</span>
-                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Construction Project</span>
+    <div style="width:570px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;max-height:90vh;">
+        <div style="padding:12px 20px;border-bottom:1px solid ${C.border};background:${C.card};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:10px;color:${C.gold}">●</span>
+                <span style="font-family:${mono};font-size:14px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Construction Project</span>
             </div>
-            <span onclick="cpClose()" style="font-family:${mono};font-size:14px;color:${C.dim};cursor:pointer">×</span>
+            <span onclick="cpClose()" style="font-family:${mono};font-size:18px;color:${C.dim};cursor:pointer">×</span>
         </div>
-        <div style="padding:12px 16px;overflow:auto;flex:1;">
+        <div style="padding:14px 20px;overflow:auto;flex:1;">
 
-            <div style="margin-bottom:12px;">
-                <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Building Name</div>
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Building Name</div>
                 <input id="cp-name-input" value="${_cpData.name.replace(/"/g, '&quot;')}" placeholder="e.g., McKenna Tower"
-                    style="width:100%;padding:6px 10px;font-family:${mono};font-size:11px;color:${C.text};background:${C.card};border:1px solid ${C.border};outline:none;box-sizing:border-box;" />
+                    style="width:100%;padding:8px 12px;font-family:${mono};font-size:14px;color:${C.text};background:${C.card};border:1px solid ${C.border};outline:none;box-sizing:border-box;" />
             </div>
 
-            <div style="margin-bottom:12px;">
-                <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Type</div>
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Type</div>
                 <div style="display:flex;gap:4px;flex-wrap:wrap;">
                     ${['Regional HQ', 'Office Building',
                        ...(faction?.corp_sector === 'Construction' ? ['Warehouse'] : []),
@@ -9450,98 +9450,98 @@ function renderConstructionModal() {
                         const isSpecial = ['Branch Office', 'Trading Floor', 'Claims Office'].includes(t);
                         const specialColor = '#8a6aaa';
                         const activeColor = t === 'Warehouse' ? C.orange : isSpecial ? specialColor : C.accent;
-                        return `<span onclick="cpSetField('type','${t}')" style="flex:1;min-width:80px;text-align:center;padding:5px 0;font-family:${mono};font-size:9px;font-weight:700;cursor:pointer;color:${_cpData.type === t ? '#000' : C.dim};background:${_cpData.type === t ? activeColor : 'transparent'};border:1px solid ${_cpData.type === t ? activeColor : C.border}">${t}</span>`;
+                        return `<span onclick="cpSetField('type','${t}')" style="flex:1;min-width:100px;text-align:center;padding:6px 0;font-family:${mono};font-size:12px;font-weight:700;cursor:pointer;color:${_cpData.type === t ? '#000' : C.dim};background:${_cpData.type === t ? activeColor : 'transparent'};border:1px solid ${_cpData.type === t ? activeColor : C.border}">${t}</span>`;
                     }).join('')}
                 </div>
-                ${_cpData.type === 'Warehouse' ? `<div style="font-family:${mono};font-size:7px;color:${C.orange};margin-top:4px;">Warehouse: 75% construction cost, stores up to $20M in materials</div>` : ''}
-                ${_cpData.type === 'Branch Office' ? `<div style="font-family:${mono};font-size:7px;color:#8a6aaa;margin-top:4px;">Branch Office: Increases lending capacity. +1 reputation per 200 employees. Enables cross-nation lending.</div>` : ''}
-                ${_cpData.type === 'Trading Floor' ? `<div style="font-family:${mono};font-size:7px;color:#8a6aaa;margin-top:4px;">Trading Floor: Enables secondary bond market. +1 reputation per 200 employees. Portfolio management bonuses.</div>` : ''}
-                ${_cpData.type === 'Claims Office' ? `<div style="font-family:${mono};font-size:7px;color:#8a6aaa;margin-top:4px;">Claims Office: Faster claim processing. +1 reputation per 200 employees. Local presence reduces premiums.</div>` : ''}
+                ${_cpData.type === 'Warehouse' ? `<div style="font-family:${mono};font-size:9px;color:${C.orange};margin-top:5px;">Warehouse: 75% construction cost, stores up to $20M in materials</div>` : ''}
+                ${_cpData.type === 'Branch Office' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Branch Office: Increases lending capacity. +1 reputation per 200 employees. Enables cross-nation lending.</div>` : ''}
+                ${_cpData.type === 'Trading Floor' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Trading Floor: Enables secondary bond market. +1 reputation per 200 employees. Portfolio management bonuses.</div>` : ''}
+                ${_cpData.type === 'Claims Office' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Claims Office: Faster claim processing. +1 reputation per 200 employees. Local presence reduces premiums.</div>` : ''}
             </div>
 
-            <div style="margin-bottom:12px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                    <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase">Size (Employees)</span>
-                    <span style="font-family:${mono};font-size:14px;font-weight:700;color:${C.text}">${_cpData.size.toLocaleString()}</span>
+            <div style="margin-bottom:14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+                    <span style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase">Size (Employees)</span>
+                    <span style="font-family:${mono};font-size:18px;font-weight:700;color:${C.text}">${_cpData.size.toLocaleString()}</span>
                 </div>
                 <input type="range" min="500" max="18000" step="500" value="${_cpData.size}" oninput="cpSetField('size',+this.value)"
-                    style="width:100%;accent-color:${C.accent};height:4px;" />
-                <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:7px;color:${C.dim};margin-top:2px">
+                    style="width:100%;accent-color:${C.accent};height:5px;" />
+                <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;color:${C.dim};margin-top:3px">
                     <span>500 min</span><span>18,000 max</span>
                 </div>
             </div>
 
-            <div style="margin-bottom:12px;">
-                <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Style</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;">${stylesHtml}</div>
-                <div style="margin-top:4px;font-family:${mono};font-size:8px;color:${CP_STYLE_META[_cpData.style].color}">${CP_STYLE_META[_cpData.style].desc}</div>
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Style</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">${stylesHtml}</div>
+                <div style="margin-top:5px;font-family:${mono};font-size:10px;color:${CP_STYLE_META[_cpData.style].color}">${CP_STYLE_META[_cpData.style].desc}</div>
             </div>
 
-            <div style="margin-bottom:12px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                    <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase">Timeline</span>
-                    <span style="font-family:${mono};font-size:12px;font-weight:700;color:${C.text}">${_cpData.timeline} months</span>
+            <div style="margin-bottom:14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+                    <span style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase">Timeline</span>
+                    <span style="font-family:${mono};font-size:16px;font-weight:700;color:${C.text}">${_cpData.timeline} months</span>
                 </div>
                 <input type="range" min="24" max="60" step="6" value="${_cpData.timeline}" oninput="cpSetField('timeline',+this.value)"
-                    style="width:100%;accent-color:${C.gold};height:4px;" />
-                <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:7px;color:${C.dim};margin-top:2px">
+                    style="width:100%;accent-color:${C.gold};height:5px;" />
+                <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;color:${C.dim};margin-top:3px">
                     <span>24 months</span><span>60 months</span>
                 </div>
             </div>
 
-            <div style="margin-bottom:12px;">
-                <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Budget</div>
-                <div style="background:${C.card};border:1px solid ${C.border};padding:8px 10px;">
-                    <div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid ${C.border}">
-                        <span style="font-family:${mono};font-size:8px;color:${C.dim}">BASE (${_cpData.size.toLocaleString()} × $100k × ${budget.inflMod.toFixed(2)} × ${budget.styleMod.toFixed(1)})</span>
-                        <span style="font-family:${mono};font-size:9px;color:${C.muted}">${hfFmtBig(budget.baseBudget)}</span>
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Budget</div>
+                <div style="background:${C.card};border:1px solid ${C.border};padding:10px 12px;">
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border}">
+                        <span style="font-family:${mono};font-size:10px;color:${C.dim}">BASE (${_cpData.size.toLocaleString()} × $100k × ${budget.inflMod.toFixed(2)} × ${budget.styleMod.toFixed(1)})</span>
+                        <span style="font-family:${mono};font-size:12px;color:${C.muted}">${hfFmtBig(budget.baseBudget)}</span>
                     </div>
-                    <div style="padding:6px 0">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-                            <span style="font-family:${mono};font-size:8px;color:${C.dim}">ADJUSTMENT</span>
-                            <span style="font-family:${mono};font-size:10px;font-weight:700;color:${_cpData.budgetMod > 0 ? C.greenBright : _cpData.budgetMod < 0 ? C.red : C.dim}">${_cpData.budgetMod > 0 ? '+' : ''}${_cpData.budgetMod}%</span>
+                    <div style="padding:8px 0">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                            <span style="font-family:${mono};font-size:10px;color:${C.dim}">ADJUSTMENT</span>
+                            <span style="font-family:${mono};font-size:13px;font-weight:700;color:${_cpData.budgetMod > 0 ? C.greenBright : _cpData.budgetMod < 0 ? C.red : C.dim}">${_cpData.budgetMod > 0 ? '+' : ''}${_cpData.budgetMod}%</span>
                         </div>
                         <input type="range" min="-15" max="15" step="1" value="${_cpData.budgetMod}" oninput="cpSetField('budgetMod',+this.value)"
-                            style="width:100%;accent-color:${C.accent};height:4px;" />
-                        <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:7px;color:${C.dim};margin-top:2px">
+                            style="width:100%;accent-color:${C.accent};height:5px;" />
+                        <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;color:${C.dim};margin-top:3px">
                             <span>-15% (budget cut)</span><span>+15% (quality invest)</span>
                         </div>
                     </div>
-                    <div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid ${C.border}">
-                        <span style="font-family:${mono};font-size:9px;font-weight:700;color:${C.text}">TOTAL BUDGET</span>
-                        <span style="font-family:${mono};font-size:14px;font-weight:700;color:${C.gold}">${hfFmtBig(budget.adjusted)}</span>
+                    <div style="display:flex;justify-content:space-between;padding:5px 0;border-top:1px solid ${C.border}">
+                        <span style="font-family:${mono};font-size:12px;font-weight:700;color:${C.text}">TOTAL BUDGET</span>
+                        <span style="font-family:${mono};font-size:18px;font-weight:700;color:${C.gold}">${hfFmtBig(budget.adjusted)}</span>
                     </div>
-                    <div style="display:flex;justify-content:space-between;padding:2px 0">
-                        <span style="font-family:${mono};font-size:8px;color:${C.dim}">EST. MONTHLY MAINTENANCE</span>
-                        <span style="font-family:${mono};font-size:9px;color:${C.redDim}">${hfFmtBig(budget.maint)}/mo</span>
+                    <div style="display:flex;justify-content:space-between;padding:3px 0">
+                        <span style="font-family:${mono};font-size:10px;color:${C.dim}">EST. MONTHLY MAINTENANCE</span>
+                        <span style="font-family:${mono};font-size:12px;color:${C.redDim}">${hfFmtBig(budget.maint)}/mo</span>
                     </div>
                 </div>
             </div>
 
-            <div style="padding:6px 8px;background:rgba(200,168,50,0.04);border:1px solid rgba(200,168,50,0.12);margin-bottom:8px;">
-                <div style="font-family:${mono};font-size:8px;color:${C.gold};margin-bottom:2px">WHAT HAPPENS NEXT</div>
-                <div style="font-size:9px;color:${C.dim};line-height:1.5">
+            <div style="padding:8px 10px;background:rgba(200,168,50,0.04);border:1px solid rgba(200,168,50,0.12);margin-bottom:10px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.gold};margin-bottom:3px">WHAT HAPPENS NEXT</div>
+                <div style="font-size:12px;color:${C.dim};line-height:1.5">
                     This project will appear as a Civil Engineering bid in the Open Contracts pool for all construction corporations with an HQ or Regional HQ in ${nationName}. The lowest qualified bidder wins the contract and begins construction.
                 </div>
             </div>
 
-            <div style="padding:6px 8px;background:rgba(139,154,107,0.04);border:1px solid rgba(139,154,107,0.12);">
+            <div style="padding:8px 10px;background:rgba(139,154,107,0.04);border:1px solid rgba(139,154,107,0.12);">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-family:${mono};font-size:9px;color:${C.accent}">EXPECTED REPUTATION GAIN</span>
-                    <span style="font-family:${mono};font-size:16px;font-weight:700;color:${repColor}">+${repGain}</span>
+                    <span style="font-family:${mono};font-size:12px;color:${C.accent}">EXPECTED REPUTATION GAIN</span>
+                    <span style="font-family:${mono};font-size:20px;font-weight:700;color:${repColor}">+${repGain}</span>
                 </div>
-                <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:2px">${_cpData.style} style · ${repGain === 5 ? 'Maximum prestige' : repGain >= 4 ? 'Impressive presence' : repGain >= 3 ? 'Strong statement' : repGain >= 2 ? 'Solid investment' : 'Functional addition'}</div>
+                <div style="font-family:${mono};font-size:9px;color:${C.dim};margin-top:3px">${_cpData.style} style · ${repGain === 5 ? 'Maximum prestige' : repGain >= 4 ? 'Impressive presence' : repGain >= 3 ? 'Strong statement' : repGain >= 2 ? 'Solid investment' : 'Functional addition'}</div>
             </div>
 
         </div>
-        <div style="padding:10px 16px;border-top:1px solid ${C.border};background:${C.card};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+        <div style="padding:12px 20px;border-top:1px solid ${C.border};background:${C.card};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
             <div>
-                <div style="font-family:${mono};font-size:7px;color:${C.dim}">TOTAL PROJECT</div>
-                <div style="font-family:${mono};font-size:14px;font-weight:700;color:${C.gold}">${hfFmtBig(budget.adjusted)}</div>
+                <div style="font-family:${mono};font-size:9px;color:${C.dim}">TOTAL PROJECT</div>
+                <div style="font-family:${mono};font-size:18px;font-weight:700;color:${C.gold}">${hfFmtBig(budget.adjusted)}</div>
             </div>
-            <div style="display:flex;gap:6px;">
-                <div onclick="cpClose()" style="padding:5px 16px;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:${C.dim};border:1px solid ${C.border};cursor:pointer">CANCEL</div>
-                <div onclick="cpSubmitFromModal()" style="padding:5px 16px;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:${C.gold};cursor:pointer;opacity:${_cpData.name.trim().length > 0 ? 1 : 0.4}">SUBMIT PROJECT</div>
+            <div style="display:flex;gap:8px;">
+                <div onclick="cpClose()" style="padding:7px 20px;font-family:${mono};font-size:12px;font-weight:700;letter-spacing:1px;color:${C.dim};border:1px solid ${C.border};cursor:pointer">CANCEL</div>
+                <div onclick="cpSubmitFromModal()" style="padding:7px 20px;font-family:${mono};font-size:12px;font-weight:700;letter-spacing:1px;color:#000;background:${C.gold};cursor:pointer;opacity:${_cpData.name.trim().length > 0 ? 1 : 0.4}">SUBMIT PROJECT</div>
             </div>
         </div>
     </div>`;
