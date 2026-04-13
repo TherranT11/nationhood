@@ -882,7 +882,7 @@ function renderActivePortfolio() {
                     html += `<div class="ap-detail-row"><span class="ap-detail-label">${r.label}</span><span class="ap-detail-value" style="color:${r.color || '#9e9a92'};">${r.value}</span></div>`;
                 }
                 if (d.status !== 'CURRENT') {
-                    html += '<div class="ap-actions"><div class="ap-action-btn green">RESTRUCTURE</div><div class="ap-action-btn orange">CALL LOAN</div><div class="ap-action-btn red">FORECLOSE</div></div>';
+                    html += `<div class="ap-actions"><div class="ap-action-btn green" onclick="apRestructure('${d.id}')">RESTRUCTURE</div><div class="ap-action-btn orange" onclick="apCallLoan('${d.id}')">CALL LOAN</div><div class="ap-action-btn red" onclick="apForeclose('${d.id}')">FORECLOSE</div></div>`;
                 }
             } else if (d.type === 'INSURE') {
                 const rows = [
@@ -896,7 +896,7 @@ function renderActivePortfolio() {
                 }
                 if (d.status === 'CLAIM' && d.claimAmount) {
                     html += `<div class="ap-claim-box"><div style="font-family:var(--font-mono);font-size:7px;color:#c55;letter-spacing:0.8px;margin-bottom:2px;">PENDING CLAIM</div><div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c55;">${fmtMoney(d.claimAmount)}</div></div>`;
-                    html += '<div class="ap-actions"><div class="ap-action-btn green">PAY IN FULL</div><div class="ap-action-btn orange">NEGOTIATE</div><div class="ap-action-btn red">DISPUTE</div></div>';
+                    html += `<div class="ap-actions"><div class="ap-action-btn green" onclick="apPayClaim('${d.id}')">PAY IN FULL</div><div class="ap-action-btn orange" onclick="apNegotiateClaim('${d.id}')">NEGOTIATE</div><div class="ap-action-btn red" onclick="apDisputeClaim('${d.id}')">DISPUTE</div></div>`;
                 }
             } else if (d.type === 'BOND') {
                 const rows = [
@@ -908,7 +908,7 @@ function renderActivePortfolio() {
                 for (const r of rows) {
                     html += `<div class="ap-detail-row"><span class="ap-detail-label">${r.label}</span><span class="ap-detail-value" style="color:${r.color || '#9e9a92'};">${r.value}</span></div>`;
                 }
-                html += '<div class="ap-actions"><div class="ap-action-btn purple">SELL POSITION</div><div class="ap-action-btn olive">HOLD</div></div>';
+                html += `<div class="ap-actions"><div class="ap-action-btn purple" onclick="apSellPosition('${d.id}')">SELL POSITION</div><div class="ap-action-btn olive">HOLD</div></div>`;
             }
 
             html += '</div>'; // close expanded
@@ -939,6 +939,225 @@ function renderActivePortfolio() {
 
 window.apSetFilter = apSetFilter;
 window.apToggle = apToggle;
+
+// ── Portfolio Action Handlers ──
+
+async function apRestructure(loanId) {
+    const newRate = prompt('RESTRUCTURE LOAN\n\nEnter new annual interest rate (1-20%):\n(This extends the term by 12 months and resets missed payments.)');
+    if (!newRate) return;
+    const rate = parseFloat(newRate);
+    if (isNaN(rate) || rate < 1 || rate > 20) { alert('Rate must be between 1% and 20%.'); return; }
+
+    const { data: loan } = await _supabase.from('finance_active_loans').select('*').eq('id', loanId).single();
+    if (!loan) { alert('Loan not found.'); return; }
+
+    const newTerm = loan.term_months + 12;
+    const monthlyRate = rate / 100 / 12;
+    const remaining = Number(loan.principal) - Number(loan.total_paid || 0) + Number(loan.total_interest_paid || 0);
+    const newPayment = monthlyRate > 0
+        ? Math.round(remaining * (monthlyRate * Math.pow(1 + monthlyRate, newTerm)) / (Math.pow(1 + monthlyRate, newTerm) - 1))
+        : Math.round(remaining / newTerm);
+
+    if (!confirm(`Restructure to ${rate}% over ${newTerm} months?\nNew monthly payment: ${fmtMoney(newPayment)}\nMissed payments reset to 0.`)) return;
+
+    const { error } = await _supabase.from('finance_active_loans').update({
+        interest_rate: rate,
+        term_months: newTerm,
+        monthly_payment: newPayment,
+        payments_missed: 0,
+        status: 'current',
+    }).eq('id', loanId);
+
+    if (error) { alert('Failed: ' + error.message); return; }
+    alert('Loan restructured.');
+    await loadActivePortfolio();
+    renderActivePortfolio();
+}
+
+async function apCallLoan(loanId) {
+    if (!confirm('CALL LOAN\n\nDemand immediate full repayment of remaining principal.\nThe borrower will have 3 ticks to pay or default.\n\nProceed?')) return;
+
+    const { error } = await _supabase.from('finance_active_loans').update({
+        status: 'delinquent',
+        payments_missed: 3, // one more miss → default with collateral recovery
+    }).eq('id', loanId);
+
+    if (error) { alert('Failed: ' + error.message); return; }
+    alert('Loan called. Borrower has 1 tick to pay before default.');
+    await loadActivePortfolio();
+    renderActivePortfolio();
+}
+
+async function apForeclose(loanId) {
+    if (!confirm('FORECLOSE\n\nImmediately default the loan and seize collateral.\nCollateral recovery: Equipment 60%, Property 75%, Unsecured 0%.\n\nThis cannot be undone. Proceed?')) return;
+
+    const { data: loan } = await _supabase.from('finance_active_loans').select('*').eq('id', loanId).single();
+    if (!loan) { alert('Loan not found.'); return; }
+
+    const remaining = Math.max(0, Number(loan.principal) - Number(loan.total_paid || 0));
+    let recovery = 0;
+    if (loan.collateral_type === 'equipment') recovery = 0.6;
+    else if (loan.collateral_type === 'property') recovery = 0.75;
+
+    const recoveredAmount = Math.round(remaining * recovery);
+
+    // Credit recovery to lender
+    if (recoveredAmount > 0) {
+        const { data: lender } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
+        await _supabase.from('factions').update({
+            corp_cash_reserves: Number(lender?.corp_cash_reserves || 0) + recoveredAmount
+        }).eq('id', faction.id);
+        faction.corp_cash_reserves = Number(lender?.corp_cash_reserves || 0) + recoveredAmount;
+    }
+
+    await _supabase.from('finance_active_loans').update({
+        status: 'defaulted',
+        completed_tick: shard?.current_tick || 0,
+    }).eq('id', loanId);
+
+    alert('Foreclosed. Recovered: ' + fmtMoney(recoveredAmount) + ' from ' + (loan.collateral_type || 'unsecured') + ' collateral.');
+    await loadActivePortfolio();
+    renderActivePortfolio();
+}
+
+async function apPayClaim(loanId) {
+    const { data: policy } = await _supabase.from('finance_active_loans').select('*').eq('id', loanId).single();
+    if (!policy) { alert('Policy not found.'); return; }
+
+    const claimAmount = Number(policy.principal || 0) - Number(policy.claims_paid || 0);
+    const deductible = Number(policy.deductible_pct || 0) / 100;
+    const payout = Math.round(claimAmount * (1 - deductible));
+
+    if (!confirm(`PAY CLAIM IN FULL\n\nClaim: ${fmtMoney(claimAmount)}\nDeductible: ${policy.deductible_pct}%\nPayout: ${fmtMoney(payout)}\n\nThis will be deducted from your cash reserves.`)) return;
+
+    const { data: lender } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
+    const cash = Number(lender?.corp_cash_reserves || 0);
+    if (cash < payout) { alert('Insufficient funds. You have ' + fmtMoney(cash) + '.'); return; }
+
+    // Deduct from insurer
+    await _supabase.from('factions').update({ corp_cash_reserves: cash - payout }).eq('id', faction.id);
+    faction.corp_cash_reserves = cash - payout;
+
+    // Credit to policyholder
+    const { data: holder } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', policy.borrower_faction_id).single();
+    if (holder) {
+        await _supabase.from('factions').update({
+            corp_cash_reserves: Number(holder.corp_cash_reserves || 0) + payout
+        }).eq('id', policy.borrower_faction_id);
+    }
+
+    // Update policy
+    await _supabase.from('finance_active_loans').update({
+        claims_paid: Number(policy.claims_paid || 0) + payout,
+        claims_count: (policy.claims_count || 0) + 1,
+    }).eq('id', loanId);
+
+    alert('Claim paid: ' + fmtMoney(payout));
+    await loadActivePortfolio();
+    renderActivePortfolio();
+}
+
+async function apNegotiateClaim(loanId) {
+    const pctStr = prompt('NEGOTIATE CLAIM\n\nOffer a percentage of the claim to settle (10-90%):\n(Policyholder may reject low offers.)');
+    if (!pctStr) return;
+    const pct = parseInt(pctStr);
+    if (isNaN(pct) || pct < 10 || pct > 90) { alert('Must be between 10% and 90%.'); return; }
+
+    // Simulate acceptance: higher offers more likely accepted
+    const acceptChance = pct / 100;
+    const accepted = Math.random() < acceptChance;
+
+    if (!accepted) {
+        alert('Offer rejected. The policyholder wants a higher settlement.');
+        return;
+    }
+
+    const { data: policy } = await _supabase.from('finance_active_loans').select('*').eq('id', loanId).single();
+    if (!policy) return;
+
+    const fullClaim = Number(policy.principal || 0) - Number(policy.claims_paid || 0);
+    const payout = Math.round(fullClaim * pct / 100);
+
+    const { data: lender } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
+    const cash = Number(lender?.corp_cash_reserves || 0);
+    if (cash < payout) { alert('Insufficient funds.'); return; }
+
+    await _supabase.from('factions').update({ corp_cash_reserves: cash - payout }).eq('id', faction.id);
+    faction.corp_cash_reserves = cash - payout;
+
+    const { data: holder } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', policy.borrower_faction_id).single();
+    if (holder) {
+        await _supabase.from('factions').update({
+            corp_cash_reserves: Number(holder.corp_cash_reserves || 0) + payout
+        }).eq('id', policy.borrower_faction_id);
+    }
+
+    await _supabase.from('finance_active_loans').update({
+        claims_paid: Number(policy.claims_paid || 0) + payout,
+        claims_count: (policy.claims_count || 0) + 1,
+        status: 'repaid', // settled
+    }).eq('id', loanId);
+
+    alert('Claim settled at ' + pct + '% (' + fmtMoney(payout) + '). Policy closed.');
+    await loadActivePortfolio();
+    renderActivePortfolio();
+}
+
+async function apDisputeClaim(loanId) {
+    if (!confirm('DISPUTE CLAIM\n\nChallenge the validity of this claim.\nThis freezes the claim for 4 ticks while investigated.\nIf investigation finds the claim valid, you pay in full + 10% penalty.\nIf investigation finds fraud, claim is dismissed.\n\nDispute?')) return;
+
+    // Simple resolution: 70% chance claim is valid, 30% fraud
+    // Resolution happens immediately for now (future: delay 4 ticks)
+    const isValid = Math.random() < 0.7;
+
+    if (isValid) {
+        alert('Investigation complete: claim is VALID.\nYou must now pay the full claim.');
+        // Pay in full happens on next portfolio action
+    } else {
+        await _supabase.from('finance_active_loans').update({
+            status: 'repaid', // dismissed
+            claims_count: (0), // fraud claim not counted
+        }).eq('id', loanId);
+        alert('Investigation complete: FRAUDULENT CLAIM detected.\nClaim dismissed. Policy remains active.');
+    }
+    await loadActivePortfolio();
+    renderActivePortfolio();
+}
+
+async function apSellPosition(loanId) {
+    const { data: position } = await _supabase.from('finance_active_loans').select('*').eq('id', loanId).single();
+    if (!position) { alert('Position not found.'); return; }
+
+    const remaining = Number(position.principal || 0) - Number(position.total_paid || 0);
+    const marketValue = Math.round(remaining * 0.85); // 15% discount for secondary market
+
+    if (!confirm(`SELL POSITION\n\nRemaining value: ${fmtMoney(remaining)}\nMarket price (85%): ${fmtMoney(marketValue)}\n\nYou receive ${fmtMoney(marketValue)} immediately.\nThe position is removed from your portfolio.`)) return;
+
+    // Credit sale proceeds
+    const { data: lender } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
+    await _supabase.from('factions').update({
+        corp_cash_reserves: Number(lender?.corp_cash_reserves || 0) + marketValue
+    }).eq('id', faction.id);
+    faction.corp_cash_reserves = Number(lender?.corp_cash_reserves || 0) + marketValue;
+
+    // Mark as sold
+    await _supabase.from('finance_active_loans').update({
+        status: 'repaid',
+        completed_tick: shard?.current_tick || 0,
+    }).eq('id', loanId);
+
+    alert('Position sold for ' + fmtMoney(marketValue) + '.');
+    await loadActivePortfolio();
+    renderActivePortfolio();
+}
+
+window.apRestructure = apRestructure;
+window.apCallLoan = apCallLoan;
+window.apForeclose = apForeclose;
+window.apPayClaim = apPayClaim;
+window.apNegotiateClaim = apNegotiateClaim;
+window.apDisputeClaim = apDisputeClaim;
+window.apSellPosition = apSellPosition;
 
 // ==================== RESERVES & RISK ====================
 
