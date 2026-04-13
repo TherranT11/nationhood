@@ -903,6 +903,7 @@ function openLawsuitModal(root) {
                 alert('An error occurred. Please try again.');
             } finally {
                 _lawsuitSubmitting = false;
+                if (btn) { btn.disabled = false; btn.textContent = 'File Lawsuit'; }
             }
         });
     }
