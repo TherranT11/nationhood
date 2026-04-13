@@ -133,6 +133,9 @@
 .po-caucus-wing { font-family: var(--font-mono); font-size: 7px; }
 .po-caucus-seats { font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--text-bright); }
 
+/* ── Activity feed ── */
+.po-col-center .po-card { min-height: 0; }
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
     .po-columns { flex-direction: column; }

@@ -260,7 +260,11 @@ function renderPartyOverview(container) {
                 ${renderIdeologySection(o, faction, partyColor, container)}
                 ${renderCaucuses(o)}
             </div>
-            <div class="po-col-center" id="po-center-col"></div>
+            <div class="po-col-center" id="po-center-col">
+                ${renderMomentumCard(o, momentum)}
+                ${renderActivityFeed(o)}
+                ${renderQuickInfoCards()}
+            </div>
             <div class="po-col-right" id="po-right-col"></div>
         </div>
     </div>`;
@@ -474,5 +478,133 @@ function renderCaucuses(o) {
             <span class="po-card-subtitle">${o.caucuses.length} active \u00B7 ${totalSeats} seats</span>
         </div>
         ${rowsHtml}
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════
+// CENTER COLUMN
+// ═══════════════════════════════════════════════════
+
+function renderMomentumCard(o, momentum) {
+    const decayPct = 8;
+    const decayPerTick = Math.round(momentum * decayPct / 100 * 10) / 10;
+    const barPct = Math.min(100, Math.max(0, momentum));
+    const momColor = momentum >= 60 ? 'var(--green)' : momentum >= 30 ? 'var(--orange)' : 'var(--red)';
+
+    return `<div class="po-card">
+        <div class="po-card-header">
+            <span class="po-card-title">MOMENTUM</span>
+            <span style="font-family:var(--font-mono);font-size:7px;color:var(--red);">losing ${decayPerTick}/tick</span>
+        </div>
+        <div style="padding:10px 12px;">
+            <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:6px;">
+                <span style="font-family:var(--font-mono);font-size:28px;font-weight:700;color:${momColor};">${momentum}</span>
+                <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">/ 100</span>
+            </div>
+            <div style="width:100%;height:4px;background:var(--border-main);">
+                <div style="height:100%;width:${barPct}%;background:${momColor};"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:4px;">
+                <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">Decays ${decayPct}%/tick</span>
+                <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-secondary);">30% of election outcome</span>
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderActivityFeed(o) {
+    const actions = o.recentActivity || [];
+    const currentTick = _state.shard?.current_tick || 0;
+
+    if (actions.length === 0) {
+        return `<div class="po-card" style="flex:1;">
+            <div class="po-card-header">
+                <span class="po-card-title">RECENT ACTIVITY</span>
+            </div>
+            <div style="padding:24px 12px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No recent actions.</div>
+        </div>`;
+    }
+
+    const ACTION_LABELS = {
+        rally: 'Rally',
+        press_conference: 'Press Conference',
+        attack: 'Attack Ad',
+        issue_statement: 'Statement',
+        ideological_pivot: 'Ideology Shift',
+        take_stance: 'Took Stance',
+        poll_now: 'Polled',
+        endorse: 'Endorsement',
+        lobby: 'Lobby',
+    };
+
+    const rowsHtml = actions.map(a => {
+        const ticksAgo = currentTick - (a.tick_performed || 0);
+        const agoLabel = ticksAgo === 0 ? '0t' : ticksAgo + 't';
+        const result = a.result || {};
+        const momDelta = result.momentumDelta || result.momentum_delta
+            || (result.effects || []).reduce((s, e) => s + (e.stat === 'Momentum' ? e.value : 0), 0)
+            || 0;
+        const momSign = momDelta > 0 ? '+' : '';
+        const momColor = momDelta > 0 ? 'var(--green)' : momDelta < 0 ? 'var(--red)' : 'var(--text-dim)';
+        const label = ACTION_LABELS[a.action_type] || a.action_type?.replace(/_/g, ' ') || '?';
+
+        // Build description from result
+        let desc = label;
+        if (a.action_type === 'rally') {
+            desc = 'Rally: ' + (result.outcomeName || 'Unknown') + (momDelta ? ' (' + momSign + momDelta + ')' : '');
+        } else if (a.action_type === 'press_conference') {
+            desc = 'Press Conference (' + momSign + momDelta + ')';
+        } else if (a.action_type === 'attack') {
+            desc = 'Attack on ' + (result.targetName || 'rival');
+        } else if (a.action_type === 'issue_statement') {
+            desc = 'Issued statement' + (momDelta ? ' (' + momSign + momDelta + ')' : '');
+        } else if (a.action_type === 'take_stance') {
+            desc = 'Took stance on ' + (result.issueLabel || 'issue');
+        } else if (a.action_type === 'ideological_pivot') {
+            desc = 'Ideology shift: ' + (result.targetAxis || '');
+        } else if (a.action_type === 'poll_now') {
+            desc = 'Polled (margin: ' + (result.pollMargin || '?') + ')';
+        }
+
+        return `<div style="padding:5px 12px;border-bottom:1px solid rgba(200,196,184,0.03);display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:9px;color:var(--text-secondary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px;">${esc(desc)}</span>
+            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${momColor};">${momDelta !== 0 ? momSign + momDelta : '\u2014'}</span>
+                <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);width:20px;text-align:right;">${agoLabel}</span>
+            </div>
+        </div>`;
+    }).join('');
+
+    return `<div class="po-card" style="flex:1;">
+        <div class="po-card-header">
+            <span class="po-card-title">RECENT ACTIVITY</span>
+        </div>
+        <div style="max-height:380px;overflow-y:auto;">${rowsHtml}</div>
+    </div>`;
+}
+
+function renderQuickInfoCards() {
+    return `<div style="display:flex;gap:6px;">
+        <div class="po-card" style="flex:1;padding:8px 10px;">
+            <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);letter-spacing:0.06em;text-transform:uppercase;">LEGISLATION</div>
+            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);margin-top:3px;line-height:1.5;">
+                <span style="color:var(--text-bright);font-weight:700;">Sponsoring a bill:</span> +2 momentum
+            </div>
+            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);margin-top:1px;line-height:1.5;">
+                <span style="color:var(--green);font-weight:700;">Bill passes:</span> YES voters +2 per article
+            </div>
+            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);margin-top:1px;line-height:1.5;">
+                <span style="color:var(--red);font-weight:700;">Bill fails:</span> YES lose -2, NO gain +2
+            </div>
+        </div>
+        <div class="po-card" style="flex:1;padding:8px 10px;">
+            <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);letter-spacing:0.06em;text-transform:uppercase;">CAMPAIGN ACTIONS</div>
+            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);margin-top:3px;line-height:1.5;">
+                <span style="color:var(--text-bright);font-weight:700;">Rally</span> (1 AP) \u2014 Moderate, reliable momentum gain.
+            </div>
+            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);margin-top:1px;line-height:1.5;">
+                <span style="color:var(--text-bright);font-weight:700;">Press Conf.</span> (1 AP) \u2014 Reactive narrative control.
+            </div>
+        </div>
     </div>`;
 }
