@@ -402,13 +402,24 @@ let dfSelected = -1;
 
 async function loadDealFlow() {
     if (!faction || !shard) return;
-    // Load all open requests across the shard (loans + bonds)
+    // Load all open requests across the shard (loans + bonds + insurance)
     const { data: requests, error: reqErr } = await _supabase
         .from('finance_loan_requests')
-        .select('*, requesting_faction:factions!requesting_faction_id(id, faction_name, abbreviation, corp_ticker, corp_subsector, nation_id), issuer_nation:nations!issuer_nation_id(id, name, stability, credit, debt, gdp, gdp_growth, corruption)')
+        .select('*, requesting_faction:factions!requesting_faction_id(id, faction_name, abbreviation, corp_ticker, corp_subsector, nation_id, corp_cash_reserves, corp_reputation), issuer_nation:nations!issuer_nation_id(id, name, stability, credit, debt, gdp, gdp_growth, corruption)')
         .eq('status', 'open')
         .order('created_tick', { ascending: false });
     if (reqErr) console.error('[DealFlow] Request query error:', reqErr.message);
+
+    // Fetch nation stats for borrower corps (stability, credit, gdp for risk assessment)
+    const borrowerNationIds = [...new Set((requests || []).filter(r => r.requesting_faction?.nation_id).map(r => r.requesting_faction.nation_id))];
+    let borrowerNations = {};
+    if (borrowerNationIds.length > 0) {
+        const { data: bNations } = await _supabase
+            .from('nations')
+            .select('id, name, stability, credit, gdp, gdp_growth, corruption, debt')
+            .in('id', borrowerNationIds);
+        for (const n of (bNations || [])) borrowerNations[n.id] = n;
+    }
 
     // Check which requests this corp already made an offer on
     const { data: myOffers } = await _supabase
@@ -459,19 +470,23 @@ async function loadDealFlow() {
             };
         }
         if (req.request_type === 'insurance') {
+            const insRep = Number(req.requesting_faction?.corp_reputation ?? 50);
+            const insStability = Number(borrowerNations[req.requesting_faction?.nation_id]?.stability ?? 50);
             return {
                 id: req.id,
                 type: 'INSURE',
                 applicant: req.requesting_faction?.faction_name || 'Unknown',
                 abbr: req.requesting_faction?.abbreviation || req.requesting_faction?.corp_ticker || '??',
                 entity: 'CORP',
-                nation: 'N/A',
+                nation: borrowerNations[req.requesting_faction?.nation_id]?.name || 'N/A',
+                nation_id: req.requesting_faction?.nation_id,
                 amount: req.amount || 0,
                 term: req.term_months || 0,
                 purpose: req.purpose || 'Construction Insurance',
-                reputation: 50,
+                reputation: insRep,
                 projectValue: req.amount || 0,
-                risk: 'MODERATE',
+                stability: insStability,
+                risk: insRep >= 60 && insStability >= 50 ? 'LOW' : insRep >= 35 ? 'MODERATE' : 'HIGH',
                 isNew: !offeredSet.has(req.id),
                 ticksLeft: (req.expires_tick || 0) - (shard?.current_tick || 0),
                 requestId: req.id,
@@ -487,13 +502,24 @@ async function loadDealFlow() {
             applicant: req.requesting_faction?.faction_name || 'Unknown',
             abbr: req.requesting_faction?.abbreviation || req.requesting_faction?.corp_ticker || '??',
             entity: 'CORP',
-            nation: 'N/A',
+            nation: borrowerNations[req.requesting_faction?.nation_id]?.name || 'N/A',
+            nation_id: req.requesting_faction?.nation_id,
             amount: req.amount,
             term: req.term_months,
             purpose: req.purpose || '',
-            reputation: 50,
-            creditRating: 50,
-            risk: 'MODERATE',
+            reputation: Number(req.requesting_faction?.corp_reputation ?? 50),
+            revenue: Number(req.requesting_faction?.corp_cash_reserves ?? 0),
+            debt: 0, // TODO: track corp debt separately if needed
+            creditRating: Number(borrowerNations[req.requesting_faction?.nation_id]?.credit ?? 50),
+            stability: Number(borrowerNations[req.requesting_faction?.nation_id]?.stability ?? 50),
+            risk: (() => {
+                const cr = Number(borrowerNations[req.requesting_faction?.nation_id]?.credit ?? 50);
+                const rep = Number(req.requesting_faction?.corp_reputation ?? 50);
+                if (cr >= 60 && rep >= 60) return 'LOW';
+                if (cr >= 35 && rep >= 35) return 'MODERATE';
+                if (cr >= 20 || rep >= 20) return 'ELEVATED';
+                return 'HIGH';
+            })(),
             isNew: !offeredSet.has(req.id),
             ticksLeft: (req.expires_tick || 0) - (shard?.current_tick || 0),
             collateral: req.collateral_type || 'unsecured',
