@@ -84,7 +84,7 @@ function hasIdeologyAccess(ideologyTag, station) {
 
 // Check if the current faction can create a personality on this station
 function canCreatePersonality(station) {
-    const myCount = _personalities.filter(p => p.faction_id === _state.faction?.id).length;
+    const myCount = _personalities.filter(p => p.faction_id === _state.faction?.id && p.station_id === station.id).length;
     if (myCount >= 3) return { allowed: false, reason: 'Maximum 3 personalities per party per station.' };
     if (station.station_type === 'political' && !hasIdeologyAccess(station.ideology, station)) {
         const tag = IDEOLOGY_TAGS.find(i => i.tag === station.ideology);
@@ -261,6 +261,9 @@ async function selectStation(stationId) {
         factionId ? _supabase.from('broadcast_good_listens').select('broadcast_id').eq('faction_id', factionId) : { data: [] },
     ]);
 
+    if (persResult.error) console.error('[Radio] Failed to load personalities:', persResult.error.message);
+    if (bcResult.error) console.error('[Radio] Failed to load broadcasts:', bcResult.error.message);
+
     _personalities = persResult.data || [];
     _broadcasts = bcResult.data || [];
     _myGoodListens = new Set((glResult.data || []).map(r => r.broadcast_id));
@@ -285,11 +288,9 @@ function renderSidebar(station) {
     if (!el) return;
 
     const color = TYPE_COLORS[station.station_type] || 'var(--text-dim)';
-    const myPersonalities = _personalities.filter(p => p.faction_id === _state.faction?.id);
-    const allPersonalities = _personalities;
 
-    const persHtml = allPersonalities.length > 0
-        ? allPersonalities.map(p => `
+    const persHtml = _personalities.length > 0
+        ? _personalities.map(p => `
             <div class="radio-personality-row">
                 <div class="radio-personality-avatar" style="color:${color};">${initials(p.name)}</div>
                 <div>
@@ -321,7 +322,7 @@ function renderSidebar(station) {
         </div>
         <div class="radio-sidebar-row">
             <span class="radio-sidebar-label">Personalities</span>
-            <span class="radio-sidebar-value">${allPersonalities.length}</span>
+            <span class="radio-sidebar-value">${_personalities.length}</span>
         </div>
 
         <div class="radio-sidebar-section">
@@ -341,6 +342,7 @@ function renderCreatePersonalityButton(station) {
         return `<div style="margin-top:8px;padding:5px 8px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);border:1px solid var(--border-main);text-align:center;opacity:0.6;" title="${esc(check.reason)}">${esc(check.reason)}</div>`;
     }
     return `<div class="radio-sidebar-cta" id="radio-create-pers-btn">Create Personality</div>`;
+}
 
 // ════════════════════════ FEED ════════════════════════
 
@@ -440,7 +442,7 @@ async function toggleGoodListen(broadcastId) {
         const tick = _state.shard?.current_tick || 0;
         const { data, error } = await _supabase.rpc('toggle_broadcast_good_listen', {
             p_broadcast_id: broadcastId,
-            p_faction_id: _state.faction.id,
+            p_faction_id: _state.faction?.id,
             p_tick: tick,
         });
 
@@ -608,7 +610,7 @@ function openBroadcastModal(station) {
             const { data, error } = await _supabase.from('radio_broadcasts').insert({
                 station_id: station.id,
                 personality_id: personalityId,
-                faction_id: _state.faction.id,
+                faction_id: _state.faction?.id,
                 subject: subject,
                 body: body,
                 tags: [...selectedTags],
@@ -701,7 +703,7 @@ function openPersonalityModal(station) {
         try {
             const { data, error } = await _supabase.from('radio_personalities').insert({
                 station_id: station.id,
-                faction_id: _state.faction.id,
+                faction_id: _state.faction?.id,
                 name: name,
                 title: title || null,
             }).select('*').single();
@@ -936,8 +938,8 @@ async function submitCreateStation() {
 
     try {
         const { data, error } = await _supabase.from('radio_stations').insert({
-            nation_id: _state.nation.id,
-            creator_faction_id: _state.faction.id,
+            nation_id: _state.nation?.id,
+            creator_faction_id: _state.faction?.id,
             callsign: callsign.trim().toUpperCase(),
             name: name.trim(),
             frequency: frequency + ' FM',

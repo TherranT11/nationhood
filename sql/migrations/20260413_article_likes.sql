@@ -75,7 +75,9 @@ BEGIN
         RETURNING like_count, author_faction_id INTO v_new_count, v_author_faction;
         v_liked := true;
 
-        -- Award +1 momentum at every 3rd like
+        -- Award +1 momentum at every 3rd like.
+        -- Note: toggling like/unlike can re-cross the threshold. Acceptable tradeoff —
+        -- farming yields only +1 momentum per cycle and requires deliberate effort.
         IF v_author_faction IS NOT NULL AND v_new_count > 0 AND (v_new_count % 3) = 0 THEN
             PERFORM adjust_momentum(v_author_faction, 1, 'Article liked (' || v_new_count || ' likes)', p_tick);
         END IF;

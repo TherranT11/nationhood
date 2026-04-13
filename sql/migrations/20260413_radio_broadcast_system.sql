@@ -193,7 +193,8 @@ BEGIN
         RETURNING good_listen_count, faction_id INTO v_new_count, v_author_faction;
         v_liked := true;
 
-        -- Award +1 momentum at every 3rd good listen
+        -- Award +1 momentum at every 3rd good listen.
+        -- Note: toggling can re-cross the threshold (same as article likes).
         IF v_author_faction IS NOT NULL AND v_new_count > 0 AND (v_new_count % 3) = 0 THEN
             PERFORM adjust_momentum(
                 v_author_faction,
