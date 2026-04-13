@@ -4011,6 +4011,7 @@ var _industriesShippingClaims = [];
 var _industriesShippingVessels = [];
 var _industriesShipMarket = [];
 var _industriesVesselOrders = [];
+var _industriesShippingRoutes = [];
 
 async function loadIndustriesData(nationId) {
     var [corpsRes, contractsRes, materialsRes, equipmentRes, deliveriesRes, propsRes, loansRes] = await Promise.all([
@@ -4042,16 +4043,18 @@ async function loadIndustriesData(nationId) {
             .eq('nation_id', nationId)
     ]);
     // Load shipping data
-    var [shippingClaimsRes, shippingVesselsRes, shipMarketRes, vesselOrdersRes] = await Promise.all([
+    var [shippingClaimsRes, shippingVesselsRes, shipMarketRes, vesselOrdersRes, shippingRoutesRes] = await Promise.all([
         _supabase.from('shipping_claims').select('id, faction_id, revenue_per_transit, total_revenue, transits_completed, status').eq('nation_id', nationId),
         _supabase.from('corp_vessels').select('id, faction_id, vessel_class, status, condition, base_maintenance').eq('nation_id', nationId),
         _supabase.from('ship_market_listings').select('id, vessel_name, vessel_class, asking_price, condition, seller_type, seller_name, status, purchased_at_tick, listed_at_tick').eq('nation_id', nationId).order('listed_at_tick', { ascending: false }).limit(20),
         _supabase.from('vessel_orders').select('id, faction_id, vessel_name, vessel_class, total_cost, deposit_paid, balance_due, shipyard_nation, delivery_tick, build_ticks, status, ordered_at_tick').eq('shipyard_nation_id', nationId).order('ordered_at_tick', { ascending: false }).limit(20),
+        _supabase.from('shipping_routes').select('id, origin_nation_id, destination_nation_id, origin_nation, destination_nation, trade_volume, estimated_revenue, shipping_subsector, transit_ticks, status, competition_count').or('origin_nation_id.eq.' + nationId + ',destination_nation_id.eq.' + nationId).eq('status', 'active'),
     ]);
     _industriesShippingClaims = shippingClaimsRes.data || [];
     _industriesShippingVessels = shippingVesselsRes.data || [];
     _industriesShipMarket = shipMarketRes.data || [];
     _industriesVesselOrders = vesselOrdersRes.data || [];
+    _industriesShippingRoutes = shippingRoutesRes.data || [];
 
     var allCorps = corpsRes.data || [];
     _industriesCorps = allCorps.filter(function(c) { return c.nation_id === nationId; });
@@ -4660,8 +4663,100 @@ function renderIndustriesTab(nation) {
 
     h += '</div>';
 
-    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid #c86a4a;border-radius:8px;padding:16px;display:flex;align-items:center;justify-content:center;">';
-    h += '<div style="text-align:center;color:var(--dtext-3);font-size:0.75rem;">Freight Moved<br><span style="font-size:0.6rem;">Phase 3</span></div>';
+    // ── FREIGHT MOVED ──
+    var routes = _industriesShippingRoutes;
+    var totalRoutes = routes.length;
+    var totalVolume = routes.reduce(function(s, r) { return s + (Number(r.trade_volume) || 0); }, 0);
+    var totalFreightRev = routes.reduce(function(s, r) { return s + (Number(r.estimated_revenue) || 0); }, 0);
+    var totalTransits = _industriesShippingClaims.reduce(function(s, cl) { return s + (cl.transits_completed || 0); }, 0);
+
+    // Breakdown by subsector
+    var subsectorMap = {};
+    routes.forEach(function(r) {
+        var key = r.shipping_subsector || 'unknown';
+        if (!subsectorMap[key]) subsectorMap[key] = { routes: 0, volume: 0, revenue: 0 };
+        subsectorMap[key].routes++;
+        subsectorMap[key].volume += Number(r.trade_volume) || 0;
+        subsectorMap[key].revenue += Number(r.estimated_revenue) || 0;
+    });
+
+    // Top trade partners (other nation on each route)
+    var partnerMap = {};
+    routes.forEach(function(r) {
+        var partner = r.origin_nation_id === nation.id ? (r.destination_nation || '?') : (r.origin_nation || '?');
+        if (!partnerMap[partner]) partnerMap[partner] = { routes: 0, volume: 0 };
+        partnerMap[partner].routes++;
+        partnerMap[partner].volume += Number(r.trade_volume) || 0;
+    });
+    var topPartners = Object.entries(partnerMap).sort(function(a, b) { return b[1].volume - a[1].volume; }).slice(0, 5);
+
+    var freightColor = '#c86a4a';
+    var subsectorLabels = { bulk_cargo: 'Bulk Cargo', container_freight: 'Container', specialized_transport: 'Specialized' };
+    var subsectorColors = { bulk_cargo: '#c8a832', container_freight: '#5a8aaa', specialized_transport: '#c86a4a' };
+
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid ' + freightColor + ';border-radius:8px;padding:16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:' + freightColor + ';"></div><span style="font-size:0.85rem;font-weight:bold;color:' + freightColor + ';letter-spacing:1px;">FREIGHT MOVED</span></div>';
+    h += badge;
+    h += '</div>';
+
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Active Routes</div><div style="font-size:1.15rem;font-weight:bold;color:' + freightColor + ';">' + totalRoutes + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Trade Volume</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(totalVolume) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Transits Done</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + totalTransits + '</div></div>';
+    h += '</div>';
+
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Freight Revenue</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(totalFreightRev) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Avg/Route</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + (totalRoutes > 0 ? fmtIndustryMoney(Math.round(totalFreightRev / totalRoutes)) : '$0') + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Competition</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + routes.reduce(function(s, r) { return s + (r.competition_count || 0); }, 0) + ' claims</div></div>';
+    h += '</div>';
+
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Total cargo volume passing through this nation\'s ports — imports, exports, and transit freight by shipping subsector.</div>';
+
+    // Subsector breakdown
+    h += secHeader('By Subsector', freightColor);
+    var subsectorKeys = Object.keys(subsectorMap).sort(function(a, b) { return subsectorMap[b].volume - subsectorMap[a].volume; });
+    if (subsectorKeys.length === 0) {
+        h += '<div style="color:var(--dtext-3);font-size:0.7rem;padding:8px 0;font-style:italic;">No active shipping routes through this nation.</div>';
+    } else {
+        var maxSubVol = subsectorKeys.length > 0 ? subsectorMap[subsectorKeys[0]].volume : 1;
+        for (var ski = 0; ski < subsectorKeys.length; ski++) {
+            var sk = subsectorKeys[ski];
+            var sd = subsectorMap[sk];
+            var sLabel = subsectorLabels[sk] || sk;
+            var sColor = subsectorColors[sk] || freightColor;
+            var sBarW = maxSubVol > 0 ? Math.max(2, (sd.volume / maxSubVol) * 100) : 0;
+            h += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
+            h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">';
+            h += '<span style="font-size:0.8rem;font-weight:700;color:' + sColor + ';">' + escapeHtml(sLabel) + '</span>';
+            h += '<span style="font-size:0.75rem;font-weight:700;color:var(--dgreen);">' + fmtIndustryMoney(sd.volume) + ' · ' + sd.routes + ' route' + (sd.routes !== 1 ? 's' : '') + '</span>';
+            h += '</div>';
+            h += '<div style="height:4px;background:rgba(255,255,255,0.04);border-radius:2px;overflow:hidden;"><div style="height:100%;width:' + sBarW + '%;background:' + sColor + ';border-radius:2px;opacity:0.7;"></div></div>';
+            h += '</div>';
+        }
+    }
+
+    // Top trade partners
+    h += secHeader('Top Trade Partners', freightColor);
+    if (topPartners.length === 0) {
+        h += '<div style="color:var(--dtext-3);font-size:0.7rem;padding:8px 0;font-style:italic;">No trade partners via shipping.</div>';
+    } else {
+        var maxPartnerVol = topPartners.length > 0 ? topPartners[0][1].volume : 1;
+        for (var pi = 0; pi < topPartners.length; pi++) {
+            var pName = topPartners[pi][0];
+            var pData = topPartners[pi][1];
+            var pBarW = maxPartnerVol > 0 ? Math.max(2, (pData.volume / maxPartnerVol) * 100) : 0;
+            h += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
+            h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">';
+            h += '<span style="font-size:0.8rem;font-weight:700;color:var(--dtext-1);">' + escapeHtml(pName) + '</span>';
+            h += '<span style="font-size:0.7rem;color:var(--dtext-3);">' + pData.routes + ' route' + (pData.routes !== 1 ? 's' : '') + ' · ' + fmtIndustryMoney(pData.volume) + '</span>';
+            h += '</div>';
+            h += '<div style="height:4px;background:rgba(255,255,255,0.04);border-radius:2px;overflow:hidden;"><div style="height:100%;width:' + pBarW + '%;background:' + freightColor + ';border-radius:2px;opacity:0.7;"></div></div>';
+            h += '</div>';
+        }
+    }
+
     h += '</div>';
 
     h += '</div>'; // close grid
