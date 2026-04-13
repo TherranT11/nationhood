@@ -60,6 +60,7 @@ const MODULE_FILES = [
     'platforms.js',
     'platform-promises.js',
     'lawsuits.js',
+    'subsidiary-services.js',
 ];
 
 // Read and process each module
