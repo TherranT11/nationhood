@@ -2210,10 +2210,30 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
         const totalExecAnnual = (executives || []).reduce((sum, ex) => sum + (Number(ex.salary_per_year) || 0), 0);
         const monthlyExecSalaries = Math.round(totalExecAnnual / 12);
 
-        // Scale market revenue by workforce utilization — 0 employees = 0 revenue
-        const WORKFORCE_TARGET = 3000; // default corp workforce capacity
-        const workforceUtil = Math.min(1, totalEmployees / WORKFORCE_TARGET);
-        const corpMonthlyRev = Math.round(monthlyMarketRev * workforceUtil);
+        // Scale market revenue by workforce utilization.
+        // Properties provide capacity (condition-scaled). Base HQ = 500.
+        const { data: corpProps } = await supabase.from('corp_properties')
+            .select('capacity, condition, refurbish_until_tick')
+            .eq('faction_id', corp.id).eq('is_active', true);
+        const BASE_HQ_CAPACITY = 500;
+        let propertyCapacity = BASE_HQ_CAPACITY;
+        let propertyRevenueBonus = 0;
+        if (corpProps) {
+            for (const p of corpProps) {
+                if (p.refurbish_until_tick && currentTick < p.refurbish_until_tick) continue; // offline
+                const cap = Number(p.capacity || 0);
+                const cond = Number(p.condition || 0) / 100;
+                propertyCapacity += Math.floor(cap * cond);
+                // Good-condition buildings generate bonus revenue: $50k/month per 1000 cap at 100% condition
+                // Break-even ~60-80%, losing money below 60% (maintenance exceeds contribution)
+                if (cond >= 0.6) {
+                    propertyRevenueBonus += Math.round(cap * cond * 50); // $50 per seat per month
+                }
+            }
+        }
+        const workforceTarget = Math.max(500, propertyCapacity);
+        const workforceUtil = Math.min(1, totalEmployees / workforceTarget);
+        const corpMonthlyRev = Math.round(monthlyMarketRev * workforceUtil) + propertyRevenueBonus;
 
         // Fixed overhead: minimum operating costs even with 0 employees
         // Property maintenance, admin, insurance, utilities
