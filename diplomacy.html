@@ -10036,14 +10036,16 @@ async function renderRelationDetail(nationId) {
             };
 
             if (tFlows && tFlows.length > 0) {
-                const surplusSectors = [...tFlows]
+                // Exclude parent food_agriculture — subsectors (grains, livestock, etc.) cover it
+                const filteredFlows = tFlows.filter(f => f.sector !== 'food_agriculture');
+                const surplusSectors = [...filteredFlows]
                     .filter(f => (f.export_capacity || 0) > 0)
                     .sort((a, b) => (b.export_capacity || 0) - (a.export_capacity || 0))
-                    .slice(0, 4);
-                const deficitSectors = [...tFlows]
+                    .slice(0, 8);
+                const deficitSectors = [...filteredFlows]
                     .filter(f => (f.import_demand || 0) > 0)
                     .sort((a, b) => (b.import_demand || 0) - (a.import_demand || 0))
-                    .slice(0, 4);
+                    .slice(0, 8);
 
                 if (surplusSectors.length > 0 || deficitSectors.length > 0) {
                     // Max values for bar scaling
