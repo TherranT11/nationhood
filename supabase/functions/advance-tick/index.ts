@@ -2761,6 +2761,134 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     return { processed: nationCount, totalVolume: totalGlobalVolume };
 }
 
+// ════════════════════════════════════════════════════════════════════════════════
+//  MIGRATION FLOWS — Bilateral people movement between nations
+// ════════════════════════════════════════════════════════════════════════════════
+
+async function processMigrationFlows(supabase, nationList, currentTick) {
+    if (!nationList || nationList.length < 2) return { processed: 0, totalFlows: 0 };
+
+    var ns = function(nation, key) { return Number(nation[key] ?? 50); };
+
+    // Push score: how bad is it here? (higher = more people want to leave)
+    function calcPushScore(n) {
+        return (
+            ns(n, 'civil_unrest') * 0.25 +
+            (100 - ns(n, 'stability')) * 0.20 +
+            ns(n, 'corruption') * 0.15 +
+            ns(n, 'unemployment') * 0.15 +
+            (100 - ns(n, 'freedom_index')) * 0.10 +
+            ns(n, 'inflation') * 0.10 +
+            ns(n, 'political_violence') * 0.05
+        );
+    }
+
+    // Pull score: how attractive is this destination? (higher = more people want to come)
+    function calcPullScore(n) {
+        return (
+            ns(n, 'gdp_growth') * 0.20 +
+            ns(n, 'standard_of_living') * 0.20 +
+            ns(n, 'stability') * 0.15 +
+            ns(n, 'foreign_investment') * 0.10 +
+            ns(n, 'freedom_index') * 0.10 +
+            ns(n, 'healthcare_quality') * 0.10 +
+            ns(n, 'higher_education') * 0.10 +
+            ns(n, 'urbanization') * 0.05
+        );
+    }
+
+    // Top 3 reasons for this flow (for UI display)
+    function getReasons(origin, dest) {
+        var factors = [
+            { factor: 'Economic opportunity', direction: 'pull', score: ns(dest, 'gdp_growth') - ns(origin, 'gdp_growth') },
+            { factor: 'Quality of life', direction: 'pull', score: ns(dest, 'standard_of_living') - ns(origin, 'standard_of_living') },
+            { factor: 'Civil unrest', direction: 'push', score: ns(origin, 'civil_unrest') - ns(dest, 'civil_unrest') },
+            { factor: 'Political repression', direction: 'push', score: (100 - ns(origin, 'freedom_index')) - (100 - ns(dest, 'freedom_index')) },
+            { factor: 'Corruption', direction: 'push', score: ns(origin, 'corruption') - ns(dest, 'corruption') },
+            { factor: 'Unemployment', direction: 'push', score: ns(origin, 'unemployment') - ns(dest, 'unemployment') },
+            { factor: 'Healthcare access', direction: 'pull', score: ns(dest, 'healthcare_quality') - ns(origin, 'healthcare_quality') },
+            { factor: 'Academic institutions', direction: 'pull', score: ns(dest, 'higher_education') - ns(origin, 'higher_education') },
+        ];
+        return factors
+            .filter(function(f) { return f.score > 5; })
+            .sort(function(a, b) { return b.score - a.score; })
+            .slice(0, 3)
+            .map(function(f) { return { factor: f.factor, direction: f.direction }; });
+    }
+
+    var flowRows = [];
+    var totalFlows = 0;
+
+    for (var oi = 0; oi < nationList.length; oi++) {
+        var origin = nationList[oi];
+        var originPush = calcPushScore(origin);
+        var originPull = calcPullScore(origin);
+        var originPop = Number(origin.population) || 1000000;
+
+        for (var di = 0; di < nationList.length; di++) {
+            if (oi === di) continue;
+            var dest = nationList[di];
+            var destPush = calcPushScore(dest);
+            var destPull = calcPullScore(dest);
+
+            // Differential: how much better is dest than origin?
+            var differential = (destPull - originPull) + (originPush - destPush);
+            if (differential <= 0) continue; // No flow from origin to this destination
+
+            // Base people: 0.005% of population per unit of differential
+            var basePeople = Math.round(originPop * 0.00005 * (differential / 100));
+            if (basePeople < 1) continue;
+
+            // Cap at 0.1% of origin population per bilateral pair per tick
+            basePeople = Math.min(basePeople, Math.round(originPop * 0.001));
+
+            // Split into categories
+            var immigrationStat = ns(origin, 'immigration');
+            var educationStat = ns(origin, 'higher_education');
+            var legalCount = Math.round(basePeople * (immigrationStat / 100) * 0.4);
+            var academicCount = Math.round(basePeople * (educationStat / 100) * 0.25);
+            var illegalCount = Math.max(0, basePeople - legalCount - academicCount);
+
+            var reasons = getReasons(origin, dest);
+            var pullScore = Math.round((destPull - originPull) * 100) / 100;
+
+            if (legalCount > 0) {
+                flowRows.push({ tick: currentTick, origin_nation_id: origin.id, dest_nation_id: dest.id, category: 'legal', flow_count: legalCount, pull_score: pullScore, reasons: reasons });
+            }
+            if (academicCount > 0) {
+                flowRows.push({ tick: currentTick, origin_nation_id: origin.id, dest_nation_id: dest.id, category: 'academic', flow_count: academicCount, pull_score: pullScore, reasons: reasons });
+            }
+            if (illegalCount > 0) {
+                flowRows.push({ tick: currentTick, origin_nation_id: origin.id, dest_nation_id: dest.id, category: 'illegal', flow_count: illegalCount, pull_score: pullScore, reasons: reasons });
+            }
+
+            totalFlows += legalCount + academicCount + illegalCount;
+        }
+    }
+
+    // Clean up old data (keep last 24 ticks)
+    if (currentTick > 24) {
+        await supabase.from('migration_flows').delete().lt('tick', currentTick - 24);
+    }
+
+    // Write new flows
+    if (flowRows.length > 0) {
+        // Delete existing rows for this tick first (idempotent re-runs)
+        await supabase.from('migration_flows').delete().eq('tick', currentTick);
+
+        // Batch insert
+        var BATCH = 500;
+        for (var bi = 0; bi < flowRows.length; bi += BATCH) {
+            var chunk = flowRows.slice(bi, bi + BATCH);
+            var { error: flowErr } = await supabase.from('migration_flows').insert(chunk);
+            if (flowErr) console.error('[processMigrationFlows] insert error:', flowErr.message);
+        }
+    }
+
+    console.log('[processMigrationFlows] tick ' + currentTick + ': ' + flowRows.length + ' flow rows, ' + totalFlows + ' total people moved');
+    return { processed: nationList.length, totalFlows: totalFlows };
+}
+
 // ────────── diplomacy-constants ──────────
 
 
@@ -31794,6 +31922,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (tiErr) {
         console.error('[advanceTick] Trade imbalance auto-spawn failed (non-fatal):', tiErr);
+    }
+
+    // 3.5c Migration flows — bilateral people movement between nations
+    try {
+        const migrationResult = await processMigrationFlows(supabase, nationList, newTick);
+        if (migrationResult.totalFlows > 0) {
+            summary.migration = migrationResult;
+            console.log(`[advanceTick] Migration: ${migrationResult.totalFlows} people moved across ${migrationResult.processed} nations`);
+        }
+    } catch (migErr) {
+        console.error('[advanceTick] Migration processing failed (non-fatal):', migErr);
     }
 
     // Fetch food sub-sector trade flows once — used by steps 3.5c and 3.5d
