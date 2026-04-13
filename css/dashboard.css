@@ -1253,6 +1253,78 @@ body.light-mode .coalition-party-card.locked { background: var(--orange-faint); 
     .loading-container { min-height: 50vh; }
 }
 
+/* ===== MOBILE BOTTOM NAV BAR ===== */
+.mobile-bottom-nav {
+    display: none; /* hidden on desktop */
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 500;
+    background: var(--bg-body);
+    border-top: 1px solid var(--border-strong);
+    padding: 4px 0 env(safe-area-inset-bottom, 0);
+    justify-content: space-around;
+    align-items: center;
+}
+.mobile-bottom-nav__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    padding: 6px 0;
+    text-decoration: none;
+    flex: 1;
+    min-width: 0;
+    transition: color 0.15s;
+}
+.mobile-bottom-nav__icon {
+    font-size: 1.15rem;
+    line-height: 1;
+    filter: grayscale(100%) brightness(0.6);
+    transition: filter 0.15s;
+}
+.mobile-bottom-nav__label {
+    font-family: var(--font-mono);
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    transition: color 0.15s;
+}
+.mobile-bottom-nav__item.active .mobile-bottom-nav__icon {
+    filter: none;
+}
+.mobile-bottom-nav__item.active .mobile-bottom-nav__label {
+    color: var(--accent);
+}
+
+@media (max-width: 768px) {
+    .mobile-bottom-nav {
+        display: flex;
+    }
+    /* Add bottom padding to body so content isn't hidden behind the nav */
+    body {
+        padding-bottom: 56px;
+    }
+    /* Hide the hamburger menu + top nav tabs on mobile — bottom nav replaces them */
+    .hamburger-btn { display: none !important; }
+    .nav-tabs { display: none !important; }
+}
+
+@media (max-width: 480px) {
+    .mobile-bottom-nav__icon { font-size: 1rem; }
+    .mobile-bottom-nav__label { font-size: 7px; }
+    .mobile-bottom-nav__item { padding: 5px 0; }
+}
+
+/* Light mode */
+body.light-mode .mobile-bottom-nav {
+    background: var(--bg-panel);
+    border-top-color: var(--border-main);
+}
+
 @media (max-width: 1200px) {
     .parties-display-grid { grid-template-columns: repeat(2, 1fr); }
     .coalition-grid { grid-template-columns: repeat(2, 1fr); }

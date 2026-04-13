@@ -432,6 +432,32 @@ export function renderTopBar(activeTab) {
     `;
     document.getElementById('top-bar').innerHTML = topBarHTML;
 
+    // Mobile bottom nav bar
+    if (!document.getElementById('mobile-bottom-nav')) {
+        const overrideNationId = getAdminNationOverride();
+        const overrideFactionId = getAdminFactionOverride();
+        const qs = [];
+        if (overrideNationId) qs.push('nation_id=' + overrideNationId);
+        if (overrideFactionId) qs.push('faction_id=' + overrideFactionId);
+        const suffix = qs.length ? '?' + qs.join('&') : '';
+
+        const mobileNav = document.createElement('nav');
+        mobileNav.id = 'mobile-bottom-nav';
+        mobileNav.className = 'mobile-bottom-nav';
+        mobileNav.innerHTML = [
+            { id: 'dashboard', label: 'Home',  icon: '\uD83C\uDFE0', href: 'dashboard.html' },
+            { id: 'politics',  label: 'Party', icon: '\uD83C\uDFDB\uFE0F', href: 'politics.html' },
+            { id: 'government',label: 'Gov',   icon: '\u2696\uFE0F',  href: 'government.html' },
+            { id: 'nation',    label: 'Nation', icon: '\uD83C\uDF0D', href: 'nation.html' },
+            { id: 'diplomacy', label: 'World', icon: '\uD83C\uDF10', href: 'diplomacy.html' },
+            { id: 'wiki',      label: 'Wiki',  icon: '\uD83D\uDCD6', href: 'wiki.html' },
+        ].map(tab => `<a href="${tab.href}${suffix}" class="mobile-bottom-nav__item ${tab.id === activeTab ? 'active' : ''}" data-tab="${tab.id}">
+            <span class="mobile-bottom-nav__icon">${tab.icon}</span>
+            <span class="mobile-bottom-nav__label">${tab.label}</span>
+        </a>`).join('');
+        document.body.appendChild(mobileNav);
+    }
+
     // Work environment banner and Dev Toolbar
     if (IS_WORK_ENV) {
         if (!document.getElementById('work-env-banner')) {
