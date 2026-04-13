@@ -798,7 +798,33 @@ export function calculateFoodExportCapacity(nation, subsector, allocation) {
     var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
     capacity *= currencyModifier;
 
-    // Floor: minimal organic trade
+    // ── Domestic demand cap: nations must feed their own people first ──
+    // Calculate what the nation needs domestically (mirrors import demand logic)
+    // and only export the surplus. Without this, nations in food shortage
+    // export all production and then import to cover the gap — backwards.
+    var popNorm = (Number(nation.population) || 1) / 5000000;
+    var domesticNeed = 0;
+
+    if (subsector.key === 'grains_staples') {
+        domesticNeed = popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.45;
+    } else if (subsector.key === 'livestock_dairy') {
+        var sol = (Number(nation.standard_of_living ?? 50)) / 100;
+        domesticNeed = popNorm * (0.3 + sol * 0.7) * cfg.BASE_TRADE_MULTIPLIER * 0.25;
+    } else if (subsector.key === 'fruits_vegetables') {
+        var urban = (Number(nation.urbanization ?? 50)) / 100;
+        var solFV = (Number(nation.standard_of_living ?? 50)) / 100;
+        domesticNeed = popNorm * (0.4 + urban * 0.4 + solFV * 0.3) * cfg.BASE_TRADE_MULTIPLIER * 0.2;
+    } else if (subsector.key === 'cash_crops') {
+        domesticNeed = popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.04; // minimal domestic use
+    }
+
+    // Only export what's left after domestic needs. If production < need, no exports.
+    if (domesticNeed > 0) {
+        var surplus = Math.max(0, capacity - domesticNeed);
+        capacity = surplus;
+    }
+
+    // Floor: minimal organic trade (even deficit nations have some border trade)
     var minCapacity = Math.round(0.002 * cfg.BASE_TRADE_MULTIPLIER * econScale);
     return Math.max(minCapacity, Math.round(capacity));
 }
