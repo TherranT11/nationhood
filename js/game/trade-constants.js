@@ -28,7 +28,8 @@ export var TRADE_SECTORS = [
         key: 'fuel_energy',
         label: 'Fuel & Energy',
         export_only: false,
-        export_stats: ['oil_and_gas', 'energy_generation'],
+        export_stat: 'oil_and_gas',            // primary: must clear threshold on its own
+        export_bonus_stats: ['energy_generation'], // secondary: adds to capacity but doesn't gate it
         export_threshold: 15
     },
     {
@@ -918,6 +919,8 @@ export function calculateExportCapacity(nation, sector, opts) {
     if (gdpModifier <= 0) return 0;
 
     // Calculate primary export score from sector stat(s) (0-100 scale)
+    // Primary stat (export_stat) must clear the threshold on its own.
+    // Bonus stats (export_bonus_stats) add to capacity but don't gate it.
     var score = 0;
     if (sector.export_stat) {
         score = Number(nation[sector.export_stat]) || 0;
@@ -929,8 +932,18 @@ export function calculateExportCapacity(nation, sector, opts) {
         score = sum / sector.export_stats.length;
     }
 
-    // Threshold check: stat must exceed sector threshold to generate any exports
+    // Threshold check: primary stat must exceed sector threshold
     if (score <= (sector.export_threshold || 0)) return 0;
+
+    // Bonus stats: add a fraction of secondary stats to the score (capped at +50% of primary)
+    if (sector.export_bonus_stats) {
+        var bonusSum = 0;
+        for (var bi = 0; bi < sector.export_bonus_stats.length; bi++) {
+            bonusSum += Number(nation[sector.export_bonus_stats[bi]]) || 0;
+        }
+        var bonusAvg = bonusSum / sector.export_bonus_stats.length;
+        score += Math.min(score * 0.5, bonusAvg * 0.3); // bonus capped at 50% of primary, weighted at 30%
+    }
 
     // Normalize from 0-100 codebase scale to 0-20 spec scale
     var normalizedScore = score / 5;
