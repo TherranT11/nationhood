@@ -7,6 +7,7 @@ let _stations = [];
 let _selectedStationId = null;
 let _broadcasts = [];
 let _personalities = [];
+let _factionIdeology = null; // cached faction_ideology row for political station gating
 
 // Station type config
 const STATION_TYPES = [
@@ -51,6 +52,45 @@ function initials(name) {
     return (name || '??').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
 }
 
+// Ideology tag → axis key + direction mapping (matches ideology.js)
+const IDEOLOGY_AXIS_MAP = {
+    'LIBERTY': { axis: 'liberty_equality', dir: -1 },
+    'EQUALITY': { axis: 'liberty_equality', dir: 1 },
+    'TRADITION': { axis: 'tradition_progress', dir: -1 },
+    'PROGRESS': { axis: 'tradition_progress', dir: 1 },
+    'SECURITY': { axis: 'security_freedom', dir: -1 },
+    'FREEDOM': { axis: 'security_freedom', dir: 1 },
+    'GLOBALISM': { axis: 'globalism_nationalism', dir: -1 },
+    'NATIONALISM': { axis: 'globalism_nationalism', dir: 1 },
+    'INDIVIDUALISM': { axis: 'individualism_collectivism', dir: -1 },
+    'COLLECTIVISM': { axis: 'individualism_collectivism', dir: 1 },
+};
+
+// Check if the current faction has 20+ toward a given ideology tag
+function hasIdeologyAccess(ideologyTag, station) {
+    if (!ideologyTag) return true;
+    // Station creator always has access
+    if (station && station.creator_faction_id === _state.faction?.id) return true;
+    if (!_factionIdeology) return false;
+    const mapping = IDEOLOGY_AXIS_MAP[ideologyTag];
+    if (!mapping) return false;
+    const score = Number(_factionIdeology[mapping.axis] || 0);
+    // Score is negative for "left" ideologies, positive for "right"
+    // dir=-1 means left, so we need score <= -20; dir=1 means right, so score >= 20
+    return (score * mapping.dir) >= 20;
+}
+
+// Check if the current faction can create a personality on this station
+function canCreatePersonality(station) {
+    const myCount = _personalities.filter(p => p.faction_id === _state.faction?.id).length;
+    if (myCount >= 3) return { allowed: false, reason: 'Maximum 3 personalities per party per station.' };
+    if (station.station_type === 'political' && !hasIdeologyAccess(station.ideology, station)) {
+        const tag = IDEOLOGY_TAGS.find(i => i.tag === station.ideology);
+        return { allowed: false, reason: `Requires 20+ ${tag?.label || station.ideology} ideology to join this station.` };
+    }
+    return { allowed: true, reason: null };
+}
+
 // ════════════════════════ INIT ════════════════════════
 
 export async function initRadio(supabase, state) {
@@ -67,19 +107,20 @@ export async function initRadio(supabase, state) {
         return;
     }
 
-    const { data: stations, error } = await _supabase
-        .from('radio_stations')
-        .select('*')
-        .eq('nation_id', nationId)
-        .order('created_at', { ascending: true });
+    // Fetch stations + faction ideology in parallel
+    const [stationsResult, ideoResult] = await Promise.all([
+        _supabase.from('radio_stations').select('*').eq('nation_id', nationId).order('created_at', { ascending: true }),
+        _supabase.from('faction_ideology').select('*').eq('faction_id', state.faction?.id).maybeSingle(),
+    ]);
 
-    if (error) {
-        console.error('[Radio] Failed to load stations:', error.message);
+    if (stationsResult.error) {
+        console.error('[Radio] Failed to load stations:', stationsResult.error.message);
         root.innerHTML = '<div class="radio-empty"><div class="radio-empty-title">Error loading stations</div></div>';
         return;
     }
 
-    _stations = stations || [];
+    _stations = stationsResult.data || [];
+    _factionIdeology = ideoResult.data || null;
 
     renderRadioPage(root);
 }
@@ -111,6 +152,9 @@ function renderRadioPage(root) {
         <div class="radio-modal-overlay" id="radio-create-modal">
             ${renderCreateStationModal()}
         </div>
+
+        <!-- Create Personality Modal -->
+        <div class="radio-modal-overlay" id="radio-personality-modal"></div>
     `;
 
     // Bind create button
@@ -265,9 +309,20 @@ function renderSidebar(station) {
         <div class="radio-sidebar-section">
             <div class="radio-sidebar-section-title">Personalities</div>
             ${persHtml}
+            ${renderCreatePersonalityButton(station)}
         </div>
     `;
+
+    // Bind Create Personality button
+    document.getElementById('radio-create-pers-btn')?.addEventListener('click', () => openPersonalityModal(station));
 }
+
+function renderCreatePersonalityButton(station) {
+    const check = canCreatePersonality(station);
+    if (!check.allowed) {
+        return `<div style="margin-top:8px;padding:5px 8px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);border:1px solid var(--border-main);text-align:center;opacity:0.6;" title="${esc(check.reason)}">${esc(check.reason)}</div>`;
+    }
+    return `<div class="radio-sidebar-cta" id="radio-create-pers-btn">Create Personality</div>`;
 
 // ════════════════════════ FEED ════════════════════════
 
@@ -319,6 +374,97 @@ function renderFeed(station) {
             </div>
         `;
     }).join('');
+}
+
+// ════════════════════════ CREATE PERSONALITY MODAL ════════════════════════
+
+function openPersonalityModal(station) {
+    const overlay = document.getElementById('radio-personality-modal');
+    if (!overlay) return;
+
+    const color = TYPE_COLORS[station.station_type] || 'var(--text-dim)';
+
+    overlay.innerHTML = `
+        <div class="radio-modal">
+            <div class="radio-modal-header">
+                <div class="radio-modal-header-left">
+                    <div class="radio-modal-dot" style="background:${color};"></div>
+                    <span class="radio-modal-title">Create Personality</span>
+                </div>
+                <button class="radio-modal-close" id="radio-pers-close">&times;</button>
+            </div>
+            <div style="padding:8px 16px;border-bottom:1px solid var(--border-main);background:${color}08;display:flex;align-items:center;gap:8px;">
+                <span style="width:5px;height:5px;border-radius:50%;background:${color};display:inline-block;"></span>
+                <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-secondary);">Station:</span>
+                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${color};">${esc(station.callsign)} &mdash; ${esc(station.name)}</span>
+            </div>
+            <div class="radio-modal-body">
+                <div>
+                    <div class="radio-modal-step-label">Personality Name</div>
+                    <input class="radio-modal-input" id="radio-pers-name" placeholder="e.g., Daniela V&aacute;squez" style="font-family:var(--font-ui);font-size:13px;">
+                </div>
+                <div>
+                    <div class="radio-modal-step-label">Title / Role (optional)</div>
+                    <input class="radio-modal-input" id="radio-pers-title" placeholder="e.g., Opposition Voice, Economics Desk" style="font-family:var(--font-ui);font-size:11px;">
+                </div>
+                <div style="padding:6px 10px;background:var(--amber-faint);border:1px solid var(--amber-border);">
+                    <div style="font-family:var(--font-mono);font-size:8px;color:var(--accent);margin-bottom:2px;">INFO</div>
+                    <div style="font-size:9px;color:var(--text-dim);line-height:1.5;">
+                        Radio personalities are cosmetic hosts for your broadcasts. You can have up to <strong style="color:var(--text-bright);">3</strong> per station. They will be affiliated with <strong style="color:var(--accent);">${esc(_state.faction?.name || 'your party')}</strong>.
+                    </div>
+                </div>
+            </div>
+            <div class="radio-modal-footer">
+                <button class="radio-modal-btn radio-modal-btn--cancel" id="radio-pers-cancel">Cancel</button>
+                <button class="radio-modal-btn radio-modal-btn--submit" id="radio-pers-submit">Create</button>
+            </div>
+        </div>
+    `;
+
+    overlay.classList.add('active');
+
+    // Bind close
+    const close = () => overlay.classList.remove('active');
+    document.getElementById('radio-pers-close')?.addEventListener('click', close);
+    document.getElementById('radio-pers-cancel')?.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    // Bind submit
+    let submitting = false;
+    document.getElementById('radio-pers-submit')?.addEventListener('click', async () => {
+        if (submitting) return;
+        const name = document.getElementById('radio-pers-name')?.value?.trim();
+        const title = document.getElementById('radio-pers-title')?.value?.trim();
+        if (!name) return;
+
+        submitting = true;
+        const btn = document.getElementById('radio-pers-submit');
+        if (btn) { btn.disabled = true; btn.textContent = 'Creating...'; }
+
+        try {
+            const { data, error } = await _supabase.from('radio_personalities').insert({
+                station_id: station.id,
+                faction_id: _state.faction.id,
+                name: name,
+                title: title || null,
+            }).select('*').single();
+
+            if (error) {
+                console.error('[Radio] Create personality failed:', error.message);
+                alert('Failed to create personality: ' + error.message);
+                return;
+            }
+
+            _personalities.push(data);
+            close();
+            renderSidebar(station);
+        } catch (err) {
+            console.error('[Radio] Create personality error:', err);
+        } finally {
+            submitting = false;
+            if (btn) { btn.disabled = false; btn.textContent = 'Create'; }
+        }
+    });
 }
 
 // ════════════════════════ CREATE STATION MODAL ════════════════════════
