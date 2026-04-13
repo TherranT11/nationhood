@@ -476,6 +476,8 @@ async function loadDealFlow() {
                 ticksLeft: (req.expires_tick || 0) - (shard?.current_tick || 0),
                 requestId: req.id,
                 insuredContractId: req.insured_contract_id,
+                insuredVesselId: req.insured_vessel_id,
+                isVesselInsurance: !!req.insured_vessel_id,
                 alreadyOffered: offeredSet.has(req.id),
             };
         }
@@ -1854,7 +1856,7 @@ async function rdSubmitOffer() {
         }).eq('id', rdDeal.requestId).select('requesting_faction_id').single();
 
         // Create active insurance policy as a loan record
-        const { error: policyErr } = await _supabase.from('finance_active_loans').insert({
+        const policyRow = {
             request_id: rdDeal.requestId,
             offer_id: null,
             borrower_faction_id: fundedReq?.requesting_faction_id || rdDeal.requestId,
@@ -1862,13 +1864,20 @@ async function rdSubmitOffer() {
             nation_id: faction.nation_id,
             principal: coverage,
             interest_rate: annualPremium,
-            term_months: 0, // until project completes
+            term_months: 0, // until project completes or vessel decommissioned
             collateral_type: 'unsecured',
-            purpose: 'Insurance Policy — ' + rdDeal.applicant,
+            purpose: rdDeal.isVesselInsurance
+                ? 'Vessel Insurance — ' + rdDeal.applicant
+                : 'Insurance Policy — ' + rdDeal.applicant,
             monthly_payment: monthlyPremiumAmt,
             started_tick: currentTick,
             deductible_pct: deductible,
-        });
+        };
+        // Link to vessel or contract
+        if (rdDeal.insuredVesselId) policyRow.insured_vessel_id = rdDeal.insuredVesselId;
+        if (rdDeal.insuredContractId) policyRow.insured_contract_id = rdDeal.insuredContractId;
+
+        const { error: policyErr } = await _supabase.from('finance_active_loans').insert(policyRow);
         if (policyErr) { alert('Failed to create policy record: ' + policyErr.message); _submittingOffer = false; return; }
     } else {
         _submittingOffer = false;
