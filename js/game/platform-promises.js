@@ -165,9 +165,14 @@ export async function evaluatePromises(supabase, nation, currentTick, governingF
             // Deadline passed, targets not met — failed
             await supabase.from('faction_platforms').update({ status: 'failed' }).eq('id', fp.id);
 
-            // Apply penalties
-            const { adjustMomentum } = await import('./momentum.js');
-            await adjustMomentum(supabase, fp.faction_id, fp.nation_id, 'platform_failed', FAILURE_MOMENTUM_PENALTY, `Platform failed: ${fp.platform_key}`);
+            // Apply momentum penalty via RPC (adjustMomentum from momentum.js is a no-op stub;
+            // use the DB function directly for reliable atomic adjustment)
+            await supabase.rpc('adjust_momentum', {
+                p_faction_id: fp.faction_id,
+                p_delta: FAILURE_MOMENTUM_PENALTY,
+                p_label: 'Platform failed: ' + fp.platform_key,
+                p_tick: currentTick,
+            });
 
             // Governance penalty (adjust gov_approval or similar)
             // This depends on how governance is tracked — for now, log it

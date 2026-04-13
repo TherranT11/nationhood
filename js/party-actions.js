@@ -108,6 +108,8 @@ export async function initPartyActions(supabase, state) {
         _supabase.from('faction_platforms').select('*').eq('nation_id', state.nation?.id),
     ]);
 
+    if (myPlat.error) console.error('[PartyActions] Failed to load faction platforms:', myPlat.error.message);
+    if (nationPlat.error) console.error('[PartyActions] Failed to load nation platforms:', nationPlat.error.message);
     _myPlatforms = myPlat.data || [];
     _nationPlatforms = nationPlat.data || [];
 
@@ -743,11 +745,16 @@ function openPlatformModal(root) {
     render();
 }
 
+let _platformSubmitting = false;
+
 async function submitPlatformAdoption(root, platformKey) {
+    if (_platformSubmitting) return;
+    _platformSubmitting = true;
+
     const overlay = document.getElementById('pa-platform-modal');
     const faction = _state.faction;
     const nation = _state.nation;
-    if (!faction || !nation || !platformKey) return;
+    if (!faction || !nation || !platformKey) { _platformSubmitting = false; return; }
 
     const platform = PLATFORMS.find(p => p.id === platformKey);
     if (!platform) return;
@@ -807,7 +814,8 @@ async function submitPlatformAdoption(root, platformKey) {
         if (faction && data?.momentum_gained) {
             faction.momentum = (faction.momentum || 0) + data.momentum_gained;
         }
-        // AP was deducted by the RPC
+        // AP was deducted server-side by deduct_ap() inside the RPC.
+        // Estimate locally (server is source of truth, will refresh on next page load).
         if (faction) faction.action_points = Math.max(0, (faction.action_points || 0) - 2);
 
         overlay?.classList.remove('active');
@@ -815,5 +823,7 @@ async function submitPlatformAdoption(root, platformKey) {
     } catch (err) {
         console.error('[PartyActions] Platform adoption error:', err);
         alert('An error occurred. Please try again.');
+    } finally {
+        _platformSubmitting = false;
     }
 }

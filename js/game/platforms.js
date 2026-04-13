@@ -193,6 +193,7 @@ export const STAT_NAMES = {
     polarization: 'Polarization', civil_unrest: 'Civil Unrest', terrorism: 'Terrorism',
     political_violence: 'Political Violence', immigration: 'Immigration',
     illegal_immigration: 'Illegal Immigration', emigration: 'Emigration',
+    ethnic_diversity: 'Ethnic Diversity',
     cost_of_living: 'Cost of Living', housing_affordability: 'Housing Affordability',
     manufacturing_output: 'Manufacturing Output', service_output: 'Service Output',
 };
