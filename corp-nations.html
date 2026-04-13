@@ -456,10 +456,152 @@ function renderNationDetail() {
         container.innerHTML = '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">Select a nation to view details.</div>';
         return;
     }
-    // Placeholder — Phase 4 will build the full detail view
-    container.innerHTML = `<div style="padding:16px;">
-        <div style="font-size:18px;font-weight:700;color:var(--text-bright);margin-bottom:8px;">${escapeHtml(sel.name)}</div>
-        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Detail view coming in Phase 4</div>
+
+    const s = (key) => Number(sel[key] ?? 50);
+    const govType = (sel.government_type || 'Democracy').replace(/_/g, ' ');
+    const presence = _presenceMap[sel.id] || {};
+    const corps = _corpsByNation[sel.id] || [];
+    const gdpGrowthPct = ((s('gdp_growth') - 50) / 50 * 3).toFixed(1);
+
+    let html = '';
+
+    // ── Nation header ──
+    html += `<div style="padding:12px 16px;border-bottom:1px solid var(--border-0);background:var(--bg-3);flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+            <span style="font-size:18px;font-weight:700;color:var(--text-bright);">${escapeHtml(sel.name)}</span>
+            ${presence.hq ? '<span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:2px 6px;color:var(--gold);background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.2);">YOUR HQ</span>' : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${escapeHtml(govType)}</span>
+            <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">·</span>
+            <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Pop: ${((sel.population || 0) / 1e6).toFixed(1)}M</span>
+            <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">·</span>
+            <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Capital: ${escapeHtml(sel.capital || '—')}</span>
+        </div>
+    </div>`;
+
+    // ── Economic Health ──
+    html += `<div style="padding:6px 16px;border-bottom:1px solid var(--border-0);background:var(--bg-3);">
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1.5px;color:#a3b07e;text-transform:uppercase;">Economic Health</span>
+    </div>`;
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border-bottom:1px solid var(--border-0);">`;
+    const econStats = [
+        { label: 'GDP', value: fmtMoney(sel.gdp), color: 'var(--text-bright)' },
+        { label: 'GDP GROWTH', value: `${Number(gdpGrowthPct) > 0 ? '+' : ''}${gdpGrowthPct}%`, color: Number(gdpGrowthPct) > 0 ? '#5c5' : '#c55' },
+        { label: 'POPULATION', value: `${((sel.population || 0) / 1e6).toFixed(1)}M`, color: 'var(--text-bright)' },
+        { label: 'URBANIZATION', value: s('urbanization'), color: statColor(s('urbanization')) },
+        { label: 'INFLATION', value: s('inflation'), color: statColor(s('inflation'), true) },
+        { label: 'UNEMPLOYMENT', value: `${s('unemployment')}%`, color: statColor(s('unemployment'), true) },
+    ];
+    for (let i = 0; i < econStats.length; i++) {
+        const st = econStats[i];
+        html += `<div style="padding:6px 10px;${i % 3 < 2 ? 'border-right:1px solid var(--border-0);' : ''}${i < 3 ? 'border-bottom:1px solid var(--border-0);' : ''}">
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.5px;">${st.label}</div>
+            <div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:${st.color};margin-top:2px;">${st.value}</div>
+        </div>`;
+    }
+    html += '</div>';
+
+    // ── Business Environment ──
+    html += `<div style="padding:6px 16px;border-bottom:1px solid var(--border-0);background:var(--bg-3);">
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1.5px;color:#a3b07e;text-transform:uppercase;">Business Environment</span>
+    </div>`;
+    html += '<div style="padding:6px 16px;border-bottom:1px solid var(--border-0);">';
+    const bizStats = [
+        { stat: 'Corporate Tax', value: s('corporate_tax'), display: s('corporate_tax') + '%', invert: true },
+        { stat: 'Stability', value: s('stability'), display: s('stability'), invert: false },
+        { stat: 'Foreign Investment', value: s('foreign_investment'), display: s('foreign_investment'), invert: false },
+        { stat: 'Corruption', value: s('corruption'), display: s('corruption'), invert: true },
+        { stat: 'Judicial Independence', value: s('judicial_independence'), display: s('judicial_independence'), invert: false },
+        { stat: 'Civil Unrest', value: s('civil_unrest'), display: s('civil_unrest'), invert: true },
+        { stat: 'Currency Strength', value: s('currency_strength'), display: s('currency_strength'), invert: false },
+        { stat: 'Credit Rating', value: s('credit'), display: s('credit'), invert: false },
+    ];
+    for (let i = 0; i < bizStats.length; i++) {
+        const bs = bizStats[i];
+        const sc = statColor(bs.value, bs.invert);
+        html += `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;${i < bizStats.length - 1 ? 'border-bottom:1px solid var(--border-0);' : ''}">
+            <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted);width:130px;">${bs.stat}</span>
+            <div style="flex:1;height:3px;background:var(--border-0);"><div style="width:${bs.value}%;height:100%;background:${sc};"></div></div>
+            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${sc};width:32px;text-align:right;">${bs.display}</span>
+        </div>`;
+    }
+    html += '</div>';
+
+    // ── Risk Indicators ──
+    const risks = [];
+    if (s('stability') < 30) risks.push({ icon: '⚠', color: '#c84', text: 'Stability below 30. Political collapse, coup, or revolution possible.' });
+    if (s('civil_unrest') > 60) risks.push({ icon: '⚠', color: '#c84', text: 'High civil unrest. Strikes, protests, and disruptions likely.' });
+    if (s('corruption') > 65) risks.push({ icon: '⚠', color: '#c84', text: 'High corruption. Regulatory risk, bribery costs, unpredictable enforcement.' });
+    if (s('inflation') > 65) risks.push({ icon: '⚠', color: '#ca5', text: 'High inflation. Currency devaluation risk, rising input costs.' });
+    if (s('foreign_investment') < 25) risks.push({ icon: '⚠', color: '#ca5', text: 'Low foreign investment. Capital flight risk, limited financing options.' });
+    if (s('judicial_independence') < 25) risks.push({ icon: '⚠', color: '#c55', text: 'Low judicial independence. Contracts may not be enforceable.' });
+
+    if (risks.length > 0) {
+        html += `<div style="padding:6px 16px;border-bottom:1px solid var(--border-0);background:var(--bg-3);">
+            <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1.5px;color:#c55;text-transform:uppercase;">Risk Indicators</span>
+        </div>`;
+        html += '<div style="padding:6px 16px;border-bottom:1px solid var(--border-0);">';
+        for (const r of risks) {
+            html += `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border-0);">
+                <span style="font-family:var(--font-mono);font-size:9px;color:${r.color};font-weight:700;">${r.icon}</span>
+                <span style="font-size:10px;color:${r.color};">${r.text}</span>
+            </div>`;
+        }
+        html += '</div>';
+    }
+
+    // ── Active Corporations in this Nation ──
+    html += `<div style="padding:6px 16px;border-bottom:1px solid var(--border-0);background:var(--bg-3);">
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1.5px;color:#5a8aaa;text-transform:uppercase;">Corporations &amp; Subsidiaries</span>
+        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-left:8px;">${corps.length} active</span>
+    </div>`;
+    if (corps.length > 0) {
+        html += '<div style="border-bottom:1px solid var(--border-0);">';
+        for (const c of corps) {
+            const isYours = c.id === faction.id;
+            const ticker = (c.abbreviation || c.corp_ticker || '??').toUpperCase();
+            html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 16px;border-bottom:1px solid var(--border-0);">
+                <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--gold);width:36px;">${escapeHtml(ticker)}</span>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:11px;font-weight:600;color:${isYours ? '#5c5' : 'var(--text-primary)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        ${escapeHtml(c.faction_name)}${isYours ? ' <span style="font-family:var(--font-mono);font-size:7px;color:#5c5;border:1px solid rgba(92,204,92,0.2);padding:0 3px;">YOU</span>' : ''}
+                    </div>
+                    <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${escapeHtml(c.corp_sector || '—')} · ${escapeHtml(c.corp_subsector || '—')}</div>
+                </div>
+                <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted);">${fmtMoney(c.corp_cash_reserves)}</span>
+            </div>`;
+        }
+        html += '</div>';
+    } else {
+        html += '<div style="padding:12px 16px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);border-bottom:1px solid var(--border-0);">No corporations headquartered in this nation.</div>';
+    }
+
+    // Placeholder for Phase 5: Your Presence
+    html += `<div style="padding:6px 16px;border-bottom:1px solid var(--border-0);background:var(--bg-3);">
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;">Your Presence</span>
+    </div>`;
+    html += '<div id="your-presence-container" style="padding:12px 16px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Loading presence data...</div>';
+
+    container.innerHTML = html;
+
+    // Phase 5 will populate the presence container
+    renderYourPresence(sel);
+}
+
+function renderYourPresence(nation) {
+    const container = document.getElementById('your-presence-container');
+    if (!container) return;
+    const presence = _presenceMap[nation.id] || {};
+    container.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;background:var(--bg-3);border:1px solid var(--border-0);">
+        <div style="padding:5px 10px;border-right:1px solid var(--border-0);border-bottom:1px solid var(--border-0);">
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.5px;">HQ</div>
+            <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${presence.hq ? 'var(--gold)' : 'var(--text-dim)'};margin-top:1px;">${presence.hq ? 'YES' : '—'}</div>
+        </div>
+        <div style="padding:5px 10px;border-bottom:1px solid var(--border-0);">
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.5px;">PROPERTIES</div>
+            <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${presence.properties > 0 ? '#8b9a6b' : 'var(--text-dim)'};margin-top:1px;">${presence.properties || '—'}</div>
+        </div>
     </div>`;
 }
 
