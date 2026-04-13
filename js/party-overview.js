@@ -218,11 +218,261 @@ export async function initPartyOverview(supabase, state, containerId) {
             ideologyAxes: ideologyAxes,
         };
 
-        // Phase 2-4 will call renderPartyOverview(container) here
-        container.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">Party overview data loaded. Rendering coming in Phase 2.</div>';
+        renderPartyOverview(container);
 
     } catch (err) {
         console.error('[PartyOverview] Init error:', err);
         container.innerHTML = '<div style="padding:40px;text-align:center;color:var(--red);font-family:var(--font-mono);font-size:10px;">Failed to load party overview.</div>';
     }
+}
+
+// ═══════════════════════════════════════════════════
+// RENDERING
+// ═══════════════════════════════════════════════════
+
+let _visibleParties = []; // toggled in legend
+
+function renderPartyOverview(container) {
+    const o = _overview;
+    const faction = o.myFaction;
+    const nation = _state.nation;
+    const partyColor = faction?.color || '#c8a832';
+    const currentTick = _state.shard?.current_tick || 0;
+
+    // Init visible parties for legend
+    if (_visibleParties.length === 0) {
+        _visibleParties = [faction?.id, ...o.rivalParties.map(p => p.id)];
+    }
+
+    const adminName = o.administration?.admin_name || (o.isOpposition ? 'Opposition' : 'Government');
+    const statusLabel = o.isOpposition ? 'OPPOSITION' : 'GOVERNING';
+    const statusColor = o.isOpposition ? 'var(--orange)' : 'var(--green)';
+    const seats = faction?.seats || 0;
+    const totalSeats = nation?.total_seats || 100;
+    const momentum = faction?.momentum ?? 50;
+
+    container.innerHTML = `<div class="po-page">
+        ${renderSummaryBar(o, partyColor, seats, totalSeats, momentum)}
+        <div class="po-columns">
+            <div class="po-col-left">
+                ${renderIdentityCard(o, faction, partyColor, statusLabel, statusColor)}
+                ${renderGovernanceTable(o)}
+                ${renderIdeologySection(o, faction, partyColor, container)}
+                ${renderCaucuses(o)}
+            </div>
+            <div class="po-col-center" id="po-center-col"></div>
+            <div class="po-col-right" id="po-right-col"></div>
+        </div>
+    </div>`;
+
+    // Bind legend toggles
+    container.querySelectorAll('.po-legend-item').forEach(el => {
+        el.addEventListener('click', () => {
+            const pid = el.dataset.partyId;
+            if (pid === faction?.id) return; // can't hide yourself
+            if (_visibleParties.includes(pid)) {
+                _visibleParties = _visibleParties.filter(id => id !== pid);
+            } else {
+                _visibleParties.push(pid);
+            }
+            renderPartyOverview(container);
+        });
+    });
+}
+
+function renderSummaryBar(o, partyColor, seats, totalSeats, momentum) {
+    const govScore = o.governanceScore;
+    const govColor = govScore >= 0 ? 'var(--green)' : 'var(--red)';
+    const adminName = o.isOpposition ? 'Opposition' : (o.administration?.admin_name || 'Government');
+    const elTicks = o.nextElectionTicks != null ? o.nextElectionTicks : '—';
+    const elColor = (typeof elTicks === 'number' && elTicks <= 3) ? 'var(--red)' : 'var(--text-bright)';
+
+    return `<div class="po-summary">
+        <div class="po-summary-cell" style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+            <div style="width:8px;height:8px;background:${partyColor};"></div>
+            <div>
+                <div style="font-size:11px;font-weight:700;color:var(--text-bright);">${esc(adminName)}</div>
+                <div class="po-summary-sub">${o.ticksInPower} ticks in power</div>
+            </div>
+        </div>
+        <div class="po-summary-cell" style="text-align:center;">
+            <div class="po-summary-label">GOV. SCORE</div>
+            <div class="po-summary-value" style="color:${govColor};">${govScore}</div>
+        </div>
+        <div class="po-summary-cell" style="text-align:center;">
+            <div class="po-summary-label">MOMENTUM</div>
+            <div style="display:flex;align-items:baseline;justify-content:center;gap:3px;">
+                <span class="po-summary-value" style="color:var(--orange);">${momentum}</span>
+                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">/ 100</span>
+            </div>
+        </div>
+        <div class="po-summary-cell" style="text-align:center;">
+            <div class="po-summary-label">SEATS</div>
+            <div style="display:flex;align-items:baseline;justify-content:center;gap:3px;">
+                <span class="po-summary-value" style="color:${partyColor};">${seats}</span>
+                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">/ ${totalSeats}</span>
+            </div>
+        </div>
+        <div class="po-summary-cell" style="text-align:center;">
+            <div class="po-summary-label">NEXT ELECTION</div>
+            <div class="po-summary-value" style="color:${elColor};">${elTicks}${typeof elTicks === 'number' ? ' ticks' : ''}</div>
+        </div>
+    </div>`;
+}
+
+function renderIdentityCard(o, faction, partyColor, statusLabel, statusColor) {
+    const leaderName = (faction?.leader_first_name && faction?.leader_last_name)
+        ? `${faction.leader_first_name} ${faction.leader_last_name}` : 'Unknown';
+    const leaderInitials = ((faction?.leader_first_name || '?')[0] + (faction?.leader_last_name || '?')[0]).toUpperCase();
+    const leaderAge = faction?.leader_age ? `, Age ${faction.leader_age}` : '';
+    const approval = faction?.approval_rating ?? 0;
+
+    return `<div class="po-card po-identity" style="border-left-color:${partyColor};">
+        <div class="po-identity-inner">
+            <div class="po-identity-logo" style="color:${partyColor};background:${partyColor}12;border-color:${partyColor}33;">${leaderInitials}</div>
+            <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+                    <span class="po-identity-name">${esc(faction?.faction_name)}</span>
+                    <span class="po-identity-badge" style="color:${statusColor};background:${statusColor}0a;border-color:${statusColor}44;">${statusLabel}</span>
+                </div>
+                <div class="po-identity-meta">${o.ticksInPower} ticks in power</div>
+                <div class="po-leader-row">
+                    <div class="po-leader-avatar" style="color:${partyColor};background:${partyColor}15;border-color:${partyColor}33;">${leaderInitials}</div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="display:flex;align-items:center;gap:4px;">
+                            <span style="font-size:10px;font-weight:600;color:var(--text-bright);">${esc(leaderName)}</span>
+                            <span style="font-family:var(--font-mono);font-size:7px;color:${partyColor};">PARTY LEADER</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;margin-top:2px;">
+                            <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">APPROVAL</span>
+                            <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:var(--amber);">${approval}%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderGovernanceTable(o) {
+    const deltas = o.governanceDeltas.slice(0, 12); // top 12
+    const govScore = o.governanceScore;
+    const govColor = govScore >= 0 ? 'var(--green)' : 'var(--red)';
+    const decayNote = o.governanceDecayCycles > 0 && govScore > 0
+        ? `Decay: ${((1 - o.governanceMultiplier) * 100).toFixed(1)}% (${o.governanceDecayCycles} cycles)`
+        : '';
+
+    const rowsHtml = deltas.map((d, i) => {
+        const deltaColor = d.isGood ? 'var(--green)' : 'var(--red)';
+        const sign = d.delta > 0 ? '+' : '';
+        const statName = d.key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        return `<div class="po-gov-row" style="${i < deltas.length - 1 ? 'border-bottom:1px solid rgba(200,196,184,0.03);' : ''}">
+            <span class="po-gov-stat">${esc(statName)}</span>
+            <span class="po-gov-val">${d.start.toFixed(1)}</span>
+            <span class="po-gov-val">${d.now.toFixed(1)}</span>
+            <span class="po-gov-delta" style="color:${deltaColor};">${sign}${d.delta.toFixed(1)}</span>
+        </div>`;
+    }).join('');
+
+    return `<div class="po-card">
+        <div class="po-card-header">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span class="po-card-title">GOVERNANCE</span>
+                <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${govColor};">${govScore}</span>
+            </div>
+            <span class="po-card-subtitle">${decayNote}</span>
+        </div>
+        <div style="display:flex;padding:4px 12px;border-bottom:1px solid var(--border-main);background:var(--bg-card);">
+            <span style="flex:1;font-family:var(--font-mono);font-size:6px;color:var(--text-dim);letter-spacing:0.04em;">STAT</span>
+            <span style="width:40px;font-family:var(--font-mono);font-size:6px;color:var(--text-dim);text-align:right;">START</span>
+            <span style="width:40px;font-family:var(--font-mono);font-size:6px;color:var(--text-dim);text-align:right;">NOW</span>
+            <span style="width:44px;font-family:var(--font-mono);font-size:6px;color:var(--text-dim);text-align:right;">DELTA</span>
+        </div>
+        ${rowsHtml || '<div style="padding:12px;text-align:center;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);font-style:italic;">No governance data yet.</div>'}
+    </div>`;
+}
+
+function renderIdeologySection(o, faction, partyColor) {
+    // Build legend
+    const allLegend = [
+        { id: faction?.id, name: 'You', color: partyColor },
+        ...o.rivalParties.map(p => ({ id: p.id, name: p.abbreviation || p.faction_name?.slice(0, 3) || '?', color: p.color || '#666' })),
+    ];
+
+    const legendHtml = allLegend.map(p => {
+        const isOn = _visibleParties.includes(p.id);
+        return `<div class="po-legend-item ${isOn ? 'active' : 'inactive'}" data-party-id="${p.id}" style="${isOn ? `background:${p.color}12;border-color:${p.color}44;` : ''}">
+            <div class="po-legend-dot" style="background:${isOn ? p.color : 'var(--text-dim)'};"></div>
+            <span class="po-legend-name">${esc(p.name)}</span>
+        </div>`;
+    }).join('');
+
+    const axesHtml = o.ideologyAxes.map(axis => {
+        const dotsHtml = axis.parties
+            .filter(p => _visibleParties.includes(p.id))
+            .map(p => `<div class="po-axis-dot" style="left:${p.pos * 100}%;background:${p.color};"></div>`)
+            .join('');
+
+        const zones = [20, 40, 60, 80].map(pct =>
+            `<div class="po-axis-zone" style="left:${pct}%;"></div>`
+        ).join('');
+
+        return `<div class="po-axis">
+            <div class="po-axis-labels">
+                <span class="po-axis-label">${esc(axis.left)}</span>
+                <span class="po-axis-name">${esc(axis.name)}</span>
+                <span class="po-axis-label">${esc(axis.right)}</span>
+            </div>
+            <div class="po-axis-track">${zones}${dotsHtml}</div>
+        </div>`;
+    }).join('');
+
+    return `<div class="po-card">
+        <div class="po-card-header">
+            <span class="po-card-title">IDEOLOGY</span>
+        </div>
+        <div style="padding:8px 12px;">
+            <div class="po-legend">${legendHtml}</div>
+            ${axesHtml}
+        </div>
+    </div>`;
+}
+
+function renderCaucuses(o) {
+    if (!o.caucuses || o.caucuses.length === 0) {
+        return `<div class="po-card">
+            <div class="po-card-header">
+                <span class="po-card-title">INTERNAL CAUCUSES</span>
+                <span class="po-card-subtitle">None</span>
+            </div>
+        </div>`;
+    }
+
+    const totalSeats = o.caucuses.reduce((s, c) => s + (c.seats || 0), 0);
+    const rowsHtml = o.caucuses.map(c => {
+        const loyalty = c.loyalty ?? 50;
+        const loyaltyColor = loyalty > 60 ? 'var(--green)' : loyalty > 40 ? 'var(--amber)' : 'var(--red)';
+        return `<div class="po-caucus-row">
+            <div>
+                <div class="po-caucus-name">${esc(c.caucus_name || c.wing || 'Unnamed')}</div>
+                <div class="po-caucus-wing" style="color:${c.color || 'var(--text-dim)'};">${esc(c.axis_label || '')}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span class="po-caucus-seats">${c.seats || 0} seats</span>
+                <div style="width:40px;">
+                    <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);text-align:right;margin-bottom:1px;">LOYALTY</div>
+                    <div style="width:100%;height:3px;background:var(--border-main);"><div style="height:100%;width:${loyalty}%;background:${loyaltyColor};"></div></div>
+                    <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:${loyaltyColor};text-align:right;margin-top:1px;">${loyalty}</div>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+
+    return `<div class="po-card">
+        <div class="po-card-header">
+            <span class="po-card-title">INTERNAL CAUCUSES</span>
+            <span class="po-card-subtitle">${o.caucuses.length} active \u00B7 ${totalSeats} seats</span>
+        </div>
+        ${rowsHtml}
+    </div>`;
 }
