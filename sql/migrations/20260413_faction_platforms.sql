@@ -13,6 +13,10 @@ CREATE TABLE IF NOT EXISTS faction_platforms (
     platform_key    TEXT NOT NULL,              -- e.g. 'economic_reform', 'social_justice'
     slot            INT NOT NULL CHECK (slot BETWEEN 1 AND 3),
     adopted_at_tick INT NOT NULL,
+    baseline_stats  JSONB DEFAULT '{}'::jsonb,  -- stat snapshots at adoption: { "healthcare_quality": 50, ... }
+    target_stats    JSONB DEFAULT '{}'::jsonb,  -- targets (+20): { "healthcare_quality": 70, ... }
+    status          TEXT NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active', 'fulfilled', 'failed', 'abated')),
     created_at      TIMESTAMPTZ DEFAULT now(),
     UNIQUE(faction_id, slot),                  -- one platform per slot per faction
     UNIQUE(faction_id, platform_key)           -- can't adopt the same platform twice
@@ -50,7 +54,9 @@ CREATE OR REPLACE FUNCTION adopt_platform(
     p_faction_id UUID,
     p_nation_id UUID,
     p_platform_key TEXT,
-    p_tick INT
+    p_tick INT,
+    p_baseline_stats JSONB DEFAULT '{}'::jsonb,
+    p_target_stats JSONB DEFAULT '{}'::jsonb
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -139,9 +145,9 @@ BEGIN
         p_tick
     );
 
-    -- 9. Insert the platform
-    INSERT INTO faction_platforms (faction_id, nation_id, platform_key, slot, adopted_at_tick)
-    VALUES (p_faction_id, p_nation_id, p_platform_key, v_next_slot, p_tick);
+    -- 9. Insert the platform with stat snapshots
+    INSERT INTO faction_platforms (faction_id, nation_id, platform_key, slot, adopted_at_tick, baseline_stats, target_stats)
+    VALUES (p_faction_id, p_nation_id, p_platform_key, v_next_slot, p_tick, p_baseline_stats, p_target_stats);
 
     RETURN jsonb_build_object(
         'success', true,
@@ -153,5 +159,5 @@ BEGIN
 END;
 $$;
 
-ALTER FUNCTION public.adopt_platform(UUID, UUID, TEXT, INT) OWNER TO postgres;
-GRANT EXECUTE ON FUNCTION public.adopt_platform(UUID, UUID, TEXT, INT) TO authenticated;
+ALTER FUNCTION public.adopt_platform(UUID, UUID, TEXT, INT, JSONB, JSONB) OWNER TO postgres;
+GRANT EXECUTE ON FUNCTION public.adopt_platform(UUID, UUID, TEXT, INT, JSONB, JSONB) TO authenticated;
