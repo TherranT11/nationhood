@@ -13,7 +13,8 @@ let _myPlatforms = [];
 let _nationPlatforms = [];
 let _agitator = null;        // hired agitator or null
 let _isOpposition = false;   // is this faction in opposition?
-let _administration = null;  // active administration data // all platforms in this nation (for momentum calc)
+let _administration = null;  // active administration data
+let _lawsuits = [];          // faction's lawsuits (active + resolved) // all platforms in this nation (for momentum calc)
 
 function esc(str) {
     if (!str) return '';
@@ -122,6 +123,11 @@ export async function initPartyActions(supabase, state) {
     _agitator = agitatorResult;
     _isOpposition = oppositionResult.isOpposition;
     _administration = oppositionResult.administration;
+
+    // Fetch lawsuits if agitator is hired
+    if (_agitator) {
+        _lawsuits = await fetchActiveLawsuits(_supabase, faction.id);
+    }
 
     renderPage(root);
 }
@@ -490,8 +496,101 @@ function renderAgitatorActionsPanel(role) {
         <div class="pa-actions-list">
             ${actionsHtml}
         </div>
+        ${renderLawsuitsSection()}
         <div class="pa-skill-footer">
             <span style="color:${role.color};font-weight:700;">${role.title}</span> skill (${ag.skill}/100) affects lawsuit discovery and legal action outcomes. <span style="color:${skillInfo.color};font-weight:700;">${skillInfo.label}</span>: ${skillInfo.desc}
+        </div>
+    `;
+}
+
+function renderLawsuitsSection() {
+    if (_lawsuits.length === 0) return '';
+
+    const currentTick = _state.shard?.current_tick || 0;
+
+    const lawsuitsHtml = _lawsuits.map(ls => {
+        const targetDef = LAWSUIT_TARGETS.find(t => t.key === ls.target_ministry);
+        const targetLabel = targetDef ? targetDef.label : ls.target_ministry;
+        const targetIcon = targetDef ? targetDef.icon : '\u2696\uFE0F';
+        const tierInfo = calculateTier(ls.corruption_growth || 0);
+        const effects = TIER_EFFECTS[ls.tier] || TIER_EFFECTS[1];
+        const isActive = ls.status === 'active';
+        const ticksElapsed = Math.max(0, currentTick - ls.filed_at_tick);
+        const totalTicks = 8;
+        const progress = Math.min(1, ticksElapsed / totalTicks);
+        const ticksLeft = Math.max(0, ls.resolves_at_tick - currentTick);
+
+        // Milestone dots
+        const milestones = [
+            { tick: 0, label: 'Filed', type: 'filing' },
+            { tick: 2, label: 'Discovery', type: 'discovery' },
+            { tick: 5, label: 'Evidence', type: 'evidence' },
+            { tick: 7, label: 'Pre-trial', type: 'pre_trial' },
+            { tick: 8, label: 'Verdict', type: 'resolution' },
+        ];
+
+        const milestonesHtml = milestones.map(m => {
+            const mTick = ls.filed_at_tick + m.tick;
+            const passed = currentTick >= mTick;
+            const isCurrent = currentTick >= mTick && (m.tick === 8 || currentTick < ls.filed_at_tick + milestones[milestones.indexOf(m) + 1]?.tick);
+            const pct = (m.tick / totalTicks) * 100;
+            return `<div class="pa-ls-milestone ${passed ? 'passed' : ''} ${isCurrent ? 'current' : ''}" style="left:${pct}%;" title="${m.label} (Tick ${mTick})">
+                <div class="pa-ls-milestone-dot"></div>
+                <div class="pa-ls-milestone-label">${m.label}</div>
+            </div>`;
+        }).join('');
+
+        // Resolution badge
+        let resolutionBadge = '';
+        if (!isActive) {
+            const resLabel = effects === TIER_EFFECTS[1] ? 'FRIVOLOUS' : effects === TIER_EFFECTS[2] ? 'PARTIAL WIN' : effects === TIER_EFFECTS[3] ? 'MAJOR WIN' : 'DEVASTATING';
+            const resColor = ls.tier === 1 ? 'var(--red)' : ls.tier === 2 ? '#ca5' : ls.tier === 3 ? '#c84' : 'var(--green)';
+            resolutionBadge = `<span class="pa-ls-tier-badge" style="color:${resColor};border-color:${resColor}44;background:${resColor}0a;">${resLabel}</span>`;
+        }
+
+        // Effects display
+        const effectsHtml = !isActive ? `
+            <div style="display:flex;gap:12px;margin-top:6px;font-family:var(--font-mono);font-size:8px;">
+                <span style="color:${ls.momentum_effect >= 0 ? 'var(--green)' : 'var(--red)'};">You: ${ls.momentum_effect >= 0 ? '+' : ''}${ls.momentum_effect} Mom</span>
+                <span style="color:${ls.governance_effect >= 0 ? 'var(--green)' : 'var(--red)'};">${ls.governance_effect >= 0 ? '+' : ''}${ls.governance_effect} Gov</span>
+                <span style="color:${ls.gov_momentum_effect >= 0 ? 'var(--green)' : 'var(--red)'};">Govt: ${ls.gov_momentum_effect >= 0 ? '+' : ''}${ls.gov_momentum_effect} Mom</span>
+            </div>
+        ` : '';
+
+        return `
+            <div class="pa-ls-card ${isActive ? 'active' : 'resolved'}">
+                <div class="pa-ls-header">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:12px;">${targetIcon}</span>
+                        <span style="font-size:11px;font-weight:700;color:var(--text-bright);">${esc(targetLabel)}</span>
+                        <span class="pa-ls-tier-badge" style="color:${tierInfo.color};border-color:${tierInfo.color}44;background:${tierInfo.color}0a;">TIER ${ls.tier}</span>
+                        ${resolutionBadge}
+                    </div>
+                    <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">
+                        ${isActive ? `${ticksLeft} ticks left` : `Resolved tick ${ls.resolves_at_tick}`}
+                    </div>
+                </div>
+                ${isActive ? `
+                    <div class="pa-ls-timeline">
+                        <div class="pa-ls-timeline-track">
+                            <div class="pa-ls-timeline-fill" style="width:${progress * 100}%;"></div>
+                        </div>
+                        ${milestonesHtml}
+                    </div>
+                ` : ''}
+                <div style="font-size:9px;color:var(--text-dim);margin-top:4px;">
+                    Corruption growth: <span style="color:${tierInfo.color};font-weight:700;">${(ls.corruption_growth || 0).toFixed(1)}</span>
+                    &mdash; ${esc(tierInfo.label)}
+                </div>
+                ${effectsHtml}
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="pa-ls-section">
+            <div class="pa-ls-section-title">Legal Actions</div>
+            ${lawsuitsHtml}
         </div>
     `;
 }

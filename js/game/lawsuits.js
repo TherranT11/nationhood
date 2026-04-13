@@ -241,3 +241,74 @@ export async function fetchActiveLawsuits(supabase, factionId) {
     }
     return data || [];
 }
+
+// ═══════════════════════════════════════════════════
+// LAWSUIT RESOLUTION (tick processor)
+// ═══════════════════════════════════════════════════
+
+/**
+ * Resolve lawsuits that have reached their resolution tick.
+ * Called per-nation from the tick processor.
+ *
+ * Applies momentum effects via adjust_momentum RPC.
+ * Marks lawsuit as resolved.
+ *
+ * @param {object} supabase
+ * @param {string} nationId
+ * @param {number} currentTick
+ * @param {string|null} govPmPartyId — PM's party faction ID (for applying gov effects)
+ * @returns {Promise<Array>} resolved lawsuits
+ */
+export async function resolveLawsuits(supabase, nationId, currentTick, govPmPartyId) {
+    var { data: pending, error } = await supabase
+        .from('lawsuits')
+        .select('*')
+        .eq('nation_id', nationId)
+        .eq('status', 'active')
+        .lte('resolves_at_tick', currentTick);
+
+    if (error || !pending || pending.length === 0) return [];
+
+    var results = [];
+
+    for (var i = 0; i < pending.length; i++) {
+        var ls = pending[i];
+        var effects = TIER_EFFECTS[ls.tier] || TIER_EFFECTS[1];
+        var resLabel = ls.tier === 1 ? 'frivolous' : ls.tier === 2 ? 'partial_win' : ls.tier === 3 ? 'major_win' : 'devastating_win';
+
+        // Apply filer momentum
+        if (ls.faction_id && effects.filer.momentum !== 0) {
+            await supabase.rpc('adjust_momentum', {
+                p_faction_id: ls.faction_id,
+                p_delta: effects.filer.momentum,
+                p_label: 'Lawsuit ' + resLabel + ': ' + ls.target_ministry,
+                p_tick: currentTick,
+            });
+        }
+
+        // Apply government momentum (to PM's party)
+        if (govPmPartyId && effects.gov.momentum !== 0) {
+            await supabase.rpc('adjust_momentum', {
+                p_faction_id: govPmPartyId,
+                p_delta: effects.gov.momentum,
+                p_label: 'Lawsuit ' + resLabel + ' (defendant): ' + ls.target_ministry,
+                p_tick: currentTick,
+            });
+        }
+
+        // Mark resolved
+        await supabase.from('lawsuits').update({
+            status: 'resolved',
+            resolution: resLabel,
+        }).eq('id', ls.id);
+
+        // Mark resolution event as fired
+        await supabase.from('lawsuit_events').update({ is_fired: true })
+            .eq('lawsuit_id', ls.id).eq('event_type', 'resolution');
+
+        results.push({ id: ls.id, tier: ls.tier, resolution: resLabel, factionId: ls.faction_id });
+        console.log('[Lawsuits] Resolved: ' + ls.target_ministry + ' tier ' + ls.tier + ' → ' + resLabel);
+    }
+
+    return results;
+}

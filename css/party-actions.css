@@ -284,6 +284,65 @@
 
 /* ── Platform modal cards ── */
 /* ── Hire Agitator modal rows ── */
+/* ── Lawsuit display: Legal Actions section ── */
+.pa-ls-section {
+    border: 1px solid var(--border-main); border-top: none;
+    background: var(--bg-panel); padding: 12px 16px;
+}
+.pa-ls-section-title {
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-dim); margin-bottom: 10px;
+}
+.pa-ls-card {
+    padding: 10px 12px; margin-bottom: 8px;
+    border: 1px solid var(--border-main); background: var(--bg-card);
+}
+.pa-ls-card:last-child { margin-bottom: 0; }
+.pa-ls-card.active { border-left: 3px solid #d44a4a; }
+.pa-ls-card.resolved { border-left: 3px solid var(--text-dim); opacity: 0.7; }
+.pa-ls-header {
+    display: flex; justify-content: space-between; align-items: center;
+}
+.pa-ls-tier-badge {
+    font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+    padding: 1px 6px; border: 1px solid; letter-spacing: 0.04em;
+}
+/* Timeline */
+.pa-ls-timeline {
+    position: relative; height: 28px; margin-top: 10px;
+}
+.pa-ls-timeline-track {
+    position: absolute; top: 4px; left: 0; right: 0;
+    height: 3px; background: var(--border-mid);
+}
+.pa-ls-timeline-fill {
+    height: 100%; background: #d44a4a;
+    transition: width 0.3s;
+}
+.pa-ls-milestone {
+    position: absolute; top: 0; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center;
+}
+.pa-ls-milestone-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--bg-card); border: 2px solid var(--border-mid);
+    position: relative; z-index: 2;
+}
+.pa-ls-milestone.passed .pa-ls-milestone-dot {
+    background: #d44a4a; border-color: #d44a4a;
+}
+.pa-ls-milestone.current .pa-ls-milestone-dot {
+    background: #d44a4a; border-color: #fff;
+    box-shadow: 0 0 4px rgba(212,74,74,0.5);
+}
+.pa-ls-milestone-label {
+    font-family: var(--font-mono); font-size: 6px;
+    color: var(--text-dim); margin-top: 3px;
+    white-space: nowrap;
+}
+.pa-ls-milestone.passed .pa-ls-milestone-label { color: var(--text-secondary); }
+
 /* ── Lawsuit modal targets & basis ── */
 .pa-lawsuit-target {
     padding: 8px 6px; text-align: center; cursor: pointer;
